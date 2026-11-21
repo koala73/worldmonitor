@@ -1,3 +1,9 @@
+// Call-site guard by design (#8690, section 2): this AST scan requires
+// noopener,noreferrer on literal window.open(..., '_blank') calls unless
+// the file has an asserted manual opener-severing exemption.
+// Runtime fixtures reach selected calls, while this scan checks the direct
+// TypeScript call sites across src/.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';

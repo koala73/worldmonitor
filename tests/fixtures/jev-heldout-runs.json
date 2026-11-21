@@ -1,0 +1,5534 @@
+{
+ "note": "Raw Jev answers on the held-out Latin titles of tests/fixtures/classify-judged-headlines-heldout.json, one entry per title in `titles` order; level or noul null = no valid answer for that request. Score with scripts/eval-jev-heldout.mjs.",
+ "freezeSha": "fbbcf491dfd767506af7550f0ad69e712cb26c26",
+ "questionSetSha": "e81030c97b184942",
+ "ruleSha": "4a5647a4be54cc0f",
+ "fixtureSha": "aa538a252c25da77",
+ "model": "jev-1.13.0",
+ "titles": [
+  "Russians Vote In First Parliamentary Election Since 2022 Ukraine Invasion - Radio Free Europe/Radio Liberty",
+  "New US sanctions bill on Russia puts India's Modi in a bind - Reuters",
+  "Trump signs Russia sanctions bill that opens China, India to tariffs - Nikkei Asia",
+  "Lai inspects joint missile live-fire drills - Taipei Times",
+  "How A Faulty AI Report \"Almost Started A War\" Between US, China",
+  "One war is not enough: Russia instigating trade fights within Eurasian Economic Union",
+  "US, China discuss cutting tariffs on US LNG ahead of Xi visit - Reuters",
+  "India’s New Eye in the Sky: EOS-05 Satellite and What It Means for South Asia",
+  "Japan, US in talks to build chip factory as part of tariff deal - Nikkei Asia",
+  "Power outage complaints pour in from across Karnataka",
+  "Caught Using ChatGPT In Exam, IIT Bombay Student Kills Self, Protests Erupt",
+  "At least 21 killed after vehicle loaded with explosives rams Pakistan mosque",
+  "Trump has a deal to build US military presence in Greenland while leaving island in Denmark's hands - AP News",
+  "Russia begins 3 days of voting in a parliamentary election set to cement the Kremlin’s power - AP News",
+  "US removes sanctions on Eritrean Defense Forces, Treasury website shows - Reuters",
+  "Trump says he is banning CNN, MS NOW and Politico from the White House - AP News",
+  "Trump says he is banning CNN and Politico from White House",
+  "US and Denmark reach deal over Greenland after Trump annexation threats",
+  "Trump says US reached Greenland security deal - CNN",
+  "BREAKING NEWS: I am pleased to announce that the United States of America has entered into an Agreement with The Kingdom of Denmark, and Greenland, that gives the United States permanent control over security, and all other needs, in Greenland, completely addressing ALL of our many U.S. concerns. There will be NO COST to the United States! At my direction, we worked with representatives of Denmark and Greenland to guarantee that the United States will FOREVER have the complete ability to do what is necessary in Greenland in order to secure and defend the security of Greenland, and the United States of America. Additionally, from now on, no U.S. adversary can EVER have a base in Greenland, have a military presence in Greenland, or make sensitive investments in Greenland, without our express written approval. For over 100 years, Presidents have known the strategic importance of Greenland, but NONE of them were able to do anything about it. I am proud to be the President that permanently and conclusively addressed this very important situation. This is an “Infinite Life” Agreement, there is no end! We are very honored and proud of what has just taken place, and everything agreed to today will be cherished by the American People. We will immediately begin the process of developing a large Military presence in the appropriate part of Greenland, of which there are many. We will work with the people of Greenland in its development and construction. This solution is a great one for the United States of America, Denmark, Greenland, and all of our Allies. We look forward to working with the wonderful people of Denmark and Greenland toward a magnificent future with respect to this large, and highly strategic, parcel of land. We will be very protective of it! This is a dream come true for the United States of America, one that is very important, historic, and special. Thank you for your attention to this matter! President DONALD J. TRUMP",
+  "WHO flags growing health workforce gap as workers and patients age - Reuters",
+  "Men deported from US bound and beaten in Equatorial Guinea detention hotel, lawyers say",
+  "Japan’s central bank raises benchmark interest rate to 1.25%, the highest in 31 years - AP News",
+  "Russian hybrid attacks against Europe intensifying, says Macron",
+  "Survivors recount panic and struggle to breathe in Nigerian prison cell where 37 died",
+  "Trump says he’s ‘banning’ CNN, MS NOW and Politico from the White House - CNN",
+  "Trump says his son paid back Russian billionaire who funded parts of wedding celebration - CNN",
+  "Trump says US, Denmark, Greenland entered into agreement on US control over security - Reuters",
+  "Trump says US has struck security agreement with Denmark over Greenland",
+  "US troop deaths during Iran war exceed Pentagon count by at least four, Washington Post reports - Reuters",
+  "Trump says deal struck to boost U.S. military presence in Greenland",
+  "EXCLUSIVE: US and Denmark reach deal on Greenland, Trump says - Reuters",
+  "Trump officially signs Russia sanctions bill into law",
+  "Trump says he's struck deal for \"permanent control over security\" in Greenland",
+  "Trump announces deal over security in Greenland",
+  "Trump bans CNN, MS NOW, Politico from White House",
+  "Trump claims security, military deal with Denmark over Greenland",
+  "Trump bans CNN, MS NOW and Politico from White House",
+  "Trump says he is banning CNN, MS NOW and Politico from the White House",
+  "2 ships attacked in Strait of Hormuz as Trump grapples with his next move",
+  "DOJ won't enforce handgun ban for 18- to 20-year-olds",
+  "What expensive sulfur means for your dinner table",
+  "Pentagon’s count leaves out some deaths in Middle East during Iran war",
+  "Canada's building a war-fighting army with tip of spear at CFB Edmonton",
+  "Major US airlines oppose Air China bid to schedule additional US flights - Reuters",
+  "Greenland Mines Applauds Historic U.S.-Denmark-Greenland Security Agreement, Reinforcing Greenland’s Strategic Importance to the United States",
+  "Second front in Gaza genocide: Culture wars",
+  "Trump signs broad Russia sanctions bill",
+  "Trump signs sweeping Russia sanctions bill into law - The Kyiv Independent",
+  "Trump signs late Senator Lindsey Graham’s ‘sanctions from hell’ law against Russia",
+  "Russia is using inaccurate missiles that can miss by hundreds of meters to attack Ukrainian cities – and plans to scale them up - Euromaidan Press",
+  "Trump says US, Denmark reach deal to expand military presence in Greenland",
+  "Deal with Denmark gives US 'permanent control' over Greenland security, Trump says",
+  "Ukraine war latest: Elite Russian drone unit pulls back from northern Donetsk Oblast amid Ukrainian offensive - The Kyiv Independent",
+  "Russia plans ''accidental'' drone strikes on NATO countries, Tusk says - Euromaidan Press",
+  "Trump threatens to ban CNN, MS NOW and Politico from the White House",
+  "Trump bars CNN, MS NOW and Politico from White House",
+  "Trump bars CNN, MS NOW, Politico from White House",
+  "Trump bans media outlets CNN, MSNOW, Politico from White House",
+  "Ukraine remembers Georgiy Gongadze and journalists killed during Russia’s war - hromadske.ua",
+  "27-årig sigtet for groft databedrageri med falske sms'er",
+  "Discontent Simmers in Kosovo as Protesters Denounce Hague War Crimes Verdict",
+  "Ahead of Israel's legislative elections, opposition to Benjamin Netanyahu weakened by internal divisions",
+  "Uproar in Niger state, 37 die in custody",
+  "Remittances from Russia to Azerbaijan rise despite sanctions",
+  "Trump announces agreement giving US 'permanent control' over Greenland security",
+  "Trump signs sweeping Russia sanctions over Ukraine war",
+  "Trump signs Lindsey Graham Russia-Iran sanctions bill into law",
+  "South Africans voice their anger as hundreds hold femicide vigil",
+  "US court blocks Trump plan to deport migrants to third countries",
+  "Iranian women defy law and run Tehran race without hijab",
+  "Google’s Gemini AI hacks 3 companies in security test, then stops",
+  "Pentagon weighs changes to US 'force posture' in Middle East and Europe",
+  "Mamdani's Israel criticism draws Jewish student vigil and exposes divisions - Haaretz",
+  "Yemen’s anti-Houthi forces launch inquest into sudden military collapse",
+  "Iran's Guards stage show of force two days after protest anniversary - Iran International",
+  "New UAE organic waste plant puts faith in time-honoured composting methods to boost food security",
+  "Governor of Central Bank of Libya holds meetings with major international financial institutions & banks in London",
+  "Flock Offers Employees Buyouts as Customers Flee",
+  "Gemini hacked three companies in first known breakout by Google's AI",
+  "AI PACs Have Dumped Nearly $1 Million Into an Obscure Senate Race",
+  "Alibaba open-sources AI model that can detect cancer and nearly 150 conditions",
+  "Virginia governor creates an AI task force and moves to restrain data centers",
+  "Disney’s first CTO is Character.AI’s former CEO",
+  "Apple Watch Ultra 4 Review: The Series 12 Is Closing the Gap",
+  "Here’s How an AI Slowdown Could Actually Be Enforced",
+  "An Undercover Google Analyst Infiltrated a Notorious Supply-Chain Hacking Gang",
+  "SDCC – Small Device C Compiler",
+  "Science Is Open Software",
+  "Show HN: LiveWorld – Every 24/7 YouTube live camera on one globe",
+  "OpenAI and Microsoft knew they were starting a ‘doom loop’ for the web",
+  "The real story of the iPhone 18 Pro&#8217;s camera",
+  "Gavin Newsom is pushing for an AI kill switch",
+  "Gemini hacked three companies in first known breakout by Google's AI - Reuters",
+  "Google is the latest AI lab with a security testing mishap - Axios",
+  "Google's Gemini becomes latest AI model to break out and hack computer systems - CNBC",
+  "Exclusive | Gemini Hacked Three Companies in First Known Breakout by Google’s AI - WSJ",
+  "Google’s Gemini AI hacks 3 companies in security test, then stops - Al Jazeera",
+  "What Hollywood thinks about existential AI warnings",
+  "Security researchers used Claude to help them hack into OpenAI",
+  "Trump says he's banning MS NOW, CNN and Politico from White House",
+  "Trump says U.S. to build a 'large Military presence' in Greenland as part of a security deal with it and Denmark",
+  "GM is making parts for Patriot missiles now",
+  "Trump says US has deal with Denmark for ‘control’ of Greenland’s security",
+  "Trump says he's banning MS NOW, CNN, and Politico from the White House",
+  "Google's Gemini becomes latest AI model to break out and hack computer systems",
+  "Google’s Gemini agents hacked three companies in new AI safety incident",
+  "Uber ordered to pay $40M after driver leaves intoxicated California woman on freeway",
+  "OpenAI expects to burn $280bn by 2030",
+  "Inside airlines' panic as FAA pushed new AI tool",
+  "Three words from Kevin Warsh have Wall Street wondering how far the Fed will go with rate hikes",
+  "S&P 500, Nasdaq advance, turning the page on a tumultuous week - Reuters",
+  "Anthropic brings in Accenture for AI safety testing",
+  "Wall St Week Ahead Investors focus on rate path, AI slowdown after Fed hike - Reuters",
+  "Investors react to BOJ raising interest rates to 31-year high - Reuters",
+  "U.S. Stocks Up on Hopes Rising Inflation, Oil Prices Are Now Contained",
+  "SPY | State Street SPDR S&P 500 ETF Trust Overview - MarketWatch",
+  "Lagarde pushes back on market rate-hike bets after energy costs soar - Reuters",
+  "OpenAI's latest AI revelation is a 'serious situation,' Microsoft's Suleyman tells CNBC",
+  "Iran war drives motor oil price fears as Minnesota gas hits $4.47 - 5 EYEWITNESS NEWS",
+  "'We simply don't know' - JP Morgan struggling to forecast oil prices due to Trump's war with Iran - BBC",
+  "Oil Futures Fall for Third Day on Easing Supply Concerns - WSJ",
+  "Saudi Oil Exports Rebound at Hormuz While East-West Pipeline Remains Offline - oilprice.com",
+  "Socgen remains bullish on gold price in Q4 as central banks won’t get ahead of inflation - KITCO",
+  "Gold Price Forecast: Wedge Breakout Targets $4,973 Zone - FXEmpire",
+  "Wheaton Precious Metals Corp. stock falls Friday, underperforms market - MarketWatch",
+  "Precious Metals Talking points 091826: FOMC plus Warsh Q&A insights - stonex.com",
+  "Current price of oil as of September 18, 2026 - Fortune",
+  "Sanctions Programs Atlas - ofac.treasury.gov",
+  "OFFICE OF FOREIGN ASSETS CONTROL Russian Harmful Foreign Activities Sanctions Regulations 31 CFR part 587 GENERAL LICENSE NO. 1 - ofac.treasury.gov",
+  "Russian Harmful Foreign Activities Sanctions - ofac.treasury.gov",
+  "Women and girls pay high price in DR Congo Ebola outbreak",
+  "CISA Adds Two Known Exploited Vulnerabilities to Catalog",
+  "Department of Justice Charges 16 Individuals for Illegal Voting and Related Election Crimes - Department of Justice (.gov)",
+  "Office of Public Affairs | DOJ Secures Agreements with NYU and UPMC to End Pediatric “Gender-Affirming Care” - Department of Justice (.gov)",
+  "'We've Got Their Back,' Hegseth Tells Parents of Enlistees in Texas",
+  "Ambassador Greer to Travel to New York",
+  "Hegseth Addresses Team Who Built Sea Drone Used to Rescue Downed Apache Crew",
+  "Congressional Bill H.R. 5334 Signed into Law",
+  "Restriction on Entry of Certain Nonimmigrant Workers",
+  "Hegseth, Caine Honor Nation's POW/MIAs",
+  "Security Council LIVE: UN peacekeeping under pressure",
+  "Enhancing Program Integrity and Integrity and Interagency Coordination in the Administration of the H-1B Nonimmigrant Visa Program",
+  "- deccs.auth.pmddtc.state.gov",
+  "‘Violence will only defer a problem’: UN Assembly President on trust, AI and lessons from the Rohingya crisis",
+  "Sexual violence against civilians and POW’s in Ukraine widespread and ‘abhorrent’",
+  "Less than 4 years from development goals deadline, progress shows what’s possible",
+  "34.8m Hungry Nigerians: The Muted Disaster that Should Shape 2027 Elections",
+  "Curfew imposed in Nigerian city after protests over deaths of detained miners - Reuters",
+  "DRC: OCHA helps with response endeavours amid ebola outbreak",
+  "Nine bodies found in South Africa raise fears of serial murder, femicide - The Washington Post",
+  "Multiple unions threaten strikes at Barrick's flagship Mali gold mine, documents show - Reuters",
+  "Marine police rescue two from boat mishap in Akwa Ibom",
+  "Cross River retirees appeal for pension adjustment, gratuity payment",
+  "Tinubu, Bolloré discuss new investments in Nigeria’s film, entertainment sectors",
+  "‘Armed robbers would soon visit him,’ police officer captured on video telling local council chairman",
+  "Tinubu Meets Bolloré In Paris Over Expanded Investment In Nigeria’s Creative, Digital Economy",
+  "2027 Election: Appeal Court Validates Registration Of NDC As Political Party",
+  "New Total Blackout in Cuba This Friday",
+  "War in Iran 'jeopardises the Trump presidency', ex-Obama National Security Council member says",
+  "Trump bans media outlets CNN, MSNOW and Politico from the White House",
+  "Using US intelligence, Mexican Army downs drone and arrests its operator in Tijuana",
+  "Peso slides toward 17.3 to the dollar after US Fed’s first rate hike since 2023",
+  "59 million liters of stolen fuel seized in Guanajuato state, the largest such bust in Mexican history",
+  "The Tiguerones: US Terrorist Label Meets a Fracturing Gang in Ecuador",
+  "Drone footage shows severe drought hitting river in Brazil – video",
+  "Launch of the National Community Reforestation Strategy in Haiti",
+  "iciHaiti - Diplomacy : The French Ambassador takes stock with the Minister of Justice",
+  "Brazil’s Lula announces higher welfare payments and free weight-loss jabs ahead of election",
+  "Puerto Vallarta chosen for cruise ship homeport status, potentially doubling its dock capacity",
+  "Nicaragua: Rosario Murillo’s Strategy of Dehumanization",
+  "Azcatitlan Codex returns to Mexico after 186 years, on loan from France",
+  "Rhiannon Giddens on New Album, AI, Ed Sheeran, Macklemore & Trump",
+  "Haiti - News : Zapping...",
+  "Minimum Light, Ohio, USA – Photo of the Day",
+  "A Sydney Sweeney ad goes viral: Are we all just being played?",
+  "Cuba Over Five Centuries: Women Tell Their Stories",
+  "IAEA says cooling tower at Russia’s Kursk Nuclear Power Plant hit by drone - Anadolu Ajansı",
+  "U.S.-Saudi nuclear power deal faces pushback over potential weapons risks - PBS",
+  "Cuba energy grid suffers nationwide collapse - Reuters",
+  "France's Macron says G7 will meet to discuss energy crisis in coming weeks - Reuters",
+  "USDA opens nuclear power funding opportunity for rural electric cooperatives - American Nuclear Society",
+  "France's EDF plans 10 small nuclear plants in Europe by 2035 - Reuters",
+  "Is NANO Nuclear Energy (NNE) A Bargain As Investors Weigh Its Board Update? - simplywall.st",
+  "Iran Update, September 17, 2026 - Institute for the Study of War",
+  "Iran Update, September 18, 2026 - Institute for the Study of War",
+  "China & Taiwan Update, September 18, 2026 - Institute for the Study of War",
+  "Tannebaum quoted in the New York Times on US unreliability influencing de-dollarization efforts",
+  "Lipsky quoted in the New York Times on the prospects of de-dollarization",
+  "Pressure Points",
+  "Russia’s Parliamentary Elections Offer Rituals, Not Results",
+  "Will Russia Ever Be ‘Normal’?",
+  "What in the World?",
+  "In War, Trump and Putin Are Much Alike",
+  "Chinese Literature Is Undergoing a Vibe Shift",
+  "Goldsmith Romero interviewed on CNN about the rise in prediction market trading",
+  "America’s Attrition Trap",
+  "When your boss is your landlord: UVM Health Network job cuts put employee housing at risk - WCAX",
+  "Layoffs Affect All Employees At PepsiCo In Cheverly - Patch",
+  "Fresh layoffs begin at Kennedy Center as closure continues - The Washington Post",
+  "Tech layoffs tracker 2026: All the job losses across Oracle, Uber, Apple, TikTok, Meta, Microsoft and others - Yahoo Tech",
+  "Oracle document spells out what laid-off workers get in severance, stock, and bonuses - Business Insider",
+  "Hundreds of layoffs expected after Truist-affiliated auto finance company announces ENC office closures - WITN",
+  "Oracle to lay off 359 Washington workers, totaling 834 in 2026 - KING5.com",
+  "Layoff Tracker: Sionna says good-bye to 46% of staffers, including exec - BioSpace",
+  "Trump Returns to UN as Iran War Spreads Across Shipping Chokepoints",
+  "Another Tanker Suffers Failure as Crew Suspect Cyber Attack",
+  "Coast Guard releases ‘action plan’ on sexual assault as federal watchdog criticizes delays",
+  "VIDEO: China Coast Guard Rams Philippine Fisheries Vessel in South China Sea - USNI News",
+  "AI Error Nearly Triggered U.S. Intercept of Chinese Ship, CNN Reports",
+  "German Forces Surge Onto Baltic Island In First-Of-Its-Kind NATO Drill",
+  "US Air Force has a $14 billion supply hole, service officials say",
+  "Why moral injury could be a signature wound of the AI battlefield",
+  "Soldier identified following rollover crash at Fort Hood",
+  "DPAA proposes to exhume, identify Korean War remains in Tomb of the Unknown Soldier",
+  "Cape Canaveral is building up its counter-drone defenses, Space Force says",
+  "Space Force to prototype new software to fuse commercial, military space tracking data",
+  "Pentagon reboots testosterone screening plan for men 30 and over",
+  "Nonproliferation Risks of the U.S.-Saudi Nuclear Cooperation Agreement - armscontrol.org",
+  "Latvia chooses Czech howitzers over Swedish Archer offer"
+ ],
+ "runs": {
+  "jev-1": {
+   "capturedAt": "2026-09-24T15:31:56.150Z",
+   "head": "fbbcf491dfd767506af7550f0ad69e712cb26c26",
+   "answers": [
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.93,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.23,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.96,
+      "pAlert": 0.97
+     },
+     "noul": {
+      "commentary": 0.35,
+      "worsening": 0.91,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.99,
+      "pAlert": 0.99
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.91,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.97,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.53,
+      "violence": 0.31
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.23,
+      "pAlert": 0.39
+     },
+     "noul": {
+      "commentary": 0.62,
+      "worsening": 0.69,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.54,
+      "pAlert": 0.11
+     },
+     "noul": {
+      "commentary": 0.82,
+      "worsening": 0.96,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.97,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.06,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.27,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.83,
+      "worsening": 0.1,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.52,
+      "pAlert": 0.07
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.14,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.65,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.9,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.33,
+      "pAlert": 0.1
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.95,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.99,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.01,
+      "worsening": 0.96,
+      "violence": 0.97
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.6,
+      "pAlert": 0.68
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.26,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.97,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.49,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.95,
+      "pAlert": 0.96
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.06,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.31,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.86,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.32,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.87,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.44,
+      "pAlert": 0.36
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.49,
+      "pAlert": 0.59
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.77,
+      "pAlert": 0.9
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.13,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.57,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.09,
+      "worsening": 0.96,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.72,
+      "pAlert": 0.77
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.9,
+      "violence": 0.47
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.91,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.43,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.61,
+      "pAlert": 0.18
+     },
+     "noul": {
+      "commentary": 0.17,
+      "worsening": 0.97,
+      "violence": 0.21
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.97,
+      "pAlert": 0.98
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.6,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.43,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.84,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.45,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.17,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.77,
+      "pAlert": 0.83
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.09,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.6,
+      "pAlert": 0.68
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.07,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.44,
+      "pAlert": 0.5800000000000001
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.91,
+      "violence": 0.48
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.54,
+      "pAlert": 0.63
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.33,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.66,
+      "pAlert": 0.74
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.82,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.24,
+      "pAlert": 0.29000000000000004
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.25,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.44,
+      "pAlert": 0.55
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.06,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.29,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.28,
+      "pAlert": 0.41
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.16,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.25,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.28,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.84,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.44,
+      "pAlert": 0.99
+     },
+     "noul": {
+      "commentary": 0.1,
+      "worsening": 0.94,
+      "violence": 0.89
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.56,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.19,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.69,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.93,
+      "worsening": 0.7,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.44,
+      "pAlert": 0.31
+     },
+     "noul": {
+      "commentary": 0.25,
+      "worsening": 0.58,
+      "violence": 0.56
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.82,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.69,
+      "worsening": 0.68,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.65,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.57,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.75,
+      "pAlert": 0.8
+     },
+     "noul": {
+      "commentary": 0.54,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.88,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.94,
+      "worsening": 0.93,
+      "violence": 0.08
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.86,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.79,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.84,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.33,
+      "pAlert": 0.5800000000000001
+     },
+     "noul": {
+      "commentary": 0.23,
+      "worsening": 0.95,
+      "violence": 0.91
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.65,
+      "pAlert": 0.72
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.28,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.69,
+      "pAlert": 0.75
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.26,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.74,
+      "pAlert": 0.8
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.15,
+      "violence": 0.33
+     }
+    },
+    {
+     "level": {
+      "l": "critical",
+      "levelConf": 0.12,
+      "pAlert": 0.59
+     },
+     "noul": {
+      "commentary": 0.11,
+      "worsening": 0.93,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.28,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.91,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.29,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.36,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.24,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.9,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.7,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.2,
+      "worsening": 0.39,
+      "violence": 0.57
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.49,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.99,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.11,
+      "worsening": 0.84,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.92,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.56,
+      "worsening": 0.25,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.99,
+      "pAlert": 0.99
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.94,
+      "violence": 0.1
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.88,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.38,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.8,
+      "pAlert": 0.85
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.17,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.79,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.74,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.95,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.66,
+      "violence": 0.06
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.58,
+      "pAlert": 0.24
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.25,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.56,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.45,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.71,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.34,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.88,
+      "pAlert": 0.06
+     },
+     "noul": {
+      "commentary": 0.16,
+      "worsening": 0.25,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.32,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.23,
+      "worsening": 0.82,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.49,
+      "pAlert": 0.6
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.88,
+      "violence": 0.31
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.96,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.76,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.72,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.21,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.1,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.86,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.94,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.26,
+      "pAlert": 0.41
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.95,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.68,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.1,
+      "worsening": 0.62,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.77,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.73,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.46,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.08,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.98,
+      "worsening": 0.09,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.96,
+      "worsening": 0.21,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.34,
+      "pAlert": 0.47
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.27,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.52,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.95,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.38,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.86,
+      "worsening": 0.95,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.88,
+      "worsening": 0.07,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.39,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.14,
+      "worsening": 0.3,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.3,
+      "pAlert": 0.45
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.94,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.64,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.11,
+      "worsening": 0.85,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.55,
+      "pAlert": 0.13
+     },
+     "noul": {
+      "commentary": 0.09,
+      "worsening": 0.91,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.25,
+      "pAlert": 0.41000000000000003
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.95,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.62,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.32,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.92,
+      "worsening": 0.17,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.35,
+      "pAlert": 0.3
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.89,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.33,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.86,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.69,
+      "pAlert": 0.75
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.57,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.6,
+      "pAlert": 0.06
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.37,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.33,
+      "pAlert": 0.31
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.22,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.38,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.82,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.51,
+      "pAlert": 0.16
+     },
+     "noul": {
+      "commentary": 0.12,
+      "worsening": 0.92,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.21,
+      "pAlert": 0.22
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.94,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.98,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.28,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.52,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.23,
+      "worsening": 0.85,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.36,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.42,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.35,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.53,
+      "worsening": 0.77,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.6,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.03,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.73,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.1,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.35,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.31,
+      "worsening": 0.4,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.9,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.09,
+      "worsening": 0.5,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.37,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.25,
+      "worsening": 0.06,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.77,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.88,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.68,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.77,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.13,
+      "worsening": 0.78,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.89,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.09,
+      "worsening": 0.94,
+      "violence": 0.13
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.55,
+      "pAlert": 0.08
+     },
+     "noul": {
+      "commentary": 0.35,
+      "worsening": 0.78,
+      "violence": 0.1
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.65,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.1,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.87,
+      "pAlert": 0.08
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.2,
+      "violence": 0.08
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.71,
+      "worsening": 0.1,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.95,
+      "worsening": 0.18,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.98,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.91,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.88,
+      "worsening": 0.15,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.75,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.16,
+      "worsening": 0.13,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.91,
+      "pAlert": 0.05
+     },
+     "noul": {
+      "commentary": 0.5,
+      "worsening": 0.12,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.83,
+      "pAlert": 0.86
+     },
+     "noul": {
+      "commentary": 0.2,
+      "worsening": 0.46,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.98,
+      "pAlert": 0.98
+     },
+     "noul": {
+      "commentary": 0.22,
+      "worsening": 0.68,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "critical",
+      "levelConf": 0.4,
+      "pAlert": 0.95
+     },
+     "noul": {
+      "commentary": 0.28,
+      "worsening": 0.81,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.35,
+      "pAlert": 0.08
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.59,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.61,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.41,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.41,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.08,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.68,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.09,
+      "worsening": 0.1,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.94,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.11,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.19,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.04,
+      "violence": 0.11
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.19,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.14,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.71,
+      "pAlert": 0.17
+     },
+     "noul": {
+      "commentary": 0.23,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.43,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.06,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.83,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.19,
+      "worsening": 0.85,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.26,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.61,
+      "worsening": 0.07,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.92,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.13,
+      "worsening": 0.13,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.49,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.46,
+      "worsening": 0.18,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.35,
+      "pAlert": 0.84
+     },
+     "noul": {
+      "commentary": 0.2,
+      "worsening": 0.77,
+      "violence": 0.7
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.89,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.81,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.34,
+      "pAlert": 0.17
+     },
+     "noul": {
+      "commentary": 0.93,
+      "worsening": 0.63,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.71,
+      "pAlert": 0.22
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.88,
+      "violence": 0.06
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.38,
+      "pAlert": 0.91
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.4,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.41,
+      "pAlert": 0.53
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.96,
+      "violence": 0.44
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.95,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.92,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.98,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.07,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.7,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.44,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.91,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.96,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.79,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.91,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.08,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.47,
+      "pAlert": 0.3
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.95,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.94,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.6,
+      "worsening": 0.88,
+      "violence": 0.06
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.26,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.9,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.31,
+      "pAlert": 0.46
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.09,
+      "violence": 0.74
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.89,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.29,
+      "pAlert": 0.21
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.13,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.44,
+      "pAlert": 0.5800000000000001
+     },
+     "noul": {
+      "commentary": 0.7,
+      "worsening": 0.76,
+      "violence": 0.11
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.89,
+      "pAlert": 0.91
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.92,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.53,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.12,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.83,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.08,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.75,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.93,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.94,
+      "worsening": 0.74,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.48,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.02,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.88,
+      "worsening": 0.07,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.85,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.27,
+      "worsening": 0.49,
+      "violence": 0.31
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.29,
+      "worsening": 0.11,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.87,
+      "worsening": 0.58,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.88,
+      "worsening": 0.06,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "critical",
+      "levelConf": 0.39,
+      "pAlert": 0.96
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.91,
+      "violence": 0.86
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.52,
+      "pAlert": 0.61
+     },
+     "noul": {
+      "commentary": 0.19,
+      "worsening": 0.78,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.76,
+      "pAlert": 0.8200000000000001
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.98,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.83,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.43,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.37,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.55,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.15,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.9,
+      "worsening": 0.17,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.61,
+      "pAlert": 0.08
+     },
+     "noul": {
+      "commentary": 0.43,
+      "worsening": 0.42,
+      "violence": 0.18
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.63,
+      "pAlert": 0.05
+     },
+     "noul": {
+      "commentary": 0.38,
+      "worsening": 0.4,
+      "violence": 0.17
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.63,
+      "pAlert": 0.1
+     },
+     "noul": {
+      "commentary": 0.5,
+      "worsening": 0.37,
+      "violence": 0.11
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.77,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.17,
+      "worsening": 0.7,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.98,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.16,
+      "worsening": 0.19,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.92,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.76,
+      "worsening": 0.67,
+      "violence": 0.09
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.41,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.92,
+      "worsening": 0.21,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.95,
+      "worsening": 0.26,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.67,
+      "worsening": 0.44,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.96,
+      "worsening": 0.28,
+      "violence": 0.07
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.93,
+      "worsening": 0.14,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.54,
+      "worsening": 0.55,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.98,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.92,
+      "worsening": 0.89,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.95,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.22,
+      "worsening": 0.94,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.95,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.94,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.95,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.93,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.45,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.54,
+      "worsening": 0.86,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.87,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.45,
+      "worsening": 0.31,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.86,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.95,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.64,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.93,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.78,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.93,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "critical",
+      "levelConf": 0.76,
+      "pAlert": 0.9400000000000001
+     },
+     "noul": {
+      "commentary": 0.16,
+      "worsening": 0.94,
+      "violence": 0.57
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.72,
+      "pAlert": 0.8
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.93,
+      "violence": 0.14
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.49,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.38,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.7,
+      "pAlert": 0.78
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.95,
+      "violence": 0.65
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.71,
+      "pAlert": 0.88
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.64,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.56,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.86,
+      "pAlert": 0.07
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.81,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.97,
+      "worsening": 0.75,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.86,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.2,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.41,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.24,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.73,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.31,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.57,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.07,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.51,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.31,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.75,
+      "pAlert": 0.18000000000000002
+     },
+     "noul": {
+      "commentary": 0.9,
+      "worsening": 0.56,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.56,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.1,
+      "violence": 0.01
+     }
+    }
+   ],
+   "usage": {
+    "inputTokens": 263994,
+    "requests": 440,
+    "authRejected": 0
+   }
+  },
+  "jev-2": {
+   "capturedAt": "2026-09-24T15:32:22.053Z",
+   "head": "fbbcf491dfd767506af7550f0ad69e712cb26c26",
+   "answers": [
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.94,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.22,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.93,
+      "pAlert": 0.95
+     },
+     "noul": {
+      "commentary": 0.37,
+      "worsening": 0.91,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.99,
+      "pAlert": 0.99
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.91,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.98,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.48,
+      "violence": 0.29
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.23,
+      "pAlert": 0.39
+     },
+     "noul": {
+      "commentary": 0.63,
+      "worsening": 0.63,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.6,
+      "pAlert": 0.13
+     },
+     "noul": {
+      "commentary": 0.84,
+      "worsening": 0.95,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.97,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.34,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.85,
+      "worsening": 0.08,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.47,
+      "pAlert": 0.09
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.13,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.69,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.9,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.4,
+      "pAlert": 0.08
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.94,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.99,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.01,
+      "worsening": 0.96,
+      "violence": 0.97
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.63,
+      "pAlert": 0.71
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.29,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.98,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.54,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.94,
+      "pAlert": 0.95
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.36,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.85,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.27,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.86,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.45,
+      "pAlert": 0.35
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.56,
+      "pAlert": 0.65
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.05,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.75,
+      "pAlert": 0.93
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.13,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.57,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.1,
+      "worsening": 0.96,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.66,
+      "pAlert": 0.74
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.9,
+      "violence": 0.48
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.9,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.42,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.58,
+      "pAlert": 0.15
+     },
+     "noul": {
+      "commentary": 0.14,
+      "worsening": 0.97,
+      "violence": 0.22
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.97,
+      "pAlert": 0.98
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.62,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.46,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.83,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.43,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.17,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.76,
+      "pAlert": 0.8
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.1,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.59,
+      "pAlert": 0.67
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.07,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.36,
+      "pAlert": 0.51
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.91,
+      "violence": 0.54
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.51,
+      "pAlert": 0.6
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.33,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.69,
+      "pAlert": 0.76
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.83,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.31,
+      "pAlert": 0.24000000000000002
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.26,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.44,
+      "pAlert": 0.55
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.06,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.2,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.3,
+      "pAlert": 0.43
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.16,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.27,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.3,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.85,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.46,
+      "pAlert": 0.99
+     },
+     "noul": {
+      "commentary": 0.11,
+      "worsening": 0.93,
+      "violence": 0.89
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.44,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.22,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.66,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.93,
+      "worsening": 0.73,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.47,
+      "pAlert": 0.29000000000000004
+     },
+     "noul": {
+      "commentary": 0.3,
+      "worsening": 0.61,
+      "violence": 0.59
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.81,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.69,
+      "worsening": 0.68,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.68,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.58,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.8,
+      "pAlert": 0.84
+     },
+     "noul": {
+      "commentary": 0.58,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.84,
+      "pAlert": 0.05
+     },
+     "noul": {
+      "commentary": 0.94,
+      "worsening": 0.93,
+      "violence": 0.09
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.86,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.78,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.84,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.36,
+      "pAlert": 0.59
+     },
+     "noul": {
+      "commentary": 0.23,
+      "worsening": 0.96,
+      "violence": 0.91
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.61,
+      "pAlert": 0.69
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.3,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.66,
+      "pAlert": 0.73
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.28,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.77,
+      "pAlert": 0.84
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.16,
+      "violence": 0.32
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.12,
+      "pAlert": 0.5700000000000001
+     },
+     "noul": {
+      "commentary": 0.12,
+      "worsening": 0.93,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.29,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.91,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.31,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.32,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.24,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.9,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.68,
+      "pAlert": 0.05
+     },
+     "noul": {
+      "commentary": 0.19,
+      "worsening": 0.35,
+      "violence": 0.58
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.46,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.99,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.11,
+      "worsening": 0.84,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.91,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.53,
+      "worsening": 0.25,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.98,
+      "pAlert": 0.99
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.95,
+      "violence": 0.1
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.89,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.36,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.81,
+      "pAlert": 0.86
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.17,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.81,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 1,
+      "pAlert": 1
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.76,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.93,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.66,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.6,
+      "pAlert": 0.23
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.23,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.55,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.44,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.7,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.34,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.86,
+      "pAlert": 0.07
+     },
+     "noul": {
+      "commentary": 0.16,
+      "worsening": 0.24,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.32,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.22,
+      "worsening": 0.81,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.54,
+      "pAlert": 0.64
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.87,
+      "violence": 0.27
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.96,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.75,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.77,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.22,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.98,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.1,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.79,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.94,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.27,
+      "pAlert": 0.43
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.95,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.7,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.11,
+      "worsening": 0.62,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.81,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.73,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.47,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.08,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.98,
+      "worsening": 0.08,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.96,
+      "worsening": 0.24,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.3,
+      "pAlert": 0.45
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.25,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.53,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.95,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.37,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.88,
+      "worsening": 0.95,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.88,
+      "worsening": 0.07,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.34,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.14,
+      "worsening": 0.31,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.33,
+      "pAlert": 0.48
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.94,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.59,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.11,
+      "worsening": 0.84,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.52,
+      "pAlert": 0.13
+     },
+     "noul": {
+      "commentary": 0.09,
+      "worsening": 0.92,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.22,
+      "pAlert": 0.38
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.95,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.57,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.3,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.92,
+      "worsening": 0.19,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.36,
+      "pAlert": 0.31
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.9,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.31,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.86,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.68,
+      "pAlert": 0.75
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.56,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.61,
+      "pAlert": 0.05
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.34,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.35,
+      "pAlert": 0.29
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.25,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.48,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.84,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.45,
+      "pAlert": 0.2
+     },
+     "noul": {
+      "commentary": 0.12,
+      "worsening": 0.93,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.18,
+      "pAlert": 0.24
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.94,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.99,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.31,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.51,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.18,
+      "worsening": 0.86,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.34,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.43,
+      "worsening": 0.89,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.36,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.51,
+      "worsening": 0.79,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.57,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.03,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.75,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.11,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.31,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.3,
+      "worsening": 0.37,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.88,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.48,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.36,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.24,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.76,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.87,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.66,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.75,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.14,
+      "worsening": 0.79,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.88,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.09,
+      "worsening": 0.94,
+      "violence": 0.14
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.54,
+      "pAlert": 0.13
+     },
+     "noul": {
+      "commentary": 0.37,
+      "worsening": 0.77,
+      "violence": 0.1
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.59,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.09,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.81,
+      "pAlert": 0.14
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.21,
+      "violence": 0.06
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.71,
+      "worsening": 0.11,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.95,
+      "worsening": 0.16,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.98,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.86,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.93,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.88,
+      "worsening": 0.17,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.73,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.15,
+      "worsening": 0.13,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.93,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.5,
+      "worsening": 0.12,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.86,
+      "pAlert": 0.89
+     },
+     "noul": {
+      "commentary": 0.19,
+      "worsening": 0.43,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.98,
+      "pAlert": 0.99
+     },
+     "noul": {
+      "commentary": 0.24,
+      "worsening": 0.7,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "critical",
+      "levelConf": 0.38,
+      "pAlert": 0.95
+     },
+     "noul": {
+      "commentary": 0.29,
+      "worsening": 0.79,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.33,
+      "pAlert": 0.09
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.62,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.55,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.43,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.44,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.08,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.68,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.09,
+      "worsening": 0.1,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.92,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.11,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.24,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.04,
+      "violence": 0.11
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.19,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.15,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.71,
+      "pAlert": 0.16
+     },
+     "noul": {
+      "commentary": 0.23,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.38,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.06,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.85,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.2,
+      "worsening": 0.83,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.25,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.58,
+      "worsening": 0.07,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.93,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.11,
+      "worsening": 0.14,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.38,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.49,
+      "worsening": 0.17,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.33,
+      "pAlert": 0.81
+     },
+     "noul": {
+      "commentary": 0.19,
+      "worsening": 0.76,
+      "violence": 0.69
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.9,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.83,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.34,
+      "pAlert": 0.17
+     },
+     "noul": {
+      "commentary": 0.93,
+      "worsening": 0.64,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.7,
+      "pAlert": 0.24
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.87,
+      "violence": 0.06
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.36,
+      "pAlert": 0.88
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.38,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.4,
+      "pAlert": 0.52
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.95,
+      "violence": 0.47
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.95,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.92,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.98,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.01,
+      "worsening": 0.06,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.75,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.42,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.91,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.96,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.81,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.91,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.08,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.51,
+      "pAlert": 0.25
+     },
+     "noul": {
+      "commentary": 0.09,
+      "worsening": 0.95,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.94,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.58,
+      "worsening": 0.88,
+      "violence": 0.06
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.25,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.9,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.39,
+      "pAlert": 0.52
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.09,
+      "violence": 0.73
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.89,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.87,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.27,
+      "pAlert": 0.22
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.13,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.41,
+      "pAlert": 0.55
+     },
+     "noul": {
+      "commentary": 0.72,
+      "worsening": 0.74,
+      "violence": 0.1
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.89,
+      "pAlert": 0.92
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.91,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.56,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.12,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.88,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.08,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.8,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.04,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.94,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.94,
+      "worsening": 0.75,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.44,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.03,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.89,
+      "worsening": 0.06,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.85,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.29,
+      "worsening": 0.46,
+      "violence": 0.27
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.27,
+      "worsening": 0.12,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.88,
+      "worsening": 0.58,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.88,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "critical",
+      "levelConf": 0.37,
+      "pAlert": 0.96
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.91,
+      "violence": 0.88
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.57,
+      "pAlert": 0.66
+     },
+     "noul": {
+      "commentary": 0.18,
+      "worsening": 0.78,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.73,
+      "pAlert": 0.79
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.98,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.81,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.43,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.37,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.05,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.5,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.16,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.9,
+      "worsening": 0.18,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.6,
+      "pAlert": 0.06999999999999999
+     },
+     "noul": {
+      "commentary": 0.41,
+      "worsening": 0.41,
+      "violence": 0.19
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.56,
+      "pAlert": 0.06
+     },
+     "noul": {
+      "commentary": 0.41,
+      "worsening": 0.38,
+      "violence": 0.17
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.64,
+      "pAlert": 0.08
+     },
+     "noul": {
+      "commentary": 0.53,
+      "worsening": 0.38,
+      "violence": 0.12
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.79,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.15,
+      "worsening": 0.7,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.98,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.19,
+      "worsening": 0.2,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.88,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.76,
+      "worsening": 0.64,
+      "violence": 0.1
+     }
+    },
+    {
+     "level": {
+      "l": "low",
+      "levelConf": 0.38,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.92,
+      "worsening": 0.21,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.95,
+      "worsening": 0.26,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.67,
+      "worsening": 0.42,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.96,
+      "worsening": 0.3,
+      "violence": 0.08
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.93,
+      "worsening": 0.14,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.52,
+      "worsening": 0.55,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.98,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.92,
+      "worsening": 0.89,
+      "violence": 0.05
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.95,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.22,
+      "worsening": 0.95,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.93,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.94,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.96,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.93,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.36,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.52,
+      "worsening": 0.88,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.86,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.43,
+      "worsening": 0.28,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.86,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.95,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.63,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.03,
+      "worsening": 0.93,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.74,
+      "pAlert": 0.01
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.94,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "critical",
+      "levelConf": 0.78,
+      "pAlert": 0.95
+     },
+     "noul": {
+      "commentary": 0.16,
+      "worsening": 0.95,
+      "violence": 0.56
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.7,
+      "pAlert": 0.8
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.94,
+      "violence": 0.16
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.51,
+      "pAlert": 0.03
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.38,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.68,
+      "pAlert": 0.77
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.95,
+      "violence": 0.66
+     }
+    },
+    {
+     "level": {
+      "l": "high",
+      "levelConf": 0.74,
+      "pAlert": 0.9
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.66,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.99,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.56,
+      "violence": 0.03
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.85,
+      "pAlert": 0.06
+     },
+     "noul": {
+      "commentary": 0.08,
+      "worsening": 0.8,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 1,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.97,
+      "worsening": 0.73,
+      "violence": 0.04
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.84,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.02,
+      "worsening": 0.2,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.43,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.07,
+      "worsening": 0.21,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.72,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.3,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.56,
+      "pAlert": 0.02
+     },
+     "noul": {
+      "commentary": 0.06,
+      "worsening": 0.07,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.58,
+      "pAlert": 0
+     },
+     "noul": {
+      "commentary": 0.05,
+      "worsening": 0.28,
+      "violence": 0.01
+     }
+    },
+    {
+     "level": {
+      "l": "info",
+      "levelConf": 0.69,
+      "pAlert": 0.2
+     },
+     "noul": {
+      "commentary": 0.9,
+      "worsening": 0.59,
+      "violence": 0.02
+     }
+    },
+    {
+     "level": {
+      "l": "medium",
+      "levelConf": 0.53,
+      "pAlert": 0.04
+     },
+     "noul": {
+      "commentary": 0.04,
+      "worsening": 0.11,
+      "violence": 0.01
+     }
+    }
+   ],
+   "usage": {
+    "inputTokens": 263994,
+    "requests": 440,
+    "authRejected": 0
+   }
+  }
+ }
+}

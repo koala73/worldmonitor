@@ -104,6 +104,10 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
     cdn: 'public, s-maxage=300, stale-while-revalidate=120, stale-if-error=900',
   },
+  ukmtoIncidents: {
+    browser: 'max-age=60, stale-while-revalidate=60, stale-if-error=60',
+    cdn: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=60',
+  },
   liveVideoResolved: {
     browser: 'max-age=300, stale-while-revalidate=300, stale-if-error=1800',
     cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=3600',
@@ -614,7 +618,7 @@ describe('validateBootstrapCacheDocs', () => {
   // Drift from the code side: the docs stand still while api/bootstrap.js moves.
   it('catches a handler-side tier change the docs never followed', () => {
     const drifted = parseBootstrapCacheContract(
-      SYNTHETIC_BOOTSTRAP.replace("fast: 'max-age=60,", "fast: 'max-age=120,"),
+      read('api/bootstrap.js').replace("fast: 'max-age=60,", "fast: 'max-age=120,"),
     );
     const failures = validateBootstrapCacheDocs(
       { bootstrapCache: drifted },

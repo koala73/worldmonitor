@@ -1,4 +1,5 @@
 import { addPublicSharedRpcMarker } from '@/shared/public-rpc-cache';
+import { createRequestTimeoutSignal } from './timeout-signal';
 
 const CREDENTIAL_HEADERS = ['Authorization', 'X-WorldMonitor-Key', 'X-Api-Key', 'Cookie'];
 
@@ -19,6 +20,7 @@ export const publicRpcFetch: typeof fetch = async (input, init) => {
 
   return globalThis.fetch(url, {
     ...init,
+    signal: createRequestTimeoutSignal(input, init, 30_000),
     method: 'GET',
     headers,
     credentials: 'omit',

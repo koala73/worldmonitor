@@ -1,3 +1,8 @@
+// This inspects the MapComponent AST to pin zoom-threshold rebuild scheduling,
+// render-time opt-outs and guards on zoom-hidden marker allocation (#8690,
+// section 2). The zoom path needs real element geometry that happy-dom does
+// not compute, so these checks inspect the source contract.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

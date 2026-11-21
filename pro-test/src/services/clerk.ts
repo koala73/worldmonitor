@@ -1,8 +1,20 @@
 import type { Clerk } from '@clerk/clerk-js';
 import { protectClerkDomFromTranslators } from './clerk-dom-safety';
 import { EULA_PATH, PRIVACY_PATH } from '../../../shared/legal';
+import {
+  SIGN_UP_CODE_SUBTITLE,
+  installSignUpSignInEscape,
+  createSignUpToSignInSwitch,
+  type SignInSwitchDeps,
+} from '../../../shared/clerk-sign-up-escape';
 
 export type LoadedClerk = InstanceType<typeof Clerk>;
+
+export const SITE_DATA_BLOCKED_MESSAGE = 'Your browser is blocking cookies and site data for worldmonitor.app. Allow them for this site, then try again.';
+
+export class SiteDataBlockedError extends Error {
+  override name = 'SiteDataBlockedError';
+}
 
 const MONO_FONT = "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace";
 
@@ -10,6 +22,39 @@ let clerk: LoadedClerk | null = null;
 let clerkLoadPromise: Promise<LoadedClerk> | null = null;
 let scheduledClerkLoadPromise: Promise<LoadedClerk> | null = null;
 const clerkLoadSubscribers = new Set<(clerk: LoadedClerk) => void>();
+
+/** Where a sign-in or sign-up opened for checkout returns to, so the checkout resumes. */
+export interface AuthReturnUrls {
+  afterSignInUrl: string;
+  afterSignUpUrl: string;
+}
+
+let authReturnUrls: AuthReturnUrls | null = null;
+
+/**
+ * Record the return URLs the open auth form was given (null for the nav Sign
+ * in). The sign-up code card's Sign in escape reopens sign-in with them, so a
+ * buyer who already has an account still lands back in checkout.
+ */
+export function setAuthReturnUrls(urls: AuthReturnUrls | null): void {
+  authReturnUrls = urls;
+}
+
+/**
+ * The Sign in action for the sign-up code card: an existing account typed into
+ * sign-up. A second click while the switch runs is ignored.
+ */
+export function createSignInEscape(instance: LoadedClerk, switchDeps?: SignInSwitchDeps): () => void {
+  const escapeSwitch = createSignUpToSignInSwitch(instance, switchDeps);
+  return () => {
+    const emailAddress = instance.client?.signUp?.emailAddress ?? null;
+    const returnUrls = authReturnUrls;
+    escapeSwitch.run(() => instance.openSignIn({
+      ...(returnUrls ?? {}),
+      ...(emailAddress ? { initialValues: { emailAddress } } : {}),
+    }));
+  };
+}
 
 export async function ensureClerk(): Promise<LoadedClerk> {
   if (clerk) return clerk;
@@ -76,6 +121,12 @@ function publishClerkLoaded(instance: LoadedClerk): void {
 }
 
 async function loadClerk(): Promise<LoadedClerk> {
+  try {
+    // Throws SecurityError when the browser blocks site data; Clerk cannot hold a session then.
+    void window.localStorage;
+  } catch (cause) {
+    throw new SiteDataBlockedError('localStorage is not readable', { cause });
+  }
   const { Clerk: C } = await import('@clerk/clerk-js');
   const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY not set');
@@ -83,6 +134,17 @@ async function loadClerk(): Promise<LoadedClerk> {
   const stopTranslatorProtection = protectClerkDomFromTranslators();
   try {
     await instance.load({
+      // Signed-out checkout opens sign-up (#10842). English only, like the rest
+      // of the modal; sign-in strings stay Clerk's defaults for the nav button.
+      localization: {
+        signUp: {
+          start: {
+            title: 'Create your account',
+            subtitle: 'If you picked a plan, secure checkout opens next.',
+          },
+          emailCode: { subtitle: SIGN_UP_CODE_SUBTITLE },
+        },
+      },
       appearance: {
         // Sign-up carries the same assent line as checkout (#6976): Clerk renders
         // Terms/Privacy links in the auth card footer when these are set, so the
@@ -123,6 +185,9 @@ async function loadClerk(): Promise<LoadedClerk> {
   // Only publish the instance after load() succeeds, so a failed load does not
   // wedge ensureClerk()'s retry path.
   clerk = instance;
+  if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
+    installSignUpSignInEscape(document, createSignInEscape(instance));
+  }
   publishClerkLoaded(clerk);
   return clerk;
 }

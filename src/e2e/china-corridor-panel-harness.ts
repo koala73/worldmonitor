@@ -82,6 +82,11 @@ const map = Object.create(MapContainer.prototype) as MapContainer;
 const mapInternals = map as unknown as Record<string, unknown>;
 Object.assign(mapInternals, {
   setCenter: () => {},
+  // rehydrateActiveMap() reads these constructor-built fields (#9164, #9637).
+  getState: () => ({ layers: {} }),
+  emergencyLayer: { setEnabled: () => {} },
+  notamAirspaceLayer: { setEnabled: () => {} },
+  cachedNotamAirspace: [],
   layerLoadingState: new Map(),
   layerReadyState: new Map(),
   pendingViewportActions: [],

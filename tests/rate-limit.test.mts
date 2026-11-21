@@ -694,6 +694,11 @@ describe('rate-limit fail-closed call-site policy (#3531)', () => {
 describe('scoped rate-limit degraded call-site policy (#3531)', () => {
   const SCOPED_RATE_LIMIT_CALLERS = [
     {
+      path: 'server/worldmonitor/cyber/v1/get-network-info.ts',
+      expected: /if\s*\(!budget\.allowed \|\| budget\.degraded\) throw new ProviderBudgetError/,
+      reason: 'both provider-wide lookup budgets fail closed on Redis degradation before any RIPEstat work',
+    },
+    {
       path: 'server/worldmonitor/aviation/v1/track-aircraft.ts',
       expected: /if\s*\(limit\.degraded\)\s*\{[\s\S]*?throw Object\.assign\(new ApiError\(503,/,
       reason: 'aircraft identifier lookups must fail closed before cache or provider work when the shared limiter is unavailable',
@@ -707,6 +712,16 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       path: 'server/worldmonitor/infrastructure/v1/reverse-geocode.ts',
       expected: /if\s*\(\s*providerLimit\.degraded\s*\)\s*\{/,
       reason: 'the gateway half of the provider-wide Nominatim bucket must fail closed before upstream work',
+    },
+    {
+      path: 'server/worldmonitor/infrastructure/v1/search-place.ts',
+      expected: /if\s*\(\s*providerLimit\.degraded\s*\)\s*throw new ApiError\(503/,
+      reason: 'place-name search spends the provider-wide Nominatim bucket and must fail closed before upstream work',
+    },
+    {
+      path: 'server/worldmonitor/news/v1/_headline-history.ts',
+      expected: /Redis-degraded scoped limits intentionally stay availability-first here[\s\S]*?if\s*\(!budget\.allowed && !budget\.degraded\) return/,
+      reason: 'the per-caller Cmd+K index-read budget refuses only on a decided limit: a self-hosted Redis 6 is degraded on every scoped call, and refusing there would switch headline history off for good; the route limit still caps requests',
     },
     {
       path: 'api/a2a.ts',
@@ -734,9 +749,19 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'agent-skills import proxy fetches one public host behind a fixed allowlist and is called by the settings importer - degradation is logged and stays availability-first',
     },
     {
+      path: 'api/travel-risk-assessment.ts',
+      expected: /Redis-degraded scoped limits intentionally stay availability-first here/,
+      reason: 'the travel risk export is plan-gated and spends no LLM budget, and its sources live in the same Redis, so a degraded limiter already means a 503 build - degradation is logged and stays availability-first',
+    },
+    {
       path: 'api/user-prefs.ts',
       expected: /Redis-degraded scoped limits intentionally fail open for prefs writes/,
       reason: 'cloud prefs writes are low-stakes, so Redis degradation should not block legitimate settings sync',
+    },
+    {
+      path: 'api/desktop-key/status.ts',
+      expected: /A degraded per-IP ceiling fails closed with 503/,
+      reason: 'the per-IP ceiling in front of the Convex key lookup fails closed when degraded (rotating keys miss the negative cache); the owner and invalid-key buckets after the lookup stay availability-first, and a self-host sidecar keeps its last verdict through a 503',
     },
     {
       path: 'api/notify.ts',
@@ -836,6 +861,12 @@ describe('slow-Redis timeout is degraded, not a silent allow (#6412 review)', ()
       errorLogs.some((l) => l.includes('[rate-limit] redis-error') && l.includes('timed out')),
       `the bypass window must be visible in logs: ${errorLogs.join(' | ')}`,
     );
+  });
+
+  it('global checkRateLimit fails closed on an SDK timeout', { timeout: HANG_TEST_TIMEOUT_MS }, async () => {
+    const res = await checkRateLimit(makeRequest({ 'x-real-ip': '203.0.113.79' }), {}, { failClosed: true });
+    assert.equal(res?.status, 503);
+    assert.equal(res?.headers.get('X-RateLimit-Mode'), 'degraded');
   });
 
   it('checkRateLimit (api/_rate-limit.js) fails closed on a timed-out decision when asked to', { timeout: HANG_TEST_TIMEOUT_MS }, async () => {

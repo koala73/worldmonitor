@@ -75,6 +75,25 @@ describe('SPA fallback scope (#6575)', () => {
     assert.equal(dest('/stocks/:symbol/'), '/stocks/:symbol');
   });
 
+  // /verify/ returned 404 in production while /verify served 200: a rewrite
+  // source matches its exact spelling only, and there is no verify/ directory
+  // to fall back to. Every slashless page served by a `.html` rewrite needs a
+  // permanent redirect from its trailing-slash spelling to the canonical one.
+  // Directory pages (`/pro` -> `/pro/index.html`) are excluded because the
+  // filesystem already serves their slash spelling.
+  it('redirects the trailing-slash spelling of every slashless HTML page rewrite', () => {
+    const pageSources = [...new Set(vercel.rewrites
+      .filter((r) => r.destination.endsWith('.html') && !r.destination.endsWith('/index.html'))
+      .filter((r) => !r.source.endsWith('/') && !r.source.includes('('))
+      .map((r) => r.source))];
+    assert.ok(pageSources.includes('/verify'), 'inventory must include /verify');
+    for (const source of pageSources) {
+      const redirect = vercel.redirects.find((r) => r.source === `${source}/` && !r.has);
+      assert.equal(redirect?.destination, source, `${source}/ must redirect to ${source}`);
+      assert.equal(redirect?.permanent, true, `${source}/ redirect must be permanent`);
+    }
+  });
+
   it('never reintroduces a negative-lookahead SPA catch-all', () => {
     const catchAll = vercel.rewrites.find((r) =>
       r.destination === DASHBOARD_HTML_DESTINATION && r.source.includes('(?!')

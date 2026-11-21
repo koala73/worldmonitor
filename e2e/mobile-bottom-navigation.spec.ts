@@ -8,6 +8,9 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
+      // Seed once per tab so a reload keeps what the test saved.
+      if (sessionStorage.getItem('e2e-mobile-nav-seeded')) return;
+      sessionStorage.setItem('e2e-mobile-nav-seeded', '1');
       localStorage.removeItem('mobile-map-collapsed');
       localStorage.setItem('wm-layer-warning-dismissed', 'true');
     });
@@ -18,7 +21,8 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
   test('uses Today as home and switches between Map, Search, Alerts, and More', async ({ page }) => {
     const tabs = page.locator('#mobileTabBar');
     await expect(tabs).toBeVisible();
-    await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
+    // A first visit opens on the map; Today collapses it and keeps that choice.
+    await expect(page.locator('#mapSection')).not.toHaveClass(/collapsed/);
     await expect(page.locator('.site-footer')).toBeHidden();
     await expect(page.locator('.hamburger-btn')).toBeHidden();
     await expect(page.locator('#searchMobileFab')).toHaveCount(0);
@@ -43,13 +47,21 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
 
     await page.locator('[data-mobile-tab="more"]').click();
     await expect(page.locator('#mobileMenu')).toHaveClass(/open/);
-    await expect(page.locator('#mobileAuthFallback, #mobileAuthWidgetMount .auth-signin-btn').first()).toBeVisible();
+    // The account entry needs a Clerk key, which CI builds lack (#10689).
+    await expect(page.locator('#mobileMenuSettings')).toBeVisible();
     await page.evaluate(() => history.back());
     await expect(page.locator('#mobileMenu')).not.toHaveClass(/open/);
     await expect(page.locator('[data-mobile-tab="today"]')).toHaveAttribute('aria-current', 'page');
 
     await page.locator('[data-mobile-tab="alerts"]').click();
     await expect(page.locator('[data-mobile-tab="alerts"]')).toHaveAttribute('aria-current', 'page');
+
+    // Collapsing is the viewer's choice and survives a reload.
+    await page.locator('[data-mobile-tab="today"]').click();
+    await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
+    await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
   });
 
   test('keeps the account entry visible in the header before More opens', async ({ page }) => {
@@ -58,9 +70,21 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
 
     await expect(page.locator('#mobileMenu')).not.toHaveClass(/open/);
     await expect(headerAuth).toBeVisible();
+
+    const logoBox = await page.locator('.logo-mobile').boundingBox();
+    expect(logoBox).not.toBeNull();
+    expect(logoBox?.height).toBeLessThanOrEqual(24);
+
+    const clerkEnabled = await page.evaluate(async () => (await import('/src/services/clerk.ts')).isClerkAuthEnabled());
+    if (!clerkEnabled) {
+      // A keyless build (CI) cannot sign anyone in, so the header offers no account action (#10689).
+      await expect(signIn).toHaveCount(0);
+      await expect(headerAuth.locator('.auth-signup-link')).toHaveCount(0);
+      return;
+    }
     await expect(signIn).toBeVisible();
     await expect(signIn).toHaveAccessibleName('Sign In');
-    await expect(headerAuth.locator('.auth-signup-link')).toBeHidden();
+    await expect(headerAuth.locator('.auth-signup-link')).toHaveCount(0);
 
     const box = await signIn.boundingBox();
     const headerBox = await page.locator('.header').boundingBox();
@@ -72,10 +96,6 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(
       (headerBox?.y ?? 0) + (headerBox?.height ?? 0),
     );
-
-    const logoBox = await page.locator('.logo-mobile').boundingBox();
-    expect(logoBox).not.toBeNull();
-    expect(logoBox?.height).toBeLessThanOrEqual(24);
   });
 
   test('uses one Back press for the More to Region sheet transition', async ({ page }) => {
@@ -231,17 +251,22 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(settings).not.toHaveClass(/active/);
   });
 
-  test('Back with unsaved Settings changes opens one responsive confirm', async ({ page }) => {
+  test('Back with unsaved Settings changes returns to the list, then opens one responsive confirm', async ({ page }) => {
     await page.locator('[data-mobile-tab="more"]').click();
     await page.locator('#mobileMenuSettings').click();
     const settings = page.locator('#unifiedSettingsModal');
     await expect(settings).toHaveClass(/active/);
 
-    await page.locator('#us-tab-panels').click();
+    await page.locator('[data-settings-nav="panels"]').click();
     await page.locator('.panel-toggle-item:not(.pro-locked)').first().click();
     await page.evaluate(() => history.back());
 
     const confirm = page.locator('.confirm-dialog-overlay');
+    await expect(page.locator('[data-settings-home]')).toBeVisible();
+    await expect(confirm).toHaveCount(0);
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('settings');
+    await page.evaluate(() => history.back());
+
     await expect(confirm).toHaveCount(1);
     await expect(confirm).toHaveClass(/active/);
     await page.evaluate(() => history.back());
@@ -259,35 +284,68 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await page.locator('#mobileMenuSettings').click();
     const settings = page.locator('#unifiedSettingsModal');
     await expect(settings).toHaveClass(/active/);
-    await page.locator('#us-tab-panels').click();
+    await page.locator('[data-settings-nav="panels"]').click();
     await page.locator('.panel-toggle-item:not(.pro-locked)').first().click();
 
     await page.locator('[data-mobile-tab="search"]').click();
     await expect(page.locator('.confirm-dialog-overlay')).toHaveCount(1);
     await expect(settings).toHaveClass(/active/);
     await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(0);
-    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('settings');
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('settings-section');
     await page.keyboard.press('Escape');
     await expect(page.locator('.confirm-dialog-overlay')).toHaveCount(0);
     await expect(settings).toHaveClass(/active/);
+    await expect(page.locator('#us-page-panels')).toBeVisible();
+  });
+
+  test('a primary tab closes Settings from a page without leaving its entries behind', async ({ page }) => {
+    // Navigation API index: the position in session history, so a leftover
+    // entry shows up even after the manager strips its marker.
+    const historyIndex = () => page.evaluate(() => (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index);
+    const baseline = await historyIndex();
+    const settings = page.locator('#unifiedSettingsModal');
+    await page.locator('[data-mobile-tab="more"]').click();
+    await page.locator('#mobileMenuSettings').click();
+    await page.locator('[data-settings-nav="about"]').click();
+    await expect.poll(historyIndex).toBe(baseline + 2);
+
+    await page.locator('[data-mobile-tab="today"]').click();
+    await expect(settings).not.toHaveClass(/active/);
+    await expect.poll(historyIndex).toBe(baseline);
+
+    await page.locator('[data-mobile-tab="more"]').click();
+    await page.locator('#mobileMenuSettings').click();
+    await page.locator('[data-settings-nav="about"]').click();
+    await page.locator('[data-mobile-tab="search"]').click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(1);
+    await expect(settings).not.toHaveClass(/active/);
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('search');
+    await expect.poll(historyIndex).toBe(baseline + 1);
   });
 
   test('reveals an enabled alert panel and reports when none are enabled', async ({ page }) => {
+    // Disable panels through stored settings: a .hidden class added from the test is lost
+    // when the real panel replaces its deferred shell, which raced on CI.
+    const disablePanels = async (ids: string[]) => {
+      const found = await page.evaluate((panelIds) => {
+        const panels = JSON.parse(localStorage.getItem('worldmonitor-panels') || '{}') as Record<string, { enabled?: boolean }>;
+        for (const id of panelIds) if (panels[id]) panels[id] = { ...panels[id], enabled: false };
+        localStorage.setItem('worldmonitor-panels', JSON.stringify(panels));
+        return panelIds.filter((id) => panels[id]);
+      }, ids);
+      expect(found).toEqual(ids);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
+      for (const id of ids) await expect(page.locator(`#panelsGrid [data-panel="${id}"]:not(.hidden)`)).toHaveCount(0);
+    };
+
+    await disablePanels(['oref-sirens', 'intel']);
     const strategicRisk = page.locator('#panelsGrid [data-panel="strategic-risk"]');
     await expect(strategicRisk).toHaveCount(1);
-    await page.locator('#panelsGrid [data-panel="oref-sirens"], #panelsGrid [data-panel="intel"]').evaluateAll((panels) => {
-      panels.forEach((panel) => panel.classList.add('hidden'));
-    });
-    await strategicRisk.evaluate((panel) => {
-      panel.classList.remove('hidden');
-    });
-
     await page.locator('[data-mobile-tab="alerts"]').click();
     await expect(strategicRisk).toBeInViewport();
 
-    await page.locator('#panelsGrid [data-panel="strategic-risk"], #panelsGrid [data-panel="oref-sirens"], #panelsGrid [data-panel="intel"]').evaluateAll((panels) => {
-      panels.forEach((panel) => panel.classList.add('hidden'));
-    });
+    await disablePanels(['oref-sirens', 'intel', 'strategic-risk']);
     await page.locator('[data-mobile-tab="alerts"]').click();
     await expect(page.locator('.toast-notification')).toContainText('No active alerts yet');
   });

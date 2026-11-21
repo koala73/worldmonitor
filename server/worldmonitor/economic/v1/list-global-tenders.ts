@@ -17,7 +17,9 @@ import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 const SEED_CACHE_KEY = 'economic:global-tenders:v1';
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
-const STALE_AFTER_MS = 180 * 60_000;
+// The seeder runs once a day; health marks the snapshot stale after three missed
+// runs (api/health.js globalTenders), and so does this reader.
+export const STALE_AFTER_MS = 3 * 24 * 60 * 60_000;
 
 type SeedSnapshot = {
   fetchedAt?: number | string;
@@ -33,13 +35,23 @@ function snapshotTimestamp(value: number | string | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+// The seeder only drops a notice whose deadline has passed when it next runs, a
+// day later. The reader drops it as soon as it closes. A notice without a
+// parseable deadline is kept, as the seeder keeps it.
+function isStillOpen(tender: GlobalTender, now: number): boolean {
+  const deadline = Date.parse(tender?.deadline || '');
+  return !Number.isFinite(deadline) || deadline > now;
+}
+
 export function applySnapshotFreshness(snapshot: SeedSnapshot, now = Date.now()): SeedSnapshot {
   const fetchedAt = snapshotTimestamp(snapshot.fetchedAt);
   const stale = snapshot.dataAvailable === true
     && (snapshot.availability === 'stale' || !fetchedAt || now - fetchedAt > STALE_AFTER_MS);
-  if (!stale) return snapshot;
+  const tenders = Array.isArray(snapshot.tenders) ? snapshot.tenders.filter((tender) => isStillOpen(tender, now)) : snapshot.tenders;
+  if (!stale) return { ...snapshot, tenders };
   return {
     ...snapshot,
+    tenders,
     availability: 'stale',
     sourceStatuses: (snapshot.sourceStatuses || []).map((status) => status.state === 'ok'
       ? { ...status, state: 'stale', stale: true, lastSuccessfulAt: status.lastSuccessfulAt || status.fetchedAt }
@@ -85,6 +97,28 @@ function compareTenders(sort: string, left: GlobalTender, right: GlobalTender): 
   return asTimestamp(right.publishedAt || right.updatedAt, 0) - asTimestamp(left.publishedAt || left.updatedAt, 0) || byId;
 }
 
+function dedupePakistanNotices(tenders: GlobalTender[]): GlobalTender[] {
+  const matches = new Map<string, GlobalTender[]>();
+  const identity = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  for (const tender of tenders) {
+    if (!['pakistan-epads', 'pakistan-ppra'].includes(tender.source)) continue;
+    const buyer = identity(tender.buyer || '');
+    const title = identity(tender.title);
+    const deadline = asTimestamp(tender.deadline, Number.NaN);
+    if (!buyer || !title || !Number.isFinite(deadline)) continue;
+    const key = JSON.stringify([buyer, title, deadline]);
+    const group = matches.get(key) || [];
+    group.push(tender);
+    matches.set(key, group);
+  }
+  const duplicates = new Set<GlobalTender>();
+  for (const group of matches.values()) {
+    const [first, second] = group;
+    if (group.length === 2 && first && second && first.source !== second.source) duplicates.add(second);
+  }
+  return tenders.filter((tender) => !duplicates.has(tender));
+}
+
 export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGlobalTendersRequest): Pick<ListGlobalTendersResponse, 'tenders' | 'nextCursor' | 'total' | 'appliedFilters' | 'countryCoverage'> {
   const countries = new Set([req.country, ...(req.countries || [])].map((value) => normalized(value)).filter(Boolean));
   const region = normalized(req.region);
@@ -122,7 +156,7 @@ export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGloba
     minAutomationScore !== null && 'min_automation_score',
   ].filter((value): value is string => Boolean(value));
 
-  const filtered = tenders.filter((tender) => {
+  const filtered = dedupePakistanNotices(tenders.filter((tender) => {
     const amount = tender.money?.amount;
     const deadline = asTimestamp(tender.deadline, Number.NaN);
     const published = asTimestamp(tender.publishedAt, Number.NaN);
@@ -141,7 +175,7 @@ export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGloba
       && (!category || [...tender.categoryCodes, ...tender.sectors].some((value) => normalized(value).includes(category)))
       && (minAutomationScore === null || (tender.automationFit?.score || 0) >= minAutomationScore)
       && matchesText(tender, query);
-  }).sort((left, right) => compareTenders(sort, left, right));
+  }).sort((left, right) => compareTenders(sort, left, right)));
 
   // A snapshot cannot establish that a country has no opportunities or that no
   // adapter supports it. It can only establish that this request has (or lacks)

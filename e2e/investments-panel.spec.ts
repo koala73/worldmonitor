@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test.describe('GCC investments coverage', () => {
   test('focusInvestmentOnMap enables layer and recenters map', async ({ page }) => {
@@ -24,11 +25,8 @@ test.describe('GCC investments coverage', () => {
       const mapLayers = { gulfInvestments: false };
 
       focusInvestmentOnMap(
-        map as unknown as {
-          enableLayer: (layer: 'gulfInvestments') => void;
-          setCenter: (lat: number, lon: number, zoom: number) => void;
-        },
-        mapLayers as unknown as { gulfInvestments: boolean } & Record<string, boolean>,
+        map as unknown as Parameters<typeof focusInvestmentOnMap>[0],
+        mapLayers as unknown as Parameters<typeof focusInvestmentOnMap>[1],
         24.4667,
         54.3667
       );
@@ -158,6 +156,6 @@ for (const width of [1280, 390]) {
     await expect(search).toBeFocused();
     await expect(search).toHaveValue('port');
     await expect(page.locator('.fdi-row').first()).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath(`investments-search-${width}.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`investments-search-${width}.png`), fullPage: true });
   });
 }

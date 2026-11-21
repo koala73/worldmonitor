@@ -158,7 +158,13 @@ export const COLLECTOR_PROBES = Object.freeze([
 
 /** Build the request shape for one probe without performing network I/O. */
 export function buildProbeRequest(probe) {
-  const headers = { 'User-Agent': probe.userAgent || USER_AGENT };
+  // Every probe closes its connection. Otherwise write bursts 2 and 3 reuse
+  // keep-alive sockets left idle by burst 1 and the liveness probes, and the
+  // edge occasionally resets one as it is written to (ECONNRESET 13-113 ms in,
+  // never in burst 1). A browser resends a request lost that way; Node fetch
+  // does not, so the monitor paged on a write no user would have lost. Closing
+  // here, not only on writes, keeps idle sockets out of the shared pool.
+  const headers = { 'User-Agent': probe.userAgent || USER_AGENT, Connection: 'close' };
   const request = {
     method: probe.method || 'GET',
     headers,

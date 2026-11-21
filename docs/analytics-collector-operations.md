@@ -59,6 +59,12 @@ as isolated. A later clean run proves recovery for that sample; it does not
 identify the cause of an earlier connection failure. Any failed write still
 fails the monitor, including failures followed by successful bursts.
 
+Every probe sends `Connection: close`. Before #10079, writes in bursts 2 and 3
+reused idle keep-alive sockets. The edge occasionally reset one, and the
+monitor reported an `ECONNRESET` within about 100 ms even though the collector
+was healthy. See
+[the keep-alive reset write-up](solutions/integration-issues/analytics-monitor-econnreset-was-keep-alive-socket-reuse.md).
+
 ### Raced-timeout retry / replay (#6968)
 
 A `raced` failure means the transport ignored our abort and the request may
@@ -225,6 +231,179 @@ composite index is compatible with the old image, but the old update/create
 path can still race; starting the old image is emergency containment, not
 remediation. Restoring deleted duplicate rows or recovering from uncertain
 schema state requires the recorded database backup.
+
+## Postgres tuning
+
+`Postgres Umami` runs Railway's `postgres-ssl:16` template in a container
+with 8 CPUs and 12 GB of memory. The template ships stock Postgres defaults,
+and the repository does not build this service. Its tuning lives only in
+`postgresql.auto.conf` on the data volume. That file survives redeploys and is
+written with `ALTER SYSTEM`.
+
+### Why it is tuned
+
+On 2026-11-05 the collector returned HTTP 500 after exactly 10 s on 0.04% of
+`/api/send` requests (1,978 of 4.87M in 7 days). The failures came in bursts
+of 10–60 s, several times a day. The collector log reads `timeout exceeded when
+trying to connect`: all 20 pool connections were busy, and new requests gave up
+at `DATABASE_CONNECT_TIMEOUT_MS`. The monitor's "4/12 HTTP 500 at ~10.2 s"
+failures and the multi-hour storms on 2026-10-05 and 2026-10-20 were this
+class. `/api/heartbeat` stayed at 2–5 ms during the bursts, so the application
+was healthy and only database work was stalled.
+
+`pg_stat_statements` (reset 2026-10-20) showed that single-row inserts, which
+average about 1 ms, sometimes took 73–89 s: `website_event` 77.7 s, `session`
+73.5 s, `session_data` 88.7 s. Under the defaults:
+
+- `shared_buffers` was 128 MB for a 33 GB database. `website_event` alone has
+  19 GB of indexes, and each insert updates at least 15 of them.
+- The cache hit rate was 79.8%. Client backends had read 139M blocks, evicted
+  139M, and written 14.4M dirty buffers themselves.
+- The container sat at its memory limit (11.25 GB average, 12 GB peak), mostly
+  page cache.
+- Report queries spilled to disk with `work_mem` at 4 MB: 29 GB of temp files,
+  and up to 273 s for one channel report.
+- Parallel queries failed with `could not resize shared memory segment ... No
+  space left on device`, because the container's `/dev/shm` is small.
+
+### Applied settings
+
+| Setting | Default | Tuned | Needs restart |
+|---|---|---|---|
+| `shared_buffers` | 128MB | 3GB | yes |
+| `dynamic_shared_memory_type` | posix | mmap | yes |
+| `effective_cache_size` | 4GB | 8GB | no |
+| `work_mem` | 4MB | 32MB | no |
+| `maintenance_work_mem` | 64MB | 512MB | no |
+| `effective_io_concurrency` | 1 | 200 | no |
+| `random_page_cost` | 4 | 1.1 | no |
+| `max_wal_size` | 1GB | 4GB | no |
+| `checkpoint_timeout` | 5min | 15min | no |
+| `wal_compression` | off | on | no |
+| `track_io_timing` | off | on | no |
+| `log_min_duration_statement` | -1 | 2000 | no |
+| `log_parameter_max_length` | -1 | 0 | no |
+| `log_lock_waits` | off | on | no |
+| `log_autovacuum_min_duration` | 10min | 10s | no |
+| `track_wal_io_timing` | off | on | no |
+| `synchronous_commit` | on | off | no |
+
+`max_connections` stays at 500. It was already set in `postgresql.auto.conf`.
+
+`log_parameter_max_length = 0` must stay set while slow-statement logging is
+on. Umami binds user identifiers and subscription details as parameters of its
+`session_data` inserts. At the default of -1, every slow statement would copy
+those values into the Railway log.
+
+**Memory budget for `work_mem`.** The limit applies to each sort or hash node in
+each process, and hash nodes may use `hash_mem_multiplier` (2.0) times that. The
+collector's 20 pool connections run single-row inserts with no sort or hash
+nodes. The large consumers are report queries: a leader plus 2 parallel workers
+with about 4 sort or hash nodes uses at most 3 × 4 × 64 MB ≈ 768 MB. Two
+concurrent reports stay under 1.6 GB, inside the 12 GB container alongside 3 GB
+of `shared_buffers`. Revisit the budget before raising `work_mem`,
+`max_parallel_workers_per_gather`, or the number of concurrent report
+consumers.
+
+The settings that need no restart were applied with `ALTER SYSTEM` and
+`pg_reload_conf()` on 2026-11-05. Check every tuned setting, and anything still
+waiting for a restart:
+
+```sql
+SELECT name, setting, unit, pending_restart FROM pg_settings
+WHERE name IN ('shared_buffers', 'dynamic_shared_memory_type',
+  'effective_cache_size', 'work_mem', 'maintenance_work_mem',
+  'effective_io_concurrency', 'random_page_cost', 'max_wal_size',
+  'checkpoint_timeout', 'wal_compression', 'track_io_timing',
+  'log_min_duration_statement', 'log_parameter_max_length', 'log_lock_waits',
+  'log_autovacuum_min_duration', 'track_wal_io_timing', 'synchronous_commit',
+  'max_connections')
+ORDER BY name;
+SELECT name, setting, applied, error FROM pg_file_settings
+WHERE sourcefile LIKE '%auto.conf' ORDER BY name;
+```
+
+Until Postgres restarts, `pg_file_settings` shows the restart-only entries with
+`applied = false` and the error `setting could not be applied`, and
+`pg_settings.pending_restart` is `true` for them. Every other entry should show
+`applied = true` and the tuned value in `pg_settings`. Restart `Postgres Umami`
+between the retention cron's ticks at :07, :22, :37 and :52. The collector
+returns 500 for the few seconds the database is down.
+
+To revert a setting, run `ALTER SYSTEM RESET <name>`. Then run
+`pg_reload_conf()` for a setting marked "no" under "Needs restart". A setting
+marked "yes" (`shared_buffers`, `dynamic_shared_memory_type`) keeps its current
+value until Postgres restarts.
+
+### Judging the result
+
+Do not run `pg_stat_reset()`. It clears the per-table counters that schedule
+autovacuum and autoanalyze, which delays cleanup on these large, busy tables.
+Instead, record a before snapshot of the cumulative counters right after the
+restart (`blks_hit` and `blks_read` from `pg_stat_database`, and
+`pg_stat_bgwriter`), and compare against an after snapshot. Only
+`pg_stat_statements` may be reset (`SELECT pg_stat_statements_reset()`), so
+that its maximums describe the tuned server alone. Compare over a week:
+
+- the collector's `/api/send` 5xx count in Railway HTTP metrics (the baseline
+  was 1,978 in 7 days)
+- the maximum insert `max_exec_time` in `pg_stat_statements` (baseline 73–89 s)
+- the cache hit rate between the two snapshots (baseline 79.8%)
+- the Postgres log, which now records every statement over 2 s, without its
+  parameter values, and every lock wait longer than `deadlock_timeout` (1 s).
+  The next stall will name its statement.
+
+### WAL fsync freezes and `synchronous_commit`
+
+The tuning above raised the cache hit rate to 96% but did not stop the
+bursts. The `umami-stall-sampler` service (a `postgres:16-alpine` loop that
+logs `pg_stat_activity` whenever an insert runs longer than 3 s) captured
+them from 2026-11-07. In every burst, one backend sits in `IO/WALSync` for
+45–75 s and every other insert queues behind it on `LWLock/WALWrite`. The
+freeze recurs every day between 10:16 and 10:24 UTC (2026-11-06 through
+2026-11-15, except 11-11), with irregular extra freezes such as 2026-11-13
+14:13 and 2026-11-14 02:50.
+
+The database is idle when it happens. Checkpoints in that window write about
+4% of `shared_buffers` with `sync` under 0.05 s, no non-insert statement over
+2 s overlaps the freeze, and nothing in this project is scheduled at 10:1x
+UTC. The volume has no backup schedule (its last backup is from 2026-09-13),
+so a volume snapshot is not the trigger either. The stall is below Postgres,
+in Railway's volume storage. The cause there is unknown.
+
+Each blocked insert was waiting to fsync its own commit record. On
+2026-11-15 10:27 UTC `synchronous_commit` was set to `off` with `ALTER SYSTEM`
+and `pg_reload_conf()`. A commit now returns once its record is in the WAL
+buffers, and the WAL writer flushes them every 200 ms in the background. The
+collector writes about 75 KB of WAL per second (checkpoint `distance` of
+about 70 MB per 15 min), so a 75 s freeze fills about 6 MB of the 20 MB
+`wal_buffers`. Over the 2 minutes after the reload, WAL syncs fell from about
+1 per WAL write to 3.6/s against 9.6 writes/s, which shows the collector's
+pooled sessions picked up the setting without a restart.
+
+The cost: if Postgres crashes, acknowledged events that were not yet flushed
+are lost. The database stays consistent. While the WAL writer makes progress
+that is at most the last 600 ms (3 × `wal_writer_delay`). During a storage
+freeze nothing is flushed, so a crash inside a 75 s freeze can lose up to
+75 s of acknowledged events. Before the change, each freeze already lost
+writes. Requests that timed out waiting for a pool connection never reached
+the database, and the browser client does not retry an append-only event
+after a 5xx, because a 500 can also follow a write that committed (see the
+write-path contract).
+
+Judge it on the next 10:16–10:24 UTC window: the sampler should log no
+`WALSync` stall on a client backend, and Railway HTTP metrics should show no
+`/api/send` 5xx burst. A freeze that outlasts the WAL buffers, or a dirty page
+eviction that needs a WAL flush, can still block an insert, so a shorter or
+smaller burst is a partial result. Delete `umami-stall-sampler` once the
+result is recorded. To revert, run `ALTER SYSTEM RESET synchronous_commit`
+and `pg_reload_conf()`.
+
+The `website_event` indexes are a further lever. Eight of them, totaling
+12.7 GB, had zero scans between 2026-10-20 and 2026-11-05, including
+`website_event_website_id_created_at_url_query_idx` at 4.1 GB. They come from
+upstream Umami migrations, so dropping them is a schema decision to make with
+the next image change, not a tuning step.
 
 ## Retention contract
 

@@ -601,10 +601,29 @@ function generateDisasterTitle(cluster) {
 }
 
 // ── Clustering ──────────────────────────────────────────────
-function clusterByProximity(signals, radiusKm) {
-  if (signals.length === 0) return [];
+// Same grid as CorrelationEngine.clusterByProximity (src/services/correlation-engine/engine.ts):
+// cells are cellSizeDeg wide in both axes, and the column scan widens per row because a degree
+// of longitude shrinks toward the poles.
+export function clusterByProximity(signals, radiusKm) {
+  // A non-positive radius would make the column span infinite.
+  if (signals.length === 0 || !(radiusKm > 0)) return [];
   const DEG_PER_KM_LAT = 1 / 111;
-  const cellSizeLat = radiusKm * DEG_PER_KM_LAT;
+  const EARTH_RADIUS_KM = 6371; // the radius haversineKm uses
+  const cellSizeDeg = radiusKm * DEG_PER_KM_LAT;
+  const maxColSpan = Math.ceil(360 / cellSizeDeg);
+  const sinHalfRadius = Math.sin(radiusKm / EARTH_RADIUS_KM / 2);
+  // Neighbours lie in rows row-1..row+1; for two points at |lat| <= maxAbsLat within radiusKm,
+  // haversine gives sin(dLon / 2) <= sin(radiusKm / 2R) / cos(maxAbsLat).
+  const colSpanForRow = (row) => {
+    const maxAbsLat = Math.min(90, Math.max(
+      Math.abs((row - 1) * cellSizeDeg),
+      Math.abs((row + 2) * cellSizeDeg),
+    ));
+    const ratio = sinHalfRadius / Math.cos(maxAbsLat * Math.PI / 180);
+    if (!(ratio < 1)) return maxColSpan;
+    const maxDeltaLonDeg = 2 * Math.asin(ratio) * 180 / Math.PI;
+    return Math.min(maxColSpan, Math.ceil(maxDeltaLonDeg / cellSizeDeg + 1e-9));
+  };
   const parent = signals.map((_, i) => i);
   const find = (i) => {
     while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
@@ -620,10 +639,8 @@ function clusterByProximity(signals, radiusKm) {
     const s = signals[i];
     if (s.lat == null || s.lon == null) continue;
     validIndices.push(i);
-    const cellRow = Math.floor(s.lat / cellSizeLat);
-    const cosLat = Math.cos(s.lat * Math.PI / 180);
-    const cellSizeLon = cosLat > 0.01 ? cellSizeLat / cosLat : cellSizeLat;
-    const cellCol = Math.floor(s.lon / cellSizeLon);
+    const cellRow = Math.floor(s.lat / cellSizeDeg);
+    const cellCol = Math.floor(s.lon / cellSizeDeg);
     const key = `${cellRow}:${cellCol}`;
     const list = grid.get(key);
     if (list) list.push(i); else grid.set(key, [i]);
@@ -632,8 +649,9 @@ function clusterByProximity(signals, radiusKm) {
     const sep = key.indexOf(':');
     const row = Number(key.slice(0, sep));
     const col = Number(key.slice(sep + 1));
+    const colSpan = colSpanForRow(row);
     for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
+      for (let dc = -colSpan; dc <= colSpan; dc++) {
         const neighbors = grid.get(`${row + dr}:${col + dc}`);
         if (!neighbors) continue;
         for (const i of indices) {

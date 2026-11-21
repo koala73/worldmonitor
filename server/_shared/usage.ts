@@ -194,6 +194,14 @@ export interface RequestEvent {
   // 'modern' when /mcp served the request on the 2026-07-28 per-request path,
   // 'legacy' otherwise; null on REST rows.
   mcp_era: string | null;
+  // clientInfo.name the MCP request declared (bounded token), authenticated callers only; null on REST rows.
+  mcp_client_name: string | null;
+  // Enterprise contract account whose pooled daily allowance this request
+  // was counted on; null for everyone else.
+  account_id: string | null;
+  // Pooled requests only: true when the request was served past the contract
+  // allowance and bills as overage. Null when not counted on an account pool.
+  overage: boolean | null;
 }
 
 export interface UpstreamEvent {
@@ -235,6 +243,8 @@ export interface LlmCallEvent {
   fallback_index: number;
   /** '' on success; 'http_<status>' | 'timeout' | 'fetch_error' | 'empty' | 'stripped_empty' | 'validate_reject'. */
   reason: string;
+  /** Request mode within a stage, e.g. summarize-article 'brief' | 'analysis' | 'translate'. Absent when the stage has one mode. */
+  mode?: string;
 }
 
 export type UsageEvent = RequestEvent | UpstreamEvent | LlmCallEvent;
@@ -254,6 +264,7 @@ export function buildLlmCallEvent(p: {
   maxTokens: number;
   fallbackIndex: number;
   reason?: string;
+  mode?: string;
 }): LlmCallEvent {
   return {
     _time: new Date().toISOString(),
@@ -270,6 +281,7 @@ export function buildLlmCallEvent(p: {
     max_tokens: p.maxTokens,
     fallback_index: p.fallbackIndex,
     reason: p.reason ?? '',
+    ...(p.mode ? { mode: p.mode } : {}),
   };
 }
 
@@ -318,6 +330,12 @@ export function buildRequestEvent(p: {
   mcpProtocolVersion?: string | null;
   /** MCP protocol era of the request ('modern' | 'legacy'); null on REST. */
   mcpEra?: string | null;
+  /** clientInfo.name an authenticated MCP request declared; null otherwise. */
+  mcpClientName?: string | null;
+  /** Enterprise contract account the request was pooled on; null otherwise. */
+  accountId?: string | null;
+  /** Served past the contract allowance (pooled requests only); null otherwise. */
+  overage?: boolean | null;
 }): RequestEvent {
   return {
     _time: new Date().toISOString(),
@@ -358,6 +376,9 @@ export function buildRequestEvent(p: {
     tool_jmespath: p.toolJmespath ?? null,
     mcp_protocol_version: p.mcpProtocolVersion ?? null,
     mcp_era: p.mcpEra ?? null,
+    mcp_client_name: p.mcpClientName ?? null,
+    account_id: p.accountId ?? null,
+    overage: p.overage ?? null,
   };
 }
 

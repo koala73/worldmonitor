@@ -118,3 +118,35 @@ describe('cable cascade — chokepoint cut zone', () => {
     assert.equal(calculateChokepointCableCut(graph, 'chokepoint:nope', 1), null);
   });
 });
+
+describe('cable cascade — Red Sea exits (#9722)', () => {
+  // Simplified routes keep about six vertices per cable, so a cable can pass
+  // Bab el-Mandeb or the Suez crossing with no vertex within the crossing
+  // radius. Landing points are reliable: a cable landing inside the Red Sea and
+  // also on the Indian Ocean side leaves through Bab el-Mandeb; one that also
+  // lands on the Mediterranean side crosses at Suez.
+  const BAB = 'chokepoint:bab_el_mandeb';
+  const SUEZ = 'chokepoint:suez';
+
+  it('counts Red Sea cables that exit toward the Indian Ocean as crossing Bab el-Mandeb', () => {
+    const ids = getCablesThroughChokepoint(graph, BAB);
+    for (const id of ['seamewe_4', 'seamewe_5', 'seamewe_6', 'asia_africa_europe_1_aae_1', 'imewe',
+      'europe_india_gateway_eig', 'peace_cable', 'seacomtata_tgn_eurasia', 'raman', 'fea', '2africa', 'falcon']) {
+      assert.ok(ids.includes(`cable:${id}`), `${id} crosses Bab el-Mandeb`);
+    }
+    for (const id of ['uae_iran', 'kuwait_iran', 'marea', 'tata_tgn_gulf']) {
+      assert.ok(!ids.includes(`cable:${id}`), `${id} does not cross Bab el-Mandeb`);
+    }
+  });
+
+  it('counts Red Sea cables that also land on the Mediterranean side as crossing Suez', () => {
+    const ids = getCablesThroughChokepoint(graph, SUEZ);
+    for (const id of ['seamewe_4', 'seamewe_5', 'seamewe_6', 'asia_africa_europe_1_aae_1', 'imewe',
+      'europe_india_gateway_eig', 'peace_cable', '2africa']) {
+      assert.ok(ids.includes(`cable:${id}`), `${id} crosses Suez`);
+    }
+    for (const id of ['raman', 'seacomtata_tgn_eurasia', 'falcon', 'uae_iran']) {
+      assert.ok(!ids.includes(`cable:${id}`), `${id} does not cross Suez`);
+    }
+  });
+});

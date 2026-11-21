@@ -268,12 +268,17 @@ describe('resilience runtime manifest gateway auth', () => {
     assert.deepEqual(
       [...PUBLIC_NO_AUTH_RPC_PATHS],
       [
+        '/api/scorecard/v1/get-five-factor-scorecard',
+        '/api/scorecard/v1/get-bloc-scorecard',
+        '/api/scorecard/v1/list-five-factor-scorecards',
         '/api/intelligence/v1/get-china-decision-signals',
         '/api/resilience/v1/get-runtime-manifest',
         '/api/leads/v1/submit-contact',
         '/api/leads/v1/register-interest',
         // #9093: anonymous error reports and the secret-gated review queue.
         '/api/news/v1/submit-error-report',
+        // #8721: anonymous agent feedback; admission buckets live in the handler.
+        '/api/feedback/v1/submit-report',
         '/api/news/v1/list-label-changes',
         '/api/news/v1/list-error-reports',
         '/api/news/v1/review-error-report',

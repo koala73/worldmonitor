@@ -12,6 +12,7 @@ import {
   evaluateCompanyMonitoringClassifierTransportFailure,
   evaluateCompanyMonitoringClassification,
 } from "../../scripts/lib/company-monitoring-classification.mjs";
+import { resolveAiRoutingPolicy } from "../lib/enterpriseAccounts";
 import { fingerprint, randomFence } from "./_shared";
 import { assertValidCandidateState } from "./validators";
 import {
@@ -262,10 +263,9 @@ async function admissionBlockedByAiRoutingPolicy(
   // No owner user means no policy can apply; admissionScopeIsActive already
   // rejects accounts that are not entitled.
   if (!account?.ownerUserId) return false;
-  const policy = await ctx.db
-    .query("aiRoutingPolicies")
-    .withIndex("by_userId", (q) => q.eq("userId", account.ownerUserId!))
-    .first();
+  // The shared resolver, so an Enterprise member's inherited account policy
+  // blocks exactly like a per-user row.
+  const policy = await resolveAiRoutingPolicy(ctx, account.ownerUserId);
   return Boolean(policy && !policy.allowedProviders.includes(COMPANY_MONITORING_CLASSIFIER_PROVIDER));
 }
 

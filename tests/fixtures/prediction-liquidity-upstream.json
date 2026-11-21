@@ -1,0 +1,45 @@
+{
+  "capturedAt": "2026-10-26",
+  "sources": {
+    "polymarketEvents": "https://gamma-api.polymarket.com/events?tag_slug=geopolitics&closed=false&active=true&archived=false&order=volume&ascending=false&limit=3",
+    "kalshiEvents": "https://api.elections.kalshi.com/trade-api/v2/events?status=open&with_nested_markets=true&limit=10"
+  },
+  "polymarketEvent": {
+    "id": "143443",
+    "slug": "venezuela-leader-end-of-2026",
+    "title": "Venezuela leader end of 2026?",
+    "liquidity": 2494419.31546,
+    "liquidityClob": 2494419.31546,
+    "volume": 98912173.93948199,
+    "markets": [
+      {
+        "id": "1105740",
+        "slug": "will-edmundo-gonzlez-be-the-leader-of-venezuela-end-of-2026",
+        "question": "Will Edmundo Gonz\u00e1lez be the leader of Venezuela end of 2026?",
+        "closed": false,
+        "liquidity": "140268.51998",
+        "liquidityNum": 140268.51998,
+        "liquidityClob": 140268.51998,
+        "volume": "1449358.6026019999",
+        "volumeNum": 1449358.6026019999
+      }
+    ]
+  },
+  "polymarketMarketWithoutLiquidity": {
+    "id": "2098553",
+    "slug": "netanyahu-out-by-may-31",
+    "question": "Netanyahu out by May 31?",
+    "closed": true,
+    "volume": "821121.8425280005",
+    "volumeNum": 821121.8425280005
+  },
+  "kalshiMarket": {
+    "ticker": "KXELONMARS-99",
+    "event_ticker": "KXELONMARS-99",
+    "market_type": "binary",
+    "status": "active",
+    "volume_fp": "123650.90",
+    "open_interest_fp": "39988.05",
+    "notional_value_dollars": "1.0000"
+  }
+}

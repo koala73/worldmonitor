@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, runSeed, CHROME_UA } from './_seed-utils.mjs';
+import { createPortwatchRequestTrace } from './_portwatch-request-diagnostics.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -39,13 +40,26 @@ export async function fetchAll() {
     f: 'json',
   });
 
-  const resp = await fetch(`${ARCGIS_BASE}?${params}`, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT),
-  });
-  if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status}`);
-  const body = await resp.json();
-  if (body.error) throw new Error(`ArcGIS disruptions error: ${body.error.message}`);
+  const url = `${ARCGIS_BASE}?${params}`;
+  const trace = createPortwatchRequestTrace(url, 'direct');
+  let resp;
+  let body;
+  let phase = 'fetch';
+  try {
+    resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT),
+    });
+    phase = 'http';
+    if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status}`);
+    phase = 'json';
+    body = await resp.json();
+    phase = 'arcgis';
+    if (body.error) throw new Error(`ArcGIS disruptions error: ${body.error.message}`);
+  } catch (error) {
+    trace.fail(error, { phase, response: resp, arcgisError: body?.error });
+    throw error;
+  }
 
   const now = Date.now();
   const events = (body.features ?? [])

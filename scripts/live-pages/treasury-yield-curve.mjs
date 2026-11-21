@@ -111,10 +111,10 @@ export const treasuryYieldCurvePage = Object.freeze({
   slug: 'treasury-yield-curve',
   path: '/tools/treasury-yield-curve/',
   statusPath: '/api/economic/v1/get-us-treasury-par-yield-curve?public=1',
-  title: 'US Treasury Yield Curve Today: 10Y-2Y Spread and Par Yields | World Monitor',
+  title: 'US Treasury Yield Curve: 10Y-2Y | World Monitor',
   h1: 'US Treasury yield curve today',
   question: 'What is the US Treasury yield curve today?',
-  description: 'The latest US Treasury par yield curve from 1 month to 30 years, with the 10-year minus 2-year and 10-year minus 3-month spreads and whether the curve is inverted.',
+  description: 'US Treasury par yield curve from 1 month to 30 years, with the 10-year minus 2-year and 10-year minus 3-month spreads and whether the curve is inverted.',
   dashboardPanel: 'Yield Curve & Rates',
   record: treasuryYieldCurveRecord,
   renderSection(record, { live }) {

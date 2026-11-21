@@ -1,4 +1,5 @@
-import { apiKeyDailyKey } from '../../server/_shared/api-key-rate-limit';
+import { accountRateLimitPlan } from '../../server/_shared/account-rate-limit';
+import { apiKeyDailyKey, apiKeyMemberDailyKey } from '../../server/_shared/api-key-rate-limit';
 import {
   dailyCounterKey,
   dailyQuotaFloorKey,
@@ -74,13 +75,13 @@ export function isRestEnforcementEnabled(): boolean {
  * in. The three states below are the only ones representable:
  *
  *   - `{allowance: 'mcp'}` — Pro 50, Pro Business 250, the free-account
- *     ceiling, Enterprise 25,000. All but Enterprise are `apiAccess: false`
- *     with a zero REST budget; every one keeps `mcp:pro-usage:…` at one unit
- *     per standalone call or bounded panel admission.
- *   - `{allowance: 'api', counter: 'mcp'}` — API tiers while
+ *     ceiling. All are `apiAccess: false` with a zero REST budget; every one
+ *     keeps `mcp:pro-usage:…` at one unit per standalone call or bounded
+ *     panel admission.
+ *   - `{allowance: 'api', counter: 'mcp'}` — API tiers and Enterprise while
  *     `API_RATE_LIMIT_ENFORCE` is off: the sold REST number, weighted, on the
  *     dedicated counter.
- *   - `{allowance: 'api', counter: 'api'}` — API tiers once the flag flips:
+ *   - `{allowance: 'api', counter: 'api'}` — the same plans once the flag flips:
  *     the same number on `rl:apikey:day:…`, shared with REST.
  *
  * This replaces the KTD6 plan-key exception list, which existed only because
@@ -94,10 +95,42 @@ export type McpBudget = (
   | { allowance: 'mcp'; limit: number | null }
   | { allowance: 'api'; counter: 'mcp' | 'api'; limit: number | null }
 ) & {
-  /** A catalog Enterprise (tier 3) budget: its limit is a circuit breaker
-   *  that pages before it trips (server/_shared/high-usage-alarm.ts). */
+  /** A catalog Enterprise (tier 3) budget: the high-usage alarm pages before
+   *  its limit trips (server/_shared/high-usage-alarm.ts). */
   enterprisePlan?: true;
+  /** The number allowance readers DISPLAY as `limit`, when it differs from the
+   *  enforced `limit`. Set only for an Enterprise contract account, whose
+   *  enforced limit is the safety limit (allowance × breaker multiple) while
+   *  the number it bought — and the one every surface quotes — is the
+   *  contract allowance. Calls between the two are served as overage. */
+  displayAllowance?: number;
+  /** Enterprise contract pool: every member's MCP calls charge the account's
+   *  day key (`apiKeyDailyKey('acct:<id>')`, the key REST charges) and share
+   *  the account's per-minute burst bucket with REST. */
+  account?: { id: string; identity: string; perMinuteBurst: number };
 };
+
+/**
+ * The budget an Enterprise contract member's MCP calls charge, or null when
+ * the entitlement carries no usable `account` block.
+ *
+ * Unlike `resolveMcpBudget`'s shared arm, this ignores
+ * `API_RATE_LIMIT_ENFORCE`: the pool is a contract term the gateway enforces
+ * for REST unconditionally, so MCP charges the same pooled key in either flag
+ * state. It carries no `enterprisePlan`: the account has its own breaker and
+ * expected overage, so the self-serve Enterprise high-usage page is not for it.
+ */
+export function resolveAccountMcpBudget(account: unknown): McpBudget | null {
+  const plan = accountRateLimitPlan(account);
+  if (!plan) return null;
+  return {
+    allowance: 'api',
+    counter: 'api',
+    limit: plan.breakerCeiling,
+    displayAllowance: plan.dailyAllowance,
+    account: { id: plan.id, identity: plan.identity, perMinuteBurst: plan.perMinuteBurst },
+  };
+}
 
 /**
  * Resolve which budget a plan's MCP calls charge.
@@ -164,8 +197,31 @@ export function isSharedRestCounter(budget: McpBudget | undefined): boolean {
  */
 export function budgetCounterKey(budget: McpBudget | undefined, userId: string, date?: Date): string {
   if (!isSharedRestCounter(budget)) return dailyCounterKey(userId, date);
-  const key = apiKeyDailyKey(userId, date);
+  // A contract member charges the account's pooled key, not their own.
+  const key = apiKeyDailyKey(budget?.account?.identity ?? userId, date);
   return key ? `${envPrefix()}${key}` : key;
+}
+
+/** The member's own day key beside an account pool (same key REST's
+ *  `reserveDailyMeter` writes for that member), deployment-prefixed for this
+ *  raw pipeline; '' when the budget is not an account pool. */
+export function memberCounterKey(budget: McpBudget | undefined, userId: string, date?: Date): string {
+  if (!budget?.account) return '';
+  const key = apiKeyMemberDailyKey(budget.account.identity, userId, date);
+  return key ? `${envPrefix()}${key}` : key;
+}
+
+/**
+ * What an allowance reader shows for a counter value: `used` clamped to the
+ * ENFORCED limit (residue can sit above it), `limit` and `remaining` against
+ * the DISPLAYED one. They differ only for a contract account, where `used`
+ * may run past `limit` into overage while `remaining` stays at 0.
+ */
+export function budgetUsageView(budget: McpBudget | undefined, count: number): { used: number; limit: number | null; remaining: number | null } {
+  const enforced = resolveDailyLimit(budget?.limit);
+  const used = enforced === null ? count : Math.min(count, enforced);
+  const limit = budget?.displayAllowance ?? enforced;
+  return { used, limit, remaining: limit === null ? null : Math.max(0, limit - used) };
 }
 
 function asFiniteNumber(raw: unknown): number | null {
@@ -196,9 +252,7 @@ export async function readDailyAllowance(userId: string, pipeline: PipelineFn, b
   if (typeof raw === 'string' && raw.trim() === '') return null;
   const count = raw === null || raw === undefined ? 0 : Number(raw);
   if (!Number.isSafeInteger(count) || count < 0) return null;
-  const limit = resolveDailyLimit(budget?.limit);
-  const used = limit === null ? count : Math.min(count, limit);
-  return { used, limit, remaining: limit === null ? null : Math.max(0, limit - used), resetsAt: dailyAllowanceResetAt(nowMs) };
+  return { ...budgetUsageView(budget, count), resetsAt: dailyAllowanceResetAt(nowMs) };
 }
 
 /**
@@ -230,8 +284,12 @@ export async function reserveQuota(
   // must prefix it here. The floor key is namespaced separately so the clamp
   // cannot collide with REST.
   const key = budgetCounterKey(budget, userId);
-  const floorKey = dailyQuotaFloorKey(userId);
+  const floorKey = dailyQuotaFloorKey(budget?.account?.identity ?? userId);
   if (!key || !floorKey) return { ok: false, reason: 'redis-unavailable' };
+  // A contract member also counts on their own day key, at the same weight,
+  // in the same round-trip. It is released below whenever the pooled charge
+  // does not stand, so the members' keys sum to what the pool served.
+  const memberKey = memberCounterKey(budget, userId);
 
   // The script's residue clamp SETs the counter down, which is only sound while
   // the script is the counter's only writer. On the dedicated MCP counter it
@@ -243,39 +301,60 @@ export async function reserveQuota(
   // heals at the daily rollover.
   const clampResidue = isSharedRestCounter(budget) ? 0 : 1;
 
+  const commands: Array<Array<string | number>> = [[
+    'EVAL',
+    RESERVE_QUOTA_SCRIPT,
+    2,
+    key,
+    floorKey,
+    limit === null ? '' : limit,
+    PRO_DAILY_QUOTA_TTL_SECONDS,
+    weight,
+    clampResidue,
+  ]];
+  if (memberKey) {
+    commands.push(['INCRBY', memberKey, weight], ['EXPIRE', memberKey, PRO_DAILY_QUOTA_TTL_SECONDS]);
+  }
+
   let pipeResult: Array<{ result?: unknown; error?: unknown }> | null;
   try {
-    pipeResult = await pipeline([[
-      'EVAL',
-      RESERVE_QUOTA_SCRIPT,
-      2,
-      key,
-      floorKey,
-      limit === null ? '' : limit,
-      PRO_DAILY_QUOTA_TTL_SECONDS,
-      weight,
-      clampResidue,
-    ]]);
+    pipeResult = await pipeline(commands);
   } catch {
     pipeResult = null;
   }
+
+  // Undo the member charge when the pooled one did not stand. Only when the
+  // INCRBY itself answered: a pipeline that never ran charged nothing.
+  const memberEntry = memberKey && Array.isArray(pipeResult) ? pipeResult[1] : undefined;
+  const memberCharged = Boolean(memberEntry && (memberEntry.error === undefined || memberEntry.error === null)
+    && asFiniteNumber(memberEntry.result) !== null);
+  const releaseMember = async (): Promise<void> => {
+    if (!memberCharged) return;
+    try {
+      await pipeline([['DECRBY', memberKey, weight]]);
+    } catch {
+      // Best-effort: the per-member breakdown overshoots by this call.
+    }
+  };
 
   const entry = pipeResult?.[0];
   if (
     !pipeResult
     || !Array.isArray(pipeResult)
-    || pipeResult.length !== 1
+    || pipeResult.length !== commands.length
     || !entry
     || (entry.error !== undefined && entry.error !== null)
     || !Array.isArray(entry.result)
   ) {
     // Hard cap correctness: NEVER dispatch on reservation failure.
+    await releaseMember();
     return { ok: false, reason: 'redis-unavailable' };
   }
 
   const status = asFiniteNumber(entry.result[0]);
   const newCount = asFiniteNumber(entry.result[1]);
   if (status === null || newCount === null) {
+    await releaseMember();
     return { ok: false, reason: 'redis-unavailable' };
   }
 
@@ -287,7 +366,9 @@ export async function reserveQuota(
     if (rolledBack) return;
     rolledBack = true;
     try {
-      await pipeline([['DECRBY', key, weight]]);
+      await pipeline(memberCharged
+        ? [['DECRBY', key, weight], ['DECRBY', memberKey, weight]]
+        : [['DECRBY', key, weight]]);
     } catch {
       // Best-effort: a transient Redis failure means the counter overshoots by
       // the charged weight, which is the cost-protection-correct direction.
@@ -298,6 +379,7 @@ export async function reserveQuota(
     return { ok: true, newCount, rollback };
   }
 
+  await releaseMember();
   if (status === 0 && limit !== null && newCount >= 0) {
     // F4 clamp lives inside the script: residue above the RESOLVED limit is
     // written back to that limit in the same atomic turn. The floor reported

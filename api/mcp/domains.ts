@@ -2,12 +2,13 @@
  * MCP tool domains: the one source for which domain each registry tool
  * belongs to and for the domain list that discovery surfaces quote.
  *
- * Consumed at build time only, by scripts/generate-public-product-facts.mjs,
- * which renders the categories, tags, and per-tool category onto the server
- * card and splices MCP_DOMAIN_SUMMARY into the generated spans of the
- * markdown and JSON discovery files. The live `tools/list` wire shape does
- * not read this module. tests/mcp-domains.test.mjs fails when a registry tool
- * has no category here.
+ * scripts/generate-public-product-facts.mjs renders the categories, tags, and
+ * per-tool category onto the server card and splices MCP_DOMAIN_SUMMARY into
+ * the generated spans of the markdown and JSON discovery files. At runtime the
+ * handler reads only TOOL_CATEGORY_BY_NAME, through api/mcp/server-card-tools.ts,
+ * to rebuild the served card. The live `tools/list` wire shape does not read
+ * this module. tests/mcp-domains.test.mjs fails when a registry tool has no
+ * category here.
  */
 
 export type McpToolCategoryId =
@@ -46,17 +47,15 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   // Markets & economy
   get_market_data: 'markets-economy',
   get_economic_data: 'markets-economy',
+  get_fred_series: 'markets-economy',
+  get_no2_activity: 'markets-economy',
   get_procurement_opportunities: 'markets-economy',
   get_company_intelligence: 'markets-economy',
   get_country_macro: 'markets-economy',
-  get_eu_housing_cycle: 'markets-economy',
-  get_eu_quarterly_gov_debt: 'markets-economy',
-  get_eu_industrial_production: 'markets-economy',
   get_consumer_prices: 'markets-economy',
   get_food_stocks: 'markets-economy',
   get_demographics_capability: 'markets-economy',
   get_five_factor_scorecard: 'markets-economy',
-  list_five_factor_scorecards: 'markets-economy',
   get_resilience_indicators: 'markets-economy',
   get_mineral_production: 'markets-economy',
   get_commodity_geo: 'markets-economy',
@@ -78,17 +77,20 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_oil_trade_series: 'energy',
   // Geopolitical & security
   get_conflict_events: 'geopolitical-security',
-  get_toronto_reported_occurrences: 'geopolitical-security',
-  get_toronto_calls_attended: 'geopolitical-security',
   get_country_risk: 'geopolitical-security',
+  prepare_travel_risk_assessment: 'geopolitical-security',
   get_country_history: 'geopolitical-security',
   get_country_coverage: 'geopolitical-security',
+  get_point_satellite_passes: 'geopolitical-security',
+  get_country_imagery_evidence: 'geopolitical-security',
+  get_watched_site_imagery: 'geopolitical-security',
   list_x_feed: 'geopolitical-security',
   get_defense_industrial_base: 'geopolitical-security',
   open_country_brief: 'geopolitical-security',
   get_country_brief_section: 'geopolitical-security',
   get_country_brief: 'geopolitical-security',
   get_news_intelligence: 'geopolitical-security',
+  get_media_perspective: 'geopolitical-security',
   get_cyber_threats: 'geopolitical-security',
   get_sanctions_data: 'geopolitical-security',
   get_social_velocity: 'geopolitical-security',
@@ -98,6 +100,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_focal_points: 'geopolitical-security',
   simulate_infrastructure_cascade: 'geopolitical-security',
   get_military_surge: 'geopolitical-security',
+  get_global_air_activity: 'geopolitical-security',
   get_population_exposure: 'geopolitical-security',
   get_alert_digest: 'geopolitical-security',
   get_hotspot_escalation: 'geopolitical-security',
@@ -108,15 +111,17 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_chokepoint_dependencies: 'geopolitical-security',
   get_positive_events: 'geopolitical-security',
   // Movement & infrastructure
+  find_webcams: 'movement-infrastructure',
+  get_webcam_media: 'movement-infrastructure',
   get_aviation_status: 'movement-infrastructure',
   get_airspace: 'movement-infrastructure',
   get_maritime_activity: 'movement-infrastructure',
   get_supply_chain_data: 'movement-infrastructure',
   get_infrastructure_status: 'movement-infrastructure',
   search_flights: 'movement-infrastructure',
-  search_flight_prices_by_date: 'movement-infrastructure',
   // Environment & science
   get_climate_data: 'environment-science',
+  get_reservoir_levels: 'environment-science',
   get_imd_cyclone_marine: 'environment-science',
   get_natural_disasters: 'environment-science',
   get_radiation_data: 'environment-science',
@@ -141,6 +146,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_mcp_allowance: 'meta',
   start_upgrade: 'meta',
   describe_tool: 'meta',
+  report_issue: 'meta',
   open_news_dashboard: 'meta',
   analyze_news_headlines: 'meta',
   classify_event: 'meta',

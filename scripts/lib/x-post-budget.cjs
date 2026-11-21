@@ -2,9 +2,26 @@
 
 const { createHash, randomUUID } = require('node:crypto');
 
-const DEFAULT_X_POST_DAILY_LIMIT = 600;
-const DEFAULT_X_POST_MONTHLY_LIMIT = 20_000;
+// The daily limit is the scheduled hold below plus 95 spare Posts, one full
+// Company Monitoring lease (MAX_COMPANY_MONITORING_X_RETURNED_POSTS). The
+// monthly limit covers a 31-day month at the daily limit.
+const DEFAULT_X_POST_DAILY_LIMIT = 650;
+const DEFAULT_X_POST_MONTHLY_LIMIT = 20_500;
 const DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS = 505;
+// Japan MOD discovery reads the Joint Staff timeline once per 12-hour UTC slot.
+// Without a hold, on-demand Company Monitoring spends the spare capacity first
+// and the scheduled read is refused for the rest of the UTC day.
+const JAPAN_MOD_X_SLOT_POSTS = 25;
+const JAPAN_MOD_X_DAILY_SLOTS = 2;
+const DEFAULT_X_DAILY_COVERAGE_POSTS = DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS
+  + (JAPAN_MOD_X_SLOT_POSTS * JAPAN_MOD_X_DAILY_SLOTS);
+// Every producer builds its budget from this. The previous total keeps a day
+// whose stored model predates the Japan hold admissible: RESERVE_LUA refuses an
+// upward same-day model change, so that day runs on the lower model instead.
+const X_SHARED_COVERAGE_MODEL = Object.freeze({
+  dailyCoveragePosts: DEFAULT_X_DAILY_COVERAGE_POSTS,
+  previousDailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+});
 const X_POST_COST_USD_MICROS = 5_000;
 const DEFAULT_RESERVATION_TTL_SECONDS = 60 * 60;
 const MAX_RECEIPT_BYTES = 64 * 1024;
@@ -364,6 +381,10 @@ function createXPostBudget(options = {}) {
   const dailyLimit = positiveInteger(options.dailyLimit, DEFAULT_X_POST_DAILY_LIMIT, 'dailyLimit');
   const monthlyLimit = positiveInteger(options.monthlyLimit, DEFAULT_X_POST_MONTHLY_LIMIT, 'monthlyLimit');
   const dailyCoveragePosts = boundedNonNegativeInteger(options.dailyCoveragePosts);
+  const previousDailyCoveragePosts = boundedNonNegativeInteger(options.previousDailyCoveragePosts);
+  if (previousDailyCoveragePosts >= dailyCoveragePosts && options.previousDailyCoveragePosts != null) {
+    throw new Error('previousDailyCoveragePosts must be below dailyCoveragePosts');
+  }
   const costUsdMicrosPerPost = positiveInteger(options.costUsdMicrosPerPost, X_POST_COST_USD_MICROS, 'costUsdMicrosPerPost');
   const reservationTtlSeconds = positiveInteger(
     options.reservationTtlSeconds,
@@ -403,12 +424,27 @@ function createXPostBudget(options = {}) {
     nextRequestBlockedReason: nextRequest.blockedReason,
   });
 
+  // A coverage unit marked previousModelCoverageUnit: false has no slot in the
+  // previous model, so on a previous-model day it reads from spare capacity.
+  const previousModelRequest = (request) => {
+    if (request.previousModelCoverageUnit !== false) return request;
+    const { coverageId: _coverageId, coverageUnitPosts: _coverageUnitPosts, ...spareRequest } = request;
+    return spareRequest;
+  };
+
   async function reserve(request = {}) {
+    const admission = await reserveAgainst(request, dailyCoveragePosts);
+    if (admission.reason !== 'coverage_model_mismatch' || !previousDailyCoveragePosts) return admission;
+    // Code 6 returns before RESERVE_LUA writes anything, so retrying is safe.
+    return reserveAgainst(previousModelRequest(request), previousDailyCoveragePosts);
+  }
+
+  async function reserveAgainst(request, modelCoveragePosts) {
     const requestedPosts = positiveInteger(request.requestedPosts, 0, 'requestedPosts');
     if (!requestedPosts) throw new Error('requestedPosts must be a positive integer');
     const coverageTotal = Math.min(
       dailyLimit,
-      Math.max(dailyCoveragePosts, boundedNonNegativeInteger(request.coverageTotal)),
+      Math.max(modelCoveragePosts, boundedNonNegativeInteger(request.coverageTotal)),
     );
     const coverageUnitPosts = boundedNonNegativeInteger(request.coverageUnitPosts);
     const deadlineMs = request.deadlineMs == null ? 0 : Number(request.deadlineMs);
@@ -774,19 +810,26 @@ function createXPostBudget(options = {}) {
     ) {
       return unavailableStatus(period, { dailyLimit, monthlyLimit, costUsdMicrosPerPost });
     }
-    const projection = requestedPosts > 0
-      ? projectCoverageHold({
-        coverageHeld: dailyCoverageHeld,
-        coverageState,
-        coverageModel,
-        expectedTotal: dailyCoveragePosts,
-        coverageUnitPosts,
-        dailyLimit,
-      })
+    const project = (expectedTotal, unitPosts) => projectCoverageHold({
+      coverageHeld: dailyCoverageHeld,
+      coverageState,
+      coverageModel,
+      expectedTotal,
+      coverageUnitPosts: unitPosts,
+      dailyLimit,
+    });
+    let projectedUnitPosts = coverageUnitPosts;
+    let projection = requestedPosts > 0
+      ? project(dailyCoveragePosts, coverageUnitPosts)
       : { coverageHeld: dailyCoverageHeld, blockedReason: null };
+    if (projection.blockedReason && previousDailyCoveragePosts) {
+      // Mirror reserve(): a unit without a previous-model slot reads from spare.
+      if (nextRequest.previousModelCoverageUnit === false) projectedUnitPosts = 0;
+      projection = project(previousDailyCoveragePosts, projectedUnitPosts);
+    }
     return toStatus(period, dailyUsed, monthlyUsed, projection.coverageHeld, true, {
       requestedPosts,
-      coverageUnitPosts,
+      coverageUnitPosts: projectedUnitPosts,
       blockedReason: projection.blockedReason,
     });
   }
@@ -798,6 +841,9 @@ module.exports = {
   DEFAULT_X_POST_DAILY_LIMIT,
   DEFAULT_X_POST_MONTHLY_LIMIT,
   DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  DEFAULT_X_DAILY_COVERAGE_POSTS,
+  JAPAN_MOD_X_SLOT_POSTS,
+  X_SHARED_COVERAGE_MODEL,
   X_POST_COST_USD_MICROS,
   DEFAULT_RESERVATION_TTL_SECONDS,
   MAX_RECEIPT_BYTES,

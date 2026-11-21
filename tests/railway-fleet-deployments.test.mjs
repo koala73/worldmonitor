@@ -74,6 +74,22 @@ describe('Railway CLI child capability boundary', () => {
     assert.deepEqual(timeouts, [RAILWAY_INVENTORY_TIMEOUT_MS, 5_000]);
   });
 
+  it('raises the CLI HTTP timeout to the call bound so the CLI cannot cut it short', () => {
+    // Observed 2026-11-19 (run 44586778383): `service list` failed after 90 s
+    // with "operation timed out" under the 3 min inventory bound, because the
+    // Railway CLI applies its own 90 s per-request HTTP timeout unless
+    // RAILWAY_HTTP_TIMEOUT says otherwise.
+    const httpTimeouts = [];
+    const spawnImpl = (_command, _args, options) => {
+      httpTimeouts.push(options.env.RAILWAY_HTTP_TIMEOUT);
+      return { status: 0, signal: null, error: null, stdout: '[]' };
+    };
+    readServices('production', { projectId: 'project-1', spawnImpl });
+    readServices('production', { projectId: 'project-1', timeoutMs: 4_500, spawnImpl });
+    runRailway(['--version'], { env: { ...sourceEnv, RAILWAY_HTTP_TIMEOUT: '1' } }, spawnImpl);
+    assert.deepEqual(httpTimeouts, ['180', '5', String(RAILWAY_CALL_TIMEOUT_MS / 1000)]);
+  });
+
   it('applies the allowlist to sync and async Railway children', async () => {
     const childEnvironments = [];
     const deploymentArgs = [];
@@ -111,7 +127,7 @@ describe('Railway CLI child capability boundary', () => {
       '--json',
     ]]);
     assert.deepEqual(childEnvironments, [
-      createRailwayCliEnv(sourceEnv),
+      { ...createRailwayCliEnv(sourceEnv), RAILWAY_HTTP_TIMEOUT: '60' },
       createRailwayCliEnv(sourceEnv),
       createRailwayCliEnv(sourceEnv),
     ]);
@@ -151,7 +167,7 @@ describe('immutable native-autodeploy fleet', () => {
     source: { repo, image: null },
   });
 
-  it('ships the 89-service fleet including the provisioned NOTAM NMS seeder', () => {
+  it('ships the 93-service fleet including the provisioned extended Comtrade seeder', () => {
     // 84 -> 85: seed-live-video-resolved (service 11581ac4, cron 0 */6 * * *)
     // was provisioned after #8596 merged. 85 -> 86: verification-desk
     // (service 1f732679, always-on, desk.worldmonitor.app) enrolled by #9083.
@@ -159,7 +175,14 @@ describe('immutable native-autodeploy fleet', () => {
     // provisioned after #9236 merged. 87 -> 88: seed-country-history (service
     // d295b2c7, cron 30 0 * * *) was provisioned after #9435 merged. 88 -> 89:
     // seed-notam-nms (service 4aa3db57, cron */5 * * * *) was provisioned
-    // after #9637 merged. The roster is not a baseline to be
+    // after #9637 merged. 89 -> 90: seed-no2-activity (service 359e5bd7,
+    // cron 20 6 * * *) was provisioned before #9722's PR merged. 90 -> 91:
+    // seed-ukmto-incidents (service fa702bee, cron */30 * * * *) was
+    // provisioned after #9858 merged. 91 -> 92: seed-bundle-regional-energy
+    // (service 441a7f0d, cron */15 * * * *) was provisioned after #9852 merged.
+    // 92 -> 93: seed-comtrade-bilateral-hs4-ext (service 0d46fcc7, cron
+    // 0 6 15 * *) was provisioned after #10939 merged.
+    // The roster is not a baseline to be
     // quieted — every mismatch is red — but it must list every repo-backed
     // service, or a service whose GitHub source detaches vanishes before
     // repository filtering and both read-only monitors report healthy. An
@@ -168,9 +191,9 @@ describe('immutable native-autodeploy fleet', () => {
     // NOTE: acceptedHead/acceptedRunId still name the pre-provisioning run; a
     // fresh reconciliation should re-stamp them.
     const fleet = readExpectedRepositoryFleet();
-    assert.equal(fleet.length, 89);
-    assert.equal(new Set(fleet.map((service) => service.id)).size, 89);
-    assert.equal(new Set(fleet.map((service) => service.name)).size, 89);
+    assert.equal(fleet.length, 93);
+    assert.equal(new Set(fleet.map((service) => service.id)).size, 93);
+    assert.equal(new Set(fleet.map((service) => service.name)).size, 93);
     assert.deepEqual(
       fleet.map((service) => service.name),
       [...fleet.map((service) => service.name)].sort(),

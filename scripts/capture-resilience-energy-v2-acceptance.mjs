@@ -115,7 +115,7 @@ function baseHeaders() {
 }
 
 async function fetchJson(url, headers = baseHeaders()) {
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { signal: AbortSignal.timeout(30_000), headers });
   if (!response.ok) {
     const body = await response.text().catch(() => '');
     throw new Error(`HTTP ${response.status} from ${url}: ${body}`);

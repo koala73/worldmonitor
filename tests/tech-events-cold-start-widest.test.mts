@@ -406,3 +406,21 @@ describe('listTechEvents cold-start cache write', () => {
     });
   });
 });
+
+// The outer catch in listTechEvents must answer with a fixed error string:
+// echoing exception messages can expose internals (cache-key names from the
+// shared backoff error, upstream hostnames). The error stays non-empty so the
+// gateway's no-store contract (getRpcNoStoreReasonFromJson) still applies.
+describe('listTechEvents catch path hides exception text', () => {
+  it('returns the fixed request-failed error instead of the exception message', async () => {
+    // 'http://' is an invalid URL, so readTechEventsPagingPresence throws
+    // inside the handler's try block before any cache or upstream work.
+    const ctx = { request: { url: 'http://' }, pathParams: {}, headers: {} } as never;
+
+    const response = await listTechEvents(ctx, { type: '', mappable: false, limit: 0, days: 0 });
+
+    assert.equal(response.success, false);
+    assert.equal(response.error, 'tech events unavailable: request failed');
+    assert.doesNotMatch(JSON.stringify(response), /Invalid URL/);
+  });
+});

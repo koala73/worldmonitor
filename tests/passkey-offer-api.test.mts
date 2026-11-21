@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
+import { SignJWT, exportJWK, generateKeyPair } from 'jose';
+import { __resetJwksForTests } from '../server/auth-session.ts';
+// @ts-expect-error JS module without declarations.
+import { __resetRateLimitForTest } from '../api/_rate-limit.js';
 
 import {
+  default as handler,
   createRedisSlotStore,
   passkeyOfferFingerprint,
   passkeyOfferHandler,
@@ -15,6 +20,7 @@ const originalFetch = globalThis.fetch;
 const originalClerkSecret = process.env.CLERK_SECRET_KEY;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const originalIssuer = process.env.CLERK_JWT_ISSUER_DOMAIN;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -24,11 +30,16 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_URL = originalRedisUrl;
   if (originalRedisToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
   else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
+  if (originalIssuer === undefined) delete process.env.CLERK_JWT_ISSUER_DOMAIN;
+  else process.env.CLERK_JWT_ISSUER_DOMAIN = originalIssuer;
+  __resetJwksForTests();
+  __resetRateLimitForTest();
 });
 
 function deps(overrides: Partial<PasskeyOfferDeps> = {}): PasskeyOfferDeps {
   return {
     resolveUserId: async () => 'user_123',
+    rateLimit: async () => null,
     readMigratedCount: async () => 1,
     reserve: async () => ({ status: 'reserved', count: 2 }),
     persistTerminalCount: async () => {},
@@ -44,15 +55,94 @@ function request(method = 'POST'): Request {
 }
 
 describe('passkey offer route', () => {
+  for (const limiterState of ['unconfigured', 'unreachable', 'exhausted']) {
+    it(`the exported route spends no Clerk quota when the limiter is ${limiterState}`, async () => {
+      const issuer = 'https://clerk.passkey.test';
+      process.env.CLERK_JWT_ISSUER_DOMAIN = issuer;
+      process.env.CLERK_SECRET_KEY = 'sk_test_passkey';
+      if (limiterState !== 'unconfigured') {
+        process.env.UPSTASH_REDIS_REST_URL = 'https://redis.passkey.test';
+        process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+      } else {
+        delete process.env.UPSTASH_REDIS_REST_URL;
+        delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      }
+      const { privateKey, publicKey } = await generateKeyPair('RS256');
+      const jwk = { ...await exportJWK(publicKey), kid: 'passkey', alg: 'RS256' };
+      // Standard session tokens omit plan, exercising the former pre-limit lookup.
+      const token = await new SignJWT({ sid: 'sess_passkey' })
+        .setProtectedHeader({ alg: 'RS256', kid: 'passkey' })
+        .setIssuer(issuer).setSubject('user_123').setIssuedAt().setExpirationTime('60s')
+        .sign(privateKey);
+      const clerkCalls: string[] = [];
+      const redisBodies: string[] = [];
+      globalThis.fetch = async (input, init) => {
+        const url = String(input);
+        if (url === `${issuer}/.well-known/jwks.json`) return Response.json({ keys: [jwk] });
+        if (url.startsWith('https://redis.passkey.test') && limiterState === 'exhausted') {
+          redisBodies.push(String(init?.body));
+          return Response.json([{ result: [-1, 10] }]);
+        }
+        if (url.startsWith('https://api.clerk.com/')) clerkCalls.push(url);
+        throw new Error('upstream unavailable');
+      };
+      const req = request();
+      req.headers.set('Authorization', `Bearer ${token}`);
+      const response = await handler(req);
+      assert.equal(response.status, limiterState === 'exhausted' ? 429 : 503);
+      assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      assert.ok(response.headers.get('Retry-After'));
+      assert.deepEqual(clerkCalls, []);
+      if (limiterState === 'exhausted') {
+        assert.equal(response.headers.get('X-RateLimit-Limit'), '10');
+        assert.ok(redisBodies.some((body) => body.includes('rl:passkey-offer') && body.includes('user:user_123')));
+      }
+    });
+  }
+
+  for (const status of [429, 503]) {
+    it(`returns limiter ${status} before any account read, reservation or mirror`, async () => {
+      const calls: string[] = [];
+      const response = await passkeyOfferHandler(request(), deps({
+        resolveUserId: async () => { calls.push('auth'); return 'user_123'; },
+        rateLimit: async (_req, userId, headers) => {
+          calls.push(`limit:${userId}`);
+          return new Response('{}', { status, headers: { ...headers, 'Retry-After': '60' } });
+        },
+        readMigratedCount: async () => { calls.push('read'); return 0; },
+        reserve: async () => { calls.push('reserve'); return { status: 'reserved', count: 3 }; },
+        persistTerminalCount: async () => { calls.push('mirror'); },
+      }));
+      assert.equal(response.status, status);
+      assert.equal(response.headers.get('Retry-After'), '60');
+      assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+      assert.deepEqual(calls, ['auth', 'limit:user_123']);
+    });
+  }
+
   it('rejects an unauthenticated request before it reads account state', async () => {
     let read = false;
     const response = await passkeyOfferHandler(request(), deps({
       resolveUserId: async () => null,
+      rateLimit: async () => { assert.fail('unauthenticated requests must not charge a user budget'); },
       readMigratedCount: async () => { read = true; return 0; },
     }));
 
     assert.equal(response.status, 401);
     assert.equal(read, false);
+  });
+
+  it('charges an allowed account before reading, reserving and mirroring its final slot', async () => {
+    const calls: string[] = [];
+    const response = await passkeyOfferHandler(request(), deps({
+      rateLimit: async () => { calls.push('limit'); return null; },
+      readMigratedCount: async () => { calls.push('read'); return 2; },
+      reserve: async () => { calls.push('reserve'); return { status: 'reserved', count: 3 }; },
+      persistTerminalCount: async () => { calls.push('mirror'); },
+    }));
+    assert.equal(response.status, 200);
+    assert.deepEqual(calls, ['limit', 'read', 'reserve', 'mirror']);
   });
 
   it('returns the reserved slot without writing a partial Clerk mirror', async () => {

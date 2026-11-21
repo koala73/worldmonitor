@@ -3,7 +3,7 @@
 // desks.
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
@@ -12,6 +12,11 @@ import { publisherFamilyFor } from '../shared/publisher-families.js';
 import { selectSourcesUnderCap } from '../src/services/source-cap';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
 
+// Opt-in packs appended after this one.
+const laterAdditions = new Set<string>([
+  ...JSON.parse(readFileSync('shared/country-news-opt-ins.json', 'utf8')),
+  ...JSON.parse(readFileSync('shared/publisher-direct-opt-ins.json', 'utf8')),
+]);
 const { parseRssXml } = __testing__;
 
 interface FeedEntry { name: string; url: string | Record<string, string>; lang?: string }
@@ -96,7 +101,7 @@ describe('feeds added by the 2026-10-17 audit', () => {
     assert.equal(publisherFamilyFor('BBC Northern Ireland'), publisherFamilyFor('BBC World'));
   });
 
-  it('carries BBC UK and BBC Northern Ireland last in Europe in both catalogs', () => {
+  it('preserves the BBC UK desk rollout order in both catalogs', () => {
     for (const [name, url] of [
       ['BBC UK', 'https://feeds.bbci.co.uk/news/uk/rss.xml'],
       ['BBC Northern Ireland', 'https://feeds.bbci.co.uk/news/northern_ireland/rss.xml'],
@@ -104,7 +109,7 @@ describe('feeds added by the 2026-10-17 audit', () => {
       assert.equal(VARIANT_FEEDS.full!.europe!.find((feed) => feed.name === name)?.url, url, `${name}: server`);
       assert.equal(feeds.FULL_FEEDS.europe!.find((feed) => feed.name === name)?.url, url, `${name}: client`);
     }
-    assert.deepEqual(feeds.FULL_FEEDS.europe!.slice(-2).map((feed) => feed.name), ['BBC UK', 'BBC Northern Ireland']);
+    assert.deepEqual(feeds.FULL_FEEDS.europe!.filter(feed => !laterAdditions.has(feed.name)).slice(-4).map((feed) => feed.name), ['BBC UK', 'BBC Northern Ireland', 'Deutschlandfunk', 'ZDFheute']);
   });
 
   it('enables BBC UK by default in English and leaves BBC Northern Ireland opt-in', () => {

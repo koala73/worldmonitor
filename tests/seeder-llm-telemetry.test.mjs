@@ -107,7 +107,7 @@ test('llm-chain: reaches both fixed OpenRouter free models with routing intact',
     if (raw.includes('openrouter.ai')) {
       const body = JSON.parse(String(init.body || '{}'));
       attempted.push(body);
-      const content = body.model === 'nvidia/nemotron-3-super-120b-a12b:free' ? 'backup free answer' : '';
+      const content = body.model === 'nvidia/nemotron-3.5-super-vl:free' ? 'backup free answer' : '';
       return { ok: true, json: async () => llmJson(content) };
     }
     throw new Error(`unexpected fetch: ${raw}`);
@@ -119,7 +119,7 @@ test('llm-chain: reaches both fixed OpenRouter free models with routing intact',
   assert.deepEqual(attempted.map(body => body.model), [
     'google/gemini-2.5-flash',
     'google/gemma-4-26b-a4b-it:free',
-    'nvidia/nemotron-3-super-120b-a12b:free',
+    'nvidia/nemotron-3.5-super-vl:free',
   ]);
   for (const body of attempted.slice(1)) {
     assert.deepEqual(body.reasoning, { enabled: false });
@@ -322,7 +322,7 @@ test('narrative: validate_reject and success attempts both reach the ingest', as
   // fail validation, then the backup free model answers with the accepted payload.
   __setNarrativeTransportForTests({
     fetch: async (_url, init) => {
-      if (JSON.parse(String(init.body)).model !== 'nvidia/nemotron-3-super-120b-a12b:free') {
+      if (JSON.parse(String(init.body)).model !== 'nvidia/nemotron-3.5-super-vl:free') {
         return { ok: true, json: async () => llmJson('not-json narrative') };
       }
       return { ok: true, json: async () => llmJson('{"ok":true}') };
@@ -348,4 +348,39 @@ test('narrative: validate_reject and success attempts both reach the ingest', as
   assert.equal(captured[2].provider, 'openrouter-free-backup');
   assert.equal(captured[2].ok, true);
   assert.equal(captured[2].fallback_index, 2);
+});
+
+test('llm-chain: no further provider is tried once deadlineAt has passed', async () => {
+  baseEnv();
+  delete process.env.USAGE_TELEMETRY;
+  const attempted = [];
+  global.fetch = async (url, init = {}) => {
+    attempted.push(JSON.parse(String(init.body || '{}')).model);
+    await new Promise((r) => setTimeout(r, 80));
+    return { ok: true, json: async () => llmJson('') };
+  };
+  const text = await callLLM('system', 'user prompt', { deadlineAt: Date.now() + 50 });
+  assert.equal(text, null);
+  assert.equal(attempted.length, 1, `tried ${attempted.length} providers after the deadline`);
+});
+
+test('llm-chain: a provider request is aborted at deadlineAt, not at its own longer timeout', async () => {
+  baseEnv();
+  delete process.env.USAGE_TELEMETRY;
+  global.fetch = (_url, init = {}) => new Promise((_resolve, reject) => {
+    init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'TimeoutError' })));
+  });
+  // AbortSignal.timeout() is unref'd and the fetch above settles only on
+  // abort, so hold the event loop open until it fires.
+  const keepAlive = setTimeout(() => {}, 5_000);
+  const started = Date.now();
+  let text;
+  try {
+    text = await callLLM('system', 'user prompt', { timeoutMs: 20_000, deadlineAt: Date.now() + 100 });
+  } finally {
+    clearTimeout(keepAlive);
+  }
+  const elapsed = Date.now() - started;
+  assert.equal(text, null);
+  assert.ok(elapsed < 1_000, `ran ${elapsed}ms past a 100ms deadline`);
 });

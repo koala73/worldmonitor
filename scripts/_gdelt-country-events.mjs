@@ -322,8 +322,10 @@ export function summarizeCountryEvents(snapshot, nowMs = Date.now()) {
     const protest = signal(iso2, PROTEST);
     const week = weekTotals(iso2);
     const strikes = strikeCounts(iso2);
+    // A measured week with articles and no violence still supplies coverage
+    // for admission checks. Do not drop it because its risk counters are zero.
     if (!conflict.current && !conflict.baselineMedian && !protest.current && !protest.baselineMedian
-      && !week?.conflict && !week?.protest && !strikes) continue;
+      && !week?.articles && !strikes) continue;
     byCountry[iso2] = strikes ? { conflict, protest, week, strikes } : { conflict, protest, week };
   }
   return {

@@ -175,10 +175,17 @@ describe('searchRecentStockHeadlines', () => {
     assert.equal(result.headlines[0]?.source, 'CNBC');
   });
 
-  it('cancels the provider ladder at the corporate-intelligence deadline', async () => {
+  it('cancels the provider ladder at the corporate-intelligence deadline', async (t) => {
     process.env.EXA_API_KEYS = 'exa-key-1';
     process.env.BRAVE_API_KEYS = 'brave-key-1';
     const requested: string[] = [];
+    // The deadline fires while Exa is in flight. A real 20ms timer can lapse
+    // before any provider is asked: on a loaded runner the cache-key digest
+    // alone outlasts it, and nothing is requested at all (#10335).
+    const deadlineMs = 20;
+    const deadline = new AbortController();
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    t.mock.method(AbortSignal, 'timeout', (ms: number) => (ms === deadlineMs ? deadline.signal : realTimeout(ms)));
 
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
@@ -186,10 +193,11 @@ describe('searchRecentStockHeadlines', () => {
       if (url !== 'https://api.exa.ai/search') throw new Error(`Unexpected fallback after abort: ${url}`);
       return new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+        deadline.abort(new DOMException('The operation timed out.', 'TimeoutError'));
       });
     }) as typeof fetch;
 
-    const result = await fetchCompanyNewsMentions('ABRT', 'Abort Corp', 20);
+    const result = await fetchCompanyNewsMentions('ABRT', 'Abort Corp', deadlineMs);
     assert.equal(result, null);
     assert.deepEqual(requested, ['https://api.exa.ai/search']);
   });

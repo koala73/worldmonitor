@@ -67,7 +67,6 @@ const KNOWN_VIOLATIONS = new Set([
   // old fire data through a failed producer cycle instead of making the vanished output loud.
   'seed-fire-detections.mjs',
   'seed-fire-detections.mjs::seed-meta:wildfire:fires-bootstrap',
-  'seed-aaii-sentiment.mjs',
   'seed-bis-data.mjs',
   'seed-china-coverage-health.mjs',
   'seed-chokepoint-baselines.mjs',
@@ -88,7 +87,6 @@ const KNOWN_VIOLATIONS = new Set([
   'seed-fsi-eu.mjs',
   'seed-fx-rates.mjs',
   'seed-fx-yoy.mjs',
-  'seed-global-tenders.mjs',
   'seed-gold-cb-reserves.mjs',
   'seed-gold-etf-flows.mjs',
   'seed-hormuz.mjs',

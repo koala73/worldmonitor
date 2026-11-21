@@ -20,6 +20,12 @@
     "zapier-platform-cli": "19.2.1"
   },
   "overrides": {
+    "archiver-utils@5": {
+      "glob": "14.0.2"
+    },
+    "glob@13": "14.0.2",
+    "minimatch@9": "11.0.4",
+    "minimatch@10": "11.0.4",
     "zapier-platform-core@19.2.1": {
       "form-data": "4.0.6"
     },

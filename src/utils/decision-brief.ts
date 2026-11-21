@@ -2,6 +2,7 @@ import { normalizeComtradePartner, quantityUnitAbbr } from '../../scripts/shared
 import commodityRegistry from '../../scripts/shared/supply-vulnerability-commodities.json';
 import transitHubRegistry from '../../scripts/shared/comtrade-transit-hubs.json';
 import { computeSupplierRouteRisk } from './supplier-route-risk';
+import { MEASURED_LNG_BASIS, SUPPORTED_GAS_MODEL_BASES, ZERO_LNG_BASIS, lngWindowLabel } from './gas-model-basis';
 import type { CommodityBriefCapture, CommodityBriefSelection, CommodityBriefSnapshot } from '../types/decision-brief';
 import type { MineralStageSnapshot } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import type { DecisionBriefCapture, DecisionBriefSelection, DecisionBriefSnapshot } from '../types/decision-brief';
@@ -20,27 +21,69 @@ export function buildDecisionBrief(selection: DecisionBriefSelection, captures: 
     const g = r.gasSensitivity;
     const observedAt = gas ? month(g?.dataMonth) : null;
     const usable = identity && (gas
-      ? !r.gasImpact && g?.dataAvailable === true && g.modelBasis === 'assumed_route_sensitivity' && nonnegative(g.lngImportsTj) && nonnegative(g.totalDemandTj) && g.totalDemandTj > 0 && nonnegative(g.lngDisruptionTj) && nonnegative(g.deficitPct)
+      ? !r.gasImpact && g?.dataAvailable === true && SUPPORTED_GAS_MODEL_BASES.has(g.modelBasis) && nonnegative(g.lngImportsTj) && nonnegative(g.totalDemandTj) && g.totalDemandTj > 0 && nonnegative(g.lngDisruptionTj) && nonnegative(g.deficitPct)
       : r.dataAvailable && r.jodiOilCoverage && nonnegative(r.crudeLossKbd));
+    // Oil loss values need the handler's oilModeled (observed crude imports and a
+    // Comtrade origin share). In both mode gas alone makes dataAvailable true, so
+    // the handler's "not modeled" limitation is the oil signal; shares keep their guards.
+    const oilLossModeled = !gas && usable && !(r.limitations ?? []).some(l => l.includes('effective cover are not modeled'));
+    const lossUsable = gas ? usable : oilLossModeled;
     if (!identity) unknowns.add(`${reference}: response does not match the selected country, route and severity.`);
+    if (!gas && usable && !oilLossModeled) unknowns.add(`${reference}: the oil loss is not modeled (crude imports or the Comtrade origin share are unavailable); no loss is reported.`);
     if (!observedAt) unknowns.add(`${reference}: observation date is unknown.`);
     if (!usable) unknowns.add(gas ? `${reference}: recover recorded LNG imports, positive gas demand and a supported gas model for ${selection.countryCode}.` : `${reference}: recover the oil import and demand baseline for ${selection.countryCode}.`);
     const add = (suffix: string, label: string, value: number | null, unit: string, source: string, date = observedAt) => evidence.push({ id: `${reference}-${suffix}`, label, value, unit, source, sourceUrl: source.startsWith('JODI') ? 'https://www.jodidata.org/' : source === 'GIE' ? 'https://agsi.gie.eu/' : 'https://comtradeplus.un.org/', observedAt: date });
     if (gas) {
       add('lng', 'Recorded LNG imports', identity && g?.dataAvailable && nonnegative(g.lngImportsTj) ? g.lngImportsTj : null, 'TJ', 'JODI');
       add('demand', 'Recorded gas demand', identity && g?.dataAvailable && nonnegative(g.totalDemandTj) && g.totalDemandTj > 0 ? g.totalDemandTj : null, 'TJ', 'JODI');
+      if (identity && g?.modelBasis === MEASURED_LNG_BASIS) {
+        // Both measured Hormuz baselines, each dated by the last month it covers.
+        const pre = g.preCrisisBaseline;
+        const now = g.currentFlows;
+        // Percent, unrounded beyond float noise: a 0.04% share must not become 0.
+        const pct = (share: number | undefined) => nonnegative(share) ? Math.round(share * 1e6) / 1e4 : null;
+        add('hormuz-pre-crisis', pre ? `Hormuz LNG share, pre-crisis (${lngWindowLabel(pre)})` : 'Hormuz LNG share, pre-crisis', pct(pre?.hormuzLngShare), '%', 'UN Comtrade', pre ? month(pre.toMonth) : null);
+        add('hormuz-current', now ? `Hormuz LNG share, current flows (${lngWindowLabel(now)})` : 'Hormuz LNG share, current flows', pct(now?.hormuzLngShare), '%', 'UN Comtrade', now ? month(now.toMonth) : null);
+        if (!now) unknowns.add(`${reference}: the current-flows Hormuz LNG share is unavailable; only the pre-crisis baseline is measured.`);
+        if (!pre) unknowns.add(`${reference}: the pre-crisis Hormuz LNG share is unavailable; the loss uses current flows.`);
+      }
       if (identity && g?.storage) {
         const s = g.storage;
         add('storage', 'National gas storage (context only)', nonnegative(s.gasTwh) ? s.gasTwh : null, 'TWh', 'GIE', s.date || null);
         unknowns.add('Accessible storage and withdrawal capacity are unknown; storage is excluded from the comparison.');
       }
     } else {
-      add('route', 'Comtrade-backed crude route share', usable && r.comtradeCoverage && nonnegative(r.gulfCrudeShare) ? r.gulfCrudeShare * 100 : null, '%', 'UN Comtrade / route model');
-      if (identity && !r.comtradeCoverage) unknowns.add(`${reference}: Comtrade route exposure is unavailable; the oil loss model uses a fixed proxy share.`);
+      // The headline share and loss are the pre-crisis baseline (the 12 months
+      // before the Hormuz crisis); current flows are reported beside them.
+      const pct = (v: number) => Math.round(v * 1000) / 10;
+      const pre = r.preCrisisBaseline;
+      const cur = r.currentFlows;
+      const preBasis = pre ? pre.basis === 'comtrade_annual' ? ` (annual ${pre.fromMonth.slice(0, 4)})` : ` (monthly ${pre.fromMonth}..${pre.toMonth})` : '';
+      add('route', `Comtrade crude route share, pre-crisis baseline${preBasis}`, usable && r.comtradeCoverage && nonnegative(r.gulfCrudeShare) ? pct(r.gulfCrudeShare) : null, '%', 'UN Comtrade / route model', month(pre?.toMonth));
+      if (identity && !r.comtradeCoverage) unknowns.add(`${reference}: Comtrade route exposure is unavailable; the oil loss is not modeled without a measured origin share.`);
+      add('route-current', `Comtrade crude route share, current flows${cur ? ` (monthly ${cur.fromMonth}..${cur.toMonth})` : ''}`, identity && cur && nonnegative(cur.gulfCrudeShare) ? pct(cur.gulfCrudeShare) : null, '%', 'UN Comtrade / route model', month(cur?.toMonth));
+      add('loss-current', 'Modeled crude loss, current flows, without bypass recovery', oilLossModeled && cur && nonnegative(cur.crudeLossKbd) ? cur.crudeLossKbd : null, 'kbd', 'JODI / route model', month(cur?.toMonth));
+      if (identity && !cur) {
+        // The handler names the cause (series not available yet, or too few filings).
+        const reason = (r.limitations ?? []).find(l => l.startsWith('Current flows unavailable for '))
+          ?.replace(/^Current flows unavailable for [A-Z]{2}: /, '').replace(/\.$/, '');
+        unknowns.add(`${reference}: current-flows Gulf share is unavailable${reason ? `: ${reason}` : ''}; ${pre ? 'figures use the pre-crisis baseline' : 'no pre-crisis share is available either'}.`);
+      }
     }
-    add('loss', gas ? 'Assumed monthly LNG loss' : 'Modeled crude loss', usable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, gas ? 'TJ' : 'kbd', gas ? 'JODI / assumed route sensitivity' : 'JODI / route model');
+    // Only the fixed route fraction is an assumption; measured shares and a
+    // recorded zero say what they are.
+    const gasLoss = g?.modelBasis === MEASURED_LNG_BASIS
+      ? { label: `Monthly LNG loss at the ${g.preCrisisBaseline ? 'pre-crisis' : 'current-flows'} share`, source: 'JODI / UN Comtrade origin share' }
+      : g?.modelBasis === ZERO_LNG_BASIS
+        ? { label: 'Monthly LNG loss (zero recorded LNG imports)', source: 'JODI' }
+        : { label: 'Assumed monthly LNG loss', source: 'JODI / assumed route sensitivity' };
+    // With the Hormuz bypass modeled, the headline loss is after rerouting; the
+    // before-bypass loss is reported beside it.
+    const afterBypass = !gas && r.preCrisisBaseline?.crudeLossAfterBypassKbd != null;
+    if (afterBypass) add('loss-before-bypass', 'Modeled crude loss, pre-crisis baseline before bypass', oilLossModeled && nonnegative(r.preCrisisBaseline!.crudeLossKbd) ? r.preCrisisBaseline!.crudeLossKbd : null, 'kbd', 'JODI / route model');
+    add('loss', gas ? gasLoss.label : afterBypass ? 'Modeled crude loss, pre-crisis baseline after Hormuz bypass' : 'Modeled crude loss, pre-crisis baseline', lossUsable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, gas ? 'TJ' : 'kbd', gas ? gasLoss.source : 'JODI / route model');
     if (!r.portwatchCoverage) unknowns.add(`${reference}: shipping traffic is unavailable; no closure is established.`);
-    return { reference, severity, loss: usable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, unit: gas ? 'TJ' : 'kbd', demandPct: usable && gas ? g!.deficitPct : null, observedAt };
+    return { reference, severity, loss: lossUsable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, unit: gas ? 'TJ' : 'kbd', demandPct: usable && gas ? g!.deficitPct : null, observedAt };
   });
   const a = captures[0].response.gasSensitivity;
   const b = captures[1].response.gasSensitivity;
@@ -51,22 +94,33 @@ export function buildDecisionBrief(selection: DecisionBriefSelection, captures: 
   // only, which is why the tests mutate captures[0] and captures[1] separately.
   const comparable = gas && results.every(r => r.loss !== null && r.observedAt !== null) && a && b &&
     a.modelBasis === b.modelBasis && typeof a.dataSource === 'string' && a.dataSource.length > 0 && a.dataSource === b.dataSource && a.dataMonth === b.dataMonth &&
-    a.lngImportsTj === b.lngImportsTj && a.totalDemandTj === b.totalDemandTj && a.lngShareOfImports === b.lngShareOfImports;
+    a.lngImportsTj === b.lngImportsTj && a.totalDemandTj === b.totalDemandTj && a.lngShareOfImports === b.lngShareOfImports &&
+    a.preCrisisBaseline?.hormuzLngShare === b.preCrisisBaseline?.hormuzLngShare;
   const positive = results[0]!.loss !== null && results[0]!.loss! > 0;
   const missing = results[0]!.loss === null;
+  // The basis the brief describes: the baseline capture's, which `comparable` pins to the comparison's.
+  const measured = gas && a?.modelBasis === MEASURED_LNG_BASIS;
+  const zeroLng = gas && a?.modelBasis === ZERO_LNG_BASIS;
   const constraint = gas
-    ? 'Country-specific supplier and route exposure, available alternative supply, prices and lead times are unknown.'
+    ? measured || zeroLng
+      ? 'Available alternative supply, prices and lead times are unknown.'
+      : 'Country-specific supplier and route exposure, available alternative supply, prices and lead times are unknown.'
     : 'Modeled route exposure does not establish available alternative supply, prices or lead times.';
+  const gasBasisAssumption = measured
+    ? 'Route share measured from UN Comtrade LNG imports by partner (Qatar and the UAE); the loss uses the pre-crisis baseline, or current flows when that is the only measurement, and reports the other beside it.'
+    : zeroLng
+      ? 'With zero recorded LNG imports, no route share applies and the loss is zero.'
+      : 'Assumed route sensitivity; the route fraction is fixed by the existing model, not measured country-specific supplier exposure.';
   return {
     selection: { ...selection }, capturedAt: captures[0].retrievedAt > captures[1].retrievedAt ? captures[0].retrievedAt : captures[1].retrievedAt, captures: structuredClone(captures), evidence, results,
     comparison: { delta: comparable ? results[1]!.loss! - results[0]!.loss! : null, reason: comparable ? 'Common country, route, model, observation month, LNG inputs and demand. Storage is context only.' : 'Numeric delta withheld: evidence bases differ or provenance is unknown. Refresh both results and check their observation dates.' },
-    assumptions: gas ? [...captures.flatMap(({ response }) => response.countryCode === selection.countryCode && response.chokepointId === selection.chokepointId && response.gasSensitivity?.modelBasis === 'assumed_route_sensitivity' && !response.gasImpact && response.gasSensitivity.assessment ? [response.gasSensitivity.assessment] : []), 'Assumed route sensitivity; the route fraction is fixed by the existing model, not measured country-specific supplier exposure.', 'Monthly sensitivity only. No physical deficit, operational endurance or 14-day forecast is estimated.', 'Shipping traffic and storage do not scale this gas calculation.'] : ['Oil loss uses the existing route model. Observation dates are unavailable; no numeric comparison is supported.'],
-    impact: gas ? 'If the assumed route exposure applies, a disruption reduces the modeled portion of recorded monthly LNG imports. The demand ratio is context, not a forecast of unmet demand.' : 'If the modeled crude route exposure applies, disruption reduces modeled crude flow. Actual obligations and substitution remain unverified.',
+    assumptions: gas ? [...captures.flatMap(({ response }) => response.countryCode === selection.countryCode && response.chokepointId === selection.chokepointId && SUPPORTED_GAS_MODEL_BASES.has(response.gasSensitivity?.modelBasis ?? '') && !response.gasImpact && response.gasSensitivity?.assessment ? [response.gasSensitivity.assessment] : []), gasBasisAssumption, 'Monthly sensitivity only. No physical deficit, operational endurance or 14-day forecast is estimated.', 'Shipping traffic and storage do not scale this gas calculation.'] : ['Oil loss uses the existing route model. Observation dates are unavailable; no numeric comparison is supported.'],
+    impact: gas ? measured ? 'If Hormuz LNG loadings stop, a disruption removes the measured Qatar and UAE share of recorded monthly LNG imports. The demand ratio is context, not a forecast of unmet demand.' : zeroLng ? 'With zero recorded LNG imports, a route disruption removes no recorded LNG. The demand ratio is context, not a forecast of unmet demand.' : 'If the assumed route exposure applies, a disruption reduces the modeled portion of recorded monthly LNG imports. The demand ratio is context, not a forecast of unmet demand.' : 'If the modeled crude route exposure applies, disruption reduces modeled crude flow. Actual obligations and substitution remain unverified.',
     action: {
       text: missing ? `Recover ${gas ? 'recorded LNG imports, positive gas demand and the supported model basis' : 'the oil import and demand baseline'} for ${selection.countryName}. Withhold a procurement conclusion until these inputs are available.` : positive ? `Compare ${selection.countryName}'s supply obligations and alternative origins against the modeled loss before considering procurement changes.` : `Verify ${selection.countryName}'s actual route exposure and supply obligations before treating the modeled zero as low risk.`,
       references: gas ? ['baseline-lng', 'baseline-demand', 'baseline-loss'] : ['baseline-route', 'baseline-loss'],
       constraint: missing ? `The baseline is incomplete. ${constraint}` : constraint,
-      trigger: missing ? 'Reassess when the named baseline inputs and their observation dates are recovered.' : 'Reassess when updated source observations or verified supplier, route and delivery obligations change the assumed exposure.',
+      trigger: missing ? 'Reassess when the named baseline inputs and their observation dates are recovered.' : 'Reassess when updated source observations or verified supplier, route and delivery obligations change the modeled exposure.',
     },
     unknowns: [...unknowns, constraint, 'Retrieval time does not establish freshness. Review each observation date before acting.'],
   };

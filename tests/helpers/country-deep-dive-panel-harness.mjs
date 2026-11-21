@@ -214,10 +214,13 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['chokepoint-registry-stub', `export const CHOKEPOINT_REGISTRY = [];`],
     ['supplier-route-risk-stub', `
       export function computeAlternativeSuppliers(exporters) {
-        return exporters.map(e => ({ ...e, risk: { riskLevel: 'safe', transitChokepoints: [], maxDisruptionScore: 0, recommendation: '', routeIds: [], exporterIso2: e.partnerIso2, importerIso2: '' }, safeAlternative: null }));
+        return exporters.map(e => ({ ...e, risk: { riskLevel: 'safe', unknownReason: null, transitChokepoints: [], maxDisruptionScore: null, recommendation: '', routeIds: [], exporterIso2: e.partnerIso2, importerIso2: '' }, safeAlternative: null }));
       }
       export function computeSupplierRouteRisk() {
-        return { riskLevel: 'safe', transitChokepoints: [], maxDisruptionScore: 0, recommendation: '', routeIds: [], exporterIso2: '', importerIso2: '' };
+        return { riskLevel: 'safe', unknownReason: null, transitChokepoints: [], maxDisruptionScore: null, recommendation: '', routeIds: [], exporterIso2: '', importerIso2: '' };
+      }
+      export function chokepointScoreEvidence() {
+        return { scores: new Map(), current: false };
       }
     `],
     ['supply-chain-stub', `

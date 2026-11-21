@@ -1,3 +1,6 @@
+// These text checks pin Idempotency-Key documentation against OpenAPI, route
+// exceptions, and handler wiring (#8690, section 2).
+// Handler tests exercise replay behavior, but cannot verify published prose.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

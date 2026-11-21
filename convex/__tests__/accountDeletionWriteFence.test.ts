@@ -71,8 +71,8 @@ for (const state of states) {
       const t = await makeT(state);
       const user = t.withIdentity(identity);
       const key = { name: "stale session", keyHash: "a".repeat(64), keyPrefix: "wm_abcdefgh" };
-      await rejected(user.mutation(api.apiKeys.createApiKey, key));
-      await rejected(user.mutation(api.embedKeys.createEmbedKey, { ...key, keyPrefix: "wme_abcdefgh" }));
+      await rejected(t.mutation(internal.apiKeys.createApiKeyForUser, { userId: identity.subject, ...key }));
+      await rejected(t.mutation(internal.embedKeys.createEmbedKeyForUser, { userId: identity.subject, ...key, keyPrefix: "wme_abcdefgh" }));
       await rejected(t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: identity.subject }));
       await rejected(user.mutation(api.followedCountries.followCountry, { country: "US" }));
       await rejected(user.mutation(api.followedCountries.unfollowCountry, { country: "US" }));
@@ -121,16 +121,12 @@ for (const state of states) {
       });
     });
 
-    test("every public and internal alert-settings writer is fenced", async () => {
+    test("every alert-settings writer is fenced", async () => {
       const t = await makeT(state);
-      const user = t.withIdentity(identity);
       const userId = identity.subject;
       const rules = { variant: "full", enabled: true, channels: [], eventTypes: [] };
       const digest = { variant: "full", digestMode: "daily" as const };
       const quiet = { variant: "full", quietHoursEnabled: false };
-      await rejected(user.mutation(api.alertRules.setAlertRules, rules));
-      await rejected(user.mutation(api.alertRules.setDigestSettings, digest));
-      await rejected(user.mutation(api.alertRules.setQuietHours, quiet));
       await rejected(t.mutation(internal.alertRules.setAlertRulesForUser, { ...rules, userId }));
       await rejected(t.mutation(internal.alertRules.setDigestSettingsForUser, { ...digest, userId }));
       await rejected(t.mutation(internal.alertRules.setQuietHoursForUser, { ...quiet, userId }));
@@ -173,7 +169,7 @@ for (const state of states) {
       await rejected(user.mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token: "stale" }));
       // A surviving invitee must not claim an owner's seat after owner deletion started.
       await rejected(t.withIdentity({
-        subject: "teammate", tokenIdentifier: "clerk|teammate", email: "teammate@company.test",
+        subject: "teammate", tokenIdentifier: "clerk|teammate", email: "teammate@company.test", emailVerified: true,
       }).mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token: "stale" }));
       await t.run(async (ctx) => {
         expect(await ctx.db.query("checkoutAdmissions").collect()).toEqual([]);
@@ -222,6 +218,16 @@ test("the fence is subject-specific and permits another account's writes", async
   expect(await user.mutation(api.userPreferences.setPreferences, {
     variant: "full", data: {}, expectedSyncVersion: 0,
   })).toMatchObject({ ok: true });
+  // Slack is a paid channel on the alert ladder (#4273), so the surviving
+  // account needs a live Pro entitlement for this write to pass the gate.
+  await t.run((ctx) => ctx.db.insert("entitlements", {
+    userId: "surviving", planKey: "pro_monthly",
+    features: {
+      tier: 1, maxDashboards: 10, apiAccess: true, apiRateLimit: 1000,
+      prioritySupport: true, exportFormats: ["json", "csv"],
+    },
+    validUntil: Date.now() + 86_400_000, updatedAt: Date.now(),
+  }));
   await t.mutation(internal.notificationChannels.setSlackOAuthChannelForUser, {
     userId: "surviving", webhookEnvelope: "encrypted-slack",
   });

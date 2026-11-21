@@ -1,3 +1,6 @@
+// These source checks pin CI build/test ordering and built-output guard wiring
+// (#8690, section 2).
+// The spawned probes exercise guard behavior, but cannot verify workflow ordering.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -97,9 +100,13 @@ describe('built-output guard contract', () => {
     // group with the font install, but no step may sit between that group and
     // the focused spec. Anything there could leave the browser checks reading
     // missing or stale bytes from another build.
+    const installIndex = proJobSteps.findIndex((step) => (step.parallel ?? [step])
+      .some((inner) => inner.uses === './.github/actions/install-pro-deps'));
     const buildIndex = proJobSteps.findIndex((step) => (step.parallel ?? [step])
-      .some((inner) => inner.name === 'Build /pro artifacts for prehydration browser checks' && inner.run === 'npm run build:pro'));
+      .some((inner) => inner.name === 'Build /pro artifacts for prehydration browser checks'
+        && (inner.run === 'npm --prefix pro-test run build' || inner.run === 'npm run build:pro')));
     const prehydrationIndex = proJobSteps.findIndex((step) => step.id === 'prehydration');
+    assert.ok(installIndex >= 0 && installIndex < buildIndex, 'PR CI must install/restore /pro deps before building /pro');
     assert.ok(buildIndex >= 0, 'PR CI must build /pro for the prehydration browser checks');
     assert.equal(proJobSteps[prehydrationIndex]?.run, 'npm run test:e2e:prehydration');
     assert.ok(buildIndex < prehydrationIndex, 'the /pro build must run before the prehydration browser checks');
@@ -118,8 +125,10 @@ describe('built-output guard contract', () => {
     // it in this sequence keeps both contracts — the data test still runs
     // against the dist the step above just built, and the gate cannot drift
     // to a position where dist/ might be stale or absent.
+    // The /pro build is build:pro's build half; its install half runs on a
+    // dependency-cache miss earlier in the job.
     const expectedSequence = [
-      '        run: npm run build:pro',
+      '        run: npm --prefix pro-test run build',
       '      - name: Build dashboard artifacts for built-output tests',
       '        run: VITE_VARIANT=full ./node_modules/.bin/vite build',
       '      - name: Client bundle size budget (#7111, #7119)',

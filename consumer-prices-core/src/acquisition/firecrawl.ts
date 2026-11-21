@@ -171,6 +171,11 @@ export class FirecrawlProvider implements AcquisitionProvider {
       throw new Error(`Firecrawl extract error: ${data.error ?? 'unknown'}`);
     }
 
+    const metadata = data.data?.metadata ?? {};
+    const pageTitle = [metadata['og:title'], metadata.ogTitle, metadata['twitter:title']].find(
+      (value): value is string => typeof value === 'string' && value.trim() !== '',
+    );
+
     return {
       url,
       data: (data.data?.extract ?? {}) as T,
@@ -182,6 +187,7 @@ export class FirecrawlProvider implements AcquisitionProvider {
       ...(typeof data.data?.markdown === 'string' && data.data.markdown.trim()
         ? { pageContent: data.data.markdown }
         : {}),
+      ...(pageTitle ? { pageTitle: pageTitle.trim() } : {}),
     };
   }
 

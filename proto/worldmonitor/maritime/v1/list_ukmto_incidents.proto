@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package worldmonitor.maritime.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// UkmtoIncident is a publisher report, not independent confirmation of an attack.
+message UkmtoIncident {
+  string id = 1;
+  int32 incident_number = 2;
+  string incident_type = 3;
+  string place = 4;
+  string description = 5;
+  worldmonitor.core.v1.GeoCoordinates location = 6;
+  int64 occurred_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 reported_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// ListUkmtoIncidentsRequest requests the latest publisher snapshot.
+message ListUkmtoIncidentsRequest {}
+
+// ListUkmtoIncidentsResponse distinguishes unavailable data from a valid empty list.
+message ListUkmtoIncidentsResponse {
+  repeated UkmtoIncident incidents = 1;
+  // Successful upstream retrieval time, not the date of the newest incident.
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  bool data_available = 3;
+  bool stale = 4;
+}

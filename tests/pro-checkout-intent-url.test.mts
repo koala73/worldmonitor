@@ -22,11 +22,8 @@ import {
   CHECKOUT_DISCOUNT_PARAM,
   CHECKOUT_ATTRIBUTION_PARAM,
 } from '../pro-test/src/services/checkout-intent-url.ts';
-import {
-  CHECKOUT_HANDOFF_PARAM,
-  CHECKOUT_MISSION_PARAM,
-  CHECKOUT_PANEL_PARAM,
-} from '../shared/checkout-attribution.ts';
+import { CHECKOUT_MISSION_PARAM, CHECKOUT_PANEL_PARAM } from '../shared/checkout-attribution.ts';
+import { CHECKOUT_HANDOFF_PARAM } from '../shared/desktop-checkout-handoff.ts';
 
 describe('parseCheckoutIntentFromSearch', () => {
   it('returns null when no productId param is present (normal page load)', () => {
@@ -79,7 +76,7 @@ describe('parseCheckoutIntentFromSearch', () => {
       missionId: 'energy-security',
       panelKey: 'pipeline-status',
     });
-    assert.equal(intent?.desktopHandoff, true);
+    assert.deepEqual(intent?.desktopHandoff, {});
 
     const mismatched = parseCheckoutIntentFromSearch(
       `?${CHECKOUT_PRODUCT_PARAM}=pro_monthly&${CHECKOUT_MISSION_PARAM}=energy-security`
@@ -143,12 +140,12 @@ describe('stripCheckoutIntentFromSearch', () => {
     assert.equal(result, '?keep=me');
   });
 
-  it('strips mission preview and desktop handoff intent', () => {
+  it('strips mission preview intent but keeps the desktop handoff for later plan clicks (#10342)', () => {
     const result = stripCheckoutIntentFromSearch(
       `?${CHECKOUT_PRODUCT_PARAM}=X&${CHECKOUT_MISSION_PARAM}=crisis-desk`
-      + `&${CHECKOUT_PANEL_PARAM}=cii&${CHECKOUT_HANDOFF_PARAM}=desktop&keep=me`,
+      + `&${CHECKOUT_PANEL_PARAM}=cii&${CHECKOUT_HANDOFF_PARAM}=desktop&wm_checkout_account=0123456789abcdef&keep=me`,
     );
-    assert.equal(result, '?keep=me');
+    assert.equal(result, `?${CHECKOUT_HANDOFF_PARAM}=desktop&wm_checkout_account=0123456789abcdef&keep=me`);
   });
 
   it('is idempotent — second call on a stripped URL is a no-op', () => {
@@ -217,12 +214,18 @@ describe('buildCheckoutReturnUrl', () => {
         missionId: 'crisis-desk',
         panelKey: 'cii',
       },
-      desktopHandoff: true,
+      desktopHandoff: { account: '0123456789abcdef' },
     });
     const url = new URL(returnUrl);
     assert.equal(url.searchParams.get(CHECKOUT_MISSION_PARAM), 'crisis-desk');
     assert.equal(url.searchParams.get(CHECKOUT_PANEL_PARAM), 'cii');
     assert.equal(url.searchParams.get(CHECKOUT_HANDOFF_PARAM), 'desktop');
+    assert.equal(url.searchParams.get('wm_checkout_account'), '0123456789abcdef');
+    assert.deepEqual(parseCheckoutIntentFromSearch(url.search)?.desktopHandoff, { account: '0123456789abcdef' });
+    assert.equal(
+      stripCheckoutIntentFromSearch(url.search),
+      `?${CHECKOUT_HANDOFF_PARAM}=desktop&wm_checkout_account=0123456789abcdef`,
+    );
   });
 });
 

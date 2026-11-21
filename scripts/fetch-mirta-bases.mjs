@@ -100,7 +100,7 @@ async function fetchAllFeatures(layerIndex) {
     const url = `${BASE}/${layerIndex}/query?${params}`;
     console.log(`  Page ${page}: offset=${offset} ...`);
 
-    const resp = await fetch(url);
+    const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
     const json = await resp.json();
 

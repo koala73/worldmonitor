@@ -1,0 +1,1326 @@
+{
+  "generator": "scripts/orbital-live-check.mts",
+  "ranAt": "2026-11-14T11:07:31.985Z",
+  "window": "2026-11-07T11:07:31.985Z/2026-11-14T11:07:31.985Z",
+  "archives": {
+    "sentinel-2": [
+      "earth-search",
+      "planetary-computer"
+    ],
+    "sentinel-1": [
+      "earth-search",
+      "planetary-computer"
+    ],
+    "landsat": [
+      "earth-search",
+      "planetary-computer"
+    ]
+  },
+  "satellites": [
+    "LANDSAT 8 (landsat), elements epoch 2026-11-14T03:17:17.581056",
+    "SENTINEL-1A (sentinel-1), elements epoch 2026-11-14T03:44:14.823168",
+    "SENTINEL-2A (sentinel-2), elements epoch 2026-11-14T03:28:16.723200",
+    "SENTINEL-2B (sentinel-2), elements epoch 2026-11-14T04:58:49.257120",
+    "LANDSAT 9 (landsat), elements epoch 2026-11-14T04:06:41.681664",
+    "SENTINEL-2C (sentinel-2), elements epoch 2026-11-14T04:08:25.791072",
+    "SENTINEL-1C (sentinel-1), elements epoch 2026-11-14T04:00:20.651616",
+    "SENTINEL-1D (sentinel-1), elements epoch 2026-11-13T00:51:18.356832"
+  ],
+  "totals": {
+    "sentinel-2": {
+      "pastPasses": 1825,
+      "confirmed": 47,
+      "confirmedGeometryDisagreed": 0,
+      "likelyImaged": 5,
+      "notInArchive": 7,
+      "passedOverheadOther": 1766,
+      "edgeOfSwath": 6,
+      "acquisitions": 48,
+      "acquisitionsMatched": 47,
+      "expectedWithoutImageLandCoastRule": 7,
+      "expectedWithoutImageMissionRule": 7
+    },
+    "sentinel-1": {
+      "pastPasses": 1698,
+      "confirmed": 43,
+      "confirmedGeometryDisagreed": 1,
+      "likelyImaged": 7,
+      "notInArchive": 48,
+      "passedOverheadOther": 1600,
+      "edgeOfSwath": 6,
+      "acquisitions": 43,
+      "acquisitionsMatched": 43,
+      "expectedWithoutImageLandCoastRule": 61,
+      "expectedWithoutImageMissionRule": 48
+    },
+    "landsat": {
+      "pastPasses": 1155,
+      "confirmed": 8,
+      "confirmedGeometryDisagreed": 0,
+      "likelyImaged": 17,
+      "notInArchive": 0,
+      "passedOverheadOther": 1130,
+      "edgeOfSwath": 5,
+      "acquisitions": 8,
+      "acquisitionsMatched": 8,
+      "expectedWithoutImageLandCoastRule": 0,
+      "expectedWithoutImageMissionRule": 0
+    }
+  },
+  "places": {
+    "paris": {
+      "lat": 48.857,
+      "lon": 2.352,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 102,
+          "confirmed": 4,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 98,
+          "edgeOfSwath": 2,
+          "acquisitions": 5,
+          "acquisitionsMatched": 4,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 93,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 2,
+          "passedOverheadOther": 87,
+          "edgeOfSwath": 0,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 2,
+          "expectedWithoutImageMissionRule": 2
+        },
+        "landsat": {
+          "pastPasses": 66,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 65,
+          "edgeOfSwath": 1,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "reykjavik": {
+      "lat": 64.147,
+      "lon": -21.942,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 195,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 1,
+          "passedOverheadOther": 191,
+          "edgeOfSwath": 0,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 1,
+          "expectedWithoutImageMissionRule": 1
+        },
+        "sentinel-1": {
+          "pastPasses": 185,
+          "confirmed": 7,
+          "confirmedGeometryDisagreed": 1,
+          "likelyImaged": 0,
+          "notInArchive": 4,
+          "passedOverheadOther": 174,
+          "edgeOfSwath": 0,
+          "acquisitions": 7,
+          "acquisitionsMatched": 7,
+          "expectedWithoutImageLandCoastRule": 4,
+          "expectedWithoutImageMissionRule": 4
+        },
+        "landsat": {
+          "pastPasses": 128,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 127,
+          "edgeOfSwath": 0,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "denver": {
+      "lat": 39.739,
+      "lon": -104.99,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 86,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 1,
+          "passedOverheadOther": 81,
+          "edgeOfSwath": 0,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 1,
+          "expectedWithoutImageMissionRule": 1
+        },
+        "sentinel-1": {
+          "pastPasses": 80,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 4,
+          "passedOverheadOther": 73,
+          "edgeOfSwath": 0,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 4,
+          "expectedWithoutImageMissionRule": 4
+        },
+        "landsat": {
+          "pastPasses": 54,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 52,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "dubai": {
+      "lat": 25.205,
+      "lon": 55.271,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 72,
+          "confirmed": 2,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 70,
+          "edgeOfSwath": 0,
+          "acquisitions": 2,
+          "acquisitionsMatched": 2,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 68,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 1,
+          "passedOverheadOther": 64,
+          "edgeOfSwath": 0,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 1,
+          "expectedWithoutImageMissionRule": 1
+        },
+        "landsat": {
+          "pastPasses": 44,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 43,
+          "edgeOfSwath": 0,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "nairobi": {
+      "lat": -1.286,
+      "lon": 36.817,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 64,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 61,
+          "edgeOfSwath": 0,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 61,
+          "confirmed": 2,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 5,
+          "passedOverheadOther": 54,
+          "edgeOfSwath": 1,
+          "acquisitions": 2,
+          "acquisitionsMatched": 2,
+          "expectedWithoutImageLandCoastRule": 5,
+          "expectedWithoutImageMissionRule": 5
+        },
+        "landsat": {
+          "pastPasses": 41,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 40,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "tokyo": {
+      "lat": 35.676,
+      "lon": 139.65,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 81,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 1,
+          "passedOverheadOther": 79,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 1,
+          "expectedWithoutImageMissionRule": 1
+        },
+        "sentinel-1": {
+          "pastPasses": 73,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 2,
+          "passedOverheadOther": 70,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 2,
+          "expectedWithoutImageMissionRule": 2
+        },
+        "landsat": {
+          "pastPasses": 52,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 51,
+          "edgeOfSwath": 0,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "sydney": {
+      "lat": -33.869,
+      "lon": 151.209,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 80,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 1,
+          "passedOverheadOther": 76,
+          "edgeOfSwath": 0,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 1,
+          "expectedWithoutImageMissionRule": 1
+        },
+        "sentinel-1": {
+          "pastPasses": 76,
+          "confirmed": 2,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 2,
+          "passedOverheadOther": 71,
+          "edgeOfSwath": 0,
+          "acquisitions": 2,
+          "acquisitionsMatched": 2,
+          "expectedWithoutImageLandCoastRule": 2,
+          "expectedWithoutImageMissionRule": 2
+        },
+        "landsat": {
+          "pastPasses": 50,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 49,
+          "edgeOfSwath": 0,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "sao-paulo": {
+      "lat": -23.55,
+      "lon": -46.633,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 72,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 70,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 66,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 3,
+          "passedOverheadOther": 60,
+          "edgeOfSwath": 1,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 3,
+          "expectedWithoutImageMissionRule": 3
+        },
+        "landsat": {
+          "pastPasses": 46,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 45,
+          "edgeOfSwath": 0,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "moscow": {
+      "lat": 55.756,
+      "lon": 37.617,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 126,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 1,
+          "passedOverheadOther": 121,
+          "edgeOfSwath": 0,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 1,
+          "expectedWithoutImageMissionRule": 1
+        },
+        "sentinel-1": {
+          "pastPasses": 117,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 2,
+          "passedOverheadOther": 113,
+          "edgeOfSwath": 1,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 5,
+          "expectedWithoutImageMissionRule": 2
+        },
+        "landsat": {
+          "pastPasses": 79,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 77,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "beijing": {
+      "lat": 39.904,
+      "lon": 116.407,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 88,
+          "confirmed": 4,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 84,
+          "edgeOfSwath": 0,
+          "acquisitions": 4,
+          "acquisitionsMatched": 4,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 79,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 4,
+          "passedOverheadOther": 74,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 4,
+          "expectedWithoutImageMissionRule": 4
+        },
+        "landsat": {
+          "pastPasses": 55,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 54,
+          "edgeOfSwath": 0,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "delhi": {
+      "lat": 28.614,
+      "lon": 77.209,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 71,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 68,
+          "edgeOfSwath": 0,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 68,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 2,
+          "passedOverheadOther": 65,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 2,
+          "expectedWithoutImageMissionRule": 2
+        },
+        "landsat": {
+          "pastPasses": 48,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 46,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "cairo": {
+      "lat": 30.044,
+      "lon": 31.236,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 75,
+          "confirmed": 2,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 73,
+          "edgeOfSwath": 0,
+          "acquisitions": 2,
+          "acquisitionsMatched": 2,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 70,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 1,
+          "passedOverheadOther": 68,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 2,
+          "expectedWithoutImageMissionRule": 1
+        },
+        "landsat": {
+          "pastPasses": 47,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 45,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "lagos": {
+      "lat": 6.524,
+      "lon": 3.379,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 66,
+          "confirmed": 2,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 64,
+          "edgeOfSwath": 2,
+          "acquisitions": 2,
+          "acquisitionsMatched": 2,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 61,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 3,
+          "passedOverheadOther": 56,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 3,
+          "expectedWithoutImageMissionRule": 3
+        },
+        "landsat": {
+          "pastPasses": 41,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 40,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "buenos-aires": {
+      "lat": -34.604,
+      "lon": -58.382,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 82,
+          "confirmed": 2,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 80,
+          "edgeOfSwath": 0,
+          "acquisitions": 2,
+          "acquisitionsMatched": 2,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 78,
+          "confirmed": 2,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 75,
+          "edgeOfSwath": 0,
+          "acquisitions": 2,
+          "acquisitionsMatched": 2,
+          "expectedWithoutImageLandCoastRule": 2,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "landsat": {
+          "pastPasses": 50,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 49,
+          "edgeOfSwath": 1,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "anchorage": {
+      "lat": 61.218,
+      "lon": -149.9,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 164,
+          "confirmed": 3,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 1,
+          "passedOverheadOther": 160,
+          "edgeOfSwath": 0,
+          "acquisitions": 3,
+          "acquisitionsMatched": 3,
+          "expectedWithoutImageLandCoastRule": 1,
+          "expectedWithoutImageMissionRule": 1
+        },
+        "sentinel-1": {
+          "pastPasses": 146,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 3,
+          "passedOverheadOther": 141,
+          "edgeOfSwath": 2,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 7,
+          "expectedWithoutImageMissionRule": 3
+        },
+        "landsat": {
+          "pastPasses": 99,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 98,
+          "edgeOfSwath": 2,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "singapore": {
+      "lat": 1.352,
+      "lon": 103.82,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 64,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 1,
+          "passedOverheadOther": 62,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 1,
+          "expectedWithoutImageMissionRule": 1
+        },
+        "sentinel-1": {
+          "pastPasses": 61,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 2,
+          "passedOverheadOther": 58,
+          "edgeOfSwath": 1,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 2,
+          "expectedWithoutImageMissionRule": 2
+        },
+        "landsat": {
+          "pastPasses": 41,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 40,
+          "edgeOfSwath": 0,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "cape-town": {
+      "lat": -33.925,
+      "lon": 18.424,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 80,
+          "confirmed": 2,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 78,
+          "edgeOfSwath": 2,
+          "acquisitions": 2,
+          "acquisitionsMatched": 2,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 75,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 1,
+          "passedOverheadOther": 73,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 4,
+          "expectedWithoutImageMissionRule": 1
+        },
+        "landsat": {
+          "pastPasses": 51,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 50,
+          "edgeOfSwath": 0,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "kyiv": {
+      "lat": 50.45,
+      "lon": 30.523,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 106,
+          "confirmed": 2,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 103,
+          "edgeOfSwath": 0,
+          "acquisitions": 2,
+          "acquisitionsMatched": 2,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 100,
+          "confirmed": 5,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 3,
+          "passedOverheadOther": 92,
+          "edgeOfSwath": 0,
+          "acquisitions": 5,
+          "acquisitionsMatched": 5,
+          "expectedWithoutImageLandCoastRule": 3,
+          "expectedWithoutImageMissionRule": 3
+        },
+        "landsat": {
+          "pastPasses": 67,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 2,
+          "notInArchive": 0,
+          "passedOverheadOther": 65,
+          "edgeOfSwath": 0,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "tehran": {
+      "lat": 35.689,
+      "lon": 51.389,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 80,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 78,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 74,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 4,
+          "passedOverheadOther": 70,
+          "edgeOfSwath": 0,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 4,
+          "expectedWithoutImageMissionRule": 4
+        },
+        "landsat": {
+          "pastPasses": 52,
+          "confirmed": 0,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 1,
+          "notInArchive": 0,
+          "passedOverheadOther": 51,
+          "edgeOfSwath": 1,
+          "acquisitions": 0,
+          "acquisitionsMatched": 0,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    },
+    "mexico-city": {
+      "lat": 19.433,
+      "lon": -99.133,
+      "status": "complete",
+      "unansweredProfiles": [],
+      "tally": {
+        "sentinel-2": {
+          "pastPasses": 71,
+          "confirmed": 2,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 69,
+          "edgeOfSwath": 0,
+          "acquisitions": 2,
+          "acquisitionsMatched": 2,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "sentinel-1": {
+          "pastPasses": 67,
+          "confirmed": 5,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 62,
+          "edgeOfSwath": 0,
+          "acquisitions": 5,
+          "acquisitionsMatched": 5,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        },
+        "landsat": {
+          "pastPasses": 44,
+          "confirmed": 1,
+          "confirmedGeometryDisagreed": 0,
+          "likelyImaged": 0,
+          "notInArchive": 0,
+          "passedOverheadOther": 43,
+          "edgeOfSwath": 0,
+          "acquisitions": 1,
+          "acquisitionsMatched": 1,
+          "expectedWithoutImageLandCoastRule": 0,
+          "expectedWithoutImageMissionRule": 0
+        }
+      }
+    }
+  },
+  "archiveFailures": [],
+  "publicationLag": {
+    "sentinel-2": {
+      "sensed": "2026-10-05T11:07:31.985Z/2026-10-25T11:07:31.985Z",
+      "byArchive": {
+        "earth-search": {
+          "scenes": 232,
+          "p50Hours": 4.8,
+          "p95Hours": 12,
+          "maxHours": 25.9
+        }
+      },
+      "waitHours": 12
+    },
+    "sentinel-1": {
+      "sensed": "2026-10-05T11:07:31.985Z/2026-10-25T11:07:31.985Z",
+      "byArchive": {
+        "earth-search": {
+          "scenes": 130,
+          "p50Hours": 2.2,
+          "p95Hours": 18.6,
+          "maxHours": 25.4
+        }
+      },
+      "waitHours": 19
+    },
+    "landsat": {
+      "sensed": "2026-10-05T11:07:31.985Z/2026-10-25T11:07:31.985Z",
+      "byArchive": {
+        "earth-search": {
+          "scenes": 88,
+          "p50Hours": 150.2,
+          "p95Hours": 234.2,
+          "maxHours": 247.8
+        },
+        "planetary-computer": {
+          "scenes": 88,
+          "p50Hours": 665,
+          "p95Hours": 872.7,
+          "maxHours": 909.3
+        }
+      },
+      "waitHours": 235
+    }
+  },
+  "coverage": {
+    "window": "2026-11-02T11:07:31.985Z/2026-11-14T11:07:31.985Z",
+    "probes": {
+      "central-mediterranean": {
+        "lat": 35,
+        "lon": 18,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 8,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 3,
+          "archiveDirections": [
+            "ascending",
+            "descending"
+          ],
+          "mask": {
+            "ascending": true,
+            "descending": true
+          }
+        }
+      },
+      "caspian": {
+        "lat": 42,
+        "lon": 50.8,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 3,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 3,
+          "archiveDirections": [
+            "ascending",
+            "descending"
+          ],
+          "mask": {
+            "ascending": true,
+            "descending": true
+          }
+        }
+      },
+      "black-sea": {
+        "lat": 43.5,
+        "lon": 34,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 3,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 8,
+          "archiveDirections": [
+            "ascending",
+            "descending"
+          ],
+          "mask": {
+            "ascending": true,
+            "descending": true
+          }
+        }
+      },
+      "persian-gulf": {
+        "lat": 27,
+        "lon": 51.5,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 3,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 6,
+          "archiveDirections": [
+            "ascending",
+            "descending"
+          ],
+          "mask": {
+            "ascending": true,
+            "descending": true
+          }
+        }
+      },
+      "red-sea": {
+        "lat": 20,
+        "lon": 38.8,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 3,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 4,
+          "archiveDirections": [
+            "ascending",
+            "descending"
+          ],
+          "mask": {
+            "ascending": true,
+            "descending": true
+          }
+        }
+      },
+      "antarctic-plateau": {
+        "lat": -80,
+        "lon": 0,
+        "landCoastMask": true,
+        "sentinel-2": {
+          "archiveScenes": 32,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 0,
+          "archiveDirections": [],
+          "mask": {
+            "ascending": false,
+            "descending": false
+          }
+        }
+      },
+      "gulf-of-mexico": {
+        "lat": 25,
+        "lon": -90,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 8,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 1,
+          "archiveDirections": [
+            "ascending"
+          ],
+          "mask": {
+            "ascending": true,
+            "descending": false
+          }
+        }
+      },
+      "hudson-bay": {
+        "lat": 60,
+        "lon": -85,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 4,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 6,
+          "archiveDirections": [
+            "descending"
+          ],
+          "mask": {
+            "ascending": false,
+            "descending": true
+          }
+        }
+      },
+      "sea-of-japan": {
+        "lat": 40,
+        "lon": 135,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 8,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 0,
+          "archiveDirections": [],
+          "mask": {
+            "ascending": false,
+            "descending": false
+          }
+        }
+      },
+      "bay-of-bengal": {
+        "lat": 15,
+        "lon": 88,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 0,
+          "mask": false
+        },
+        "sentinel-1": {
+          "archiveScenes": 0,
+          "archiveDirections": [],
+          "mask": {
+            "ascending": false,
+            "descending": false
+          }
+        }
+      },
+      "mid-atlantic": {
+        "lat": 30,
+        "lon": -40,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 0,
+          "mask": false
+        },
+        "sentinel-1": {
+          "archiveScenes": 0,
+          "archiveDirections": [],
+          "mask": {
+            "ascending": false,
+            "descending": false
+          }
+        }
+      },
+      "fram-strait": {
+        "lat": 79,
+        "lon": 0,
+        "landCoastMask": false,
+        "sentinel-2": {
+          "archiveScenes": 0,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 16,
+          "archiveDirections": [
+            "descending"
+          ],
+          "mask": {
+            "ascending": false,
+            "descending": true
+          }
+        }
+      },
+      "central-greenland": {
+        "lat": 72,
+        "lon": -40,
+        "landCoastMask": true,
+        "sentinel-2": {
+          "archiveScenes": 0,
+          "mask": true
+        },
+        "sentinel-1": {
+          "archiveScenes": 4,
+          "archiveDirections": [
+            "descending"
+          ],
+          "mask": {
+            "ascending": false,
+            "descending": true
+          }
+        }
+      },
+      "arctic-ocean-83n": {
+        "lat": 83.5,
+        "lon": -40,
+        "landCoastMask": true,
+        "sentinel-2": {
+          "archiveScenes": 0,
+          "mask": false
+        },
+        "sentinel-1": {
+          "archiveScenes": 61,
+          "archiveDirections": [
+            "ascending",
+            "descending"
+          ],
+          "mask": {
+            "ascending": true,
+            "descending": true
+          }
+        }
+      }
+    }
+  }
+}

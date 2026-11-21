@@ -96,3 +96,17 @@ export function searchBoundedJmespath(value: unknown, expression: string): unkno
   visit(ast, 1);
   return jmespath.search(value, expression);
 }
+
+// Every field name an expression reads (multiselect keys it writes are not
+// fields). Lets a caller tell a field that holds null from one the payload lacks.
+export function jmespathFieldNames(expression: string): string[] {
+  const names = new Set<string>();
+  const visit = (node: AstNode | number | null | undefined): void => {
+    if (node === null || node === undefined || typeof node !== 'object') return;
+    if (node.type === 'Field' && typeof node.name === 'string') names.add(node.name);
+    for (const child of node.children ?? []) visit(child);
+    if (node.type === 'KeyValuePair') visit(node.value as AstNode);
+  };
+  visit(compiler.compile(expression));
+  return [...names];
+}

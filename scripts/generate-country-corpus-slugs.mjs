@@ -33,7 +33,7 @@ const OUTPUT_PATH = 'api/_country-corpus-slugs.generated.js';
 const CHECK = process.argv.includes('--check');
 
 export function renderCountryCorpusModule(countries) {
-  const sorted = [...countries].sort((a, b) => a.code.localeCompare(b.code));
+  const sorted = [...countries].sort((a, b) => a.code.localeCompare(b.code, 'en-US'));
   const seenSlugs = new Set();
   for (const { code, name, slug } of sorted) {
     if (!/^[A-Z]{2}$/.test(code)) throw new Error(`Corpus country code ${code} is not ISO 3166-1 alpha-2`);

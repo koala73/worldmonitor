@@ -1826,7 +1826,7 @@ export function buildPublicReceipts(ledger, nowMs, { limit = PUBLIC_RECEIPT_LIMI
       && Number(entry.resolvedAt) >= minResolvedAt)
     .map(publicReceipt)
     .filter(Boolean)
-    .sort((a, b) => b.resolvedAt - a.resolvedAt || a.question.localeCompare(b.question))
+    .sort((a, b) => b.resolvedAt - a.resolvedAt || a.question.localeCompare(b.question, 'en-US'))
     .slice(0, limit);
 }
 
@@ -1854,7 +1854,7 @@ export function buildPublicForecastArchive(ledger, nowMs) {
         && point.length === 2 && typeof point[0] === 'string' && Number.isFinite(Date.parse(point[0]))
         && Number.isFinite(point[1]) && point[1] >= 0 && point[1] <= 1).map(([at, p]) => [at, p]) } : {}),
     }];
-  }).sort((a, b) => b.resolvedAt - a.resolvedAt || a.forecastId.localeCompare(b.forecastId) || a.question.localeCompare(b.question));
+  }).sort((a, b) => b.resolvedAt - a.resolvedAt || a.forecastId.localeCompare(b.forecastId, 'en-US') || a.question.localeCompare(b.question, 'en-US'));
   const archive = { generatedAt: nowMs, rollingWindowDays: DEFAULT_ROLLING_WINDOW_DAYS, rows };
   if (Buffer.byteLength(JSON.stringify(archive)) > 512 * 1024 - 1024) throw new Error('Forecast archive exceeds 512 KB');
   return archive;

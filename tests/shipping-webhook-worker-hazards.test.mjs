@@ -460,6 +460,8 @@ describe('runTick: natural.hazard deliveries', () => {
     await tick(fake, deliver);
     assert.deepEqual(Object.keys(fake.store.get(HAZARD_INIT_KEY)).sort(), ['eq', 'nat']);
     assert.equal(fake.store.get(HAZARD_INIT_KEY).eq, String(NOW));
+    assert.ok(fake.log.some(command => command[0] === 'HKEYS' && command[1] === HAZARD_INIT_KEY));
+    assert.ok(!fake.log.some(command => command[0] === 'HGETALL' && command[1] === HAZARD_INIT_KEY));
     assert.equal(fake.ttl.has(HAZARD_INIT_KEY), false, 'the marker never expires');
     fake.store.delete(SEEN);
     setFeed(fake, { earthquakes: [quake()] });

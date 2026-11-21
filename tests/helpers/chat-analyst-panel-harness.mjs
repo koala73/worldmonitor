@@ -56,6 +56,7 @@ async function loadChatAnalystPanel() {
       export function hasTauriInvokeBridge() { return false; }
     `],
     ['analytics-stub', `
+      export function trackGateHit() {} export function trackPanelGateClick() {}
       export function trackLayoutCustomized() {}
       export function trackAnalystControlAction(actionType, status, reason) {
         globalThis.__wmAnalystControlTelemetry?.push({
@@ -94,6 +95,7 @@ async function loadChatAnalystPanel() {
     `],
     ['analyst-markdown-stub', `
       export function postProcessAnalystHtml(html) { return html; }
+      export function balanceStreamingMarkdown(text) { return text; }
     `],
     ['marked-stub', `
       export const marked = { parse: (s) => s };

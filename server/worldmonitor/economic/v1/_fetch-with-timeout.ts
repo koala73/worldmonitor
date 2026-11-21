@@ -1,13 +1,8 @@
 /**
- * Fetch with an AbortController deadline.
- * Clears the timeout in all cases to avoid timer leaks.
+ * Fetch with a deadline that also covers the caller's response-body read.
  */
 export async function fetchWithTimeout(url: string, init: RequestInit = {}, timeout = 8000): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  const deadline = AbortSignal.timeout(timeout);
+  const signal = init.signal ? AbortSignal.any([init.signal, deadline]) : deadline;
+  return fetch(url, { ...init, signal });
 }

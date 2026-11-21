@@ -221,6 +221,21 @@ beforeEach(() => {
 });
 
 describe("gateway direct LLM quota", () => {
+  test.each([
+    [{ "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate" }, 403],
+    [{}, 403],
+    [{ "Sec-Fetch-Site": "same-origin" }, 200],
+    [{ Origin: "https://www.worldmonitor.app" }, 200],
+  ])("cookie-backed model requests require request intent: %j", async (intent, status) => {
+    validateApiKey.mockResolvedValue({ valid: true, required: true, kind: "enterprise", credential: "cookie-operator" });
+    const calls = { classify: 0, deduct: 0, cache: 0 };
+    const response = await makeGateway(calls)(req(`${CLASSIFY_PATH}?title=Novel`, {
+      headers: { Cookie: "__Host-wm-pro-key=cookie-operator", ...intent },
+    }), { waitUntil: () => {} });
+    expect(response.status).toBe(status);
+    expect(calls.classify).toBe(status === 200 ? 1 : 0);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(status === 200 ? 1 : 0);
+  });
   describe.each([CLASSIFY_PATH, COUNTRY_BRIEF_PATH, ANALYZE_PATH])("GET compatibility quota: %s", (path) => {
     beforeEach(() => {
       const entitlements = {

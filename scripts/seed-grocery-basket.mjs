@@ -1,40 +1,114 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, readSeedSnapshot, bulkReadLearnedRoutes, bulkWriteLearnedRoutes, isAllowedRouteHost, processItemRoute, getSharedFxRates, SHARED_FX_FALLBACKS } from './_seed-utils.mjs';
-
-loadEnvFile(import.meta.url);
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, readSeedSnapshot, writeExtraKey, bulkReadLearnedRoutes, bulkWriteLearnedRoutes, isAllowedRouteHost, processItemRoute, getSharedFxRates, SHARED_FX_FALLBACKS, allSettledWithConcurrency } from './_seed-utils.mjs';
 
 const config = loadSharedConfig('grocery-basket.json');
+export const COUNTRIES = config.countries;
+
+// Countries processed at once (each runs its 10 items concurrently, so up to 40
+// Firecrawl/EXA calls in flight; the Firecrawl plan allows 100). See fetchGroceryBasketPrices.
+export const COUNTRY_CONCURRENCY = 4;
 
 const CANONICAL_KEY = 'economic:grocery-basket:v1';
 const CACHE_TTL = 864000; // 10 days — weekly seed with 3-day cron-drift buffer
 // Bump when basket composition changes materially — invalidates WoW until a new baseline runs.
-const BASKET_VERSION = 2; // v2: oil changed from sunflower to canola
-const EXA_DELAY_MS = 150;
+const BASKET_VERSION = 3; // v3: verified offers normalized to basket quantities
 
 const FIRECRAWL_DELAY_MS = 500;
 
 const FX_FALLBACKS = SHARED_FX_FALLBACKS;
 
 
-async function searchExa(query, sites, locationCode) {
+const UNIT_FACTORS = {
+  g: ['mass', 1], kg: ['mass', 1000], lb: ['mass', 453.59237], oz: ['mass', 28.349523125],
+  ml: ['volume', 1], l: ['volume', 1000], us_fl_oz: ['volume', 29.5735295625], us_qt: ['volume', 946.352946],
+  pc: ['count', 1],
+};
+
+const STAPLES = {
+  sugar: 'plain white granulated sugar',
+  salt: 'fine table or cooking salt',
+  rice: 'plain dry white rice, excluding glutinous or prepared rice',
+  pasta: 'plain dry spaghetti',
+  potatoes: 'fresh raw potatoes, excluding sweet potatoes and processed potato products',
+  oil: 'pure canola or rapeseed oil, excluding blended oils',
+  flour: 'plain all-purpose wheat flour',
+  eggs: 'fresh whole chicken eggs in the shell',
+  milk: 'plain whole or full-cream dairy milk, excluding powdered and flavored milk',
+  bread: 'plain white bread sold as a loaf',
+};
+
+const OFFER_SCHEMA = {
+  type: 'object',
+  properties: {
+    offerEvidence: { type: 'string', description: 'Briefly identify the main product, what the price covers, and whether the page offers it for sale.' },
+    productName: { type: 'string' },
+    price: { type: 'number' },
+    currency: { type: 'string' },
+    quantity: { type: 'number' },
+    unit: { type: 'string', enum: Object.keys(UNIT_FACTORS) },
+    matchesStaple: { type: 'boolean', description: 'True when the main product is the requested staple and has a price and quantity for the same available offer.' },
+  },
+  required: ['offerEvidence', 'productName', 'price', 'currency', 'quantity', 'unit', 'matchesStaple'],
+};
+
+function offerPrompt(item, currency) {
+  return `Extract the main product's available retail offer for ${STAPLES[item.id]}.
+Use offerEvidence to explain which price and quantity belong to the main product.
+Set matchesStaple to true when this is a product page and the main product matches the staple,
+is offered for sale, and displays both its price and quantity. A shelf price beside an Add to
+cart or Add to trolley control is an offer, even if the page also shows a reference unit price.
+Copy the main productName, the shelf price for the entire pack and its ISO currency code
+(expected ${currency}). Use the retailer's displayed country to interpret local currency symbols.
+Return the total quantity covered by that exact price, including all pieces in a multipack.
+Use pc for the number of eggs. For loose fresh potatoes, a price quoted per kg or lb is valid.
+Set matchesStaple to false on category, search and review pages, for a different or unavailable
+product, or when only a member price, reference price or related product's price is shown.
+Only use units in the schema. Never guess a quantity or combine details from different offers.`;
+}
+
+function offerNumber(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && /^(?:\d+\.?\d*|\.\d+)$/.test(value.trim())) return Number(value);
+  return NaN;
+}
+
+function normalizeOffer(offer, item, currency, fxRate) {
+  if (offer?.matchesStaple !== true || typeof offer.productName !== 'string' || !offer.productName.trim()) return null;
+  if (typeof offer.offerEvidence !== 'string' || !offer.offerEvidence.trim()) return null;
+  if (typeof offer.currency !== 'string' || offer.currency.trim().toUpperCase() !== currency) return null;
+  const packPrice = offerNumber(offer.price);
+  const packQuantity = offerNumber(offer.quantity);
+  if (!Number.isFinite(packPrice) || packPrice <= 0 || !Number.isFinite(packQuantity) || packQuantity <= 0) return null;
+  const offerUnit = typeof offer.unit === 'string' ? offer.unit.trim().toLowerCase() : '';
+  const source = Object.hasOwn(UNIT_FACTORS, offerUnit) ? UNIT_FACTORS[offerUnit] : null;
+  const [, quantity, unit] = /^(\d+)([a-z]+)$/i.exec(item.unit);
+  const [dimension, factor] = UNIT_FACTORS[unit.toLowerCase()];
+  if (source?.[0] !== dimension || (dimension === 'count' && !Number.isInteger(packQuantity))) return null;
+  const basketUnits = packQuantity * source[1] / (Number(quantity) * factor);
+  if (basketUnits > MAX_OFFER_BASKET_UNITS) return null;
+  const price = packPrice / basketUnits;
+  if (!Number.isFinite(price) || price <= (CURRENCY_MIN[currency] ?? 0)) return null;
+  const usdPrice = price * fxRate;
+  if (fxRate && (usdPrice < MIN_ITEM_USD_PRICE || usdPrice > ITEM_USD_MAX[item.id])) return null;
+  return price;
+}
+
+async function searchExa(item, country) {
   const apiKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
   if (!apiKey) throw new Error('EXA_API_KEYS or EXA_API_KEY not set');
 
   const body = {
-    query,
+    query: `${item.query} price`,
     numResults: 5,
     type: 'auto',
     // Restrict to known local supermarket/retailer domains per country — prevents EXA
     // neural search from returning USD-priced global comparison pages (Numbeo, Tridge, etc.)
-    includeDomains: sites,
+    includeDomains: country.sites,
     // Bias results toward the target country's web
-    userLocation: locationCode,
+    userLocation: country.code,
     contents: {
-      summary: {
-        // Explicitly request ISO currency code so regex can reliably match
-        query: 'What is the retail price of this product? State amount and ISO currency code (e.g. GBP 1.50, EUR 2.99, JPY 193).',
-      },
+      summary: { query: offerPrompt(item, country.currency), schema: OFFER_SCHEMA },
     },
   };
 
@@ -58,7 +132,7 @@ async function searchExa(query, sites, locationCode) {
 }
 
 // Firecrawl fallback — renders JS-heavy SPA pages and extracts prices via LLM schema
-async function scrapeFirecrawl(url, expectedCurrency) {
+async function scrapeFirecrawl(url, item, currency, fxRate) {
   const apiKey = process.env.FIRECRAWL_API_KEY || '';
   if (!apiKey) return null;
   try {
@@ -71,17 +145,7 @@ async function scrapeFirecrawl(url, expectedCurrency) {
       body: JSON.stringify({
         url,
         formats: ['extract'],
-        extract: {
-          prompt: `Find the retail unit price of the grocery product on this page. Return the numeric price and ISO 4217 currency code (e.g. ${expectedCurrency}).`,
-          schema: {
-            type: 'object',
-            properties: {
-              price: { type: 'number', description: 'Retail price as a number' },
-              currency: { type: 'string', description: 'ISO 4217 currency code, e.g. SAR, KRW, USD' },
-            },
-            required: ['price', 'currency'],
-          },
-        },
+        extract: { prompt: offerPrompt(item, currency), schema: OFFER_SCHEMA },
       }),
       signal: AbortSignal.timeout(30_000),
     });
@@ -91,51 +155,13 @@ async function scrapeFirecrawl(url, expectedCurrency) {
       return null;
     }
     const data = await resp.json();
-    const ex = data?.data?.extract;
-    if (!ex?.price || ex.price <= 0) return null;
-    const ccy = (ex.currency || '').toUpperCase().trim();
-    if (ccy !== expectedCurrency) {
-      console.warn(`    [Firecrawl] currency mismatch: got ${ccy}, expected ${expectedCurrency}`);
-      return null;
-    }
-    const minPrice = CURRENCY_MIN[expectedCurrency] ?? 0;
-    if (ex.price <= minPrice || ex.price >= 100000) return null;
-    return { price: ex.price, currency: expectedCurrency, source: url };
+    const price = normalizeOffer(data?.data?.extract, item, currency, fxRate);
+    return price === null ? null : { price, source: url };
   } catch (err) {
     console.warn(`    [Firecrawl] error: ${err.message}`);
     return null;
   }
 }
-
-// Fast learned-route replay: direct fetch + matchPrice + same guardrails as EXA/Firecrawl paths.
-// Inline (not in _seed-utils) because it closes over CURRENCY_MIN, ITEM_USD_MAX, matchPrice.
-async function tryDirectFetch(url, expectedCurrency, itemId, fxRate) {
-  try {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!resp.ok) return null;
-    const text = await resp.text();
-    const hit = matchPrice(text.slice(0, 10_000), url);
-    if (!hit || hit.currency !== expectedCurrency) return null;
-    const minPrice = CURRENCY_MIN[expectedCurrency] ?? 0;
-    if (hit.price <= minPrice || hit.price >= 100_000) return null;
-    if (fxRate && ITEM_USD_MAX[itemId] && hit.price * fxRate > ITEM_USD_MAX[itemId]) {
-      console.warn(`    [learned bulk] ${itemId}: ${hit.price} ${expectedCurrency} ($${(hit.price * fxRate).toFixed(2)}) > max — skipping`);
-      return null;
-    }
-    return hit.price;
-  } catch {
-    return null;
-  }
-}
-
-// All supported currency codes — keep in sync with grocery-basket.json fxSymbols
-const CCY = 'USD|GBP|EUR|JPY|CNY|INR|AUD|CAD|BRL|MXN|ZAR|TRY|NGN|KRW|SGD|PKR|AED|SAR|QAR|KWD|BHD|OMR|EGP|JOD|LBP|KES|ARS|IDR|PHP';
-
-// Currency symbol → ISO code map for sites that use symbols instead of ISO codes
-const SYMBOL_MAP = { '£': 'GBP', '€': 'EUR', '¥': 'JPY', '₩': 'KRW', '₹': 'INR', '₦': 'NGN', 'R$': 'BRL' };
 
 // Minimum plausible local price per currency — prevents matching product codes / IDs
 // e.g. IDR 4 = $0.0003 (nonsense), NGN 20 = $0.01 (nonsense), KRW 5 = $0.004 (nonsense)
@@ -145,81 +171,167 @@ const SYMBOL_MAP = { '£': 'GBP', '€': 'EUR', '¥': 'JPY', '₩': 'KRW', '₹'
 // INR: Indian supermarket prices ≥ 12 INR; under 12 = product code or stale clearance.
 const CURRENCY_MIN = { NGN: 50, IDR: 500, ARS: 50, KRW: 1000, ZAR: 2, PKR: 20, LBP: 1000, JPY: 50, TRY: 10, EGP: 5, INR: 12 };
 
+// Bound retail pack sizes in basket units across all supported source units.
+const MAX_OFFER_BASKET_UNITS = 100;
+const MIN_ITEM_USD_PRICE = 0.01;
+
 // Maximum plausible USD price per item — catches bulk/wholesale/specialty products.
 // Set to ~2× the most expensive legitimate retail price globally for each item.
 // Previous caps were too loose (e.g. sugar: 8 allowed 5.99 EUR organic sugar from carrefour.fr).
 const ITEM_USD_MAX = { sugar: 3.5, salt: 2.5, rice: 6, pasta: 3.5, potatoes: 6, oil: 10, flour: 4.5, eggs: 12, milk: 5, bread: 6 };
 
-// Pattern order matters: try currency-FIRST (e.g. "GBP 1.50") before number-first
-// to avoid matching pack sizes / weights that precede a currency token (e.g. "12 SAR" in "eggs 12 SAR 8.99")
-const PRICE_PATTERNS = [
-  new RegExp(`(${CCY})\\s*(\\d+(?:\\.\\d{1,3})?)`, 'i'),  // CCY then number (preferred)
-  new RegExp(`(\\d+(?:\\.\\d{1,3})?)\\s*(${CCY})`, 'i'),  // number then CCY (fallback — use last match)
-];
+// Prices one country's basket. Items run concurrently; learned-route updates and
+// evictions are recorded into the shared maps (keys are per-country, so concurrent
+// countries never collide).
+export async function fetchCountryItems(country, { fxRate, learnedRoutes, routeUpdates, routeDeletes, processItemRouteFn = processItemRoute }) {
+  console.log(`\n  Processing ${country.flag} ${country.name} (${country.currency})...`);
+  const allowedHosts = country.sites.map(s => s.replace(/^www\./, '').split('/')[0]);
 
-function matchPrice(text, url) {
-  // Pattern 0: currency-first — take the first match (safe, no ambiguity)
-  const re0 = PRICE_PATTERNS[0];
-  const m0 = text.match(re0);
-  if (m0) {
-    const price = parseFloat(m0[2]);
-    const currency = m0[1].toUpperCase();
-    const minPrice = CURRENCY_MIN[currency] ?? 0;
-    if (price > minPrice && price < 100000) return { price, currency, source: url || '' };
-  }
-  // Pattern 1: number-first — collect ALL matches and take the LAST one to avoid
-  // matching pack counts / weights (e.g. "12" in "eggs 12 pack SAR 8.99")
-  const re1 = PRICE_PATTERNS[1];
-  const allMatches = [...text.matchAll(new RegExp(re1.source, 'gi'))];
-  if (allMatches.length) {
-    for (const match of allMatches.reverse()) {
-      const price = parseFloat(match[1]);
-      const currency = match[2].toUpperCase();
-      const minPrice = CURRENCY_MIN[currency] ?? 0;
-      if (price > minPrice && price < 100000) return { price, currency, source: url || '' };
-    }
-  }
-  // Fallback: currency symbols (£, €, ¥, ₹, ₩, ₦, R$)
-  for (const [sym, iso] of Object.entries(SYMBOL_MAP)) {
-    const re = new RegExp(`${sym.replace('$', '\\$')}\\s*(\\d+(?:[.,]\\d{1,3})?)`, 'i');
-    const m = text.match(re);
-    if (m) {
-      const price = parseFloat(m[1].replace(',', '.'));
-      const minPrice = CURRENCY_MIN[iso] ?? 0;
-      if (price > minPrice && price < 100000) return { price, currency: iso, source: url || '' };
-    }
-  }
-  return null;
+  // Process all items concurrently — 100ms stagger to respect EXA/Firecrawl rate limits
+  const settled = await Promise.allSettled(config.items.map(async (item, idx) => {
+    await sleep(idx * 200); // stagger starts — 200ms prevents EXA rate limit with 10 concurrent
+
+    const routeKey = `${country.code}:${item.id}`;
+    const learned = learnedRoutes.get(routeKey);
+
+    // --- Learned route fast path + EXA fallback ---
+    const { localPrice, sourceSite, routeUpdate, routeDelete } = await processItemRouteFn({
+      learned,
+      allowedHosts,
+      currency: country.currency,
+      itemId: item.id,
+      fxRate,
+      itemUsdMax: ITEM_USD_MAX[item.id] || null,
+      // A raw HTML price has no reliable association with an offer or quantity.
+      tryDirectFetch: async () => null,
+      scrapeFirecrawl: (url) => scrapeFirecrawl(url, item, country.currency, fxRate),
+      fetchViaExa: async () => {
+        const urls = [];
+        try {
+          const result = await searchExa(item, country);
+          for (const entry of result?.results ?? []) {
+            if (!isAllowedRouteHost(entry.url, allowedHosts)) continue;
+            urls.push(entry.url);
+            let offer;
+            try { offer = JSON.parse(entry.summary); } catch { continue; }
+            const price = normalizeOffer(offer, item, country.currency, fxRate);
+            if (price !== null) return { localPrice: price, sourceSite: entry.url };
+          }
+        } catch (err) {
+          console.warn(`    [${country.code}/${item.id}] EXA error: ${err.message}`);
+        }
+        for (const url of urls.slice(0, 2)) {
+          const offer = await scrapeFirecrawl(url, item, country.currency, fxRate);
+          if (offer) return { localPrice: offer.price, sourceSite: offer.source };
+        }
+        return null;
+      },
+      sleep,
+      firecrawlDelayMs: FIRECRAWL_DELAY_MS,
+    });
+
+    if (routeDelete) routeDeletes.add(routeKey);
+    if (routeUpdate) routeUpdates.set(routeKey, routeUpdate);
+
+    const usdPrice = localPrice !== null && fxRate ? +(localPrice * fxRate).toFixed(4) : null;
+    const status = localPrice !== null ? `${localPrice} ${country.currency} = $${usdPrice}` : 'N/A';
+    // Country-prefixed: countries run concurrently, so their item lines interleave.
+    console.log(`    [${country.code}] ${item.id}: ${status}`);
+
+    return {
+      itemId: item.id,
+      itemName: item.name,
+      unit: item.unit,
+      localPrice: localPrice !== null ? +localPrice.toFixed(4) : null,
+      usdPrice,
+      currency: country.currency,
+      sourceSite,
+      available: localPrice !== null,
+    };
+  }));
+
+  // allSettled, not all: a throwing item must not release this country's
+  // concurrency slot while its siblings are still calling Firecrawl/EXA and
+  // recording route changes. Only the throwing item degrades.
+  return settled.map((s, idx) => {
+    if (s.status === 'fulfilled') return s.value;
+    const item = config.items[idx];
+    console.warn(`    [${country.code}] ${item.id}: failed: ${s.reason?.message || s.reason}`);
+    return unavailableItem(item, country);
+  });
 }
 
-function extractPrice(result, expectedCurrency) {
-  const url = result.url || '';
-  const summary = result?.summary;
-  if (summary && typeof summary === 'string') {
-    const hit = matchPrice(summary, url);
-    if (hit && hit.currency !== expectedCurrency) {
-      console.warn(`    [extractPrice] currency mismatch: got ${hit.currency}, expected ${expectedCurrency} — ${url}`);
-      return null;
-    }
-    if (hit) return hit;
-  }
-  // Fallback: title
-  const fromTitle = matchPrice(result.title || '', url);
-  if (fromTitle && fromTitle.currency !== expectedCurrency) return null;
-  return fromTitle;
+function unavailableItem(item, country) {
+  return {
+    itemId: item.id,
+    itemName: item.name,
+    unit: item.unit,
+    localPrice: null,
+    usdPrice: null,
+    currency: country.currency,
+    sourceSite: '',
+    available: false,
+  };
 }
 
-async function fetchGroceryBasketPrices(prevSnapshot) {
-  const fxRates = await getSharedFxRates(config.fxSymbols, FX_FALLBACKS);
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
+// The six-hourly cron runs at fixed clock times, so a basket from exactly a week ago normally exists.
+// The slack keeps a comparison when a run near that time failed.
+const BASELINE_TOLERANCE_MS = DAY_MS / 2;
+const HISTORY_RETENTION_MS = WEEK_MS + 2 * DAY_MS;
 
-  const countriesResult = [];
+export function recordBaseline(entries, snapshot) {
+  const fetchedAt = Date.parse(snapshot.fetchedAt);
+  const totals = Object.fromEntries(snapshot.countries
+    .filter(country => hasFullBasket(country.items))
+    .map(country => [country.code, basketTotal(country.items)]));
+  return [
+    ...entries.filter(entry => {
+      const at = Date.parse(entry.fetchedAt);
+      return at !== fetchedAt && fetchedAt - at <= HISTORY_RETENTION_MS;
+    }),
+    { fetchedAt: snapshot.fetchedAt, basketVersion: snapshot.basketVersion, totals },
+  ].sort((a, b) => Date.parse(a.fetchedAt) - Date.parse(b.fetchedAt));
+}
+
+export function selectWeekAgo(entries, now) {
+  const target = now.getTime() - WEEK_MS;
+  const distance = entry => Math.abs(Date.parse(entry.fetchedAt) - target);
+  return entries
+    .filter(entry => entry.basketVersion === BASKET_VERSION && distance(entry) <= BASELINE_TOLERANCE_MS)
+    .sort((a, b) => distance(a) - distance(b))[0];
+}
+
+function hasFullBasket(items) {
+  return items?.length === config.items.length && config.items.every(({ id, unit }) =>
+    items.some(item => item.itemId === id && item.unit === unit && item.available &&
+      Number.isFinite(item.usdPrice) && item.usdPrice > 0)
+  );
+}
+
+function basketTotal(items) {
+  // Sum displayed cents so the country total agrees with the individual prices.
+  return items.reduce((total, item) =>
+    total + (item.available && item.usdPrice > 0 ? Math.round(Number(item.usdPrice.toFixed(2)) * 100) : 0), 0
+  ) / 100;
+}
+
+export async function fetchGroceryBasketPrices(baseline, {
+  now = new Date(),
+  fetchCountryItemsFn = fetchCountryItems,
+  getFxRatesFn = getSharedFxRates,
+  routes = { read: bulkReadLearnedRoutes, write: bulkWriteLearnedRoutes },
+  concurrency = COUNTRY_CONCURRENCY,
+} = {}) {
+  const fxRates = await getFxRatesFn(config.fxSymbols, FX_FALLBACKS);
 
   // Load all learned routes in one pipeline request before the country loop.
   // Include sentinel keys for one-time migrations so each eviction only fires once.
   const OIL_MIGRATION_KEY = '_migration:canola-oil-v1';
   const BAD_PRICES_KEY    = '_migration:bad-prices-v1'; // JP/TR/EG/IN sub-unit scrapes + JP site change
   const routeKeys = [...config.countries.flatMap(c => config.items.map(i => `${c.code}:${i.id}`)), OIL_MIGRATION_KEY, BAD_PRICES_KEY];
-  const learnedRoutes = await bulkReadLearnedRoutes('grocery-basket', routeKeys).catch((err) => {
+  const learnedRoutes = await routes.read('grocery-basket', routeKeys).catch((err) => {
     console.warn(`  [routes] load failed (non-fatal): ${err.message}`);
     return new Map();
   });
@@ -233,7 +345,7 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
     const oilEvictions = new Set(config.countries.map(c => `${c.code}:oil`).filter(k => learnedRoutes.has(k)));
     if (oilEvictions.size > 0) {
       console.log(`  [routes] one-time migration: evicting ${oilEvictions.size} stale oil routes (sunflower → canola)`);
-      await bulkWriteLearnedRoutes('grocery-basket', new Map(), oilEvictions).catch(err =>
+      await routes.write('grocery-basket', new Map(), oilEvictions).catch(err =>
         console.warn(`  [routes] oil eviction failed (non-fatal): ${err.message}`)
       );
       for (const k of oilEvictions) learnedRoutes.delete(k);
@@ -253,7 +365,7 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
     ].filter(k => learnedRoutes.has(k)));
     if (knownBad.size > 0) {
       console.log(`  [routes] one-time eviction: clearing ${knownBad.size} known-bad price routes (JP sites + TR/EG/IN sub-unit)`);
-      await bulkWriteLearnedRoutes('grocery-basket', new Map(), knownBad).catch(err =>
+      await routes.write('grocery-basket', new Map(), knownBad).catch(err =>
         console.warn(`  [routes] bad-prices eviction failed (non-fatal): ${err.message}`)
       );
       for (const k of knownBad) learnedRoutes.delete(k);
@@ -261,113 +373,38 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
     routeUpdates.set(BAD_PRICES_KEY, 'done');
   }
 
-  for (const country of config.countries) {
-    console.log(`\n  Processing ${country.flag} ${country.name} (${country.currency})...`);
+  // Countries run with BOUNDED CONCURRENCY. Serially, 24 countries at ~42s each
+  // (learned-route Firecrawl scrapes, 30s timeouts) took ~1000s and tripped the
+  // 840s fetch-phase deadline at country 21 — a weekly exit-75 "Deploy Crashed!".
+  // At 4 in flight the worst case is ⌈24/4⌉ = 6 waves × ~115s per-country
+  // critical path (30s Firecrawl + 15s EXA + 2×30s Firecrawl) ≈ 630s.
+  const settled = await allSettledWithConcurrency(config.countries, concurrency, (country) => {
     const fxRate = fxRates[country.currency] || FX_FALLBACKS[country.currency] || null;
-    const allowedHosts = country.sites.map(s => s.replace(/^www\./, '').split('/')[0]);
+    return fetchCountryItemsFn(country, { fxRate, learnedRoutes, routeUpdates, routeDeletes });
+  });
 
-    // Process all items concurrently — 100ms stagger to respect EXA/Firecrawl rate limits
-    const itemPrices = await Promise.all(config.items.map(async (item, idx) => {
-      await sleep(idx * 200); // stagger starts — 200ms prevents EXA rate limit with 10 concurrent
+  const countriesResult = config.countries.map((country, i) => {
+    const fxRate = fxRates[country.currency] || FX_FALLBACKS[country.currency] || null;
+    let itemPrices = settled[i].status === 'fulfilled' ? settled[i].value : null;
+    if (!itemPrices) {
+      console.warn(`    [${country.code}] processing failed: ${settled[i].reason?.message || settled[i].reason}`);
+      itemPrices = config.items.map(item => unavailableItem(item, country));
+    }
 
-      const routeKey = `${country.code}:${item.id}`;
-      const learned = learnedRoutes.get(routeKey);
-
-      // --- Learned route fast path + EXA fallback ---
-      const { localPrice, sourceSite, routeUpdate, routeDelete } = await processItemRoute({
-        learned,
-        allowedHosts,
-        currency: country.currency,
-        itemId: item.id,
-        fxRate,
-        itemUsdMax: ITEM_USD_MAX[item.id] || null,
-        tryDirectFetch,
-        scrapeFirecrawl,
-        fetchViaExa: async () => {
-          let exaPrice = null;
-          let exaSite = '';
-          let exaUrls = [];
-          try {
-            const exaResult = await searchExa(`${item.query} price`, country.sites, country.code);
-            if (exaResult?.results?.length) {
-              exaUrls = exaResult.results.map(r => r.url).filter(Boolean);
-              for (const result of exaResult.results) {
-                const extracted = extractPrice(result, country.currency);
-                if (!extracted) continue;
-                if (fxRate && ITEM_USD_MAX[item.id]) {
-                  const usdEquiv = extracted.price * fxRate;
-                  if (usdEquiv > ITEM_USD_MAX[item.id]) {
-                    console.warn(`    [bulk] ${item.id}: ${extracted.price} ${country.currency} ($${usdEquiv.toFixed(2)}) > max $${ITEM_USD_MAX[item.id]} — skipping`);
-                    continue;
-                  }
-                }
-                exaPrice = extracted.price;
-                exaSite = extracted.source;
-                break;
-              }
-            }
-          } catch (err) {
-            console.warn(`    [${country.code}/${item.id}] EXA error: ${err.message}`);
-          }
-          // Firecrawl fallback for EXA-discovered URLs (handles JS-heavy SPAs)
-          if (exaPrice === null && exaUrls.length > 0) {
-            for (const url of exaUrls.slice(0, 2)) {
-              const fc = await scrapeFirecrawl(url, country.currency);
-              if (!fc) continue;
-              if (fxRate && ITEM_USD_MAX[item.id]) {
-                const usdEquiv = fc.price * fxRate;
-                if (usdEquiv > ITEM_USD_MAX[item.id]) {
-                  console.warn(`    [FC bulk] ${item.id}: ${fc.price} ${country.currency} ($${usdEquiv.toFixed(2)}) > max — skipping`);
-                  continue;
-                }
-              }
-              exaPrice = fc.price;
-              exaSite = fc.source;
-              console.log(`    [FC✓] ${item.id}: ${url.slice(0, 55)}`);
-              break;
-            }
-          }
-          return exaPrice !== null ? { localPrice: exaPrice, sourceSite: exaSite } : null;
-        },
-        sleep,
-        firecrawlDelayMs: FIRECRAWL_DELAY_MS,
-      });
-
-      if (routeDelete) routeDeletes.add(routeKey);
-      if (routeUpdate) routeUpdates.set(routeKey, routeUpdate);
-
-      const usdPrice = localPrice !== null && fxRate ? +(localPrice * fxRate).toFixed(4) : null;
-      const status = localPrice !== null ? `${localPrice} ${country.currency} = $${usdPrice}` : 'N/A';
-      console.log(`    ${item.id}: ${status}`);
-
-      return {
-        itemId: item.id,
-        itemName: item.name,
-        unit: item.unit,
-        localPrice: localPrice !== null ? +localPrice.toFixed(4) : null,
-        usdPrice,
-        currency: country.currency,
-        sourceSite,
-        available: localPrice !== null,
-      };
-    }));
-
-    let totalUsd = 0;
-    for (const ip of itemPrices) if (ip.usdPrice !== null) totalUsd += ip.usdPrice;
-
-    countriesResult.push({
+    return {
       code: country.code,
       name: country.name,
       currency: country.currency,
       flag: country.flag,
-      totalUsd: +totalUsd.toFixed(2),
+      totalUsd: 0,
+      wowPct: null,
       fxRate: fxRate || 0,
       items: itemPrices,
-    });
-  }
+    };
+  });
 
   // Persist learned routes for next run (non-fatal)
-  await bulkWriteLearnedRoutes('grocery-basket', routeUpdates, routeDeletes).catch(err =>
+  await routes.write('grocery-basket', routeUpdates, routeDeletes).catch(err =>
     console.warn(`  [routes] write failed (non-fatal): ${err.message}`)
   );
 
@@ -403,92 +440,81 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
     }
   }
   if (outlierEvictions.size > 0) {
-    await bulkWriteLearnedRoutes('grocery-basket', new Map(), outlierEvictions).catch(err =>
+    await routes.write('grocery-basket', new Map(), outlierEvictions).catch(err =>
       console.warn(`  [routes] outlier eviction write failed (non-fatal): ${err.message}`)
     );
   }
-  // Recompute totals after outlier pass
+  const rankable = [];
   for (const country of countriesResult) {
-    country.totalUsd = +country.items.reduce((s, ip) => s + (ip.usdPrice ?? 0), 0).toFixed(2);
-  }
-
-  // Only rank countries with enough items found — a country with 4/10 items
-  // could appear "cheapest" purely due to missing data, not actual prices.
-  const MIN_ITEMS_FOR_RANKING = Math.ceil(config.items.length * 0.7); // ≥ 70% coverage
-  const rankable = countriesResult.filter(c => {
-    const found = c.items.filter(ip => ip.available).length;
-    return c.totalUsd > 0 && found >= MIN_ITEMS_FOR_RANKING;
-  });
-  const cheapest = rankable.length ? rankable.reduce((a, b) => a.totalUsd < b.totalUsd ? a : b).code : '';
-  const mostExpensive = rankable.length ? rankable.reduce((a, b) => a.totalUsd > b.totalUsd ? a : b).code : '';
-
-  // Compute WoW per country — only valid when prev snapshot used the same basket composition.
-  // A version mismatch (e.g. oil changed from sunflower to canola) would produce bogus deltas.
-  const wowAvailable = prevSnapshot?.countries?.length > 0 && prevSnapshot.basketVersion === BASKET_VERSION;
-  if (wowAvailable) {
-    const prevMap = Object.fromEntries(prevSnapshot.countries.map(c => [c.code, c.totalUsd]));
-    for (const country of countriesResult) {
-      if (country.totalUsd > 0 && prevMap[country.code] != null && prevMap[country.code] > 0) {
-        country.wowPct = +((country.totalUsd - prevMap[country.code]) / prevMap[country.code] * 100).toFixed(2);
-      } else {
-        country.wowPct = null;
-      }
+    country.totalUsd = basketTotal(country.items);
+    if (!hasFullBasket(country.items)) continue;
+    rankable.push(country);
+    const priorTotal = baseline?.totals[country.code];
+    if (priorTotal > 0) {
+      country.wowPct = +((country.totalUsd - priorTotal) / priorTotal * 100).toFixed(2);
     }
   }
-
-  const wowCountries = wowAvailable ? countriesResult.filter(c => c.wowPct != null) : [];
+  rankable.sort((a, b) => a.totalUsd - b.totalUsd);
+  const wowCountries = rankable.filter(country => country.wowPct !== null);
+  const wowAvailable = wowCountries.length > 0;
   const wowAvgPct = wowCountries.length > 0
     ? +(wowCountries.reduce((s, c) => s + c.wowPct, 0) / wowCountries.length).toFixed(2)
     : 0;
 
   return {
     countries: countriesResult,
-    fetchedAt: new Date().toISOString(),
-    cheapestCountry: cheapest,
-    mostExpensiveCountry: mostExpensive,
+    fetchedAt: now.toISOString(),
+    cheapestCountry: rankable[0]?.code ?? '',
+    mostExpensiveCountry: rankable.at(-1)?.code ?? '',
     wowAvgPct,
     wowAvailable,
-    prevFetchedAt: wowAvailable ? (prevSnapshot.fetchedAt ?? '') : '',
+    prevFetchedAt: wowAvailable ? baseline.fetchedAt : '',
     basketVersion: BASKET_VERSION,
   };
 }
-
-const prevSnapshot = await readSeedSnapshot(CANONICAL_KEY);
 
 export function declareRecords(data) {
   return Array.isArray(data?.countries) ? data.countries.length : 0;
 }
 
-await runSeed('economic', 'grocery-basket', CANONICAL_KEY, () => fetchGroceryBasketPrices(prevSnapshot), {
-  ttlSeconds: CACHE_TTL,
-  // 24 countries are fetched SERIALLY (items within a country run concurrently);
-  // per-country critical path is ~8s healthy but ~25s degraded (direct 8s fails →
-  // EXA 15s / Firecrawl 30s on the priced item), so a full run is ~192s healthy but
-  // ~600s degraded — routinely over the default 240s fetch-phase deadline (lockTtlMs
-  // 120s + 120s margin), tripping the #4786 backstop into a graceful exit-75 "crash"
-  // (issue #4864). Every fetch is individually bounded (8/15/30s AbortSignal.timeout),
-  // so this is legitimate serialized latency, not a hang. Size lockTtlMs to the real
-  // worst-case runtime so the deadline (lockTtlMs + 120s = 14min) is a genuine-hang
-  // backstop again — and so the lock outlives the run instead of lapsing at 120s.
-  lockTtlMs: 720_000, // 12min
+// Only run the seed when invoked directly (`node seed-grocery-basket.mjs`), not when
+// imported by a test — matches the repo-wide seeder main-guard idiom.
+const isMain = process.argv[1]?.endsWith('seed-grocery-basket.mjs');
+if (isMain) {
+  loadEnvFile(import.meta.url);
+  const historyKey = `${CANONICAL_KEY}:history`;
+  let history;
 
-  validateFn: (data) => {
-    if (!data?.countries?.length) return false;
-    const minItems = Math.ceil(config.items.length * 0.4); // 40% item coverage per country
-    const covered = data.countries.filter(c => c.items.filter(i => i.available).length >= minItems);
-    if (covered.length < 5) { console.warn(`  [validate] only ${covered.length} countries with ≥40% item coverage — rejecting`); return false; }
-    return true;
-  },
-  recordCount: (data) => data?.countries?.length || 0,
-  extraKeys: prevSnapshot ? [{
-    key: `${CANONICAL_KEY}:prev`,
-    transform: () => prevSnapshot,  // write PRE-overwrite snapshot; ignore new data
-    ttl: CACHE_TTL * 2,
+  await runSeed('economic', 'grocery-basket', CANONICAL_KEY, async () => {
+    const stored = await readSeedSnapshot(historyKey, { strict: true });
+    history = Array.isArray(stored?.entries) ? stored.entries : [];
+    const now = new Date();
+    return fetchGroceryBasketPrices(selectWeekAgo(history, now), { now });
+  }, {
+    ttlSeconds: CACHE_TTL,
+    // Countries run COUNTRY_CONCURRENCY at a time (items within a country run
+    // concurrently). Every fetch is individually bounded (15/30s AbortSignal.timeout),
+    // so the worst case is ~630s (see fetchGroceryBasketPrices) — over the default
+    // 240s fetch-phase deadline (lockTtlMs 120s + 120s margin, issue #4864). Size
+    // lockTtlMs to that worst case so the deadline (lockTtlMs + 120s = 14min) is a
+    // genuine-hang backstop and the lock outlives the run.
+    lockTtlMs: 720_000, // 12min
+
+    validateFn: (data) => {
+      if (!data?.countries?.length) return false;
+      const minItems = Math.ceil(config.items.length * 0.4); // 40% item coverage per country
+      const covered = data.countries.filter(c => c.items.filter(i => i.available).length >= minItems);
+      if (covered.length < 5) { console.warn(`  [validate] only ${covered.length} countries with ≥40% item coverage — rejecting`); return false; }
+      return true;
+    },
+    recordCount: (data) => data?.countries?.length || 0,
+    beforePublish: async (data, { lockFence }) => {
+      await writeExtraKey(historyKey, { entries: recordBaseline(history, data) }, CACHE_TTL, undefined, { lockFence });
+    },
+
     declareRecords,
-  }] : undefined,
-
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 10080,
-  sourceVersion: 'grocery-basket-v1',
-});
+    schemaVersion: 1,
+    maxStaleMin: 10080,
+    sourceVersion: 'grocery-basket-v1',
+  });
+}

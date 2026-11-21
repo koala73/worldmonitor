@@ -12,7 +12,7 @@ This is the API-section companion to the site-wide briefing at https://www.world
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the developer documentation. Route "how do I…" questions here; route live-data calls to the product MCP above.
 - **REST API.** Base `https://api.worldmonitor.app`. API key required. Send the `X-WorldMonitor-Key` header. OpenAPI 3.1 spec: https://www.worldmonitor.app/openapi.yaml. JSON: https://www.worldmonitor.app/openapi.json. Machine-readable API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
 - **REST versioning and deprecation policy:** https://www.worldmonitor.app/api-versioning.md — compatibility guarantees, minimum notice periods, and `Deprecation` / `Sunset` / `Link rel="deprecation"` semantics (HTML: https://www.worldmonitor.app/docs/api-versioning)
-- **CLI:** `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the `worldmonitor` command — a zero-dependency, MCP-first client for the tools and REST API above. https://www.npmjs.com/package/worldmonitor
+- **CLI:** `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the `worldmonitor` command; `brew install worldmonitor` installs it with Homebrew (https://formulae.brew.sh/formula/worldmonitor) — a zero-dependency, MCP-first client for the tools and REST API above. https://www.npmjs.com/package/worldmonitor
 - **SDKs:** official client libraries using the same MCP tools as the CLI — Python `pip install worldmonitor-sdk` (https://pypi.org/project/worldmonitor-sdk/), Ruby `gem install worldmonitor` (https://rubygems.org/gems/worldmonitor), Go `go get github.com/koala73/worldmonitor/sdk/go` (https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go), JavaScript (npm `worldmonitor`), Rust `cargo add worldmonitor` (https://crates.io/crates/worldmonitor; API docs https://docs.rs/worldmonitor/0.1.0/worldmonitor/). The Rust client uses `reqwest` and `serde_json`. Guide: https://www.worldmonitor.app/docs/sdks
 - **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json
 - **Agent Plugin metadata.** https://www.worldmonitor.app/plugin.json describes the Agent Plugins 1.0.0 repository package.
@@ -20,8 +20,8 @@ This is the API-section companion to the site-wide briefing at https://www.world
 
 ## Authentication
 
-- **API key:** send header `X-WorldMonitor-Key: wm_<40-hex>` on subscription-gated MCP and REST data calls. Issue a key at https://www.worldmonitor.app/pro
-- **Free MCP data exception:** `get_sources` is the sole credential-free, daily-quota-free data tool. Anonymous calls use a separate fail-closed limit of 10/minute/IP. All other data tools are subscription-gated.
+- **API key:** send header `X-WorldMonitor-Key: wm_<40-hex>` on REST API calls and paid MCP tools; API keys are a paid feature. Issue a key at https://www.worldmonitor.app/pro
+- **Free MCP access:** `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed. Anonymous `get_sources` calls use a separate fail-closed limit of 10/minute/IP.
 - **OAuth 2.1:** the MCP server supports OAuth (`scope=mcp`). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
 - **Auth matrix, plans & limits:** https://www.worldmonitor.app/docs/usage-auth · machine-readable pricing: https://www.worldmonitor.app/pricing.md · human auth guide: https://www.worldmonitor.app/auth.md
 
@@ -46,7 +46,7 @@ This is the API-section companion to the site-wide briefing at https://www.world
 ## Rate Limits & Quota
 
 - Discovery methods (`tools/list`, `prompts/list`, `describe_tool`) are quota-exempt but rate-limited to 60 requests/minute.
-- `get_sources` is the sole data call that consumes no daily quota. All other data calls are subscription-gated and use the applicable plan limits. Details: https://www.worldmonitor.app/pricing.md
+- `get_sources` consumes no daily quota. Free-account tools draw on the free daily allowance; paid tools use the applicable plan limits. Details: https://www.worldmonitor.app/pricing.md
 
 ## Developer Resource Pages
 

@@ -9,6 +9,11 @@
   var listEl = document.getElementById('reports');
   var tabs = document.querySelectorAll('.tabs button');
   var current = 'pending';
+  function requestDeadline() {
+    var controller = new AbortController();
+    setTimeout(function () { controller.abort(); }, 15000);
+    return controller.signal;
+  }
 
   function readKey() {
     try { return sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { return ''; }
@@ -32,7 +37,7 @@
   function api(path, init) {
     var headers = { 'Content-Type': 'application/json' };
     headers[HEADER] = keyInput.value;
-    return fetch(path, Object.assign({}, init, { headers: headers, credentials: 'omit', cache: 'no-store' }))
+    return fetch(path, Object.assign({}, init, { signal: requestDeadline(), headers: headers, credentials: 'omit', cache: 'no-store' }))
       .then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (body) {
           if (!res.ok) {

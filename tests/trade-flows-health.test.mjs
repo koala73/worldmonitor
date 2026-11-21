@@ -13,7 +13,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { __testing__ } from '../api/health.js';
-import { TRADE_FLOW_META_KEY, TRADE_TTL } from '../scripts/seed-supply-chain-trade.mjs';
+import { SHIPPING_TTL, TRADE_FLOW_META_KEY, TRADE_TTL, TARIFF_TTL } from '../scripts/seed-supply-chain-trade.mjs';
 
 const { classifyKey, STANDALONE_KEYS, SEED_META } = __testing__;
 
@@ -43,7 +43,7 @@ function classifyAt(now, { ageMin = 1, recordCount = 256, present = true } = {})
       keyStrens: new Map(present ? [[KEY, 4096]] : []),
       keyErrors: new Map(),
       keyMetaValues: new Map(present
-        ? [[META, JSON.stringify({ fetchedAt: now - ageMin * ONE_MIN_MS, recordCount })]]
+        ? [[META, JSON.stringify({ fetchedAt: now - ageMin * ONE_MIN_MS, recordCount, payloadTtlSeconds: TRADE_TTL })]]
         : []),
       keyMetaErrors: new Map(),
       now,
@@ -60,7 +60,7 @@ function classifyWithMeta(meta, { ageMin = 1, recordCount = 256, present = true 
       keyStrens: new Map(present ? [[KEY, 4096]] : []),
       keyErrors: new Map(),
       keyMetaValues: new Map(present
-        ? [[META, JSON.stringify({ fetchedAt: STRICT_NOW - ageMin * ONE_MIN_MS, recordCount, ...meta })]]
+        ? [[META, JSON.stringify({ fetchedAt: STRICT_NOW - ageMin * ONE_MIN_MS, recordCount, payloadTtlSeconds: TRADE_TTL, ...meta })]]
         : []),
       keyMetaErrors: new Map(),
       now: STRICT_NOW,
@@ -100,7 +100,7 @@ test('a stopped seeder reads STALE_SEED, and outranks a coverage shortfall', () 
 test('the staleness budget fires before the data keys it vouches for expire', () => {
   // This is a META-ONLY probe: STANDALONE_KEYS.tradeFlows IS the seed-meta key,
   // because the payload is sharded per reporter. So the hasData/EMPTY backstop
-  // watches the meta record (7-day TTL from writeSeedMeta), never the 8h data
+  // watches the meta record (7-day TTL from writeSeedMeta), never the 24h data
   // keys — nothing else would notice them expiring. The budget must therefore
   // land INSIDE the data TTL, the opposite of a probe that watches a real data
   // key. Getting this backwards opens a silent window where every flow key is
@@ -124,6 +124,43 @@ test('a vanished fleet is not reported as healthy', () => {
   const entry = classify({ present: false });
   assert.notEqual(entry.status, 'OK');
 });
+
+for (const [name, ttl] of [
+  ['shippingRates', SHIPPING_TTL],
+  ['tradeFlows', TRADE_TTL],
+  ['tariffTrendsUs', TARIFF_TTL],
+]) {
+  test(`${name} stays healthy at the cron boundary and alarms before and after data expiry`, () => {
+    const key = STANDALONE_KEYS[name];
+    const config = SEED_META[name];
+    const ttlMin = ttl / 60;
+    assert.equal(config.maxStaleMin, 1140);
+    assert.ok(config.maxStaleMin > 360 && config.maxStaleMin < ttlMin);
+    for (const [ageMin, expected] of [
+      [360, 'OK'],
+      [config.maxStaleMin, 'OK'],
+      [config.maxStaleMin + 1, 'STALE_SEED'],
+      [12 * 60, 'OK'],
+      [18 * 60, 'OK'],
+      [ttlMin - 1, 'STALE_SEED'],
+      [ttlMin + 1, name === 'shippingRates' ? 'EMPTY' : 'STALE_SEED'],
+    ]) {
+      const present = ageMin < ttlMin || key === config.key;
+      const entry = classifyKey(name, key, {}, {
+        keyStrens: new Map(present ? [[key, 4096]] : []),
+        keyErrors: new Map(),
+        keyMetaValues: new Map([[config.key, JSON.stringify({
+          fetchedAt: NOW - ageMin * ONE_MIN_MS,
+          recordCount: 256,
+          payloadTtlSeconds: ttl,
+        })]]),
+        keyMetaErrors: new Map(),
+        now: NOW,
+      });
+      assert.equal(entry.status, expected, `${name} at ${ageMin} minutes`);
+    }
+  });
+}
 
 test('a coverage shortfall carries a dominantFailureMode on the entry', () => {
   // #6323: the whole point is an on-call agent can tell a transient WTO outage
@@ -156,3 +193,28 @@ test('the absent-fleet alarm is not softened by any exemption list', () => {
   assert.notEqual(entry.status, 'OK');
   assert.notEqual(entry.status, 'ROLLOUT_PENDING');
 });
+
+for (const name of ['tradeFlows', 'tariffTrendsUs']) {
+  test(`${name} retains the old health limit until its publisher proves longer retention`, () => {
+    const key = STANDALONE_KEYS[name];
+    for (const payloadTtlSeconds of [undefined, null, '86400', 28800, 68400, 86400]) {
+      const budget = payloadTtlSeconds === 86400 ? 1140 : 420;
+      for (const ageMin of [420, 421, 480, 720, 1080, 1140, 1141]) {
+        const entry = classifyKey(name, key, {}, {
+          keyStrens: new Map([[key, 4096]]),
+          keyErrors: new Map(),
+          keyMetaValues: new Map([[key, JSON.stringify({
+            fetchedAt: NOW - ageMin * ONE_MIN_MS,
+            recordCount: 256,
+            payloadTtlSeconds,
+          })]]),
+          keyMetaErrors: new Map(),
+          now: NOW,
+        });
+        assert.equal(entry.maxStaleMin, budget);
+        assert.equal(entry.status, ageMin > budget ? 'STALE_SEED' : 'OK',
+          `${name}, TTL ${payloadTtlSeconds}, age ${ageMin}`);
+      }
+    }
+  });
+}

@@ -1,3 +1,8 @@
+// This pins the canonical AGPL header in LICENSE and the licence,
+// commercial-use and hosted-plan statements in the project documents (#8690,
+// section 2). The published words are the contract, so executing application
+// code cannot verify them.
+//
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,7 +53,7 @@ describe('project license docs', () => {
     const firstContentLine = license.split('\n').find((line) => line.trim().length > 0);
     const agplEnd = license.indexOf('END OF TERMS AND CONDITIONS');
     const projectHeader = license.indexOf('World Monitor — Real-time global intelligence dashboard');
-    const projectCopyright = license.indexOf('Copyright (C) 2024-2026 Elie Habib');
+    const projectCopyright = license.indexOf('Copyright (C) 2026 Elie Habib');
     const projectNotice = license.indexOf('\nThis program is free software:');
 
     assert.equal(firstContentLine?.trim(), 'GNU AFFERO GENERAL PUBLIC LICENSE', 'root LICENSE must start with the canonical AGPL header');

@@ -63,7 +63,7 @@ export default async function handler(
   }
 
   if (req.method !== 'POST') {
-    return Response.json({ error: 'Method not allowed' }, { status: 405, headers: corsHeaders });
+    return Response.json({ error: 'Method not allowed' }, { status: 405, headers: { ...corsHeaders, Allow: 'POST, OPTIONS' } });
   }
 
   // Metered before the body is read so a malformed payload is not a free

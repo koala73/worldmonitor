@@ -26,6 +26,7 @@
  * PROXY_URL curl path when Yahoo rate-limits the direct request.
  */
 import { loadDeclaredCountryStockIndexes } from './_country-stock-index-registry.mjs';
+import { MOEX_SOURCE } from './_country-stock-index-moex.mjs';
 import { buildCountryStockIndexSnapshot } from './_country-stock-index.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
@@ -48,9 +49,12 @@ export function countFiniteCloses(chart) {
  * Classify one declared entry against its probe result. Pure, so the decision
  * table is unit-testable without touching the network.
  *
- * @returns {'ok' | 'flagged-still-dead' | 'dead-but-serviceable' | 'flag-can-lift' | 'probe-error'}
+ * @returns {'ok' | 'flagged-still-dead' | 'dead-but-serviceable' | 'flag-can-lift' | 'probe-error' | 'non-yahoo-source'}
  */
 export function classify(index, { snapshot, error }) {
+  // A MOEX-served entry (#6153) has no Yahoo chart to probe; it is neither
+  // dead nor liftable from this audit's point of view.
+  if (index.source === MOEX_SOURCE) return 'non-yahoo-source';
   if (error) return 'probe-error';
   if (index.unavailable) return snapshot ? 'flag-can-lift' : 'flagged-still-dead';
   return snapshot ? 'ok' : 'dead-but-serviceable';
@@ -70,6 +74,10 @@ export async function auditCountryStockIndexes({
 } = {}) {
   const rows = [];
   for (const index of indexes) {
+    if (index.source === MOEX_SOURCE) {
+      rows.push({ ...index, closes: 0, snapshot: false, error: null, verdict: classify(index, { snapshot: false, error: null }) });
+      continue;
+    }
     let probe;
     try {
       if (rows.length > 0) await sleep(delayMs);

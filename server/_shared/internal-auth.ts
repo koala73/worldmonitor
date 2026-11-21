@@ -30,8 +30,13 @@
  */
 export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const encoder = new TextEncoder();
-  const aHash = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(a)));
-  const bHash = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(b)));
+  // Both digests are independent fixed-cost work; hashing them concurrently
+  // keeps the comparison constant-time while removing a serialized await from
+  // every internal-auth request.
+  const [aHash, bHash] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(a)).then((buf) => new Uint8Array(buf)),
+    crypto.subtle.digest('SHA-256', encoder.encode(b)).then((buf) => new Uint8Array(buf)),
+  ]);
   const n = bHash.length;
   let diff = 0;
   for (let i = 0; i < n; i++) {

@@ -132,15 +132,13 @@ The registration is at `api/health.js:211` (data key) and `api/health.js:403`
 ## Prevention
 
 - **Choose one cutover path before merging a new or repointed health probe.**
-  Complete a Railway-side pre-seed and verify compact health, or add an
-  owner-bound acknowledgement to `scripts/seed-freshness-baseline.json` with an
-  entry-level `expiresAt` bounded to the first scheduled cron window. The latter
-  is only a temporary rollout bridge: at or after its expiry the still-live
-  problem blocks again even if the baseline's root expiry is later. Never use an
-  unbounded acknowledgement to suppress a cutover fault. An intentionally
-  operator-gated producer may instead use a durable activation marker: absence
-  stays pending only until its first successful publish, then missing or stale
-  data becomes strict forever.
+  Complete a Railway-side pre-seed and verify compact health, or bind a durable
+  activation marker to the probe: absence stays pending only until its first
+  successful publish, then missing or stale data becomes strict forever.
+  `scripts/check-health-probe-cutovers.mts` accepts only these two proofs, and
+  accepts a marker only for a `STANDALONE_KEYS` probe wired into
+  `ACTIVATION_MARKERS` and `ON_DEMAND_KEYS` (bootstrap probes get no on-demand
+  grace, so they need the pre-seed).
 - **Before calling a seeder fix "shipped", check its cron cadence.** If the next
   tick is far away, run a Railway-side manual backfill. This is not optional
   cleanup — it is the step that makes the fix real *and* proves it end-to-end.

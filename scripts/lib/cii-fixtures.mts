@@ -6,7 +6,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { parsePartyMonths } from '../shared/ucdp-state-parties.cjs';
 import iso3ToIso2 from '../../shared/iso3-to-iso2.json' with { type: 'json' };
+import { isAssignedCountryCode, resolveCountryCode } from '../../shared/country-code-resolve.ts';
 import { ciiCountryForIso2 } from '../shared/cii-country-borders.mjs';
 import { parseWildfireFiresSummary, summarizeWildfireDetections } from '../shared/wildfire-fires-summary.mjs';
 import {
@@ -23,6 +25,24 @@ import { TIER1_COUNTRIES } from '../../server/worldmonitor/intelligence/v1/_shar
 
 export const CII_FIXTURE_SCHEMA = 'worldmonitor-cii-fixture/v1';
 export const CII_FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../tests/fixtures/cii');
+
+/** Recorded for future calibration; the released scorer does not consume it. */
+export type CiiCaptureInputs = CiiRawInputs & { structuralPrior?: unknown; economicStress?: unknown };
+export const CII_EXPANDED_CAPTURE_TARGETS = [...Object.keys(TIER1_COUNTRIES), 'PH', 'TH', 'ID', 'VN', 'MY', 'KH'];
+
+/** Producer coverage is independent of the released scoring set. */
+export function publishedCiiCaptureTargets(raw: CiiCaptureInputs): string[] {
+  const maps = [
+    (raw.structuralPrior as { countries?: object } | null)?.countries,
+    (raw.economicStress as { countries?: object } | null)?.countries,
+    (raw.gdeltCountryEvents as { byCountry?: object } | null)?.byCountry,
+  ];
+  const ucdp = raw.ucdp as { countryDays?: object; events?: Array<{ country?: string; location?: string }> } | null;
+  const locatedCodes = [...Object.keys(ucdp?.countryDays ?? {}), ...(ucdp?.events ?? []).map(e => e.country || e.location || '')]
+    .map(resolveCountryCode).filter((code): code is string => code !== null);
+  return [...new Set([...Object.keys(TIER1_COUNTRIES), ...maps.flatMap(map => Object.keys(map ?? {})), ...locatedCodes])]
+    .filter(isAssignedCountryCode).sort();
+}
 
 /** One country's score as a formula version computed it on a fixture. */
 export interface CiiFixtureExpectedRow {
@@ -45,7 +65,10 @@ export interface CiiFixture {
   /** Production has had no ACLED access since 2026-07; fixtures carry no ACLED rows. */
   acledConfigured: boolean;
   notes: string[];
-  inputs: CiiRawInputs;
+  inputs: CiiCaptureInputs;
+  /** Omitted for legacy/released-set captures to preserve their bytes. */
+  captureTargets?: string[];
+  calibration?: boolean;
   /** The seam's output per formula version, keyed by CII_FORMULA_VERSION. */
   expected: Record<string, Record<string, CiiFixtureExpectedRow>>;
   /** The table production stored at the same time, when it was captured. */
@@ -175,17 +198,33 @@ function trimStrikeTally(raw: unknown): unknown {
   return { version: raw.version, updatedAt: raw.updatedAt, days };
 }
 
-export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
+export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly string[] = [...TIER1], calibration = false): CiiCaptureInputs {
+  const targets = new Set(targetCodes);
+  for (const code of targets) {
+    if (resolveCountryCode(code) !== code || !isAssignedCountryCode(code)) throw new Error(`invalid capture target: ${code}`);
+  }
+  for (const code of TIER1) {
+    if (!targets.has(code)) throw new Error(`capture target omits released country: ${code}`);
+  }
+  const targetNameCode = (name: unknown) => {
+    const released = nameCode(name);
+    if (released) return released;
+    const code = resolveCountryCode(String(name || ''));
+    return code && !TIER1.has(code) && targets.has(code) ? code : null;
+  };
   const nullable = <T,>(v: unknown, fn: (v: any) => T): T | null => (v == null ? null : fn(v));
   return {
-    ucdp: nullable(raw.ucdp, (v) => ({
+    ucdp: calibration ? structuredClone(raw.ucdp) : nullable(raw.ucdp, (v) => ({
+      ...(v.partyMonths !== undefined ? { partyMonths: structuredClone(v.partyMonths) } : {}),
+      ...(v.window !== undefined ? { window: structuredClone(v.window) } : {}),
+      ...(v.countryDays !== undefined ? { countryDays: structuredClone(v.countryDays), dailyTotals: structuredClone(v.dailyTotals) } : {}),
       events: rows(v, 'events')
-        .filter((e) => nameCode(e?.country || e?.location))
+        .filter((e) => targetNameCode(e?.country || e?.location))
         .map((e) => pick(e, e?.country ? ['country', 'dateStart', 'deathsBest'] : ['location', 'dateStart', 'deathsBest'])),
     })),
     // `country` is not scored; it shows which records the countryCode reader fails to map.
     outages: nullable(raw.outages, (v) => ({
-      outages: rows(v, 'outages').map((o) => pick(o, ['countryCode', 'country_code', 'severity', 'country'])),
+      outages: rows(v, 'outages').map((o) => pick(o, ['countryCode', 'country_code', 'severity', 'country', 'detectedAt', 'endedAt'])),
     })),
     climate: nullable(raw.climate, (v) => ({
       anomalies: rows(v, 'anomalies').map((a) => pick(a, ['zone', 'region', 'severity', 'score', 'location', 'lat', 'lon', 'latitude', 'longitude', 'lng'])),
@@ -240,13 +279,15 @@ export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
     } : {})),
     gdeltCountryEvents: nullable(raw.gdeltCountryEvents, (v) => ({
       ...pick(v, ['baselineReady', 'currentComplete', 'weekReady', 'updatedAt', 'strikeDays']),
-      byCountry: Object.fromEntries(Object.entries(tier1Entries(v.byCountry))
+      byCountry: Object.fromEntries(Object.entries(isObj(v.byCountry) ? v.byCountry : {}).filter(([code]) => targets.has(code))
         .map(([code, row]) => [code, pick(row as Obj, ['conflict', 'protest', 'week', 'strikes'])])),
     })),
     strikePressure: trimStrikeTally(raw.strikePressure),
     // Seed envelopes of public aggregate border statistics, kept whole: the
     // projection reads most of their fields.
     crossBorder: raw.crossBorder ?? {},
+    ...(raw.structuralPrior !== undefined ? { structuralPrior: structuredClone(raw.structuralPrior) } : {}),
+    ...(raw.economicStress !== undefined ? { economicStress: structuredClone(raw.economicStress) } : {}),
   };
 }
 
@@ -315,15 +356,18 @@ export function scoreCiiFixture(fixture: Pick<CiiFixture, 'inputs' | 'nowMs' | '
  * country's terms and score, and every input's health state, must match the
  * untrimmed inputs exactly, or this throws.
  */
-export function buildCiiFixture(raw: CiiRawInputs, meta: {
+export function buildCiiFixture(raw: CiiCaptureInputs, meta: {
   label: string;
   capturedAt: string;
   nowMs: number;
   iranEventsEnabled: boolean;
   notes: string[];
   production: CiiFixture['production'];
+  targetCodes?: readonly string[];
+  calibration?: boolean;
 }): CiiFixture {
-  const inputs = trimCiiRawInputs(raw);
+  if (meta.calibration) validateCiiCalibrationInputs(raw, meta.targetCodes ?? []);
+  const inputs = trimCiiRawInputs(raw, meta.targetCodes, meta.calibration);
   const options = { nowMs: meta.nowMs, iranEventsEnabled: meta.iranEventsEnabled };
   const full = computeCiiScoreTable(raw, options);
   const trimmed = computeCiiScoreTable(inputs, options);
@@ -346,7 +390,80 @@ export function buildCiiFixture(raw: CiiRawInputs, meta: {
     acledConfigured: false,
     notes: meta.notes,
     inputs,
+    ...(meta.targetCodes ? { captureTargets: [...meta.targetCodes] } : {}),
+    ...(meta.calibration ? { calibration: true } : {}),
     expected: { [CII_FORMULA_VERSION]: expectedFromTable(trimmed) },
     production: meta.production,
   };
+}
+
+
+/** Reject partial calibration inputs; legacy regression snapshots remain valid. */
+export function validateCiiCalibrationInputs(raw: CiiCaptureInputs, targets: readonly string[]): void {
+  const fail = (reason: string): never => { throw new Error(`Incomplete calibration capture: ${reason}`); };
+  if (CII_EXPANDED_CAPTURE_TARGETS.some(code => !targets.includes(code))) fail('37-country target required');
+  const prior = raw.structuralPrior as Obj | null;
+  if (!isObj(prior?.countries) || CII_EXPANDED_CAPTURE_TARGETS.some(code => !Number.isFinite(prior!.countries[code]?.pv))) fail('structural prior missing countries');
+  const economic = raw.economicStress as Obj | null;
+  if (economic?.schemaVersion !== 1 || !isObj(economic.countries) || [...TIER1].some(code => typeof economic.countries[code]?.measured !== 'boolean')) fail('economic key missing or incomplete');
+  if ([...TIER1].filter(code => economic!.countries[code].measured === true).length < 25) fail('at least 25 measured economic countries required');
+  const u = raw.ucdp as Obj | null;
+  const w = u?.window;
+  if (!w || w.complete !== true || !Array.isArray(w.gapMonths) || w.gapMonths.length || !Array.isArray(w.missingReleases) || w.missingReleases.length
+      || !Number.isFinite(w.startMs) || !Number.isFinite(w.endMs) || w.endMs - w.startMs !== 365 * 86400000) fail('full 365-day UCDP window required');
+  const parties = parsePartyMonths(u?.partyMonths);
+  if (!parties?.length) fail('UCDP party facts missing or malformed');
+  if (!isObj(u?.countryDays) || !Object.keys(u.countryDays).length || !Array.isArray(u.dailyTotals) || !u.dailyTotals.length) fail('UCDP daily window missing');
+  const dailyRows = Object.values(u!.countryDays).flat() as number[][];
+  if (dailyRows.some(r => !Array.isArray(r) || r.length !== 3 || !r.every(Number.isFinite) || r[1]! < 0 || r[2]! < 0)
+      || u!.dailyTotals.some((r: number[]) => !Array.isArray(r) || r.length !== 2 || !r.every(Number.isFinite) || r[1]! < 0)) fail('UCDP daily rows malformed');
+  const dayMs = 86400000;
+  const totals = u!.dailyTotals as number[][];
+  const days = totals.map(r => r[0]!);
+  if (new Set(days).size !== days.length || days.some(d => !Number.isInteger(d) || d * dayMs < w.startMs || d * dayMs > w.endMs)
+      || Math.max(...days) - Math.min(...days) < 330) fail('UCDP observed window is truncated');
+  const months: Record<string, number> = {};
+  for (const [day, count] of totals) {
+    const month = new Date(day! * dayMs).toISOString().slice(0, 7);
+    months[month] = (months[month] ?? 0) + count!;
+  }
+  for (let ms = Date.UTC(new Date(w.startMs).getUTCFullYear(), new Date(w.startMs).getUTCMonth(), 1); ms <= w.endMs;) {
+    const d = new Date(ms);
+    const month = d.toISOString().slice(0, 7);
+    const count = months[month] ?? 0;
+    if (count !== w.months?.[month]
+        || count !== parties!.filter(r => r.month === month).reduce((n, r) => n + r.events, 0)) fail('UCDP monthly counts disagree');
+    ms = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  }
+  const byDay = new Map<number, number>();
+  const dailyByCountryMonth = new Map<string, number>();
+  for (const [country, rows] of Object.entries(u!.countryDays)) {
+    for (const [day, count] of rows as number[][]) {
+      byDay.set(day!, (byDay.get(day!) ?? 0) + count!);
+      const key = JSON.stringify([country, new Date(day! * dayMs).toISOString().slice(0, 7)]);
+      dailyByCountryMonth.set(key, (dailyByCountryMonth.get(key) ?? 0) + count!);
+    }
+  }
+  // The producer omits unnamed events from countryDays, but includes them in
+  // global totals and in explicit [unknown] party groups. Never drop those facts.
+  if (totals.some(([day, count]) => (byDay.get(day!) ?? 0) > count!)
+      || [...byDay.keys()].some(day => !days.includes(day))) fail('UCDP country-day counts disagree');
+  const locatedParties = parties!.filter(row => row.country !== '[unknown]');
+  const partyByCountryMonth = new Map<string, number>();
+  for (const row of locatedParties) {
+    const key = JSON.stringify([row.country, row.month]);
+    partyByCountryMonth.set(key, (partyByCountryMonth.get(key) ?? 0) + row.events);
+  }
+  const countryMonths = new Set([...dailyByCountryMonth.keys(), ...partyByCountryMonth.keys()]);
+  if ([...countryMonths].some(key => (dailyByCountryMonth.get(key) ?? 0) !== (partyByCountryMonth.get(key) ?? 0))) fail('UCDP country-month counts disagree');
+  const partyEvents = locatedParties.reduce((n, r) => n + r.events, 0);
+  const partyDeaths = locatedParties.reduce((n, r) => n + r.deaths, 0);
+  const events = dailyRows.reduce((n, r) => n + r[1]!, 0);
+  const deaths = dailyRows.reduce((n, r) => n + r[2]!, 0);
+  if (events <= 0 || events !== partyEvents
+      // Legacy activity counts at least one death per event; party facts retain real zeros.
+      || deaths < partyDeaths
+      || deaths > partyDeaths + partyEvents
+      || parties!.reduce((n, r) => n + r.events, 0) !== totals.reduce((n, r) => n + r[1]!, 0)
+      || !isObj(w.months) || totals.reduce((n, r) => n + r[1]!, 0) !== Object.values(w.months).reduce<number>((n, v) => n + Number(v), 0)) fail('UCDP window counts disagree');
 }

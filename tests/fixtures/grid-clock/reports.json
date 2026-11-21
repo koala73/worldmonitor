@@ -1,0 +1,77 @@
+{
+  "california": {
+    "coverage": "California ISO balancing authority",
+    "notice": "https://www.caiso.com/Documents/Grid-Emergencies-History-Report-1998-Present.pdf",
+    "outcome": "https://www.caiso.com/documents/summermarketperformancereportforseptember2022.pdf",
+    "localUtilityOutcome": "https://www.ncpa.com/wp-content/uploads/2022/09/NCPA_EEA3-Press-Release-Final-090722.pdf",
+    "noticeIssued": "2022-09-06T17:26:00-07:00",
+    "noticeExpires": "2022-09-06T20:00:00-07:00",
+    "title": "Energy Emergency Alert 3",
+    "note": "The archived EEA3 record [202202696] gives a 5:17 pm effective time, 5:26 pm notice issue time and 8:00 pm end. CAISO never ordered rotating outages. NCPA documented interruptions in some member communities. Neither statement is a statewide customer count."
+  },
+  "gannon": {
+    "coverage": "North American bulk power system",
+    "notice": "https://www.ngdc.noaa.gov/stp/space-weather/swpc-products/weekly_reports/PRFs_of_SGD/2024/05/prf2541.pdf",
+    "observedHazard": "https://www.spaceweather.gov/news/g5-conditions-observed",
+    "outcome": "https://www.nerc.com/globalassets/programs/rapa/gmd/reference-documents/may-2024-gmd-event-review.pdf",
+    "noticeIssued": "2024-05-10T17:16:00Z",
+    "noticeExpires": "2024-05-10T23:59:00Z",
+    "atG5Publication": "2024-05-10T23:58:00Z",
+    "title": "Geomagnetic K ≥ 7 warning",
+    "note": "SWPC’s weekly archive lists the May 10 warning issue and validity times in UTC. The contemporaneous G5 announcement was published at 23:58 UTC. NERC’s later event study found the bulk power system remained stable. This does not supply a count of local distribution outages."
+  },
+  "maria": {
+    "coverage": "Puerto Rico",
+    "source": "https://www.energy.gov/sites/prod/files/2017/12/f46/Hurricanes%20Maria%20and%20Irma%20Event%20Summary%20December%2020%2C%202017.pdf",
+    "landfallSource": "https://www.nhc.noaa.gov/archive/2017/al15/al152017.update.09201034.shtml",
+    "landfall": "2017-09-20T06:15:00-04:00",
+    "summaryAsOf": "2017-12-20T11:00:00-05:00",
+    "published": "2017-12-20T12:00:00-05:00",
+    "peakLoadRestoredPct": 65.4,
+    "partiallyEnergizedMunicipalities": 69,
+    "totalMunicipalities": 78,
+    "customersOut": null,
+    "note": "Page 1 is an 11 am EST summary and page 2 dates the underlying peak-load measurement to 6 am AST. The utility explicitly could not report affected customers. Landfall-to-publication is 91 days, not a continuous total outage of the entire island."
+  },
+  "helene": {
+    "coverage": "Tennessee",
+    "table": "U.S. DOE statewide customer outage table",
+    "reports": [
+      {
+        "source": "https://www.energy.gov/sites/default/files/2024-09/TLP%20CLEAR_Helene_ESF%2012-Sit%20Rep_092924.pdf",
+        "observed": "2024-09-29T15:00:00-04:00",
+        "published": "2024-09-29T16:00:00-04:00",
+        "customersOut": 17260
+      },
+      {
+        "source": "https://www.energy.gov/sites/default/files/2024-09/TLP%20CLEAR_Helene_ESF%2012-Sit%20Rep_093024.pdf",
+        "observed": "2024-09-30T08:00:00-04:00",
+        "published": "2024-09-30T09:00:00-04:00",
+        "customersOut": 10628
+      },
+      {
+        "source": "https://www.energy.gov/sites/default/files/2024-10/Hurricane%20Helene%20Situation%20Report%205.pdf",
+        "observed": "2024-10-01T15:00:00-04:00",
+        "published": "2024-10-01T16:00:00-04:00",
+        "customersOut": null,
+        "omittedBelow": 10000
+      }
+    ],
+    "note": "The Tennessee row disappears once the count falls below the table's reporting threshold. No zero or restoration declaration was issued in that table."
+  },
+  "uri": {
+    "coverage": "Texas, excluding Pedernales Electric",
+    "source": "https://www.energy.gov/ceser/articles/extreme-cold-winter-weather-hub-situation-update-2",
+    "observed": "2021-02-17T09:30:00-05:00",
+    "customersOut": 3341984,
+    "note": "Page 3 of DOE update #2 excludes one unreporting utility. This is a classification replay at the specified observation time, not a measurement of how early the public learned the number."
+  },
+  "iberia": {
+    "coverage": "Continental Spain and Portugal",
+    "source": "https://www.entsoe.eu/news/2025/04/28/grid-incident-in-the-power-systems-of-spain-and-portugal/",
+    "timingSource": "https://www.entsoe.eu/publications/blackout/28-april-2025-iberian-blackout/",
+    "observed": "2025-04-28T12:33:00+02:00",
+    "customersOut": null,
+    "note": "The operator’s April 28 statement confirms a power-system blackout but gives no customer count or cause. The March 2026 final investigation supplies precise event timing and interacting grid factors. Retrospective classification only. Do not treat event time as time of public detection."
+  }
+}

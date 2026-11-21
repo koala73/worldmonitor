@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -11,6 +11,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const REDIS_MODULE_URL = pathToFileURL(resolve(root, 'server/_shared/redis.ts')).href;
+const REVOCATIONS_MODULE_URL = pathToFileURL(resolve(root, 'server/_shared/digest-revocations.ts')).href;
+
+// Patched handlers can load this file as ESM or through require, which gives
+// two module instances. Each test sets its own revocations, so drop the
+// previous test's memoized read in both.
+beforeEach(async () => {
+  (await import(REVOCATIONS_MODULE_URL)).__resetRevocationMemoForTest();
+  createRequire(import.meta.url)(resolve(root, 'server/_shared/digest-revocations.ts')).__resetRevocationMemoForTest();
+});
 
 function jsonResponse(payload, ok = true) {
   return {
@@ -2419,6 +2428,8 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         'energy:spine:v1:FI', 'resilience:static:FI', 'energy:mix:v1:FI',
         // NOTAM airport status keys the cache like the energy years do.
         'aviation:notam:closures:v2', 'seed-meta:aviation:notam',
+        // So does the country's watched-site rollup and the index naming its revision, for confirmed imagery changes.
+        'orbital:country:v1:FI', 'orbital:sites:v1',
       ], 'a hit keeps only the cache-key reads, with no new grounding or evidence reads');
       assert.doesNotMatch(userPrompts[0], /invented port|protests=3/);
       const irrelevant = 'Source [2]: ' + JSON.stringify({ title: 'Finland wins football final', source: 'Sports', url: 'https://example.com/sport' });
@@ -4181,7 +4192,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
           americasRequest,
           policy,
         ),
-        /snapshot unavailable/,
+        { name: 'SeedUnavailableError', statusCode: 503 },
       );
     } finally {
       cleanup();

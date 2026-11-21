@@ -23,3 +23,11 @@ body.country-plugin-body { overflow: auto; height: auto; min-height: 720px; }
 .country-plugin-body .cdp-atlas-output .panel-col-resize-handle { display: none; }
 .country-plugin-body .cdp-atlas-output :is(.pp-drawer, .sf-drawer, .fs-drawer) { position: relative; inset: auto; overflow: visible; }
 .country-plugin-body .cdp-atlas-output :is(.pp-wrap, .sf-wrap, .fs-wrap):has(:is(.pp-drawer, .sf-drawer, .fs-drawer)) > :not(style, .pp-drawer, .sf-drawer, .fs-drawer) { display: none; }
+
+/* Fullscreen and side panel: fill the host-reported height, one centered column up to 960 px. */
+.country-expand-btn { display: inline-flex; min-width: 44px; min-height: 44px; justify-content: center; align-items: center; padding: 0 !important; margin-left: auto; }
+.country-expand-btn[hidden] { display: none; }
+.country-expand-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+body.country-plugin-body[data-wm-fill] { height: var(--wm-fill-height, 100vh); min-height: 0; overflow: hidden; display: flex; flex-direction: column; box-sizing: border-box; }
+body.country-plugin-body[data-wm-fill] #countryRoot { flex: none; width: 100%; max-width: 960px; margin: 0 auto; box-sizing: border-box; }
+body.country-plugin-body[data-wm-fill] #country-deep-dive-panel { flex: 1 1 auto; height: auto; min-height: 0; max-width: 960px; margin: 0 auto; }

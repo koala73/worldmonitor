@@ -100,6 +100,10 @@ Running a candidate read path against real production traffic while continuing t
 
 Two rules make a shadow comparable rather than merely reassuring. The candidate must be measured entirely off the response path, so enabling it on live traffic cannot change what any client receives. And the incumbent must be measured on the *same* traffic over the *same* window, because a candidate's latency means nothing against a baseline drawn from different requests or a different hour. A shadow that clears its gate answers only "is the candidate faster here"; the serving path's own failure and slowness handling still has to be proven separately, since a shadow never exercises them. See also: The Lever Test, Bootstrap Tier.
 
+### Held-Out Judged Set
+
+A human-labelled sample of headlines, judged blind to any model output and after the prompt, model and criteria under test were fixed. It scores fixed labellers against a decision rule set in advance; it is never read to adjust a labeller or the rule. Each title carries a judged level and a borderline flag, which separates the clear-cut slice from titles the annotator placed between two levels. The set is single-use for tuning: once any prompt, threshold or criterion is chosen by reading its results, it becomes a tuning set and a fresh held-out sample is owed. A replacement decision on it is therefore pre-registered: the rule, the runs and the inputs are frozen before the candidate answers. See also: Shadow Measurement.
+
 ## Notifications & Alert Delivery
 
 ### Alert Rule
@@ -119,6 +123,8 @@ The country identity a notification publisher attaches to an event at publish ti
 The destination a delivered notification opens when its recipient clicks it, carried on the published event's payload beside the title and body. It is untrusted at both of its sources — a subscriber-authored publish call supplies it directly, and feed ingestion copies it verbatim from external publishers — so it is attacker-influenceable on every channel that renders it.
 
 Its trust question is not which destination is permitted but which surface acting on it consumes. An off-origin target is delivered intact, because the linked article is the point of a news alert and the same link already appears in the message body on every text channel; what must never happen is the already-open, authenticated dashboard being navigated to it, since that replaces a trusted surface in place rather than adding one beside it. Off-origin targets therefore open in their own window, and only a target that resolves to the serving origin of the worker handling the click may reuse the open one.
+
+A target the platform sourced itself, when it points off-origin, is delivered with a referrer tag naming the product and the delivering channel, so the publisher can attribute the visit; a subscriber-authored target is never tagged. The tag is attribution, not identity: anything that compares Click Targets as strings, operator link suppression included, must treat the tagged and untagged forms as the same target.
 
 The dispatcher must not encode an origin in a Click Target. The product is served from several first-party hosts — a canonical host plus the themed Variant Hosts — so any absolute first-party URL is right for exactly one of them and cross-origin to all the rest; a strict origin comparison downstream then classifies genuinely first-party traffic as foreign and opens a duplicate tab. Naming one host as canonical inside the target is the defect, not a detail of it. So a target meaning "the dashboard" generically is emitted as a bare path and each worker resolves it against whichever host is serving it: normalization is not removed, it moves to the only party that knows the answer. The worker half is also the only half that can repair a target already displayed, because a shown notification does not expire and its click is dispatched to whichever worker is active by then, long after the dispatcher can reach it. Two kinds of target stay absolute: a Variant Host's own, since the variants are distinct surfaces and relativizing one would let another resolve it onto itself, and the paths the edge serves on the canonical apex, which break if detached from that origin.
 
@@ -185,6 +191,10 @@ The project's rule for any panel that joins the grid asynchronously, in either t
 The interval between a Deferred Tier panel being constructed and its element entering the grid — routinely minutes on a phone, since the panel is built only as its shell nears the viewport while the boot data pass finished long before. Two things cross the window in opposite directions and both need somewhere to wait: data *pushed* to a panel that does not exist yet, and a render *emitted* by a panel whose element is not attached yet.
 
 The project's rule is that neither may be discarded. A push aimed at an absent panel is queued and replayed when the panel loads; a render emitted before attachment is deferred and flushed when the element joins the grid. Both failure modes read as defensive code and are silent — no error, no failed request, no telemetry — so they surface only as a panel that shows its initial placeholder for the whole session. The attachment check is the subtler of the two, because it is genuinely correct *after* attachment (a torn-down panel must not paint) and wrong *before* it; only checking ahead of the work distinguishes "never attached yet" from "detached again". The deferral here is at attachment; the sibling deferral at the write itself is the Content Commit. See also: Deferred Tier, Deferred-Shell Contract, Viewport Prime, Content Commit.
+
+### Click Claim
+
+The dashboard's hand-off for a map marker click that more than one surface could answer: the map dispatches a cancelable event naming the thing clicked, and a panel that will visibly show the result claims it by cancelling the event, which tells the map to skip its own fallback popup. A claim is a promise of a visible response, so a panel may claim only while the user can actually see it — attached, enabled, expanded, not filtered out of the mobile view, not covered by the fullscreen map. A panel that is merely attached is not visible: closing a panel hides it in place rather than removing it. Code that wants the panel opened on the clicked thing, rather than the map popup, sends an open request instead of the claimable event; the open request enables and reveals the panel and delivers the thing once the panel has mounted, however long the Late-Mount Window lasts. See also: Late-Mount Window, Deferred Tier.
 
 ### Viewport Prime
 
@@ -372,6 +382,10 @@ A news category a session resolves that the active variant's preset does not dec
 
 The rolling corpus of recently-tracked news stories, ordered by when each story was last seen, that downstream consumers read to answer "what has been in the feed lately?". It is a *retention window*, not a queue: entries age out on a fixed horizon rather than being consumed, and several unrelated consumers — the digest cron, trend detection — sample the same corpus independently for different spans. Its retention horizon states how far back entries *may* reach; it says nothing about how many are there, and on a busy feed the corpus holds far more stories than any single consumer intends to read at once. See also: Sampled Span, Seed-Owned Key.
 
+### Headline History
+
+The record of every headline an edition's Feed Digest served, kept per edition and language for a week so that search can find a headline after it has left the dashboard. It exists because the dashboard holds only the current digest and the alert relay titles a news alert with the served digest item's title, verbatim: a headline that alerted a few hours ago has usually aged out of the dashboard. Alerts the relay raises from X accounts are not digest items and are not in it. Three properties separate it from its neighbours. It records each served *item*, not one representative per story as the Story Accumulator's track rows do, because an alert carries the wording of the item it came from and that wording has to be findable. For the same reason an article the publisher retitled keeps a row for each wording it was served under, not only the latest. Its window is measured from when a headline was last *served*, not when it was published, since an article can be days old when it is served and alerted. And it holds only headlines whose link passed the publisher gate, because a search result nobody can open is not a result. How far back a caller may search is decided by which route they can reach, not by a parameter. See also: Feed Digest, Story Accumulator.
+
 ### Keyword Spike
 
 A term — an ordinary word, a vulnerability identifier, or a threat-group designator — appearing materially more often in a recent window than its own recent history predicts. A spike is deliberately harder to earn than "appeared a lot": the term must clear a floor of distinct mentions, exceed its baseline rate by a strict multiplier, and be carried by more than one outlet, so a single prolific source cannot manufacture one. When no baseline exists yet the decision falls back to the floor alone, which is why a corpus that yields no usable baseline silently converts spike detection into simple frequency counting. See also: Sampled Span.
@@ -381,6 +395,13 @@ A term — an ordinary word, a vulnerability identifier, or a threat-group desig
 The stretch of time a derived statistic was *actually* computed over, as distinct from the retention horizon of the store it drew from. The two diverge whenever a bounded read — a row cap, a page size, a top-N — returns fewer rows than the horizon contains, and the divergence is silent: the read succeeds, the arithmetic runs, and only the result is wrong. Any rate, baseline, or per-unit-time figure must be divided by the span its rows demonstrably cover, and a consumer-facing statistic should report that measured span rather than the horizon constant, since a caller has no other way to tell the two apart. Truncation is also biased rather than random — a newest-first read starves the historical side of a recent-versus-baseline comparison, an oldest-first read starves the recent side. See also: Story Accumulator, Keyword Spike.
 
 ## Crawlable Country Pages & Brief Grounding
+
+### Country Brief
+
+The per-country intelligence panel a user opens from the map, search, or a shared link. It slides in beside the dashboard map, or covers it when maximized, and its link reopens exactly that country.
+*Avoid:* Country Deep Dive, country modal
+
+The panel is a side panel, not a modal. On its default width the map stays visible and interactive next to it, so nothing about opening a brief may freeze, pause, or hide map updates. Only the maximized state covers the map. The generated text summary shown inside the panel is the *brief text*, and it is what Brief Grounding governs. See also: Brief Grounding, Recent Developments.
 
 ### Recent Developments
 
@@ -489,6 +510,12 @@ Hosted connectors classify a server by how this first request is answered. One t
 ### MCP Proxy
 
 The edge relay through which a browser panel talks to a **caller-chosen** remote MCP server: the panel names the server URL and supplies any credential headers, and the proxy performs the MCP handshake and tool call on its behalf so the browser never contacts the remote directly. Because the remote is the caller's choice, its answers are the caller's outcome, not the proxy's: a credential refusal, a JSON-RPC error object answered on a successful HTTP status (how MCP servers express quota, unknown tool, or invalid params), and a remote timeout are all **upstream verdicts**. An upstream verdict is relayed to the caller and recorded in the proxy's audit log, but it is not a proxy defect and does not page. What does page is a failure the proxy itself produced — a transport fault, a malformed stream, an unclassified throw. Downstream reporters cannot tell a relayed verdict from an origin failure by status code alone, so a relayed timeout is marked on the response for them. See also: Discovery Read vs. Transport Operation, Error Telemetry & Suppression.
+
+### Spoken Mode
+
+An MCP tool answer shaped for a voice agent to read aloud. It is a short templated narration, two or three sentences long, built from the tool's own result without a model call. It comes with the citations and freshness verdict the narration relies on. A caller asks for it per call. Only tools that have a narrator offer it, and the narration can be requested in more than one language.
+
+The load-bearing rule: every language comes from the same narration logic, and only the wording differs. Two answers to one call give the same numbers, caveats, citations and freshness verdict, so a listener never hears a stale warning in one language that the other leaves out. Upstream text that is spoken as part of the answer, such as a headline, stays in its published language, but it is cleaned for speech by the rules of the answer's language. The arguments that choose spoken mode and its language shape the response only, and the tool itself never receives them. See also: MCP Server Card.
 
 ## Structured Data & Entity Graph
 
@@ -926,7 +953,10 @@ on a later one.
 Deferral is load-shedding, not failure — but it only pays for itself if the
 member eventually runs. A member deferred on every tick is a stall wearing
 deferral's clothing, and telling those two apart is the whole reason this
-vocabulary exists.
+vocabulary exists. The stall check judges only how old the member's data is,
+so a member that runs every tick but fails as a Graceful Skip also reads as
+stalled the first time it is deferred. Check whether the member ran on earlier
+ticks before you treat a stall as starvation.
 
 ### Graceful Skip
 
@@ -1076,7 +1106,7 @@ An input must be published with enough precision to identify the metric behind i
 
 ### Context Metric
 
-A value a chokepoint page displays that never enters the Disruption Score — event counts, observed transit counts, and period-over-period movement. Publishing the exclusion is as load-bearing as publishing the inputs, since a number rendered next to a score reads as a cause of it by default.
+A value displayed beside a score that never enters it: on a chokepoint page, event counts, observed transit counts, and period-over-period movement beside the Disruption Score; beside the Country Instability Index, advisories and confirmed satellite imagery change flags, which carry the input register's **context** verdict. Publishing the exclusion is as load-bearing as publishing the inputs, since a number rendered next to a score reads as a cause of it by default.
 
 One upstream feed can supply both a Score Input and a Context Metric, so the split is per-metric and never per-source: the same provider's daily series can drive an input while its summarised movement figure stays presentational. Excluding a source wholesale is therefore the easy way to publish a false exclusion. See also: Score Input, Transit Anomaly.
 
@@ -1177,5 +1207,6 @@ Before the anchor the clock counts up to the figure. A country in surplus is the
 - *"Release"* names two unrelated things. A desktop Release Line is a publication sequence addressable by update clients. An error-tracking release is an event grouping label, and the browser and server surfaces choose it differently, which is what decides whether a Resolve Pin is satisfiable. Never reason about one from the other.
 - *"Gate"* had been used for both the local pre-push Tiered Gate and the CI Deploy Gate — these are distinct. The Tiered Gate is a cacheable pre-flight that can be scoped or escalated on one machine; only the Deploy Gate decides mergeability, and only names on its required list count toward it.
 - *"Superseded"* qualifies two unrelated things. A Superseded Run is a change-proposal CI run replaced by a later push, and it is discarded on purpose. A Superseded Failure is a scheduled run's failure that a newer capture, by hand or by a later run, has since made moot, and it is an alarm that resolves itself. The first is about wasted capacity, the second about alert noise; never reason about one from the other.
+- *"Country brief"* had been used for both the per-country dashboard panel and the generated text summary inside it. These are distinct. The panel is the Country Brief. The generated summary is the brief text, which Brief Grounding governs. A third, unrelated "brief" is the daily AI digest of the Brief Loop.
 - *"Capability"* names two things. A Capability-Gated Deep Link is gated on an entitlement predicate the destination also renders on; a Brief URL is a bearer link where the token itself is the capability. Say "entitlement" for the first sense in prose and "Brief URL" for the second; avoid "capability URL".
 - *"Unknown"* as a vessel class names two different states — a contact that declared military activity but no hull class, and a contact with no class evidence at all. They are currently indistinguishable downstream and fold into the same non-combatant bucket. When it matters which one you mean, say "declared activity, class unestablished" for the first; never read the shared bucket as evidence of either.

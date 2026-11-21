@@ -129,7 +129,7 @@ export function sanitizeNotificationText(value: unknown, maxLength: number): str
  * or a bare host with a path. A bare host with no path ('reuters.com') is
  * left alone — it is ordinary publisher attribution, not a click target.
  */
-const URL_TOKEN_PATTERN =
+export const URL_TOKEN_PATTERN =
   /(?:[a-z][a-z0-9+.-]*:\/\/\S+|www\.\S+|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)+\/\S*)/gi;
 
 /**
@@ -342,6 +342,50 @@ export function sanitizeNotificationLinkUrl(value: unknown): string {
  * Trust-independent: the inline host disclosure IS the control, and it works
  * as well for a caller-submitted article link as for a relay-originated one.
  */
+/**
+ * Referrer tag for an outbound article link in an alert, so a publisher can
+ * attribute the visit to WorldMonitor: utm_source=worldmonitor,
+ * utm_medium=alert, utm_campaign=<channel>. Same rule as the brief's
+ * buildTrackedSourceUrl (server/_shared/brief-render.js): a parameter the link
+ * already carries is kept as the publisher set it.
+ *
+ * Only an off-origin article link is tagged. First-party links, the dashboard
+ * fallback and anything the classifier rejects come back unchanged. The
+ * parameters are appended to the classified URL as text, before the fragment:
+ * the host, path, existing query and fragment are never re-serialised.
+ *
+ * The link-suppression matchers remove exactly these tags before comparing
+ * (scripts/shared/notification-link-suppression.cjs,
+ * api/notification-suppressions.js, public/link-suppression-check.js), so a
+ * new channel here must be added to all three.
+ *
+ * The relay's renderers are the callers (scripts/shared/notify-fields.cjs);
+ * this copy keeps the two modules behaviour-equivalent.
+ */
+export const NOTIFY_ALERT_UTM_SOURCE = 'worldmonitor';
+export const NOTIFY_ALERT_UTM_MEDIUM = 'alert';
+export const NOTIFY_ALERT_CHANNELS = ['email', 'telegram', 'slack', 'discord', 'teams', 'web_push'];
+
+export function withAlertReferrer(value: unknown, channel?: unknown): unknown {
+  const classified = classifyNotificationLink(value);
+  if (classified.kind !== 'article' || isFirstPartyNotificationHost(classified.host)) return value;
+  const tags: Array<[string, string]> = [
+    ['utm_source', NOTIFY_ALERT_UTM_SOURCE],
+    ['utm_medium', NOTIFY_ALERT_UTM_MEDIUM],
+  ];
+  if (typeof channel === 'string' && NOTIFY_ALERT_CHANNELS.includes(channel)) tags.push(['utm_campaign', channel]);
+  const present = new URL(classified.url).searchParams;
+  const additions = tags.filter(([key]) => !present.has(key)).map(([key, tag]) => `${key}=${tag}`);
+  if (additions.length === 0) return classified.url;
+  const hashAt = classified.url.indexOf('#');
+  const beforeFragment = hashAt === -1 ? classified.url : classified.url.slice(0, hashAt);
+  const fragment = hashAt === -1 ? '' : classified.url.slice(hashAt);
+  const queryAt = beforeFragment.indexOf('?');
+  let joiner = '?';
+  if (queryAt !== -1) joiner = queryAt === beforeFragment.length - 1 ? '' : '&';
+  return `${beforeFragment}${joiner}${additions.join('&')}${fragment}`;
+}
+
 export function renderNotificationLinkForText(value: unknown): string {
   const classified = classifyNotificationLink(value);
   if (classified.kind === 'absent') return '';

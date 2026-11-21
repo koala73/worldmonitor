@@ -254,16 +254,18 @@ export class TradePolicyPanel extends Panel {
 
     return `${summaryHtml}
     <div class="trade-tariffs-table">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Year</th>
-            <th scope="col">${t('components.tradePolicy.mfnAppliedRate')}</th>
-            <th scope="col">Sector</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <table class="wm-table">
+          <thead>
+            <tr>
+              <th scope="col">Year</th>
+              <th scope="col">${t('components.tradePolicy.mfnAppliedRate')}</th>
+              <th scope="col">Sector</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     </div>`;
   }
 
@@ -463,16 +465,18 @@ export class TradePolicyPanel extends Panel {
     return `${summaryHtml}
     ${chartHtml}
     <div class="trade-tariffs-table">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">${t('components.tradePolicy.colDate')}</th>
-            <th scope="col">${t('components.tradePolicy.colMonthly')}</th>
-            <th scope="col">${t('components.tradePolicy.colFytd')}</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <table class="wm-table">
+          <thead>
+            <tr>
+              <th scope="col">${t('components.tradePolicy.colDate')}</th>
+              <th scope="col">${t('components.tradePolicy.colMonthly')}</th>
+              <th scope="col">${t('components.tradePolicy.colFytd')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     </div>`;
   }
 
@@ -528,15 +532,17 @@ export class TradePolicyPanel extends Panel {
     }).join('');
 
     return `${scope}<div class="trade-tariffs-table">
-      <table>
-        <thead><tr>
-          <th scope="col">${t('components.tradePolicy.colReporter')}</th>
-          <th scope="col">${t('components.tradePolicy.colCommodity')}</th>
-          <th scope="col">${t('components.tradePolicy.colTradeValue')}</th>
-          <th scope="col">${t('components.tradePolicy.yoyChange')}</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <table class="wm-table">
+          <thead><tr>
+            <th scope="col">${t('components.tradePolicy.colReporter')}</th>
+            <th scope="col">${t('components.tradePolicy.colCommodity')}</th>
+            <th scope="col">${t('components.tradePolicy.colTradeValue')}</th>
+            <th scope="col">${t('components.tradePolicy.yoyChange')}</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     </div>`;
   }
 

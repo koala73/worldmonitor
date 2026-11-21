@@ -80,6 +80,14 @@ describe('free-tier roster', () => {
     }
   });
 
+  it('names every free tool, and report_issue is the one credentialed-downstream exception', () => {
+    // A new free tool needs a review, not a flag flip. report_issue reaches a
+    // credentialed downstream (a shared-secret Convex append) on purpose:
+    // docs/architecture/agent-feedback-threat-model.md states the exception,
+    // and it must stay the only one.
+    assert.deepEqual(freeTools.map((t) => t.name).sort(), ['get_sources', 'report_issue']);
+  });
+
   it('advertises the full access class while preserving free for anonymous tools', () => {
     for (const tool of TOOL_LIST_RESPONSE) {
       const internal = TOOL_REGISTRY.find((candidate) => candidate.name === tool.name);

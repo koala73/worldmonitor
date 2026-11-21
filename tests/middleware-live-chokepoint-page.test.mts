@@ -131,6 +131,15 @@ describe('live chokepoint page HTML', () => {
       html,
       /IMF PortWatch counted 4 transits through the Strait of Hormuz on Oct 18, 2026 \(latest published day\)\. The 7-day average is 3\.7 a day, 4% of the 87\.4-a-day average for Oct 2024–Oct 2025\./,
     );
+    // The answer directly under the H1 is the request-time reading, not the
+    // built pulse, and it states the PortWatch day's age.
+    const answer = html.slice(html.indexOf('</h1>')).match(/<p([^>]*)>([^<]*)<\/p>/);
+    assert.equal(answer?.[1], ' class="lede answer" data-chokepoint-open-status');
+    assert.match(
+      answer?.[2] ?? '',
+      /^Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published days to Oct 18, 2026 \(IMF PortWatch, latest day \d+ days? old\)\. As of .+, 2 navigational warnings and no AIS disruption events are reported for the Strait of Hormuz\. IMF PortWatch counted 4 transits/,
+    );
+    assert.doesNotMatch(answer?.[2] ?? '', /Oct 8, 2026/, 'the built pulse answer is replaced');
     assert.match(html, /data-chokepoint-score>62</);
     assert.match(html, /Live reading /);
     assert.match(html, /data-live-at-request/);

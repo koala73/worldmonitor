@@ -36,8 +36,14 @@ const STYLES = `
   .dcounts, .dwarning { font-size: 12px; color: var(--muted); margin: 6px 0; }
   .dwarning { color: var(--high); }
   .dtime { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+  .drow .natural-select { order: 2; margin-left: auto; }
+  .drow .dmeta { order: 3; flex-basis: 100%; margin-top: -6px; }
+  .drow .mag ~ .dmeta { padding-left: 62px; }
   .dprovider { font-size: 12px; line-height: 1.6; margin: 8px 0; padding: 8px; border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
   .dprovider-title { font-weight: 600; }
+  .dsources { font-size: 12px; color: var(--muted); margin: 8px 0; }
+  .dsources summary { cursor: pointer; }
+  .dsources .dprovider { color: var(--fg); }
 `;
 
 const BODY = `
@@ -102,10 +108,16 @@ const RENDER = `
       }
     }
 
+    var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    function pad(value) { return value < 10 ? "0" + value : String(value); }
+    function utc(date) {
+      return date.getUTCDate() + " " + MONTHS[date.getUTCMonth()] + " " + date.getUTCFullYear()
+        + ", " + pad(date.getUTCHours()) + ":" + pad(date.getUTCMinutes()) + " UTC";
+    }
     function eventTime(value, label, missing) {
       var date = typeof value === "number" || typeof value === "string" && value.trim()
         ? new Date(value) : null;
-      return date && Number.isFinite(date.getTime()) ? label + date.toISOString() : missing;
+      return date && Number.isFinite(date.getTime()) ? label + utc(date) : missing;
     }
     function group(key, label, field) {
       if (!Object.prototype.hasOwnProperty.call(datasets, key)) return null;
@@ -126,12 +138,14 @@ const RENDER = `
     function counts(view, shown) {
       if (!view.available) return;
       var message;
-      if (Array.isArray(view.list)) message = "Showing " + shown + " of " + view.list.length + " loaded events.";
-      else {
+      if (Array.isArray(view.list)) {
+        if (shown >= view.list.length) return;
+        message = "Showing " + shown + " of " + view.list.length + " returned events.";
+      } else {
         var total = view.list.count;
         var known = typeof total === "number" && Number.isInteger(total) && total >= view.items.length;
-        message = "Showing " + shown + " sampled events" + (known ? " of " + total + " reported events." : "; total unavailable.");
-        message += known && total === view.items.length ? " Sample contains all reported events." : " Full list is not loaded.";
+        if (known && total === shown) return;
+        message = known ? "Showing " + shown + " of " + total + " events." : "Showing " + shown + " events; total unknown.";
       }
       view.section.appendChild(el("div", "dcounts", message));
     }
@@ -144,69 +158,96 @@ const RENDER = `
       if (typeof state === "string" && state !== "ok") warning(view.section, label + " coverage is " + collapseWs(state) + ".");
     }
     function sourceCounter(value) {
-      return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= 0 ? String(value) : "Unknown";
+      return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= 0 ? value.toLocaleString("en-US") : null;
     }
-    function sourceBoolean(value) {
-      return typeof value === "boolean" ? String(value) : "Unknown";
+    function sourceState(value) {
+      if (typeof value !== "string" || !value.trim()) return "status unknown";
+      return value === "ok" ? "OK" : collapseWs(value);
     }
-    function sourceText(value) {
-      return typeof value === "string" && value.trim() ? collapseWs(value) : "Unknown";
+    function sourcesBlock(section) {
+      var details = el("details", "dsources");
+      details.appendChild(el("summary", "", "Sources"));
+      details.ontoggle = function () { reportSize(); };
+      section.appendChild(details);
+      return details;
     }
-    function sourceError(value) {
-      return value === null ? "None reported" : sourceText(value);
-    }
-    function detailBlock(section, title, lines) {
+    function detailBlock(parent, title, lines) {
       var block = el("div", "dprovider");
       block.appendChild(el("div", "dprovider-title", title));
       lines.forEach(function (line) { block.appendChild(el("div", "", line)); });
-      section.appendChild(block);
+      parent.appendChild(block);
+    }
+    function wildfireLine(bucket, prefix, noun, extra) {
+      var parts = [sourceState(bucket["_" + prefix + "State"])];
+      var count = sourceCounter(bucket["_" + prefix + "Count"]);
+      parts.push(count === null ? noun + " count unknown" : count + " " + noun);
+      if (extra) parts.push.apply(parts, extra);
+      var error = bucket["_" + prefix + "ErrorCode"];
+      if (typeof error === "string" && error.trim()) parts.push("error: " + collapseWs(error));
+      return parts.join(" · ");
     }
     function wildfireDetails(view) {
       var bucket = view.bucket || {};
+      var sources = sourcesBlock(view.section);
       if (!Object.keys(bucket).some(function (key) { return /^_(firms|cwfis|bc)/.test(key); })) {
-        detailBlock(view.section, "Wildfire sources", ["Provider detail: Unknown"]);
+        sources.appendChild(el("div", "", "No source details supplied."));
         return;
       }
-      detailBlock(view.section, "NASA FIRMS", [
-        "State: " + sourceText(bucket._firmsState) + " · Source detections: " + sourceCounter(bucket._firmsCount),
-        "Partial: " + sourceBoolean(bucket._firmsPartial) + " · Failed calls: " + sourceCounter(bucket._firmsFailedCalls) + " · Error: " + sourceError(bucket._firmsErrorCode)
-      ]);
-      detailBlock(view.section, "Canadian CWFIS", [
-        "State: " + sourceText(bucket._cwfisState) + " · Source detections: " + sourceCounter(bucket._cwfisCount),
-        "Active: " + sourceCounter(bucket._cwfisActiveCount) + " · Prescribed: " + sourceCounter(bucket._cwfisPrescribedCount) + " · Error: " + sourceError(bucket._cwfisErrorCode)
-      ]);
-      detailBlock(view.section, "British Columbia", [
-        "State: " + sourceText(bucket._bcState) + " · Source records: " + sourceCounter(bucket._bcCount) + " · Transport: " + sourceText(bucket._bcVia),
-        "Enriched: " + sourceCounter(bucket._bcEnrichedCount) + " · Appended: " + sourceCounter(bucket._bcAppendedCount) + " · Error: " + sourceError(bucket._bcErrorCode)
-      ]);
+      var firmsExtra = [];
+      if (bucket._firmsPartial === true) firmsExtra.push("partial");
+      else if (bucket._firmsPartial !== undefined && typeof bucket._firmsPartial !== "boolean") firmsExtra.push("completeness unknown");
+      if (sourceCounter(bucket._firmsFailedCalls) !== null && bucket._firmsFailedCalls > 0) firmsExtra.push(sourceCounter(bucket._firmsFailedCalls) + " failed requests");
+      var active = sourceCounter(bucket._cwfisActiveCount), prescribed = sourceCounter(bucket._cwfisPrescribedCount);
+      var cwfisExtra = active !== null && prescribed !== null ? [active + " active, " + prescribed + " prescribed"] : [];
+      detailBlock(sources, "NASA FIRMS", [wildfireLine(bucket, "firms", "detections", firmsExtra)]);
+      detailBlock(sources, "Canadian CWFIS", [wildfireLine(bucket, "cwfis", "detections", cwfisExtra)]);
+      detailBlock(sources, "British Columbia", [wildfireLine(bucket, "bc", "records")]);
     }
-    function regionalDetails(view, region, coverage) {
-      if (!coverage || typeof coverage !== "object" || Array.isArray(coverage)) {
-        detailBlock(view.section, region.label, ["Provider detail: Unknown"]);
-        return;
-      }
-      var supplied = coverage.sourceDecisions;
-      var sampled = supplied && typeof supplied === "object" && !Array.isArray(supplied) && Array.isArray(supplied.sample);
-      var decisions = Array.isArray(supplied) ? supplied : sampled ? supplied.sample : null;
-      var lines = [];
-      if (!decisions) lines.push("Provider detail: Unknown");
-      else {
-        if (sampled) {
-          var knownTotal = sourceCounter(supplied.count) !== "Unknown" && supplied.count >= decisions.length;
-          lines.push("Showing " + decisions.length + " sampled source decisions" + (knownTotal ? " of " + supplied.count + " reported source decisions." : "; total: Unknown.") + " Full decision list is not loaded.");
+    function decisionList(coverage) {
+      var supplied = coverage && typeof coverage === "object" && !Array.isArray(coverage) ? coverage.sourceDecisions : null;
+      var sampled = Boolean(supplied) && typeof supplied === "object" && !Array.isArray(supplied) && Array.isArray(supplied.sample);
+      return { decisions: Array.isArray(supplied) ? supplied : sampled ? supplied.sample : null, sampled: sampled, supplied: supplied };
+    }
+    // A source the seeder never requested (requestCount 0) is switched off by
+    // design and is not a coverage failure; only an attempted source that was
+    // not accepted is.
+    function decisionFailed(decision) {
+      return Boolean(decision) && typeof decision === "object" && decision.status !== "accepted" && decision.requestCount !== 0;
+    }
+    function decisionLine(decision) {
+      var item = decision && typeof decision === "object" && !Array.isArray(decision) ? decision : {};
+      var name = typeof item.source === "string" && item.source.trim() ? collapseWs(item.source) : "Unnamed source";
+      if (item.status === "accepted") return name + " · OK";
+      if (item.requestCount === 0) return name + " · not connected";
+      var reason = typeof item.reason === "string" && item.reason.trim() ? " (" + collapseWs(item.reason) + ")" : "";
+      return name + " · failed" + reason;
+    }
+    function regionalDetails(view, regions) {
+      var sources = sourcesBlock(view.section);
+      var seen = {}, lines = [], checked = null, known = false;
+      regions.forEach(function (region) {
+        var coverage = view.bucket[region.key];
+        var list = decisionList(coverage);
+        if (!list.decisions) {
+          if (coverage && typeof coverage === "object") lines.push(region.label + ": source details unavailable.");
+          return;
         }
-        if (!decisions.length) lines.push("No source decisions supplied.");
-        decisions.forEach(function (decision) {
-          var item = decision && typeof decision === "object" && !Array.isArray(decision) ? decision : {};
-          lines.push(sourceText(item.source) + " · " + sourceText(item.status) + " · " + sourceText(item.reason)
-            + " · Optional: " + sourceBoolean(item.optional) + " · Requests: " + sourceCounter(item.requestCount)
-            + " · Decision check time: " + eventTime(item.checkedAt, "", "Unknown"));
+        known = true;
+        if (list.sampled) {
+          var total = sourceCounter(list.supplied.count);
+          var knownTotal = total !== null && list.supplied.count >= list.decisions.length;
+          lines.push(region.label + ": showing " + list.decisions.length + (knownTotal ? " of " + total + " sources." : " sources; total unknown."));
+        }
+        list.decisions.forEach(function (decision) {
+          var line = decisionLine(decision);
+          if (seen[line]) return;
+          seen[line] = true; lines.push(line);
         });
-      }
-      lines.push("Dataset fetch time: " + eventTime(view.bucket.fetchedAt, "", "Unknown"));
-      lines.push("Evaluation time: " + eventTime(coverage.evaluatedAt, "", "Unknown"));
-      lines.push("latestObservationAt (supplied): " + eventTime(coverage.latestObservationAt, "", "Unknown") + " · May use evaluation time as a fallback. Original publication is not established.");
-      detailBlock(view.section, region.label, lines);
+        if (checked === null) checked = eventTime(coverage.evaluatedAt, "Checked ", null);
+      });
+      if (!lines.length) { sources.appendChild(el("div", "", "No source details supplied.")); return; }
+      if (known) lines.push(checked || "Check time unknown");
+      detailBlock(sources, "Cyclone and warning sources", lines);
     }
 
     var geo = ${JSON.stringify({ width: NATURAL_MAP_BASE.width, height: NATURAL_MAP_BASE.height, scale: NATURAL_MAP_BASE.scale, translate: NATURAL_MAP_BASE.translate })};
@@ -284,7 +325,7 @@ const RENDER = `
         });
       });
       if (vertices > 2048) return localLimit("track output vertices");
-      return { paths: paths, status: invalid ? paths.length ? "Supplied geometry invalid/unavailable; valid separated segments are partial." : "Supplied geometry invalid/unavailable; no valid track segments can be drawn." : "Returned supplied geometry; full original detail is not established." };
+      return { paths: paths, status: invalid ? paths.length ? "Supplied geometry invalid/unavailable; valid separated segments are partial." : "Supplied geometry invalid/unavailable; no valid track segments can be drawn." : "" };
     }
     function clipRing(points, boundary, keepGreater) {
       var result = [];
@@ -342,7 +383,7 @@ const RENDER = `
         });
       }
       if (vertices > 8192) return localLimit("cone output vertices");
-      return { paths: paths, status: invalid ? paths.length ? "Supplied geometry invalid/unavailable; valid rings are partial." : "Supplied geometry invalid/unavailable; no valid cone rings can be drawn." : "Returned supplied geometry; seam intersections and ring closure are display calculations, not observations. Full original detail is not established." };
+      return { paths: paths, status: invalid ? paths.length ? "Supplied geometry invalid/unavailable; valid rings are partial." : "Supplied geometry invalid/unavailable; no valid cone rings can be drawn." : "" };
     }
     function geometryFor(item) {
       var fields = ["forecastTrack", "pastTrack", "conePolygon"], used = 0;
@@ -409,7 +450,7 @@ const RENDER = `
         var group = svg("g", { "data-geometry": overlay.field, "aria-hidden": "true", "pointer-events": "none", "class": "natural-geometry " + overlay.field });
         overlay.paths.forEach(function(pathData) { group.appendChild(svg("path", { "d": pathData })); }); overlays.appendChild(group);
         var label = { forecastTrack: "Forecast track", pastTrack: "Past track", conePolygon: "Cone" }[overlay.field];
-        var status = el("div", "dtime", label + ": " + overlay.status); selection.appendChild(status);
+        if (overlay.status) selection.appendChild(el("div", "dtime", label + ": " + overlay.status));
         if (overlay.paths.length) {
           var toggle = el("button", "", label); toggle.type = "button";
           toggle.setAttribute("data-overlay", overlay.field); toggle.setAttribute("aria-pressed", "true");
@@ -434,9 +475,10 @@ const RENDER = `
         entry.marker.setAttribute("aria-label", entry.label + (chosen ? "; selected " + itemLabel(chosen) : ""));
         if (members.length) entry.marker.setAttribute("class", "natural-marker " + members[0].dataset);
       });
-      var valid = items.filter(function(item) { return item.point && layers[item.dataset].visible; }).length;
+      var shownItems = items.filter(function(item) { return layers[item.dataset].visible; });
+      var valid = shownItems.filter(function(item) { return item.point; }).length;
       mapStatus.textContent = Object.keys(layers).some(function(key) { return layers[key].visible; })
-        ? valid + " valid locations among " + items.length + " displayed rows. Map covers only displayed rows; reported coordinates are not independently verified."
+        ? (valid === shownItems.length ? valid + (valid === 1 ? " event" : " events") + " on the map." : valid + " of " + shownItems.length + " events in the shown layers have map locations.")
         : Object.keys(layers).some(function(key) { return !layers[key].button.disabled; })
           ? "Layers hidden. Source rows and coverage remain below." : "Map locations unavailable for supplied datasets. See source coverage below.";
     }
@@ -510,7 +552,7 @@ const RENDER = `
         var place = el(source ? "a" : "span", "dplace", collapseWs(quake.place) || "Unknown location");
         if (source) { place.href = source; place.target = "_blank"; place.rel = "noopener noreferrer"; }
         quakeRow.appendChild(place);
-        quakeRow.appendChild(el("span", "dtime", eventTime(quake.occurredAt, "", "Event time unavailable")));
+        quakeRow.appendChild(el("span", "dtime dmeta", eventTime(quake.occurredAt, "", "Event time unavailable")));
         registerRow("earthquakes", quakeIndex, quake, quakeRow, place.textContent);
         quakeView.section.appendChild(quakeRow);
         quakeShown++;
@@ -522,12 +564,14 @@ const RENDER = `
     var fireView = group("fires", "Active Wildfires", "fireDetections");
     if (fireView) {
       var fireShown = 0;
-      var confidenceLabels = { FIRE_CONFIDENCE_HIGH: "High", FIRE_CONFIDENCE_NOMINAL: "Nominal", FIRE_CONFIDENCE_LOW: "Low" };
+      var confidenceLabels = { FIRE_CONFIDENCE_HIGH: "high", FIRE_CONFIDENCE_NOMINAL: "nominal", FIRE_CONFIDENCE_LOW: "low" };
       for (var fireIndex = 0; fireIndex < fireView.items.length && fireIndex < 6; fireIndex++) {
         var fire = fireView.items[fireIndex];
         if (!fire || typeof fire !== "object") continue;
         var fireRow = el("div", "drow");
-        fireRow.appendChild(el("span", "mag", confidenceLabels[collapseWs(fire.confidence)] || "Fire"));
+        var fireMark = el("span", "mag", "Fire");
+        fireMark.style.color = cssVar("--severe");
+        fireRow.appendChild(fireMark);
         var location = fire.location && typeof fire.location === "object" ? fire.location : null;
         var latitude = location ? num(location.latitude) : null;
         var longitude = location ? num(location.longitude) : null;
@@ -535,8 +579,10 @@ const RENDER = `
         fireRow.appendChild(el("span", "dplace", firePlace));
         var brightness = num(fire.brightness);
         var fireDetails = eventTime(fire.detectedAt === 0 ? null : fire.detectedAt, "Detected ", "Detection time unavailable");
-        if (brightness != null) fireDetails += " · brightness " + Math.round(brightness);
-        fireRow.appendChild(el("span", "dtime", fireDetails));
+        var confidence = confidenceLabels[collapseWs(fire.confidence)];
+        if (confidence) fireDetails += " · " + confidence + " confidence";
+        if (brightness != null && brightness > 0) fireDetails += " · " + Math.round(brightness) + " K";
+        fireRow.appendChild(el("span", "dtime dmeta", fireDetails));
         registerRow("fires", fireIndex, fire, fireRow, firePlace);
         fireView.section.appendChild(fireRow);
         fireShown++;
@@ -566,16 +612,14 @@ const RENDER = `
         eventRow.appendChild(eventPlace);
         var eventDetails = [collapseWs(event.categoryTitle) || collapseWs(event.category) || collapseWs(event.type), collapseWs(event.country)].filter(Boolean);
         var ownDate = Object.prototype.hasOwnProperty.call(event, "date") && typeof event.date === "number" && Number.isSafeInteger(event.date) && Number.isFinite(new Date(event.date).getTime());
-        var reportedDate = ownDate ? "Reported event time: " + new Date(event.date).toISOString() : "Event time unavailable";
+        var reportedDate = ownDate ? utc(new Date(event.date)) : "Event time unavailable";
         var eventMagnitude = typeof event.magnitude === "number" && Number.isFinite(event.magnitude) ? event.magnitude : null;
         var eventUnit = typeof event.magnitudeUnit === "string" ? collapseWs(event.magnitudeUnit) : "";
-        if (eventMagnitude == null) eventDetails.push("Measurement unavailable");
-        else if (eventUnit) eventDetails.push("Measurement: " + eventMagnitude + " " + eventUnit);
-        else eventDetails.push("Reported value: " + eventMagnitude + "; unit unavailable" + (eventMagnitude === 0 ? "; measurement status unavailable" : ""));
+        if (eventMagnitude != null) eventDetails.push(eventUnit ? eventMagnitude + " " + eventUnit : eventMagnitude + " (no unit given)");
         if (typeof event.closed === "boolean") eventDetails.push(event.closed ? "Closed" : "Active");
-        eventRow.appendChild(el("span", "dtime", eventDetails.join(" · ")));
-        eventRow.appendChild(el("span", "dtime", reportedDate));
-        if (typeof event.status === "string" && event.status.trim()) eventRow.appendChild(el("span", "dtime", "Reported status: " + collapseWs(event.status)));
+        if (eventDetails.length) eventRow.appendChild(el("span", "dtime dmeta", eventDetails.join(" · ")));
+        eventRow.appendChild(el("span", "dtime dmeta", reportedDate));
+        if (typeof event.status === "string" && event.status.trim()) eventRow.appendChild(el("span", "dtime dmeta", "Status: " + collapseWs(event.status)));
         registerRow("events", otherIndex, event, eventRow, eventPlace.textContent);
         otherView.section.appendChild(eventRow);
         otherShown++;
@@ -586,15 +630,15 @@ const RENDER = `
         regionalSources.forEach(function (region) {
           var coverage = otherView.bucket[region.key];
           if (coverage && typeof coverage === "object") {
-            if (coverage.dataAvailable === false) warning(otherView.section, region.label + " coverage is unavailable.");
-            if (Array.isArray(coverage.sourceDecisions) && coverage.sourceDecisions.some(function (decision) { return decision && decision.status !== "accepted"; })) {
-              warning(otherView.section, region.label + " source coverage is incomplete.");
-            }
+            var failedSources = (decisionList(coverage).decisions || []).filter(decisionFailed);
+            var failedText = failedSources.length ? ": " + failedSources.map(decisionLine).join("; ") : "";
+            if (coverage.dataAvailable === false) warning(otherView.section, region.label + " coverage is unavailable" + failedText + ".");
+            else if (failedSources.length) warning(otherView.section, region.label + " coverage is incomplete" + failedText + ".");
           }
-          regionalDetails(otherView, region, coverage);
         });
+        regionalDetails(otherView, regionalSources);
       }
-      else detailBlock(otherView.section, "Regional sources", ["Provider detail: Unknown"]);
+      else sourcesBlock(otherView.section).appendChild(el("div", "", "No source details supplied."));
       counts(otherView, otherShown);
     }
 
@@ -602,7 +646,7 @@ const RENDER = `
     if (!selectedCount) host.appendChild(el("div", "empty", "Natural-hazard data is temporarily unavailable."));
     else if (emptyCount === selectedCount && !coverageLimited) host.appendChild(el("div", "empty", "No natural-hazard events available."));
     q("foot").textContent = envelope.cached_at
-      ? "Snapshot: " + collapseWs(envelope.cached_at) + (envelope.stale ? " (stale)" : "")
+      ? "Updated " + eventTime(envelope.cached_at, "", collapseWs(envelope.cached_at)) + (envelope.stale ? " (stale)" : "")
       : "";
 `;
 

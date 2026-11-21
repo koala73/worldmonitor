@@ -41,6 +41,14 @@ function command(cmd) {
     return { result: entry ? 1 : 0 };
   }
   if (op === 'DEL') return { result: cache.delete(key) ? 1 : 0 };
+  // runSeed's lock fence (SM-122): renewal and fenced writes find the lock
+  // held; a fenced write (two keys: lock, target) is the SET it performs.
+  if (op === 'EVAL' && String(cmd[1]).includes('PEXPIRE')) {
+    if (cmd[2] === 2) {
+      command(cmd[8] === '' ? ['SET', cmd[4], cmd[7]] : ['SET', cmd[4], cmd[7], 'EX', cmd[8]]);
+    }
+    return { result: [1, ''] };
+  }
   if (op === 'EVAL') {
     cache.delete(cmd[3]);
     return { result: 1 };
@@ -219,7 +227,7 @@ test('a new live HTML week retains the latest 52 genuine weeks and their source 
   assert.deepEqual(canonical.data.weeks.slice(1), oldWeeks.slice(0, 51));
   assert.deepEqual(canonical.data.previous, oldWeeks[0]);
   assert.deepEqual(canonical.data.avg8w, { bullish: 36.2, bearish: 41.4, neutral: 22.4, spread: -5.1 });
-  assert.equal(result.cache[key].expiresAt, now + 604800_000);
+  assert.equal(result.cache[key].expiresAt, now + 21 * 86400_000);
   assert.equal(JSON.parse(result.cache[metaKey].value).recordCount, 52);
 });
 
@@ -275,7 +283,7 @@ test('usable live HTML publishes the existing AAII consumer shape', () => {
   assert.deepEqual(canonical.data.latest, { date: '2026-10-15', bullish: 40, bearish: 30, neutral: 30, spread: 10 });
   assert.deepEqual(canonical.data.weeks, [canonical.data.latest]);
   assert.deepEqual(canonical.data.avg8w, { bullish: 40, bearish: 30, neutral: 30, spread: 10 });
-  assert.equal(result.cache[key].expiresAt, now + 604800_000);
+  assert.equal(result.cache[key].expiresAt, now + 21 * 86400_000);
   assert.equal(JSON.parse(result.cache[metaKey].value).fetchedAt, now);
   assert.match(result.log, /"event":"seed_complete"/);
 });

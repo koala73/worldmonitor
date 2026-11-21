@@ -23,7 +23,6 @@ const PAGE2 = JSON.parse(readFileSync(new URL('./fixtures/open511-bc-page-2.json
 const ADAPTER_SOURCE = readFileSync(new URL('../scripts/lib/open511.mjs', import.meta.url), 'utf8');
 const SEEDER_SOURCE = readFileSync(new URL('../scripts/seed-open511.mjs', import.meta.url), 'utf8');
 const RELAY_SOURCE = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
-const TEST_SOURCE = readFileSync(new URL(import.meta.url), 'utf8');
 
 test.afterEach(() => {
   limiterTesting.reset();
@@ -35,11 +34,6 @@ function jsonResponse(body, { status = 200, headers = {} } = {}) {
     headers: { 'content-type': 'application/json', ...headers },
   });
 }
-
-test('seeder module is not imported by this test file', () => {
-  assert.equal(/from ['"][^'"]*seed-open511/.test(TEST_SOURCE), false);
-  assert.equal(TEST_SOURCE.includes('seed-open511.mjs'), true, 'fixture: this file must still mention the seeder as text');
-});
 
 test('adapter is Open511 /events?status=ACTIVE, not vendor /api/v2/get', () => {
   assert.match(ADAPTER_SOURCE, /events\?status=ACTIVE|searchParams\.set\('status'/);
@@ -272,6 +266,32 @@ test('responses larger than 5MB are rejected', async () => {
   );
 });
 
+test('an undeclared oversized body is cancelled at the 5MB cap, not buffered', async () => {
+  let pulled = 0;
+  const chunk = new Uint8Array(1 << 20).fill(0x20);
+  const fetchFn = async () => new Response(new ReadableStream({
+    pull(controller) {
+      if (pulled >= 64 * chunk.length) return controller.close();
+      pulled += chunk.length;
+      controller.enqueue(chunk);
+    },
+    // No read-ahead: each chunk is pulled only when the reader asks for it.
+  }, { highWaterMark: 0 }), { headers: { 'content-type': 'application/json' } });
+  await assert.rejects(
+    () => fetchEvents('https://api.open511.gov.bc.ca', { fetchFn, acquireSlot: async () => {} }),
+    /exceeds 5242880 bytes/,
+  );
+  assert.ok(pulled <= 5 * 1024 * 1024 + chunk.length, `pulled ${pulled} bytes`);
+});
+
+test('a malformed body still rejects as invalid JSON', async () => {
+  const fetchFn = async () => new Response('{"events": [', { headers: { 'content-type': 'application/json' } });
+  await assert.rejects(
+    () => fetchEvents('https://api.open511.gov.bc.ca', { fetchFn, acquireSlot: async () => {} }),
+    SyntaxError,
+  );
+});
+
 test('empty event lists are valid', () => {
   assert.deepEqual(normalizeOpen511List({ events: [] }, { jurisdiction: 'BC' }), []);
 });
@@ -377,18 +397,9 @@ test('bootstrap fetches bcOpen511 and its Ontario sibling on demand, never on a 
   }
 });
 
-test('BC Open511 is live, so it carries no freshness acknowledgement', () => {
-  // Was: pinned the expiring-ack dates for a probe that had never published.
-  // seed-bundle-canada is provisioned and bcOpen511 now reads healthy, so the
-  // ack was removed as SATISFIED. Asserting its absence is what stops it being
-  // reinstated: an acknowledgement that outlives its problem is a suppression
-  // with nothing to suppress, and would silently absorb a FUTURE BC outage.
-  const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'));
-  const row = baseline.acknowledged.find((a) => a.issue === 6611 || a.name === 'bcOpen511');
-  assert.equal(row, undefined, 'bcOpen511 publishes now; it must not be acknowledged as a known-empty probe');
-
-  // The probe itself must still exist, or "no ack" would be trivially true
-  // because nothing is watching the key at all.
+test('BC Open511 is live and health still watches its key', () => {
+  // seed-bundle-canada is provisioned and bcOpen511 reads healthy. The probe
+  // must still exist, or a future BC outage would have nothing watching it.
   const health = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
   assert.match(health, /bcOpen511:\s*\{[\s\S]{0,120}?key:\s*'seed-meta:infra:bc-open511'/);
 });

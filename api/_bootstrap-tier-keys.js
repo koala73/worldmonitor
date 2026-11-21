@@ -11,8 +11,10 @@
  */
 
 export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
+  ukmtoIncidents: 'maritime:ukmto-incidents:v1',
   earthquakes: 'seismology:earthquakes:v1',
   outages: 'infra:outages:v1',
+  gridDisruptionClock: 'infra:grid-disruption-clock:v1',
   serviceStatuses: 'infra:service-statuses:v1',
   ddosAttacks: 'cf:radar:ddos:v1',
   trafficAnomalies: 'cf:radar:traffic-anomalies:v1',
@@ -185,6 +187,8 @@ const FAST_KEY_NAMES = new Set([
 ]);
 
 const ON_DEMAND_KEY_NAMES = new Set([
+  'gridDisruptionClock',
+  'ukmtoIncidents',
   'cyberThreats',
   'chinaPolicyEvents', 'chinaDecisionSignals',
   'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',

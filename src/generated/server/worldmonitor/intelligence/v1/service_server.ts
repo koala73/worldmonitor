@@ -257,6 +257,18 @@ export interface GetCountryRiskResponse {
   sanctionsCount: number;
   fetchedAt: number;
   upstreamUnavailable: boolean;
+  imageryChange?: ImageryChangeContext;
+}
+
+export interface ImageryChangeContext {
+  watchedSiteCount: number;
+  confirmedSites: ImageryChangeSite[];
+}
+
+export interface ImageryChangeSite {
+  siteId: string;
+  name: string;
+  confirmedAt: number;
 }
 
 export interface GetCountryIntelBriefRequest {
@@ -720,6 +732,8 @@ export interface ListSecurityAdvisoriesRequest {
 export interface ListSecurityAdvisoriesResponse {
   advisories: SecurityAdvisoryItem[];
   byCountry: Record<string, string>;
+  registerLevels: SecurityAdvisoryItem[];
+  fetchedAt: number;
 }
 
 export interface SecurityAdvisoryItem {
@@ -904,6 +918,29 @@ export interface GetCountryEnergyProfileResponse {
   importShareAvailable: boolean;
   importShareYear: number;
   importShareSource: string;
+  regionalEnergyFeeds: RegionalEnergyFeed[];
+}
+
+export interface RegionalEnergyFeed {
+  sourceId: string;
+  name: string;
+  sourceUrl: string;
+  licence: string;
+  status: string;
+  fetchedAt: number;
+  observedAt: number;
+  dataUrls: string[];
+  observations: RegionalEnergyObservation[];
+  error: string;
+}
+
+export interface RegionalEnergyObservation {
+  metric: string;
+  period: string;
+  value: number;
+  unit: string;
+  area: string;
+  stale: boolean;
 }
 
 export interface ComputeEnergyShockScenarioRequest {
@@ -935,6 +972,11 @@ export interface ComputeEnergyShockScenarioResponse {
   /** @deprecated */
   gasImpact?: GasImpact;
   gasSensitivity?: GasSensitivity;
+  preCrisisBaseline?: CrudeShareBaseline;
+  currentFlows?: CrudeShareBaseline;
+  /** @deprecated */
+  reserveEstimate?: ReserveEstimate;
+  reportedStocks?: ReportedStocks;
 }
 
 export interface ProductImpact {
@@ -977,6 +1019,8 @@ export interface GasSensitivity {
   dataSource: string;
   dataMonth: string;
   modelBasis: string;
+  preCrisisBaseline?: LngShareBaseline;
+  currentFlows?: LngShareBaseline;
 }
 
 export interface GasStorageObservation {
@@ -987,6 +1031,45 @@ export interface GasStorageObservation {
   scope: string;
 }
 
+export interface LngShareBaseline {
+  basis: string;
+  fromMonth: string;
+  toMonth: string;
+  monthsCovered: number;
+  hormuzLngShare: number;
+  lngDisruptionTj: number;
+}
+
+export interface CrudeShareBaseline {
+  basis: string;
+  fromMonth: string;
+  toMonth: string;
+  monthsCovered: number;
+  gulfCrudeShare: number;
+  crudeLossKbd: number;
+  crudeLossAfterBypassKbd?: number;
+}
+
+export interface ReserveEstimate {
+  scope: string;
+  asOf: string;
+  credibility: string;
+  lowMb: number;
+  centralMb: number;
+  highMb: number;
+  coverDaysLow?: number;
+  coverDaysHigh?: number;
+}
+
+export interface ReportedStocks {
+  source: string;
+  month: string;
+  crudeMb: number;
+  productsMb: number;
+  totalMb: number;
+  stockDays?: number;
+}
+
 export interface GetCountryPortActivityRequest {
   countryCode: string;
 }
@@ -995,6 +1078,7 @@ export interface CountryPortActivityResponse {
   ports: PortActivityEntry[];
   fetchedAt: string;
   available: boolean;
+  stale: boolean;
 }
 
 export interface PortActivityEntry {
@@ -1312,7 +1396,7 @@ export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" 
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
 
-export type CountrySignalFamily = "COUNTRY_SIGNAL_FAMILY_UNSPECIFIED" | "COUNTRY_SIGNAL_FAMILY_OUTAGES" | "COUNTRY_SIGNAL_FAMILY_UNREST" | "COUNTRY_SIGNAL_FAMILY_FIRES" | "COUNTRY_SIGNAL_FAMILY_RADIATION" | "COUNTRY_SIGNAL_FAMILY_SANCTIONS" | "COUNTRY_SIGNAL_FAMILY_CONFLICT" | "COUNTRY_SIGNAL_FAMILY_POSTURE" | "COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE";
+export type CountrySignalFamily = "COUNTRY_SIGNAL_FAMILY_UNSPECIFIED" | "COUNTRY_SIGNAL_FAMILY_OUTAGES" | "COUNTRY_SIGNAL_FAMILY_UNREST" | "COUNTRY_SIGNAL_FAMILY_FIRES" | "COUNTRY_SIGNAL_FAMILY_RADIATION" | "COUNTRY_SIGNAL_FAMILY_SANCTIONS" | "COUNTRY_SIGNAL_FAMILY_CONFLICT" | "COUNTRY_SIGNAL_FAMILY_POSTURE" | "COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE" | "COUNTRY_SIGNAL_FAMILY_IMAGERY" | "COUNTRY_SIGNAL_FAMILY_WATER";
 
 export type CrossSourceSignalSeverity = "CROSS_SOURCE_SIGNAL_SEVERITY_UNSPECIFIED" | "CROSS_SOURCE_SIGNAL_SEVERITY_LOW" | "CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM" | "CROSS_SOURCE_SIGNAL_SEVERITY_HIGH" | "CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL";
 

@@ -11,7 +11,8 @@ import {
   operatorKeyQuotaPrincipal,
   reportHighUsageIfCrossed,
 } from '../server/_shared/high-usage-alarm.ts';
-import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
+import { PRODUCT_CATALOG, SHARED_API_BUDGET } from '../convex/config/productCatalog.ts';
+import { resolveMcpBudget } from '../api/mcp/quota.ts';
 import { mergeEntitlementFeatures } from '../convex/lib/entitlements.ts';
 
 describe('crossedHighUsageThreshold', () => {
@@ -96,39 +97,52 @@ describe('operator-key ceilings', () => {
   });
 });
 
-describe('catalog Enterprise ceilings', () => {
+describe('catalog Enterprise default', () => {
   const enterprise = PRODUCT_CATALOG.enterprise.features;
-  const finitePlans = Object.values(PRODUCT_CATALOG).filter((entry) => entry.features.tier < 3);
+  const business = PRODUCT_CATALOG.api_business.features;
 
-  it('are finite on every daily dimension', () => {
+  it('is finite on every daily dimension', () => {
     assert.equal(typeof enterprise.planLimits?.apiRequestsPerDay, 'number');
-    assert.equal(typeof enterprise.planLimits?.mcpCallsPerDay, 'number');
     assert.equal(typeof enterprise.planLimits?.dashboardAiCallsPerDay, 'number');
     assert.ok((enterprise.apiDailyAllowance ?? -1) > 0);
   });
 
-  it('stay at or above every lower tier, so no Enterprise customer gets less than a self-serve plan', () => {
-    for (const entry of finitePlans) {
-      const limits = entry.features.planLimits;
-      if (!limits) continue;
-      if (typeof limits.apiRequestsPerDay === 'number') {
-        assert.ok(enterprise.planLimits!.apiRequestsPerDay! >= limits.apiRequestsPerDay, entry.planKey);
-      }
-      if (typeof limits.mcpCallsPerDay === 'number') {
-        assert.ok((enterprise.planLimits!.mcpCallsPerDay as number) >= limits.mcpCallsPerDay, entry.planKey);
-      }
-      if (typeof limits.dashboardAiCallsPerDay === 'number') {
-        assert.ok(enterprise.planLimits!.dashboardAiCallsPerDay! >= limits.dashboardAiCallsPerDay, entry.planKey);
-      }
+  it('is the contract default: 10,000 a day and 300 a minute, MCP on the REST budget', () => {
+    assert.equal(enterprise.apiDailyAllowance, 10_000);
+    assert.equal(enterprise.apiRateLimit, 300);
+    assert.equal(enterprise.planLimits?.apiRequestsPerDay, 10_000);
+    assert.equal(enterprise.planLimits?.apiBurstRequestsPerMinute, 300);
+    assert.equal(enterprise.planLimits?.mcpCallsPerDay, SHARED_API_BUDGET);
+    assert.equal(enterprise.planLimits?.mcpBurstRequestsPerMinute, 300);
+    assert.equal(enterprise.planLimits?.dashboardAiCallsPerDay, 10_000);
+  });
+
+  it('gives no Enterprise customer less than API Business', () => {
+    const limits = business.planLimits!;
+    assert.ok(enterprise.planLimits!.apiRequestsPerDay! >= limits.apiRequestsPerDay!);
+    assert.ok(enterprise.planLimits!.apiBurstRequestsPerMinute! >= limits.apiBurstRequestsPerMinute!);
+    assert.ok(enterprise.planLimits!.dashboardAiCallsPerDay! >= limits.dashboardAiCallsPerDay!);
+    assert.ok(enterprise.planLimits!.mcpBurstRequestsPerMinute! >= limits.mcpBurstRequestsPerMinute!);
+  });
+
+  it('resolves MCP to the shared API allowance in both flag states', () => {
+    for (const restEnforced of [false, true]) {
+      const budget = resolveMcpBudget(
+        enterprise.planLimits?.mcpCallsPerDay,
+        enterprise.planLimits?.apiRequestsPerDay,
+        restEnforced,
+      );
+      assert.deepEqual(budget, { allowance: 'api', counter: restEnforced ? 'api' : 'mcp', limit: 10_000 });
     }
   });
 });
 
-describe('Enterprise rows written under the uncapped catalog', () => {
+describe('Enterprise rows written under an earlier catalog', () => {
   // Entitlement rows store the plan's full feature set at grant time, and the
-  // read-time merge lets stored values win. A row granted before the ceilings
-  // existed therefore still carries the old `null` / `-1` "unlimited" markers.
-  const legacyRow = {
+  // read-time merge lets stored values win for most plans. Enterprise limits
+  // are plan structure, so the catalog wins over both the old "unlimited"
+  // markers and the old 100,000/1,000 numbers.
+  const uncappedRow = {
     tier: 3,
     maxDashboards: -1,
     apiAccess: true,
@@ -146,20 +160,34 @@ describe('Enterprise rows written under the uncapped catalog', () => {
       mcpBurstRequestsPerMinute: 1000,
     },
   };
+  const circuitBreakerRow = {
+    ...uncappedRow,
+    apiDailyAllowance: 100_000,
+    planLimits: {
+      apiRequestsPerDay: 100_000,
+      apiBurstRequestsPerMinute: 1000,
+      mcpCallsPerDay: 25_000,
+      dashboardAiCallsPerDay: 25_000,
+      mcpBurstRequestsPerMinute: 1000,
+    },
+  };
 
-  it('resolve to the catalog ceilings, not to unlimited', () => {
-    const merged = mergeEntitlementFeatures('enterprise', legacyRow);
-    const catalog = PRODUCT_CATALOG.enterprise.features;
-    assert.equal(merged.apiDailyAllowance, catalog.apiDailyAllowance);
-    assert.equal(merged.planLimits?.apiRequestsPerDay, catalog.planLimits?.apiRequestsPerDay);
-    assert.equal(merged.planLimits?.mcpCallsPerDay, catalog.planLimits?.mcpCallsPerDay);
-    assert.equal(merged.planLimits?.dashboardAiCallsPerDay, catalog.planLimits?.dashboardAiCallsPerDay);
-  });
+  for (const [label, row] of [['uncapped', uncappedRow], ['100,000/1,000', circuitBreakerRow]] as const) {
+    it(`resolve a ${label} row to the catalog limits`, () => {
+      const merged = mergeEntitlementFeatures('enterprise', row);
+      const catalog = PRODUCT_CATALOG.enterprise.features;
+      assert.equal(merged.apiDailyAllowance, catalog.apiDailyAllowance);
+      assert.equal(merged.apiRateLimit, catalog.apiRateLimit);
+      assert.deepEqual(
+        { ...merged.planLimits, desktopKeyRequestsPerDay: undefined, desktopKeyBurstPerMinute: undefined },
+        { ...catalog.planLimits, desktopKeyRequestsPerDay: undefined, desktopKeyBurstPerMinute: undefined },
+      );
+    });
+  }
 
-  it('keep every other stored value', () => {
-    const merged = mergeEntitlementFeatures('enterprise', { ...legacyRow, apiRateLimit: 777 });
-    assert.equal(merged.apiRateLimit, 777);
-    assert.equal(merged.maxDashboards, -1);
+  it('keep every stored value that is not a limit', () => {
+    const merged = mergeEntitlementFeatures('enterprise', { ...uncappedRow, maxDashboards: 42 });
+    assert.equal(merged.maxDashboards, 42);
   });
 });
 

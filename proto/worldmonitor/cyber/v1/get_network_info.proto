@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package worldmonitor.cyber.v1;
+
+import "sebuf/http/annotations.proto";
+
+// GetNetworkInfoRequest selects a literal public IP; domains and URLs are not resolved.
+message GetNetworkInfoRequest {
+  // IPv4 or IPv6 indicator.
+  string ip = 1 [(sebuf.http.query) = {name: "ip"}];
+}
+
+// NetworkAsn is a routing origin and its reported ASN holder, not an attacker identity.
+message NetworkAsn {
+  // Autonomous system number.
+  uint32 asn = 1;
+  // RIPEstat-reported holder; empty when unavailable.
+  string holder = 2;
+}
+
+// GetNetworkInfoResponse separates passive network context from threat observations.
+message GetNetworkInfoResponse {
+  // available, partial, no_data, unavailable, disabled, invalid, or rate_limited.
+  string status = 1;
+  // Canonical queried IP address.
+  string ip = 2;
+  // All reported origin ASNs.
+  repeated NetworkAsn asns = 3;
+  // Reported routing prefix, not an allocated/registered network.
+  string prefix = 4;
+  // True if RIPEstat aligned the result to a broader prefix.
+  bool is_less_specific = 5;
+  // Reverse-DNS hostnames, not proof of ownership.
+  repeated string hostnames = 6;
+  // Time the enrichment was retrieved, ISO 8601; preserved on cache hits.
+  string lookup_at = 7;
+  // Provider routing-data time, ISO 8601, if supplied.
+  string routing_at = 8;
+}

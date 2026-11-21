@@ -78,6 +78,7 @@ describe('RPC_CACHE_TIER route parity', () => {
 
   it('does not cache paired physical-premium cohorts across source-clock boundaries', () => {
     assert.equal(tierMap['/api/market/v1/get-physical-premiums'], 'no-store');
+    assert.equal(tierMap['/api/maritime/v1/list-ukmto-incidents'], 'no-store');
     assert.equal(tierMap['/api/market/v1/get-physical-divergence-index'], 'no-store');
   });
 

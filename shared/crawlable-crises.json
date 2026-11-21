@@ -280,5 +280,69 @@
       }
     ],
     "dashboardPath": "/dashboard?country=PS&expanded=1"
+  },
+  {
+    "slug": "taiwan-strait-tensions",
+    "title": "Taiwan Strait tensions tracker",
+    "shortTitle": "Taiwan Strait tensions",
+    "region": "asia",
+    "description": "Taiwan Strait tensions: PLA drills, grey-zone moves, US arms sales, key actors, a sourced timeline, what to watch, and monthly conflict events and fatalities.",
+    "overview": "This tracker reports the latest available monthly humanitarian conflict summary for Taiwan. It is a country-level pulse, not a comprehensive incident ledger, a measure of the Chinese military pressure recorded in Taiwan's daily aircraft and ship counts, or a forecast.",
+    "coverage": [
+      {
+        "code": "TW",
+        "name": "Taiwan"
+      }
+    ],
+    "dashboardPath": "/dashboard?country=TW&expanded=1"
+  },
+  {
+    "slug": "venezuela-crisis",
+    "title": "Venezuela crisis tracker",
+    "shortTitle": "Venezuela crisis",
+    "region": "americas",
+    "description": "Venezuela crisis: US strikes, Maduro's capture, the election push, key actors, a sourced timeline, what to watch, and monthly conflict events and fatalities.",
+    "overview": "This tracker reports the latest available monthly humanitarian conflict summary for Venezuela. It is a country-level pulse, not a comprehensive incident ledger, a count of deaths from US strikes on boats at sea, or a forecast.",
+    "coverage": [
+      {
+        "code": "VE",
+        "name": "Venezuela"
+      }
+    ],
+    "dashboardPath": "/dashboard?country=VE&expanded=1"
+  },
+  {
+    "slug": "india-pakistan-conflict",
+    "title": "India–Pakistan conflict tracker",
+    "shortTitle": "India–Pakistan conflict",
+    "region": "asia",
+    "description": "India–Pakistan conflict: Kashmir, Operation Sindoor, TTP insurgency, key actors, a sourced timeline, what to watch, and monthly conflict events and fatalities.",
+    "overview": "This tracker reports the latest available monthly humanitarian conflict summary for Pakistan and India. It is a country-level pulse, not a comprehensive incident ledger, a count limited to the bilateral dispute (the Pakistan and India figures include all internal political violence, such as the TTP and Baloch militant insurgencies and unrelated incidents elsewhere in India), or a forecast.",
+    "coverage": [
+      {
+        "code": "PK",
+        "name": "Pakistan"
+      },
+      {
+        "code": "IN",
+        "name": "India"
+      }
+    ],
+    "dashboardPath": "/dashboard?country=PK&expanded=1"
+  },
+  {
+    "slug": "syria-conflict",
+    "title": "Syria conflict tracker",
+    "shortTitle": "Syria conflict",
+    "region": "middle-east",
+    "description": "Syria conflict: the transition, SDF integration, Suwayda, Israel, key actors, a sourced timeline, what to watch, and monthly conflict events and fatalities.",
+    "overview": "This tracker reports the latest available monthly humanitarian conflict summary for Syria. It is a country-level pulse, not a comprehensive incident ledger, a full casualty count for the 2011-2024 civil war, or a forecast.",
+    "coverage": [
+      {
+        "code": "SY",
+        "name": "Syria"
+      }
+    ],
+    "dashboardPath": "/dashboard?country=SY&expanded=1"
   }
 ]

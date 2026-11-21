@@ -67,4 +67,4 @@ PR #9393 (unmerged as of this writing):
 
 - #9392, PR #9393
 - `docs/solutions/integration-issues/comtrade-commodity-evidence-recovery.md`
-- Follow-ups not in #9393: `scripts/seed-jodi-gas.mjs` has the same code-3 filter. `get_chokepoint_status` reports `cached_at` as the oldest key, so the static baselines registry dates live transit data to April.
+- Follow-ups not in #9393: `scripts/seed-jodi-gas.mjs` had the same code-3 filter (since fixed: it dropped China and 13 other gas reporters, and held Kazakhstan and Mexico at stale months). `get_chokepoint_status` reports `cached_at` as the oldest key, so the static baselines registry dates live transit data to April.

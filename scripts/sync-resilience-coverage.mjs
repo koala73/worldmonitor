@@ -48,7 +48,7 @@ export const RESILIENCE_COVERAGE_SURFACES = [
     render: ({ ranked, universe }) => `其中 ${ranked} 个国家进入排名（${ranked}/${universe}）`,
   },
   {
-    path: 'docs/overview.mdx',
+    path: 'docs/platform-evaluation.mdx',
     occurrences: 1,
     pattern: /ranks \d+ of \d+ countries/g,
     render: ({ ranked, universe }) => `ranks ${ranked} of ${universe} countries`,

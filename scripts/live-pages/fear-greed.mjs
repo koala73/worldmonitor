@@ -101,10 +101,10 @@ export const fearGreedPage = Object.freeze({
   slug: 'fear-and-greed-index',
   path: '/tools/fear-and-greed-index/',
   statusPath: '/api/market/v1/get-fear-greed-index?public=1',
-  title: 'Fear & Greed Index Today: Live Stock Market Sentiment | World Monitor',
+  title: 'Fear & Greed Index Today: Live Sentiment | World Monitor',
   h1: 'Fear & Greed Index today',
   question: 'What is the Fear & Greed Index today?',
-  description: 'The current stock market Fear & Greed reading: World Monitor\'s ten-category composite beside CNN\'s index and the AAII investor sentiment survey, updated live.',
+  description: 'Today\'s stock market Fear & Greed reading: World Monitor\'s ten-category composite beside CNN\'s index and the AAII sentiment survey, updated live.',
   dashboardPanel: 'Fear & Greed',
   record: fearGreedRecord,
   renderSection(record, { live }) {

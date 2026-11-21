@@ -4,7 +4,7 @@
  */
 
 import type { MarketData } from '@/types';
-import { formatChange, formatPrice, getChangeClass } from '@/utils';
+import { formatChange, formatQuotePrice, getChangeClass } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { terminalChart } from '@/utils/terminal-chart';
@@ -161,7 +161,7 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
             <div class="stock-research-name">${escapeHtml(stock?.name || symbol)}</div>
           </div>
           <div class="stock-research-quote">
-            <span>${stock ? formatPrice(stock.price) : '—'}</span>
+            <span>${stock ? escapeHtml(formatQuotePrice(stock.symbol, stock.price)) : '—'}</span>
             <span class="${stock ? getChangeClass(stock.change) : ''}">${stock ? formatChange(stock.change) : ''}</span>
             ${tape ? `<div class="stock-research-tape" data-tape-claim="${escapeHtml(tape.claim)}">${escapeHtml(tape.label)}</div>` : ''}
           </div>
@@ -186,7 +186,7 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
         change: plottable.change,
         width,
         height: CHART_HEIGHT,
-        formatValue: (value) => formatPrice(value),
+        formatValue: (value) => formatQuotePrice(plottable.symbol, value),
         ariaLabel: `${plottable.display} price chart`,
       }), 'Shared chart renderer escapes the label and uses finite numeric points'),
     );

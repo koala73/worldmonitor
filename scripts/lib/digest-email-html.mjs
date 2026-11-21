@@ -9,6 +9,15 @@ import { formatStoryPhaseBadge } from '../../shared/story-phase.js';
 import { stripSourceSuffix } from './brief-dedup-jaccard.mjs';
 import { injectEmailSummary } from './email-summary-html.mjs';
 import { digestCoverageText } from './digest-corroboration.mjs';
+import { briefPlural, briefT, formatBriefDate } from '../../shared/brief-strings.js';
+import { truncateForDisplay } from '../../shared/brief-text.js';
+import { isRtlLanguage } from '../../shared/ui-languages.js';
+
+/** Chrome string for HTML. English table values are HTML-safe and stay byte-identical. */
+function chromeHtml(lang, key, vars) {
+  const text = briefT(lang, key, vars);
+  return lang === 'en' ? text : escapeHtml(text);
+}
 
 export const DIGEST_CRITICAL_LIMIT = Infinity;
 export const DIGEST_HIGH_LIMIT = 15;
@@ -35,9 +44,9 @@ export const DIGEST_EMAIL_MAX_HTML_BYTES = 90_000;
 
 const DASHBOARD_URL = 'https://worldmonitor.app/dashboard';
 
-function fullBriefNoticeHtml(link) {
+function fullBriefNoticeHtml(link, lang = 'en') {
   if (!link?.url) return '';
-  return `<div style="margin: 0 0 24px; padding: 14px 16px; background: #161616; border: 1px solid #222; font-size: 13px; color: #bbb; line-height: 1.5;">This email was shortened to fit your inbox. <a href="${escapeHtml(link.url)}" style="color: #4ade80; font-weight: 700; text-decoration: none;">${escapeHtml(link.label)} &rarr;</a></div>`;
+  return `<div style="margin: 0 0 24px; padding: 14px 16px; background: #161616; border: 1px solid #222; font-size: 13px; color: #bbb; line-height: 1.5;">${chromeHtml(lang, 'email.shortened')} <a href="${escapeHtml(link.url)}" style="color: #4ade80; font-weight: 700; text-decoration: none;">${escapeHtml(link.label)} ${isRtlLanguage(lang) ? '&larr;' : '&rarr;'}</a></div>`;
 }
 
 /**
@@ -51,9 +60,14 @@ function fullBriefNoticeHtml(link) {
  */
 export function formatDigestHtml(stories, nowMs, options = {}) {
   if (!stories || stories.length === 0) return null;
-  const dateStr = new Intl.DateTimeFormat('en-US', {
-    month: 'long', day: 'numeric', year: 'numeric',
-  }).format(new Date(nowMs));
+  const lang = options.lang ?? 'en';
+  // Email clients ignore logical CSS properties, so pick physical sides per direction.
+  const rtl = isRtlLanguage(lang);
+  const startSide = rtl ? 'right' : 'left';
+  const endSide = rtl ? 'left' : 'right';
+  const dateStr = lang === 'en'
+    ? new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(nowMs))
+    : escapeHtml(formatBriefDate(lang, nowMs, 'full'));
 
   const buckets = { critical: [], high: [], medium: [] };
   for (const s of stories) {
@@ -71,11 +85,11 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     const borderColor = SEVERITY_BORDER[s.severity] ?? '#4ade80';
     const phaseBadge = formatStoryPhaseBadge(s.phase);
     const phaseColor = phaseBadge?.color;
-    const phaseCap = phaseBadge?.label ?? '';
+    const phaseCap = phaseBadge ? (lang === 'en' ? phaseBadge.label : chromeHtml(lang, `phase.${s.phase}`)) : '';
     const srcText = s.sources.length > 0
       ? s.sources.slice(0, 3).join(', ') + (s.sources.length > 3 ? ` +${s.sources.length - 3}` : '')
       : '';
-    const coverageText = digestCoverageText(s);
+    const coverageText = digestCoverageText(s, lang);
     const cleanTitle = stripSourceSuffix(s.title);
     const href = safeHttpUrl(s.link);
     const titleEl = href
@@ -85,9 +99,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     // between title and meta when present. Empty → section omitted (R6).
     let snippetEl = '';
     if (typeof s.description === 'string' && s.description.length > 0) {
-      const trimmed = s.description.length > 200
-        ? s.description.slice(0, 200).replace(/\s+\S*$/, '') + '…'
-        : s.description;
+      const trimmed = truncateForDisplay(s.description, 200, lang);
       snippetEl = `<div style="margin-top: 6px; font-size: 12px; color: #999; line-height: 1.45;">${escapeHtml(trimmed)}</div>`;
     }
     const meta = [
@@ -95,7 +107,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
       srcText ? `<span style="font-size: 11px; color: #555;">${escapeHtml(srcText)}</span>` : '',
       coverageText ? `<span style="font-size: 11px; color: #888;">${escapeHtml(coverageText)}</span>` : '',
     ].filter(Boolean).join('<span style="color: #333; margin: 0 6px;">&bull;</span>');
-    return `<div style="background: #111; border: 1px solid #1a1a1a; border-left: 3px solid ${borderColor}; padding: 12px 16px; margin-bottom: 8px;">${titleEl}${snippetEl}${meta ? `<div style="margin-top: 6px;">${meta}</div>` : ''}</div>`;
+    return `<div style="background: #111; border: 1px solid #1a1a1a; border-${startSide}: 3px solid ${borderColor}; padding: 12px 16px; margin-bottom: 8px;">${titleEl}${snippetEl}${meta ? `<div style="margin-top: 6px;">${meta}</div>` : ''}</div>`;
   }
 
   const SEVERITY_LIMITS = { ...DEFAULT_SEVERITY_LIMITS, ...(options.limits ?? {}) };
@@ -103,11 +115,17 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
   function sectionHtml(severity, items) {
     if (items.length === 0) return '';
     const limit = SEVERITY_LIMITS[severity] ?? DIGEST_MEDIUM_LIMIT;
-    const SEVERITY_LABEL = { critical: '&#128308; Critical', high: '&#128992; High', medium: '&#128993; Medium' };
+    const SEVERITY_LABEL = lang === 'en'
+      ? { critical: '&#128308; Critical', high: '&#128992; High', medium: '&#128993; Medium' }
+      : {
+        critical: `&#128308; ${chromeHtml(lang, 'threat.critical')}`,
+        high: `&#128992; ${chromeHtml(lang, 'threat.high')}`,
+        medium: `&#128993; ${chromeHtml(lang, 'threat.medium')}`,
+      };
     const label = SEVERITY_LABEL[severity] ?? severity.toUpperCase();
     const cards = items.slice(0, limit).map(storyCard).join('');
     const overflow = items.length > limit
-      ? `<p style="font-size: 12px; color: #555; margin: 4px 0 16px; padding-left: 4px;">... and ${items.length - limit} more</p>`
+      ? `<p style="font-size: 12px; color: #555; margin: 4px 0 16px; padding-${startSide}: 4px;">${chromeHtml(lang, 'digest.andMore', { n: items.length - limit })}</p>`
       : '';
     return `<div style="margin-bottom: 24px;"><div style="font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">${label} (${items.length})</div>${cards}${overflow}</div>`;
   }
@@ -116,7 +134,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     .map((sev) => sectionHtml(sev, buckets[sev]))
     .join('');
 
-  return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #111; color: #e0e0e0;">
+  return `<div${rtl ? ' dir="rtl"' : ''} style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #111; color: #e0e0e0;">
   <div style="max-width: 680px; margin: 0 auto;">
     <div style="background: #4ade80; height: 3px;"></div>
     <div style="background: #0d0d0d; padding: 32px 36px 0;">
@@ -128,13 +146,13 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
                 <td style="width: 36px; height: 36px; vertical-align: middle;">
                   <img src="https://www.worldmonitor.app/favico/android-chrome-192x192.png" width="36" height="36" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
                 </td>
-                <td style="padding-left: 10px;">
+                <td style="padding-${startSide}: 10px;">
                   <div style="font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -0.3px;">WORLD MONITOR</div>
                 </td>
               </tr>
             </table>
           </td>
-          <td style="text-align: right; vertical-align: middle;">
+          <td style="text-align: ${endSide}; vertical-align: middle;">
             <span style="font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px;">${dateStr}</span>
           </td>
         </tr>
@@ -145,23 +163,23 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
         <tr>
           <td style="text-align: center; padding: 14px 8px; width: 33%; background: #161616; border: 1px solid #222;">
             <div style="font-size: 24px; font-weight: 800; color: #4ade80;">${totalCount}</div>
-            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">Events</div>
+            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">${chromeHtml(lang, 'email.events')}</div>
           </td>
           <td style="width: 1px;"></td>
           <td style="text-align: center; padding: 14px 8px; width: 33%; background: #161616; border: 1px solid #222;">
             <div style="font-size: 24px; font-weight: 800; color: #ef4444;">${criticalCount}</div>
-            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">Critical</div>
+            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">${chromeHtml(lang, 'threat.critical')}</div>
           </td>
           <td style="width: 1px;"></td>
           <td style="text-align: center; padding: 14px 8px; width: 33%; background: #161616; border: 1px solid #222;">
             <div style="font-size: 24px; font-weight: 800; color: #f97316;">${highCount}</div>
-            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">High</div>
+            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">${chromeHtml(lang, 'threat.high')}</div>
           </td>
         </tr>
       </table>
-      ${sectionsHtml}${options.fullBriefLink?.url ? `\n      ${fullBriefNoticeHtml(options.fullBriefLink)}` : ''}
+      ${sectionsHtml}${options.fullBriefLink?.url ? `\n      ${fullBriefNoticeHtml(options.fullBriefLink, lang)}` : ''}
       <div style="text-align: center; padding: 12px 0 36px;">
-        <a href="https://worldmonitor.app/dashboard" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 12px 32px; text-decoration: none; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 3px;">Open Dashboard</a>
+        <a href="https://worldmonitor.app/dashboard" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 12px 32px; text-decoration: none; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 3px;">${chromeHtml(lang, 'email.openDashboard')}</a>
       </div>
     </div>
     <div style="background: #0a0a0a; border-top: 1px solid #1a1a1a; padding: 20px 36px; text-align: center;">
@@ -185,7 +203,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
  * When no magazineUrl is present (composer skipped / signing
  * failed), the slot is stripped so the email stays clean.
  */
-export function injectBriefCta(html, magazineUrl) {
+export function injectBriefCta(html, magazineUrl, lang = 'en') {
   if (!html) return html;
   if (!magazineUrl) return html.replace('<div data-brief-cta-slot></div>', '');
   const escapedUrl = String(magazineUrl)
@@ -194,8 +212,8 @@ export function injectBriefCta(html, magazineUrl) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
   const ctaHtml = `<div style="margin:0 0 24px 0;">
-<a href="${escapedUrl}" style="display:inline-block;background:#f2ede4;color:#0a0a0a;text-decoration:none;font-weight:700;font-size:14px;letter-spacing:0.08em;padding:14px 22px;border-radius:4px;">Open your WorldMonitor Brief →</a>
-<div style="margin-top:10px;font-size:11px;color:#888;line-height:1.5;">Your personalised editorial magazine. Opens in the browser — scroll or swipe through today's threads.</div>
+<a href="${escapedUrl}" style="display:inline-block;background:#f2ede4;color:#0a0a0a;text-decoration:none;font-weight:700;font-size:14px;letter-spacing:0.08em;padding:14px 22px;border-radius:4px;">${chromeHtml(lang, 'email.ctaOpenBrief')}</a>
+<div style="margin-top:10px;font-size:11px;color:#888;line-height:1.5;">${chromeHtml(lang, 'email.ctaCaption')}</div>
 </div>`;
   return html.replace('<div data-brief-cta-slot></div>', ctaHtml);
 }
@@ -240,11 +258,12 @@ export function renderDigestEmailHtml({
   synthesis = null,
   magazineUrl = null,
   maxBytes = DIGEST_EMAIL_MAX_HTML_BYTES,
+  lang = 'en',
 }) {
   const render = (options, withSynthesis = true) => {
-    const raw = formatDigestHtml(stories, nowMs, options);
+    const raw = formatDigestHtml(stories, nowMs, { ...options, lang });
     if (!raw) return null;
-    return injectBriefCta(injectEmailSummary(raw, withSynthesis ? synthesis : null), magazineUrl);
+    return injectBriefCta(injectEmailSummary(raw, withSynthesis ? synthesis : null, lang), magazineUrl, lang);
   };
 
   const counts = { critical: 0, high: 0, medium: 0 };
@@ -265,8 +284,8 @@ export function renderDigestEmailHtml({
   }
 
   const fullBriefLink = magazineUrl
-    ? { url: magazineUrl, label: 'Read the full brief' }
-    : { url: DASHBOARD_URL, label: `See all ${stories.length} stories on the dashboard` };
+    ? { url: magazineUrl, label: briefT(lang, 'email.readFullBrief') }
+    : { url: DASHBOARD_URL, label: briefPlural(lang, 'email.seeAllStories', stories.length) };
 
   // Largest card budget that fits. Rendered size grows with the budget, so
   // binary search. With the synthesis, every card is already known not to

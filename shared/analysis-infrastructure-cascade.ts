@@ -629,9 +629,38 @@ export const CHOKEPOINT_ENCLOSED_BASINS: Record<string, { minLat: number; maxLat
 /** A cable route or landing point within this distance of a chokepoint centre counts as crossing it. */
 export const CHOKEPOINT_CROSSING_RADIUS_KM = 60;
 
+type BasinBox = { minLat: number; maxLat: number; minLon: number; maxLon: number };
+
+/** Red Sea with the Gulfs of Suez and Aqaba, north of Bab el-Mandeb. Djibouti, Aden and Port Said sit outside. */
+const RED_SEA_BASIN: BasinBox = { minLat: 12.7, maxLat: 30.0, minLon: 32.3, maxLon: 43.4 };
+const isMediterraneanSide = (lat: number, lon: number) => lat > 30 && lon < 40;
+
+/**
+ * Basins with two exits. A cable landing inside the basin crosses the exit
+ * when it also lands outside on that exit's side: Red Sea plus Indian Ocean
+ * leaves through Bab el-Mandeb, Red Sea plus Mediterranean crosses at Suez.
+ * Simplified routes keep about six vertices per cable, so route proximity
+ * alone misses most of these crossings.
+ */
+export const CHOKEPOINT_BASIN_EXITS: Record<string, { basin: BasinBox; outsideSide: (lat: number, lon: number) => boolean }> = {
+  bab_el_mandeb: { basin: RED_SEA_BASIN, outsideSide: (lat, lon) => !isMediterraneanSide(lat, lon) },
+  suez: { basin: RED_SEA_BASIN, outsideSide: isMediterraneanSide },
+};
+
+const inBox = (box: BasinBox, lat: number, lon: number) =>
+  lat >= box.minLat && lat <= box.maxLat && lon >= box.minLon && lon <= box.maxLon;
+
 function cableCrossesChokepoint(cable: CableInput, chokepointKey: string, lat: number, lon: number): boolean {
   for (const [pLon, pLat] of cable.points ?? []) {
     if (haversineKm(pLat, pLon, lat, lon) <= CHOKEPOINT_CROSSING_RADIUS_KM) return true;
+  }
+  const exit = CHOKEPOINT_BASIN_EXITS[chokepointKey];
+  if (exit) {
+    const landings = (cable.landingPoints ?? []).filter(
+      (lp): lp is typeof lp & { lat: number; lon: number } => typeof lp.lat === 'number' && typeof lp.lon === 'number',
+    );
+    const inside = landings.some((lp) => inBox(exit.basin, lp.lat, lp.lon));
+    if (inside && landings.some((lp) => !inBox(exit.basin, lp.lat, lp.lon) && exit.outsideSide(lp.lat, lp.lon))) return true;
   }
   const basins = CHOKEPOINT_ENCLOSED_BASINS[chokepointKey] ?? [];
   const inBasin = (pLat: number, pLon: number) =>
@@ -677,6 +706,139 @@ export function getCablesThroughChokepoint(graph: DependencyGraph, chokepointId:
     if (crossed.has(id)) out.push(cableId);
   }
   return out.sort();
+}
+
+/** A cable-health record in the `cable-health-v1` snapshot shape (status names keep the proto prefix). */
+export interface CableHealthInput {
+  status?: unknown;
+  score?: unknown;
+  confidence?: unknown;
+  lastUpdated?: unknown;
+  evidence?: unknown;
+}
+
+export interface CableIncident {
+  status: 'FAULT' | 'DEGRADED';
+  score: number | null;
+  confidence: number | null;
+  lastUpdated: number | null;
+  evidence: { source: string; summary: string; ts: number | null }[];
+}
+
+export interface CountryCableExposure {
+  country: string;
+  countryName: string;
+  cableCount: number;
+  landingStationCount: number;
+  /** Distinct landing cities in the country, most cables first. */
+  landingStations: { city: string; cables: number }[];
+  cables: {
+    id: string;
+    name: string;
+    rfsYear: number | null;
+    landingCities: string[];
+    /** Chokepoint node ids the cable route crosses. */
+    chokepoints: string[];
+    /** Present only when the cable-health monitor flags the cable FAULT or DEGRADED. */
+    health: CableIncident | null;
+  }[];
+  /** Chokepoints the country's cables cross, most cables first; share = cables / cableCount. */
+  chokepointExposure: { chokepoint: string; name: string; cables: number; share: number }[];
+  cablesAvoidingChokepoints: number;
+  /** Largest share of the country's cables that one chokepoint closure would sever (0 when none cross one). */
+  largestSingleChokepointShare: number;
+  activeIncidents: ({ cableId: string; name: string } & CableIncident)[];
+}
+
+export const CABLE_EXPOSURE_NOTE =
+  'Counts come from the seeded TeleGeography cable table: cables with a landing point in the country, grouped ' +
+  'by landing city. Chokepoint crossings use simplified route geometry. Health lists only cables the NGA ' +
+  'notice monitor flags FAULT or DEGRADED; no incident does not confirm a cable is healthy. No measured ' +
+  'capacity is used.';
+
+const MAX_INCIDENT_EVIDENCE = 2;
+const MAX_EVIDENCE_SUMMARY_CHARS = 240;
+
+function toIncident(raw: CableHealthInput | undefined): CableIncident | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const status = typeof raw.status === 'string' ? raw.status.replace(/^CABLE_HEALTH_STATUS_/, '') : '';
+  if (status !== 'FAULT' && status !== 'DEGRADED') return null;
+  const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+  const evidence = (Array.isArray(raw.evidence) ? raw.evidence : [])
+    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+    .slice(0, MAX_INCIDENT_EVIDENCE)
+    .map((entry) => ({
+      source: typeof entry.source === 'string' ? entry.source : '',
+      summary: typeof entry.summary === 'string' ? entry.summary.slice(0, MAX_EVIDENCE_SUMMARY_CHARS) : '',
+      ts: num(entry.ts),
+    }));
+  return { status, score: num(raw.score), confidence: num(raw.confidence), lastUpdated: num(raw.lastUpdated), evidence };
+}
+
+/**
+ * Submarine-cable exposure of one country: which cables land there, at how
+ * many distinct landing stations, which chokepoints those cables cross, and
+ * which of them the cable-health monitor currently flags.
+ */
+export function getCountryCableExposure(
+  graph: DependencyGraph,
+  countryCode: string,
+  health: Record<string, CableHealthInput> | null = null,
+): CountryCableExposure {
+  const code = countryCode.toUpperCase();
+  const crossings = getCableChokepoints(graph);
+  const stationCounts = new Map<string, number>();
+  const chokepointCounts = new Map<string, number>();
+  const cables: CountryCableExposure['cables'] = [];
+  let countryName = COUNTRY_NAMES[code] || '';
+
+  for (const cable of graph.cables) {
+    const landings = (cable.landingPoints ?? []).filter((lp) => lp.country.toUpperCase() === code);
+    const served = landings.length > 0 || (cable.countriesServed ?? []).some((c) => c.country.toUpperCase() === code);
+    if (!served) continue;
+    if (!countryName) countryName = landings.find((lp) => lp.countryName)?.countryName ?? '';
+    const landingCities = [...new Set(landings.map((lp) => lp.city).filter((city): city is string => !!city))];
+    for (const city of landingCities) stationCounts.set(city, (stationCounts.get(city) ?? 0) + 1);
+    const chokepoints = [...(crossings.get(`cable:${cable.id}`) ?? [])].sort();
+    for (const cp of chokepoints) chokepointCounts.set(cp, (chokepointCounts.get(cp) ?? 0) + 1);
+    cables.push({
+      id: cable.id,
+      name: cable.name,
+      rfsYear: typeof cable.rfsYear === 'number' ? cable.rfsYear : null,
+      landingCities,
+      chokepoints,
+      health: toIncident(health?.[cable.id]),
+    });
+  }
+
+  cables.sort((a, b) => a.name.localeCompare(b.name));
+  const cableCount = cables.length;
+  const round = (value: number) => Math.round(value * 1000) / 1000;
+  const chokepointExposure = [...chokepointCounts.entries()]
+    .map(([chokepoint, count]) => ({
+      chokepoint,
+      name: graph.nodes.get(chokepoint)?.name ?? chokepoint,
+      cables: count,
+      share: round(count / cableCount),
+    }))
+    .sort((a, b) => b.cables - a.cables || a.chokepoint.localeCompare(b.chokepoint));
+
+  return {
+    country: code,
+    countryName: countryName || code,
+    cableCount,
+    landingStationCount: stationCounts.size,
+    landingStations: [...stationCounts.entries()]
+      .map(([city, count]) => ({ city, cables: count }))
+      .sort((a, b) => b.cables - a.cables || a.city.localeCompare(b.city)),
+    cables,
+    chokepointExposure,
+    cablesAvoidingChokepoints: cables.filter((cable) => cable.chokepoints.length === 0).length,
+    largestSingleChokepointShare: chokepointExposure[0]?.share ?? 0,
+    activeIncidents: cables
+      .filter((cable) => cable.health)
+      .map((cable) => ({ cableId: cable.id, name: cable.name, ...cable.health! })),
+  };
 }
 
 interface PropagatedNode {

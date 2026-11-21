@@ -41,7 +41,7 @@ async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxToken
     messages: [{ role: 'user', content: userPrompt }],
     output_config: { effort: 'low' },
     fallbacks: 'default',
-  }, { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, timeout });
+  }, { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, timeout, signal: AbortSignal.timeout(timeout ?? 60_000) });
   const text = response.stop_reason === 'refusal'
     ? ''
     : (response.content ?? [])
@@ -129,10 +129,14 @@ const LLM_PROVIDERS = [
  * @param {number} [opts.maxTokens=500]
  * @param {number} [opts.temperature=0.3]
  * @param {number} [opts.timeoutMs] - Override per-provider timeout
+ * @param {number} [opts.deadlineAt] - Epoch ms. No provider starts after it, and
+ *   each attempt's timeout is capped at the time left before it.
  * @param {string[]} [opts.allowedProviders] - Optional exact provider allowlist,
  *   tried in the order given. Opt-in providers (anthropic) run only when named here.
  * @param {string[]} [opts.skipProviders] - Optional provider denylist
  * @param {Record<string, string>} [opts.modelOverrides] - Per-provider model override, keyed by provider name
+ * @param {Record<string, unknown>} [opts.extraBody] - Request fields added to every OpenAI-compatible
+ *   attempt after the provider's own (e.g. `reasoning`, `response_format`). Not sent to `invoke` providers.
  * @param {string} [opts.stage] - llm_call telemetry surface tag (#4944 U5)
  * @returns {Promise<string|null>} Generated text, or null if all providers fail
  */
@@ -141,9 +145,11 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     maxTokens = 500,
     temperature = 0.3,
     timeoutMs,
+    deadlineAt,
     allowedProviders,
     skipProviders,
     modelOverrides,
+    extraBody,
     stage = 'llm-chain',
   } = opts;
   const allowedSet = allowedProviders ? new Set(allowedProviders) : null;
@@ -168,7 +174,9 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     const apiUrl = provider.apiUrlFn ? provider.apiUrlFn(envVal) : provider.apiUrl;
     const model = modelOverrides?.[provider.name]
       ?? (typeof provider.model === 'function' ? provider.model() : provider.model);
-    const timeout = timeoutMs ?? provider.timeout;
+    const leftMs = Number.isFinite(deadlineAt) ? deadlineAt - Date.now() : Infinity;
+    if (leftMs <= 0) break;
+    const timeout = Math.min(timeoutMs ?? provider.timeout, leftMs);
 
     // Skipped/unconfigured providers never sent the prompt — only real
     // attempts get an event and advance the fallback index.
@@ -216,6 +224,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
           max_tokens: maxTokens,
           temperature,
           ...provider.extraBody,
+          ...extraBody,
         }),
         signal: AbortSignal.timeout(timeout),
       });

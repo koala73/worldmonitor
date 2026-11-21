@@ -1,10 +1,6 @@
 import {
   MAX_PANEL_COL_SPAN,
   MAX_PANEL_ROW_SPAN,
-  getExplicitColSpanClass,
-  getMaxColSpan,
-  isPanelGridColumnCountReady,
-  setColSpanClass,
 } from '@/utils/panel-grid';
 
 export const INITIAL_PANEL_MOUNT_BUDGET_DESKTOP = 8;
@@ -190,35 +186,6 @@ export function createDeferredPanelShell(
   shell.appendChild(header);
   shell.appendChild(content);
   return shell;
-}
-
-/**
- * Clamp a deferred shell's reserved `col-span-N` down to what the rendered
- * grid can actually fit. Mirrors {@link Panel}'s `reconcileColSpanAfterAttach`:
- * the grid's column template/width is only readable once the shell is attached,
- * so when it is not yet connected we retry across up to `attempts` animation
- * frames instead of clamping against a 0-width grid (which would read a wrong
- * column count and leave an over-wide shell -- a layout shift in the opposite
- * direction until the real panel mounts).
- */
-export function reconcileDeferredPanelShellColSpan(shell: HTMLElement, attempts = 3): void {
-  const tryReconcile = (remaining: number): void => {
-    const currentSpan = getExplicitColSpanClass(shell);
-    if (currentSpan === undefined) return;
-
-    if (!shell.isConnected || !shell.parentElement || !isPanelGridColumnCountReady(shell)) {
-      if (remaining <= 0 || typeof requestAnimationFrame !== 'function') return;
-      requestAnimationFrame(() => tryReconcile(remaining - 1));
-      return;
-    }
-    const maxSpan = getMaxColSpan(shell);
-    const clampedSpan = Math.max(1, Math.min(maxSpan, currentSpan));
-    if (clampedSpan !== currentSpan) {
-      setColSpanClass(shell, clampedSpan);
-    }
-  };
-
-  tryReconcile(attempts);
 }
 
 export function countInteractiveControls(root: ParentNode): number {

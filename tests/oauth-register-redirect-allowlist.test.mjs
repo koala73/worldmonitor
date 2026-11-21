@@ -52,10 +52,24 @@ const HOSTED_CLIENT_CALLBACKS = {
   'Skydive': 'https://www.skydive.com/api/v1/external-oauth/callback',
   'MCPJam': 'https://app.mcpjam.com/oauth/callback',
   'MCPJam score': 'https://score.mcpjam.com/oauth/callback',
+  'Manufact Cloud': 'https://manufact.com/inspector/oauth/callback',
   'Glama connectors': 'https://glama.ai/api/app/mcp/oauth/callback',
   'Glama Inspector': 'https://glama.ai/mcp/inspector/oauth/callback',
   'Meta Muse': 'https://agent.meta.ai/api/hatch/oauth/callback',
 };
+
+// Gemini Connected Apps and Gemini custom apps: Google publishes six
+// prefixes (https://<host>/r/* and /a/*), and generates the rest per app or per
+// user (developers.google.com/connected-apps/mcp/oauth).
+const GOOGLE_CONNECTED_APPS_CALLBACKS = [
+  'https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-123-api_worldmonitor_app',
+  'https://oauth-redirect.googleusercontent.com/r/worldmonitor-12345',
+  'https://oauth-redirect-sandbox.googleusercontent.com/r/worldmonitor-12345',
+  'https://oauth-redirect-test.googleusercontent.com/r/worldmonitor-12345',
+  'https://oauth-redirect.googleusercontent.com/a/worldmonitor-12345',
+  'https://oauth-redirect-sandbox.googleusercontent.com/a/worldmonitor-12345',
+  'https://oauth-redirect-test.googleusercontent.com/a/worldmonitor.app/v1',
+];
 
 const LOOPBACK = [
   'http://localhost:8787/callback', // Cursor desktop, Grok Bot
@@ -76,8 +90,25 @@ const REJECTED = {
   'Grok callback without the trailing slash Grok sends': 'https://grok.com/connectors-oauth-exchange-code',
   'www.grok.com (Grok never sends it)': 'https://www.grok.com/connectors-oauth-exchange-code/',
   'the unverified grok.com/connectors/oauth/callback': 'https://grok.com/connectors/oauth/callback',
-  'Gemini per-user callback (dynamic, not exact-matchable)':
-    'https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-123-api_worldmonitor_app',
+  'Google callback on http': 'http://oauth-redirect.googleusercontent.com/r/abc',
+  'Google callback with a port': 'https://oauth-redirect.googleusercontent.com:8443/r/abc',
+  'Google callback with userinfo': 'https://x@oauth-redirect.googleusercontent.com/r/abc',
+  'Google callback with a query': 'https://oauth-redirect.googleusercontent.com/r/abc?next=https://evil.example',
+  'Google callback with an empty query': 'https://oauth-redirect.googleusercontent.com/r/abc?',
+  'Google callback with a fragment': 'https://oauth-redirect.googleusercontent.com/r/abc#x',
+  'Google callback with a bare prefix': 'https://oauth-redirect.googleusercontent.com/r/',
+  'Google callback with no id': 'https://oauth-redirect.googleusercontent.com/r',
+  'Google callback with a trailing slash': 'https://oauth-redirect.googleusercontent.com/r/abc/',
+  'Google callback outside /r and /a': 'https://oauth-redirect.googleusercontent.com/x/abc',
+  'Google callback root': 'https://oauth-redirect.googleusercontent.com/',
+  'Google callback dot segment': 'https://oauth-redirect.googleusercontent.com/r/../evil',
+  'Google callback dot-dot segment kept by encoding': 'https://oauth-redirect.googleusercontent.com/r/%2e%2e/evil',
+  'Google callback percent-encoded id': 'https://oauth-redirect.googleusercontent.com/r/a%2Fb',
+  'Google callback uppercase host': 'https://OAUTH-REDIRECT.googleusercontent.com/r/abc',
+  'Google callback backslash path': 'https://oauth-redirect.googleusercontent.com\\r\\abc',
+  'other googleusercontent.com host': 'https://evil.googleusercontent.com/r/abc',
+  'Google callback lookalike host': 'https://oauth-redirect.googleusercontent.com.evil.example/r/abc',
+  'Google callback prefix host': 'https://oauth-redirect-staging.googleusercontent.com/r/abc',
   'muse.ai (Muse never sends the redirect target)': 'https://muse.ai/api/hatch/oauth/callback',
   'extra query': 'https://claude.ai/api/mcp/auth_callback?next=https://evil.example',
   'fragment': 'https://claude.ai/api/mcp/auth_callback#x',
@@ -97,6 +128,7 @@ const REJECTED = {
   'MCPJam staging host': 'https://staging.mcpjam.com/oauth/callback',
   'MCPJam www.score host': 'https://www.score.mcpjam.com/oauth/callback',
   'MCPJam debug callback': 'https://app.mcpjam.com/oauth/callback/debug',
+  'Manufact other path': 'https://manufact.com/oauth/callback',
   'Glama callback on www': 'https://www.glama.ai/api/app/mcp/oauth/callback',
   'Glama app callback with a trailing slash': 'https://glama.ai/api/app/mcp/oauth/callback/',
   'other path on glama.ai': 'https://glama.ai/callback',
@@ -112,6 +144,9 @@ const REJECTED = {
 describe('isAllowedRedirectUri', () => {
   for (const [client, uri] of Object.entries(HOSTED_CLIENT_CALLBACKS)) {
     it(`accepts ${client}: ${uri}`, () => assert.equal(isAllowedRedirectUri(uri), true));
+  }
+  for (const uri of GOOGLE_CONNECTED_APPS_CALLBACKS) {
+    it(`accepts Google Connected Apps callback ${uri}`, () => assert.equal(isAllowedRedirectUri(uri), true));
   }
   for (const uri of LOOPBACK) {
     it(`accepts http loopback ${uri}`, () => assert.equal(isAllowedRedirectUri(uri), true));
@@ -203,6 +238,25 @@ describe('POST /oauth/register', () => {
     const res = await register({ client_name: 'Cursor', redirect_uris });
     assert.equal(res.status, 201);
     assert.deepEqual((await res.json()).redirect_uris, redirect_uris);
+  });
+
+  it('registers a Gemini custom app with its per-user Google callback', async () => {
+    stubRedis();
+    const redirect_uris = ['https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-123-api_worldmonitor_app'];
+    const res = await register({ client_name: 'Gemini', redirect_uris });
+    assert.equal(res.status, 201);
+    assert.deepEqual((await res.json()).redirect_uris, redirect_uris);
+  });
+
+  it('rejects a Google callback outside the published /r and /a prefixes', async () => {
+    stubRedis();
+    const res = await register({
+      client_name: 'Gemini',
+      redirect_uris: ['https://oauth-redirect.googleusercontent.com/x/worldmonitor'],
+    });
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).error, 'invalid_redirect_uri');
+    assert.equal(stored.length, 0);
   });
 
   it('registers goose, which sends IPv4 and IPv6 loopback', async () => {

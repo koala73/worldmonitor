@@ -28,6 +28,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { MiniDocument, MiniElement, MiniText } from './helpers/mini-dom.mts';
+import { PushRegistrationError } from '../src/services/push-notifications.ts';
 
 // ---------------------------------------------------------------------------
 // Minimal parsing DOM
@@ -191,6 +192,7 @@ async function loadInterstitial(): Promise<InterstitialModule> {
       export function getPushPermission() { return globalThis.__alertsPushPermission; }
       export async function subscribeToPush() {
         globalThis.__alertsSubscribeCalls += 1;
+        if (globalThis.__alertsSubscribeError) throw globalThis.__alertsSubscribeError;
         if (globalThis.__alertsSubscribeThrows) {
           throw new Error('Notifications are blocked. Enable them in your browser settings.');
         }
@@ -260,6 +262,7 @@ function installPushState(permission: 'default' | 'granted' | 'denied', throws: 
     __alertsUserId: 'user_alerts',
     __alertsPushPermission: permission,
     __alertsSubscribeThrows: throws,
+    __alertsSubscribeError: null,
     __alertsSubscribeCalls: 0,
     __alertsConfigWrites: [] as unknown[],
     __alertsConfigWriteThrows: false,
@@ -359,6 +362,27 @@ describe('alerts confirm classification (#5609)', () => {
     assert.equal(await options.onConfirmStep('alerts'), 'declined');
   });
 
+  it('tags a refused push registration with the endpoint host only', async () => {
+    installPushState('granted', false);
+    (globalThis as Record<string, unknown>).__alertsSubscribeError = new PushRegistrationError(
+      'Failed to register push subscription (400): endpoint host is not a recognised push service.',
+      'jmt17.google.com',
+    );
+    const mod = await loadInterstitial();
+    const options = await captureConfirm(mod);
+
+    assert.equal(await options.onConfirmStep('alerts'), 'failed');
+    const sentry = (globalThis as Record<string, unknown[]>).__alertsSentry!;
+    assert.equal(sentry.length, 1);
+    const { ctx } = sentry[0] as { ctx: { tags: Record<string, string> } };
+    assert.deepEqual(ctx.tags, {
+      component: 'pro-activation',
+      step: 'alerts',
+      stage: 'push-subscribe',
+      activation_path: 'day0',
+      push_endpoint_host: 'jmt17.google.com',
+    });
+  });
 
   // Both post-subscribe failure paths must stay retryable: the permission was
   // granted, so the step is recoverable and "Try again" is the right CTA.

@@ -81,11 +81,19 @@ export function englishCountryLabel(raw) {
   return String(raw || '').split(/\s*\/\s*/)[0].trim();
 }
 
-export function countryFromSemaLabel(raw) {
-  const english = englishCountryLabel(raw);
-  if (!english) return { code: '', name: '' };
-  const code = countryNameToIso2(english) || '';
-  return { code, name: english };
+// These regulations protect the named state; their designees are mostly
+// Russian and separatist actors, not that state's.
+const PROTECTED_STATE_REGIMES = new Set(['ukraine', 'moldova']);
+
+/**
+ * SEMA names the regulation's target state, not a designee's nationality or
+ * address. Keep this separate for people and entities. SEMA does not publish
+ * vessel flags. Thematic regimes (JVCFOR, Hamas, Settler) name no state.
+ */
+export function semaTargetCountry(regime, entityType) {
+  if (entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL' || PROTECTED_STATE_REGIMES.has(regime.toLowerCase())) return null;
+  const code = countryNameToIso2(regime);
+  return code ? { code, name: regime } : null;
 }
 
 /** SEMA <Country> is the regulating schedule, not a person's nationality. */
@@ -255,13 +263,15 @@ function fieldsToCanonical(fields) {
   if (!countryRaw || !item) throw new Error('SEMA_INVALID_RECORD');
 
   let entityType = 'SANCTIONS_ENTITY_TYPE_ENTITY';
-  if (imo) entityType = 'SANCTIONS_ENTITY_TYPE_VESSEL';
+  // Every listed ship carries a ship type in TitleOrShip; entities never do.
+  if (imo || (entityOrShip && title && !lastName && !givenName)) entityType = 'SANCTIONS_ENTITY_TYPE_VESSEL';
   else if (lastName || givenName) entityType = 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL';
 
   const identifiers = [];
   if (imo) identifiers.push(`imo:${imo}`);
 
   const id = semaRecordId(countryRaw, schedule, item);
+  const country = semaTargetCountry(regime, entityType);
 
   return {
     id,
@@ -269,6 +279,8 @@ function fieldsToCanonical(fields) {
     entityType,
     countryCodes: [],
     countryNames: [],
+    _targetCountryCodes: country ? [country.code] : [],
+    _targetCountryNames: country ? [country.name] : [],
     programs: [program],
     sourceLists: [SEMA_SOURCE],
     effectiveAt: String(listingEpoch(listed)),
@@ -458,6 +470,12 @@ export function mergeSanctionEntries(parts = {}) {
       hit.mergedIds = uniqueSorted([...(hit.mergedIds || []), entry.id]);
     }
     hit._identifiers = uniqueSorted([...(hit._identifiers || []), ...(entry._identifiers || [])]);
+    const targets = new Map();
+    for (const row of [hit, entry]) {
+      (row._targetCountryCodes || []).forEach((code, index) => targets.set(code, row._targetCountryNames?.[index] || code));
+    }
+    hit._targetCountryCodes = [...targets.keys()];
+    hit._targetCountryNames = [...targets.values()];
     if (entry.note && !hit.note) hit.note = entry.note;
     if ((!hit.countryCodes || hit.countryCodes.length === 0) && entry.countryCodes?.length) {
       hit.countryCodes = [...entry.countryCodes];
@@ -486,7 +504,15 @@ export function mergeSanctionEntries(parts = {}) {
   for (const entry of ofac) ingest(entry, { identityMerge: false });
   for (const entry of eu) ingest(entry, { identityMerge: true });
   for (const entry of uk) ingest(entry, { identityMerge: true });
-  for (const entry of sema) ingest(entry, { identityMerge: true, skipSelfMerge: true });
+  for (const entry of sema) {
+    // Retained source snapshots can predate the separate target fields. Rebuild
+    // from the regulation so a failed refresh cannot restore target-state risk.
+    const target = semaTargetCountry(entry._regime || '', entry.entityType);
+    ingest({ ...entry, countryCodes: [], countryNames: [],
+      _targetCountryCodes: target ? [target.code] : [],
+      _targetCountryNames: target ? [target.name] : [],
+    }, { identityMerge: true, skipSelfMerge: true });
+  }
   return merged;
 }
 

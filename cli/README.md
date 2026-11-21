@@ -25,6 +25,8 @@ scripting commands are a thin wrapper over the
 
 ```sh
 npm install -g worldmonitor   # installs the `worldmonitor` command (alias: `wm`)
+# or with Homebrew (macOS, Linux):
+brew install worldmonitor
 # or run without installing:
 npx worldmonitor tools
 ```

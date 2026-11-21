@@ -109,9 +109,9 @@ interface ApplyVariantPanelLayoutTransitionOptions {
 }
 
 /**
- * Transfer ownership of cross-variant disables and persist them before the
- * applied-layout marker advances. A crash can therefore retry the reset; it
- * can never claim an unapplied layout is current.
+ * Disable cross-variant panels, re-seed the new variant's default panels, and
+ * persist the result before the applied-layout marker advances. A crash can
+ * therefore retry the reset; it can never claim an unapplied layout is current.
  */
 export function applyVariantPanelLayoutTransition(
   options: ApplyVariantPanelLayoutTransitionOptions,
@@ -126,7 +126,13 @@ export function applyVariantPanelLayoutTransition(
     }
   }
   for (const key of options.variantPanelKeys) {
-    if (!(key in next)) next[key] = { ...options.getDefaultPanel(key) };
+    const defaults = options.getDefaultPanel(key);
+    if (!(key in next)) {
+      next[key] = { ...defaults };
+    } else {
+      // A prior variant or mission preset may have disabled this panel.
+      userSetPanelEnabled(next[key]!, defaults.enabled);
+    }
   }
 
   try {

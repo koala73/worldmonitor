@@ -22,6 +22,7 @@ import { strict as assert } from 'node:assert';
 import { after, afterEach, before, describe, it } from 'node:test';
 
 import { resolveMetadataOrigin } from '../api/_agent-metadata.ts';
+import { OAUTH_BIND_COOKIE, hashOAuthBindValue } from '../api/oauth/_browser-binding.js';
 
 const REDIS_URL = 'https://redis.test';
 const ENTERPRISE_KEY = 'enterprise-test-key';
@@ -191,10 +192,12 @@ describe('RFC 9207 — API-key consent redirect carries iss', () => {
   it('a nonce stored before the deploy (no iss) redirects without an iss param', async () => {
     installRedisStub();
     registerClient();
+    const bindValue = 'b'.repeat(43);
     store.set('oauth:nonce:legacy', JSON.stringify({
       client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, code_challenge: CODE_CHALLENGE, state: '', created_at: Date.now(),
+      bind_hash: await hashOAuthBindValue(bindValue),
     }));
-    const res = await submitConsent('legacy');
+    const res = await submitConsent('legacy', { cookie: `${OAUTH_BIND_COOKIE}=${bindValue}` });
     assert.equal(res.status, 302);
     const loc = new URL(res.headers.get('Location'));
     assert.ok(loc.searchParams.get('code'));

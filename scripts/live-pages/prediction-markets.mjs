@@ -90,7 +90,7 @@ export const predictionMarketsPage = Object.freeze({
   slug: 'prediction-markets',
   path: '/tools/prediction-markets/',
   statusPath: '/api/prediction/v1/list-prediction-markets?public=1',
-  title: 'Prediction Markets Today: Live Polymarket and Kalshi Odds | World Monitor',
+  title: 'Prediction Markets: Polymarket and Kalshi | World Monitor',
   h1: 'Prediction markets today',
   question: 'What are prediction markets pricing right now?',
   description: 'The most traded Polymarket and Kalshi questions on geopolitics, economics and technology, with the current yes probability, volume and close date, updated live.',

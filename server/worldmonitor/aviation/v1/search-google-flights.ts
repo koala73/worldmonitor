@@ -5,6 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { IATA_RE } from './_shared';
+import { clientSearchError } from './_search-error';
 // @ts-expect-error — JS module, no declaration file
 import { sha256Hex } from '../../../../api/_crypto.js';
 import { getRelayBaseUrl, getRelayHeaders, relayFailureMessage } from '../../../_shared/relay';
@@ -114,6 +115,6 @@ export async function searchGoogleFlights(
       error: '',
     };
   } catch (err) {
-    return { flights: [], degraded: true, error: err instanceof Error ? err.message : 'search failed' };
+    return { flights: [], degraded: true, error: clientSearchError('google-flights', err) };
   }
 }

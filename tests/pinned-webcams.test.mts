@@ -109,3 +109,61 @@ test('pin validates provider data and retains toggle, limit and removal behavior
   unpinWebcam('5');
   assert.equal(getPinnedWebcams().length, 4);
 });
+
+function pinInput(webcamId: string) {
+  return { webcamId, title: `Cam ${webcamId}`, lat: 25, lng: 55, category: 'city', country: 'CL', playerUrl: '' };
+}
+
+function storedCam(webcamId: string, active: boolean, pinnedAt: number) {
+  return {
+    webcamId,
+    title: `Cam ${webcamId}`,
+    lat: 25,
+    lng: 55,
+    category: 'city',
+    country: 'CL',
+    playerUrl: `${base}/${webcamId}/day`,
+    active,
+    pinnedAt,
+  };
+}
+
+test('re-pinning a hidden webcam makes that saved camera active again', () => {
+  pinWebcam(pinInput('1'));
+  pinWebcam(pinInput('2'));
+  toggleWebcam('1');
+  toggleWebcam('2');
+  assert.deepEqual(getActiveWebcams().map(cam => cam.webcamId), []);
+  pinWebcam(pinInput('1'));
+  assert.equal(getPinnedWebcams().length, 2);
+  assert.deepEqual(getActiveWebcams().map(cam => cam.webcamId), ['1']);
+  assert.equal(getPinnedWebcams().find(cam => cam.webcamId === '2')?.active, false);
+});
+
+test('re-pinning an already playing webcam leaves the saved list unchanged', () => {
+  pinWebcam(pinInput('1'));
+  const saved = raw;
+  pinWebcam(pinInput('1'));
+  assert.equal(raw, saved);
+  assert.deepEqual(getActiveWebcams().map(cam => cam.webcamId), ['1']);
+});
+
+test('re-pinning a hidden webcam replaces the oldest playing stream at the four-stream limit', () => {
+  raw = JSON.stringify([
+    ...[1, 2, 3, 4].map(pinnedAt => storedCam(String(pinnedAt), true, pinnedAt)),
+    storedCam('5', false, 5),
+  ]);
+  pinWebcam(pinInput('5'));
+  assert.equal(getPinnedWebcams().length, 5);
+  assert.deepEqual(getActiveWebcams().map(cam => cam.webcamId), ['2', '3', '4', '5']);
+  assert.equal(getPinnedWebcams().find(cam => cam.webcamId === '1')?.active, false);
+});
+
+test('re-pinning a hidden webcam does not evict a playing stream while a slot is free', () => {
+  raw = JSON.stringify([
+    ...[1, 2, 3].map(pinnedAt => storedCam(String(pinnedAt), true, pinnedAt)),
+    storedCam('4', false, 4),
+  ]);
+  pinWebcam(pinInput('4'));
+  assert.deepEqual(getActiveWebcams().map(cam => cam.webcamId), ['1', '2', '3', '4']);
+});

@@ -14,6 +14,10 @@ describe('/api/notify reserved event types', () => {
     assert.equal(isInternalNotifyEventType('chokepoint_disruption'), true);
   });
 
+  it('reserves the relay-produced national air traffic collapse event', () => {
+    assert.equal(isInternalNotifyEventType('aviation_traffic_collapse'), true);
+  });
+
   it('does not reserve ordinary user-publishable event types', () => {
     assert.equal(isInternalNotifyEventType('rss_alert'), false);
     assert.equal(isInternalNotifyEventType('market_alert'), false);

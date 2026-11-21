@@ -13,7 +13,7 @@ paths:
             tags:
                 - HealthService
             summary: ListDiseaseOutbreaks
-            description: ListDiseaseOutbreaks returns recent WHO/ProMED disease outbreak alerts.
+            description: ListDiseaseOutbreaks returns recent outbreak alerts from WHO Disease Outbreak News, CDC, ECDC, CIDRAP and ProMED-sourced ThinkGlobalHealth, with alert levels.
             operationId: ListDiseaseOutbreaks
             parameters:
                 - name: jmespath
@@ -128,7 +128,7 @@ paths:
             tags:
                 - HealthService
             summary: ListAirQualityAlerts
-            description: ListAirQualityAlerts returns recent PM2.5 stations with AQI-derived health risk.
+            description: ListAirQualityAlerts returns PM2.5 stations reporting in the last 2 hours from OpenAQ, supplemented by WAQI, with AQI and a derived health risk level.
             operationId: ListAirQualityAlerts
             parameters:
                 - name: jmespath

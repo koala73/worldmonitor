@@ -130,10 +130,10 @@ export const crudeOilInventoriesPage = Object.freeze({
   slug: 'crude-oil-inventories',
   path: '/tools/crude-oil-inventories/',
   statusPath: '/api/economic/v1/get-oil-inventories?public=1',
-  title: 'Crude Oil Inventories This Week: EIA US Stocks and SPR | World Monitor',
+  title: 'Crude Oil Inventories: EIA Weekly Stocks | World Monitor',
   h1: 'US crude oil inventories this week',
   question: 'What are US crude oil inventories this week?',
-  description: 'The latest weekly EIA figures for US commercial crude oil stocks and the Strategic Petroleum Reserve, with refinery inputs, US natural gas storage and EU gas storage.',
+  description: 'Weekly EIA figures for US commercial crude oil stocks and the Strategic Petroleum Reserve, plus refinery inputs, US natural gas and EU gas storage.',
   dashboardPanel: 'Oil Inventories',
   record: crudeOilInventoriesRecord,
   renderSection(record, { live }) {

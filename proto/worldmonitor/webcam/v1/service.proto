@@ -9,11 +9,11 @@ import "worldmonitor/webcam/v1/get_webcam_image.proto";
 service WebcamService {
   option (sebuf.http.service_config) = {base_path: "/api/webcam/v1"};
 
-  // ListWebcams lists webcams in view, grouped into map clusters, with a total-in-view count.
+  // ListWebcams returns Windy webcams in a bounding box rounded out to whole degrees, from a seeded geo index capped at 2,000 per search, clustered below zoom 9.
   rpc ListWebcams(ListWebcamsRequest) returns (ListWebcamsResponse) {
     option (sebuf.http.config) = {path: "/list-webcams", method: HTTP_METHOD_GET};
   }
-  // GetWebcamImage resolves a webcam id into its thumbnail and player URLs, title, and last-updated timestamp.
+  // GetWebcamImage resolves one Windy webcam id into thumbnail, player and Windy page URLs, title, media type and last image update, cached for five minutes.
   rpc GetWebcamImage(GetWebcamImageRequest) returns (GetWebcamImageResponse) {
     option (sebuf.http.config) = {path: "/get-webcam-image", method: HTTP_METHOD_GET};
   }

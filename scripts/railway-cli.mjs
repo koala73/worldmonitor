@@ -130,7 +130,13 @@ export function runRailway(args, options = {}, spawnImpl = spawnSync) {
     maxBuffer: 10 * 1024 * 1024,
     timeout,
     ...spawnOptions,
-    env: createRailwayCliEnv(sourceEnv),
+    // The CLI applies its own per-request HTTP timeout (90 s in 5.30.1) and
+    // fails with "operation timed out" before a longer bound here expires.
+    // Match it to this call's bound so `timeout` is the one that decides.
+    env: {
+      ...createRailwayCliEnv(sourceEnv),
+      RAILWAY_HTTP_TIMEOUT: String(Math.ceil(timeout / 1000)),
+    },
   });
   if (result.signal) {
     throw new Error(`railway ${args.join(' ')} timed out after ${timeout}ms`);

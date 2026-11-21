@@ -1,0 +1,36 @@
+name: Bot PR Deploy Gate
+
+# Called by the workflows that open review PRs with github.token. GitHub fires
+# no workflow_run event for those PRs' CI, so Deploy Gate would only reach them
+# on its 30-minute sweep. This waits for the PR's CI, then dispatches the gate
+# for the PR head (.github/scripts/dispatch-bot-pr-gate.sh).
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        description: Head branch of the review PR the caller opened
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - name: Dispatch Deploy Gate once the PR's CI finishes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ inputs.branch }}
+        run: bash .github/scripts/dispatch-bot-pr-gate.sh

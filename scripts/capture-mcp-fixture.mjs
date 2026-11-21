@@ -82,7 +82,7 @@ const body = JSON.stringify({
 
 process.stdout.write(`POST ${ENDPOINT}  tool=${tool}  args=${JSON.stringify(args)}\n`);
 
-const res = await fetch(ENDPOINT, { method: 'POST', headers, body });
+const res = await fetch(ENDPOINT, { signal: AbortSignal.timeout(30_000), method: 'POST', headers, body });
 if (!res.ok) fail(`HTTP ${res.status} ${res.statusText}: ${await res.text()}`);
 
 const rpc = await res.json();

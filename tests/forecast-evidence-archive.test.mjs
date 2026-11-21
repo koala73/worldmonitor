@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { MARKET_ALERT_ACTIVITY_RETENTION_MS } from '../scripts/_market-alert-ledger.mjs';
+import { HASH_FIELDS_WITH_LENGTH_SCRIPT } from '../scripts/lib/story-track-batch-reader.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -129,16 +130,6 @@ describe('forecast evidence archive records (#7082)', () => {
     assert.ok(mod.utf8ByteLength(raw) > mod.FORECAST_EVIDENCE_MEMBER_MAX_BYTES);
     assert.equal(mod.parseForecastEvidenceMember(raw).oversized, true);
   });
-
-  it('uses one stable index identity for every refresh of a story hash', () => {
-    const hash = 'a'.repeat(64);
-    const first = mod.buildForecastEvidenceMember({ hash, title: 'first', link: 'x', description: '', publishedAt: 1 }, 2);
-    const refreshed = mod.buildForecastEvidenceMember({ hash, title: 'changed', link: 'x', description: '', publishedAt: 1 }, 3);
-    assert.notEqual(first, refreshed, 'the self-contained payload may refresh');
-    assert.equal(mod.forecastEvidenceRecordKey(hash), mod.forecastEvidenceRecordKey(hash));
-    assert.equal(hash, hash, 'the ZSet member remains the hash');
-  });
-
   it('reports malformed members as tombstones, never silently omitted', () => {
     for (const bad of ['not json', '42', 'null', JSON.stringify({ v: 99 }), JSON.stringify({ v: 1 })]) {
       const { record, malformed } = mod.parseForecastEvidenceMember(bad);
@@ -720,7 +711,7 @@ describe('reader migration (#7082)', () => {
 describe('bounded backfill and cutover (#7082)', () => {
   const now = 1_750_000_000_000;
   const hash = 'e'.repeat(64);
-  const track = ['title', 'Backfilled event', 'link', 'https://example.test/e', 'description', 'body', 'publishedAt', String(now - 1_000)];
+  const track = [4, ['Backfilled event', 'https://example.test/e', 'body', String(now - 1_000)]];
 
   it('is a dry-run by default and never writes a cutover marker', async () => {
     const calls = [];
@@ -735,6 +726,10 @@ describe('bounded backfill and cutover (#7082)', () => {
       ], calls),
     });
     assert.equal(report.mode, 'dry-run');
+    assert.deepEqual(calls[2].command, [
+      ['GET', mod.forecastEvidenceRecordKey(hash)],
+      ['EVAL', HASH_FIELDS_WITH_LENGTH_SCRIPT, '1', `story:track:v1:${hash}`, 'title', 'link', 'description', 'publishedAt'],
+    ]);
     assert.equal(report.cutoverVerified, false);
     assert.equal(calls.some(call => call.command[0] === 'SET'), false);
   });
@@ -747,12 +742,25 @@ describe('bounded backfill and cutover (#7082)', () => {
       fetchFn: sequenceFetch([
         { result: [hash, String(now - 500)] },
         { result: ['f'.repeat(64), String(now - backfillMod.FORECAST_EVIDENCE_BACKFILL_WINDOW_MS - 1)] },
-        [{ result: null }, { result: [] }],
+        [{ result: null }, { result: [0, [null, null, null, null]] }],
       ]),
     });
     assert.equal(report.cutoverVerified, false);
     assert.equal(report.missingRows, 1);
     assert.equal(report.writableRecords, 0);
+  });
+
+  it('keeps hashes with only unrelated fields classified as tombstones', async () => {
+    const report = await backfillMod.backfillForecastEvidenceArchive({
+      nowMs: now, redisUrl: 'https://redis.example', redisToken: 'token',
+      fetchFn: sequenceFetch([
+        { result: [hash, String(now - 500)] },
+        { result: ['f'.repeat(64), String(now - backfillMod.FORECAST_EVIDENCE_BACKFILL_WINDOW_MS - 1)] },
+        [{ result: null }, { result: [1, [null, null, null, null]] }],
+      ]),
+    });
+    assert.equal(report.missingRows, 0);
+    assert.equal(report.tombstones, 1);
   });
 
   it('keeps cutover unverified when the oldest legacy member is newer than the window', async () => {

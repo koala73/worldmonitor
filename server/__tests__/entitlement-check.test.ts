@@ -76,9 +76,9 @@ function makeEntitlements(tier: number, planKey = "free") {
         // Third field to join the cache-staleness gate, for the same reason as
         // the two above. A tier-2 apiAccess plan carrying a NUMERIC
         // mcpCallsPerDay is a pre-marker row by construction: the catalog gives
-        // the API tiers the shared-budget marker. Enterprise (tier 3) carries a
-        // numeric fair-use ceiling and is exempt from that check. A tier-only factory reaches the API tiers at
-        // tier >= 2, so they take the marker here.
+        // every apiAccess plan, Enterprise included, the shared-budget marker.
+        // A tier-only factory reaches those plans at tier >= 2, so they take
+        // the marker here.
         mcpCallsPerDay: tier >= 2 ? "shared-api-budget" : (tier >= 1 ? 50 : 0),
         dashboardAiCallsPerDay: tier >= 1 ? 500 : 0,
         mcpBurstRequestsPerMinute: tier >= 1 ? 60 : 0,
@@ -520,6 +520,30 @@ describe("gateway entitlement check", () => {
     );
   });
 
+  test("a billing-status marker without travelRiskAssessment reloads only when the travel shape is required", async () => {
+    const legacyMarker = {
+      ...makeEntitlements(1, "pro_business_monthly"),
+      billingStatus: "renewal_verification_pending" as const,
+      retryAfterSeconds: 11,
+    };
+    const current = {
+      ...legacyMarker,
+      features: { ...legacyMarker.features, travelRiskAssessment: true },
+    };
+
+    await withCachedEntitlementResponse(legacyMarker, current, async (fetchMock) => {
+      const served = await getEntitlements("travel-shape-marker-default");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(served?.features.travelRiskAssessment).toBeUndefined();
+    });
+
+    await withCachedEntitlementResponse(legacyMarker, current, async (fetchMock) => {
+      const reloaded = await getEntitlements("travel-shape-marker-required", { requireTravelRiskShape: true });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(reloaded?.features.travelRiskAssessment).toBe(true);
+    });
+  });
+
   test("legacy renewal-freshness marker without embedAccess reloads before the marker cache return", async () => {
     const marker = {
       ...makeEntitlements(0),
@@ -822,17 +846,35 @@ describe("gateway entitlement check", () => {
     }
   });
 
-  test("an Enterprise entry with its numeric MCP ceiling is served from cache", async () => {
-    // Enterprise carries apiAccess AND a numeric mcpCallsPerDay (its fair-use
-    // ceiling). The pre-marker check must not read that as a stale API-tier
-    // entry, or every Enterprise request pays a Convex round-trip.
-    const enterprise = makeEntitlements(3, "enterprise");
-    enterprise.features.planLimits = {
-      ...enterprise.features.planLimits,
+  test("a pre-deploy Enterprise entry with a numeric MCP ceiling is stale and refetches", async () => {
+    // Before the catalog moved Enterprise onto the shared-budget marker, its
+    // entries carried apiAccess with a numeric mcpCallsPerDay (100k REST,
+    // 25k MCP). Served from cache, such an entry resolves the old dedicated
+    // MCP ceiling until it ages out, so it must reload like any pre-marker row.
+    const preDeploy = makeEntitlements(3, "enterprise");
+    preDeploy.features.planLimits = {
+      ...preDeploy.features.planLimits,
       apiRequestsPerDay: 100_000,
       mcpCallsPerDay: 25_000,
       dashboardAiCallsPerDay: 25_000,
     };
+
+    const result = await withCachedEntitlementResponse(
+      preDeploy,
+      makeEntitlements(3, "enterprise"),
+      async (fetchMock) => {
+        const entitlements = await getEntitlements("user_enterprise_pre_deploy");
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        return entitlements;
+      },
+    );
+
+    expect(result?.planKey).toBe("enterprise");
+    expect(result?.features.planLimits?.mcpCallsPerDay).toBe("shared-api-budget");
+  });
+
+  test("a current Enterprise entry with the shared-budget marker is served from cache", async () => {
+    const enterprise = makeEntitlements(3, "enterprise");
     vi.mocked(getCachedJson).mockResolvedValueOnce(enterprise);
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -1438,5 +1480,41 @@ describe("getEntitlements surfaces apiDailyAllowance (#3199 U2)", () => {
       if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
       else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #10451 — travelRiskAssessment is opt-in to the cache-shape gate
+// ---------------------------------------------------------------------------
+
+describe("getEntitlements requireTravelRiskShape (#10451)", () => {
+  const legacyBusiness = makeEntitlements(1, "pro_business_monthly");
+  const canonicalBusiness = {
+    ...legacyBusiness,
+    features: { ...legacyBusiness.features, travelRiskAssessment: true },
+  };
+
+  test("an ordinary read keeps serving a cached row that predates the flag", async () => {
+    await withCachedEntitlementResponse(legacyBusiness, canonicalBusiness, async (fetchMock) => {
+      const result = await getEntitlements("travel-legacy-ordinary");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result?.features.travelRiskAssessment).toBeUndefined();
+    });
+  });
+
+  test("a travel-risk read reloads a cached row that predates the flag", async () => {
+    await withCachedEntitlementResponse(legacyBusiness, canonicalBusiness, async (fetchMock) => {
+      const result = await getEntitlements("travel-legacy-shape", { requireTravelRiskShape: true });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result?.features.travelRiskAssessment).toBe(true);
+    });
+  });
+
+  test("a travel-risk read serves a cached row that already carries the flag", async () => {
+    await withCachedEntitlementResponse(canonicalBusiness, canonicalBusiness, async (fetchMock) => {
+      const result = await getEntitlements("travel-current-shape", { requireTravelRiskShape: true });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result?.features.travelRiskAssessment).toBe(true);
+    });
   });
 });

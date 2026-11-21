@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import {
   actionReadiness,
   bootstrapOnce,
+  createPreflightRunner,
   currentOriginMain,
   findWorktreeCollisions,
   inventoryGenerationSkipReason,
@@ -93,6 +94,146 @@ function localFixture({ inventory = false } = {}) {
 }
 
 describe('agent preflight', () => {
+  it('runs npm through node and npm-cli.js on win32', () => {
+    const execPath = 'C:\\Program Files\\nodejs\\node.exe';
+    const options = { cwd: 'C:\\repo with spaces', timeout: 1500, env: { PATH: 'C:\\Windows' } };
+    const args = ['ls', '--depth=0', '--json'];
+    const calls = [];
+    const runner = createPreflightRunner({
+      platform: 'win32',
+      env: {},
+      execPath,
+      spawn: (file, spawnArgs, spawnOptions) => {
+        calls.push({ file, spawnArgs, spawnOptions });
+        return { status: 0 };
+      },
+    });
+
+    runner('npm', args, options);
+    runner('git', ['status'], options);
+
+    assert.equal(calls[0].spawnOptions, options);
+    assert.equal(calls[0].spawnOptions.shell, undefined);
+    assert.deepEqual(calls[0], {
+      file: execPath,
+      spawnArgs: [
+        'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
+        ...args,
+      ],
+      spawnOptions: options,
+    });
+    assert.deepEqual(calls[1], {
+      file: 'git',
+      spawnArgs: ['status'],
+      spawnOptions: options,
+    });
+  });
+
+  it('uses a JavaScript npm_execpath on win32 and ignores a .cmd path', () => {
+    const execPath = 'C:\\Program Files\\nodejs\\node.exe';
+    const fallback = 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js';
+    const calls = [];
+    const spawn = (file, spawnArgs, spawnOptions) => {
+      calls.push({ file, spawnArgs, spawnOptions });
+      return { status: 0 };
+    };
+    const ciOptions = { cwd: 'D:\\work', timeout: 99 };
+
+    createPreflightRunner({
+      platform: 'win32',
+      env: { npm_execpath: 'D:\\alt\\npm-cli.js' },
+      execPath,
+      spawn,
+    })('npm', ['ci', '--ignore-scripts'], ciOptions);
+    createPreflightRunner({
+      platform: 'win32',
+      env: { npm_execpath: 'D:\\alt\\npm.cmd' },
+      execPath,
+      spawn,
+    })('npm', ['ci'], ciOptions);
+
+    assert.equal(calls[0].spawnOptions, ciOptions);
+    assert.deepEqual(calls[0], {
+      file: execPath,
+      spawnArgs: ['D:\\alt\\npm-cli.js', 'ci', '--ignore-scripts'],
+      spawnOptions: ciOptions,
+    });
+    assert.deepEqual(calls[1], {
+      file: execPath,
+      spawnArgs: [fallback, 'ci'],
+      spawnOptions: ciOptions,
+    });
+  });
+
+  it('leaves npm unchanged on linux and darwin', () => {
+    const args = ['ls', '--depth=0', '--json'];
+    const options = { cwd: '/repo', timeout: 50 };
+    for (const platform of ['linux', 'darwin']) {
+      const calls = [];
+      createPreflightRunner({
+        platform,
+        env: { npm_execpath: '/tmp/npm-cli.js' },
+        execPath: '/usr/local/bin/node',
+        spawn: (file, spawnArgs, spawnOptions) => {
+          calls.push({ file, spawnArgs, spawnOptions });
+          return { status: 0 };
+        },
+      })('npm', args, options);
+      assert.deepEqual(calls, [{ file: 'npm', spawnArgs: args, spawnOptions: options }]);
+    }
+  });
+
+  it('ignores other package managers in npm_execpath on win32', () => {
+    const execPath = 'C:\\Program Files\\nodejs\\node.exe';
+    const fallback = 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js';
+    for (const npmExecPath of ['D:\\yarn\\bin\\yarn.js', 'D:/pnpm/bin/pnpm.js', 'D:\\alt\\not-npm-cli.js']) {
+      const calls = [];
+      const runner = createPreflightRunner({
+        platform: 'win32',
+        env: { npm_execpath: npmExecPath },
+        execPath,
+        spawn: (file, args) => {
+          calls.push({ file, args });
+          return { status: 0 };
+        },
+      });
+      runner('npm', ['ls', '--depth=0', '--json']);
+      runner('npm', ['ci', '--ignore-scripts']);
+      assert.deepEqual(calls, [
+        { file: execPath, args: [fallback, 'ls', '--depth=0', '--json'] },
+        { file: execPath, args: [fallback, 'ci', '--ignore-scripts'] },
+      ]);
+    }
+  });
+
+  it('passes an injected dependency runner through unchanged', () => {
+    const root = makeRoot();
+    writeFileSync(join(root, 'package.json'), JSON.stringify({
+      dependencies: { tool: '1.0.0' },
+    }));
+    mkdirSync(join(root, 'node_modules', 'tool'), { recursive: true });
+    mkdirSync(join(root, 'node_modules', '.bin'), { recursive: true });
+    writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}');
+    writeFileSync(join(root, 'node_modules', 'tool', 'package.json'), JSON.stringify({
+      bin: { tool: 'cli.js' },
+      name: 'tool',
+    }));
+    writeFileSync(join(root, 'node_modules', '.bin', 'tool'), '#!/bin/sh\n', { mode: 0o755 });
+    const calls = [];
+    const runner = (file, args, options) => {
+      calls.push({ file, args, options });
+      return { status: 0, stderr: '', stdout: '{}' };
+    };
+
+    const result = probeDependencies(root, runner);
+
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].file, 'npm');
+    assert.deepEqual(calls[0].args, ['ls', '--depth=0', '--json']);
+    assert.equal(calls[0].options.cwd, root);
+  });
+
   it('accepts explicit action modes and preserves the default contract', () => {
     assert.equal(parseArgs([]).mode, null);
     for (const mode of ['review', 'tests', 'repair']) {

@@ -1,7 +1,8 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
+import { sparklineSpanHtml } from './_sparkline-span';
 import type { MarketData, CryptoData, TokenData } from '@/types';
-import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
+import { formatPrice, formatQuotePrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
@@ -109,7 +110,7 @@ export class MarketPanel extends Panel {
         </div>
         <div class="market-data">
           ${miniSparkline(stock.sparkline, stock.change)}
-          <span class="market-price">${formatPrice(stock.price!)}</span>
+          <span class="market-price">${escapeHtml(formatQuotePrice(stock.symbol, stock.price))}</span>
           <span class="market-change ${getChangeClass(stock.change!)}">${formatChange(stock.change!)}</span>
         </div>
       </div>
@@ -225,7 +226,7 @@ export class HeatmapPanel extends Panel {
   private _buildTabBar(): string {
     const hasValuations = Object.keys(this._valuations).length > 0;
     if (!hasValuations) return '';
-    return `<div style="display:flex;gap:4px;margin-bottom:8px">
+    return `<div class="panel-tabs" style="margin-bottom:8px">
       <button class="panel-tab${this._tab === 'performance' ? ' active' : ''}" data-tab="performance" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">Performance</button>
       <button class="panel-tab${this._tab === 'valuations' ? ' active' : ''}" data-tab="valuations" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">Valuations</button>
     </div>`;
@@ -360,23 +361,23 @@ export class HeatmapPanel extends Panel {
           ? ` <span title="Last known value; not refreshed this cycle" style="color:var(--text-dim);font-size:calc(9px * var(--wm-panel-effective-scale, 1))">(stale)</span>`
           : '';
         return `<tr${isStale ? ' style="opacity:0.65"' : ''}>
-  <td style="padding:3px 6px;white-space:nowrap;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${escapeHtml(name)}${staleMark}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${peColor(e.trailingPE)}">${fmtPE(e.trailingPE)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${peColor(e.forwardPE)}">${fmtPE(e.forwardPE)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${fmtBeta(e.beta)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${e.ytdReturn === null ? 'var(--text-dim)' : e.ytdReturn >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtPct(e.ytdReturn)}</td>
+  <td style="white-space:nowrap">${escapeHtml(name)}${staleMark}</td>
+  <td style="text-align:right;color:${peColor(e.trailingPE)}">${fmtPE(e.trailingPE)}</td>
+  <td style="text-align:right;color:${peColor(e.forwardPE)}">${fmtPE(e.forwardPE)}</td>
+  <td style="text-align:right">${fmtBeta(e.beta)}</td>
+  <td style="text-align:right;color:${e.ytdReturn === null ? 'var(--text-dim)' : e.ytdReturn >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtPct(e.ytdReturn)}</td>
 </tr>`;
       })
       .join('');
 
     const table = `<div style="overflow-x:auto">
-<table style="width:100%;border-collapse:collapse;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
-  <thead><tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">
-    <th scope="col" style="padding:3px 6px;text-align:left;font-weight:500">Sector</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Trail P/E</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Fwd P/E</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Beta</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Year to date</th>
+<table class="wm-table">
+  <thead><tr>
+    <th scope="col">Sector</th>
+    <th scope="col" style="text-align:right">Trail P/E</th>
+    <th scope="col" style="text-align:right">Fwd P/E</th>
+    <th scope="col" style="text-align:right">Beta</th>
+    <th scope="col" style="text-align:right">Year to date</th>
   </tr></thead>
   <tbody>${tableRows}</tbody>
 </table></div>`;
@@ -405,8 +406,6 @@ export interface CommoditiesTabSelectionResult {
 import type {
   GetPhysicalDivergenceIndexResponse,
   GetPhysicalPremiumsResponse,
-  GetHyperliquidFlowResponse,
-  HyperliquidAssetFlow,
   PhysicalDivergenceReading,
   PhysicalDivergenceState,
   PhysicalPremiumRegime,
@@ -497,109 +496,6 @@ function physicalTrendArrow(trend: PhysicalPremiumTrend): string {
   }
 }
 
-function parseFiniteNumber(s: string): number | null {
-  if (typeof s !== 'string' || s === '') return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * OI Δ1h derived from sparkOi tail: (last - lookback) / lookback.
- * 12 samples back = 1h at 5min cadence. Returns null if too few samples.
- */
-function oiDelta1h(sparkOi: number[]): number | null {
-  if (!Array.isArray(sparkOi) || sparkOi.length < 13) return null;
-  const last = sparkOi[sparkOi.length - 1];
-  const lookback = sparkOi[sparkOi.length - 13];
-  if (last == null || lookback == null) return null;
-  if (!(lookback > 0) || !Number.isFinite(last)) return null;
-  return (last - lookback) / lookback;
-}
-
-/**
- * Map the raw bootstrap-hydrated seed snapshot (seeder JSON shape) into the
- * same view model the RPC mapper produces. Bootstrap returns the raw Redis
- * blob (numeric fields), not the proto response (string-encoded numbers).
- */
-export function mapHyperliquidFlowSeed(raw: Record<string, unknown>): HyperliquidFlowView | null {
-  const assets = Array.isArray(raw.assets) ? (raw.assets as Array<Record<string, unknown>>) : null;
-  if (!assets || assets.length === 0) return null;
-  const fxAssets: HyperliquidAssetView[] = [];
-  const commodityAssets: HyperliquidAssetView[] = [];
-  for (const a of assets) {
-    const funding = typeof a.funding === 'number' && Number.isFinite(a.funding) ? a.funding : null;
-    const sparkOi = Array.isArray(a.sparkOi) ? (a.sparkOi as number[]).filter((v) => Number.isFinite(v)) : [];
-    const sparkScore = Array.isArray(a.sparkScore) ? (a.sparkScore as number[]).filter((v) => Number.isFinite(v)) : [];
-    const view: HyperliquidAssetView = {
-      symbol: String(a.symbol ?? ''),
-      display: String(a.display ?? ''),
-      group: String(a.group ?? ''),
-      funding,
-      oiDelta1h: oiDelta1h(sparkOi),
-      composite: typeof a.composite === 'number' ? a.composite : 0,
-      warmup: Boolean(a.warmup),
-      stale: Boolean(a.stale),
-      sparkScore,
-    };
-    if (view.group === 'fx') fxAssets.push(view);
-    else commodityAssets.push(view);
-  }
-  return {
-    ts: typeof raw.ts === 'number' ? raw.ts : 0,
-    warmup: Boolean(raw.warmup),
-    fxAssets,
-    commodityAssets,
-    unavailable: false,
-  };
-}
-
-export function mapHyperliquidFlowResponse(resp: GetHyperliquidFlowResponse): HyperliquidFlowView {
-  const fxAssets: HyperliquidAssetView[] = [];
-  const commodityAssets: HyperliquidAssetView[] = [];
-  for (const a of resp.assets as HyperliquidAssetFlow[]) {
-    const view: HyperliquidAssetView = {
-      symbol: a.symbol,
-      display: a.display,
-      group: a.group,
-      funding: parseFiniteNumber(a.funding),
-      oiDelta1h: oiDelta1h(a.sparkOi),
-      composite: Number(a.composite || 0),
-      warmup: Boolean(a.warmup),
-      stale: Boolean(a.stale),
-      sparkScore: Array.isArray(a.sparkScore) ? a.sparkScore : [],
-    };
-    if (a.group === 'fx') fxAssets.push(view);
-    else commodityAssets.push(view);
-  }
-  return {
-    ts: Number(resp.ts || 0),
-    warmup: Boolean(resp.warmup),
-    fxAssets,
-    commodityAssets,
-    unavailable: false,
-  };
-}
-
-interface HyperliquidAssetView {
-  symbol: string;
-  display: string;
-  group: string;
-  funding: number | null;
-  oiDelta1h: number | null;
-  composite: number;
-  warmup: boolean;
-  stale: boolean;
-  sparkScore: number[];
-}
-
-interface HyperliquidFlowView {
-  ts: number;
-  warmup: boolean;
-  fxAssets: HyperliquidAssetView[];
-  commodityAssets: HyperliquidAssetView[];
-  unavailable: boolean;
-}
-
 // CCYUSD=X (e.g. EURUSD): USD is quote, rate = USD/FC → XAU_FC = XAU_USD / rate
 // USDCCY=X (e.g. USDJPY, USDCHF): USD is base, rate = FC/USD → XAU_FC = XAU_USD * rate
 const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; multiply: boolean }> = [
@@ -614,9 +510,11 @@ const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; 
   { symbol: 'USDTRY=X',  label: 'TRY', flag: '🇹🇷', multiply: true  },
 ];
 
+type CommodityCard = Pick<MarketData, 'display' | 'price' | 'change' | 'sparkline' | 'sparklineIntervalSeconds' | 'sparklineStartAt'> & { symbol?: string };
+
 export class CommoditiesPanel extends Panel {
   private _tab: CommoditiesTab = 'commodities';
-  private _commodityData: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[]; symbol?: string }> = [];
+  private _commodityData: CommodityCard[] = [];
   private _fxRates: EcbFxRateItem[] = [];
   private _physicalPremiums: PhysicalPremium[] = [];
   private _physicalPremiumFxAsOf = '';
@@ -667,7 +565,7 @@ export class CommoditiesPanel extends Panel {
     return { ok: true, status: 'applied', effectiveTab: this._tab };
   }
 
-  public renderCommodities(data: Array<{ symbol?: string; display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {
+  public renderCommodities(data: CommodityCard[]): void {
     this._commodityData = data;
     this._render();
   }
@@ -708,6 +606,21 @@ export class CommoditiesPanel extends Panel {
     this._render();
   }
 
+  /**
+   * Rendering rebuilds the tab bar, and a rebuilt bar starts scrolled to the
+   * left. Scroll the selected tab back into view, clear of the bar's 24px
+   * edge fade.
+   */
+  private readonly revealActiveTab = (): void => {
+    const bar = this.content.querySelector<HTMLElement>(':scope > .panel-tabs');
+    const active = bar?.querySelector<HTMLElement>('.panel-tab.active');
+    if (!bar || !active || bar.scrollWidth <= bar.clientWidth) return;
+    const barBox = bar.getBoundingClientRect();
+    const tabBox = active.getBoundingClientRect();
+    if (tabBox.left < barBox.left) bar.scrollLeft += tabBox.left - barBox.left;
+    else if (tabBox.right > barBox.right - 24) bar.scrollLeft += tabBox.right - (barBox.right - 24);
+  };
+
   private _buildTabBar(hasPhysical: boolean, hasFx: boolean, hasXau: boolean): string {
     const firstTabLabel = t('components.commodities.commodities');
     const tabs: string[] = [
@@ -716,7 +629,7 @@ export class CommoditiesPanel extends Panel {
     if (hasPhysical) tabs.push(`<button class="panel-tab${this._tab === 'physical' ? ' active' : ''}" data-tab="physical" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">${t('components.commodities.physicalPremiums')}</button>`);
     if (hasFx) tabs.push(`<button class="panel-tab${this._tab === 'fx' ? ' active' : ''}" data-tab="fx" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">EUR FX</button>`);
     if (hasXau) tabs.push(`<button class="panel-tab${this._tab === 'xau' ? ' active' : ''}" data-tab="xau" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">XAU/FX</button>`);
-    return tabs.length > 1 ? `<div style="display:flex;gap:4px;margin-bottom:8px">${tabs.join('')}</div>` : '';
+    return tabs.length > 1 ? `<div class="panel-tabs" style="margin-bottom:8px">${tabs.join('')}</div>` : '';
   }
 
   private _renderPhysicalPremiums(): string {
@@ -851,7 +764,7 @@ export class CommoditiesPanel extends Panel {
     const tabBar = this._buildTabBar(hasPhysical, hasFx, hasXau);
 
     if (this._tab === 'physical' && hasPhysical) {
-      this.setSafeContent(unsafeRawHtml(tabBar + this._renderPhysicalPremiums(), 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + this._renderPhysicalPremiums(), 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
@@ -871,12 +784,12 @@ export class CommoditiesPanel extends Panel {
           ${changeStr ? `<div class="commodity-change ${escapeHtml(changeClass)}">${escapeHtml(changeStr)}</div>` : ''}
         </div>`;
       }).join('');
-      this.setSafeContent(unsafeRawHtml(tabBar + `<div class="commodities-grid">${items}</div><div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Source: ECB</div>`, 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + `<div class="commodities-grid">${items}</div><div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Source: ECB</div>`, 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
     if (this._tab === 'xau' && hasXau) {
-      this.setSafeContent(unsafeRawHtml(tabBar + this._renderXau(), 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + this._renderXau(), 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
@@ -893,21 +806,24 @@ export class CommoditiesPanel extends Panel {
         this.showRetrying(t('common.failedCommodities'));
         return;
       }
-      this.setSafeContent(unsafeRawHtml(tabBar + `<div style="padding:8px;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${t('common.failedCommodities')}</div>`, 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + `<div style="padding:8px;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${t('common.failedCommodities')}</div>`, 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
     const grid = '<div class="commodities-grid">' +
-      validData.map(c => `
+      validData.map(c => {
+        const chart = miniSparkline(c.sparkline, c.change, 60, 18);
+        return `
         <div class="commodity-item">
           <div class="commodity-name">${escapeHtml(c.display)}</div>
-          ${miniSparkline(c.sparkline, c.change, 60, 18)}
-          <div class="commodity-price">${formatPrice(c.price!)}</div>
+          ${chart ? chart + sparklineSpanHtml(c) : '<div class="commodity-spark-empty" aria-hidden="true"></div>'}
+          <div class="commodity-price">${escapeHtml(formatPrice(c.price!))}</div>
           <div class="commodity-change ${getChangeClass(c.change!)}">${formatChange(c.change!)}</div>
         </div>
-      `).join('') + '</div>';
+      `;
+      }).join('') + '</div>';
 
-    this.setSafeContent(unsafeRawHtml(tabBar + grid, 'legacy Panel.setContent() migration'));
+    this.setSafeContent(unsafeRawHtml(tabBar + grid, 'legacy Panel.setContent() migration'), this.revealActiveTab);
   }
 }
 
@@ -932,7 +848,7 @@ export class CryptoPanel extends Panel {
         </div>
         <div class="market-data">
           ${miniSparkline(coin.sparkline, coin.change)}
-          <span class="market-price">$${coin.price.toLocaleString()}</span>
+          <span class="market-price">${escapeHtml(Number.isFinite(coin.price) && Math.abs(coin.price) >= 1 ? `$${coin.price.toLocaleString()}` : formatPrice(coin.price))}</span>
           <span class="market-change ${getChangeClass(coin.change)}">${formatChange(coin.change)}</span>
         </div>
       </div>
@@ -990,7 +906,7 @@ export class TokenListPanel extends Panel {
           <span class="market-symbol">${escapeHtml(tok.symbol)}</span>
         </div>
         <div class="market-data">
-          <span class="market-price">$${tok.price.toLocaleString(undefined, { maximumFractionDigits: tok.price < 1 ? 6 : 2 })}</span>
+          <span class="market-price">${escapeHtml(Number.isFinite(tok.price) && Math.abs(tok.price) >= 1 ? `$${tok.price.toLocaleString(undefined, { maximumFractionDigits: tok.price < 1 ? 6 : 2 })}` : formatPrice(tok.price))}</span>
           <span class="market-change ${getChangeClass(tok.change24h)}">${formatChange(tok.change24h)}</span>
           <span class="market-change market-change--7d ${getChangeClass(tok.change7d)}">${formatChange(tok.change7d)}W</span>
         </div>

@@ -11,18 +11,19 @@
 # Derive inventory metrics from the immutable build context. This stage uses
 # only Node builtins; the relay's production dependency install stays intact.
 # .dockerignore excludes local environment and credential files.
-FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS inventory-builder
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS inventory-builder
 
 WORKDIR /workspace
 COPY . .
 RUN node scripts/generate-inventory-facts.mjs
 
-FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5
 
 # curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
 RUN apk add --no-cache curl
 
 WORKDIR /app
+ENV npm_config_install_links=true
 
 # Install scripts/ runtime dependencies (telegram, ws, fast-xml-parser, etc.)
 # --ignore-scripts is the critical part: native helper packages such as
@@ -32,6 +33,7 @@ WORKDIR /app
 # tree. ws/telegram fall back to pure JS when native helpers are unavailable.
 # Mirrors the main Dockerfile's stage-2 pattern.
 COPY scripts/package.json scripts/package-lock.json ./scripts/
+COPY scripts/vendor/deepmerge/ ./scripts/vendor/deepmerge/
 RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 
 # Relay script and shared helpers
@@ -62,21 +64,40 @@ COPY scripts/lib/occurrence-events.cjs ./scripts/lib/occurrence-events.cjs
 COPY scripts/lib/x-news-accounts.cjs ./scripts/lib/x-news-accounts.cjs
 COPY scripts/lib/poll-generation-guard.cjs ./scripts/lib/poll-generation-guard.cjs
 COPY scripts/lib/x-poll-cycle.cjs ./scripts/lib/x-poll-cycle.cjs
+COPY scripts/lib/wsb-tickers.cjs ./scripts/lib/wsb-tickers.cjs
 COPY scripts/lib/x-post-budget.cjs ./scripts/lib/x-post-budget.cjs
 # Stale-digest alert gate required by ais-relay.cjs (#7084).
 COPY scripts/lib/digest-stale-gate.cjs ./scripts/lib/digest-stale-gate.cjs
+COPY scripts/lib/headline-language.cjs ./scripts/lib/headline-language.cjs
+COPY scripts/lib/news-story-key.cjs ./scripts/lib/news-story-key.cjs
+# news-story-key.cjs loads this copy, not /app/shared/: it imports
+# @noble/hashes, which resolves from scripts/node_modules only.
+COPY scripts/shared/story-identity.js ./scripts/shared/story-identity.js
+# Cross-wording corroboration (#10977) and its import closure.
+COPY scripts/lib/news-corroboration.mjs ./scripts/lib/news-corroboration.mjs
+COPY scripts/lib/brief-embedding.mjs ./scripts/lib/brief-embedding.mjs
+COPY scripts/lib/brief-dedup-consts.mjs ./scripts/lib/brief-dedup-consts.mjs
+COPY scripts/lib/brief-dedup-jaccard.mjs ./scripts/lib/brief-dedup-jaccard.mjs
+COPY scripts/lib/_upstash-pipeline.mjs ./scripts/lib/_upstash-pipeline.mjs
+COPY scripts/lib/llm-chain.cjs ./scripts/lib/llm-chain.cjs
+COPY scripts/shared/publisher-families.js ./scripts/shared/publisher-families.js
 # Publisher-link relay gate required by digest-stale-gate.cjs (#8398):
 # relay-emitted rss_alert events must not carry off-publisher links.
 COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-relay-gate.cjs
 # Classify digest URL/auth/transport helper required by ais-relay.cjs (#7437).
 COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-request.cjs
+COPY scripts/lib/news-digest-warm.cjs ./scripts/lib/news-digest-warm.cjs
 COPY scripts/lib/saudi-civil-defense-alerts.cjs ./scripts/lib/saudi-civil-defense-alerts.cjs
 COPY scripts/lib/chokepoint-disruption-alerts.cjs ./scripts/lib/chokepoint-disruption-alerts.cjs
+COPY scripts/lib/notification-publish-policy.cjs ./scripts/lib/notification-publish-policy.cjs
 # Middle East strike feed (conflict:iran-events:v1), required at relay startup;
 # the gazetteer reads outbreak-places.json at require time. The GDELT backstop
 # lazily imports _conflict-gdelt-bulk.mjs and its two helpers below.
 COPY scripts/lib/middle-east-strikes.cjs ./scripts/lib/middle-east-strikes.cjs
 COPY scripts/lib/middle-east-strikes-gazetteer.cjs ./scripts/lib/middle-east-strikes-gazetteer.cjs
+# v2 strike tally in shadow (CII v15 B3): conflict:strike-pressure:v2.
+COPY scripts/lib/middle-east-strikes-v2.cjs ./scripts/lib/middle-east-strikes-v2.cjs
+COPY scripts/lib/middle-east-strikes-gazetteer-v2.cjs ./scripts/lib/middle-east-strikes-gazetteer-v2.cjs
 COPY scripts/data/outbreak-places.json ./scripts/data/outbreak-places.json
 COPY scripts/_conflict-gdelt-bulk.mjs ./scripts/_conflict-gdelt-bulk.mjs
 COPY scripts/_conflict-gdelt.mjs ./scripts/_conflict-gdelt.mjs
@@ -126,6 +147,12 @@ COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs
 # market-quote-refresh.cjs prevents partial upstream success from shrinking the
 # bootstrap basket and bounds Yahoo fallback cadence.
 COPY scripts/shared/market-quote-refresh.cjs ./scripts/shared/market-quote-refresh.cjs
+# yahoo-closed-session.cjs gives rolled futures quotes their last session's
+# change in the relay market loop. Missing it = startup crash.
+COPY scripts/shared/yahoo-closed-session.cjs ./scripts/shared/yahoo-closed-session.cjs
+# quote-sparkline.cjs builds the 24-hour commodity sparkline. Missing it = startup crash.
+COPY scripts/shared/quote-sparkline.cjs ./scripts/shared/quote-sparkline.cjs
+COPY scripts/shared/oil-quote-provenance.cjs ./scripts/shared/oil-quote-provenance.cjs
 # market-seed-universe.cjs is the catalog + auxiliary quote basket shared by
 # seed-market-quotes.mjs and the relay market loop. Missing it = startup crash.
 COPY scripts/shared/market-seed-universe.cjs ./scripts/shared/market-seed-universe.cjs
@@ -134,14 +161,28 @@ COPY scripts/shared/market-seed-universe.cjs ./scripts/shared/market-seed-univer
 COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs
 COPY scripts/shared/pizzint-history.cjs ./scripts/shared/pizzint-history.cjs
 COPY scripts/shared/pizzint-location.cjs ./scripts/shared/pizzint-location.cjs
+COPY scripts/shared/air-traffic-regions.cjs ./scripts/shared/air-traffic-regions.cjs
+COPY scripts/shared/air-traffic-aggregate.cjs ./scripts/shared/air-traffic-aggregate.cjs
+COPY scripts/shared/air-traffic-history.cjs ./scripts/shared/air-traffic-history.cjs
+COPY scripts/shared/air-traffic-detector.cjs ./scripts/shared/air-traffic-detector.cjs
+COPY scripts/shared/wingbits-traffic.cjs ./scripts/shared/wingbits-traffic.cjs
 # ucdp-candidate.cjs carries the GED Candidate discovery/merge shared with
 # scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
 # startup (the require is top-level in the UCDP section).
 COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
+COPY scripts/shared/ucdp-state-parties.cjs ./scripts/shared/ucdp-state-parties.cjs
+# _ucdp-dashboard.mjs builds the compact UCDP projection the bootstrap tier
+# reads. seedUcdpEvents() imports it lazily, so a missing file fails only that
+# write (pinned in tests/dockerfile-relay-imports.test.mjs).
+COPY scripts/_ucdp-dashboard.mjs ./scripts/_ucdp-dashboard.mjs
+COPY scripts/shared/exposure-location-key.mjs ./scripts/shared/exposure-location-key.mjs
 # compare-and-delete-script.cjs is the Redis EVAL body shared by releaseLock()
 # in _seed-utils.mjs and the AIS relay. Missing it = ERR_MODULE_NOT_FOUND when
 # any COPY'd seeder loads _seed-utils.mjs (guarded by dockerfile-relay-imports).
 COPY scripts/shared/compare-and-delete-script.cjs ./scripts/shared/compare-and-delete-script.cjs
+# Edition list for the classify loop, generated from shared/news-catalog.json.
+COPY scripts/shared/news-digest-editions.json ./scripts/shared/news-digest-editions.json
+COPY scripts/shared/news-digest-warm-cells.json ./scripts/shared/news-digest-warm-cells.json
 # A missing inventory artifact fails the image build before relay startup.
 COPY --from=inventory-builder /workspace/scripts/shared/inventory-facts.generated.json ./scripts/shared/inventory-facts.generated.json
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs

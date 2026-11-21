@@ -44,12 +44,33 @@ const LINK_RESOLUTION_BASE = 'https://worldmonitor.app/';
 const RESOLVABLE_LINK_PATTERN = /^(?:[a-z][a-z0-9+.-]*:|\/)/i;
 // One shared cache entry: the refusal of a query string is itself cached.
 const CACHEABLE_HEADERS = { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30' };
+// The relay tags an alert's article link with a referrer at delivery
+// (withAlertReferrer in scripts/shared/notify-fields.cjs). The tag is not part
+// of the link's identity, so it is dropped before the digest: one entry then
+// covers the link as the feed published it and as any channel delivered it.
+// Same list as the relay matcher and the service worker.
+const ALERT_REFERRER_PARAMS = new Set([
+  'utm_source=worldmonitor',
+  'utm_medium=alert',
+  'utm_campaign=email',
+  'utm_campaign=telegram',
+  'utm_campaign=slack',
+  'utm_campaign=discord',
+  'utm_campaign=teams',
+  'utm_campaign=web_push',
+]);
 const RATE_LIMIT_SCOPE = 'notification-suppressions';
 const RATE_LIMIT_PER_MINUTE = 60;
 
 function warnUnavailable(reason, context = '') {
   const suffix = context ? ` ${context}` : '';
   console.warn(`[notification-suppressions][unavailable] reason=${reason}${suffix}`);
+}
+
+function withoutAlertReferrer(search) {
+  if (search.length < 2) return search;
+  const kept = search.slice(1).split('&').filter((part) => !ALERT_REFERRER_PARAMS.has(part));
+  return kept.length > 0 ? `?${kept.join('&')}` : '';
 }
 
 function normalizeUrl(raw) {
@@ -77,7 +98,7 @@ function normalizeUrl(raw) {
   } catch {
     // Malformed % sequences stay encoded — still comparable, just verbatim.
   }
-  return `${protocol}//${host}${path}${parsed.search}${parsed.hash}`;
+  return `${protocol}//${host}${path}${withoutAlertReferrer(parsed.search)}${parsed.hash}`;
 }
 
 function normalizeHost(raw) {
@@ -168,7 +189,7 @@ export default async function handler(req, ctx) {
     return new Response(null, { status: 204, headers: cors });
   }
   if (req.method !== 'GET') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, cors);
+    return jsonResponse({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'GET, OPTIONS' });
   }
   // The service worker never sends a query. Refusing one keeps the shared
   // cache keyed on the path alone, so a random `?bust=` cannot turn this

@@ -40,6 +40,7 @@ jobs:
             /.npmrc
             /blog-site/.npmrc
             /pro-test/.npmrc
+            /scripts/.npmrc
             /package.json
             /package-lock.json
             /scripts/package.json

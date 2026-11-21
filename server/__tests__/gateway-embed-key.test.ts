@@ -74,10 +74,12 @@ vi.mock("../_shared/entitlement-check", async (importActual) => {
   };
 });
 
+// The gateway resolves wm_ keys through the desktop-aware principal (plan
+// 2026-10-25-001 U4); an `api` principal with rank 0 is today's API customer.
 const validateUserApiKey = vi.fn(async () => null);
 vi.mock("../_shared/user-api-key", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../_shared/user-api-key")>();
-  return { ...actual, validateUserApiKey: (...a: unknown[]) => validateUserApiKey(...a) };
+  return { ...actual, validateUserApiKeyPrincipal: (...a: unknown[]) => validateUserApiKey(...a) };
 });
 
 const validateEmbedKey = vi.fn(async (): Promise<{ userId: string } | null> => ({ userId: "acct_embed" }));

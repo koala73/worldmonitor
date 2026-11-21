@@ -51,17 +51,17 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '24'
-          cache: 'npm'
       - uses: ./.github/actions/install-root-deps
-        with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+      - uses: ./.github/actions/install-pro-deps
       - run: npm run typecheck
       - run: npm run typecheck:api
       # `npm run typecheck` covers src/ only, so tests/ and shared modules reached only from tests
       # were never type-checked by any job. Runs inside the existing required `typecheck` context
       # rather than as a new job, so no branch-protection context list has to change.
       - run: npm run typecheck:contract-tests
+      # Playwright strips types without checking them, so e2e/ had drifted to
+      # 616 errors before the TypeScript 7 move. Same required context.
+      - run: npm run typecheck:e2e
       # Mirror the pre-push convex typecheck so direct pushes to main
       # and `--no-verify` bypasses can't land stale convex/_generated
       # types. See .husky/pre-push for the rationale.
@@ -74,10 +74,7 @@ jobs:
       # above reaches it and no other workflow ran its `lint` — `pro-test` was
       # sitting on six undetected type errors, five of them at the Sentry
       # `beforeSend` boundary that decides what gets filtered. Installed
-      # separately because it is a distinct package root; scripts stay blocked,
-      # matching `build:pro`. Same required context as the checks above, so no
+      # separately via install-pro-deps (scripts stay blocked, matching
+      # `build:pro`). Same required context as the checks above, so no
       # branch-protection list has to change.
-      - run: npm --prefix pro-test ci --prefer-offline
-        env:
-          npm_config_allow_scripts: ''
       - run: npm --prefix pro-test run lint

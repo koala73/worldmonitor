@@ -170,3 +170,23 @@ describe('CSL ingest', () => {
     assert.deepEqual(down.lists, {});
   });
 });
+
+describe('CSL transport diagnostics', () => {
+  it('retains a nested native cause code without exposing its message', async () => {
+    const cause = Object.assign(new Error('https://user:secret@proxy.test/?token=secret'), { code: 'ECONNRESET' });
+    const result = await ingestCslEntries({ fetchFn: async () => { throw new TypeError('fetch failed', { cause }); } });
+    assert.deepEqual(result, { lists: {}, error: 'fetch failed (cause: ECONNRESET)' });
+  });
+
+  it('omits malformed cause codes and bounds the single-line diagnostic', async () => {
+    const cause = { code: 'ECONNRESET\nhttps://user:secret@proxy.test/?token=secret', message: 'secret' };
+    const result = await ingestCslEntries({ fetchFn: async () => { throw new Error('fetch failed', { cause }); } });
+    assert.deepEqual(result, { lists: {}, error: 'fetch failed' });
+    const long = await ingestCslEntries({ fetchFn: async () => { throw new Error('x'.repeat(600) + '\nsecret'); } });
+    assert.equal(long.error, 'x'.repeat(512));
+    const longCause = await ingestCslEntries({ fetchFn: async () => { throw new Error('x'.repeat(600), { cause: { code: 'ECONNRESET' } }); } });
+    assert.equal(longCause.error, 'x'.repeat(492) + ' (cause: ECONNRESET)');
+    const multiline = await ingestCslEntries({ fetchFn: async () => { throw new Error('fetch\nfailed\r\x1b'); } });
+    assert.equal(multiline.error, 'fetch failed  ');
+  });
+});

@@ -157,6 +157,7 @@ export function fetchMcpDownstream(
   const headers = buildMcpDownstreamHeaders(url, execution, init.headers);
   return globalThis.fetch(url, {
     ...init,
+    signal: init.signal ?? AbortSignal.timeout(30_000),
     headers,
     // Custom transport headers survive cross-origin redirects in fetch.
     ...(new Headers(headers).has('X-WorldMonitor-Local-Token') ? { redirect: 'error' as const } : {}),

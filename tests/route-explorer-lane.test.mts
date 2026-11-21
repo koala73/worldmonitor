@@ -1,321 +1,281 @@
-/**
- * Smoke test matrix for `get-route-explorer-lane`.
- *
- * Calls the pure `computeLane` function (no Redis, no premium gate) for 30
- * representative country pairs × HS2 codes and asserts on response *structure*
- * — not hard-coded transit/cost values, which would drift as the underlying
- * static tables change.
- *
- * The matrix also doubles as a gap report: any pair with empty
- * `chokepointExposures` or `bypassOptions` is logged so Sprint 3/5 can plan
- * empty-state work.
- */
-
-import { after, describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { computeLane } from '../server/worldmonitor/supply-chain/v1/get-route-explorer-lane.ts';
-import type { GetRouteExplorerLaneRequest } from '../src/generated/server/worldmonitor/supply_chain/v1/service_server.ts';
+import { countryBox, inBox } from '../shared/country-bbox.ts';
+import { STRATEGIC_WATERWAYS } from '../shared/geo-data.ts';
+import { TRADE_ROUTES } from '../src/config/trade-routes.ts';
+import { CHOKEPOINT_REGISTRY } from '../server/_shared/chokepoint-registry.ts';
+import { BYPASS_CORRIDORS_BY_CHOKEPOINT } from '../server/_shared/bypass-corridors.ts';
 
-const PAIRS: Array<[string, string, string]> = [
-  ['CN', 'DE', 'high-volume baseline'],
-  ['US', 'JP', 'transpacific'],
-  ['IR', 'CN', 'Hormuz-dependent'],
-  ['BR', 'NL', 'Atlantic'],
-  ['AU', 'KR', 'Pacific'],
-  ['ZA', 'IN', 'Cape of Good Hope'],
-  ['EG', 'IT', 'Mediterranean short-haul'],
-  ['NG', 'CN', 'Africa to Asia crude'],
-  ['CL', 'CN', 'South America to Asia copper'],
-  ['TR', 'DE', 'semi-landlocked, tests land-bridge path'],
-];
+describe('route explorer lane responses', () => {
+  it('returns the China-Europe container lane with its exposures and Suez bypass', async () => {
+    const request = { fromIso2: 'CN', toIso2: 'DE', hs2: '85', cargoType: 'container' };
+    const res = await computeLane(request, new Map());
+    assert.equal(res.noModeledLane, false);
+    assert.equal(res.primaryRouteId, 'china-europe-suez');
+    assert.equal(res.fromIso2, request.fromIso2);
+    assert.equal(res.toIso2, request.toIso2);
+    assert.equal(res.hs2, request.hs2);
+    assert.equal(res.cargoType, request.cargoType);
+    assert.equal(res.warRiskTier, 'WAR_RISK_TIER_NORMAL');
+    assert.equal(res.disruptionScore, 0);
+    assert.equal(new Date(res.fetchedAt).toISOString(), res.fetchedAt);
 
-const HS2_CODES = ['27', '85', '10'];
-
-const VALID_WAR_RISK_TIERS = new Set([
-  'WAR_RISK_TIER_UNSPECIFIED',
-  'WAR_RISK_TIER_NORMAL',
-  'WAR_RISK_TIER_ELEVATED',
-  'WAR_RISK_TIER_HIGH',
-  'WAR_RISK_TIER_CRITICAL',
-  'WAR_RISK_TIER_WAR_ZONE',
-]);
-
-const VALID_STATUSES = new Set([
-  'CORRIDOR_STATUS_UNSPECIFIED',
-  'CORRIDOR_STATUS_ACTIVE',
-  'CORRIDOR_STATUS_PROPOSED',
-  'CORRIDOR_STATUS_UNAVAILABLE',
-]);
-
-interface GapRow {
-  pair: string;
-  hs2: string;
-  primaryRouteId: string;
-  noModeledLane: boolean;
-  exposures: number;
-  bypasses: number;
-  reason: string;
-}
-
-const gapRows: GapRow[] = [];
-
-describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
-  for (const [fromIso2, toIso2, reason] of PAIRS) {
-    for (const hs2 of HS2_CODES) {
-      it(`${fromIso2} -> ${toIso2}, HS ${hs2} (${reason})`, async () => {
-        const req: GetRouteExplorerLaneRequest = {
-          fromIso2,
-          toIso2,
-          hs2,
-          cargoType: hs2 === '27' ? 'tanker' : hs2 === '10' ? 'bulk' : 'container',
-        };
-
-        // Pass an empty chokepoint-status map so the test does not depend on
-        // a live Redis cache. War risk + disruption come back as defaults.
-        const res = await computeLane(req, new Map());
-
-        // Echoed inputs
-        assert.equal(res.fromIso2, fromIso2);
-        assert.equal(res.toIso2, toIso2);
-        assert.equal(res.hs2, hs2);
-
-        // Cargo type echoed and valid
-        assert.match(res.cargoType, /^(container|tanker|bulk|roro)$/);
-
-        // primaryRouteId is either non-empty OR noModeledLane is set
-        if (!res.primaryRouteId) {
-          assert.equal(
-            res.noModeledLane,
-            true,
-            'empty primaryRouteId requires noModeledLane=true',
-          );
-        }
-
-        // primaryRouteGeometry is an array (may be empty when no modeled lane)
-        assert.ok(Array.isArray(res.primaryRouteGeometry));
-        for (const pt of res.primaryRouteGeometry) {
-          assert.equal(typeof pt.lon, 'number');
-          assert.equal(typeof pt.lat, 'number');
-          assert.ok(Number.isFinite(pt.lon));
-          assert.ok(Number.isFinite(pt.lat));
-        }
-
-        // chokepointExposures is an array of well-formed entries
-        assert.ok(Array.isArray(res.chokepointExposures));
-        for (const e of res.chokepointExposures) {
-          assert.equal(typeof e.chokepointId, 'string');
-          assert.equal(typeof e.chokepointName, 'string');
-          assert.equal(typeof e.exposurePct, 'number');
-          assert.ok(e.exposurePct >= 0 && e.exposurePct <= 100);
-        }
-
-        // bypassOptions is an array of well-formed entries
-        assert.ok(Array.isArray(res.bypassOptions));
-        for (const b of res.bypassOptions) {
-          assert.equal(typeof b.id, 'string');
-          assert.equal(typeof b.name, 'string');
-          assert.equal(typeof b.type, 'string');
-          assert.equal(typeof b.addedTransitDays, 'number');
-          assert.equal(typeof b.addedCostMultiplier, 'number');
-          assert.ok(VALID_STATUSES.has(b.status));
-          assert.ok(b.fromPort, 'bypass option must include fromPort');
-          assert.ok(b.toPort, 'bypass option must include toPort');
-          assert.equal(typeof b.fromPort.lon, 'number');
-          assert.equal(typeof b.fromPort.lat, 'number');
-          assert.equal(typeof b.toPort.lon, 'number');
-          assert.equal(typeof b.toPort.lat, 'number');
-          assert.ok(Number.isFinite(b.fromPort.lon));
-          assert.ok(Number.isFinite(b.toPort.lon));
-        }
-
-        // war risk tier is in the known enum set
-        assert.ok(
-          VALID_WAR_RISK_TIERS.has(res.warRiskTier),
-          `unexpected warRiskTier: ${res.warRiskTier}`,
-        );
-
-        // disruption score is a finite number in [0, 100]
-        assert.equal(typeof res.disruptionScore, 'number');
-        assert.ok(res.disruptionScore >= 0 && res.disruptionScore <= 100);
-
-        // transit + freight ranges: present and well-formed when lane is modeled;
-        // omitted when noModeledLane is true (no synthetic estimates)
-        if (!res.noModeledLane) {
-          assert.ok(res.estTransitDaysRange, 'modeled lane must include transit range');
-          assert.ok(res.estFreightUsdPerTeuRange, 'modeled lane must include freight range');
-          assert.ok(Number.isFinite(res.estTransitDaysRange.min));
-          assert.ok(Number.isFinite(res.estTransitDaysRange.max));
-          assert.ok(res.estTransitDaysRange.min <= res.estTransitDaysRange.max);
-          assert.ok(res.estFreightUsdPerTeuRange.min <= res.estFreightUsdPerTeuRange.max);
-        } else {
-          assert.equal(res.primaryRouteId, '', 'noModeledLane must have empty primaryRouteId');
-          assert.equal(res.primaryRouteGeometry.length, 0, 'noModeledLane must have empty geometry');
-          assert.equal(res.chokepointExposures.length, 0, 'noModeledLane must have empty exposures');
-          assert.equal(res.bypassOptions.length, 0, 'noModeledLane must have empty bypasses');
-        }
-
-        // fetchedAt is an ISO string
-        assert.equal(typeof res.fetchedAt, 'string');
-        assert.ok(res.fetchedAt.length > 0);
-
-        // Record gap-report metadata for the run summary
-        gapRows.push({
-          pair: `${fromIso2}->${toIso2}`,
-          hs2,
-          primaryRouteId: res.primaryRouteId,
-          noModeledLane: res.noModeledLane,
-          exposures: res.chokepointExposures.length,
-          bypasses: res.bypassOptions.length,
-          reason,
-        });
-      });
+    assert.ok(res.primaryRouteGeometry.length >= 2);
+    assert.deepEqual(res.chokepointExposures.map(e => e.chokepointId).sort(), ['bab_el_mandeb', 'malacca_strait', 'suez']);
+    for (const exposure of res.chokepointExposures) {
+      assert.match(exposure.chokepointName, /\S/);
+      assert.ok(Number.isFinite(exposure.exposurePct) && exposure.exposurePct > 0 && exposure.exposurePct <= 100);
     }
+
+    assert.deepEqual(res.bypassOptions.map(b => b.id), ['suez_cape_of_good_hope']);
+    const [cape] = res.bypassOptions;
+    assert.ok(cape);
+    assert.match(cape.name, /\S/);
+    assert.equal(cape.type, 'alternative_sea_route');
+    assert.equal(cape.status, 'CORRIDOR_STATUS_ACTIVE');
+    assert.ok(Number.isFinite(cape.addedTransitDays));
+    assert.ok(Number.isFinite(cape.addedCostMultiplier));
+    for (const point of [...res.primaryRouteGeometry, cape.fromPort, cape.toPort]) {
+      assert.ok(point && Number.isFinite(point.lon) && Number.isFinite(point.lat));
+    }
+    for (const range of [res.estTransitDaysRange, res.estFreightUsdPerTeuRange]) {
+      assert.ok(range && Number.isFinite(range.min) && Number.isFinite(range.max) && range.min <= range.max);
+    }
+  });
+
+  it('returns an empty lane without estimates for bulk cargo from South Africa to India', async () => {
+    const request = { fromIso2: 'ZA', toIso2: 'IN', hs2: '10', cargoType: 'bulk' };
+    const { fetchedAt, estTransitDaysRange, estFreightUsdPerTeuRange, ...lane } = await computeLane(request, new Map());
+    assert.equal(new Date(fetchedAt).toISOString(), fetchedAt);
+    assert.equal(estTransitDaysRange, undefined);
+    assert.equal(estFreightUsdPerTeuRange, undefined);
+    assert.deepEqual(lane, {
+      ...request,
+      primaryRouteId: '',
+      primaryRouteGeometry: [],
+      chokepointExposures: [],
+      bypassOptions: [],
+      warRiskTier: 'WAR_RISK_TIER_NORMAL',
+      disruptionScore: 0,
+      noModeledLane: true,
+    });
+  });
+
+  it('selects different China-Japan routes for tankers and containers', async () => {
+    const pair = { fromIso2: 'CN', toIso2: 'JP' };
+    const tanker = await computeLane({ ...pair, hs2: '27', cargoType: 'tanker' }, new Map());
+    const container = await computeLane({ ...pair, hs2: '27', cargoType: 'container' }, new Map());
+    assert.equal(tanker.cargoType, 'tanker');
+    assert.equal(tanker.hs2, '27');
+    assert.equal(tanker.primaryRouteId, 'gulf-asia-oil');
+    assert.equal(container.primaryRouteId, 'china-europe-suez');
+  });
+
+  it('reports Suez disruption and derives Cape bypass risk from its own waypoint', async () => {
+    const status = new Map([
+      ['suez', { id: 'suez', disruptionScore: 75, warRiskTier: 'WAR_RISK_TIER_CRITICAL' }],
+      ['malacca_strait', { id: 'malacca_strait', disruptionScore: 30, warRiskTier: 'WAR_RISK_TIER_ELEVATED' }],
+      ['cape_of_good_hope', { id: 'cape_of_good_hope', disruptionScore: 20, warRiskTier: 'WAR_RISK_TIER_HIGH' }],
+    ]);
+    const res = await computeLane({ fromIso2: 'CN', toIso2: 'DE', hs2: '85', cargoType: 'container' }, status);
+    assert.equal(res.disruptionScore, 75);
+    assert.equal(res.warRiskTier, 'WAR_RISK_TIER_CRITICAL');
+    const cape = res.bypassOptions.find(b => b.id === 'suez_cape_of_good_hope');
+    assert.equal(cape?.warRiskTier, 'WAR_RISK_TIER_HIGH');
+  });
+
+  for (const [fromIso2, toIso2, primary] of [
+    ['IR', 'IT', 'gibraltar'],
+    ['TW', 'ZA', 'cape_of_good_hope'],
+  ]) {
+    it(`excludes the placeholder bypass for ${primary}`, async () => {
+      const res = await computeLane({ fromIso2, toIso2, hs2: '27', cargoType: 'tanker' }, new Map());
+      assert.equal(res.chokepointExposures[0]?.chokepointId, primary);
+      assert.deepEqual(res.bypassOptions, []);
+    });
   }
 
-  // A diagnostic, not a test. It used to be declared as an `it` that ended
-  // in assert.ok(true), so it reported as a passing case while asserting
-  // nothing. An after() hook prints the same report without inflating the count.
-  after(() => {
-    if (gapRows.length === 0) return;
-    const noLane = gapRows.filter((r) => r.noModeledLane);
-    const emptyExposures = gapRows.filter((r) => r.exposures === 0);
-    const emptyBypasses = gapRows.filter((r) => r.bypasses === 0);
-    // eslint-disable-next-line no-console
-    console.log(
-      `\n[gap report] ${gapRows.length} queries | ${noLane.length} synthetic-fallback | ${emptyExposures.length} empty exposures | ${emptyBypasses.length} empty bypasses`,
-    );
-    if (noLane.length > 0) {
-      // eslint-disable-next-line no-console
-      console.log('  synthetic-fallback pairs:');
-      for (const r of noLane) {
-        // eslint-disable-next-line no-console
-        console.log(`    ${r.pair} HS${r.hs2} -> ${r.primaryRouteId || '(none)'}`);
+  it('retains the proposed zero-day Kra Canal bypass for Malacca', async () => {
+    const res = await computeLane({ fromIso2: 'NG', toIso2: 'CN', hs2: '85', cargoType: 'container' }, new Map());
+    assert.equal(res.chokepointExposures[0]?.chokepointId, 'malacca_strait');
+    const kra = res.bypassOptions.find(b => b.id === 'kra_canal_future');
+    assert.equal(kra?.status, 'CORRIDOR_STATUS_PROPOSED');
+    assert.equal(kra.addedTransitDays, 0);
+  });
+
+  it('reports war-zone risk for an unavailable corridor without waypoints', async (t) => {
+    // Kerch has no modeled route. Supply its corridors on the modeled Black Sea tanker lane.
+    t.mock.property(BYPASS_CORRIDORS_BY_CHOKEPOINT, 'bosphorus', BYPASS_CORRIDORS_BY_CHOKEPOINT.kerch_strait);
+    const res = await computeLane({ fromIso2: 'RU', toIso2: 'TR', hs2: '27', cargoType: 'tanker' }, new Map());
+    const westernPorts = res.bypassOptions.find(b => b.id === 'black_sea_western_ports');
+    assert.equal(westernPorts?.status, 'CORRIDOR_STATUS_UNAVAILABLE');
+    assert.equal(westernPorts.warRiskTier, 'WAR_RISK_TIER_WAR_ZONE');
+  });
+});
+
+describe('US-Northeast Asia lanes (#7990)', () => {
+  for (const toIso2 of ['JP', 'KR']) {
+    it(`US -> ${toIso2} container and bulk use the West Coast lane with no chokepoint`, async () => {
+      for (const cargoType of ['container', 'bulk']) {
+        const res = await computeLane({ fromIso2: 'US', toIso2, hs2: '85', cargoType }, new Map());
+        assert.equal(res.noModeledLane, false);
+        assert.equal(res.primaryRouteId, 'us-west-northeast-asia');
+        assert.deepEqual(res.chokepointExposures, []);
+        assert.deepEqual(res.bypassOptions, []);
+        assert.deepEqual(res.estTransitDaysRange, { min: 10, max: 14 });
       }
-    }
-    // eslint-disable-next-line no-console
-    console.log(
-      '\n[design gap] bypassOptions are only computed for the primary chokepoint (highest exposurePct).' +
-        '\nMulti-chokepoint routes (e.g. CN->DE via Malacca + Suez) show exposure data for both but' +
-        '\nbypass guidance only for the primary one. Sprint 3 should decide: expand to top-N chokepoints,' +
-        '\nor show a "see also" hint in the UI.',
-    );
-  });
+    });
 
-  it('cargo-aware route selection: CN->JP tanker picks energy route over container', async () => {
-    const res = await computeLane(
-      { fromIso2: 'CN', toIso2: 'JP', hs2: '27', cargoType: 'tanker' },
-      new Map(),
-    );
-    if (!res.noModeledLane && res.primaryRouteId) {
-      const { TRADE_ROUTES } = await import('../src/config/trade-routes.ts');
-      const route = TRADE_ROUTES.find((r: { id: string }) => r.id === res.primaryRouteId);
-      assert.ok(route, `primaryRouteId ${res.primaryRouteId} not in TRADE_ROUTES`);
-      assert.equal(
-        route.category,
-        'energy',
-        `tanker request should prefer an energy route, got ${route.category} (${res.primaryRouteId})`,
-      );
-    }
-  });
+    it(`US -> ${toIso2} tanker uses the Gulf lane through Panama with its bypass`, async () => {
+      const res = await computeLane({ fromIso2: 'US', toIso2, hs2: '27', cargoType: 'tanker' }, new Map());
+      assert.equal(res.noModeledLane, false);
+      assert.equal(res.primaryRouteId, 'us-gulf-asia-panama');
+      assert.deepEqual(res.chokepointExposures.map((e) => e.chokepointId), ['panama']);
+      assert.deepEqual(res.bypassOptions.map((b) => b.id), ['panama_cape_horn']);
+      assert.deepEqual(res.estTransitDaysRange, { min: 24, max: 32 });
+    });
+  }
+});
 
-  it('bypass warRiskTier derives from waypoint chokepoints, not primary', async () => {
-    const fakeStatus = new Map<string, { id: string; warRiskTier: string }>([
-      ['suez', { id: 'suez', warRiskTier: 'WAR_RISK_TIER_CRITICAL' }],
-      ['cape_of_good_hope', { id: 'cape_of_good_hope', warRiskTier: 'WAR_RISK_TIER_NORMAL' }],
-    ]);
-    const res = await computeLane(
-      { fromIso2: 'CN', toIso2: 'DE', hs2: '85', cargoType: 'container' },
-      fakeStatus as Map<string, any>,
-    );
-    const capeBypass = res.bypassOptions.find((b) => b.id === 'suez_cape_of_good_hope');
-    if (capeBypass) {
-      assert.equal(
-        capeBypass.warRiskTier,
-        'WAR_RISK_TIER_NORMAL',
-        'Cape bypass should reflect its own waypoint risk (NORMAL), not the primary chokepoint (CRITICAL)',
-      );
-    }
-  });
-
-  it('placeholder corridors are excluded but proposed zero-day corridors survive', async () => {
-    const res = await computeLane(
-      { fromIso2: 'ES', toIso2: 'EG', hs2: '85', cargoType: 'container' },
-      new Map(),
-    );
-    const placeholder = res.bypassOptions.find((b) =>
-      b.id === 'gibraltar_no_bypass' || b.id === 'cape_of_good_hope_is_bypass',
-    );
-    assert.equal(placeholder, undefined, 'explicit placeholder corridors should be filtered out');
-  });
-
-  it('kra_canal_future appears as CORRIDOR_STATUS_PROPOSED for Malacca routes', async () => {
-    const res = await computeLane(
-      { fromIso2: 'CN', toIso2: 'DE', hs2: '85', cargoType: 'container' },
-      new Map(),
-    );
-    const kra = res.bypassOptions.find((b) => b.id === 'kra_canal_future');
-    if (kra) {
-      assert.equal(
-        kra.status,
-        'CORRIDOR_STATUS_PROPOSED',
-        'kra_canal_future should be surfaced as proposed, not filtered out',
-      );
-    }
-  });
-
-  it('disruptionScore and warRiskTier reflect injected status map', async () => {
-    const fakeStatus = new Map<string, { id: string; disruptionScore?: number; warRiskTier?: string }>([
-      ['suez', { id: 'suez', disruptionScore: 75, warRiskTier: 'WAR_RISK_TIER_HIGH' }],
-      ['malacca_strait', { id: 'malacca_strait', disruptionScore: 30, warRiskTier: 'WAR_RISK_TIER_ELEVATED' }],
-    ]);
-    const res = await computeLane(
-      { fromIso2: 'CN', toIso2: 'DE', hs2: '85', cargoType: 'container' },
-      fakeStatus as Map<string, any>,
-    );
-    if (res.noModeledLane) return;
-    assert.ok(res.disruptionScore > 0, 'disruptionScore should reflect injected data, not default to 0');
-    assert.notEqual(res.warRiskTier, 'WAR_RISK_TIER_NORMAL', 'warRiskTier should reflect injected data');
-  });
-
-  it('unavailable corridor without waypoints gets WAR_RISK_TIER_WAR_ZONE', async () => {
-    const fakeStatus = new Map<string, { id: string; warRiskTier?: string }>([
-      ['kerch_strait', { id: 'kerch_strait', warRiskTier: 'WAR_RISK_TIER_WAR_ZONE' }],
-    ]);
-    const res = await computeLane(
-      { fromIso2: 'RU', toIso2: 'TR', hs2: '27', cargoType: 'tanker' },
-      fakeStatus as Map<string, any>,
-    );
-    const unavailable = res.bypassOptions.find((b) => b.status === 'CORRIDOR_STATUS_UNAVAILABLE');
-    if (unavailable) {
-      assert.equal(
-        unavailable.warRiskTier,
-        'WAR_RISK_TIER_WAR_ZONE',
-        'unavailable corridors without waypoints should derive WAR_ZONE from status',
-      );
-    }
-  });
-
-  it('chokepointExposures and bypassOptions follow the primaryRouteId', async () => {
-    const res = await computeLane(
-      { fromIso2: 'CN', toIso2: 'JP', hs2: '85', cargoType: 'container' },
-      new Map(),
-    );
-    if (res.noModeledLane || !res.primaryRouteId) return;
+describe('route waypoints and chokepoint registries agree', () => {
+  // Exposure arithmetic reads registry routeIds, while supplier route risk and
+  // lane geometry read route waypoints. A route that crosses a chokepoint in
+  // one source and not the other draws a lane through the canal with no
+  // chokepoint on it (US→JP tanker via us-gulf-asia-panama, #7990).
+  it('lists every waypoint route in that chokepoint registry entry, and back', async () => {
     const { TRADE_ROUTES } = await import('../src/config/trade-routes.ts');
     const { CHOKEPOINT_REGISTRY } = await import('../server/_shared/chokepoint-registry.ts');
-    const route = TRADE_ROUTES.find((r: { id: string }) => r.id === res.primaryRouteId);
-    assert.ok(route, `primaryRouteId ${res.primaryRouteId} not in TRADE_ROUTES`);
-    const routeChokepointIds = new Set(
-      CHOKEPOINT_REGISTRY
-        .filter((cp: { routeIds: string[] }) => cp.routeIds.includes(res.primaryRouteId))
-        .map((cp: { id: string }) => cp.id),
-    );
-    for (const exp of res.chokepointExposures) {
-      assert.ok(
-        routeChokepointIds.has(exp.chokepointId),
-        `chokepoint ${exp.chokepointId} is not on the primary route ${res.primaryRouteId}`,
-      );
+    const byWaypoint = new Map<string, { id: string; routeIds: string[] }>();
+    for (const cp of CHOKEPOINT_REGISTRY) {
+      byWaypoint.set(cp.id, cp);
+      byWaypoint.set(cp.geoId, cp);
+    }
+    const mismatches: string[] = [];
+    for (const route of TRADE_ROUTES) {
+      for (const waypoint of route.waypoints) {
+        const cp = byWaypoint.get(waypoint);
+        if (cp && !cp.routeIds.includes(route.id)) mismatches.push(`${route.id} crosses ${cp.id} but is not in its routeIds`);
+      }
+    }
+    for (const cp of CHOKEPOINT_REGISTRY) {
+      for (const routeId of cp.routeIds) {
+        const route = TRADE_ROUTES.find((r) => r.id === routeId);
+        if (!route) mismatches.push(`${cp.id} lists unknown route ${routeId}`);
+        else if (!route.waypoints.includes(cp.id) && !route.waypoints.includes(cp.geoId)) {
+          mismatches.push(`${cp.id} lists ${routeId}, whose waypoints do not include it`);
+        }
+      }
+    }
+    assert.deepEqual(mismatches, []);
+  });
+
+  it('keeps the browser and seeder registry routeIds equal to the server registry', async () => {
+    const { CHOKEPOINT_REGISTRY: server } = await import('../server/_shared/chokepoint-registry.ts');
+    const { CHOKEPOINT_REGISTRY: browser } = await import('../src/config/chokepoint-registry.ts');
+    const expected = Object.fromEntries(server.map((cp) => [cp.id, [...cp.routeIds].sort()]));
+    assert.deepEqual(Object.fromEntries(browser.map((cp) => [cp.id, [...cp.routeIds].sort()])), expected);
+    const seederSource = readFileSync(new URL('../scripts/seed-hs2-chokepoint-exposure.mjs', import.meta.url), 'utf8');
+    const seeder: Record<string, string[]> = {};
+    for (const match of seederSource.matchAll(/^ {2}\{ id: '([a-z0-9_]+)'[^\n]*routeIds: \[([^\]]*)\]/gm)) {
+      seeder[match[1]] = match[2].split(',').map((entry) => entry.trim().replace(/'/g, '')).filter(Boolean).sort();
+    }
+    assert.deepEqual(seeder, expected);
+  });
+});
+
+describe('lanes start and end in the requested countries', () => {
+  const lane = (fromIso2: string, toIso2: string, cargoType: string) =>
+    computeLane({ fromIso2, toIso2, hs2: cargoType === 'tanker' ? '27' : '85', cargoType }, new Map());
+  type Lane = Awaited<ReturnType<typeof computeLane>>;
+  const ends = (res: Lane) => {
+    const g = res.primaryRouteGeometry;
+    return { first: g[0]!, last: g[g.length - 1]! };
+  };
+  const assertIn = (iso2: string, point: { lat: number; lon: number }, label: string) => {
+    assert.ok(inBox(countryBox(iso2), point.lat, point.lon), `${label} ${JSON.stringify(point)} is not in ${iso2}`);
+  };
+  const cps = (res: Lane) => res.chokepointExposures.map((e) => e.chokepointId);
+
+  for (const origin of ['SA', 'AE', 'IR']) {
+    it(`${origin} -> IN stops in India before Malacca`, async () => {
+      const res = await lane(origin, 'IN', 'tanker');
+      assert.equal(res.primaryRouteId, 'gulf-asia-oil');
+      assert.deepEqual(cps(res), ['hormuz_strait']);
+      assertIn('IN', ends(res).last, 'lane end');
+      assert.ok(res.bypassOptions.every((b) => !/malacca|kra|sunda|lombok/i.test(b.id)), 'bypasses follow Hormuz, not Malacca');
+    });
+  }
+
+  it('IN -> SA runs the Gulf route backwards from India and keeps only Hormuz', async () => {
+    const res = await lane('IN', 'SA', 'tanker');
+    assert.deepEqual(cps(res), ['hormuz_strait']);
+    assertIn('IN', ends(res).first, 'lane start');
+    assertIn('SA', ends(res).last, 'lane end');
+  });
+
+  it('SA -> KR ends in Korea and keeps Hormuz and Malacca', async () => {
+    const res = await lane('SA', 'KR', 'tanker');
+    assert.deepEqual([...cps(res)].sort(), ['hormuz_strait', 'malacca_strait']);
+    assertIn('SA', ends(res).first, 'lane start');
+    assertIn('KR', ends(res).last, 'lane end');
+  });
+
+  it('CN -> KR does not cross Suez or Bab el-Mandeb', async () => {
+    const res = await lane('CN', 'KR', 'container');
+    for (const cp of ['suez', 'bab_el_mandeb', 'gibraltar']) assert.ok(!cps(res).includes(cp), `${cp} is not on a China-Korea lane`);
+    assertIn('CN', ends(res).first, 'lane start');
+    assertIn('KR', ends(res).last, 'lane end');
+  });
+
+  it('keeps a full route whose endpoints are already in the requested countries', async () => {
+    const res = await lane('CN', 'NL', 'container');
+    assert.equal(res.primaryRouteId, 'china-europe-suez');
+    assert.ok(cps(res).includes('suez') && cps(res).includes('malacca_strait'));
+    assertIn('CN', ends(res).first, 'lane start');
+    assertIn('NL', ends(res).last, 'lane end');
+  });
+
+  it('keeps every route chokepoint when a country has no modeled port', async () => {
+    // Kuwait has no entry in PORTS, so nothing says where it sits on the
+    // route; dropping Malacca there would be a guess that reads as safer.
+    const kuwait = await lane('KW', 'IN', 'tanker');
+    assert.deepEqual([...cps(kuwait)].sort(), ['hormuz_strait', 'malacca_strait']);
+    assertIn('IN', ends(kuwait).last, 'lane end');
+    const australia = await lane('AU', 'KR', 'container');
+    assertIn('KR', ends(australia).last, 'lane end');
+    assert.ok(australia.primaryRouteGeometry.length >= 2);
+  });
+
+  it('keeps Hormuz for UAE cargo although the straight leg passes Jebel Ali', async () => {
+    for (const toIso2 of ['NL', 'GR', 'IN']) {
+      const res = await lane('AE', toIso2, 'tanker');
+      assert.ok(cps(res).includes('hormuz_strait'), `AE -> ${toIso2} must cross Hormuz`);
+    }
+  });
+
+  it('counts Malacca for Gulf cargo to Laem Chabang, which projects just short of the strait', async () => {
+    const res = await lane('SA', 'TH', 'tanker');
+    assert.deepEqual([...cps(res)].sort(), ['hormuz_strait', 'malacca_strait']);
+    assertIn('TH', ends(res).last, 'lane end');
+  });
+
+  it('drops chokepoints a lane never reaches', async () => {
+    assert.deepEqual(cps(await lane('JP', 'KR', 'container')), []);
+    assert.deepEqual(cps(await lane('NL', 'GR', 'tanker')), ['gibraltar']);
+  });
+
+  // The lane is built from the browser's waterway coordinates so free visitors
+  // see the same lane as subscribers; the server reports exposure from its
+  // chokepoint registry. The two must not drift apart.
+  it('route waypoints sit at the same coordinates in the waterway list and the chokepoint registry', () => {
+    for (const id of new Set(TRADE_ROUTES.flatMap((r) => r.waypoints))) {
+      const waterway = STRATEGIC_WATERWAYS.find((w) => w.id === id);
+      const registered = CHOKEPOINT_REGISTRY.find((c) => c.geoId === id);
+      assert.ok(waterway && registered, `${id} is missing from the waterway list or the registry`);
+      assert.deepEqual([waterway.lat, waterway.lon], [registered.lat, registered.lon], id);
     }
   });
 });

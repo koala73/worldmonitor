@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 // @notification-source: rss (list-feed-digest)
 //   /api/notify fetch in this file forwards RSS NewsItem objects as
 //   rss_alert notifications. `payload.description` is set when the upstream
@@ -228,6 +229,7 @@ function dispatchAlert(alert: BreakingAlert): void {
         xhr.send(body);
       } else {
         fetch('/api/notify', {
+          signal: createTimeoutSignal(15_000),
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body,

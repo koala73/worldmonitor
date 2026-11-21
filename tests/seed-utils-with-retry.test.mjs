@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   withRetry,
+  parseRedisCommandResponse,
   parseRetryAfterMs,
   PERMANENT_4XX_STATUSES,
   getResponseHeader,
@@ -71,6 +72,32 @@ describe('parseRetryAfterMs', () => {
 });
 
 describe('withRetry', () => {
+  it('caps exponential waits with jitter and preserves longer provider cooldowns', async t => {
+    const sleeps = [];
+    t.mock.method(globalThis, 'setTimeout', (callback, ms) => {
+      sleeps.push(ms);
+      queueMicrotask(callback);
+      return 0;
+    });
+    const random = t.mock.method(Math, 'random', () => 0);
+    await assert.rejects(withRetry(async () => { throw new Error('transient'); }, 3, 40_000), /transient/);
+    assert.deepEqual(sleeps, [40_000, 48_000, 48_000]);
+    sleeps.length = 0;
+    random.mock.mockImplementation(() => 1);
+    await assert.rejects(withRetry(async () => { throw new Error('transient'); }, 3, 40_000), /transient/);
+    assert.deepEqual(sleeps, [50_000, 60_000, 60_000]);
+    sleeps.length = 0;
+    await assert.rejects(withRetry(async () => {
+      throw Object.assign(new Error('quota'), { retryAfterMs: 120_000 });
+    }, 1), /quota/);
+    assert.deepEqual(sleeps, [120_000], 'provider cooldowns must not be undercut');
+  });
+
+  it('rejects unbounded retry configurations before calling the operation', async () => {
+    for (const retries of [Infinity, -1, 11, 1.5]) {
+      await assert.rejects(withRetry(() => assert.fail('must not dispatch'), retries), RangeError);
+    }
+  });
   it('short-circuits on err.nonRetryable instead of burning the retry budget', async () => {
     let attempts = 0;
     const t0 = Date.now();
@@ -652,4 +679,15 @@ describe('createLlmBudgetError / isLlmBudgetError', () => {
     assert.equal(isLlmBudgetError(new Error('boom')), false);
     assert.equal(isLlmBudgetError(null), false);
   });
+});
+
+it('does not shorten a Redis provider cooldown beyond the operation wait budget', async () => {
+  for (const hint of ['120', new Date(Date.now() + 120_000).toUTCString()]) {
+    let calls = 0;
+    await assert.rejects(withRetry(async () => {
+      calls++;
+      return parseRedisCommandResponse(new Response('', { status: 429, headers: { 'Retry-After': hint } }));
+    }), error => error.nonRetryable && error.retryAfterMs > 60_000);
+    assert.equal(calls, 1, 'must not issue an early retry');
+  }
 });

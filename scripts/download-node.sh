@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEST_DIR="${ROOT_DIR}/src-tauri/sidecar/node"
-NODE_VERSION="${NODE_VERSION:-22.23.4}"
+NODE_VERSION="${NODE_VERSION:-22.23.5}"
 # Independent trust anchor from https://github.com/nodejs/release-keys.
 # Update the commit and digest together after reviewing release-key changes.
 NODE_RELEASE_KEYS_COMMIT="481637f813e912c4aa3622d7964ab426c97b8e8d"
@@ -24,7 +24,7 @@ Supported targets:
   - aarch64-unknown-linux-gnu
 
 Environment:
-  NODE_VERSION   Node.js version to bundle (default: 22.23.4)
+  NODE_VERSION   Node.js version to bundle (default: 22.23.5)
   NODE_TARGET    Optional target triple (same as --target)
   RUNNER_OS      Optional GitHub Actions OS hint
   RUNNER_ARCH    Optional GitHub Actions arch hint
@@ -196,15 +196,21 @@ cleanup() {
 trap cleanup EXIT
 
 echo "[download-node] Downloading ${ARCHIVE_NAME}"
-curl -fsSL "${RELEASE_KEYS_URL}" -o "${TMP_DIR}/release-keys.kbx"
+curl -fsSL --connect-timeout 10 --max-time 60 "${RELEASE_KEYS_URL}" -o "${TMP_DIR}/release-keys.kbx"
 if [[ "$(sha256 "${TMP_DIR}/release-keys.kbx")" != "${NODE_RELEASE_KEYS_SHA256}" ]]; then
   echo "Release keyring checksum mismatch" >&2
   exit 1
 fi
 
-curl -fsSL "${SHASUMS_URL}" -o "${TMP_DIR}/SHASUMS256.txt"
-curl -fsSL "${SHASUMS_URL}.sig" -o "${TMP_DIR}/SHASUMS256.txt.sig"
-mkdir -m 700 "${TMP_DIR}/gnupg"
+curl -fsSL --connect-timeout 10 --max-time 60 "${SHASUMS_URL}" -o "${TMP_DIR}/SHASUMS256.txt"
+curl -fsSL --connect-timeout 10 --max-time 60 "${SHASUMS_URL}.sig" -o "${TMP_DIR}/SHASUMS256.txt.sig"
+mkdir "${TMP_DIR}/gnupg"
+# Git Bash on Windows cannot set POSIX modes on its temp directory, so a
+# mode change there fails the script. Only POSIX hosts lock the homedir down.
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) ;;
+  *) chmod 700 "${TMP_DIR}/gnupg" ;;
+esac
 gpg --no-options --homedir "${TMP_DIR}/gnupg" --batch --no-default-keyring \
   --keyring "${TMP_DIR}/release-keys.kbx" --no-auto-key-retrieve \
   --verify "${TMP_DIR}/SHASUMS256.txt.sig" "${TMP_DIR}/SHASUMS256.txt"
@@ -215,7 +221,7 @@ if [[ -z "${EXPECTED_SHA}" ]]; then
   exit 1
 fi
 
-curl -fsSL "${ARCHIVE_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"
+curl -fsSL --connect-timeout 10 --max-time 300 "${ARCHIVE_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"
 ACTUAL_SHA="$(sha256 "${TMP_DIR}/${ARCHIVE_NAME}")"
 
 if [[ "${EXPECTED_SHA}" != "${ACTUAL_SHA}" ]]; then

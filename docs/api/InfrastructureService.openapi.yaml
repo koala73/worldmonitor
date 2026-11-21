@@ -13,7 +13,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListInternetOutages
-            description: ListInternetOutages retrieves detected internet outages from Cloudflare Radar.
+            description: ListInternetOutages returns Cloudflare Radar outage annotations from the last 28 days, filterable by country and detection time, with severity and cause.
             operationId: ListInternetOutages
             parameters:
                 - name: start
@@ -174,7 +174,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListServiceStatuses
-            description: ListServiceStatuses retrieves operational status of monitored external services.
+            description: ListServiceStatuses checks the public status pages of 30 cloud, developer, communication, AI and SaaS services, sorted worst first and filterable by status.
             operationId: ListServiceStatuses
             parameters:
                 - name: status
@@ -300,7 +300,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetTemporalBaseline
-            description: GetTemporalBaseline retrieves historical baseline data for a specific signal.
+            description: GetTemporalBaseline compares a count for signals like military flights, vessels or protests to its weekday and month baseline and flags z-score anomalies.
             operationId: GetTemporalBaseline
             parameters:
                 - name: type
@@ -450,7 +450,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetIpGeo
-            description: GetIpGeo retrieves geographic information based on the caller's IP address.
+            description: GetIpGeo returns the caller's ISO country code, region and city from Cloudflare and Vercel edge headers, with XX when unknown. Responses are never cached.
             operationId: GetIpGeo
             parameters:
                 - name: jmespath
@@ -560,7 +560,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ReverseGeocode
-            description: ReverseGeocode resolves geographic coordinates to a postal address/country.
+            description: ReverseGeocode resolves latitude and longitude to a country name, ISO code and display name via OpenStreetMap Nominatim, with results cached for 7 days.
             operationId: ReverseGeocode
             parameters:
                 - name: lat
@@ -682,12 +682,132 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/infrastructure/v1/search-place:
+        get:
+            tags:
+                - InfrastructureService
+            summary: SearchPlace
+            description: SearchPlace resolves a submitted place name to up to five matches via OpenStreetMap Nominatim search, cached for 7 days. Never call it per keystroke.
+            operationId: SearchPlace
+            parameters:
+                - name: q
+                  in: query
+                  description: Place name to look up, e.g. "Port of Rotterdam". Coordinates are resolved in the browser and never sent here.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "error": "example"
+                                "places":
+                                    - "kind": "example"
+                                      "lat": 40.7128
+                                      "lon": -74.006
+                                      "name": "WorldMonitor Analyst"
+                            schema:
+                                $ref: '#/components/schemas/SearchPlaceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/infrastructure/v1/get-bootstrap-data:
         get:
             tags:
                 - InfrastructureService
             summary: GetBootstrapData
-            description: GetBootstrapData fetches multiple data points from the system cache in a single call.
+            description: GetBootstrapData returns cached dashboard datasets as JSON strings in one call, for a fast or slow tier or named keys, and lists any keys missing from cache.
             operationId: GetBootstrapData
             parameters:
                 - name: tier
@@ -834,7 +954,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: RecordBaselineSnapshot
-            description: RecordBaselineSnapshot is deprecated and DISABLED. Client-supplied shared baseline writes are rejected.
+            description: RecordBaselineSnapshot is deprecated and DISABLED. Every call is rejected with HTTP 403 because client-supplied counts cannot safely update shared baselines.
             operationId: RecordBaselineSnapshot
             requestBody:
                 content:
@@ -1005,7 +1125,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetCableHealth
-            description: GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
+            description: GetCableHealth rates submarine cables as ok, degraded or fault by matching fault and repair-ship keywords in NGA navigational warnings, refreshed each 30 min.
             operationId: GetCableHealth
             parameters:
                 - name: jmespath
@@ -1239,7 +1359,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListInternetDdosAttacks
-            description: ListInternetDdosAttacks retrieves L3/L4 DDoS attack summaries from Cloudflare Radar.
+            description: ListInternetDdosAttacks returns Cloudflare Radar layer 3 DDoS summaries for the last 7 days by protocol and attack vector, with the top target locations.
             operationId: ListInternetDdosAttacks
             parameters:
                 - name: jmespath
@@ -1360,7 +1480,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListInternetTrafficAnomalies
-            description: ListInternetTrafficAnomalies retrieves traffic anomaly events from Cloudflare Radar.
+            description: ListInternetTrafficAnomalies returns up to 100 Cloudflare Radar traffic anomalies from the last 7 days with ASN and location, filterable by country code.
             operationId: ListInternetTrafficAnomalies
             parameters:
                 - name: country
@@ -1917,6 +2037,44 @@ components:
                     type: string
                     description: Optional error message.
             description: ReverseGeocodeResponse containing the resolved location details.
+        SearchPlaceRequest:
+            type: object
+            properties:
+                q:
+                    type: string
+                    maxLength: 200
+                    minLength: 2
+                    description: Place name to look up, e.g. "Port of Rotterdam". Coordinates are resolved in the browser and never sent here.
+            description: SearchPlaceRequest is a place name typed by the user and submitted once.
+        SearchPlaceResponse:
+            type: object
+            properties:
+                places:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PlaceMatch'
+                error:
+                    type: string
+                    description: Set when the geocoder could not be reached; places is then empty.
+            description: SearchPlaceResponse lists up to five matches, best first.
+        PlaceMatch:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Full display name, e.g. "Rotterdam, South Holland, Netherlands".
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude of the place, degrees.
+                lon:
+                    type: number
+                    format: double
+                    description: Longitude of the place, degrees.
+                kind:
+                    type: string
+                    description: OpenStreetMap feature kind, e.g. "city" or "aerodrome".
+            description: PlaceMatch is one place OpenStreetMap's Nominatim search returned for the name.
         GetBootstrapDataRequest:
             type: object
             properties:

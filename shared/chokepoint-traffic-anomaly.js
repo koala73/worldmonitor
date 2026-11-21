@@ -55,8 +55,8 @@ function isDayRecord(day) {
  * published day and its count, the mean of the latest 7 published days, and
  * the seeder's year-earlier baseline.
  *
- * PortWatch publishes with a lag of about four days, so "latest" is the newest
- * day in the history, never today. Every field is null when the input cannot
+ * PortWatch publishes with a lag of several days (8-9 days in November 2026),
+ * so "latest" is the newest day in the history, never today. Every field is null when the input cannot
  * support it: no history gives no latest day, fewer than 7 days gives no
  * 7-day mean, and a baseline missing any of its three parts is dropped whole.
  * Null is the contract; a zero would read as a measured day of no traffic.

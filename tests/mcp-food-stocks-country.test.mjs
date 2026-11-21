@@ -16,7 +16,7 @@ async function call(arguments_) {
 }
 
 describe('MCP food stocks country boundary', () => {
-  for (const value of [undefined, null, '', '  ', 42, false, [], {}, 'Egypt', 'E', 'EG,WORLD', 'E1']) {
+  for (const value of [undefined, null, '', '  ', 42, false, [], {}, 'Narnia', 'E', 'EG,WORLD', 'E1']) {
     it(`rejects ${JSON.stringify(value)} before fetching`, async () => {
       let calls = 0;
       globalThis.fetch = async () => {
@@ -30,7 +30,7 @@ describe('MCP food stocks country boundary', () => {
       assert.equal(calls, 0);
     });
   }
-  for (const [input, expected] of [[' eg ', 'EG'], ['world', 'WORLD'], ['CX', 'CX'], ['wld', 'WLD'], ['_world', '_WORLD']]) {
+  for (const [input, expected] of [[' eg ', 'EG'], ['Egypt', 'EG'], ['مصر', 'EG'], ['EGY', 'EG'], ['world', 'WORLD'], ['CX', 'CX'], ['wld', 'WLD'], ['_world', '_WORLD']]) {
     it(`scopes ${input} to ${expected} and preserves commodity`, async () => {
       const requests = [];
       const payload = { records: [{ countryCode: expected }], unavailable: false };

@@ -498,7 +498,14 @@ export function isMountClaimBlocking(
 // Step model (R15/AE6): ordered [brief, alerts, power] with per-step state
 // ---------------------------------------------------------------------------
 
-export type ActivationStepId = 'brief' | 'alerts' | 'power';
+export type ActivationStepId = 'brief' | 'alerts' | 'power' | 'about';
+
+/**
+ * Steps recorded in the durable activation outcome. `about` is excluded: the
+ * About-you profile already records its answer or skip, and the server's step
+ * validator predates it.
+ */
+export type PersistedActivationStepId = Exclude<ActivationStepId, 'about'>;
 
 /**
  * - `confirmable`  — offer the action; the user can complete it in-flow.
@@ -540,6 +547,8 @@ export interface ActivationExistingConfig {
   hasWebPushDelivery: boolean;
   /** The user has already used a Pro power feature (custom widget, or a connected MCP client — see resolveHasUsedPowerFeature). */
   hasUsedPowerFeature?: boolean;
+  /** About-you profile status; null or absent when it could not be read. */
+  aboutYouStatus?: 'due' | 'answered' | 'skipped' | null;
 }
 
 /** The subset of an MCP client row this decision needs. */
@@ -611,6 +620,13 @@ export function buildActivationSteps(
   const steps: ActivationStep[] = [briefStep(config)];
   if (caps.webPushSupported) steps.push(alertsStep(caps, config));
   steps.push(powerStep(config));
+  // Last, after the steps that deliver value (R6). An unreadable status omits
+  // the step rather than offering a question we cannot record against. A
+  // skipped profile omits it too: a skip means "don't ask", and an
+  // already-done step would claim "we have your answers".
+  if (config.aboutYouStatus === 'due' || config.aboutYouStatus === 'answered') {
+    steps.push({ id: 'about', state: config.aboutYouStatus === 'due' ? 'confirmable' : 'already-done' });
+  }
   return steps;
 }
 
@@ -688,6 +704,13 @@ export interface CriticalAlertsPayload {
   readonly enabled: true;
   readonly channels: string[];
   readonly sensitivity?: 'critical';
+  /**
+   * Seed path only (#10873): a realtime rule with no countries receives
+   * global critical events only, so the server scopes a rule with no stored
+   * countries to the user's followed countries, in the same transaction as
+   * the write. A stored scope is never overwritten.
+   */
+  readonly seedCountriesFromFollowed?: true;
 }
 
 export function buildCriticalAlertsPayload(
@@ -699,7 +722,7 @@ export function buildCriticalAlertsPayload(
     : [...existingChannels, 'web_push'];
   return hasEnabledRule
     ? { enabled: true, channels }
-    : { enabled: true, channels, sensitivity: 'critical' };
+    : { enabled: true, channels, sensitivity: 'critical', seedCountriesFromFollowed: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -824,17 +847,17 @@ export function summarizeActivationExit(
 /** Per-step outcome IDs, bucketed for the durable activation-outcome record (#5582). */
 export interface ActivationOutcomeBuckets {
   /** Steps that ended verified -- confirmed in-flow or already-done. */
-  readonly confirmedSteps: readonly ActivationStepId[];
+  readonly confirmedSteps: readonly PersistedActivationStepId[];
   /** Steps the subscriber chose to leave unfinished. */
-  readonly skippedSteps: readonly ActivationStepId[];
+  readonly skippedSteps: readonly PersistedActivationStepId[];
   /**
    * Steps the BROWSER refused (a denied notification permission). Its own
    * bucket rather than a widening of `skippedSteps` (#5617), so existing
    * consumers of the three original buckets keep their exact meaning.
    */
-  readonly blockedSteps: readonly ActivationStepId[];
+  readonly blockedSteps: readonly PersistedActivationStepId[];
   /** Steps whose write was attempted and failed. */
-  readonly failedSteps: readonly ActivationStepId[];
+  readonly failedSteps: readonly PersistedActivationStepId[];
 }
 
 /**
@@ -846,24 +869,26 @@ export interface ActivationOutcomeBuckets {
 export function buildActivationOutcomeBuckets(
   results: readonly ActivationStepResult[],
 ): ActivationOutcomeBuckets {
-  const confirmedSteps: ActivationStepId[] = [];
-  const skippedSteps: ActivationStepId[] = [];
-  const blockedSteps: ActivationStepId[] = [];
-  const failedSteps: ActivationStepId[] = [];
+  const confirmedSteps: PersistedActivationStepId[] = [];
+  const skippedSteps: PersistedActivationStepId[] = [];
+  const blockedSteps: PersistedActivationStepId[] = [];
+  const failedSteps: PersistedActivationStepId[] = [];
   for (const r of results) {
+    const id = r.id;
+    if (id === 'about') continue;
     switch (r.outcome) {
       case 'confirmed':
       case 'done':
-        confirmedSteps.push(r.id);
+        confirmedSteps.push(id);
         break;
       case 'skipped':
-        skippedSteps.push(r.id);
+        skippedSteps.push(id);
         break;
       case 'blocked':
-        blockedSteps.push(r.id);
+        blockedSteps.push(id);
         break;
       case 'failed':
-        failedSteps.push(r.id);
+        failedSteps.push(id);
         break;
     }
   }
@@ -989,8 +1014,11 @@ export function shouldShowFinishSetupChip(
   now: number,
 ): boolean {
   if (isChipDismissed(dismissal, currentAccountKey, now)) return false;
+  // Answering about yourself is never unfinished setup.
   return results.some(
-    (r) => r.outcome === 'skipped' || r.outcome === 'blocked' || r.outcome === 'failed',
+    (r) =>
+      r.id !== 'about' &&
+      (r.outcome === 'skipped' || r.outcome === 'blocked' || r.outcome === 'failed'),
   );
 }
 

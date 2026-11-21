@@ -196,6 +196,22 @@ describe('GlobalProcurementPanel declarative WebMCP tool', () => {
       ['canada-buys', 'CanadaBuys'],
       ['gets', 'GETS'],
       ['world-bank', 'World Bank'],
+      ['colombia-secop', 'Colombia SECOP II'],
+      ['kenya-ppip', 'Kenya PPIP'],
+      ['south-africa-etenders', 'South Africa eTenders'],
+      ['chile-mercado-publico', 'Chile Mercado Público'],
+      ['brazil-pncp', 'Brazil PNCP'],
+      ['ukraine-prozorro', 'Ukraine Prozorro'],
+      ['bulgaria-eop', 'Bulgaria EOP'],
+      ['latvia-iub', 'Latvia IUB'],
+      ['poland-bzp', 'Poland BZP'],
+      ['pakistan-ppra', 'Pakistan PPRA'],
+      ['pakistan-epads', 'Pakistan EPADS'],
+      ['georgia-spa', 'Georgia SPA'],
+      ['armenia-armeps', 'Armenia ARMEPS'],
+      ['albania-app', 'Albania APP'],
+      ['dominican-republic-dgcp', 'Dominican Republic DGCP'],
+      ['malaysia-myprocurement', 'Malaysia MyProcurement'],
     ]);
     const sort = tools[0]?.elements.namedItem('sort') as HTMLSelectElement;
     expect([...sort.options].map((option) => option.value)).toEqual([

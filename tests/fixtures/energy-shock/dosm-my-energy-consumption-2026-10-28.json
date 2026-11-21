@@ -1,0 +1,461 @@
+{
+"url": "https://api.data.gov.my/data-catalogue/?id=energy_consumption_commodity&limit=5000",
+"fetchedAt": "2026-10-28",
+"rows": [
+{
+"date": "2018-01-01",
+"commodity": "total",
+"consumption": 64658.0
+},
+{
+"date": "2019-01-01",
+"commodity": "total",
+"consumption": 66483.0
+},
+{
+"date": "2020-01-01",
+"commodity": "total",
+"consumption": 57169.0
+},
+{
+"date": "2021-01-01",
+"commodity": "total",
+"consumption": 57249.0
+},
+{
+"date": "2022-01-01",
+"commodity": "total",
+"consumption": 60018.0
+},
+{
+"date": "2023-01-01",
+"commodity": "total",
+"consumption": 67209.0
+},
+{
+"date": "2024-01-01",
+"commodity": "total",
+"consumption": 67860.0
+},
+{
+"date": "2018-01-01",
+"commodity": "petrol",
+"consumption": 13041.0
+},
+{
+"date": "2019-01-01",
+"commodity": "petrol",
+"consumption": 13811.0
+},
+{
+"date": "2020-01-01",
+"commodity": "petrol",
+"consumption": 11188.0
+},
+{
+"date": "2021-01-01",
+"commodity": "petrol",
+"consumption": 10529.0
+},
+{
+"date": "2022-01-01",
+"commodity": "petrol",
+"consumption": 14030.0
+},
+{
+"date": "2023-01-01",
+"commodity": "petrol",
+"consumption": 14738.0
+},
+{
+"date": "2024-01-01",
+"commodity": "petrol",
+"consumption": 15460.0
+},
+{
+"date": "2018-01-01",
+"commodity": "diesel",
+"consumption": 9756.0
+},
+{
+"date": "2019-01-01",
+"commodity": "diesel",
+"consumption": 10583.0
+},
+{
+"date": "2020-01-01",
+"commodity": "diesel",
+"consumption": 8516.0
+},
+{
+"date": "2021-01-01",
+"commodity": "diesel",
+"consumption": 8800.0
+},
+{
+"date": "2022-01-01",
+"commodity": "diesel",
+"consumption": 9478.0
+},
+{
+"date": "2023-01-01",
+"commodity": "diesel",
+"consumption": 10992.0
+},
+{
+"date": "2024-01-01",
+"commodity": "diesel",
+"consumption": 12128.0
+},
+{
+"date": "2018-01-01",
+"commodity": "fuel_oil",
+"consumption": 387.0
+},
+{
+"date": "2019-01-01",
+"commodity": "fuel_oil",
+"consumption": 446.0
+},
+{
+"date": "2020-01-01",
+"commodity": "fuel_oil",
+"consumption": 338.0
+},
+{
+"date": "2021-01-01",
+"commodity": "fuel_oil",
+"consumption": 342.0
+},
+{
+"date": "2022-01-01",
+"commodity": "fuel_oil",
+"consumption": 510.0
+},
+{
+"date": "2023-01-01",
+"commodity": "fuel_oil",
+"consumption": 603.0
+},
+{
+"date": "2024-01-01",
+"commodity": "fuel_oil",
+"consumption": 520.0
+},
+{
+"date": "2018-01-01",
+"commodity": "lpg",
+"consumption": 3309.0
+},
+{
+"date": "2019-01-01",
+"commodity": "lpg",
+"consumption": 3017.0
+},
+{
+"date": "2020-01-01",
+"commodity": "lpg",
+"consumption": 3423.0
+},
+{
+"date": "2021-01-01",
+"commodity": "lpg",
+"consumption": 2637.0
+},
+{
+"date": "2022-01-01",
+"commodity": "lpg",
+"consumption": 2637.0
+},
+{
+"date": "2023-01-01",
+"commodity": "lpg",
+"consumption": 2510.0
+},
+{
+"date": "2024-01-01",
+"commodity": "lpg",
+"consumption": 2687.0
+},
+{
+"date": "2018-01-01",
+"commodity": "kerosene",
+"consumption": 6.0
+},
+{
+"date": "2019-01-01",
+"commodity": "kerosene",
+"consumption": 12.0
+},
+{
+"date": "2020-01-01",
+"commodity": "kerosene",
+"consumption": 32.0
+},
+{
+"date": "2021-01-01",
+"commodity": "kerosene",
+"consumption": 59.0
+},
+{
+"date": "2022-01-01",
+"commodity": "kerosene",
+"consumption": 38.0
+},
+{
+"date": "2023-01-01",
+"commodity": "kerosene",
+"consumption": 33.0
+},
+{
+"date": "2024-01-01",
+"commodity": "kerosene",
+"consumption": 29.0
+},
+{
+"date": "2018-01-01",
+"commodity": "jet_fuel",
+"consumption": 3121.0
+},
+{
+"date": "2019-01-01",
+"commodity": "jet_fuel",
+"consumption": 3261.0
+},
+{
+"date": "2020-01-01",
+"commodity": "jet_fuel",
+"consumption": 1199.0
+},
+{
+"date": "2021-01-01",
+"commodity": "jet_fuel",
+"consumption": 985.0
+},
+{
+"date": "2022-01-01",
+"commodity": "jet_fuel",
+"consumption": 1819.0
+},
+{
+"date": "2023-01-01",
+"commodity": "jet_fuel",
+"consumption": 2668.0
+},
+{
+"date": "2024-01-01",
+"commodity": "jet_fuel",
+"consumption": 3079.0
+},
+{
+"date": "2018-01-01",
+"commodity": "refinery_gas",
+"consumption": 0.0
+},
+{
+"date": "2019-01-01",
+"commodity": "refinery_gas",
+"consumption": 0.0
+},
+{
+"date": "2020-01-01",
+"commodity": "refinery_gas",
+"consumption": 0.0
+},
+{
+"date": "2021-01-01",
+"commodity": "refinery_gas",
+"consumption": 0.0
+},
+{
+"date": "2022-01-01",
+"commodity": "refinery_gas",
+"consumption": 0.0
+},
+{
+"date": "2023-01-01",
+"commodity": "refinery_gas",
+"consumption": 0.0
+},
+{
+"date": "2024-01-01",
+"commodity": "refinery_gas",
+"consumption": 0.0
+},
+{
+"date": "2018-01-01",
+"commodity": "non_energy",
+"consumption": 789.0
+},
+{
+"date": "2019-01-01",
+"commodity": "non_energy",
+"consumption": 705.0
+},
+{
+"date": "2020-01-01",
+"commodity": "non_energy",
+"consumption": 613.0
+},
+{
+"date": "2021-01-01",
+"commodity": "non_energy",
+"consumption": 552.0
+},
+{
+"date": "2022-01-01",
+"commodity": "non_energy",
+"consumption": 625.0
+},
+{
+"date": "2023-01-01",
+"commodity": "non_energy",
+"consumption": 637.0
+},
+{
+"date": "2024-01-01",
+"commodity": "non_energy",
+"consumption": 382.0
+},
+{
+"date": "2018-01-01",
+"commodity": "natural_gas",
+"consumption": 18852.0
+},
+{
+"date": "2019-01-01",
+"commodity": "natural_gas",
+"consumption": 18647.0
+},
+{
+"date": "2020-01-01",
+"commodity": "natural_gas",
+"consumption": 16631.0
+},
+{
+"date": "2021-01-01",
+"commodity": "natural_gas",
+"consumption": 17815.0
+},
+{
+"date": "2022-01-01",
+"commodity": "natural_gas",
+"consumption": 13670.0
+},
+{
+"date": "2023-01-01",
+"commodity": "natural_gas",
+"consumption": 16299.0
+},
+{
+"date": "2024-01-01",
+"commodity": "natural_gas",
+"consumption": 14708.0
+},
+{
+"date": "2018-01-01",
+"commodity": "coal_coke",
+"consumption": 1808.0
+},
+{
+"date": "2019-01-01",
+"commodity": "coal_coke",
+"consumption": 1706.0
+},
+{
+"date": "2020-01-01",
+"commodity": "coal_coke",
+"consumption": 1338.0
+},
+{
+"date": "2021-01-01",
+"commodity": "coal_coke",
+"consumption": 1392.0
+},
+{
+"date": "2022-01-01",
+"commodity": "coal_coke",
+"consumption": 1553.0
+},
+{
+"date": "2023-01-01",
+"commodity": "coal_coke",
+"consumption": 1878.0
+},
+{
+"date": "2024-01-01",
+"commodity": "coal_coke",
+"consumption": 1591.0
+},
+{
+"date": "2018-01-01",
+"commodity": "biodiesel",
+"consumption": 436.0
+},
+{
+"date": "2019-01-01",
+"commodity": "biodiesel",
+"consumption": 648.0
+},
+{
+"date": "2020-01-01",
+"commodity": "biodiesel",
+"consumption": 791.0
+},
+{
+"date": "2021-01-01",
+"commodity": "biodiesel",
+"consumption": 827.0
+},
+{
+"date": "2022-01-01",
+"commodity": "biodiesel",
+"consumption": 1193.0
+},
+{
+"date": "2023-01-01",
+"commodity": "biodiesel",
+"consumption": 1338.0
+},
+{
+"date": "2024-01-01",
+"commodity": "biodiesel",
+"consumption": 1003.0
+},
+{
+"date": "2018-01-01",
+"commodity": "electricity",
+"consumption": 13153.0
+},
+{
+"date": "2019-01-01",
+"commodity": "electricity",
+"consumption": 13647.0
+},
+{
+"date": "2020-01-01",
+"commodity": "electricity",
+"consumption": 13100.0
+},
+{
+"date": "2021-01-01",
+"commodity": "electricity",
+"consumption": 13311.0
+},
+{
+"date": "2022-01-01",
+"commodity": "electricity",
+"consumption": 14465.0
+},
+{
+"date": "2023-01-01",
+"commodity": "electricity",
+"consumption": 15513.0
+},
+{
+"date": "2024-01-01",
+"commodity": "electricity",
+"consumption": 16271.0
+}
+]
+}

@@ -96,13 +96,12 @@ async function fetchUsgs(fetchFn) {
 }
 
 async function fetchEarthquakes() {
-  const cache = new Map();
   const previousSources = await readSeedSnapshot(EARTHQUAKE_PROVIDERS_KEY);
   const merged = await fetchMergedEarthquakes({
     previousSources,
     fetchUsgs: () => fetchUsgs(globalThis.fetch),
     fetchNrcan: () => fetchNrcanAtom({
-      fetchFn: globalThis.fetch, proxyAuth: resolveProxyForConnect(), cache, url: NRCAN_ATOM_URL,
+      fetchFn: globalThis.fetch, proxyAuth: resolveProxyForConnect(), url: NRCAN_ATOM_URL,
     }),
   });
   return {

@@ -77,6 +77,7 @@ export async function upsertContactToSegment(
   segmentId: string,
 ): Promise<UpsertOutcome> {
   const createRes = await fetch(`${RESEND_API_BASE}/contacts`, {
+    signal: AbortSignal.timeout(10_000),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -105,6 +106,7 @@ export async function upsertContactToSegment(
     const contactRes = await fetch(
       `${RESEND_API_BASE}/contacts/${encodeURIComponent(email)}`,
       {
+        signal: AbortSignal.timeout(10_000),
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "User-Agent": USER_AGENT,
@@ -133,6 +135,7 @@ export async function upsertContactToSegment(
     const addRes = await fetch(
       `${RESEND_API_BASE}/contacts/${encodeURIComponent(email)}/segments/${encodeURIComponent(segmentId)}`,
       {
+        signal: AbortSignal.timeout(10_000),
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -178,6 +181,7 @@ export async function createSegment(
   name: string,
 ): Promise<string> {
   const res = await fetch(`${RESEND_API_BASE}/segments`, {
+    signal: AbortSignal.timeout(10_000),
     method: "POST",
     headers: {
       "Content-Type": "application/json",

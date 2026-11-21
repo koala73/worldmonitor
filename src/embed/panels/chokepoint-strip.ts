@@ -3,6 +3,8 @@ import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import type { ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { buildWorldMonitorAttributionUrl } from '@/embed/embed-url';
 import { createKeyedEmbedFetch } from '@/embed/embed-fetch';
+import { chokepointCoverageWarning } from '@/services/supply-chain/chokepoint-coverage';
+import { chokepointStatusColor } from '@/services/supply-chain/chokepoint-status-color';
 
 const STRIP_ORDER = [
   'hormuz_strait',
@@ -21,19 +23,12 @@ function shortName(id: string): string {
     case 'suez': return t('components.chokepointStrip.shortName.suez');
     case 'bab_el_mandeb': return t('components.chokepointStrip.shortName.babElMandeb');
     case 'bosphorus': return t('components.chokepointStrip.shortName.bosphorus');
-    case 'dover_strait': return t('components.chokepointStrip.shortName.danishStraits');
+    case 'dover_strait': return t('components.chokepointStrip.shortName.doverStrait');
     case 'panama': return t('components.chokepointStrip.shortName.panama');
     default: return '';
   }
 }
 
-function statusColor(status: string): string {
-  const s = (status || '').toLowerCase();
-  if (s.includes('closed') || s.includes('critical')) return '#e74c3c';
-  if (s.includes('disrupted') || s.includes('high')) return '#e67e22';
-  if (s.includes('restricted') || s.includes('elevated') || s.includes('medium')) return '#f39c12';
-  return '#2ecc71';
-}
 
 function formatFlow(cp: ChokepointInfo): string {
   const est = cp.flowEstimate;
@@ -72,10 +67,11 @@ export async function mountEmbedChokepointStrip(root: HTMLElement, apiKey: strin
   heading.textContent = t('components.chokepointStrip.title');
   wrap.appendChild(heading);
 
-  if (data.upstreamUnavailable) {
+  const coverageText = chokepointCoverageWarning(data);
+  if (coverageText) {
     const warning = document.createElement('div');
     warning.className = 'wm-embed-cp-warning';
-    warning.textContent = t('components.supplyChain.upstreamUnavailable');
+    warning.textContent = coverageText;
     wrap.appendChild(warning);
   }
 
@@ -89,7 +85,7 @@ export async function mountEmbedChokepointStrip(root: HTMLElement, apiKey: strin
 
     const dot = document.createElement('div');
     dot.className = 'wm-embed-cp-dot';
-    dot.style.background = statusColor(cp.status);
+    dot.style.background = chokepointStatusColor(cp.status);
     chip.appendChild(dot);
 
     const body = document.createElement('div');

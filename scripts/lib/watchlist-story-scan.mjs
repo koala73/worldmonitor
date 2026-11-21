@@ -94,7 +94,9 @@ export async function scanAndEnqueueWatchlistStoryEvents(nowMs, {
     }
     if (hashes.length === 0) return { hashes: 0, candidates: 0, events: 0, enqueued: 0, scoreMin };
 
-    const trackResults = await readStoryTracksChunked(hashes, upstashPipeline);
+    const trackResults = await readStoryTracksChunked(hashes, upstashPipeline, {
+      fields: ['title', 'currentScore', 'description', 'link'],
+    });
     if (trackResults === null) {
       logger.warn?.('[digest] watchlist scan: story-track read failed - skipping this tick');
       return { hashes: hashes.length, candidates: 0, events: 0, enqueued: 0, scoreMin, skipped: 'track_read_failed' };

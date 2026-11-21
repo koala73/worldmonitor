@@ -1,3 +1,6 @@
+// These text checks pin the R2 credential names, blank secret values, and
+// publisher/edge separation in operator documentation (#8690, section 2).
+// Runtime behavior cannot verify what .env.example and the runbook tell operators.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

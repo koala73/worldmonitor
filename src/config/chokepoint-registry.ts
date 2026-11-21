@@ -97,7 +97,7 @@ export const CHOKEPOINT_REGISTRY: readonly ChokepointRegistryEntry[] = [
     corridorRiskName: 'Panama',
     baselineId: 'panama',
     shockModelSupported: false,
-    routeIds: ['china-us-east-panama', 'panama-transit'],
+    routeIds: ['china-us-east-panama', 'panama-transit', 'us-gulf-asia-panama'],
     lat: 9.1,
     lon: -79.7,
   },

@@ -35,6 +35,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { NEWS_CATALOG } from '../shared/news-catalog.ts';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +53,7 @@ const root = resolve(__dirname, '..');
 const src = (relPath: string): string => readFileSync(resolve(root, relPath), 'utf-8');
 
 const feedsSrc = src('src/config/feeds.ts');
+
 const panelsSrc = src('src/config/panels.ts');
 const layoutSrc = src('src/app/panel-layout.ts');
 
@@ -193,8 +195,20 @@ function declaredPresetConsts(source: string, type: string): string[] {
     .sort();
 }
 
-/** CANONICAL_FEEDS keys — the union the pass iterates. */
-const feedCategories = unionOfPresets(feedsSrc, FEED_PRESETS);
+/**
+ * Feed presets are browser views over shared/news-catalog.json:
+ * `const X_FEEDS: Record<string, Feed[]> = browserFeeds('<edition>')`.
+ */
+function feedPresetEditions(source: string): Map<string, string> {
+  const re = /const\s+(\w+)\s*:\s*Record<string, Feed\[\]>\s*=\s*browserFeeds\(\s*'([\w-]+)'\s*\)/g;
+  return new Map([...source.matchAll(re)].map(m => [m[1]!, m[2]!]));
+}
+const presetEditions = feedPresetEditions(feedsSrc);
+
+/** CANONICAL_FEEDS keys — the union the pass iterates, in merge order. */
+const feedCategories = new Set<string>(
+  FEED_PRESETS.flatMap(name => NEWS_CATALOG.layout.browser[presetEditions.get(name) ?? ''] ?? []),
+);
 /** ALL_PANELS keys — every panel key any variant can put in `panelSettings`. */
 const catalogPanelKeys = unionOfPresets(panelsSrc, PANEL_PRESETS);
 
@@ -433,7 +447,7 @@ describe('news panel key reachability (#5871)', () => {
     // the key sets, and the reachability assertion below would keep passing over
     // a smaller world — the same way `commodities` fell off COLLIDING_NEWS_PANEL_KEYS.
     assert.deepEqual(
-      declaredPresetConsts(feedsSrc, 'Record<string, Feed\\[\\]>'),
+      [...presetEditions.keys()].sort(),
       [...FEED_PRESETS].sort(),
       'src/config/feeds.ts declares a different set of feed presets than FEED_PRESETS names',
     );

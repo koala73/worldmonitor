@@ -5,6 +5,7 @@ import {
   naturalEventsAfterPublish,
   naturalEventsPublishTransform,
 } from '../scripts/seed-natural-events.mjs';
+import { __testing__ as health } from '../api/health.js';
 
 const NOW = Date.parse('2026-09-17T06:00:00Z');
 const HOUR = 3_600_000;
@@ -18,7 +19,12 @@ test('EONET survives nine-hour freshness with a fixed eighteen-hour expiry indep
   assert.ok(retained.events.some(event => event.id === 'gdacs-EQ-2'));
   assert.equal(retained.fetchedAt, NOW);
   const repeated = await run({ previousSources: retained._sourceSnapshots, now: NOW + 17 * HOUR, failures: ['eonet'] });
-  assert.deepEqual(repeated._sourceSnapshots.eonet, first._sourceSnapshots.eonet);
+  // Failures advance only the failure clock; success, retention and records stay fixed.
+  const { consecutiveFailures, firstFailureAt, lastAttemptAt, ...retainedClock } = repeated._sourceSnapshots.eonet;
+  const { consecutiveFailures: _c, firstFailureAt: _f, lastAttemptAt: _l, ...originalClock } = first._sourceSnapshots.eonet;
+  assert.deepEqual(retainedClock, originalClock);
+  assert.deepEqual({ consecutiveFailures, firstFailureAt, lastAttemptAt },
+    { consecutiveFailures: 2, firstFailureAt: NOW + 10 * HOUR, lastAttemptAt: NOW + 17 * HOUR });
   const expired = await run({ previousSources: repeated._sourceSnapshots, now: NOW + 18 * HOUR, failures: ['eonet'] });
   assert.equal(expired._sourceSnapshots.eonet, null);
   assert.ok(!expired.events.some(event => event.id === 'eonet-volcano'));
@@ -233,4 +239,141 @@ test('failure logs report fixed retention clocks without changing published heal
   warnings.length = 0;
   naturalEventsAfterPublish(first);
   assert.deepEqual(warnings, []);
+});
+
+test('publication receipts preserve successful, retained and expired source clocks without event payloads', async () => {
+  const first = await run();
+  const retained = await run({ previousSources: first._sourceSnapshots, now: NOW + HOUR, failures: ['gdacs:FL'] });
+  const expired = await run({ previousSources: first._sourceSnapshots, now: NOW + 9 * HOUR, failures: ['gdacs:FL'] });
+  const logs = [];
+  const original = console.info;
+  console.info = line => logs.push(JSON.parse(line));
+  try {
+    for (const data of [first, retained, expired]) {
+      const result = naturalEventsAfterPublish(data, { runId: 'fixture-run', canonicalKey: 'natural:events:v1', recordCount: data.events.length });
+      const receipt = logs.at(-1);
+      assert.equal(receipt.event, 'natural_source_receipt');
+      assert.equal(receipt.runId, 'fixture-run');
+      assert.equal(receipt.recordCount, data.events.length);
+      assert.equal(receipt.sourceFetchedAt, data.fetchedAt);
+      assert.deepEqual(receipt.sourceHealth, result.freshnessMetaPatch.sourceHealth);
+      assert.deepEqual(receipt.failedSources, result.freshnessMetaPatch.failedSources);
+      assert.equal(receipt.sourceState, result.freshnessMetaPatch.sourceState);
+      assert.doesNotMatch(JSON.stringify(receipt), /eonet-volcano|coordinates|sourceUrl/);
+    }
+    assert.equal(logs.length, 3);
+    assert.equal(logs[1].sourceHealth['gdacs:FL'].retainedUntil, NOW + 9 * HOUR);
+    assert.equal(logs[2].sourceHealth['gdacs:FL'].status, 'unavailable');
+    assert.equal(logs[2].sourceHealth['gdacs:FL'].lastSuccessAt, null);
+  } finally { console.info = original; }
+});
+
+test('publication receipts identify the publisher and deployment with bounded identity fields', async () => {
+  const names = ['RAILWAY_SERVICE_NAME', 'RAILWAY_DEPLOYMENT_ID', 'RAILWAY_GIT_COMMIT_SHA'];
+  const previous = names.map(name => process.env[name]);
+  const original = console.info;
+  let receipt;
+  console.info = line => { receipt = JSON.parse(line); };
+  try {
+    process.env.RAILWAY_SERVICE_NAME = 'seed-bundle-climate';
+    process.env.RAILWAY_DEPLOYMENT_ID = 'deployment-123';
+    process.env.RAILWAY_GIT_COMMIT_SHA = 'a'.repeat(40);
+    const data = await run();
+    naturalEventsAfterPublish(data, { runId: 'run-123', canonicalKey: 'natural:events:v1', recordCount: data.events.length });
+    assert.equal(receipt.publisher, 'seed-bundle-climate');
+    assert.equal(receipt.deploymentId, 'deployment-123');
+    assert.equal(receipt.revision, 'a'.repeat(40));
+    assert.ok(JSON.stringify(receipt).length < 4096);
+    process.env.RAILWAY_SERVICE_NAME = 'private\nvalue';
+    process.env.RAILWAY_DEPLOYMENT_ID = 'x'.repeat(129);
+    delete process.env.RAILWAY_GIT_COMMIT_SHA;
+    naturalEventsAfterPublish(data, { runId: 'run-456', recordCount: data.events.length });
+    assert.equal(receipt.publisher, null);
+    assert.equal(receipt.deploymentId, null);
+    assert.equal(receipt.revision, null);
+  } finally {
+    console.info = original;
+    names.forEach((name, i) => { if (previous[i] === undefined) delete process.env[name]; else process.env[name] = previous[i]; });
+  }
+});
+
+// Sentry WORLDMONITOR-1AG: one failed GDACS type opened a health incident on the
+// first run even though its validated records were retained for nine hours.
+// Each retained source now carries its own consecutive-failure count, and
+// health holds a single miss as pending until the second consecutive miss —
+// the grace the NHC and CWFIS sources already have.
+function classify(data, now) {
+  const key = health.BOOTSTRAP_KEYS.naturalEvents;
+  const meta = { fetchedAt: data.fetchedAt, recordCount: data.events.length, ...naturalEventsAfterPublish(data).freshnessMetaPatch };
+  return health.classifyKey('naturalEvents', key, { allowOnDemand: false }, {
+    keyStrens: new Map([[key, 1000]]), keyErrors: new Map(), keyMetaErrors: new Map(),
+    keyMetaValues: new Map([[health.SEED_META.naturalEvents.key, JSON.stringify(meta)]]), now,
+  });
+}
+const isIncident = (entry, now) => health.collectFailureLogProblems({ naturalEvents: entry }, now).problemKeys.length > 0;
+const failureClock = ({ fetchedAt, consecutiveFailures, firstFailureAt, lastAttemptAt }) => ({ fetchedAt, consecutiveFailures, firstFailureAt, lastAttemptAt });
+
+test('retained sources count consecutive failures from the first miss and reset on success', async () => {
+  const first = await run();
+  assert.equal(first._sourceSnapshots['gdacs:FL'].consecutiveFailures, 0);
+  assert.equal(first._sourceSnapshots['gdacs:FL'].firstFailureAt, null);
+  const second = await run({ previousSources: first._sourceSnapshots, now: NOW + HOUR, failures: ['gdacs:FL'] });
+  assert.deepEqual(failureClock(second._sourceSnapshots['gdacs:FL']),
+    { fetchedAt: NOW, consecutiveFailures: 1, firstFailureAt: NOW + HOUR, lastAttemptAt: NOW + HOUR });
+  const third = await run({ previousSources: second._sourceSnapshots, now: NOW + 2 * HOUR, failures: ['gdacs:FL'] });
+  assert.deepEqual(failureClock(third._sourceSnapshots['gdacs:FL']),
+    { fetchedAt: NOW, consecutiveFailures: 2, firstFailureAt: NOW + HOUR, lastAttemptAt: NOW + 2 * HOUR });
+  const patch = naturalEventsAfterPublish(third).freshnessMetaPatch;
+  assert.equal(patch.sourceHealth['gdacs:FL'].consecutiveFailures, 2);
+  assert.equal(patch.sourceHealth['gdacs:FL'].firstFailureAt, NOW + HOUR);
+  assert.equal(patch.lastSourceAttemptAt, NOW + 2 * HOUR);
+  const recovered = await run({ previousSources: third._sourceSnapshots, now: NOW + 3 * HOUR });
+  assert.equal(recovered._sourceSnapshots['gdacs:FL'].consecutiveFailures, 0);
+  assert.equal(recovered._sourceSnapshots['gdacs:FL'].firstFailureAt, null);
+});
+
+test('a single retained GDACS or EONET miss is pending; the second consecutive miss is an incident', async () => {
+  for (const source of ['gdacs:FL', 'eonet']) {
+    const first = await run();
+    const second = await run({ previousSources: first._sourceSnapshots, now: NOW + HOUR, failures: [source] });
+    const pending = classify(second, NOW + HOUR);
+    assert.equal(typeof pending.sourceFailurePendingUntil, 'string', source);
+    assert.equal(health.healthStatusBucket(pending, NOW + HOUR), 'ok', source);
+    assert.equal(isIncident(pending, NOW + HOUR), false, source);
+    const third = await run({ previousSources: second._sourceSnapshots, now: NOW + 2 * HOUR, failures: [source] });
+    const alarm = classify(third, NOW + 2 * HOUR);
+    assert.equal(alarm.sourceFailurePendingUntil, undefined, source);
+    assert.equal(isIncident(alarm, NOW + 2 * HOUR), true, source);
+  }
+});
+
+test('a single retained miss stays pending until the next */30 run can publish', async () => {
+  // seed-natural-events is the sole producer, every 30 min. Railway starts it
+  // up to ~3 min late and a run takes well under a minute.
+  const RUN = 30 * 60_000;
+  const missAt = NOW + RUN;
+  const first = await run();
+  const second = await run({ previousSources: first._sourceSnapshots, now: missAt, failures: ['gdacs:FL'] });
+  const nextVerdictAt = missAt + RUN + 4 * 60_000;
+  const waiting = classify(second, nextVerdictAt);
+  assert.equal(typeof waiting.sourceFailurePendingUntil, 'string');
+  assert.equal(isIncident(waiting, nextVerdictAt), false);
+  // No verdict an hour after the miss means the producer stopped: alarm.
+  const silent = missAt + 61 * 60_000;
+  assert.equal(isIncident(classify(second, silent), silent), true);
+});
+
+test('a failed source with no retained records alarms on the first miss', async () => {
+  const data = await run({ failures: ['gdacs:FL'], types: { EQ: [feature('EQ', 2)] } });
+  const entry = classify(data, NOW);
+  assert.equal(entry.sourceFailurePendingUntil, undefined);
+  assert.equal(isIncident(entry, NOW), true);
+});
+
+test('a single recorded miss alarms once the bounded pending window has closed', async () => {
+  const first = await run();
+  const second = await run({ previousSources: first._sourceSnapshots, now: NOW + HOUR, failures: ['gdacs:FL'] });
+  const late = classify(second, NOW + 5 * HOUR);
+  assert.equal(late.sourceFailurePendingUntil, undefined);
+  assert.equal(isIncident(late, NOW + 5 * HOUR), true);
 });

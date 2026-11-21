@@ -20,6 +20,7 @@ import {
   WILDFIRE_FIRES_SUMMARY_KEY,
   type WildfireFireIntensity,
 } from '../../../../scripts/shared/wildfire-fires-summary.mjs';
+import { parsePartyMonths } from '../../../../scripts/shared/ucdp-state-parties.cjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import { isAcledConfigured } from '../../../_shared/acled-auth';
@@ -836,6 +837,8 @@ export function strikePressureBoost(pressure: number): number {
 
 export interface AuxiliarySources {
   ucdpEvents: any[];
+  // Full-window facts retained for v15; released v14 does not score this table.
+  ucdpPartyMonths?: ReturnType<typeof parsePartyMonths>;
   outages: any[];
   climate: any[];
   // Detections inside each Tier-1 country, from wildfire:fires-summary:v1
@@ -1011,21 +1014,28 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   ]);
   // The previous year covers a year not yet seeded. An errored current-year
   // read has already thrown above, so it never masquerades as that.
-  const displacementRaw = displacementCurrentRaw
-    ?? (await readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]))[0];
-  // The summary is written by the same seeder run as the canonical key, after
-  // it. A miss therefore means the reader deployed before the seeder's next
-  // tick or that extra-key write failed; recompute the projection from the
+  //
+  // The fires summary is written by the same seeder run as the canonical key,
+  // after it. A miss therefore means the reader deployed before the seeder's
+  // next tick or that extra-key write failed; recompute the projection from the
   // canonical key then, and only then, so a present-but-unusable summary still
   // surfaces in health instead of hiding behind the fallback. A canonical
   // payload that cannot be summarized is passed through so the parser below
   // reports it unusable rather than missing.
-  const firesCanonicalRaw = firesSummaryRaw == null
-    ? (await readRiskInputs([{ key: 'wildfire:fires:v1', raw: true }]))[0]
-    : null;
+  //
+  // The two fallbacks and the border snapshots read unrelated keys, so they
+  // share one round trip instead of three.
+  const [displacementRaw, firesCanonicalRaw, borderSnapshots] = await Promise.all([
+    displacementCurrentRaw != null
+      ? displacementCurrentRaw
+      : readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]).then(values => values[0]),
+    firesSummaryRaw == null
+      ? readRiskInputs([{ key: 'wildfire:fires:v1', raw: true }]).then(values => values[0])
+      : null,
+    readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true }))),
+  ]);
   const firesRaw = firesSummaryRaw
     ?? (firesCanonicalRaw == null ? null : summarizeWildfireDetections(firesCanonicalRaw) ?? firesCanonicalRaw);
-  const borderSnapshots = await readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true })));
   return buildCiiAuxiliarySources({
     ucdp: ucdpRaw,
     outages: outagesRaw,
@@ -1195,6 +1205,7 @@ export function buildCiiAuxiliarySources(
 
   return {
     ucdpEvents: arr(ucdpRaw, 'events'),
+    ucdpPartyMonths: parsePartyMonths((ucdpRaw as { partyMonths?: unknown } | null)?.partyMonths),
     outages: arr(outagesRaw, 'outages'),
     climate: arr(climateRaw, 'anomalies'),
     fires: parseWildfireFiresSummary(firesRaw)?.byCountry ?? null,
@@ -1929,8 +1940,16 @@ export function countCiiRealtimeSignalDensityCoverage(
   const acledCoversTier1 = (acled ?? []).some((ev) => isTier1CountryCode(normalizeCountryName(ev.country)));
   const ucdpCoversTier1 = deriveUcdpIntensityByRegion(aux?.ucdpEvents, nowMs).size > 0;
   // GDELT stands in for ACLED only while the ACLED path is empty, as in computeCIIScores.
+  // Global summaries also retain article-only rows; those are availability,
+  // not conflict signal density. Preserve the pre-expansion signal test.
   const gdeltCoversTier1 = !(acled ?? []).length
-    && Object.keys(aux?.gdeltCountryEvents?.byCountry ?? {}).some(isTier1CountryCode);
+    && Object.entries(aux?.gdeltCountryEvents?.byCountry ?? {}).some(([code, row]) => (
+      isTier1CountryCode(code)
+      && ((row.conflict?.current ?? 0) > 0 || (row.conflict?.baselineMedian ?? 0) > 0
+        || (row.protest?.current ?? 0) > 0 || (row.protest?.baselineMedian ?? 0) > 0
+        || (row.week?.conflict ?? 0) > 0 || (row.week?.protest ?? 0) > 0
+        || row.strikes != null)
+    ));
   if (acledCoversTier1 || ucdpCoversTier1 || gdeltCoversTier1) {
     coveredFamilies.add('conflict');
   }

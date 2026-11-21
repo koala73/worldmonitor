@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const forecastTheaterReadSchema = z.object({}).strict();
 const strings = (max: number) => z.array(z.string()).max(max);

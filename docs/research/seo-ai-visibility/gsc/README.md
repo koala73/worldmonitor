@@ -10,8 +10,6 @@ impressions per indexed page.
   inspected sample and its index states; performance per window and family;
   flagged disagreements; sampling notes.
 - `<date>.md` — the deterministic human summary generated from that snapshot.
-- `coverage-totals.json` — the Page indexing report totals, recorded by hand
-  each month. See [Monthly coverage totals](#monthly-coverage-totals).
 
 The first snapshot is `2026-09-25`. Later ones arrive through the weekly
 workflow's review PR.
@@ -46,7 +44,10 @@ grep that has to carve out documentation is a grep that stops catching leaks.
 Add `--search-export <path>` to also emit the per-family rows in the shape
 `scripts/seo-ai-visibility-collector.mjs` accepts under
 `sources.googleSearchConsole`. The scorecard stays the single report; this is a
-feed into it, not a second one.
+feed into it, not a second one. Its window totals are the by-property site
+totals, never the page-row sum. The weekly workflow does not need this flag:
+`scripts/seo-weekly-baseline.mjs` maps the committed snapshot through the same
+`toScorecardSearchExport`, adding the reviewed query rows.
 
 ## Reading it
 
@@ -82,7 +83,8 @@ by-property number directly, and the window `totals` are labelled
 compare the site with the chart, never one with the other.
 
 **Brand and non-brand are split with one pattern.** `BRAND_QUERY_PATTERN` in
-the collector names World Monitor and its common misspellings. Google applies
+the collector names World Monitor and its misspellings, including the
+`worldmoniter` family Bing reports. Google applies
 it as a query filter; the snapshot applies the same source to its own top
 queries. A query filter drops anonymized queries, so the site table reports
 them as the remainder (`anonymized`) instead of losing them, and per-family
@@ -90,6 +92,49 @@ them as the remainder (`anonymized`) instead of losing them, and per-family
 quota cuts that view short, the family values are `null` with the truncation
 as `nonBrandReason`, never a smaller number. The
 non-brand numbers are the ones the corpus pages exist to move.
+
+**Non-brand queries are listed with their page and desktop share.**
+`performance.nonBrandQueries` holds up to 500 non-brand queries from the first
+window, each with the page that shows most for it, its desktop share, and
+`likelyAutomated`. The flag needs zero clicks, at least 200 impressions and at
+least 90% desktop. In October 2026 "kerch strait" had 19,585 impressions at 98%
+desktop and no clicks, while "pizza index" sat at 20% desktop. The flag is an
+inference, because Search Console cannot say who searched. It sets a query
+aside when choosing what to improve and does not change the non-brand totals,
+which stay comparable from week to week. The summary reports the total with
+and without flagged queries. This repository is public, so a query needs 20
+impressions before its text joins this list. The `topQueries` rows take the 20
+largest queries overall and have no such floor.
+
+**Each non-brand query lists every page it showed.** `performance.queryPages`
+holds up to 500 non-brand queries from the widest window (90 days), each with
+up to 10 `www` pages and that page's own impressions and position for the
+query. Pages are bare paths: a fragment or query string is folded into its
+page, and other hosts are left out. A page-grouped row counts one search once
+per URL shown, so a query's `impressions` is a sum of page rows. The floor is
+therefore on the largest single URL row, whose impressions are distinct
+searches: 20 before the query's text is committed. Variants of one page that
+differ by fragment or query string are summed for ranking but not for the floor.
+`likelyAutomated` is the flag from `nonBrandQueries`, so it describes the first
+window and is `null` when that list is unavailable. A cut-short view reports `unavailable` rather than a
+shorter list, because the missing rows can hold a query's top page.
+`scripts/search-links.mjs` reads this view to propose links between generated
+pages that rank for the same query.
+
+**Reviewed queries are looked up directly.** `reviewedQueries` holds one
+`equals` lookup per query in `query-set.json` and per window, 50 small requests
+through the same retrying transport, plus the set's `querySetId` and
+`querySetDigest`. A live probe on 2026-11-09 found that `equals` ignores case
+but not spacing, so the expression is the reviewed text trimmed, with inner
+whitespace collapsed, and lowercased. The request groups by query because a
+request with no dimension answers an unknown query with a zero row, while
+grouped it answers with no row. Each lookup is `reported`, `not-reported` (no
+row: under Google's privacy threshold or no impressions, not a zero) or
+`unavailable` (the request failed, with the reason). A daily-quota 429 stops the
+remaining lookups and marks them `unavailable`. The mapping into the scorecard
+refuses lookups made for a different query set. A snapshot from before these
+lookups maps to no query rows, because no reviewed query ever reached the
+top-20 list that used to feed them.
 
 **The daily series is by property.** `performance.daily` holds one row per date
 over the widest window, all queries and non-brand. The summary sums it into
@@ -126,35 +171,15 @@ The unprefixed path comes from Mintlify's server-rendered navigation data. Our
 `<a href>` and `hreflang` links carry `/docs`. Before chasing a row like this,
 rerun that page-filtered split.
 
-## Monthly coverage totals
+## Page indexing report totals
 
-The Page indexing report totals ("Page with redirect", "Not found (404)",
-"Crawled, currently not indexed") have no API. Once a month, open Search
-Console, Indexing, Pages, and append a reading to `coverage-totals.json`:
-
-```json
-{
-  "exportedOn": "YYYY-MM-DD",
-  "declaredUrls": 0,
-  "pageWithRedirect": 0,
-  "notFound404": 0,
-  "crawledNotIndexed": 0,
-  "source": "https://github.com/koala73/worldmonitor/issues/..."
-}
-```
-
-- `exportedOn` is the date Search Console shows the report as updated. It must
-  be later than the previous reading.
-- `declaredUrls` is the sitemap inventory that day. The latest weekly
-  snapshot's `inventory.declared` is close enough.
-- `source` links to the issue comment where the reading is recorded, with a
-  screenshot of the report.
-
-Every weekly summary renders the whole series under "Coverage totals (recorded
-by hand)". Once the latest reading is more than 35 days old, the summary marks
-it as overdue, so a missed month shows up in the weekly review PR. The
-collector refuses a malformed ledger, and `tests/seo-gsc-collector.test.mjs`
-checks the committed file.
+The Search Console Page indexing report ("Page with redirect", "Not found
+(404)", "Crawled, currently not indexed") has no API, and its totals are not
+tracked. Every number here comes from the API. URL Inspection covers each
+sitemap URL individually. URLs outside the sitemap appear only through
+performance rows: those with a known family count toward that family's numbers,
+and only URLs with no matching family are listed under "URLs outside every
+family".
 
 ## Run time and failures
 

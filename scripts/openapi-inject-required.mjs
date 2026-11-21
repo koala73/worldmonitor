@@ -68,6 +68,31 @@ const SCORECARD_REASON_PATTERN = '^(?:source-unavailable|country-unavailable|inv
 const ISO2_PATTERN = '^[A-Z]{2}$';
 const PHYSICAL_METAL_PATTERN = '^(?:gold|silver)$';
 const PHYSICAL_METALS_DESCRIPTION = 'Accepted values are "gold" and "silver". Empty returns both metals.';
+// protoc-gen-openapiv3 drops the items pattern and copies repeated rules onto
+// the item schema, so both metal-filtered market RPCs get their contract here.
+const PHYSICAL_METAL_RPCS = [
+  {
+    requestSchema: 'GetPhysicalDivergenceIndexRequest',
+    operationId: 'GetPhysicalDivergenceIndex',
+    path: '/api/market/v1/get-physical-divergence-index',
+  },
+  {
+    requestSchema: 'GetPhysicalPremiumsRequest',
+    operationId: 'GetPhysicalPremiums',
+    path: '/api/market/v1/get-physical-premiums',
+  },
+];
+// GetMonthlySitcTrade: the generator drops the sections item pattern, copies
+// the repeated max_items onto the item schema, and emits neither bound on the
+// GET query parameters. Restore the proto contract on all three.
+const SITC_SECTION_PATTERN = '^([0-9]|overall)$';
+const SITC_MAX_SECTIONS = 11;
+const SITC_MAX_MONTHS = 480;
+const SITC_RPC = {
+  requestSchema: 'GetMonthlySitcTradeRequest',
+  operationId: 'GetMonthlySitcTrade',
+  path: '/api/trade/v1/get-monthly-sitc-trade',
+};
 const BASELINE_REGION_DESCRIPTION = 'Only the global baseline is defined. Omitted or empty defaults to global.';
 
 function scorecardResponseOneOf(unavailableReasons) {
@@ -163,9 +188,17 @@ function injectScorecardJsonContracts(spec) {
   return changed;
 }
 
-function injectPhysicalDivergenceJsonContracts(spec) {
+function injectPhysicalMetalJsonContracts(spec) {
+  let changed = false;
+  for (const rpc of PHYSICAL_METAL_RPCS) {
+    if (injectPhysicalMetalJsonContract(spec, rpc)) changed = true;
+  }
+  return changed;
+}
+
+function injectPhysicalMetalJsonContract(spec, { requestSchema, path }) {
   const schemas = spec.components?.schemas;
-  const request = schemas?.GetPhysicalDivergenceIndexRequest;
+  const request = schemas?.[requestSchema];
   if (!request?.properties?.metals) return false;
   let changed = false;
   const expected = {
@@ -179,7 +212,7 @@ function injectPhysicalDivergenceJsonContracts(spec) {
     request.properties.metals = expected;
     changed = true;
   }
-  const operation = spec.paths?.['/api/market/v1/get-physical-divergence-index']?.get;
+  const operation = spec.paths?.[path]?.get;
   const parameter = operation?.parameters?.find((candidate) => (
     candidate?.in === 'query' && candidate.name === 'metals'
   ));
@@ -192,6 +225,35 @@ function injectPhysicalDivergenceJsonContracts(spec) {
   if (parameter && !eq(parameter.schema, parameterSchema)) {
     parameter.schema = parameterSchema;
     changed = true;
+  }
+  return changed;
+}
+
+function injectSitcJsonContract(spec) {
+  const sections = spec.components?.schemas?.[SITC_RPC.requestSchema]?.properties?.sections;
+  if (!sections) return false;
+  let changed = false;
+  const items = sections.items ?? {};
+  if (items.pattern !== SITC_SECTION_PATTERN || 'maxItems' in items || sections.maxItems !== SITC_MAX_SECTIONS) {
+    delete items.maxItems;
+    items.pattern = SITC_SECTION_PATTERN;
+    sections.items = items;
+    sections.maxItems = SITC_MAX_SECTIONS;
+    changed = true;
+  }
+  const parameters = spec.paths?.[SITC_RPC.path]?.get?.parameters ?? [];
+  for (const parameter of parameters) {
+    if (parameter?.in !== 'query') continue;
+    const schema = parameter.schema ?? {};
+    if (parameter.name === 'sections'
+      && (schema.items?.pattern !== SITC_SECTION_PATTERN || schema.maxItems !== SITC_MAX_SECTIONS)) {
+      parameter.schema = { ...schema, items: { ...schema.items, pattern: SITC_SECTION_PATTERN }, maxItems: SITC_MAX_SECTIONS };
+      changed = true;
+    }
+    if (parameter.name === 'months' && (schema.minimum !== 0 || schema.maximum !== SITC_MAX_MONTHS)) {
+      parameter.schema = { ...schema, minimum: 0, maximum: SITC_MAX_MONTHS };
+      changed = true;
+    }
   }
   return changed;
 }
@@ -340,7 +402,8 @@ function queryNamesForRequiredFields(schemaName, schema) {
 
 function injectJson(spec) {
   let changed = injectScorecardJsonContracts(spec);
-  if (injectPhysicalDivergenceJsonContracts(spec)) changed = true;
+  if (injectPhysicalMetalJsonContracts(spec)) changed = true;
+  if (injectSitcJsonContract(spec)) changed = true;
   const schemas = spec.components?.schemas ?? {};
   // The generator emits const but does not account for IGNORE_IF_ZERO_VALUE.
   const baselineRegion = schemas.GetTemporalBaselineRequest?.properties?.region;
@@ -765,11 +828,19 @@ function injectYamlScorecardContracts(lines) {
   return changed;
 }
 
-function injectYamlPhysicalDivergenceContracts(lines) {
-  if (yamlSchemaBlocks(lines, 'GetPhysicalDivergenceIndexRequest').length === 0) return false;
+function injectYamlPhysicalMetalContracts(lines) {
+  let changed = false;
+  for (const rpc of PHYSICAL_METAL_RPCS) {
+    if (injectYamlPhysicalMetalContract(lines, rpc)) changed = true;
+  }
+  return changed;
+}
+
+function injectYamlPhysicalMetalContract(lines, { requestSchema, operationId }) {
+  if (yamlSchemaBlocks(lines, requestSchema).length === 0) return false;
   let changed = replaceYamlSchemaProperty(
     lines,
-    'GetPhysicalDivergenceIndexRequest',
+    requestSchema,
     'metals',
     (pad) => [
       `${pad}metals:`,
@@ -782,7 +853,7 @@ function injectYamlPhysicalDivergenceContracts(lines) {
       `${pad}    description: ${PHYSICAL_METALS_DESCRIPTION}`,
     ],
   );
-  for (const block of [...yamlOperationBlocks(lines, 'GetPhysicalDivergenceIndex')].reverse()) {
+  for (const block of [...yamlOperationBlocks(lines, operationId)].reverse()) {
     for (let index = block.start + 1; index < block.end; index++) {
       if (lines[index].trim() !== '- name: metals') continue;
       const indent = leadingSpaces(lines[index]);
@@ -819,10 +890,112 @@ function injectYamlPhysicalDivergenceContracts(lines) {
   return changed;
 }
 
+function yamlChildEnd(lines, start, limit) {
+  const indent = leadingSpaces(lines[start]);
+  let end = start + 1;
+  while (end < limit && (!lines[end].trim() || leadingSpaces(lines[end]) > indent)) end++;
+  return end;
+}
+
+// Generated YAML indents parameter schemas by 2 and component schemas by 4, so
+// read the child column from the first child line.
+function yamlChildIndent(lines, start, end) {
+  for (let i = start + 1; i < end; i++) {
+    if (lines[i].trim()) return leadingSpaces(lines[i]);
+  }
+  return leadingSpaces(lines[start]) + 4;
+}
+
+function yamlChildIndex(lines, start, end, key) {
+  const indent = yamlChildIndent(lines, start, end);
+  for (let i = start + 1; i < end; i++) {
+    if (leadingSpaces(lines[i]) === indent && lines[i].trim().split(':')[0] === key) return i;
+  }
+  return -1;
+}
+
+// Within an `items:` block, drop a copied maxItems and ensure the pattern line.
+function setYamlItemsPattern(lines, itemsIndex, limit) {
+  let changed = false;
+  let end = yamlChildEnd(lines, itemsIndex, limit);
+  const copied = yamlChildIndex(lines, itemsIndex, end, 'maxItems');
+  if (copied !== -1) {
+    lines.splice(copied, 1);
+    end--;
+    changed = true;
+  }
+  const pad = ' '.repeat(yamlChildIndent(lines, itemsIndex, end));
+  const expected = `${pad}pattern: '${SITC_SECTION_PATTERN}'`;
+  const existing = yamlChildIndex(lines, itemsIndex, end, 'pattern');
+  if (existing === -1) {
+    const type = yamlChildIndex(lines, itemsIndex, end, 'type');
+    lines.splice(type === -1 ? itemsIndex + 1 : type + 1, 0, expected);
+    changed = true;
+  } else if (lines[existing] !== expected) {
+    lines[existing] = expected;
+    changed = true;
+  }
+  return changed;
+}
+
+// Ensure `key: value` is a direct child of the mapping that starts at `start`.
+function setYamlChild(lines, start, limit, key, value) {
+  const end = yamlChildEnd(lines, start, limit);
+  const expected = `${' '.repeat(yamlChildIndent(lines, start, end))}${key}: ${value}`;
+  const existing = yamlChildIndex(lines, start, end, key);
+  if (existing === -1) {
+    lines.splice(end, 0, expected);
+    return true;
+  }
+  if (lines[existing] === expected) return false;
+  lines[existing] = expected;
+  return true;
+}
+
+function injectYamlSitcContract(lines) {
+  let changed = false;
+  for (const block of yamlSchemaBlocks(lines, SITC_RPC.requestSchema)) {
+    const properties = yamlChildIndex(lines, block.start, block.end, 'properties');
+    if (properties === -1) continue;
+    const propertiesEnd = yamlChildEnd(lines, properties, block.end);
+    const sections = yamlChildIndex(lines, properties, propertiesEnd, 'sections');
+    if (sections === -1) continue;
+    const sectionsEnd = yamlChildEnd(lines, sections, propertiesEnd);
+    const items = yamlChildIndex(lines, sections, sectionsEnd, 'items');
+    if (items !== -1 && setYamlItemsPattern(lines, items, sectionsEnd)) changed = true;
+  }
+  for (const block of yamlOperationBlocks(lines, SITC_RPC.operationId)) {
+    for (let index = block.start + 1; index < block.end; index++) {
+      const name = lines[index].trim();
+      if (name !== '- name: sections' && name !== '- name: months') continue;
+      // Parameter children sit two columns right of the list dash.
+      const childIndent = leadingSpaces(lines[index]) + 2;
+      let paramEnd = index + 1;
+      while (paramEnd < block.end && (!lines[paramEnd].trim() || leadingSpaces(lines[paramEnd]) >= childIndent)) paramEnd++;
+      let schema = -1;
+      for (let i = index + 1; i < paramEnd; i++) {
+        if (leadingSpaces(lines[i]) === childIndent && lines[i].trim() === 'schema:') schema = i;
+      }
+      if (schema === -1) continue;
+      if (name === '- name: sections') {
+        const schemaEnd = yamlChildEnd(lines, schema, paramEnd);
+        const items = yamlChildIndex(lines, schema, schemaEnd, 'items');
+        if (items !== -1 && setYamlItemsPattern(lines, items, schemaEnd)) changed = true;
+        if (setYamlChild(lines, schema, block.end, 'maxItems', String(SITC_MAX_SECTIONS))) changed = true;
+      } else {
+        if (setYamlChild(lines, schema, block.end, 'minimum', '0')) changed = true;
+        if (setYamlChild(lines, schema, block.end, 'maximum', String(SITC_MAX_MONTHS))) changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 function injectYaml(text, contracts) {
   const lines = text.split('\n');
   let changed = injectYamlScorecardContracts(lines);
-  if (injectYamlPhysicalDivergenceContracts(lines)) changed = true;
+  if (injectYamlPhysicalMetalContracts(lines)) changed = true;
+  if (injectYamlSitcContract(lines)) changed = true;
   for (const [schemaName, field] of COUNTRY_HEADLINE_ARRAY_FIELDS) {
     for (const block of [...yamlSchemaBlocks(lines, schemaName)].reverse()) {
       const indent = leadingSpaces(lines[block.start]) + 8;

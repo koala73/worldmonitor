@@ -23,6 +23,7 @@ export const LIVE_TOPIC_RPC_PATHS = Object.freeze([
   '/api/economic/v1/get-national-debt',
   '/api/economic/v1/get-us-treasury-par-yield-curve',
   '/api/economic/v1/get-oil-inventories',
+  '/api/intelligence/v1/list-security-advisories',
 ]);
 const LIVE_TOPIC_PUBLIC_SEARCH = 'public=1';
 
@@ -32,6 +33,7 @@ const PUBLIC_SHARED_RPC_PATHS = new Set([
   '/api/displacement/v1/get-cross-border-movements',
   '/api/forecast/v1/get-forecasts',
   '/api/supply-chain/v1/get-chokepoint-status',
+  '/api/intelligence/v1/get-pizzint-status',
   ...LIVE_TOPIC_RPC_PATHS,
 ]);
 
@@ -42,6 +44,41 @@ const NEWS_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity', 
 export const NEWS_LANGUAGES = new Set([
   'en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl',
   'sv', 'sw', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
+  'az',
+  'be',
+  'bi',
+  'bn',
+  'bs',
+  'ca',
+  'cnr',
+  'crs',
+  'dv',
+  'da',
+  'et',
+  'fi',
+  'hy',
+  'id',
+  'is',
+  'ka',
+  'km',
+  'kk',
+  'ky',
+  'lt',
+  'lv',
+  'mk',
+  'mn',
+  'mt',
+  'ne',
+  'no',
+  'sk',
+  'sl',
+  'so',
+  'sq',
+  'sr',
+  'tet',
+  'tg',
+  'tk',
+  'uz',
 ]);
 const NEWS_QUERY_KEYS = new Set(['variant', 'lang', 'public']);
 // Exact raw-query contract (no leading `?`): exactly one public displacement shape,
@@ -66,6 +103,14 @@ const FORECASTS_PUBLIC_SEARCH = 'public=1';
 // which run no hydrate script and hold no session. Origin load stays bounded:
 // the handler caches in Redis for 5 minutes behind a single-flight fetch.
 const CHOKEPOINT_STATUS_PUBLIC_SEARCH = 'public=1';
+
+// The Pentagon Pizza Index level shown in the dashboard header and on
+// /blog/glossary/pentagon-pizza-index/, both open to anonymous visitors. The
+// routing middleware reads this shape to put the current level into that
+// page's HTML (scripts/live-pages/pentagon-pizza-index.mjs). Only the bare
+// marker is public: it leaves include_gdelt false, so the read is the one
+// pizza seed key and never the tension pairs.
+const PIZZINT_STATUS_PUBLIC_SEARCH = 'public=1';
 
 function hasSingleValue(params: URLSearchParams, key: string): boolean {
   return params.getAll(key).length === 1;
@@ -146,6 +191,7 @@ export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'):
   if (pathname === '/api/displacement/v1/get-cross-border-movements') return search === 'public=1';
   if (pathname === '/api/forecast/v1/get-forecasts') return search === FORECASTS_PUBLIC_SEARCH;
   if (pathname === '/api/supply-chain/v1/get-chokepoint-status') return search === CHOKEPOINT_STATUS_PUBLIC_SEARCH;
+  if (pathname === '/api/intelligence/v1/get-pizzint-status') return search === PIZZINT_STATUS_PUBLIC_SEARCH;
   if (LIVE_TOPIC_RPC_PATHS.includes(pathname)) return search === LIVE_TOPIC_PUBLIC_SEARCH;
   return search === DISPLACEMENT_PUBLIC_SEARCH;
 }

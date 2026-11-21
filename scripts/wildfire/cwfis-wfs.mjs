@@ -352,14 +352,23 @@ async function readBoundedText(response, maxBytes) {
   return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
+// The layer a WFS URL requests. KVP parameter names are case-insensitive
+// (OGC 09-025r1 §6.2.5.2), so any case of typeNames/typeName counts. The
+// layer check and the cache key both read it, so they cannot disagree.
+function requestedCwfisLayer(parsed) {
+  for (const name of ['typenames', 'typename']) {
+    for (const [key, value] of parsed.searchParams) {
+      if (key.toLowerCase() === name && value) return value;
+    }
+  }
+  return null;
+}
+
 function parseWfsUrl(url) {
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:') throw new CwfisWfsError('UNTRUSTED_SOURCE_HOST');
   assertCwfisHost(parsed.hostname);
-  const typeName = parsed.searchParams.get('typeNames')
-    || parsed.searchParams.get('typeName')
-    || parsed.searchParams.get('TYPENAMES')
-    || parsed.searchParams.get('TYPENAME');
+  const typeName = requestedCwfisLayer(parsed);
   if (typeName) assertCwfisLayer(typeName);
   return parsed;
 }
@@ -400,10 +409,7 @@ export async function fetchApprovedWfs(url, {
   if (!allowed.has(parsed.hostname.toLowerCase())) {
     throw new CwfisWfsError('UNTRUSTED_SOURCE_HOST');
   }
-  const typeName = parsed.searchParams.get('typeNames')
-    || parsed.searchParams.get('typeName')
-    || parsed.searchParams.get('TYPENAMES')
-    || CWFIS_ACTIVE_LAYER;
+  const typeName = requestedCwfisLayer(parsed) || CWFIS_ACTIVE_LAYER;
   const bbox = parsed.searchParams.get('bbox') || parsed.searchParams.get('BBOX') || '';
   const startIndex = parsed.searchParams.get('startIndex') || parsed.searchParams.get('STARTINDEX') || '0';
   const cacheKey = cwfisWfsCacheKey({ typeName, bbox, startIndex });

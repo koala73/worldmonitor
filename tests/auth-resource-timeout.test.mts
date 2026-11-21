@@ -169,7 +169,7 @@ test('widget-agent request-body read must terminate for a body that never ends',
   }
 });
 
-test('__resetWmSessionForTests restores the default mint timeout', async () => {
+test('__resetWmSessionForTests restores the default mint timeout', async (t) => {
   (globalThis as unknown as { window: unknown }).window = globalThis;
   (globalThis as unknown as { location: Location }).location = {
     href: 'https://worldmonitor.app/',
@@ -184,22 +184,24 @@ test('__resetWmSessionForTests restores the default mint timeout', async () => {
     visibilityState: 'visible',
     addEventListener() {},
   };
-  (globalThis as unknown as { fetch: typeof fetch }).fetch = ((_input, init) => new Promise<Response>((resolve, reject) => {
-    if (init?.signal?.aborted) {
-      reject(new Error('Aborted'));
-      return;
-    }
-    init?.signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
-    setTimeout(() => resolve(new Response(JSON.stringify({ exp: Date.now() + 3600000 }))), 100);
-  })) as typeof fetch;
+  let mintCalls = 0;
+  globalThis.fetch = async () => {
+    mintCalls += 1;
+    return new Response(JSON.stringify({ exp: Date.now() + 3600000 }));
+  };
 
   const mod = await import('../src/services/wm-session.ts?reset-timeout-repro=1');
+  mod.__resetWmSessionForTests();
+  const timeout = t.mock.method(globalThis, 'setTimeout');
   mod.__setWmSessionFetchTimeoutForTests(50);
+  assert.equal(await mod.ensureWmSession(), true);
+  assert.deepEqual(timeout.mock.calls.map((call) => call.arguments[1]), [50]);
   mod.__resetWmSessionForTests();
 
-  // The stubbed fetch resolves at 100ms but the session timeout is 50ms, so
-  // ensureWmSession can only settle by aborting its own request.
-  await settlesWithoutHanging(mod.ensureWmSession(), 'ensureWmSession');
+  assert.equal(await mod.ensureWmSession(), true);
+  assert.equal(mintCalls, 2, 'reset must clear the successful mint cache');
+  assert.deepEqual(timeout.mock.calls.map((call) => call.arguments[1]), [50, 10_000]);
+  mod.__resetWmSessionForTests();
 });
 
 test('clerk plan lookup must not pin the gateway when Clerk never responds', async () => {

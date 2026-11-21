@@ -1252,7 +1252,7 @@ export async function readHazardFeeds({ redis }) {
       ['GET', EARTHQUAKES_KEY],
       ['GET', NATURAL_EVENTS_KEY],
       ['ZRANGE', seenKey(HAZARD_EVENT), '0', '-1'],
-      ['HGETALL', HAZARD_INIT_KEY],
+      ['HKEYS', HAZARD_INIT_KEY],
     ]);
   } catch {
     return null;
@@ -1260,7 +1260,7 @@ export async function readHazardFeeds({ redis }) {
   if (!Array.isArray(rows) || rows.length !== 4 || [rows[2], rows[3]].some((row) => !row || row.error)) return null;
   const init = Array.isArray(rows[3].result) ? rows[3].result : [];
   return {
-    initialized: init.filter((_, index) => index % 2 === 0),
+    initialized: init,
     earthquakes: seededArray(rows[0], 'earthquakes'),
     naturalEvents: seededArray(rows[1], 'events'),
     seen: parseHazardSeen(Array.isArray(rows[2].result) ? rows[2].result : []),
@@ -1349,8 +1349,8 @@ async function backfillIndex(redis) {
 async function deliverForRecord(group, deliver, now, beforeSend) {
   let { record } = group;
   const outcomes = [];
-  for (const delivery of group.deliveries) {
-    if (record.active === false || !(await beforeSend(group))) break;
+  for (const [index, delivery] of group.deliveries.entries()) {
+    if (record.active === false || !(await beforeSend(group, group.deliveries.length - index))) break;
     const outcome = await deliver(record, delivery.payload, delivery.deliveryId, delivery.event);
     const at = now();
     outcomes.push({ stateField: delivery.stateField, sources: delivery.sources, outcome, at });
@@ -1358,6 +1358,34 @@ async function deliverForRecord(group, deliver, now, beforeSend) {
     if (!outcome.ok) break;
   }
   return { record, outcomes };
+}
+
+export const MAX_DELIVERIES_PER_OWNER_PER_TICK = 20;
+
+function deliveryOwner(record) {
+  return record.quotaTag || record.ownerTag || 'legacy-unowned';
+}
+
+// Redis set order must not put a large owner's entire portfolio ahead of
+// another owner's first alert. Retain order within each owner's subscriptions.
+function interleaveOwners(groups) {
+  const byOwner = new Map();
+  for (const group of groups) {
+    const owner = deliveryOwner(group.record);
+    if (!byOwner.has(owner)) byOwner.set(owner, []);
+    byOwner.get(owner).push(group);
+  }
+  const result = [];
+  let remaining = [...byOwner.values()];
+  for (let round = 0; remaining.length; round += 1) {
+    const next = [];
+    for (const ownerGroups of remaining) {
+      result.push(ownerGroups[round]);
+      if (round + 1 < ownerGroups.length) next.push(ownerGroups);
+    }
+    remaining = next;
+  }
+  return result;
 }
 
 function groupBySubscriber(deliveries, rawById) {
@@ -1399,6 +1427,7 @@ async function writeWorkerStatus(redis, fence, summary, now) {
     fanoutState: summary.fanoutState,
     hazardSourceState: summary.hazardSourceState,
     deliveries: summary.deliveries,
+    ownerBudgetDeferred: summary.ownerBudgetDeferred,
     failures: summary.failures,
     deactivated: summary.deactivated,
     pruned: summary.pruned,
@@ -1411,6 +1440,7 @@ async function writeWorkerStatus(redis, fence, summary, now) {
     lastRunAt: fetchedAt,
     subscribers: summary.subscribers,
     deliveries: summary.deliveries,
+    ownerBudgetDeferred: summary.ownerBudgetDeferred,
     failures: summary.failures,
     occurrences: summary.occurrences,
     hazards: summary.hazards,
@@ -1428,16 +1458,26 @@ async function writeWorkerStatus(redis, fence, summary, now) {
 async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
   const fence = lock.fence();
   let lockLost = false;
+  const ownerAttempts = new Map();
   // One round trip renews the lease and re-reads the record. A transport error
   // is retried once; only a confirmed loss or a changed record stops sending.
-  const beforeSend = async (group) => {
+  const beforeSend = async (group, remaining) => {
     if (lockLost) return false;
+    const owner = deliveryOwner(group.record);
+    const attempts = ownerAttempts.get(owner) || 0;
+    if (attempts >= MAX_DELIVERIES_PER_OWNER_PER_TICK) {
+      summary.ownerBudgetDeferred += remaining;
+      return false;
+    }
+    // Reserve before awaiting Redis so concurrent subscriptions share the cap.
+    ownerAttempts.set(owner, attempts + 1);
     const commands = [
       ['EVAL', LOCK_RENEW_SCRIPT, '1', fence.key, fence.token, String(LOCK_TTL_MS)],
       ['GET', webhookKey(group.record.subscriberId)],
     ];
     let rows;
     for (let attempt = 0; attempt < 2 && !rows; attempt += 1) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 50));
       rows = await redis(commands).catch(() => null);
       if (!Array.isArray(rows) || rows.length !== 2 || rows.some((row) => !row || row.error)) rows = null;
     }
@@ -1460,6 +1500,7 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
     hazards: emptyHazardCounters(),
     subscribers: 0,
     deliveries: 0,
+    ownerBudgetDeferred: 0,
     failures: 0,
     deactivated: 0,
     pruned: 0,
@@ -1528,7 +1569,7 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
 
   // Persist each crossing's delivery id before sending, so a tick that dies
   // after a send still retries under the same id.
-  const groups = groupBySubscriber(deliveries, rawById);
+  const groups = interleaveOwners(groupBySubscriber(deliveries, rawById));
   const pendingStored = assertFenced(await runBatched(redis, groups, (group) => stateWrite(
     fence,
     group.record.subscriberId,

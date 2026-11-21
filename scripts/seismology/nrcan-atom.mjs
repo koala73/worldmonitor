@@ -1,7 +1,9 @@
 // Pure Earthquakes Canada (NRCan) Atom parser + USGS merge/dedup helpers.
 // Tests import this module, not the seeder entrypoint.
 
+import { withSourceRequestDiagnostics } from '../lib/source-request-diagnostics.mjs';
 import { createRequire } from 'node:module';
+import { randomInt } from 'node:crypto';
 import {
   CHROME_UA, httpRetryError, redactProxyCredentials, roundGeoCoordinate, withRetry,
 } from '../_seed-utils.mjs';
@@ -17,6 +19,15 @@ export const MAX_NRCAN_ATOM_BYTES = 1024 * 1024;
 export const EARTHQUAKES_MAX_CONTENT_AGE_MIN = 2 * 24 * 60; // 48h — min() of successful upstream newest
 export const EARTHQUAKE_PROVIDERS_KEY = 'seismology:earthquakes:providers:v1';
 const PROVIDER_MAX_AGE_MS = 30 * 60_000;
+// Each NRCan fetch is a ~330 KB body through the paid residential proxy, and
+// the feed regenerates only every 10 minutes. Refreshing at 15 minutes keeps
+// the attempt at snapshot age 15-20 on a 5-minute cron. A miss there still gets
+// health's pending window through the next run before the 30-minute expiry.
+const PROVIDER_POLICY = {
+  usgs: { retries: 1, refreshAfterMs: 0 },
+  // fetchAtomViaProxy already rotates three exits; an outer retry buys three more paid ones.
+  nrcan: { retries: 0, refreshAfterMs: 15 * 60_000 },
+};
 // Align NRCan's 30-day national bulletin with the USGS M4.5+ week layer.
 export const USGS_MIN_MAGNITUDE = 4.5;
 export const EARTHQUAKES_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -36,10 +47,6 @@ export class NrcanAtomParseError extends Error {
     this.code = 'SEED_ERROR';
     this.nonRetryable = true;
   }
-}
-
-export function nrcanAtomCacheKey(url = NRCAN_ATOM_URL) {
-  return `nrcan-atom:${url}`;
 }
 
 function tagValue(block, tag) {
@@ -211,8 +218,8 @@ const NRCAN_ACCEPT = 'application/atom+xml, application/xml, text/xml, */*';
 const NRCAN_PROXY_EXITS = 3;
 const NRCAN_PROXY_TIMEOUT_MS = 12_000;
 
-function defaultNrcanProxyFetch(url, { attempt, proxyAuth, maxBytes }) {
-  const proxyConfig = parseProxyConfigForAttempt(proxyAuth, attempt);
+function defaultNrcanProxyFetch(url, { exit, proxyAuth, maxBytes }) {
+  const proxyConfig = parseProxyConfigForAttempt(proxyAuth, exit);
   if (!proxyConfig) throw Object.assign(new Error('Invalid proxy auth string'), { nonRetryable: true });
   // proxyFetch never follows redirects, so a 3xx surfaces as !ok below.
   return proxyFetch(url, proxyConfig, {
@@ -228,13 +235,21 @@ function defaultNrcanProxyFetch(url, { attempt, proxyAuth, maxBytes }) {
 // every exit would answer a 5xx or 404 the same way. A refused, dropped, or
 // temporarily down exit rotates to the next sticky port. A gateway 4xx (rejected
 // credentials, quota, policy) and any other proxied status are final.
-async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, maxBytes }) {
+// A sticky port keeps its exit IP for minutes, so each run starts at a random
+// port: fixed ports retried the same challenged IPs on every 5-minute run.
+async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, firstProxyExitFn, maxBytes }) {
   let last;
   let everyExitRefused = true;
+  const firstExit = firstProxyExitFn();
   for (let attempt = 0; attempt < NRCAN_PROXY_EXITS; attempt++) {
+    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, Math.min(1_000, 100 * 2 ** (attempt - 1)) * (0.5 + Math.random() * 0.5)));
     let result;
     try {
-      result = await proxyFetchFn(url, { attempt, proxyAuth, maxBytes });
+      result = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'proxy', attempt }, async observe => {
+        const response = await proxyFetchFn(url, { attempt, exit: firstExit + attempt, proxyAuth, maxBytes });
+        observe(response);
+        return response;
+      });
     } catch (error) {
       if (error?.code === 'RESPONSE_TOO_LARGE') {
         throw Object.assign(new Error('RESPONSE_TOO_LARGE'), { nonRetryable: true });
@@ -262,11 +277,13 @@ async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, m
       throw error;
     }
   }
-  // Only when every exit refused is the failure permanent: an immediate retry restarts
-  // at exit 0 and meets the same refusals. Any dropped tunnel may recover, so stays retryable.
+  // Every exit refusing is permanent only for a fixed proxy endpoint, where a retry
+  // meets the same exit. A sticky-port route retries on fresh exits, and a dropped
+  // tunnel may recover, so both stay retryable.
+  const exitsRotate = parseProxyConfigForAttempt(proxyAuth, 0)?.port !== parseProxyConfigForAttempt(proxyAuth, 1)?.port;
   throw Object.assign(new Error(`direct HTTP ${directStatus}; proxy ${last}`), {
     status: directStatus,
-    nonRetryable: everyExitRefused,
+    nonRetryable: everyExitRefused && !exitsRotate,
   });
 }
 
@@ -276,36 +293,33 @@ export async function fetchApprovedAtom(url, {
   fetchFn = globalThis.fetch,
   proxyAuth = '',
   proxyFetchFn = defaultNrcanProxyFetch,
-  cache,
+  firstProxyExitFn = () => randomInt(1_000_000),
 } = {}) {
   const parsed = new URL(url);
   const allowed = new Set((allowedHosts || []).map((host) => String(host).toLowerCase()));
   if (parsed.protocol !== 'https:' || !allowed.has(parsed.hostname.toLowerCase())) {
     throw Object.assign(new Error('UNTRUSTED_SOURCE_HOST'), { nonRetryable: true });
   }
-  const cacheKey = nrcanAtomCacheKey(parsed.toString());
-  if (cache?.has(cacheKey)) return cache.get(cacheKey);
-
-  const response = await fetchFn(parsed.toString(), {
-    headers: {
-      Accept: NRCAN_ACCEPT,
-      'User-Agent': CHROME_UA,
-    },
-    redirect: 'error',
-    signal: AbortSignal.timeout(15_000),
+  const { response, xml } = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'direct' }, async observe => {
+    const result = await fetchFn(parsed.toString(), {
+      headers: {
+        Accept: NRCAN_ACCEPT,
+        'User-Agent': CHROME_UA,
+      },
+      redirect: 'error',
+      signal: AbortSignal.timeout(15_000),
+    });
+    observe(result);
+    return { response: result, xml: result.ok ? await readBoundedText(result, maxBytes) : null };
   });
   if (response.status === 403 && proxyAuth) {
     await response.body?.cancel?.();
-    const xml = await fetchAtomViaProxy(parsed.toString(), response.status, { proxyAuth, proxyFetchFn, maxBytes });
-    cache?.set(cacheKey, xml);
-    return xml;
+    return fetchAtomViaProxy(parsed.toString(), response.status, { proxyAuth, proxyFetchFn, firstProxyExitFn, maxBytes });
   }
   if (!response.ok) {
     await response.body?.cancel?.();
     throw httpRetryError(response, { remainingBudgetMs: 2_000 });
   }
-  const xml = await readBoundedText(response, maxBytes);
-  cache?.set(cacheKey, xml);
   return xml;
 }
 
@@ -313,7 +327,6 @@ export async function fetchNrcanAtom({
   fetchFn = globalThis.fetch,
   proxyAuth,
   proxyFetchFn,
-  cache,
   url = NRCAN_ATOM_URL,
 } = {}) {
   const xml = await fetchApprovedAtom(url, {
@@ -322,7 +335,6 @@ export async function fetchNrcanAtom({
     fetchFn,
     proxyAuth,
     proxyFetchFn,
-    cache,
   });
   const parsed = parseNrcanAtom(xml);
   return {
@@ -487,27 +499,40 @@ function usableProvider(snapshot, source, nowMs) {
       && Number.isFinite(eq.location?.latitude) && Number.isFinite(eq.location?.longitude));
 }
 
+function isFreshProvider(snapshot, source, nowMs) {
+  return usableProvider(snapshot, source, nowMs) && snapshot.consecutiveFailures === 0
+    && nowMs - snapshot.fetchedAt < PROVIDER_POLICY[source].refreshAfterMs;
+}
+
 export async function fetchMergedEarthquakes({ fetchUsgs, fetchNrcan, previousSources, nowMs = Date.now() }) {
   const sources = ['usgs', 'nrcan'];
-  const results = await Promise.allSettled([fetchUsgs, fetchNrcan].map(fetchSource => withRetry(async () => {
-    try { return await fetchSource(); }
+  const fetchers = { usgs: fetchUsgs, nrcan: fetchNrcan };
+  const fresh = Object.fromEntries(sources.map(source => [source, isFreshProvider(previousSources?.[source], source, nowMs)]));
+  const results = await Promise.allSettled(sources.map(source => (fresh[source] ? null : withRetry(async () => {
+    try { return await fetchers[source](); }
     catch (error) {
       if (error instanceof SyntaxError) error.nonRetryable = true;
       throw error;
     }
-  }, 1, 500)));
+  }, PROVIDER_POLICY[source].retries, 500))));
   const snapshots = {};
   const available = {};
   const failedSources = [];
   const failureDetails = [];
   for (const [index, source] of sources.entries()) {
+    const previous = previousSources?.[source];
+    if (fresh[source]) {
+      // Reused as stored: its fetchedAt keeps lastSourceSuccessAt and content age honest.
+      snapshots[source] = previous;
+      available[source] = previous;
+      continue;
+    }
     const result = results[index];
     if (result.status === 'fulfilled') {
       snapshots[source] = { ...result.value, fetchedAt: nowMs, consecutiveFailures: 0, firstFailureAt: null };
       available[source] = snapshots[source];
       continue;
     }
-    const previous = previousSources?.[source];
     const usable = usableProvider(previous, source, nowMs);
     const priorCount = previous?.consecutiveFailures;
     const knownStreak = Number.isInteger(priorCount) && priorCount >= 0 && priorCount <= 100;

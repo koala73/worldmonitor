@@ -1,0 +1,88 @@
+---
+title: "Gemini 与 Antigravity：连接 WorldMonitor"
+description: "了解如何在 Google Antigravity 中连接 WorldMonitor 托管 MCP 服务器，以及 Gemini 自定义应用的 OAuth 限制和 Connected Apps 与 Antigravity Marketplace 的上架准备信息。"
+---
+
+WorldMonitor 为所有客户端提供同一个托管 MCP 服务器：`https://worldmonitor.app/mcp`，使用 Streamable HTTP 传输，并通过 OAuth 2.1 登录（PKCE、动态客户端注册和客户端 ID 元数据文档）。Antigravity 使用与其他受支持客户端相同的服务器、工具和权限。Gemini 自定义应用与 Connected Apps 通过 Google 的 OAuth 回调登录，重定向 URI 允许列表已接受这些回调。仅限 Pro 的工具仍然仅限 Pro。认证、配额和工具列表见 [MCP 服务器概览](/zh/mcp-overview)。
+
+## Google Antigravity
+
+### 安装插件
+
+仓库在 `.antigravity-plugin/plugin.json` 提供 Antigravity 插件清单，捆绑 `mcp_config.json` 中的两个 MCP 服务器和 `skills/` 中的智能体技能。
+
+```bash
+git clone https://github.com/koala73/worldmonitor
+agy plugin validate ./worldmonitor
+agy plugin install ./worldmonitor
+agy plugin list
+```
+
+验证仓库时，`AGENTS.md`、`mcp.json` 和根目录的 `plugin.json` 会产生兼容性警告。Antigravity 使用 `.antigravity-plugin/plugin.json`、`mcp_config.json` 和 `skills/`；其他文件用于仓库开发和其他客户端。提交 Marketplace 前，需将 Antigravity 清单、README、图标、MCP 配置和技能整理为独立插件包，再运行 `agy plugin validate --strict <bundle-directory>`，确保错误和警告均为零。
+
+Marketplace 上架后，可使用 `agy plugin install worldmonitor@antigravity-plugins-official` 安装。
+
+### 手动添加服务器
+
+在 Antigravity IDE 中，打开智能体侧边栏的 **... > MCP Servers** 并编辑 `mcp_config.json`。在 CLI 中，使用 `~/.gemini/config/mcp_config.json`（全局）或 `.agents/mcp_config.json`（工作区）：
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": { "serverUrl": "https://worldmonitor.app/mcp" }
+  }
+}
+```
+
+Antigravity 的 [MCP 文档](https://antigravity.google/docs/mcp)对远程服务器使用 `serverUrl`，也接受 `url`；插件自带的 `mcp_config.json` 使用 `url`。
+
+Antigravity 的 OAuth 回调 `https://antigravity.google/oauth-callback` 已在[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)中。
+
+## Gemini
+
+### 开发者模式（自定义应用）
+
+按照 Google 的[开发者模式指南](https://developers.google.com/connected-apps/mcp/dev-mode/usage)操作：选择 **+ Create new**，将 `https://worldmonitor.app/mcp` 填入 MCP Server URL，接受安全提示并连接。Gemini 通过动态客户端注册登记 `https://oauth-redirect.googleusercontent.com/r/` 或 `/a/` 下的回调，[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)接受这些回调。
+
+首次在开发者模式中运行时请检查以下几点，它们尚未在 Gemini 上测试：
+
+- **登录完成**，且 Pro 账户可以调用仅限 Pro 的工具。
+- **连接在两次令牌刷新后仍然有效。** Google 要求服务器每次刷新都返回同一个刷新令牌。WorldMonitor 每次刷新都会签发新令牌，并在旧刷新令牌被重复使用时吊销整个令牌族。如果 Gemini 一直使用第一个刷新令牌，第二次刷新会断开用户连接。
+- **令牌请求成功。** WorldMonitor 将所有客户端注册为公共客户端（`token_endpoint_auth_method: none`）。如果 Gemini 发送客户端密钥，请确认令牌请求仍然成功。
+
+### Connected App 上架信息
+
+在 [Google Connected Console](https://connected.google.com/console) 注册 WorldMonitor 时使用以下值。
+
+提交前需完成控制台签发的域名验证、通过上述开发者模式检查，并使用 Pro 账户进行端到端测试。
+
+域名验证：在控制台的 **MCP and tools setup** 中，于 **Verify domain ownership** 下选择 **Download token**。将下载的 `google-connected-apps.json` 中的令牌复制到 `public/.well-known/google-connected-apps` 的 `verification_tokens` 数组，部署后选择 **Verify domain**。Vercel 以 JSON 格式在 `https://worldmonitor.app/.well-known/google-connected-apps` 提供该文件，直接返回 HTTP 200 且不重定向，符合 Google 的要求。
+
+| 字段 | 值 |
+|---|---|
+| 应用名称 | WorldMonitor |
+| 描述（少于 30 个英文单词） | Track world news, country risk, conflicts, markets, energy and shipping chokepoints with source-attributed live data. |
+| 图标（512 x 512 PNG） | `https://www.worldmonitor.app/favico/android-chrome-512x512.png` |
+| MCP 端点 | `https://worldmonitor.app/mcp` |
+| 认证 | 用户授权 OAuth（授权码），动态注册（CIMD 或 DCR） |
+| 服务条款 URL | `https://www.worldmonitor.app/docs/terms` |
+| 隐私政策 URL | `https://www.worldmonitor.app/docs/privacy` |
+| 网站 URL | `https://www.worldmonitor.app` |
+
+## Gemini CLI
+
+仓库根目录提供 Gemini CLI 扩展清单 `gemini-extension.json`，通过 Streamable HTTP 添加相同的两个服务器。Gemini CLI 使用 `httpUrl` 表示 Streamable HTTP；其 `url` 键表示 SSE。
+
+```bash
+gemini extensions install https://github.com/koala73/worldmonitor --ref main
+```
+
+不加 `--ref` 时，Gemini CLI 会从最新 GitHub 发布版的源码归档安装，而 v2.11.6 及更早的发布版尚不包含该清单。加上 `--ref main` 后，Gemini CLI 找不到名为 `main` 的发布版，会询问是否改用 `git clone` 安装；请选择是。自 v2.11.6 之后的第一个发布版起，不加 `--ref` 也可安装。
+
+启动 Gemini CLI，并在浏览器打开时登录：WorldMonitor 在连接时返回 OAuth 质询，因此登录发生在启动时，早于任何工具调用。Gemini CLI 使用 `localhost` 回调进行注册，[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)接受该回调。运行 `/mcp auth worldmonitor` 可重新登录。
+
+## 相关链接
+
+- [MCP 快速入门](/zh/mcp-quickstart)
+- [MCP 服务器概览](/zh/mcp-overview)
+- [智能体发现](/zh/agent-discovery)

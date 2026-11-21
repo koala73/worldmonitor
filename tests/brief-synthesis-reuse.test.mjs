@@ -69,6 +69,37 @@ describe('resolveNonDueSynthesisReuse (#4917)', () => {
     assert.equal(out.publicLead.signals.length, 1);
   });
 
+  // Every compose rewrites issuedAt to the tick time, including ticks that
+  // reuse prose, so issuedAt alone kept reused prose "young" forever. A
+  // brief-only user (never due) kept the same lead for 48 h in review
+  // (#9758). Age is measured from when the prose was actually synthesized.
+  it('measures age from the carried synthesis time, not the re-stamped issuedAt', () => {
+    const restamped = envelope({ issuedAt: NOW - 30 * 60 * 1000 });
+    const out = resolveNonDueSynthesisReuse(restamped, {
+      nowMs: NOW, maxAgeMs: MAX_AGE, currentStories: CURRENT_STORIES,
+      priorSynthesizedAt: NOW - MAX_AGE - 1,
+    });
+    assert.deepEqual(out, { reuse: false, reason: 'stale' });
+  });
+
+  it('reports the carried synthesis time so a reuse can pass it forward', () => {
+    const synthesizedAt = NOW - 2 * 60 * 60 * 1000;
+    const out = resolveNonDueSynthesisReuse(envelope({ issuedAt: NOW - 30 * 60 * 1000 }), {
+      nowMs: NOW, maxAgeMs: MAX_AGE, currentStories: CURRENT_STORIES, priorSynthesizedAt: synthesizedAt,
+    });
+    assert.equal(out.reuse, true);
+    assert.equal(out.ageMs, 2 * 60 * 60 * 1000);
+    assert.equal(out.synthesizedAt, synthesizedAt);
+  });
+
+  it('falls back to issuedAt for pointers written before synthesizedAt existed', () => {
+    const out = resolveNonDueSynthesisReuse(envelope(), {
+      nowMs: NOW, maxAgeMs: MAX_AGE, currentStories: CURRENT_STORIES, priorSynthesizedAt: undefined,
+    });
+    assert.equal(out.reuse, true);
+    assert.equal(out.synthesizedAt, NOW - 60 * 60 * 1000);
+  });
+
   it('declines when the envelope is older than the budget', () => {
     const old = envelope({ issuedAt: NOW - MAX_AGE - 1 });
     const out = resolveNonDueSynthesisReuse(old, {
@@ -120,5 +151,38 @@ describe('resolveNonDueSynthesisReuse (#4917)', () => {
 
   it('exports a sane default budget (used by the orchestrator env parse)', () => {
     assert.equal(DEFAULT_NONDUE_SYNTHESIS_REUSE_MIN, 360);
+  });
+});
+
+// l10n PR 3 (#10884): the brief-language lookup result is reused for the
+// synthesis profile, so l10n adds no second relay call.
+describe('buildSynthesisCtx preference reuse', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { runInNewContext } = await import('node:vm');
+  const cron = readFileSync(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url), 'utf8');
+  const start = cron.indexOf('async function buildSynthesisCtx(');
+  const src = cron.slice(start, cron.indexOf('\n}\n', start) + 2);
+  function load(fetchCalls) {
+    return runInNewContext(`${src}\nbuildSynthesisCtx`, {
+      fetchUserPreferences: async (...args) => { fetchCalls.push(args); return { data: { fetched: true }, error: false }; },
+      extractUserContext: (prefs) => prefs,
+      formatUserProfile: (ctx) => (ctx.fetched ? 'fetched-profile' : 'reused-profile'),
+      toLocalHour: () => 9,
+      console,
+    });
+  }
+
+  it('uses a provided preference result without calling the relay', async () => {
+    const calls = [];
+    const ctx = await load(calls)({ userId: 'u1', variant: 'full' }, 0, { data: { reused: true }, error: false });
+    assert.equal(calls.length, 0);
+    assert.equal(ctx.profile, 'reused-profile');
+  });
+
+  it('fetches preferences when no result is provided', async () => {
+    const calls = [];
+    const ctx = await load(calls)({ userId: 'u1', variant: 'full' }, 0);
+    assert.equal(calls.length, 1);
+    assert.equal(ctx.profile, 'fetched-profile');
   });
 });

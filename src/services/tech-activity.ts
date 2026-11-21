@@ -133,8 +133,3 @@ export function aggregateTechActivity(clusters: ClusteredEvent[]): TechHubActivi
 export function getTopActiveHubs(clusters: ClusteredEvent[], limit = 10): TechHubActivity[] {
   return aggregateTechActivity(clusters).slice(0, limit);
 }
-
-export function getHubActivity(hubId: string, clusters: ClusteredEvent[]): TechHubActivity | undefined {
-  const activities = aggregateTechActivity(clusters);
-  return activities.find(a => a.hubId === hubId);
-}

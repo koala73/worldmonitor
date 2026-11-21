@@ -396,10 +396,10 @@ describe('MCP tool aliases', { concurrency: false }, () => {
     assertValid(advertised('get_tariff_averages'), scalar.body.result.structuredContent, 'scalar projection');
 
     const missing = await call('get_tariff_trends', { dataset: 'tariffs', jmespath: 'nonexistent' });
-    assert.equal(missing.body.result.content[0].text, 'null');
-    assert.equal(missing.body.result.structuredContent.projection, null);
+    assert.match(JSON.parse(missing.body.result.content[0].text)._jmespath_error, /^empty_projection/);
+    assert.match(missing.body.result.structuredContent._jmespath_error, /^empty_projection/);
     assert.equal(missing.body.result.structuredContent.deprecation.replacement, 'get_tariff_averages');
-    assertValid(advertised('get_tariff_averages'), missing.body.result.structuredContent, 'null projection');
+    assertValid(advertised('get_tariff_averages'), missing.body.result.structuredContent, 'empty projection');
 
     seedPriceBundle();
     const list = await call('get_tariff_trends', { dataset: 'bigmac', jmespath: 'data.bigmac.countries[].code' });
@@ -625,6 +625,40 @@ describe('sealAliases merge family', () => {
   it('refuses to seal when the target is missing or does not offer every merged dataset', () => {
     assert.throws(() => sealAliases([], [], [merge], [], accessOf), /unregistered target/);
     assert.throws(() => sealAliases([target(['outages', 'traffic'])], [], [merge], [], accessOf), /does not offer dataset ddos/);
+  });
+});
+
+describe('sealAliases rename family', () => {
+  const target = miniTool('get_five_factor_scorecard');
+  const rename = { kind: 'rename', name: 'list_five_factor_scorecards', target: 'get_five_factor_scorecard' };
+
+  it('passes arguments through unchanged when no translation is declared', () => {
+    const sealed = sealAliases([target], [], [rename], [], accessOf);
+    for (const args of [undefined, {}, { jmespath: 'scorecards[0]' }]) {
+      const resolved = sealed.resolve('list_five_factor_scorecards', args);
+      assert.equal(resolved.kind, 'alias');
+      assert.equal(resolved.tool.name, 'get_five_factor_scorecard');
+      assert.deepEqual(resolved.arguments, args ?? {});
+      assert.equal(resolved.argumentsShape, 'target', 'renamed arguments must meet the target input schema');
+      assert.match(resolved.notice.message, /now calls get_five_factor_scorecard/);
+    }
+    assert.equal(sealed.resolve('list_five_factor_scorecards', []).kind, 'invalid');
+    assert.deepEqual(sealed.describe('list_five_factor_scorecards').replacements, ['get_five_factor_scorecard']);
+  });
+
+  it('applies a declared translation and surfaces its violations', () => {
+    const translate = (args) => (args.bad
+      ? { ok: false, violations: [{ field: 'bad', description: 'bad is not accepted.' }] }
+      : { ok: true, arguments: { ...args, translated: true } });
+    const sealed = sealAliases([target], [], [{ ...rename, translate }], [], accessOf);
+    assert.deepEqual(sealed.resolve('list_five_factor_scorecards', { a: 1 }).arguments, { a: 1, translated: true });
+    const invalid = sealed.resolve('list_five_factor_scorecards', { bad: true });
+    assert.equal(invalid.kind, 'invalid');
+    assert.equal(invalid.violations[0].field, 'bad');
+  });
+
+  it('refuses to seal when the target is missing', () => {
+    assert.throws(() => sealAliases([], [], [rename], [], accessOf), /unregistered target/);
   });
 });
 

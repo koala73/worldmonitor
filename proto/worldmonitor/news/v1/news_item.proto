@@ -63,6 +63,18 @@ message NewsItem {
   // scores low. Third-party bias/factuality ratings are reserved and not
   // currently applied. See docs/methodology/news-credibility.mdx.
   int32 credibility_score = 14;
+  // True when `link` passed the publisher check at ingest: its host is the
+  // feed's own host, a host the feed's catalog entry lists, a domain of the
+  // source's publisher family, or a domain of the origin publisher named by a
+  // trusted aggregator. A link that fails the check is served empty, so this
+  // is false whenever `link` is empty. Computed by the server; never read
+  // from the feed.
+  bool link_verified = 15;
+  // The original publisher a trusted aggregator (Google News) names for this
+  // item, resolved to its curated source name, so consumers can score it on
+  // that publisher's tier instead of the feed's. Empty when the feed is not
+  // a trusted aggregator, or the publisher it names has no curated tier.
+  string origin_publisher = 16;
 }
 
 // StoryMeta carries cross-cycle persistence data attached to each news item.

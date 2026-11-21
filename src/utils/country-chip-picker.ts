@@ -49,9 +49,18 @@ const COMMON_COUNTRIES: ReadonlyArray<{ code: string; name: string }> = [
 export interface CountryChipPickerOptions {
   initial?: string[];
   onChange?: (codes: string[]) => void;
-  // When true, render the inline "Leave empty to receive alerts from all
-  // countries" hint underneath the chip row. Default true.
+  // When true, render the inline "Leave empty to receive global critical
+  // events and the opt-in alerts you turned on" hint underneath the chip row (#10873). Default true.
   showAllHint?: boolean;
+  /**
+   * Selection cap, defaulting to COUNTRY_CHIP_PICKER_MAX. The free alert
+   * ladder (#4273) mounts the picker with its plan's country limit so the
+   * cap is enforced where the user clicks, not as a 402 after the save.
+   * Values above COUNTRY_CHIP_PICKER_MAX are clamped to it.
+   */
+  max?: number;
+  /** Error line shown when `max` blocks an add; defaults to the limit text. */
+  maxMessage?: string;
 }
 
 export interface CountryChipPickerHandle {
@@ -87,7 +96,19 @@ export function mountCountryChipPicker(
   root: HTMLElement,
   opts: CountryChipPickerOptions = {},
 ): CountryChipPickerHandle {
-  let value: string[] = normalizeList(opts.initial ?? []);
+  const max = Math.max(1, Math.min(opts.max ?? COUNTRY_CHIP_PICKER_MAX, COUNTRY_CHIP_PICKER_MAX));
+  const maxMessage = opts.maxMessage ?? `COUNTRIES_LIMIT_EXCEEDED: maximum ${max} countries.`;
+  // A legacy over-cap list (e.g. a row written on a paid plan) is clamped to
+  // the cap's first entries — the same order the delivery clamp keeps.
+  let value: string[] = normalizeList(opts.initial ?? []).slice(0, max);
+
+  function showMaxError(): void {
+    const errEl = root.querySelector<HTMLElement>('[data-country-error]');
+    if (errEl) {
+      errEl.textContent = maxMessage;
+      errEl.hidden = false;
+    }
+  }
 
   function emit(): void {
     if (opts.onChange) opts.onChange(value.slice());
@@ -119,7 +140,7 @@ export function mountCountryChipPicker(
         <button type="button" class="us-notif-ch-btn" data-country-add-btn>Add</button>
         <span class="us-notif-country-error" data-country-error hidden>Enter a 2-letter ISO country code (e.g. US, GB).</span>
       </div>
-      ${showAllHint ? '<div class="ai-flow-toggle-desc us-notif-country-hint">Leave empty to receive alerts from all countries.</div>' : ''}
+      ${showAllHint ? '<div class="ai-flow-toggle-desc us-notif-country-hint">Leave empty to receive global critical events and the opt-in alerts you turned on.</div>' : ''}
     `, "legacy direct innerHTML migration"));
   }
 
@@ -132,6 +153,10 @@ export function mountCountryChipPicker(
       if (value.includes(code)) {
         value = value.filter(c => c !== code);
       } else {
+        if (value.length >= max) {
+          showMaxError();
+          return;
+        }
         value = dedupe([...value, code]);
       }
       render();
@@ -147,11 +172,8 @@ export function mountCountryChipPicker(
         if (errEl) errEl.hidden = false;
         return;
       }
-      if (!value.includes(norm) && value.length >= COUNTRY_CHIP_PICKER_MAX) {
-        if (errEl) {
-          errEl.textContent = `COUNTRIES_LIMIT_EXCEEDED: maximum ${COUNTRY_CHIP_PICKER_MAX} countries.`;
-          errEl.hidden = false;
-        }
+      if (!value.includes(norm) && value.length >= max) {
+        showMaxError();
         return;
       }
       if (errEl) errEl.hidden = true;
@@ -185,7 +207,7 @@ export function mountCountryChipPicker(
   return {
     getValue: () => value.slice(),
     setValue: (codes: string[]) => {
-      value = normalizeList(codes);
+      value = normalizeList(codes).slice(0, max);
       render();
       emit();
     },

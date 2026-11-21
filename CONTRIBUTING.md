@@ -52,7 +52,7 @@ The codebase produces app variants from the same source, each targeting a differ
 | `happy` | `npm run dev:happy` | Positive news and constructive signals |
 | `energy` | `npm run dev:energy` | Energy security, chokepoints, oil/gas |
 
-Variants share all code but differ in default panels, map layers, and RSS feeds. Variant configs live in `src/config/variants/`.
+Variants share all code but differ in default panels, map layers, and RSS feeds. Default panels and map layers live in `src/config/panels.ts`; feeds come from `shared/news-catalog.json` via `src/config/feeds.ts`.
 
 ### Directory Structure
 
@@ -133,7 +133,8 @@ npm run dev:energy
 npm run typecheck
 
 # Run tests
-npm run test:data          # Data integrity tests
+npm run test:related       # Data tests the branch's changes can reach
+npm run test:data          # All data integrity tests (CI runs these on every push)
 npm run test:e2e:full      # Playwright end-to-end tests (full variant)
 
 # Production build (per variant)
@@ -278,6 +279,14 @@ required gates. Run focused checks first and heavy checks sequentially. Keep use
 regression coverage. Remove a check only with evidence that its protection is
 obsolete, redundant, or ineffective.
 
+For PWA changes, build with `VITE_VARIANT=full npx vite build`, then run
+`node --import tsx --test tests/pwa-precache.test.mjs tests/pwa-recovery.test.mjs tests/deploy-config.test.mjs`.
+The generated worker precaches the dashboard entry's static JavaScript/CSS
+dependencies and the fixed offline/install assets, with a 32-file, 2 MiB budget
+checked against `dist/sw.js`. Other app chunks are cached when requested.
+Navigation still falls back to the self-contained offline page. Verify the built
+worker in a browser; the development server does not register it.
+
 For Railway registry changes, use `npm run test:railway-registry` during the edit
 loop. It exercises the real CLI, runner, workflow and registry contracts without
 the unrelated health-status publisher fixtures. Run the expanded source-health
@@ -307,28 +316,20 @@ PR readiness, merge, deployment, production observation, and acceptance separate
 
 ### CodeQL scan schedule and setup handover
 
-`.github/workflows/codeql.yml` does not run on pull requests. CodeQL does not
-gate merges, and a JavaScript/TypeScript scan takes about ten minutes, so findings
-appear in **Security > Code scanning** a few minutes after a change reaches `main`.
+`.github/workflows/codeql.yml` does not run on pull requests or pushes. CodeQL
+does not gate merges, and a full scan costs about 30 runner-minutes, so it runs
+once a day at 03:23 UTC across all six languages. Findings for a change appear
+in **Security > Code scanning** when the first scan after it reaches `main`
+completes, which can be more than 24 hours later; dispatch **CodeQL** on `main`
+to scan sooner. Scheduled and manual runs use separate
+concurrency groups, and neither cancels a running scan.
 
-Each push to `main` scans the languages changed since the last successful push
-scan, including both sides of renames and relevant dependency manifests. Diffing
-from that scan, rather than from the push's parent, keeps coverage when a newer
-push replaces a pending run. A missing baseline, a failed lookup, a non-linear
-diff or a diff of 300 or more files runs all six languages. Changes to the CodeQL
-workflow or configuration also run all six. A push that changes no scanned
-language runs no analysis. These filters select jobs; each selected job scans the
-repository, not only the changed files.
-
-Pushes share one concurrency group. A running scan is never cancelled, and a
-newer push replaces a pending one, so a burst of merges becomes one running and
-one pending scan. Sunday at 03:23 UTC a scheduled
-run scans all six languages, and manual dispatch does the same for recovery. Both
-use their own concurrency groups, so a push cannot replace them.
-
-After each default-branch scan, the `prune-overlay-bases` job deletes every CodeQL
-overlay-base cache except the newest per workflow/job/language group, because
-CodeQL saves a new base under a unique key on every run and never removes old ones.
+The `analyze` job sets `CODEQL_OVERLAY_DATABASE_MODE: none`. Otherwise every
+default-branch scan saves an overlay-base database (about 2 GB a day) to the
+Actions cache, and only pull request scans, which this workflow does not run,
+would ever restore it. The `init` step also sets `trap-caching: false`: with
+overlay off, the action would otherwise upload TRAP caches that default-branch
+runs never restore.
 
 The repository owner must coordinate activation with the approved merge:
 
@@ -336,13 +337,11 @@ The repository owner must coordinate activation with the approved merge:
    uploads can be rejected while default setup is enabled; this is not a passing
    CodeQL validation result.
 2. At the approved handover, disable default setup in **Settings > Code security >
-   CodeQL analysis**, then merge the workflow. The merge changes
-   `.github/workflows/codeql.yml`, so its push to `main` scans all six languages;
-   dispatch **CodeQL** on `main` only if that run did not start. GitHub documents the [switch to advanced setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configuring-advanced-setup-for-code-scanning).
+   CodeQL analysis**, then merge the workflow and dispatch **CodeQL** on `main`. GitHub documents the [switch to advanced setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configuring-advanced-setup-for-code-scanning).
 3. Confirm all six `Analyze (<language>)` jobs succeed and publish fresh results
    for the merged commit in **Security > Code scanning**. Check any required
    code-scanning rules still accept the new workflow; do not treat skipped jobs
-   as proof of analysis. Confirm the next push and Sunday runs, and compare
+   as proof of analysis. Confirm the next daily run, and compare
    runner-minutes after seven days before claiming savings.
 4. If analysis or uploads fail, restore default setup and disable the advanced
    workflow until repaired. Avoid leaving both disabled or allowing both to run
@@ -351,8 +350,8 @@ The repository owner must coordinate activation with the approved merge:
    disabled, restore default setup immediately. An interrupted handover is not
    complete; do not leave main without an active scan configuration.
 
-Run `node --test tests/codeql-workflow.test.mjs` for local selection and workflow
-contract checks. These tests do not execute CodeQL or prove SARIF upload access.
+Run `node --test tests/codeql-workflow.test.mjs` for local workflow contract
+checks. These tests do not execute CodeQL or prove SARIF upload access.
 
 ## How to Contribute
 

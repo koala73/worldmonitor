@@ -1,0 +1,115 @@
+---
+title: "MCP 工具：新闻情报"
+sidebarTitle: "新闻情报"
+description: "World Monitor MCP 工具参考：新闻情报、新闻聚类、媒体视角与正面事件。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+以下工具暂仅提供英文参考：[`get_media_perspective`](/mcp-tools/news#get_media_perspective)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `get_news_intelligence`
+
+来自 WorldMonitor 情报层的 AI 分类地缘政治威胁新闻摘要、GDELT 情报信号、跨源信号和安全公告。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `panel_request` | string | 服务端签发的专用 News Intelligence 凭据。 |
+| `refresh` | boolean | 付费刷新；省略凭据并提供 UUID。 |
+| `request_id` | string (UUID) | 同一 UUID 重试同一刷新额度。 |
+| `topic` | string: conflict / economy / cyber / nuclear / intelligence / maritime | 将 GDELT 情报筛选为单个主题。 |
+| `category` | string | 将顶级新闻故事筛选为一个类别（例如 "conflict"、"economy"；回退为 "general"）。 |
+| `country` | string | 将顶级故事和旅行警示筛选为一个 ISO 3166-1 alpha-2 国家代码（不区分大小写）。 |
+| `alerts_only` | boolean | 仅保留标记为警报的顶级故事。 |
+| `limit` | number | 将每个列表（顶级故事、信号、公告）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **交叉印证：** 每个顶级故事都包含 `uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`、`sources` 中参与报道的媒体名称，以及 `memberTitles` 中该聚类的全部标题，另有 `lastUpdated`、`upstreamImportanceScore`、`effectiveImportanceScore` 和 `credibilityScore`（0-100 来源可靠性，与重要性不同；国家控制媒体上限为 40）。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+在 Pro 和 Pro Business 中，`get_news_intelligence` 打开一次 News Intelligence 面板只消耗一个额度。重复打开、筛选、`summary` 和 JMESPath 视图在授权窗口内复用同一完整原始快照。返回的 `panelRequest.token` 作为 `panel_request` 仅授权此工具；新闻和国家面板凭据不能授权它。显式刷新需设置 `refresh: true`，提供 UUID `request_id`，并省略读取凭据。重试同一 UUID 复用该额度。已授权凭据读取会查询当前用量，不再分配额度；用量未知时不显示数字。API 和免费账户保持逐工具计费，并拒绝这些付费控制参数。
+
+复用仍使用现有四个数据 GET 和三个元数据 GET。有效期取 30/45/60 分钟元数据期限、共享的 60 分钟 Insights 生成期限、已评估的 GDELT 内容年龄期限及面板授权期限的最早值。公告发布时间会验证，但此读取图没有独立的公告新鲜度评估。缺失、降级、格式错误、过期、未来或未评估的来源可以重试。付费读取通过 `stale` 表示已证实的生成时间过期，通过 `freshnessUnknown` 表示未评估的时钟；原始来源值保持不变。跨源生产程序允许已观察的空信号列表；空 Insights 和公告引导列表不可复用。64 次读取上限计算未缓存的工具执行次数，不是单个 Redis GET 次数。这不证明所有提供方的完整覆盖。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_news_intelligence","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_news_clusters`
+
+使用与仪表盘完全相同的 Jaccard 聚类（0.5 标题分词相似度）对实时头条摘要计算当前话题簇，因此 agent 看到的故事分组与 UI 一致。每个簇报告主标题、成员数、`distinctSourceCount`（`min_sources` 所过滤的交叉印证信号）、来源名称、热门关键词（过滤停用词与泛化词）、聚合威胁级别/类别、时间跨度，以及主来源的 `credibilityScore`（0-100 来源可靠性，与重要性不同）。服务器端主标题按新近度选取，因为摘要条目不携带每来源层级。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| `limit` | integer | 返回簇的上限（1-25）。默认 10。 |
+| `min_sources` | integer | 仅返回覆盖**不同媒体来源数**不低于该值的簇（1-10）—— 真正的交叉印证，而非同一家媒体重复发稿。默认 1。 |
+| `category` | string（枚举） | 将聚类限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`science`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
+
+- **交叉印证：** 每个簇都带有 `corroboration`，形如 `{ state, publishers }`。`state` 取值为 `corroborated`（两个及以上发布方家族，且并非全部为第 4 层级）、`single-publisher`、`tier4-only`（两个及以上家族，且每个都是已声明的第 4 层级聚合站或博客）或 `unknown`；`publishers` 统计不同的发布方家族，`state` 为 `unknown` 时为 `null`。新闻面板、地图弹窗和摘要为该故事显示相同的判定。实时提醒只携带该故事的发布方数量，因此只报告 `single-publisher` 或 `corroborated`，从不报告 `tier4-only`。它描述的是报道覆盖面，而非准确性：任何状态都不表示某条说法为真或为假。旁边的 `publishers` 名单列出每个发布方及其声明层级。
+- **来源溯源：** 每个簇都带有主媒体的 `primarySourceProvenance`，以及与 `sources` 按下标对齐的 `sourceProvenance`（`sourceProvenance[j]` 描述 `sources[j]`）。每一项给出该媒体声明的 `tier`（1–4，未登记时为 `null`）、`risk`、`type`，以及它们是否已声明和已审核（`riskDeclared`、`typeDeclared`、`riskReviewed`、`typeReviewed`）；登记了关联方时给出 `stateAffiliated`，另有 `knownBiases`（空数组表示尚未记录标签，并不代表该媒体中立）、可选的 `note`、按固定顺序列出全部事实的 `summary` 字符串，以及媒体概况：`homeCountry`、`audience`（`domestic`、`international` 或 `diaspora`）、`language` 和 `ownershipClass`，未记录概况时均为 `null`。智能体无需调用 `get_sources`，即可对同时包含一级通讯社和高风险或国家关联媒体的簇进行加权。溯源采用失败即关闭：尚未审核的媒体会报告 `risk: "unknown"` 并附上说明，绝不会默认为低风险。
+- **API 端点：** `GET /api/news/v1/list-feed-digest`
+- **类型：** 确定性本地计算 —— 每次调用对约 150-200 条摘要头条运行聚类（上游为 CDN/Redis 缓存，15 分钟节奏）。
+- **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_news_clusters","arguments":{"category":"commodities","min_sources":2,"limit":10}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_positive_events`
+
+返回缓存的正面新闻地点地图：每个条目是一个地点（name、latitude、longitude），附带提及该地点的正面基调 GDELT 批量报道计数、按报道关键词分类的类别（science-health、nature-wildlife、climate-wins、innovation-tech、humanity-kindness、culture-community）以及最新报道的时间戳。这是地点聚合桶而非单条新闻：没有标题、正文或来源 URL，且一个桶至少需要 3 条报道才会出现。由 GDELT 批量源写入种子，1 小时后标记为过期。缓存读取，无实时抓取：API 套餐权重 1，包含在已登录免费额度内。category 选择六个类别之一；limit 限制列表长度（默认 30，0 表示不限）。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `category` | string: science-health / nature-wildlife / climate-wins / innovation-tech / humanity-kindness / culture-community | 筛选为一个积极事件类别。 |
+| `limit` | number | 将事件列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/positive-events/v1/list-positive-geo-events`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **1 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_positive_events","arguments":{}}
+  }'
+```
+
+</CodeGroup>

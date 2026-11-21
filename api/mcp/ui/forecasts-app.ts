@@ -5,7 +5,6 @@ const STYLES = `
   .filters label { display: grid; gap: 4px; flex: 1; font-size: 12px; color: var(--muted); }
   .filters select { width: 100%; min-width: 0; padding: 7px; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 5px; }
   #count { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
-  #list { max-height: 560px; overflow-y: auto; overscroll-behavior: contain; }
   .fc { padding: 12px 2px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
   .fc:last-child { border-bottom: none; }
   .fc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
@@ -53,7 +52,8 @@ const BODY = `
       <label for="region">Region<select id="region"></select></label>
     </div>
     <div id="count" role="status"></div>
-    <div id="list" role="region" aria-label="Loaded forecasts" tabindex="0"></div>
+    <div id="fc-audit"></div>
+    <div id="list" role="region" aria-label="Forecasts"></div>
     <div class="foot" id="foot"></div>
     <section id="theaters" aria-label="Original active theaters"></section>
   </div>
@@ -102,6 +102,10 @@ const RENDER = `
       base_rate_placeholder: "Opened on a base-rate placeholder, not a model forecast",
       other: "Could not be resolved"
     };
+    function domainLabel(value) {
+      var words = text(value).split("_").join(" ");
+      return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
+    }
     function indexHistory(rows) {
       var result = new Map();
       var ids = new Set(preds.slice(0, 30).map(function (prediction) { return prediction.id; }));
@@ -149,19 +153,25 @@ const RENDER = `
       } else { slot.appendChild(row); slot.appendChild(el("span", "fc-sr-only", sentence)); }
       if (old) old.replaceWith(slot); else fc.appendChild(slot);
     }
-    function badge(domain) {
+    // While the audit switch withholds scores, every card would carry the same
+    // badge, so the notice is shown once above the list instead.
+    function renderAudit() {
+      var host = q("fc-audit");
+      host.textContent = "";
       var audit = object(reliability.underAudit);
-      if (text(audit.since)) {
-        var held = el("a", "fc-reliability", "Accuracy under audit");
-        held.href = "https://www.worldmonitor.app/accuracy/"; held.target = "_blank"; held.rel = "noopener noreferrer";
-        held.setAttribute("aria-label", "Accuracy under audit since " + text(audit.since) + ". Scores are withdrawn while scoring errors are corrected.");
-        held.setAttribute("data-fc-reliability-state", "under-audit");
-        return held;
-      }
+      if (!text(audit.since)) return;
+      var held = el("a", "fc-reliability", "Accuracy under audit");
+      held.href = "https://www.worldmonitor.app/accuracy/"; held.target = "_blank"; held.rel = "noopener noreferrer";
+      held.setAttribute("aria-label", "Accuracy under audit since " + text(audit.since) + ". Scores are withdrawn while scoring errors are corrected.");
+      held.setAttribute("data-fc-reliability-state", "under-audit");
+      host.appendChild(held);
+    }
+    function badge(domain) {
+      if (text(object(reliability.underAudit).since)) return null;
       if (reliability.status !== "ready" || !Array.isArray(reliability.byDomain)) return null;
       var row = reliability.byDomain.find(function (value) { return value && value.domain === domain; });
       if (!row) return null;
-      var label = domain ? domain.charAt(0).toUpperCase() + domain.slice(1) : "Forecast";
+      var label = domainLabel(domain) || "Forecast";
       var measured = row.kind === "measured" && number(row.brier) != null && number(row.yesShare) != null;
       var main = measured ? label + " n=" + row.n + " · Brier " + row.brier.toFixed(3) + " vs base rate " + (row.yesShare * (1 - row.yesShare)).toFixed(3) : "Not yet measured";
       if (reliability.stale) main = "Out of date · " + main;
@@ -172,12 +182,14 @@ const RENDER = `
     }
     var source = [];
     var generatedAt = timestamp(node.generatedAt);
-    if (generatedAt) source.push("Generated: " + generatedAt);
-    if (data.cached_at) source.push("Snapshot: " + text(data.cached_at));
-    if (node.degraded) source.push("Forecast source degraded");
-    if (data.stale || node.stale) source.push("stale cache");
-    if (text(node.error)) source.push(text(node.error).split("_").join(" "));
+    var cachedAt = timestamp(data.cached_at) || text(data.cached_at);
+    if (generatedAt) source.push("Generated " + generatedAt);
+    else if (cachedAt) source.push("Updated " + cachedAt);
+    if (data.stale || node.stale) source.push("Out of date");
+    if (node.degraded) source.push("Some forecast sources failed");
+    if (text(node.error)) source.push("The forecast source reported an error");
     q("foot").textContent = source.join(" · ");
+    renderAudit();
     if (cases.listKey === listKey && cases.updateMetadata) {
       cases.updateMetadata(reliability, d.familyOutcomes); reportSize(); return;
     }
@@ -186,6 +198,7 @@ const RENDER = `
     cases.updateMetadata = function (value, rows) {
       reliability = value;
       familyHistory = indexHistory(rows);
+      renderAudit();
       host.querySelectorAll(".fc").forEach(function (fc) {
         var old = fc.querySelector(".fc-reliability");
         var next = badge(fc.getAttribute("data-forecast-domain"));
@@ -207,14 +220,14 @@ const RENDER = `
       target.appendChild(el("h2", "", "Active theaters"));
       var value = theaterState.value;
       if (value) {
-        var status = { ready: "Completed", partial: "Partial coverage", empty: "No eligible theaters", failed: "All theaters failed", unknown: "Completion unknown", missing: "No theater outcome available", processing: "Theater outcome processing", unavailable: "Theater source unavailable" }[value.status];
-        var coverage = status + " · " + value.theaterCount + " of " + value.eligibleTheaterCount + " theaters completed · " + value.failedTheaterCount + " failed";
-        if (value.completionStatus) coverage += " · " + value.completionStatus;
-        target.appendChild(el("p", "empty", coverage));
-        if (value.runId) target.appendChild(el("p", "foot", "Source run: " + value.runId));
-        if (value.generatedAt) target.appendChild(el("p", "foot", "Theater source time: " + timestamp(value.generatedAt) + " · freshness unknown"));
+        var status = { ready: "", partial: "Some theaters are missing.", empty: "No theaters qualified this run.", failed: "Every theater failed this run.", unknown: "Whether this run finished is unknown.", missing: "No theater results are available.", processing: "Theater results are still being prepared.", unavailable: "The theater source is unavailable." }[value.status] || "";
+        var coverage = value.theaterCount + " of " + value.eligibleTheaterCount + " theaters loaded" + (value.failedTheaterCount ? "; " + value.failedTheaterCount + " failed." : ".");
+        target.appendChild(el("p", "empty", (status ? status + " " : "") + coverage));
+        var theaterTime = timestamp(value.generatedAt);
+        // The source time does not show whether the theaters are current.
+        target.appendChild(el("p", "foot", (theaterTime ? "Generated " + theaterTime + "; whether" : "Whether") + " this is current is unknown."));
         if (value.note) target.appendChild(el("p", "empty", value.note));
-        if (value.error) target.appendChild(el("p", "empty", value.error));
+        if (value.error) target.appendChild(el("p", "empty", "The theater source reported an error."));
         value.theaters.forEach(function (theater) {
           var details = el("details", "fc");
           details.appendChild(el("summary", "", theater.theaterLabel));
@@ -317,7 +330,8 @@ const RENDER = `
           });
         if (!valid) { failure("Original theater response is invalid."); return; }
         if (["unavailable", "missing", "processing", "failed"].indexOf(value.status) >= 0 && theaterState.value && theaterState.value.theaters.length) {
-          failure("Latest theater read: " + value.status + (value.error ? " · " + value.error : "") + ". Previously loaded evidence remains visible; freshness unknown."); return;
+          var why = { unavailable: "the theater source is unavailable", missing: "no theater results were found", processing: "theater results are still being prepared", failed: "every theater failed" }[value.status];
+          failure("The latest refresh did not load: " + why + ". Previously loaded evidence remains visible and may be out of date."); return;
         }
         cancel(); theaterState.value = Object.assign({}, value, { theaters: theaters }); renderTheaters();
       }
@@ -406,8 +420,7 @@ const RENDER = `
     function number(v) { return typeof v === "number" && isFinite(v) ? v : null; }
     function timestamp(v) {
       if ((typeof v !== "number" && typeof v !== "string") || !v || (typeof v === "number" && v <= 0)) return "";
-      var date = new Date(v);
-      return isFinite(date.getTime()) ? date.toISOString() : "";
+      return utcTime(v);
     }
     function strings(v) { return Array.isArray(v) ? v.map(text).filter(Boolean) : []; }
     function copy(parent, value, prefix) {
@@ -520,16 +533,17 @@ const RENDER = `
       head.appendChild(el("span", "fc-prob", pct == null ? "—" : Math.round(pct) + "%"));
       fc.appendChild(head);
       var meta = el("div", "fc-meta");
-      [p.domain, p.region, p.trend, p.timeHorizon].forEach(function (value) {
-        if (text(value)) meta.appendChild(el("span", "chip", text(value)));
+      [domainLabel(p.domain), text(p.region), text(p.trend), text(p.timeHorizon)].forEach(function (value) {
+        if (value) meta.appendChild(el("span", "chip", value));
       });
+      // One chip says what the simulation did and by how much.
       var adjustment = number(p.simulationAdjustment);
-      if (p.demotedBySimulation === true) meta.appendChild(el("span", "chip", "AI skeptical"));
-      else if (adjustment != null && adjustment !== 0) meta.appendChild(el("span", "chip", adjustment > 0 ? "AI backed" : "AI flagged"));
-      if (adjustment != null && adjustment !== 0) {
+      var adjusted = adjustment != null && adjustment !== 0;
+      var shift = adjusted ? " · " + (adjustment > 0 ? "+" : "−") + Math.round(Math.abs(adjustment) * 100) + "%" : "";
+      if (p.demotedBySimulation === true) meta.appendChild(el("span", "chip", "AI skeptical" + shift));
+      else if (adjusted) {
         var confidence = number(p.simPathConfidence);
-        var label = p.demotedBySimulation === true ? "AI flag: dropped" : adjustment < 0 ? "AI caution" : confidence != null && confidence < 0.7 ? "AI signal (moderate)" : "AI signal";
-        meta.appendChild(el("span", "chip", label + " · " + (adjustment > 0 ? "+" : "−") + Math.round(Math.abs(adjustment) * 100) + "%"));
+        meta.appendChild(el("span", "chip", (adjustment < 0 ? "AI caution" : confidence != null && confidence < 0.7 ? "AI support (moderate)" : "AI support") + shift));
       }
       if (meta.childNodes.length) fc.appendChild(meta);
       var reliabilityBadge = badge(text(p.domain));
@@ -572,7 +586,7 @@ const RENDER = `
       var values = Array.from(new Set(preds.map(function (p) { return text(p[field]); }).filter(Boolean))).sort();
       select.textContent = "";
       [""].concat(values).forEach(function (value) {
-        var option = el("option", "", value || all);
+        var option = el("option", "", value ? (field === "domain" ? domainLabel(value) : value) : all);
         option.value = value;
         select.appendChild(option);
       });
@@ -586,8 +600,13 @@ const RENDER = `
         return (!q("domain").value || text(p.domain) === q("domain").value) && (!q("region").value || text(p.region) === q("region").value);
       });
       visible.forEach(appendForecast);
-      if (!host.childNodes.length) host.appendChild(el("div", "empty", !state.available ? "Forecast data unavailable." : !preds.length ? "No forecasts available." : "No forecasts match these filters."));
-      q("count").textContent = state.available ? visible.length + " shown · " + preds.length + " of " + total + " loaded. Filters apply to this loaded result." : "Forecast coverage unavailable.";
+      if (!host.childNodes.length) host.appendChild(el("div", "empty", !state.available ? "Forecast data unavailable." : !preds.length ? "No forecasts available."
+        : preds.length < total ? "No forecasts in this response match these filters. Forecasts left out of the response were not checked."
+        : "No forecasts match these filters."));
+      var countText = visible.length === preds.length ? preds.length + (preds.length === 1 ? " forecast" : " forecasts")
+        : "Showing " + visible.length + " of " + preds.length + " forecasts";
+      if (preds.length < total) countText += "; " + (total - preds.length) + " more were not included in this response";
+      q("count").textContent = state.available ? countText + "." : "Forecast coverage unavailable.";
       reportSize();
     }
     options("domain", "domain", "All domains");

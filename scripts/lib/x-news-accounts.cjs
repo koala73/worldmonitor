@@ -926,7 +926,7 @@ function isCreditsExhaustedStatus(status) {
  * it does not heal on API time: every slot re-reads the same List, gets the same
  * off-registry author, discards the whole page in buildXListReceiptResult, and
  * is never refunded -- settle() rejects the null receipt before it reaches the
- * refund script. Left unbounded that is 5 Posts x 96 slots = 480 of the 600-Post
+ * refund script. Left unbounded that is 5 Posts x 96 slots = 480 of the 650-Post
  * daily budget spent on pages the relay throws away, while the feed goes stale
  * anyway. Reuse the auth breaker's bounded window so an operator repairing the
  * List still recovers automatically, without paying for every slot in between.

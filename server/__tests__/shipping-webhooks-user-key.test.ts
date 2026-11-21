@@ -10,6 +10,14 @@ const validateUserApiKey = vi.fn(async (key: string) => key === keyA ? { userId:
 vi.mock('../_shared/user-api-key', async (importOriginal) => ({
   ...await importOriginal<typeof import('../_shared/user-api-key')>(),
   validateUserApiKey: (...args: [string]) => validateUserApiKey(...args),
+  // The gateway resolves wm_ keys through the desktop-aware principal (plan
+  // 2026-10-25-001 U4). Delegate to the same spy so the call order these tests
+  // script (gateway first, handler second) is unchanged; an `api` principal
+  // with rank 0 is today's API customer.
+  validateUserApiKeyPrincipal: async (key: string) => {
+    const result = await validateUserApiKey(key);
+    return result ? { ...result, keyId: 'k', keyKind: 'api' as const, keyHash: hash(key), activeKeyRank: 0 } : null;
+  },
 }));
 const active = { planKey: 'api_starter', features: { tier: 2, apiAccess: true, apiRateLimit: 60, apiDailyAllowance: 1000 }, validUntil: Date.now() + 86400000 };
 let apiAccess = true;

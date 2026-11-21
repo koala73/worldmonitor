@@ -337,7 +337,7 @@ interface ChokepointFetchResult {
   hasAnyPublishedSource: boolean;
 }
 
-interface FlowEstimateEntry { currentMbd: number; baselineMbd: number; flowRatio: number; disrupted: boolean; source: string; hazardAlertLevel: string | null; hazardAlertName: string | null }
+interface FlowEstimateEntry { currentMbd: number; baselineMbd: number; flowRatio: number; disrupted: boolean; source: string; hazardAlertLevel: string | null; hazardAlertName: string | null; latestDate?: string | null }
 
 // The taxonomy record lives in server/_shared/flow-source.ts (#6113) so this
 // handler and the MCP cache tool narrow and declare from one source of truth;
@@ -408,7 +408,7 @@ function narrowServedSources(response: GetChokepointStatusResponse): GetChokepoi
       navigationalWarningsAvailable: cp.navigationalWarningsAvailable === true,
       aisSnapshotAvailable: cp.aisSnapshotAvailable === true,
       ...(cp.flowEstimate
-        ? { flowEstimate: { ...cp.flowEstimate, source: toFlowSource(cp.flowEstimate.source) } }
+        ? { flowEstimate: { ...cp.flowEstimate, source: toFlowSource(cp.flowEstimate.source), latestDate: cp.flowEstimate.latestDate ?? '' } }
         : {}),
     })),
   };
@@ -543,6 +543,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         source: toFlowSource(flowsData[cp.id]!.source),
         hazardAlertLevel: flowsData[cp.id]!.hazardAlertLevel ?? '',
         hazardAlertName: flowsData[cp.id]!.hazardAlertName ?? '',
+        latestDate: flowsData[cp.id]!.latestDate ?? '',
       } : undefined,
       warRiskTier: threatLevelToWarRiskTier(cp.threatLevel),
     };

@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { afterEach, describe, expect, test, vi } from 'vitest';
-vi.mock('../auth-session', () => ({ validateBearerToken: vi.fn() }));
+// The mint handler also wires verifyClerkSessionActive (live-session check); unreachable here
+// because an unverifiable bearer is refused first, but the mock must still export it.
+vi.mock('../auth-session', () => ({ validateBearerToken: vi.fn(), verifyClerkSessionActive: vi.fn() }));
 import { validateBearerToken } from '../auth-session';
 import { resolveClerkSession } from '../_shared/auth-session';
 import quota from '../../api/user/mcp-quota';

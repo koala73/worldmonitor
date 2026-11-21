@@ -34,6 +34,7 @@ import {
   fetchAllFirmsRegions,
   FIRMS_SOURCES,
 } from './wildfire/firms-area.mjs';
+import { observeWildfireSource, wildfireDiagnosticContext } from './wildfire/source-outcome.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -82,7 +83,7 @@ function capCanonicalPayload(data) {
   return capped;
 }
 
-async function fetchMergedWildfires() {
+async function fetchMergedWildfires({ runId }) {
   const apiKey = process.env.NASA_FIRMS_API_KEY || process.env.FIRMS_API_KEY || '';
   const cache = new Map();
   // Missing config is NOT runtime degradation. Without this refusal an absent key
@@ -94,20 +95,21 @@ async function fetchMergedWildfires() {
     process.exit(1);
   }
   console.log('  FIRMS key configured');
+  const diagnosticContext = wildfireDiagnosticContext(runId, process.env);
   const data = await mergeWildfireSourcesWithBc({
-    fetchFirms: () => fetchAllFirmsRegions(apiKey),
-    fetchCwfis: async () => fetchCwfisFires({
+    fetchFirms: () => observeWildfireSource('firms', () => fetchAllFirmsRegions(apiKey, { diagnosticContext }), diagnosticContext),
+    fetchCwfis: () => observeWildfireSource('cwfis', async () => fetchCwfisFires({
       fetchFn: globalThis.fetch, cache,
       previousSnapshot: await readSeedSnapshot(CWFIS_SNAPSHOT_KEY),
-    }),
+    }), diagnosticContext),
     // The strict read fails closed, so a transient Upstash glitch (an HTTP-200
     // body that is not JSON, a 5xx, a timeout) would otherwise exit 1 with no
     // BC snapshot to persist. A read that keeps failing still exits 1 after
     // the retries, so last-good BC state is never overwritten from a bad read.
-    fetchBcWildfire: async () => fetchBcFirePoints({
+    fetchBcWildfire: () => observeWildfireSource('bc', async () => fetchBcFirePoints({
       fetchFn: globalThis.fetch, cache,
       previousSnapshot: await withRetry(() => readSeedSnapshot(BC_SNAPSHOT_KEY, { strict: true }), 2, 500),
-    }),
+    }), diagnosticContext),
   });
   if (data.fireDetections.length === 0) {
     await persistSourceSnapshots(data).catch(error => {

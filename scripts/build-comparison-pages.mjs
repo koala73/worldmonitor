@@ -212,7 +212,8 @@ const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'worldmonitor-vs-acled',
     path: '/compare/worldmonitor-vs-acled/',
-    title: 'ACLED Alternative | World Monitor vs ACLED | World Monitor',
+    title: 'ACLED Alternative | World Monitor vs ACLED',
+    metaDescription: 'World Monitor vs ACLED: no-signup live conflict monitoring next to ACLED\'s coded-event data, compared on access tiers, latency, API and licensing.',
     h1: 'World Monitor vs ACLED',
     competitors: ['ACLED', 'myACLED'],
     claim: 'Latency and open access',
@@ -260,7 +261,8 @@ const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'worldmonitor-vs-dataminr',
     path: '/compare/worldmonitor-vs-dataminr/',
-    title: 'Dataminr Alternatives | World Monitor vs Dataminr | World Monitor',
+    title: 'Dataminr Alternatives | World Monitor vs Dataminr',
+    metaDescription: 'A Dataminr alternative with published prices: World Monitor vs Dataminr on alert latency, data domains, API access and cost, and where Dataminr wins.',
     h1: 'World Monitor vs Dataminr',
     competitors: ['Dataminr'],
     claim: 'Price at comparable alert latency',
@@ -284,7 +286,8 @@ const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'worldmonitor-vs-recorded-future',
     path: '/compare/worldmonitor-vs-recorded-future/',
-    title: 'Recorded Future Alternatives | World Monitor vs Recorded Future | World Monitor',
+    title: 'Recorded Future Alternatives Compared | World Monitor',
+    metaDescription: 'Recorded Future alternatives compared: World Monitor, Flare and MISP on price transparency, public access, domains covered and open-source licensing.',
     h1: 'World Monitor vs Recorded Future',
     competitors: ['Recorded Future', 'Flare', 'MISP'],
     claim: 'Public access and price transparency',
@@ -372,7 +375,7 @@ const COMPARISON_PAGE_SEEDS = [
     slug: 'chokepoint-monitoring-tools',
     categoryList: true,
     path: '/compare/chokepoint-monitoring-tools/',
-    title: 'Chokepoint Monitoring Tools | World Monitor',
+    title: 'Chokepoint Monitoring Tools: Hormuz, Suez | World Monitor',
     metaDescription: 'Compare chokepoint monitoring tools for Hormuz, Suez, and Malacca, with chokepoint status fused with AIS, conflict, aviation, market, and climate context.',
     h1: 'Chokepoint Monitoring Tools',
     competitors: ['IMF PortWatch', 'MarineTraffic', 'Kpler', "Lloyd's List Intelligence", 'Windward', 'SENTINEL GIP', 'straits.live'],
@@ -607,6 +610,10 @@ function comparisonWebPageLd({ name, description, url, lastmod, faqId, baseUrl }
   };
 }
 
+// The comparison is cited by answer engines; the per-waterway pages are where
+// the open/closed question is answered, and nothing on this page linked them.
+const CHOKEPOINT_STATUS_LINKS = '      <p data-chokepoint-status-links>Status by waterway: <a href="/chokepoints/strait-of-hormuz/">is the Strait of Hormuz open?</a> · <a href="/chokepoints/bab-el-mandeb/">is the Bab el-Mandeb open?</a> · <a href="/chokepoints/suez-canal/">is the Suez Canal open?</a> · <a href="/chokepoints/">all monitored chokepoints</a>.</p>';
+
 function renderMeasurement(slug, snapshotDate, escapeHtml) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate ?? '')) {
     throw new Error('Comparison measurement requires the captured snapshot date');
@@ -618,12 +625,14 @@ function renderMeasurement(slug, snapshotDate, escapeHtml) {
   return [
     '      <h2>How World Monitor measures this</h2>',
     ...renderParagraphs(paragraphs, escapeHtml),
+    ...(maritime ? [CHOKEPOINT_STATUS_LINKS] : []),
     '      <p>Coverage: the <a href="/sources/">source catalog</a> lists ' + escapeHtml(formatCount(WORLD_MONITOR_PROVIDER_COUNT)) + ' active providers across the product, not per metric. Availability varies by source and location.</p>',
     '      <p data-measurement-snapshot><a href="' + snapshotPath + '">Published ' + (maritime ? 'chokepoint status' : 'country instability') + ' snapshot</a>, captured <time datetime="' + escapeHtml(snapshotDate) + '">' + escapeHtml(snapshotDate) + '</time>. This reference remains dated when live values change.</p>',
   ];
 }
 
 function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate, relatedReading = [] }) {
+  assertTitle(page.title, page.slug);
   if (page.layout === SHORTLIST_LAYOUT) {
     return renderShortlistPage(page, {
       tpl,
@@ -758,6 +767,13 @@ function assertMetaDescription(description, label) {
   }
 }
 
+function assertTitle(title, label) {
+  const length = [...title].length;
+  if (length > 60) {
+    throw new Error(label + ' title must be at most 60 characters (got ' + length + ')');
+  }
+}
+
 /**
  * One `[title](url): description` entry per /compare/ route for llms.txt and
  * llms-full.txt (#7746). Titles are the page h1 — the query the page answers,
@@ -783,7 +799,9 @@ function renderCompareHub({ tpl, baseUrl, lastmod, snapshotDate }) {
   const { escapeHtml, breadcrumbLd, pageDocument } = tpl;
   const path = COMPARE_HUB_PATH;
   const description = COMPARE_HUB_DESCRIPTION;
+  const title = 'Compare World Monitor vs Liveuamap, ACLED, GDELT and More';
   assertMetaDescription(description, 'compare hub');
+  assertTitle(title, 'compare hub');
   const cards = COMPARISON_PAGES
     .map((page) => '        <a class="card" href="' + escapeHtml(page.path) + '"><strong>' + escapeHtml(page.h1) + '</strong><br><span>' + escapeHtml(page.claim) + '</span></a>')
     .join('\n');
@@ -829,7 +847,7 @@ function renderCompareHub({ tpl, baseUrl, lastmod, snapshotDate }) {
   return pageDocument({
     baseUrl,
     path,
-    title: 'Compare World Monitor | World Monitor',
+    title,
     description,
     lastmod,
     ogType: 'website',

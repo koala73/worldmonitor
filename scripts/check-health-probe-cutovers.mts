@@ -1,14 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { unlinkSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import {
-  isUtcIsoInstant,
-  validateAcceptanceBaseline,
-} from './check-seed-freshness.mjs';
-
-const BASELINE_URL = new URL('./seed-freshness-baseline.json', import.meta.url);
 const HEALTH_URL = new URL('../api/health.js', import.meta.url);
 
 type JsonRecord = Record<string, unknown>;
@@ -16,7 +10,12 @@ type JsonRecord = Record<string, unknown>;
 export interface CutoverValidationInput {
   baseSeedMeta: unknown;
   headSeedMeta: unknown;
-  baseline: unknown;
+  // Runtime wiring the marker proof depends on: health grants pre-activation
+  // grace only to a STANDALONE_KEYS probe (the bootstrap walk passes
+  // allowOnDemand: false) that is on-demand AND whose marker it EXISTS-probes.
+  activationMarkers: unknown;
+  onDemandKeys: unknown;
+  standaloneKeys: unknown;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -25,6 +24,28 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function seedMetaKey(config: unknown): string | null {
   return isRecord(config) && typeof config.key === 'string' ? config.key : null;
+}
+
+/**
+ * True for a real ISO calendar instant with an explicit Z or numeric timezone.
+ * Date.parse alone normalizes impossible dates such as February 30.
+ */
+export function isUtcIsoInstant(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-](\d{2}):(\d{2}))$/,
+  );
+  if (!match) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone, offsetHourText, offsetMinuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth[month - 1]) return false;
+  if (Number(hourText) > 23 || Number(minuteText) > 59 || Number(secondText) > 59) return false;
+  if (zone !== 'Z' && (Number(offsetHourText) > 23 || Number(offsetMinuteText) > 59)) return false;
+  return Number.isFinite(Date.parse(value));
 }
 
 function isHttpsUrl(value: unknown): boolean {
@@ -40,14 +61,18 @@ function isHttpsUrl(value: unknown): boolean {
  * Require every new or repointed SEED_META probe to declare how deployment
  * avoids the predictable EMPTY window before its producer first publishes.
  *
- * Pre-seed evidence lives beside the changed probe, so it is bound to the
- * exact fromKey transition. The alternative is an owner-bound baseline entry
- * whose expiry cannot outlive the first scheduled producer run.
+ * Both proofs live beside the changed probe, so they are bound to the exact
+ * fromKey transition: pre-seed evidence that the key already published, or a
+ * durable activation marker that health reads before alarming on absence. The
+ * marker counts only when health is wired to read it (ACTIVATION_MARKERS) and
+ * to soften the probe until it does (ON_DEMAND_KEYS on a STANDALONE_KEYS probe).
  */
 export function validateHealthProbeCutovers({
   baseSeedMeta,
   headSeedMeta,
-  baseline,
+  activationMarkers,
+  onDemandKeys,
+  standaloneKeys,
 }: CutoverValidationInput) {
   if (!isRecord(baseSeedMeta)) {
     throw new Error('Base SEED_META must be an object');
@@ -55,16 +80,12 @@ export function validateHealthProbeCutovers({
   if (!isRecord(headSeedMeta)) {
     throw new Error('Head SEED_META must be an object');
   }
-  validateAcceptanceBaseline(baseline);
-  if (!isRecord(baseline) || !Array.isArray(baseline.acknowledged)) {
-    throw new Error('Acceptance baseline must contain an acknowledged array');
-  }
 
   const changed: Array<{
     name: string;
     fromKey: string | null;
     toKey: string;
-    mode: 'preseed' | 'expiring-ack' | 'activation-marker';
+    mode: 'preseed' | 'activation-marker';
   }> = [];
   for (const [name, config] of Object.entries(headSeedMeta)) {
     const toKey = seedMetaKey(config);
@@ -77,7 +98,7 @@ export function validateHealthProbeCutovers({
     const cutover = isRecord(config) ? config.cutover : null;
     if (!isRecord(cutover)) {
       throw new Error(
-        `Health probe ${name} (${fromKey ?? '<new>'} -> ${toKey}) needs machine-readable pre-seed evidence, a durable activation marker, or an expiring acknowledgement`,
+        `Health probe ${name} (${fromKey ?? '<new>'} -> ${toKey}) needs machine-readable pre-seed evidence or a durable activation marker`,
       );
     }
     if (cutover.fromKey !== fromKey) {
@@ -117,25 +138,20 @@ export function validateHealthProbeCutovers({
           `Health probe ${name} activation-marker cutover must bind config.activationKey to an exact seed-activated:* key`,
         );
       }
-    } else if (cutover.mode === 'expiring-ack') {
-      if (typeof cutover.status !== 'string' || cutover.status.trim().length === 0) {
-        throw new Error(`Health probe ${name} expiring acknowledgement needs an exact health status`);
-      }
-      const acknowledgement = baseline.acknowledged.find((entry) => (
-        isRecord(entry)
-        && entry.name === name
-        && entry.status === cutover.status
-        && entry.issue === cutover.issue
-        && isRecord(entry.cutover)
-        && entry.cutover.probeKey === toKey
-      ));
-      if (!acknowledgement) {
+      if (
+        !isRecord(activationMarkers)
+        || activationMarkers[name] !== cutover.activationKey
+        || !(onDemandKeys instanceof Set)
+        || !onDemandKeys.has(name)
+        || !isRecord(standaloneKeys)
+        || !Object.hasOwn(standaloneKeys, name)
+      ) {
         throw new Error(
-          `Health probe ${name} needs an expiring acknowledgement for ${toKey} owned by #${cutover.issue}`,
+          `Health probe ${name} activation-marker cutover needs ACTIVATION_MARKERS.${name} = ${cutover.activationKey}, an ON_DEMAND_KEYS entry, and a STANDALONE_KEYS probe (bootstrap probes get no on-demand grace; use pre-seed evidence), or health never grants the pre-activation grace`,
         );
       }
     } else {
-      throw new Error(`Health probe ${name} cutover mode must be preseed, activation-marker, or expiring-ack`);
+      throw new Error(`Health probe ${name} cutover mode must be preseed or activation-marker`);
     }
 
     changed.push({ name, fromKey, toKey, mode: cutover.mode });
@@ -180,11 +196,12 @@ async function main() {
   if (!isRecord(headModule.__testing__) || !isRecord(headModule.__testing__.SEED_META)) {
     throw new Error('Current api/health.js does not export __testing__.SEED_META');
   }
-  const baseline = JSON.parse(readFileSync(BASELINE_URL, 'utf8'));
   const changed = validateHealthProbeCutovers({
     baseSeedMeta,
     headSeedMeta: headModule.__testing__.SEED_META,
-    baseline,
+    activationMarkers: headModule.__testing__.ACTIVATION_MARKERS,
+    onDemandKeys: headModule.__testing__.ON_DEMAND_KEYS,
+    standaloneKeys: headModule.__testing__.STANDALONE_KEYS,
   });
   if (changed.length === 0) {
     console.log(`Health-probe cutover check passed: no new or repointed probes since ${commit}.`);

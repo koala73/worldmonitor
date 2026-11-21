@@ -804,6 +804,35 @@ export async function establishWmKeySession(keys: { widgetKey?: string; proKey?:
   return (await establishWmKeySessionOutcome(keys)).ok;
 }
 
+/** Which HttpOnly tester-key sessions the server currently accepts. */
+export interface WmKeySessionStatus { widget: boolean; pro: boolean }
+
+/**
+ * Read GET /api/wm-session. Resolves null for any answer that is not a
+ * well-formed 200: an unknown status must never be mistaken for "no session".
+ */
+export async function fetchWmKeySessionStatus(): Promise<WmKeySessionStatus | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), fetchNewSessionTimeoutMs);
+  try {
+    const fetchImpl = nativeSessionFetch ?? globalThis.fetch;
+    const resp = await fetchImpl(toApiUrl('/api/wm-session'), {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json() as { widget?: unknown; pro?: unknown };
+    if (typeof data?.widget !== 'boolean' || typeof data?.pro !== 'boolean') return null;
+    return { widget: data.widget, pro: data.pro };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function establishWmKeySessionOutcome(keys: { widgetKey?: string; proKey?: string }): Promise<KeySessionOutcome> {
   const outcome = await mintSession(keys);
   if (!outcome.ok) {

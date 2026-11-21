@@ -9,7 +9,7 @@ import "worldmonitor/unrest/v1/list_unrest_events.proto";
 service UnrestService {
   option (sebuf.http.service_config) = {base_path: "/api/unrest/v1"};
 
-  // ListUnrestEvents retrieves protest, riot, and civil unrest events.
+  // ListUnrestEvents returns protest events seeded from ACLED, plus GDELT location mentions marked as unverified, filterable by country and time range.
   rpc ListUnrestEvents(ListUnrestEventsRequest) returns (ListUnrestEventsResponse) {
     option (sebuf.http.config) = {path: "/list-unrest-events", method: HTTP_METHOD_GET};
   }

@@ -1,0 +1,185 @@
+---
+title: "MCP tools: AI intelligence"
+sidebarTitle: "AI intelligence"
+description: "World Monitor MCP tool reference for the world brief, situation analysis and forecasts: parameters, freshness, backing API endpoints and example calls."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
+
+### `get_world_brief`
+
+Citation-grounded world intelligence brief from the same precomputed `news:insights:v1` snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional `geo_context` field is retained for client compatibility and does not alter the seeded global snapshot.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `geo_context` | string | no | Deprecated compatibility field; the precomputed global snapshot is not regenerated or refocused per request. |
+| `refresh` | boolean | no | Dedicated paid MCP allowance only: true opens a new request allocation, keyed by request_id, instead of joining the shared five-minute one. Omitted or false joins the current shared allocation. Neither regenerates the precomputed brief. |
+| `request_id` | string | no | Caller-generated UUID naming one explicit refresh; required with refresh=true. Retrying with the same UUID reuses that allocation instead of opening another. |
+| `panel_request` | string | no | The panelRequest.token returned by an earlier paid call of this tool (or supplied by the embedded view). Rereads the brief inside that allocation without opening a new one. When omitted, the call opens or joins an allocation. Do not combine with refresh. |
+
+- **API endpoints:** `GET /api/infrastructure/v1/get-bootstrap-data` (called with `?keys=insights`) — authenticated gateway read of the same `news:insights:v1` payload used by the dashboard.
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** cache-backed RPC. A paid opening uses one World Brief allocation; healthy repeat and JMESPath calls reuse the accepted original within its source and admission deadlines. Valid last-known-good content under three hours remains serveable with its stale notice, but stale content is retryable rather than cached for fresh replay. Missing, broken or older content is unavailable. No request-time LLM call. API allowances retain ordinary per-tool billing; free accounts retain the subscription denial.
+- **Sources:** returns the bounded `worldBriefSources` array published with the seeded payload in producer order. URLs are copied from explicit source records, not generated at MCP execution time; empty URL fallbacks are retained so citation indexes cannot shift.
+- **Corroboration:** each entry in `headlines` has an index-aligned entry in `topStories` (`topStories[i]` describes `headlines[i]`) carrying `sourceCount`, `uniqueSourceCount`, `corroborationSourceCount`, `entityCorroboration`, `sourceTier`, and the contributing outlet names in `sources` (capped at 12). All of it is published by the insights seeder, so nothing is computed per request. Note that this per-story `sources` is a list of outlet names, unlike the tool's top-level `sources`, which carries citation records. `memberTitles` is deliberately not returned here — it is available on `get_news_intelligence`, which has a larger output budget.
+- **Source provenance:** each `topStories[i]` also carries `sourceProvenance`, index-aligned with its `sources` (`sourceProvenance[j]` describes `sources[j]`). Each entry gives the outlet's declared `tier` (1–4, or `null` when unregistered), `risk`, `type`, whether each was declared and reviewed (`riskDeclared`, `typeDeclared`, `riskReviewed`, `typeReviewed`), `stateAffiliated` when the registry records an affiliation, `knownBiases` (curated perspective labels; an empty array means no label is recorded, not that the outlet is neutral), an optional `note`, and the outlet profile: `homeCountry`, `audience` (`domestic`, `international` or `diaspora`), `language` and `ownershipClass`, each `null` when no profile is recorded. This is the same per-outlet record `get_news_clusters` returns, without `summary`, and it shows a story that mixes a tier-1 wire with a high-risk or state-affiliated outlet, which `sourceTier` alone hides. Stories without an outlet list carry no provenance. If a response would exceed the output budget, every `note` is dropped first, then the four outlet profile fields, and only if that is not enough, every `sourceProvenance` list; `transportCoverage` then names the trimmed field with `omission_reason: "output_budget"`. Outlet names and `sourceTier` are always returned.
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: the brief's age (with the stale wording when it is served as last-known-good) and the first three headlines, read from `headlines`, never from the prose. Citations are the producer's `sources` records with URL and publication time.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_world_brief","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `analyze_situation`
+
+Run an LLM analytical deduction on a free-text geopolitical question and return `{analysis, provider, model}`: a narrative assessment and the LLM that wrote it. Text is generated from the query, optional context and optional framework (non-deterministic, up to 25 s; identical requests reuse it for an hour); it does not read a cached brief or a fixed country dataset. An empty provider result returns a source-unavailable error rather than empty text. Requires a paid plan; one live LLM request, weight 2 on API plans. Read-only; nothing is stored.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `query` | string | **yes** | The question or situation to analyze, e.g. "What are the implications of the Taiwan strait escalation for semiconductor supply chains?" |
+| `context` | string | no | Optional additional geo-political context to include in the analysis |
+| `framework` | string | no | Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT, Porter's Five Forces) |
+
+- **API endpoints:** `POST /api/intelligence/v1/deduct-situation`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"analyze_situation","arguments":{"query":"What are the implications of the Taiwan strait escalation for semiconductor supply chains?"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_forecast_predictions`
+
+AI-generated geopolitical and economic forecasts from WorldMonitor's predictive models. Covers upcoming risk events and probability assessments.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `domain` | string | Subject area to keep, matched exactly, ignoring case: conflict, market, supply_chain, political, military, cyber or infrastructure. |
+| `region` | string | Region or theater name as forecasts label it. Keeps forecasts whose region contains this text, ignoring case. |
+| `limit` | number | Maximum forecasts to return; omitted returns 30. API readers may pass 0 for every forecast. Paid interactive panels accept whole numbers 1-30. |
+| `include_history` | boolean | True attaches each forecast's probability history (up to 120 [time, probability] points over at most 30 days) and caps the list at 10 rows. Ignored in paid panel openings. |
+| `refresh` | boolean | Request a new paid panel snapshot; requires a fresh request_id. |
+| `request_id` | string | Client-generated UUID for one explicit refresh. A later refresh needs a new ID. |
+| `panel_request` | string | panelRequest.token returned by an earlier paid opening of this tool. Replays that forecast list with new filters without another allocation. |
+
+Rows also carry `firstSeenAt` (ISO time), `firstSeenProbability`, `change24h` and `change7d` (absolute probability changes). Missing or short trails return null. A region change starts a new segment; the first seed backfills only the retained history, so firstSeenAt can postdate the original publication. History points are `[isoTime, probability]` and can have sampling gaps.
+
+- **API endpoints:** `GET /api/forecast/v1/get-forecasts`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: the number of published forecasts and their age, then the two highest-probability forecasts as percentages with domain, region and the 24-hour move (omitted while the probability trail it comes from is stale). A caveat follows only when the predictions themselves are stale. Citations carry the forecast titles and `generatedAt`.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_forecast_predictions","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_forecast_case`
+
+Read one unchanged original forecast case for an exact ID and list generation. Dedicated MCP plans read it under a valid paid forecast panel admission: the existing 64-read allowance includes this read and it does not charge a new daily panel allocation. API plans cannot hold a panel and read it without `panel_request` at the tool's normal per-call weight. A changed generation returns `generation_changed` with no case. Missing source, missing ID, changed generation and oversized individual cases remain explicit. Failed cases can be retried after source recovery; successful cases are reused.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `forecast_id` | string | The id field of a row in a published forecast list, unchanged. |
+| `generated_at` | string | The predictions.generatedAt value of that same forecast list, as a string (e.g. "1762876800000"). A newer generation returns generation_changed. |
+| `panel_request` | string | Signed forecasts panel receipt. Required on dedicated MCP plans; not accepted on API plans. |
+
+- **API endpoints:** `GET /api/forecast/v1/get-forecasts`
+- **Access:** `subscription`. Dedicated MCP plans need a valid paid forecast admission, including owner, scope, expiry and entitlement checks; API plans are billed per call.
+- **Kind:** cache read of the fixed canonical forecast dataset; no arbitrary cache keys or model generation.
+- **Output budget:** 128 KB for one complete original case; no silent dossier truncation.
+- **Freshness budget:** 1.5 h; original case source notices remain separate from the opening snapshot.
+
+### `get_forecast_theaters`
+
+Read the latest original simulation theater summaries. Dedicated MCP plans read them under a valid paid forecast admission; API plans read them without `panel_request` at the tool's normal per-call weight. Preserves original paths, actors and optional roles, reactions, stabilizers, invalidators, independent source run/time and completion counts. A source timestamp does not establish freshness. Partial and unknown coverage do not become complete or empty.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `panel_request` | string | Signed forecast panel receipt from `get_forecast_predictions`. Required on dedicated MCP plans; not accepted on API plans. No other arguments are accepted. |
+
+- **API endpoint:** `GET /api/forecast/v1/get-simulation-outcome`, latest-only.
+- **Access:** `subscription` with owner, scope, expiry and entitlement checks.
+- **Allocation:** on dedicated MCP plans, shares the opening's daily allocation and 64 uncached-read budget; on API plans, each call is charged at the tool's weight. Complete validated and explicit no-eligible snapshots can replay; partial, failed, missing, processing and unknown results remain manually retryable.
+- **Output budget:** 128 KB for unchanged original evidence. Invalid or oversized source reports unavailable; no silent truncation, run selector, simulation trigger or private artifact read.
+
+### `get_forecast_scorecard`
+
+Forecast resolution scorecard with calibration, Brier/log score, domain and generation-origin breakdowns, and pending/judged resolution counts.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `view` | string: summary / archive | summary (used when omitted) returns the rolling accuracy scorecard and market-alert hit rates; archive returns one page of resolved forecasts, newest resolution first. |
+| `domain` | string | Forecast domain such as conflict or market. Keeps archive rows of that domain, matched exactly, ignoring case. Archive view only. |
+| `outcome` | string: YES / NO / VOID | Resolution to keep in archive rows: YES (it happened), NO (it did not) or VOID (voided; see voidReason). Archive view only. |
+| `forecast_id` | string | forecastId of one forecast family, matched exactly. Keeps its archive rows and adds each row's probability trajectory. Archive view only. |
+| `before` | number / string | Exclusive resolvedAt timestamp in milliseconds, or the nextBefore continuation from the previous page. |
+| `limit` | integer | Archive rows per page; omitted returns 25. A page can be shorter to fit the output budget, so follow nextBefore. |
+
+Archive responses carry `underAudit` from the stored scorecard, `archive.stale` from the archive seed-meta (36-hour budget), and `nextBefore` (null at the end). Summary responses retain their original shape. Trajectories appear only with `forecast_id`; missing trajectories are not reconstructed from other subjects. Rows use the public receipt whitelist, with no raw ledger, judge rationale, news archive items or metric paths. Most historical resolutions may be VOID. The archive does not establish forecast skill.
+
+- **API endpoints:** `GET /api/forecast/v1/get-forecast-scorecard`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **36 h** before `stale: true` is flagged (daily resolver cadence with missed-cron tolerance).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_forecast_scorecard","arguments":{}}
+  }'
+```
+
+</CodeGroup>

@@ -42,6 +42,8 @@ export const TRANSIT_DAYS_BY_ROUTE_ID: Record<string, readonly [number, number]>
   'cpec-route': [10, 16],
   'panama-transit': [1, 2],
   'transatlantic': [8, 14],
+  'us-west-northeast-asia': [10, 14],
+  'us-gulf-asia-panama': [24, 32],
 };
 
 /**
@@ -99,6 +101,14 @@ export const BYPASS_CORRIDOR_GEOMETRY_BY_ID: Record<
   hormuz_cape_of_good_hope: {
     fromPort: [56.5, 26.5], // Hormuz Strait
     toPort: [18.49, -34.36], // Cape of Good Hope
+  },
+  hormuz_east_west_pipeline: {
+    fromPort: [49.67, 25.94], // Abqaiq
+    toPort: [38.06, 24.09], // Yanbu, Red Sea
+  },
+  hormuz_adcop_pipeline: {
+    fromPort: [53.64, 23.84], // Habshan
+    toPort: [56.36, 25.17], // Fujairah, Gulf of Oman
   },
   btc_pipeline: {
     fromPort: [49.85, 40.4], // Baku

@@ -1074,7 +1074,8 @@ describe('#5697 NLP MCP tools', () => {
           ],
         },
       }, async () => {
-        const { body, pipe } = await callTool('get_news_clusters', { category: 'markets' });
+        // markets is a finance category, so the enum takes it; sports is in no edition.
+        const { body, pipe } = await callTool('get_news_clusters', { category: 'sports' });
         assert.equal(body.error?.code, -32602);
         assert.equal(body.error.data.violations[0].field, 'category');
         assert.equal(pipe.count, 0);

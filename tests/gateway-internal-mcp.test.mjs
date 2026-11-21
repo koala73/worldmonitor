@@ -208,7 +208,7 @@ function installFetchStub(opts = {}) {
     }
     if (typeof url === 'string' && url.includes('/api/internal-validate-api-key')) {
       // One dashboard key, owned by the API-tier fixture above.
-      return new Response(JSON.stringify({ userId: API_KEY_OWNER_ID }), {
+      return new Response(JSON.stringify({ id: 'key_dashboard', userId: API_KEY_OWNER_ID, keyKind: 'api' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });

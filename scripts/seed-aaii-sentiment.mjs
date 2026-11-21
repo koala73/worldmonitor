@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, readCanonicalValue, httpRetryError } from './_seed-utils.mjs';
+import { readBoundedResponseBytes } from './_china-exchange-transport.mjs';
 loadEnvFile(import.meta.url);
 
 const AAII_KEY = 'market:aaii-sentiment:v1';
-const AAII_TTL = 604800; // 7 days (weekly data)
+// Weekly survey: 21 days is 3x the cron and outlives health's 14-day stale gate,
+// so one missed run reports STALE_SEED instead of an empty panel.
+const AAII_TTL = 21 * 24 * 3600;
 
 const AAII_HTML_URL = 'https://www.aaii.com/sentimentsurvey';
 
@@ -343,7 +346,7 @@ export function parseHtmlSentiment(html) {
 
   // Current page: <div class="ssv2-snum bull">36.9%</div>, one per bull/neut/bear.
   const byClass = {};
-  for (const m of html.matchAll(/class="ssv2-snum\s+(bull|neut|bear)"[^>]*>\s*([\d.]+)%/g)) {
+  for (const m of html.matchAll(/class="ssv2-snum\s+(bull|neut|bear)"[^<>]{0,64}>\s*([\d.]+)%/g)) {
     byClass[m[1]] ??= parseFloat(m[2]);
   }
   if (byClass.bull != null && byClass.neut != null && byClass.bear != null) {
@@ -358,7 +361,7 @@ export function parseHtmlSentiment(html) {
   }
 
   // Pre-2026-10 page: tableTxt cells in Bullish, Neutral, Bearish order.
-  const pcts = [...html.matchAll(/<td[^>]*class="tableTxt"[^>]*>([\d.]+)%/g)]
+  const pcts = [...html.matchAll(/<td[^<>]*class="tableTxt"[^<>]*>([\d.]+)%/g)]
     .map(m => parseFloat(m[1]));
 
   if (pcts.length >= 3) {
@@ -371,6 +374,13 @@ export function parseHtmlSentiment(html) {
     });
   }
   return rows;
+}
+
+// Far above any real survey page; a runaway body is cancelled here.
+export const MAX_AAII_PAGE_BYTES = 5 * 1024 * 1024;
+
+export async function readAaiiPage(resp) {
+  return new TextDecoder().decode(await readBoundedResponseBytes(resp, MAX_AAII_PAGE_BYTES));
 }
 
 async function fetchAaiiSentiment({ fetchDeadlineAtMs }) {
@@ -396,7 +406,7 @@ async function fetchAaiiSentiment({ fetchDeadlineAtMs }) {
       else if (Number.isFinite(retryAt)) err.retryAfterMs = Math.max(0, retryAt - Date.now());
       throw err;
     }
-    data = parseHtmlSentiment(await resp.text());
+    data = parseHtmlSentiment(await readAaiiPage(resp));
   } catch (e) {
     // AAII's crawl delay also applies to retries after transport failures.
     if (!e.nonRetryable) {

@@ -26,6 +26,7 @@ import { AI_DATA_CENTERS } from '../config/ai-datacenters';
 import { UNDERSEA_CABLES, NUCLEAR_FACILITIES, ECONOMIC_CENTERS, SPACEPORTS, CRITICAL_MINERALS } from '../config/geo-map';
 import type { PositiveGeoEvent } from '../services/positive-events-geo';
 import type { KindnessPoint } from '../services/kindness-data';
+import type { PassTrack, TrackPoint } from '../services/orbital/track-geometry';
 import type { SpeciesRecovery } from '../services/conservation-data';
 import type { RenewableInstallation } from '../services/renewable-installations';
 import type {
@@ -199,6 +200,9 @@ type MapHarness = {
   getProtestClusterCount: () => number;
   getOverlaySnapshot: () => OverlaySnapshot;
   getCyberTooltipHtml: (indicator: string) => string;
+  setOrbitalTrack: (track: PassTrack | null, marker?: TrackPoint | null) => void;
+  setOrbitalTarget: (point: { lat: number; lon: number; lines?: string[] } | null) => void;
+  moveOrbitalMarkerCountingRenders: (points: TrackPoint[]) => Promise<{ renders: number; marker: unknown }>;
   showChinaCorridor: (index?: number) => void;
   runTradeAnimationProfile: (
     options?: TradeAnimationProfileOptions,
@@ -217,7 +221,7 @@ declare global {
 const englishResourcesReady = new Promise<void>((resolve) => {
   window.addEventListener(I18N_RESOURCES_LOADED_EVENT, () => resolve(), { once: true });
 });
-await initI18n();
+await initI18n({ waitForFullTranslation: true });
 if (t('components.deckgl.layerWarningTitle').startsWith('components.')) {
   await englishResourcesReady;
 }
@@ -1831,6 +1835,7 @@ const ensureDeterministicStyles = (): void => {
       transition: none !important;
     }
 
+    body.${DETERMINISTIC_BODY_CLASS} .map-distance-control,
     body.${DETERMINISTIC_BODY_CLASS} .deckgl-controls,
     body.${DETERMINISTIC_BODY_CLASS} .deckgl-time-slider,
     body.${DETERMINISTIC_BODY_CLASS} .deckgl-layer-toggles,
@@ -1994,6 +1999,28 @@ window.__mapHarness = {
   getOverlaySnapshot,
   getCyberTooltipHtml,
   runTradeAnimationProfile,
+  setOrbitalTrack: (track: PassTrack | null, marker: TrackPoint | null = null): void => {
+    map.setOrbitalTrack(track, marker);
+  },
+  setOrbitalTarget: (point: { lat: number; lon: number; lines?: string[] } | null): void => {
+    map.setOrbitalTarget(point ? { lines: [], ...point } : null);
+  },
+  moveOrbitalMarkerCountingRenders: async (points: TrackPoint[]): Promise<{ renders: number; marker: unknown }> => {
+    const target = map as unknown as { render: () => void; renderRafId: number | null; committedLayers?: Array<{ id: string; props?: { data?: unknown } }> | null };
+    for (let frame = 0; target.renderRafId !== null && frame < 60; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    const render = target.render;
+    let renders = 0;
+    target.render = () => { renders += 1; render.call(target); };
+    try {
+      for (const point of points) map.setOrbitalTrackMarker(point);
+    } finally {
+      target.render = render;
+    }
+    const data = target.committedLayers?.find((layer) => layer.id === 'orbital-track-marker-layer')?.props?.data;
+    return { renders, marker: Array.isArray(data) ? data[0] : null };
+  },
   showChinaCorridor: (index = 0): void => {
     const definition = CHINA_LOGISTICS_CORRIDORS[index] ?? CHINA_LOGISTICS_CORRIDORS[0]!;
     map.setChinaCorridorSelection({

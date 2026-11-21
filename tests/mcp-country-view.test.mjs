@@ -57,7 +57,8 @@ describe('country view MCP boundary', () => {
     assert.equal(body.result.structuredContent.panelRequest.usage.remaining, 49);
     const listed = await handler(proReq('POST', { jsonrpc: '2.0', id: 1, method: 'tools/list' }), makeProDeps().deps);
     const tool = (await listed.json()).result.tools.find(tool => tool.name === 'open_country_brief');
-    assert.equal(tool._meta.ui.resourceUri, 'ui://worldmonitor/country-view-v3.html');
+    assert.equal(tool._meta.ui.resourceUri, 'ui://worldmonitor/country-view-v4.html');
+    assert.equal(tool._meta['ui/resourceUri'], 'ui://worldmonitor/country-view-v4.html');
     assert.equal(requests.length, 0);
     const invalid = await invoke('open_country_brief', { country_code: 'not-a-country' });
     assert.equal(invalid.body.error.code, -32602);
@@ -329,6 +330,50 @@ describe('country view MCP boundary', () => {
     assert.equal(response.status, 403); assert.equal(body.error.data.code, 'subscription_lapsed');
     assert.ok(requests.length >= 1 && requests.length <= 3); assert.ok(requests.every(request => request.init.signal.aborted));
   });
+  it('serves Malaysia monthly SITC trade through the existing section tool, signed and Malaysia-only', async () => {
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify({ country: 'MY', series: [{ section: '7', label: 'Machinery', months: [{ month: '2026-09', exports: 1, imports: 2 }] }], upstreamUnavailable: false }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const { body } = await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: { months: 12 } });
+    assert.equal(body.result.structuredContent.state, 'ready');
+    const url = new URL(requests[0].url);
+    assert.equal(url.pathname, '/api/trade/v1/get-monthly-sitc-trade');
+    assert.equal(url.searchParams.get('country'), 'MY');
+    assert.equal(url.searchParams.get('months'), '12');
+    assert.equal(requests[0].init.headers['X-WM-MCP-User-Id'], PRO_USER_ID);
+    // The DOSM source covers Malaysia only; another reporter or an out-of-range
+    // window is refused before any request leaves the server.
+    for (const args of [{ country: 'SG' }, { months: 241 }, { months: 0 }]) {
+      assert.equal((await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: args })).body.error.code, -32602, JSON.stringify(args));
+    }
+    assert.equal(requests.length, 1);
+  });
+  it('reports monthlyTrade as unavailable, not as zero trade, when the seed or cache read is missing', async () => {
+    // The handler answers a missing seed or a failed Redis read with an empty
+    // series; an empty series must not read as a month of no trade.
+    for (const payload of [{ country: 'MY', series: [], upstreamUnavailable: true, unavailableReason: 'seed_missing' }, { country: 'MY', series: [], upstreamUnavailable: false }]) {
+      globalThis.fetch = async () => new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      const { body } = await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: {} });
+      assert.equal(body.result.structuredContent.state, 'unavailable', JSON.stringify(payload));
+      assert.equal(body.result.structuredContent.value, undefined);
+    }
+  });
+  it('keeps the largest monthlyTrade window inside the section output budget', async () => {
+    // 240 months of all 11 SITC sections, every month carrying all four indices
+    // (the worst case; the indices start in 2015), at full-width values.
+    const month = { month: '2026-09', exports: 4834780427.12, imports: 3834780427.55, exportsUnitValueIndex: 123.4, exportsVolumeIndex: 101.2, importsUnitValueIndex: 110.5, importsVolumeIndex: 99.8 };
+    const series = Array.from({ length: 11 }, (_, i) => ({ section: String(i), label: 'Machinery and transport equipment', months: Array.from({ length: 240 }, () => month) }));
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify({ country: 'MY', currency: 'MYR', source: 'DOSM Monthly Trade by SITC Section', sourceUrl: 'https://open.dosm.gov.my/data-catalogue/trade_sitc_1d', indexBase: '2010=100', latestMonth: '2026-09', latestIndexMonth: '2026-08', fetchedAt: 1763400000000, series }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const { body } = await invoke('get_country_brief_section', { section: 'monthlyTrade', arguments: { months: 240 } });
+    const result = body.result.structuredContent;
+    assert.equal(result._budget_exceeded, undefined);
+    assert.equal(result.state, 'ready');
+    assert.equal(result.value.series.length, 11);
+  });
   it('keeps unrelated section projection shape unchanged', async () => {
     const { body } = await invoke('get_country_brief_section', { section: 'facts', arguments: { country_code: 'US' }, jmespath: 'value.countryCode' });
     assert.deepEqual(body.result.structuredContent, { projection: 'US' });
@@ -344,6 +389,25 @@ describe('country view MCP boundary', () => {
     assert.equal(requests[0].init.headers['X-WM-MCP-User-Id'], PRO_USER_ID);
     assert.match(requests[0].init.headers['X-WM-MCP-Internal'], /^\d+\./);
     assert.equal(deps.pipe.count, 1);
+  });
+  it('returns only the country\'s strategic reservoirs with their pass dates, and unknown for a missing snapshot', async () => {
+    const reservoir = (id, country) => ({ id, name: id, country, latest: { date: '2026-09-06', levelM: 79.1, madM: 0.1, segmentCount: 4, ageDays: 69 }, seasonalZ: -2.2, status: 'low', series: [] });
+    let snapshot = { reservoirs: [reservoir('kremenchuk', 'UA'), reservoir('gerd', 'ET'), reservoir('dnipro', 'ua')], fetchedAt: 1794700000000, dataAvailable: true, methodology: 'ICESat-2 ATL13' };
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify(snapshot), { headers: { 'Content-Type': 'application/json' } });
+    };
+    const { body } = await invoke('get_country_brief_section', { section: 'reservoirs', arguments: { country_code: 'UA' } });
+    const result = body.result.structuredContent;
+    assert.equal(result.state, 'ready', JSON.stringify(body));
+    assert.equal(result.value.countryCode, 'UA');
+    assert.deepEqual(result.value.reservoirs.map(r => [r.id, r.latest.date]), [['kremenchuk', '2026-09-06'], ['dnipro', '2026-09-06']]);
+    const url = new URL(requests[0].url);
+    assert.equal(url.pathname, '/api/climate/v1/list-reservoir-levels');
+    assert.equal(url.search, '');
+    snapshot = { reservoirs: [], fetchedAt: 0, dataAvailable: false, methodology: '' };
+    const missing = (await invoke('get_country_brief_section', { section: 'reservoirs', arguments: { country_code: 'UA' } })).body.result.structuredContent;
+    assert.equal(missing.state, 'unavailable');
   });
   it('rejects oversized Atlas responses before JSON parsing and cancels their bodies', async () => {
     for (const headers of [{ 'Content-Length': '524289' }, {}]) {
@@ -494,7 +558,8 @@ describe('country view MCP boundary', () => {
     const { UI_RESOURCE_LIST_RESPONSE } = await import('../api/mcp/ui/registry.ts');
     const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
     assert.deepEqual([...card.metadata.mcpApps.uiResources].sort(), UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri).sort());
-    assert.match(card.metadata.mcpApps.note, /open_country_brief → country-view-v3\.html/);
+    assert.match(card.metadata.mcpApps.note, /open_country_brief → country-view-v4\.html/);
+    assert.match(card.metadata.mcpApps.note, /open_news_dashboard → news-dashboard-v4\.html/);
     const { parseMcpAppsInventory } = await import('../scripts/docs-stats.mjs');
     assert.deepEqual(parseMcpAppsInventory().uiResources.sort(), UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri).sort());
   });
@@ -511,5 +576,19 @@ describe('country view MCP boundary', () => {
     assert.equal(outage.response.status, 503);
     assert.equal(outage.response.headers.get('Retry-After'), '5');
     assert.ok(outage.body.error);
+  });
+});
+
+describe('get_country_brief_section reader count', () => {
+  it('states the number of readers it actually exposes', async () => {
+    const { COUNTRY_READERS } = await import('../shared/country-brief-host.ts');
+    const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
+    const tool = TOOL_REGISTRY.find((entry) => entry.name === 'get_country_brief_section');
+    const count = Object.keys(COUNTRY_READERS).length;
+    assert.match(tool.description, new RegExp(`\\b${count} readers selected by section\\b`));
+    // The section field leaves the count to its enum; if it ever states one, it must be current.
+    const stated = tool.inputSchema.properties.section.description.match(/\b(\d+) (?:fixed )?readers\b/);
+    if (stated) assert.equal(Number(stated[1]), count);
+    assert.equal(tool.inputSchema.properties.section.enum.length, count);
   });
 });

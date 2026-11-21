@@ -2,6 +2,7 @@ import type { EffectiveTariffRate } from '@/generated/client/worldmonitor/trade/
 import type { CountrySignalCounts } from '@/types';
 import type { CountryScore } from '@/services/country-instability';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
+import type { ImageryChangeContext, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
 import type { GetCountryChokepointIndexResponse, GetCountryVulnerabilitiesResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
@@ -20,6 +21,9 @@ export interface CountryIntelData {
   skipped?: boolean;
   reason?: string;
   fallback?: boolean;
+  accessNotice?: 'sign-in' | 'pro' | 'unavailable';
+  /** The brief is one signal per line (no sentences), not prose. */
+  signalRows?: boolean;
   sources?: BriefSource[];
   evidence?: IntelBriefEvidence[];
 }
@@ -195,6 +199,7 @@ export interface CountryEnergyProfileData {
   sprSource: string;
   sprAsOf: string;
   sprAvailable: boolean;
+  regionalEnergyFeeds?: RegionalEnergyFeed[];
 }
 
 export interface CountryPortActivityData {
@@ -211,6 +216,8 @@ export interface CountryPortActivityData {
     anomalySignal: boolean;
   }[];
   fetchedAt: string;
+  // The API's last data for a country PortWatch has not refreshed in 7+ days.
+  stale?: boolean;
 }
 
 export interface CountryBriefPanel {
@@ -222,6 +229,8 @@ export interface CountryBriefPanel {
   getCode(): string | null;
   getName(): string | null;
   isVisible(): boolean;
+  /** A map click or map menu is opening this brief: closing it returns focus to `target`. */
+  returnFocusTo?(target: HTMLElement): void;
   getTimelineMount(): HTMLElement | null;
   readonly signal: AbortSignal;
   onClose(cb: () => void): void;
@@ -232,7 +241,8 @@ export interface CountryBriefPanel {
   updateInfrastructure(code: string): void;
   showGeoError?(onRetry: () => void): void;
   updateScore?(score: CountryScore | null, signals: CountrySignalCounts): void;
-  isFallbackBrief?(): boolean;
+  /** True when the shown brief is the one-signal-per-line fallback, not prose. */
+  isSignalRowsBrief?(): boolean;
   updateSignals?(signals: CountrySignalCounts, notes?: readonly string[]): void;
   getSignalCounts?(): CountrySignalCounts | null;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
@@ -245,6 +255,7 @@ export interface CountryBriefPanel {
   updateChinaCountrySummary?(data: ChinaCountrySummaryData): void;
   updateCountryFacts?(data: CountryFactsData): void;
   updateEnergyProfile?(data: CountryEnergyProfileData): void;
+  updateReservoirContext?(code: string, reservoirs: import('@/services/climate').ReservoirLevel[]): void;
   updateMaritimeActivity?(data: CountryPortActivityData): void;
   updateTradeExposure?(data: GetCountryChokepointIndexResponse | null, sectors?: SectorExposureSummary[]): void;
   maximize?(): void;
@@ -253,6 +264,8 @@ export interface CountryBriefPanel {
   onStateChange?(cb: (state: { visible: boolean; maximized: boolean }) => void): void;
   updateNationalDebt?(entry: { debtToGdp: number; debtUsd: number; annualGrowth: number; source: string } | null): void;
   updateSanctionsPressure?(data: { entryCount: number; sanctionsActive?: boolean } | null): void;
+  updateImageryChange?(context: ImageryChangeContext | null): void;
+  updateNo2Activity?(reading: import('@/services/economic/no2-activity').No2CountryReading): void;
   updateComtradeFlows?(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void;
   updateTariffTrends?(data: CountryTariffTrendsData | null): void;
   updateMultiSectorCostShock?(data: MultiSectorShockResponse | null): void;

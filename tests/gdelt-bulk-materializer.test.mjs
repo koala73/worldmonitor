@@ -7,6 +7,7 @@ import {
   buildGdeltCountryIndex,
   extractGdeltBulkCsv,
   GDELT_COUNTRY_INDEX_WINDOW_MS,
+  gdeltHeadlineDedupeKey,
   MAX_ARTICLES_PER_COUNTRY,
   materializeGdeltBulk,
   parseGdeltBulkDescriptors,
@@ -357,6 +358,169 @@ describe('GDELT bulk derived products', () => {
       '2026-07-29T12:00:00.000Z',
       '2026-07-30T12:00:00.000Z',
     ]);
+  });
+
+  it('deduplicates verbatim syndicated headlines across domains and trailing publisher suffixes (#11064)', () => {
+    const nowMs = Date.parse('2026-07-30T12:05:00Z');
+    const records = parseGdeltGkgCsv([
+      gkgRow({
+        id: 'syn-1',
+        timestamp: '20260730120000',
+        domain: 'milwaukeesun.com',
+        url: 'https://milwaukeesun.com/news/xi-protectionism',
+        title: 'Xi vows to resist protectionism as Putin attacks Western tariffs',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'syn-2',
+        timestamp: '20260730120000',
+        domain: 'birminghamstar.com',
+        url: 'https://birminghamstar.com/news/xi-protectionism',
+        title: 'Xi vows to resist protectionism as Putin attacks Western tariffs - Birmingham Star',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'syn-3',
+        timestamp: '20260730120000',
+        domain: 'irishsun.com',
+        url: 'https://irishsun.com/news/xi-protectionism',
+        title: 'Xi vows to resist protectionism as Putin attacks Western tariffs | Irish Sun',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'syn-nonlatin-1',
+        timestamp: '20260730120000',
+        domain: 'arabic1.example',
+        url: 'https://arabic1.example/a',
+        title: 'مناورات بحرية في البحر الأحمر',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'syn-nonlatin-2',
+        timestamp: '20260730120000',
+        domain: 'arabic2.example',
+        url: 'https://arabic2.example/b',
+        title: 'تحركات عسكرية على الحدود الشمالية',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'distinct-1',
+        timestamp: '20260730115900',
+        domain: 'reuters.com',
+        url: 'https://reuters.com/world/iran-us-talks',
+        title: 'Iran - US talks resume',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'clause-ukraine',
+        timestamp: '20260730115800',
+        domain: 'reuters.com',
+        url: 'https://reuters.com/world/aid-ukraine',
+        title: 'Military aid package approved today - Ukraine',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'clause-israel',
+        timestamp: '20260730115800',
+        domain: 'apnews.com',
+        url: 'https://apnews.com/world/aid-israel',
+        title: 'Military aid package approved today - Israel',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'hindi-1',
+        timestamp: '20260730115700',
+        domain: 'hindi1.example',
+        url: 'https://hindi1.example/pul',
+        title: 'भारत में पुल गिरा',
+        themes: 'MILITARY,1',
+      }),
+      gkgRow({
+        id: 'hindi-2',
+        timestamp: '20260730115700',
+        domain: 'hindi2.example',
+        url: 'https://hindi2.example/pol',
+        title: 'भारत में पोल गिरा',
+        themes: 'MILITARY,1',
+      }),
+    ].join('\n'));
+
+    const previous = {
+      intel: {
+        topics: [{
+          id: 'military',
+          fetchedAt: '2026-07-30T11:45:00.000Z',
+          articles: [{
+            title: 'Xi vows to resist protectionism as Putin attacks Western tariffs',
+            url: 'https://dailyadvance.com/news/xi-protectionism-earlier',
+            source: 'dailyadvance.com',
+            date: '20260730T114500Z',
+            image: '',
+            language: 'English',
+            tone: -1,
+          }],
+        }],
+      },
+    };
+
+    const result = materializeGdeltBulk({
+      batches: [{ timestamp: '20260730120000', records }],
+      previous,
+      nowMs,
+    });
+
+    const military = result.intel.topics.find((topic) => topic.id === 'military');
+    // All 4 copies of the Xi story (3 fresh across domains + 1 prior) collapse to 1,
+    // while distinct trailing clauses (- Ukraine vs - Israel), Hindi vowel marks
+    // (पुल vs पोल), distinct Arabic stories, and short hyphenated titles are preserved.
+    assert.deepEqual(military.articles.map((article) => article.url), [
+      'https://arabic1.example/a',
+      'https://arabic2.example/b',
+      'https://birminghamstar.com/news/xi-protectionism',
+      'https://reuters.com/world/iran-us-talks',
+      'https://apnews.com/world/aid-israel',
+      'https://reuters.com/world/aid-ukraine',
+      'https://hindi1.example/pul',
+      'https://hindi2.example/pol',
+    ]);
+  });
+
+  it('strips an acronym publisher label ("- BBC News") only for its own domain', () => {
+    const headline = 'Military leaders announce new border deployment';
+    const key = gdeltHeadlineDedupeKey(headline, 'example.com');
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - BBC News`, 'bbc.com'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} | BBC News`, 'bbc.co.uk'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - CNN`, 'cnn.com'), key);
+    // A label after a different outlet's acronym, or a non-label word, is not stripped.
+    assert.notEqual(gdeltHeadlineDedupeKey(`${headline} - BBC News`, 'cnn.com'), key);
+    assert.notEqual(gdeltHeadlineDedupeKey(`${headline} - BBC Verify`, 'bbc.com'), key);
+  });
+
+  it('keys publisher suffixes on the registrable domain label and keeps topical suffixes', () => {
+    const headline = 'Military aid package approved today by lawmakers';
+    const key = gdeltHeadlineDedupeKey(headline, 'example.com');
+    // Subdomains and hyphenated names still identify the publisher.
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - BBC News`, 'news.bbc.co.uk'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - CNN`, 'edition.cnn.com'), key);
+    // A short outlet name under a country TLD is the publisher, not a second-level suffix.
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - CNN`, 'news.cnn.gr'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - ABC News`, 'abc.net.au'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - Al-Jazeera`, 'aljazeera.com'), key);
+    assert.equal(gdeltHeadlineDedupeKey(`${headline} - The Times of Israel`, 'timesofisrael.com'), key);
+    // A subject word that merely appears inside the domain is not a publisher tag.
+    assert.notEqual(gdeltHeadlineDedupeKey(`${headline} - Israel`, 'timesofisrael.com'), key);
+    assert.notEqual(gdeltHeadlineDedupeKey(`${headline} - Kyiv`, 'kyivindependent.com'), key);
+  });
+
+  it('folds Latin accents but keeps marks that distinguish words in other scripts', () => {
+    assert.equal(
+      gdeltHeadlineDedupeKey('Côte d’Ivoire holds a presidential election today'),
+      gdeltHeadlineDedupeKey('Cote d’Ivoire holds a presidential election today'),
+    );
+    assert.notEqual(
+      gdeltHeadlineDedupeKey('Мой друзья пошли на рынок вчера'),
+      gdeltHeadlineDedupeKey('Мои друзья пошли на рынок вчера'),
+    );
   });
 
   it('keeps an unchanged topic timeline and its source freshness old', () => {

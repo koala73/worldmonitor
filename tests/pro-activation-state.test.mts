@@ -867,6 +867,7 @@ describe('buildCriticalAlertsPayload — alerts step write delta (U5)', () => {
       enabled: true,
       channels: ['web_push'],
       sensitivity: 'critical',
+      seedCountriesFromFollowed: true,
     });
   });
 
@@ -889,7 +890,14 @@ describe('buildCriticalAlertsPayload — alerts step write delta (U5)', () => {
       enabled: true,
       channels: ['web_push'],
       sensitivity: 'critical',
+      seedCountriesFromFollowed: true,
     });
+  });
+  // #10873: a realtime rule with no countries gets global critical events only,
+  // so the seed path asks the server to scope it to the followed countries.
+  it('asks the server to seed countries on the seed path only', () => {
+    assert.equal(buildCriticalAlertsPayload([], false).seedCountriesFromFollowed, true);
+    assert.equal(buildCriticalAlertsPayload(['email'], true).seedCountriesFromFollowed, undefined);
   });
 });
 
@@ -987,6 +995,48 @@ describe('summarizeActivationExit — funnel exit completion state', () => {
       ]),
       { completion: 'partial', verified: 1, pending: 1, failed: 0, total: 2 },
     );
+  });
+});
+
+describe('buildActivationSteps — About-you final step (U3)', () => {
+  it('appends about after power when the profile is due', () => {
+    const steps = buildActivationSteps(caps(), config({ aboutYouStatus: 'due' }));
+    assert.deepEqual(steps.map((s) => s.id), ['brief', 'alerts', 'power', 'about']);
+    assert.equal(steps.at(-1)?.state, 'confirmable');
+  });
+
+  it('is already-done when the profile is answered', () => {
+    const about = buildActivationSteps(caps(), config({ aboutYouStatus: 'answered' })).find((s) => s.id === 'about');
+    assert.equal(about?.state, 'already-done');
+  });
+
+  it('is omitted when the profile was skipped: a skip means do not ask, and "we have your answers" would be false', () => {
+    const steps = buildActivationSteps(caps(), config({ aboutYouStatus: 'skipped' }));
+    assert.deepEqual(steps.map((s) => s.id), ['brief', 'alerts', 'power']);
+  });
+
+  it('is omitted when the profile status is unreadable', () => {
+    for (const status of [null, undefined]) {
+      const steps = buildActivationSteps(caps(), config({ aboutYouStatus: status }));
+      assert.deepEqual(steps.map((s) => s.id), ['brief', 'alerts', 'power']);
+    }
+  });
+
+  it('stays out of the persisted outcome buckets; the profile records it', () => {
+    const buckets = buildActivationOutcomeBuckets([
+      { id: 'brief', outcome: 'confirmed' },
+      { id: 'about', outcome: 'skipped' },
+    ]);
+    assert.deepEqual(buckets, { confirmedSteps: ['brief'], skippedSteps: [], blockedSteps: [], failedSteps: [] });
+  });
+
+  it('a skipped about step alone does not raise the finish-setup chip', () => {
+    const results = [
+      { id: 'brief', outcome: 'confirmed' },
+      { id: 'power', outcome: 'done' },
+      { id: 'about', outcome: 'skipped' },
+    ] as const;
+    assert.equal(shouldShowFinishSetupChip(results, null, null, Date.now()), false);
   });
 });
 

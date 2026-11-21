@@ -1,0 +1,169 @@
+---
+title: "MCP tools: Markets & prices"
+sidebarTitle: "Markets & prices"
+description: "World Monitor MCP tool reference for market quotes, gold, stock and company research, and prediction markets: parameters, freshness, backing API endpoints and example calls."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
+
+### `get_market_data`
+
+Real-time equity quotes, commodity prices, SGE physical-vs-COMEX gold and silver premiums, physical-premium divergence regimes, crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache. Covers the curated symbol universe only. `symbols` filters that snapshot rather than looking up arbitrary tickers, so an unseeded ticker returns nothing instead of triggering a fetch.
+
+Brent and WTI quote rows identify the provider in `priceSource`, futures or spot in `priceBasis`, and the observation time in `priceAt` (epoch milliseconds). Yahoo Finance supplies futures quotes. Alpha Vantage supplies daily spot prices on the scheduled seed path when available. For daily spot, midnight UTC represents the provider's observation date. Undated quotes are marked `stale`.
+
+Daily spot prices go stale after four days.
+
+Futures quotes use a 30-minute bound during normal NYMEX trading. The daily break runs from 17:00 to 18:00 New York time. The weekend closure runs from Friday at 17:00 to Sunday at 18:00. These closures extend the bound through 30 minutes after trading resumes. This schedule accounts for daylight saving time. The checked-in CME energy holiday sessions for 2026–2027 also extend this bound, including early halts. Quotes already stale before a halt remain stale. Unlisted dates use regular hours; exceptional closures are not detected automatically. Invalid or future observation times remain stale.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `symbols` | `array<string>` | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium and divergence aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
+| `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | Datasets to keep: equity (stock quotes), commodity (commodity quotes, physical premiums and divergence), crypto, sectors (sector performance), etf (ETF flows), gulf (Gulf-market quotes), sentiment (Fear & Greed). Omit for all. |
+| `limit` | number | Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap). |
+| `refresh` | boolean | Reload the curated snapshot with one new paid panel allocation. Default false reuses the current market panel. Requires request_id; omit panel_request when refreshing. |
+| `request_id` | string | Client-generated UUID that names one refresh. Retries with the same ID reuse one paid allocation and its original expiry. |
+| `panel_request` | string | panelRequest.token returned by an earlier paid opening of this tool. Reads the same curated panel with new filters without another allocation. API allowances do not accept it. |
+
+- **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-divergence-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for the initial market panel. Subsequent curated filters and repeated opens reuse that admission within its five-minute window. The result's `panelRequest.token` can be passed as `panel_request` for authorized reads until expiry. A new refresh UUID spends one new allocation. API plans retain weighted per-tool billing. Free-account calls retain their daily free allowance.
+- **Source scope:** filters select already-seeded quotes. Neither a receipt nor refresh fetches an arbitrary symbol, an account watchlist, or new provider data. Unavailable or stale results remain eligible for retry under the same valid receipt. An upstream failure does not refund the initial allocation.
+- **Physical datasets are subscription-only:** `physical-premium` and `physical-divergence` carry the same data as the Pro-only (tier 1) REST routes — see [Pro Intelligence Suite](/pro-intelligence-suite). A signed-in free account gets the quotes, sectors, ETF flows and Fear & Greed index but not these two: they are never read for it, they are absent from `data`, and the response names them in `locked` beside an `upgradeUrl`. Read `locked` as "not on your plan", not as "no data". Before this change the bundle served both to free accounts as a deliberate exception from #7433; the exception is closed.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** the `stale` flag tracks the market and sector snapshots only (**30 min** each). The daily `physicalPremiums` and `physicalDivergence` datasets are monitored on `/api/health` instead. Read their timestamps and the divergence state when age matters. The divergence method is documented in [Physical Precious-Metals Divergence Index](/methodology/physical-divergence-index).
+- Sector `valuationCoverage` separates write age (`stale`) from completeness (`sourceStatus`: `ok`, `partial`, or `degraded`). `stale` describes the seed write, not the individual records — a freshly written payload can still contain older valuations. `valuationCount` and `expectedValuationCount` follow a `symbols` filter when one is supplied. `valuationCount` counts live and replayed records together; `currentValuationCount` gives the subset actually fetched this cycle and is omitted when every record is current. `staleValuationSymbols` lists symbols served from an older snapshot — those symbols **do** have values in `valuations`, and `lastGood.fetchedAt` gives their age (bounded by a 7-day snapshot TTL). `unavailableSymbols` lists symbols with no valuation published at all, and is disjoint from `staleValuationSymbols`. `lastGood` covers both whole records and borrowed return metrics, and includes that snapshot's timestamp. `sourceStatus` is `degraded` when no record is current, `partial` when some are stale or missing. `valuationDiagnostics` is bounded per-symbol route metadata across the `v7Quote`, `v7QuoteBatch`, and `quoteSummary` routes, showing independent direct/proxy outcomes, response classes, and missing fields; it never contains credentials.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_market_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_gold_intelligence`
+
+Read seeded precious-metal futures quotes and optional gold COT positioning, session ranges, returns, drivers, ETF holdings and central-bank reserves. No tool-specific parameters. Universal `jmespath` projection remains available.
+
+The response retains source fields and optional enrichment. Prices are USD per troy ounce unless a cross-currency row names another currency; changes/returns are percentages. COT position counts are decimal strings, preserving int64 precision. ETF and reserve quantities are tonnes; ETF AUM is USD. Retain each observation date. The enrichment `updatedAt` does not establish freshness of every source. `unavailable: true`, absent enrichment and placeholder zero quotes are not confirmed zero market observations.
+
+- **API endpoint:** `GET /api/market/v1/get-gold-intelligence`.
+- **Access:** subscription. One signed downstream GET uses the standard API allowance weight of 2; a dedicated MCP allowance charges one call. Billing denial and retry/backoff contracts remain active.
+- **Output budget:** 128 KiB. The tool is read-only and does not create a trade or research snapshot.
+
+### `get_stock_research`
+
+Subscriber stock research through existing MarketService routes. Analysis and backtesting accept one symbol; saved-history operations accept a watchlist. Analysis generation may use paid source data and an LLM, and analysis/backtest generation can save shared research snapshots. No trading or account changes occur.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `operation` | string: analysis / backtest / history / stored-backtests | Required. Select current analysis, technical backtest, saved analysis history, or saved backtests. |
+| `symbols` | array of strings | Required. One ticker for analysis/backtest; up to 50 for saved results. Trimmed and uppercased; no silent truncation. |
+| `include_news` | boolean | Analysis/history only. Default false. |
+| `limit_per_symbol` | integer | History only. Default 4, range 1..32. |
+| `eval_window_days` | integer | Backtest/stored-backtests only. Default 10 trading days, range 3..30. |
+
+The response is `{operation, data}`, retaining the existing API payload, including availability, generated timestamps, risk factors, model/fallback provenance and simulation basis. Empty saved results and unavailable analyses do not imply a zero return. Technical backtests omit point-in-time fundamentals and do not establish future performance.
+
+- **API endpoints:** `GET /api/market/v1/analyze-stock`, `GET /api/market/v1/backtest-stock`, `GET /api/market/v1/get-stock-analysis-history`, `GET /api/market/v1/list-stored-stock-backtests`.
+- **Access:** subscription. Existing MCP metering, gateway subscription checks, provider quotas, billing denial and retry/backoff contracts remain active. Cold analysis may take longer than seeded reads. The tool may save shared snapshots, so its read-only and idempotent hints are false; its destructive hint is false.
+- **Output budget:** 512 KiB. For a large watchlist use fewer symbols/snapshots or `jmespath` to select the fields needed. A budget-exceeded envelope is not complete history.
+
+For example, `get_stock_research` with `{"operation":"history","symbols":["AAPL","MSFT"],"limit_per_symbol":2}` reads saved analyses without generating new ones.
+
+### `get_company_intelligence`
+
+Per-company corporate intelligence from SEC EDGAR and market data (#5695). Company identity resolves through the SEC's own ticker/name registry to a CIK — by exact ticker, or by a case-insensitive exact SEC title that maps to a single CIK (no prefix guessing). An unresolved `enrichment` response has `sources: []` and an empty `company.cik`; an unresolved `signals` response has `signals: []` and an empty `cik`. In either view, `unavailable: false` means not-found, while `unavailable: true` means the registry or required source could not answer. The deprecated REST `domain` field remains an empty compatibility stub because no SEC field can confirm domain ownership; the MCP tool does not expose it. Four views multiplex the four backing REST routes.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `view` | `string: enrichment / signals / filings-search / material-events` | Which dataset to return: one company's profile (`enrichment`), its classified events (`signals`), EDGAR full-text search (`filings-search`) or the market-wide 8-K stream (`material-events`). Omitted: `enrichment`. |
+| `ticker` | string | Exchange ticker symbol, such as `AAPL`. Preferred company key for `enrichment` and `signals`. |
+| `name` | string | Company name fallback when no ticker is known; case-insensitive exact SEC title only, and only when that title maps to a single CIK. Prefer ticker. |
+| `query` | string | `filings-search` only: full-text query. Required for that view. |
+| `forms` | string | `filings-search` only: comma-separated form filter, such as `8-K` or `10-K,10-Q`. |
+| `start_date` / `end_date` | string | `filings-search` only: filing-date range (YYYY-MM-DD). |
+| `item_code` | string | `material-events` only: keep filings that report this 8-K item number, written N.NN as in `items[].code` of returned events, such as `5.02` (officer departures and appointments) or `1.01` (material agreements). Omitted: all items. |
+| `limit` | integer | Number of results to return. `filings-search` accepts at most 25 (omitted: 10); `material-events` accepts up to 100 (omitted: 25). Above 25 on `filings-search` returns error `limit_out_of_range`. Ignored by `enrichment` and `signals`. |
+
+- **API endpoints:** `GET /api/intelligence/v1/get-company-enrichment`, `GET /api/intelligence/v1/list-company-signals`, `GET /api/intelligence/v1/search-sec-filings`, `GET /api/intelligence/v1/list-material-events`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** canonical-route proxy — `enrichment` fans out to SEC submissions, Finnhub profile + earnings surprises, and news mentions; `signals` uses timestamped SEC filings + news (not fiscal period ends). Each upstream is independently cached. `filings-search` proxies EDGAR full-text search; `material-events` reads the seeded market-wide 8-K stream (30-minute cadence).
+- **Freshness:** every view's payload carries its own timestamp (`enrichedAtMs`, `discoveredAtMs`, `fetchedAtMs`); `material-events.fetchedAtMs` is the seed time of the stream snapshot.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_company_intelligence","arguments":{"ticker":"AAPL","view":"signals"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_prediction_markets`
+
+Return seeded prediction-market contracts from multiple venues with current probabilities, grouped into three buckets: geopolitical (including elections), tech (AI, crypto, science) and finance (economics, plus the untagged fallback for non-geopolitical records). Flagged stale when the seed is older than 90 minutes. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. Dedicated paid connections reuse one panel allocation across openings and filters; refresh with a request_id starts a new one and the same ID retries it. API allowances retain per-tool billing. change24h/change7d are percentage-point moves (7d: Polymarket only); sort=move_24h|move_7d ranks by absolute move.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `category` | string: geopolitical / tech / finance | Bucket to return: geopolitical (including elections), tech (AI, crypto, science) or finance (economics). Finance also owns untagged non-geopolitical records. Omit for all three. |
+| `query` | string | Keep only markets whose title contains this text (case-insensitive). |
+| `source` | string: kalshi / polymarket | Venue whose contracts to keep. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records. |
+| `sort` | string: rank / move_24h / move_7d | Order each bucket by seed rank or absolute 24h/7d move before limiting. Missing moves go last. |
+| `min_liquidity` | number | Keep only markets whose liquidity (resting order-book depth in USD) is at least this value, applied before limit. Markets without a liquidity value, such as a Kalshi market whose order book could not be fetched, are dropped when this is above 0. |
+| `limit` | number | Cap each category bucket to at most this many markets (default 30, pass 0 for no cap). |
+| `panel_request` | string | panelRequest.token returned by an earlier paid opening of this tool. Re-reads that prediction panel with new filters without another daily allocation. |
+| `refresh` | boolean | Paid panel only. Start a new allocation with request_id; retry the same ID to reuse it. |
+| `request_id` | string | Client-generated UUID that names one refresh; needed when refresh is true. Retrying with the same ID reuses that allocation. |
+
+- **Price moves:** Optional `change24h` and `change7d` are percentage-point changes on the `yesPrice` 0–100 scale. Missing upstream values are absent; zero means no change. Kalshi supplies only 24h changes. REST returns `yesPriceChange24h` and `yesPriceChange7d` on the 0–1 probability scale.
+- **Liquidity:** Optional `liquidity` is resting order-book depth in USD, measured per venue. Polymarket records use Gamma's CLOB liquidity (`liquidity`, equal to `liquidityClob`): event-level on bucket records, contract-level on country records. Kalshi records sum price times size over every yes and no bid in the contract's order book. The venues compute depth differently, so compare thresholds within one source. The field is absent when the venue reports nothing or the order book could not be fetched. REST accepts the same filter as `min_liquidity`.
+- **API endpoints:** `GET /api/prediction/v1/list-prediction-markets`
+- **Access:** `free-account`. Any signed-in account can call this tool. Free accounts spend their daily free allowance. API plans retain weighted per-tool billing. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the prediction admission within five minutes. The returned `panelRequest.token` authorizes curated prediction reads until expiry. Local category expansion reads loaded data without another tool call. Each admission permits at most 64 uncached tool executions, with separate 64-per-minute uncached and cached-replay limits. Those executions are not individual Redis commands.
+- **Limits and refresh:** The default limit is 30 per category. Zero or negative values apply no cap; positive fractions use the integer part. Default `refresh: false` reuses the prediction admission. Set `refresh: true` with a UUID `request_id` and omit `panel_request` to start a new allocation. Retries with the same UUID, including different letter case, reuse the allocation and its original expiry.
+- **Paid argument validation:** Category and source trim whitespace and ignore letter case. Query matching ignores letter case and surrounding whitespace. Paid calls reject unknown arguments, invalid categories or sources, and non-finite or non-numeric limits before reservation. Ordinary API and free calls retain their existing filter coercion. Refresh controls and paid receipts are unavailable to API and free calls.
+- **Reuse and recovery:** Identical canonical filters replay successful original results before summary or JMESPath projection. A new uncached filter reads the existing bootstrap and freshness metadata. A fresh, valid filtered-empty result can replay. Stale, unavailable, malformed, and unknown observations remain retryable under the receipt. Upstream failures do not refund the opening.
+- **Usage notices:** An explicit authorized receipt read also reads the current daily allowance without reserving another unit. If the counter is unavailable or unconfirmed, contracts remain available without a numeric notice. A previous opening notice does not prove later accounting.
+- **Kind:** cache read from the Redis bootstrap cache.
+- **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: contracts per bucket after your filters, then the leading market in the first two populated buckets (or the top two in one bucket) with `yesPrice` as a percentage and the 24-hour move in points. Citations carry venue, title and URL. Cannot be combined with `summary`.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_prediction_markets","arguments":{}}
+  }'
+```
+
+</CodeGroup>

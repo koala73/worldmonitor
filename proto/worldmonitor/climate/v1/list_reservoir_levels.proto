@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/climate/v1/reservoir_level.proto";
+
+message ListReservoirLevelsRequest {}
+
+message ListReservoirLevelsResponse {
+  repeated ReservoirLevel reservoirs = 1;
+  // Unix epoch ms; 0 when the snapshot is unavailable.
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  bool data_available = 3;
+  ReservoirLevelsSource source = 4;
+  string methodology = 5;
+}

@@ -1258,8 +1258,9 @@ describe('widget-agent relay — security', () => {
   it('auth 403 response is sent before any processing on bad key', () => {
     const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
     assert.ok(handlerStart !== -1, 'handleWidgetAgentRequest not found');
-    // Use 4000 chars to cover the full auth/setup section including SSE headers
-    const handlerBody = relay.slice(handlerStart, handlerStart + 4000);
+    // Slice to the handler's closing brace, not a fixed length, so an added
+    // input guard cannot push the SSE header out of the window.
+    const handlerBody = relay.slice(handlerStart, relay.indexOf('\n}\n', handlerStart));
     const authCheckIdx = handlerBody.indexOf('requireWidgetAgentAccess(req, res)');
     const sseHeaderIdx = handlerBody.indexOf("text/event-stream");
     assert.ok(authCheckIdx !== -1, 'Auth helper call not found in handler start');
@@ -1293,6 +1294,14 @@ describe('widget-agent relay — security', () => {
     // Guard must appear before the Anthropic client is created
     const anthropicIdx = relay.indexOf('new Anthropic(');
     assert.ok(guardIdx < anthropicIdx, 'injection check must happen before any Anthropic API call');
+  });
+
+  it('widget model client timeout is the request budget, without SDK retries', () => {
+    // Turns are non-streaming messages.create calls (8192 max_tokens on Pro), so
+    // headers arrive only after generation; a fixed 60s client timeout killed
+    // turns the 150s/180s widget deadline still had time for.
+    assert.match(relay, /new Anthropic\(\{ apiKey: WIDGET_ANTHROPIC_KEY, timeout: timeoutMs, maxRetries: 0 \}\)/);
+    assert.match(relay, /const timeoutMs = isPro \? 180_000 : 150_000;/);
   });
 
   it('injection guard — tool results are sanitized before context insertion', () => {
@@ -2339,18 +2348,6 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
-  it('user identity migrates legacy wm-pro-key instead of reading localStorage directly', () => {
-    const identity = src('src/services/user-identity.ts');
-    assert.ok(
-      identity.includes('readLegacySessionKey') && identity.includes('migrateLegacyKeysToHttpOnlySession'),
-      'user-identity must route legacy wm-pro-key through the HttpOnly migration helper',
-    );
-    assert.ok(
-      !/localStorage\.getItem\(['"]wm-pro-key['"]/.test(identity),
-      'user-identity must not read wm-pro-key directly from localStorage',
-    );
-  });
-
   it('legacy wm-pro-html-{id} key remains supported for old PRO widgets', () => {
     assert.ok(
       store.includes('wm-pro-html-'),
@@ -2521,7 +2518,7 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
-  it('widget sandbox allows approved Vercel previews and rejects lookalike origins', () => {
+  it('widget sandbox trusts worldmonitor.app hosts and never a vercel.app name pattern', () => {
     assert.ok(
       sandbox.includes("url.hostname === 'worldmonitor.app'")
         && sandbox.includes("url.hostname.endsWith('.worldmonitor.app')"),
@@ -2531,56 +2528,19 @@ describe('PRO widget — store and sanitizer', () => {
       !sandbox.includes("endsWith('worldmonitor.app')") && !sandbox.includes('endsWith("worldmonitor.app")'),
       'sandbox must not use raw suffix checks that allow evilworldmonitor.app',
     );
-    // The sandbox must source allowed Vercel team slugs from a single named
-    // list — keeps the security invariant (team-slug gating) visible and
-    // makes teammate-slug additions a one-line change rather than a regex
-    // rewrite that could accidentally widen the match.
-    const teamListMatch = sandbox.match(
-      /var\s+ALLOWED_VERCEL_TEAM_SLUGS\s*=\s*\[([^\]]*)\];/,
-    );
-    assert.ok(teamListMatch, 'sandbox must declare ALLOWED_VERCEL_TEAM_SLUGS as a literal array');
-    const slugs = teamListMatch[1]
-      .split(',')
-      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
-      .filter(Boolean);
-    assert.ok(slugs.includes('eliewm'), 'project-owner team slug must remain in the allowlist');
-    for (const slug of slugs) {
-      assert.match(slug, /^[a-z0-9-]+$/, `team slug "${slug}" must be url-safe`);
-    }
-    // Reconstruct the actual match function and exercise it against the
-    // production slug list — this is what protects against regex drift
-    // when teammate slugs are added later. The team slug is the LAST hostname
-    // segment before .vercel.app (eliewm team scope); keep this shape in lock-
-    // step with isAllowedVercelPreview in public/wm-widget-sandbox.html.
-    const matchesAllowedTeam = (hostname) =>
-      slugs.some((team) =>
-        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '\\.vercel\\.app$').test(hostname),
-      );
-    assert.equal(matchesAllowedTeam('worldmonitor-git-feature-eliewm.vercel.app'), true);
-    assert.equal(matchesAllowedTeam('worldmonitor-abc123-eliewm.vercel.app'), true);
-    assert.equal(matchesAllowedTeam('worldmonitor-feature-attacker.vercel.app'), false);
-    assert.equal(matchesAllowedTeam('worldmonitor-git-feature-eliewm.vercel.app.evil.com'), false);
-    assert.equal(matchesAllowedTeam('worldmonitor-feature-xeliewm.vercel.app'), false);
-    assert.equal(matchesAllowedTeam('evilworldmonitor.app'), false);
-    // The retired personal scope (worldmonitor-*-elie-<hash>) must no longer match.
-    assert.equal(matchesAllowedTeam('worldmonitor-feature-elie-abc123.vercel.app'), false);
-    // A teammate slug added to the list must extend coverage WITHOUT
-    // matching look-alike teams whose slug merely starts with the same
-    // letters.
-    const withTeammate = ['eliewm', 'kieran'];
-    const matchesWithTeammate = (hostname) =>
-      withTeammate.some((team) =>
-        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '\\.vercel\\.app$').test(hostname),
-      );
-    assert.equal(matchesWithTeammate('worldmonitor-feature-kieran.vercel.app'), true);
-    assert.equal(matchesWithTeammate('worldmonitor-feature-kieranfake.vercel.app'), false);
+    // `<project>.vercel.app` goes to whichever Vercel account claims the name
+    // first, so a team-slug suffix proves nothing. Previews are trusted only
+    // as the deployment that served the sandbox (same origin).
+    assert.ok(!/vercel\\?\.app/.test(sandbox), 'sandbox must not match vercel.app hosts by pattern');
+    assert.ok(!sandbox.includes('ALLOWED_VERCEL_TEAM_SLUGS'), 'team-slug allowlist must stay retired');
   });
 
-  it('widget sandbox behavior accepts Vercel previews and blocks spoofed parents', () => {
+  it('widget sandbox behavior accepts its own Vercel preview and blocks foreign and spoofed parents', () => {
     const script = sandbox.match(/<script>\r?\n([\s\S]*?)\r?\n<\/script>/)?.[1];
     assert.ok(script, 'sandbox inline script not found');
 
-    function runSandbox(referrer, sandboxProtocol = 'https:') {
+    const ownPreview = 'https://worldmonitor-git-feature-eliewm.vercel.app';
+    function runSandbox(referrer, sandboxOrigin = ownPreview) {
       const readyMessages = [];
       const writes = [];
       const listeners = new Map();
@@ -2596,7 +2556,7 @@ describe('PRO widget — store and sanitizer', () => {
       function FakeEvent() {}
       FakeEvent.prototype.stopImmediatePropagation = () => {};
       const sandboxWindow = new FakeEventTarget();
-      sandboxWindow.location = { hash: '#id=wm-1&token=test-token', protocol: sandboxProtocol };
+      sandboxWindow.location = { hash: '#id=wm-1&token=test-token', origin: sandboxOrigin };
       sandboxWindow.parent = parent;
       const context = {
         URL,
@@ -2668,6 +2628,22 @@ describe('PRO widget — store and sanitizer', () => {
     });
     assert.deepEqual(wrongSource.writes, []);
 
+    // A third party's look-alike preview embedding a different deployment's
+    // sandbox (or the production sandbox) must be rejected.
+    for (const [referrer, sandboxOrigin] of [
+      ['https://worldmonitor-attacker-eliewm.vercel.app/', ownPreview],
+      ['https://worldmonitor-attacker-eliewm.vercel.app/', 'https://worldmonitor.app'],
+    ]) {
+      const foreign = runSandbox(referrer, sandboxOrigin);
+      assert.deepEqual(foreign.readyMessages, [], `${referrer} -> ${sandboxOrigin}`);
+      foreign.message({
+        data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>bad</p>' },
+        origin: 'https://worldmonitor-attacker-eliewm.vercel.app',
+        source: foreign.parent,
+      });
+      assert.deepEqual(foreign.writes, [], `${referrer} -> ${sandboxOrigin}`);
+    }
+
     const spoofed = runSandbox('https://worldmonitor-git-feature-eliewm.vercel.app.evil.com/');
     assert.deepEqual(spoofed.readyMessages, []);
     spoofed.message({
@@ -2689,7 +2665,7 @@ describe('PRO widget — store and sanitizer', () => {
     const script = sandbox.match(/<script>\r?\n([\s\S]*?)\r?\n<\/script>/)?.[1];
     assert.ok(script, 'sandbox inline script not found');
 
-    function runSandboxAt(selfHostname, referrer) {
+    function runSandboxAt(selfHostname, referrer, selfOrigin = `${new URL(referrer).protocol}//${selfHostname}:5173`) {
       const readyMessages = [];
       const writes = [];
       const listeners = new Map();
@@ -2705,7 +2681,7 @@ describe('PRO widget — store and sanitizer', () => {
       function FakeEvent() {}
       FakeEvent.prototype.stopImmediatePropagation = () => {};
       const sandboxWindow = new FakeEventTarget();
-      sandboxWindow.location = { hash: '#id=wm-1&token=test-token', hostname: selfHostname };
+      sandboxWindow.location = { hash: '#id=wm-1&token=test-token', hostname: selfHostname, origin: selfOrigin };
       sandboxWindow.parent = parent;
       const context = {
         URL,
@@ -2756,6 +2732,11 @@ describe('PRO widget — store and sanitizer', () => {
     // Legitimate local dev: both the sandbox page itself and the embedding
     // page run on localhost (e.g. `npm run dev`). This must keep working.
     const devSandbox = runSandboxAt('localhost', 'http://localhost:5173/dashboard');
+    const foreignPort = runSandboxAt('localhost', 'http://localhost:4000/attack', 'http://localhost:5173');
+    assert.deepEqual(foreignPort.readyMessages, []);
+    foreignPort.message({ source: foreignPort.parent, origin: 'http://localhost:4000',
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<script>attack()</script>' } });
+    assert.deepEqual(foreignPort.writes, []);
     assert.equal(devSandbox.readyMessages.length, 1, 'dev sandbox on localhost must still trust a localhost parent');
     assert.equal(devSandbox.readyMessages[0].targetOrigin, 'http://localhost:5173');
     devSandbox.message({

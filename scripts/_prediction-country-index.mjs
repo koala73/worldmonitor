@@ -171,6 +171,7 @@ function publicMarket(market) {
     title: market.title,
     yesPrice: market.yesPrice,
     volume: market.volume,
+    ...(typeof market.liquidity === 'number' ? { liquidity: market.liquidity } : {}),
     url: market.url,
     ...(market.endDate ? { endDate: market.endDate } : {}),
     source: market.source,

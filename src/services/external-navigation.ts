@@ -31,6 +31,7 @@
 
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { isDesktopRuntime } from './desktop-runtime';
+import { needsDesktopCheckoutHandoff, withDesktopCheckoutHandoff } from './desktop-checkout-handoff';
 import { invokeTauri } from './tauri-bridge';
 
 /**
@@ -215,7 +216,7 @@ export async function openExternalUrl(
   preopened?: Window | null,
   options?: OpenExternalUrlOptions,
 ): Promise<ExternalNavOutcome> {
-  const targetUrl = typeof url === 'string' ? url : url.toString();
+  let targetUrl = typeof url === 'string' ? url : url.toString();
   if (!isOpenableExternalUrl(targetUrl)) {
     reportOpenFailure(targetUrl, 'rejected-scheme');
     closeWindowQuietly(preopened);
@@ -227,6 +228,7 @@ export async function openExternalUrl(
     // reserved before it knew the runtime, so the OS browser doesn't come
     // forward over an orphaned blank WebView window.
     closeWindowQuietly(preopened);
+    if (needsDesktopCheckoutHandoff(targetUrl)) targetUrl = await withDesktopCheckoutHandoff(targetUrl);
     try {
       await invokeOpenUrlBounded(targetUrl);
       return 'native';

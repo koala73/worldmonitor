@@ -1,0 +1,106 @@
+---
+title: "Seed Pipeline and Edge Functions"
+sidebarTitle: "Seeds & edge functions"
+description: "The Railway seed data pipeline, per-domain edge function architecture, cold-start optimization and single-deployment variant consolidation in World Monitor."
+---
+
+Part of the [Architecture and Design Philosophy](/architecture) guide, which indexes every topic. For deployment topology, directory layout and CI/CD, see [`ARCHITECTURE.md`](https://github.com/koala73/worldmonitor/blob/main/ARCHITECTURE.md).
+
+---
+
+## Railway Seed Data Pipeline
+
+Railway cron services continuously refresh the Redis cache with pre-computed data from external APIs. A row below is a seed script, not a separate cron job: bundled services run several seeds on one schedule (for example, the displacement and border seeders all run inside `seed-bundle-health`). Seeds run on configurable schedules from minutes to daily cadence and write both a canonical domain key (for RPC handler lookups) and a bootstrap key (for page-load hydration). This dual-key strategy ensures that bootstrap hydration and RPC handlers always agree on data format and freshness.
+
+| Seed Script | Data Source | Update Frequency | Bootstrap Key |
+| --- | --- | --- | --- |
+| `seed-earthquakes` | USGS M4.5+ and Earthquakes Canada (NRCan) Atom | 5 min | `seismology:earthquakes:v1` |
+| `seed-market-quotes` | Yahoo Finance (staggered batches) | 5 min | `market:stocks-bootstrap:v1` |
+| `seed-commodity-quotes` | Yahoo Finance (WTI, Brent, metals) | 5 min | `market:commodities-bootstrap:v1` |
+| `seed-crypto-quotes` | CoinGecko (BTC, ETH, SOL, XRP+) | 5 min | `market:crypto:v1` |
+| `seed-cyber-threats` | Feodo, URLhaus, C2Intel, OTX, AbuseIPDB | 2 hours | `cyber:threats-bootstrap:v2` |
+| `seed-internet-outages` | Cloudflare Radar | 5 min | `infra:outages:v1` |
+| `seed-fire-detections` | NASA FIRMS VIIRS, CWFIS national active/prescribed fires (CWFIF WFS), and BC Wildfire current fire points (OpenMaps KML) | 10 min | `wildfire:fires:v1` |
+| `seed-climate-anomalies` | Open-Meteo ERA5 | 15 min | `climate:anomalies:v2` |
+| `seed-natural-events` | NHC + GDACS + NASA EONET + HKO warnings | 3 hours | `natural:events:v1` |
+| `seed-airport-delays` | FAA + AviationStack + ICAO NOTAM | 10 min | `aviation:delays-bootstrap:v1` |
+| `seed-insights` | LLM world brief + top stories (Ollama, then OpenRouter) | 10 min | `news:insights:v1` |
+| `seed-prediction-markets` | Polymarket Gamma API | 10 min | `prediction:markets-bootstrap:v1` |
+| `seed-etf-flows` | Yahoo Finance (IBIT, FBTC, GBTC+) | 15 min | `market:etf-flows:v1` |
+| `seed-stablecoin-markets` | CoinGecko (USDT, USDC, DAI+) | 10 min | `market:stablecoins:v1` |
+| `seed-gulf-quotes` | Yahoo Finance (Tadawul, DFM, ADX) | 10 min | `market:gulf-quotes:v1` |
+| `seed-unrest-events` | ACLED protests + GDELT | 45 min | `unrest:events:v1` |
+| `seed-ucdp-events` | UCDP GED API | 6 hours | `conflict:ucdp-events:v1` |
+| `ais-relay` (Middle East strike loop) | Telegram channels + GDELT event export | 10 min | `conflict:iran-events:v1`, `conflict:strike-pressure:v1` (30-day per-country tally for the CII) |
+| `seed-displacement-summary` | UNHCR Population API | Daily | N/A |
+| `seed-idmc-idu-displacement` | IDMC Internal Displacement Updates (HDX) | Daily | `displacement:idmc-idu:v1` |
+| `seed-dtm-displacement` | IOM Displacement Tracking Matrix API | Daily | N/A |
+| `seed-cross-border-arrivals` | UNHCR Operational Data Portal | Daily | `displacement:cross-border:v1` |
+| `seed-border-{uk,cbp,frontex,panama}` | UK Home Office, US CBP, Frontex, Panama migration statistics | Daily | N/A |
+| `seed-military-bases` | Curated military-base registry | Daily | N/A |
+| `seed-wb-indicators` | World Bank tech readiness | Daily | `economic:worldbank-techreadiness:v1` |
+| `seed-forecasts` | OpenRouter LLM + multi-domain signals | 15 min | `forecast:predictions:v2` |
+| `seed-conflict-intel` | ACLED + HAPI + PizzINT + GDELT | 15 min | `conflict:acled:v1:all:0:0` |
+| `seed-economy` | EIA energy + FRED macro + spending | 15 min | N/A (extra keys) |
+| `seed-supply-chain-trade` | FRED shipping + WTO + US Treasury | 6 hours | `supply_chain:shipping:v2` |
+| `seed-security-advisories` | 24 advisory RSS/Atom feeds via relay proxy | 1 hour | `intelligence:advisories-bootstrap:v1` |
+| `seed-usni-fleet` | USNI News WP-JSON (curl for JA3 bypass) | 6 hours | `usni-fleet:sebuf:v1` |
+| `seed-gdelt-intel` | GDELT 2.0 Doc API (8 topics) | 1 hour | `intelligence:gdelt-intel:v1` |
+| `seed-research` | arXiv + HN + tech events + GitHub | 6 hours | N/A (extra keys) |
+| `seed-correlation` | Cross-domain correlation engine | 5 min | `correlation:cards-bootstrap:v1` |
+| `seed-gpsjam` | GPSJam.org H3 interference hexes | 6 hours | N/A |
+| `seed-aviation` | Airport ops summaries + aviation news | 30 min | N/A (warm-ping) |
+
+Seeds use `cachedFetchJson` with in-flight promise coalescing — if a seed run overlaps with a previous run still writing, the concurrent write is deduplicated. Each seed script is self-contained (single `.mjs` file, no build step), runs on Node.js 20+, and connects to Upstash Redis via REST API. Failed seed runs log errors but never corrupt existing cached data — the previous cache entry persists until a successful run replaces it.
+
+---
+
+## Edge Functions & Deployment
+
+### Edge Function Architecture
+
+World Monitor uses Vercel Edge Functions as a lightweight API layer, split into two generations. Legacy endpoints in `api/*.js` each handle a single data source concern — proxying, caching, or transforming external APIs. The newer proto-first endpoints use **per-domain thin entry points**, each importing only its own handler module. This replaced the original monolithic gateway that loaded every domain on each cold start. Each domain's function tree-shakes to include only its dependencies, reducing cold-start time by ~85% (sub-100ms for most endpoints vs. 500ms+ with the monolithic handler). A shared `server/gateway.ts` provides common routing logic. Both generations coexist, with new features built proto-first. This architecture avoids a monolithic backend while keeping API keys server-side:
+
+- **RSS Proxy** — domain-allowlisted proxy for the registered feed catalog, preventing CORS issues and hiding origin servers. The Edge proxy and Railway relay both keep redirects manual and re-check the RSS domain allowlist before every hop. Feeds from domains that block Vercel IPs are automatically routed through the Railway relay.
+- **AI Pipeline** — Ollama and OpenRouter summarization edge functions with Redis deduplication, so identical headlines across concurrent users only trigger one LLM call. The classify-event endpoint pauses its queue on 500 errors to avoid wasting API quota.
+- **Data Adapters** — GDELT, ACLED, OpenSky, USGS, NASA FIRMS, FRED, Yahoo Finance, CoinGecko, mempool.space, BIS, WTO, and others each have dedicated edge functions that normalize responses into consistent schemas
+- **Market Intelligence** — macro signals, ETF flows, and stablecoin monitors compute derived analytics server-side (VWAP, SMA, peg deviation, flow estimates) and cache results in Redis
+- **Temporal Baseline** — Welford's algorithm state is persisted in Redis across requests, building statistical baselines without a traditional database
+- **Custom Scrapers** — sources without RSS feeds (MIIT news, GitHub Trending, tech events) are scraped and transformed into RSS-compatible formats
+- **Finance Geo Data** — stock exchanges, financial centers, central-bank and supranational finance institutions, and commodity hubs are served as static typed datasets with market caps, GFCI rankings, trading hours, and commodity specializations
+- **BIS Integration** — policy rates, real effective exchange rates, and credit-to-GDP ratios from the Bank for International Settlements, cached with 30-minute TTL
+- **WTO Trade Policy** — trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers from the World Trade Organization
+- **Supply Chain Intelligence** — maritime chokepoint disruption scores (cross-referencing NGA warnings + AIS data), FRED shipping freight indices with spike detection, and critical mineral supply concentration via Herfindahl-Hirschman Index analysis
+- **Corporate Intelligence** — `IntelligenceService.GetCompanyEnrichment` resolves a company through the SEC's ticker→CIK registry (seeded daily from `company_tickers.json`) and aggregates EDGAR identity plus recent filings (10-K, 10-Q, 8-K with item codes), Finnhub market profile and earnings surprises, and recent news mentions into one envelope. `IntelligenceService.ListCompanySignals` classifies timestamped signals from SEC 8-K material events (tier 1) and news mentions (tier 3); Finnhub fiscal period ends stay in enrichment rather than being mislabeled as report timestamps. `SearchSecFilings` proxies EDGAR full-text search; `ListMaterialEvents` serves a seeded market-wide stream of material 8-K filings. No guessed attribution: companies that do not resolve in the SEC registry return empty envelopes (see issues #3754/#3755 for the heuristic predecessor this replaced)
+
+All edge functions include circuit breaker logic and return cached stale data when upstream APIs are unavailable, ensuring the dashboard never shows blank panels.
+
+### Cold-Start Optimization — Per-Domain Edge Function Split
+
+The original monolithic edge gateway (`api/[domain]/v1/[rpc].ts`) imported every service domain handler into a single function. When any RPC was called, the edge runtime loaded the entire handler graph — initializing Redis clients, parsing configuration, and importing utility modules for every domain even though only 1 was needed.
+
+This was split into per-domain thin entry points — one per service domain — each importing only its own handler module. The shared gateway (`server/gateway.ts`) provides common routing logic, but each domain's edge function tree-shakes to include only its dependencies.
+
+**Impact**: Cold-start time dropped by ~85% — a market quote request no longer loads the cyber threat intelligence parser, the OREF alert handler, or the climate anomaly detector. On Vercel's edge runtime, this translates to sub-100ms cold starts for most endpoints, compared to 500ms+ with the monolithic handler.
+
+### Single-Deployment Variant Consolidation
+
+All published dashboard variants serve from a **single Vercel deployment**. The variant is determined at runtime by hostname detection:
+
+| Hostname | Variant |
+| --- | --- |
+| `tech.worldmonitor.app` | `tech` |
+| `finance.worldmonitor.app` | `finance` |
+| `commodity.worldmonitor.app` | `commodity` |
+| `happy.worldmonitor.app` | `happy` |
+| `energy.worldmonitor.app` | `energy` |
+| `worldmonitor.app` (default) | `full` |
+
+On the desktop app, the variant is stored in `localStorage['worldmonitor-variant']` and can be switched without rebuilding. The variant selector in the header bar navigates between deployed domains on the web or toggles the localStorage value on desktop.
+
+This architecture replaced the original multi-deployment approach (separate Vercel projects per variant) and provides several advantages:
+
+- **Instant switching** — users toggle variants in the header bar without a full page navigation or DNS lookup
+- **Shared CDN cache** — the static SPA assets are identical across variants; only runtime configuration differs. CDN cache hit rates are 4× higher than with separate deployments
+- **Single CI pipeline** — one build, one deployment, one set of edge functions. No cross-deployment configuration drift
+- **Social bot routing** — the OG image endpoint generates variant-specific preview cards based on the requesting hostname, so sharing a Tech Monitor link produces tech-branded social previews

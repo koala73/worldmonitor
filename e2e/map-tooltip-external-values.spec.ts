@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { openComponentHarness } from './component-harness';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test('map tooltip external values remain text', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1100 });
-  await page.goto('/tests/map-harness.html');
-  await page.waitForFunction(() => (window as Window & { __mapHarness?: { ready: boolean } }).__mapHarness?.ready === true);
+  await openComponentHarness(page);
 
   const labels = await page.evaluate(async () => {
     const deckModule = '/src/components/DeckGLMap.ts';
@@ -69,6 +70,6 @@ test('map tooltip external values remain text', async ({ page }) => {
   await expect(evidence.locator('img, script, b')).toHaveCount(0);
   await expect(evidence).toContainText('Storm <img src=x onerror=alert(1)>');
   await expect(evidence).toContainText('Satellite <b>name</b>');
-  await expect(evidence).toContainText(labels.names[2]);
-  await evidence.screenshot({ path: 'test-results/map-tooltip-external-values.png' });
+  await expect(evidence).toContainText(labels.names[2]!);
+  await evidenceScreenshot(evidence, { path: 'test-results/map-tooltip-external-values.png' });
 });

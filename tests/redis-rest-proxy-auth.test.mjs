@@ -10,10 +10,10 @@ const source = readFileSync(new URL('../docker/redis-rest-proxy.mjs', import.met
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const run = new AsyncFunction('process', 'http', 'crypto', 'createClient', 'console', source);
 
-async function boot(token) {
+async function boot(token, extraEnv = {}) {
   const calls = [];
   let handler;
-  const env = token === undefined ? {} : { SRH_TOKEN: token };
+  const env = { ...(token === undefined ? {} : { SRH_TOKEN: token }), ...extraEnv };
   const client = {
     on() {},
     async connect() { calls.push('connect'); },
@@ -68,6 +68,20 @@ it('requires authentication for welcome and health requests and keeps container 
     assert.match((await app.request(path, `Bearer ${token}`)).body, /Command not allowed/);
   }
   assert.deepEqual(app.calls.filter(Array.isArray).slice(1), [['PING']]);
+});
+
+it('binds to SRH_BIND_HOST for native installs that must stay on loopback', async () => {
+  // Outside Docker nothing sits between 0.0.0.0 and the network, so a native
+  // install (the FreeBSD port) needs to keep the proxy on 127.0.0.1.
+  const app = await boot('a'.repeat(64), { SRH_BIND_HOST: '127.0.0.1' });
+  await app.started;
+  assert.deepEqual(app.calls, ['createClient', 'connect', ['listen', 80, '127.0.0.1']]);
+});
+
+it('falls back to all interfaces when SRH_BIND_HOST is blank', async () => {
+  const app = await boot('a'.repeat(64), { SRH_BIND_HOST: '  ' });
+  await app.started;
+  assert.deepEqual(app.calls.at(-1), ['listen', 80, '0.0.0.0']);
 });
 
 it('ships a required token and loopback-only host exposure', () => {

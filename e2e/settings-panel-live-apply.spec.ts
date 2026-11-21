@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
+import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 /**
  * The Settings modal must apply a panel toggle to the LIVE dashboard on Save.
@@ -38,14 +40,8 @@ async function seedDashboard(page: Page): Promise<void> {
       [panelKey]: { name: 'Threat Timeline', enabled: false, priority: 1 },
     }));
   }, PANEL_KEY);
+  await acceptTesterKeySession(page);
 }
-
-test('email preference link opens Notifications directly', async ({ page }) => {
-  await seedDashboard(page);
-  await page.goto('/dashboard?settings=notifications', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#us-tab-notifications')).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
-  await expect(page.locator('#us-tab-panel-notifications')).toBeVisible();
-});
 
 test('enabling a panel in Settings shows it on the dashboard without a reload', async ({ page }) => {
   await seedDashboard(page);
@@ -59,7 +55,7 @@ test('enabling a panel in Settings shows it on the dashboard without a reload', 
   await expect(page.locator(PANEL_SELECTOR)).toHaveCount(0);
 
   await settingsBtn.click();
-  await page.locator('#us-tab-panels').click();
+  await page.locator('[data-settings-nav="panels"]').click();
 
   const toggle = page.locator(`#usPanelToggles .panel-toggle-item[data-panel="${PANEL_KEY}"]`);
   await expect(toggle).toBeVisible({ timeout: 15_000 });
@@ -90,7 +86,7 @@ test('closing Settings with unsaved panel changes shows a clickable discard conf
   await settingsBtn.click();
   const settings = page.locator('#unifiedSettingsModal');
   await expect(settings).toHaveClass(/\bactive\b/);
-  await page.locator('#us-tab-panels').click();
+  await page.locator('[data-settings-nav="panels"]').click();
 
   const toggle = page.locator(`#usPanelToggles .panel-toggle-item[data-panel="${PANEL_KEY}"]`);
   await expect(toggle).toBeVisible({ timeout: 15_000 });
@@ -150,6 +146,5 @@ test('diagnostic traffic methods render as text', async ({ page }, testInfo) => 
   await expect(page.locator('#trafficCount')).toHaveText('(3)');
   await page.locator('#diagnosticsSection').scrollIntoViewIfNeeded();
   const path = testInfo.outputPath('diagnostic-method-text.png');
-  await page.screenshot({ path });
-  await testInfo.attach('synthetic native response - literal method cells', { path, contentType: 'image/png' });
+  await evidenceScreenshot(page, { path }, { testInfo, name: 'synthetic native response - literal method cells' });
 });

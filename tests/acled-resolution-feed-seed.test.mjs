@@ -1,3 +1,6 @@
+// These text checks pin ACLED display and resolution-feed wiring across the
+// seeders, forecast resolver, and health registries (#8690, section 2).
+// Executing one producer would not establish that all source declarations agree.
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';

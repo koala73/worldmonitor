@@ -6,6 +6,7 @@
 // back. Normal digest publication then advances coverageEndMs.
 
 import { CHROME_UA, loadEnvFile } from './_seed-utils.mjs';
+import { HASH_FIELDS_WITH_LENGTH_SCRIPT } from './lib/story-track-batch-reader.mjs';
 import {
   FORECAST_EVIDENCE_COVERAGE_KEY,
   FORECAST_EVIDENCE_COVERAGE_VERSION,
@@ -41,10 +42,21 @@ function redisResultConfirmed(payload, expected) {
     && payload.every(row => row && typeof row === 'object' && !row.error);
 }
 
-function flatHash(raw) {
-  if (!Array.isArray(raw) || raw.length % 2 !== 0) return null;
+const TRACK_FIELDS = ['title', 'link', 'description', 'publishedAt'];
+
+function selectedTrack(snapshot) {
+  const raw = snapshot?.[1];
+  if (!Array.isArray(snapshot) || snapshot.length !== 2 ||
+      !Number.isSafeInteger(snapshot[0]) || snapshot[0] < 0 ||
+      !Array.isArray(raw) || raw.length !== TRACK_FIELDS.length ||
+      raw.some(value => value !== null && typeof value !== 'string')) {
+    throw new Error('Invalid backfill story-track HMGET response');
+  }
+  if (snapshot[0] === 0) return null;
   const value = {};
-  for (let index = 0; index < raw.length; index += 2) value[raw[index]] = raw[index + 1];
+  for (let index = 0; index < raw.length; index += 1) {
+    if (raw[index] !== null) value[TRACK_FIELDS[index]] = raw[index];
+  }
   return value;
 }
 
@@ -136,7 +148,7 @@ export async function backfillForecastEvidenceArchive(options = {}) {
     // to a provable 14-day cutover as the unreadable pre-cutover tail ages out.
     const commands = batch.flatMap(hash => [
       ['GET', forecastEvidenceRecordKey(hash)],
-      ['HGETALL', `story:track:v1:${hash}`],
+      ['EVAL', HASH_FIELDS_WITH_LENGTH_SCRIPT, '1', `story:track:v1:${hash}`, ...TRACK_FIELDS],
     ]);
     const payload = await request(`${url}/pipeline`, commands, 'Redis archive/story-track backfill read');
     if (!redisResultConfirmed(payload, commands.length)) throw new Error('Archive/story-track backfill returned incomplete data');
@@ -154,8 +166,8 @@ export async function backfillForecastEvidenceArchive(options = {}) {
       const parsed = parseForecastEvidenceMember(existingRaw).record;
       if (parsed?.hash === hashes[index]) member = buildForecastEvidenceMember(parsed, scores[index]);
     }
-    const track = flatHash(sourceDataRows[index * 2 + 1]?.result);
-    if (!member && (!track || Object.keys(track).length === 0)) {
+    const track = selectedTrack(sourceDataRows[index * 2 + 1]?.result);
+    if (!member && !track) {
       missingRows += 1;
       continue;
     }

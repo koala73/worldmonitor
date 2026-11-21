@@ -1,18 +1,4 @@
-import { z } from 'zod';
-
-export const AcquisitionConfigSchema = z.object({
-  provider: z.enum(['playwright', 'exa', 'firecrawl', 'p0']),
-  fallback: z.enum(['playwright', 'exa', 'firecrawl', 'p0']).optional(),
-  options: z
-    .object({
-      waitForSelector: z.string().optional(),
-      timeout: z.number().optional(),
-      retries: z.number().optional(),
-    })
-    .optional(),
-  searchMode: z.boolean().optional(),
-  searchQueryTemplate: z.string().optional(),
-});
+import * as z from 'zod';
 
 export const RateLimitSchema = z.object({
   requestsPerMinute: z.number().default(30),
@@ -95,6 +81,11 @@ export const SearchConfigSchema = z.object({
   // Keep the strict validator opt-in while existing shadow-mode rollouts
   // remain unchanged for unaffected retailers.
   requireStrictValidator: z.boolean().default(false),
+  // Accept an extraction only when the page declares itself (og:title or
+  // twitter:title) to be the extracted product. For storefronts whose
+  // category listings and carousels sit on URLs discovery cannot tell apart
+  // from product pages. Firecrawl-only: Exa returns no page metadata.
+  requirePageTitleMatch: z.boolean().default(false),
 });
 
 export const RetailerConfigSchema = z.object({
@@ -103,10 +94,9 @@ export const RetailerConfigSchema = z.object({
     name: z.string(),
     marketCode: z.string().length(2),
     currencyCode: z.string().length(3),
-    adapter: z.enum(['generic', 'exa-search', 'search', 'custom']).default('generic'),
+    adapter: z.enum(['search']).default('search'),
     baseUrl: z.string().url(),
     rateLimit: RateLimitSchema.optional(),
-    acquisition: AcquisitionConfigSchema.optional(),
     searchConfig: SearchConfigSchema.optional(),
     discovery: z.object({
       mode: z.enum(['category_urls', 'sitemap', 'search']).default('category_urls'),

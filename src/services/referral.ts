@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 // Client referral service (Phase 9 / Todo #223).
 //
 // Thin wrapper around /api/referral/me + the Web Share API.
@@ -10,6 +11,7 @@
 // transition as defence in depth.
 
 import { getClerkToken } from '@/services/clerk';
+import { copyText } from '@/utils/copy-text';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 
 export interface ReferralProfile {
@@ -72,6 +74,7 @@ export async function getReferralProfile(): Promise<ReferralProfile | null> {
   if (!token) return null;
   try {
     const res = await fetch('/api/referral/me', {
+      signal: createTimeoutSignal(15_000),
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -120,15 +123,7 @@ export async function shareReferral(profile: ReferralProfile): Promise<ShareResu
       // Fallthrough to clipboard.
     }
   }
-  // Clipboard — desktop primary path.
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(url);
-      return 'copied';
-    } catch {
-      return 'error';
-    }
-  }
+  if (await copyText(url)) return 'copied';
   return 'error';
 }
 

@@ -19,10 +19,12 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { runSeed } from '../scripts/_seed-utils.mjs';
+import { runFoodPriceSource } from '../scripts/lib/food-prices-seed.mjs';
 import {
   contentMeta as gdeltContentMeta,
   fetchAllTopics,
 } from '../scripts/seed-gdelt-intel.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_EXIT = process.exit;
@@ -38,14 +40,14 @@ beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
   recordedCalls = [];
 
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
     recordedCalls.push({ url: String(url), method: opts?.method || 'GET', body });
     if (Array.isArray(body) && Array.isArray(body[0])) {
       return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
+  });
 
   // runSeed exits via process.exit(0|1|143). Convert to a throw so tests can
   // inspect recorded calls and exit codes after the seed "finishes".
@@ -280,26 +282,37 @@ test('content-meta throwing → treated as null, runSeed continues, newestItemAt
 test('content-meta with valid timestamps → newestItemAt/oldestItemAt populated', async () => {
   const NEWEST = 1700000000000;
   const OLDEST = 1690000000000;
-  await runWithExitTrap(() =>
-    runSeed('test', 'valid-timestamps', 'test:valid-timestamps:v1', async () => ({ items: [{ ts: NEWEST }, { ts: OLDEST }] }), {
-      validateFn: (d) => d?.items?.length >= 1,
-      ttlSeconds: 3600,
-      declareRecords: (d) => d.items.length,
-      sourceVersion: 'valid-ts-v1',
-      schemaVersion: 1,
-      maxStaleMin: 1440,
-      contentMeta: (d) => ({
-        newestItemAt: Math.max(...d.items.map((i) => i.ts)),
-        oldestItemAt: Math.min(...d.items.map((i) => i.ts)),
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    await runWithExitTrap(() =>
+      runSeed('test', 'valid-timestamps', 'test:valid-timestamps:v1', async () => ({ items: [{ ts: NEWEST }, { ts: OLDEST }] }), {
+        validateFn: (d) => d?.items?.length >= 1,
+        ttlSeconds: 3600,
+        declareRecords: (d) => d.items.length,
+        sourceVersion: 'valid-ts-v1',
+        schemaVersion: 1,
+        maxStaleMin: 1440,
+        contentMeta: (d) => ({
+          newestItemAt: Math.max(...d.items.map((i) => i.ts)),
+          oldestItemAt: Math.min(...d.items.map((i) => i.ts)),
+        }),
+        maxContentAgeMin: 1440,
       }),
-      maxContentAgeMin: 1440,
-    }),
-  );
+    );
 
-  const meta = lastMetaSetBody('valid-timestamps');
-  assert.equal(meta.newestItemAt, NEWEST);
-  assert.equal(meta.oldestItemAt, OLDEST);
-  assert.equal(meta.maxContentAgeMin, 1440);
+    const meta = lastMetaSetBody('valid-timestamps');
+    assert.equal(meta.newestItemAt, NEWEST);
+    assert.equal(meta.oldestItemAt, OLDEST);
+    assert.equal(meta.maxContentAgeMin, 1440);
+    const receipt = logs.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(row => row?.event === 'seed_complete');
+    assert.equal(receipt.newestItemAt, NEWEST);
+    assert.equal(receipt.oldestItemAt, OLDEST);
+    assert.equal(receipt.maxContentAgeMin, 1440);
+    assert.equal(receipt.canonicalKey, 'test:valid-timestamps:v1');
+    assert.equal(typeof receipt.runId, 'string');
+  } finally { console.log = originalLog; }
 });
 
 test('runSeed passes one run clock and publishes null for a persisted future GDELT stamp', async () => {
@@ -316,6 +329,7 @@ test('runSeed passes one run clock and publishes null for a persisted future GDE
   let observedRunClock;
   let fetchRunClock;
   let fetchDeadlineAt;
+  let fetchRunId;
 
   await runWithExitTrap(() =>
     runSeed(
@@ -325,6 +339,7 @@ test('runSeed passes one run clock and publishes null for a persisted future GDE
       (runContext) => {
         fetchRunClock = runContext.runStartedAtMs;
         fetchDeadlineAt = runContext.fetchDeadlineAtMs;
+        fetchRunId = runContext.runId;
         return fetchAllTopics({
           runStartedAtMs: fetchRunClock,
           _now: () => fetchRunClock,
@@ -357,6 +372,8 @@ test('runSeed passes one run clock and publishes null for a persisted future GDE
   );
 
   assert.ok(Number.isFinite(observedRunClock), 'runSeed must pass its immutable run clock to contentMeta');
+  assert.match(fetchRunId, /^\d+-[a-z0-9]{1,6}$/);
+  assert.equal(recordedCalls.find(call => call.body?.[0] === 'SET' && call.body?.[3] === 'NX')?.body[2], fetchRunId);
   assert.equal(observedRunClock, fetchRunClock, 'fetch ordering and content health must share the same run clock');
   assert.ok(fetchDeadlineAt > fetchRunClock, 'runSeed passes the absolute fetch deadline so optional fetch work can stop in time');
   const meta = lastMetaSetBody('gdelt-future-cache');
@@ -454,4 +471,59 @@ test('legacy: seeder without contentMeta writes seed-meta in legacy shape (no co
   assert.ok(!('newestItemAt' in meta), 'newestItemAt absent — legacy shape preserved');
   assert.ok(!('oldestItemAt' in meta), 'oldestItemAt absent');
   assert.ok(!('maxContentAgeMin' in meta), 'maxContentAgeMin absent — opt-in signal NOT set for legacy seeders');
+});
+
+test('initial fetch failure records an error with NX and no success timestamp', async () => {
+  const result = await runWithExitTrap(() => runSeed('test', 'first-failure', 'test:first-failure:v1', async () => {
+    throw new Error('provider unavailable');
+  }, { recordInitialFetchFailure: true }));
+  assert.equal(result.exitCode, 75);
+  const command = recordedCalls.map(c => c.body).find(c => Array.isArray(c)
+    && c[0] === 'SET' && c[1] === 'seed-meta:test:first-failure');
+  assert.ok(command);
+  assert.equal(command.at(-1), 'NX');
+  assert.equal(command.length, 4);
+  const meta = JSON.parse(command[2]);
+  assert.equal(meta.status, 'error');
+  assert.equal(typeof meta.firstFailureAt, 'number');
+  assert.equal(meta.fetchedAt, undefined);
+  assert.equal(meta.recordCount, 0);
+  assert.equal(JSON.stringify(meta).includes('provider unavailable'), false);
+});
+
+test('food-price first failure records health metadata without publishing or activating', async () => {
+  const originalArgv = process.argv[1];
+  const originalExitCode = process.exitCode;
+  try {
+    process.argv[1] = new URL(import.meta.url).pathname;
+    await runFoodPriceSource('twmoa', import.meta.url);
+    const commands = recordedCalls.flatMap(c => Array.isArray(c.body?.[0]) ? c.body : [c.body]);
+    const receipt = commands.find(c => c?.[0] === 'SET' && c[1] === 'seed-meta:economic:food-prices-twmoa');
+    assert.ok(receipt, 'initial failure must be visible to health');
+    assert.equal(receipt.at(-1), 'NX', 'must preserve existing success metadata');
+    const meta = JSON.parse(receipt[2]);
+    assert.equal(meta.status, 'error');
+    assert.equal(meta.recordCount, 0);
+    assert.equal(typeof meta.firstFailureAt, 'number');
+    assert.equal(meta.fetchedAt, undefined);
+    assert.equal(commands.some(c => c?.[0] === 'SET' && c[1] === 'seed-activated:economic:food-prices-twmoa'), false);
+    assert.equal(commands.some(c => c?.[0] === 'SET' && c[1] === 'economic:food-prices:twmoa:v1'), false);
+  } finally {
+    process.argv[1] = originalArgv;
+    process.exitCode = originalExitCode;
+  }
+});
+
+
+test('legacy completion receipt preserves the published acquisition clock', async () => {
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    await runWithExitTrap(() => runSeed('test', 'legacy-receipt', 'test:legacy-receipt:v1', async () => ({ items: [1] })));
+    const receipt = logs.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(row => row?.event === 'seed_complete');
+    const meta = lastMetaSetBody('legacy-receipt');
+    assert.equal(typeof meta.fetchedAt, 'number');
+    assert.equal(receipt.fetchedAt, meta.fetchedAt);
+  } finally { console.log = originalLog; }
 });

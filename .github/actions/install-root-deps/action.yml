@@ -7,12 +7,40 @@ inputs:
 runs:
   using: composite
   steps:
+    # Key on the package.json fields an install reads, not the whole file. A
+    # scripts-only edit used to miss in every job (16 reinstalls in run
+    # 41229529882). Dependency fields stay in, so a manifest out of sync with
+    # the lockfile still misses and npm ci fails on it (#8716). allowScripts
+    # decides which dependency install scripts run, and the hooks are every
+    # root event npm ci runs (npm lib/commands/ci.js). The file: dependencies
+    # under vendor/ have no lockfile integrity, so the key hashes their
+    # contents. The program is single-quoted in the shell: keep apostrophes
+    # out of it.
+    - name: Hash the install inputs of package.json
+      id: install-inputs
+      shell: bash
+      run: |
+        node -e '
+          const { createHash } = require("node:crypto");
+          const pkg = JSON.parse(require("node:fs").readFileSync("package.json", "utf8"));
+          const sorted = (value) => Array.isArray(value) ? value.map(sorted)
+            : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map((k) => [k, sorted(value[k])]))
+            : value;
+          const fields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "peerDependenciesMeta",
+            "bundleDependencies", "bundledDependencies", "overrides", "workspaces", "allowScripts", "devEngines"];
+          const hooks = ["preinstall", "install", "postinstall", "prepublish", "preprepare", "prepare", "postprepare"];
+          const inputs = {
+            fields: Object.fromEntries(fields.map((f) => [f, pkg[f] ?? null])),
+            hooks: Object.fromEntries(hooks.map((h) => [h, pkg.scripts?.[h] ?? null])),
+          };
+          console.log("hash=" + createHash("sha256").update(JSON.stringify(sorted(inputs))).digest("hex"));
+        ' >> "$GITHUB_OUTPUT"
     - name: Restore root dependencies
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       id: node-modules
       with:
         path: node_modules
-        key: node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc', 'vendor/braces/**', 'vendor/stream-json/**') }}
+        key: node-modules-v3-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', '.npmrc', 'vendor/braces/**', 'vendor/stream-json/**', 'vendor/vercel-og/**') }}-${{ steps.install-inputs.outputs.hash }}
     # The npm download cache matters only when npm ci runs. Restoring it in
     # setup-node cost every job 4-12s (583 MB) on runs that then hit the
     # node_modules cache above, so callers that install nothing else leave

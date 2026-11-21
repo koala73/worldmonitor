@@ -13,7 +13,7 @@ paths:
             tags:
                 - PositiveEventsService
             summary: ListPositiveGeoEvents
-            description: ListPositiveGeoEvents retrieves geocoded positive news events from GDELT GEO API.
+            description: ListPositiveGeoEvents returns places named in positive-tone GDELT GKG articles, grouped by location with at least 3 reports and tagged by category.
             operationId: ListPositiveGeoEvents
             parameters:
                 - name: jmespath

@@ -34,7 +34,8 @@ const RELAY_DROP_MESSAGES = [
 ];
 
 export function relayFailureLevel(error) {
-  if (error?.name === 'AbortError') return 'warning';
+  // AbortSignal.timeout (fetchWithTimeout in _relay.js) rejects as TimeoutError.
+  if (error?.name === 'AbortError' || error?.name === 'TimeoutError') return 'warning';
   const code = typeof error?.code === 'string' ? error.code : '';
   if (code) return RELAY_DROP_CODES.has(code) ? 'warning' : 'error';
   const msg = error?.message || String(error ?? '');

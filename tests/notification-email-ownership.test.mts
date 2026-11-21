@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import Module, { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import notify, { __setNotifyDepsForTests } from '../api/notify.ts';
 import { DIGEST_EMAIL_MAX_HTML_BYTES, renderDigestEmailHtml } from '../scripts/lib/digest-email-html.mjs';
+import { selectDigestChannelContent } from '../scripts/lib/digest-channel-content.mjs';
+import { briefIntlLocale, briefPlural, briefT, formatBriefDate } from '../shared/brief-strings.js';
+import { truncateForDisplay } from '../shared/brief-text.js';
 
 const require = createRequire(import.meta.url);
 const { appendUnsubscribeText, injectUnsubscribeFooterHtml, listUnsubscribeHeaders, unsubscribeUrlFor } = require('../scripts/lib/email-unsubscribe.cjs');
@@ -58,6 +62,11 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });
       if (url.includes('/LRANGE/')) return Response.json({ result: [JSON.stringify(queued[0])] });
       if (url.includes('/DEL/')) { heldDeleted = true; return Response.json({ result: 1 }); }
+      if (url.endsWith('/pipeline')) {
+        const cmds = JSON.parse(String(init?.body ?? '[]')) as string[][];
+        if (cmds.some((cmd) => cmd[0] === 'LREM')) heldDeleted = true;
+        return Response.json(cmds.map(() => ({ result: 1 })));
+      }
       if (url.includes('/SET/')) return Response.json({ result: 'OK' });
       throw new Error(`Unexpected transport: ${url}`);
     };
@@ -113,9 +122,10 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
     const unreserved = renderDigestEmailHtml({ stories, nowMs: Date.now() });
     assert.ok(Buffer.byteLength(fillFooter(unreserved.html)) > DIGEST_EMAIL_MAX_HTML_BYTES, 'fixture exceeds the cap without footer reservation');
     const run = runInNewContext(`${sendEmail}\n${main}\nmain`, {
-      Date, Map, Set, AbortSignal, Buffer, process: { env: {} }, console: { log() {}, warn() {} },
+      Date, Map, Set, AbortSignal, Buffer, createHash, process: { env: {} }, console: { log() {}, warn() {} },
       DIGEST_EMAIL_MAX_HTML_BYTES, injectUnsubscribeFooterHtml, unsubscribeUrlFor,
       appendUnsubscribeText, listUnsubscribeHeaders, resend: {}, RESEND_FROM: 'brief@example.com',
+      withDeliveryReports: async (deliver: () => Promise<unknown>) => deliver(),
       CONVEX_SITE_URL: 'https://convex.test', RELAY_SECRET: 'fake', DIGEST_LOOKBACK_MS: 86400000,
       scanAndEnqueueWatchlistStoryEvents: async () => {},
       fetch: async (url: string) => {
@@ -125,20 +135,25 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
         return Response.json([{ channelType: 'email', email: 'owner@example.com', unsubscribeUrls: { brief: unsubscribeUrl }, verified: proof !== 'unverified', ...(proof === 'legacy' ? {} : { emailOwnership: 'verified_account' }) }]);
       },
       parseDigestOnlyUser: () => ({ kind: 'unset' }),
+      fetchBriefOnlyUserIds: async () => [], buildBriefOnlyRules: () => [],
       composeBriefsForRun: async () => ({ briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 }),
       readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
       getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
       digestWindowStartMs: () => 0, buildDigest: async () => stories,
       shouldExitOnBriefFailures: () => false,
       AI_DIGEST_ENABLED: false,
-      buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
+      selectDigestChannelContent,
+      buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, canonicalFormatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
       formatDigest: () => 'Synthetic digest',
       renderDigestEmailHtml,
+      briefIntlLocale, briefPlural, briefT, formatBriefDate, truncateForDisplay,
       buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
       subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => 'slot',
       emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
-      sendResendEmail: async (_client: unknown, message: { to: string; html: string; text: string }) => {
+      sendResendEmail: async (_client: unknown, message: { to: string; html: string; text: string }, options: { idempotencyKey?: string }) => {
         assert.equal(message.to, 'owner@example.com');
+        // A late-accepted send replays on the next tick; the payload-bound key lets Resend drop it.
+        assert.match(options.idempotencyKey ?? '', /^digest-[0-9a-f]{64}$/);
         assert.ok(message.text.startsWith('Synthetic digest'), 'plain-text part carries the plain story list');
         const deliveredHtml = message.html;
         assert.ok(Buffer.byteLength(deliveredHtml) <= DIGEST_EMAIL_MAX_HTML_BYTES);

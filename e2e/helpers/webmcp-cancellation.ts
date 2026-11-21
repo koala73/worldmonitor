@@ -162,7 +162,7 @@ async function installColdStartCancellationProbe(
 
 async function readToolStartMark(page: Page, toolName: string): Promise<ToolStartMark | null> {
   return page.evaluate((name) => {
-    const marks = (window as Window & {
+    const marks = (window as unknown as {
       __wmLcpDebug?: { getSnapshot?: () => { marks: ToolStartMark[] } };
     }).__wmLcpDebug?.getSnapshot?.().marks ?? [];
     return marks.filter((mark) => (
@@ -208,7 +208,7 @@ export async function runWebMcpCancellationScenario(
     window.addEventListener('unhandledrejection', (event) => {
       if (rejectionLog.length >= 20) return;
       const reason = event.reason;
-      let name = typeof reason;
+      let name: string = typeof reason;
       let message = String(reason);
       try {
         if (reason && (typeof reason === 'object' || typeof reason === 'function')) {

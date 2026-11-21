@@ -2153,6 +2153,9 @@ describe("webhook processWebhookEvent", () => {
   });
 
   test("subscription.cancelled preserves entitlements until period end", async () => {
+    // Coverage is evaluated at processing time; pin it inside the paid period.
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP + 1000);
     const t = convexTest(schema, modules);
 
     await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
@@ -2587,19 +2590,29 @@ describe("webhook processWebhookEvent", () => {
     expect(rows.entitlement?.planKey).toBe("pro_monthly");
   });
 
-  test("dispute.lost expires only the disputed subscription when another active subscription covers the user", async () => {
+  test.each([
+    { inlineSubscriptionId: true, reusedCustomer: false },
+    { inlineSubscriptionId: false, reusedCustomer: false },
+    { inlineSubscriptionId: false, reusedCustomer: true },
+  ])("dispute.lost resolves the disputed subscription ($inlineSubscriptionId, reused customer: $reusedCustomer)", async ({ inlineSubscriptionId, reusedCustomer }) => {
     const t = convexTest(schema, modules);
     const userId = "user_dispute_multi";
 
     await t.run(async (ctx) => {
       await ctx.db.insert("customers", {
-        userId,
+        userId: reusedCustomer ? 'deleted:old-customer-owner' : userId,
         dodoCustomerId: "cust_dispute_multi",
         email: "multi@example.com",
         normalizedEmail: "multi@example.com",
         createdAt: BASE_TIMESTAMP - 1000,
         updatedAt: BASE_TIMESTAMP - 1000,
       });
+      if (reusedCustomer) {
+        await ctx.db.insert('accountDeletions', {
+          userId: 'old-customer-owner', userIdHash: 'old-customer-owner', source: 'self',
+          status: 'complete', step: 'complete', startedAt: BASE_TIMESTAMP - 2000, updatedAt: BASE_TIMESTAMP - 1000,
+        });
+      }
       await ctx.db.insert("subscriptions", {
         userId,
         dodoSubscriptionId: "sub_disputed_multi",
@@ -2633,15 +2646,20 @@ describe("webhook processWebhookEvent", () => {
       });
     });
 
+    await t.run(async ctx => {
+      await ctx.db.insert('paymentEvents', { userId, dodoPaymentId: 'pay_dispute_multi',
+        type: 'charge', amount: 1000, currency: 'USD', status: 'succeeded',
+        dodoSubscriptionId: 'sub_disputed_multi', rawPayload: {}, occurredAt: BASE_TIMESTAMP });
+    });
+    const payload = makePaymentPayload("payment.succeeded", {
+      payment_id: "pay_dispute_multi", subscription_id: "sub_disputed_multi",
+      customer: { customer_id: "cust_dispute_multi", email: "multi@example.com" },
+    });
+    if (!inlineSubscriptionId) delete (payload.data as Record<string, unknown>).subscription_id;
     await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
       webhookId: "wh_dispute_multi",
       eventType: "dispute.lost",
-      rawPayload: makePaymentPayload("payment.succeeded", {
-        payment_id: "pay_dispute_multi",
-        subscription_id: "sub_disputed_multi",
-        customer: { customer_id: "cust_dispute_multi", email: "multi@example.com" },
-        metadata: { wm_user_id: userId },
-      }),
+      rawPayload: payload,
       timestamp: BASE_TIMESTAMP + 1000,
     });
 
@@ -2650,19 +2668,24 @@ describe("webhook processWebhookEvent", () => {
         ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_disputed_multi")).unique(),
         ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_cover_multi")).unique(),
         ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", userId)).first(),
-        ctx.db.query("paymentEvents").withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", "pay_dispute_multi")).first(),
+        ctx.db.query("paymentEvents").withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", "pay_dispute_multi")).order('desc').first(),
       ]);
       return { disputed, cover, entitlement, paymentEvent };
     });
     expect(rows.disputed?.status).toBe("expired");
+    expect(rows.disputed?.userId).toBe(userId);
     expect(rows.cover?.status).toBe("active");
     expect(rows.entitlement?.planKey).toBe("api_starter");
     expect(rows.entitlement?.validUntil).toBe(BASE_TIMESTAMP + 45 * 86400000);
     expect(rows.entitlement?.features.tier).toBe(getFeaturesForPlan("api_starter").tier);
     expect(rows.paymentEvent?.status).toBe("dispute_lost");
+    expect(rows.paymentEvent?.userId).toBe(userId);
   });
 
   test("dispute.lost preserves a future complimentary entitlement floor", async () => {
+    // Coverage is evaluated at processing time; pin it before compUntil.
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP + 1000);
     const t = convexTest(schema, modules);
     const userId = "user_dispute_comp";
     const compUntil = BASE_TIMESTAMP + 60 * 86400000;
@@ -2857,6 +2880,52 @@ describe("webhook processWebhookEvent", () => {
       return ctx.db.query("subscriptions").collect();
     });
     expect(subs).toHaveLength(1);
+  });
+
+  test("a conflicting equal-timestamp lifecycle event preserves the first accepted state", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await processEvent(t, "wh_equal_active", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+    const before = await t.run((ctx) => ctx.db.query("subscriptions").unique());
+    expect(before?.status).toBe("active");
+    await processEvent(t, "wh_equal_cancel", "subscription.cancelled", makeSubscriptionPayload(), BASE_TIMESTAMP);
+    const equal = await t.run((ctx) => ctx.db.query("subscriptions").unique());
+    expect(equal).toEqual(before);
+    await processEvent(t, "wh_newer_cancel", "subscription.cancelled", makeSubscriptionPayload(), BASE_TIMESTAMP + 1);
+    const newer = await t.run((ctx) => ctx.db.query("subscriptions").unique());
+    expect(newer?.status).toBe("cancelled");
+    expect(newer?.updatedAt).toBe(BASE_TIMESTAMP + 1);
+  });
+
+  test.each(["subscription.active", "payment.succeeded"] as const)("concurrent duplicate %s deliveries apply storage effects once", async (eventType) => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("customers", {
+        userId: "test-user-001", dodoCustomerId: "cust_test_001", email: "test@example.com",
+        createdAt: BASE_TIMESTAMP, updatedAt: BASE_TIMESTAMP,
+      });
+    });
+    const args = {
+      webhookId: "wh_concurrent_duplicate", eventType, timestamp: BASE_TIMESTAMP,
+      rawPayload: eventType === "subscription.active" ? makeSubscriptionPayload() : makePaymentPayload("payment.succeeded"),
+    };
+    await Promise.all(Array.from({ length: 8 }, () => t.mutation(internal.payments.webhookMutations.processWebhookEvent, args)));
+    const state = await t.run(async (ctx) => ({
+      webhooks: await ctx.db.query("webhookEvents").collect(),
+      subscriptions: await ctx.db.query("subscriptions").collect(),
+      payments: await ctx.db.query("paymentEvents").collect(),
+      entitlements: await ctx.db.query("entitlements").collect(),
+      customers: await ctx.db.query("customers").collect(),
+    }));
+    expect(state.webhooks).toHaveLength(1);
+    expect(state.customers).toHaveLength(1);
+    expect(state.subscriptions).toHaveLength(eventType === "subscription.active" ? 1 : 0);
+    expect(state.payments).toHaveLength(eventType === "payment.succeeded" ? 1 : 0);
+    if (eventType === "subscription.active") {
+      expect(state.entitlements).toHaveLength(1);
+      expect(state.entitlements[0]?.planKey).toBe("pro_monthly");
+    }
   });
 
   test.each([

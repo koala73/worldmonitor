@@ -35,6 +35,7 @@ before(() => {
 
 const { track, identifyUser, resetAnalyticsForTesting } = await import('../src/services/analytics.ts');
 const { COLLECTOR_QUEUE_LIMIT } = await import('../src/services/analytics-collector-transport.ts');
+const { fallbackAnySignal, fallbackTimeoutSignal } = await import('../src/services/timeout-signal.ts');
 
 type WinWithUmami = {
   umami?: { track: (...a: unknown[]) => unknown; identify: (...a: unknown[]) => unknown };
@@ -940,6 +941,43 @@ describe('collector request timeout compatibility (#6086)', { concurrency: false
       if (anyDescriptor) Object.defineProperty(AbortSignal, 'any', anyDescriptor);
     }
   });
+
+  // bootstrap/abort-signal-fallbacks.ts installs these on old engines, so
+  // "the function exists" no longer means "the engine has it". The collector
+  // must still take, and report, its compatibility path there.
+  for (const { name, value, withCaller } of [
+    { name: 'timeout', value: fallbackTimeoutSignal, withCaller: false },
+    { name: 'any', value: fallbackAnySignal, withCaller: true },
+  ] as const) {
+    it(`reports the manual deadline when AbortSignal.${name} is the installed fallback`, async () => {
+      const descriptor = Object.getOwnPropertyDescriptor(AbortSignal, name);
+      const fakeTimers = installFakeTimers();
+      const originalWarn = console.warn;
+      console.warn = () => {};
+      const outcomes: Array<{ timeoutMechanism: string }> = [];
+      _setCollectorOutcomeObserverForTesting((outcome) => { outcomes.push(outcome); });
+      Object.defineProperty(AbortSignal, name, { configurable: true, writable: true, value });
+      window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => rejectWhenAborted(init?.signal)) as typeof window.fetch;
+      installCollectorFetchGate();
+
+      try {
+        const caller = withCaller ? new AbortController().signal : undefined;
+        const stalled = window.fetch(UMAMI_SEND_URL, collectorEventInit(caller));
+        await drainPromiseHandlers();
+
+        const deadline = fakeTimers.timers.find((timer) => timer.delay === 20_000);
+        assert.ok(deadline, 'the compatibility path must schedule the 20s deadline');
+        deadline.callback();
+
+        await assert.rejects(stalled, { name: 'TimeoutError' });
+        assert.equal(outcomes[0]?.timeoutMechanism, 'manual', 'an installed fallback is not a native deadline');
+      } finally {
+        console.warn = originalWarn;
+        fakeTimers.restore();
+        if (descriptor) Object.defineProperty(AbortSignal, name, descriptor);
+      }
+    });
+  }
 
   it('forwards caller cancellation when AbortSignal.any is unavailable', async () => {
     const anyDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'any');

@@ -116,9 +116,10 @@ function generateClusterId(items) {
 
 /**
  * Cluster news items by title similarity using Jaccard index.
- * Pure function - no side effects.
+ * Pure function - no side effects. `tokenizeTitle` defaults to the English
+ * tokenizer the dashboard clusters with.
  */
-export function clusterNewsCore(items, getSourceTier) {
+export function clusterNewsCore(items, getSourceTier, tokenizeTitle = tokenize) {
   if (items.length === 0) return [];
 
   const boundedItems = items.length > MAX_CLUSTER_NEWS_ITEMS
@@ -141,7 +142,7 @@ export function clusterNewsCore(items, getSourceTier) {
   const tokenList = [];
   const invertedIndex = new Map();
   for (const item of itemsWithTier) {
-    const tokens = tokenize(item.title);
+    const tokens = tokenizeTitle(item.title);
     tokenCache.set(item.title, tokens);
     tokenList.push(tokens);
   }
@@ -264,10 +265,10 @@ export function clusterNewsCore(items, getSourceTier) {
  * excluding suppressed generic news terms. Server-side MCP helper — the
  * client derives no per-cluster keywords today.
  */
-export function topClusterKeywords(cluster, limit = 5) {
+export function topClusterKeywords(cluster, limit = 5, tokenizeTitle = tokenize) {
   const counts = new Map();
   for (const item of cluster.allItems) {
-    for (const token of tokenize(item.title)) {
+    for (const token of tokenizeTitle(item.title)) {
       if (SUPPRESSED_TRENDING_TERMS.has(token)) continue;
       counts.set(token, (counts.get(token) ?? 0) + 1);
     }

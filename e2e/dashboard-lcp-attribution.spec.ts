@@ -1,4 +1,5 @@
 import { devices, expect, test, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const { defaultBrowserType: mobileDefaultBrowserType, ...mobileDevice } = devices['iPhone 14 Pro Max'];
 void mobileDefaultBrowserType;
@@ -42,9 +43,8 @@ declare global {
 
 const DIGEST_GLOB = '**/api/news/v1/list-feed-digest*';
 const PARTIAL_DIGEST_COVERAGE_TEXT =
-  'Digest coverage: partial — 0 publishers, 0 items, feeds 7/12, categories 0/6 ' +
-  '(no completed feed: politics, military, economy, climate, …) ' +
-  '(some categories had no completed feed in this cycle)';
+  'News coverage: partial — 0 publishers, 0 stories, feeds 7/12, categories 0/6 ' +
+  '(no completed feed: politics, military, economy, climate, …)';
 
 const installLcpDebug = async (page: Page): Promise<void> => {
   await page.route(DIGEST_GLOB, (route) => route.fulfill({
@@ -184,12 +184,15 @@ const expectCoverageRowContract = async (
   page: Page,
   presentation: 'clipped-to-screen-readers' | 'visible',
 ): Promise<void> => {
-  const coverageRow = page.getByRole('status', { name: 'Digest coverage status' });
+  const coverageRow = page.getByRole('status', { name: 'News coverage status' });
   await expect(
     coverageRow,
     'the #7085 coverage row must stay in the accessibility tree',
   ).toBeAttached({ timeout: 30000 });
-  await expect(coverageRow).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT);
+  // The row also carries a visually hidden reason for screen readers; the
+  // visible footer text is the .digest-coverage-text span alone.
+  await expect(coverageRow.locator('.digest-coverage-text')).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT);
+  await expect(coverageRow).toContainText('Some categories had no completed feed in this cycle.');
 
   const latest = await readLcpAfterCoveragePaint(page);
 
@@ -278,6 +281,45 @@ test.describe('dashboard LCP attribution debug', () => {
     expect(latest!.context.viewport.width).toBeGreaterThan(0);
     expect(latest!.url).not.toContain('wms_');
     expect(latest!.url).not.toContain('token=');
+  });
+
+  // PR #10989: the coverage row's visually hidden reason is absolutely
+  // positioned. Without a positioned row it escaped overflow: hidden and
+  // widened the page at 800px (settings-home-list caught it in CI).
+  test('the coverage row adds no sideways scroll at 800px', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 700 });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const coverageRow = page.getByRole('status', { name: 'News coverage status' });
+    await expect(coverageRow.locator('.digest-coverage-text')).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT, { timeout: 30000 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBe(0);
+  });
+
+  // StatusPanel is a lazy chunk. When the first digest landed before it
+  // loaded, its coverage report went to nobody and the row never mounted
+  // (CI runs 43792956961 and 43794135730, retried by Playwright).
+  test('mounts the coverage row when the status panel loads after the first digest', async ({ page }, testInfo) => {
+    let coveragePublished = false;
+    let releasePanelModule!: () => void;
+    const panelModuleReleased = new Promise<void>((resolve) => { releasePanelModule = resolve; });
+    let panelRequestedBeforeCoverage = false;
+    await page.route('**/src/components/StatusPanel.ts*', async (route) => {
+      if (!coveragePublished) panelRequestedBeforeCoverage = true;
+      await panelModuleReleased;
+      await route.continue();
+    });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    // The data loader marks feed-digest-ready and calls reportDigestCoverage()
+    // in one synchronous run, so once the mark is visible the summary has been
+    // published with no panel to receive it.
+    await page.waitForFunction(() => window.__wmLcpDebug?.getSnapshot().marks
+      .some((mark) => mark.name === 'wm:data:feed-digest-ready'), null, { timeout: 30000 });
+    coveragePublished = true;
+    releasePanelModule();
+    const coverageRow = page.getByRole('status', { name: 'News coverage status' });
+    await expect(coverageRow.locator('.digest-coverage-text')).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT, { timeout: 30000 });
+    expect(panelRequestedBeforeCoverage, 'the StatusPanel module must be requested before coverage is published').toBe(true);
+    await evidenceScreenshot(page.locator('.site-footer'), { path: testInfo.outputPath('coverage-row-late-status-panel.png') });
   });
 });
 

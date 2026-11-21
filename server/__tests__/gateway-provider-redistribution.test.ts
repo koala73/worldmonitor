@@ -12,9 +12,11 @@ vi.mock('../_shared/api-key-rate-limit', async (original) => ({
   checkBurst: async () => ({ ok: true }),
   reserveDailyMeter: async () => ({ count: 1, overLimit: false, metered: true, retryAfterSec: 60, rollback: async () => {} }),
 }));
+// The gateway resolves wm_ keys through the desktop-aware principal (plan
+// 2026-10-25-001 U4); an `api` principal with rank 0 is today's API customer.
 vi.mock('../_shared/user-api-key', () => ({
-  validateUserApiKey: vi.fn(async (key: string) => key === 'wm_valid_user_key'
-    ? { userId: 'paid-account', keyId: 'test', name: 'test' } : null),
+  validateUserApiKeyPrincipal: vi.fn(async (key: string) => key === 'wm_valid_user_key'
+    ? { userId: 'paid-account', keyId: 'test', keyKind: 'api', keyHash: 'h'.repeat(64), activeKeyRank: 0 } : null),
 }));
 vi.mock('../_shared/entitlement-check', async (original) => ({
   ...await original<typeof import('../_shared/entitlement-check')>(),
@@ -29,7 +31,7 @@ vi.mock('../_shared/redis', async (original) => ({
 
 import { createDomainGateway } from '../gateway';
 import { getCachedJson } from '../_shared/redis';
-import { validateUserApiKey } from '../_shared/user-api-key';
+import { validateUserApiKeyPrincipal as validateUserApiKey } from '../_shared/user-api-key';
 import { getTheaterPosture } from '../worldmonitor/military/v1/get-theater-posture';
 import { createMilitaryServiceRoutes, type MilitaryServiceHandler } from '../../src/generated/server/worldmonitor/military/v1/service_server';
 import { getCountrySignalObservations } from '../worldmonitor/intelligence/v1/get-country-signal-observations';

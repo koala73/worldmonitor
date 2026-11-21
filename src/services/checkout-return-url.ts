@@ -1,8 +1,6 @@
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
-import {
-  CHECKOUT_RETURN_SOURCE_PARAM,
-  DESKTOP_CHECKOUT_HANDOFF,
-} from '../../shared/checkout-attribution';
+import { CHECKOUT_RETURN_SOURCE_PARAM } from '../../shared/checkout-attribution';
+import { DESKTOP_CHECKOUT_HANDOFF } from '../../shared/desktop-checkout-handoff';
 
 const DASHBOARD_PATH = '/dashboard';
 

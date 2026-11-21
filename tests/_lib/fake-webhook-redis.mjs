@@ -55,6 +55,7 @@ export function fakeRedis(initial = {}) {
       }
       case 'DEL': return store.delete(key) ? 1 : 0;
       case 'HGETALL': return Object.entries(store.get(key) ?? {}).flat();
+      case 'HKEYS': return Object.keys(store.get(key) ?? {});
       case 'HSET': {
         const hash = store.get(key) ?? {};
         for (let i = 0; i < args.length; i += 2) hash[args[i]] = args[i + 1];

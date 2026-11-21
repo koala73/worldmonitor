@@ -159,3 +159,18 @@ test('a seed older than two weekly runs is stale', async () => {
   const result = await executeTool(tool, { country: 'AE' }, NOW);
   assert.equal(result.stale, true);
 });
+
+test('the energy shock model\'s per-importer sections are not returned by this tool', async () => {
+  const data = {
+    ...payload(),
+    crudeImportOrigin: { status: 'ok', months: ['2025-02'], importers: { JP: { worldUsdM: [1], gulfUsdM: [1] } } },
+    crudeImportOriginNational: { status: 'ok', unit: 'tonnes', months: ['2025-02'], importers: { TR: { worldT: [1], gulfT: [1] } } },
+    productDemandNational: { status: 'ok', unit: 'kbd', countries: { MY: { source: 'DOSM', year: 2024, products: { diesel: 240.7 } } } },
+  };
+  seed(data);
+  const series = (await executeTool(tool, { country: 'AE' }, NOW)).data.oilTradeSeries;
+  assert.equal(series.crudeImportOrigin, undefined);
+  assert.equal(series.crudeImportOriginNational, undefined);
+  assert.equal(series.productDemandNational, undefined);
+  assert.equal(series.countries[0].iso2, 'AE');
+});

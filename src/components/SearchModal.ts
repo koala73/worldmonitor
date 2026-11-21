@@ -1,10 +1,12 @@
 import { escapeHtml } from '@/utils/sanitize';
 import { debounce } from '@/utils';
 import { t } from '@/services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { renderCrosshairIconSvg, renderExpandIconSvg } from '@/utils/ui-icons';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   ALL_CHANNEL_TIP_KEYS,
@@ -51,10 +53,6 @@ const CATEGORY_KEYS: Record<string, string> = {
   country: 'commands.categories.country',
 };
 
-function kebabToCamel(s: string): string {
-  return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-}
-
 function resolveCommandLabel(cmd: Command): string {
   const colonIdx = cmd.id.indexOf(':');
   if (colonIdx === -1) return cmd.label;
@@ -71,7 +69,7 @@ function resolveCommandLabel(cmd: Command): string {
       const panelId = panelCommandTargetId(cmd.id) ?? action;
       const panelName = action.includes('@')
         ? fallback
-        : t('panels.' + kebabToCamel(panelId), { defaultValue: fallback });
+        : getPanelDisplayName(panelId, fallback);
       return `${t('commands.prefixes.panel')}: ${panelName}`;
     }
     case 'country':
@@ -89,8 +87,19 @@ function resolveCategoryLabel(cmd: Command): string {
   return key ? t(key, { defaultValue: cmd.category }) : cmd.category;
 }
 
+// A headline from the server history reads as news to the user: same label,
+// no second word for the same thing. Its subtitle carries publisher and age.
+const RESULT_TYPE_LABEL_KEYS: Partial<Record<SearchResultType, string>> = {
+  headline: 'news',
+};
+
 const RECENT_SEARCHES_KEY = 'worldmonitor_recent_searches';
 const MAX_RECENT = 8;
+
+/** Sources left out of one query before ranking, so they take none of the capped result slots. */
+interface SearchQueryOptions {
+  excludeTypes?: readonly SearchResultType[];
+}
 
 interface SearchModalOptions {
   placeholder?: string;
@@ -104,10 +113,15 @@ const SEARCH_DEBOUNCE_MS = 180;
 const SCOPE_ICONS: Record<SearchScope, string> = {
   all: '\u2318',
   signals: '\u25C9',
-  map: '\u2316',
+  map: renderCrosshairIconSvg('1em'),
   panels: '\u25A6',
   actions: '\u26A1',
 };
+
+function renderCommandIcon(command: Command): string {
+  if (command.id === 'view:fullscreen') return renderExpandIconSvg('1em');
+  return escapeHtml(command.icon);
+}
 
 const SCOPE_LABELS: Record<SearchScope, string> = {
   all: 'All intel',
@@ -151,6 +165,9 @@ export class SearchModal {
   private onHumanInteraction?: () => void;
   private onQueryChange?: (rawInput: string) => void;
   private onFlightSearch?: (callsign: string) => void;
+  /** A source is still fetching results for the visible query. */
+  private resultsPending = false;
+  private onOpen?: () => void;
   private currentFlightCallsign: string | null = null;
   private flightSearchFired = false;
   private placeholder: string;
@@ -209,7 +226,7 @@ export class SearchModal {
   }
 
   /** Search the current index without opening or mutating the modal. */
-  public search(rawInput: string, scope: SearchScope = this.activeScope): SearchIndexQueryResult {
+  public search(rawInput: string, scope: SearchScope = this.activeScope, options?: SearchQueryOptions): SearchIndexQueryResult {
     // Viewport width can change while the lazy manager stays alive. Re-read
     // the responsive mode so programmatic and visible searches use identical
     // caps/order at the current viewport. Do not mutate the current open
@@ -218,7 +235,9 @@ export class SearchModal {
     return querySearchIndex({
       rawInput,
       scope,
-      sources: this.sources,
+      sources: options?.excludeTypes?.length
+        ? this.sources.filter((source) => !options.excludeTypes?.includes(source.type))
+        : this.sources,
       commands: getAllCommands(),
       isMobile: currentViewportIsMobile,
       flightPrefixEnabled: !!this.onFlightSearch,
@@ -288,16 +307,63 @@ export class SearchModal {
     this.onHumanInteraction = callback;
   }
 
-  public setOnQueryChange(callback: (rawInput: string) => void): void {
-    this.onQueryChange = callback;
-  }
-
   public setOnFlightSearch(callback: (callsign: string) => void): void {
     this.onFlightSearch = callback;
   }
 
+  /**
+   * Called with the lowercased input each time the visible query is searched,
+   * and with '' when the query is cleared or the modal closes. A source that
+   * fetches results for the query (headline history) listens here.
+   */
+  public setOnQueryChange(callback: (rawInput: string) => void): void {
+    this.onQueryChange = callback;
+  }
+
+  /**
+   * A source is fetching results for the visible query (true) or has finished
+   * (false). While it is fetching, an empty list reads "Loading..." instead of
+   * "No results": the answer is not known yet.
+   */
+  public setResultsPending(pending: boolean): void {
+    if (this.resultsPending === pending) return;
+    this.resultsPending = pending;
+    // Turning it on happens inside the search that is about to render. Turning
+    // it off must repaint an empty list, or it would say "Loading..." forever.
+    if (pending || !this.overlay || this.totalResultCount > 0) return;
+    const query = (this.input?.value.toLowerCase() ?? '').trim();
+    if (!query || query !== this.lastSearchedQuery || this.currentFlightCallsign) return;
+    this.renderResults();
+  }
+
+  /** Runs each time the palette opens, so a source can refresh without a per-keystroke fetch. */
+  public setOnOpen(callback: () => void): void {
+    this.onOpen = callback;
+  }
+
   public refreshSearch(): void {
     if (this.overlay) this.handleSearch();
+  }
+
+  /**
+   * Re-render the current query after a source filled in on its own (a fetch
+   * finishing while the list is on screen). Unlike refreshSearch, the row the
+   * user has highlighted stays highlighted, the search is not counted again,
+   * and the query-change listener is not called again.
+   */
+  public refreshResultsInBackground(): void {
+    if (!this.overlay) return;
+    const rawInput = this.input?.value.toLowerCase() || '';
+    const query = rawInput.trim();
+    // A newer keystroke is still pending: its own search will read the source.
+    // A "flight <callsign>" lookup owns the list while it runs.
+    if (!query || query !== this.lastSearchedQuery || this.currentFlightCallsign) return;
+    const selectedIdentity = this.selectedRowIdentity();
+    const matches = this.search(rawInput, this.activeScope);
+    this.commandResults = matches.commandMatches;
+    this.results = matches.entityMatches.map((match) => match.result);
+    this.selectedIndex = selectedIdentity ? this.rowIndexOf(selectedIdentity) : 0;
+    this.renderResults();
   }
 
   public setActivePanels(panelIds: string[], options?: { updateVisibleMetrics?: boolean }): void {
@@ -396,6 +462,7 @@ export class SearchModal {
     } else {
       this.showRecentOrEmpty();
     }
+    this.onOpen?.();
   }
 
   public close(origin: OverlayCloseOrigin = 'control'): void {
@@ -406,6 +473,8 @@ export class SearchModal {
   private closeInternal(origin: OverlayCloseOrigin): void {
     // Drop any pending debounced search so it can't fire against a torn-down modal.
     this.debouncedSearch.cancel();
+    // The query is over: a source fetching for it stops and drops its results.
+    this.onQueryChange?.('');
     this.focusTrap?.deactivate();
     this.focusTrap = null;
     this.mobileInitialPopulationGeneration += 1;
@@ -504,7 +573,6 @@ export class SearchModal {
           <div class="search-sheet-handle"></div>
           <div class="search-mobile-ident">
             <span>WM // ${hasCommands ? 'COMMAND DECK' : escapeHtml(this.placeholder)}</span>
-            <span class="search-index-state"><i></i> LIVE</span>
           </div>
           <div class="search-sheet-header">
             <span class="search-sheet-icon" aria-hidden="true"></span>
@@ -546,7 +614,6 @@ export class SearchModal {
             <div class="search-command-ident">
               <span class="search-command-mark" aria-hidden="true"><i></i></span>
               <span>WM // ${hasCommands ? 'INTELLIGENCE COMMAND DECK' : escapeHtml(this.placeholder)}</span>
-              <span class="search-index-state"><i></i> INDEX ONLINE</span>
             </div>
             <div class="search-command-metrics" aria-label="Search index status">
               <span><strong data-search-entity-count>${this.getIndexedEntityCount()}</strong> SIGNALS</span>
@@ -562,7 +629,6 @@ export class SearchModal {
           <div class="search-results"></div>
           <div class="search-results-status wm-visually-hidden"></div>
           <div class="search-footer">
-            <span class="search-footer-ready"><i></i> READY FOR TASKING</span>
             <span><kbd>\u2191\u2193</kbd> ${t('modals.search.navigate')}</span>
             <span><kbd>\u21B5</kbd> ${t('modals.search.select')}</span>
             <span><kbd>esc</kbd> ${t('modals.search.close')}</span>
@@ -610,6 +676,9 @@ export class SearchModal {
       this.debouncedSearch();
     });
     this.input?.addEventListener('keydown', (e) => this.handleKeydown(e));
+    this.overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && e.target !== this.input) this.handleKeydown(e);
+    });
     this.scopeContainer?.querySelectorAll<HTMLButtonElement>('[data-search-scope]').forEach((button) => {
       button.addEventListener('click', () => {
         const scope = button.dataset.searchScope as SearchScope | undefined;
@@ -684,6 +753,7 @@ export class SearchModal {
     this.lastSearchedQuery = query;
 
     if (!query) {
+      this.onQueryChange?.('');
       this.showingAllCommands = false;
       this.commandResults = [];
       // Drop flight trigger state so Enter on the idle deck cannot re-fire a
@@ -709,6 +779,21 @@ export class SearchModal {
     this.quickLaunchExamples = [];
     this.renderResults();
     if (this.isMobile) this.renderChips(query);
+  }
+
+  /** What the highlighted row points at, so a background refresh can keep it highlighted. */
+  private selectedRowIdentity(): string | null {
+    const command = this.commandResults[this.selectedIndex]?.command;
+    if (command) return `command:${command.id}`;
+    const result = this.results[this.selectedIndex - this.commandResults.length];
+    return result ? `${result.type}:${result.id}` : null;
+  }
+
+  private rowIndexOf(identity: string): number {
+    const commandIndex = this.commandResults.findIndex(({ command }) => `command:${command.id}` === identity);
+    if (commandIndex >= 0) return commandIndex;
+    const resultIndex = this.results.findIndex((result) => `${result.type}:${result.id}` === identity);
+    return resultIndex >= 0 ? this.commandResults.length + resultIndex : 0;
   }
 
   private showRecentOrEmpty(): void {
@@ -768,7 +853,7 @@ export class SearchModal {
     // Channel scopes keep a narrower, task-focused set.
     const hasFlight = this.sources.some((source) => source.type === 'flight');
     const tipMeta: Record<string, { icon: string }> = {
-      'commands.tips.map': { icon: '\u2316' },
+      'commands.tips.map': { icon: renderCrosshairIconSvg('1em') },
       'commands.tips.panel': { icon: '\u25A6' },
       'commands.tips.brief': { icon: '\u25C9' },
       'commands.tips.layers': { icon: '\u26A1' },
@@ -813,7 +898,6 @@ export class SearchModal {
     let html = `
       <div class="search-section-header search-launch-header">
         <span>${this.getVisibleCommandCount() > 0 ? t('modals.search.empty') : escapeHtml(this.placeholder)}</span>
-        <span>${escapeHtml(SCOPE_LABELS[this.activeScope])} channel</span>
       </div>
       <div class="search-launch-grid">`;
     tips.forEach((tip, i) => {
@@ -925,7 +1009,7 @@ export class SearchModal {
         const ariaLabel = addable ? ` aria-label="${escapeHtml(`${addLabel}: ${resolveCommandLabel(cmd)}`)}"` : '';
         html += `
           <div class="search-result-item command-item ${addable ? 'command-addable' : ''}" data-command="${escapeHtml(cmd.id)}"${ariaLabel}>
-            <span class="search-result-icon">${escapeHtml(cmd.icon)}</span>
+            <span class="search-result-icon">${renderCommandIcon(cmd)}</span>
             <div class="search-result-content">
               <div class="search-result-title">${escapeHtml(resolveCommandLabel(cmd))}</div>
             </div>
@@ -978,6 +1062,16 @@ export class SearchModal {
         }
         return;
       }
+      if (this.resultsPending) {
+        // Not announced: there is no count to announce until the answer lands.
+        setTrustedHtml(this.resultsList, trustedHtml(`
+          <div class="search-empty" data-search-pending>
+            <div class="search-empty-icon">\u2026</div>
+            <div>${escapeHtml(t('common.loading'))}</div>
+          </div>
+        `, "legacy direct innerHTML migration"));
+        return;
+      }
       setTrustedHtml(this.resultsList, trustedHtml(`
         <div class="search-empty">
           <div class="search-empty-icon">\u2205</div>
@@ -991,6 +1085,7 @@ export class SearchModal {
     const icons: Record<SearchResultType, string> = {
       country: '\u{1F3F3}\uFE0F',
       news: '\u{1F4F0}',
+      headline: '\u{1F4F0}',
       hotspot: '\u{1F4CD}',
       market: '\u{1F4C8}',
       prediction: '\u{1F3AF}',
@@ -1014,6 +1109,7 @@ export class SearchModal {
       centralbank: '\u{1F3E6}',
       commodityhub: '\u{1F4E6}',
       flight: '✈',
+      alert: '\u{1F514}',
     };
 
     let html = '';
@@ -1028,7 +1124,7 @@ export class SearchModal {
         const ariaLabel = addable ? ` aria-label="${escapeHtml(`${addLabel}: ${resolveCommandLabel(command)}`)}"` : '';
         html += `
           <div class="search-result-item command-item ${addable ? 'command-addable' : ''} ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${escapeHtml(command.id)}"${ariaLabel}>
-            <span class="search-result-icon">${escapeHtml(command.icon)}</span>
+            <span class="search-result-icon">${renderCommandIcon(command)}</span>
             <div class="search-result-content">
               <div class="search-result-title">${escapeHtml(resolveCommandLabel(command))}</div>
             </div>
@@ -1036,20 +1132,30 @@ export class SearchModal {
           </div>`;
         globalIndex++;
       }
-      if (this.results.length > 0) {
-        html += `<div class="search-section-header">${t('modals.search.results')}</div>`;
-      }
     }
 
+    // Alerts sent to the user get their own section; every other result keeps
+    // the "Results" heading, shown when something precedes it. Headers carry
+    // no data-index, so option indexes are unchanged.
+    let section: 'none' | 'commands' | 'alerts' | 'results' = this.commandResults.length > 0 ? 'commands' : 'none';
     for (const result of this.results) {
+      const resultSection = result.type === 'alert' ? 'alerts' : 'results';
+      if (resultSection !== section) {
+        if (resultSection === 'alerts') {
+          html += `<div class="search-section-header" data-search-section="alerts">${escapeHtml(t('modals.search.sentAlerts'))}</div>`;
+        } else if (section !== 'none') {
+          html += `<div class="search-section-header">${t('modals.search.results')}</div>`;
+        }
+        section = resultSection;
+      }
       html += `
-        <div class="search-result-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}">
+        <div class="search-result-item ${result.type === 'headline' ? 'search-result-headline ' : ''}${resultSection === 'alerts' ? 'search-result-alert ' : ''}${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}">
           <span class="search-result-icon">${icons[result.type]}</span>
           <div class="search-result-content">
             <div class="search-result-title">${this.highlightMatch(result.title)}</div>
             ${result.subtitle ? `<div class="search-result-subtitle">${escapeHtml(result.subtitle)}</div>` : ''}
           </div>
-          <span class="search-result-type">${escapeHtml(t(`modals.search.types.${result.type}`) || result.type)}</span>
+          <span class="search-result-type">${escapeHtml(t(`modals.search.types.${RESULT_TYPE_LABEL_KEYS[result.type] ?? result.type}`) || result.type)}</span>
         </div>`;
       globalIndex++;
     }
@@ -1128,7 +1234,7 @@ export class SearchModal {
       return [{ label, value: label.toLowerCase() }];
     });
 
-    setTrustedHtml(this.chipsContainer, trustedHtml(chips.map(c =>
+    setTrustedHtml(this.chipsContainer, trustedHtml(chips.slice(0, 2).map(c =>
       `<button class="search-chip" data-value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</button>`
     ).join(''), "legacy direct innerHTML migration"));
 

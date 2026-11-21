@@ -24,9 +24,9 @@ const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 
 const ROUTE_EXPECTATIONS = [
   {
-    path: 'api/fwdstart.js',
-    reasonTerms: ['fwdstart.me', 'rss/xml', 'application/xml'],
-    sourceTerms: ['fwdstart.me', 'rss', 'application/xml'],
+    path: 'api/miit-news.js',
+    reasonTerms: ['miit', 'rss/xml', 'application/rss+xml'],
+    sourceTerms: ['miit.gov.cn', 'rss', 'application/rss+xml'],
   },
   {
     path: 'api/youtube/embed.js',
@@ -65,14 +65,14 @@ describe('api-route-exceptions manifest', () => {
   }
 
   it('rejects category and rationale regressions for route-specific exceptions', () => {
-    const fwdstart = manifest.exceptions.find(({ path }) => path === 'api/fwdstart.js');
+    const miitNews = manifest.exceptions.find(({ path }) => path === 'api/miit-news.js');
     const youtubeEmbed = manifest.exceptions.find(({ path }) => path === 'api/youtube/embed.js');
 
-    assert.ok(fwdstart);
+    assert.ok(miitNews);
     assert.ok(youtubeEmbed);
     assert.throws(() => {
       assertRouteSpecificException(
-        { ...fwdstart, category: 'upstream-proxy' },
+        { ...miitNews, category: 'upstream-proxy' },
         ROUTE_EXPECTATIONS[0],
       );
     });

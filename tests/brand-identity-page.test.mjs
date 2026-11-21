@@ -1,3 +1,7 @@
+// Published-document check by design (#8690, section 2): this suite pins
+// the brand page, its discovery links, and Organization JSON-LD identity data.
+// Runtime application tests do not check the document bytes crawlers read.
+//
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';

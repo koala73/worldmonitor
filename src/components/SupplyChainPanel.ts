@@ -8,6 +8,7 @@ import type {
 } from '@/services/supply-chain';
 import { fetchBypassOptions, fetchChokepointHistory } from '@/services/supply-chain';
 import type { TransitDayCount } from '@/services/supply-chain';
+import { chokepointCoverageWarning } from '@/services/supply-chain/chokepoint-coverage';
 import type { ScenarioResult } from '@/config/scenario-templates';
 import { SCENARIO_TEMPLATES } from '@/config/scenario-templates';
 import { TransitChart } from '@/utils/transit-chart';
@@ -283,9 +284,13 @@ export class SupplyChainPanel extends Panel {
       : this.mineralProductionData?.commodities?.length
         ? this.mineralProductionData
         : this.mineralsData;
-    const unavailableBanner = activeData?.upstreamUnavailable
-      && (this.activeTab === 'chokepoints' || !activeHasData)
-      ? `<div class="economic-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
+    const unavailableText = this.activeTab === 'chokepoints' && this.chokepointData
+      ? chokepointCoverageWarning(this.chokepointData)
+      : activeData?.upstreamUnavailable && !activeHasData
+        ? t('components.supplyChain.upstreamUnavailable')
+        : '';
+    const unavailableBanner = unavailableText
+      ? `<div class="economic-warning">${escapeHtml(unavailableText)}</div>`
       : '';
 
     let contentHtml = '';
@@ -433,10 +438,10 @@ export class SupplyChainPanel extends Panel {
         const risk = riskTierMap[opt.bypassWarRiskTier] ?? opt.bypassWarRiskTier;
         return `<tr><td>${escapeHtml(opt.name)}</td><td>${days}</td><td>${cost}</td><td>${escapeHtml(risk)}</td></tr>`;
       }).join('');
-      return `<table class="sc-bypass-table">
+      return `<div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title"><table class="wm-table sc-bypass-table">
         <thead><tr><th scope="col">Corridor</th><th scope="col">+Days</th><th scope="col">+Cost</th><th scope="col">Risk</th></tr></thead>
         <tbody>${rows}</tbody>
-      </table>`;
+      </table></div>`;
     };
 
     const applyAuthState = (isPro: boolean, bypassOptions?: import('@/services/supply-chain').BypassOption[]): void => {
@@ -509,7 +514,10 @@ export class SupplyChainPanel extends Panel {
           cp.aisSnapshotAvailable === true
             ? `${cp.aisDisruptions} ${t('components.supplyChain.aisDisruptions')}`
             : '',
-        ].filter(Boolean).join(' · ');
+        ].filter(Boolean)
+          // One flex item per metric, so the row wraps between metrics
+          // instead of one joined string running past the card edge.
+          .map((metric) => `<span>${metric}</span>`).join('');
         const ts = cp.transitSummary;
         const wowPct = ts?.wowChangePct ?? 0;
         const hasWow = ts && wowPct !== 0;
@@ -637,7 +645,7 @@ export class SupplyChainPanel extends Panel {
               <span style="color:#fca5a5;font-weight:600">\u26A0 Projected under scenario: ${scenarioResult.template.disruptionPct}% closure for ${scenarioResult.template.durationDays} days${scenarioResult.template.costShockMultiplier > 1 ? ` (+${Math.round((scenarioResult.template.costShockMultiplier - 1) * 100)}% cost)` : ''}</span>
             </div>` : ''}
             <div class="sc-metric-row"${sourceMetrics || cp.directions?.length ? '' : ' hidden'}>
-              ${sourceMetrics ? `<span>${sourceMetrics}</span>` : ''}
+              ${sourceMetrics}
               ${cp.directions?.length ? `<span>${cp.directions.map(d => escapeHtml(d)).join('/')}</span>` : ''}
             </div>
             ${ts && ts.dataAvailable === false ? `<div class="sc-metric-row" style="opacity:0.5;font-size:calc(11px * var(--wm-panel-effective-scale, 1))"><span>${t('components.supplyChain.transitDataUnavailable') || 'Transit data unavailable (upstream partial)'}</span></div>` : ''}
@@ -656,10 +664,11 @@ export class SupplyChainPanel extends Panel {
               const pct = Math.round(fe.flowRatio * 100);
               const flowColor = fe.disrupted || pct < 85 ? '#ef4444' : pct < 95 ? '#f59e0b' : 'var(--text-dim,#888)';
               const hazardBadge = fe.hazardAlertLevel && fe.hazardAlertName
-                ? ` <span style="background:#ea580c;color:#fff;font-size:calc(9px * var(--wm-panel-effective-scale, 1));padding:1px 5px;border-radius:3px;margin-left:4px">&#9888; ${escapeHtml(fe.hazardAlertName.toUpperCase())}</span>`
+                ? `<span style="background:#ea580c;color:#fff;font-size:calc(9px * var(--wm-panel-effective-scale, 1));padding:1px 5px;border-radius:3px">&#9888; ${escapeHtml(fe.hazardAlertName.toUpperCase())}</span>`
                 : '';
+              // The badge is its own flex item so it wraps below the flow figure.
               return `<div class="sc-metric-row" style="color:${flowColor}">
-                <span>~${fe.currentMbd} mb/d <span style="opacity:0.7">(${pct}% of ${fe.baselineMbd} baseline)</span>${hazardBadge}</span>
+                <span>~${fe.currentMbd} mb/d <span style="opacity:0.7">(${pct}% of ${fe.baselineMbd} baseline)</span></span>${hazardBadge}
               </div>`;
             })() : FLOW_SUPPORTED_IDS.has(cp.id) ? `<div class="sc-metric-row" style="color:var(--text-dim,#888);font-size:calc(11px * var(--wm-panel-effective-scale, 1));opacity:0.7">
                 <span>${t('components.supplyChain.flowUnavailable')}</span>
@@ -724,16 +733,18 @@ export class SupplyChainPanel extends Panel {
 
     return `<div style="margin-bottom:8px">
       <div class="trade-sector" style="font-weight:600;margin-bottom:4px">${t('components.supplyChain.corridorDisruption')}</div>
-      <table class="sc-disruption-table">
-        <thead><tr>
-          <th scope="col">${t('components.supplyChain.corridor')}</th>
-          <th scope="col">${t('components.supplyChain.vessels')}</th>
-          <th scope="col">${t('components.supplyChain.wowChange')}</th>
-          <th scope="col">${t('components.supplyChain.disruption')}</th>
-          <th scope="col">${t('components.supplyChain.risk')}</th>
-        </tr></thead>
-        <tbody>${tableRows}</tbody>
-      </table>
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <table class="wm-table sc-disruption-table">
+          <thead><tr>
+            <th scope="col">${t('components.supplyChain.corridor')}</th>
+            <th scope="col">${t('components.supplyChain.vessels')}</th>
+            <th scope="col">${t('components.supplyChain.wowChange')}</th>
+            <th scope="col">${t('components.supplyChain.disruption')}</th>
+            <th scope="col">${t('components.supplyChain.risk')}</th>
+          </tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
     </div>`;
   }
 
@@ -927,16 +938,18 @@ export class SupplyChainPanel extends Panel {
           <button class="panel-tab ${stage === 'refinery' ? 'active' : ''}" data-mineral-stage="refinery">${t('components.supplyChain.refineryStage')}</button>
         </div>
         <p class="sc-mineral-caption">${t('components.supplyChain.productionCaption')}${year ? ` (${escapeHtml(year)})` : ''}</p>
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">${t('components.supplyChain.mineral')}</th>
-              <th scope="col">${t('components.supplyChain.topProducers')}</th>
-              <th scope="col" title="Herfindahl-Hirschman Index measures producer concentration, from 0 to 10,000. Higher values mean fewer producers dominate supply.">Concentration index</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="wm-table">
+            <thead>
+              <tr>
+                <th scope="col">${t('components.supplyChain.mineral')}</th>
+                <th scope="col">${t('components.supplyChain.topProducers')}</th>
+                <th scope="col" title="Herfindahl-Hirschman Index measures producer concentration, from 0 to 10,000. Higher values mean fewer producers dominate supply.">Concentration index</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
       </div>`;
     }
 
@@ -970,17 +983,19 @@ export class SupplyChainPanel extends Panel {
       : `<p class="sc-mineral-caption">${escapeHtml(t('components.supplyChain.productionProLocked'))}</p>`;
 
     return `<div class="trade-tariffs-table">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">${t('components.supplyChain.mineral')}</th>
-            <th scope="col">${t('components.supplyChain.topProducers')}</th>
-            <th scope="col" title="Herfindahl-Hirschman Index measures producer concentration, from 0 to 10,000. Higher values mean fewer producers dominate supply.">Concentration index</th>
-            <th scope="col">${t('components.supplyChain.risk')}</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <table class="wm-table">
+          <thead>
+            <tr>
+              <th scope="col">${t('components.supplyChain.mineral')}</th>
+              <th scope="col">${t('components.supplyChain.topProducers')}</th>
+              <th scope="col" title="Herfindahl-Hirschman Index measures producer concentration, from 0 to 10,000. Higher values mean fewer producers dominate supply.">Concentration index</th>
+              <th scope="col">${t('components.supplyChain.risk')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
       ${productionUpsell}
     </div>`;
   }

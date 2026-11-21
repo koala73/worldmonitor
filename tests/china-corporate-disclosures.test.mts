@@ -2000,3 +2000,90 @@ describe('official China corporate disclosures (#5577)', () => {
     );
   });
 });
+
+describe('corporate retained failure evidence', () => {
+  it('preserves failure evidence while the two-success recovery contract completes', () => {
+    const lastGood = '2026-10-25T02:20:06.220Z';
+    const failedAt = '2026-10-25T02:45:28.446Z';
+    let snapshot = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: failedAt,
+      previousSnapshot: { sources: [{ id: 'szse', lastSuccessAt: lastGood }] },
+      outcomes: [{ sourceId: 'szse', ok: false, errorCode: 'REQUEST_BUDGET_EXCEEDED',
+        requestCount: 4, transportPath: 'proxy', fallbackReason: 'ETIMEDOUT' }],
+    });
+    const expected = { checkedAt: failedAt, lastSuccessAt: lastGood,
+      errorCode: 'REQUEST_BUDGET_EXCEEDED', requestCount: 4,
+      transportPath: 'proxy', fallbackReason: 'ETIMEDOUT' };
+    for (const [index, generatedAt] of ['2026-10-25T03:10:00.000Z', '2026-10-25T03:35:00.000Z'].entries()) {
+      snapshot = buildChinaCorporateDisclosureSnapshot({
+        generatedAt, previousSnapshot: snapshot,
+        outcomes: [{ sourceId: 'szse', ok: true, requestCount: 1, announcements: [] }],
+      });
+      const source = snapshot.sources.find((entry) => entry.id === 'szse');
+      assert.deepEqual(source.lastFailure, expected);
+      assert.equal(source.lastSuccessAt, generatedAt);
+      assert.equal(source.errorCode, null);
+      assert.equal(source.transportReliability.status, index === 0 ? 'recovering' : 'stable');
+    }
+  });
+});
+
+describe('SZSE request budget evidence', () => {
+  it('records the refused page after retries consume the unchanged request cap', async () => {
+    const decisions: Array<Record<string, unknown>> = [];
+    const proxyPages: number[] = [];
+    let directCalls = 0;
+    const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      onDecision: (entry) => decisions.push(entry),
+      fetchFn: async (input) => {
+        if (String(input).includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({ pageHelp: { pageNo: 1, pageSize: 100, total: 0 }, result: [] }));
+        }
+        directCalls += 1;
+        throw new TypeError('private request', { cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }) });
+      },
+      proxyRequestFn: async (_input, _config, options) => {
+        const page = JSON.parse(String(options.body)).pageNum;
+        proxyPages.push(page);
+        if (proxyPages.length < 3) throw Object.assign(new Error('private response'), { status: 522, proxyConnect: true });
+        return { buffer: Buffer.from(JSON.stringify(szsePage(51, page))), status: 200, contentType: 'application/json' };
+      },
+    });
+    const source = snapshot.sources.find((entry) => entry.id === 'szse');
+    assert.equal(source.errorCode, 'REQUEST_BUDGET_EXCEEDED');
+    assert.equal(directCalls, 1);
+    assert.deepEqual(proxyPages, [1, 1, 1]);
+    assert.equal(source.requestCount, 4);
+    const budget = { page: 2, directRequests: 1, proxyRequests: 3,
+      maxRequests: 4, maxDirectRequests: 2, maxProxyRequests: 3 };
+    assert.deepEqual(source.lastFailure.requestBudget, budget);
+    assert.deepEqual(decisions.find((entry) => entry.sourceId === 'szse')?.requestBudget, budget);
+    assert.doesNotMatch(JSON.stringify(source.lastFailure), /private|proxy-user|proxy-secret/);
+  });
+});
+
+describe('retained failure across rejected corporate publication', () => {
+  it('replays bounded receipt details from the existing failure marker', async () => {
+    const failedAt = '2026-10-25T02:45:28.446Z';
+    const lastFailure = { checkedAt: failedAt, lastSuccessAt: '2026-10-25T02:20:06.220Z',
+      errorCode: 'REQUEST_BUDGET_EXCEEDED', requestCount: 4, transportPath: 'proxy',
+      fallbackReason: 'ETIMEDOUT' };
+    let marker: Record<string, unknown> = {};
+    await recordSzseTransportFailure({ sources: [{ id: 'szse', transportStatus: 'error',
+      checkedAt: failedAt, errorCode: lastFailure.errorCode, lastFailure }] },
+    async (...args: unknown[]) => { marker = { fetchedAt: args[5], ...args[7] as object }; });
+    const snapshot = await buildChinaCorporateDisclosureSeedSnapshot({
+      readSnapshot: async (key: string) => key === CHINA_CORPORATE_DISCLOSURE_SZSE_FAILURE_META_KEY
+        ? marker : { sources: [] },
+      fetchSnapshot: async (input) => buildChinaCorporateDisclosureSnapshot({ ...input,
+        generatedAt: '2026-10-25T03:10:00.000Z',
+        outcomes: [{ sourceId: 'szse', ok: true, requestCount: 1, announcements: [] }],
+      }),
+    });
+    const source = snapshot.sources.find((entry) => entry.id === 'szse');
+    assert.deepEqual(source.lastFailure, lastFailure);
+    assert.equal(source.transportReliability.status, 'recovering');
+  });
+});

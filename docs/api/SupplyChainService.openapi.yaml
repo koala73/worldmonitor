@@ -684,7 +684,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetShippingStress
-            description: GetShippingStress returns carrier market data and a composite stress index.
+            description: GetShippingStress returns Yahoo Finance quotes for the BDRY dry bulk ETF and four shipping carriers, plus a 0-100 stress score from their average daily move.
             operationId: GetShippingStress
             parameters:
                 - name: jmespath
@@ -938,7 +938,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetBypassOptions
-            description: GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated. Requires entitlement tier >= 1.
+            description: GetBypassOptions ranks a chokepoint's bypass corridors for a cargo type and closure share by cost and waypoint risk. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetBypassOptions
             security:
                 - WorldMonitorKey: []
@@ -1236,7 +1236,11 @@ paths:
                     pattern: '^[A-Z]{2}$'
                 - name: hs4
                   in: query
-                  description: Optional requested heading; permits bounded recovery of a missing product.
+                  description: |-
+                    Optional requested heading; permits bounded recovery of a missing core
+                     product. Extended headings (rubber, cocoa, fish and seafood, fruit,
+                     processed food, oleochemicals) are accepted too and served from their
+                     separately seeded cache only, never recovered on demand.
                   required: false
                   example: "example"
                   schema:
@@ -5154,7 +5158,7 @@ components:
                 officialLatestDate:
                     type: string
                     description: |-
-                        IMF PortWatch latest published day, YYYY-MM-DD (~4-day lag); empty means
+                        IMF PortWatch latest published day, YYYY-MM-DD (lag of several days); empty means
                          withhold official_latest_total and official_avg_7d (absent below 7 days).
                 officialLatestTotal:
                     type: integer
@@ -5264,6 +5268,9 @@ components:
                     description: |-
                         Name of the nearest active GDACS hazard event within the configured
                          radius, or empty string when no nearby alert applies.
+                latestDate:
+                    type: string
+                    description: Last PortWatch day behind flow_ratio, YYYY-MM-DD; may be empty.
         GetChokepointHistoryRequest:
             type: object
             properties:
@@ -5678,7 +5685,7 @@ components:
                 supplyDeficitPct:
                     type: number
                     format: double
-                    description: Average refined-product supply deficit % under full closure (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
+                    description: Average refined-product supply deficit % under full closure at the pre-crisis Gulf crude share, after bypass rerouting for Hormuz when per-exporter shares exist (average over the products among Gasoline/Diesel/Jet fuel/LPG/Naphtha with recorded positive demand; HS 27 only)
                 coverageDays:
                     type: integer
                     format: int32
@@ -5716,7 +5723,11 @@ components:
                     description: ISO 3166-1 alpha-2 country code whose strategic products should be returned.
                 hs4:
                     type: string
-                    description: Optional requested heading; permits bounded recovery of a missing product.
+                    description: |-
+                        Optional requested heading; permits bounded recovery of a missing core
+                         product. Extended headings (rubber, cocoa, fish and seafood, fruit,
+                         processed food, oleochemicals) are accepted too and served from their
+                         separately seeded cache only, never recovered on demand.
             required:
                 - iso2
         GetCountryProductsResponse:
@@ -5760,7 +5771,8 @@ components:
                     type: string
                     description: |-
                         ISO timestamp this heading alone was fetched at. Present only on a heading
-                         recovered on demand, whose fetch time differs from the payload's.
+                         recovered on demand or an extended heading, whose fetch time differs from
+                         the payload's.
                 partnerBasis:
                     type: string
                     description: |-
@@ -5880,7 +5892,9 @@ components:
                     type: array
                     items:
                         type: string
-                        description: Catalogue headings with no usable product row.
+                        description: |-
+                            Core catalogue headings with no usable product row. Extended headings are
+                             never listed here; an absent extended row adds no product.
                 lastAttemptAt:
                     type: string
                     description: ISO timestamp of the last refresh attempt; empty when unknown.

@@ -1,3 +1,6 @@
+import { SEED_LOCK_FENCED_SET_SCRIPT, SEED_LOCK_RENEW_SCRIPT } from '../../scripts/_seed-utils.mjs';
+import { RSS_FEED_RENEW_SCRIPT } from '../../shared/rss-feed-renew-script.mjs';
+
 export interface FakeRedisSortedSetEntry {
   member: string;
   score: number;
@@ -172,6 +175,22 @@ export function createRedisFetch(
         setExpiry(redisKey, ttlSeconds);
         return new Response(JSON.stringify({ result: 1 }), { status: 200 });
       }
+      const evalScript = normalizedVerb === 'EVAL' ? String(command[1] ?? '') : '';
+      if (evalScript === SEED_LOCK_RENEW_SCRIPT || evalScript === SEED_LOCK_FENCED_SET_SCRIPT) {
+        // runSeed's lock fence (SM-122): act only while KEYS[1] holds ARGV[1].
+        const lockKey = String(command[3] ?? '');
+        const argv = command.slice(3 + Number(command[2] ?? 0)).map(String);
+        const current = redis.get(lockKey);
+        if (current !== argv[0]) {
+          return new Response(JSON.stringify({ result: [0, current ?? ''] }), { status: 200 });
+        }
+        setExpiryMs(lockKey, Number(argv[1]));
+        if (evalScript === SEED_LOCK_FENCED_SET_SCRIPT) {
+          const ttl = argv[3] === '' ? undefined : Number(argv[3]);
+          writeValue(String(command[4] ?? ''), argv[2] ?? '', ttl);
+        }
+        return new Response(JSON.stringify({ result: [1, ''] }), { status: 200 });
+      }
       if (normalizedVerb === 'EVAL') {
         const keyArg = String(command[3] ?? '');
         const expected = String(command[4] ?? '');
@@ -233,6 +252,18 @@ export function createRedisFetch(
         if (normalizedVerb === 'EVAL') {
           const keyCount = Number(command[2] ?? 0);
           const script = String(command[1] ?? '');
+          if (script === RSS_FEED_RENEW_SCRIPT) {
+            // Mirrors shared/rss-feed-renew-script.mjs (executed for real in
+            // tests/rss-feed-renew-script.test.mjs): renew only the same parse.
+            const feedKey = String(command[3] ?? '');
+            const [parsedAt, renewed, expiresAtMs] = command.slice(4).map(String);
+            let current: { parsedAt?: unknown } | null = null;
+            try { current = JSON.parse(redis.get(feedKey) ?? 'null'); } catch { current = null; }
+            if (!current || current.parsedAt !== Number(parsedAt)) return { result: 0 };
+            // SET ... PXAT: an absolute deadline; one already passed deletes the key.
+            writeValue(feedKey, renewed!, (Number(expiresAtMs) - now()) / 1000);
+            return { result: 1 };
+          }
           if (Number.isInteger(keyCount) && keyCount > 0 && script.includes("ARGV[i] == ''")) {
             const keys = command.slice(3, 3 + keyCount).map(String);
             const argv = command.slice(3 + keyCount);

@@ -1,4 +1,4 @@
-export type AcquisitionProviderName = 'playwright' | 'exa' | 'firecrawl' | 'p0';
+export type AcquisitionProviderName = 'exa' | 'firecrawl';
 
 export interface FetchOptions {
   waitForSelector?: string;
@@ -64,6 +64,9 @@ export interface ExtractResult<T = Record<string, unknown>> {
    * ground truth to verify an extracted price actually appears on the page
    * (price-evidence.ts, #6182). Absent = verification cannot run. */
   pageContent?: string;
+  /** The product title the page declares about itself (og:title or
+   * twitter:title). Category listings and SPA shells declare none. */
+  pageTitle?: string;
 }
 
 export interface AcquisitionProvider {
@@ -81,19 +84,5 @@ export interface AcquisitionProvider {
   /** Validate provider is configured and reachable. */
   validate(): Promise<boolean>;
 
-  /** Clean up resources (close browser, etc.) */
   teardown?(): Promise<void>;
-}
-
-export interface AcquisitionConfig {
-  /** Primary acquisition provider. */
-  provider: AcquisitionProviderName;
-  /** Fallback provider if primary fails. */
-  fallback?: AcquisitionProviderName;
-  /** Provider-specific options. */
-  options?: FetchOptions;
-  /** Use search mode instead of direct URL fetch (Exa only). */
-  searchMode?: boolean;
-  /** Query template for search mode: use {category}, {product}, {market} tokens. */
-  searchQueryTemplate?: string;
 }

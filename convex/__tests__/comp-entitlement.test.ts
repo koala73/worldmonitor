@@ -1,7 +1,8 @@
 import { convexTest } from "convex-test";
-import { expect, test, describe } from "vitest";
+import { afterEach, beforeEach, expect, test, describe, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
+import { getFeaturesForPlan } from "../lib/entitlements";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -292,6 +293,16 @@ describe("handleSubscriptionExpired comp guard", () => {
 // ---------------------------------------------------------------------------
 
 describe("multi-active-sub guard", () => {
+  // A recompute schedules a recheck when one subscription outlives the
+  // winning one. Fake timers keep that 30-day job from firing after the test:
+  // Node clamps a real setTimeout delay above 2^31-1 ms to 1 ms.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   async function seedTwoActiveSubs(
     t: ReturnType<typeof convexTest>,
     opts: {
@@ -859,5 +870,71 @@ describe("multi-active-sub guard", () => {
       features: { ...baseFeatures, dataExport: true, embedAccess: true },
       validUntil: Date.now() + DAY_MS,
     });
+    // Desktop-key fields (plan 2026-10-25-001): the catalog's complete Pro
+    // features object now carries them at the top level and in planLimits.
+    await t.action(internal.payments.cacheActions.syncEntitlementCache, {
+      userId: "user_cache_desktop_key_shape",
+      planKey: "pro_monthly",
+      features: getFeaturesForPlan("pro_monthly"),
+      validUntil: Date.now() + DAY_MS,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// revokeComplimentaryEntitlement
+// ---------------------------------------------------------------------------
+
+describe("revokeComplimentaryEntitlement", () => {
+  // Recompute schedules cache-sync jobs. On real timers they fire after the
+  // test's convexTest instance is gone ("Write outside of transaction").
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("ends a comp-only entitlement now (falls back to free)", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.payments.billing.grantComplimentaryEntitlement, {
+      userId: USER_ID, planKey: "enterprise", days: 30,
+    });
+    const result = await t.mutation(internal.payments.billing.revokeComplimentaryEntitlement, {
+      userId: USER_ID, reason: "moved to contract account",
+    });
+    expect(result.revoked).toBe(true);
+    const row = await readEntitlement(t);
+    expect(row!.compUntil).toBeUndefined();
+    expect(row!.compPlanKey).toBeUndefined();
+    expect(row!.planKey).toBe("free");
+  });
+
+  test("keeps Enterprise when an active contract membership covers the user", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.payments.billing.grantComplimentaryEntitlement, {
+      userId: USER_ID, planKey: "enterprise", days: 30,
+    });
+    const now = Date.now();
+    const { accountId } = await t.mutation(internal.enterpriseAccounts.createAccount, {
+      name: "Acme", contractStart: now - DAY_MS, contractEnd: now + 365 * DAY_MS,
+      dailyRequestAllowance: 10000, perMinuteBurst: 300,
+      monthlyInputTokens: 15000000, monthlyOutputTokens: 3000000,
+      overagePerThousandRequestsUsd: 3, overagePerMillionInputTokensUsd: 4,
+      overagePerMillionOutputTokensUsd: 20, seatCap: 5, allowedProviders: ["anthropic"],
+    });
+    await t.mutation(internal.enterpriseAccounts.addMemberByUserId, { accountId, userId: USER_ID });
+    await t.mutation(internal.payments.billing.revokeComplimentaryEntitlement, { userId: USER_ID });
+    const row = await readEntitlement(t);
+    expect(row!.compUntil).toBeUndefined();
+    expect(row!.planKey).toBe("enterprise");
+    expect(row!.validUntil).toBe(now + 365 * DAY_MS);
+  });
+
+  test("is a no-op for a user with no comp", async () => {
+    const t = convexTest(schema, modules);
+    const result = await t.mutation(internal.payments.billing.revokeComplimentaryEntitlement, { userId: USER_ID });
+    expect(result.revoked).toBe(false);
+    expect(await readEntitlement(t)).toBeNull();
   });
 });

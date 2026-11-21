@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
+  assertGithubStarsSnapshotFresh,
   latestValidGithubStarsSnapshot,
   MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS,
   starsInteractionCounter,
@@ -120,16 +122,18 @@ describe('github stars snapshot lookup', () => {
     }
   });
 
-  it('fails closed when the newest valid snapshot is older than the freshness bound', () => {
+  it('builds with a snapshot past the freshness bound but rejects it for publishing', () => {
     const dir = fixtureDir({
       'github-stars-2026-07-01.json': snapshot('2026-07-01', 42),
     });
     try {
-      // 2026-07-01 is 65 days before 2026-09-04: past the bound, so the
-      // build must red instead of publishing a rotting figure (#7641).
+      // 2026-07-01 is 65 days before 2026-09-04. A pinned checkout must still
+      // build (#11050); publishing must not ship the rotting figure (#7641).
+      const found = latestValidGithubStarsSnapshot(dir, '2026-09-04');
+      assert.equal(found.stargazers_count, 42);
       assert.throws(
-        () => latestValidGithubStarsSnapshot(dir, '2026-09-04'),
-        /days old \(max \d+\); run npm run freeze:github-stars/,
+        () => assertGithubStarsSnapshotFresh(found, '2026-09-04'),
+        /github-stars-2026-07-01\.json is 65 days old \(max \d+\); run npm run freeze:github-stars/,
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -145,6 +149,8 @@ describe('github stars snapshot lookup', () => {
       const found = latestValidGithubStarsSnapshot(dir, '2026-09-04');
       assert.equal(found.stargazers_count, 42);
       assert.equal(found.snapshotFile, `github-stars-${capturedAt}.json`);
+      assert.doesNotThrow(() => assertGithubStarsSnapshotFresh(found, '2026-09-04'));
+      assert.throws(() => assertGithubStarsSnapshotFresh(found, '2026-09-05'), /46 days old/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -165,7 +171,7 @@ describe('github stars snapshot lookup', () => {
 
     assert.ok(
       MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS > cadenceDays,
-      `the ${MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle reds the build`,
+      `the ${MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle blocks publishing`,
     );
     assert.ok(
       MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS <= cadenceDays * 2,
@@ -258,5 +264,30 @@ describe('injectStarsInteractionCounter', () => {
     const { html: next, injected } = injectStarsInteractionCounter(html, { stargazers_count: 1 });
     assert.equal(injected, false);
     assert.equal(next, html);
+  });
+});
+
+describe('github stars publishing check', () => {
+  it('exits non-zero for a stale snapshot and passes for a fresh one', () => {
+    const root = mkdtempSync(join(tmpdir(), 'wm-stars-check-'));
+    try {
+      const snapshotsDir = join(root, 'docs', 'snapshots');
+      mkdirSync(snapshotsDir, { recursive: true });
+      const check = () => execFileSync(
+        process.execPath,
+        [new URL('../scripts/github-stars-snapshot.mjs', import.meta.url).pathname],
+        { cwd: root, encoding: 'utf8', stdio: 'pipe' },
+      );
+      const stale = new Date(Date.now() - (MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS + 5) * 86_400_000)
+        .toISOString().slice(0, 10);
+      writeFileSync(join(snapshotsDir, `github-stars-${stale}.json`), snapshot(stale, 7));
+      assert.throws(check, { status: 1, stderr: new RegExp(`github-stars-${stale}\\.json is \\d+ days old`) });
+
+      const today = new Date().toISOString().slice(0, 10);
+      writeFileSync(join(snapshotsDir, `github-stars-${today}.json`), snapshot(today, 8));
+      assert.match(check(), /GitHub star snapshot is fresh/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

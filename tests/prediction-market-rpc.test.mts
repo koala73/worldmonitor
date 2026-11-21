@@ -39,6 +39,27 @@ describe('listPredictionMarkets legacy bootstrap compatibility', () => {
     assert.equal('yesPriceChange24h' in serialized.markets[2], false);
     assert.equal('yesPriceChange7d' in serialized.markets[2], false);
   });
+  it('serializes reported liquidity and filters by min_liquidity before the page cap', async () => {
+    const rows = [
+      { title: 'deep', yesPrice: 60, volume: 90000, url: 'https://example.test/deep', liquidity: 250000 },
+      { title: 'thin', yesPrice: 55, volume: 80000, url: 'https://example.test/thin', liquidity: 900 },
+      { title: 'unreported', yesPrice: 50, volume: 70000, source: 'kalshi', url: 'https://kalshi.com/markets/KXUNREPORTED' },
+      { title: 'exact', yesPrice: 45, volume: 60000, url: 'https://example.test/exact', liquidity: 5000 },
+    ];
+    const payload = { geopolitical: rows, tech: [], finance: [], countries: { CN: rows }, fetchedAt: 456 };
+    globalThis.fetch = async () => Response.json({ result: JSON.stringify(payload) });
+
+    const unfiltered = JSON.parse(JSON.stringify(await listPredictionMarkets({} as never, { category: '', query: '', pageSize: 10, cursor: '', minLiquidity: 0 } as never)));
+    assert.equal(unfiltered.markets.length, 4);
+    assert.equal(unfiltered.markets[0].liquidity, 250000);
+    assert.equal('liquidity' in unfiltered.markets[2], false);
+
+    for (const category of ['', 'politics', 'country:CN']) {
+      const response = await listPredictionMarkets({} as never, { category, query: '', pageSize: 2, cursor: '', minLiquidity: 5000 } as never);
+      assert.deepEqual(response.markets.map((row) => row.title), ['deep', 'exact'], `category=${category || '(all)'}`);
+      assert.equal(response.dataAvailable, true);
+    }
+  });
   it('suppresses an explicitly unavailable display destination while retaining the contract ID', async () => {
     const row = { title: 'China meeting', yesPrice: 70, volume: 30000, source: 'kalshi', url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: '' };
     globalThis.fetch = async () => Response.json({ result: JSON.stringify({ countries: { CN: [row] }, fetchedAt: 789 }) });

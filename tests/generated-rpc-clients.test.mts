@@ -26,6 +26,7 @@ test('lazy generated RPC client constructor preserves generated method behavior'
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, 'https://example.test/api/market/v1/list-market-quotes?symbols=AAPL&symbols=MSFT');
   assert.equal(calls[0].init?.method, 'GET');
+  assert.ok(calls[0].init?.signal instanceof AbortSignal, 'forwarding adapters still receive a deadline');
   assert.deepEqual(calls[0].init?.headers, {
     'Content-Type': 'application/json',
     'X-Test': 'lazy',

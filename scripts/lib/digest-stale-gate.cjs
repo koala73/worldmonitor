@@ -1,6 +1,24 @@
 'use strict';
 
 const { gateRelayStoryLink } = require('./publisher-link-relay-gate.cjs');
+const NEWS_CATALOG = require('../../shared/news-catalog.json');
+const { headlineInOtherLanguage } = require('./headline-language.cjs');
+
+// The relay classifies the English digest, which also carries local-language
+// outlets (fetchInAllLanguages). Their headlines are labelled for the
+// dashboard but must not alert: subscribers got each story once per language.
+// A Google News query in English returns English headlines whatever `lang`
+// routes the feed to, so those keep alerting. `headlineLang` names the
+// language of an outlet kept untagged so the English dashboard shows it.
+const OTHER_LANGUAGE_FEEDS = (() => {
+  const english = new Set();
+  const other = new Set();
+  const inEnglish = feed => feed.headlineLang
+    ? feed.headlineLang === 'en'
+    : !feed.lang || feed.lang === 'en' || /^https:\/\/news\.google\.com\/.*[?&]hl=en\b/.test(feed.url);
+  for (const feed of NEWS_CATALOG.feeds) (inEnglish(feed) ? english : other).add(feed.name);
+  return new Set([...other].filter(name => !english.has(name)));
+})();
 
 // #7084: should the relay's digest-derived candidates participate in this
 // classification pass?
@@ -20,16 +38,30 @@ function isStaleDigestReplay(digest) {
   return digest?.coverage?.servedStale === true;
 }
 
-// #8398: the relay needs the publisher FAMILY of a digest item to gate its
-// link, but the digest response carries only the feed label
-// (`item.source`). The curated label->family map is ESM-only
-// (shared/publisher-families.js), unreachable from this CJS module — so the
-// gate resolves the label itself through publisher-link-relay-gate.cjs,
-// which mirrors that table (sync-guarded by test). When no resolver is
-// provided the gate fails closed (blank link).
+// #8398: a relay-emitted rss_alert must not carry a link that leaves the
+// item's publisher. The digest makes that check at ingest, where it knows the
+// feed (its registered host, its catalog linkHosts, the curated family
+// domains, a trusted aggregator's origin), and stamps `linkVerified: true` on
+// each item whose link passed. The relay trusts that stamp.
+//
+// The stamp is computed by the digest server and never read from the feed, so
+// an RSS item cannot set it. Only the literal boolean counts, and the link
+// must still be http(s).
+//
+// An item without the stamp goes through the relay's own family table
+// (publisher-link-relay-gate.cjs), which fails closed for any publisher it
+// does not list. That covers a digest or cached feed row built before the
+// stamp shipped, and a relay deployed ahead of the API. The table only sees
+// the feed label, so on its own it blanked the link of every publisher
+// outside its hand-kept list.
+function isHttpLink(link) {
+  return /^https?:\/\//i.test(link);
+}
+
 function candidateLinkFor(item, resolveFamily) {
   const link = typeof item?.link === 'string' ? item.link : '';
   if (!link) return '';
+  if (item.linkVerified === true) return isHttpLink(link) ? link : '';
   const source = typeof item?.source === 'string' ? item.source : '';
   let family = '';
   try {
@@ -41,26 +73,41 @@ function candidateLinkFor(item, resolveFamily) {
   return gateRelayStoryLink(link, family);
 }
 
-function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs, resolveFamily) {
+// `poolItems` are fresh items the digest's category cap kept off the
+// dashboard (#10978). They follow the served items, so a title in both keeps
+// the served copy and its story tracking. Pool candidates carry `fromPool`.
+function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs, resolveFamily, poolItems = []) {
   const candidates = new Map();
   const oldestAllowedAt = now - recencyMs;
 
   if (!isStaleDigestReplay(digest) && digest?.categories) {
-    for (const bucket of Object.values(digest.categories)) {
-      for (const item of bucket?.items ?? []) {
-        if (!item?.title) continue;
-        if (item.publishedAt && item.publishedAt < oldestAllowedAt) continue;
-        if (!candidates.has(item.title)) {
-          candidates.set(item.title, {
-            source: item.source ?? variant,
-            publishedAt: item.publishedAt ?? now,
-            corroborationCount: item.corroborationCount ?? 1,
-            // #8398: relay-emitted rss_alert events must not carry a link
-            // outside the item's registered publisher set. The gate blanks
-            // hostile links; the title still classifies and alerts.
-            link: candidateLinkFor(item, resolveFamily),
-          });
-        }
+    // Spread, so a bucket whose items are not a list still throws.
+    const served = Object.values(digest.categories).flatMap(bucket => [...(bucket?.items ?? [])]);
+    const pool = Array.isArray(poolItems) ? poolItems : [];
+    for (const [index, item] of [...served, ...pool].entries()) {
+      if (!item?.title) continue;
+      if (item.publishedAt && item.publishedAt < oldestAllowedAt) continue;
+      // A copy that can alert replaces one that cannot. A served headline
+      // stays served, so it keeps its label key and its place in the summary.
+      // The feed tag can be missing or wrong, and a wire feed mixes languages.
+      const otherLanguage = OTHER_LANGUAGE_FEEDS.has(item.source) || headlineInOtherLanguage(item.title);
+      const prior = candidates.get(item.title);
+      if (!prior || (prior.otherLanguage && !otherLanguage)) {
+        candidates.set(item.title, {
+          // #10977: score on the publisher a topic feed carries, not the feed.
+          source: item.originPublisher || item.source || variant,
+          publishedAt: item.publishedAt ?? now,
+          corroborationCount: item.corroborationCount ?? 1,
+          // #8398: relay-emitted rss_alert events must not carry a link
+          // outside the item's registered publisher set. An unverified
+          // link is blanked; the title still classifies and alerts.
+          link: candidateLinkFor(item, resolveFamily),
+          // When digest story tracking first saw the headline, in any
+          // edition or language. Only for the latency log.
+          ...(item.storyMeta?.firstSeen > 0 ? { firstSeen: Number(item.storyMeta.firstSeen) } : {}),
+          ...((prior ? prior.fromPool : index >= served.length) ? { fromPool: true } : {}),
+          ...(otherLanguage ? { otherLanguage: true } : {}),
+        });
       }
     }
   }
@@ -72,6 +119,9 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
         publishedAt: candidate.publishedAt,
         corroborationCount: candidate.corroborationCount,
         link: candidate.link,
+        // No digest build behind it. A title in both inputs keeps the digest
+        // candidate above, and with it the build stage of the latency log.
+        fromX: true,
       });
     }
   }

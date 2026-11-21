@@ -287,7 +287,7 @@ test('OPTIONS preflight returns 204 with CORS', async () => {
   __resetRateLimitForTest();
   const resp = await handler(makeReq('OPTIONS', { origin: 'https://worldmonitor.app' }));
   assert.equal(resp.status, 204);
-  assert.equal(resp.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
+  assert.equal(resp.headers.get('access-control-allow-methods'), 'GET, POST, OPTIONS');
   assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
 });
 
@@ -308,9 +308,100 @@ test('POST fail-closed limiter receives Vercel ctx for degraded telemetry', () =
   assert.match(opts, /window:\s*SESSION_RATE_LIMIT_WINDOW/, 'must use production window constant');
 });
 
-test('GET method is rejected with 405', async () => {
-  const resp = await handler(makeReq('GET', { origin: 'https://worldmonitor.app' }));
-  assert.equal(resp.status, 405);
+test('unsupported methods are rejected with 405', async () => {
+  for (const method of ['PUT', 'DELETE', 'PATCH']) {
+    const resp = await handler(makeReq(method, { origin: 'https://worldmonitor.app' }));
+    assert.equal(resp.status, 405, method);
+  }
+});
+
+function makeStatusReq({ cookie, origin = 'https://worldmonitor.app' } = {}) {
+  const headers = new Headers();
+  if (origin) headers.set('origin', origin);
+  if (cookie) headers.set('cookie', cookie);
+  return new Request('https://api.worldmonitor.app/api/wm-session', { method: 'GET', headers });
+}
+
+async function readStatus(resp) {
+  const text = await resp.text();
+  return { text, body: JSON.parse(text) };
+}
+
+test('GET reports no valid key session when the request carries no cookies', async () => {
+  const resp = await handler(makeStatusReq());
+  assert.equal(resp.status, 200);
+  assert.equal(resp.headers.get('cache-control'), 'no-store');
+  assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+  assert.equal(resp.headers.get('access-control-allow-origin'), 'https://worldmonitor.app');
+  assert.deepEqual(setCookies(resp), [], 'a status read never sets or clears cookies');
+  const { body } = await readStatus(resp);
+  assert.deepEqual(body, { widget: false, pro: false });
+});
+
+test('GET reports a valid HttpOnly pro session as a boolean and never echoes the key', async () => {
+  const resp = await handler(makeStatusReq({ cookie: '__Host-wm-pro-key=pro-secret' }));
+  assert.equal(resp.status, 200);
+  const { text, body } = await readStatus(resp);
+  assert.deepEqual(body, { widget: false, pro: true });
+  assert.equal(text.includes('pro-secret'), false);
+});
+
+test('GET judges widget and pro sessions independently and accepts enterprise keys', async () => {
+  const resp = await handler(makeStatusReq({
+    cookie: '__Host-wm-widget-key=enterprise-secret; __Host-wm-pro-key=not-a-real-key',
+  }));
+  const { text, body } = await readStatus(resp);
+  assert.deepEqual(body, { widget: true, pro: false });
+  assert.equal(text.includes('enterprise-secret'), false);
+  assert.equal(text.includes('not-a-real-key'), false);
+});
+
+test('GET reports an invalid or cross-scope cookie as false without echoing it', async () => {
+  for (const cookie of [
+    '__Host-wm-pro-key=wrong-key',
+    '__Host-wm-pro-key=widget-secret',
+    '__Host-wm-widget-key=pro-secret',
+    'wm-pro-key=pro-secret; wm-widget-key=widget-secret',
+    `__Host-wm-pro-key=${'p'.repeat(513)}`,
+    '__Host-wm-pro-key=',
+  ]) {
+    const resp = await handler(makeStatusReq({ cookie }));
+    assert.equal(resp.status, 200, cookie);
+    const { text, body } = await readStatus(resp);
+    assert.deepEqual(body, { widget: false, pro: false }, cookie);
+    for (const secret of ['wrong-key', 'widget-secret', 'pro-secret']) {
+      assert.equal(text.includes(secret), false, `${cookie} echoed ${secret}`);
+    }
+  }
+});
+
+test('GET does not depend on the session-mint secret', async () => {
+  delete process.env.WM_SESSION_SECRET;
+  const resp = await handler(makeStatusReq({ cookie: '__Host-wm-pro-key=pro-secret' }));
+  assert.equal(resp.status, 200);
+  assert.deepEqual((await readStatus(resp)).body, { widget: false, pro: true });
+});
+
+test('GET from a disallowed origin is refused', async () => {
+  const resp = await handler(makeStatusReq({ cookie: '__Host-wm-pro-key=pro-secret', origin: 'https://evil.example.com' }));
+  assert.equal(resp.status, 403);
+  assert.equal((await resp.text()).includes('pro-secret'), false);
+});
+
+test('GET is rate limited under its own scope and fails closed', async () => {
+  mockUpstashRateLimit({ remaining: -1, limit: 30 });
+  const limited = await handler(makeStatusReq({ cookie: '__Host-wm-pro-key=pro-secret' }));
+  assert.equal(limited.status, 429);
+  assert.equal((await limited.text()).includes('pro-secret'), false);
+
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  __resetRateLimitForTest();
+  const degraded = await handler(makeStatusReq({ cookie: '__Host-wm-pro-key=pro-secret' }));
+  assert.equal(degraded.status, 503);
+
+  const src = readFileSync(new URL('./wm-session.js', import.meta.url), 'utf8');
+  assert.match(src, /scope:\s*STATUS_RATE_LIMIT_SCOPE/);
 });
 
 test('Disallowed origin OPTIONS preflight succeeds with echoed Origin (#6411)', async () => {

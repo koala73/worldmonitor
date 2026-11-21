@@ -28,6 +28,7 @@ import { DEFAULT_PREFS, loadPrefs, prefsPath, savePrefs } from '../src/tui/prefs
 import { THEMES } from '../src/tui/ui/theme.mjs';
 import { detectTerminalGraphics, mpvArgs, openExternal, playInWindow } from '../src/tui/video.mjs';
 import { findRepoRoot, runWeb } from '../src/tui/web.mjs';
+import { LiveView } from '../src/tui/views/live.mjs';
 
 const bootstrap = JSON.parse(readFileSync(new URL('./fixtures/bootstrap.json', import.meta.url), 'utf8'));
 const digest = JSON.parse(readFileSync(new URL('./fixtures/digest.json', import.meta.url), 'utf8'));
@@ -262,6 +263,37 @@ describe('selectors', () => {
       stale.map((x) => x.kind),
       ['youtube-channel'],
     );
+  });
+  it('drops resolved channel videoIds that are not 11-char YouTube ids', () => {
+    const now = Date.parse('2026-10-17T19:00:00Z');
+    const channel = 'https://www.youtube.com/channel/UCIALMKvObZNtJ6AmdCLP7Lg';
+    for (const videoId of ['QB5BNdBFujE\u001b]0;pwned\u0007', '\u001b[2J\u001b[H', 'QB5BNdBFujE&list=x', 'short', 'QB5BNdBFujEx']) {
+      const c = streamCandidates([channel], {
+        channels: { UCIALMKvObZNtJ6AmdCLP7Lg: { videoId, resolvedAt: '2026-10-17T18:00:00Z' } },
+      }, now);
+      assert.deepEqual(c.map((x) => x.kind), ['youtube-channel'], JSON.stringify(videoId));
+    }
+  });
+  it('sanitizes the terminal play banner before writing it to stdout', async () => {
+    let written = '';
+    const app = {
+      player: { mpv: '/nonexistent/wm-test-mpv', ytdlp: '/x', vo: 'tct\u001b[2J' },
+      toast: () => {},
+      now: () => 0,
+      suspendFor: async (fn) => {
+        const write = process.stdout.write;
+        // The test runner also writes to stdout; keep only the banner.
+        process.stdout.write = (chunk) => { if (String(chunk).includes('▶')) written += chunk; return true; };
+        try { return await fn(); } finally { process.stdout.write = write; }
+      },
+    };
+    const view = new LiveView(app);
+    view.current = () => ({ name: 'Chan\u001b]0;evil\u0007' });
+    view.candidate = () => ({ kind: 'youtube\u001b[31m', url: 'https://www.youtube.com/watch?v=QB5BNdBFujE', label: 'resolved live \u001b]52;c;cHdu\u0007' });
+    view.candidates = () => [view.candidate()];
+    await view.play('terminal');
+    assert.ok(written.includes('Chan'), written);
+    assert.ok(!/[\u001b\u0007]/.test(written), JSON.stringify(written));
   });
 });
 

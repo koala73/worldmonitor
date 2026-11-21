@@ -73,6 +73,34 @@ describe('Auto theme preference', () => {
   });
 });
 
+describe('Dashboard pre-paint theme', () => {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  const prepaint = readFileSync(resolve(root, 'index.html'), 'utf8').match(/<script data-wm-prepaint>([\s\S]*?)<\/script>/)![1]!;
+  // The script reads location.hostname to pick the variant; the parameter stands in for it.
+  const runPrepaint = (hostname: string): string | undefined => {
+    delete document.documentElement.dataset.theme;
+    new Function('location', prepaint)({ hostname });
+    return document.documentElement.dataset.theme;
+  };
+
+  it('applies a stored theme before the app bundle runs', () => {
+    localStorage.setItem('worldmonitor-theme', 'dark');
+    expect(runPrepaint('happy.worldmonitor.app')).toBe('dark');
+    light = true;
+    expect(runPrepaint('www.worldmonitor.app')).toBe('dark');
+    localStorage.setItem('worldmonitor-theme', 'light');
+    light = false;
+    expect(runPrepaint('www.worldmonitor.app')).toBe('light');
+  });
+
+  it('defaults the happy variant to light and other variants to the system theme', () => {
+    expect(runPrepaint('happy.worldmonitor.app')).toBe('light');
+    expect(runPrepaint('www.worldmonitor.app')).toBeUndefined();
+    light = true;
+    expect(runPrepaint('www.worldmonitor.app')).toBe('light');
+  });
+});
+
 describe('Desktop window theme', () => {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
