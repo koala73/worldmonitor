@@ -1012,6 +1012,7 @@
     {
       "name": "NRK",
       "url": "https://www.nrk.no/nyheter/siste.rss",
+      "headlineLang": "no",
       "placements": [
         {
           "edition": "full",
@@ -1024,6 +1025,7 @@
     {
       "name": "Aftenposten",
       "url": "https://www.aftenposten.no/rss",
+      "headlineLang": "no",
       "placements": [
         {
           "edition": "full",
@@ -1036,6 +1038,7 @@
     {
       "name": "DR Nyheder",
       "url": "https://www.dr.dk/nyheder/service/feeds/allenyheder",
+      "headlineLang": "da",
       "placements": [
         {
           "edition": "full",
@@ -1343,6 +1346,7 @@
     {
       "name": "Suspilne",
       "url": "https://news.google.com/rss/search?q=site%3Asuspilne.media%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
+      "headlineLang": "uk",
       "browser": {
         "url": {
           "en": "https://news.google.com/rss/search?q=site:suspilne.media+when:2d&hl=en-US&gl=US&ceid=US:en",
@@ -1467,6 +1471,7 @@
     {
       "name": "TVN24",
       "url": "https://tvn24.pl/swiat.xml",
+      "headlineLang": "pl",
       "browser": {
         "url": {
           "en": "https://tvn24.pl/swiat.xml",
@@ -1489,6 +1494,7 @@
     {
       "name": "Rzeczpospolita",
       "url": "https://www.rp.pl/rss_main",
+      "headlineLang": "pl",
       "browser": {
         "url": {
           "en": "https://www.rp.pl/rss_main",
@@ -1607,6 +1613,7 @@
     {
       "name": "Zerkalo",
       "url": "https://news.google.com/rss/search?q=site%3Azerkalo.io%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
+      "headlineLang": "ru",
       "notes": [
         "Belarus / Moldova (#5953)",
         "Belarus / Moldova (#5953) — secondary pressure line"
@@ -2194,6 +2201,7 @@
     {
       "name": "Asharq Business",
       "url": "https://asharqbusiness.com/rss.xml",
+      "headlineLang": "ar",
       "placements": [
         {
           "edition": "full",
@@ -6932,6 +6940,7 @@
     {
       "name": "Correctiv",
       "url": "https://correctiv.org/feed/",
+      "headlineLang": "de",
       "type": "investigative",
       "notes": [
         "German investigative journalism & fact-checking nonprofit"
@@ -12096,6 +12105,7 @@
       "name": "El País Uruguay",
       "url": "https://news.google.com/rss/search?q=site%3Aelpais.com.uy+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
       "lang": "es",
+      "headlineLang": "es",
       "fetchInAllLanguages": true,
       "placements": [
         {

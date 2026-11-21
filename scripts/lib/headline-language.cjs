@@ -1,0 +1,87 @@
+'use strict';
+
+// Is this headline written in a language other than English?
+//
+// The catalog's language tag is per feed and can be missing or wrong (an
+// untagged Norwegian feed alerted English subscribers), and one feed can mix
+// languages. This is the per-headline backstop for the alert path.
+//
+// It answers yes only on positive evidence of another language: mostly
+// non-Latin letters, or at least two function words of another language
+// outnumbering the English ones. A terse headline with no function words is
+// never called foreign, so an English alert is not lost to a guess.
+
+// Lowercase function words that are not English words, English abbreviations
+// or name particles ("de", "la", "van", "al", "bin" are deliberately absent:
+// "Rio de Janeiro", "Lula da Silva", "al-Shabaab" are English headlines).
+const OTHER_LANGUAGE_WORDS = new Set([
+  // Spanish, Portuguese
+  'los', 'las', 'una', 'por', 'para', 'que', 'según', 'tras', 'sobre', 'entre', 'desde', 'hasta', 'está', 'fue',
+  'sus', 'como', 'más', 'pero', 'este', 'esta', 'también', 'ante', 'y', 'uma', 'não', 'com', 'são', 'mais', 'após',
+  'diz', 'ao', 'pela', 'pelo', 'nas', 'seu', 'sua', 'foi', 'tem', 'em', 'num', 'numa', 'aos', 'às',
+  // French
+  'les', 'des', 'une', 'est', 'dans', 'pour', 'sur', 'avec', 'qui', 'aux', 'ses', 'sont', 'après', 'contre', 'selon',
+  'mais', 'cette', 'être', 'leur', 'où', 'au', 'et', 'ce', 'ont', 'été',
+  // German, Dutch
+  'der', 'und', 'ist', 'nicht', 'mit', 'für', 'auf', 'dem', 'ein', 'eine', 'einer', 'zu', 'nach', 'bei', 'gegen',
+  'über', 'wird', 'sich', 'auch', 'als', 'aus', 'vor', 'sind', 'wie', 'im', 'zum', 'zur', 'noch', 'nur', 'oder',
+  'het', 'een', 'niet', 'voor', 'zijn', 'naar', 'ook', 'bij', 'uit', 'aan', 'maar', 'wordt', 'werd', 'tegen', 'op',
+  // Italian
+  'il', 'gli', 'che', 'della', 'delle', 'degli', 'nel', 'nella', 'sono', 'più', 'anche', 'dopo', 'alla', 'dei', 'è',
+  'tra', 'sul', 'dal', 'dalla',
+  // Norwegian, Danish, Swedish, Finnish
+  'og', 'av', 'på', 'til', 'er', 'som', 'har', 'ikke', 'med', 'fra', 'etter', 'efter', 'mot', 'ved', 'kan', 'skal',
+  'och', 'att', 'för', 'är', 'inte', 'från', 'till', 'om', 'det', 'ett', 'blir', 'ble', 'blev', 'vil', 'seg', 'sig',
+  'än', 'när', 'mod', 'af', 'hos', 'å', 'i', 'ja', 'ei', 'että', 'oli',
+  // Polish, Czech, Slovak, South Slavic (Latin script), Romanian, Hungarian
+  'się', 'nie', 'na', 'że', 'jest', 'przez', 'dla', 'jak', 'od', 'po', 'czy', 'oraz', 'przed', 'pod', 'już', 'tylko',
+  'są', 'ze', 'za', 'w', 'z', 'o', 'se', 'je', 'při', 'podle', 'jako', 'nebo', 'proti', 'kod', 'zbog', 'nakon', 'și',
+  'în', 'din', 'pentru', 'către', 'este', 'după', 'sau', 'és', 'hogy', 'nem', 'egy', 'az', 'már', 'csak',
+  // Turkish, Indonesian, Malay, Vietnamese, Swahili
+  've', 'bir', 'için', 'ile', 'bu', 'olarak', 'daha', 'çok', 'gibi', 'sonra', 'kadar', 'ancak', 'yang', 'dan',
+  'dari', 'untuk', 'dengan', 'pada', 'dalam', 'ini', 'itu', 'tidak', 'akan', 'oleh', 'juga', 'telah', 'của', 'và',
+  'là', 'có', 'được', 'cho', 'với', 'không', 'tại', 'trong', 'ya', 'wa', 'kwa', 'katika',
+]);
+
+const ENGLISH_WORDS = new Set([
+  'the', 'of', 'and', 'to', 'in', 'for', 'on', 'with', 'as', 'at', 'by', 'from', 'is', 'are', 'was', 'were', 'after',
+  'over', 'says', 'say', 'his', 'her', 'its', 'their', 'has', 'have', 'had', 'will', 'not', 'that', 'this', 'be',
+  'an', 'a', 'into', 'amid', 'against', 'who', 'what', 'how', 'why', 'new', 'more', 'than', 'but', 'or', 'it',
+  'about', 'out', 'up', 'no', 'can', 'could', 'would', 'may', 'been', 'he', 'she', 'they', 'we', 'you', 'us',
+]);
+
+const LETTER = /\p{L}/u;
+const LATIN = /\p{Script=Latin}/u;
+const WORD_BREAK = /[^\p{L}\p{M}]+/u;
+// "Mining.com.au" is a name, not Portuguese "com" and French "au".
+const DOTTED_NAME = /\S+\.\p{L}{2,}\S*/gu;
+
+/**
+ * @param {unknown} title
+ * @returns {boolean} true only when the headline shows another language.
+ */
+function headlineInOtherLanguage(title) {
+  if (typeof title !== 'string') return false;
+  // NFKC folds styled letters (mathematical bold) back to the plain ones.
+  const text = title.normalize('NFKC');
+  let letters = 0;
+  let nonLatin = 0;
+  for (const char of text) {
+    if (!LETTER.test(char)) continue;
+    letters++;
+    if (!LATIN.test(char)) nonLatin++;
+  }
+  if (letters === 0) return false;
+  if (nonLatin / letters > 0.5) return true;
+
+  const other = new Set();
+  let english = 0;
+  for (const word of text.replace(DOTTED_NAME, ' ').split(WORD_BREAK)) {
+    // Case matters: "I" is English and "i" is Norwegian or Polish; "De" opens a name.
+    if (OTHER_LANGUAGE_WORDS.has(word)) other.add(word);
+    else if (ENGLISH_WORDS.has(word.toLowerCase())) english++;
+  }
+  return other.size >= 2 && other.size > english;
+}
+
+module.exports = { headlineInOtherLanguage };

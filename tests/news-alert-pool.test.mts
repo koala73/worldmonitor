@@ -50,8 +50,10 @@ it('pools an English Google News query whatever language its feed is routed to',
 it('the pool keeps exactly the feeds the relay lets alert, for every feed in the catalog', () => {
   const feeds = [...Object.values(VARIANT_FEEDS).flatMap(byCategory => Object.values(byCategory).flat()), ...INTEL_SOURCES];
   const names = [...new Set(feeds.map(feed => feed.name))];
-  const candidates = buildClassifyCandidateMap({ categories: { all: { items: names.map(name => ({ title: name, source: name, publishedAt: now })) } } }, [], 'full', now, 3_600_000);
-  const alerting = names.filter(name => !candidates.get(name).otherLanguage);
+  // An English title per feed: this compares the feed rule, not the per-headline check.
+  const titleOf = (name: string) => `Headline ${names.indexOf(name)}`;
+  const candidates = buildClassifyCandidateMap({ categories: { all: { items: names.map(name => ({ title: titleOf(name), source: name, publishedAt: now })) } } }, [], 'full', now, 3_600_000);
+  const alerting = names.filter(name => !candidates.get(titleOf(name)).otherLanguage);
   // lang 'xx': a catalog feed is decided by the catalog, not by the item.
   const poolKeeps = (name: string) => alertPoolItems([item(name, 1, { source: name, lang: 'xx' })], [], now, 'en').length === 1;
   assert.deepEqual(names.filter(name => alerting.includes(name) !== poolKeeps(name)), []);
