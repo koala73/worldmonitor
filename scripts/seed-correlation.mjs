@@ -11,7 +11,15 @@ import {
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'correlation:cards-bootstrap:v1';
-const CACHE_TTL = 1200; // 20min — outlives maxStaleMin:15 with buffer (cron runs every 5min)
+// 45min — 9x the 5min bundle cadence, matching seed-hyperliquid-flow.mjs,
+// which carries the identical health note. MUST outlive
+// SEED_META.correlationCards.maxStaleMin in api/health.js (30min, raised from
+// 15 in #3640 to absorb bundle jitter). At the old 20min the data key expired
+// BEFORE the staleness warning could fire, so a merely late seeder reported
+// EMPTY (crit) instead of escalating through STALE_SEED (warn) — and the
+// bootstrap tier served no correlation cards at all. Pinned by
+// tests/seed-ttl-outlives-health-staleness.test.mjs.
+export const CACHE_TTL = 2700;
 const MIN_CORRELATION_CARDS = 1;
 const CORRELATION_CARD_DOMAINS = ['military', 'escalation', 'economic', 'disaster'];
 
@@ -958,7 +966,7 @@ if (process.argv[1]?.endsWith('seed-correlation.mjs')) {
   
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 15,
+    maxStaleMin: 30,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);
