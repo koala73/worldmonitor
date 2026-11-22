@@ -19,7 +19,7 @@ import {
 } from './_md-url-twin';
 // @ts-expect-error — JS module, no declaration file
 import { checkRateLimit } from './_rate-limit.js';
-import { getClientRateLimitKey } from './_client-ip.js';
+import { getClientRateLimitKey } from '../server/_shared/client-ip';
 
 export const config = { runtime: 'edge' };
 
