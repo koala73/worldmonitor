@@ -1,6 +1,3 @@
-// parseNgaDate used `months[token] ?? 0`, so an unknown three-letter month
-// became January. Callers see that timestamp as NavigationalWarning.issuedAt.
-// An unrecognized month is an invalid date and must stay the 0 sentinel.
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 

@@ -1,7 +1,3 @@
-// A negative limit used to reach flights.slice(0, limit). Array.slice counts a
-// negative end from the tail, so limit -2 on five flights returned the first
-// three. Non-positive limits use the default page of 30, the same rule as the
-// other list handlers. Zero is the proto unset value.
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
