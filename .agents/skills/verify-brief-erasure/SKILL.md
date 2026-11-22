@@ -65,7 +65,7 @@ If the semantics are right, the trace is the bug. Fix the code, not the model.
 Keep the model calling the real functions. If you move a step into a new function, export it and call that. Do not copy the logic into the test. Then prove the model can still fail:
 
 ```bash
-node scripts/check-brief-erasure-model-mutations.mjs
+node scripts/check-model-mutations.mjs brief-erasure
 ```
 
 It applies five breaks to the real code one at a time, runs the model, and restores the files:
