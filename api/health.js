@@ -939,6 +939,12 @@ const SEED_META = {
   wildfires:        {
     key: 'seed-meta:wildfire:fires',
     maxStaleMin: 360,
+    // Read by tests/seed-ttl-contract.test.mjs. The 360-minute gate is sized to FIRMS
+    // NRT, whose new-day data takes 3-6h, so it cannot catch a stopped seeder in time.
+    // The 2h data TTL does: the panel blanks and health reports EMPTY (crit). Raising
+    // the TTL above the gate would serve 3h-old fire data silently. A seeder that runs
+    // but fails renews the TTL on each run; sourceFailure covers that case.
+    expiryIsTheAlarm: 'a stopped fire seeder must page within 2h, sooner than the FIRMS-sized gate',
     sourceFailure: [
       { warnAfterConsecutive: 2, failureCodePattern: /^FIRMS_PARTIAL_COVERAGE$/ },
       {
@@ -952,7 +958,7 @@ const SEED_META = {
       { warnAfterConsecutive: 3, failureCodePattern: /^(BC_WILDFIRE_SOURCE_FAILED|CWFIS_PRESCRIBED_FAILED)$/ },
     ],
   }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
-  wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360 }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
+  wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360, expiryIsTheAlarm: 'same as wildfires; it is in MISSING_DATA_IS_FAILURE_KEYS, so its expiry reports EMPTY' }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
   // Derived summary the CII and temporal-anomaly rebuilds read (#9509). Same
   // seeder run and 2h TTL as the canonical key; monitored on its own so the
   // readers' canonical fallback cannot hide a broken summary write. Softened
@@ -1430,7 +1436,7 @@ const SEED_META = {
   },
   bcOpen511:        {
     key: 'seed-meta:infra:bc-open511',
-    maxStaleMin: 90, // seed-bundle-canada member interval 30min; 90 = 3× interval, and matches this seeder's own 5400s TTL. At the old 45 a single missed tick tripped STALE_SEED.
+    maxStaleMin: 90, // seed-bundle-canada member interval 30min; 90 = 3× interval. At the old 45 a single missed tick tripped STALE_SEED.
     cutover: {
       mode: 'expiring-ack',
       fromKey: null,
@@ -2617,10 +2623,6 @@ const SEED_META = {
   // previous 400-day budget (6.7x cadence) would have let a dead seeder read OK
   // until ~2027-09; the 540-day content-age gate would not have covered it
   // either. Sized to the publisher, not the source.
-  // Keep `key` and `maxStaleMin` adjacent: the coverage guard in
-  // tests/seed-ttl-outlives-staleness-fleet.test.mjs matches them with a single
-  // regex that only tolerates whitespace between the two, so a comment placed
-  // between them drops this gate from the parsed set.
   mineralProduction:    {
     key: 'seed-meta:supply-chain:mineral-production',
     maxStaleMin: 60 * 24 * 120,

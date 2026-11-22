@@ -1240,14 +1240,6 @@ export const STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION: Record<string, Standalo
   'api/miit-news.js': { reason: 'CDN-cached feed; a cache bypass costs one Redis GET on a fixed key, and MIIT is fetched only when that key is empty.' },
   'api/product-catalog.js': { reason: 'CDN-cached catalog; a cache bypass costs one Redis GET on product-catalog:v3, and Dodo is called only when that key is empty. DELETE is secret-gated.' },
   'api/health.js': { reason: 'Uptime monitors poll it, so a limit would page on-call. It serves the cached verdict first; a refresh takes a Redis SET NX lock, so one sweep runs at a time.' },
-  'api/referral/me.ts': { debt: true, reason: 'Signed-in; every GET fires an idempotent Convex mutation.' },
-  'api/user/mcp-revoke.ts': { debt: true, reason: 'Signed-in; each call runs a Convex revocation mutation and a Redis delete.' },
-  'api/invalidate-user-api-key-cache.ts': { debt: true, reason: 'Signed-in; each call runs a Convex ownership query and a Redis delete.' },
-  'api/brief/share-url.ts': { debt: true, reason: 'Signed-in Pro; each call writes a Redis share pointer.' },
-  'api/latest-brief.ts': { debt: true, reason: 'Signed-in; standard session tokens can trigger a cached Clerk plan lookup, then Redis reads.' },
-  'api/me/entitlement.ts': { debt: true, reason: 'Signed-in; standard session tokens can trigger a cached Clerk plan lookup.' },
-  'api/user/mcp-quota.ts': { debt: true, reason: 'Signed-in; can trigger a cached Clerk plan lookup and an entitlement cache write.' },
-  'api/internal/mcp-grant-context.ts': { debt: true, reason: 'Signed-in; reads Redis keys chosen by a caller-supplied nonce and can fetch OAuth client metadata.' },
 };
 
 const endpointLimiters = new Map<string, Ratelimit>();

@@ -426,7 +426,7 @@ describe('CIMD — Pro grant path', () => {
     assert.equal(flow.res.status, 200);
 
     const ctxRes = await grantContextHandler(new Request(`https://worldmonitor.app/api/internal/mcp-grant-context?nonce=${flow.nonce}`, { headers: { cookie: flow.cookie } }), {
-      resolveUserId: async () => 'user_pro', redisGet, getEntitlements: async () => PRO_ENT, now: () => NOW,
+      resolveUserId: async () => 'user_pro', rateLimit: async () => null, redisGet, getEntitlements: async () => PRO_ENT, now: () => NOW,
     });
     assert.equal(ctxRes.status, 200, await ctxRes.clone().text());
     assert.deepEqual(await ctxRes.json(), { client_name: 'ChatGPT', redirect_host: 'chatgpt.com', client_host: 'chatgpt.com', localhost_redirect: false });

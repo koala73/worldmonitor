@@ -28,6 +28,8 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from '../_cors.js';
 import { isCallerPremium } from '../../server/_shared/premium-check';
 import { validateBearerToken } from '../../server/auth-session';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../_rate-limit.js';
 
 export default async function handler(req: Request): Promise<Response> {
   const cors = getCorsHeaders(req);
@@ -56,12 +58,18 @@ export default async function handler(req: Request): Promise<Response> {
       status: 401, headers: commonJsonHeaders,
     });
   }
-  const session = await validateBearerToken(authHeader.slice(7));
+  // No plan lookup yet: it is a Clerk call, and it must not run ahead of the limit.
+  const session = await validateBearerToken(authHeader.slice(7), { resolvePlan: false });
   if (!session.valid) {
     return new Response(JSON.stringify({ error: 'unauthenticated' }), {
       status: 401, headers: commonJsonHeaders,
     });
   }
+
+  const limited = await checkRateLimit(req, commonJsonHeaders, {
+    scope: 'me-entitlement', identifier: `user:${session.userId}`, limit: 60, window: '60 s',
+  });
+  if (limited) return limited;
 
   // Bearer is valid — delegate to the canonical two-signal check for the
   // actual entitlement verdict (covers Clerk role AND Convex tier).

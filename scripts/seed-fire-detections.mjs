@@ -165,7 +165,7 @@ async function main() {
     // returns false, then afterValidationSkip records the current diagnosis.
     validateFn: hasCompleteWorldwideWildfireCoverage,
     // 2h — deliberately BELOW the 6h health gate (maxStaleMin 360). Do NOT "fix" this
-    // by raising it to satisfy tests/seed-ttl-outlives-staleness-fleet: doing so DOWNGRADES
+    // by raising it (SEED_META.wildfires sets expiryIsTheAlarm for this): doing so DOWNGRADES
     // a safety alarm. Verified against classifyKey with the seeder dead for 3h:
     //
     //   ttl 2h (this):  wildfires -> EMPTY (crit)   — ops is paged, panel blanks honestly

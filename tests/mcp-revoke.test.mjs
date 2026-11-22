@@ -34,6 +34,7 @@ function makeDeps(overrides = {}) {
   const observed = { revokeArgs: null, invalidateArgs: null };
   const deps = {
     resolveUserId: async () => 'user_pro_123',
+    rateLimit: async () => null,
     convexRevoke: async (userId, tokenId) => {
       observed.revokeArgs = { userId, tokenId };
       return { ok: true };
@@ -62,6 +63,7 @@ describe('mcp-revoke handler', () => {
     // The handler MUST use the session-derived userId only.
     const { deps, observed } = makeDeps({
       resolveUserId: async () => 'user_legit_session',
+      rateLimit: async () => null,
     });
     const req = new Request('https://api.worldmonitor.app/api/user/mcp-revoke', {
       method: 'POST',

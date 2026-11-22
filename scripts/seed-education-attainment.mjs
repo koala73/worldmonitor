@@ -426,7 +426,7 @@ if (process.argv[1]?.endsWith('seed-education-attainment.mjs')) {
     schemaVersion: 1,
     // 8 days, matching the api/health.js budget for this key and sitting well
     // inside the 35-day CACHE_TTL. The invariant (enforced by
-    // tests/seed-ttl-outlives-staleness-fleet.test.mjs) is that the data key
+    // tests/seed-ttl-contract.test.mjs) is that the data key
     // must OUTLIVE its staleness gate: if the gate is longer than the TTL,
     // a merely-late seeder surfaces as EMPTY_DATA rather than STALE_SEED,
     // telling an operator the data is gone when the real fault is a dead cron.

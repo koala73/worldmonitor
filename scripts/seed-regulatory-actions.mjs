@@ -9,7 +9,8 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'regulatory:actions:v1';
 const FEED_TIMEOUT_MS = 15_000;
-const TTL_SECONDS = 21600;
+// Twice the 360-minute health budget, so a late seeder reads STALE_SEED, not EMPTY.
+const TTL_SECONDS = 43200;
 const XML_ACCEPT = 'application/atom+xml, application/rss+xml, application/xml, text/xml, */*';
 const SEC_USER_AGENT = 'WorldMonitor/2.0 (monitor@worldmonitor.app)';
 const DEFAULT_FETCH = (...args) => globalThis.fetch(...args);

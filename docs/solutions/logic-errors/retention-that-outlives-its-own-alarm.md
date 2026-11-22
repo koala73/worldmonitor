@@ -88,11 +88,11 @@ Note what is *not* fixed by this: the payload is still served. That is intended 
 
 **The rule: if you extend a value's lifetime on failure, extend the lifetime of the signal that reports on that value — or the alarm expires before the problem does.**
 
-This is the same invariant the fleet already guards from the other direction. [`tests/seed-ttl-outlives-staleness-fleet.test.mjs`](../../../tests/seed-ttl-outlives-staleness-fleet.test.mjs) enforces `ttlSeconds > maxStaleMin * 60` so a merely-late seeder degrades `STALE_SEED` → `EMPTY` in that order rather than reporting a crit for a source that is only running behind (issue #5309; the same family was fixed for reference data in [PR #7847](https://github.com/koala73/worldmonitor/pull/7847), merged). Both directions say one thing: **the reporting signal must outlive the value it reports on.**
+This is the same invariant the fleet already guards from the other direction. [`tests/seed-ttl-contract.test.mjs`](../../../tests/seed-ttl-contract.test.mjs) enforces `ttlSeconds > maxStaleMin * 60` so a merely-late seeder degrades `STALE_SEED` → `EMPTY` in that order rather than reporting a crit for a source that is only running behind (issue #5309; the same family was fixed for reference data in [PR #7847](https://github.com/koala73/worldmonitor/pull/7847), merged). Both directions say one thing: **the reporting signal must outlive the value it reports on.**
 
 Two reasons that fleet test cannot catch this variant, which is why it needs its own guard:
 
-1. It compares *declared* constants — a seeder's `ttlSeconds` against its `maxStaleMin`. A retention path that re-arms a TTL every tick makes the payload's effective lifetime unbounded at runtime, and no declared constant expresses that.
+1. It compares *declared* constants — the `ttlSeconds` a seeder passes to runSeed against its health `maxStaleMin`. A retention path that re-arms a TTL every tick makes the payload's effective lifetime unbounded at runtime, and no declared constant expresses that.
 2. It compares the payload TTL against the *staleness gate*, not against the *marker's own TTL*. Here both declared values are fine in isolation; only their interaction under sustained retention is wrong.
 
 Concrete checks when writing or reviewing a retention path:
