@@ -78,6 +78,12 @@ describe('navigational warning issue dates', () => {
     assert.equal(new Date(issuedAt).toISOString(), '2024-05-08T16:53:00.000Z');
   });
 
+  it('parses January, whose month index is 0', async () => {
+    const issuedAt = await issuedAtFor('081653Z JAN 2024');
+
+    assert.equal(issuedAt, Date.UTC(2024, 0, 8, 16, 53));
+  });
+
   it('returns the invalid-date sentinel for an unknown month token', async () => {
     const issuedAt = await issuedAtFor('081653Z XYZ 2024');
 
