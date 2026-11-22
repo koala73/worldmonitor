@@ -209,7 +209,6 @@ describe('Pro grant bridge requires the binding', () => {
       // alone; mint takes the locally verified session and injects the limiter
       // and live-session check as pass-throughs.
       resolveUserId: async () => 'user_victim',
-      rateLimit: async () => null,
       resolveSession: async () => ({ userId: 'user_victim', orgId: null, role: 'pro', sessionId: 'sess_victim' }),
       rateLimit: async () => null,
       verifySession: async () => 'active',

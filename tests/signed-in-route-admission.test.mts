@@ -18,6 +18,7 @@ const ENV = {
   CONVEX_SITE_URL: 'https://convex.test',
   CONVEX_SERVER_SHARED_SECRET: 'convex-secret',
   CLERK_SECRET_KEY: 'sk_test_admission',
+  CONVEX_TENANT_RELAY_SECRET: 'relay-secret',
 };
 const saved = Object.fromEntries(Object.keys(ENV).map((k) => [k, process.env[k]]));
 Object.assign(process.env, ENV);
@@ -107,6 +108,7 @@ for (const route of ROUTES) {
     it('charges its own per-user scope', async () => {
       const response = await call(route);
       assert.notEqual(response.status, 429);
+      assert.ok(backend.length > 0, 'an admitted caller reaches the route\'s Clerk, Convex or Redis work');
       assert.ok(limiterBodies.some((b) => b.includes(`rl:${route.scope}`) && b.includes(`user:${userId}`)), limiterBodies.join('\n'));
     });
 
@@ -131,6 +133,7 @@ for (const route of ROUTES) {
         const response = await call(route);
         assert.notEqual(response.status, 429);
         assert.equal(response.headers.get('X-RateLimit-Mode'), null);
+        assert.ok(backend.length > 0, 'a fail-open outage still reaches the route\'s work');
       });
     }
   });
