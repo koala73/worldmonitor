@@ -1244,8 +1244,6 @@ export const STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION: Record<string, Standalo
   'api/correlation-runtime-mode.js': { debt: true, reason: 'Anonymous, no-store; each call is one Redis GET on a fixed key.' },
   'api/brief/public/[hash].ts': { debt: true, reason: 'Anonymous; each call is one Redis GET on a caller-chosen key.' },
   'api/md-twin.ts': { debt: true, reason: 'Anonymous; each call fetches a caller-chosen page from our own origin.' },
-  'api/discord/oauth/callback.ts': { debt: true, reason: 'Anonymous; each call runs one Redis GETDEL on the caller-supplied state before it is validated.' },
-  'api/slack/oauth/callback.ts': { debt: true, reason: 'Anonymous; each call runs one Redis GETDEL on the caller-supplied state before it is validated.' },
   'api/brief/carousel/[userId]/[issueDate]/[page].ts': { debt: true, reason: 'Requires an HMAC brief token, but one token allows unlimited image renders, each with Redis reads, and extra query values bypass the CDN.' },
   'api/oauth/authorize-pro.ts': { debt: true, reason: 'Requires an HMAC grant, but grants go to any signed-in account; each valid grant runs a Redis GETDEL and issues a token.' },
 };
