@@ -52,6 +52,11 @@ write('api/reexport.ts', "export { default } from './direct.js';\n");
 write('api/reexport-bare.ts', "export { default } from './bare.js';\n");
 write('api/upstash.ts', `import { Ratelimit } from '@upstash/ratelimit';\nconst rl = new Ratelimit({});\n${handler('  const { success } = await rl.limit("ip");\n  return new Response(String(success));')}`);
 write('api/upstash-unused.ts', `import { Ratelimit } from '@upstash/ratelimit';\nconst rl = new Ratelimit({});\n${handler('  return new Response(String(rl));')}`);
+write('api/upstash-other-receiver.ts', `import { Ratelimit } from '@upstash/ratelimit';\nconst rl = new Ratelimit({});\n${handler('  const rows = await query.limit(10);\n  return new Response(String(rows ?? rl));')}`);
+write('api/upstash-factory.js', `import { loadUpstashRatelimit } from './_upstash-ratelimit.js';\nlet _rl = null;\nlet _override;\nasync function getRatelimit() {\n  if (_override !== undefined) return _override;\n  if (_rl) return _rl;\n  const { Ratelimit } = await loadUpstashRatelimit();\n  _rl = new Ratelimit({});\n  return _rl;\n}\n${handler('  const rl = await getRatelimit();\n  const { success } = await rl.limit("ip");\n  return new Response(String(success));')}`);
+write('api/upstash-factory-other-return.ts', `import { Ratelimit } from '@upstash/ratelimit';\nfunction getQuery() {\n  new Ratelimit({});\n  return query;\n}\n${handler('  const rows = getQuery();\n  return new Response(String(await rows.limit(10)));')}`);
+write('api/upstash-reassigned.ts', `import { Ratelimit } from '@upstash/ratelimit';\nlet rl = new Ratelimit({});\nrl = query;\n${handler('  return new Response(String(await rl.limit(10)));')}`);
+write('api/upstash-shadowed.ts', `import { Ratelimit } from '@upstash/ratelimit';\nconst rl = new Ratelimit({});\n${handler('  const rl = query;\n  return new Response(String(await rl.limit(10)));')}`);
 write('api/proof-only.js', `import { checkIpScopedEdgeProof } from './_rate-limit.js';\n${handler('  return checkIpScopedEdgeProof(req, {}) ?? new Response("ok");')}`);
 write('api/renamed-default.ts', "export { unprotected as default } from './two-handlers.js';\n");
 write('api/two-handlers.js', `import { checkRateLimit } from './_rate-limit.js';\nexport async function unprotected() { return new Response('ok'); }\n${handler('  return (await checkRateLimit(req, {})) ?? new Response("ok");')}`);
@@ -76,6 +81,10 @@ describe('standalone route admission audit', () => {
       'api/relay-unlimited.js',
       'api/renamed-default.ts',
       'api/type-import.ts',
+      'api/upstash-factory-other-return.ts',
+      'api/upstash-other-receiver.ts',
+      'api/upstash-reassigned.ts',
+      'api/upstash-shadowed.ts',
       'api/upstash-unused.ts',
     ]);
   });
@@ -86,6 +95,7 @@ describe('standalone route admission audit', () => {
     assert.equal(admission.get('api/comment-with-glob.js'), 'checkRateLimit');
     assert.equal(admission.get('api/relay.js'), 'createRelayHandler');
     assert.equal(admission.get('api/upstash.ts'), 'Ratelimit.limit');
+    assert.equal(admission.get('api/upstash-factory.js'), 'Ratelimit.limit');
     assert.equal(admission.get('api/mcp-route.ts'), 'applyAnonDiscoveryLimit');
     assert.equal(admission.get('api/svc/v1/alias.ts'), 'createDomainGateway via [rpc].ts');
     assert.equal(admission.get('api/reexport.ts'), 'checkRateLimit via direct.js');
