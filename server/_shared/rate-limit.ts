@@ -1232,7 +1232,6 @@ export const STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION: Record<string, Standalo
   'api/seed-contract-probe.ts': { reason: 'Requires x-probe-secret to match RELAY_SHARED_SECRET before any probe runs.' },
   'api/seed-health.js': { reason: 'Requires an enterprise operator key, checked locally, before any Redis read.' },
   'api/opensky.js': { reason: 'Requires an enterprise operator key, or the local sidecar key on its loopback hop, before the relay call.' },
-  'api/brief/[userId]/[issueDate].ts': { reason: 'Requires a valid HMAC brief token issued to the recipient before any Redis work.' },
   'api/download.js': { reason: 'CDN-cached release redirect; a cache bypass costs one Redis GET on a fixed key, and GitHub is called only when that key is empty.' },
   'api/version.js': { reason: 'CDN-cached release version; a cache bypass costs one Redis GET on a fixed key, and GitHub is called only when that key is empty.' },
   'api/gpsjam.js': { reason: 'CDN-cached seeded data; a cache bypass costs one Redis GET on a fixed key.' },

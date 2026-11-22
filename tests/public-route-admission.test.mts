@@ -33,6 +33,13 @@ const ROUTES = [
     key: `user_test:${SLOT}`,
   },
   {
+    file: 'brief/[userId]/[issueDate].ts',
+    url: `/api/brief/user_test/${SLOT}?t=${briefToken}`,
+    scope: 'brief-magazine',
+    key: `user_test:${SLOT}`,
+    html: true,
+  },
+  {
     file: 'oauth/authorize-pro.ts',
     url: `/api/oauth/authorize-pro?nonce=n1&grant=${encodeURIComponent(grant)}`,
     scope: 'oauth-authorize-pro',
