@@ -12870,7 +12870,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .sanctions-section {
@@ -13067,7 +13067,7 @@ button.popup-link {
 }
 
 .radiation-footer {
-  padding: 0 8px 8px 8px;
+  padding: 0 0 8px;
   color: var(--text-dim);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   text-align: right;
@@ -28837,7 +28837,7 @@ body.map-width-resizing {
 .ecp-filters {
   display: flex;
   gap: 4px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .ecp-filter-btn {
@@ -28868,7 +28868,7 @@ body.map-width-resizing {
 .ecp-policy-list {
   display: flex;
   flex-direction: column;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .ecp-policy-row {
@@ -28951,7 +28951,7 @@ body.map-width-resizing {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 8px;
+  padding: 4px 0;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }

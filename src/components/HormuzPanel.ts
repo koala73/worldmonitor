@@ -333,7 +333,7 @@ export class HormuzPanel extends Panel {
     const dependencies = this.renderDependencies();
 
     const html = `
-      <div style="padding:12px 0;position:relative">
+      <div style="padding:12px 14px;position:relative">
         <div class="hz-tip" style="position:fixed;pointer-events:none;background:rgba(15,17,26,0.95);border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:3px 8px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#fff;white-space:nowrap;z-index:9999;opacity:0;transition:opacity 0.08s;letter-spacing:0.02em"></div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
           <span style="background:${sColor};color:#fff;font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:0.08em">${d.status.toUpperCase()}</span>
