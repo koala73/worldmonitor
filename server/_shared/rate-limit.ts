@@ -1241,9 +1241,6 @@ export const STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION: Record<string, Standalo
   'api/miit-news.js': { reason: 'CDN-cached feed; a cache bypass costs one Redis GET on a fixed key, and MIIT is fetched only when that key is empty.' },
   'api/product-catalog.js': { reason: 'CDN-cached catalog; a cache bypass costs one Redis GET on product-catalog:v3, and Dodo is called only when that key is empty. DELETE is secret-gated.' },
   'api/health.js': { reason: 'Uptime monitors poll it, so a limit would page on-call. It serves the cached verdict first; a refresh takes a Redis SET NX lock, so one sweep runs at a time.' },
-  'api/correlation-runtime-mode.js': { debt: true, reason: 'Anonymous, no-store; each call is one Redis GET on a fixed key.' },
-  'api/brief/public/[hash].ts': { debt: true, reason: 'Anonymous; each call is one Redis GET on a caller-chosen key.' },
-  'api/md-twin.ts': { debt: true, reason: 'Anonymous; each call fetches a caller-chosen page from our own origin.' },
   'api/discord/oauth/callback.ts': { debt: true, reason: 'Anonymous; each call runs one Redis GETDEL on the caller-supplied state before it is validated.' },
   'api/slack/oauth/callback.ts': { debt: true, reason: 'Anonymous; each call runs one Redis GETDEL on the caller-supplied state before it is validated.' },
   'api/referral/me.ts': { debt: true, reason: 'Signed-in; every GET fires an idempotent Convex mutation.' },
@@ -1254,8 +1251,6 @@ export const STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION: Record<string, Standalo
   'api/me/entitlement.ts': { debt: true, reason: 'Signed-in; standard session tokens can trigger a cached Clerk plan lookup.' },
   'api/user/mcp-quota.ts': { debt: true, reason: 'Signed-in; can trigger a cached Clerk plan lookup and an entitlement cache write.' },
   'api/internal/mcp-grant-context.ts': { debt: true, reason: 'Signed-in; reads Redis keys chosen by a caller-supplied nonce and can fetch OAuth client metadata.' },
-  'api/brief/carousel/[userId]/[issueDate]/[page].ts': { debt: true, reason: 'Requires an HMAC brief token, but one token allows unlimited image renders, each with Redis reads, and extra query values bypass the CDN.' },
-  'api/oauth/authorize-pro.ts': { debt: true, reason: 'Requires an HMAC grant, but grants go to any signed-in account; each valid grant runs a Redis GETDEL and issues a token.' },
 };
 
 const endpointLimiters = new Map<string, Ratelimit>();

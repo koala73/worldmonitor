@@ -5,6 +5,17 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
+// The route's per-IP limiter shares the Upstash transport; admit it so the stubs below answer only the data reads.
+function admitLimiter(responder: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const body = typeof init?.body === 'string' ? init.body : '';
+    if (!body.includes('"rl:')) return responder(input, init);
+    const parsed = JSON.parse(body);
+    const result = [599, 600];
+    return Response.json(Array.isArray(parsed[0]) ? parsed.map(() => ({ result })) : { result });
+  };
+}
+
 const HASH = 'abcdefghijkl';
 const URL = `https://worldmonitor.app/api/brief/public/${HASH}`;
 
@@ -25,10 +36,10 @@ afterEach(() => {
 function upstash(result: unknown): void {
   process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.invalid';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'tok';
-  globalThis.fetch = async () => new Response(JSON.stringify({ result }), {
+  globalThis.fetch = admitLimiter(async () => new Response(JSON.stringify({ result }), {
     status: 200,
     headers: { 'content-type': 'application/json' },
-  });
+  }));
 }
 
 describe('api/brief/public/[hash] cache policy', () => {
@@ -108,14 +119,14 @@ describe('api/brief/public/[hash] cache policy', () => {
       },
     });
     let calls = 0;
-    globalThis.fetch = async () => {
+    globalThis.fetch = admitLimiter(async () => {
       calls += 1;
       const body = calls === 1 ? pointer : envelope;
       return new Response(JSON.stringify({ result: body }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
-    };
+    });
     const { default: handler } = await import('../api/brief/public/[hash].ts');
     const res = await handler(new Request(URL));
     assert.equal(res.status, 200);

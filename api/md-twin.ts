@@ -17,6 +17,8 @@ import {
   isPageTwinSibling,
   resolveMarkdownTwinPath,
 } from './_md-url-twin';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from './_rate-limit.js';
 
 export const config = { runtime: 'edge' };
 
@@ -33,6 +35,11 @@ export default async function handler(req: Request): Promise<Response> {
       },
     });
   }
+  // Each miss fetches a page from our own origin. Crawlers read these on purpose, so the per-IP budget is wide.
+  const limited = await checkRateLimit(req, { 'Access-Control-Allow-Origin': '*', 'X-Robots-Tag': 'noindex', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'Vercel-CDN-Cache-Control': 'no-store' }, {
+    scope: 'md-twin', limit: 300, window: '60 s',
+  });
+  if (limited) return limited;
   return buildMarkdownTwinResponse(req, markdownPath, globalThis.fetch, {
     isAllowedSibling: isPageTwinSibling,
   });
