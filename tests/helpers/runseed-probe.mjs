@@ -1,0 +1,79 @@
+// Runs each seeder with runSeed replaced by a recorder and returns the arguments it
+// passed, so tests read the TTLs and keys a seeder really uses instead of parsing its
+// source. fetch is disabled and the Redis URL cannot resolve, so nothing is fetched
+// or written.
+import { spawn } from 'node:child_process';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REGISTER = fileURLToPath(new URL('./runseed-probe/register.mjs', import.meta.url));
+const MARK = '@@RUNSEED ';
+
+// A seeder that checks for its credentials before calling runSeed needs them set to
+// reach it. Every credential named in .env.example gets a placeholder; feature flags
+// and URLs keep their defaults, so the probe records the repo's default behavior.
+function placeholderCredentials(repoRoot) {
+  const names = readFileSync(join(repoRoot, '.env.example'), 'utf8')
+    .split('\n')
+    .map((line) => line.match(/^#?\s*([A-Z][A-Z0-9_]*)=/)?.[1])
+    .filter((name) => name && !name.startsWith('VITE_') && /(KEY|TOKEN|SECRET|CLIENT_ID|PASSWORD|_API)$/.test(name));
+  return Object.fromEntries(names.map((name) => [name, 'runseed-probe']));
+}
+
+export function seederFiles(scriptsDir) {
+  return readdirSync(scriptsDir).filter((f) => /^seed-.*\.mjs$/.test(f) && !f.startsWith('seed-bundle-'));
+}
+
+function probeOne(scriptsDir, file, timeoutMs, credentials) {
+  return new Promise((done) => {
+    const child = spawn(process.execPath, ['--import', REGISTER, join(scriptsDir, file)], {
+      cwd: join(scriptsDir, '..'),
+      env: {
+        ...credentials,
+        PATH: process.env.PATH,
+        UPSTASH_REDIS_REST_URL: 'https://runseed-probe.invalid',
+        UPSTASH_REDIS_REST_TOKEN: 'runseed-probe',
+      },
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; });
+    let hung = false;
+    const timer = setTimeout(() => { hung = true; child.kill('SIGKILL'); }, timeoutMs);
+    child.on('exit', () => {
+      clearTimeout(timer);
+      const calls = out.split('\n').filter((l) => l.startsWith(MARK)).map((l) => JSON.parse(l.slice(MARK.length)));
+      done({ file, calls, hung });
+    });
+  });
+}
+
+// The recorder exits as soon as runSeed is called, and a seeder that never calls it
+// exits on its own error, so timeoutMs only stops a seeder that hangs.
+export async function recordRunSeedCalls(scriptsDir, { concurrency = 8, timeoutMs = 60_000 } = {}) {
+  const queue = seederFiles(scriptsDir);
+  const credentials = placeholderCredentials(join(scriptsDir, '..'));
+  const results = [];
+  await Promise.all(Array.from({ length: concurrency }, async () => {
+    while (queue.length) results.push(await probeOne(scriptsDir, queue.shift(), timeoutMs, credentials));
+  }));
+  return results.sort((a, b) => a.file.localeCompare(b.file));
+}
+
+// seed-meta key -> { writer, ttlSeconds } for every key a recorded runSeed call writes.
+// runSeed writes seed-meta:<domain>:<resource>; an extra key writes its own metaKey
+// with its own ttl, or the canonical ttlSeconds when it declares none. A null TTL is
+// a persistent key.
+export function seedMetaWriters(results) {
+  const writers = new Map();
+  for (const { file, calls } of results) {
+    for (const c of calls) {
+      writers.set(`seed-meta:${c.domain}:${c.resource}`, { writer: file, ttlSeconds: c.ttlSeconds });
+      for (const ek of c.extraKeys) {
+        if (ek.metaKey) writers.set(ek.metaKey, { writer: `${file} extra key ${ek.key}`, ttlSeconds: ek.ttl ?? c.ttlSeconds });
+      }
+    }
+  }
+  return writers;
+}
