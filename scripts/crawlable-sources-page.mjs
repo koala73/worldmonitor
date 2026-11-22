@@ -90,7 +90,7 @@ export const SOURCE_DOMAINS = [
     name: 'Tech Ecosystem',
     anchor: 'tech-ecosystem',
     blurb: 'Company HQs, startup hubs, cloud regions, accelerators, and research signals from repository analytics to conference calendars.',
-    providers: ['Crunchbase News', 'GitHub', 'OSS Insight', 'Product Hunt'],
+    providers: ['Crunchbase News', 'GitHub', 'Product Hunt'],
   },
 ];
 

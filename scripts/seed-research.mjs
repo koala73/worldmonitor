@@ -332,7 +332,11 @@ export async function fetchTrendingRepos() {
   for (const lang of languages) {
     try {
       let source = 'github.com/trending';
-      let repos = await fetchTrendingFromGitHubTrending(lang);
+      // A rejected trending fetch (timeout, network) must still reach the search fallback.
+      let repos = await fetchTrendingFromGitHubTrending(lang).catch((e) => {
+        console.warn(`  Trending ${lang}: github.com/trending failed (${e.message}), falling back to search`);
+        return null;
+      });
       if (!repos?.length) { source = 'GitHub search'; repos = await fetchTrendingFromGitHubSearch(lang); }
       if (!repos || repos.length === 0) { console.warn(`  Trending ${lang}: no data from any source`); continue; }
 

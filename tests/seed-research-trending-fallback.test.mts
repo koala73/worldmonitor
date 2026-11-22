@@ -59,6 +59,7 @@ test('the trending page is the primary source and GitHub search is not called', 
 for (const [label, trendingResponse] of [
   ['an empty trending page', () => new Response('<html><body><div class="Box"></div></body></html>')],
   ['a non-OK trending response', () => new Response('rate limited', { status: 429 })],
+  ['a trending request that rejects', () => { throw new TypeError('fetch failed'); }],
   ['a trending page whose star counts no longer parse', () => new Response(trendingFixture.replace(/stars today/g, 'estrellas hoy'))],
 ] as const) {
   test(`${label} falls through to GitHub search`, async () => {
