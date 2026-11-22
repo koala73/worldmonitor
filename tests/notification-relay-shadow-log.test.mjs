@@ -118,11 +118,15 @@ describe('reworded alert check (#10916)', () => {
     const pipeline = async () => [{ result: [...tankers.flatMap((title, i) => anchor(title, `full:t${i}`)), ...anchor(bahrain, 'full:bahrain')] }];
     // Cosine against the new headline [1, 0]: tankers 0.9 down to 0.74, Bahrain 0.69.
     const cosine = c => [c, Math.sqrt(1 - c * c)];
-    const embed = async titles => titles.map((title, i) => (i === 0 ? [1, 0] : title === bahrain ? cosine(0.69) : cosine(0.9 - 0.04 * tankers.indexOf(title))));
+    // Titles reach `embed` normalised, so rank by position: the new headline, five tankers, Bahrain.
+    const seen = [];
+    const embed = async titles => { seen.push(...titles); return titles.map((_, i) => (i === 0 ? [1, 0] : i === 6 ? cosine(0.69) : cosine(0.9 - 0.04 * (i - 1)))); };
     const judge = async (_system, user) => `{"same": ${user.split('\n').findIndex(line => line.includes(bahrain))}}`;
     const repeat = { ...event, payload: { title: 'Bahrain says Iran struck industrial site as tankers hit in Hormuz', importanceScore: 83 } };
     const decision = await findRewriteAnchor(repeat, { now: at, pipeline, embed, judge });
     assert.equal(decision.anchor?.id, 'full:bahrain');
+    assert.equal(decision.anchor.score.toFixed(2), '0.69');
+    assert.match(seen[6], /bahrain says iranian strike/i);
   });
 
   it('keeps the alert on every failure', async () => {
