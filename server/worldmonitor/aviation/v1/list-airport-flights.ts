@@ -263,9 +263,10 @@ export async function listAirportFlights(
     const limit = Math.min(req.limit || 30, 100);
     const now = Date.now();
 
-    // Reject malformed airport codes before they reach the paid API — bounds
-    // cache-key cardinality and blocks probing with arbitrary strings.
-    if (!IATA_RE.test(airport)) {
+    // Reject malformed airport codes and negative limits before they reach the
+    // paid API — bounds cache-key cardinality, blocks probing, and stops a
+    // negative limit from selecting flights off the end of the array via slice.
+    if (!IATA_RE.test(airport) || limit < 0) {
         return { flights: [], totalAvailable: 0, source: 'invalid', updatedAt: now };
     }
 
