@@ -65,6 +65,8 @@ for (const provider of ['discord', 'slack']) {
       const html = await response.text();
       assert.match(html, new RegExp(`wm:${provider}_error`));
       assert.match(html, /rate_limited/);
+      assert.ok(response.headers.get('Retry-After'));
+      assert.equal(response.headers.get('Cache-Control'), 'no-store');
       assert.equal(calls.getdel, 0);
     });
 
@@ -72,6 +74,7 @@ for (const provider of ['discord', 'slack']) {
       limiterMode = 'outage';
       const response = await handlers[provider](callback(provider), ctx);
       assert.equal(response.status, 503);
+      assert.equal(response.headers.get('X-RateLimit-Mode'), 'degraded');
       assert.match(await response.text(), /service_unavailable/);
       assert.equal(calls.getdel, 0);
     });

@@ -74,7 +74,7 @@ async function publishWelcome(userId: string): Promise<void> {
   }).catch(() => {});
 }
 
-function htmlResponse(script: string, body: string, status = 200): Response {
+function htmlResponse(script: string, body: string, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(
     `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Discord OAuth</title></head><body>
 <p style="font-family:system-ui;padding:20px">${body}</p>
@@ -82,7 +82,7 @@ function htmlResponse(script: string, body: string, status = 200): Response {
 (function(){try{${script}}catch(e){}})();
 </script>
 </body></html>`,
-    { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+    { status, headers: { 'Content-Type': 'text/html; charset=utf-8', ...extraHeaders } },
   );
 }
 
@@ -100,12 +100,13 @@ function postAndClose(data: Record<string, unknown>, openerOrigin: string): Resp
   );
 }
 
-function errorAndClose(error: string, status = 200): Response {
+function errorAndClose(error: string, status = 200, extraHeaders: Record<string, string> = {}): Response {
   const msg = safeJsonInScript({ type: 'wm:discord_error', error });
   return htmlResponse(
     `window.opener&&window.opener.postMessage(${msg},'${ANY_OPENER}');window.close();`,
     `Discord connection failed: ${escapeHtml(error)}. You can close this window.`,
     status,
+    extraHeaders,
   );
 }
 
@@ -126,7 +127,14 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   // can trigger per IP, like api/channel-oauth-bind.ts earlier in this flow.
   // Fail closed for the same reason it does.
   const admission = await checkFailClosedScopedIpRateLimit(req, 'discord-oauth-callback', 30, '60 s', {});
-  if (admission) return errorAndClose(admission.status === 429 ? 'rate_limited' : 'service_unavailable', admission.status);
+  if (admission) {
+    const forwarded: Record<string, string> = { 'Cache-Control': 'no-store' };
+    for (const name of ['Retry-After', 'X-RateLimit-Mode']) {
+      const value = admission.headers.get(name);
+      if (value) forwarded[name] = value;
+    }
+    return errorAndClose(admission.status === 429 ? 'rate_limited' : 'service_unavailable', admission.status, forwarded);
+  }
 
   // Validate and consume state
   const stateKey = `wm:discord:oauth:${state}`;
