@@ -5,12 +5,13 @@
  * - listArxivPapers (cs.AI default category)
  * - listHackernewsItems (top feed)
  * - listTechEvents (Techmeme ICS + dev.events RSS) — relay also seeds this
- * - listTrendingRepos (python, javascript, typescript daily)
+ * - listTrendingRepos (python, javascript, typescript daily; github.com/trending, GitHub search fallback)
  */
 
 import ARXIV_CATEGORIES from './shared/research-arxiv-categories.json' with { type: 'json' };
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './_html-entities.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -262,27 +263,44 @@ async function fetchTechEvents() {
 
 // ─── Trending Repos ───
 
-const OSSINSIGHT_LANG_MAP = { python: 'Python', javascript: 'JavaScript', typescript: 'TypeScript' };
+const TRENDING_CARD_RE = /<article class="Box-row">([\s\S]*?)<\/article>/g;
+const parseCount = (text) => Number(String(text ?? '').replace(/,/g, '')) || 0;
+const cleanText = (html) => decodeHtmlEntities(String(html ?? '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 
-async function fetchTrendingFromOSSInsight(lang) {
-  const ossLang = OSSINSIGHT_LANG_MAP[lang] || lang;
-  const resp = await fetch(
-    `https://api.ossinsight.io/v1/trends/repos/?language=${ossLang}&period=past_24_hours`,
-    {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
+// Parse github.com/trending HTML into repo records. Pure, so it is tested against a captured page.
+// The repo name comes from the card's <h2> link: the card also links /sponsors/<user> and contributors.
+export function parseGitHubTrendingHtml(html, lang) {
+  const repos = [];
+  for (const [, card] of String(html ?? '').matchAll(TRENDING_CARD_RE)) {
+    const fullName = card.match(/<h2[^>]*>[\s\S]*?href="\/([\w.-]+\/[\w.-]+)"/)?.[1];
+    if (!fullName) continue;
+    const count = (suffix) => parseCount(card.match(new RegExp(`/${suffix}"[^>]*>[^<]*(?:<svg[\\s\\S]*?</svg>)?\\s*([\\d,]+)\\s*</a>`))?.[1]);
+    repos.push({
+      fullName,
+      description: cleanText(card.match(/<p class="[^"]*">([\s\S]*?)<\/p>/)?.[1]),
+      language: cleanText(card.match(/itemprop="programmingLanguage">([^<]*)</)?.[1]) || lang,
+      stars: count('stargazers'),
+      starsToday: parseCount(card.match(/([\d,]+) stars? today/)?.[1]),
+      forks: count('forks'),
+      url: `https://github.com/${fullName}`,
+    });
+  }
+  return repos;
+}
+
+async function fetchTrendingFromGitHubTrending(lang) {
+  const resp = await fetch(`https://github.com/trending/${lang}?since=daily`, {
+    headers: { Accept: 'text/html', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!resp.ok) return null;
-  const json = await resp.json();
-  const rows = json?.data?.rows;
-  if (!Array.isArray(rows)) return null;
-  return rows.slice(0, 50).map(r => ({
-    fullName: r.repo_name || '', description: r.description || '',
-    language: r.primary_language || lang, stars: r.stars || 0,
-    starsToday: 0, forks: r.forks || 0,
-    url: r.repo_name ? `https://github.com/${r.repo_name}` : '',
-  }));
+  const repos = parseGitHubTrendingHtml(await resp.text(), lang);
+  // Cards that parse without star counts mean the markup changed: fall back rather than publish zeros.
+  if (repos.length && !repos.every((r) => r.stars > 0 && r.starsToday > 0)) {
+    console.warn(`  Trending ${lang}: github.com/trending markup unrecognised, falling back to search`);
+    return null;
+  }
+  return repos;
 }
 
 async function fetchTrendingFromGitHubSearch(lang) {
@@ -311,13 +329,14 @@ export async function fetchTrendingRepos() {
 
   for (const lang of languages) {
     try {
-      let repos = await fetchTrendingFromOSSInsight(lang);
-      if (!repos?.length) repos = await fetchTrendingFromGitHubSearch(lang);
+      let source = 'github.com/trending';
+      let repos = await fetchTrendingFromGitHubTrending(lang);
+      if (!repos?.length) { source = 'GitHub search'; repos = await fetchTrendingFromGitHubSearch(lang); }
       if (!repos || repos.length === 0) { console.warn(`  Trending ${lang}: no data from any source`); continue; }
 
       const cacheKey = `research:trending:v1:${lang}:daily:50`;
       results[cacheKey] = { repos, pagination: undefined };
-      console.log(`  Trending ${lang}: ${repos.length} repos`);
+      console.log(`  Trending ${lang}: ${repos.length} repos from ${source}`);
       await sleep(500);
     } catch (e) {
       console.warn(`  Trending ${lang}: ${e.message}`);

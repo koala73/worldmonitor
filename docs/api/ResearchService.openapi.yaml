@@ -166,7 +166,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListTrendingRepos
-            description: ListTrendingRepos returns daily trending GitHub repositories for Python, JavaScript or TypeScript from OSSInsight, with GitHub search as a fallback.
+            description: ListTrendingRepos returns daily trending GitHub repositories for Python, JavaScript or TypeScript from github.com/trending, with GitHub search as a fallback.
             operationId: ListTrendingRepos
             parameters:
                 - name: page_size
