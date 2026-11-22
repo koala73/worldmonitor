@@ -1,4 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createRequire } from 'node:module';
+
+const { COMPARE_AND_DELETE_SCRIPT } = createRequire(import.meta.url)('../../scripts/shared/compare-and-delete-script.cjs');
 
 // Model checking for real code that talks to Upstash. Each Redis command is
 // one step: Upstash runs a /pipeline's commands in order, but other clients'
@@ -10,13 +13,15 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 // .agents/skills/verify-brief-erasure/SKILL.md.
 
 const FAULTS = ['ok', 'dropped', 'lost'];
+// A model may stub setTimeout to skip back-off sleeps; the watchdog keeps real time.
+const { setTimeout: realSetTimeout, clearTimeout: realClearTimeout } = globalThis;
 
 class Run {
-  constructor(prefix, previousReplayKeys, maxFaults, faultsIn) {
+  constructor(prefix, previousReplayKeys, maxFaults, faultable) {
     this.prefix = prefix;
     this.previousReplayKeys = previousReplayKeys;
     this.maxFaults = maxFaults;
-    this.faultsIn = faultsIn;
+    this.faultable = faultable;
     this.choices = [];
     this.widths = [];
     this.pending = [];
@@ -56,7 +61,7 @@ class Run {
   }
 
   fault(actor, label, replayKey = label) {
-    if (this.faults >= this.maxFaults || (this.faultsIn && !this.faultsIn.includes(actor))) return 'ok';
+    if (this.faults >= this.maxFaults || !this.faultable(actor, label)) return 'ok';
     const fault = FAULTS[this.choose(FAULTS.length)];
     if (fault === 'ok') return fault;
     this.faults += 1;
@@ -75,12 +80,14 @@ class Run {
  *   a violation message, or null
  * @param {number} [model.maxFaults] how many requests in one run may fail
  * @param {string[]} [model.faultsIn] only these actors' requests may fail; all by default
+ * @param {(actor: string, label: string) => boolean} [model.faultable] only these requests may fail; all by default
  */
-export async function exploreInterleavings({ setup, actors, check, maxFaults = 0, faultsIn, maxRuns = 200_000 }) {
+export async function exploreInterleavings({ setup, actors, check, maxFaults = 0, faultsIn, faultable = () => true, maxRuns = 200_000 }) {
+  const mayFail = (actor, label) => (!faultsIn || faultsIn.includes(actor)) && faultable(actor, label);
   let prefix = [];
   let previousReplayKeys = [];
   for (let runs = 1; runs <= maxRuns; runs += 1) {
-    const run = new Run(prefix, previousReplayKeys, maxFaults, faultsIn);
+    const run = new Run(prefix, previousReplayKeys, maxFaults, mayFail);
     const world = setup(run);
     const outcomes = await execute(run, world, actors);
     const message = outcomes && check(world, outcomes);
@@ -150,7 +157,7 @@ async function execute(run, world, actors) {
 function untilAllParked(run, outcomes, started) {
   return new Promise((resolve, reject) => {
     let queued = false;
-    const watchdog = setTimeout(() => {
+    const watchdog = realSetTimeout(() => {
       run.onChange = null;
       reject(new Error('exploreInterleavings: an actor is waiting on something other than a modelled request (a timer?)'));
     }, 5_000);
@@ -158,7 +165,7 @@ function untilAllParked(run, outcomes, started) {
       queued = false;
       const parked = new Set(run.pending.map((p) => p.actor));
       if (![...started].every((name) => name in outcomes || parked.has(name))) return;
-      clearTimeout(watchdog);
+      realClearTimeout(watchdog);
       run.onChange = null;
       resolve();
     };
@@ -173,11 +180,16 @@ function untilAllParked(run, outcomes, started) {
 
 const actorContext = new AsyncLocalStorage();
 
+export function currentActor() {
+  return actorContext.getStore() ?? 'unknown';
+}
+
 const READS = new Set(['GET', 'ZRANGE', 'EXISTS', 'TTL', 'PTTL']);
 
 function accessOf(command) {
   const verb = String(command[0]).toUpperCase();
   if (verb === 'SCAN') return { all: true, writes: false };
+  if (verb === 'EVAL') return { keys: command.slice(3, 3 + Number(command[2])).map(String), writes: true };
   const keys = verb === 'DEL' ? command.slice(1).map(String) : [String(command[1])];
   return { keys, writes: !READS.has(verb) };
 }
@@ -247,6 +259,17 @@ export function createModelRedis(initial = {}, { scanCount = Infinity } = {}) {
     ZRANGE: ([key, start, stop]) => {
       const members = [...zset(key)].sort((a, b) => a[1] - b[1]).map(([member]) => member);
       return members.slice(Number(start), Number(stop) === -1 ? undefined : Number(stop) + 1);
+    },
+    LPUSH: ([key, ...values]) => {
+      const list = data.get(key) ?? [];
+      if (!Array.isArray(list)) throw new Error('WRONGTYPE');
+      list.unshift(...values.reverse());
+      data.set(key, list);
+      return list.length;
+    },
+    EVAL: ([script, numKeys, key, token]) => {
+      if (script !== COMPARE_AND_DELETE_SCRIPT || numKeys !== '1') throw new Error('model redis: EVAL supports only the pinned compare-and-delete script');
+      return data.get(key) === token && data.delete(key) ? 1 : 0;
     },
     SCAN: ([cursor, ...options]) => {
       const flag = (name) => {
@@ -320,7 +343,7 @@ export function upstashFetch(run, redis, { isShared = () => true } = {}) {
     return true;
   };
   const serve = async (input, init) => {
-    const actor = actorContext.getStore() ?? 'unknown';
+    const actor = currentActor();
     requests[actor] = (requests[actor] ?? 0) + 1;
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
     const body = init?.body ? JSON.parse(String(init.body)) : null;
@@ -334,7 +357,7 @@ export function upstashFetch(run, redis, { isShared = () => true } = {}) {
     } else {
       batch = [url.pathname.split('/').slice(1).map(decodeURIComponent)];
     }
-    const describe = (command) => command.slice(0, 2).join(' ');
+    const describe = (command) => (String(command[0]).toUpperCase() === 'EVAL' ? `EVAL ${command[3]}` : command.slice(0, 2).join(' '));
     const label = batch.length === 1 ? describe(batch[0]) : `${url.pathname.slice(1)} [${batch.map(describe).join(', ')}]`;
     const fault = run.fault(actor, label, JSON.stringify(batch));
     if (fault === 'dropped') throw new TypeError('fetch failed');

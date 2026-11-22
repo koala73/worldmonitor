@@ -398,6 +398,12 @@ const ENTITLEMENT_FAILCLOSED_CACHE_TTL = 60;
  * legitimate PRO users for up to 60s after each cache miss. Pair with
  * monitoring on `[relay][entitlement-fail-closed]` log lines.
  */
+// Never throws: a failed cache write inside getUserTier's try would take the
+// fail-closed path and clamp a paying user to free tier.
+async function cacheUserTier(cacheKey, tier, ttlSeconds) {
+  await upstashRest('SET', cacheKey, String(tier), 'EX', String(ttlSeconds)).catch(() => null);
+}
+
 async function getUserTier(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
   try {
@@ -422,17 +428,17 @@ async function getUserTier(userId) {
       // the same outage skip the 5-sec fetch. Logged with stable prefix
       // for alerting on volume.
       console.error(`[relay][entitlement-fail-closed] HTTP ${res.status} for ${userId}; clamping to free-tier delivery`);
-      try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
+      await cacheUserTier(cacheKey, 0, ENTITLEMENT_FAILCLOSED_CACHE_TTL);
       return 0;
     }
     const { tier } = await res.json();
-    await upstashRest('SET', cacheKey, String(tier ?? 0), 'EX', String(ENTITLEMENT_CACHE_TTL));
+    await cacheUserTier(cacheKey, tier ?? 0, ENTITLEMENT_CACHE_TTL);
     return tier ?? 0;
   } catch (err) {
     // Same fail-CLOSED policy on transport error / timeout. Same short-TTL
     // cache write so we don't re-attempt the 5-sec fetch for every event.
     console.error(`[relay][entitlement-fail-closed] error for ${userId}: ${err && err.message ? err.message : err}; clamping to free-tier delivery`);
-    try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
+    await cacheUserTier(cacheKey, 0, ENTITLEMENT_FAILCLOSED_CACHE_TTL);
     return 0;
   }
 }
