@@ -108,6 +108,23 @@ describe('reworded alert check (#10916)', () => {
     assert.deepEqual(event, original);
   });
 
+  it('shows the judge the earlier alert that ranks sixth, behind five wordings of another story', async () => {
+    // 2026-11-21: "Bahrain says Iran struck industrial site as tankers hit in
+    // Hormuz" ranked five tanker alerts above the Bahrain one. Shown three, the
+    // judge never saw the alert it repeats, and 21 subscribers got it again.
+    const { findRewriteAnchor } = await import('../scripts/lib/news-alert-coverage.mjs');
+    const tankers = ['Two tankers attacked in Hormuz strait: maritime agency', 'IRGC says two oil tankers hit naval mines in Strait of Hormuz', 'Two tankers attacked in Strait of Hormuz', 'UK maritime agency reports two tanker attacks near Oman', 'Oil tanker hits mine in east of Strait of Hormuz'];
+    const bahrain = 'Bahrain says Iranian strike hit civilian industrial facility, sparking fire';
+    const pipeline = async () => [{ result: [...tankers.flatMap((title, i) => anchor(title, `full:t${i}`)), ...anchor(bahrain, 'full:bahrain')] }];
+    // Cosine against the new headline [1, 0]: tankers 0.9 down to 0.74, Bahrain 0.69.
+    const cosine = c => [c, Math.sqrt(1 - c * c)];
+    const embed = async titles => titles.map((title, i) => (i === 0 ? [1, 0] : title === bahrain ? cosine(0.69) : cosine(0.9 - 0.04 * tankers.indexOf(title))));
+    const judge = async (_system, user) => `{"same": ${user.split('\n').findIndex(line => line.includes(bahrain))}}`;
+    const repeat = { ...event, payload: { title: 'Bahrain says Iran struck industrial site as tankers hit in Hormuz', importanceScore: 83 } };
+    const decision = await findRewriteAnchor(repeat, { now: at, pipeline, embed, judge });
+    assert.equal(decision.anchor?.id, 'full:bahrain');
+  });
+
   it('keeps the alert on every failure', async () => {
     const { findRewriteAnchor } = await import('../scripts/lib/news-alert-coverage.mjs');
     const rows = async () => [{ result: anchor('City votes to repair the downtown crossing', 'full:a') }];

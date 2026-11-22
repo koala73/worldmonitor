@@ -60,7 +60,13 @@ const ANCHOR_LIMIT = 64;
 // scored 0.63 and up, and below 0.60 the nearest earlier alert was always
 // another story. Above it, scores alone do not separate the two; the model does.
 export const REWRITE_RETRIEVAL_MIN = 0.6;
-export const REWRITE_JUDGE_CANDIDATES = 3;
+// Three was too few: wordings of one story fill the top places. On 2026-11-21
+// "Bahrain says Iran struck industrial site as tankers hit in Hormuz" ranked
+// five tanker alerts above the Bahrain one it repeats, so the judge never saw
+// it. Replayed over the 222 judged decisions of 18 to 22 November with the same
+// prompt, eight candidates called 14 more headlines repeats and one fewer
+// (docs/research/alert-event-identity/README.md).
+export const REWRITE_JUDGE_CANDIDATES = 8;
 const JUDGE_TIMEOUT_MS = 8_000;
 // Gemini 2.5 Flash answering in one token called 10 of 21 rewrites of the
 // 2026-11-20 Russia-Poland strike new developments, so that one incident sent

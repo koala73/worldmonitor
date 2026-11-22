@@ -40,7 +40,7 @@ Realtime notifications and quiet-hours summaries read that window when rendering
 The publisher's story key merges repeats of one headline. Each outlet's own wording is a new headline, so on its own it would alert again. With `OPENROUTER_API_KEY` configured on the notification relay, a reworded repeat is skipped for each user who already had the story:
 
 - Every relay news alert that a realtime rule can deliver (critical, importance 82 or more) and that reached at least one user (delivered on a channel, or held for quiet hours) becomes an anchor for 24 hours, together with the users it reached, each scored by when it last reached them. A receipt older than 24 hours never skips a rewrite. A skipped rewrite reached nobody new, so it never becomes an anchor.
-- A later deliverable alert is embedded with the cached embedding client and compared with up to 64 anchors from its edition. The three closest at cosine 0.60 or more go to a language model (`anthropic/claude-sonnet-5.5` through OpenRouter, temperature 0, low reasoning effort, a JSON schema that allows only `{"same": N}`, 1,000 tokens), which answers whether the new headline is about an incident subscribers were already alerted to. It is asked twice at once, and the rewrite is skipped only when both replies name an earlier headline; a `0` or an unreadable reply from either keeps the alert. Each earlier headline is shown with how long ago it alerted. Headlines go in on one line with control characters and braces removed, and a headline longer than 300 characters is never judged, so a cut ending cannot hide its news. Only a reply that is exactly `{"same": N}` (optionally in a code fence) counts.
+- A later deliverable alert is embedded with the cached embedding client and compared with up to 64 anchors from its edition. The eight closest at cosine 0.60 or more go to a language model (`anthropic/claude-sonnet-5.5` through OpenRouter, temperature 0, low reasoning effort, a JSON schema that allows only `{"same": N}`, 1,000 tokens), which answers whether the new headline is about an incident subscribers were already alerted to. It is asked twice at once, and the rewrite is skipped only when both replies name an earlier headline; a `0` or an unreadable reply from either keeps the alert. Each earlier headline is shown with how long ago it alerted. Headlines go in on one line with control characters and braces removed, and a headline longer than 300 characters is never judged, so a cut ending cannot hide its news. Only a reply that is exactly `{"same": N}` (optionally in a code fence) counts.
 - It counts as a repeat when the core event matches (same kind of event, same side, same place, about the same time) and the new headline adds only another wording, detail, attribution, updated figures, background, or the routine response such an incident draws (condemnation, "a violation" or "a provocation", jets scrambled, an investigation, an explainer). Any part that reports a separate event or a later day, a confirmation of something earlier called likely or unconfirmed (or a denial or reversal), a consequential response (retaliation, a leader's new threat or vow of retaliation, a formal alliance step, sanctions, an evacuation, a deployment, a declared emergency) or an outcome (a deal, an end of talks, a resignation, an arrest, a named death) is a new development and alerts.
 - Users who had the named anchor are skipped. Users it never reached (another rule scope, a newly enabled rule) still get the alert.
 - When a rewrite is matched, each wording's publisher history gets the union of both (`ZUNIONSTORE … AGGREGATE MAX` on the two `news:publisher-coverage:v2` keys), so the coverage line of the rewrite, a held summary and any later repeat counts every outlet that carried the story.
@@ -85,3 +85,30 @@ The shipped judge alerted on every labelled development: the first Myanmar airst
 **Two replies.** Run eight times on the Tusk headline, Sonnet called it a repeat once. The check now asks twice at once and skips only when both replies call it a repeat. In the replay, 5 of 247 checks split this way, and each kept its alert. When the replies name different earlier headlines, only users who received both are skipped. Two wordings of one story share recipients, so a third wording still skips everyone; a "likely" report and its separate confirmation do not, so a user who had only one of them still gets the alert. A split also records no match, so neither earlier alert's receipts or publisher counts are merged into the new one.
 
 Cost: about 70 checks a day, two calls each, a few hundred tokens per call.
+
+## Candidate count after the 2026-11-21 Bahrain repeat
+
+After the judge change, 5 of the 13 alerts that reached every subscriber in the next 27 hours still repeated an earlier one. The clearest, "Bahrain says Iran struck industrial site as tankers hit in Hormuz", was put to the judge with three candidates, all tanker headlines (cosine 0.74, 0.74, 0.72). The Bahrain alert it repeats ranked sixth at 0.69 and was never shown, so both replies called the Bahrain half new.
+
+**Replay.** The 222 judged `full` decisions in the `[news-alert-rewrite]` logs from 2026-11-18 to 11-22 were rebuilt from delivered headlines (the rebuilt nearest anchor matched the logged one in 188; the rest differ because sent history carries no edition). Each was put to the shipped judge with three candidates and with eight, same prompt, two replies each.
+
+| | three candidates | eight candidates |
+|---|---|---|
+| called a repeat | 171 | 184 |
+| repeat only here | 1 | 14 |
+
+The 14 are nine wordings of the Shenzhen summit ending and its declaration, the Kyiv missile attack, two Hormuz tanker reports, the Bahrain headline and a live-blog line on the same Bahrain attack. Run four times each, 12 were called a repeat in 4 of 4 runs with eight candidates, one in 3 of 4 and one in 2 of 4; with three candidates, 11 of them were 0 of 4.
+
+What the count does not show:
+
+- **Eight of the 14 named an alert ranked fourth to seventh**, which three candidates never showed. The other six named one of the first three: the judge is also more willing to call a repeat when it sees more of the story's earlier alerts.
+- **Nine of the 14 are from 2026-11-19 10:26 to 11:59**, when other-language wordings still alerted (#11043 merged that afternoon). On the 31 decisions made since the judge change, the gain is two: the Bahrain headline and the live-blog line.
+- **One hides part of a labelled development.** "Trump, Xi and Putin agree that a nuclear war must never be fought" was matched to "hold first-ever three-way talks" in 3 of 4 runs. The declaration alert nine minutes later ("sign joint declaration towards peace") stayed new, as did the first French wording of it.
+- **Two replies naming different earlier alerts**, which skips only users who had both, rose from 1 to 6.
+- The one headline only three candidates called a repeat joins an EU-UK deal to the Poland strike. An overnight attack the day after an alerted one stayed new in both.
+
+A reworded prompt with an explicit rule for headlines that join two alerted incidents was tried and dropped: each of three wordings changed about 20 other verdicts, and all three called that overnight attack a repeat.
+
+This is an open-loop replay against the anchors production had; the labelled set from the judge change was not available to rerun.
+
+**Not changed, one alert each in the same 27 hours:** the 24-hour window (a mines claim alerted again 28 hours after the first); "fresh Iran strikes" on a site alerted 13 hours earlier, which the judge reads as a later strike; and a roundup that repeats the Bahrain attack but adds that Tehran is preparing 14 tankers to run the blockade.
