@@ -312,6 +312,14 @@ const added = (actual, debt) => actual.filter((x) => !debt.has(x));
 const retired = (actual, debt) => [...debt].filter((x) => !actual.includes(x));
 
 describe('seed data TTL against the health staleness budget', () => {
+  it('a shorter TTL from any writer of a shared key is the one checked', () => {
+    const call = (ttlSeconds) => ({ domain: 'd', resource: 'r', ttlSeconds, extraKeys: [] });
+    for (const order of [[600, 60, null], [null, 60, 600], [60, 600, null]]) {
+      const merged = seedMetaWriters([{ file: 'x', calls: order.map(call) }]);
+      assert.equal(merged.get('seed-meta:d:r').ttlSeconds, 60, `writers in order ${order}`);
+    }
+  });
+
   it('never hands a seeder the checkout .env.local', () => {
     const env = probeEnv(fileURLToPath(new URL('..', import.meta.url)));
     assert.ok(isTestRuntime(env), 'mark the probe child as a test runtime so loadEnvFile() stays inert');

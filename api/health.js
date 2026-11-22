@@ -940,10 +940,11 @@ const SEED_META = {
     key: 'seed-meta:wildfire:fires',
     maxStaleMin: 360,
     // Read by tests/seed-ttl-contract.test.mjs. The 360-minute gate is sized to FIRMS
-    // NRT, whose new-day data takes 3-6h, so it cannot catch a dead fire feed in time.
+    // NRT, whose new-day data takes 3-6h, so it cannot catch a stopped seeder in time.
     // The 2h data TTL does: the panel blanks and health reports EMPTY (crit). Raising
-    // the TTL above the gate would serve 3h-old fire data silently.
-    expiryIsTheAlarm: 'a dead fire feed must page within 2h, sooner than the FIRMS-sized gate',
+    // the TTL above the gate would serve 3h-old fire data silently. A seeder that runs
+    // but fails renews the TTL on each run; sourceFailure covers that case.
+    expiryIsTheAlarm: 'a stopped fire seeder must page within 2h, sooner than the FIRMS-sized gate',
     sourceFailure: [
       { warnAfterConsecutive: 2, failureCodePattern: /^FIRMS_PARTIAL_COVERAGE$/ },
       {

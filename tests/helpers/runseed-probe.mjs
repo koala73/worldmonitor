@@ -56,8 +56,9 @@ function probeOne(scriptsDir, file, timeoutMs, env) {
     child.stdout.on('data', (d) => { out += d; });
     let hung = false;
     const timer = setTimeout(() => { hung = true; child.kill('SIGKILL'); }, timeoutMs);
-    child.on('exit', () => {
-      clearTimeout(timer);
+    child.on('exit', () => clearTimeout(timer));
+    // 'close' waits for stdout to drain; 'exit' can fire before the last line arrives.
+    child.on('close', () => {
       const calls = out.split('\n').filter((l) => l.startsWith(MARK)).map((l) => JSON.parse(l.slice(MARK.length)));
       done({ file, calls, hung });
     });
@@ -67,6 +68,10 @@ function probeOne(scriptsDir, file, timeoutMs, env) {
 // The recorder exits as soon as runSeed is called, and a seeder that never calls it
 // exits on its own error, so timeoutMs only stops a seeder that hangs.
 export async function recordRunSeedCalls(scriptsDir, { concurrency = 8, timeoutMs = 60_000 } = {}) {
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  if (major < 24 || (major === 24 && minor < 5)) {
+    throw new Error(`runseed-probe needs Node 24.5+ for NODE_USE_ENV_PROXY; this is ${process.versions.node}`);
+  }
   const queue = seederFiles(scriptsDir);
   const env = probeEnv(join(scriptsDir, '..'));
   const results = [];
@@ -79,14 +84,19 @@ export async function recordRunSeedCalls(scriptsDir, { concurrency = 8, timeoutM
 // seed-meta key -> { writer, ttlSeconds } for every key a recorded runSeed call writes.
 // runSeed writes seed-meta:<domain>:<resource>; an extra key writes its own metaKey
 // with its own ttl, or the canonical ttlSeconds when it declares none. A null TTL is
-// a persistent key.
+// a persistent key. When several writers share a key, the shortest TTL is kept.
 export function seedMetaWriters(results) {
   const writers = new Map();
+  const record = (key, writer, ttlSeconds) => {
+    const prev = writers.get(key);
+    if (prev && (ttlSeconds == null || (prev.ttlSeconds != null && prev.ttlSeconds <= ttlSeconds))) return;
+    writers.set(key, { writer, ttlSeconds });
+  };
   for (const { file, calls } of results) {
     for (const c of calls) {
-      writers.set(`seed-meta:${c.domain}:${c.resource}`, { writer: file, ttlSeconds: c.ttlSeconds });
+      record(`seed-meta:${c.domain}:${c.resource}`, file, c.ttlSeconds);
       for (const ek of c.extraKeys) {
-        if (ek.metaKey) writers.set(ek.metaKey, { writer: `${file} extra key ${ek.key}`, ttlSeconds: ek.ttl ?? c.ttlSeconds });
+        if (ek.metaKey) record(ek.metaKey, `${file} extra key ${ek.key}`, ek.ttl ?? c.ttlSeconds);
       }
     }
   }
