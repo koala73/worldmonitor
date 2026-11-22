@@ -14,7 +14,8 @@ import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
-import { recordRunSeedCalls, seedMetaWriters } from './helpers/runseed-probe.mjs';
+import { isTestRuntime } from '../scripts/_env-file.mjs';
+import { probeEnv, recordRunSeedCalls, seedMetaWriters } from './helpers/runseed-probe.mjs';
 
 const SCRIPTS = fileURLToPath(new URL('../scripts/', import.meta.url));
 const { __testing__: { SEED_META } } = await import('../api/health.js');
@@ -311,6 +312,13 @@ const added = (actual, debt) => actual.filter((x) => !debt.has(x));
 const retired = (actual, debt) => [...debt].filter((x) => !actual.includes(x));
 
 describe('seed data TTL against the health staleness budget', () => {
+  it('never hands a seeder the checkout .env.local', () => {
+    const env = probeEnv(fileURLToPath(new URL('..', import.meta.url)));
+    assert.ok(isTestRuntime(env), 'mark the probe child as a test runtime so loadEnvFile() stays inert');
+    assert.equal(env.WM_ALLOW_ENV_LOAD_IN_TESTS, undefined, 'the probe must not opt back into loading .env.local');
+    assert.equal(env.WM_SEED_ENV_FILE, undefined, 'the probe must not point seeders at another env file');
+  });
+
   it('reads every seeder to completion', () => {
     assert.deepEqual(results.filter((r) => r.hung).map((r) => r.file), [], 'these seeders hung under the probe, so their result depends on timing');
     assert.ok(writers.size > 200, `the probe recorded only ${writers.size} seed-meta writers; the recorder is broken`);

@@ -1,7 +1,7 @@
 // Runs each seeder with runSeed replaced by a recorder and returns the arguments it
 // passed, so tests read the TTLs and keys a seeder really uses instead of parsing its
-// source. fetch is disabled and the Redis URL cannot resolve, so nothing is fetched
-// or written.
+// source. fetch is stubbed, node:http(s) and curl go to a dead proxy, and the Redis
+// URL cannot resolve, so nothing is fetched or written.
 import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,16 +25,31 @@ export function seederFiles(scriptsDir) {
   return readdirSync(scriptsDir).filter((f) => /^seed-.*\.mjs$/.test(f) && !f.startsWith('seed-bundle-'));
 }
 
-function probeOne(scriptsDir, file, timeoutMs, credentials) {
+const DEAD_PROXY = 'http://127.0.0.1:9';
+
+// NODE_ENV=test keeps loadEnvFile() from reading the checkout's .env.local, so a
+// developer's real credentials and flags never reach a seeder and local results
+// match CI.
+export function probeEnv(repoRoot) {
+  return {
+    ...placeholderCredentials(repoRoot),
+    PATH: process.env.PATH,
+    NODE_ENV: 'test',
+    NODE_USE_ENV_PROXY: '1',
+    HTTP_PROXY: DEAD_PROXY,
+    HTTPS_PROXY: DEAD_PROXY,
+    http_proxy: DEAD_PROXY,
+    https_proxy: DEAD_PROXY,
+    UPSTASH_REDIS_REST_URL: 'https://runseed-probe.invalid',
+    UPSTASH_REDIS_REST_TOKEN: 'runseed-probe',
+  };
+}
+
+function probeOne(scriptsDir, file, timeoutMs, env) {
   return new Promise((done) => {
     const child = spawn(process.execPath, ['--import', REGISTER, join(scriptsDir, file)], {
       cwd: join(scriptsDir, '..'),
-      env: {
-        ...credentials,
-        PATH: process.env.PATH,
-        UPSTASH_REDIS_REST_URL: 'https://runseed-probe.invalid',
-        UPSTASH_REDIS_REST_TOKEN: 'runseed-probe',
-      },
+      env,
       stdio: ['ignore', 'pipe', 'ignore'],
     });
     let out = '';
@@ -53,10 +68,10 @@ function probeOne(scriptsDir, file, timeoutMs, credentials) {
 // exits on its own error, so timeoutMs only stops a seeder that hangs.
 export async function recordRunSeedCalls(scriptsDir, { concurrency = 8, timeoutMs = 60_000 } = {}) {
   const queue = seederFiles(scriptsDir);
-  const credentials = placeholderCredentials(join(scriptsDir, '..'));
+  const env = probeEnv(join(scriptsDir, '..'));
   const results = [];
   await Promise.all(Array.from({ length: concurrency }, async () => {
-    while (queue.length) results.push(await probeOne(scriptsDir, queue.shift(), timeoutMs, credentials));
+    while (queue.length) results.push(await probeOne(scriptsDir, queue.shift(), timeoutMs, env));
   }));
   return results.sort((a, b) => a.file.localeCompare(b.file));
 }
