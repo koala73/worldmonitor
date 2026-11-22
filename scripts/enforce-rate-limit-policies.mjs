@@ -231,30 +231,55 @@ const unwrap = (e) => {
 };
 const isNewRatelimit = (e) => ts.isNewExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === 'Ratelimit';
 
-// Names in this file that hold an Upstash limiter: assigned `new Ratelimit(...)`,
-// or the result of a local function that builds one. Only `.limit()` on one of
-// these, or directly on `new Ratelimit(...)`, counts; `query.limit()` does not.
+const isEmptyValue = (e) => {
+  const v = unwrap(e);
+  return !v || v.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(v) && v.text === 'undefined');
+};
+
+// Names in this file that hold an Upstash limiter. A name counts when it is given
+// a limiter and every other value it is given anywhere in the file is null or
+// undefined, so a reassignment (`rl = query`) or a shadowing declaration
+// (`const rl = query`) disqualifies it. A limiter is `new Ratelimit(...)`, a
+// counted name, or the result of a local function with a `return` of one.
 function upstashLimiterNames(sf) {
-  const factories = new Set();
-  for (const [name, fn] of moduleFunctions(sf)) {
-    let builds = false;
-    const visit = (n) => { if (!builds) { if (isNewRatelimit(n)) builds = true; else ts.forEachChild(n, visit); } };
-    visit(fn);
-    if (builds) factories.add(name);
-  }
-  const holdsLimiter = (e) => {
-    const v = unwrap(e);
-    return !!v && (isNewRatelimit(v)
-      || (ts.isCallExpression(v) && ts.isIdentifier(v.expression) && factories.has(v.expression.text)));
-  };
-  const names = new Set();
+  const fns = moduleFunctions(sf);
+  const bindings = new Map();
   const visit = (n) => {
-    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && holdsLimiter(n.initializer)) names.add(n.name.text);
-    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken
-      && ts.isIdentifier(n.left) && holdsLimiter(n.right)) names.add(n.left.text);
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) {
+      bindings.set(n.name.text, [...(bindings.get(n.name.text) ?? []), n.initializer]);
+    }
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(n.left)) {
+      bindings.set(n.left.text, [...(bindings.get(n.left.text) ?? []), n.right]);
+    }
     ts.forEachChild(n, visit);
   };
   visit(sf);
+
+  let names = new Set();
+  let factories = new Set();
+  const holdsLimiter = (e) => {
+    const v = unwrap(e);
+    return !!v && (isNewRatelimit(v)
+      || (ts.isIdentifier(v) && names.has(v.text))
+      || (ts.isCallExpression(v) && ts.isIdentifier(v.expression) && factories.has(v.expression.text)));
+  };
+  const returnsLimiter = (fn) => {
+    let found = false;
+    const walk = (n) => {
+      if (found || (n !== fn && ts.isFunctionLike(n))) return;
+      if (ts.isReturnStatement(n) && holdsLimiter(n.expression)) found = true;
+      else ts.forEachChild(n, walk);
+    };
+    walk(fn);
+    return found || (ts.isArrowFunction(fn) && !ts.isBlock(fn.body) && holdsLimiter(fn.body));
+  };
+  // Names and factories feed each other (`return _rl`), so repeat until stable.
+  for (let size = -1; size !== names.size + factories.size;) {
+    size = names.size + factories.size;
+    names = new Set([...bindings].filter(([, values]) => values.some(holdsLimiter)
+      && values.every((v) => holdsLimiter(v) || isEmptyValue(v))).map(([name]) => name));
+    factories = new Set([...fns].filter(([, fn]) => returnsLimiter(fn)).map(([name]) => name));
+  }
   return names;
 }
 
