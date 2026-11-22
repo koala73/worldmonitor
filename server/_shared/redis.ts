@@ -856,28 +856,43 @@ export function __resetFetcherTimeoutForTests(): void {
 }
 
 /**
+ * Loader for a cache miss. `signal` aborts when the cache-layer timeout
+ * fires. A loader that ignores the argument behaves as before.
+ */
+type CachedJsonFetcher<T extends object> = (signal: AbortSignal) => Promise<T | null>;
+
+/**
  * Race the fetcher promise against a setTimeout so the inflight slot is
  * guaranteed to settle even if the fetcher hangs forever. The timer is
- * cleared as soon as the fetcher wins so we don't leak handles or keep the
- * isolate awake unnecessarily.
+ * cleared as soon as either side settles so we don't leak handles or keep
+ * the isolate awake unnecessarily.
  *
- * Known limitation: this only times out the cache-layer wrapper — the
- * underlying fetcher promise is NOT cancelled. A truly hung upstream
- * fetcher continues running in the background until the isolate recycles
- * (~socket + small heap residue per orphan). Inflight-slot release means
- * subsequent callers re-fetch successfully, so user-facing behavior is
- * correct; only resource-cost is affected. True cancellation would require
- * threading an AbortSignal through the fetcher contract, which is a wider
- * refactor across every cached-fetch call site.
+ * The fetcher may take an AbortSignal. When the timeout fires, this aborts
+ * that signal with a CachedFetchTimeoutError so an opt-in fetcher can cancel
+ * its own upstream work. Fetchers that ignore the argument keep running until
+ * they settle. Call sites can adopt the signal over time.
  */
-function withFetcherTimeout<T>(promise: Promise<T>, key: string, timeoutMs: number, callerName: 'cachedFetchJson' | 'cachedFetchJsonWithMeta'): Promise<T> {
+function withFetcherTimeout<T>(
+  fetcher: (signal: AbortSignal) => Promise<T>,
+  key: string,
+  timeoutMs: number,
+  callerName: 'cachedFetchJson' | 'cachedFetchJsonWithMeta',
+): Promise<T> {
+  const controller = new AbortController();
+  // Start the fetcher before the timer. A synchronous throw must leave no
+  // timer behind, matching the previous call-site order.
+  const fetcherPromise = fetcher(controller.signal);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      reject(new CachedFetchTimeoutError(`${callerName} timeout after ${timeoutMs}ms for "${key}"`));
+      const error = new CachedFetchTimeoutError(`${callerName} timeout after ${timeoutMs}ms for "${key}"`);
+      // Settle the race before aborting. An abort listener that settles the
+      // fetcher must not replace the cache-layer timeout error.
+      reject(error);
+      controller.abort(error);
     }, timeoutMs);
   });
-  return Promise.race([promise, timeout]).finally(() => {
+  return Promise.race([fetcherPromise, timeout]).finally(() => {
     if (timer !== undefined) clearTimeout(timer);
   });
 }
@@ -922,7 +937,7 @@ export interface CachedFetchOpts {
 export async function cachedFetchJson<T extends object>(
   key: string,
   ttlSeconds: number,
-  fetcher: () => Promise<T | null>,
+  fetcher: CachedJsonFetcher<T>,
   negativeTtlSeconds = 120,
   opts?: CachedFetchOpts,
 ): Promise<T | null> {
@@ -1005,7 +1020,7 @@ type CachedFetchWithMetaOpts<T extends object = object> = CachedFetchOpts & {
 export async function cachedFetchJsonWithMeta<T extends object>(
   key: string,
   ttlSeconds: number,
-  fetcher: () => Promise<T | null>,
+  fetcher: CachedJsonFetcher<T>,
   negativeTtlSeconds = 120,
   opts?: CachedFetchWithMetaOpts<T>,
 ): Promise<{ data: T | null; source: 'cache' | 'fresh' | 'skipped'; leader: boolean }> {
@@ -1023,7 +1038,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
 async function cachedFetchJsonCore<T extends object>(
   key: string,
   ttlSeconds: number,
-  fetcher: () => Promise<T | null>,
+  fetcher: CachedJsonFetcher<T>,
   negativeTtlSeconds: number,
   opts: CachedFetchWithMetaOpts<T> | undefined,
   callerName: 'cachedFetchJson' | 'cachedFetchJsonWithMeta',
@@ -1081,7 +1096,7 @@ async function cachedFetchJsonCore<T extends object>(
   let cacheStatus: 'miss' | 'neg-sentinel' = 'miss';
 
   const timeoutMs = opts?.timeoutMs ?? fetcherTimeoutDefaultMs;
-  const promise = withFetcherTimeout(fetcher(), key, timeoutMs, callerName)
+  const promise = withFetcherTimeout(fetcher, key, timeoutMs, callerName)
     .then(async (result) => {
       // Only count an upstream call as a 200 when it actually returned data.
       // A null result triggers the neg-sentinel branch below — these are
