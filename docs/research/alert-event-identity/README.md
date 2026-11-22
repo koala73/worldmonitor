@@ -39,8 +39,8 @@ Realtime notifications and quiet-hours summaries read that window when rendering
 
 The publisher's story key merges repeats of one headline. Each outlet's own wording is a new headline, so on its own it would alert again. With `OPENROUTER_API_KEY` configured on the notification relay, a reworded repeat is skipped for each user who already had the story:
 
-- Every relay news alert that a realtime rule can deliver (critical, importance 82 or more) and that reached at least one user (delivered on a channel, or held for quiet hours) becomes an anchor for 24 hours, together with the users it reached, each scored by when it last reached them. A receipt older than 24 hours never skips a rewrite. A skipped rewrite reached nobody new, so it never becomes an anchor.
-- A later deliverable alert is embedded with the cached embedding client and compared with up to 64 anchors from its edition. The eight closest at cosine 0.60 or more go to a language model (`anthropic/claude-sonnet-5.5` through OpenRouter, temperature 0, low reasoning effort, a JSON schema that allows only `{"same": N}`, 1,000 tokens), which answers whether the new headline is about an incident subscribers were already alerted to. It is asked twice at once, and the rewrite is skipped only when both replies name an earlier headline; a `0` or an unreadable reply from either keeps the alert. Each earlier headline is shown with how long ago it alerted. Headlines go in on one line with control characters and braces removed, and a headline longer than 300 characters is never judged, so a cut ending cannot hide its news. Only a reply that is exactly `{"same": N}` (optionally in a code fence) counts.
+- Every relay news alert that a realtime rule can deliver (critical, importance 82 or more) and that reached at least one user (delivered on a channel, or held for quiet hours) becomes an anchor for 48 hours, together with the users it reached, each scored by when it last reached them. A receipt older than 48 hours never skips a rewrite. A skipped rewrite reached nobody new, so it never becomes an anchor.
+- A later deliverable alert is embedded with the cached embedding client and compared with up to 128 anchors from its edition. The eight closest at cosine 0.60 or more go to a language model (`anthropic/claude-sonnet-5.5` through OpenRouter, temperature 0, low reasoning effort, a JSON schema that allows only `{"same": N}`, 1,000 tokens), which answers whether the new headline is about an incident subscribers were already alerted to. It is asked twice at once, and the rewrite is skipped only when both replies name an earlier headline; a `0` or an unreadable reply from either keeps the alert. Each earlier headline is shown with how long ago it alerted. Headlines go in on one line with control characters and braces removed, and a headline longer than 300 characters is never judged, so a cut ending cannot hide its news. Only a reply that is exactly `{"same": N}` (optionally in a code fence) counts.
 - It counts as a repeat when the core event matches (same kind of event, same side, same place, about the same time) and the new headline adds only another wording, detail, attribution, updated figures, background, or the routine response such an incident draws (condemnation, "a violation" or "a provocation", jets scrambled, an investigation, an explainer). Any part that reports a separate event or a later day, a confirmation of something earlier called likely or unconfirmed (or a denial or reversal), a consequential response (retaliation, a leader's new threat or vow of retaliation, a formal alliance step, sanctions, an evacuation, a deployment, a declared emergency) or an outcome (a deal, an end of talks, a resignation, an arrest, a named death) is a new development and alerts.
 - Users who had the named anchor are skipped. Users it never reached (another rule scope, a newly enabled rule) still get the alert.
 - When a rewrite is matched, each wording's publisher history gets the union of both (`ZUNIONSTORE … AGGREGATE MAX` on the two `news:publisher-coverage:v2` keys), so the coverage line of the rewrite, a held summary and any later repeat counts every outlet that carried the story.
@@ -111,4 +111,22 @@ A reworded prompt with an explicit rule for headlines that join two alerted inci
 
 This is an open-loop replay against the anchors production had; the labelled set from the judge change was not available to rerun.
 
-**Not changed, one alert each in the same 27 hours:** the 24-hour window (a mines claim alerted again 28 hours after the first); "fresh Iran strikes" on a site alerted 13 hours earlier, which the judge reads as a later strike; and a roundup that repeats the Bahrain attack but adds that Tehran is preparing 14 tankers to run the blockade.
+**Not changed, one alert each in the same 27 hours:** "fresh Iran strikes" on a site alerted 13 hours earlier, which the judge reads as a later strike; and a roundup that repeats the Bahrain attack but adds that Tehran is preparing 14 tankers to run the blockade.
+
+## Window, 24 to 48 hours
+
+An Iranian claim that two tankers hit mines alerted on 2026-11-21 13:39 and again 28 hours later, four hours after its anchor expired. The owner chose a 48-hour window on 2026-11-22. Anchors and each user's receipt now last 48 hours, and up to 128 anchors are read. The publisher-coverage history keeps its 24 hours.
+
+The same 222 decisions were replayed with eight candidates under both windows.
+
+| | 24 hours | 48 hours |
+|---|---|---|
+| called a repeat | 179 | 186 |
+| repeat only here | 1 | 8 |
+| named an alert older than 24 hours | 0 | 6 |
+
+Run four times each, two headlines were a repeat in 4 of 4 runs at 48 hours and 0 of 4 at 24 hours because the alert they repeat was older than a day: the "triple-tap" attack on Kryvyi Rih (alerted 38 hours earlier) and "Strait of Hormuz attacks have increased to highest level" (46 hours). Two more flipped the same way against an alert under a day old, where the larger anchor set changed what the judge was shown. The other differences sat within run-to-run variation.
+
+Four headlines that report a later event stayed new in 4 of 4 runs under both windows: an overnight attack the day after an alerted one, Bahrain's second attack the same night, a cargo ship set on fire in the Gulf of Finland, and (not judged, nearest 0.49) NATO's emergency meeting. The prompt gives each earlier headline's age.
+
+The log covers four and a half days, so few stories in it run past 24 hours; this understates the effect on a story that runs for a week. At 48 hours the replayed check took 2.4 s at the median and 6.3 s at the worst with up to 127 anchors embedded.

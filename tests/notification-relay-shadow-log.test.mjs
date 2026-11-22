@@ -95,7 +95,7 @@ describe('reworded alert check (#10916)', () => {
     const { findRewriteAnchor } = await import('../scripts/lib/news-alert-coverage.mjs');
     const original = structuredClone(event);
     const pipeline = async commands => {
-      assert.deepEqual(commands[0], ['ZREVRANGEBYSCORE', 'news:alert-anchors:v1:full', at, `(${at - 86_400_000}`, 'WITHSCORES', 'LIMIT', 0, 64]);
+      assert.deepEqual(commands[0], ['ZREVRANGEBYSCORE', 'news:alert-anchors:v1:full', at, `(${at - 48 * 3_600_000}`, 'WITHSCORES', 'LIMIT', 0, 128]);
       return [{ result: [...anchor('City votes to repair the downtown crossing', 'full:a'), ...anchor('Unrelated weather report today', 'full:b')] }];
     };
     const embed = async titles => titles.map(t => (/weather/.test(t) ? [0, 1] : [1, 0]));
@@ -210,11 +210,12 @@ describe('reworded alert check (#10916)', () => {
     assert.equal(longNew.judged, false);
   });
 
-  it('counts only receipts from the last 24 hours', async () => {
+  it('counts only receipts from the last 48 hours', async () => {
     const { usersAlertedFor } = await import('../scripts/lib/news-alert-coverage.mjs');
     const pipeline = async commands => {
       assert.deepEqual(commands[0], ['ZMSCORE', 'news:alert-anchor-recipients:v1:full:a', 'u1', 'u2', 'u3']);
-      return [{ result: [String(at - 3_600_000), String(at - 25 * 3_600_000), null] }];
+      // 28 hours: the mines claim of 2026-11-21 that alerted again the next day.
+      return [{ result: [String(at - 28 * 3_600_000), String(at - 49 * 3_600_000), null] }];
     };
     assert.deepEqual([...await usersAlertedFor('full:a', ['u1', 'u2', 'u3'], { now: at, pipeline })], ['u1']);
     assert.equal((await usersAlertedFor('full:a', ['u1'], { now: at, pipeline: async () => [{ error: 'ERR' }] })).size, 0);

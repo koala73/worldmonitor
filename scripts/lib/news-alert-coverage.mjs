@@ -43,7 +43,7 @@ export async function refreshPublisherCounts(events, now = Date.now(), pipeline 
 // The publisher's story key (news-story-key.cjs) merges repeats of one headline.
 // A second outlet that rewords the story is a new headline, so it used to alert
 // again. Here every headline a realtime alert reached someone with becomes an
-// anchor for 24 hours, with the set of users it reached. A later deliverable
+// anchor for 48 hours, with the set of users it reached. A later deliverable
 // headline is embedded, compared with those anchors, and the closest few are
 // put to a language model that says whether the new one is about an incident
 // subscribers were already alerted to. If it is, the users who already had the
@@ -54,7 +54,14 @@ export async function refreshPublisherCounts(events, now = Date.now(), pipeline 
 // extra alert; a wrong "same" hides news, so the prompt says to answer
 // "different" when unsure, and a suppressed headline never becomes an anchor.
 
-const ANCHOR_LIMIT = 64;
+// How long a delivered headline stays an anchor, and how long a user's receipt
+// of it skips a rewrite. At 24 hours a story that ran for days alerted again
+// each day: an Iranian claim that two tankers hit mines alerted on 2026-11-21
+// 13:39 and again 28 hours later, four hours after its anchor expired. The
+// prompt gives each earlier headline's age, and a strike on a later day is
+// still a new development.
+export const REWRITE_WINDOW_MS = 48 * 3_600_000;
+const ANCHOR_LIMIT = 128;
 // Below this cosine score a pair is not put to the model. On seven days of
 // deliverable alerts (2026-11-11 to 11-18) the rewrites the model confirmed
 // scored 0.63 and up, and below 0.60 the nearest earlier alert was always
@@ -210,7 +217,7 @@ async function decide(event, decision, { now, pipeline, embed, judge }) {
     const title = event.payload.title;
     decision.id = anchorIdFor(event.variant, title);
     const rows = await pipeline([
-      ['ZREVRANGEBYSCORE', anchorsKey(event.variant), now, `(${now - DAY}`, 'WITHSCORES', 'LIMIT', 0, ANCHOR_LIMIT],
+      ['ZREVRANGEBYSCORE', anchorsKey(event.variant), now, `(${now - REWRITE_WINDOW_MS}`, 'WITHSCORES', 'LIMIT', 0, ANCHOR_LIMIT],
     ], { timeoutMs: 1_000 });
     const raw = rows?.[0]?.result;
     if (!Array.isArray(raw)) throw new Error('anchor read failed');
@@ -261,7 +268,7 @@ async function decide(event, decision, { now, pipeline, embed, judge }) {
 
 /**
  * Of `userIds`, those every anchor in `anchorIds` (one id or several) reached
- * in the last 24 hours. An unreadable reply returns an empty set, so nobody is
+ * in the last 48 hours. An unreadable reply returns an empty set, so nobody is
  * skipped.
  */
 export async function usersAlertedFor(anchorIds, userIds, { now = Date.now(), pipeline = defaultRedisPipeline } = {}) {
@@ -272,7 +279,7 @@ export async function usersAlertedFor(anchorIds, userIds, { now = Date.now(), pi
     if (!Array.isArray(rows) || rows.length !== ids.length) return new Set();
     const fresh = scores => Array.isArray(scores) && scores.length === userIds.length;
     if (!rows.every(row => fresh(row?.result))) return new Set();
-    return new Set(userIds.filter((_, i) => rows.every(row => row.result[i] != null && Number(row.result[i]) > now - DAY)));
+    return new Set(userIds.filter((_, i) => rows.every(row => row.result[i] != null && Number(row.result[i]) > now - REWRITE_WINDOW_MS)));
   } catch {
     return new Set();
   }
@@ -304,7 +311,7 @@ export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedi
 }
 
 /**
- * Make a delivered (or held) headline an anchor for 24 hours and add the users
+ * Make a delivered (or held) headline an anchor for 48 hours and add the users
  * it reached. A matched rewrite also shares receipts with the anchor it
  * matched, so a later wording matched to either one skips everyone who had
  * the story. Best effort: a failed write means a later rewrite may alert again.
@@ -321,23 +328,23 @@ export async function recordAlertAnchor(event, userIds, { now = Date.now(), pipe
   const key = anchorsKey(event.variant);
   try {
     // Each recipient is scored by when it last received this headline, so a
-    // receipt older than 24 hours never skips a later rewrite, even while
+    // receipt older than 48 hours never skips a later rewrite, even while
     // newer deliveries keep the key alive.
     const rows = await pipeline([
-      ['ZREMRANGEBYSCORE', key, '-inf', now - DAY],
+      ['ZREMRANGEBYSCORE', key, '-inf', now - REWRITE_WINDOW_MS],
       ['ZADD', key, 'NX', now, member],
-      ['EXPIRE', key, DAY / 1000],
-      ['ZREMRANGEBYSCORE', recipientsKey(id), '-inf', now - DAY],
+      ['EXPIRE', key, REWRITE_WINDOW_MS / 1000],
+      ['ZREMRANGEBYSCORE', recipientsKey(id), '-inf', now - REWRITE_WINDOW_MS],
       ['ZADD', recipientsKey(id), ...receipts],
-      ['EXPIRE', recipientsKey(id), DAY / 1000],
-      // MAX keeps each user's own receipt time, so a skipped user's 24-hour
+      ['EXPIRE', recipientsKey(id), REWRITE_WINDOW_MS / 1000],
+      // MAX keeps each user's own receipt time, so a skipped user's 48-hour
       // window is not restarted.
       ...(matched ? [
         ['ZADD', matched, ...receipts],
         ['ZUNIONSTORE', recipientsKey(id), 2, recipientsKey(id), matched, 'AGGREGATE', 'MAX'],
         ['ZUNIONSTORE', matched, 2, recipientsKey(id), matched, 'AGGREGATE', 'MAX'],
-        ['EXPIRE', recipientsKey(id), DAY / 1000],
-        ['EXPIRE', matched, DAY / 1000],
+        ['EXPIRE', recipientsKey(id), REWRITE_WINDOW_MS / 1000],
+        ['EXPIRE', matched, REWRITE_WINDOW_MS / 1000],
       ] : []),
     ], { timeoutMs: 1_000 });
     return Array.isArray(rows) && rows.every(row => row && !row.error);
