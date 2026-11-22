@@ -274,13 +274,15 @@ export function parseGitHubTrendingHtml(html, lang) {
   for (const [, card] of String(html ?? '').matchAll(TRENDING_CARD_RE)) {
     const fullName = card.match(/<h2[^>]*>[\s\S]*?href="\/([\w.-]+\/[\w.-]+)"/)?.[1];
     if (!fullName) continue;
-    const count = (suffix) => parseCount(card.match(new RegExp(`/${suffix}"[^>]*>[^<]*(?:<svg[\\s\\S]*?</svg>)?\\s*([\\d,]+)\\s*</a>`))?.[1]);
+    // Counts are read only after the description, so text like "100 stars today" in it cannot win.
+    const stats = card.slice(card.lastIndexOf('</p>') + 1);
+    const count = (suffix) => parseCount(stats.match(new RegExp(`/${suffix}"[^>]*>[^<]*(?:<svg[\\s\\S]*?</svg>)?\\s*([\\d,]+)\\s*</a>`))?.[1]);
     repos.push({
       fullName,
       description: cleanText(card.match(/<p class="[^"]*">([\s\S]*?)<\/p>/)?.[1]),
       language: cleanText(card.match(/itemprop="programmingLanguage">([^<]*)</)?.[1]) || lang,
       stars: count('stargazers'),
-      starsToday: parseCount(card.match(/([\d,]+) stars? today/)?.[1]),
+      starsToday: parseCount(stats.match(/([\d,]+) stars? today/)?.[1]),
       forks: count('forks'),
       url: `https://github.com/${fullName}`,
     });

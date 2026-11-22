@@ -31,6 +31,15 @@ test('a captured github.com/trending page parses into repos with daily star coun
   ]);
 });
 
+test('counts come from the stats row, not from a description that mentions stars', () => {
+  const html = trendingFixture.replace(
+    'A Claude Code skill bundle for bug hunting',
+    'Reached 100 stars today, see /x/y/stargazers" > 5</a>. A Claude Code skill bundle for bug hunting',
+  );
+  const [first] = parseGitHubTrendingHtml(html, 'python');
+  assert.deepEqual([first.stars, first.forks, first.starsToday], [17311, 1935, 1721]);
+});
+
 test('the trending page is the primary source and GitHub search is not called', async () => {
   const hosts: string[] = [];
   globalThis.fetch = async (url) => {
