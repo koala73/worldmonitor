@@ -10,7 +10,7 @@
 
 import ARXIV_CATEGORIES from './shared/research-arxiv-categories.json' with { type: 'json' };
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, httpRetryError } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -70,6 +70,11 @@ function parseArxivEntries(xml) {
   return papers;
 }
 
+// arXiv's own Retry-After is honoured, but capped: eleven categories each
+// waiting out a provider-wide hint would stall the whole seed run well past
+// its cron interval, and the next tick is a better retry than a long sleep.
+const MAX_ARXIV_RETRY_AFTER_MS = 10_000;
+
 // Fetch ONE arXiv category with a bounded retry. arXiv intermittently times out (#5409); a
 // single transient timeout on the PRIMARY category (cs.AI) used to zero the whole record set,
 // so retry once before giving up. Returns [] on a non-retryable HTTP error; throws only if
@@ -84,11 +89,22 @@ export async function fetchArxivCategory(cat, { fetchFn = fetch, retries = 1, sl
         headers: { Accept: 'application/xml', 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(15_000),
       });
-      if (!resp.ok) { console.warn(`  arXiv ${cat}: HTTP ${resp.status}`); return []; }
+      if (!resp.ok) {
+        // Classify before giving up. arXiv answers an overloaded or rate-limited
+        // caller with 503 (and a Retry-After), which is precisely the transient
+        // case the retry above exists for — returning [] here exited the loop
+        // without ever using it, and reported the outage downstream as a
+        // category that simply published nothing.
+        const err = httpRetryError(resp);
+        if (err.nonRetryable) { console.warn(`  arXiv ${cat}: HTTP ${resp.status}`); return []; }
+        throw err;
+      }
       return parseArxivEntries(await resp.text());
     } catch (e) {
       lastErr = e;
-      if (attempt < retries) await sleepFn(2000); // brief backoff before the retry
+      // brief backoff before the retry, or the server's own hint when it sent one
+      const hinted = Number.isFinite(lastErr?.retryAfterMs) ? lastErr.retryAfterMs : 0;
+      if (attempt < retries) await sleepFn(Math.min(MAX_ARXIV_RETRY_AFTER_MS, Math.max(2000, hinted)));
     }
   }
   throw lastErr;
