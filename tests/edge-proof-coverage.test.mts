@@ -228,4 +228,15 @@ describe('Cloudflare edge-proof Transform Rule coverage (#8402)', () => {
       assert.equal(pathCoveredByExpression(pathname), matched);
     }
   });
+
+  it('covers public .md pages, which vercel.json rewrites to the per-IP md-twin limit', () => {
+    const fromExpression = new RegExp(EDGE_PROOF_TRANSFORM_EXPRESSION.match(/matches "([^"]+)"/)![1]);
+    for (const pathname of ['/pro.md', '/docs/getting-started.md', '/country/LB.md']) {
+      assert.ok(fromExpression.test(pathname), `${pathname} must receive x-wm-edge-proof`);
+      assert.ok(pathCoveredByExpression(pathname));
+    }
+    for (const pathname of ['/pro', '/docs/getting-started', '/md', '/notes.mdx']) {
+      assert.equal(fromExpression.test(pathname), false, `${pathname} is not a markdown twin`);
+    }
+  });
 });
