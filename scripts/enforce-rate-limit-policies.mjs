@@ -225,17 +225,43 @@ function calleeName(call) {
   return null;
 }
 
-// An Upstash limiter's `.limit()` counts only in a file that builds the limiter.
-function buildsUpstashLimiter(sf) {
-  let found = false;
-  const visit = (node) => {
-    if (found) return;
-    if ((ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Ratelimit')
-      || (ts.isCallExpression(node) && calleeName(node) === 'loadUpstashRatelimit')) found = true;
-    else ts.forEachChild(node, visit);
+const unwrap = (e) => {
+  while (e && (ts.isAwaitExpression(e) || ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e))) e = e.expression;
+  return e;
+};
+const isNewRatelimit = (e) => ts.isNewExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === 'Ratelimit';
+
+// Names in this file that hold an Upstash limiter: assigned `new Ratelimit(...)`,
+// or the result of a local function that builds one. Only `.limit()` on one of
+// these, or directly on `new Ratelimit(...)`, counts; `query.limit()` does not.
+function upstashLimiterNames(sf) {
+  const factories = new Set();
+  for (const [name, fn] of moduleFunctions(sf)) {
+    let builds = false;
+    const visit = (n) => { if (!builds) { if (isNewRatelimit(n)) builds = true; else ts.forEachChild(n, visit); } };
+    visit(fn);
+    if (builds) factories.add(name);
+  }
+  const holdsLimiter = (e) => {
+    const v = unwrap(e);
+    return !!v && (isNewRatelimit(v)
+      || (ts.isCallExpression(v) && ts.isIdentifier(v.expression) && factories.has(v.expression.text)));
+  };
+  const names = new Set();
+  const visit = (n) => {
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && holdsLimiter(n.initializer)) names.add(n.name.text);
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && ts.isIdentifier(n.left) && holdsLimiter(n.right)) names.add(n.left.text);
+    ts.forEachChild(n, visit);
   };
   visit(sf);
-  return found;
+  return names;
+}
+
+function callsUpstashLimit(call, limiters) {
+  if (!ts.isPropertyAccessExpression(call.expression) || call.expression.name.text !== 'limit') return false;
+  const receiver = unwrap(call.expression.expression);
+  return isNewRatelimit(receiver) || (ts.isIdentifier(receiver) && limiters.has(receiver.text));
 }
 
 // The last property that can set requireRateLimit decides it; a later spread
@@ -256,14 +282,14 @@ function relayCallLimits(call) {
 // The first admitting call under `node`, or null. `delegates` says whether the
 // named delegates count, which they do in routes and not inside a delegate check.
 function admittingCall(node, sf, { delegates }) {
-  const upstash = buildsUpstashLimiter(sf);
+  const limiters = upstashLimiterNames(sf);
   let hit = null;
   const visit = (n) => {
     if (hit) return;
     if (ts.isCallExpression(n)) {
       const name = calleeName(n);
       if (ADMISSION_PRIMITIVES.has(name)) hit = name;
-      else if (name === 'limit' && upstash && ts.isPropertyAccessExpression(n.expression)) hit = 'Ratelimit.limit';
+      else if (callsUpstashLimit(n, limiters)) hit = 'Ratelimit.limit';
       else if (delegates && name === 'createRelayHandler' && relayCallLimits(n)) hit = name;
       else if (delegates && name !== 'createRelayHandler' && Object.hasOwn(ADMISSION_DELEGATES, name)) hit = name;
     }
