@@ -3151,6 +3151,96 @@ test('does not soft-pass provider auth 403 JSON responses even with cf-ray heade
   }
 });
 
+test('rejects an ATLASCLOUD_API_KEY that Atlas Cloud answers with 401', async () => {
+  const localApi = await setupApiDir({});
+  const restoreHttps = mockHttpsRequestOnce({
+    statusCode: 401,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code: 401, msg: 'Unauthorized' }),
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      key: 'ATLASCLOUD_API_KEY',
+      value: 'test-key',
+    });
+    assert.equal(response.status, 422);
+    assert.equal(response.json?.valid, false);
+    assert.equal(response.json?.message, 'Atlas Cloud rejected this key');
+  } finally {
+    restoreHttps();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('verifies ATLASCLOUD_API_KEY when the probe reaches request validation (400)', async () => {
+  const localApi = await setupApiDir({});
+  const restoreHttps = mockHttpsRequestOnce({
+    statusCode: 400,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ error: { message: 'model is required' } }),
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      key: 'ATLASCLOUD_API_KEY',
+      value: 'test-key',
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.json?.valid, true);
+    assert.equal(response.json?.message, 'Atlas Cloud key verified');
+  } finally {
+    restoreHttps();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('fails ATLASCLOUD_API_KEY validation when Atlas Cloud returns 5xx', async () => {
+  const localApi = await setupApiDir({});
+  const restoreHttps = mockHttpsRequestOnce({
+    statusCode: 502,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ error: 'bad gateway' }),
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      key: 'ATLASCLOUD_API_KEY',
+      value: 'test-key',
+    });
+    assert.equal(response.status, 422);
+    assert.equal(response.json?.valid, false);
+    assert.equal(response.json?.message, 'Atlas Cloud probe failed (502)');
+  } finally {
+    restoreHttps();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('serves no unauthenticated HLS proxy', async () => {
   // The referer-spoofing /api/hls-proxy route was auth-exempt. With it retired the path is an ordinary
   // authenticated request, so a caller without the token is refused before any upstream is contacted.
