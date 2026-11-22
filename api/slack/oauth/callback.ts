@@ -14,6 +14,7 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
 import { callbackMatchesBrowser, parseChannelOAuthState } from '../../../server/_shared/channel-oauth-state';
+import { checkFailClosedScopedIpRateLimit } from '../../../server/_shared/rate-limit';
 
 const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID ?? '';
 const SLACK_CLIENT_SECRET = process.env.SLACK_CLIENT_SECRET ?? '';
@@ -136,6 +137,12 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   if (!UPSTASH_URL || !SLACK_CLIENT_ID || !SLACK_CLIENT_SECRET || !CONVEX_SITE_URL || !CONVEX_TENANT_RELAY_SECRET || !NOTIFICATION_ENCRYPTION_KEY) {
     return errorAndClose('misconfigured');
   }
+
+  // Anyone can call this with a made-up state, so bound the GETDELs a stranger
+  // can trigger per IP, like api/channel-oauth-bind.ts earlier in this flow.
+  // Fail closed for the same reason it does.
+  const admission = await checkFailClosedScopedIpRateLimit(req, 'slack-oauth-callback', 30, '60 s', {});
+  if (admission) return errorAndClose(admission.status === 429 ? 'rate_limited' : 'service_unavailable', admission.status);
 
   // Validate and consume state
   const stateKey = `wm:slack:oauth:${state}`;
