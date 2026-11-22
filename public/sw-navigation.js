@@ -57,7 +57,8 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith((async () => {
     try {
-      return await fetch(request);
+      // The navigation's own signal: cancelled when the user leaves, never on a timer.
+      return await fetch(request, { signal: request.signal });
     } catch (networkError) {
       const cached = await caches.match(OFFLINE_URL, { ignoreSearch: true });
       if (cached) return cached;
