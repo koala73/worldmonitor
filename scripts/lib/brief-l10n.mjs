@@ -208,6 +208,47 @@ export async function undoBriefWriteIfErased(userId, issueSlot, pipeline) {
   return true;
 }
 
+export const BRIEF_REDIS_TIMEOUT_MS = 5_000;
+
+// The write order is model-checked against account erasure; see .agents/skills/verify-brief-erasure.
+export async function storeBrief({ userId, issueSlot, envelope, latestPointer, localized, clearStaleLocalized, ttlSeconds, indexedAtMs }, pipeline) {
+  await writeBriefSlotIndex(briefSlotIndexCommands(briefSlotsKey(userId), issueSlot, indexedAtMs, ttlSeconds), pipeline);
+  const commands = [
+    ['SETEX', `brief:${userId}:${issueSlot}`, String(ttlSeconds), JSON.stringify(envelope)],
+    ['SETEX', `brief:latest:${userId}`, String(ttlSeconds), latestPointer],
+  ];
+  let siblingIndex = -1;
+  if (localized) {
+    siblingIndex = commands.length;
+    commands.push(['SETEX', briefLocalizedKey(userId, issueSlot), String(ttlSeconds), JSON.stringify(localized)]);
+  } else if (clearStaleLocalized) {
+    commands.push(['DEL', briefLocalizedKey(userId, issueSlot)]);
+  }
+  let errors;
+  try {
+    const cells = await pipeline(commands);
+    if (!Array.isArray(cells) || cells.length < 2) throw new Error('null pipeline response from Upstash');
+    errors = briefPipelineErrors(cells, 2, siblingIndex);
+    if (errors.fatal) throw new Error(`Upstash SETEX error: ${errors.fatal}`);
+  } catch (err) {
+    // A lost response may still have stored the envelope.
+    try {
+      await undoBriefWriteIfErased(userId, issueSlot, pipeline);
+    } catch (cleanupErr) {
+      throw new Error(`${errorText(err)}; ${errorText(cleanupErr)}`);
+    }
+    throw err;
+  }
+  if (await undoBriefWriteIfErased(userId, issueSlot, pipeline)) {
+    throw new Error('account erased during compose; brief removed');
+  }
+  return { siblingFailed: errors.siblingFailed, otherErrors: errors.other };
+}
+
+function errorText(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** The pipeline's cells, retrying once; null when both attempts fail or return an error cell. */
 async function pipelineWithRetry(commands, pipeline) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
