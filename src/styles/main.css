@@ -8479,7 +8479,7 @@ body.playback-mode .status-dot {
 }
 
 .news-market-correlation {
-  padding: 10px 14px 12px;
+  padding: 10px 0 12px;
 }
 
 .news-market-correlation__controls {
@@ -8649,7 +8649,7 @@ body.playback-mode .status-dot {
 
 /* 24/7 Positioning Panel */
 .pos-panel {
-  padding: 10px 14px;
+  padding: 10px 0;
 }
 
 .pos-section {
@@ -12645,7 +12645,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .energy-tape-section {
@@ -12775,7 +12775,7 @@ button.popup-link {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .radiation-panel-content {
@@ -12788,7 +12788,7 @@ button.popup-link {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .sanctions-summary-card {
@@ -13081,7 +13081,7 @@ button.popup-link {
 /* economic-tabs: now uses shared .panel-tabs / .panel-tab */
 
 .economic-content {
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .economic-content-macro {
@@ -16686,11 +16686,11 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .cii-methodology-footer {
-  margin: 0 8px 8px;
+  margin: 0 0 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
@@ -17272,7 +17272,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .risk-gauge {
@@ -22944,7 +22944,7 @@ body.has-breaking-alert .panels-grid {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 0;
 }
 
 /* Emoji Key Legend */
@@ -28798,7 +28798,7 @@ body.map-width-resizing {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .ecp-summary-card {
