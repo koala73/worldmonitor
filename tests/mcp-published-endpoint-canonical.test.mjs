@@ -191,7 +191,7 @@ describe('published MCP URLs are the canonical endpoint (#9722)', () => {
       'src/config/mcp-agent-clients.ts',
       'pro-test/src/welcome/Agents.tsx',
       'claude-plugin/README.md',
-      '.antigravity-plugin/README.md',
+      'antigravity-plugin/README.md',
       'README.md',
     ]) {
       assert.ok(
