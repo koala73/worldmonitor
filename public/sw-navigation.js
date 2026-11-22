@@ -13,28 +13,15 @@
  * dashboard. Here, navigations go network-first with NO cache write; when the
  * network is unreachable we fall back to the precached /offline.html
  * (registered via `includeAssets`), which is self-contained by design.
+ *
+ * Only a failed request counts as offline. There is deliberately no deadline:
+ * a slow server or a slow mobile link is still online, and aborting it showed
+ * "You're Offline" to connected users mid-session.
  */
 
 /* global self, caches, URL */
 
 const OFFLINE_URL = '/offline.html';
-const NAVIGATION_TIMEOUT_MS = 5_000;
-
-function fetchNavigation(request) {
-  const controller = new AbortController();
-  let timeoutId;
-  const timeout = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      controller.abort();
-      reject(new Error('Navigation network timeout'));
-    }, NAVIGATION_TIMEOUT_MS);
-  });
-
-  return Promise.race([
-    fetch(request, { signal: controller.signal }),
-    timeout,
-  ]).finally(() => clearTimeout(timeoutId));
-}
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
@@ -70,7 +57,7 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith((async () => {
     try {
-      return await fetchNavigation(request);
+      return await fetch(request);
     } catch (networkError) {
       const cached = await caches.match(OFFLINE_URL, { ignoreSearch: true });
       if (cached) return cached;
