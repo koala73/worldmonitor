@@ -462,7 +462,7 @@ export class EventHandlerManager implements AppModule {
     const config = this.ctx.panelSettings[panelId];
     if (!config) return false;
     if (config.enabled) return true;
-    if (!hasPremiumAccess(getAuthState()) && isFreePanelCapCounted(panelId)) {
+    if (!hasPremiumAccess(getAuthState()) && isFreePanelCapCounted(panelId, config)) {
       const enabledCount = countFreePanelCapUsage(this.ctx.panelSettings);
       if (enabledCount >= FREE_MAX_PANELS) {
         // Tell the user why nothing happened instead of failing silently.

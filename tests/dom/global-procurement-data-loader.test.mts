@@ -93,6 +93,9 @@ describe('Global procurement DataLoader cancellation', () => {
 
     await loader.loadGlobalTenders();
     expect(procurementMocks.fetchGlobalTenders).toHaveBeenCalledTimes(2);
+    const refreshController = new AbortController();
+    await loader.loadGlobalTenders(undefined, false, refreshController.signal);
+    expect(procurementMocks.fetchGlobalTenders).toHaveBeenCalledTimes(2);
 
     controller.abort();
     expect((procurementMocks.fetchGlobalTenders.mock.calls[1]?.[1] as AbortSignal).aborted).toBe(true);

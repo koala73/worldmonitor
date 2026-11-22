@@ -23,3 +23,31 @@ it('shows unavailable, then observed operational status, retains last-good, then
   expect(document.querySelector('.all-operational')).toBeNull();
   expect(document.body.textContent).toContain(tt('common.noDataAvailable'));
 });
+
+it('leaves rendered services untouched and logs nothing when a refresh signal aborts', async () => {
+  const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    panel = new ServiceStatusPanel(); document.body.append(panel.getElement());
+    vi.mocked(fetchServiceStatuses).mockResolvedValueOnce({
+      success: true, timestamp: '', summary: { operational: 1, degraded: 0, outage: 0, unknown: 0 },
+      services: [{ id: 'aws', name: 'AWS', category: 'cloud', status: 'operational', description: '' }],
+    });
+    await panel.fetchStatus();
+    expect(document.body.textContent).toContain('AWS');
+
+    const controller = new AbortController();
+    vi.mocked(fetchServiceStatuses).mockImplementationOnce((sig?: AbortSignal) => new Promise((_resolve, reject) => {
+      sig?.addEventListener('abort', () => reject(sig.reason ?? new DOMException('Aborted', 'AbortError')), { once: true });
+    }));
+    const pending = panel.fetchStatus(controller.signal);
+    controller.abort(new DOMException('Refresh lane lease expired', 'AbortError'));
+    const changed = await pending;
+
+    expect(changed).toBe(false);
+    expect(document.body.textContent).toContain('AWS');
+    expect(document.body.textContent).not.toContain(tt('common.failedToLoad'));
+    expect(errorSpy).not.toHaveBeenCalled();
+  } finally {
+    errorSpy.mockRestore();
+  }
+});

@@ -789,7 +789,6 @@ jobs:
         # exits 0 when its glob finds zero entry points, so "green" must
         # also mean "every discovered domain actually produced a bundle".
         run: |
-          node scripts/build-sidecar-sebuf.mjs
           node scripts/build-sidecar-handlers.mjs
           node -e '
             const { readdirSync, existsSync } = require("node:fs");
@@ -947,9 +946,7 @@ jobs:
       # The desktop app loads these bundles, not the api/ sources the suite
       # imports. Build them so the shipped-route check below reads what ships.
       - name: Build the sidecar handler bundles
-        run: |
-          node scripts/build-sidecar-sebuf.mjs
-          node scripts/build-sidecar-handlers.mjs
+        run: node scripts/build-sidecar-handlers.mjs
 
       - name: Test sidecar with the shipped Node.js runtime
         run: |

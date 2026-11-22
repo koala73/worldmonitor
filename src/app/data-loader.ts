@@ -4195,10 +4195,17 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadUkmtoIncidents(): Promise<void> {
+  async loadUkmtoIncidents(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return;
     if (SITE_VARIANT !== 'full' && !this.ctx.panelSettings['ukmto-incidents']?.enabled) return;
-    const snapshot = await fetchUkmtoIncidents();
-    if (this.ctx.isDestroyed) return;
+    let snapshot;
+    try {
+      snapshot = await fetchUkmtoIncidents(signal);
+    } catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) return;
+      throw error;
+    }
+    if (this.ctx.isDestroyed || signal?.aborted) return;
     this.callPanel('ukmto-incidents', 'setData', snapshot);
     this.ctx.map?.setUkmtoSnapshot(snapshot);
   }
@@ -4614,13 +4621,13 @@ export class DataLoaderManager implements AppModule {
     if (signal?.aborted) return;
     const procurementPanel = this.ctx.panels['global-procurement'] as GlobalProcurementPanel | undefined;
     if (!procurementPanel) return;
+    const isScopedFilterRequest = filters !== undefined && signal !== undefined;
     if (
       filters === undefined
-      && signal === undefined
       && this.activeGlobalTenderScopedGeneration !== null
     ) return;
     const requestGeneration = ++this.globalTenderGeneration;
-    this.activeGlobalTenderScopedGeneration = signal ? requestGeneration : null;
+    this.activeGlobalTenderScopedGeneration = isScopedFilterRequest ? requestGeneration : null;
     const previousGlobalTenderFilters = { ...this.globalTenderFilters };
     const requestFilters = filters ?? this.globalTenderFilters;
     this.globalTenderFilters = { ...requestFilters, cursor: '' };
@@ -4639,10 +4646,11 @@ export class DataLoaderManager implements AppModule {
       canceledFiltersRestored = true;
       this.globalTenderFilters = previousGlobalTenderFilters;
     };
-    signal?.addEventListener('abort', () => {
+    const onAbort = () => {
       restoreCanceledFilters();
       releaseScopedRequest();
-    }, { once: true });
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
     const isCanceledOrStale = () => {
       restoreCanceledFilters();
       return signal?.aborted === true || requestGeneration !== this.globalTenderGeneration;
@@ -4684,6 +4692,7 @@ export class DataLoaderManager implements AppModule {
         this.ctx.statusPanel?.updateApi('Global Procurement', { status: 'error' });
       }
     } finally {
+      signal?.removeEventListener('abort', onAbort);
       releaseScopedRequest();
     }
   }
@@ -5434,18 +5443,20 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadTelegramIntel(): Promise<void> {
+  async loadTelegramIntel(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return;
     if (isDesktopRuntime() && !hasPremiumAccess()) return;
     const generation = getTelegramIntelGeneration();
     const isCurrent = () => !this.ctx.isDestroyed
+      && !signal?.aborted
       && generation === getTelegramIntelGeneration()
       && (!isDesktopRuntime() || hasPremiumAccess());
     try {
-      const result = await fetchTelegramFeed();
+      const result = await fetchTelegramFeed(50, signal);
       if (!isCurrent()) return;
       this.callPanel('telegram-intel', 'setData', result, generation);
     } catch (error) {
-      if (!isCurrent()) return;
+      if (!isCurrent() || (error instanceof DOMException && error.name === 'AbortError')) return;
       console.error('[App] Telegram intel fetch failed:', error);
       this.callPanel('telegram-intel', 'setData', {
         source: 'telegram', enabled: false, count: 0, updatedAt: null, items: [],

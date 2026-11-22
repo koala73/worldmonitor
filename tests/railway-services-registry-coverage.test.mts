@@ -74,6 +74,29 @@ const RUNBOOK_SERVICE_ROW_RE = /^\|\s*seed-[a-z0-9-]+\s*\|\s*`node\s+(scripts\/[
 const SCRIPT_HEADER_SERVICE_RE = /^\s*\/\/\s*-\s*Service name:\s*([a-z0-9-]+)\s*$/m;
 
 describe('Railway service registry coverage', () => {
+  it('contains no duplicate service names or entry paths', () => {
+    const seenServices = new Set<string>();
+    const duplicateServices: string[] = [];
+    const seenEntries = new Set<string>();
+    const duplicateEntries: string[] = [];
+    for (const item of registry) {
+      if (seenServices.has(item.service)) duplicateServices.push(item.service);
+      else seenServices.add(item.service);
+      if (seenEntries.has(item.entry)) duplicateEntries.push(item.entry);
+      else seenEntries.add(item.entry);
+    }
+    assert.deepEqual(
+      duplicateServices,
+      [],
+      `scripts/railway-services.json has duplicate service names: ${duplicateServices.join(', ')}`,
+    );
+    assert.deepEqual(
+      duplicateEntries,
+      [],
+      `scripts/railway-services.json has duplicate entry paths: ${duplicateEntries.join(', ')}`,
+    );
+  });
+
   it('pins the bootstrap publisher deployment contract', () => {
     const publisher = registry.find(
       (entry) => entry.entry === 'scripts/publish-bootstrap-tiers.mjs',

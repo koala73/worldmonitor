@@ -135,7 +135,8 @@ export async function refreshDataFreshnessFromHealth(options: RefreshHealthFresh
   let payload: HealthResponse | null = null;
   try {
     payload = await resp.json() as HealthResponse;
-  } catch {
+  } catch (err) {
+    if (options.signal?.aborted) throw err;
     payload = null;
   }
   if (!payload || (!resp.ok && !isRedisOutageStatus(payload.status))) {

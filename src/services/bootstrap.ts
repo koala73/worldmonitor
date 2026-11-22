@@ -1,5 +1,6 @@
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
+import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 import { adoptPrimedBootstrapTier, primedBootstrapTierBudgetUsedMs, resetPrimedBootstrapTierForTests } from '@/services/bootstrap-prefetch';
 import {
   buildBootstrapTransferRumSample,
@@ -132,7 +133,12 @@ export function getHydratedData(key: string): unknown | undefined {
 
 // In-flight coalescing for on-demand keys: a panel and a map layer can both ask
 // for the same key in the same tick, and we want one request, not two.
-const onDemandInflight = new Map<string, Promise<unknown | undefined>>();
+interface OnDemandInflightEntry {
+  promise: Promise<unknown | undefined>;
+  controller: AbortController;
+  waiters: number;
+}
+const onDemandInflight = new Map<string, OnDemandInflightEntry>();
 
 // The on-demand keys `/api/bootstrap?keys=<name>&public=1` will serve without
 // credentials. The ON-DEMAND PORTION cannot drift: this set, the server's
@@ -162,7 +168,9 @@ const PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS = new Set(bootstrapTierKeyNames('on-demand
  * #5287. Callers keep their existing RPC fallback for the failure case; this
  * simply gives them a cached path to try first.
  */
-export async function ensureHydrated(key: string): Promise<unknown | undefined> {
+export async function ensureHydrated(key: string, signal?: AbortSignal): Promise<unknown | undefined> {
+  if (signal?.aborted) return undefined;
+
   const hydrated = getHydratedData(key);
   if (hydrated !== undefined) return hydrated;
 
@@ -182,27 +190,73 @@ export async function ensureHydrated(key: string): Promise<unknown | undefined> 
   // fallback", which is exactly what the 401 produced.
   if (!PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS.has(key)) return undefined;
 
-  const existing = onDemandInflight.get(key);
-  if (existing) return existing;
+  let entry = onDemandInflight.get(key);
+  if (!entry) {
+    const controller = new AbortController();
+    const requestSignal = combineAbortSignals([controller.signal, createTimeoutSignal(10_000)]);
+    const created: OnDemandInflightEntry = {
+      controller,
+      waiters: 0,
+      promise: (async () => {
+        try {
+          const resp = await fetch(
+            toApiUrl(`/api/bootstrap?keys=${encodeURIComponent(key)}&public=1`),
+            { credentials: 'omit', signal: requestSignal },
+          );
+          if (!resp.ok) return undefined;
+          const payload = (await resp.json()) as { data?: Record<string, unknown> };
+          return payload.data?.[key];
+        } catch {
+          return undefined;
+        } finally {
+          if (onDemandInflight.get(key)?.controller === controller) {
+            onDemandInflight.delete(key);
+          }
+        }
+      })(),
+    };
+    onDemandInflight.set(key, created);
+    entry = created;
+  }
 
-  const promise = (async () => {
+  entry.waiters += 1;
+  if (!signal) {
     try {
-      const resp = await fetch(
-        toApiUrl(`/api/bootstrap?keys=${encodeURIComponent(key)}&public=1`),
-        { credentials: 'omit', signal: AbortSignal.timeout(10_000) },
-      );
-      if (!resp.ok) return undefined;
-      const payload = (await resp.json()) as { data?: Record<string, unknown> };
-      return payload.data?.[key];
-    } catch {
-      return undefined;
+      return await entry.promise;
     } finally {
-      onDemandInflight.delete(key);
+      entry.waiters -= 1;
     }
-  })();
+  }
 
-  onDemandInflight.set(key, promise);
-  return promise;
+  let onAbort: (() => void) | undefined;
+  let released = false;
+  const releaseWaiter = () => {
+    if (released) return;
+    released = true;
+    entry.waiters -= 1;
+    if (entry.waiters === 0) {
+      if (onDemandInflight.get(key) === entry) {
+        onDemandInflight.delete(key);
+      }
+      entry.controller.abort(signal.reason);
+    }
+  };
+  const aborted = new Promise<undefined>((resolve) => {
+    onAbort = () => {
+      releaseWaiter();
+      resolve(undefined);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([entry.promise, aborted]);
+  } finally {
+    if (onAbort) signal.removeEventListener('abort', onAbort);
+    if (!released) {
+      released = true;
+      entry.waiters -= 1;
+    }
+  }
 }
 
 export function markBootstrapAsLive(): void {
