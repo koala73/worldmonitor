@@ -1,0 +1,277 @@
+{
+ "note": "Author-judged, not blind. Statements, terms and threats about a critical event against the event itself, including events reported through a party saying so. Built after an IRNA headline on Iran's conditions for reopening Hormuz alerted as critical on 2026-11-21. Re-capture: node scripts/eval-classify-labels.mjs --fixture tests/fixtures/classify-judged-statements.json --path relay|rpc --capture <run> --force",
+ "rows": [
+  {
+   "title": "Iran’s seven conditions basis for reopening Strait of Hormuz, negotiations: Araghchi",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "Iran says it will close Strait of Hormuz if attacked",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "Araghchi: Hormuz will stay closed to US-linked ships until sanctions are lifted",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "Russia warns NATO of nuclear response if Ukraine strikes deep inside Russia",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "Hamas lists conditions for a ceasefire deal with Israel",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "Israel says ceasefire with Hezbollah could collapse within days",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "North Korea threatens to conduct seventh nuclear test",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "Houthi leader vows to block Bab el-Mandeb to US ships",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "China warns it will blockade Taiwan if independence is declared",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "Iran threatens to mine Strait of Hormuz",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "Russia sets conditions for Black Sea shipping corridor to reopen",
+   "judge": "high",
+   "borderline": false
+  },
+  {
+   "title": "Iran closes Strait of Hormuz to all tanker traffic",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Israel and Hamas agree ceasefire, hostages to be freed",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "US strikes Iranian nuclear sites at Fordow and Natanz",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Military seizes power in Niger, president detained",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Houthis sink tanker in Red Sea, 20 crew killed",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Russia-Ukraine ceasefire collapses as Moscow resumes offensive",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Pentagon says US jets struck militia bases in Iraq and Syria",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Ukraine says its drones hit Russian nuclear power plant",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Israel says it killed Hezbollah chief in Beirut strike",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Houthis say they fired missiles at US carrier in Red Sea",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "UN says 50 killed in RSF attack on Darfur displacement camp",
+   "judge": "critical",
+   "borderline": false
+  },
+  {
+   "title": "Egypt says Suez Canal closed to traffic after attack on convoy",
+   "judge": "critical",
+   "borderline": false
+  }
+ ],
+ "runs": {
+  "relay-before": {
+   "path": "relay",
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "2b0ff61d068f8a71",
+   "note": "main's prompt (captured 2026-11-21)",
+   "labels": [
+    "high",
+    "critical",
+    "critical",
+    "critical",
+    "high",
+    "high",
+    "high",
+    "critical",
+    "critical",
+    "critical",
+    "high",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "high",
+    "critical",
+    "high",
+    "high",
+    "critical",
+    "critical"
+   ]
+  },
+  "rpc-before": {
+   "path": "rpc",
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "f62de715acfa2a3f",
+   "note": "main's prompt (captured 2026-11-21)",
+   "labels": [
+    "critical",
+    "critical",
+    "critical",
+    "high",
+    "medium",
+    "critical",
+    "high",
+    "critical",
+    "high",
+    "critical",
+    "medium",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical"
+   ]
+  },
+  "relay-after": {
+   "path": "relay",
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "b610d9e51327d5e3",
+   "note": "closures that have taken effect, terms-vs-attack examples (captured 2026-11-21)",
+   "labels": [
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "high",
+    "critical",
+    "high",
+    "high",
+    "critical",
+    "critical"
+   ]
+  },
+  "relay-after-rerun": {
+   "path": "relay",
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "b610d9e51327d5e3",
+   "note": "closures that have taken effect, terms-vs-attack examples (captured 2026-11-21)",
+   "labels": [
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "high",
+    "critical",
+    "high",
+    "high",
+    "critical",
+    "critical"
+   ]
+  },
+  "rpc-after": {
+   "path": "rpc",
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "506c5cf5aefd95b6",
+   "note": "closures that have taken effect, terms-vs-attack examples (captured 2026-11-21)",
+   "labels": [
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "high",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical",
+    "critical"
+   ]
+  }
+ }
+}

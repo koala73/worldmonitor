@@ -1,5 +1,6 @@
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { findReloadBlockingModal } from '@/utils/open-modal';
+import { markPageUnloading } from '@/bootstrap/page-unload-signal';
 interface VisibleElementLike {
   checkVisibility?: () => boolean;
   getClientRects?: () => { length: number };
@@ -227,6 +228,7 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
           return;
         }
         logSw('auto-reload-triggered');
+        markPageUnloading();
         reload();
       }
     };
@@ -238,6 +240,7 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
         dwellTimerId = null;
         currentDwellCancel = null;
         logSw('reload-clicked');
+        markPageUnloading();
         // reload:user-initiated — the user pressed Reload, so the modal guard
         // does not apply. Deferring a direct instruction would be a bug, not a
         // protection. The marker is what keeps this exception explicit rather

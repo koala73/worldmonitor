@@ -10,15 +10,18 @@ on:
   push:
     branches: [main]
 
-# A superseded PR run owes nobody a verdict. Branch protection and
-# deploy-gate.sh both evaluate the head SHA only. Letting it finish burned
-# 59% of this workflow's runs on dead commits and queued the live commit
-# behind them. Cancellation is pull_request-only. A push to main still owes
-# the deploy gate a verdict, and `github.run_id` gives it a group of one so
-# nothing can evict it (#8443).
+# A superseded run owes nobody a verdict. Branch protection and deploy-gate.sh
+# both evaluate the head SHA only. Letting superseded PR runs finish burned 59%
+# of this workflow's runs on dead commits (#8443). Main pushes share one group
+# too: the newer main run tests a tree that contains the older commit, and 35
+# of 64 main runs (55% of main run time) were still going when the next merge
+# landed (2026-11-18..20). deploy-gate.sh posts "Superseded on main" pending,
+# not failure, for the cancelled commit, and the CI health scan does not count
+# the cancel as a timeout. A re-run of an old main run keeps a group of one
+# (run_id) so it cannot cancel the newer commit's run; so does any other event.
 concurrency:
-  group: test-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: test-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && 'main') || github.run_id }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -94,11 +97,35 @@ jobs:
               emit_all_true
               exit 0
             fi
+            # A newer main push cancels the run in progress (see concurrency),
+            # so the previous commit may have no verdict. Diff from the newest
+            # main commit whose Test run succeeded, or a code commit cancelled
+            # by a docs-only one would never be tested on main. A red run is
+            # not a base either: the jobs it failed or never reached must
+            # still run for its commit.
+            if ! RUNS_JSON=$(gh api "repos/${{ github.repository }}/actions/workflows/test.yml/runs?event=push&branch=main&status=completed&per_page=50") ||
+               ! DECIDED=$(jq -er --argjson self "${{ github.run_id }}" '
+                 [.workflow_runs[]? | select(.id != $self and .conclusion == "success")]
+                 | first | .head_sha | strings' <<< "$RUNS_JSON"); then
+              echo "No successful main Test run found; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            if [ "$DECIDED" != "$BEFORE" ]; then
+              echo "Main Test runs after $DECIDED did not succeed; diffing from it instead of $BEFORE."
+            fi
+            BEFORE="$DECIDED"
             if ! COMPARE_JSON=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}"); then
               echo "Compare API failed; running every Test job."
               emit_all_true
               exit 0
             fi
+            if ! jq -e '.status == "ahead"' <<< "$COMPARE_JSON" >/dev/null; then
+              echo "This commit does not descend from $BEFORE; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            echo "push_base=$BEFORE" >> "$GITHUB_OUTPUT"
             if ! FILES_JSON=$(jq -ce '.files | arrays' <<< "$COMPARE_JSON"); then
               emit_all_true
               exit 0
@@ -332,6 +359,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
+          PUSH_BASE: ${{ steps.diff.outputs.push_base }}
           FILES_JSON: ${{ steps.diff.outputs.files_json }}
         run: node .github/scripts/reuse-pr-test-verdict.mjs
 
@@ -657,6 +685,12 @@ jobs:
           # The merge commit's FIRST parent is the base tip this tree was merged
           # onto, so it tracks what is actually under test. The pre-push hook
           # compares against origin/main for the same reason.
+          #
+          # On push, the base stays the push parent even when its Test run was
+          # cancelled or red. The check validates one transition: cutover.fromKey
+          # must equal the base's key, so an older base rejects a valid cutover
+          # that follows a commit which already repointed the probe. Each commit's
+          # own transition was checked by its pull request run.
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |

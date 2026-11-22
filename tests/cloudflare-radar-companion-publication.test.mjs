@@ -34,8 +34,7 @@ const DDOS_META_KEY = 'seed-meta:cf:radar:ddos';
 const TRAFFIC_META_KEY = 'seed-meta:cf:radar:traffic-anomalies';
 // Parsed from the seeder rather than retyped: the suite asserts these exact
 // values as EXPIRE arguments, so a copy that drifts from the implementation
-// would keep passing while testing the wrong contract. Same technique the fleet
-// guard in tests/seed-ttl-outlives-staleness-fleet.test.mjs uses.
+// would keep passing while testing the wrong contract.
 const SEEDER_SOURCE = readFileSync(new URL('../scripts/seed-internet-outages.mjs', import.meta.url), 'utf8');
 const seederTtl = (name) => {
   const match = SEEDER_SOURCE.match(new RegExp(`^const ${name} = (\\d+);`, 'm'));
@@ -561,7 +560,7 @@ test('each companion payload outlives the health gate that grades it', () => {
   // `seedAge > maxStaleMin`, so a TTL equal to the gate lets the payload vanish
   // while the meta still reads fresh — a dead seeder reports crit for ~30s
   // before settling into the truthful STALE_SEED warn. Same invariant as
-  // tests/seed-ttl-outlives-staleness-fleet.test.mjs, pinned here because these
+  // tests/seed-ttl-contract.test.mjs, pinned here because these
   // two keys are the ones the strict classification now applies to.
   for (const [name, ttlSeconds] of [['ddosAttacks', DDOS_TTL], ['trafficAnomalies', ANOMALIES_TTL]]) {
     const maxStaleSeconds = health.SEED_META[name].maxStaleMin * 60;

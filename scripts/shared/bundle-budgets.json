@@ -101,7 +101,7 @@
   },
   "deferred": {
     "total": {
-      "raw": 1861150
+      "raw": 1860730
     },
     "chunks": {
       "App": {
@@ -182,10 +182,6 @@
       },
       "news-credibility": {
         "raw": 9393,
-        "files": 1
-      },
-      "page-unload-signal": {
-        "raw": 420,
         "files": 1
       },
       "panel-display-name": {

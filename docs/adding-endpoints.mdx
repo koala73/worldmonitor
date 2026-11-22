@@ -8,6 +8,8 @@ This guide walks through adding a new RPC to an existing service and adding an e
 
 > **Enforcement:** `npm run lint:api-contract` runs in CI (see `.github/workflows/lint-code.yml`). It walks every file under `api/`, pairs each sebuf gateway (`api/<domain>/v<N>/[rpc].ts`) with a generated service under `src/generated/server/worldmonitor/`, and rejects any file that is neither a gateway nor listed in `api/api-route-exceptions.json`. The manifest is the only escape hatch for endpoints that genuinely cannot be proto — OAuth callbacks, binary responses, upstream proxies, operator plumbing — and every entry is pinned to @SebastienMelki via `.github/CODEOWNERS`. Expect reviewer pushback on new entries.
 >
+> **Rate limits for manifest routes:** a manifest route runs no gateway, so it is rate-limited only if its own code calls a limiter. `npm run lint:rate-limit-policies` fails on a route whose own source does not call `checkRateLimit`, `checkScopedRateLimit`, `checkFailClosedScopedIpRateLimit` or another admission function. A call inside an imported helper does not count. The lint checks that the call is present, not where it runs: put it before any Clerk, Convex, Redis, relay or provider work yourself. A route that needs no limit goes in `STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION` in `server/_shared/rate-limit.ts`, with the reason.
+
 > **Generation freshness:** After modifying any `.proto` file, run `make generate` before pushing. The generated TypeScript in `src/generated/` is checked in and must stay in sync; `.github/workflows/proto-check.yml` fails the PR if it drifts.
 
 ## Prerequisites

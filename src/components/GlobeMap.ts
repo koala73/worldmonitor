@@ -3364,9 +3364,15 @@ export class GlobeMap {
     if (ch.arcs)     this.flushArcs();
     if (ch.paths)    this.flushPaths();
     if (ch.polygons) this.flushPolygons();
-    if (layer === 'satellites' && this.satBeamGroup) {
-      this.satBeamGroup.visible = !!this.layers.satellites;
+    if (layer === 'satellites') {
+      if (this.satBeamGroup) this.satBeamGroup.visible = !!this.layers.satellites;
+      if (!this.layers.satellites) this.closeSatelliteCard();
     }
+  }
+
+  /** A hidden satellites layer takes its pinned Orbital Watch card with it. */
+  private closeSatelliteCard(): void {
+    if (this.openSatelliteCard && this.tooltipEl === this.openSatelliteCard.el) this.hideTooltip();
   }
 
   public setLayers(layers: MapLayers): void {
@@ -3392,6 +3398,7 @@ export class GlobeMap {
       if (layers.satellites) {
         this.fetchImageryForViewport();
       } else {
+        this.closeSatelliteCard();
         if (this.imageryFetchTimer) { clearTimeout(this.imageryFetchTimer); this.imageryFetchTimer = null; }
         this.lastImageryCenter = null;
         this.imageryFetchVersion++;

@@ -29,6 +29,8 @@ import { briefLocalizedKey } from '../../../shared/brief-envelope.js';
 import { briefFontPlatform } from '../../../server/_shared/brief-font-platform.js';
 import { readRawJsonFromUpstash, redisPipeline } from '../../_upstash-json.js';
 import { verifyBriefToken, BriefUrlError } from '../../../server/_shared/brief-url';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../../_rate-limit.js';
 import {
   BRIEF_PUBLIC_POINTER_PREFIX,
   buildPublicBriefUrl,
@@ -210,6 +212,16 @@ export default async function handler(
   }
   if (!verified) {
     return htmlResponse(req, 403, FORBIDDEN_PAGE);
+  }
+
+  // The token never expires within the envelope's week and the page is not
+  // cached, so bound the renders per issue, as the carousel does.
+  const limited = await checkRateLimit(req, {}, {
+    scope: 'brief-magazine', identifier: `${userId}:${issueDate}`, limit: 60, window: '10 m',
+  });
+  if (limited) {
+    const retryAfter = limited.headers.get('Retry-After');
+    return htmlResponse(req, limited.status, UNAVAILABLE_PAGE, { 'Cache-Control': 'no-store', ...(retryAfter ? { 'Retry-After': retryAfter } : {}) });
   }
 
   // U11: start the telemetry-only watchlist lookup before the Redis

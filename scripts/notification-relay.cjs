@@ -398,6 +398,12 @@ const ENTITLEMENT_FAILCLOSED_CACHE_TTL = 60;
  * legitimate PRO users for up to 60s after each cache miss. Pair with
  * monitoring on `[relay][entitlement-fail-closed]` log lines.
  */
+// Never throws: a failed cache write inside getUserTier's try would take the
+// fail-closed path and clamp a paying user to free tier.
+async function cacheUserTier(cacheKey, tier, ttlSeconds) {
+  await upstashRest('SET', cacheKey, String(tier), 'EX', String(ttlSeconds)).catch(() => null);
+}
+
 async function getUserTier(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
   try {
@@ -422,17 +428,17 @@ async function getUserTier(userId) {
       // the same outage skip the 5-sec fetch. Logged with stable prefix
       // for alerting on volume.
       console.error(`[relay][entitlement-fail-closed] HTTP ${res.status} for ${userId}; clamping to free-tier delivery`);
-      try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
+      await cacheUserTier(cacheKey, 0, ENTITLEMENT_FAILCLOSED_CACHE_TTL);
       return 0;
     }
     const { tier } = await res.json();
-    await upstashRest('SET', cacheKey, String(tier ?? 0), 'EX', String(ENTITLEMENT_CACHE_TTL));
+    await cacheUserTier(cacheKey, tier ?? 0, ENTITLEMENT_CACHE_TTL);
     return tier ?? 0;
   } catch (err) {
     // Same fail-CLOSED policy on transport error / timeout. Same short-TTL
     // cache write so we don't re-attempt the 5-sec fetch for every event.
     console.error(`[relay][entitlement-fail-closed] error for ${userId}: ${err && err.message ? err.message : err}; clamping to free-tier delivery`);
-    try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
+    await cacheUserTier(cacheKey, 0, ENTITLEMENT_FAILCLOSED_CACHE_TTL);
     return 0;
   }
 }
@@ -2213,6 +2219,10 @@ async function releaseRealtimeClaim(dedupDecision, claim) {
 // OpenRouter key, or on any failure, nobody is skipped.
 const NO_REWRITE = { applies: false, decision: null, alreadyAlerted: new Set(), lib: null };
 
+function matchedAnchorId(decision) {
+  return decision?.anchor && decision.anchorIds?.length === 1 ? decision.anchor.id : null;
+}
+
 async function checkAlertRewrite(event, matching) {
   if (!process.env.OPENROUTER_API_KEY) return NO_REWRITE;
   try {
@@ -2220,8 +2230,10 @@ async function checkAlertRewrite(event, matching) {
     if (!lib.rewriteCheckApplies(event)) return NO_REWRITE;
     const decision = await lib.findRewriteAnchor(event);
     const userIds = [...new Set(matching.map(r => r.userId))];
-    const alreadyAlerted = decision.anchor ? await lib.usersAlertedFor(decision.anchor.id, userIds) : new Set();
-    const coverageMerged = decision.anchor ? await lib.mergeStoryCoverage(event, decision.anchor.id) : false;
+    const alreadyAlerted = decision.anchor ? await lib.usersAlertedFor(decision.anchorIds ?? decision.anchor.id, userIds) : new Set();
+    // Only a match both replies agree on joins the two stories' receipts and
+    // publisher history; a split names two alerts that may be separate.
+    const coverageMerged = matchedAnchorId(decision) ? await lib.mergeStoryCoverage(event, matchedAnchorId(decision)) : false;
     return { applies: true, decision, alreadyAlerted, coverageMerged, lib };
   } catch (err) {
     console.warn('[news-alert-rewrite] unavailable:', err?.name);
@@ -2234,7 +2246,7 @@ async function checkAlertRewrite(event, matching) {
 async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
   if (!rewrite.applies) return;
   const anchored = reachedUsers.size > 0 && await rewrite.lib.recordAlertAnchor(event, [...reachedUsers], {
-    matchedAnchorId: rewrite.decision.anchor?.id ?? null,
+    matchedAnchorId: matchedAnchorId(rewrite.decision),
   });
   const { decision } = rewrite;
   console.info('[news-alert-rewrite]', JSON.stringify({
@@ -2244,12 +2256,14 @@ async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
     // Titles let a skip be audited after the anchors expire.
     title: formatEventTitle(event).slice(0, 300),
     model: decision.model,
+    judgeModel: decision.judgeModel,
     importanceScore: event.payload?.importanceScore ?? null,
     candidates: decision.candidates,
     best: decision.best,
     judged: decision.judged,
     verdict: decision.verdict,
     anchor: decision.anchor ? { id: decision.anchor.id, score: decision.anchor.score, title: String(decision.anchor.title).slice(0, 300) } : null,
+    anchorIds: decision.anchorIds,
     error: decision.error,
     ms: decision.ms,
     coverageMerged: rewrite.coverageMerged,

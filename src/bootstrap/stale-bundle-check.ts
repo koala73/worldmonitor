@@ -27,6 +27,7 @@
 // session (WORLDMONITOR-15X/15Z: first the onboarding popover, then the
 // SignalModal, neither of which is the sign-up case this guard is for).
 
+import { markPageUnloading } from '@/bootstrap/page-unload-signal';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { findReloadBlockingModal, type ModalDocumentLike, type ReloadBlocker } from '@/utils/open-modal';
 
@@ -258,6 +259,7 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
     deferrals = 0;
     // eslint-disable-next-line no-console
     console.warn('[stale-bundle] reload:', currentHash, '→', deployedHash);
+    markPageUnloading();
     reload();
   };
 
