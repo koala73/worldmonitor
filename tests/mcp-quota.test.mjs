@@ -61,6 +61,7 @@ function makeDeps(overrides = {}) {
   const FIXED_NOW = new Date(Date.UTC(2026, 4, 10, 12, 34, 56, 0));
   return {
     resolveUserId: async () => 'user_pro_123',
+    rateLimit: async () => null,
     redisGet: async () => null,
     // Default fixture is a LEGACY row (no planLimits) so every pre-U3b
     // assertion in this file keeps pinning the 50/day fallback.
@@ -181,6 +182,7 @@ describe('mcp-quota handler', () => {
     let observedKey = '';
     const deps = makeDeps({
       resolveUserId: async () => 'user_clerk_xyz',
+      rateLimit: async () => null,
       redisGet: async (k) => { observedKey = k; return '12'; },
     });
     // Even if the request body contains a userId, the handler MUST use the
@@ -214,6 +216,7 @@ describe('mcp-quota handler', () => {
       let observedKey = '';
       const deps = makeDeps({
         resolveUserId: async () => 'user_pro_xyz',
+        rateLimit: async () => null,
         now: () => new Date(Date.UTC(2026, 4, 10, 12, 0, 0)),
         redisGet: async (k) => { observedKey = k; return '7'; },
       });
@@ -381,6 +384,7 @@ describe('mcp-quota handler — plan-resolved limit (U3b)', () => {
     let observedUserId = '';
     const deps = makeDeps({
       resolveUserId: async () => 'user_clerk_xyz',
+      rateLimit: async () => null,
       getEntitlements: async (uid) => {
         observedUserId = uid;
         return entitlement('pro_business_monthly', limits(250));
@@ -396,6 +400,7 @@ describe('mcp-quota handler — plan-resolved limit (U3b)', () => {
     let lookups = 0;
     const deps = makeDeps({
       resolveUserId: async () => null,
+      rateLimit: async () => null,
       getEntitlements: async () => { lookups += 1; return null; },
     });
     const resp = await quotaHandler(makeReq({ auth: false }), deps);
