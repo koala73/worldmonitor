@@ -88,6 +88,7 @@ for (const route of ROUTES) {
     it('charges its own scope', async () => {
       const response = await call(route);
       assert.notEqual(response.status, 429);
+      assert.ok(backend.length > 0, 'an admitted caller reaches the route\'s Redis read or origin fetch');
       assert.ok(
         limiterBodies.some((b) => b.includes(`rl:${route.scope}`) && (!route.key || b.includes(route.key))),
         limiterBodies.join('\n'),
@@ -117,6 +118,7 @@ for (const route of ROUTES) {
         const response = await call(route);
         assert.notEqual(response.status, 429);
         assert.equal(response.headers.get('X-RateLimit-Mode'), null);
+        assert.ok(backend.length > 0, 'a fail-open outage still reaches the route\'s work');
       });
     }
   });
