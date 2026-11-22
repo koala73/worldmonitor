@@ -1240,8 +1240,6 @@ export const STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION: Record<string, Standalo
   'api/miit-news.js': { reason: 'CDN-cached feed; a cache bypass costs one Redis GET on a fixed key, and MIIT is fetched only when that key is empty.' },
   'api/product-catalog.js': { reason: 'CDN-cached catalog; a cache bypass costs one Redis GET on product-catalog:v3, and Dodo is called only when that key is empty. DELETE is secret-gated.' },
   'api/health.js': { reason: 'Uptime monitors poll it, so a limit would page on-call. It serves the cached verdict first; a refresh takes a Redis SET NX lock, so one sweep runs at a time.' },
-  'api/discord/oauth/callback.ts': { debt: true, reason: 'Anonymous; each call runs one Redis GETDEL on the caller-supplied state before it is validated.' },
-  'api/slack/oauth/callback.ts': { debt: true, reason: 'Anonymous; each call runs one Redis GETDEL on the caller-supplied state before it is validated.' },
   'api/referral/me.ts': { debt: true, reason: 'Signed-in; every GET fires an idempotent Convex mutation.' },
   'api/user/mcp-revoke.ts': { debt: true, reason: 'Signed-in; each call runs a Convex revocation mutation and a Redis delete.' },
   'api/invalidate-user-api-key-cache.ts': { debt: true, reason: 'Signed-in; each call runs a Convex ownership query and a Redis delete.' },
