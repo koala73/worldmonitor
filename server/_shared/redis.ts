@@ -859,7 +859,7 @@ export function __resetFetcherTimeoutForTests(): void {
  * Loader for a cache miss. `signal` aborts when the cache-layer timeout
  * fires. A loader that ignores the argument behaves as before.
  */
-type CachedJsonFetcher<T extends object> = (signal: AbortSignal) => Promise<T | null>;
+export type CachedJsonFetcher<T extends object> = (signal: AbortSignal) => Promise<T | null>;
 
 /**
  * Race the fetcher promise against a setTimeout so the inflight slot is
