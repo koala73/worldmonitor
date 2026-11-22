@@ -36,6 +36,8 @@ write('api/bare.js', handler('  return new Response("ok");'));
 write('api/helper-only.js', `import { getRelayBaseUrl } from './_relay.js';\n${handler('  return fetch(getRelayBaseUrl());')}`);
 write('api/direct.js', `import { checkRateLimit } from './_rate-limit.js';\n${handler('  const limited = await checkRateLimit(req, {});\n  return limited ?? new Response("ok");')}`);
 write('api/relay.js', "import { createRelayHandler } from './_relay.js';\nexport default createRelayHandler({ requireRateLimit: true });\n");
+write('api/relay-overridden.js', "import { createRelayHandler } from './_relay.js';\nconst off = { requireRateLimit: false };\nexport default createRelayHandler({ requireRateLimit: true, ...off });\n");
+write('api/local-alias.ts', "import handler from './direct.js';\nexport { handler as default };\n");
 write('api/relay-unlimited.js', "import { createRelayHandler } from './_relay.js';\nexport default createRelayHandler({ relayPath: '/x' });\n");
 write('api/comment-with-glob.js', [
   "import { checkRateLimit } from './_rate-limit.js';",
@@ -70,6 +72,7 @@ describe('standalone route admission audit', () => {
       'api/helper-only.js',
       'api/proof-only.js',
       'api/reexport-bare.ts',
+      'api/relay-overridden.js',
       'api/relay-unlimited.js',
       'api/renamed-default.ts',
       'api/type-import.ts',
@@ -86,6 +89,7 @@ describe('standalone route admission audit', () => {
     assert.equal(admission.get('api/mcp-route.ts'), 'applyAnonDiscoveryLimit');
     assert.equal(admission.get('api/svc/v1/alias.ts'), 'createDomainGateway via [rpc].ts');
     assert.equal(admission.get('api/reexport.ts'), 'checkRateLimit via direct.js');
+    assert.equal(admission.get('api/local-alias.ts'), 'checkRateLimit via direct.js');
   });
 
   it('serves only default-exporting files outside _ helpers and tests', () => {

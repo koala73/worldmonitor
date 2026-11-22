@@ -238,11 +238,19 @@ function buildsUpstashLimiter(sf) {
   return found;
 }
 
+// The last property that can set requireRateLimit decides it; a later spread
+// makes it unknown, which does not count.
 function relayCallLimits(call) {
   const cfg = call.arguments[0];
-  return Boolean(cfg && ts.isObjectLiteralExpression(cfg) && cfg.properties.some((prop) =>
-    ts.isPropertyAssignment(prop) && prop.name.getText() === 'requireRateLimit'
-    && prop.initializer.kind === ts.SyntaxKind.TrueKeyword));
+  if (!cfg || !ts.isObjectLiteralExpression(cfg)) return false;
+  let limits = false;
+  for (const prop of cfg.properties) {
+    if (ts.isSpreadAssignment(prop)) limits = false;
+    else if ((ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) && prop.name.getText() === 'requireRateLimit') {
+      limits = ts.isPropertyAssignment(prop) && prop.initializer.kind === ts.SyntaxKind.TrueKeyword;
+    }
+  }
+  return limits;
 }
 
 // The first admitting call under `node`, or null. `delegates` says whether the
@@ -324,6 +332,13 @@ function defaultExportSources(sf) {
     if (ts.isExportDeclaration(s) && s.moduleSpecifier && s.exportClause && ts.isNamedExports(s.exportClause)
       && s.exportClause.elements.some((e) => e.name.text === 'default' && (e.propertyName ?? e.name).text === 'default')) {
       sources.push(s.moduleSpecifier.text);
+    }
+    // `import h from './x'; export { h as default }` follows x's default.
+    if (ts.isExportDeclaration(s) && !s.moduleSpecifier && s.exportClause && ts.isNamedExports(s.exportClause)) {
+      for (const e of s.exportClause.elements) {
+        const local = (e.propertyName ?? e.name).text;
+        if (e.name.text === 'default' && defaultImports.has(local)) sources.push(defaultImports.get(local));
+      }
     }
     if (ts.isExportAssignment(s)) {
       const visit = (node) => {
