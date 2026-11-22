@@ -132,3 +132,24 @@ for (const route of ROUTES) {
     }
   });
 }
+
+// Public `/{page}.md` URLs rewrite to md-twin, but the Cloudflare rule that adds
+// x-wm-edge-proof may not cover them. An unproven Cloudflare IP must still be
+// limited (by the Vercel peer IP), not refused with a 403.
+describe('api/md-twin.ts behind Cloudflare without the edge proof', () => {
+  it('charges the Vercel peer IP instead of refusing', async () => {
+    process.env.CF_EDGE_PROOF_SECRET = 'edge-secret';
+    try {
+      const { default: handler } = await import('../api/md-twin.ts');
+      const response = await handler(new Request('https://www.worldmonitor.app/api/md-twin?path=pricing-plans', {
+        headers: { 'cf-connecting-ip': '203.0.113.7', 'x-real-ip': '198.51.100.9' },
+      }));
+      assert.notEqual(response.status, 403);
+      assert.equal(response.headers.get('X-RateLimit-Mode'), null);
+      assert.ok(limiterBodies.some((b) => b.includes('rl:md-twin') && b.includes('198.51.100.9')), limiterBodies.join('\n'));
+      assert.ok(!limiterBodies.some((b) => b.includes('203.0.113.7')), 'the unproven Cloudflare IP is never the key');
+    } finally {
+      delete process.env.CF_EDGE_PROOF_SECRET;
+    }
+  });
+});
