@@ -191,20 +191,21 @@ function findEndpointRateLimitFailOpenOptOuts() {
 // not count: x-feed imported _relay.js helpers for months while only
 // createRelayHandler, which it never called, applied the limiter.
 
+// Calls that count a request against a caller budget. Setup alone (building or
+// loading an Upstash Ratelimit, or checking proof headers) does not count.
 export const ADMISSION_PRIMITIVES = new Set([
   'checkRateLimit',
   'checkScopedRateLimit',
   'checkEndpointRateLimit',
   'checkFailClosedScopedIpRateLimit',
-  'checkIpScopedEdgeProof',
   'checkBurst',
   'createDomainGateway',
-  'loadUpstashRatelimit',
-  'new Ratelimit',
 ]);
 
-// Route-facing helpers that call a primitive for the route. Each must stay
-// defined in its module, and the module must call a primitive.
+// Route-facing helpers that call a primitive for the route. The audit checks each
+// named function's own body, and the local helpers it calls, for a primitive.
+// createRelayHandler counts only with `requireRateLimit: true`, because it skips
+// the limit otherwise.
 export const ADMISSION_DELEGATES = {
   createRelayHandler: 'api/_relay.js',
   applyPerMinuteLimit: 'api/mcp/auth.ts',
@@ -217,20 +218,86 @@ function parseSource(file) {
   return ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, kind);
 }
 
-function calledNames(sf) {
-  const names = new Set();
+function calleeName(call) {
+  const callee = call.expression;
+  if (ts.isIdentifier(callee)) return callee.text;
+  if (ts.isPropertyAccessExpression(callee)) return callee.name.text;
+  return null;
+}
+
+// An Upstash limiter's `.limit()` counts only in a file that builds the limiter.
+function buildsUpstashLimiter(sf) {
+  let found = false;
   const visit = (node) => {
-    if (ts.isCallExpression(node)) {
-      const callee = node.expression;
-      if (ts.isIdentifier(callee)) names.add(callee.text);
-      else if (ts.isPropertyAccessExpression(callee)) names.add(callee.name.text);
-    } else if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)) {
-      names.add(`new ${node.expression.text}`);
-    }
-    ts.forEachChild(node, visit);
+    if (found) return;
+    if ((ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Ratelimit')
+      || (ts.isCallExpression(node) && calleeName(node) === 'loadUpstashRatelimit')) found = true;
+    else ts.forEachChild(node, visit);
   };
   visit(sf);
-  return names;
+  return found;
+}
+
+function relayCallLimits(call) {
+  const cfg = call.arguments[0];
+  return Boolean(cfg && ts.isObjectLiteralExpression(cfg) && cfg.properties.some((prop) =>
+    ts.isPropertyAssignment(prop) && prop.name.getText() === 'requireRateLimit'
+    && prop.initializer.kind === ts.SyntaxKind.TrueKeyword));
+}
+
+// The first admitting call under `node`, or null. `delegates` says whether the
+// named delegates count, which they do in routes and not inside a delegate check.
+function admittingCall(node, sf, { delegates }) {
+  const upstash = buildsUpstashLimiter(sf);
+  let hit = null;
+  const visit = (n) => {
+    if (hit) return;
+    if (ts.isCallExpression(n)) {
+      const name = calleeName(n);
+      if (ADMISSION_PRIMITIVES.has(name)) hit = name;
+      else if (name === 'limit' && upstash && ts.isPropertyAccessExpression(n.expression)) hit = 'Ratelimit.limit';
+      else if (delegates && name === 'createRelayHandler' && relayCallLimits(n)) hit = name;
+      else if (delegates && name !== 'createRelayHandler' && Object.hasOwn(ADMISSION_DELEGATES, name)) hit = name;
+    }
+    if (!hit) ts.forEachChild(n, visit);
+  };
+  visit(node);
+  return hit;
+}
+
+// Top-level functions in a module, by name, including `const name = () => {}`.
+function moduleFunctions(sf) {
+  const fns = new Map();
+  for (const s of sf.statements) {
+    if (ts.isFunctionDeclaration(s) && s.name) fns.set(s.name.text, s);
+    if (ts.isVariableStatement(s)) {
+      for (const d of s.declarationList.declarations) {
+        if (ts.isIdentifier(d.name) && d.initializer && (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer))) {
+          fns.set(d.name.text, d.initializer);
+        }
+      }
+    }
+  }
+  return fns;
+}
+
+// Whether the named function, or a local function it calls, calls a primitive.
+function functionAdmits(sf, name) {
+  const fns = moduleFunctions(sf);
+  const seen = new Set();
+  const queue = [name];
+  while (queue.length) {
+    const fn = fns.get(queue.shift());
+    if (!fn || seen.has(fn)) continue;
+    seen.add(fn);
+    if (admittingCall(fn, sf, { delegates: false })) return true;
+    const visit = (n) => {
+      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && fns.has(n.expression.text)) queue.push(n.expression.text);
+      ts.forEachChild(n, visit);
+    };
+    visit(fn);
+  }
+  return false;
 }
 
 function hasDefaultExport(sf) {
@@ -252,8 +319,10 @@ function defaultExportSources(sf) {
   }
   const sources = [];
   for (const s of sf.statements) {
+    // `export { default } from` follows the module's default; `export { x as default }`
+    // takes a named export, whose limit the module's default does not prove.
     if (ts.isExportDeclaration(s) && s.moduleSpecifier && s.exportClause && ts.isNamedExports(s.exportClause)
-      && s.exportClause.elements.some((e) => e.name.text === 'default')) {
+      && s.exportClause.elements.some((e) => e.name.text === 'default' && (e.propertyName ?? e.name).text === 'default')) {
       sources.push(s.moduleSpecifier.text);
     }
     if (ts.isExportAssignment(s)) {
@@ -274,15 +343,13 @@ function resolveLocal(fromFile, spec) {
     .find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
 }
 
-const ADMISSION_NAMES = new Set([...ADMISSION_PRIMITIVES, ...Object.keys(ADMISSION_DELEGATES)]);
-
 // The admission function a route calls, with the routes it was reached through,
 // or null.
 export function routeAdmission(file, seen = new Set()) {
   if (seen.has(file)) return null;
   seen.add(file);
   const sf = parseSource(file);
-  const hit = [...calledNames(sf)].find((n) => ADMISSION_NAMES.has(n));
+  const hit = admittingCall(sf, sf, { delegates: true });
   if (hit) return hit;
   for (const spec of defaultExportSources(sf)) {
     const target = resolveLocal(file, spec);
@@ -318,11 +385,11 @@ export function auditStandaloneRouteAdmission(exempt, root = ROOT) {
   for (const [name, module] of Object.entries(ADMISSION_DELEGATES)) {
     const path = join(root, module);
     const sf = existsSync(path) ? parseSource(path) : null;
-    const defines = sf && new RegExp(`export\\s+(async\\s+)?function\\s+${name}\\b`).test(sf.text);
-    const calls = sf && [...calledNames(sf)].some((n) => ADMISSION_PRIMITIVES.has(n));
-    if (!defines || !calls) problems.push(`ADMISSION_DELEGATES.${name}: ${module} must export it and call an admission primitive`);
+    if (!sf || !functionAdmits(sf, name)) {
+      problems.push(`ADMISSION_DELEGATES.${name}: ${module} must define it, and its body must call an admission primitive`);
+    }
   }
-  const bare = routes.filter((r) => !admission.get(r) && !(r in exempt));
+  const bare = routes.filter((r) => !admission.get(r) && !Object.hasOwn(exempt, r));
   const staleExempt = Object.keys(exempt).filter((r) => !routeSet.has(r) || admission.get(r));
   return { routes, admission, bare, staleExempt, problems };
 }
