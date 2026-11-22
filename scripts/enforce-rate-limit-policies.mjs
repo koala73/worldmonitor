@@ -35,10 +35,15 @@
  * registry internal consistency, so an expensive/mutation route omitted from
  * every registry would pass CI and silently fail OPEN on a Redis outage. New
  * non-GET routes now have to be triaged into one bucket or the other.
+ *
+ * Standalone api/ routes run no gateway, so the lint also requires each one to
+ * call a limiter in its own code, or to be listed in
+ * STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION with a reason.
  */
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, normalize, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import ts from 'typescript';
 import { parse as parseYaml } from 'yaml';
 
 const ROOT = new URL('..', import.meta.url).pathname;
@@ -175,6 +180,151 @@ function findEndpointRateLimitFailOpenOptOuts() {
   }
 
   return findings;
+}
+
+// --- Standalone route admission ---
+// A standalone api/ route runs no gateway, so it is only rate-limited if its own
+// code calls a limiter. Past fixes added that call after the fact (passkey offers,
+// x-feed, reverse geocode, user prefs, mcp-proxy, shipping webhooks and others).
+// A route passes when its own source calls an admission function, or its default
+// export comes from another route that does. A call in some imported helper does
+// not count: x-feed imported _relay.js helpers for months while only
+// createRelayHandler, which it never called, applied the limiter.
+
+export const ADMISSION_PRIMITIVES = new Set([
+  'checkRateLimit',
+  'checkScopedRateLimit',
+  'checkEndpointRateLimit',
+  'checkFailClosedScopedIpRateLimit',
+  'checkIpScopedEdgeProof',
+  'checkBurst',
+  'createDomainGateway',
+  'loadUpstashRatelimit',
+  'new Ratelimit',
+]);
+
+// Route-facing helpers that call a primitive for the route. Each must stay
+// defined in its module, and the module must call a primitive.
+export const ADMISSION_DELEGATES = {
+  createRelayHandler: 'api/_relay.js',
+  applyPerMinuteLimit: 'api/mcp/auth.ts',
+  applyAnonDiscoveryLimit: 'api/mcp/auth.ts',
+  applyFreeTierLimit: 'api/mcp/auth.ts',
+};
+
+function parseSource(file) {
+  const kind = /\.tsx?$/.test(file) ? ts.ScriptKind.TS : ts.ScriptKind.JS;
+  return ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, kind);
+}
+
+function calledNames(sf) {
+  const names = new Set();
+  const visit = (node) => {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      if (ts.isIdentifier(callee)) names.add(callee.text);
+      else if (ts.isPropertyAccessExpression(callee)) names.add(callee.name.text);
+    } else if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)) {
+      names.add(`new ${node.expression.text}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return names;
+}
+
+function hasDefaultExport(sf) {
+  return sf.statements.some((s) =>
+    ts.isExportAssignment(s)
+    || (ts.canHaveModifiers(s) && ts.getModifiers(s)?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword))
+    || (ts.isExportDeclaration(s) && s.exportClause && ts.isNamedExports(s.exportClause)
+      && s.exportClause.elements.some((e) => e.name.text === 'default')));
+}
+
+// Module specifiers the default export is taken from: `export { default } from`,
+// or a default-imported binding used by `export default <expr>`.
+function defaultExportSources(sf) {
+  const defaultImports = new Map();
+  for (const s of sf.statements) {
+    if (ts.isImportDeclaration(s) && !s.importClause?.isTypeOnly && s.importClause?.name) {
+      defaultImports.set(s.importClause.name.text, s.moduleSpecifier.text);
+    }
+  }
+  const sources = [];
+  for (const s of sf.statements) {
+    if (ts.isExportDeclaration(s) && s.moduleSpecifier && s.exportClause && ts.isNamedExports(s.exportClause)
+      && s.exportClause.elements.some((e) => e.name.text === 'default')) {
+      sources.push(s.moduleSpecifier.text);
+    }
+    if (ts.isExportAssignment(s)) {
+      const visit = (node) => {
+        if (ts.isIdentifier(node) && defaultImports.has(node.text)) sources.push(defaultImports.get(node.text));
+        ts.forEachChild(node, visit);
+      };
+      visit(s.expression);
+    }
+  }
+  return sources;
+}
+
+function resolveLocal(fromFile, spec) {
+  if (!spec.startsWith('.')) return null;
+  const base = normalize(join(dirname(fromFile), spec));
+  return [base, `${base}.ts`, `${base}.js`, `${base}.mjs`, base.replace(/\.js$/, '.ts'), join(base, 'index.ts'), join(base, 'index.js')]
+    .find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
+}
+
+const ADMISSION_NAMES = new Set([...ADMISSION_PRIMITIVES, ...Object.keys(ADMISSION_DELEGATES)]);
+
+// The admission function a route calls, with the routes it was reached through,
+// or null.
+export function routeAdmission(file, seen = new Set()) {
+  if (seen.has(file)) return null;
+  seen.add(file);
+  const sf = parseSource(file);
+  const hit = [...calledNames(sf)].find((n) => ADMISSION_NAMES.has(n));
+  if (hit) return hit;
+  for (const spec of defaultExportSources(sf)) {
+    const target = resolveLocal(file, spec);
+    if (!target || !hasDefaultExport(parseSource(target))) continue;
+    const via = routeAdmission(target, seen);
+    if (via) return `${via} via ${relative(dirname(file), target)}`;
+  }
+  return null;
+}
+
+// Every deployed standalone route: a file under api/ with a default export,
+// skipping `_` helpers and tests, which Vercel does not serve.
+export function listStandaloneRoutes(root = ROOT) {
+  const routes = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('_') || entry.name === 'node_modules') continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!/\.(js|mjs|ts)$/.test(entry.name) || /\.test\.|\.d\.ts$/.test(entry.name)) continue;
+      if (hasDefaultExport(parseSource(full))) routes.push(relative(root, full));
+    }
+  };
+  walk(join(root, 'api'));
+  return routes.sort();
+}
+
+export function auditStandaloneRouteAdmission(exempt, root = ROOT) {
+  const routes = listStandaloneRoutes(root);
+  const admission = new Map(routes.map((r) => [r, routeAdmission(join(root, r))]));
+  const routeSet = new Set(routes);
+  const problems = [];
+  for (const [name, module] of Object.entries(ADMISSION_DELEGATES)) {
+    const path = join(root, module);
+    const sf = existsSync(path) ? parseSource(path) : null;
+    const defines = sf && new RegExp(`export\\s+(async\\s+)?function\\s+${name}\\b`).test(sf.text);
+    const calls = sf && [...calledNames(sf)].some((n) => ADMISSION_PRIMITIVES.has(n));
+    if (!defines || !calls) problems.push(`ADMISSION_DELEGATES.${name}: ${module} must export it and call an admission primitive`);
+  }
+  const bare = routes.filter((r) => !admission.get(r) && !(r in exempt));
+  const staleExempt = Object.keys(exempt).filter((r) => !routeSet.has(r) || admission.get(r));
+  return { routes, admission, bare, staleExempt, problems };
 }
 
 async function main() {
@@ -315,12 +465,38 @@ async function main() {
     process.exit(1);
   }
 
+  const exempt = rateLimitPolicyModule.STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION;
+  if (!exempt || typeof exempt !== 'object') {
+    console.error(`✗ ${RATE_LIMIT_SRC} no longer exports STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION.`);
+    process.exit(1);
+  }
+  const admissionAudit = auditStandaloneRouteAdmission(exempt);
+  if (admissionAudit.problems.length > 0 || admissionAudit.bare.length > 0 || admissionAudit.staleExempt.length > 0) {
+    for (const problem of admissionAudit.problems) console.error(`✗ ${problem}`);
+    if (admissionAudit.bare.length > 0) {
+      console.error('✗ standalone route(s) run no caller admission:\n');
+      for (const route of admissionAudit.bare) console.error(`  - ${route}`);
+      console.error('\nCall checkRateLimit, checkScopedRateLimit or checkFailClosedScopedIpRateLimit in the');
+      console.error('route before any Clerk, Convex, Redis, relay or provider work. A call inside an');
+      console.error('imported helper does not count. If the route needs no limit, list it in');
+      console.error('STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION (server/_shared/rate-limit.ts) with the reason.\n');
+    }
+    if (admissionAudit.staleExempt.length > 0) {
+      console.error('✗ STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION entries that are not bare routes; delete them:\n');
+      for (const route of admissionAudit.staleExempt) console.error(`  - ${route}`);
+      console.error('');
+    }
+    process.exit(1);
+  }
+
   console.log(
-    `✓ rate-limit policies clean: ${keys.length} policies validated against ${gatewayRoutes.size} gateway routes + ${edgeRoutes.size} edge-function exceptions; ${failClosedRequired.length} fail-closed requirements, ${globalFallbackReadRoutes.length} global-fallback read decisions, and ${nonGetRoutes.length} non-GET routes (${mutationFallbackExempt.length} explicitly exempt) audited.`,
+    `✓ rate-limit policies clean: ${keys.length} policies validated against ${gatewayRoutes.size} gateway routes + ${edgeRoutes.size} edge-function exceptions; ${failClosedRequired.length} fail-closed requirements, ${globalFallbackReadRoutes.length} global-fallback read decisions, ${nonGetRoutes.length} non-GET routes (${mutationFallbackExempt.length} explicitly exempt), and ${admissionAudit.routes.length} standalone routes (${Object.keys(exempt).length} without caller admission, ${Object.values(exempt).filter((d) => d.debt).length} of them debt) audited.`,
   );
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
