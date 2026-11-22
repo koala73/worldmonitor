@@ -94,6 +94,7 @@ const cooldownDecisionSrc = readFileSync(
   resolve(repoRoot, 'scripts/lib/digest-cooldown-decision.mjs'),
   'utf8',
 );
+const briefStoreSrc = readFileSync(resolve(repoRoot, 'scripts/lib/brief-l10n.mjs'), 'utf8');
 const seedDigestSrc = readFileSync(
   resolve(repoRoot, 'scripts/seed-digest-notifications.mjs'),
   'utf8',
@@ -913,8 +914,8 @@ describe('news digest methodology parity', () => {
   it('documents brief Redis slot keys and supported digest cadences', () => {
     const latestBriefApiHeader = latestBriefApiSrc.match(/^\/\*\*[\s\S]*?\*\//)?.[0] ?? '';
     assert.ok(
-      seedDigestSrc.includes('const key = `brief:${userId}:${issueSlot}`') &&
-        seedDigestSrc.includes('const latestPointerKey = `brief:latest:${userId}`'),
+      briefStoreSrc.includes("['SETEX', `brief:${userId}:${issueSlot}`") &&
+        briefStoreSrc.includes("['SETEX', `brief:latest:${userId}`"),
       'digest cron must still write slot-keyed brief envelope and latest pointer',
     );
     assert.ok(
