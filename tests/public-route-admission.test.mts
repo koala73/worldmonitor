@@ -110,6 +110,8 @@ for (const route of ROUTES) {
         limiterMode = 'outage';
         const response = await call(route);
         assert.equal(response.status, 503);
+        assert.equal(response.headers.get('X-RateLimit-Mode'), 'degraded');
+        assert.ok(response.headers.get('Retry-After'));
         assert.deepEqual(backend, []);
       });
     } else {

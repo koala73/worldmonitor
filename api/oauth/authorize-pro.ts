@@ -375,10 +375,14 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   // retryable error. A DCR lookup has no such dependency and stays in step 5.
   const limited = await deps.rateLimit(req, grantPayload.userId);
   if (limited) {
-    const retryAfter = limited.headers.get('Retry-After');
+    const forwarded: Record<string, string> = {};
+    for (const name of ['Retry-After', 'X-RateLimit-Mode']) {
+      const value = limited.headers.get(name);
+      if (value) forwarded[name] = value;
+    }
     return limited.status === 429
-      ? htmlError('Too Many Requests', 'Too many authorization attempts. Please wait a few minutes and start over from your dashboard.', 429, retryAfter ? { 'Retry-After': retryAfter } : {})
-      : htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.', 503);
+      ? htmlError('Too Many Requests', 'Too many authorization attempts. Please wait a few minutes and start over from your dashboard.', 429, forwarded)
+      : htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.', limited.status, forwarded);
   }
 
   let preResolved: { clientId: string; result: Awaited<ReturnType<typeof resolveOAuthClient>> } | null = null;
