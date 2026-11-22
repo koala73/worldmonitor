@@ -1232,7 +1232,6 @@ export const STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION: Record<string, Standalo
   'api/seed-contract-probe.ts': { reason: 'Requires x-probe-secret to match RELAY_SHARED_SECRET before any probe runs.' },
   'api/seed-health.js': { reason: 'Requires an enterprise operator key, checked locally, before any Redis read.' },
   'api/opensky.js': { reason: 'Requires an enterprise operator key, or the local sidecar key on its loopback hop, before the relay call.' },
-  'api/brief/[userId]/[issueDate].ts': { reason: 'Requires a valid HMAC brief token issued to the recipient before any Redis work.' },
   'api/download.js': { reason: 'CDN-cached release redirect; a cache bypass costs one Redis GET on a fixed key, and GitHub is called only when that key is empty.' },
   'api/version.js': { reason: 'CDN-cached release version; a cache bypass costs one Redis GET on a fixed key, and GitHub is called only when that key is empty.' },
   'api/gpsjam.js': { reason: 'CDN-cached seeded data; a cache bypass costs one Redis GET on a fixed key.' },
@@ -1241,11 +1240,6 @@ export const STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION: Record<string, Standalo
   'api/miit-news.js': { reason: 'CDN-cached feed; a cache bypass costs one Redis GET on a fixed key, and MIIT is fetched only when that key is empty.' },
   'api/product-catalog.js': { reason: 'CDN-cached catalog; a cache bypass costs one Redis GET on product-catalog:v3, and Dodo is called only when that key is empty. DELETE is secret-gated.' },
   'api/health.js': { reason: 'Uptime monitors poll it, so a limit would page on-call. It serves the cached verdict first; a refresh takes a Redis SET NX lock, so one sweep runs at a time.' },
-  'api/correlation-runtime-mode.js': { debt: true, reason: 'Anonymous, no-store; each call is one Redis GET on a fixed key.' },
-  'api/brief/public/[hash].ts': { debt: true, reason: 'Anonymous; each call is one Redis GET on a caller-chosen key.' },
-  'api/md-twin.ts': { debt: true, reason: 'Anonymous; each call fetches a caller-chosen page from our own origin.' },
-  'api/brief/carousel/[userId]/[issueDate]/[page].ts': { debt: true, reason: 'Requires an HMAC brief token, but one token allows unlimited image renders, each with Redis reads, and extra query values bypass the CDN.' },
-  'api/oauth/authorize-pro.ts': { debt: true, reason: 'Requires an HMAC grant, but grants go to any signed-in account; each valid grant runs a Redis GETDEL and issues a token.' },
 };
 
 const endpointLimiters = new Map<string, Ratelimit>();
