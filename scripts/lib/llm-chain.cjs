@@ -31,7 +31,7 @@ function stripReasoningPreamble(text) {
 const ANTHROPIC_DEFAULT_MODEL = 'claude-opus-5-5';
 const ANTHROPIC_THINKING_HEADROOM_TOKENS = 4_096;
 
-async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxTokens, timeout }) {
+async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxTokens, timeout, jsonSchema }) {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey, maxRetries: 0, fetch: (...args) => globalThis.fetch(...args) });
   const response = await client.messages.create({
@@ -39,7 +39,9 @@ async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxToken
     max_tokens: maxTokens + ANTHROPIC_THINKING_HEADROOM_TOKENS,
     ...(systemPrompt ? { system: systemPrompt } : {}),
     messages: [{ role: 'user', content: userPrompt }],
-    output_config: { effort: 'low' },
+    // A schema constrains the reply to bare JSON, as `response_format` does on
+    // OpenRouter; without it a model may reason in prose before the object.
+    output_config: { effort: 'low', ...(jsonSchema ? { format: { type: 'json_schema', schema: jsonSchema } } : {}) },
     fallbacks: 'default',
   }, { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, timeout, signal: AbortSignal.timeout(timeout ?? 60_000) });
   const text = response.stop_reason === 'refusal'
@@ -137,6 +139,8 @@ const LLM_PROVIDERS = [
  * @param {Record<string, string>} [opts.modelOverrides] - Per-provider model override, keyed by provider name
  * @param {Record<string, unknown>} [opts.extraBody] - Request fields added to every OpenAI-compatible
  *   attempt after the provider's own (e.g. `reasoning`, `response_format`). Not sent to `invoke` providers.
+ * @param {Record<string, unknown>} [opts.jsonSchema] - JSON schema for the reply, sent to `invoke`
+ *   providers (anthropic) as structured output. OpenAI-compatible attempts take theirs from `extraBody`.
  * @param {string} [opts.stage] - llm_call telemetry surface tag (#4944 U5)
  * @returns {Promise<string|null>} Generated text, or null if all providers fail
  */
@@ -150,6 +154,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     skipProviders,
     modelOverrides,
     extraBody,
+    jsonSchema,
     stage = 'llm-chain',
   } = opts;
   const allowedSet = allowedProviders ? new Set(allowedProviders) : null;
@@ -193,7 +198,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     try {
       if (provider.invoke) {
         const result = await provider.invoke({
-          apiKey: envVal, model, systemPrompt, userPrompt, maxTokens, timeout,
+          apiKey: envVal, model, systemPrompt, userPrompt, maxTokens, timeout, jsonSchema,
         });
         if (result.finishReason === 'max_tokens') {
           console.warn(`[llm-chain] ${provider.name}: length-limited response, trying next provider`);
