@@ -692,6 +692,7 @@ export class GlobeMap {
   // Click callbacks
   private onNewsClick?: (item: Pick<NewsLocationInput, 'article' | 'title'>) => void;
   private onHotspotClickCb: ((h: Hotspot) => void) | null = null;
+  private onTimeRangeChangeCb: ((r: TimeRange) => void) | null = null;
 
   // Auto-rotate timer (like Sentinel: resume after 60 s idle)
   private autoRotateTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1145,6 +1146,7 @@ export class GlobeMap {
     if (this.chrome) {
       this.createControls();
       this.createLayerToggles();
+      this.createTimeSlider();
     }
 
     // Load static datasets
@@ -2329,6 +2331,26 @@ export class GlobeMap {
     });
     this.zoomControlsEl = el.querySelector('.zoom-controls');
     if (this.mountedMapControl) this.zoomControlsEl?.append(this.mountedMapControl);
+  }
+
+  private createTimeSlider(): void {
+    const ranges: TimeRange[] = ['1h', '6h', '24h', '48h', '7d', 'all'];
+    const slider = document.createElement('div');
+    slider.className = 'time-slider deckgl-time-slider globe-time-slider';
+    setTrustedHtml(slider, trustedHtml(`
+      <div class="time-options">
+        ${ranges.map(range => `<button class="time-btn ${this.timeRange === range ? 'active' : ''}" data-range="${range}">${range === 'all' ? t('components.deckgl.timeAll') : range}</button>`).join('')}
+      </div>`, 'static time range buttons'));
+    this.container.appendChild(slider);
+    slider.querySelectorAll<HTMLElement>('.time-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.setTimeRange(btn.dataset.range as TimeRange));
+    });
+  }
+
+  private updateTimeSliderButtons(): void {
+    this.container.querySelectorAll<HTMLElement>('.globe-time-slider .time-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.range === this.timeRange);
+    });
   }
 
   private zoomInGlobe(): void {
@@ -3720,6 +3742,8 @@ export class GlobeMap {
 
   public setTimeRange(range: TimeRange): void {
     this.timeRange = range;
+    this.onTimeRangeChangeCb?.(range);
+    this.updateTimeSliderButtons();
     this.flushMarkers();
   }
 
@@ -4465,7 +4489,7 @@ export class GlobeMap {
     this.flushMarkers();
   }
   public onHotspotClicked(cb: (h: Hotspot) => void): void { this.onHotspotClickCb = cb; }
-  public onTimeRangeChanged(_cb: (r: TimeRange) => void): void {}
+  public onTimeRangeChanged(cb: (r: TimeRange) => void): void { this.onTimeRangeChangeCb = cb; }
   public onStateChanged(cb: (s: MapContainerState) => void): void { this.onStateChangeCb = cb; }
 
   private async applyEnhancedVisuals(): Promise<void> {

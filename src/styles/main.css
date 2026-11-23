@@ -31598,6 +31598,26 @@ body.map-width-resizing {
   }
 }
 
+/* The globe's layer list sits top-left, so its time range goes bottom-left. */
+.globe-mode > .globe-time-slider {
+  top: auto;
+  bottom: 10px;
+}
+
+/* The phone rule above only re-shows the SVG map's layer list; the 3D globe
+   needs its own, or it has no Layers control at all (#11157). */
+@media (max-width: 768px) {
+  body:not(.live-news-fullscreen-active) .globe-mode > .layer-toggles.map-control-panel,
+  body.map-fullscreen-active .globe-mode > .layer-toggles.map-control-panel {
+    display: flex !important;
+  }
+
+  .globe-mode > .globe-time-slider {
+    right: auto;
+    bottom: 34px;
+  }
+}
+
 /* Keep the existing 48px touch targets; mouse users can use a compact row. */
 @media (pointer: fine) {
   :has(> .layer-toggles.map-control-compact) > .deckgl-time-slider {

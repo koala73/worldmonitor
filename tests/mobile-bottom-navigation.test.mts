@@ -11,6 +11,7 @@ import {
 const layout = readFileSync(new URL('../src/app/panel-layout.ts', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/styles/main.css', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const globe = readFileSync(new URL('../src/components/GlobeMap.ts', import.meta.url), 'utf8');
 
 /**
  * Records the effect sequence `reconcileOverlayForTab` performs. The ORDER is
@@ -213,5 +214,17 @@ describe('mobile P0 navigation shell (#5201)', () => {
     assert.match(css, /\.map-section\.live-news-fullscreen \{\s*height: auto !important;/);
     // The ruler's panel does not fit the strip, so it is hidden there only.
     assert.match(css, /\.map-section:not\(\.live-news-fullscreen\) \.map-distance-control \{\s*display: none;/);
+  });
+});
+
+describe('3D globe controls on phones (#11157)', () => {
+  it('re-shows the globe layer list that the blanket phone rule hides', () => {
+    assert.match(css, /body:not\(\.live-news-fullscreen-active\) \.globe-mode > \.layer-toggles\.map-control-panel,\s*body\.map-fullscreen-active \.globe-mode > \.layer-toggles\.map-control-panel \{\s*display: flex !important;/);
+  });
+
+  it('gives the globe a time range wired to MapContainer', () => {
+    assert.match(globe, /this\.createLayerToggles\(\);\s*this\.createTimeSlider\(\);/);
+    assert.match(globe, /onTimeRangeChanged\(cb: \(r: TimeRange\) => void\): void \{ this\.onTimeRangeChangeCb = cb; \}/);
+    assert.match(globe, /this\.onTimeRangeChangeCb\?\.\(range\);\s*this\.updateTimeSliderButtons\(\);/);
   });
 });
