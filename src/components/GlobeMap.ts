@@ -4274,7 +4274,7 @@ export class GlobeMap {
       _kind: 'fire' as const,
       _lat: f.lat,
       _lng: f.lon,
-      _time: markerTime(f.acq_date),
+      _time: markerTime(f.detected_at ?? f.acq_date),
       id: (f.id as string | undefined) ?? `${f.lat},${f.lon}`,
       region: f.region ?? '',
       brightness: f.brightness ?? 330,
