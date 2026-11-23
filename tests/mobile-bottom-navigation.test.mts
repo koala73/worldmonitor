@@ -214,4 +214,16 @@ describe('mobile P0 navigation shell (#5201)', () => {
     // The ruler's panel does not fit the strip, so it is hidden there only.
     assert.match(css, /\.map-section:not\(\.live-news-fullscreen\) \.map-distance-control \{\s*display: none;/);
   });
+
+  it('lets the open phone layer list fill the map and scroll instead of zooming it (#11157)', () => {
+    const rule = css.match(/\n  \.layer-toggles\.map-control-panel:not\(\.deckgl-layer-toggles\):not\(\.map-control-collapsed\) \{([^}]*)\}/);
+    assert.ok(rule, 'mobile open layer list rule');
+    assert.match(rule[1], /top: 8px;/);
+    assert.match(rule[1], /bottom: 8px;/);
+    assert.match(rule[1], /max-height: none;/);
+    assert.match(rule[1], /overflow-y: auto;/);
+    assert.match(rule[1], /overscroll-behavior: contain;/);
+    const map = readFileSync(new URL('../src/components/Map.ts', import.meta.url), 'utf8');
+    assert.match(map, /'wheel',\s*\(e\) => \{\s*\/\/[^\n]*\n\s*if \(e\.target instanceof Element && e\.target\.closest\('\.layer-toggles[^']*'\)\) return;\s*e\.preventDefault\(\);/);
+  });
 });
