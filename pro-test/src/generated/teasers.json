@@ -3,40 +3,45 @@
   "capturedAt": "2026-11-23",
   "headlines": [
     {
-      "title": "Drone strikes hit homes, United Nations building in Sudan's capital",
-      "source": "France 24",
-      "url": "https://www.france24.com/en/video/20261123-drone-strikes-hit-homes-united-nations-building-in-sudan-s-capital",
-      "publishedAt": 1795394616000
+      "title": "All three ‘flying objects’ that fell in Poland turned out to be Russian X-101 cruise missiles",
+      "source": "Meduza",
+      "url": "https://meduza.io/en/news/2026/11/23/all-three-flying-objects-that-fell-in-poland-turned-out-to-be-russian-x-101-cruise-missiles",
+      "publishedAt": 1795425834000
     },
     {
-      "title": "A Landmark Genocide Ruling",
-      "source": "New York Times World",
-      "url": "https://www.nytimes.com/2026/11/22/world/genocide-myanmar-un-climate-talks.html",
-      "publishedAt": 1795379719000
+      "title": "All three ‘flying objects’ that crashed in Poland were Russian Kh-101 missiles",
+      "source": "NV EN",
+      "url": "https://english.nv.ua/nation/all-three-flying-objects-that-crashed-in-poland-were-russian-kh-101-missiles-50661596.html",
+      "publishedAt": 1795422900000
     },
     {
-      "title": "Russian cargo ship ablaze in Baltic Sea after drone strike, crew evacuates",
-      "source": "Kaieteur News",
-      "url": "https://kaieteurnewsonline.com/2026/11/22/russian-cargo-ship-ablaze-in-baltic-sea-after-drone-strike-crew-evacuates/",
-      "publishedAt": 1795358544000
+      "title": "Électricité : l'Algérie veut reproduire au Soudan son coup de force du Niger",
+      "source": "La Nouvelle Tribune",
+      "url": "https://lanouvelletribune.info/2026/11/electricite-lalgerie-veut-reproduire-au-soudan-son-coup-de-force-du-niger/",
+      "publishedAt": 1795426429000
     },
     {
-      "title": "What just happened? Five-minute meltdown sends Oilers to shocking defeat",
-      "source": "Edmonton Journal",
-      "url": "https://edmontonjournal.com/sports/edmotnon-oilers-meltdown-loss-st-louis-blues",
-      "publishedAt": 1795404547000
+      "title": "The Myanmar general who went from overseeing a genocide to taking a top post in a military business empire",
+      "source": "Myanmar Now",
+      "url": "https://myanmar-now.org/en/news/the-myanmar-general-who-went-from-overseeing-a-genocide-to-taking-a-top-post-in-a-military-business-empire/",
+      "publishedAt": 1795424480000
     }
   ],
   "cii": [
     {
       "region": "YE",
-      "combinedScore": 82,
+      "combinedScore": 81,
       "trend": "TREND_DIRECTION_RISING"
     },
     {
       "region": "UA",
-      "combinedScore": 75,
-      "trend": "TREND_DIRECTION_STABLE"
+      "combinedScore": 79,
+      "trend": "TREND_DIRECTION_RISING"
+    },
+    {
+      "region": "IR",
+      "combinedScore": 72,
+      "trend": "TREND_DIRECTION_FALLING"
     },
     {
       "region": "SY",
@@ -47,18 +52,13 @@
       "region": "IL",
       "combinedScore": 70,
       "trend": "TREND_DIRECTION_STABLE"
-    },
-    {
-      "region": "IR",
-      "combinedScore": 70,
-      "trend": "TREND_DIRECTION_FALLING"
     }
   ],
   "chokepoints": [
     {
       "name": "Strait of Hormuz",
       "status": "red",
-      "disruptionScore": 90
+      "disruptionScore": 85
     },
     {
       "name": "Kerch Strait",
@@ -127,201 +127,201 @@
     {
       "symbol": "^VIX",
       "display": "VIX",
-      "price": 35.89,
-      "change": 26.2,
+      "price": 30.5,
+      "change": 7.24,
       "sparkline": [
-        24.27,
-        25.3,
-        24.48,
-        24.78,
-        22.72,
-        26.17,
-        27.01,
+        21.96,
+        22.53,
+        25.52,
+        27.94,
         28.21,
-        29.99,
-        32.15,
-        33.18,
-        35.89
+        29.57,
+        29.87,
+        30.05,
+        29.54,
+        31.71,
+        37.46,
+        30.5
       ]
     },
     {
       "symbol": "BTC",
       "display": "Bitcoin",
-      "price": 61091,
-      "change": 3.16,
+      "price": 61348,
+      "change": 1.11,
       "sparkline": [
-        56642.5425,
-        57894.2569,
+        57716.7893,
         58779.4274,
-        59959.5508,
-        60342.1953,
-        60099.3467,
+        59981.8431,
+        60372.7095,
+        60008.8339,
         58816.6999,
-        61080.0521,
-        60664.3493,
-        60753.7535,
+        60783.383,
+        60865.1012,
+        60688.1315,
         61011.5238,
-        60523.9633
+        61215.8681,
+        61397.8077
       ]
     },
     {
       "symbol": "ETH",
       "display": "Ethereum",
-      "price": 1724.99,
-      "change": 3.84,
+      "price": 1720.77,
+      "change": 0.97,
       "sparkline": [
-        1569.8436,
-        1628.0974,
+        1625.9988,
         1661.3025,
-        1680.9526,
-        1683.2859,
-        1681.2915,
+        1679.3752,
+        1685.6382,
+        1683.4892,
         1654.0778,
-        1715.9379,
-        1701.2264,
-        1712.6221,
+        1707.2784,
+        1711.1638,
+        1712.6308,
         1716.5013,
-        1703.8934
+        1730.5944,
+        1720.7702
       ]
     },
     {
       "symbol": "CL=F",
       "display": "WTI crude",
-      "price": 83.49,
-      "change": 0.1,
+      "price": 83.02,
+      "change": -0.47,
       "sparkline": [
-        82.7,
-        82.9,
-        82.54,
-        80.97,
-        82.3,
-        81.95,
-        81.77,
-        83.03,
-        83.99,
-        82.84,
-        83.01,
-        83.49
+        82.89,
+        81.38,
+        81.46,
+        82.04,
+        81.76,
+        82.41,
+        83.1,
+        83.58,
+        83.38,
+        83.67,
+        82.98,
+        83.02
       ]
     },
     {
       "symbol": "BZ=F",
       "display": "Brent",
-      "price": 90.02,
-      "change": 0.08,
+      "price": 89.35,
+      "change": -0.67,
       "sparkline": [
-        89.89,
-        89.85,
-        89.95,
-        88.06,
-        89.13,
-        89.1,
-        88.8,
-        89.4,
-        90.11,
-        89.33,
+        89.43,
         89.47,
-        90.02
+        87.88,
+        89.29,
+        88.18,
+        88.88,
+        89.7,
+        90.05,
+        89.71,
+        90.09,
+        89.41,
+        89.35
       ]
     },
     {
       "symbol": "GC=F",
       "display": "Gold",
-      "price": 3608.3,
-      "change": 2.64,
+      "price": 3617.9,
+      "change": 2.92,
       "sparkline": [
-        3525.3,
-        3521.8,
-        3563.4,
-        3569.2,
-        3575.2,
-        3582.3,
-        3547.4,
-        3506.9,
-        3520.5,
-        3573.3,
-        3583.3,
-        3608.3
+        3554.3,
+        3581.2,
+        3589.9,
+        3557.5,
+        3554.4,
+        3529,
+        3517.5,
+        3574.3,
+        3610.9,
+        3618.8,
+        3625.8,
+        3617.9
       ]
     },
     {
       "symbol": "HG=F",
       "display": "Copper",
-      "price": 5.523,
-      "change": 0.69,
+      "price": 5.537,
+      "change": 0.95,
       "sparkline": [
-        5.5095,
-        5.458,
-        5.5405,
-        5.5445,
+        5.5185,
+        5.548,
+        5.553,
+        5.503,
+        5.517,
+        5.4775,
+        5.4565,
+        5.557,
         5.54,
-        5.555,
-        5.491,
-        5.47,
-        5.45,
-        5.5415,
-        5.4345,
-        5.5225
+        5.544,
+        5.526,
+        5.5375
       ]
     },
     {
       "symbol": "NG=F",
       "display": "Nat gas",
-      "price": 3.618,
-      "change": -3.47,
+      "price": 3.488,
+      "change": -6.94,
       "sparkline": [
-        3.249,
-        3.239,
-        3.185,
-        3.579,
-        3.573,
-        3.633,
-        3.66,
-        3.655,
-        3.772,
-        3.63,
-        3.614,
-        3.618
+        3.216,
+        3.574,
+        3.584,
+        3.609,
+        3.619,
+        3.664,
+        3.738,
+        3.786,
+        3.628,
+        3.623,
+        3.562,
+        3.488
       ]
     },
     {
       "symbol": "EURUSD=X",
       "display": "EUR/USD",
-      "price": 1.0982,
-      "change": 0.06,
+      "price": 1.0981,
+      "change": 0.05,
       "sparkline": [
+        1.0979,
+        1.0965,
         1.0976,
+        1.0985,
+        1.0984,
+        1.0971,
+        1.0966,
         1.0983,
         1.0989,
-        1.0975,
-        1.0965,
-        1.0997,
-        1.0983,
-        1.0972,
-        1.0967,
-        1.0981,
-        1.0988,
-        1.0982
+        1.099,
+        1.1005,
+        1.0981
       ]
     },
     {
       "symbol": "USDJPY=X",
       "display": "USD/JPY",
-      "price": 158.973,
-      "change": 0.29,
+      "price": 159.105,
+      "change": 0.37,
       "sparkline": [
-        159.222,
-        159.161,
-        159.205,
-        158.993,
-        158.731,
-        158.646,
-        158.672,
-        158.747,
-        158.462,
-        158.925,
-        158.842,
-        158.973
+        159.172,
+        158.715,
+        158.827,
+        158.75,
+        158.735,
+        158.867,
+        158.491,
+        158.841,
+        158.947,
+        158.984,
+        158.903,
+        159.105
       ]
     }
   ]
