@@ -361,6 +361,11 @@ export class LiveNewsPanel extends Panel {
     saveChannelsToStorage(this.channels);
   }
 
+  /** Playing with the sound on: someone is listening, whether or not they are looking. */
+  private isAudible(): boolean {
+    return this.isPlaying && !this.isMuted && this.audioAvailability !== 'unavailable';
+  }
+
   private stopForIdle(idleAfterMs: number): void {
     if (this.isFullscreen || !this.isPlaying || !getActiveLiveMedia('live-news')) return;
     this.idleStoppedAfterMs = idleAfterMs;
@@ -393,7 +398,7 @@ export class LiveNewsPanel extends Panel {
 
   /** Tells the update reloader whether this panel is playing with sound; it never reloads over that. */
   private reportAudibleMedia(): void {
-    setAudibleMedia('live-news', this.isPlaying && !this.isMuted && this.audioAvailability !== 'unavailable');
+    setAudibleMedia('live-news', this.isAudible());
   }
 
   private updateLiveIndicator(): void {

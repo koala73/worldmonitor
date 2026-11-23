@@ -1,7 +1,14 @@
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { findReloadBlockingModal } from '@/utils/open-modal';
 import { markPageUnloading } from '@/bootstrap/page-unload-signal';
-import { currentSoftReloadHold, type SoftReloadHold } from '@/bootstrap/soft-reload-policy';
+import { SOFT_RELOAD_MIN_PAGE_AGE_MS, currentSoftReloadHold, type SoftReloadHold } from '@/bootstrap/soft-reload-policy';
+
+/**
+ * How long a dismissed "Update Available" toast stays away. Deploys land about
+ * hourly on a working day and a visible tab is no longer reloaded for them, so
+ * without this the toast would return after every one.
+ */
+export const TOAST_SNOOZE_MS = SOFT_RELOAD_MIN_PAGE_AGE_MS;
 interface VisibleElementLike {
   checkVisibility?: () => boolean;
   getClientRects?: () => { length: number };
@@ -70,6 +77,8 @@ export interface SwUpdateHandlerOptions {
    * Default: the live page's sound and age (src/bootstrap/soft-reload-policy.ts).
    */
   softReloadHold?: () => SoftReloadHold | null;
+  /** Override the clock (for tests). Default: Date.now. */
+  now?: () => number;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +120,8 @@ function appendDebugLog(entry: Record<string, unknown>): void {
  * 2. Session-restore ghost reload: session-restore briefly marks tabs visible for
  *    one animation frame, which would allow a hidden-tab auto-reload prematurely.
  *
- * Dismissing one version never suppresses toasts for future deploys.
+ * Dismissing the toast keeps it away for TOAST_SNOOZE_MS; a deploy after that
+ * shows it again.
  *
  * The tab-hide auto-reload also waits for the shared quiet rules: nothing
  * playing with sound, and a page old enough that one deploy after another
@@ -137,6 +147,9 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
   })();
   const version = options.version;
   const softReloadHold = options.softReloadHold ?? (() => currentSoftReloadHold(doc));
+  const now = options.now ?? Date.now;
+  /** No toast before this time: the viewer dismissed one recently. */
+  let snoozedUntil = 0;
 
   function logSw(event: string, extra: Record<string, unknown> = {}): void {
     if (!debugEnabled) return;
@@ -269,6 +282,7 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
         dwellTimerId = null;
         currentDwellCancel = null;
         dismissed = true;
+        snoozedUntil = now() + TOAST_SNOOZE_MS;
         logSw('dismiss-clicked');
         doc.removeEventListener('visibilitychange', onHidden);
         currentOnHidden = null;
@@ -290,6 +304,10 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
     logSw('controllerchange', { hadController });
     if (!hadController) {
       hadController = true;
+      return;
+    }
+    if (now() < snoozedUntil) {
+      logSw('toast-snoozed');
       return;
     }
     showToast();

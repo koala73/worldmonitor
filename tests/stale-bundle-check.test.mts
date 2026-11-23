@@ -923,6 +923,45 @@ describe('installStaleBundleCheck — deploys that keep the compatibility marker
     assert.equal(env.reloadCalls, 1);
   });
 
+  it('treats a marker that stays unreadable as a breaking deploy, so a broken marker path cannot pin tabs to an old build', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    env.compatResponse = { status: 503, body: 'Service Unavailable' };
+    install(env);
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0, 'two failed reads are still a blip');
+
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.compatCalls.length, 3);
+    assert.equal(env.reloadCalls, 1, 'the third consecutive failed read for one deploy reloads');
+  });
+
+  it('counts unreadable markers per deploy, and a readable one clears the count', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    env.compatResponse = 'network-error';
+    install(env);
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireFocus(env);
+
+    // A newer deploy lands: its marker has not failed yet.
+    env.fetchResponse.body = 'sha-newer-deploy';
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0, 'two failures on each of two deploys do not add up to three');
+
+    env.compatResponse = { status: 200, body: RUNNING_COMPAT };
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0, 'a readable, unchanged marker settles it');
+  });
+
   it('reads the marker once per deployed hash, with cache-bust and no-store', async () => {
     const env = staleEnv();
     env.softHold = 'visible';

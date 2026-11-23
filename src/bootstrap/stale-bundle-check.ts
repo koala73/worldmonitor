@@ -157,6 +157,14 @@ const DEFAULT_MIN_INTERVAL_MS = 60_000;
 const DEFAULT_PERIODIC_INTERVAL_MS = 10 * 60_000;
 const DEFAULT_WEDGE_AFTER_DEFERRALS = 10;
 
+/**
+ * Consecutive unreadable marker reads for one deploy before it is treated as
+ * breaking. One or two are a blip. A path that keeps failing (a rewrite, a
+ * firewall rule, a broken deploy) would otherwise pin every tab to its old
+ * build, including across the breaking deploy the marker exists to announce.
+ */
+const MARKER_UNREADABLE_LIMIT = 3;
+
 /** What a deployed build means for a tab running an older one. */
 type DeployKind = 'breaking' | 'compatible';
 
@@ -258,6 +266,8 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
    * for it once, not on every trigger.
    */
   let classified: { readonly hash: string; readonly kind: DeployKind } | null = null;
+  /** Consecutive unreadable marker reads for one deployed hash. */
+  let unreadable: { readonly hash: string; readonly count: number } | null = null;
 
   /**
    * Reload now, or remember the debt and return while a modal is on screen.
@@ -319,27 +329,35 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
     reload();
   };
 
-  /**
-   * Read the deployed compatibility marker. Null means "could not tell": a
-   * network failure or a server error says nothing about the deploy, and
-   * reloading on it would bring back a reload per blip.
-   */
-  const classifyDeploy = async (deployedHash: string, t: number): Promise<DeployKind | null> => {
-    if (classified?.hash === deployedHash) return classified.kind;
-    let kind: DeployKind;
+  /** Read the deployed marker. Null when the read failed in a way that says nothing about the deploy. */
+  const readDeployKind = async (t: number): Promise<DeployKind | null> => {
     try {
       const res = await fetchImpl(`/client-compat.txt?t=${t}`, { cache: 'no-store' });
-      if (res.ok) {
-        kind = parseCompatMarker(await res.text()) === currentCompat ? 'compatible' : 'breaking';
-      } else if (res.status === 404) {
-        // The deploy publishes no marker: a build from before it existed.
-        kind = 'breaking';
-      } else {
-        return null;
-      }
+      if (res.ok) return parseCompatMarker(await res.text()) === currentCompat ? 'compatible' : 'breaking';
+      // The deploy publishes no marker: a build from before it existed.
+      if (res.status === 404) return 'breaking';
+      return null;
     } catch {
       return null;
     }
+  };
+
+  /**
+   * What the deployed build means for this tab. Null means "could not tell
+   * yet": a network failure or a server error says nothing about the deploy,
+   * and reloading on it would bring back a reload per blip. It stops being a
+   * blip at MARKER_UNREADABLE_LIMIT consecutive failures for the same deploy.
+   */
+  const classifyDeploy = async (deployedHash: string, t: number): Promise<DeployKind | null> => {
+    if (classified?.hash === deployedHash) return classified.kind;
+    let kind = await readDeployKind(t);
+    if (kind === null) {
+      const count = unreadable?.hash === deployedHash ? unreadable.count + 1 : 1;
+      unreadable = { hash: deployedHash, count };
+      if (count < MARKER_UNREADABLE_LIMIT) return null;
+      kind = 'breaking';
+    }
+    unreadable = null;
     classified = { hash: deployedHash, kind };
     return kind;
   };

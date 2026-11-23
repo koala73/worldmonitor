@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installSwUpdateHandler, RELOAD_BLOCKING_MODAL_SELECTOR, readServiceWorkerContainer } from '../src/bootstrap/sw-update.ts';
+import { installSwUpdateHandler, RELOAD_BLOCKING_MODAL_SELECTOR, TOAST_SNOOZE_MS, readServiceWorkerContainer } from '../src/bootstrap/sw-update.ts';
 import { RELOAD_POLICY_ATTR } from '../src/utils/open-modal.ts';
 import { _resetPageUnloadSignalForTests, isPageUnloading } from '../src/bootstrap/page-unload-signal.ts';
 import type { SoftReloadHold } from '../src/bootstrap/soft-reload-policy.ts';
@@ -198,9 +198,10 @@ function makeEnv(): FakeEnv {
 
 function install(
   env: FakeEnv,
-  options: { debug?: boolean; softReloadHold?: () => SoftReloadHold | null } = {},
+  options: { debug?: boolean; softReloadHold?: () => SoftReloadHold | null; now?: () => number } = {},
 ) {
   installSwUpdateHandler({
+    ...(options.now ? { now: options.now } : {}),
     ...(options.debug ? { debug: true } : {}),
     // Nothing holds the reload unless a test says so; the real default reads
     // the page's age and sound, which a fake document does not model.
@@ -409,9 +410,31 @@ describe('installSwUpdateHandler', () => {
 
   // --- PRIMARY: multi-deploy same-tab scenario --------------------------------
 
-  it('shows a new toast for deploy N+1 after deploy N was dismissed', () => {
+  it('does NOT show the toast again for a later deploy while a dismissal is still fresh', () => {
+    let clock = 1_000_000;
     env.swContainer._controller = {};
-    install(env);
+    install(env, { now: () => clock });
+
+    env.swContainer.fireControllerChange();
+    clickToastButton(env, 'dismiss');
+
+    // Deploys land roughly hourly on a working day. Each one must not bring
+    // the notice back to a viewer who just closed it.
+    clock += 60 * 60_000;
+    env.swContainer.fireControllerChange();
+    clock += TOAST_SNOOZE_MS - 60 * 60_000 - 1;
+    env.swContainer.fireControllerChange();
+    assert.equal(env.appendedToasts.length, 1, 'no new toast inside the snooze');
+
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 0, 'and no auto-reload from a toast that was never shown');
+  });
+
+  it('shows a new toast for deploy N+1 after deploy N was dismissed, once the snooze has passed', () => {
+    let clock = 1_000_000;
+    env.swContainer._controller = {};
+    install(env, { now: () => { const t = clock; clock += TOAST_SNOOZE_MS; return t; } });
 
     // Deploy N
     env.swContainer.fireControllerChange();
@@ -427,8 +450,9 @@ describe('installSwUpdateHandler', () => {
   });
 
   it('hidden-tab fallback fires for deploy N+1 after deploy N was dismissed', () => {
+    let clock = 1_000_000;
     env.swContainer._controller = {};
-    install(env);
+    install(env, { now: () => { const t = clock; clock += TOAST_SNOOZE_MS; return t; } });
 
     // Deploy N — dismiss (dwell timer cleared)
     env.swContainer.fireControllerChange();
