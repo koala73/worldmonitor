@@ -3171,3 +3171,30 @@ describe('fetch failures while the page unloads (WORLDMONITOR-1AY)', () => {
   });
 });
 
+// ─── WORLDMONITOR-19D: worker throw forwarded to the page as `Uncaught TypeError` ─
+//
+// A NetCast TV browser without `String.prototype.replaceAll` crashed inside the
+// maplibre-gl worker chunk. WebKit forwards the worker's uncaught throw to the
+// page as a plain `Error` whose message carries the `Uncaught TypeError: `
+// prefix, which the vendor-internal TypeError rule did not recognise.
+describe('beforeSend — vendor worker TypeError forwarded with an `Uncaught` prefix (WORLDMONITOR-19D)', () => {
+  const MSG = 'Uncaught TypeError: t.slice(...).replaceAll is not a function';
+  const workerFrame = { filename: 'https://www.worldmonitor.app/assets/maplibre-gl-worker-Ab12Cd.js', lineno: 5, colno: 100, function: '?' };
+
+  it('drops it when the only frame is the maplibre worker chunk', () => {
+    assert.equal(beforeSend(makeEvent(MSG, 'Error', [workerFrame])), null);
+  });
+
+  it('keeps it when a first-party frame shares the stack', () => {
+    assert.ok(beforeSend(makeEvent(MSG, 'Error', [workerFrame, firstPartyFrame('/assets/main-AbC123.js', 'boot')])) !== null);
+  });
+
+  it('keeps it when the only frame is a first-party chunk', () => {
+    assert.ok(beforeSend(makeEvent(MSG, 'Error', [firstPartyFrame('/assets/main-AbC123.js', 'boot')])) !== null);
+  });
+
+  it('keeps a non-TypeError `Uncaught` message from the same worker chunk', () => {
+    assert.ok(beforeSend(makeEvent('Uncaught Error: worker failed', 'Error', [workerFrame])) !== null);
+  });
+});
+
