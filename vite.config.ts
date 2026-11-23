@@ -10,6 +10,7 @@ import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { closeExternalProxyRules, installE2eOutboundFetchGuard } from './shared/e2e-dev-network-guard';
 import { removeSourceMaps, shouldEmitPublicSourceMaps, viteSourcemapSetting } from './shared/source-map-policy';
 import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
@@ -1053,7 +1054,7 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const dashboardPrecache = createDashboardPrecache();
   const env = loadEnv(mode, process.cwd(), '');
   // Inject environment variables from .env files into process.env.
@@ -1071,6 +1072,8 @@ export default defineConfig(({ mode }) => {
       : 3000;
 
   const isE2E = process.env.VITE_E2E === '1';
+  // Installed before any dev handler loads, so every server-side fetch is guarded.
+  if (isE2E && command === 'serve') installE2eOutboundFetchGuard();
   const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
   const activeVariant = process.env.VITE_VARIANT || 'full';
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
@@ -1604,7 +1607,8 @@ export default defineConfig(({ mode }) => {
           '**/src-tauri/target/**',
         ],
       },
-      proxy: {
+      // E2E runs must not depend on live upstreams; see shared/e2e-dev-network-guard.ts.
+      proxy: closeExternalProxyRules(isE2E, {
         // Widget agent — forward to Railway relay for SSE streaming
         '/widget-agent': {
           target: 'https://proxy.worldmonitor.app',
@@ -1977,7 +1981,7 @@ export default defineConfig(({ mode }) => {
             });
           },
         },
-      },
+      }),
     },
   };
 });
