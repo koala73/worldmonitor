@@ -47,6 +47,22 @@ describe('buildPredictionContext relevance', () => {
     );
   });
 
+  it('does not match on the letter left over from a contraction or possessive', () => {
+    const markets = [
+      { title: 'Will Anthropic’s next model top the leaderboard?', yesPrice: 60, volume: 900_000 },
+      { title: "Will OpenAI's IPO happen in 2027?", yesPrice: 40, volume: 800_000 },
+      { title: 'Ukraine peace referendum scheduled by June 30, 2027?', yesPrice: 15, volume: 595_000 },
+    ];
+    assert.deepEqual(
+      titlesIn(buildPredictionContext("What's the outlook for Ukraine? Don't skip it.", { geopolitical: markets })),
+      ['Ukraine peace referendum scheduled by June 30, 2027?'],
+    );
+    assert.deepEqual(
+      titlesIn(buildPredictionContext('What’s the outlook for Ukraine?', { geopolitical: markets })),
+      ['Ukraine peace referendum scheduled by June 30, 2027?'],
+    );
+  });
+
   it('does not match a short word inside a longer one', () => {
     assert.equal(
       buildPredictionContext('war', { geopolitical: [{ title: 'Warsaw mayoral election 2027?', yesPrice: 40, volume: 10_000 }] }),

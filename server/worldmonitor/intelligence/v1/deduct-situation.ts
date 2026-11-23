@@ -65,7 +65,9 @@ const NON_TOPIC_WORDS = new Set([
 
 function topicWords(text: string): string[] {
   return [...new Set(text.toLowerCase().split(WORD_SPLIT))]
-    .filter((w) => w && !NON_TOPIC_WORDS.has(w) && !DIGITS_ONLY.test(w));
+    // One letter is never a topic: it is the "s" or "t" left by splitting
+    // "What's" or "don't" on the apostrophe.
+    .filter((w) => w.length > 1 && !NON_TOPIC_WORDS.has(w) && !DIGITS_ONLY.test(w));
 }
 
 // A shared prefix of 4+ letters pairs "iran" with "iranian" either way round;
