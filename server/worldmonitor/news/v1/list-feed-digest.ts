@@ -1153,8 +1153,10 @@ export async function fetchAndParseRss(
       const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0, attempt };
       // Our own deadline says nothing about the feed: caching it would make
       // the next builds serve an empty row for 5 minutes instead of fetching.
+      // Absent-only: a probe waits up to 16 s, and another build may have
+      // stored a healthy parse of this feed meanwhile.
       if (attempt.failure !== 'deadline-abort') {
-        await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+        await setCachedJsonIfAbsent(cacheKey, empty, CACHE_TTL_EMPTY_S);
       } else {
         scheduleFeedProbe(feed, variant);
       }

@@ -419,6 +419,36 @@ describe('deadline-aborted fetches', () => {
     assert.equal(upstreamCalls.length, 2, 'the next build serves the cached failure instead of waiting on the feed');
   });
 
+  it('keeps a healthy parse another build stored while the probe waited on a hanging feed', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const deadline = new AbortController();
+    redis = createRedisFetch({});
+    upstreamCalls = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (new URL(href).host === 'redis.example') return redis.fetchImpl(input, init);
+      if (href === FEED.url) {
+        upstreamCalls.push(new Headers(init?.headers));
+        return new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true });
+        });
+      }
+      throw new Error(`unexpected fetch ${href}`);
+    }) as typeof fetch;
+
+    const pending = fetchAndParseRss(FEED, VARIANT, deadline.signal);
+    while (upstreamCalls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+    deadline.abort();
+    await pending;
+    for (let i = 0; i < 200 && upstreamCalls.length < 2; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(upstreamCalls.length, 2, 'the probe is waiting on the feed');
+
+    seed(await parsed(['Fetched by another build']));
+    t.mock.timers.tick(8_000);
+    await __testing__.settleFeedProbes();
+    assert.equal(cachedEntry().items[0]?.title, 'Fetched by another build', 'a failed probe must not replace a healthy parse');
+  });
+
   it('caches a healthy feed the deadline cut early as healthy, not as failed', async () => {
     const deadline = new AbortController();
     let cut = true;
