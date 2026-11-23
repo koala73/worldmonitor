@@ -680,8 +680,9 @@ export class GlobeMap {
     }
   })();
   private imageryFootprintPolygons: GlobePolygon[] = [];
-  /** Footprints the last polygon flush drew, so scenes aging out of the time range get redrawn. */
-  private shownImageryFootprints = 0;
+  /** Timed paths and polygons the last flushes drew, so ones aging out of the time range get redrawn. */
+  private shownTimedPaths = 0;
+  private shownTimedPolygons = 0;
   private lastImageryCenter: { lat: number; lon: number } | null = null;
   private imageryFetchTimer: ReturnType<typeof setTimeout> | null = null;
   private imageryFetchVersion = 0;
@@ -1653,7 +1654,13 @@ export class GlobeMap {
 
     if (d._kind === 'cluster' && this.popup) {
       const source = this.clusterData.get(d.id);
-      const cluster = source && (this.vesselClusterInRange(source, this.timeRangeCutoff()) ?? source);
+      const cluster = source && this.vesselClusterInRange(source, this.timeRangeCutoff());
+      if (source && !cluster) {
+        // Its vessels aged out of the time range since the marker was drawn.
+        this.hideTooltip();
+        this.flushMarkers();
+        return;
+      }
       if (cluster) {
         const aRect = anchor.getBoundingClientRect();
         const cRect = this.container.getBoundingClientRect();
@@ -2597,9 +2604,8 @@ export class GlobeMap {
     // CSS2DRenderer repositions on every frame, so the total has to be bounded.
     const groups: GlobeMarkerGroup<GlobeMarker>[] = [];
     const cutoff = this.timeRangeCutoff();
-    if (this.layers.satellites && this.inTimeRange(this.imageryFootprintPolygons).length !== this.shownImageryFootprints) {
-      this.flushPolygons();
-    }
+    if (this.timedPaths().length !== this.shownTimedPaths) this.flushPaths();
+    if (this.timedPolygons().length !== this.shownTimedPolygons) this.flushPolygons();
     const add = (
       layer: string,
       markers: readonly GlobeMarker[],
@@ -2735,7 +2741,8 @@ export class GlobeMap {
       ? this.globePaths
       : this.globePaths.filter(p => p.pathType === 'cable' ? showCables : showPipelines);
     const orbitPaths = this.layers.satellites ? this.satelliteTrailPaths : [];
-    const stormPaths = this.layers.natural ? this.inTimeRange(this.stormTrackPaths) : [];
+    const stormPaths = this.timedPaths();
+    this.shownTimedPaths = stormPaths.length;
     (this.globe as any).pathsData([...paths, ...orbitPaths, ...stormPaths, ...this.orbitalOutlinePaths, ...this.orbitalTrackPaths, ...this.orbitalReplayPaths]);
   }
 
@@ -2764,6 +2771,17 @@ export class GlobeMap {
       this.reversedRingCache.set(key, cached);
     }
     return cached;
+  }
+
+  private timedPaths(): GlobePath[] {
+    return this.layers.natural ? this.inTimeRange(this.stormTrackPaths) : [];
+  }
+
+  private timedPolygons(): GlobePolygon[] {
+    return [
+      ...(this.layers.satellites ? this.inTimeRange(this.imageryFootprintPolygons) : []),
+      ...(this.layers.natural ? this.inTimeRange(this.stormConePolygons) : []),
+    ];
   }
 
   private inTimeRange<T extends { _time?: number | null }>(items: T[]): T[] {
@@ -2857,15 +2875,9 @@ export class GlobeMap {
       }
     }
 
-    if (this.layers.satellites) {
-      const footprints = this.inTimeRange(this.imageryFootprintPolygons);
-      this.shownImageryFootprints = footprints.length;
-      polys.push(...footprints);
-    }
-
-    if (this.layers.natural) {
-      polys.push(...this.inTimeRange(this.stormConePolygons));
-    }
+    const timedPolygons = this.timedPolygons();
+    this.shownTimedPolygons = timedPolygons.length;
+    polys.push(...timedPolygons);
 
     if (this.scenarioPolygons.length) {
       polys.push(...this.scenarioPolygons);

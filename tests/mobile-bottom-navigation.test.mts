@@ -251,9 +251,10 @@ describe('3D globe controls on phones (#11157)', () => {
     for (const field of ['occurredAt', 'e.date', 'e.time', 'acq_date', 'pubDate', 'startDate', 'e.timestamp', 'a.onset', 'updatedAt', 'lastAisUpdate', 'observedAt', 'detected_at', 's.datetime', 'a.reported', 'd.timestamp']) {
       assert.ok(globe.includes(`_time: markerTime(`) && new RegExp(`_time: markerTime\\([^)]*${field.replace('.', '\\.')}`).test(globe), field);
     }
-    assert.match(globe, /const footprints = this\.inTimeRange\(this\.imageryFootprintPolygons\);/);
-    assert.match(globe, /this\.inTimeRange\(this\.imageryFootprintPolygons\)\.length !== this\.shownImageryFootprints\) \{\s*this\.flushPolygons\(\);/);
     assert.match(globe, /this\.inTimeRange\(this\.stormTrackPaths\)/);
+    assert.match(globe, /this\.inTimeRange\(this\.imageryFootprintPolygons\)/);
+    assert.match(globe, /if \(this\.timedPaths\(\)\.length !== this\.shownTimedPaths\) this\.flushPaths\(\);\s*if \(this\.timedPolygons\(\)\.length !== this\.shownTimedPolygons\) this\.flushPolygons\(\);/);
+    assert.match(globe, /if \(source && !cluster\) \{/);
     assert.match(globe, /this\.inTimeRange\(this\.stormConePolygons\)/);
     assert.match(globe, /_kind: 'notamRing' as const,[^}]*_time: markerTime\(d\.updatedAt\)/);
     assert.match(globe, /add\('military', this\.clusterMarkersInRange\(cutoff\)\)/);
