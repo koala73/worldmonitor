@@ -45,6 +45,37 @@ function formatVolume(v: number): string {
   return `$${v}`;
 }
 
+const WORD_SPLIT = /[^\p{L}\p{N}]+/u;
+const DIGITS_ONLY = /^\p{N}+$/u;
+// Words that appear in most market titles ("Will ... by December 31, 2026?")
+// or most questions. Matching on them sent off-topic markets to the model as
+// evidence.
+const NON_TOPIC_WORDS = new Set([
+  'a', 'an', 'and', 'or', 'but', 'not', 'no', 'yes', 'if', 'so', 'as', 'at', 'by', 'in', 'of', 'on', 'to', 'up',
+  'is', 'be', 'it', 'do', 'we', 'i', 'me', 'my', 'the', 'for', 'are', 'was', 'were', 'been', 'being', 'will',
+  'would', 'can', 'could', 'should', 'may', 'might', 'must', 'does', 'did', 'has', 'have', 'had', 'what', 'which',
+  'who', 'whom', 'whose', 'when', 'where', 'why', 'how', 'with', 'from', 'into', 'onto', 'than', 'then', 'that',
+  'this', 'these', 'those', 'there', 'their', 'they', 'them', 'its', 'his', 'her', 'our', 'your', 'you', 'about',
+  'over', 'under', 'after', 'before', 'between', 'during', 'any', 'all', 'some', 'more', 'most', 'other', 'such',
+  'only', 'also', 'very', 'just', 'new', 'next', 'end', 'per', 'via', 'out', 'off', 'own', 'same', 'both', 'each',
+  'few', 'here', 'once', 'implications', 'impact', 'impacts', 'outlook', 'likely', 'likelihood', 'effect',
+  'effects', 'consequences', 'happen', 'january', 'february', 'march', 'april', 'june', 'july', 'august',
+  'september', 'october', 'november', 'december', 'year',
+]);
+
+function topicWords(text: string): string[] {
+  return [...new Set(text.toLowerCase().split(WORD_SPLIT))]
+    .filter((w) => w && !NON_TOPIC_WORDS.has(w) && !DIGITS_ONLY.test(w));
+}
+
+// A shared prefix of 4+ letters pairs "iran" with "iranian" either way round;
+// shorter words must match exactly so "war" never matches "warsaw".
+function sameTopicWord(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.length >= 4 && long.startsWith(short);
+}
+
 // Exported for tests: the guard below is only meaningful if a test can drive a
 // newline-bearing title through the real builder.
 export function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): string {
@@ -55,17 +86,15 @@ export function buildPredictionContext(query: string, bootstrap: PredictionBoots
   ];
   if (!allMarkets.length) return '';
 
-  const words = query
-    .toLowerCase()
-    .split(/\W+/)
-    .filter((w) => w.length > 1);
+  const words = topicWords(query);
 
-  const scored = allMarkets.map((m) => ({
-    market: m,
-    score: words.length
-      ? words.filter((w) => typeof m.title === 'string' && m.title.toLowerCase().includes(w)).length
-      : 0,
-  }));
+  const scored = allMarkets.map((m) => {
+    const titleWords = words.length && typeof m.title === 'string' ? topicWords(m.title) : [];
+    return {
+      market: m,
+      score: words.filter((w) => titleWords.some((t) => sameTopicWord(w, t))).length,
+    };
+  });
 
   const matched = scored
     .filter(({ score }) => score > 0)
