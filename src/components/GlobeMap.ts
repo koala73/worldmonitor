@@ -2588,8 +2588,7 @@ export class GlobeMap {
     // actually oversized (#5368). Every marker here becomes a DOM node that
     // CSS2DRenderer repositions on every frame, so the total has to be bounded.
     const groups: GlobeMarkerGroup<GlobeMarker>[] = [];
-    const rangeHours = { '1h': 1, '6h': 6, '24h': 24, '48h': 48, '7d': 168, all: null }[this.timeRange];
-    const cutoff = rangeHours == null ? null : Date.now() - rangeHours * 3600000;
+    const cutoff = this.timeRangeCutoff();
     const add = (
       layer: string,
       markers: readonly GlobeMarker[],
@@ -2756,6 +2755,12 @@ export class GlobeMap {
     return cached;
   }
 
+  /** Oldest event time the selected range shows, or null for all. */
+  private timeRangeCutoff(): number | null {
+    const rangeHours = { '1h': 1, '6h': 6, '24h': 24, '48h': 48, '7d': 168, all: null }[this.timeRange];
+    return rangeHours == null ? null : Date.now() - rangeHours * 3600000;
+  }
+
   private flushPolygons(): void {
     if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
     this.wakeGlobe();
@@ -2805,7 +2810,10 @@ export class GlobeMap {
     }
 
     if (this.layers.satellites) {
-      polys.push(...this.imageryFootprintPolygons);
+      const cutoff = this.timeRangeCutoff();
+      polys.push(...(cutoff == null
+        ? this.imageryFootprintPolygons
+        : this.imageryFootprintPolygons.filter(p => (markerTime(p.datetime) ?? Infinity) >= cutoff)));
     }
 
     if (this.layers.natural) {
@@ -3762,6 +3770,7 @@ export class GlobeMap {
     this.onTimeRangeChangeCb?.(range);
     this.updateTimeSliderButtons();
     this.flushMarkers();
+    if (this.layers.satellites) this.flushPolygons();
   }
 
   public getTimeRange(): TimeRange {
@@ -3997,6 +4006,7 @@ export class GlobeMap {
         _kind: 'imageryScene' as const,
         _lat: centerLat,
         _lng: centerLon,
+        _time: markerTime(s.datetime),
         satellite: s.satellite,
         datetime: s.datetime,
         resolutionM: s.resolutionM,
@@ -4150,6 +4160,7 @@ export class GlobeMap {
         _kind: 'cableAdvisory' as const,
         _lat: a.lat,
         _lng: a.lon,
+        _time: markerTime(a.reported),
         id: a.id,
         cableId: a.cableId,
         title: a.title ?? '',
@@ -4225,6 +4236,7 @@ export class GlobeMap {
         _kind: 'newsLocation' as const,
         _lat: d.lat,
         _lng: d.lon,
+        _time: markerTime(d.timestamp),
         id: `news-${i}-${d.title.slice(0, 20)}`,
         article: d.article,
         title: d.title,

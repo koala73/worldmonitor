@@ -236,8 +236,10 @@ describe('3D globe controls on phones (#11157)', () => {
 
   it('applies the time range to timed markers, not only UKMTO incidents', () => {
     assert.match(globe, /markers\.filter\(m => m\._time == null \|\| m\._time >= cutoff\)/);
-    for (const field of ['occurredAt', 'e.date', 'e.time', 'acq_date', 'pubDate', 'startDate', 'e.timestamp', 'a.onset', 'updatedAt', 'lastAisUpdate', 'observedAt']) {
+    for (const field of ['occurredAt', 'e.date', 'e.time', 'acq_date', 'pubDate', 'startDate', 'e.timestamp', 'a.onset', 'updatedAt', 'lastAisUpdate', 'observedAt', 'detected_at', 's.datetime', 'a.reported', 'd.timestamp']) {
       assert.ok(globe.includes(`_time: markerTime(`) && new RegExp(`_time: markerTime\\([^)]*${field.replace('.', '\\.')}`).test(globe), field);
     }
+    assert.match(globe, /this\.imageryFootprintPolygons\.filter\(p => \(markerTime\(p\.datetime\) \?\? Infinity\) >= cutoff\)/);
+    assert.match(globe, /this\.flushMarkers\(\);\s*if \(this\.layers\.satellites\) this\.flushPolygons\(\);\s*\}/);
   });
 });
