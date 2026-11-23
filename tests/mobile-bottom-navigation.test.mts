@@ -251,7 +251,15 @@ describe('3D globe controls on phones (#11157)', () => {
     for (const field of ['occurredAt', 'e.date', 'e.time', 'acq_date', 'pubDate', 'startDate', 'e.timestamp', 'a.onset', 'updatedAt', 'lastAisUpdate', 'observedAt', 'detected_at', 's.datetime', 'a.reported', 'd.timestamp']) {
       assert.ok(globe.includes(`_time: markerTime(`) && new RegExp(`_time: markerTime\\([^)]*${field.replace('.', '\\.')}`).test(globe), field);
     }
-    assert.match(globe, /this\.imageryFootprintPolygons\.filter\(p => \(markerTime\(p\.datetime\) \?\? Infinity\) >= cutoff\)/);
-    assert.match(globe, /this\.flushMarkers\(\);\s*if \(this\.layers\.satellites\) this\.flushPolygons\(\);\s*\}/);
+    assert.match(globe, /const footprints = this\.inTimeRange\(this\.imageryFootprintPolygons\);/);
+    assert.match(globe, /this\.inTimeRange\(this\.imageryFootprintPolygons\)\.length !== this\.shownImageryFootprints\) \{\s*this\.flushPolygons\(\);/);
+    assert.match(globe, /this\.inTimeRange\(this\.stormTrackPaths\)/);
+    assert.match(globe, /this\.inTimeRange\(this\.stormConePolygons\)/);
+    assert.match(globe, /_kind: 'notamRing' as const,[^}]*_time: markerTime\(d\.updatedAt\)/);
+    assert.match(globe, /add\('military', this\.clusterMarkersInRange\(cutoff\)\)/);
+    assert.match(globe, /vesselCount: vessels\.length/);
+    assert.match(globe, /if \(this\.layers\.natural\) this\.flushPaths\(\);\s*if \(this\.layers\.satellites \|\| this\.layers\.natural\) this\.flushPolygons\(\);/);
+    assert.match(globe, /aria-pressed="\$\{this\.timeRange === range\}"/);
+    assert.match(globe, /btn\.setAttribute\('aria-pressed', String\(btn\.dataset\.range === this\.timeRange\)\)/);
   });
 });

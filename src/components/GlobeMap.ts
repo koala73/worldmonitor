@@ -503,11 +503,15 @@ interface GlobePath {
   status: string;
   country?: string;
   windKt?: number;
+  /** Event time in ms, for the time range filter. Unset paths always show. */
+  _time?: number | null;
 }
 interface GlobePolygon {
   coords: number[][][];
   name: string;
   _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario' | 'focusChosen' | 'focusNeighbour' | 'orbitalFootprint' | 'orbitalSwept';
+  /** Event time in ms, for the time range filter. Unset polygons always show. */
+  _time?: number | null;
   level?: string;
   score?: number;
 
@@ -676,6 +680,8 @@ export class GlobeMap {
     }
   })();
   private imageryFootprintPolygons: GlobePolygon[] = [];
+  /** Footprints the last polygon flush drew, so scenes aging out of the time range get redrawn. */
+  private shownImageryFootprints = 0;
   private lastImageryCenter: { lat: number; lon: number } | null = null;
   private imageryFetchTimer: ReturnType<typeof setTimeout> | null = null;
   private imageryFetchVersion = 0;
@@ -1646,7 +1652,8 @@ export class GlobeMap {
     }
 
     if (d._kind === 'cluster' && this.popup) {
-      const cluster = this.clusterData.get(d.id);
+      const source = this.clusterData.get(d.id);
+      const cluster = source && (this.vesselClusterInRange(source, this.timeRangeCutoff()) ?? source);
       if (cluster) {
         const aRect = anchor.getBoundingClientRect();
         const cRect = this.container.getBoundingClientRect();
@@ -2347,7 +2354,7 @@ export class GlobeMap {
     slider.className = 'time-slider deckgl-time-slider globe-time-slider';
     setTrustedHtml(slider, trustedHtml(`
       <div class="time-options">
-        ${ranges.map(range => `<button class="time-btn ${this.timeRange === range ? 'active' : ''}" data-range="${range}">${range === 'all' ? t('components.deckgl.timeAll') : range}</button>`).join('')}
+        ${ranges.map(range => `<button class="time-btn ${this.timeRange === range ? 'active' : ''}" data-range="${range}" aria-pressed="${this.timeRange === range}">${range === 'all' ? t('components.deckgl.timeAll') : range}</button>`).join('')}
       </div>`, 'static time range buttons'));
     this.container.appendChild(slider);
     slider.querySelectorAll<HTMLElement>('.time-btn').forEach(btn => {
@@ -2358,6 +2365,7 @@ export class GlobeMap {
   private updateTimeSliderButtons(): void {
     this.container.querySelectorAll<HTMLElement>('.globe-time-slider .time-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.range === this.timeRange);
+      btn.setAttribute('aria-pressed', String(btn.dataset.range === this.timeRange));
     });
   }
 
@@ -2589,6 +2597,9 @@ export class GlobeMap {
     // CSS2DRenderer repositions on every frame, so the total has to be bounded.
     const groups: GlobeMarkerGroup<GlobeMarker>[] = [];
     const cutoff = this.timeRangeCutoff();
+    if (this.layers.satellites && this.inTimeRange(this.imageryFootprintPolygons).length !== this.shownImageryFootprints) {
+      this.flushPolygons();
+    }
     const add = (
       layer: string,
       markers: readonly GlobeMarker[],
@@ -2611,7 +2622,7 @@ export class GlobeMap {
       // Carriers first: the AIS feed is the largest on the globe (1,526 markers
       // measured on production) and is the one most likely to be trimmed.
       add('military', this.vessels, { rank: m => (m._kind === 'vessel' && m.type === 'carrier' ? 1 : 0) });
-      add('military', this.clusterMarkers);
+      add('military', this.clusterMarkersInRange(cutoff));
     }
     if (this.layers.weather) add('weather', this.weatherMarkers);
     if (this.layers.natural) {
@@ -2724,7 +2735,7 @@ export class GlobeMap {
       ? this.globePaths
       : this.globePaths.filter(p => p.pathType === 'cable' ? showCables : showPipelines);
     const orbitPaths = this.layers.satellites ? this.satelliteTrailPaths : [];
-    const stormPaths = this.layers.natural ? this.stormTrackPaths : [];
+    const stormPaths = this.layers.natural ? this.inTimeRange(this.stormTrackPaths) : [];
     (this.globe as any).pathsData([...paths, ...orbitPaths, ...stormPaths, ...this.orbitalOutlinePaths, ...this.orbitalTrackPaths, ...this.orbitalReplayPaths]);
   }
 
@@ -2753,6 +2764,29 @@ export class GlobeMap {
       this.reversedRingCache.set(key, cached);
     }
     return cached;
+  }
+
+  private inTimeRange<T extends { _time?: number | null }>(items: T[]): T[] {
+    const cutoff = this.timeRangeCutoff();
+    return cutoff == null ? items : items.filter(item => item._time == null || item._time >= cutoff);
+  }
+
+  /** The cluster with only the vessels seen inside the selected range, or null when none are. */
+  private vesselClusterInRange(cluster: MilitaryVesselCluster, cutoff: number | null): MilitaryVesselCluster | null {
+    if (cutoff == null || !cluster.vessels?.length) return cluster;
+    const vessels = cluster.vessels.filter(v => (markerTime(v.lastAisUpdate) ?? Infinity) >= cutoff);
+    if (!vessels.length) return null;
+    return vessels.length === cluster.vessels.length ? cluster : { ...cluster, vessels, vesselCount: vessels.length };
+  }
+
+  private clusterMarkersInRange(cutoff: number | null): ClusterMarker[] {
+    if (cutoff == null) return this.clusterMarkers;
+    return this.clusterMarkers.flatMap(m => {
+      const source = this.clusterData.get(m.id);
+      if (!source) return [m];
+      const cluster = this.vesselClusterInRange(source, cutoff);
+      return cluster ? [cluster.vesselCount === m.vesselCount ? m : { ...m, vesselCount: cluster.vesselCount }] : [];
+    });
   }
 
   /** Oldest event time the selected range shows, or null for all. */
@@ -2810,14 +2844,13 @@ export class GlobeMap {
     }
 
     if (this.layers.satellites) {
-      const cutoff = this.timeRangeCutoff();
-      polys.push(...(cutoff == null
-        ? this.imageryFootprintPolygons
-        : this.imageryFootprintPolygons.filter(p => (markerTime(p.datetime) ?? Infinity) >= cutoff)));
+      const footprints = this.inTimeRange(this.imageryFootprintPolygons);
+      this.shownImageryFootprints = footprints.length;
+      polys.push(...footprints);
     }
 
     if (this.layers.natural) {
-      polys.push(...this.stormConePolygons);
+      polys.push(...this.inTimeRange(this.stormConePolygons));
     }
 
     if (this.scenarioPolygons.length) {
@@ -3355,6 +3388,7 @@ export class GlobeMap {
           ],
           pathType: 'stormTrack',
           status: 'active',
+          _time: markerTime(e.date),
         });
       }
       if (e.pastTrack?.length) {
@@ -3369,6 +3403,7 @@ export class GlobeMap {
             pathType: 'stormHistory',
             status: 'active',
             windKt: b.windKt ?? a.windKt ?? 0,
+            _time: markerTime(e.date),
           });
         }
       }
@@ -3378,6 +3413,7 @@ export class GlobeMap {
             coords: [ring],
             name: `${e.stormName || e.title || ''} Forecast Cone`,
             _kind: 'forecastCone',
+            _time: markerTime(e.date),
           });
         }
       }
@@ -3774,7 +3810,8 @@ export class GlobeMap {
     this.onTimeRangeChangeCb?.(range);
     this.updateTimeSliderButtons();
     this.flushMarkers();
-    if (this.layers.satellites) this.flushPolygons();
+    if (this.layers.natural) this.flushPaths();
+    if (this.layers.satellites || this.layers.natural) this.flushPolygons();
   }
 
   public getTimeRange(): TimeRange {
@@ -4023,6 +4060,7 @@ export class GlobeMap {
         coords: geom.coordinates as number[][][],
         name: `${s.satellite} ${s.datetime}`,
         _kind: 'imageryFootprint' as const,
+        _time: markerTime(s.datetime),
         satellite: s.satellite,
         datetime: s.datetime,
         resolutionM: s.resolutionM,
@@ -4228,6 +4266,7 @@ export class GlobeMap {
         _kind: 'notamRing' as const,
         _lat: d.lat,
         _lng: d.lon,
+        _time: markerTime(d.updatedAt),
         name: d.name || d.iata,
         reason: d.reason || 'Airspace closure',
       }));
