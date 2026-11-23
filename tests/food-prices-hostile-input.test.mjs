@@ -65,7 +65,11 @@ test('UCDA farmgate scan does not overflow the stack on a huge text layer', () =
 test('UCDA title search stays linear when a page repeats an incomplete title prefix', () => {
   const [page] = JSON.parse(fixture('ucda.json'));
   const decoys = Array.from({ length: N }, (_, i) => ({ text: 'WEEK’S', x: 20, y: 900 + i / 100 }));
-  quick('UCDA title decoys', () => parseUcda(decoys.concat(page), '2026-10-30'));
+  let rows = [];
+  quick('UCDA title decoys', () => { rows = parseUcda(decoys.concat(page), '2026-10-30'); });
+  // Outside quick, whose catch would otherwise hide a parse that never reached the title search.
+  assert.equal(rows.length, 17);
+  assert.ok(rows.some(row => row.marketType === 'farmgate') && rows.some(row => row.marketType === 'export'));
 });
 
 test('workbooks with a cell far beyond any real sheet are refused before rows are materialised', async () => {
