@@ -58,26 +58,40 @@ function findByName(connection, name, kind) {
   return match.id;
 }
 
+// One budget for the whole read, both calls and every retry. Two calls with
+// two 100 s attempts each could spend ~400 s, and after the install, history
+// restore and volume read the 12-minute job would be cancelled before the
+// retention alarm prints. The CLI read this replaced was bounded by the CLI's
+// own ~90 s request timeout; this leaves room for one retry on top of that.
+export const RETENTION_READ_BUDGET_MS = 150_000;
+
 /**
  * Run one GraphQL document through the Railway CLI, retrying a transport
- * failure once as the volume read does (#8689). A bad token or a GraphQL error
- * fails at once.
+ * failure as the volume read does (#8689), within the shared deadline. A bad
+ * token or a GraphQL error fails at once.
  */
 export async function railwayApi(query, variables, {
   policy = RAILWAY_VOLUME_READ_POLICY,
   run = runRailway,
+  deadlineAt = Number.POSITIVE_INFINITY,
+  now = Date.now,
 } = {}) {
   const args = ['api', query, '--variables', JSON.stringify(variables), '--compact'];
   for (let attempt = 1; attempt <= policy.attempts; attempt += 1) {
-    const result = await run(args, policy.attemptTimeoutMs);
+    const remainingMs = deadlineAt - now();
+    if (!(remainingMs > 0)) {
+      throw new Error(`Railway API read deadline reached after ${attempt - 1} attempt(s)`);
+    }
+    const result = await run(args, Math.min(policy.attemptTimeoutMs, remainingMs));
     if (result.code === 0) return parseRailwayApiOutput(result.stdout);
     process.stderr.write(result.stderr);
     if (!result.timedOut && !TRANSIENT_ERROR.test(result.stderr)) {
       throw new Error(`railway api failed with exit code ${result.code}`);
     }
     console.error(`Railway API attempt ${attempt} could not reach Railway.`);
-    if (attempt < policy.attempts && policy.retryDelayMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, policy.retryDelayMs));
+    const delayMs = Math.min(policy.retryDelayMs, deadlineAt - now());
+    if (attempt < policy.attempts && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
   throw new Error(`Railway API was unreachable on all ${policy.attempts} attempts`);
@@ -89,7 +103,9 @@ export async function readRetentionDeployments({
   environment = 'production',
   service = RETENTION_RUNNER_SERVICE,
   window = RETENTION_HISTORY_WINDOW,
-  api = railwayApi,
+  now = Date.now,
+  deadlineAt = now() + RETENTION_READ_BUDGET_MS,
+  api = (query, variables) => railwayApi(query, variables, { deadlineAt, now }),
 }) {
   if (!projectId) throw new Error('RAILWAY_PROJECT_ID is required');
   const target = await api(PROJECT_QUERY, { projectId });

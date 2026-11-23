@@ -5,7 +5,11 @@ import {
   RETENTION_HISTORY_WINDOW,
   evaluateRetentionRunner,
 } from '../scripts/check-umami-retention-runner.mjs';
-import { readRetentionDeployments } from '../scripts/read-umami-retention-deployments.mjs';
+import {
+  RETENTION_READ_BUDGET_MS,
+  railwayApi,
+  readRetentionDeployments,
+} from '../scripts/read-umami-retention-deployments.mjs';
 
 const PROJECT_ID = 'project-1';
 const ENVIRONMENT_ID = 'environment-1';
@@ -115,5 +119,39 @@ describe('Umami retention deployment reader', () => {
       readRetentionDeployments({ projectId: PROJECT_ID, api }),
       /edges array/,
     );
+  });
+
+  // Two sequential calls with two 100 s attempts each could spend ~400 s, and
+  // with the volume read before it the 12-minute job is cancelled before the
+  // alarm prints. Both calls share one deadline instead.
+  it('bounds both Railway calls by one shared deadline', async () => {
+    let clock = 0;
+    const timeouts = [];
+    // Every attempt hangs until its timeout.
+    const run = async (_args, timeoutMs) => {
+      timeouts.push(timeoutMs);
+      clock += timeoutMs;
+      return { code: null, stdout: '', stderr: '', timedOut: true };
+    };
+    const policy = { attempts: 2, attemptTimeoutMs: 100_000, retryDelayMs: 0 };
+    const deadlineAt = RETENTION_READ_BUDGET_MS;
+    const api = (query, variables) => railwayApi(query, variables, {
+      policy, run, deadlineAt, now: () => clock,
+    });
+
+    await assert.rejects(readRetentionDeployments({ projectId: PROJECT_ID, api }), /deadline|unreachable/);
+    const spent = timeouts.reduce((sum, ms) => sum + ms, 0);
+    assert.ok(spent <= RETENTION_READ_BUDGET_MS, `spent ${spent} ms past the ${RETENTION_READ_BUDGET_MS} ms budget`);
+  });
+
+  it('stops before an attempt when the shared deadline has passed', async () => {
+    let calls = 0;
+    const run = async () => { calls += 1; return { code: 0, stdout: '{"data":{}}', stderr: '' }; };
+
+    await assert.rejects(
+      railwayApi('query { x }', {}, { run, deadlineAt: 10, now: () => 10 }),
+      /deadline/,
+    );
+    assert.equal(calls, 0);
   });
 });
