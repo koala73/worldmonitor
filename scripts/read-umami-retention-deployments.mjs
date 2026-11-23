@@ -105,7 +105,8 @@ export async function readRetentionDeployments({
   window = RETENTION_HISTORY_WINDOW,
   now = Date.now,
   deadlineAt = now() + RETENTION_READ_BUDGET_MS,
-  api = (query, variables) => railwayApi(query, variables, { deadlineAt, now }),
+  run = runRailway,
+  api = (query, variables) => railwayApi(query, variables, { deadlineAt, now, run }),
 }) {
   if (!projectId) throw new Error('RAILWAY_PROJECT_ID is required');
   const target = await api(PROJECT_QUERY, { projectId });

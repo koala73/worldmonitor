@@ -154,4 +154,30 @@ describe('Umami retention deployment reader', () => {
     );
     assert.equal(calls, 0);
   });
+
+  it('gives the deployment query only what the target lookup left of the budget', async () => {
+    let clock = 0;
+    const deploymentTimeouts = [];
+    const run = async (args, timeoutMs) => {
+      if (/project\(id:/.test(args[1])) {
+        clock += 60_000;
+        return { code: 0, stdout: JSON.stringify({ data: PROJECT_LOOKUP }), stderr: '' };
+      }
+      deploymentTimeouts.push(timeoutMs);
+      clock += timeoutMs;
+      return { code: null, stdout: '', stderr: '', timedOut: true };
+    };
+
+    // No api and no deadlineAt: this exercises the reader's own wiring.
+    await assert.rejects(
+      readRetentionDeployments({ projectId: PROJECT_ID, run, now: () => clock }),
+      /deadline|unreachable/,
+    );
+    assert.ok(deploymentTimeouts.length > 0, 'the deployment query must run after the lookup');
+    const spent = deploymentTimeouts.reduce((sum, ms) => sum + ms, 0);
+    assert.ok(
+      spent <= RETENTION_READ_BUDGET_MS - 60_000,
+      `the deployment query spent ${spent} ms, more than the ${RETENTION_READ_BUDGET_MS - 60_000} ms left`,
+    );
+  });
 });
