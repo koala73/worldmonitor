@@ -486,3 +486,39 @@ describe('reworded news alerts (#10916)', () => {
     } finally { h.restore(); }
   });
 });
+
+describe('rewrite judge deadline', () => {
+  // A reply after the check's deadline cannot change delivery, so the direct
+  // route must not start once the check has given up.
+  it('does not ask Claude directly after the check has expired', async () => {
+    const lib = await import('../scripts/lib/news-alert-coverage.mjs');
+    process.env.ANTHROPIC_API_KEY = 'stub-anthropic';
+    const hosts = [];
+    const aborted = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      const host = new URL(String(url)).hostname;
+      hosts.push(host);
+      if (host === 'openrouter.ai') {
+        opts.signal?.addEventListener('abort', () => aborted.push(host));
+        // Hangs until the per-provider timeout aborts it.
+        return new Promise((_, reject) => opts.signal?.addEventListener('abort', () => reject(opts.signal.reason)));
+      }
+      return new Response('{}', { status: 500 });
+    };
+    const now = Date.now();
+    const anchor = JSON.stringify({ id: 'full:earlier', title: SUN });
+    const pipeline = async () => [{ result: [anchor, String(now - 60_000)] }];
+    const embed = async titles => titles.map(() => vectorFor('dirty bomb'));
+    const orig = { log: console.log, warn: console.warn };
+    console.log = () => {}; console.warn = () => {};
+    try {
+      const decision = await lib.findRewriteAnchor(alert(CNN), { now, pipeline, embed, deadlineMs: 300 });
+      assert.equal(decision.error, 'deadline');
+      // The OpenRouter attempts are cut at the check's deadline, not at their
+      // own 8 s timeout, and the chain then starts nothing more.
+      await new Promise(done => setTimeout(done, 1_000));
+      assert.equal(aborted.length, 2, 'both OpenRouter attempts end at the deadline');
+      assert.equal(hosts.includes('api.anthropic.com'), false, `hosts: ${hosts.join(',')}`);
+    } finally { Object.assign(console, orig); }
+  });
+});
