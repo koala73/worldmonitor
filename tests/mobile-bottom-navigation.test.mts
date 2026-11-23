@@ -214,4 +214,14 @@ describe('mobile P0 navigation shell (#5201)', () => {
     // The ruler's panel does not fit the strip, so it is hidden there only.
     assert.match(css, /\.map-section:not\(\.live-news-fullscreen\) \.map-distance-control \{\s*display: none;/);
   });
+
+  it('keeps map controls in a fullscreen map while a fullscreen panel still hides them (#11157)', () => {
+    const handlers = readFileSync(new URL('../src/app/event-handlers.ts', import.meta.url), 'utf8');
+    assert.match(handlers, /document\.body\.classList\.toggle\('map-fullscreen-active', isFullscreen\)/);
+    for (const control of ['time-slider', 'deckgl-layer-toggles', 'map-legend', 'map-controls', 'map-timestamp', 'layer-toggles']) {
+      const hides = css.match(new RegExp(`body\\.live-news-fullscreen-active([^\\s,{]*) \\.${control},?\\s`, 'g')) ?? [];
+      assert.ok(hides.length > 0, `${control} is hidden behind a fullscreen panel`);
+      for (const hide of hides) assert.match(hide, /:not\(\.map-fullscreen-active\)/, `${control} stays visible in a fullscreen map`);
+    }
+  });
 });

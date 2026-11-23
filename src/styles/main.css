@@ -4089,11 +4089,12 @@ body.live-news-fullscreen-active {
   overflow: hidden;
 }
 
-body.live-news-fullscreen-active .time-slider,
-body.live-news-fullscreen-active .deckgl-layer-toggles,
-body.live-news-fullscreen-active .map-legend,
-body.live-news-fullscreen-active .map-controls,
-body.live-news-fullscreen-active .map-timestamp {
+/* A fullscreen Live News/Webcams panel covers the map; a fullscreen map keeps its controls. */
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .time-slider,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .deckgl-layer-toggles,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-legend,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-controls,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-timestamp {
   visibility: hidden !important;
   pointer-events: none !important;
 }
@@ -4114,8 +4115,8 @@ body.live-news-fullscreen-active .map-popup {
 }
 
 /* Hide map overlays and sibling panels behind fullscreen panel (#829, #859) */
-body.live-news-fullscreen-active .layer-toggles,
-body.live-news-fullscreen-active .map-legend {
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .layer-toggles,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-legend {
   display: none !important;
 }
 
@@ -31587,10 +31588,12 @@ body.map-width-resizing {
 .layer-toggles.map-control-collapsed { width: auto; }
 
 @media (max-width: 768px) {
-  body:not(.live-news-fullscreen-active) .layer-toggles.map-control-panel:not(.deckgl-layer-toggles) {
+  body:not(.live-news-fullscreen-active) .layer-toggles.map-control-panel:not(.deckgl-layer-toggles),
+  body.map-fullscreen-active .layer-toggles.map-control-panel:not(.deckgl-layer-toggles) {
     display: flex !important;
   }
-  body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend) {
+  body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend),
+  body.map-fullscreen-active .map-legend.map-control-panel:not(.deckgl-legend) {
     display: flex;
   }
   .layer-toggles.map-control-panel:not(.deckgl-layer-toggles):not(.map-control-collapsed) {
