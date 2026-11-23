@@ -4620,7 +4620,7 @@ export class MapComponent {
     this.pendingFocusFit = null;
     this.state.view = view;
 
-    // Each region is a geographic center (the same as DeckGLMap's VIEW_PRESETS),
+    // Each region is a geographic center [lon, lat] (DeckGLMap's VIEW_PRESETS),
     // projected for this map's size. Fixed pixel pans only framed the region at
     // one desktop width; on a phone they put America over the Pacific and
     // Asia and Oceania off the map.
@@ -4637,11 +4637,9 @@ export class MapComponent {
 
     const settings = viewSettings[view];
     this.state.zoom = zoom ?? settings.zoom;
-    const { width, height } = this.getKnownContainerSize();
-    const point = settings.center && this.getProjection(width, height)(settings.center);
-    this.state.pan = point
-      ? { x: width / 2 - point[0], y: height / 2 - point[1] }
-      : { x: 0, y: 0 };
+    this.state.pan = { x: 0, y: 0 };
+    // setCenter defers to the first resize while the map has no size.
+    if (settings.center) this.setCenter(settings.center[1], settings.center[0]);
     this.applyTransform();
     this.render();
   }
