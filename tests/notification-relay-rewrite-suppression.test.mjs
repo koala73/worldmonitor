@@ -521,4 +521,36 @@ describe('rewrite judge deadline', () => {
       assert.equal(hosts.includes('api.anthropic.com'), false, `hosts: ${hosts.join(',')}`);
     } finally { Object.assign(console, orig); }
   });
+
+  // The judge's calls abort at deadlineAt, the instant the check's own timer
+  // fires, so either can finish first. Empty replies that come back at or past
+  // the deadline are the deadline's doing; earlier ones are the judge's. The
+  // timer here is far off and the judge moves the clock, so neither case
+  // depends on timer order.
+  it('labels empty replies by the clock: deadline once it has passed, the judge before it', async () => {
+    const lib = await import('../scripts/lib/news-alert-coverage.mjs');
+    const realNow = Date.now;
+    const now = realNow();
+    const anchor = JSON.stringify({ id: 'full:earlier', title: SUN });
+    const pipeline = async () => [{ result: [anchor, String(now - 60_000)] }];
+    const embed = async titles => titles.map(() => vectorFor('dirty bomb'));
+    const orig = { log: console.log, warn: console.warn };
+    console.log = () => {}; console.warn = () => {};
+    try {
+      const deadlineMs = 60_000;
+      const late = await lib.findRewriteAnchor(alert(CNN), {
+        now, pipeline, embed, deadlineMs,
+        judge: async (_system, _user, { deadlineAt }) => { Date.now = () => deadlineAt; return null; },
+      });
+      Date.now = realNow;
+      assert.equal(late.error, 'deadline');
+      assert.equal(late.judged, true);
+
+      const early = await lib.findRewriteAnchor(alert(CNN), { now, pipeline, embed, deadlineMs, judge: async () => null });
+      assert.equal(early.error, 'judge returned nothing');
+    } finally {
+      Date.now = realNow;
+      Object.assign(console, orig);
+    }
+  });
 });
