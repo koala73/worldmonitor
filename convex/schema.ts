@@ -929,6 +929,9 @@ export default defineSchema({
       v.literal("dunning_day0"),
       v.literal("dunning_day3"),
       v.literal("dunning_day7"),
+      v.literal("dunning_day10"),
+      v.literal("dunning_day21"),
+      v.literal("dunning_day28"),
       v.literal("winback_day30"),
       // Paid-through cancellation confirmation (#7314). Shares this ledger
       // with winback because both are keyed on the same cancellation episode
