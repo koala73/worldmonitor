@@ -2771,12 +2771,19 @@ export class GlobeMap {
     return cutoff == null ? items : items.filter(item => item._time == null || item._time >= cutoff);
   }
 
-  /** The cluster with only the vessels seen inside the selected range, or null when none are. */
+  /** The cluster with only the vessels seen inside the selected range, centered on them, or null when none are. */
   private vesselClusterInRange(cluster: MilitaryVesselCluster, cutoff: number | null): MilitaryVesselCluster | null {
     if (cutoff == null || !cluster.vessels?.length) return cluster;
     const vessels = cluster.vessels.filter(v => (markerTime(v.lastAisUpdate) ?? Infinity) >= cutoff);
     if (!vessels.length) return null;
-    return vessels.length === cluster.vessels.length ? cluster : { ...cluster, vessels, vesselCount: vessels.length };
+    if (vessels.length === cluster.vessels.length) return cluster;
+    return {
+      ...cluster,
+      vessels,
+      vesselCount: vessels.length,
+      lat: vessels.reduce((sum, v) => sum + v.lat, 0) / vessels.length,
+      lon: vessels.reduce((sum, v) => sum + v.lon, 0) / vessels.length,
+    };
   }
 
   private clusterMarkersInRange(cutoff: number | null): ClusterMarker[] {
@@ -2785,7 +2792,8 @@ export class GlobeMap {
       const source = this.clusterData.get(m.id);
       if (!source) return [m];
       const cluster = this.vesselClusterInRange(source, cutoff);
-      return cluster ? [cluster.vesselCount === m.vesselCount ? m : { ...m, vesselCount: cluster.vesselCount }] : [];
+      if (!cluster) return [];
+      return [cluster === source ? m : { ...m, _lat: cluster.lat, _lng: cluster.lon, vesselCount: cluster.vesselCount }];
     });
   }
 
