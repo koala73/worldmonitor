@@ -21,9 +21,9 @@ jobs:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     # The step-bounded CLI install (GitHub release downloads can 502) and
-    # history restore, two ~100 s volume attempts, and a retention read that
-    # can also run into the CLI's ~90 s timeout must fit, or the retention
-    # alarm never prints. Still under the 15-minute cadence, so runs do not
+    # history restore, two ~100 s volume attempts, and the retention read
+    # (both of its Railway calls share a 150 s budget) must fit, or the
+    # retention alarm never prints. Still under the 15-minute cadence, so runs do not
     # overlap.
     timeout-minutes: 12
     environment:
