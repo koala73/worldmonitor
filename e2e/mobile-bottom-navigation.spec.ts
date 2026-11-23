@@ -64,6 +64,24 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
   });
 
+  test('the Map tab follows map fullscreen however it is toggled (#11157)', async ({ page }) => {
+    const mapTab = page.locator('[data-mobile-tab="map"]');
+    const todayTab = page.locator('[data-mobile-tab="today"]');
+    await page.locator('#mapFullscreenBtn').click();
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+    await page.locator('#mapFullscreenBtn').click();
+    await expect(page.locator('#mapSection')).not.toHaveClass(/live-news-fullscreen/);
+    await expect(todayTab).toHaveAttribute('aria-current', 'page');
+
+    await mapTab.click();
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#mapSection')).not.toHaveClass(/live-news-fullscreen/);
+    await expect(todayTab).toHaveAttribute('aria-current', 'page');
+    await expect(mapTab).not.toHaveAttribute('aria-current', 'page');
+  });
+
   test('keeps the account entry visible in the header before More opens', async ({ page }) => {
     const headerAuth = page.locator('#authWidgetMount');
     const signIn = headerAuth.locator('.auth-signin-btn');

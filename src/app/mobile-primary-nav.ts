@@ -67,6 +67,12 @@ export class MobilePrimaryNav {
     this.unsubscribeAuth = subscribeAuthState((state) => renderPending(state.isPending));
   }
 
+  /** Follows map fullscreen however it was toggled (tab, map button or Escape). */
+  syncMapFullscreen(isFullscreen: boolean): void {
+    if (isFullscreen) this.setActive('map');
+    else if (this.activeTab === 'map') this.setActive('today');
+  }
+
   updateThemeItem(): void {
     const button = document.getElementById('mobileMenuTheme');
     if (!button) return;
