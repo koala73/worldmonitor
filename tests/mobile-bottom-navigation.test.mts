@@ -258,6 +258,8 @@ describe('3D globe controls on phones (#11157)', () => {
     assert.match(globe, /_kind: 'notamRing' as const,[^}]*_time: markerTime\(d\.updatedAt\)/);
     assert.match(globe, /add\('military', this\.clusterMarkersInRange\(cutoff\)\)/);
     assert.match(globe, /vesselCount: vessels\.length/);
+    assert.match(globe, /if \(vessels\.length < 2\) return null;/);
+    assert.match(globe, /lon: Math\.atan2\(/);
     assert.match(globe, /_lat: cluster\.lat, _lng: cluster\.lon, vesselCount: cluster\.vesselCount/);
     assert.match(globe, /if \(this\.layers\.natural\) this\.flushPaths\(\);\s*if \(this\.layers\.satellites \|\| this\.layers\.natural\) this\.flushPolygons\(\);/);
     assert.match(globe, /aria-pressed="\$\{this\.timeRange === range\}"/);

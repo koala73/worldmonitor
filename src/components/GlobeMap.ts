@@ -2771,18 +2771,24 @@ export class GlobeMap {
     return cutoff == null ? items : items.filter(item => item._time == null || item._time >= cutoff);
   }
 
-  /** The cluster with only the vessels seen inside the selected range, centered on them, or null when none are. */
+  /** The cluster with only the vessels seen inside the selected range, centered on them, or null when fewer than two are. */
   private vesselClusterInRange(cluster: MilitaryVesselCluster, cutoff: number | null): MilitaryVesselCluster | null {
     if (cutoff == null || !cluster.vessels?.length) return cluster;
     const vessels = cluster.vessels.filter(v => (markerTime(v.lastAisUpdate) ?? Infinity) >= cutoff);
-    if (!vessels.length) return null;
     if (vessels.length === cluster.vessels.length) return cluster;
+    // A lone vessel is already drawn as its own marker, and clusters are built from two or more.
+    if (vessels.length < 2) return null;
+    const rad = Math.PI / 180;
     return {
       ...cluster,
       vessels,
       vesselCount: vessels.length,
       lat: vessels.reduce((sum, v) => sum + v.lat, 0) / vessels.length,
-      lon: vessels.reduce((sum, v) => sum + v.lon, 0) / vessels.length,
+      // Circular mean, so a group straddling the date line stays in the Pacific.
+      lon: Math.atan2(
+        vessels.reduce((sum, v) => sum + Math.sin(v.lon * rad), 0),
+        vessels.reduce((sum, v) => sum + Math.cos(v.lon * rad), 0),
+      ) / rad,
     };
   }
 
