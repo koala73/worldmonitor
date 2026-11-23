@@ -76,6 +76,13 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
 
     await mapTab.click();
     await expect(mapTab).toHaveAttribute('aria-current', 'page');
+    // Cmd/Ctrl+K opens Search over the fullscreen map; closing it (here with
+    // Back) returns to Map.
+    await page.keyboard.press('ControlOrMeta+k');
+    await expect(page.locator('[data-mobile-tab="search"]')).toHaveAttribute('aria-current', 'page');
+    await page.goBack();
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
     await page.keyboard.press('Escape');
     await expect(page.locator('#mapSection')).not.toHaveClass(/live-news-fullscreen/);
     await expect(todayTab).toHaveAttribute('aria-current', 'page');

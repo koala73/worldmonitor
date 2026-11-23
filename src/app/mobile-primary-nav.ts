@@ -31,6 +31,7 @@ export class MobilePrimaryNav {
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeHistory: (() => void) | null = null;
   private activeTab = 'today';
+  private mapFullscreen = false;
 
   constructor(
     private readonly ctx: AppContext,
@@ -43,7 +44,7 @@ export class MobilePrimaryNav {
     this.unsubscribeHistory = overlayHistory.subscribe((top) => {
       const tab = overlayTab(top);
       if (tab) this.setActive(tab);
-      else if (!top && (this.activeTab === 'search' || this.activeTab === 'more')) this.setActive('today');
+      else if (!top && (this.activeTab === 'search' || this.activeTab === 'more')) this.setActive(this.mapFullscreen ? 'map' : 'today');
     });
   }
 
@@ -69,6 +70,7 @@ export class MobilePrimaryNav {
 
   /** Follows map fullscreen however it was toggled (tab, map button or Escape). */
   syncMapFullscreen(isFullscreen: boolean): void {
+    this.mapFullscreen = isFullscreen;
     if (isFullscreen) this.setActive('map');
     else if (this.activeTab === 'map') this.setActive('today');
   }
