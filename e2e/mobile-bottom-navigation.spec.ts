@@ -64,6 +64,20 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
   });
 
+  test('the Today map strip keeps zoom and leaves the time range to the Map view (#11157)', async ({ page }) => {
+    const section = page.locator('#mapSection');
+    await expect(section.locator('[data-action="zoom-in"]')).toBeVisible();
+    await expect(section.locator('.time-slider')).toBeHidden();
+    await expect(section.locator('.map-controls [data-action="reset"]')).toBeHidden();
+    await page.locator('[data-mobile-tab="map"]').click();
+    await expect(section).toHaveClass(/live-news-fullscreen/);
+    // Only this rule's display:none is checked; fullscreen visibility is #11196's.
+    const displays = await section.evaluate((el) => ['.time-slider', '.map-controls [data-action="reset"]', '.map-controls .map-locate']
+      .map((selector) => { const node = el.querySelector(selector); return node ? getComputedStyle(node).display : 'missing'; }));
+    expect(displays).not.toContain('none');
+    expect(displays).not.toContain('missing');
+  });
+
   test('keeps the account entry visible in the header before More opens', async ({ page }) => {
     const headerAuth = page.locator('#authWidgetMount');
     const signIn = headerAuth.locator('.auth-signin-btn');
