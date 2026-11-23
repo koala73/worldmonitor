@@ -12,6 +12,7 @@ import test from 'node:test';
 
 import worker from './src/index.js';
 import { BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION, TIER_MAX_AGE_MS } from './src/kv-shadow.js';
+import { buildBootstrapTierEnvelope } from '../../shared/bootstrap-tier-envelope.js';
 // Shared with the origin-handler and deployed-URL guards — see index.test.mjs.
 import { assertPublicBootstrapCorsHeaders } from '../../tests/helpers/public-bootstrap-contract.mjs';
 
@@ -19,13 +20,8 @@ const FAST_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1'
 const SLOW_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=slow&public=1';
 
 const payloadFor = (tier) => ({ data: { [`${tier}-key`]: { v: 1 } }, missing: [`${tier}-missing`] });
-const envelopeFor = (tier, ageMs = 0) =>
-  JSON.stringify({
-    schemaVersion: BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION,
-    tier,
-    generatedAt: Date.now() - ageMs,
-    payload: payloadFor(tier),
-  });
+const envelopeFor = (tier, ageMs = 0, payload = payloadFor(tier)) =>
+  JSON.stringify(buildBootstrapTierEnvelope({ generatedAt: Date.now() - ageMs, tier, payload }));
 
 // Route global fetch: Axiom POSTs captured; everything else is a canned "origin" response tagged
 // X-Origin: vercel so a test can tell served-from-KV (source marker) from origin pass-through.
@@ -421,5 +417,63 @@ test('old schema with premium market cards falls back to origin', async () => {
     assert.equal(response.headers.get('X-Origin'), 'vercel');
     assert.doesNotMatch(await response.text(), /marketImplications|old-premium-card/);
     await Promise.all(waits);
+  } finally { restore(); }
+});
+
+test('a repeat hit on the same KV value parses the envelope once and serves identical bytes', async () => {
+  const restore = installFetch();
+  const realParse = JSON.parse;
+  const uniquePayload = { data: { unique: { id: crypto.randomUUID() } }, missing: [] };
+  const raw = envelopeFor('fast', 0, uniquePayload);
+  let parsesOfRaw = 0;
+  JSON.parse = (text, ...rest) => {
+    if (text === raw) parsesOfRaw += 1;
+    return realParse(text, ...rest);
+  };
+  try {
+    const env = makeEnv({ serve: 'all', get: async () => raw });
+    const first = await worker.fetch(req(FAST_URL), env, makeCtx().ctx);
+    const second = await worker.fetch(req(FAST_URL), env, makeCtx().ctx);
+    assert.equal(first.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    assert.equal(second.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    const [a, b] = [await first.text(), await second.text()];
+    assert.equal(a, b);
+    assert.deepEqual(realParse(a), uniquePayload);
+    assert.equal(parsesOfRaw, 1, 'the second request reuses the cached payload');
+  } finally {
+    JSON.parse = realParse;
+    restore();
+  }
+});
+
+test('a cached payload stops being served once its envelope passes the tier max age', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_900_000_000_000 });
+  const restore = installFetch();
+  try {
+    const raw = envelopeFor('fast', 0, { data: { unique: { id: crypto.randomUUID() } }, missing: [] });
+    const env = makeEnv({ serve: 'all', get: async () => raw });
+    const fresh = await worker.fetch(req(FAST_URL), env, makeCtx().ctx);
+    assert.equal(fresh.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    await fresh.text();
+
+    t.mock.timers.tick(TIER_MAX_AGE_MS.fast + 1);
+    const aged = await worker.fetch(req(FAST_URL), env, makeCtx().ctx);
+    assert.equal(aged.headers.get('X-Origin'), 'vercel', 'an aged cached value falls through to origin');
+    assert.equal(aged.headers.get('X-WorldMonitor-Bootstrap-Source'), null);
+  } finally { restore(); }
+});
+
+test('a new KV value replaces the cached payload instead of serving the old one', async () => {
+  const restore = installFetch();
+  try {
+    const older = envelopeFor('slow', 0, { data: { generation: { v: 1 } }, missing: [] });
+    const newer = envelopeFor('slow', 0, { data: { generation: { v: 2 } }, missing: [] });
+    let current = older;
+    const env = makeEnv({ serve: 'all', get: async () => current });
+    const a = await worker.fetch(req(SLOW_URL), env, makeCtx().ctx);
+    assert.deepEqual(JSON.parse(await a.text()).data.generation, { v: 1 });
+    current = newer;
+    const b = await worker.fetch(req(SLOW_URL), env, makeCtx().ctx);
+    assert.deepEqual(JSON.parse(await b.text()).data.generation, { v: 2 });
   } finally { restore(); }
 });

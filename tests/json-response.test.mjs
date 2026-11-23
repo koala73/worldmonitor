@@ -36,4 +36,23 @@ describe('jsonResponse', () => {
 
     assert.throws(() => jsonResponse(value, 200), /circular|cyclic/i);
   });
+
+  it('serializes a value referenced twice without treating it as circular', async () => {
+    const shared = { n: 1 };
+
+    assert.deepEqual(await roundTrip({ a: shared, b: shared }), { a: { n: 1 }, b: { n: 1 } });
+  });
+
+  it('replaces an Error held inside an array', async () => {
+    assert.deepEqual(await roundTrip({ list: [new Error('inside array')] }), { list: [{ error: 'inside array' }] });
+  });
+
+  it('sets Content-Length to the UTF-8 byte length of a multi-byte body', async () => {
+    const res = jsonResponse({ text: 'héllo 世界 🌍' }, 200);
+    const bytes = new Uint8Array(await res.clone().arrayBuffer());
+
+    assert.equal(res.headers.get('Content-Length'), String(bytes.byteLength));
+    assert.deepEqual(await res.json(), { text: 'héllo 世界 🌍' });
+  });
 });
+
