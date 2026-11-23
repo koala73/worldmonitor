@@ -16328,6 +16328,7 @@ button.popup-link {
      works); the full set returns in the fullscreen Map view. */
   .map-section:not(.live-news-fullscreen) .time-slider,
   .map-section:not(.live-news-fullscreen) .map-controls [data-action="reset"],
+  .map-section:not(.live-news-fullscreen) .map-controls .zoom-reset,
   .map-section:not(.live-news-fullscreen) .map-controls .map-locate {
     display: none;
   }
