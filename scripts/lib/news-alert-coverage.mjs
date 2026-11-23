@@ -214,6 +214,10 @@ export async function findRewriteAnchor(event, {
   const deadlineAt = startedAt + deadlineMs;
   const finished = await Promise.race([decide(event, work, { now, pipeline, embed, judge, deadlineAt }).then(() => work), deadline]);
   clearTimeout(timer);
+  // The judge's calls abort at deadlineAt, the same instant the timer fires,
+  // so the check can finish with empty replies a tick before the timer wins.
+  // Those replies are empty because of the deadline, and the log says so.
+  if (finished?.error === 'judge returned nothing' && Date.now() >= deadlineAt) finished.error = 'deadline';
   const decision = finished ?? { ...blank(), id: work.id, candidates: work.candidates, best: work.best, judged: work.judged, error: 'deadline' };
   decision.ms = Date.now() - startedAt;
   return decision;
