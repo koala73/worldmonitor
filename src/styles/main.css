@@ -4099,9 +4099,14 @@ body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-timestamp {
   pointer-events: none !important;
 }
 
-body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-bottom-grid,
-body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-resize-handle {
+body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-bottom-grid {
   display: none !important;
+}
+
+/* The panel grid stacks below the map dividers, even when a panel is expanded. */
+body.live-news-fullscreen-active .map-resize-handle,
+body.live-news-fullscreen-active .map-width-resize-handle {
+  display: none;
 }
 
 body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-container {
