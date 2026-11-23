@@ -7,9 +7,11 @@ import { expect, test } from '@playwright/test';
 test.describe('e2e dev server makes no outbound requests', () => {
   test('the news digest carries no live stories', async ({ request }) => {
     const response = await request.get('/api/news/v1/list-feed-digest?variant=full&lang=en');
-    const body = await response.json().catch(() => ({})) as {
-      categories?: Record<string, { items?: unknown[] }>;
-    };
+    // A 200 with a digest shape: the handler took its offline path rather than
+    // throwing on the blocked fetch.
+    expect(response.status()).toBe(200);
+    const body = await response.json() as { categories?: Record<string, { items?: unknown[] }> };
+    expect(typeof body.categories).toBe('object');
     const items = Object.values(body.categories ?? {}).flatMap((category) => category.items ?? []);
     expect(items).toHaveLength(0);
   });

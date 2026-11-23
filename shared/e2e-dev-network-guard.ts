@@ -6,9 +6,13 @@
  * fetched live RSS, Redis and upstream APIs, and live data (such as a
  * breaking-news banner over the controls under test) decided whether specs
  * passed (#11185).
+ *
+ * Loopback stays open, so a local `.env.local` that points Redis or the relay
+ * at localhost still feeds local runs; CI has no such services.
  */
 
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+// URL.hostname keeps IPv6 brackets, so `[::1]` is the only IPv6 loopback form.
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
 function hostOf(url: string): string | null {
   try {
