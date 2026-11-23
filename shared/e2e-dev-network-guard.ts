@@ -1,5 +1,6 @@
 /**
- * Keeps the Playwright dev server (`VITE_E2E=1 vite`) off the network.
+ * Keeps the Playwright dev server (`VITE_E2E=1 WM_E2E_OFFLINE=1 vite`) off the
+ * network.
  *
  * The e2e server runs the real dev API handlers in its own process. A spec's
  * page.route only sees browser requests, so without this guard the handlers

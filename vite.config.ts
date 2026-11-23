@@ -1072,8 +1072,11 @@ export default defineConfig(({ mode, command }) => {
       : 3000;
 
   const isE2E = process.env.VITE_E2E === '1';
+  // Set only by playwright.config.ts. Other VITE_E2E launches (wm-verify.sh,
+  // profiling scripts) want the readiness markers but still need live data.
+  const isOfflineE2E = isE2E && command === 'serve' && process.env.WM_E2E_OFFLINE === '1';
   // Installed before any dev handler loads, so every server-side fetch is guarded.
-  if (isE2E && command === 'serve') installE2eOutboundFetchGuard();
+  if (isOfflineE2E) installE2eOutboundFetchGuard();
   const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
   const activeVariant = process.env.VITE_VARIANT || 'full';
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
@@ -1608,7 +1611,7 @@ export default defineConfig(({ mode, command }) => {
         ],
       },
       // E2E runs must not depend on live upstreams; see shared/e2e-dev-network-guard.ts.
-      proxy: closeExternalProxyRules(isE2E, {
+      proxy: closeExternalProxyRules(isOfflineE2E, {
         // Widget agent — forward to Railway relay for SSE streaming
         '/widget-agent': {
           target: 'https://proxy.worldmonitor.app',
