@@ -196,6 +196,12 @@ export interface FocusFitInset {
   y: number;
 }
 
+// The default map paints from the 110m topology. Desktop swaps in the 50m topology once the user
+// zooms in, and stops asking after repeated failures so an offline tab does not refetch 739 KB on
+// every render.
+const HI_RES_WORLD_MIN_ZOOM = 2;
+const HI_RES_WORLD_MAX_FAILURES = 2;
+
 export class MapComponent {
   private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;
   private static readonly MOBILE_MAX_IRAN_EVENTS = 50;
@@ -239,6 +245,9 @@ export class MapComponent {
   private state: MapState;
   private layerExplanationOutsideClickHandler: ((event: MouseEvent) => void) | null = null;
   private worldData: WorldTopology | null = null;
+  private hiResWorldLoaded = false;
+  private hiResWorldLoading = false;
+  private hiResWorldFailures = 0;
   private countryFeatures: Feature<Geometry>[] | null = null;
   /**
    * Dashboard focus outline (#10453), as UN M49 codes: the world topology
@@ -1420,7 +1429,10 @@ export class MapComponent {
   private async loadMapData(attempt = 0): Promise<void> {
     if (this.destroyed) return;
     try {
-      const worldResponse = await fetch(worldTopologyUrl(this.isMobile), { signal: createTimeoutSignal(15_000) });
+      // Progressive LOD: render first paint immediately from the lightweight
+      // 110m topology (105 KB vs 739 KB, ~86% fewer SVG arc vertices). Desktop
+      // seamlessly upgrades to 50m on zoom >= 2 via maybeUpgradeWorldTopology().
+      const worldResponse = await fetch(worldTopologyUrl(true), { signal: createTimeoutSignal(15_000) });
       this.worldData = await worldResponse.json();
       if (this.worldData) {
         const countries = topojson.feature(
@@ -1439,6 +1451,42 @@ export class MapComponent {
         return this.loadMapData(attempt + 1);
       }
       console.error('Failed to load map data:', e);
+    }
+  }
+
+  private shouldUpgradeWorldTopology(zoom: number): boolean {
+    return !this.destroyed
+      && !this.isMobile
+      && this.worldData !== null
+      && zoom >= HI_RES_WORLD_MIN_ZOOM
+      && !this.hiResWorldLoaded
+      && !this.hiResWorldLoading
+      && this.hiResWorldFailures < HI_RES_WORLD_MAX_FAILURES;
+  }
+
+  private async maybeUpgradeWorldTopology(): Promise<void> {
+    if (!this.shouldUpgradeWorldTopology(this.state.zoom)) return;
+    this.hiResWorldLoading = true;
+    try {
+      const worldResponse = await fetch(worldTopologyUrl(false), { signal: createTimeoutSignal(15_000) });
+      if (this.destroyed) return;
+      if (!worldResponse.ok) {
+        this.hiResWorldFailures += 1;
+        return;
+      }
+      const hiRes = await worldResponse.json() as WorldTopology;
+      if (this.destroyed || !hiRes) return;
+      this.worldData = hiRes;
+      const countries = topojson.feature(hiRes, hiRes.objects.countries);
+      this.countryFeatures = 'features' in countries ? countries.features : [countries];
+      this.hiResWorldLoaded = true;
+      this.baseRendered = false;
+      this.scheduleRender();
+    } catch {
+      // The 110m base map stays on screen.
+      this.hiResWorldFailures += 1;
+    } finally {
+      this.hiResWorldLoading = false;
     }
   }
 
@@ -1963,54 +2011,96 @@ export class MapComponent {
     pixelRadius: number,
     getGroupKey?: (item: T) => string
   ): Array<{ items: T[]; center: [number, number]; pos: [number, number] }> {
-    const clusters: Array<{ items: T[]; center: [number, number]; pos: [number, number] }> = [];
-    const assigned = new Set<number>();
+    const n = items.length;
+    if (n === 0) return [];
 
-    for (let i = 0; i < items.length; i++) {
-      if (assigned.has(i)) continue;
+    // Pre-project valid markers once and index into a spatial hash grid of cell
+    // size `pixelRadius` so neighbor search is O(1) amortized instead of O(n^2)
+    // with n^2 D3 projections.
+    const cellSize = Math.max(1, pixelRadius);
+    const radiusSq = pixelRadius * pixelRadius;
+    const xs = new Float64Array(n);
+    const ys = new Float64Array(n);
+    const valid = new Uint8Array(n);
+    const assigned = new Uint8Array(n);
+    const groupKeys = getGroupKey ? new Array<string | undefined>(n) : null;
+    const grid = new Map<number, number[]>();
 
+    // Pack signed integer cell coords into a single safe JS integer key.
+    const cellKey = (cx: number, cy: number): number => (cx + 1_048_576) * 2_097_152 + (cy + 1_048_576);
+
+    for (let i = 0; i < n; i++) {
       const item = items[i]!;
       if (!Number.isFinite(item.lat) || !Number.isFinite(item.lon)) continue;
       const pos = projection([item.lon, item.lat]);
       if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) continue;
+      valid[i] = 1;
+      xs[i] = pos[0];
+      ys[i] = pos[1];
+      if (groupKeys && getGroupKey) groupKeys[i] = getGroupKey(item);
+      const cx = Math.floor(pos[0] / cellSize);
+      const cy = Math.floor(pos[1] / cellSize);
+      const key = cellKey(cx, cy);
+      let bucket = grid.get(key);
+      if (!bucket) {
+        bucket = [];
+        grid.set(key, bucket);
+      }
+      bucket.push(i);
+    }
+
+    const clusters: Array<{ items: T[]; center: [number, number]; pos: [number, number] }> = [];
+    const matches: number[] = [];
+
+    for (let i = 0; i < n; i++) {
+      if (!valid[i] || assigned[i]) continue;
+
+      const item = items[i]!;
+      const px = xs[i]!;
+      const py = ys[i]!;
+      const itemKey = groupKeys ? groupKeys[i] : undefined;
 
       const cluster: T[] = [item];
-      assigned.add(i);
-      const itemKey = getGroupKey?.(item);
+      assigned[i] = 1;
+      let sumLat = item.lat;
+      let sumLon = item.lon;
 
-      // Find nearby items (must share same group key if provided)
-      for (let j = i + 1; j < items.length; j++) {
-        if (assigned.has(j)) continue;
-        const other = items[j]!;
-
-        // Skip if different group keys (e.g., different cities)
-        if (getGroupKey && getGroupKey(other) !== itemKey) continue;
-
-        if (!Number.isFinite(other.lat) || !Number.isFinite(other.lon)) continue;
-        const otherPos = projection([other.lon, other.lat]);
-        if (!otherPos || !Number.isFinite(otherPos[0]) || !Number.isFinite(otherPos[1])) continue;
-
-        const dx = pos[0] - otherPos[0];
-        const dy = pos[1] - otherPos[1];
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist <= pixelRadius) {
-          cluster.push(other);
-          assigned.add(j);
+      const cx = Math.floor(px / cellSize);
+      const cy = Math.floor(py / cellSize);
+      matches.length = 0;
+      for (let ox = -1; ox <= 1; ox++) {
+        for (let oy = -1; oy <= 1; oy++) {
+          const bucket = grid.get(cellKey(cx + ox, cy + oy));
+          if (!bucket) continue;
+          for (let b = 0; b < bucket.length; b++) {
+            const j = bucket[b]!;
+            if (j <= i || assigned[j]) continue;
+            if (groupKeys && groupKeys[j] !== itemKey) continue;
+            const dx = px - xs[j]!;
+            const dy = py - ys[j]!;
+            if (dx * dx + dy * dy <= radiusSq) matches.push(j);
+          }
         }
       }
-
-      // Calculate cluster center
-      let sumLat = 0, sumLon = 0;
-      for (const c of cluster) {
-        sumLat += c.lat;
-        sumLon += c.lon;
+      // Grid cells come out in cell order. Sorting restores input order, so the item list and the
+      // floating-point sums match the original pairwise scan exactly.
+      if (matches.length > 1) matches.sort((a, b) => a - b);
+      for (let m = 0; m < matches.length; m++) {
+        const j = matches[m]!;
+        const other = items[j]!;
+        cluster.push(other);
+        assigned[j] = 1;
+        sumLat += other.lat;
+        sumLon += other.lon;
       }
+
       const centerLat = sumLat / cluster.length;
       const centerLon = sumLon / cluster.length;
-      const centerPos = projection([centerLon, centerLat]);
-      const finalPos = (centerPos && Number.isFinite(centerPos[0]) && Number.isFinite(centerPos[1]))
-        ? centerPos : pos;
+      const centerPos = cluster.length === 1 ? ([px, py] as [number, number]) : projection([centerLon, centerLat]);
+      const finalPos: [number, number] =
+        centerPos && Number.isFinite(centerPos[0]) && Number.isFinite(centerPos[1])
+          ? centerPos
+          : [px, py];
 
       clusters.push({
         items: cluster,
@@ -4972,6 +5062,7 @@ export class MapComponent {
     this.clampPan(width, height);
     const zoom = this.state.zoom;
     const overlayBudgetViewportChanged = this.overlayBudgetPlanIsStale(width, height);
+    if (this.shouldUpgradeWorldTopology(zoom)) void this.maybeUpgradeWorldTopology();
 
     // With transform-origin: 0 0, we need to offset to keep center in view
     // Formula: translate first to re-center, then scale
