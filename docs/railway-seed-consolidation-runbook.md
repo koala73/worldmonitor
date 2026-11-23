@@ -568,8 +568,11 @@ Provision and release in this order:
 3. Verify the edge Worker reads fresh `fast` and `slow` envelopes from the same
    KV namespace binding.
 
-Rotate the KV write token by creating a replacement token scoped only to the
-bootstrap KV namespace, updating `KV_BOOTSTRAP_WRITE_TOKEN` in Railway
+Rotate the KV write token by creating a replacement token targeted to the
+Cloudflare account (`KV_BOOTSTRAP_ACCOUNT_ID`) with the account-scoped
+`Workers KV Storage: Edit` permission (note: Cloudflare scopes this permission
+to the account rather than a single namespace, so it grants KV access beyond
+the bootstrap namespace), updating `KV_BOOTSTRAP_WRITE_TOKEN` in Railway
 production, verifying the next publish succeeds, and revoking the old token. On
 suspected compromise, revoke first; Redis fallback preserves availability while
 a replacement is issued. Never log, commit, or copy credential values into an
