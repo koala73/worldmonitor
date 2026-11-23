@@ -31,8 +31,13 @@ function stripReasoningPreamble(text) {
 const ANTHROPIC_DEFAULT_MODEL = 'claude-opus-5-5';
 const ANTHROPIC_THINKING_HEADROOM_TOKENS = 4_096;
 
-async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxTokens, timeout, jsonSchema }) {
+async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxTokens, timeout, jsonSchema, deadlineAt }) {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  // The first import can take long enough to use up the caller's budget; a
+  // request sent after it costs money and its reply is no longer awaited.
+  const left = Number.isFinite(deadlineAt) ? deadlineAt - Date.now() : Infinity;
+  if (left <= 0) return { text: '', finishReason: 'deadline', usage: { tokensTotal: 0, tokensPrompt: 0, tokensCompletion: 0 } };
+  const requestTimeout = Math.min(timeout ?? 60_000, left);
   const client = new Anthropic({ apiKey, maxRetries: 0, fetch: (...args) => globalThis.fetch(...args) });
   const response = await client.messages.create({
     model,
@@ -43,7 +48,7 @@ async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxToken
     // OpenRouter; without it a model may reason in prose before the object.
     output_config: { effort: 'low', ...(jsonSchema ? { format: { type: 'json_schema', schema: jsonSchema } } : {}) },
     fallbacks: 'default',
-  }, { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, timeout, signal: AbortSignal.timeout(timeout ?? 60_000) });
+  }, { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, timeout: requestTimeout, signal: AbortSignal.timeout(requestTimeout) });
   const text = response.stop_reason === 'refusal'
     ? ''
     : (response.content ?? [])
@@ -198,8 +203,11 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     try {
       if (provider.invoke) {
         const result = await provider.invoke({
-          apiKey: envVal, model, systemPrompt, userPrompt, maxTokens, timeout, jsonSchema,
+          apiKey: envVal, model, systemPrompt, userPrompt, maxTokens, timeout, jsonSchema, deadlineAt,
         });
+        // The deadline passed before the request was sent: nothing was
+        // attempted, and no later provider may start either.
+        if (result.finishReason === 'deadline') break;
         if (result.finishReason === 'max_tokens') {
           console.warn(`[llm-chain] ${provider.name}: length-limited response, trying next provider`);
           record(false, { ...result.usage, reason: 'length' });
