@@ -2,7 +2,7 @@
 export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModified: string }> = {
   "about": {"datePublished":"2026-07-10","dateModified":"2026-11-19"},
   "accounts": {"datePublished":"2026-07-05","dateModified":"2026-11-14"},
-  "adding-endpoints": {"datePublished":"2026-03-11","dateModified":"2026-11-01"},
+  "adding-endpoints": {"datePublished":"2026-03-11","dateModified":"2026-11-22"},
   "agent-discovery": {"datePublished":"2026-04-27","dateModified":"2026-11-12"},
   "agent-skills": {"datePublished":"2026-07-08","dateModified":"2026-11-12"},
   "ai-intelligence": {"datePublished":"2026-03-11","dateModified":"2026-11-10"},

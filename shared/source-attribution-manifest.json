@@ -1421,15 +1421,10 @@
       "host": "api.ossinsight.io",
       "provider": "api.ossinsight.io",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit api.ossinsight.io and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-research.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.planespotters.net",
