@@ -67,8 +67,9 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
   test('the last dashboard tile scrolls clear of the tab bar (#11157)', async ({ page }) => {
     const tile = page.locator('#panelsGrid > .add-panel-block:visible').last();
     await expect(tile).toBeVisible();
-    await page.locator('#main').evaluate((main) => main.scrollTo(0, main.scrollHeight));
     await expect.poll(async () => {
+      // Panels keep mounting, so scroll to the current end on every attempt.
+      await page.locator('#main').evaluate((main) => main.scrollTo(0, main.scrollHeight));
       const tileBox = await tile.boundingBox();
       const barBox = await page.locator('#mobileTabBar').boundingBox();
       return (tileBox?.y ?? 0) + (tileBox?.height ?? 0) <= (barBox?.y ?? 0);
