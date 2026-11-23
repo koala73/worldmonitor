@@ -17,6 +17,7 @@ import { createLiveMediaIdleNotice, trackLiveMediaIdleStop } from './live-media-
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { OPTIONAL_LIVE_CHANNELS, getDefaultLiveChannels, hasBuiltinStreams, liveVideoSourceFor, loadChannelsFromStorage, saveChannelsToStorage, type LiveChannel } from '@/services/live-channels';
 import { declareOverlay } from '@/utils/open-modal';
+import { setAudibleMedia } from '@/bootstrap/soft-reload-policy';
 export { getDefaultLiveChannels, loadChannelsFromStorage } from '@/services/live-channels';
 
 function offlineReasonText(reason: OfflineReason, name: string): string {
@@ -390,7 +391,13 @@ export class LiveNewsPanel extends Panel {
     });
   }
 
+  /** Tells the update reloader whether this panel is playing with sound; it never reloads over that. */
+  private reportAudibleMedia(): void {
+    setAudibleMedia('live-news', this.isPlaying && !this.isMuted && this.audioAvailability !== 'unavailable');
+  }
+
   private updateLiveIndicator(): void {
+    this.reportAudibleMedia();
     if (!this.liveBtn) return;
     setTrustedHtml(this.liveBtn, trustedHtml(this.isPlaying
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
@@ -465,6 +472,7 @@ export class LiveNewsPanel extends Panel {
   };
 
   private updateMuteIcon(): void {
+    this.reportAudibleMedia();
     if (!this.muteBtn) return;
     const unavailable = this.audioAvailability === 'unavailable';
     const label = unavailable ? t('components.liveNews.audioUnavailable') : 'Toggle sound';
@@ -1024,6 +1032,7 @@ export class LiveNewsPanel extends Panel {
     }
 
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
+    setAudibleMedia('live-news', false);
     document.removeEventListener('keydown', this.boundFullscreenEscHandler);
     this.detachChannelDragListeners();
     if (this.isFullscreen) this.setFullscreen(false);

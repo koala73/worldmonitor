@@ -1,6 +1,7 @@
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { findReloadBlockingModal } from '@/utils/open-modal';
 import { markPageUnloading } from '@/bootstrap/page-unload-signal';
+import { currentSoftReloadHold, type SoftReloadHold } from '@/bootstrap/soft-reload-policy';
 interface VisibleElementLike {
   checkVisibility?: () => boolean;
   getClientRects?: () => { length: number };
@@ -64,6 +65,11 @@ export interface SwUpdateHandlerOptions {
   debug?: boolean;
   /** App version string included in debug log entries. */
   version?: string;
+  /**
+   * Why the tab-hide auto-reload must not fire right now, or null when it may.
+   * Default: the live page's sound and age (src/bootstrap/soft-reload-policy.ts).
+   */
+  softReloadHold?: () => SoftReloadHold | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +112,11 @@ function appendDebugLog(entry: Record<string, unknown>): void {
  *    one animation frame, which would allow a hidden-tab auto-reload prematurely.
  *
  * Dismissing one version never suppresses toasts for future deploys.
+ *
+ * The tab-hide auto-reload also waits for the shared quiet rules: nothing
+ * playing with sound, and a page old enough that one deploy after another
+ * cannot reload the tab each time the viewer looks away. The Reload button
+ * ignores them.
  */
 export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): void {
   // No readable container (sandboxed iframe, or an engine without SW support)
@@ -125,6 +136,7 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
     try { return localStorage.getItem('wm-debug-sw') === '1'; } catch { return false; }
   })();
   const version = options.version;
+  const softReloadHold = options.softReloadHold ?? (() => currentSoftReloadHold(doc));
 
   function logSw(event: string, extra: Record<string, unknown> = {}): void {
     if (!debugEnabled) return;
@@ -225,6 +237,12 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
         const blocker = findReloadBlockingModal(doc);
         if (blocker !== null) {
           logSw('auto-reload-suppressed-modal-open', { blockedBy: blocker.label, reloadPolicy: blocker.policy });
+          return;
+        }
+        // Stays armed like the modal case: a later tab-hide retries.
+        const hold = softReloadHold();
+        if (hold !== null) {
+          logSw('auto-reload-held', { hold });
           return;
         }
         logSw('auto-reload-triggered');

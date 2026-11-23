@@ -13,6 +13,7 @@ import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
 import { removeSourceMaps, shouldEmitPublicSourceMaps, viteSourcemapSetting } from './shared/source-map-policy';
 import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
+import { CLIENT_COMPAT } from './src/bootstrap/client-compat';
 import {
   WEB_DASHBOARD_VARIANTS,
   renderVariantDashboardHtml,
@@ -1145,6 +1146,15 @@ export default defineConfig(({ mode }) => {
             type: 'asset',
             fileName: 'build-hash.txt',
             source: process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev',
+          });
+          // The compatibility marker a tab on an older build reads after it
+          // sees a new hash. Unchanged marker: the tab updates when hidden and
+          // quiet. Changed marker: it reloads at once. Its own file, so
+          // build-hash.txt stays a bare SHA for its other readers.
+          this.emitFile({
+            type: 'asset',
+            fileName: 'client-compat.txt',
+            source: CLIENT_COMPAT,
           });
         },
       },

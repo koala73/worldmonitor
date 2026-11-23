@@ -7,7 +7,17 @@
 // Mechanism: on tab focus, fetch /build-hash.txt (a static asset emitted by
 // the Vite plugin in vite.config.ts at build time, content = the deployed
 // SHA) and compare against __BUILD_HASH__ baked into the running bundle.
-// Mismatch → hard reload.
+//
+// A mismatch alone no longer reloads. Production deploys land dozens of times
+// a day and almost none of them change anything an open tab depends on, so a
+// reload per deploy interrupted reading and stopped live video many times a
+// day. On a mismatch the module reads /client-compat.txt and compares it with
+// CLIENT_COMPAT (src/bootstrap/client-compat.ts):
+//
+//   - marker differs, or the deploy serves none → hard reload, as before. This
+//     is the PR #3466 protection, now reserved for the deploys that need it.
+//   - marker unchanged → reload only when src/bootstrap/soft-reload-policy.ts
+//     allows it: tab hidden, no sound playing, page open long enough.
 //
 // /build-hash.txt is intentionally NOT under /api/* so installWebApiRedirect
 // does NOT rewrite it to the canonical API host — it stays same-origin with
@@ -30,6 +40,8 @@
 import { markPageUnloading } from '@/bootstrap/page-unload-signal';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { findReloadBlockingModal, type ModalDocumentLike, type ReloadBlocker } from '@/utils/open-modal';
+import { CLIENT_COMPAT } from '@/bootstrap/client-compat';
+import { currentSoftReloadHold, type SoftReloadHold } from '@/bootstrap/soft-reload-policy';
 
 // Captured before main() replaces window.fetch. check() catches the promise
 // it awaits. A wrapper on the live fetch can also attach
@@ -70,6 +82,13 @@ interface DocumentLike extends ModalDocumentLike {
 interface StaleBundleCheckOptions {
   /** Hash baked into the running bundle (default: __BUILD_HASH__). */
   currentHash?: string;
+  /** Compatibility marker baked into the running bundle (default: CLIENT_COMPAT). */
+  currentCompat?: string;
+  /**
+   * Why a non-breaking update must not reload the tab right now, or null when
+   * it may. Default: the live page's visibility, sound and age.
+   */
+  softReloadHold?: () => SoftReloadHold | null;
   /** Override fetch (for tests). Defaults to global fetch. */
   fetch?: typeof globalThis.fetch;
   /** Override window-level event target (default: window). */
@@ -138,6 +157,20 @@ const DEFAULT_MIN_INTERVAL_MS = 60_000;
 const DEFAULT_PERIODIC_INTERVAL_MS = 10 * 60_000;
 const DEFAULT_WEDGE_AFTER_DEFERRALS = 10;
 
+/** What a deployed build means for a tab running an older one. */
+type DeployKind = 'breaking' | 'compatible';
+
+/**
+ * The marker a deploy published, or null when the body is not one. A deploy
+ * from before the marker existed has no such file, and a host that answers a
+ * missing file with the app shell returns HTML with status 200, so the shape is
+ * checked rather than trusted.
+ */
+function parseCompatMarker(body: string): string | null {
+  const marker = body.trim();
+  return /^[A-Za-z0-9._-]{1,32}$/.test(marker) ? marker : null;
+}
+
 /**
  * Install listeners that compare the running bundle's hash against the
  * deployed hash and reload on mismatch. Three trigger paths:
@@ -166,6 +199,7 @@ const DEFAULT_WEDGE_AFTER_DEFERRALS = 10;
  */
 export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): () => void {
   const currentHash = options.currentHash ?? (typeof __BUILD_HASH__ !== 'undefined' ? __BUILD_HASH__ : 'dev');
+  const currentCompat = options.currentCompat ?? CLIENT_COMPAT;
   const fetchImpl: typeof globalThis.fetch = options.fetch
     ?? fetchBeforeWindowPatches
     ?? ((...args) => globalThis.fetch(...args));
@@ -174,6 +208,7 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
   const setIntervalImpl = options.setInterval ?? ((cb: () => void, ms: number) => globalThis.setInterval(cb, ms));
   const reload = options.reload ?? (() => window.location.reload());
   const now = options.now ?? Date.now;
+  const softReloadHold = options.softReloadHold ?? (() => currentSoftReloadHold(documentTarget));
   // Only a suspected wedge reaches Sentry. A modal open when a deploy lands is
   // the state this guard exists for, so reporting every episode start kept
   // WORLDMONITOR-15X open with no failure behind it; the console line remains.
@@ -217,6 +252,12 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
   let pendingReload: string | null = null;
   /** Triggers deferred in the current episode. Reset when a reload lands. */
   let deferrals = 0;
+  /**
+   * The last deployed hash whose marker was read, with the answer. A deploy's
+   * marker cannot change, so a tab that stays on an older compatible build asks
+   * for it once, not on every trigger.
+   */
+  let classified: { readonly hash: string; readonly kind: DeployKind } | null = null;
 
   /**
    * Reload now, or remember the debt and return while a modal is on screen.
@@ -263,6 +304,46 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
     reload();
   };
 
+  /**
+   * Apply a deploy the running bundle is still compatible with, if doing so
+   * costs the viewer nothing. Otherwise do nothing at all: no debt is recorded,
+   * so a later trigger on a visible tab cannot pay it. The next check asks the
+   * same question again.
+   */
+  const reloadIfQuiet = (deployedHash: string): void => {
+    if (softReloadHold() !== null) return;
+    if (documentTarget && findReloadBlockingModal(documentTarget) !== null) return;
+    // eslint-disable-next-line no-console
+    console.warn('[stale-bundle] quiet reload:', currentHash, '→', deployedHash);
+    markPageUnloading();
+    reload();
+  };
+
+  /**
+   * Read the deployed compatibility marker. Null means "could not tell": a
+   * network failure or a server error says nothing about the deploy, and
+   * reloading on it would bring back a reload per blip.
+   */
+  const classifyDeploy = async (deployedHash: string, t: number): Promise<DeployKind | null> => {
+    if (classified?.hash === deployedHash) return classified.kind;
+    let kind: DeployKind;
+    try {
+      const res = await fetchImpl(`/client-compat.txt?t=${t}`, { cache: 'no-store' });
+      if (res.ok) {
+        kind = parseCompatMarker(await res.text()) === currentCompat ? 'compatible' : 'breaking';
+      } else if (res.status === 404) {
+        // The deploy publishes no marker: a build from before it existed.
+        kind = 'breaking';
+      } else {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+    classified = { hash: deployedHash, kind };
+    return kind;
+  };
+
   const check = async (): Promise<void> => {
     // Treat a mismatch as terminal: retry the reload against the live DOM
     // instead of re-asking the network, bypassing the dedupe window (that
@@ -283,11 +364,15 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
     lastCheckedAt = t;
     inflight = true;
     let deployedHash: string | null = null;
+    let kind: DeployKind | null = null;
     try {
       // Cache-bust to defeat any intermediate proxy that might serve a
       // stale build-hash.txt (the file itself is emitted with the deploy).
       const res = await fetchImpl(`/build-hash.txt?t=${t}`, { cache: 'no-store' });
       if (res.ok) deployedHash = (await res.text()).trim();
+      if (deployedHash && deployedHash !== 'dev' && deployedHash !== currentHash) {
+        kind = await classifyDeploy(deployedHash, t);
+      }
     } catch {
       // Offline, or a network error from fetch/res.text() — silently skip.
       // A non-OK response never throws; it leaves `deployedHash` null and
@@ -297,8 +382,9 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
     }
     // Decided outside the catch, so a throw from the modal probe surfaces to
     // Sentry instead of being misfiled as an offline blip.
-    if (!deployedHash || deployedHash === 'dev') return;
-    if (deployedHash !== currentHash) reloadOrDefer(deployedHash);
+    if (!deployedHash || kind === null) return;
+    if (kind === 'breaking') reloadOrDefer(deployedHash);
+    else reloadIfQuiet(deployedHash);
   };
 
   const focusHandler: EventListener = () => {

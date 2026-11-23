@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { installSwUpdateHandler, RELOAD_BLOCKING_MODAL_SELECTOR, readServiceWorkerContainer } from '../src/bootstrap/sw-update.ts';
 import { RELOAD_POLICY_ATTR } from '../src/utils/open-modal.ts';
 import { _resetPageUnloadSignalForTests, isPageUnloading } from '../src/bootstrap/page-unload-signal.ts';
+import type { SoftReloadHold } from '../src/bootstrap/soft-reload-policy.ts';
 
 // ---------------------------------------------------------------------------
 // Fake environment
@@ -195,9 +196,15 @@ function makeEnv(): FakeEnv {
   return { doc, swContainer, reload, reloadCalls, appendedToasts, visibilityListeners, pendingTimers };
 }
 
-function install(env: FakeEnv, options: { debug?: boolean } = {}) {
+function install(
+  env: FakeEnv,
+  options: { debug?: boolean; softReloadHold?: () => SoftReloadHold | null } = {},
+) {
   installSwUpdateHandler({
     ...(options.debug ? { debug: true } : {}),
+    // Nothing holds the reload unless a test says so; the real default reads
+    // the page's age and sound, which a fake document does not model.
+    softReloadHold: options.softReloadHold ?? (() => null),
     swContainer: env.swContainer,
     document: env.doc,
     reload: env.reload,
@@ -787,6 +794,67 @@ describe('installSwUpdateHandler', () => {
 // ---------------------------------------------------------------------------
 // readServiceWorkerContainer — sandboxed-iframe SecurityError (WORLDMONITOR-Y5)
 // ---------------------------------------------------------------------------
+
+describe('installSwUpdateHandler — quiet auto-reload', () => {
+  let env: FakeEnv;
+  beforeEach(() => {
+    env = makeEnv();
+    _resetPageUnloadSignalForTests();
+  });
+
+  /** Toast shown, dwell elapsed, tab hidden: everything the older rules ask for. */
+  function hideAfterDwell(): void {
+    fireDwellTimer(env);
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+  }
+
+  for (const hold of ['audible-media', 'recently-loaded'] as const) {
+    it(`does NOT auto-reload on tab hide while the reload is held (${hold})`, () => {
+      env.swContainer._controller = {};
+      install(env, { softReloadHold: () => hold });
+      env.swContainer.fireControllerChange();
+      hideAfterDwell();
+      assert.equal(env.reloadCalls.length, 0);
+      assert.equal(isPageUnloading(), false);
+    });
+  }
+
+  it('auto-reloads on a later tab hide once the hold clears', () => {
+    let hold: SoftReloadHold | null = 'audible-media';
+    env.swContainer._controller = {};
+    install(env, { softReloadHold: () => hold });
+    env.swContainer.fireControllerChange();
+    hideAfterDwell();
+    assert.equal(env.reloadCalls.length, 0);
+
+    env.doc.setVisibilityState('visible');
+    fireVisibility(env);
+    hold = null;
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 1);
+  });
+
+  it('logs why the reload was held', () => {
+    env.swContainer._controller = {};
+    const entries = captureSwLog(() => {
+      install(env, { debug: true, softReloadHold: () => 'recently-loaded' });
+      env.swContainer.fireControllerChange();
+      hideAfterDwell();
+    });
+    const held = entries.find((entry) => entry.event === 'auto-reload-held');
+    assert.equal(held?.hold, 'recently-loaded');
+  });
+
+  it('the Reload button ignores the hold', () => {
+    env.swContainer._controller = {};
+    install(env, { softReloadHold: () => 'audible-media' });
+    env.swContainer.fireControllerChange();
+    clickToastButton(env, 'reload');
+    assert.equal(env.reloadCalls.length, 1);
+  });
+});
 
 describe('readServiceWorkerContainer', () => {
   it('returns null when the serviceWorker getter throws (sandboxed iframe)', () => {
