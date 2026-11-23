@@ -16071,8 +16071,13 @@ button.popup-link {
     display: block;
   }
 
+  /* The tab bar stays above the drawer, so reserve its height to keep the
+     footer links reachable (#11157). */
   .mobile-menu {
     display: block;
+    padding-bottom: calc(58px + 12px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+    overscroll-behavior: contain;
   }
 
   .region-sheet-backdrop {

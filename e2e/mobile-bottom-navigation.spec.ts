@@ -64,6 +64,18 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
   });
 
+  test('the More drawer scrolls its footer clear of the tab bar (#11157)', async ({ page }) => {
+    await page.locator('[data-mobile-tab="more"]').click();
+    const menu = page.locator('#mobileMenu');
+    await expect(menu).toHaveClass(/open/);
+    await menu.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await expect.poll(async () => {
+      const versionBox = await page.locator('.mobile-menu-version').boundingBox();
+      const barBox = await page.locator('#mobileTabBar').boundingBox();
+      return (versionBox?.y ?? Infinity) + (versionBox?.height ?? 0) <= (barBox?.y ?? 0);
+    }).toBe(true);
+  });
+
   test('keeps the account entry visible in the header before More opens', async ({ page }) => {
     const headerAuth = page.locator('#authWidgetMount');
     const signIn = headerAuth.locator('.auth-signin-btn');
