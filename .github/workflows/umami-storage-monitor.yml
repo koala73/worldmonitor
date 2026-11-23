@@ -152,11 +152,9 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-        run: |
-          set -euo pipefail
-          mkdir -p .cache
-          railway deployment list --project "$RAILWAY_PROJECT_ID" --environment production \
-            --service umami-retention --limit 1000 --json > .cache/railway-retention-deployments.json
+        # Excludes SKIPPED push refusals on the server: a plain
+        # `railway deployment list` filled its 1000-record cap with them.
+        run: node scripts/read-umami-retention-deployments.mjs --output .cache/railway-retention-deployments.json
 
       - name: Check the retention runner is retiring rows
         if: ${{ !cancelled() }}

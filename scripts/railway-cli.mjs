@@ -417,7 +417,7 @@ const FLEET_QUERY = `query FleetDeployments($input: DeploymentListInput!, $first
   }
 }`;
 
-function parseRailwayApiOutput(stdout) {
+export function parseRailwayApiOutput(stdout) {
   // `railway api` can print advisory lines before the payload; the JSON document
   // is the first line that parses.
   for (const line of stdout.split('\n')) {
