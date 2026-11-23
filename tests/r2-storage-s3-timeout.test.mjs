@@ -10,60 +10,56 @@ import {
   __setR2S3TimeoutForTests,
 } from '../scripts/_r2-storage.mjs';
 
-describe('resolveR2StorageConfig bootstrap profile', () => {
-  it('uses only the dedicated bootstrap credentials and derives the R2 endpoint', () => {
+describe('resolveR2StorageConfig default profile', () => {
+  it('resolves CLOUDFLARE_R2_* S3 credentials and derives the R2 endpoint and trace prefix', () => {
     const config = resolveR2StorageConfig({
-      R2_ACCOUNT_ID: 'bootstrap-account',
-      R2_BOOTSTRAP_BUCKET: 'bootstrap-origin',
-      R2_BOOTSTRAP_ACCESS_KEY_ID: 'bootstrap-key',
-      R2_BOOTSTRAP_SECRET_ACCESS_KEY: 'bootstrap-secret',
-      CLOUDFLARE_R2_ACCOUNT_ID: 'legacy-account',
-      CLOUDFLARE_R2_BUCKET: 'legacy-bucket',
-      CLOUDFLARE_R2_ACCESS_KEY_ID: 'legacy-key',
-      CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'legacy-secret',
-      CLOUDFLARE_API_TOKEN: 'generic-token',
-    }, { profile: 'bootstrap' });
+      CLOUDFLARE_R2_ACCOUNT_ID: 'r2-account',
+      CLOUDFLARE_R2_TRACE_BUCKET: 'worldmonitor-data',
+      CLOUDFLARE_R2_ACCESS_KEY_ID: 'r2-key',
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'r2-secret',
+    });
 
     assert.deepEqual(config, {
       mode: 's3',
-      accountId: 'bootstrap-account',
-      bucket: 'bootstrap-origin',
-      endpoint: 'https://bootstrap-account.r2.cloudflarestorage.com',
+      accountId: 'r2-account',
+      bucket: 'worldmonitor-data',
+      endpoint: 'https://r2-account.r2.cloudflarestorage.com',
       region: 'auto',
       credentials: {
-        accessKeyId: 'bootstrap-key',
-        secretAccessKey: 'bootstrap-secret',
+        accessKeyId: 'r2-key',
+        secretAccessKey: 'r2-secret',
       },
       forcePathStyle: true,
-      basePrefix: '',
+      basePrefix: 'seed-data/forecast-traces',
     });
   });
 
-  it('honors the optional dedicated endpoint', () => {
+  it('honors optional CLOUDFLARE_R2_ENDPOINT and CLOUDFLARE_R2_TRACE_PREFIX', () => {
     const config = resolveR2StorageConfig({
-      R2_ACCOUNT_ID: 'bootstrap-account',
-      R2_ENDPOINT: 'https://r2.example.test',
-      R2_BOOTSTRAP_BUCKET: 'bootstrap-origin',
-      R2_BOOTSTRAP_ACCESS_KEY_ID: 'bootstrap-key',
-      R2_BOOTSTRAP_SECRET_ACCESS_KEY: 'bootstrap-secret',
-    }, { profile: 'bootstrap' });
+      CLOUDFLARE_R2_ACCOUNT_ID: 'r2-account',
+      CLOUDFLARE_R2_ENDPOINT: 'https://r2.example.test',
+      CLOUDFLARE_R2_BUCKET: 'worldmonitor-data',
+      CLOUDFLARE_R2_ACCESS_KEY_ID: 'r2-key',
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'r2-secret',
+      CLOUDFLARE_R2_TRACE_PREFIX: '/custom/traces/',
+    });
 
     assert.equal(config?.endpoint, 'https://r2.example.test');
+    assert.equal(config?.basePrefix, 'custom/traces');
   });
 
-  it('does not fall back to legacy credentials or generic API tokens', () => {
-    const config = resolveR2StorageConfig({
-      R2_ACCOUNT_ID: 'bootstrap-account',
-      R2_BOOTSTRAP_BUCKET: 'bootstrap-origin',
-      CLOUDFLARE_R2_ACCOUNT_ID: 'legacy-account',
-      CLOUDFLARE_R2_BUCKET: 'legacy-bucket',
-      CLOUDFLARE_R2_ACCESS_KEY_ID: 'legacy-key',
-      CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'legacy-secret',
-      CLOUDFLARE_R2_TOKEN: 'legacy-r2-token',
-      CLOUDFLARE_API_TOKEN: 'generic-token',
-    }, { profile: 'bootstrap' });
-
-    assert.equal(config, null);
+  it('returns null when required S3/API credentials are missing and rejects the retired bootstrap profile', () => {
+    assert.equal(
+      resolveR2StorageConfig({
+        CLOUDFLARE_R2_ACCOUNT_ID: 'r2-account',
+        CLOUDFLARE_R2_BUCKET: 'worldmonitor-data',
+      }),
+      null,
+    );
+    assert.throws(
+      () => resolveR2StorageConfig({}, { profile: 'bootstrap' }),
+      /Unknown R2 storage profile: bootstrap/,
+    );
   });
 });
 

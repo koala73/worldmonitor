@@ -526,13 +526,13 @@ either read-only Railway subprocess can start.
 | `DEFERRED_AMBIGUOUS` | Preserve hold and defer | Any incomplete history, budget exhaustion, timeout, 5xx, 408/409/429, or post-send ambiguity |
 | `MANUAL_REQUIRED_AFTER_MUTATION` | Block automation | Durable mutation marker or barrier; use the protected manual recovery evidence above |
 
-### Bootstrap R2 publisher contract
+### Bootstrap KV publisher contract
 
-The public bootstrap tiers use the dedicated private bucket
-`worldmonitor-bootstrap`. Managed `r2.dev` access stays disabled and the bucket
-has no custom domain; clients continue to enter through `/api/bootstrap` so the
-WAF, origin policy, rate limits, telemetry, and future access controls remain in
-the request path.
+The public bootstrap tiers are published to a dedicated Cloudflare Workers KV
+namespace under the bare tier keys `fast` and `slow` using the shared versioned
+envelope (`shared/bootstrap-tier-envelope.js`). Clients continue to enter
+through `/api/bootstrap` and the edge Worker so the WAF, origin policy, rate
+limits, telemetry, and access controls remain in the request path.
 
 This service is an always-on publisher, not a Railway cron. Configure it with
 `Dockerfile.publish-bootstrap-tiers` (the root application Dockerfile does not
@@ -540,40 +540,37 @@ contain the publisher) and start command
 `node scripts/publish-bootstrap-tiers.mjs --loop`, **no cron schedule**, and
 an empty watch-path list (whole-repository watching). It publishes both tiers
 on startup, then fast every two minutes and slow every ten minutes. Keep Redis
-authoritative: until the publisher and later rollout gates pass,
-`/api/bootstrap` continues to serve its existing Redis assembly.
+authoritative: if KV is unavailable or stale, `/api/bootstrap` falls back to
+its existing Redis assembly.
 
-The environment contract is deliberately split by consumer:
+The environment contract is scoped to the publisher and its KV sink:
 
 | Scope | Variables | Install in | Capability |
 |---|---|---|---|
-| Shared routing and tier shape | `R2_ACCOUNT_ID`, optional `R2_ENDPOINT`, `R2_BOOTSTRAP_BUCKET=worldmonitor-bootstrap`, `IRAN_EVENTS_ENABLED` | Railway production and Vercel production | Names plus the feature flag that controls `iranEvents` tier membership; values must match |
-| Publisher | `R2_BOOTSTRAP_ACCESS_KEY_ID`, `R2_BOOTSTRAP_SECRET_ACCESS_KEY` | Railway production publisher only | Publisher can PUT and GET only in `worldmonitor-bootstrap` |
-| Edge reader | `R2_BOOTSTRAP_READ_KEY_ID`, `R2_BOOTSTRAP_READ_SECRET` | Vercel production only | Edge can GET; it cannot PUT or DELETE, and cannot read `worldmonitor-data` |
+| Shared tier shape | `IRAN_EVENTS_ENABLED` | Railway production and Vercel production | Feature flag that controls `iranEvents` tier membership; values must match |
+| Redis source | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Railway production publisher | Read-only Redis pipeline assembly of the canonical tier keys |
+| KV sink | `KV_BOOTSTRAP_ACCOUNT_ID`, `KV_BOOTSTRAP_NAMESPACE_ID`, `KV_BOOTSTRAP_WRITE_TOKEN` | Railway production publisher only | Publisher PUTs `fast` and `slow` envelopes into the bootstrap KV namespace via Cloudflare REST API |
 
-Preview and development do not receive either credential; missing credentials
-must use the Redis path. The publisher must not fall back to any
-`CLOUDFLARE_R2_*` account, bucket, key, secret, or API token. Never copy the
-publisher credential into Vercel or the edge credential into Railway, and never
-add a `VITE_` alias for any bootstrap R2 credential. Set
-`IRAN_EVENTS_ENABLED` explicitly to the same value in both production services;
-otherwise the publisher and edge handler resolve different tier contents.
+Preview and development do not receive KV write credentials; missing KV
+credentials fail the publisher fast (`Bootstrap publisher KV credentials are missing`).
+The Cloudflare Worker reads the namespace via its KV binding rather than REST
+credentials. Never copy `KV_BOOTSTRAP_WRITE_TOKEN` into Vercel and never add a
+`VITE_` alias for any bootstrap KV credential. Set `IRAN_EVENTS_ENABLED`
+explicitly to the same value in both Railway and Vercel production; otherwise
+the publisher and origin handler resolve different tier contents.
 
 Provision and release in this order:
 
-1. Create the repo-root Railway service, install only the shared and publisher
-   variables above, and confirm the live watch paths and lack of a cron schedule.
-2. Deploy the publisher before enabling shadow measurement or serving from R2.
-3. Parse both `fast.json` and `slow.json`, then verify `generatedAt` advances in
-   two successive publishes for each tier.
-4. Install only the shared and read-only variables in Vercel production. Keep
-   them absent from preview and development.
-5. Run the negative permission probes: publisher cannot access
-   `worldmonitor-data`; edge cannot write/delete in `worldmonitor-bootstrap` and
-   cannot read `worldmonitor-data`.
+1. Create the repo-root Railway service, install the variables above, and
+   confirm the live watch paths and lack of a cron schedule.
+2. Deploy the publisher and verify `[bootstrap-kv] published` logs succeed for
+   both `fast` and `slow`, with `generatedAt` advancing in successive publishes.
+3. Verify the edge Worker reads fresh `fast` and `slow` envelopes from the same
+   KV namespace binding.
 
-Rotate one consumer at a time: create a replacement token, update that consumer,
-verify its publish or read with the replacement, then revoke the old token. On
+Rotate the KV write token by creating a replacement token scoped only to the
+bootstrap KV namespace, updating `KV_BOOTSTRAP_WRITE_TOKEN` in Railway
+production, verifying the next publish succeeds, and revoking the old token. On
 suspected compromise, revoke first; Redis fallback preserves availability while
 a replacement is issued. Never log, commit, or copy credential values into an
 incident note.

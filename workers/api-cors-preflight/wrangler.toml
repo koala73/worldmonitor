@@ -25,19 +25,19 @@ enabled = true
 binding = "BOOTSTRAP_KV"
 id = "40d42ec8064b4813ac87e61b43fb697f"
 
-# Shadow flag — "1" = measuring. The Worker shadow-reads BOOTSTRAP_KV per POP on public-tier
-# bootstrap GETs (in ctx.waitUntil; response untouched) and emits per-region latency to Axiom.
-# CORS behaviour is provably identical to "0" (byte-identical test). Flip back to "0" to stop.
+# Shadow flag — "0" = off (current, stage 3), "1" = measuring. When enabled, the Worker shadow-reads
+# BOOTSTRAP_KV per POP on unserved public-tier bootstrap GETs (in ctx.waitUntil; response untouched)
+# and emits per-region latency to Axiom. CORS behaviour is provably identical to "0" (byte-identical test).
 #
 # Serve flag (U-K4) — staged cutover of serving the public tier FROM KV via this Worker:
 #   "off"/unset = serve nothing (Phase-A shadow-only; deploy is inert).
 #   "slow"      = serve the slow tier only (stage 1; kill-switch to keep slow on KV).
-#   "all"       = serve both public tiers.   <-- CURRENT (stage 2)
+#   "all"       = serve both public tiers.   <-- CURRENT (stage 3)
 # Any miss/stale/invalid/error/timeout falls through to the Vercel/Redis origin (strictly additive).
 # Serving also requires envelope schemaVersion=1 (shared/bootstrap-tier-envelope.js). A Worker
 # that deploys before the publisher writes that field falls through on legacy envelopes.
-# Kill-switch = set back to "off" (or "slow") and redeploy. Once "all" is proven, flip
-# BOOTSTRAP_KV_SHADOW to "0".
+# Kill-switch = set back to "off" (or "slow") and redeploy. Stage 3 flipped BOOTSTRAP_KV_SHADOW
+# to "0"; re-enable "1" only if a shadow baseline is needed again during a rollback.
 #
 # Stage 1 ("off" -> "slow") on 2026-08-02. The U-K3 gate passed on 2026-07-16
 # (docs/solutions/2026-07-16-bootstrap-kv-verify.md); this is the flip it authorised, confirmed
@@ -58,8 +58,9 @@ id = "40d42ec8064b4813ac87e61b43fb697f"
 #   shadow is p50 7ms / p95 259ms / 99.86% under 1,200ms (n=726,012). Do not raise the
 #   1,200ms client timeout — KV TTFB is the remaining headroom.
 #
-# Stage 3 flips BOOTSTRAP_KV_SHADOW to "0" once "all" is proven — not before, or the
-# comparison baseline is lost.
+# Stage 3 (#11194): flipped BOOTSTRAP_KV_SHADOW to "0" now that BOOTSTRAP_KV_SERVE = "all" is
+# proven in production. Keeping BOOTSTRAP_KV_SERVE = "all"; served tiers emit bootstrap_kv_serve
+# telemetry, and flipping the shadow flag off keeps shadow reads disabled unless explicitly opted in.
 [vars]
-BOOTSTRAP_KV_SHADOW = "1"
+BOOTSTRAP_KV_SHADOW = "0"
 BOOTSTRAP_KV_SERVE = "all"
