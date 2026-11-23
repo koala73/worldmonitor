@@ -64,6 +64,17 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
   });
 
+  test('the last dashboard tile scrolls clear of the tab bar (#11157)', async ({ page }) => {
+    const tile = page.locator('#panelsGrid > .add-panel-block:visible').last();
+    await expect(tile).toBeVisible();
+    await page.locator('#main').evaluate((main) => main.scrollTo(0, main.scrollHeight));
+    await expect.poll(async () => {
+      const tileBox = await tile.boundingBox();
+      const barBox = await page.locator('#mobileTabBar').boundingBox();
+      return (tileBox?.y ?? 0) + (tileBox?.height ?? 0) <= (barBox?.y ?? 0);
+    }).toBe(true);
+  });
+
   test('keeps the account entry visible in the header before More opens', async ({ page }) => {
     const headerAuth = page.locator('#authWidgetMount');
     const signIn = headerAuth.locator('.auth-signin-btn');

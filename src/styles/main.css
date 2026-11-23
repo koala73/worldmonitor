@@ -1788,6 +1788,17 @@ canvas,
     border: 0;
   }
 
+  /* The fixed tab bar covers the last 58px of the scrolling dashboard, so the
+     final tile (Add Panel) could not be scrolled into reach (#11157). The grid
+     must not shrink in the flex column, or its tiles overflow past the padding. */
+  .main-content {
+    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .main-content > .panels-grid {
+    flex-shrink: 0;
+  }
+
   .mobile-tab-bar {
     position: fixed;
     left: 0;
