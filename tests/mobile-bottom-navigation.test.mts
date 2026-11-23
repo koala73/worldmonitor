@@ -219,7 +219,7 @@ describe('mobile P0 navigation shell (#5201)', () => {
     const rule = css.match(/\n  \.layer-toggles\.map-control-panel:not\(\.deckgl-layer-toggles\):not\(\.map-control-collapsed\) \{([^}]*)\}/);
     assert.ok(rule, 'mobile open layer list rule');
     assert.match(rule[1], /top: 8px;/);
-    assert.match(rule[1], /bottom: 8px;/);
+    assert.match(rule[1], /bottom: 58px;/);
     assert.match(rule[1], /max-height: none;/);
     assert.match(rule[1], /overflow-y: auto;/);
     assert.match(rule[1], /overscroll-behavior: contain;/);
