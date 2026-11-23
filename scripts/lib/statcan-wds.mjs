@@ -2,6 +2,8 @@
 // Tests import this module, not scripts/seed-statcan-wds.mjs.
 
 import { CHROME_UA, finiteObservation } from '../_seed-utils.mjs';
+import { createRequire } from 'node:module';
+import { randomInt } from 'node:crypto';
 import { tokensToContentMeta, DAY_MIN } from '../_content-age-helpers.mjs';
 
 export const STATCAN_WDS_HOST = 'www150.statcan.gc.ca';
@@ -21,6 +23,13 @@ export const MAX_STATCAN_WDS_BYTES = 2 * 1024 * 1024;
 // the helper parses it exactly.
 export const STATCAN_MAX_CONTENT_AGE_MIN = 90 * DAY_MIN;
 export const FETCH_TIMEOUT_MS = 20_000;
+// Since 2026-11-17 StatCan's Cloudflare edge refuses Railway's egress (403) and
+// intermittently answers other clients with 406 or a 200 "website is currently
+// unavailable" HTML page. Residential proxy exits get JSON back often enough that
+// a few exits per request recover the run.
+export const STATCAN_PROXY_EXITS = 3;
+export const PROXY_FETCH_TIMEOUT_MS = 15_000;
+const { parseProxyConfigForAttempt, proxyFetch } = createRequire(import.meta.url)('../_proxy-utils.cjs');
 
 // Cubes the Country Resilience Index actually consumes for CA:
 //   18100004 / vector 41690973 — CPI all-items, Canada (monthly index → YoY)
@@ -266,6 +275,32 @@ async function readBoundedText(response, maxBytes) {
   return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
+/** A refusal a different egress IP can clear: Cloudflare 403/406 or the HTML outage page. */
+export function isStatcanEgressRefusal(err) {
+  return err?.status === 403 || err?.status === 406 || err?.message === 'WDS_JSON_INVALID';
+}
+
+/** fetch-compatible transport through one sticky proxy exit. */
+export function proxyWdsFetch(proxyAuth, exit, proxyFetchFn = proxyFetch) {
+  return async (url, init) => {
+    const config = parseProxyConfigForAttempt(proxyAuth, exit);
+    if (!config) throw new Error('STATCAN_PROXY_INVALID');
+    const { Accept: accept, ...headers } = init.headers;
+    const result = await proxyFetchFn(url, config, {
+      accept,
+      headers,
+      method: init.method,
+      body: init.body ?? null,
+      timeoutMs: PROXY_FETCH_TIMEOUT_MS,
+      maxResponseBytes: MAX_STATCAN_WDS_BYTES,
+    });
+    // proxyFetch has already decoded the body; only the content type still describes it.
+    const contentType = result.headers?.['content-type'] || result.contentType;
+    const nullBody = result.status === 204 || result.status === 205 || result.status === 304;
+    return new Response(nullBody ? null : result.buffer, { status: result.status, headers: contentType ? { 'content-type': contentType } : {} });
+  };
+}
+
 export async function fetchApprovedWdsJson(url, {
   allowedHosts = [STATCAN_WDS_HOST],
   maxBytes = MAX_STATCAN_WDS_BYTES,
@@ -274,6 +309,9 @@ export async function fetchApprovedWdsJson(url, {
   cacheKey,
   method = 'GET',
   body,
+  proxyAuth = '',
+  proxyFetchFn = proxyFetch,
+  firstProxyExit = randomInt(1_000_000),
 } = {}) {
   const parsed = new URL(url);
   const allowed = new Set((allowedHosts || []).map((host) => String(host).toLowerCase()));
@@ -283,6 +321,25 @@ export async function fetchApprovedWdsJson(url, {
   const key = cacheKey || statcanCacheKey(parsed.toString());
   if (cache?.has(key)) return cache.get(key);
 
+  const transports = [fetchFn];
+  if (proxyAuth) {
+    for (let i = 0; i < STATCAN_PROXY_EXITS; i++) transports.push(proxyWdsFetch(proxyAuth, firstProxyExit + i, proxyFetchFn));
+  }
+  let lastError;
+  for (const transport of transports) {
+    try {
+      const doc = await fetchWdsJsonOnce(parsed, transport, { maxBytes, method, body });
+      cache?.set(key, doc);
+      return doc;
+    } catch (err) {
+      lastError = err;
+      if (!isStatcanEgressRefusal(err)) throw err;
+    }
+  }
+  throw lastError;
+}
+
+async function fetchWdsJsonOnce(parsed, fetchFn, { maxBytes, method, body }) {
   const headers = {
     Accept: 'application/json',
     'User-Agent': CHROME_UA,
@@ -311,7 +368,6 @@ export async function fetchApprovedWdsJson(url, {
   } catch {
     throw new Error('WDS_JSON_INVALID');
   }
-  cache?.set(key, doc);
   return doc;
 }
 
@@ -338,6 +394,7 @@ export async function fetchChangedCubeListBestEffort({
   fetchFn = globalThis.fetch,
   cache = new Map(),
   nowMs = Date.now(),
+  proxy = {},
 } = {}) {
   if (isFutureStatcanDate(dateIso, nowMs)) {
     return { cubes: [], reason: 'future-date' };
@@ -348,6 +405,7 @@ export async function fetchChangedCubeListBestEffort({
       fetchFn,
       cache,
       cacheKey: statcanCacheKey(url),
+      ...proxy,
     });
     return { cubes: parseChangedCubeList(doc), reason: 'ok' };
   } catch (err) {
@@ -361,7 +419,11 @@ export async function fetchStatcanWds({
   fetchFn = globalThis.fetch,
   cache = new Map(),
   nowMs = Date.now(),
+  proxyAuth = '',
+  proxyFetchFn = proxyFetch,
+  firstProxyExit = randomInt(1_000_000),
 } = {}) {
+  const proxy = { proxyAuth, proxyFetchFn, firstProxyExit };
   const asOfDate = torontoDateIso(nowMs);
   const vectorBody = JSON.stringify([
     { vectorId: CPI_VECTOR_ID, latestN: CPI_LATEST_N },
@@ -374,6 +436,7 @@ export async function fetchStatcanWds({
     fetchFn,
     cache,
     nowMs,
+    proxy,
   }).then(async (result) => {
     if (result.reason === 'ok') return result.cubes;
     const yesterday = shiftIsoDate(asOfDate, -1);
@@ -382,6 +445,7 @@ export async function fetchStatcanWds({
       fetchFn,
       cache,
       nowMs,
+      proxy,
     });
     return fallback.reason === 'ok' ? fallback.cubes : [];
   });
@@ -394,6 +458,7 @@ export async function fetchStatcanWds({
       cacheKey: vectorsRequestCacheKey(WDS_VECTORS_URL),
       method: 'POST',
       body: vectorBody,
+      ...proxy,
     }),
   ]);
 

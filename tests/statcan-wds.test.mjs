@@ -241,6 +241,42 @@ test('Toronto-today 409 not-released-yet is quiet, falls back to yesterday, and 
   assert.equal(payload.unemploymentPct, 6.4);
 });
 
+test('a refused direct request retries through proxy exits and still POSTs CPI/LFS', async () => {
+  // From 2026-11-17 StatCan's Cloudflare edge answers Railway with 403, and other
+  // clients with 406 or a 200 "website unavailable" HTML page. Residential exits get through.
+  const proxyCalls = [];
+  const payload = await fetchStatcanWds({
+    nowMs: Date.parse('2026-11-23T14:00:00Z'),
+    fetchFn: async () => new Response('', { status: 403 }),
+    proxyAuth: 'user:pass@gate.decodo.com:10001',
+    firstProxyExit: 0,
+    proxyFetchFn: async (url, config, options) => {
+      proxyCalls.push({ url, method: options.method, port: config.port });
+      const exit = proxyCalls.filter((call) => call.url === url).length;
+      if (exit === 1) return { ok: false, status: 406, buffer: Buffer.from(''), headers: {} };
+      if (exit === 2) return { ok: true, status: 200, buffer: Buffer.from('<!DOCTYPE html>We\'re sorry! The website is currently unavailable'), headers: { 'content-type': 'text/html' } };
+      const body = url.includes('getChangedCubeList') ? emptyDoc : vectorDoc;
+      return { ok: true, status: 200, buffer: Buffer.from(JSON.stringify(body)), headers: { 'content-type': 'application/json' } };
+    },
+  });
+  assert.ok(validateStatcanPayload(payload));
+  assert.equal(proxyCalls.filter((call) => call.method === 'POST').length, 3);
+  assert.equal(new Set(proxyCalls.filter((call) => call.method === 'POST').map((call) => call.port)).size, 3, 'each retry uses a different exit');
+
+  await assert.rejects(
+    fetchApprovedWdsJson(WDS_VECTORS_URL, {
+      fetchFn: async () => new Response('', { status: 403 }),
+      proxyAuth: 'user:pass@gate.decodo.com:10001',
+      proxyFetchFn: async () => ({ ok: false, status: 403, buffer: Buffer.from(''), headers: {} }),
+      method: 'POST',
+      body: '[]',
+    }),
+    /HTTP_403/,
+  );
+  // Without proxy credentials the direct refusal surfaces unchanged.
+  await assert.rejects(fetchApprovedWdsJson(WDS_VECTORS_URL, { fetchFn: async () => new Response('', { status: 403 }) }), /HTTP_403/);
+});
+
 test('tests import the lib, not the seeder main; neither binds fetch', () => {
   assert.doesNotMatch(testSrc, /from ['"][^'"]*seed-statcan-wds/);
   assert.doesNotMatch(libSrc, /fetch\.bind/);

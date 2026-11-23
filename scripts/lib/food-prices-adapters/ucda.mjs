@@ -45,7 +45,9 @@ export function parseUcda(page, expectedDate) {
   const date = parseDate(page);
   if (!date || (expectedDate && date !== expectedDate)) throw new Error('ucda report date mismatch');
   const observations = [];
-  const farmTitle = page.find(item => /^WEEK.S FARMGATE PRICE RANGE IN UGX\/KILO$/.test(item.text.trim()));
+  // The title is one text item in some reports and split into words in others, so match the rebuilt line.
+  const farmTitle = page.find(item => /^WEEK.S\b/.test(item.text.trim())
+    && /^WEEK.S FARMGATE PRICE RANGE IN UGX\/KILO\b/.test(line(page.filter(cell => cell.x >= item.x), item.y)));
   const farmHeader = farmTitle && page.find(item => item.text.trim() === 'Category of coffee' && item.y < farmTitle.y);
   if (!farmHeader) throw new Error('ucda farmgate table format changed');
   const columns = FARMGATE.map(([label, item]) => {
