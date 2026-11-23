@@ -330,6 +330,47 @@ describe('deadline-aborted fetches', () => {
     assert.equal(result.attempt?.failure, 'deadline-abort');
   });
 
+  it('caches a feed that timed out on its own clock before the deadline cut its relay', async (t) => {
+    process.env.WS_RELAY_URL = 'https://relay.example';
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const deadline = new AbortController();
+    const hangUntilAborted = (signal: AbortSignal | null | undefined) => new Promise<Response>((_, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true });
+    });
+    let relayStarted!: () => void;
+    const relayStart = new Promise<void>((resolve) => { relayStarted = resolve; });
+    redis = createRedisFetch({});
+    upstreamCalls = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (new URL(href).host === 'redis.example') return redis.fetchImpl(input, init);
+      if (new URL(href).host === 'relay.example') {
+        relayStarted();
+        return hangUntilAborted(init?.signal);
+      }
+      if (href === FEED.url) {
+        upstreamCalls.push(new Headers(init?.headers));
+        return hangUntilAborted(init?.signal);
+      }
+      throw new Error(`unexpected fetch ${href}`);
+    }) as typeof fetch;
+
+    const pending = fetchAndParseRss(FEED, VARIANT, deadline.signal);
+    while (upstreamCalls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(8_000);
+    await relayStart;
+    deadline.abort();
+    const result = await pending;
+
+    assert.equal(result.items.length, 0);
+    assert.equal(result.attempt?.failure, 'per-feed-timeout', 'the feed failed on its own 8 s clock');
+    assert.notEqual(redis.redis.get(KEY), undefined, 'an unresponsive feed must not pin every later build to the deadline');
+
+    const next = await fetchAndParseRss(FEED, VARIANT, new AbortController().signal);
+    assert.equal(next.attempt?.negativeCache, true);
+    assert.equal(upstreamCalls.length, 1, 'the next build serves the cached failure instead of waiting on the feed');
+  });
+
   it('still caches an empty row for an upstream failure', async () => {
     install(() => new Response('nope', { status: 503 }));
     const result = await fetchAndParseRss(FEED, VARIANT, new AbortController().signal);
