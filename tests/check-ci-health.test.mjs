@@ -493,6 +493,7 @@ describe('issue sync', () => {
 });
 
 describe('collection against a fake GitHub API', () => {
+  const WORKFLOW_NAMES = { 'test.yml': 'Test', 'typecheck.yml': 'Typecheck', 'lint-code.yml': 'Lint Code', 'proto-check.yml': 'Proto Generation Check' };
   // NOW is Saturday 12:00 UTC. The event window reaches back 7 days and 6 hours.
   function fakeGh({ daily = {}, attempts = {}, attemptConclusions = {}, newestMain = [], staleMain = null, successMain = [], logs = {}, commits = {}, pulls = {} }) {
     const paths = [];
@@ -510,6 +511,8 @@ describe('collection against a fake GitHub API', () => {
       if (history) return JSON.stringify(commits[decodeURIComponent(history[1])] ?? []);
       const association = /^repos\/o\/r\/commits\/(\w+)\/pulls$/.exec(path);
       if (association) return JSON.stringify((pulls[association[1]] ?? []).map((number) => ({ number })));
+      const definition = /^repos\/o\/r\/actions\/workflows\/([^/?]+)$/.exec(path);
+      if (definition) return JSON.stringify({ name: WORKFLOW_NAMES[definition[1]] });
       const workflow = /workflows\/([^/]+)\/runs/.exec(path)?.[1];
       const date = /runs\?created=(\d{4}-\d{2}-\d{2})&/.exec(path)?.[1];
       if (date) return JSON.stringify({ workflow_runs: workflow === 'test.yml' ? (daily[date] ?? []) : [] });
@@ -552,6 +555,20 @@ describe('collection against a fake GitHub API', () => {
       assert.match(result.findings[0].evidence[0].detail, /failing: `tests\/mcp-modern-era\.test\.mjs:1:1`$/);
     }
     assert.deepEqual(scan({}).skipped, ['CI health (flaky): Test / unit-shard (3)']);
+  });
+
+  it('names a pull request run by its workflow, not by the run-name test.yml gives it', () => {
+    // test.yml sets `run-name: PR #N into <base>: <title>` on pull requests
+    // (#10926), and the runs API returns that run-name as `name`. Titled by it,
+    // one flaky job became one issue per pull request (#11158-#11170).
+    const rerun = run({ id: 7, run_attempt: 2, event: 'pull_request', name: 'PR #10989 into main: fix(status): keep the reason readable', created_at: '2026-10-29T19:32:00Z' });
+    const { gh } = fakeGh({
+      daily: { '2026-10-29': [rerun] },
+      attempts: { '7/1': [job('variant-smoke (8)', 'failure', 150)], '7/2': [job('variant-smoke (8)', 'success', 150)] },
+    });
+    assert.deepEqual(checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true }).findings.map((finding) => finding.title), [
+      'CI health (flaky): Test / variant-smoke (8)',
+    ]);
   });
 
   it('reads every calendar day the overlapping window touches, so nothing falls between weekly scans', () => {
