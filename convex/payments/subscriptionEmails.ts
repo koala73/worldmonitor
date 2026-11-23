@@ -1482,19 +1482,19 @@ export const runDunningScan = internalMutation({
         : null;
       if (!step) continue;
       // An episode already sent the retired day-7 "final notice" was promised
-      // no more email about it; it stays on the old schedule's end.
-      if (step !== "dunning_day0") {
-        const toldFinal = await ctx.db
-          .query("dunningEmails")
-          .withIndex("by_sub_step_episode", (q) =>
-            q
-              .eq("dodoSubscriptionId", sub.dodoSubscriptionId)
-              .eq("step", "dunning_day7")
-              .eq("episodeAt", episodeAt),
-          )
-          .first();
-        if (toldFinal) continue;
-      }
+      // no more email about it; it stays on the old schedule's end. This
+      // includes a day-0 retry: a day-0 that failed before day 7 was sent
+      // must not follow the final notice.
+      const toldFinal = await ctx.db
+        .query("dunningEmails")
+        .withIndex("by_sub_step_episode", (q) =>
+          q
+            .eq("dodoSubscriptionId", sub.dodoSubscriptionId)
+            .eq("step", "dunning_day7")
+            .eq("episodeAt", episodeAt),
+        )
+        .first();
+      if (toldFinal) continue;
       due.push({ dodoSubscriptionId: sub.dodoSubscriptionId, step, episodeAt });
     }
 

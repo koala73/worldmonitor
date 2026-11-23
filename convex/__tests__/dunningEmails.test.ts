@@ -467,6 +467,28 @@ describe("runDunningScan windows", () => {
     expect(resendSends(fetchMock)).toHaveLength(0);
   });
 
+  test("an episode told 'final notice' on day 7 gets no day-0 retry even when day 0 never sent", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const anchor = Date.now() - 8 * DAY_MS;
+    await seedSub(t, { onHoldAt: anchor });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("dunningEmails", {
+        dodoSubscriptionId: SUB_ID,
+        step: "dunning_day7",
+        episodeAt: anchor,
+        email: EMAIL,
+        sentAt: anchor + DUNNING_DAY7_AGE_MS,
+      });
+    });
+
+    expect((await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {})).scheduled).toBe(0);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
   test("an in-flight episode that only got day-0 and day-3 moves onto the new schedule", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
