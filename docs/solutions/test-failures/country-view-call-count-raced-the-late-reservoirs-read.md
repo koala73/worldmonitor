@@ -1,5 +1,5 @@
 ---
-title: "Country-view e2e call count raced the late reservoirs read"
+title: "Country-view e2e call count can race the late reservoirs read"
 date: 2026-11-23
 category: test-failures
 module: plugin-country-view-e2e
@@ -15,7 +15,7 @@ resolution_type: test_fix
 tags: [playwright, e2e, country-brief, host-calls, optional-reads, reservoirs, flaky, call-count]
 ---
 
-# Country-view e2e call count raced the late reservoirs read
+# Country-view e2e call count can race the late reservoirs read
 
 ## Problem
 
