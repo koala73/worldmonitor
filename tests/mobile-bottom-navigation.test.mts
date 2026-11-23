@@ -222,6 +222,12 @@ describe('3D globe controls on phones (#11157)', () => {
     assert.match(css, /body:not\(\.live-news-fullscreen-active\) \.globe-mode > \.layer-toggles\.map-control-panel,\s*body\.map-fullscreen-active \.globe-mode > \.layer-toggles\.map-control-panel \{\s*display: flex !important;/);
   });
 
+  it('fits the open globe layer list to the map strip, above the time range', () => {
+    assert.match(css, /\.globe-mode > \.deckgl-layer-toggles \{\s*max-height: calc\(100% - 20px\);\s*\}/);
+    assert.match(css, /\.globe-mode > \.deckgl-layer-toggles:not\(\.map-control-collapsed\) \{\s*z-index: 101;/);
+    assert.match(css, /\.globe-mode > \.deckgl-layer-toggles \.toggle-list \{\s*max-height: none !important;/);
+  });
+
   it('gives the globe a time range wired to MapContainer', () => {
     assert.match(globe, /this\.createLayerToggles\(\);\s*this\.createTimeSlider\(\);/);
     assert.match(globe, /onTimeRangeChanged\(cb: \(r: TimeRange\) => void\): void \{ this\.onTimeRangeChangeCb = cb; \}/);

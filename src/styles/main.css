@@ -31612,6 +31612,20 @@ body.map-width-resizing {
     display: flex !important;
   }
 
+  /* Fit the list to the map strip and scroll it, instead of its fixed 32vh.
+     Open, it sits above the time range so every row stays tappable. */
+  .globe-mode > .deckgl-layer-toggles {
+    max-height: calc(100% - 20px);
+  }
+
+  .globe-mode > .deckgl-layer-toggles:not(.map-control-collapsed) {
+    z-index: 101;
+  }
+
+  .globe-mode > .deckgl-layer-toggles .toggle-list {
+    max-height: none !important;
+  }
+
   .globe-mode > .globe-time-slider {
     right: auto;
     bottom: 34px;
