@@ -2470,6 +2470,53 @@ describe('committed live pulse scorecard sections', () => {
   });
 });
 
+// Two outlets' own articles on one event carry different URLs, so the URL
+// dedupe keeps both. On 2026-11-23 the first two strip rows were Meduza's and
+// NV EN's headlines on the Poland missile crash, and the strip showed three
+// stories in four rows (#11190). The digest's story-identity matcher
+// (shared/story-identity.js) already groups these for corroboration.
+describe('strip headline story identity (#11190)', () => {
+  const MEDUZA = 'All three \u2018flying objects\u2019 that fell in Poland turned out to be Russian X-101 cruise missiles';
+  const NV = 'All three \u2018flying objects\u2019 that crashed in Poland were Russian Kh-101 missiles';
+
+  function digest(entries) {
+    return {
+      categories: Object.fromEntries(
+        entries.map((entry, index) => [`cat${index}`, { items: [entry] }]),
+      ),
+    };
+  }
+
+  function item(title, source, link, importanceScore) {
+    return { title, source, link, publishedAt: Date.parse('2026-11-23T03:00:00.000Z'), importanceScore };
+  }
+
+  it('gives one row to a story two outlets cover and fills the slot with the next story', () => {
+    const { rows, rejections } = selectFrozenHeadlines(digest([
+      item(MEDUZA, 'Meduza', 'https://meduza.io/en/news/2026/11/23/poland-missiles', 90),
+      item(NV, 'NV EN', 'https://english.nv.ua/nation/poland-kh-101.html', 85),
+      item('Fed holds rates steady amid inflation concerns', 'Reuters', 'https://www.reuters.com/markets/fed-holds', 40),
+    ]), 2);
+
+    assert.deepEqual(
+      rows.map((row) => row.source),
+      ['Meduza', 'Reuters'],
+      'the best-ranked copy keeps the story and the next distinct story takes the freed slot',
+    );
+    assert.equal(rejections.duplicateStory, 1);
+  });
+
+  it('keeps two different events on one topic', () => {
+    const { rows, rejections } = selectFrozenHeadlines(digest([
+      item('Iran seizes oil tanker in Strait of Hormuz', 'Reuters', 'https://www.reuters.com/a', 60),
+      item('Iran threatens to close Strait of Hormuz', 'AP News', 'https://apnews.com/b', 55),
+    ]), 4);
+
+    assert.equal(rows.length, 2, 'same-topic different events are two stories');
+    assert.equal(rejections.duplicateStory, 0);
+  });
+});
+
 // One wire story reaches the flattened strip selection through several of a
 // publisher's regional feeds. server/worldmonitor/news/v1/_feeds.ts registers
 // France 24's four editions under four different categories, so on 2026-09-14
@@ -2526,13 +2573,16 @@ describe('strip headline article identity (#8339)', () => {
     );
   });
 
-  it('keeps locale editions that are genuinely different documents', () => {
-    const { rows } = selectFrozenHeadlines(digest([
+  it('keeps locale editions as different documents, then shows their one story once', () => {
+    const { rows, rejections } = selectFrozenHeadlines(digest([
       item({ link: 'https://www.france24.com/en/americas/20260914-story' }),
       item({ source: 'France 24 LatAm', link: 'https://www.france24.com/es/americas/20260914-story' }),
     ]), 4);
 
-    assert.equal(rows.length, 2, 'two locale paths are two documents; collapsing them would lose coverage');
+    assert.equal(rejections.duplicateUrl, 0, 'two locale paths are two documents, not one article');
+    // Same headline, so one story: the strip shows it once (#11190).
+    assert.equal(rejections.duplicateStory, 1);
+    assert.equal(rows.length, 1);
   });
 
   it('treats a tracking parameter as the same article but a content parameter as another', () => {
