@@ -990,6 +990,35 @@ describe('installStaleBundleCheck — deploys that keep the compatibility marker
     assert.equal(env.reloadCalls, 0);
   });
 
+  it('never counts a marker from another build towards the unreadable limit', async () => {
+    // Two edges can disagree for minutes while a deploy propagates. That is
+    // not a broken marker path, and three such answers must not reload a
+    // visible tab.
+    const env = staleEnv();
+    env.softHold = 'visible';
+    env.compatBuild = 'sha-some-other-deploy';
+    install(env);
+    for (let i = 0; i < 5; i++) {
+      await fireFocus(env);
+      env.clock.tick(60_001);
+    }
+    assert.equal(env.compatCalls.length, 5, 'asked again every time, nothing cached');
+    assert.equal(env.reloadCalls, 0);
+
+    // It does not clear real failures either: two before, one after, is three.
+    env.compatResponse = { status: 503, body: 'Service Unavailable' };
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    env.compatResponse = { status: 200, body: RUNNING_COMPAT };
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    env.compatResponse = { status: 503, body: 'Service Unavailable' };
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 1, 'the third real failure for this deploy reloads');
+  });
+
   it('reloads when the marker does not name its build', async () => {
     const env = staleEnv();
     env.softHold = 'visible';

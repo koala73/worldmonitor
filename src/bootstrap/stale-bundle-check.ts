@@ -333,24 +333,28 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
   };
 
   /**
-   * Read the marker of `deployedHash`. Null when the read says nothing about
-   * that deploy: it failed, or it was answered by another build. The hash and
-   * the marker are two requests, so a deploy landing between them would
-   * otherwise file one build's marker under the other's hash, and the cache
-   * below would keep it.
+   * Read the marker of `deployedHash`. Two outcomes say nothing about that
+   * deploy and are kept apart because they mean different things:
+   *
+   *   'unreadable'   the read failed (network, server error).
+   *   'other-build'  the marker was answered by another build. The hash and
+   *                  the marker are two requests, so a deploy landing between
+   *                  them, or two edges disagreeing while one propagates,
+   *                  would otherwise file one build's marker under the
+   *                  other's hash, and the cache below would keep it.
    */
-  const readDeployKind = async (deployedHash: string, t: number): Promise<DeployKind | null> => {
+  const readDeployKind = async (deployedHash: string, t: number): Promise<DeployKind | 'unreadable' | 'other-build'> => {
     try {
       const res = await fetchImpl(`/client-compat.txt?t=${t}`, { cache: 'no-store' });
       // The deploy publishes no marker: a build from before it existed.
       if (res.status === 404) return 'breaking';
-      if (!res.ok) return null;
+      if (!res.ok) return 'unreadable';
       const marker = parseCompatMarker(await res.text());
       if (marker === null) return 'breaking';
-      if (marker.build !== deployedHash) return null;
+      if (marker.build !== deployedHash) return 'other-build';
       return marker.compat === currentCompat ? 'compatible' : 'breaking';
     } catch {
-      return null;
+      return 'unreadable';
     }
   };
 
@@ -363,7 +367,10 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
   const classifyDeploy = async (deployedHash: string, t: number): Promise<DeployKind | null> => {
     if (classified?.hash === deployedHash) return classified.kind;
     let kind = await readDeployKind(deployedHash, t);
-    if (kind === null) {
+    // Not a failure and not an answer: neither counted nor cached. The servers
+    // are mid-deploy, and the next check reads both files again.
+    if (kind === 'other-build') return null;
+    if (kind === 'unreadable') {
       const count = unreadable?.hash === deployedHash ? unreadable.count + 1 : 1;
       unreadable = { hash: deployedHash, count };
       if (count < MARKER_UNREADABLE_LIMIT) return null;
