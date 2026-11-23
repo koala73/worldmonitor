@@ -23,7 +23,9 @@ const audibleSources = new Set<string>();
 /**
  * Report whether `source` is playing media with sound. A reload cannot restore
  * sound (browsers block unmuted autoplay), so an audible tab is never reloaded
- * for a non-breaking update.
+ * for a non-breaking update. Needed only for media the page cannot inspect, such
+ * as an embedded player in a cross-origin frame; native <video> and <audio> are
+ * found without it.
  */
 export function setAudibleMedia(source: string, audible: boolean): void {
   if (audible) audibleSources.add(source);
@@ -63,11 +65,43 @@ function pageAgeMs(): number {
   }
 }
 
+interface MediaLike {
+  readonly paused?: boolean;
+  readonly ended?: boolean;
+  readonly muted?: boolean;
+  readonly volume?: number;
+}
+
+/** The part of a document this policy reads. */
+export interface SoftReloadDocumentLike {
+  readonly visibilityState?: string;
+  querySelectorAll?: (selector: string) => Iterable<unknown>;
+}
+
+/**
+ * Whether a native <video> or <audio> in the page is playing with sound. This
+ * covers every player that needs no registration: the Telegram panel's videos,
+ * the HLS Live News player, anything added later. Media inside a cross-origin
+ * frame (a YouTube embed) is invisible here, which is what `setAudibleMedia`
+ * is for.
+ */
+function isNativeMediaAudible(doc: SoftReloadDocumentLike | undefined): boolean {
+  try {
+    for (const element of doc?.querySelectorAll?.('video, audio') ?? []) {
+      const media = element as MediaLike;
+      if (media.paused === false && media.ended !== true && media.muted === false && (media.volume ?? 1) > 0) return true;
+    }
+  } catch {
+    // A document that cannot be queried has nothing audible this probe can see.
+  }
+  return false;
+}
+
 /** `softReloadHold` for the live page. */
-export function currentSoftReloadHold(doc: { readonly visibilityState?: string } | undefined): SoftReloadHold | null {
+export function currentSoftReloadHold(doc: SoftReloadDocumentLike | undefined): SoftReloadHold | null {
   return softReloadHold({
     visibilityState: doc?.visibilityState,
     pageAgeMs: pageAgeMs(),
-    audibleMedia: isAudibleMediaPlaying(),
+    audibleMedia: isAudibleMediaPlaying() || isNativeMediaAudible(doc),
   });
 }

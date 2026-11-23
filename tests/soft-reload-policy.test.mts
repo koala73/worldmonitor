@@ -64,6 +64,24 @@ describe('audible media registry', () => {
     assert.equal(currentSoftReloadHold({ visibilityState: 'hidden' }), 'audible-media');
   });
 
+  it('counts native video or audio playing with sound, which no panel has to register', () => {
+    const media = (state: Partial<{ paused: boolean; ended: boolean; muted: boolean; volume: number }>) =>
+      ({ paused: false, ended: false, muted: false, volume: 1, ...state });
+    const docWith = (...elements: unknown[]) => ({
+      visibilityState: 'hidden',
+      querySelectorAll: (selector: string) => (selector === 'video, audio' ? elements : []),
+    });
+    assert.equal(currentSoftReloadHold(docWith(media({}))), 'audible-media');
+    assert.equal(currentSoftReloadHold(docWith(media({ muted: true }), media({ paused: true }))), 'recently-loaded');
+    assert.equal(currentSoftReloadHold(docWith(media({ volume: 0 }), media({ ended: true }))), 'recently-loaded');
+    assert.equal(currentSoftReloadHold(docWith(media({ muted: true }), media({}))), 'audible-media');
+  });
+
+  it('a document that cannot be queried is not treated as audible', () => {
+    const doc = { visibilityState: 'hidden', querySelectorAll: () => { throw new Error('detached'); } };
+    assert.equal(currentSoftReloadHold(doc), 'recently-loaded');
+  });
+
   it('a freshly started process counts as a recently loaded page', () => {
     assert.equal(currentSoftReloadHold({ visibilityState: 'hidden' }), 'recently-loaded');
   });
@@ -78,7 +96,9 @@ describe('client compatibility marker', () => {
   it('is published by the build as /client-compat.txt from the same constant', () => {
     const viteConfig = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
     assert.match(viteConfig, /import \{ CLIENT_COMPAT \} from '\.\/src\/bootstrap\/client-compat';/);
-    assert.match(viteConfig, /fileName: 'client-compat\.txt',\s*source: CLIENT_COMPAT,/);
+    // Marker, then the build it belongs to, so a reader can tell which deploy answered.
+    assert.match(viteConfig, /fileName: 'client-compat\.txt',\s*source: `\$\{CLIENT_COMPAT\}\\n\$\{BUILD_SHA\}\\n`,/);
+    assert.match(viteConfig, /fileName: 'build-hash\.txt',\s*source: BUILD_SHA,/);
   });
 
   it('a marker change reaches production: the deploy filter builds on src/ and vite.config.ts', () => {

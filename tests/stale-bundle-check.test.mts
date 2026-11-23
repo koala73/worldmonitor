@@ -55,6 +55,12 @@ interface FakeEnv {
    * exercising the forced reload.
    */
   compatResponse: { status: number; body: string } | 'network-error';
+  /**
+   * The build the marker file names on its second line. Null means the build
+   * /build-hash.txt is serving, which is what one deployment does. Set it to
+   * model a deploy that changed between the two requests.
+   */
+  compatBuild: string | null;
   /** URLs requested for the compatibility marker. */
   compatCalls: string[];
   /** Why a non-breaking reload is held right now; null lets it through. */
@@ -87,6 +93,7 @@ function makeEnv(initial: Partial<{ ok: boolean; status: number; body: string }>
     supportsCheckVisibility: true,
     deferralReports: [],
     compatResponse: { status: 404, body: 'Not Found' },
+    compatBuild: null,
     compatCalls: [],
     softHold: null,
   };
@@ -116,7 +123,9 @@ function install(
       if (url.startsWith('/client-compat.txt')) {
         env.compatCalls.push(url);
         if (env.compatResponse === 'network-error') throw new TypeError('Failed to fetch');
-        return new Response(env.compatResponse.body, { status: env.compatResponse.status });
+        const build = env.compatBuild ?? env.fetchResponse.body.trim();
+        const body = env.compatResponse.status === 200 ? `${env.compatResponse.body}\n${build}\n` : env.compatResponse.body;
+        return new Response(body, { status: env.compatResponse.status });
       }
       env.fetchCalls.push({ url, init });
       if (env.fetchGate) await env.fetchGate;
@@ -960,6 +969,36 @@ describe('installStaleBundleCheck — deploys that keep the compatibility marker
     env.clock.tick(60_001);
     await fireFocus(env);
     assert.equal(env.reloadCalls, 0, 'a readable, unchanged marker settles it');
+  });
+
+  it('decides nothing when the marker names another build, and never caches that answer', async () => {
+    // The hash and the marker are two requests. A deploy that lands between
+    // them would otherwise file one build's marker under the other's hash.
+    const env = staleEnv();
+    env.softHold = 'visible';
+    env.compatResponse = { status: 200, body: 'c2' };
+    env.compatBuild = 'sha-some-other-deploy';
+    install(env);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0, 'a breaking marker for a different build says nothing about this one');
+
+    env.compatResponse = { status: 200, body: RUNNING_COMPAT };
+    env.compatBuild = null;
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.compatCalls.length, 2, 'the mismatched answer was not cached');
+    assert.equal(env.reloadCalls, 0);
+  });
+
+  it('reloads when the marker does not name its build', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    install(env, 'sha-running-bundle', 60_000, undefined, false, async (input) => {
+      if (isCompatRequest(input)) return new Response(RUNNING_COMPAT);
+      return new Response('sha-new-deploy');
+    });
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 1, 'an unrecognised marker file is treated as a breaking deploy');
   });
 
   it('reads the marker once per deployed hash, with cache-bust and no-store', async () => {

@@ -169,14 +169,17 @@ const MARKER_UNREADABLE_LIMIT = 3;
 type DeployKind = 'breaking' | 'compatible';
 
 /**
- * The marker a deploy published, or null when the body is not one. A deploy
- * from before the marker existed has no such file, and a host that answers a
- * missing file with the app shell returns HTML with status 200, so the shape is
- * checked rather than trusted.
+ * The marker file a deploy published: its compatibility marker, then the build
+ * it belongs to. Null when the body is not one. A deploy from before the marker
+ * existed has no such file, and a host that answers a missing file with the app
+ * shell returns HTML with status 200, so the shape is checked rather than
+ * trusted.
  */
-function parseCompatMarker(body: string): string | null {
-  const marker = body.trim();
-  return /^[A-Za-z0-9._-]{1,32}$/.test(marker) ? marker : null;
+function parseCompatMarker(body: string): { readonly compat: string; readonly build: string } | null {
+  const [compat, build, ...rest] = body.trim().split(/\s+/);
+  if (!compat || !build || rest.length > 0) return null;
+  if (!/^[A-Za-z0-9._-]{1,32}$/.test(compat) || !/^[A-Za-z0-9._-]{1,64}$/.test(build)) return null;
+  return { compat, build };
 }
 
 /**
@@ -262,8 +265,8 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
   let deferrals = 0;
   /**
    * The last deployed hash whose marker was read, with the answer. A deploy's
-   * marker cannot change, so a tab that stays on an older compatible build asks
-   * for it once, not on every trigger.
+   * marker cannot change, and the marker file names its build, so a tab that
+   * stays on an older compatible build asks for it once, not on every trigger.
    */
   let classified: { readonly hash: string; readonly kind: DeployKind } | null = null;
   /** Consecutive unreadable marker reads for one deployed hash. */
@@ -329,14 +332,23 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
     reload();
   };
 
-  /** Read the deployed marker. Null when the read failed in a way that says nothing about the deploy. */
-  const readDeployKind = async (t: number): Promise<DeployKind | null> => {
+  /**
+   * Read the marker of `deployedHash`. Null when the read says nothing about
+   * that deploy: it failed, or it was answered by another build. The hash and
+   * the marker are two requests, so a deploy landing between them would
+   * otherwise file one build's marker under the other's hash, and the cache
+   * below would keep it.
+   */
+  const readDeployKind = async (deployedHash: string, t: number): Promise<DeployKind | null> => {
     try {
       const res = await fetchImpl(`/client-compat.txt?t=${t}`, { cache: 'no-store' });
-      if (res.ok) return parseCompatMarker(await res.text()) === currentCompat ? 'compatible' : 'breaking';
       // The deploy publishes no marker: a build from before it existed.
       if (res.status === 404) return 'breaking';
-      return null;
+      if (!res.ok) return null;
+      const marker = parseCompatMarker(await res.text());
+      if (marker === null) return 'breaking';
+      if (marker.build !== deployedHash) return null;
+      return marker.compat === currentCompat ? 'compatible' : 'breaking';
     } catch {
       return null;
     }
@@ -350,7 +362,7 @@ export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): 
    */
   const classifyDeploy = async (deployedHash: string, t: number): Promise<DeployKind | null> => {
     if (classified?.hash === deployedHash) return classified.kind;
-    let kind = await readDeployKind(t);
+    let kind = await readDeployKind(deployedHash, t);
     if (kind === null) {
       const count = unreadable?.hash === deployedHash ? unreadable.count + 1 : 1;
       unreadable = { hash: deployedHash, count };
