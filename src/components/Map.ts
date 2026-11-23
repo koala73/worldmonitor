@@ -257,6 +257,8 @@ export class MapComponent {
   private dynamicLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private baseRendered = false;
   private baseWidth = 0;
+  /** Size setCenter computed the pan for, when the base has not been rendered at it yet. */
+  private panBasis: { width: number; height: number } | null = null;
   private baseHeight = 0;
   private hotspots: HotspotWithBreaking[];
   private earthquakes: Earthquake[] = [];
@@ -568,6 +570,19 @@ export class MapComponent {
     else if (pendingCenter) this.setCenter(pendingCenter.lat, pendingCenter.lon);
     if (renderNow) this.render();
     else this.scheduleRender();
+  }
+
+  /** The pan is in pixels of the size it was set for, so move it to keep the same place centered at the new size. */
+  private keepCenterAcrossResize(width: number, height: number): void {
+    const basis = this.panBasis ?? (this.baseRendered ? { width: this.baseWidth, height: this.baseHeight } : null);
+    this.panBasis = null;
+    if (!basis || basis.width === 0 || basis.height === 0 || (basis.width === width && basis.height === height)) return;
+    const center = this.getProjection(basis.width, basis.height).invert?.([
+      basis.width / 2 - this.state.pan.x,
+      basis.height / 2 - this.state.pan.y,
+    ]);
+    const point = center && this.getProjection(width, height)(center);
+    if (point) this.state.pan = { x: width / 2 - point[0], y: height / 2 - point[1] };
   }
 
   public destroy(): void {
@@ -1612,6 +1627,7 @@ export class MapComponent {
     }
 
     if (shouldRenderBase) {
+      this.keepCenterAcrossResize(width, height);
       this.baseWidth = width;
       this.baseHeight = height;
       // Use native DOM clear for guaranteed effect
@@ -5588,6 +5604,7 @@ export class MapComponent {
       x: width / 2 - pos[0],
       y: height / 2 - pos[1],
     };
+    this.panBasis = { width, height };
     this.applyTransform();
     // Ensure base layer is intact after pan
     this.ensureBaseLayerIntact();

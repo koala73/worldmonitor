@@ -67,6 +67,14 @@ test.describe('Mobile map native experience', () => {
       await expect(page.locator('#mapContainer')).toBeVisible();
       await expectRenderedCenter(page, 35, 105);
     });
+
+    test('keeps a preset centered when the map is resized', async ({ page }) => {
+      await page.goto('/?view=oceania');
+      await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
+      await expectRenderedCenter(page, -25, 135);
+      await page.setViewportSize({ width: 320, height: 844 });
+      await expectRenderedCenter(page, -25, 135);
+    });
   });
 
   test.describe('URL restore', () => {
