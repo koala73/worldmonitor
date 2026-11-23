@@ -273,6 +273,29 @@ test('a refused direct request retries through proxy exits and still POSTs CPI/L
     }),
     /HTTP_403/,
   );
+  // A timed-out or refused tunnel moves on to the next exit; a non-refusal HTTP answer stays terminal.
+  let tunnelCalls = 0;
+  const doc = await fetchApprovedWdsJson(WDS_VECTORS_URL, {
+    fetchFn: async () => new Response('', { status: 403 }),
+    proxyAuth: 'user:pass@gate.decodo.com:10001',
+    proxyFetchFn: async () => {
+      tunnelCalls++;
+      if (tunnelCalls === 1) throw new Error('proxy fetch timeout');
+      if (tunnelCalls === 2) throw Object.assign(new Error('Proxy CONNECT: HTTP/1.1 522 Server Error'), { proxyConnect: true, status: 522 });
+      return { ok: true, status: 200, buffer: Buffer.from(JSON.stringify(vectorDoc)), headers: { 'content-type': 'application/json' } };
+    },
+    method: 'POST',
+    body: '[]',
+  });
+  assert.equal(tunnelCalls, 3);
+  assert.ok(Array.isArray(doc));
+  let terminalCalls = 0;
+  await assert.rejects(fetchApprovedWdsJson(WDS_VECTORS_URL, {
+    fetchFn: async () => new Response('', { status: 403 }),
+    proxyAuth: 'user:pass@gate.decodo.com:10001',
+    proxyFetchFn: async () => { terminalCalls++; return { ok: false, status: 500, buffer: Buffer.from(''), headers: {} }; },
+  }), /HTTP_500/);
+  assert.equal(terminalCalls, 1);
   // Without proxy credentials the direct refusal surfaces unchanged.
   await assert.rejects(fetchApprovedWdsJson(WDS_VECTORS_URL, { fetchFn: async () => new Response('', { status: 403 }) }), /HTTP_403/);
 });

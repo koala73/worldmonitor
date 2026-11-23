@@ -62,6 +62,12 @@ test('UCDA farmgate scan does not overflow the stack on a huge text layer', () =
   quick('UCDA', () => parseUcda(huge));
 });
 
+test('UCDA title search stays linear when a page repeats an incomplete title prefix', () => {
+  const [page] = JSON.parse(fixture('ucda.json'));
+  const decoys = Array.from({ length: N }, (_, i) => ({ text: 'WEEK’S', x: 20, y: 900 + i / 100 }));
+  quick('UCDA title decoys', () => parseUcda(decoys.concat(page), '2026-10-30'));
+});
+
 test('workbooks with a cell far beyond any real sheet are refused before rows are materialised', async () => {
   const book = new ExcelJS.Workbook();
   book.addWorksheet('s').getCell('A1048576').value = 1;

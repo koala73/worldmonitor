@@ -286,14 +286,22 @@ export function proxyWdsFetch(proxyAuth, exit, proxyFetchFn = proxyFetch) {
     const config = parseProxyConfigForAttempt(proxyAuth, exit);
     if (!config) throw new Error('STATCAN_PROXY_INVALID');
     const { Accept: accept, ...headers } = init.headers;
-    const result = await proxyFetchFn(url, config, {
-      accept,
-      headers,
-      method: init.method,
-      body: init.body ?? null,
-      timeoutMs: PROXY_FETCH_TIMEOUT_MS,
-      maxResponseBytes: MAX_STATCAN_WDS_BYTES,
-    });
+    let result;
+    try {
+      result = await proxyFetchFn(url, config, {
+        accept,
+        headers,
+        method: init.method,
+        body: init.body ?? null,
+        timeoutMs: PROXY_FETCH_TIMEOUT_MS,
+        maxResponseBytes: MAX_STATCAN_WDS_BYTES,
+      });
+    } catch (err) {
+      // A dead or slow exit (CONNECT failure, tunnel timeout) says nothing about StatCan;
+      // mark it so the caller tries the next exit. An oversized body is the origin's answer.
+      if (err?.code !== 'RESPONSE_TOO_LARGE') err.proxyTransport = true;
+      throw err;
+    }
     // proxyFetch has already decoded the body; only the content type still describes it.
     const contentType = result.headers?.['content-type'] || result.contentType;
     const nullBody = result.status === 204 || result.status === 205 || result.status === 304;
@@ -333,7 +341,7 @@ export async function fetchApprovedWdsJson(url, {
       return doc;
     } catch (err) {
       lastError = err;
-      if (!isStatcanEgressRefusal(err)) throw err;
+      if (!isStatcanEgressRefusal(err) && !err?.proxyTransport) throw err;
     }
   }
   throw lastError;

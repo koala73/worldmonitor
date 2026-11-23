@@ -39,15 +39,37 @@ function parseDate(items) {
   return month ? isoDate(match[3], month, match[2]) : '';
 }
 
+const WEEK_PREFIX = /^WEEK.S\b/;
+const FARM_TITLE = /^WEEK.S FARMGATE PRICE RANGE IN UGX\/KILO\b/;
+
+// The title is one text item in some reports and split into words on one baseline
+// in others (2026-11). Group by exact y and test only the few tokens after each
+// WEEK’S, so a page full of decoy prefixes costs one sort, not a page scan each.
+function findFarmTitle(page) {
+  const rows = new Map();
+  for (const item of page) {
+    const row = rows.get(item.y);
+    if (row) row.push(item);
+    else rows.set(item.y, [item]);
+  }
+  for (const row of rows.values()) {
+    if (!row.some(item => WEEK_PREFIX.test(item.text.trim()))) continue;
+    row.sort((a, b) => a.x - b.x);
+    for (let i = 0; i < row.length; i++) {
+      if (!WEEK_PREFIX.test(row[i].text.trim())) continue;
+      if (FARM_TITLE.test(row.slice(i, i + 6).map(cell => cell.text.trim()).join(' '))) return row[i];
+    }
+  }
+  return undefined;
+}
+
 export function parseUcda(page, expectedDate) {
   const text = page.map(item => item.text).join(' ');
   if (!text.includes('DAILY COFFEE MARKET ANALYSIS REPORT')) throw new Error('ucda daily report format changed');
   const date = parseDate(page);
   if (!date || (expectedDate && date !== expectedDate)) throw new Error('ucda report date mismatch');
   const observations = [];
-  // The title is one text item in some reports and split into words in others, so match the rebuilt line.
-  const farmTitle = page.find(item => /^WEEK.S\b/.test(item.text.trim())
-    && /^WEEK.S FARMGATE PRICE RANGE IN UGX\/KILO\b/.test(line(page.filter(cell => cell.x >= item.x), item.y)));
+  const farmTitle = findFarmTitle(page);
   const farmHeader = farmTitle && page.find(item => item.text.trim() === 'Category of coffee' && item.y < farmTitle.y);
   if (!farmHeader) throw new Error('ucda farmgate table format changed');
   const columns = FARMGATE.map(([label, item]) => {
