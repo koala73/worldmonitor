@@ -295,7 +295,7 @@ describe('reworded news alerts (#10916)', () => {
     });
   }
 
-  it('sends the rewrite to a user whose copy of the story is over 24 hours old', async () => {
+  it('sends the rewrite to a user whose copy of the story is over 48 hours old', async () => {
     const h = installHarness();
     try {
       await relay.processEvent(alert(CNN));
@@ -304,7 +304,7 @@ describe('reworded news alerts (#10916)', () => {
       const anchorId = `full:${newsPublisherCoverageKey(CNN).split(':').pop()}`;
       const receipts = h.zsets.get(`news:alert-anchor-recipients:v1:${anchorId}`);
       assert.ok(receipts, 'receipts are kept per user with a time');
-      receipts.set('user-1', Date.now() - 25 * 3_600_000);
+      receipts.set('user-1', Date.now() - 49 * 3_600_000);
       await relay.processEvent(alert(SUN));
       assert.deepEqual(h.sentTo(), ['chat-user-1', 'chat-user-1']);
       assert.equal(h.record().skippedUsers, 0);
