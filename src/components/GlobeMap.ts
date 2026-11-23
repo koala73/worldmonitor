@@ -3577,6 +3577,10 @@ export class GlobeMap {
       && longitudeDelta <= 0.0001
       && Math.abs(pov.altitude - target.altitude) <= 0.001);
     if (atTarget) {
+      // The settle timer can find the camera inside the tolerance while the
+      // tween's last frame is still pending. Settling cancels that frame, so
+      // write the target here or the camera stays short of it.
+      this.globe!.pointOfView(target!, 0);
       this.settleViewportMovement(true, generation);
       return;
     }
