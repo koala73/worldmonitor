@@ -84,17 +84,19 @@ const JUDGE_TIMEOUT_MS = 8_000;
 // bare {"same": N}. The token budget leaves room to reason: a reply cut at the
 // limit is dropped by the chain, and the alert is kept.
 export const REWRITE_JUDGE_MODEL = 'anthropic/claude-sonnet-5.5';
+// The same model on the Anthropic API, asked when OpenRouter refuses. On
+// 2026-11-23 the OpenRouter account ran out of credit at 05:46Z; every judge
+// call returned 402, every check kept its alert, and rewrites went out again
+// for hours, one of them a 0.99 match. The relay already holds this key.
+export const REWRITE_JUDGE_DIRECT_MODEL = 'claude-sonnet-5-5';
 export const REWRITE_JUDGE_VOTES = 2;
 const JUDGE_MAX_TOKENS = 1_000;
+const VERDICT_SCHEMA = { type: 'object', properties: { same: { type: 'integer' } }, required: ['same'], additionalProperties: false };
 const JUDGE_REQUEST = {
   reasoning: { effort: 'low' },
   response_format: {
     type: 'json_schema',
-    json_schema: {
-      name: 'rewrite_verdict',
-      strict: true,
-      schema: { type: 'object', properties: { same: { type: 'integer' } }, required: ['same'], additionalProperties: false },
-    },
+    json_schema: { name: 'rewrite_verdict', strict: true, schema: VERDICT_SCHEMA },
   },
 };
 // The relay handles one event at a time, so the check must not stall the queue.
@@ -178,12 +180,17 @@ export function parseRewriteVerdict(text, candidateCount) {
   return Number.isInteger(n) && n >= 1 && n <= candidateCount ? n - 1 : null;
 }
 
-async function defaultJudge(systemPrompt, userPrompt) {
+async function defaultJudge(systemPrompt, userPrompt, { deadlineAt } = {}) {
   const { default: chain } = await import('./llm-chain.cjs');
   return chain.callLLM(systemPrompt, userPrompt, {
     maxTokens: JUDGE_MAX_TOKENS, temperature: 0, timeoutMs: JUDGE_TIMEOUT_MS,
-    allowedProviders: ['openrouter'], modelOverrides: { openrouter: REWRITE_JUDGE_MODEL },
-    extraBody: JUDGE_REQUEST, stage: 'news-alert-rewrite',
+    // A failed OpenRouter call (402, 5xx) returns at once, which leaves the
+    // direct call most of the check's 10 s deadline. Past the deadline no
+    // attempt starts: its reply could no longer change delivery.
+    deadlineAt,
+    allowedProviders: ['openrouter', 'anthropic'],
+    modelOverrides: { openrouter: REWRITE_JUDGE_MODEL, anthropic: REWRITE_JUDGE_DIRECT_MODEL },
+    extraBody: JUDGE_REQUEST, jsonSchema: VERDICT_SCHEMA, stage: 'news-alert-rewrite',
   });
 }
 
@@ -204,14 +211,15 @@ export async function findRewriteAnchor(event, {
   const work = blank();
   let timer;
   const deadline = new Promise(done => { timer = setTimeout(() => done(null), deadlineMs); });
-  const finished = await Promise.race([decide(event, work, { now, pipeline, embed, judge }).then(() => work), deadline]);
+  const deadlineAt = startedAt + deadlineMs;
+  const finished = await Promise.race([decide(event, work, { now, pipeline, embed, judge, deadlineAt }).then(() => work), deadline]);
   clearTimeout(timer);
   const decision = finished ?? { ...blank(), id: work.id, candidates: work.candidates, best: work.best, judged: work.judged, error: 'deadline' };
   decision.ms = Date.now() - startedAt;
   return decision;
 }
 
-async function decide(event, decision, { now, pipeline, embed, judge }) {
+async function decide(event, decision, { now, pipeline, embed, judge, deadlineAt }) {
   try {
     if (!rewriteCheckApplies(event)) return;
     const title = event.payload.title;
@@ -249,7 +257,7 @@ async function decide(event, decision, { now, pipeline, embed, judge }) {
     // story share recipients, while two separate alerts (a "likely" report and
     // its confirmation) do not.
     const userPrompt = rewriteJudgePrompt(title, shortlist, now);
-    const replies = await Promise.all(Array.from({ length: REWRITE_JUDGE_VOTES }, () => judge(REWRITE_JUDGE_SYSTEM_PROMPT, userPrompt)));
+    const replies = await Promise.all(Array.from({ length: REWRITE_JUDGE_VOTES }, () => judge(REWRITE_JUDGE_SYSTEM_PROMPT, userPrompt, { deadlineAt })));
     // Kept for the audit log, so an unreadable reply is told apart from a "0".
     decision.verdict = replies.map(r => String(r ?? 'null').replace(/\s+/g, ' ').trim().slice(0, 28)).join(' | ');
     if (replies.some(r => r == null)) throw new Error('judge returned nothing');

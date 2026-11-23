@@ -1460,7 +1460,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     const blockLower = asciiLower(block);
     const forDigest = index < ITEMS_PER_FEED;
 
-    const title = extractTag(block, sitemap ? 'news:title' : 'title', blockLower);
+    const title = extractTitleTag(block, sitemap ? 'news:title' : 'title', blockLower);
     if (!title) continue;
 
     if (forDigest) parsedTotal++;
@@ -1705,6 +1705,16 @@ function extractDescription(
   if (normalizeForDescriptionEquality(best) === normalizeForDescriptionEquality(title)) return '';
 
   return best.slice(0, MAX_DESCRIPTION_LEN);
+}
+
+// Headlines are displayed as text, and some publishers (The Korea Herald) put
+// HTML-escaped text inside CDATA: "Sudan&apos;s capital". Left encoded, it took
+// a different story key from the plain wording, and an alert already sent went
+// out again on 2026-11-23. A bare `&` is not an entity and stays as it is.
+function extractTitleTag(xml: string, tag: string, lower = asciiLower(xml)): string {
+  const cdata = matchCdataTag(xml, lower, tag);
+  if (cdata !== null) return decodeXmlEntities(cdata.trim());
+  return extractTag(xml, tag, lower);
 }
 
 function extractTag(xml: string, tag: string, lower = asciiLower(xml)): string {
