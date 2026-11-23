@@ -46,7 +46,13 @@ export function installE2eOutboundFetchGuard(
   const warned = new Set<string>();
   target.fetch = ((input, init) => {
     const url = requestUrl(input);
-    if (isLoopbackUrl(url)) return original(input, init);
+    if (isLoopbackUrl(url)) {
+      // Native fetch follows redirects without calling this guard again, so a
+      // loopback server could bounce the request to an external host. Turn
+      // any redirect it would follow into a network error instead.
+      const mode = init?.redirect ?? (input instanceof Request ? input.redirect : 'follow');
+      return mode === 'follow' ? original(input, { ...init, redirect: 'error' }) : original(input, init);
+    }
     const host = hostOf(url) ?? url;
     if (!warned.has(host)) {
       warned.add(host);

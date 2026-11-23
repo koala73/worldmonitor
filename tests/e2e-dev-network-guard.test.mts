@@ -23,16 +23,30 @@ describe('isLoopbackUrl', () => {
 describe('installE2eOutboundFetchGuard', () => {
   function setup() {
     const calls: string[] = [];
+    const redirects: (RequestRedirect | undefined)[] = [];
     const warnings: string[] = [];
     const target = {
-      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+      fetch: (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
         calls.push(String(input instanceof Request ? input.url : input));
+        redirects.push(init?.redirect);
         return new Response('ok');
       }) as typeof fetch,
     };
     const restore = installE2eOutboundFetchGuard(target, (message) => warnings.push(message));
-    return { target, calls, warnings, restore };
+    return { target, calls, redirects, warnings, restore };
   }
+
+  // Native fetch follows a redirect without calling the guard again, so a
+  // loopback server redirecting to an external host would otherwise leak.
+  it('refuses redirects on loopback requests that would follow them', async () => {
+    const { target, redirects } = setup();
+    await target.fetch('http://127.0.0.1:4173/a');
+    await target.fetch(new Request('http://127.0.0.1:4173/b'));
+    await target.fetch('http://127.0.0.1:4173/c', { redirect: 'follow' });
+    await target.fetch('http://127.0.0.1:4173/d', { redirect: 'manual' });
+    await target.fetch(new Request('http://127.0.0.1:4173/e', { redirect: 'manual' }));
+    assert.deepEqual(redirects, ['error', 'error', 'error', 'manual', undefined]);
+  });
 
   it('passes loopback requests through', async () => {
     const { target, calls } = setup();
