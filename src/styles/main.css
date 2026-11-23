@@ -31593,8 +31593,31 @@ body.map-width-resizing {
   body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend) {
     display: flex;
   }
+  /* The open list fills the map strip above the legend and scrolls on its own;
+     capped by height it showed ~5 of 23 layers (#11157). */
   .layer-toggles.map-control-panel:not(.deckgl-layer-toggles):not(.map-control-collapsed) {
+    top: 8px;
     bottom: 58px;
+    right: 60px;
+    max-width: none;
+    max-height: none;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    z-index: 160;
+    padding: 6px;
+    box-sizing: border-box;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+  }
+  .layer-toggles.map-control-panel:not(.deckgl-layer-toggles):not(.map-control-collapsed) > .map-control-disclosure {
+    position: sticky;
+    top: -6px;
+    z-index: 1;
+    background: var(--panel-bg);
   }
 }
 

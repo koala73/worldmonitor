@@ -1195,6 +1195,8 @@ export class MapComponent {
     this.container.addEventListener(
       'wheel',
       (e) => {
+        // Let open overlays such as the layer list scroll instead of zooming the map.
+        if (e.target instanceof Element && e.target.closest('.layer-toggles, .map-legend, .layer-help-popup, .layer-explanation-popup, .map-popup')) return;
         e.preventDefault();
 
         // Check if this is a pinch gesture (ctrlKey is set for trackpad pinch)
