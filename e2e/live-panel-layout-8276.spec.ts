@@ -11,6 +11,7 @@ test('expanded Live News keeps dashboard map dividers off the video (#11152)', a
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
     localStorage.setItem('map-split-height', '615px');
+    localStorage.setItem('wm-live-news-autoplay', 'false');
   });
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
@@ -21,14 +22,17 @@ test('expanded Live News keeps dashboard map dividers off the video (#11152)', a
   const heightHandle = page.locator('#mapResizeHandle');
   const widthHandle = page.locator('#mapWidthResizeHandle');
 
-  // Exercise the actual player layout independently of live stream providers.
+  // Replace the idle shell with the player markup before any live session starts.
   const captureEvidence = process.env.WM_E2E_EVIDENCE === '1';
-  await news.locator('.live-news-player').evaluate((player, showClip) => {
+  await news.locator('.live-news-placeholder').evaluate((placeholder, showClip) => {
+    const player = document.createElement('div');
+    player.className = 'live-news-player';
     const video = document.createElement('video');
     video.className = 'live-news-media';
     video.controls = true;
     if (showClip) video.src = '/assets/worldmonitor-plugin-walkthrough-2.10.1.mp4';
-    player.replaceChildren(video);
+    player.appendChild(video);
+    placeholder.replaceWith(player);
   }, captureEvidence);
   const video = news.locator('video.live-news-media');
   if (captureEvidence) {
