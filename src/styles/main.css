@@ -8479,7 +8479,7 @@ body.playback-mode .status-dot {
 }
 
 .news-market-correlation {
-  padding: 10px 14px 12px;
+  padding: 10px 0 12px;
 }
 
 .news-market-correlation__controls {
@@ -8649,7 +8649,7 @@ body.playback-mode .status-dot {
 
 /* 24/7 Positioning Panel */
 .pos-panel {
-  padding: 10px 14px;
+  padding: 10px 0;
 }
 
 .pos-section {
@@ -12645,7 +12645,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .energy-tape-section {
@@ -12775,7 +12775,7 @@ button.popup-link {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .radiation-panel-content {
@@ -12788,7 +12788,7 @@ button.popup-link {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .sanctions-summary-card {
@@ -12870,7 +12870,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .sanctions-section {
@@ -13067,7 +13067,7 @@ button.popup-link {
 }
 
 .radiation-footer {
-  padding: 0 8px 8px 8px;
+  padding: 0 0 8px;
   color: var(--text-dim);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   text-align: right;
@@ -13081,7 +13081,7 @@ button.popup-link {
 /* economic-tabs: now uses shared .panel-tabs / .panel-tab */
 
 .economic-content {
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .economic-content-macro {
@@ -16686,11 +16686,11 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .cii-methodology-footer {
-  margin: 0 8px 8px;
+  margin: 0 0 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
@@ -17272,7 +17272,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .risk-gauge {
@@ -19130,7 +19130,7 @@ button.popup-link {
 .id-tabs {
   display: flex;
   gap: 2px;
-  padding: 6px 8px 0;
+  padding: 6px 0 0;
   border-bottom: 1px solid rgba(255,255,255,.08);
 }
 .id-tab-btn {
@@ -19170,7 +19170,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 8px;
+  padding: 6px 0;
 }
 .id-row {
   background: rgba(255,255,255,.04);
@@ -19232,7 +19232,7 @@ button.popup-link {
 }
 /* DDoS tab */
 .id-ddos {
-  padding: 6px 8px;
+  padding: 6px 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -22944,7 +22944,7 @@ body.has-breaking-alert .panels-grid {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 0;
 }
 
 /* Emoji Key Legend */
@@ -27347,7 +27347,7 @@ body.map-width-resizing {
   height: 100%;
   min-height: 400px;
   gap: 6px;
-  padding: 8px;
+  padding: 8px 0;
   box-sizing: border-box;
 }
 .chat-analyst-chips {
@@ -28798,7 +28798,7 @@ body.map-width-resizing {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .ecp-summary-card {
@@ -28837,7 +28837,7 @@ body.map-width-resizing {
 .ecp-filters {
   display: flex;
   gap: 4px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .ecp-filter-btn {
@@ -28868,7 +28868,7 @@ body.map-width-resizing {
 .ecp-policy-list {
   display: flex;
   flex-direction: column;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .ecp-policy-row {
@@ -28951,7 +28951,7 @@ body.map-width-resizing {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 8px;
+  padding: 4px 0;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }

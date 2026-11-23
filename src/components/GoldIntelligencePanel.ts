@@ -438,6 +438,6 @@ export class GoldIntelligencePanel extends Panel {
       this.renderCbReserves(d),
       this.renderDrivers(d),
     ].join('');
-    this.setSafeContent(unsafeRawHtml(`<div style="padding:10px 14px">${html}</div>`, 'legacy Panel.setContent() migration'));
+    this.setSafeContent(unsafeRawHtml(`<div style="padding:10px 0">${html}</div>`, 'legacy Panel.setContent() migration'));
   }
 }

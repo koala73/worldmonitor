@@ -262,7 +262,7 @@ const RISK_OVERVIEW_CSS = `
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
     gap: 8px;
-    padding: 8px;
+    padding: 8px 0;
   }
   .ero-tile {
     background: rgba(255, 255, 255, 0.04);
