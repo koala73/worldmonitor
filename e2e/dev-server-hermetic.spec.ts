@@ -11,7 +11,8 @@ test.describe('e2e dev server makes no outbound requests', () => {
     // throwing on the blocked fetch.
     expect(response.status()).toBe(200);
     const body = await response.json() as { categories?: Record<string, { items?: unknown[] }> };
-    expect(typeof body.categories).toBe('object');
+    // A plain object: typeof would also accept null and arrays.
+    expect(Object.prototype.toString.call(body.categories)).toBe('[object Object]');
     const items = Object.values(body.categories ?? {}).flatMap((category) => category.items ?? []);
     expect(items).toHaveLength(0);
   });
