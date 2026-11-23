@@ -795,7 +795,7 @@ export const sendReactivationEmail = internalAction({
 // Dunning + winback lifecycle (#4932)
 //
 // on_hold (payment failed):  day-0 email scheduled by the webhook handler,
-// day-10 and day-21 reminders and a day-28 final notice scheduled by the
+// day-10 and day-18 reminders and a day-25 final notice scheduled by the
 // daily cron scan. Dodo sends its own on-hold emails on days 1, 3, 5 and 7,
 // so ours cover the rest of Dodo's retry window (retries at 10.5, 15.5,
 // 22.5 and 29.5 days with a 30-day recovery window). Every send is
@@ -820,11 +820,11 @@ export const DUNNING_DAY0_RETRY_MIN_AGE_MS = 60 * 60 * 1000;
 export const DUNNING_DAY3_AGE_MS = 3 * DAY_MS;
 export const DUNNING_DAY7_AGE_MS = 7 * DAY_MS;
 export const DUNNING_DAY10_AGE_MS = 10 * DAY_MS;
-export const DUNNING_DAY21_AGE_MS = 21 * DAY_MS;
-export const DUNNING_DAY28_AGE_MS = 28 * DAY_MS;
+export const DUNNING_DAY18_AGE_MS = 18 * DAY_MS;
+export const DUNNING_DAY25_AGE_MS = 25 * DAY_MS;
 // A hold whose paid period already ended is dunned only within this window,
 // so a stale or very late on_hold row never gets a backlog final notice.
-export const DUNNING_ENDED_PERIOD_MAX_AGE_MS = DUNNING_DAY28_AGE_MS + 3 * DAY_MS;
+export const DUNNING_ENDED_PERIOD_MAX_AGE_MS = DUNNING_DAY25_AGE_MS + 3 * DAY_MS;
 // Winback window bounds, measured from currentPeriodEnd (access end).
 export const WINBACK_MIN_AGE_MS = 30 * DAY_MS;
 export const WINBACK_MAX_AGE_MS = 60 * DAY_MS;
@@ -858,8 +858,8 @@ const dunningStepValidator = v.union(
   v.literal("dunning_day3"),
   v.literal("dunning_day7"),
   v.literal("dunning_day10"),
-  v.literal("dunning_day21"),
-  v.literal("dunning_day28"),
+  v.literal("dunning_day18"),
+  v.literal("dunning_day25"),
   v.literal("winback_day30"),
   v.literal("cancellation_confirm"),
 );
@@ -868,8 +868,8 @@ type DunningStep =
   | "dunning_day3"
   | "dunning_day7"
   | "dunning_day10"
-  | "dunning_day21"
-  | "dunning_day28"
+  | "dunning_day18"
+  | "dunning_day25"
   | "winback_day30"
   | "cancellation_confirm";
 
@@ -1058,15 +1058,15 @@ export function buildDunningEmail(
     }
     case "dunning_day3":
     case "dunning_day10":
-    case "dunning_day21":
+    case "dunning_day18":
       return {
-        subject: step === "dunning_day21"
+        subject: step === "dunning_day18"
           ? `Your ${planName} payment is still failing — ${stillCovered ? "update your card to keep it" : "update your card to restore it"}`
           : stillCovered
           ? `Reminder: update your payment method to keep ${planName}`
           : `Reminder: update your payment method to restore ${planName}`,
         html: dunningEmailShell(
-          step === "dunning_day21" ? "Still paused — the fix takes 2 minutes." : "Still paused — 2 minutes to fix.",
+          step === "dunning_day18" ? "Still paused — the fix takes 2 minutes." : "Still paused — 2 minutes to fix.",
           stillCovered && paidCovered
             ? `<p style="font-size: 14px; color: #999; margin: 0; line-height: 1.5;">Your ${planName} payment is still failing. Once your paid period ends, briefs, alerts and your Pro panels stop. Updating your card takes about two minutes and restores everything instantly.</p>`
             : stillCovered
@@ -1078,8 +1078,8 @@ export function buildDunningEmail(
         ),
       };
     case "dunning_day7":
-    case "dunning_day28": {
-      const pausedFor = step === "dunning_day28" ? "for four weeks" : "for a week";
+    case "dunning_day25": {
+      const pausedFor = step === "dunning_day25" ? "for over three weeks" : "for a week";
       return {
         subject: `Final notice: your World Monitor ${planName} subscription is paused`,
         html: dunningEmailShell(
@@ -1475,8 +1475,8 @@ export const runDunningScan = internalMutation({
       // until day-10 takes over; the ledger pre-check below skips a day-0
       // that already went out.
       const step: DunningStep | null =
-        age >= DUNNING_DAY28_AGE_MS ? "dunning_day28"
-        : age >= DUNNING_DAY21_AGE_MS ? "dunning_day21"
+        age >= DUNNING_DAY25_AGE_MS ? "dunning_day25"
+        : age >= DUNNING_DAY18_AGE_MS ? "dunning_day18"
         : age >= DUNNING_DAY10_AGE_MS ? "dunning_day10"
         : age >= DUNNING_DAY0_RETRY_MIN_AGE_MS ? "dunning_day0"
         : null;
