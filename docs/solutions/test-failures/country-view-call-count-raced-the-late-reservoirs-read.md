@@ -59,13 +59,14 @@ Applied at the static-tiers, Signals-reuse, admission-failure and raw-slot captu
 
 ## Why This Works
 
-Before the fix, the call was a late opening read, not a re-read:
+The likely cause is a late opening read, not a re-read. The CI evidence never identified call 61, so a Signals re-read is not ruled out; the reproduction only shows that a late opening read produces the same 60/61. The evidence pointing to a late read:
 
 - The CI commit changed only CI files, and its first 10 calls match the local order.
-- Locally the opening load makes 61 calls.
+- Locally the opening load makes 61 calls, so a CI total of 61 fits one late opening read.
 - Topic switches only toggle `hidden` and schedule a context update.
+- `reservoirs` is the one opening read nothing gated.
 
-The identity of the 61st call in CI stays unverified. `reservoirs` is the one opening read nothing gated.
+If it was a re-read, the gate does not mask it: the `slice(n)` check still fails and now prints the call.
 
 ## Prevention
 
