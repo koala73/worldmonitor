@@ -2,6 +2,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { installSwUpdateHandler, RELOAD_BLOCKING_MODAL_SELECTOR, readServiceWorkerContainer } from '../src/bootstrap/sw-update.ts';
 import { RELOAD_POLICY_ATTR } from '../src/utils/open-modal.ts';
+import { _resetPageUnloadSignalForTests, isPageUnloading } from '../src/bootstrap/page-unload-signal.ts';
 
 // ---------------------------------------------------------------------------
 // Fake environment
@@ -296,6 +297,27 @@ describe('installSwUpdateHandler', () => {
     env.swContainer.fireControllerChange();
     clickToastButton(env, 'reload');
     assert.equal(env.reloadCalls.length, 1);
+  });
+
+  it('marks the page as unloading before each reload path runs', () => {
+    for (const path of ['button', 'auto'] as const) {
+      _resetPageUnloadSignalForTests();
+      env = makeEnv();
+      const seen: boolean[] = [];
+      env.reload = () => { seen.push(isPageUnloading()); };
+      env.swContainer._controller = {};
+      install(env);
+      env.swContainer.fireControllerChange();
+      if (path === 'button') {
+        clickToastButton(env, 'reload');
+      } else {
+        fireDwellTimer(env);
+        env.doc.setVisibilityState('hidden');
+        fireVisibility(env);
+      }
+      assert.deepEqual(seen, [true], path);
+    }
+    _resetPageUnloadSignalForTests();
   });
 
   // --- dismiss button ---------------------------------------------------------

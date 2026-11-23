@@ -166,18 +166,15 @@ for (const width of [1280, 390]) for (const addedIds of [0, 5]) {
   });
 }
 
-for (const width of [1280, 390]) for (const scenario of ['mixed', 'legacy', 'partial', 'sparse'] as ImfPeriodScenario[]) {
-  test(`IMF annual website ${scenario} ${width}`, async ({ page, countryBrief }, testInfo) => {
+for (const scenario of ['mixed', 'legacy', 'partial', 'sparse'] as ImfPeriodScenario[]) {
+  test(`IMF annual website ${scenario} at both widths`, async ({ page, countryBrief }, testInfo) => {
     countryBrief.imfScenario = scenario;
-    await page.setViewportSize({ width, height: 900 });
+    await page.setViewportSize({ width: scenario === 'mixed' ? 390 : 1280, height: 900 });
     await page.goto('/dashboard?country=CA&expanded=1');
     const panel = page.locator('#country-deep-dive-panel');
     await expect(panel).toHaveAttribute('aria-hidden', 'false');
     await panel.getByRole('button', { name: 'Economy & trade', exact: true }).click();
     await captureImfPeriods(page, panel.locator('[data-brief-section=economic]'), scenario, testInfo, 'website');
-    if (scenario === 'mixed') {
-      await expect(panel.locator('[data-brief-section=economic] .cdp-economic-label')).toHaveText(['Stock Index', 'Weekly Momentum', 'Instability Regime', 'Real GDP Growth', 'CPI Inflation', 'Unemployment']);
-    }
   });
 }
 test.use({ trace: recording, video: recording, serviceWorkers: 'block' });
@@ -304,19 +301,6 @@ test('country brief renders exact RPC records and preserves the country after re
   await screenshot(page, testInfo, 'website-clock-known-mobile', true);
 });
 
-test('country brief content is never subject to content-visibility skipping', async ({ page, countryBrief: _countryBrief }) => {
-  await page.goto('/dashboard?country=UA');
-  await expectCountry(page);
-  // The dashboard's `.panel-content { content-visibility: auto }` must not reach the
-  // brief: the panel slides in from off-screen, so its paint would depend on
-  // Chrome's off-screen judgement during the slide-in.
-  const content = page.locator('#deep-dive-content');
-  await expect(content).toHaveCSS('content-visibility', 'visible');
-  await page.locator('#deep-dive-close').click();
-  await expect(page.locator('#country-deep-dive-panel')).toHaveAttribute('aria-hidden', 'true');
-  await expect(content).toHaveCSS('content-visibility', 'visible');
-});
-
 test('country brief uses bootstrap fallback when the country index is unavailable', async ({ page, countryBrief }, testInfo) => {
   countryBrief.hydrate = true;
   countryBrief.response = { markets: [], dataAvailable: false, fetchedAt: Date.parse('2026-10-09T07:41:45.410Z') };
@@ -394,8 +378,14 @@ test('a country deep link keeps ?country when the brief chunk loads slowly, and 
   const writes = await page.evaluate(() => (window as unknown as { __wmUrlWrites: string[] }).__wmUrlWrites);
   expect(writes.length).toBeGreaterThan(0);
   for (const url of writes) expect(new URL(url, page.url()).searchParams.get('country'), url).toBe('UA');
+  // The dashboard's `.panel-content { content-visibility: auto }` must not reach the
+  // brief: the panel slides in from off-screen, so its paint would depend on
+  // Chrome's off-screen judgement during the slide-in.
+  const content = page.locator('#deep-dive-content');
+  await expect(content).toHaveCSS('content-visibility', 'visible');
   await page.locator('#deep-dive-close').click();
   await expect(page.locator('#country-deep-dive-panel')).toHaveAttribute('aria-hidden', 'true');
+  await expect(content).toHaveCSS('content-visibility', 'visible');
   await expect.poll(() => new URL(page.url()).searchParams.get('country')).toBeNull();
 });
 

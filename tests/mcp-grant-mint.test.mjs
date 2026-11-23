@@ -141,6 +141,7 @@ function makeContextDeps(overrides = {}) {
   redis.set(`oauth:client:client_abc`, BASE_CLIENT_DATA);
   const deps = {
     resolveUserId: async () => 'user_pro_123',
+    rateLimit: async () => null,
     redisGet: async (key) => redis.get(key) ?? null,
     getEntitlements: async () => PRO_ENT,
     now: () => FIXED_NOW,
@@ -789,6 +790,7 @@ describe('grantContextHandler', () => {
     const { deps } = makeContextDeps({
       // resolveUserId returns the VICTIM's userId (the one apex page is currently signed in as).
       resolveUserId: async () => 'user_pro_123',
+      rateLimit: async () => null,
       redisGet: async (key) => redis.get(key) ?? null,
     });
 

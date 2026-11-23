@@ -260,7 +260,7 @@ export async function listAirportFlights(
     await requireLiveAviationAccess(ctx.request);
 
     const airport = req.airport?.toUpperCase() || 'IST';
-    const limit = Math.min(req.limit || 30, 100);
+    const limit = req.limit > 0 ? Math.min(req.limit, 100) : 30;
     const now = Date.now();
 
     // Reject malformed airport codes before they reach the paid API — bounds

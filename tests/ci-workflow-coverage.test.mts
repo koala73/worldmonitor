@@ -171,11 +171,10 @@ describe('root dependency cache (#8710)', () => {
   // 'unit-built-output nested dependency cache' blocks), so they are in the
   // first group.
   for (const [workflowText, jobIds, setupCache] of [
-    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output'], undefined],
-    [testWorkflow, ['variant-smoke-pro-webmcp'], "${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}"],
+    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output', 'variant-smoke-pro-webmcp'], undefined],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
     [lintCodeWorkflow, ['biome', 'markdown'], undefined],
-    [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], 'npm'],
+    [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], undefined],
   ] as const) {
     for (const jobId of jobIds) {
       it(`${jobId} uses the shared action after Node 24 setup with npm fallback`, () => {
@@ -396,7 +395,7 @@ describe('shipped desktop Node coverage (#5909, #9906)', () => {
         mkdirSync(bundledDir, { recursive: true });
         mkdirSync(toolsDir);
         writeFileSync(resolve(bundledDir, 'node'), '#!/bin/sh\necho shipped-node "$@"\n', { mode: 0o755 });
-        writeFileSync(resolve(toolsDir, 'npm'), `#!/bin/sh\n[ "$*" = 'run test:sidecar' ] || exit 99\nnode\nexit ${exitCode}\n`, { mode: 0o755 });
+        writeFileSync(resolve(toolsDir, 'npm'), `#!/bin/sh\n[ "$*" = 'run test:sidecar:desktop' ] || exit 99\nnode\nexit ${exitCode}\n`, { mode: 0o755 });
         const result = spawnSync('bash', ['-e', '-c', shippedTest.run], {
           cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${toolsDir}:${process.env.PATH}` },
         });
@@ -490,7 +489,6 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/map-overlay-marker-budget.spec.ts',
   'e2e/mobile-displacement.spec.ts',
   'e2e/map-distance.spec.ts',
-  'e2e/mcp-market-built.spec.ts',
   'e2e/live-panel-layout-8276.spec.ts',
   'e2e/panel-grid-no-overlap.spec.ts',
   'e2e/panel-table-overflow.spec.ts',
@@ -708,6 +706,12 @@ function workflowJobBlock(workflow: string, job: string): string {
 const NON_PR_CONCURRENCY_FALLBACK =
   /github\.event\.pull_request\.number\s*\|\|\s*github\.(?:sha|run_id)\b/;
 const PR_ONLY_CANCEL_IN_PROGRESS = "${{ github.event_name == 'pull_request' }}";
+// Test is the one gated workflow whose main pushes deliberately share a group:
+// deploy-gate.sh recognises a cancelled main Test run as superseded (pending,
+// never failure), and only for the workflow named Test. Any other workflow that
+// collapses main pushes still trips the #8445 guard.
+const TEST_SUPERSEDING_GROUP =
+  "test-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && 'main') || github.run_id }}";
 
 function workflowLevelConcurrency(source: string): {
   group?: unknown;
@@ -727,6 +731,7 @@ function cancelsUnconditionallyWithoutNonPrFallback(source: string): boolean {
   const isUnconditionalCancel =
     cancel === true || (typeof cancel === 'string' && cancel !== PR_ONLY_CANCEL_IN_PROGRESS);
   if (!isUnconditionalCancel) return false;
+  if (concurrency.group === TEST_SUPERSEDING_GROUP && (YAML.parse(source) as { name?: string }).name === 'Test') return false;
   return typeof concurrency.group !== 'string' || !NON_PR_CONCURRENCY_FALLBACK.test(concurrency.group);
 }
 
@@ -2983,7 +2988,6 @@ describe('CI workflow coverage', () => {
 // a per-run group that nothing can evict.
 describe('gated workflows evict superseded PR runs (#8443)', () => {
   const prScopedCancellers = [
-    ['test.yml', 'test'],
     ['typecheck.yml', 'typecheck'],
     ['lint-code.yml', 'lint-code'],
     ['security-audit.yml', 'security-audit'],
@@ -3007,6 +3011,28 @@ describe('gated workflows evict superseded PR runs (#8443)', () => {
       );
     });
   }
+
+  it('test.yml also cancels a main push run a newer main push supersedes', () => {
+    const workflow = YAML.parse(read(resolve(workflowsDir, 'test.yml'))) as {
+      name?: string;
+      concurrency?: { group?: string; 'cancel-in-progress'?: unknown };
+    };
+    assert.equal(workflow.name, 'Test', 'deploy-gate.sh matches the superseded run by this name');
+    assert.equal(workflow.concurrency?.group, TEST_SUPERSEDING_GROUP);
+    assert.match(TEST_SUPERSEDING_GROUP, /github\.run_attempt == '1'/, 'a re-run of an old main run must not cancel the newer one');
+    assert.equal(workflow.concurrency?.['cancel-in-progress'], true);
+    assert.match(deployGateScript, /select\(\.name == "Test" and \.head_branch == "main"\)/,
+      'the gate must recognise a superseded main Test run, or cancelling it posts a permanent red gate');
+  });
+
+  it('accepts the superseding group only on the workflow named Test', () => {
+    // The exact Test group, so only the workflow-name check can reject it.
+    const typecheck = read(resolve(workflowsDir, 'typecheck.yml'))
+      .replace(/group:\s*[^\n]+/, `group: ${TEST_SUPERSEDING_GROUP}`)
+      .replace(/cancel-in-progress:\s*[^\n]+/, 'cancel-in-progress: true');
+    assert.equal(workflowLevelConcurrency(typecheck)?.group, TEST_SUPERSEDING_GROUP, 'the mutation must apply');
+    assert.equal(cancelsUnconditionallyWithoutNonPrFallback(typecheck), true);
+  });
 
   // The gate's own trigger list is the definition of "blocks a merge". A new
   // workflow added there without cancellation reintroduces the dead-SHA burn
@@ -3204,6 +3230,32 @@ describe('docker-publish conditions', () => {
     );
 
   const dockerPublish = YAML.parse(read(resolve(workflowsDir, 'docker-publish.yml')));
+  it('checks snapshot freshness before any Docker build can use its cache', () => {
+    const steps = dockerPublish.jobs.docker.steps;
+    const firstBuild = steps.findIndex((step: { uses?: string }) => step.uses?.startsWith('docker/build-push-action@'));
+    for (const command of ['node scripts/check-crawlable-live-pulse.mjs', 'node scripts/github-stars-snapshot.mjs']) {
+      const gate = steps.findIndex((step: { run?: string }) => step.run === command);
+      assert.ok(gate >= 0 && gate < firstBuild, `${command} must run before the first Docker build`);
+      assert.equal(steps[gate].if, undefined);
+      assert.equal(steps[gate]['continue-on-error'], undefined);
+    }
+  });
+
+  it('checks snapshot freshness before the self-hosted app image builds', () => {
+    const selfHosted = YAML.parse(read(resolve(workflowsDir, 'docker-publish-self-hosted.yml')));
+    const job = Object.values(selfHosted.jobs).find((candidate: any) =>
+      candidate.strategy?.matrix?.include?.some((leg: { dockerfile?: string }) => leg.dockerfile === 'Dockerfile'),
+    ) as { steps: Array<{ run?: string; uses?: string; if?: string; 'continue-on-error'?: unknown }> };
+    assert.ok(job, 'docker-publish-self-hosted.yml must build the root Dockerfile');
+    const firstBuild = job.steps.findIndex((step) => step.uses?.startsWith('docker/build-push-action@'));
+    for (const command of ['node scripts/check-crawlable-live-pulse.mjs', 'node scripts/github-stars-snapshot.mjs']) {
+      const gate = job.steps.findIndex((step) => step.run === command);
+      assert.ok(gate >= 0 && gate < firstBuild, `${command} must run before the first Docker build`);
+      assert.equal(job.steps[gate].if, "matrix.image == 'worldmonitor-selfhosted'");
+      assert.equal(job.steps[gate]['continue-on-error'], undefined);
+    }
+  });
+
   const tagEnableExpressions = () => {
     const metaStep = dockerPublish.jobs.docker.steps.find(
       (step: { id?: string }) => step.id === 'meta',
@@ -3620,8 +3672,12 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
   });
 
   it('builds /pro in the webmcp and pro-gates parts and runs each suite in exactly one', () => {
-    const build = flat.find((step) => step.run === 'npm run build:pro');
+    const installPro = flat.find((step) => (step as { uses?: string }).uses === './.github/actions/install-pro-deps');
+    assert.ok(installPro, 'the job must restore/install /pro dependencies via the shared action');
+    assert.equal(installPro.if, "${{ !startsWith(matrix.part, 'plugin-') }}");
+    const build = flat.find((step) => step.run === 'npm --prefix pro-test run build');
     assert.ok(build, 'the job must build /pro');
+    assert.ok(flat.indexOf(installPro) < flat.indexOf(build), 'install-pro-deps must run before the /pro build');
     // The legacy WebMCP tests load /pro/welcome.html; the MCP Apps view parts never read /pro.
     assert.equal(build.if, "${{ !startsWith(matrix.part, 'plugin-') }}");
     const partOf = (script: string) => {
@@ -3642,6 +3698,9 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     const specs = readdirSync(resolve(root, 'e2e')).filter((name) => /^plugin-.*\.spec\.ts$/.test(name)).map((name) => `e2e/${name}`);
     assert.ok(specs.length > 0);
     const parts = (job.strategy.matrix.part as string[]).filter((part) => part.startsWith('plugin-'));
+    const pluginViews = shellArgvTokens(packageScripts['test:e2e:plugin-views']);
+    assert.ok(pluginViews.includes('e2e/mcp-market-built.spec.ts'));
+    assert.ok(pluginViews.includes('WM_E2E_PLUGIN_BUILT=1'));
     const covered = parts.flatMap((part) => {
       const script = packageScripts[`test:e2e:${part}`];
       assert.ok(script, `package.json must define test:e2e:${part}`);
@@ -3651,16 +3710,25 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     assert.deepEqual([...covered].sort(), [...specs].sort(), 'each e2e/plugin-*.spec.ts must run in exactly one plugin part');
   });
 
-  it('keys setup-node\'s npm cache to the only install that reads it', () => {
-    // node_modules comes from install-root-deps, so ~/.npm serves only
-    // `npm --prefix pro-test ci` inside build:pro. Keyed on the root lockfile
-    // it restored the 583 MB root download cache, and the two parts pulling
-    // that blob at the same moment took 12-62s instead of ~6s (PR #9626).
+  it('restores pro-test/node_modules via install-pro-deps instead of setup-node npm download cache', () => {
     const setup = flat.find((step) => (step as { uses?: string }).uses?.startsWith('actions/setup-node@')) as
       { with: Record<string, string> } | undefined;
-    // The plugin parts never build /pro, so they restore nothing.
-    assert.equal(setup?.with.cache, "${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}");
-    assert.equal(setup?.with['cache-dependency-path'], 'pro-test/package-lock.json');
+    assert.equal(setup?.with.cache, undefined);
+    const proAction = YAML.parse(read(resolve(root, '.github/actions/install-pro-deps/action.yml')));
+    const proSteps = proAction.runs.steps;
+    const restore = proSteps.find((s: { id?: string }) => s.id === 'pro-deps');
+    const install = proSteps.find((s: { run?: string }) => s.run === 'npm --prefix pro-test ci --prefer-offline');
+    const save = proSteps.find((s: { uses?: string }) => s.uses?.startsWith('actions/cache/save@'));
+    assert.ok(restore && install && save, 'install-pro-deps must restore, install on miss, and save pro-test/node_modules');
+    assert.equal(restore.with.path, 'pro-test/node_modules');
+    assert.equal(install.env?.npm_config_allow_scripts, '');
+    assert.equal(install.if, "steps.pro-deps.outputs.cache-hit != 'true'");
+    assert.equal(save.if, "steps.pro-deps.outputs.cache-hit != 'true'");
+    assert.equal(save.with.path, 'pro-test/node_modules');
+    assert.equal(save.with.key, '${{ steps.pro-deps.outputs.cache-primary-key }}');
+    for (const input of ['pro-test/package.json', 'pro-test/package-lock.json', 'pro-test/.npmrc', '.npmrc', 'vendor/**']) {
+      assert.ok(restore.with.key.includes(`'${input}'`), `install-pro-deps key must hash ${input}`);
+    }
   });
 
   it('runs the /pro browser gates in one Playwright run', () => {

@@ -31,16 +31,15 @@ function verdict(data, now, overrides = {}, bytes = 1024) {
   });
 }
 
-test('retries a transient provider once before recording a failed run', async () => {
-  let calls = 0;
+test('retries a transient USGS miss once; NRCan, whose transport rotates proxy exits, gets one attempt', async () => {
+  const calls = { usgs: 0, nrcan: 0 };
   const data = await fetchMergedEarthquakes({
-    fetchUsgs: async () => feed('usgs'),
-    fetchNrcan: async () => { if (++calls === 1) return fail(); return feed('nrcan'); },
+    fetchUsgs: async () => { if (++calls.usgs === 1) return fail(); return feed('usgs'); },
+    fetchNrcan: async () => { calls.nrcan++; return fail(); },
     nowMs: NOW,
   });
-  assert.equal(calls, 2);
-  assert.deepEqual(data._failedSources, []);
-  assert.equal(data.earthquakes.length, 2);
+  assert.deepEqual(calls, { usgs: 2, nrcan: 1 });
+  assert.deepEqual(data._failedSources, ['nrcan']);
 });
 
 test('first transient miss retains provider events and clock; second run warns; recovery clears', async () => {
@@ -50,39 +49,79 @@ test('first transient miss retains provider events and clock; second run warns; 
     fetchUsgs: async () => feed('usgs', nowMs),
     fetchNrcan: async () => { calls++; return fail(); }, previousSources, nowMs,
   });
-  const first = await run(good._providerSnapshots, NOW + 5 * MIN);
-  assert.equal(calls, 2);
+  const first = await run(good._providerSnapshots, NOW + 15 * MIN);
+  assert.equal(calls, 1);
   assert.deepEqual(first.earthquakes.map(e => e.source), ['usgs', 'nrcan']);
   assert.equal(first._nrcanNewestAt, NOW);
   assert.equal(first._providerSnapshots.nrcan.fetchedAt, NOW);
   assert.equal(earthquakesContentMeta(first).newestItemAt, NOW);
-  const pending = verdict(first, NOW + 5 * MIN);
+  const pending = verdict(first, NOW + 15 * MIN);
   assert.equal(pending.status, 'SEED_ERROR', 'diagnosis remains visible');
-  assert.equal(health.healthStatusBucket(pending, NOW + 5 * MIN), 'ok');
-  assert.equal(pending.sourceFailurePendingUntil, new Date(NOW + 15 * MIN).toISOString());
-  const compact = health.healthResponseBody({ status: 'HEALTHY', summary: { pending: 1 }, checkedAt: new Date(NOW + 5 * MIN).toISOString(), checks: { earthquakes: pending } }, true);
+  assert.equal(health.healthStatusBucket(pending, NOW + 15 * MIN), 'ok');
+  assert.equal(pending.sourceFailurePendingUntil, new Date(NOW + 25 * MIN).toISOString());
+  assert.equal(health.healthStatusBucket(pending, NOW + 20 * MIN + 30_000), 'ok', 'a late next run still lands inside the window');
+  const compact = health.healthResponseBody({ status: 'HEALTHY', summary: { pending: 1 }, checkedAt: new Date(NOW + 15 * MIN).toISOString(), checks: { earthquakes: pending } }, true);
   assert.deepEqual(compact.pending, { earthquakes: pending });
-  assert.equal(health.snapshotTtlSeconds(compact, NOW + 15 * MIN - 20_000), 20);
-  assert.equal(health.hasExpiredActivationGrace(compact, NOW + 15 * MIN), true);
-  assert.equal(health.healthStatusBucket(pending, NOW + 15 * MIN), 'warn', 'expires without another run');
-  assert.equal(health.healthStatusBucket(verdict(first, NOW + 5 * MIN, {}, 0), NOW + 5 * MIN), 'crit');
+  assert.equal(health.snapshotTtlSeconds(compact, NOW + 25 * MIN - 20_000), 20);
+  assert.equal(health.hasExpiredActivationGrace(compact, NOW + 25 * MIN), true);
+  assert.equal(health.healthStatusBucket(pending, NOW + 25 * MIN), 'warn', 'expires without another run');
+  assert.equal(health.healthStatusBucket(verdict(first, NOW + 15 * MIN, {}, 0), NOW + 15 * MIN), 'crit');
 
-  const second = await run(first._providerSnapshots, NOW + 10 * MIN);
+  const second = await run(first._providerSnapshots, NOW + 20 * MIN);
+  assert.equal(calls, 2, 'a failing provider is retried on the next run, not gated');
   assert.equal(second._providerSnapshots.nrcan.fetchedAt, NOW);
-  assert.equal(health.healthStatusBucket(verdict(second, NOW + 10 * MIN), NOW + 10 * MIN), 'warn');
+  assert.equal(health.healthStatusBucket(verdict(second, NOW + 20 * MIN), NOW + 20 * MIN), 'warn');
   const recovered = await fetchMergedEarthquakes({
-    fetchUsgs: async () => feed('usgs', NOW + 15 * MIN), fetchNrcan: async () => feed('nrcan', NOW + 15 * MIN),
-    previousSources: second._providerSnapshots, nowMs: NOW + 15 * MIN,
+    fetchUsgs: async () => feed('usgs', NOW + 25 * MIN), fetchNrcan: async () => feed('nrcan', NOW + 25 * MIN),
+    previousSources: second._providerSnapshots, nowMs: NOW + 25 * MIN,
   });
   assert.deepEqual(recovered._failedSources, []);
   assert.equal(recovered._providerSnapshots.nrcan.consecutiveFailures, 0);
-  assert.equal(verdict(recovered, NOW + 15 * MIN).status, 'OK');
+  assert.equal(verdict(recovered, NOW + 25 * MIN).status, 'OK');
+});
+
+test('an NRCan miss at the latest refresh age stays pending through the next run', async () => {
+  const good = await firstRun();
+  const first = await fetchMergedEarthquakes({
+    fetchUsgs: async () => feed('usgs', NOW + 20 * MIN), fetchNrcan: fail,
+    previousSources: good._providerSnapshots, nowMs: NOW + 20 * MIN,
+  });
+  const pending = verdict(first, NOW + 20 * MIN);
+  assert.equal(pending.sourceFailurePendingUntil, new Date(NOW + 30 * MIN).toISOString());
+  assert.equal(health.healthStatusBucket(pending, NOW + 25 * MIN + 30_000), 'ok');
+});
+
+test('a gated run republishes the stored NRCan snapshot without counting a failure or a success', async () => {
+  const good = await firstRun();
+  let nrcanCalls = 0;
+  const gated = await fetchMergedEarthquakes({
+    fetchUsgs: async () => feed('usgs', NOW + 10 * MIN),
+    fetchNrcan: async () => { nrcanCalls++; return feed('nrcan', NOW + 10 * MIN); },
+    previousSources: good._providerSnapshots, nowMs: NOW + 10 * MIN,
+  });
+  assert.equal(nrcanCalls, 0);
+  assert.deepEqual(gated._failedSources, []);
+  assert.deepEqual(gated._providerSnapshots.nrcan, good._providerSnapshots.nrcan);
+  assert.equal(gated._lastSourceSuccessAt, NOW, 'the reused snapshot keeps its own fetch clock');
+  assert.equal(gated._nrcanNewestAt, NOW);
+  assert.equal(earthquakesAfterPublish(gated), undefined);
+  assert.equal(verdict(gated, NOW + 10 * MIN).status, 'OK');
+
+  const usgsDown = await fetchMergedEarthquakes({
+    fetchUsgs: fail, fetchNrcan: async () => { nrcanCalls++; return feed('nrcan'); },
+    previousSources: good._providerSnapshots, nowMs: NOW + 10 * MIN,
+  });
+  assert.equal(nrcanCalls, 0);
+  assert.deepEqual(usgsDown._failedSources, ['usgs']);
+  const pending = verdict(usgsDown, NOW + 10 * MIN);
+  assert.equal(health.healthStatusBucket(pending, NOW + 10 * MIN), 'ok');
+  assert.equal(pending.sourceFailurePendingUntil, new Date(NOW + 20 * MIN).toISOString());
 });
 
 test('failure onset survives expired coverage and repeated failures until recovery', async () => {
   let previous = (await firstRun())._providerSnapshots;
-  const onset = NOW + 5 * MIN;
-  for (const [index, minutes] of [5, 30, 35, 40].entries()) {
+  const onset = NOW + 15 * MIN;
+  for (const [index, minutes] of [15, 30, 35, 40].entries()) {
     const nowMs = NOW + minutes * MIN;
     const data = await fetchMergedEarthquakes({
       fetchUsgs: async () => feed('usgs', nowMs), fetchNrcan: fail,
@@ -150,33 +189,35 @@ test('missing, malformed, future, or expired provider coverage never gets pendin
 
 test('verified quiet NRCan coverage is retained and different provider failures do not combine streaks', async () => {
   const good = await fetchMergedEarthquakes({ fetchUsgs: async () => feed('usgs'), fetchNrcan: async () => ({ ...feed('nrcan'), earthquakes: [] }), nowMs: NOW });
-  const first = await fetchMergedEarthquakes({ fetchUsgs: async () => feed('usgs'), fetchNrcan: fail, previousSources: good._providerSnapshots, nowMs: NOW + 5 * MIN });
+  const first = await fetchMergedEarthquakes({ fetchUsgs: async () => feed('usgs'), fetchNrcan: fail, previousSources: good._providerSnapshots, nowMs: NOW + 15 * MIN });
   assert.equal(first.earthquakes.length, 1);
-  assert.equal(health.healthStatusBucket(verdict(first, NOW + 5 * MIN), NOW + 5 * MIN), 'ok');
-  const different = await fetchMergedEarthquakes({ fetchUsgs: fail, fetchNrcan: async () => feed('nrcan', NOW + 10 * MIN), previousSources: first._providerSnapshots, nowMs: NOW + 10 * MIN });
+  assert.deepEqual(first._failedSources, ['nrcan']);
+  assert.equal(health.healthStatusBucket(verdict(first, NOW + 15 * MIN), NOW + 15 * MIN), 'ok');
+  const different = await fetchMergedEarthquakes({ fetchUsgs: fail, fetchNrcan: async () => feed('nrcan', NOW + 20 * MIN), previousSources: first._providerSnapshots, nowMs: NOW + 20 * MIN });
   assert.equal(different._providerSnapshots.usgs.consecutiveFailures, 1);
   assert.equal(different._providerSnapshots.nrcan.consecutiveFailures, 0);
-  assert.equal(health.healthStatusBucket(verdict(different, NOW + 10 * MIN), NOW + 10 * MIN), 'ok');
+  assert.equal(health.healthStatusBucket(verdict(different, NOW + 20 * MIN), NOW + 20 * MIN), 'ok');
 });
 
 test('both exhausted providers do not trigger outer runSeed retries when there is no retained data', async () => {
   let calls = 0;
   const failing = async () => { calls++; return fail(); };
   await assert.rejects(fetchMergedEarthquakes({ fetchUsgs: failing, fetchNrcan: failing, nowMs: NOW }), err => err.nonRetryable === true);
-  assert.equal(calls, 4);
+  assert.equal(calls, 3, 'USGS twice, NRCan once');
 });
 
 test('both provider failures retain bounded coverage, not an unlimited fallback', async () => {
   const good = await firstRun();
-  const first = await fetchMergedEarthquakes({ fetchUsgs: fail, fetchNrcan: fail, previousSources: good._providerSnapshots, nowMs: NOW + 5 * MIN });
+  const first = await fetchMergedEarthquakes({ fetchUsgs: fail, fetchNrcan: fail, previousSources: good._providerSnapshots, nowMs: NOW + 15 * MIN });
   assert.equal(first.earthquakes.length, 2);
-  assert.equal(health.healthStatusBucket(verdict(first, NOW + 5 * MIN), NOW + 5 * MIN), 'ok');
-  const second = await fetchMergedEarthquakes({ fetchUsgs: fail, fetchNrcan: fail, previousSources: first._providerSnapshots, nowMs: NOW + 10 * MIN });
-  assert.equal(health.healthStatusBucket(verdict(second, NOW + 10 * MIN), NOW + 10 * MIN), 'warn');
+  assert.deepEqual(first._failedSources, ['usgs', 'nrcan']);
+  assert.equal(health.healthStatusBucket(verdict(first, NOW + 15 * MIN), NOW + 15 * MIN), 'ok');
+  const second = await fetchMergedEarthquakes({ fetchUsgs: fail, fetchNrcan: fail, previousSources: first._providerSnapshots, nowMs: NOW + 20 * MIN });
+  assert.equal(health.healthStatusBucket(verdict(second, NOW + 20 * MIN), NOW + 20 * MIN), 'warn');
   await assert.rejects(fetchMergedEarthquakes({ fetchUsgs: fail, fetchNrcan: fail, previousSources: second._providerSnapshots, nowMs: NOW + 30 * MIN }), /All earthquake upstreams failed/);
 });
 
-test('real NRCan transport retries 503 but not permanent HTTP, unsafe hosts, oversized or malformed pages', async () => {
+test('real NRCan transport tries once: a 503 stays pending, permanent HTTP, unsafe hosts, oversized or malformed pages warn', async () => {
   const good = await firstRun();
   for (const scenario of ['503', '403', '429-long', 'oversized', 'malformed', 'host']) {
     let calls = 0;
@@ -189,7 +230,7 @@ test('real NRCan transport retries 503 but not permanent HTTP, unsafe hosts, ove
           assert.equal(init.redirect, 'error');
           assert.ok(init.signal instanceof AbortSignal);
           assert.ok(init.headers['User-Agent']);
-          if (scenario === '503' && calls === 1) return new Response('', { status: 503 });
+          if (scenario === '503') return new Response('', { status: 503 });
           if (scenario === '403') return new Response('', { status: 403 });
           if (scenario === '429-long') return new Response('', { status: 429, headers: { 'Retry-After': '60' } });
           if (scenario === 'oversized') return new Response('x', { headers: { 'content-length': '2000000' } });
@@ -197,10 +238,10 @@ test('real NRCan transport retries 503 but not permanent HTTP, unsafe hosts, ove
           return new Response(`<feed><updated>${new Date(NOW).toISOString()}</updated></feed>`);
         },
       }),
-      previousSources: good._providerSnapshots, nowMs: NOW + 5 * MIN,
+      previousSources: good._providerSnapshots, nowMs: NOW + 15 * MIN,
     });
-    assert.equal(calls, scenario === 'host' ? 0 : scenario === '503' ? 2 : 1, scenario);
-    assert.equal(health.healthStatusBucket(verdict(data, NOW + 5 * MIN), NOW + 5 * MIN), scenario === '503' ? 'ok' : 'warn', scenario);
+    assert.equal(calls, scenario === 'host' ? 0 : 1, scenario);
+    assert.equal(health.healthStatusBucket(verdict(data, NOW + 15 * MIN), NOW + 15 * MIN), scenario === '503' ? 'ok' : 'warn', scenario);
   }
 });
 
@@ -271,8 +312,17 @@ async function seedProcess(initial, now, nrcanMode, failStateWrite = false) {
 
 test('real seeder persists provider history across cron processes and publishes matching health metadata', () => {
   let previous = [];
-  for (const [index, mode] of ['ok', 'fail', 'fail', 'ok', 'state-write-fail'].entries()) {
-    const now = NOW + index * 5 * MIN;
+  let nrcanSuccessAt = null;
+  const runs = [
+    { minutes: 0, mode: 'ok', nrcanCalls: 1, bucket: 'ok' },
+    { minutes: 5, mode: 'ok', nrcanCalls: 0, bucket: 'ok' },
+    { minutes: 15, mode: 'fail', nrcanCalls: 1, bucket: 'ok' },
+    { minutes: 20, mode: 'fail', nrcanCalls: 1, bucket: 'warn' },
+    { minutes: 25, mode: 'ok', nrcanCalls: 1, bucket: 'ok' },
+    { minutes: 30, mode: 'state-write-fail' },
+  ];
+  for (const { minutes, mode, nrcanCalls, bucket } of runs) {
+    const now = NOW + minutes * MIN;
     const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `(${seedProcess.toString()})(${JSON.stringify(previous)}, ${now}, ${JSON.stringify(mode === 'state-write-fail' ? 'fail' : mode)}, ${mode === 'state-write-fail'})`], {
       encoding: 'utf8', timeout: 10_000,
       env: {
@@ -297,15 +347,45 @@ test('real seeder persists provider history across cron processes and publishes 
     assert.equal(canonical.data.earthquakes.length, 2);
     assert.deepEqual(Object.keys(canonical.data), ['earthquakes'], 'internal provider records stay out of the API');
     assert.equal(captured.calls.usgs, 2);
-    assert.equal(captured.calls.nrcan, mode === 'ok' ? 1 : 2);
+    assert.equal(captured.calls.nrcan, nrcanCalls, `NRCan fetches at ${minutes} minutes`);
+    if (mode === 'ok' && nrcanCalls) nrcanSuccessAt = now;
     assert.match(result.stdout, mode === 'ok' ? /"state":"OK"/ : /"state":"DEGRADED"/);
-    assert.equal(providers.nrcan.fetchedAt, mode === 'ok' ? now : NOW);
-    assert.equal(meta.newestItemAt, mode === 'ok' ? now : NOW);
+    assert.equal(providers.nrcan.fetchedAt, nrcanSuccessAt);
+    assert.equal(meta.newestItemAt, nrcanSuccessAt);
     const key = health.BOOTSTRAP_KEYS.earthquakes;
     const entry = health.classifyKey('earthquakes', key, { allowOnDemand: false }, {
       keyStrens: new Map([[key, store.get(key).length]]), keyErrors: new Map(), keyMetaErrors: new Map(),
       keyMetaValues: new Map([['seed-meta:seismology:earthquakes', JSON.stringify(meta)]]), now,
     });
-    assert.equal(health.healthStatusBucket(entry, now), index === 2 ? 'warn' : 'ok');
+    assert.equal(health.healthStatusBucket(entry, now), bucket);
   }
+});
+
+// Each NRCan fetch goes through the paid residential proxy (Cloudflare refuses
+// Railway), so a fresh snapshot is reused instead of refetched every 5 minutes.
+test('NRCan is refetched only once its snapshot is 15 minutes old; USGS every run', async () => {
+  let previous;
+  const nrcanFetchAges = [];
+  const usgsFetches = [];
+  // Cron starts drift by seconds, so runs land on either side of each 5-minute mark.
+  const jitterSec = [0, 4, -3, 2, -1, 3, 0, -4, 1, 2, -2, 0, 3];
+  for (const [run, jitter] of jitterSec.entries()) {
+    const nowMs = NOW + run * 5 * MIN + jitter * 1000;
+    const data = await fetchMergedEarthquakes({
+      fetchUsgs: async () => { usgsFetches.push(run); return feed('usgs', nowMs); },
+      fetchNrcan: async () => {
+        nrcanFetchAges.push(previous?.nrcan?.fetchedAt ? (nowMs - previous.nrcan.fetchedAt) / MIN : null);
+        return feed('nrcan', nowMs);
+      },
+      previousSources: previous, nowMs,
+    });
+    assert.deepEqual(data._failedSources, [], `run ${run}`);
+    assert.deepEqual(data.earthquakes.map(e => e.source), ['usgs', 'nrcan'], `run ${run}`);
+    assert.equal(health.healthStatusBucket(verdict(data, nowMs), nowMs), 'ok', `run ${run}`);
+    previous = data._providerSnapshots;
+  }
+  assert.equal(usgsFetches.length, jitterSec.length);
+  assert.equal(nrcanFetchAges[0], null);
+  for (const age of nrcanFetchAges.slice(1)) assert.ok(age >= 15 && age <= 20, `refetched at ${age} minutes`);
+  assert.ok(nrcanFetchAges.length <= 5, `${nrcanFetchAges.length} NRCan fetches in an hour`);
 });

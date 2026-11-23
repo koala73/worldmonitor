@@ -112,9 +112,9 @@ export class MonitorPanel extends Panel {
     const matchedItems: NewsItem[] = [];
 
     news.forEach((item) => {
+      // The feed's description is stored in snippet.
+      const searchText = `${item.title} ${item.snippet || ''}`.toLowerCase();
       this.monitors.forEach((monitor) => {
-        // Search both title and description for better coverage
-        const searchText = `${item.title} ${(item as unknown as { description?: string }).description || ''}`.toLowerCase();
         const matched = monitor.keywords.some((kw) => {
           // Use word boundary matching to avoid false positives like "ai" in "train"
           return keywordPattern(kw).test(searchText);

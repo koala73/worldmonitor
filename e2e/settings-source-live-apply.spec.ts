@@ -132,7 +132,7 @@ async function bootSourceSettings(page: Page): Promise<DigestLog> {
   return log;
 }
 
-/** A quiet baseline lets the two request-budget tests attribute later loads to the modal. */
+/** A quiet baseline lets the request-budget test attribute later loads to the modal. */
 async function bootUntilNewsSettles(page: Page): Promise<DigestLog> {
   const log = await bootSourceSettings(page);
   await page.waitForTimeout(SETTLE_MS);
@@ -308,76 +308,97 @@ test.describe('settings source live apply (#6380)', () => {
       }
     });
   }
+  // The en run also carries the curated-regional checks (formerly their own
+  // test, "new curated regional sources stay opt-in for a returning Pro profile
+  // and retain a later choice"): both seeded the same returning Pro en profile
+  // and both proved a choice survives one reload, so they share the boot and
+  // the reload instead of paying for two of each.
+  const CURATED_REGIONAL_TITLE =
+    'new curated regional sources stay opt-in for a returning Pro profile and retain a later choice';
   for (const locale of ['en', 'de']) {
     test(`German RSS sources default correctly in ${locale} and retain explicit choices`, async ({ page }, testInfo) => {
+      const withRegional = locale === 'en';
       await seedProFullVariant(page, true, locale);
       await bootSourceSettings(page);
       await openSourcesTab(page);
-      await page.locator('.sources-search input').fill('Deutschlandfunk');
+      const pacific = page.locator('#usSourceToggles .source-toggle-item[data-source="Guardian Pacific"]');
+      if (withRegional) {
+        await test.step(`${CURATED_REGIONAL_TITLE}: defaults and choice`, async () => {
+          for (const name of ['Guardian Africa', 'France 24 Africa', 'Guardian Caribbean', 'Guardian Pacific', 'France 24 Asia Pacific']) {
+            await expect(page.locator(`#usSourceToggles .source-toggle-item[data-source="${name}"]`)).not.toHaveClass(/\bactive\b/);
+          }
+          await pacific.click();
+          await expect(pacific).toHaveClass(/\bactive\b/);
+        });
+      }
       const source = page.locator('#usSourceToggles .source-toggle-item[data-source="Deutschlandfunk"]');
       const zdf = page.locator('#usSourceToggles .source-toggle-item[data-source="ZDFheute"]');
       const initiallyEnabled = locale === 'de';
-      if (initiallyEnabled) await expect(source).toHaveClass(/\bactive\b/);
-      else await expect(source).not.toHaveClass(/\bactive\b/);
       const capture = async (name: string) => {
         const path = testInfo.outputPath(`${locale}-${name}.png`);
         await evidenceScreenshot(page, { path }, { testInfo, name: `${locale} ${name}` });
       };
-      await capture('desktop-default');
-      await source.click();
-      await page.locator('.sources-search input').fill('ZDFheute');
-      if (initiallyEnabled) await expect(zdf).toHaveClass(/\bactive\b/);
-      else await expect(zdf).not.toHaveClass(/\bactive\b/);
-      await zdf.click();
+      await test.step(`German RSS sources default correctly in ${locale}: defaults and choice`, async () => {
+        await page.locator('.sources-search input').fill('Deutschlandfunk');
+        if (initiallyEnabled) await expect(source).toHaveClass(/\bactive\b/);
+        else await expect(source).not.toHaveClass(/\bactive\b/);
+        await capture('desktop-default');
+        await source.click();
+        await page.locator('.sources-search input').fill('ZDFheute');
+        if (initiallyEnabled) await expect(zdf).toHaveClass(/\bactive\b/);
+        else await expect(zdf).not.toHaveClass(/\bactive\b/);
+        await zdf.click();
+      });
       await page.locator('.unified-settings-close').click();
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
       await openSourcesTab(page);
-      for (const name of ['Deutschlandfunk', 'ZDFheute']) {
-        await page.locator('.sources-search input').fill(name);
-        const item = page.locator(`#usSourceToggles .source-toggle-item[data-source="${name}"]`);
-        if (initiallyEnabled) await expect(item).not.toHaveClass(/\bactive\b/);
-        else await expect(item).toHaveClass(/\bactive\b/);
+      if (withRegional) {
+        await test.step(`${CURATED_REGIONAL_TITLE}: retained after reload`, async () => {
+          await expect(pacific).toHaveClass(/\bactive\b/);
+          const disabled = await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-disabled-feeds') ?? '[]') as string[]);
+          expect(disabled).toContain('user-choice');
+          expect(disabled).not.toContain('Guardian Pacific');
+          expect(disabled).toContain('France 24 Asia Pacific');
+          await page.locator('.sources-search input').fill('Guardian');
+          const screenshotPath = testInfo.outputPath('regional-source-choice.png');
+          await evidenceScreenshot(page, { path: screenshotPath }, { testInfo, name: 'Regional source choice after reload' });
+        });
       }
-      const disabled = await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-disabled-feeds') ?? '[]') as string[]);
-      expect(disabled).toContain('user-choice');
-      for (const name of ['Deutschlandfunk', 'ZDFheute']) expect(disabled.includes(name)).toBe(initiallyEnabled);
-      await capture('desktop-saved-choice');
-      await page.setViewportSize({ width: 390, height: 844 });
-      await expect(zdf).toBeVisible();
-      await capture('mobile-saved-choice');
+      await test.step(`German RSS sources in ${locale} retain explicit choices after reload`, async () => {
+        for (const name of ['Deutschlandfunk', 'ZDFheute']) {
+          await page.locator('.sources-search input').fill(name);
+          const item = page.locator(`#usSourceToggles .source-toggle-item[data-source="${name}"]`);
+          if (initiallyEnabled) await expect(item).not.toHaveClass(/\bactive\b/);
+          else await expect(item).toHaveClass(/\bactive\b/);
+        }
+        const disabled = await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-disabled-feeds') ?? '[]') as string[]);
+        expect(disabled).toContain('user-choice');
+        for (const name of ['Deutschlandfunk', 'ZDFheute']) expect(disabled.includes(name)).toBe(initiallyEnabled);
+        await capture('desktop-saved-choice');
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect(zdf).toBeVisible();
+        await capture('mobile-saved-choice');
+      });
     });
   }
-  test('new curated regional sources stay opt-in for a returning Pro profile and retain a later choice', async ({ page }, testInfo) => {
-    await seedProFullVariant(page, true);
-    await bootSourceSettings(page);
-    await openSourcesTab(page);
-    for (const name of ['Guardian Africa', 'France 24 Africa', 'Guardian Caribbean', 'Guardian Pacific', 'France 24 Asia Pacific']) {
-      await expect(page.locator(`#usSourceToggles .source-toggle-item[data-source="${name}"]`)).not.toHaveClass(/\bactive\b/);
-    }
-    const pacific = page.locator('#usSourceToggles .source-toggle-item[data-source="Guardian Pacific"]');
-    await pacific.click();
-    await expect(pacific).toHaveClass(/\bactive\b/);
-    await page.locator('.unified-settings-close').click();
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
-    await openSourcesTab(page);
-    await expect(pacific).toHaveClass(/\bactive\b/);
-    const disabled = await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-disabled-feeds') ?? '[]') as string[]);
-    expect(disabled).toContain('user-choice');
-    expect(disabled).not.toContain('Guardian Pacific');
-    expect(disabled).toContain('France 24 Asia Pacific');
-    await page.locator('.sources-search input').fill('Guardian');
-    const screenshotPath = testInfo.outputPath('regional-source-choice.png');
-    await evidenceScreenshot(page, { path: screenshotPath }, { testInfo, name: 'Regional source choice after reload' });
-  });
 
-  test('toggling sources and closing Settings reloads news once, without a reload', async ({ page }) => {
+  test('closing Settings reloads news once only when sources changed', async ({ page }) => {
     await seedProFullVariant(page);
     const log = await bootUntilNewsSettles(page);
     // #6724: snapshot the count AFTER the boot check passes, so a late boot
     // digest is never charged to the toggle assertion below.
     const baseline = log.urls.length;
+
+    await openSourcesTab(page);
+    await page.locator('.unified-settings-close').click();
+    await page.waitForTimeout(SETTLE_MS);
+
+    expect(
+      log.urls.length - baseline,
+      `an unchanged source selection has the same news work-list, so closing Settings must ` +
+        `not spend a digest request (requests since baseline: ${log.urls.length - baseline})`,
+    ).toBe(0);
 
     await openSourcesTab(page);
     const disabled = await disableFirstSources(page, TOGGLE_COUNT);
@@ -409,22 +430,5 @@ test.describe('settings source live apply (#6380)', () => {
       `disabling ${disabled.length} sources (${disabled.join(', ')}) must cost exactly one ` +
         `extra news load, not one per click (requests since baseline: ${log.urls.length - baseline})`,
     ).toBe(1);
-  });
-
-  test('closing Settings without touching sources issues no news load', async ({ page }) => {
-    await seedProFullVariant(page);
-    const log = await bootUntilNewsSettles(page);
-    // #6724: same baseline-delta pattern.
-    const baseline = log.urls.length;
-
-    await openSourcesTab(page);
-    await page.locator('.unified-settings-close').click();
-    await page.waitForTimeout(SETTLE_MS);
-
-    expect(
-      log.urls.length - baseline,
-      `an unchanged source selection has the same news work-list, so closing Settings must ` +
-        `not spend a digest request (requests since baseline: ${log.urls.length - baseline})`,
-    ).toBe(0);
   });
 });

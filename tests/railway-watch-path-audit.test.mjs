@@ -1107,11 +1107,8 @@ describe('planned Railway service lifecycle', () => {
     assert.equal(Object.hasOwn(live, 'lifecycle'), false);
     assert.equal(live.cronSchedule, '0 */6 * * *');
     assert.equal(live.startCommand, 'node seed-live-video-resolved.mjs');
-    assert.deepEqual(live.requiredEnv, [
-      'UPSTASH_REDIS_REST_URL',
-      'UPSTASH_REDIS_REST_TOKEN',
-      ['LIVE_VIDEO_PROXY_URL', 'PROXY_URL'],
-    ]);
+    // The proxy is only a fallback for pages the direct read cannot answer, so the seeder runs without it.
+    assert.deepEqual(live.requiredEnv, ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']);
     assert.ok(managedRailwayServices(RAILWAY_SERVICE_REGISTRY).includes(live));
   });
 
