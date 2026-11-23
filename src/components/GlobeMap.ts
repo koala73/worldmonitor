@@ -133,6 +133,14 @@ interface BaseMarker {
   _kind: string;
   _lat: number;
   _lng: number;
+  /** Event time in ms, for the time range filter. Unset markers always show. */
+  _time?: number | null;
+}
+
+function markerTime(value: Date | string | number | undefined | null): number | null {
+  if (value == null) return null;
+  const ts = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(ts) ? ts : null;
 }
 interface ConflictMarker extends BaseMarker {
   _kind: 'conflict';
@@ -2580,13 +2588,18 @@ export class GlobeMap {
     // actually oversized (#5368). Every marker here becomes a DOM node that
     // CSS2DRenderer repositions on every frame, so the total has to be bounded.
     const groups: GlobeMarkerGroup<GlobeMarker>[] = [];
+    const rangeHours = { '1h': 1, '6h': 6, '24h': 24, '48h': 48, '7d': 168, all: null }[this.timeRange];
+    const cutoff = rangeHours == null ? null : Date.now() - rangeHours * 3600000;
     const add = (
       layer: string,
       markers: readonly GlobeMarker[],
       // Only the tuning knobs — spreading a full Partial would let a caller
       // silently overwrite the `layer`/`markers` this function just set.
       extra: Pick<Partial<GlobeMarkerGroup<GlobeMarker>>, 'rank' | 'exempt'> = {},
-    ): void => { if (markers.length) groups.push({ layer, markers, ...extra }); };
+    ): void => {
+      const inRange = cutoff == null ? markers : markers.filter(m => m._time == null || m._time >= cutoff);
+      if (inRange.length) groups.push({ layer, markers: inRange, ...extra });
+    };
 
     if (this.layers.hotspots) add('hotspots', this.hotspots, { rank: m => (m._kind === 'hotspot' ? m.escalationScore : 0) });
     if (this.layers.conflicts) add('conflicts', this.conflictZoneMarkers);
@@ -3191,6 +3204,7 @@ export class GlobeMap {
       _kind: 'flight' as const,
       _lat: f.lat,
       _lng: f.lon,
+      _time: markerTime(f.lastSeen),
       id: f.id,
       callsign: f.callsign ?? '',
       type: (f as any).aircraftType ?? (f as any).type ?? 'fighter',
@@ -3263,6 +3277,7 @@ export class GlobeMap {
       _kind: 'vessel' as const,
       _lat: v.lat,
       _lng: v.lon,
+      _time: markerTime(v.lastAisUpdate),
       id: v.id,
       name: v.name ?? 'vessel',
       type: v.vesselType,                                                    // raw enum — color/icon key
@@ -3299,6 +3314,7 @@ export class GlobeMap {
         _kind: 'weather' as const,
         _lat: a.centroid![1],   // centroid is [lon, lat]
         _lng: a.centroid![0],
+        _time: markerTime(a.onset),
         id: a.id,
         severity: a.severity ?? 'Minor',
         headline: a.headline ?? a.event ?? '',
@@ -3311,6 +3327,7 @@ export class GlobeMap {
       _kind: 'natural' as const,
       _lat: e.lat,
       _lng: e.lon,
+      _time: markerTime(e.date),
       id: e.id,
       category: e.category ?? '',
       title: e.title ?? '',
@@ -3924,6 +3941,7 @@ export class GlobeMap {
         _kind: 'earthquake' as const,
         _lat: e.location!.latitude,
         _lng: e.location!.longitude,
+        _time: markerTime(e.occurredAt),
         id: e.id,
         place: e.place ?? '',
         magnitude: e.magnitude ?? 0,
@@ -3936,6 +3954,7 @@ export class GlobeMap {
       _kind: 'radiation' as const,
       _lat: observation.lat,
       _lng: observation.lon,
+      _time: markerTime(observation.observedAt),
       id: observation.id,
       location: observation.location,
       country: observation.country,
@@ -4034,6 +4053,7 @@ export class GlobeMap {
       _kind: 'outage' as const,
       _lat: o.lat,
       _lng: o.lon,
+      _time: markerTime(o.pubDate),
       id: o.id,
       title: o.title ?? '',
       severity: o.severity ?? 'partial',
@@ -4049,6 +4069,7 @@ export class GlobeMap {
         _kind: 'trafficAnomaly' as const,
         _lat: a.latitude,
         _lng: a.longitude,
+        _time: markerTime(a.startDate),
         id: a.uuid || `ta-${a.locationCode}-${a.startDate}`,
         type: a.type || '',
         locationName: a.locationName || '',
@@ -4159,6 +4180,7 @@ export class GlobeMap {
       _kind: 'protest' as const,
       _lat: e.lat,
       _lng: e.lon,
+      _time: markerTime(e.time),
       id: e.id,
       title: e.title ?? '',
       eventType: e.eventType ?? 'protest',
@@ -4174,6 +4196,7 @@ export class GlobeMap {
         _kind: 'flightDelay' as const,
         _lat: d.lat,
         _lng: d.lon,
+        _time: markerTime(d.updatedAt),
         id: d.id,
         iata: d.iata,
         name: d.name,
@@ -4224,6 +4247,7 @@ export class GlobeMap {
       _kind: 'cyber' as const,
       _lat: t.lat,
       _lng: t.lon,
+      _time: markerTime(t.lastSeen ?? t.firstSeen),
       id: t.id,
       indicator: t.indicator ?? '',
       severity: t.severity ?? 'low',
@@ -4236,6 +4260,7 @@ export class GlobeMap {
       _kind: 'iran' as const,
       _lat: e.latitude,
       _lng: e.longitude,
+      _time: markerTime(e.timestamp),
       id: e.id,
       title: e.title ?? '',
       category: e.category ?? '',
@@ -4249,6 +4274,7 @@ export class GlobeMap {
       _kind: 'fire' as const,
       _lat: f.lat,
       _lng: f.lon,
+      _time: markerTime(f.acq_date),
       id: (f.id as string | undefined) ?? `${f.lat},${f.lon}`,
       region: f.region ?? '',
       brightness: f.brightness ?? 330,

@@ -227,4 +227,11 @@ describe('3D globe controls on phones (#11157)', () => {
     assert.match(globe, /onTimeRangeChanged\(cb: \(r: TimeRange\) => void\): void \{ this\.onTimeRangeChangeCb = cb; \}/);
     assert.match(globe, /this\.onTimeRangeChangeCb\?\.\(range\);\s*this\.updateTimeSliderButtons\(\);/);
   });
+
+  it('applies the time range to timed markers, not only UKMTO incidents', () => {
+    assert.match(globe, /markers\.filter\(m => m\._time == null \|\| m\._time >= cutoff\)/);
+    for (const field of ['occurredAt', 'e.date', 'e.time', 'acq_date', 'pubDate', 'startDate', 'e.timestamp', 'a.onset', 'updatedAt', 'lastAisUpdate', 'observedAt']) {
+      assert.ok(globe.includes(`_time: markerTime(`) && new RegExp(`_time: markerTime\\([^)]*${field.replace('.', '\\.')}`).test(globe), field);
+    }
+  });
 });
