@@ -1788,15 +1788,12 @@ canvas,
     border: 0;
   }
 
-  /* The fixed tab bar covers the last 58px of the scrolling dashboard, so the
-     final tile (Add Panel) could not be scrolled into reach (#11157). The grid
-     must not shrink in the flex column, or its tiles overflow past the padding. */
-  .main-content {
-    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
-  }
-
-  .main-content > .panels-grid {
-    flex-shrink: 0;
+  /* The fixed tab bar covers the last 58px of the scrolling dashboard. The grid
+     shrinks in the flex column and its tiles overflow past its bottom padding,
+     so a trailing spacer keeps the final tile (Add Panel) in reach (#11157). */
+  .main-content > .panels-grid::after {
+    content: '';
+    flex: 0 0 calc(58px + env(safe-area-inset-bottom, 0px));
   }
 
   .mobile-tab-bar {
