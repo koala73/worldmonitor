@@ -849,6 +849,9 @@ export class LiveNewsPanel extends Panel {
   private handleSessionPlayingChange(playing: boolean): void {
     if (this.isPlaying === playing) return;
     this.isPlaying = playing;
+    // Only play and pause arrive here, never buffering, so playing again after a pause is the viewer
+    // pressing play in the player: their own start, even on a stream autoplay loaded.
+    if (playing) this.startedByViewer = true;
     this.updateLiveIndicator();
   }
 

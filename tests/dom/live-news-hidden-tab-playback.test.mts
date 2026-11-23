@@ -189,6 +189,15 @@ describe('Live News in a hidden tab', () => {
     expect(player()).toBeNull();
   });
 
+  it('counts a resume from the player\'s own controls as the viewer\'s own start', () => {
+    mountAutoplaying();
+    expect(internals().startedByViewer).toBe(false);
+    internals().handleSessionPlayingChange(false);
+    expect(internals().startedByViewer).toBe(false);
+    internals().handleSessionPlayingChange(true);
+    expect(internals().startedByViewer).toBe(true);
+  });
+
   it('counts Tap to play as the viewer\'s own start', () => {
     mountAutoplaying();
     expect(internals().startedByViewer).toBe(false);
