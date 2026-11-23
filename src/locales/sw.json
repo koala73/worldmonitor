@@ -1701,7 +1701,7 @@
       "briefFreshness": "Ilizalishwa dakika {{minutes}} zilizopita · chanzo kipya zaidi cha saa {{hours}}",
       "briefStoryDetails": "Maelezo ya habari ({{count}})",
       "streamIdleStopLabel": "Simamisha video moja kwa moja wakati umekaa bila kufanya kitu",
-      "streamIdleStopDesc": "Husimamisha Habari za Moja kwa Moja na Kamera za Moja kwa Moja baada ya muda huu bila shughuli na kuonyesha onyo katika paneli.",
+      "streamIdleStopDesc": "Husimamisha Habari za Moja kwa Moja na Kamera za Moja kwa Moja baada ya muda huu bila shughuli na kuonyesha onyo katika paneli. Habari za Moja kwa Moja huendelea kucheza sauti yake ikiwa imewashwa.",
       "streamIdleStopNever": "Kamwe",
       "liveNewsAutoplayLabel": "Taslimia kiotomatiki habari moja kwa moja",
       "liveNewsAutoplayDesc": "Huanza video ya habari moja kwa moja, bila sauti, mara tu inapoonekana. Zima hii ili kupakia video tu wakati unapoisimamisha mwenyewe."

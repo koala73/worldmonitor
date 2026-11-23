@@ -1503,7 +1503,7 @@
       "briefFreshness": "Généré il y a {{minutes}}m · source la plus récente datant de {{hours}}h",
       "briefStoryDetails": "Détails de l’article ({{count}})",
       "streamIdleStopLabel": "Arrêter la vidéo en direct en cas d'inactivité",
-      "streamIdleStopDesc": "Arrête Live News et Live Webcams après cette durée sans activité et affiche une notification dans le panneau.",
+      "streamIdleStopDesc": "Arrête Live News et Live Webcams après cette durée sans activité et affiche une notification dans le panneau. Live News continue de jouer tant que le son est activé.",
       "streamIdleStopNever": "Jamais",
       "liveNewsAutoplayLabel": "Lecture automatique des actualités en direct",
       "liveNewsAutoplayDesc": "Lance la vidéo des actualités en direct, en sourdine, dès qu'elle apparaît à l'écran. Désactivez cette option pour charger la vidéo uniquement quand vous la lancez vous-même."

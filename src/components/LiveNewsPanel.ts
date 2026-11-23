@@ -74,8 +74,17 @@ export class LiveNewsPanel extends Panel {
   private isFullscreen = false;
   private liveBtn: HTMLButtonElement | null = null;
   private readonly boundVisibilityHandler = () => {
-    if (document.hidden) stopLiveMediaPlayback('live-news', 'hidden');
-    else this.startAlwaysOnPlaybackIfVisible();
+    if (!document.hidden) {
+      if (this.resumeOnTabReturn) this.resumeAfterHiddenTab();
+      else this.startAlwaysOnPlaybackIfVisible();
+      return;
+    }
+    // Sound on means someone is listening from another tab: keep playing.
+    if (this.isAudible()) return;
+    // A muted stream is stopped: the browser pauses muted video in a hidden tab anyway, and a kept player
+    // would resume minutes behind live. What the viewer started comes back by itself on return.
+    this.resumeOnTabReturn = this.startedByViewer && this.ownsLiveNewsMedia();
+    stopLiveMediaPlayback('live-news', 'hidden');
   };
   // Live News autoplay (on by default); the webcam wall keeps its own opt-in.
   private alwaysOn = getLiveNewsAutoplay();
@@ -90,6 +99,14 @@ export class LiveNewsPanel extends Panel {
   private playerContainer: HTMLDivElement | null = null;
   private playerGeneration = 0;
   private playbackOrigin: PlaybackOrigin = 'implicit';
+  /**
+   * Whether the viewer started what is playing (a play button anywhere, Resume, a channel click, Retry)
+   * or autoplay did. Separate from the origin above: play-all and Resume are implicit about the channel
+   * yet are the viewer's own start. What the viewer started returns by itself after a hidden tab.
+   */
+  private startedByViewer = false;
+  /** The viewer's own playback was stopped only because the tab was hidden, so the return restarts it. */
+  private resumeOnTabReturn = false;
   // Channels an implicit start already found offline, so it never skips in a circle.
   private skippedChannelIds = new Set<string>();
   // When each channel was last found offline. Implicit starts and "Play next channel" pass over it meanwhile.
@@ -154,7 +171,7 @@ export class LiveNewsPanel extends Panel {
   private dismissChannelManagementModal: (() => void) | null = null;
   // Play-all cascade: start this panel's channel, but never start a disabled or collapsed panel.
   private readonly boundPlayAllStarter = () => {
-    if (this.canHostLiveMedia()) this.triggerInit();
+    if (this.canHostLiveMedia()) this.triggerInit(true);
   };
 
   constructor() {
@@ -281,7 +298,7 @@ export class LiveNewsPanel extends Panel {
     this.lazyObserver.observe(this.element);
   }
 
-  private triggerInit(): void {
+  private triggerInit(startedByViewer = false): void {
     if (this.deferredInit) return;
     this.deferredInit = true;
     if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
@@ -290,12 +307,13 @@ export class LiveNewsPanel extends Panel {
       else clearTimeout(this.idleCallbackId as ReturnType<typeof setTimeout>);
       this.idleCallbackId = null;
     }
-    this.beginPlayback('implicit');
+    this.beginPlayback('implicit', startedByViewer);
   }
 
   /** Starts the active channel. The origin decides what an offline channel does: explain itself, or hand over. */
-  private beginPlayback(origin: PlaybackOrigin): void {
+  private beginPlayback(origin: PlaybackOrigin, startedByViewer = origin === 'explicit'): void {
     this.playbackOrigin = origin;
+    this.startedByViewer = startedByViewer;
     this.skippedChannelIds.clear();
     this.requestPlaybackForActiveChannel();
   }
@@ -360,8 +378,22 @@ export class LiveNewsPanel extends Panel {
     saveChannelsToStorage(this.channels);
   }
 
+  /** Restart, at the live edge, the stream the viewer had playing when the tab was hidden. */
+  private resumeAfterHiddenTab(): void {
+    this.resumeOnTabReturn = false;
+    if (!this.canHostLiveMedia() || this.idleStoppedAfterMs !== null || this.ownsActiveLiveMedia()) return;
+    this.beginPlayback(this.playbackOrigin, true);
+  }
+
+  /** Playing with the sound on: someone is listening, whether or not they are looking. */
+  private isAudible(): boolean {
+    return this.isPlaying && !this.isMuted && this.audioAvailability !== 'unavailable';
+  }
+
   private stopForIdle(idleAfterMs: number): void {
     if (this.isFullscreen || !this.isPlaying || !getActiveLiveMedia('live-news')) return;
+    // Listening needs no mouse or keyboard. Muting is activity, so the idle clock restarts from there.
+    if (this.isAudible()) return;
     this.idleStoppedAfterMs = idleAfterMs;
     trackLiveMediaIdleStop('live-news', idleAfterMs);
     stopLiveMediaPlayback('live-news', 'idle');
@@ -705,6 +737,7 @@ export class LiveNewsPanel extends Panel {
         saveToStorage(STORAGE_KEYS.activeChannel, channel.id);
         this.playbackOrigin = 'explicit';
       }
+      this.startedByViewer = true;
       return;
     }
 
@@ -978,6 +1011,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   public stopLiveMediaForClose(): void {
+    this.resumeOnTabReturn = false;
     const wasIdleStopped = this.idleStoppedAfterMs !== null;
     this.idleStoppedAfterMs = null;
     stopLiveMediaPlayback('live-news', 'destroyed');
@@ -1024,6 +1058,7 @@ export class LiveNewsPanel extends Panel {
     }
 
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
+    this.resumeOnTabReturn = false;
     document.removeEventListener('keydown', this.boundFullscreenEscHandler);
     this.detachChannelDragListeners();
     if (this.isFullscreen) this.setFullscreen(false);

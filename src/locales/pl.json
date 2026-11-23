@@ -1850,7 +1850,7 @@
       "briefFreshness": "Wygenerowano {{minutes}}m temu · najnowsze źródło sprzed {{hours}}h",
       "briefStoryDetails": "Szczegóły wiadomości ({{count}})",
       "streamIdleStopLabel": "Zatrzymaj transmisję live gdy nieaktywna",
-      "streamIdleStopDesc": "Zatrzymuje Live News i Live Webcams po tym czasie bez aktywności i wyświetla powiadomienie w panelu.",
+      "streamIdleStopDesc": "Zatrzymuje Live News i Live Webcams po tym czasie bez aktywności i wyświetla powiadomienie w panelu. Live News gra dalej, dopóki dźwięk jest włączony.",
       "streamIdleStopNever": "Nigdy",
       "liveNewsAutoplayLabel": "Automatyczne odtwarzanie aktualności na żywo",
       "liveNewsAutoplayDesc": "Rozpoczyna odtwarzanie wideo aktualności na żywo, bez dźwięku, zaraz po jego pojawienia się na ekranie. Wyłącz tę opcję, aby wideo załadowało się tylko po jego ręcznym uruchomieniu."

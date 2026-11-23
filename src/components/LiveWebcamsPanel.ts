@@ -128,11 +128,24 @@ export class LiveWebcamsPanel extends Panel {
   private idleStopped: { readonly feedIds: readonly string[]; readonly idleAfterMs: number } | null = null;
   private readonly boundVisibilityHandler = () => {
     if (document.hidden) {
+      // Webcams are silent, so nothing is lost by stopping them while nobody can see them. The auto-play
+      // wall starts again by itself on return; a wall the viewer started is remembered so it does too,
+      // instead of coming back as preview tiles that need starting again.
+      this.resumeFeedIdsOnTabReturn = this.alwaysOn ? [] : Array.from(this.activeIframeFeedIds);
       this.teardownPlayback();
+      return;
+    }
+    const resumeFeedIds = this.resumeFeedIdsOnTabReturn;
+    this.resumeFeedIdsOnTabReturn = [];
+    if (resumeFeedIds.length > 0 && !this.idleStopped && this.canHostLiveMedia()) {
+      for (const feedId of resumeFeedIds) this.activeIframeFeedIds.add(feedId);
+      if (this.isVisible) this.render();
       return;
     }
     if (!this.startAlwaysOnPlayback() && this.isVisible) this.render();
   };
+  /** Feeds the viewer had playing when the tab was hidden. Restored on return. */
+  private resumeFeedIdsOnTabReturn: string[] = [];
   private alwaysOn = getLiveStreamsAlwaysOn();
   private unsubscribeStreamSettings: (() => void) | null = null;
   private unsubscribeIdle: (() => void) | null = null;
