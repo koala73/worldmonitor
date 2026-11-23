@@ -92,6 +92,11 @@ function numberFromEnv(name, fallback) {
 
 const REQUEST_GAP_MS = numberFromEnv('PULSE_FREEZE_GAP_MS', 120);
 const HTTP_TIMEOUT_MS = numberFromEnv('PULSE_FREEZE_TIMEOUT_MS', 20_000);
+// One request asks list-country-headlines for every country, and the handler's
+// time grows with the country count: 1 country ~2 s, 20 ~4 s, 195 ~22.5 s on
+// 2026-11-23. Under the default timeout the curated feeds aborted every week
+// and briefs fell from 131 countries to 86.
+const CURATED_FEEDS_TIMEOUT_MS = numberFromEnv('PULSE_FREEZE_CURATED_FEEDS_TIMEOUT_MS', 90_000);
 const OUTPUT_BASENAME = process.env.PULSE_FREEZE_OUTPUT_BASENAME || '';
 
 // Countries the upstream may legitimately fail to serve in a single run before
@@ -285,10 +290,10 @@ function normalizeHttpsUrl(value) {
   }
 }
 
-async function fetchJson(url, { headers = {}, method = 'GET', body, apiBase = API_BASE } = {}) {
+async function fetchJson(url, { headers = {}, method = 'GET', body, apiBase = API_BASE, timeoutMs = HTTP_TIMEOUT_MS } = {}) {
   const origin = normalizeApiBase(apiBase);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
       method,
@@ -334,7 +339,7 @@ async function mintSession(apiBase = API_BASE) {
   return token;
 }
 
-async function authedGet(pathname, token, apiBase = API_BASE, { serviceKey = '' } = {}) {
+async function authedGet(pathname, token, apiBase = API_BASE, { serviceKey = '', timeoutMs } = {}) {
   const base = normalizeApiBase(apiBase);
   // Service-key callers pass the tier-gated routes (intel brief, timeline)
   // that reject the anonymous session with a 401. Same either/or contract as
@@ -343,7 +348,7 @@ async function authedGet(pathname, token, apiBase = API_BASE, { serviceKey = '' 
   const headers = serviceKey
     ? { 'X-WorldMonitor-Key': serviceKey }
     : { Cookie: `wm-session=${token}` };
-  return fetchJson(`${base}${pathname}`, { headers, apiBase: base });
+  return fetchJson(`${base}${pathname}`, { headers, apiBase: base, timeoutMs });
 }
 
 async function resolveLatestResilienceSnapshot() {
@@ -1204,7 +1209,9 @@ export async function freezeCrawlableLivePulse({
   try {
     const query = new URLSearchParams();
     for (const code of Object.keys(countries)) query.append('country_codes', code);
-    const payload = await authedGet(`/api/news/v1/list-country-headlines?${query}`, token, base, authOpts);
+    const payload = await authedGet(`/api/news/v1/list-country-headlines?${query}`, token, base, {
+      ...authOpts, timeoutMs: CURATED_FEEDS_TIMEOUT_MS,
+    });
     if (!['complete', 'partial', 'unavailable'].includes(payload?.state)
       || !payload.countries || typeof payload.countries !== 'object') {
       throw new Error('country headline response did not report cache coverage');
