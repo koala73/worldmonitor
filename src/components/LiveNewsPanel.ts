@@ -8,7 +8,7 @@ import { STORAGE_KEYS } from '@/config';
 
 import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveNewsAutoplay, subscribeLiveNewsAutoplayChange } from '@/services/live-stream-settings';
-import { subscribeLiveMediaIdle } from '@/services/live-media-idle';
+import { noteLiveMediaActivity, subscribeLiveMediaIdle } from '@/services/live-media-idle';
 import { sourceListsChannel, type LiveVideoSource, type OfflineReason } from '@/services/live-video/model';
 import { withResolvedLiveVideos } from '@/services/live-video/resolved';
 import { createFailureMemory, openLiveVideo, type AudioAvailability, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
@@ -83,7 +83,9 @@ export class LiveNewsPanel extends Panel {
     if (this.isAudible()) return;
     // A muted stream is stopped: the browser pauses muted video in a hidden tab anyway, and a kept player
     // would resume minutes behind live. What the viewer started comes back by itself on return.
-    this.resumeOnTabReturn = this.startedByViewer && this.ownsLiveNewsMedia();
+    // `isPlaying` is false once the viewer pauses from the player's own controls, which keeps the
+    // panel's hold on the stream. A paused stream must stay paused.
+    this.resumeOnTabReturn = this.startedByViewer && this.isPlaying && this.ownsLiveNewsMedia();
     stopLiveMediaPlayback('live-news', 'hidden');
   };
   // Live News autoplay (on by default); the webcam wall keeps its own opt-in.
@@ -833,6 +835,23 @@ export class LiveNewsPanel extends Panel {
     });
   }
 
+  /** The viewer muted or unmuted from the player's own controls. */
+  private handleSessionMutedChange(muted: boolean): void {
+    this.isMuted = muted;
+    this.updateMuteIcon();
+    // Muting ends the idle exemption, and it is the viewer acting. Inside an embed that click never
+    // reaches this page, so say so: otherwise an idle signal the exemption already swallowed is the
+    // last one, and the muted stream plays on past the idle limit.
+    if (muted) noteLiveMediaActivity();
+  }
+
+  /** The viewer paused or resumed from the player's own controls; the idle stop leaves a paused stream alone. */
+  private handleSessionPlayingChange(playing: boolean): void {
+    if (this.isPlaying === playing) return;
+    this.isPlaying = playing;
+    this.updateLiveIndicator();
+  }
+
   private openPlayer(container: HTMLDivElement, channel: LiveChannel, source: LiveVideoSource, isCurrent: () => boolean): void {
     const session = openLiveVideo(container, {
       source,
@@ -844,9 +863,7 @@ export class LiveNewsPanel extends Panel {
         if (isCurrent()) this.onVideoState(channel, state);
       },
       onMutedChange: (muted) => {
-        if (!isCurrent()) return;
-        this.isMuted = muted;
-        this.updateMuteIcon();
+        if (isCurrent()) this.handleSessionMutedChange(muted);
       },
       onAudioAvailabilityChange: (availability) => {
         if (!isCurrent()) return;
@@ -854,10 +871,7 @@ export class LiveNewsPanel extends Panel {
         this.updateMuteIcon();
       },
       onPlayingChange: (playing) => {
-        // The viewer paused or resumed from the player's own controls; the idle stop leaves a paused stream alone.
-        if (!isCurrent() || this.isPlaying === playing) return;
-        this.isPlaying = playing;
-        this.updateLiveIndicator();
+        if (isCurrent()) this.handleSessionPlayingChange(playing);
       },
     });
     // The first state arrives synchronously, and an offline one may already have moved playback on.
@@ -929,7 +943,11 @@ export class LiveNewsPanel extends Panel {
     if (playButton) {
       status.dataset.tapToPlay = '';
       // The text is the button's label: one tap target, not a caption beside it.
-      status.appendChild(actionButton(text, () => this.videoSession?.setPaused(false)));
+      status.appendChild(actionButton(text, () => {
+        // Tapping play is the viewer's own start, even on a stream autoplay loaded.
+        this.startedByViewer = true;
+        this.videoSession?.setPaused(false);
+      }));
     } else {
       const label = document.createElement('span');
       label.textContent = text;

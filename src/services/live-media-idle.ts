@@ -68,6 +68,14 @@ function onActivity(): void {
   if (clock.timer === null) armFromLastActivity(clock);
 }
 
+/**
+ * Counts as user activity for the idle clock. For input this page never sees: a control inside an
+ * embedded player belongs to the embed's document, so muting there raises no event here.
+ */
+export function noteLiveMediaActivity(): void {
+  onActivity();
+}
+
 function onVisibilityChange(): void {
   if (!clock) return;
   if (document.hidden) {

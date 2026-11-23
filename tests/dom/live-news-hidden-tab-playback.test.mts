@@ -39,7 +39,12 @@ class FakeIntersectionObserver {
 interface PanelInternals {
   element: HTMLElement;
   content: HTMLElement;
+  startedByViewer: boolean;
   ensurePlayerContainer(): void;
+  /** What the player reports when the viewer uses its own controls, inside the embed. */
+  handleSessionPlayingChange(playing: boolean): void;
+  handleSessionMutedChange(muted: boolean): void;
+  showPlayerStatus(kind: 'chip', text: string, watchUrl: string | null, playButton: boolean): void;
 }
 
 let panel: LiveNewsPanel | undefined;
@@ -174,6 +179,26 @@ describe('Live News in a hidden tab', () => {
     expect(isPlaying()).toBe(false);
   });
 
+  it('does not restart a stream the viewer paused from the player\'s own controls', () => {
+    // Pausing inside the player keeps the panel's hold on the stream, unlike the header button.
+    mountAndPressPlay();
+    internals().handleSessionPlayingChange(false);
+
+    setHidden(true);
+    setHidden(false);
+    expect(player()).toBeNull();
+  });
+
+  it('counts Tap to play as the viewer\'s own start', () => {
+    mountAutoplaying();
+    expect(internals().startedByViewer).toBe(false);
+    internals().showPlayerStatus('chip', 'Tap to play', null, true);
+    const tap = internals().content.querySelector<HTMLButtonElement>('[data-tap-to-play] button');
+    if (!tap) throw new Error('no Tap to play button');
+    tap.click();
+    expect(internals().startedByViewer).toBe(true);
+  });
+
   it('does not restart into a panel that was closed while the tab was hidden', () => {
     mountAndPressPlay();
     setHidden(true);
@@ -241,6 +266,22 @@ describe('Live News idle stop and sound', () => {
 
     // Muting is itself activity, so the hour starts here.
     toggleSound();
+    vi.advanceTimersByTime(HOUR - MINUTE);
+    expect(isPlaying()).toBe(true);
+    vi.advanceTimersByTime(MINUTE);
+    expect(isPlaying()).toBe(false);
+    expect(notice()).not.toBeNull();
+  });
+
+  it('idle-stops an hour after the viewer mutes from the player\'s own controls, with no other input', () => {
+    // A click inside the embed never reaches this page, so the idle clock sees no activity.
+    // The exemption has already swallowed one idle signal by the time the viewer mutes.
+    mountAndPressPlay();
+    toggleSound();
+    vi.advanceTimersByTime(3 * HOUR);
+    expect(isPlaying()).toBe(true);
+
+    internals().handleSessionMutedChange(true);
     vi.advanceTimersByTime(HOUR - MINUTE);
     expect(isPlaying()).toBe(true);
     vi.advanceTimersByTime(MINUTE);

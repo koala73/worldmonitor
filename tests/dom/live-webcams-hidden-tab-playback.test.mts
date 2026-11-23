@@ -138,6 +138,18 @@ describe('Live Webcams in a hidden tab', () => {
     expect(playingFeeds()).toEqual(ALL_REGIONS_WALL);
   });
 
+  it('does not bring back a wall whose panel was closed while the tab was hidden', async () => {
+    mountOnScreen();
+    playFromPreview();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    setHidden(true);
+    panel?.stopLiveMediaForClose();
+    setHidden(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(playingFeeds()).toEqual([]);
+  });
+
   it('shows the preview tiles on return when nothing was playing', () => {
     mountOnScreen();
     setHidden(true);

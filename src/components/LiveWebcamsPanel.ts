@@ -809,6 +809,7 @@ export class LiveWebcamsPanel extends Panel {
 
   public stopLiveMediaForClose(): void {
     this.idleStopped = null;
+    this.resumeFeedIdsOnTabReturn = [];
     this.clearActivePlayback();
     this.substitutes.clear();
     if (this.isVisible && this.element.isConnected) {
