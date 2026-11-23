@@ -3174,8 +3174,17 @@ describe('crawlable corpus generator', () => {
       // Untagged: `ref=` would be captured as an affiliate referral code, and a
       // utm_* tag is a 308 hop through the middleware index-noise strip (#8603).
       assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/dashboard\?country=NO&amp;expanded=1">Open Norway on the live map/);
-      assert.doesNotMatch(norway, /[?&]ref=/, 'corpus CTAs must never use the affiliate ref= param');
-      assert.doesNotMatch(norway, /utm_source=/, 'corpus CTAs must not carry utm_source; middleware 308s it away');
+      // Only World Monitor's own links: a captured article URL keeps its
+      // publisher's utm_* tags, and which articles land on Norway's page moves
+      // with every weekly capture (#11151).
+      const ownHrefs = [...norway.matchAll(/href="([^"]*)"/g)]
+        .map(([, href]) => href.replaceAll('&amp;', '&'))
+        .filter((href) => href.startsWith('/') || href.startsWith('https://www.worldmonitor.app'));
+      assert.ok(ownHrefs.length > 0);
+      for (const href of ownHrefs) {
+        assert.doesNotMatch(href, /[?&]ref=/, `corpus links must never use the affiliate ref= param: ${href}`);
+        assert.doesNotMatch(href, /[?&]utm_[a-z]+=/, `corpus links must not carry utm_*; middleware 308s it away: ${href}`);
+      }
       // Social preview + trust-link contracts.
       assert.match(norway, /<meta property="og:image" content="https:\/\/www\.worldmonitor\.app\/favico\/og-image\.png">/);
       assert.match(norway, /<meta name="twitter:card" content="summary_large_image">/);
