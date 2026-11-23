@@ -4618,22 +4618,28 @@ export class MapComponent {
     this.pendingFocusFit = null;
     this.state.view = view;
 
-    // Region-specific zoom and pan settings
-    // Pan: +x = west, -x = east, +y = north, -y = south
-    const viewSettings: Record<MapView, { zoom: number; pan: { x: number; y: number } }> = {
-      global: { zoom: 1, pan: { x: 0, y: 0 } },
-      america: { zoom: 1.8, pan: { x: 180, y: 30 } },
-      mena: { zoom: 3.5, pan: { x: -100, y: 50 } },
-      eu: { zoom: 2.4, pan: { x: -30, y: 100 } },
-      asia: { zoom: 2.0, pan: { x: -320, y: 40 } },
-      latam: { zoom: 2.0, pan: { x: 120, y: -100 } },
-      africa: { zoom: 2.2, pan: { x: -40, y: -30 } },
-      oceania: { zoom: 2.2, pan: { x: -420, y: -100 } },
+    // Each region is a geographic center (the same as DeckGLMap's VIEW_PRESETS),
+    // projected for this map's size. Fixed pixel pans only framed the region at
+    // one desktop width; on a phone they put America over the Pacific and
+    // Asia and Oceania off the map.
+    const viewSettings: Record<MapView, { zoom: number; center: [number, number] | null }> = {
+      global: { zoom: 1, center: null },
+      america: { zoom: 1.8, center: [-95, 38] },
+      mena: { zoom: 3.5, center: [45, 28] },
+      eu: { zoom: 2.4, center: [15, 50] },
+      asia: { zoom: 2.0, center: [105, 35] },
+      latam: { zoom: 2.0, center: [-60, -15] },
+      africa: { zoom: 2.2, center: [20, 5] },
+      oceania: { zoom: 2.2, center: [135, -25] },
     };
 
     const settings = viewSettings[view];
     this.state.zoom = zoom ?? settings.zoom;
-    this.state.pan = settings.pan;
+    const { width, height } = this.getKnownContainerSize();
+    const point = settings.center && this.getProjection(width, height)(settings.center);
+    this.state.pan = point
+      ? { x: width / 2 - point[0], y: height / 2 - point[1] }
+      : { x: 0, y: 0 };
     this.applyTransform();
     this.render();
   }
