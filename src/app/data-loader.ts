@@ -4632,6 +4632,7 @@ export class DataLoaderManager implements AppModule {
     const requestFilters = filters ?? this.globalTenderFilters;
     this.globalTenderFilters = { ...requestFilters, cursor: '' };
     let canceledFiltersRestored = false;
+    let markedLoading = false;
     const releaseScopedRequest = () => {
       if (this.activeGlobalTenderScopedGeneration === requestGeneration) {
         this.activeGlobalTenderScopedGeneration = null;
@@ -4667,6 +4668,7 @@ export class DataLoaderManager implements AppModule {
       }
       if (isCanceledOrStale()) return;
       procurementPanel.setLoading(true, append);
+      markedLoading = true;
       try {
         const { fetchGlobalTenders } = await import('@/services/global-tenders');
         if (isCanceledOrStale()) return;
@@ -4675,10 +4677,12 @@ export class DataLoaderManager implements AppModule {
         if (!hasPremiumAccess()) {
           if (isCanceledOrStale()) return;
           procurementPanel.clear();
+          markedLoading = false;
           return;
         }
         if (isCanceledOrStale()) return;
         procurementPanel.update(data, append);
+        markedLoading = false;
         if (isCanceledOrStale()) return;
         this.ctx.statusPanel?.updateApi('Global Procurement', {
           status: !data.dataAvailable ? 'error' : ['partial', 'stale'].includes(data.availability) ? 'warning' : 'ok',
@@ -4688,12 +4692,22 @@ export class DataLoaderManager implements AppModule {
         console.warn('[App] Global tenders failed:', error);
         if (isCanceledOrStale()) return;
         procurementPanel.showUnavailable();
+        markedLoading = false;
         if (isCanceledOrStale()) return;
         this.ctx.statusPanel?.updateApi('Global Procurement', { status: 'error' });
       }
     } finally {
       signal?.removeEventListener('abort', onAbort);
       releaseScopedRequest();
+      if (
+        markedLoading
+        && !isScopedFilterRequest
+        && signal?.aborted === true
+        && requestGeneration === this.globalTenderGeneration
+        && !this.ctx.isDestroyed
+      ) {
+        procurementPanel.setLoading(false);
+      }
     }
   }
 

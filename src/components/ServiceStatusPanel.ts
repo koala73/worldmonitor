@@ -5,7 +5,6 @@ import {
   fetchServiceStatuses,
   type ServiceStatusResult as ServiceStatus,
 } from '@/services/infrastructure';
-import { combineAbortSignals } from '@/services/timeout-signal';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
 type CategoryFilter = 'all' | 'cloud' | 'dev' | 'comm' | 'ai' | 'saas';
@@ -34,8 +33,22 @@ export class ServiceStatusPanel extends Panel {
   private lastServicesJson = '';
 
   public async fetchStatus(signal?: AbortSignal): Promise<boolean> {
-    const requestSignal = signal ? combineAbortSignals([this.signal, signal]) : this.signal;
-    if (requestSignal.aborted) return false;
+    if (this.signal.aborted || signal?.aborted) return false;
+    let requestSignal: AbortSignal = this.signal;
+    let cleanupSignals: (() => void) | undefined;
+    if (signal) {
+      const panelSignal = this.signal;
+      const runController = new AbortController();
+      const onPanelAbort = (): void => runController.abort(panelSignal.reason);
+      const onCallerAbort = (): void => runController.abort(signal.reason);
+      panelSignal.addEventListener('abort', onPanelAbort, { once: true });
+      signal.addEventListener('abort', onCallerAbort, { once: true });
+      requestSignal = runController.signal;
+      cleanupSignals = () => {
+        panelSignal.removeEventListener('abort', onPanelAbort);
+        signal.removeEventListener('abort', onCallerAbort);
+      };
+    }
     let keptLastGood = false;
     let aborted = false;
     try {
@@ -68,6 +81,7 @@ export class ServiceStatusPanel extends Panel {
       console.error('[ServiceStatus] Fetch error:', err);
       return true;
     } finally {
+      cleanupSignals?.();
       if (!aborted) {
         this.loading = false;
         if (this.element?.isConnected && !keptLastGood) {
