@@ -10,7 +10,7 @@ The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replac
 
 These three Pro-gated tools read the durable history store that the history collectors append to after each run. They share one record shape — `id`, `domain`, `resource`, `country`, `category`, `title`, `summary`, `sourceUrl`, `occurredAt`, `ingestedAt`, `score` — so a client can hold a single parser for all three.
 
-## Domains
+### Domains
 
 Each collector writes one `domain` and `resource`. Collectors keep only events above a significance bar, so the store is a record of notable events, not a mirror of each feed.
 
