@@ -51,10 +51,10 @@ function payload(overrides: Record<string, unknown> = {}) {
 const UNPAID_MONTH = { previous_billing_date: iso(RENEWAL), next_billing_date: iso(NEXT_RENEWAL) };
 
 /** A Dodo `subscriptions.retrieve` result for the unpaid month, in the reconciler's test shape. */
-function remote(status: string) {
+function remote(status: string, productId = PRO) {
   return {
     subscription_id: SUB_ID,
-    product_id: PRO,
+    product_id: productId,
     status,
     customer: { customer_id: "cust_grace_001", email: "grace@example.com" },
     metadata: { wm_user_id: USER },
@@ -376,6 +376,35 @@ describe("locked-hold recovery sweep", () => {
       .toMatchObject({ inspected: 1 });
   });
 
+  test("every locked hold gets a turn when there are more than one batch", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await failRenewal(t);
+    const sweepAt = HOLD + 10 * DAY_MS;
+    // 50 more locked holds that end their period before the original one, so
+    // index order puts the original last.
+    await t.run(async (ctx) => {
+      const base = await ctx.db.query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", SUB_ID)).unique();
+      const { _id, _creationTime, ...fields } = base!;
+      for (let i = 0; i < 50; i++) {
+        await ctx.db.insert("subscriptions", {
+          ...fields,
+          dodoSubscriptionId: `sub_grace_extra_${i}`,
+          userId: `grace-extra-${i}`,
+          currentPeriodEnd: fields.currentPeriodEnd - (i + 1) * 60_000,
+        });
+      }
+    });
+    vi.setSystemTime(sweepAt);
+    // No remotes: every lookup fails and is recorded as a check.
+    const first = await t.action(internal.payments.billing.reconcileLockedOnHoldSubscriptions, { now: sweepAt, remoteSubscriptionsForTest: [] });
+    expect(first.inspected).toBe(50);
+    const nextAt = sweepAt + 6 * 60 * 60 * 1000;
+    const next = await t.query(internal.payments.billing.listLockedOnHoldForRecovery, { now: nextAt });
+    expect(next.map((row) => row.dodoSubscriptionId)[0]).toBe(SUB_ID);
+  });
+
   test("holds inside their grace are not looked up", async () => {
     vi.useFakeTimers();
     const t = await setup();
@@ -416,6 +445,41 @@ describe("Business owners", () => {
     await event(t, "wh_hold_b", "subscription.on_hold", payload({ ...advanced, status: "on_hold" }), HOLD);
     expect((await entitlementOf(t))?.validUntil).toBe(GRACE_END);
     expect((await entitlementOf(t, "grace-invitee"))?.validUntil).toBe(GRACE_END);
+  });
+
+  test("a hold found by the reconciler gives accepted invitees the same grace", async () => {
+    vi.useFakeTimers();
+    const t = await setup("api_business", BUSINESS);
+    await activate(t, BUSINESS);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: SUB_ID,
+        ownerUserId: USER,
+        inviteeEmail: "invitee@example.com",
+        domain: "example.com",
+        status: "accepted",
+        inviteeUserId: "grace-invitee",
+        createdAt: ACTIVATED,
+        acceptedAt: ACTIVATED,
+        expiresAt: NEXT_RENEWAL + 365 * DAY_MS,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: "grace-invitee",
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: RENEWAL,
+        updatedAt: ACTIVATED,
+      });
+    });
+    // Both the renewal and hold webhooks were missed; the reconciler finds the hold.
+    const observedAt = RENEWAL + 2 * DAY_MS;
+    vi.setSystemTime(observedAt);
+    await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: observedAt,
+      remoteSubscriptionsForTest: [remote("on_hold", BUSINESS)],
+    });
+    expect((await entitlementOf(t))?.validUntil).toBe(observedAt + ON_HOLD_ACCESS_GRACE_MS);
+    expect((await entitlementOf(t, "grace-invitee"))?.validUntil).toBe(observedAt + ON_HOLD_ACCESS_GRACE_MS);
   });
 });
 

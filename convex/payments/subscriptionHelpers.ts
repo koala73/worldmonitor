@@ -1824,7 +1824,7 @@ export function buildConversionContext(input: {
   };
 }
 
-async function recomputeAcceptedBusinessInvitees(
+export async function recomputeAcceptedBusinessInvitees(
   ctx: MutationCtx,
   subscriptionId: string,
   observedAt: number,

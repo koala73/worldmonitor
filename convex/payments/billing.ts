@@ -34,6 +34,7 @@ import {
   isCancellationScheduled,
   isCoveringAt,
   isNewerEvent,
+  recomputeAcceptedBusinessInvitees,
   recomputeEntitlementFromAllSubs,
   resolveBillingRecipient,
   resolvePlanKey,
@@ -1743,6 +1744,9 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
     });
 
     await recomputeEntitlementFromAllSubs(ctx, existing.userId, args.observedAt);
+    // A Business subscription's accepted invitees follow the owner's new
+    // period and grace, as they do when the webhook delivers the change.
+    await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, args.observedAt);
     return {
       kind: "reconciled",
       status: args.remote.status,
@@ -1786,6 +1790,9 @@ export const listLockedOnHoldForRecovery = internalQuery({
         (row.lastReconcileAttemptAt === undefined ||
           args.now - row.lastReconcileAttemptAt >= ON_HOLD_RECOVERY_RECHECK_MS),
       )
+      // Least recently checked first, so a backlog larger than one batch
+      // rotates instead of re-checking the same rows every run.
+      .sort((a, b) => (a.lastReconcileAttemptAt ?? 0) - (b.lastReconcileAttemptAt ?? 0))
       .slice(0, ON_HOLD_RECOVERY_BATCH_SIZE)
       .map((row) => ({ _id: row._id, dodoSubscriptionId: row.dodoSubscriptionId }));
   },
