@@ -621,12 +621,14 @@ async function doCheckout(
         // may spend longer than that reading the dialog before clicking.
         // Using a stale `token` would 401 at /customer-portal.
         const planKey = err?.subscription?.planKey;
+        // A paused hold is not an upgrade case: the card has to be fixed first.
+        const paused = err?.subscription?.status === 'on_hold';
         const showGuidedDuplicateDialog = (): void => showProDuplicateSubscriptionDialog({
           planDisplayName: resolveProPlanDisplayName(planKey),
           // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
           // pairing; every other pairing keeps the portal line.
           targetProductId: productId,
-          paused: err?.subscription?.status === 'on_hold',
+          paused,
           onConfirm: async () => {
             // Pre-open the tab SYNCHRONOUSLY inside the click handler
             // BEFORE any await so the popup blocker treats it as a
@@ -648,6 +650,7 @@ async function doCheckout(
         // An active Pro moves to Pro Business in place (prorated Dodo plan
         // change); the guided dialog stays the fallback when no preview comes back.
         if (
+          !paused &&
           PRO_BUSINESS_PRODUCT_IDS.has(productId) &&
           typeof planKey === 'string' &&
           IN_PLACE_UPGRADE_SOURCE_PLANS.has(planKey)

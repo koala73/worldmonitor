@@ -418,6 +418,39 @@ describe("locked-hold recovery sweep", () => {
     expect(next.map((row) => row.dodoSubscriptionId)[0]).toBe(SUB_ID);
   });
 
+  test("a hold whose unpaid period has just ended is still looked up", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await failRenewal(t);
+    // A 28-day period with a 30-day retry window: Dodo can still recover it.
+    const afterPeriod = NEXT_RENEWAL + 2 * DAY_MS;
+    vi.setSystemTime(afterPeriod);
+    const listed = await t.query(internal.payments.billing.listLockedOnHoldForRecovery, { now: afterPeriod });
+    expect(listed.map((row) => row.dodoSubscriptionId)).toContain(SUB_ID);
+  });
+
+  test("recovery applies a plan change Dodo made during the hold", async () => {
+    vi.useFakeTimers();
+    const t = await setup("api_business", BUSINESS);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("productPlans", { dodoProductId: PRO, planKey: "pro_monthly", displayName: "pro_monthly", isActive: true });
+    });
+    await failRenewal(t, BUSINESS);
+    const sweepAt = HOLD + 10 * DAY_MS;
+    vi.setSystemTime(sweepAt);
+    // Dodo moved the subscription to Pro while it was on hold; that webhook was lost.
+    const summary = await t.action(internal.payments.billing.reconcileLockedOnHoldSubscriptions, {
+      now: sweepAt,
+      remoteSubscriptionsForTest: [remote("active", PRO)],
+    });
+    expect(summary.recovered).toBe(1);
+    const sub = await subscriptionOf(t);
+    expect(sub?.status).toBe("active");
+    expect(sub?.dodoProductId).toBe(PRO);
+    expect(sub?.planKey).toBe("pro_monthly");
+    expect((await entitlementOf(t))?.planKey).toBe("pro_monthly");
+  });
+
   test("holds inside their grace are not looked up", async () => {
     vi.useFakeTimers();
     const t = await setup();

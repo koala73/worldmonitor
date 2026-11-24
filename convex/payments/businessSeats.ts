@@ -94,9 +94,10 @@ async function getCoveringBusinessSubscription(
     .query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .collect();
-  return subs.find(
-    (s) => isBusinessPlan(s.planKey) && isCoveringAt(s, at),
-  ) ?? null;
+  // Prefer a row that grants access: a failed renewal past its access grace
+  // still covers for billing and must not hide another, live Business row.
+  const business = subs.filter((s) => isBusinessPlan(s.planKey) && isCoveringAt(s, at));
+  return business.find((s) => hasAccessAt(s, at)) ?? business[0] ?? null;
 }
 
 /**

@@ -259,10 +259,12 @@ crons.daily(
 // Locked-hold recovery: a failed renewal loses access 7 days after the hold
 // while Dodo keeps retrying. If a retry succeeds and its webhook is lost, this
 // sweep finds the row through Dodo and restores access. Each row is checked at
-// most every 6 hours (ON_HOLD_RECOVERY_RECHECK_MS).
+// most every 6 hours (ON_HOLD_RECOVERY_RECHECK_MS); running hourly with
+// least-recently-checked batches lets a backlog of several batches still see
+// every row about once per recheck window.
 crons.interval(
   "dodo-locked-hold-recovery",
-  { hours: 6 },
+  { hours: 1 },
   internal.payments.billing.reconcileLockedOnHoldSubscriptions,
   {},
 );

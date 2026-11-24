@@ -29,6 +29,7 @@ import {
   accessEndAt,
   billingDeletionForUser,
   failedRenewalAccessEndsAt,
+  handleSubscriptionPlanChanged,
   handleSubscriptionRenewed,
   hasAccessAt,
   isCancellationScheduled,
@@ -1767,12 +1768,17 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
 
 const ON_HOLD_RECOVERY_RECHECK_MS = 6 * 60 * 60 * 1000;
 const ON_HOLD_RECOVERY_BATCH_SIZE = 50;
+// Dodo retries for 30 days from the hold, which can outlast a short period
+// (a 28-day February, or a hold that settled days late), so keep checking a
+// locked hold for this long after its local period end.
+const ON_HOLD_RECOVERY_TAIL_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
  * on_hold rows whose access grace has ended but whose unpaid period has not,
- * so Dodo may still recover them, and that were not checked in the last
+ * (or ended less than `ON_HOLD_RECOVERY_TAIL_MS` ago), so Dodo may still
+ * recover them, and that were not checked in the last
  * `ON_HOLD_RECOVERY_RECHECK_MS`. Bounded by the period window: only holds
- * from roughly the last month have a period end in the future.
+ * from roughly the last month qualify.
  */
 export const listLockedOnHoldForRecovery = internalQuery({
   args: { now: v.number() },
@@ -1780,7 +1786,7 @@ export const listLockedOnHoldForRecovery = internalQuery({
     const rows = await ctx.db
       .query("subscriptions")
       .withIndex("by_status_currentPeriodEnd", (q) =>
-        q.eq("status", "on_hold").gt("currentPeriodEnd", args.now),
+        q.eq("status", "on_hold").gt("currentPeriodEnd", args.now - ON_HOLD_RECOVERY_TAIL_MS),
       )
       .take(500);
     return rows
@@ -1820,6 +1826,13 @@ export const applyOnHoldRecovery = internalMutation({
       isNewerEvent(existing.updatedAt, args.observedAt)
     ) {
       await handleSubscriptionRenewed(ctx, args.remoteRaw, args.observedAt);
+      // Dodo allows a plan change on a held subscription. If its webhook was
+      // lost too, apply it in this transaction (grants and entitlement
+      // included) so access is restored on the plan Dodo actually bills.
+      const remoteProductId = (args.remoteRaw as { product_id?: unknown }).product_id;
+      if (typeof remoteProductId === "string" && remoteProductId !== existing.dodoProductId) {
+        await handleSubscriptionPlanChanged(ctx, args.remoteRaw, args.observedAt);
+      }
       return "recovered";
     }
     await ctx.db.patch(existing._id, { lastReconcileAttemptAt: args.observedAt });

@@ -304,4 +304,13 @@ describe('paused failed-renewal surfaces', () => {
     assert.ok(check < src.indexOf("trackGateHit('pro-banner')"), 'checked before the gate hit and reservation');
     assert.match(src, /const nextState = getProBannerVariant\(/);
   });
+
+  it('a paused hold never enters the in-place Pro Business upgrade on either checkout', async () => {
+    const dashboard = await read('src/services/checkout.ts');
+    assert.match(dashboard, /const isProBusinessUpgrade = !paused && /);
+    const pro = await read('pro-test/src/services/checkout.ts');
+    const branch = pro.indexOf('PRO_BUSINESS_PRODUCT_IDS.has(productId) &&');
+    assert.ok(branch > 0, 'in-place upgrade branch present');
+    assert.match(pro.slice(branch - 40, branch), /!paused &&\s*$/, 'the /pro upgrade branch excludes paused holds');
+  });
 });

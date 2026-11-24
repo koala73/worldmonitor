@@ -28123,9 +28123,11 @@ body.map-width-resizing {
   border-color: color-mix(in srgb, var(--billing-tone-attention) 60%, transparent);
 }
 
+/* Hover strengthens the border only: a tone-tinted fill under tone-coloured
+   text drops the light theme below 4.5:1. */
 .manage-billing-btn-primary:hover {
   color: var(--billing-tone-attention);
-  background: color-mix(in srgb, var(--billing-tone-attention) 10%, transparent);
+  border-color: var(--billing-tone-attention);
 }
 
 /* ---- API Keys + Embeds Settings Tabs ---- */
