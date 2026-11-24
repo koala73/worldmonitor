@@ -3652,6 +3652,39 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.data?.code, 'subscription_lapsed');
   });
 
+  it('a payment failure during a Pro tool call keeps its terminal code and names the billing portal', async () => {
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes('/api/aviation/v1/track-aircraft')) {
+        return new Response(
+          JSON.stringify({ error: 'Payment failed. Update your payment method at https://www.worldmonitor.app/dashboard?billing=portal to restore access.', code: 'payment_failed' }),
+          {
+            status: 403,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+              'X-Billing-Verification': 'payment_failed',
+            },
+          },
+        );
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 17, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'DE', type: 'civilian' } },
+    }));
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'payment_failed');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.code, 'payment_failed');
+    assert.equal(body.error?.data?.reason, 'payment-failed');
+    assert.equal(body.error?.data?.upgradeUrl, 'https://www.worldmonitor.app/dashboard?billing=portal');
+  });
+
   it('get_airspace type=civilian skips military fetch', async () => {
     let militaryFetched = false;
     globalThis.fetch = async (url) => {

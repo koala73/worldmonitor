@@ -611,6 +611,12 @@ export interface McpPreCheckPassed {
    */
   freeAccountAllowance?: true;
   /**
+   * Set beside `freeAccountAllowance` when the owner's subscription is paused
+   * after a failed renewal (#11213). Denials then point at the billing portal,
+   * never at start_upgrade: checkout is blocked while the hold lasts.
+   */
+  paymentFailed?: true;
+  /**
    * The entitlement's plan key, from the same read. Lets a denial recommend
    * the plan one step up (#9144). Omitted when the row carries none.
    */

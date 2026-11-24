@@ -56,8 +56,12 @@ export type ProMcpGateDenial =
    * states into a terminal tier verdict (#5600).
    */
   | { kind: 'billing_verification'; denial: BillingVerificationDenial }
-  /** A verified no-row or well-formed tier-0 account eligible at the MCP call site. */
-  | { kind: 'free_account' }
+  /**
+   * A verified no-row or well-formed tier-0 account eligible at the MCP call
+   * site. `paymentFailed` marks a subscription paused after a failed renewal:
+   * still the free allowance, but checkout is blocked until the card is fixed.
+   */
+  | { kind: 'free_account'; paymentFailed?: true }
   /**
    * A confirmed answer that does not grant Pro MCP access and is not eligible
    * for the free-account allowance: a tiered plan without mcpAccess, an expired
@@ -162,21 +166,22 @@ export function checkProMcpAccess(
     : entitlements;
   const denial = classifyBillingVerification(billingInput);
   if (denial) {
-    // #6716 — a provider-CONFIRMED lapse is a free account, not a wall.
+    // #6716 — a provider-CONFIRMED lapse or pause is a free account, not a wall.
     //
-    // `retryable: false` is documented as true "ONLY for a lapse the provider
-    // confirmed", so it is precisely the signal that we have stopped trying to
-    // collect. Dunning happens earlier, while the row is `on_hold`: a failed
-    // renewal keeps FULL Pro for its access grace (`accessEndAt` in
-    // convex/payments/subscriptionHelpers.ts), then its entitlement expires
-    // while retries continue — so by the time a lapse is confirmed the billing
-    // attempts are over and the account is simply a free one.
+    // `retryable: false` is documented as false ONLY for a state the provider
+    // confirmed. A failed renewal keeps FULL Pro for its access grace
+    // (`accessEndAt` in convex/payments/subscriptionHelpers.ts), then its
+    // entitlement expires while Dodo keeps retrying: that pause is
+    // `payment_failed`, a free account the caller is told to fix by updating
+    // the card rather than by buying again (#11213).
     //
     // Every RETRYABLE state stays a billing_verification denial: renewal
     // pending/failed and an unverifiable read are statements about the
     // VERIFICATION, not the subscription, and treating them as free would grant
     // an allowance on a read we could not trust — the flattening #5600 is about.
-    if (!denial.retryable) return { kind: 'free_account' };
+    if (!denial.retryable) {
+      return denial.code === 'payment_failed' ? { kind: 'free_account', paymentFailed: true } : { kind: 'free_account' };
+    }
     return { kind: 'billing_verification', denial };
   }
   if (isConfirmedFreeMcpAccount(entitlements, opts)) return { kind: 'free_account' };
