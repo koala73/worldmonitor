@@ -1790,8 +1790,10 @@ canvas,
 
   /* The fixed tab bar covers the last 58px of the scrolling dashboard. The grid
      shrinks in the flex column and its tiles overflow past its bottom padding,
-     so a trailing spacer keeps the final tile (Add Panel) in reach (#11157). */
-  .main-content > .panels-grid::after {
+     so a trailing spacer keeps the final tile (Add Panel) in reach (#11157).
+     Scoped to the dashboard's #main: the plugin page reuses .main-content >
+     .panels-grid but has no tab bar (e2e/panel-grid-column-clamp.spec.ts). */
+  #main > .panels-grid::after {
     content: '';
     flex: 0 0 calc(58px + env(safe-area-inset-bottom, 0px));
   }

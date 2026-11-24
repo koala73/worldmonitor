@@ -72,7 +72,8 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
       await page.locator('#main').evaluate((main) => main.scrollTo(0, main.scrollHeight));
       const tileBox = await tile.boundingBox();
       const barBox = await page.locator('#mobileTabBar').boundingBox();
-      return (tileBox?.y ?? 0) + (tileBox?.height ?? 0) <= (barBox?.y ?? 0);
+      if (!tileBox || !barBox) return false;
+      return tileBox.y + tileBox.height <= barBox.y;
     }).toBe(true);
   });
 
