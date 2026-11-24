@@ -3,11 +3,13 @@
 // already had an alert for the same development. Neither changes scoring or rules.
 import { NEWS_PUBLISHER_COVERAGE_PREFIX, newsPublisherCoverageKey } from '../shared/story-identity.js';
 import storyKeys from './news-story-key.cjs';
+import coverageText from './corroboration-text.cjs';
 import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
 import { EMBED_MODEL } from './brief-dedup-consts.mjs';
 import { cosineSimilarity, embedBatch, normalizeForEmbedding } from './brief-embedding.mjs';
 
 const DAY = storyKeys.NEWS_STORY_DEDUP_TTL_SECONDS * 1000;
+const { countRecordedPublisherFamilies } = coverageText;
 
 export async function refreshPublisherCounts(events, now = Date.now(), pipeline = defaultRedisPipeline) {
   const reads = new Map();
@@ -28,12 +30,13 @@ export async function refreshPublisherCounts(events, now = Date.now(), pipeline 
   for (const group of reads.values()) {
     const families = rows?.[i++]?.result;
     if (!Array.isArray(families) || !families.length) continue;
+    const historyCount = countRecordedPublisherFamilies(families);
     // The producer's count spans every wording of the story; the history spans
     // this one headline across builds. Neither contains the other, so keep the
     // larger: one family on this wording must not relabel a covered story.
     for (const event of group) {
       const buildCount = Number(event.payload?.corroborationCount) || 0;
-      if (families.length > buildCount) event.observedPublisherCount = families.length;
+      if (historyCount > buildCount) event.observedPublisherCount = historyCount;
     }
   }
 }
