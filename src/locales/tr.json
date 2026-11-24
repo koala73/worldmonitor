@@ -304,7 +304,7 @@
     },
     "intelMemory": {
       "title": "Tarihsel İstihbarat Hafızası",
-      "help": "Çatışma, askeri ve enerji olaylarının 180 günlük arşivi ile talep üzerine anlamsal öncül eşleştirmesi.",
+      "help": "180 günlük, çatışma, askeri operasyon, enerji, kargaşa, siber, denizcilik, doğal afet ve havacılık olaylarının arşivi; isteğe bağlı anlamsal öncel eşleştirmesi ile.",
       "loading": "Tarihsel istihbarat hafızası yükleniyor…",
       "proLocked": "180 günlük tarihsel istihbarat hafızası ve öncül araması için PRO sürümüne yükseltin",
       "unavailable": "Tarihsel istihbarat hafızası geçici olarak kullanılamıyor.",

@@ -23,8 +23,8 @@ Each collector writes one `domain` and `resource`. Collectors keep only events a
 | `unrest` | `events` | GDELT unrest mentions and ACLED protests | ACLED events; GDELT places with at least 10 reports, one row per place per UTC day, marked `media-signal` because GDELT does not verify the event |
 | `cyber` | `threats` | C2Intel, Feodo Tracker and other IOC feeds | Command-and-control servers only |
 | `maritime` | `portwatch-disruptions` | IMF PortWatch | Every port and chokepoint disruption |
-| `natural` | `earthquakes` | USGS and NRCan | Magnitude 5.0 and above |
-| `natural` | `events` | NASA EONET, GDACS and NHC | Every published hazard |
+| `natural` | `earthquakes` | USGS | Magnitude 5.0 and above |
+| `natural` | `events` | NASA EONET, GDACS and tropical cyclone agencies | Every published hazard except earthquakes (kept under `earthquakes`) and Hong Kong warning signals |
 | `aviation` | `intl` | AviationStack airport departures | Major or severe disruptions, and any closure or ground stop; one row per airport, severity and UTC day |
 
 An event that changes after it is stored keeps its first stored version: a later casualty revision or a longer airport closure does not rewrite the row.

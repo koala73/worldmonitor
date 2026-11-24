@@ -4469,7 +4469,7 @@
     },
     "intelMemory": {
       "title": "Historisch inlichtingengeheugen",
-      "help": "180-daagse archive van conflicten, militaire en energiegebeurtenissen met semantische precedentmatchings op aanvraag.",
+      "help": "180-daags archief van opvallende conflicten, militaire acties, energie-, onrust-, cyber-, maritieme- en natuurrampengebeurtenissen en vliegtuigincidenten, met on-demand semantische precedentmatching.",
       "loading": "Historisch inlichtingengeheugen laden…",
       "proLocked": "Upgrade naar PRO voor 180-daagse historisch inlichtingengeheugen en precedentzoeking",
       "unavailable": "Historisch inlichtingengeheugen is tijdelijk niet beschikbaar.",

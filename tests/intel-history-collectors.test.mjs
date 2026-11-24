@@ -70,7 +70,7 @@ test('UCDP omits a country name the resolver cannot map rather than storing the 
 
 test('GDELT unrest signals key on place and UTC day, not the moving upstream id', () => {
   const [first] = buildUnrestHistoryRecords({ events: [UNREST_GDELT_EVENT] });
-  assert.equal(first.dedupeKey, 'unrest:events:gdelt:38.90:-77.04:2026-11-24');
+  assert.equal(first.dedupeKey, 'unrest:events:gdelt:38.9:-77.0:2026-11-24');
   assert.equal(first.country, 'US');
   assert.equal(first.category, 'media-signal');
   assert.equal(first.title, 'Unrest media signal: Washington, Washington, United States (2026-11-24)');
@@ -264,4 +264,42 @@ test('withHistoryAfterPublish skips history when the primary hook throws', async
   );
   await assert.rejects(hook({}, {}), /notify failed/);
   assert.equal(historyRan, false);
+});
+
+// ── Review fixes before the first production run: a row keeps the identity and
+// country it was first stored with for 180 days. ────────────────────────────
+
+test('UCDP resolves the historical parenthetical country names it emits', () => {
+  const countries = buildUcdpHistoryRecords({
+    events: ['DR Congo (Zaire)', 'Myanmar (Burma)', 'Russia (Soviet Union)', 'Yemen (North Yemen)']
+      .map((country, i) => ({ ...UCDP_EVENT, id: `p${i}`, country })),
+  }).map((r) => r.country);
+  assert.deepEqual(countries, ['CD', 'MM', 'RU', 'YE']);
+});
+
+test('GDELT unrest keys on the 0.1° bucket, not the point the bucket kept', () => {
+  // aggregateGeo buckets at toFixed(1) and keeps the first location's
+  // coordinates; a different first article moves the point inside the cell.
+  const keyAt = (latitude, longitude) => buildUnrestHistoryRecords({
+    events: [{ ...UNREST_GDELT_EVENT, location: { latitude, longitude } }],
+  })[0].dedupeKey;
+  assert.equal(keyAt(48.866, 2.333), keyAt(48.874, 2.318));
+  assert.equal(keyAt(48.87, 2.33), 'unrest:events:gdelt:48.9:2.3:2026-11-24');
+});
+
+test('earthquake history keeps USGS ids only', () => {
+  // NRCan rows switch to the USGS id once USGS reports the same quake.
+  assert.equal(buildEarthquakeHistoryRecords({ earthquakes: [{ ...EARTHQUAKE, id: 'nrcan-2026abcd', source: 'nrcan' }] }).length, 0);
+  assert.equal(buildEarthquakeHistoryRecords({ earthquakes: [EARTHQUAKE] }).length, 1);
+});
+
+test('natural events skip GDACS earthquakes and HKO warning signals', () => {
+  const kept = buildNaturalEventHistoryRecords({
+    events: [
+      { ...NATURAL_EVENT, id: 'gdacs-EQ-1501234', category: 'earthquakes', title: '🔴 Earthquake in Japan' },
+      { ...NATURAL_EVENT, id: 'hko-warning:WTCSGNL', category: 'severeStorms', title: 'Tropical Cyclone Warning Signal No. 8' },
+      NATURAL_EVENT,
+    ],
+  }).map((r) => r.dedupeKey);
+  assert.deepEqual(kept, [`natural:events:${NATURAL_EVENT.id}`]);
 });

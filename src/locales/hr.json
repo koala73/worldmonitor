@@ -375,7 +375,7 @@
     },
     "intelMemory": {
       "title": "Arhiva povijesne obavještajne analize",
-      "help": "Arhiva od 180 dana sukoba, vojnih i energetskih događaja s mogućnošću usporedbe prema prethodnim slučajevima na zahtjev.",
+      "help": "Arhiva od 180 dana značajnih događaja vezanih uz konflikt, vojsku, energiju, nemire, kibernetiku, pomorstvo, prirodne katastrofe i zrakoplovstvo, s odgovarajućom semantičkom pretraživanjem prethodnih slučajeva.",
       "loading": "Učitavanje arhive povijesne obavještajne analize…",
       "proLocked": "Nadogradite se na PRO za arhivu od 180 dana i pretragu prethodnih slučajeva",
       "unavailable": "Arhiva povijesne obavještajne analize nije dostupna.",

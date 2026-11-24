@@ -2824,7 +2824,7 @@ const SEED_META = {
   // #11245 collectors. New probes, so each binds its activation marker (the
   // hook writes it on its first report, configured or not) to the owner issue.
   intelHistoryIngestConflictUcdp: {
-    key: 'seed-meta:intel-history:conflict:ucdp-events', maxStaleMin: 420, // mirrors ucdpEvents (relay + backup writers)
+    key: 'seed-meta:intel-history:conflict:ucdp-events', maxStaleMin: 720, // relay appends every 6h; one failed append must not read stale. The backup skips while canonical is fresh, so it does not cover a missed append.
     activationKey: 'seed-activated:intel-history:conflict:ucdp-events',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:conflict:ucdp-events' },
   },

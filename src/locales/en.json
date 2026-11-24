@@ -114,7 +114,7 @@
     },
     "intelMemory": {
       "title": "Historical Intelligence Memory",
-      "help": "180-day archive of conflict, military, and energy events with on-demand semantic precedent matching.",
+      "help": "180-day archive of notable conflict, military, energy, unrest, cyber, maritime, natural hazard and aviation events, with on-demand semantic precedent matching.",
       "loading": "Loading historical intelligence memory…",
       "proLocked": "Upgrade to PRO for 180-day historical intelligence memory and precedent search",
       "unavailable": "Historical intelligence memory is temporarily unavailable.",

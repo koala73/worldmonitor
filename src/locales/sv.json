@@ -4469,7 +4469,7 @@
     },
     "intelMemory": {
       "title": "Historiskt underrättelsearkiv",
-      "help": "180-dagars arkiv över konflikt-, militär- och energihändelser med sökbar semantisk jämförelse mot tidigare fall.",
+      "help": "180-dagars arkiv över anmärkningsvärda konflikter, militär verksamhet, energi, oroligheter, cyberattacker, maritima händelser, naturkatastrofer och luftfartshändelser, med på-begäran semantisk sökning efter motsvarigheter.",
       "loading": "Läser in historiskt underrättelsearkiv…",
       "proLocked": "Uppgradera till PRO för 180-dagars historiskt underrättelsearkiv och sökning efter tidigare fall",
       "unavailable": "Historiskt underrättelsearkiv är temporärt otillgängligt.",

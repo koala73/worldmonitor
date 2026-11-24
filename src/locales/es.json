@@ -306,7 +306,7 @@
     },
     "intelMemory": {
       "title": "Memoria de Inteligencia Histórica",
-      "help": "Archivo de 180 días de eventos de conflicto, militares y energéticos con coincidencia semántica de precedentes bajo demanda.",
+      "help": "Archivo de 180 días de eventos notables de conflicto, operaciones militares, energía, disturbios, cibernética, marítima, peligros naturales y aviación, con búsqueda de precedentes semánticos bajo demanda.",
       "loading": "Cargando memoria de inteligencia histórica…",
       "proLocked": "Actualiza a PRO para acceder a memoria de inteligencia histórica de 180 días y búsqueda de precedentes",
       "unavailable": "La memoria de inteligencia histórica no está disponible temporalmente.",

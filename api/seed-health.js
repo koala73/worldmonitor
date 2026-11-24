@@ -370,7 +370,7 @@ const SEED_DOMAINS = {
   // #11245 collectors (scripts/_intel-history-collectors.mjs).
   'intel-history:conflict:ucdp-events': {
     key: 'seed-meta:intel-history:conflict:ucdp-events',
-    intervalMin: 210,
+    intervalMin: 360,
     activationKey: 'seed-activated:intel-history:conflict:ucdp-events',
   },
   'intel-history:unrest:events': {

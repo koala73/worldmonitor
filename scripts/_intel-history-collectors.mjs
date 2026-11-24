@@ -37,6 +37,7 @@
 import { createHash } from 'node:crypto';
 import { makeSeedHistoryAfterPublish } from './_seed-history.mjs';
 import { resolveIso2 } from './_country-resolver.mjs';
+import countryNameMap from './shared/country-name-to-iso2.cjs';
 
 const TITLE_MAX = 480;
 const SUMMARY_MAX = 1900;
@@ -56,8 +57,11 @@ function isoDay(epochMs) {
   return new Date(epochMs).toISOString().slice(0, 10);
 }
 
+// resolveIso2 has no entry for UCDP's historical parentheticals ('DR Congo
+// (Zaire)', 'Myanmar (Burma)'); the relay's resolver strips them. A row keeps
+// the country it was first stored with, so a miss here is permanent.
 function iso2FromName(name) {
-  return resolveIso2({ name }) ?? undefined;
+  return resolveIso2({ name }) ?? countryNameMap.countryNameToIso2(name) ?? undefined;
 }
 
 function iso2OrUndefined(value) {
@@ -162,14 +166,16 @@ function unrestGdeltRecord(event, occurredAt) {
 
   // The upstream id embeds the bucket's moving latest-article time and the
   // title embeds a moving report count, so neither is an identity. A bucket is
-  // a place; one row per place per UTC day is the stable unit.
+  // a place; one row per place per UTC day is the stable unit. The materializer
+  // buckets at 0.1° and keeps the first location's coordinates, which can
+  // differ at 0.01° run to run, so the key uses the bucket, not the point.
   const day = isoDay(occurredAt);
   const place = String(event.title).replace(GDELT_REPORT_COUNT, '').trim() || event.country || 'unknown location';
   // No sourceUrl: the bucket's first article is whichever keyword match GDELT
   // listed first, not evidence of unrest (one sampled bucket led with a
   // firearms review). An agent would cite it as the source.
   return {
-    dedupeKey: `unrest:events:gdelt:${lat.toFixed(2)}:${lon.toFixed(2)}:${day}`,
+    dedupeKey: `unrest:events:gdelt:${lat.toFixed(1)}:${lon.toFixed(1)}:${day}`,
     country: iso2FromName(event.country),
     category: 'media-signal',
     title: clip(`Unrest media signal: ${place} (${day})`, TITLE_MAX),
@@ -303,6 +309,10 @@ export function buildEarthquakeHistoryRecords(data) {
     const occurredAt = positiveEpoch(quake?.occurredAt);
     if (!id || !occurredAt) return null;
     if (!(Number(quake.magnitude) >= EARTHQUAKE_HISTORY_MIN_MAGNITUDE)) return null;
+    // An NRCan row is published under its own id only until USGS reports the
+    // same quake, then under the USGS id. USGS's M4.5+ feed covers every M5+,
+    // so keeping USGS ids alone avoids a second row for one Canadian quake.
+    if (quake.source !== 'usgs') return null;
 
     const place = String(quake.place || '').trim() || 'unknown location';
     const region = place.split(',').at(-1)?.trim();
@@ -342,6 +352,11 @@ export function buildNaturalEventHistoryRecords(data) {
     // GDACS prefixes its alert colour as an emoji (🟠 Drought in ...).
     const title = clip(String(event?.title ?? '').replace(/^[^\p{L}\p{N}]+/u, ''), TITLE_MAX);
     if (!id || !occurredAt || !title) return null;
+    // GDACS earthquakes are already kept, with a country, under
+    // natural/earthquakes. HKO warning ids are the signal code (WTCSGNL), not a
+    // storm, so every later storm's signal would collide with the first; the
+    // storm itself arrives as its own cyclone row.
+    if (event.category === 'earthquakes' || id.startsWith('hko-warning:')) return null;
     return {
       dedupeKey: boundedKey('natural:events', id),
       category: event.category || undefined,
