@@ -18,7 +18,7 @@ import { filterRevokedUrls, readRevokedUrlSet } from '../../../_shared/digest-re
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
 import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
-import { headlineWithoutPublisher } from '../../../../shared/brief-claim-rules.js';
+import { headlineWithoutPublisher } from '../../../../shared/headline-publisher.js';
 
 const DIGEST_KEY_EN = 'news:digest:v1:full:en';
 const MAX_GROUNDING_ITEMS = 15;

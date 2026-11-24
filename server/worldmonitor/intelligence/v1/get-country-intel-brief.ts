@@ -22,7 +22,8 @@ import { ENERGY_SPINE_KEY_PREFIX } from '../../../_shared/cache-keys';
 import { deriveCountryIntelCacheKey, fetchSharedCountryContext } from './_country-brief-context';
 import { buildCountryBriefEvidence, readCountryAirportNotams, readCountryImageryFlags } from './_country-brief-evidence';
 import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
-import { energyEvidenceGrounded, evidenceNumbersGrounded, headlineWithoutPublisher, imageryEvidenceGrounded, isEvidenceLimitClaim, sanctionsEvidenceGrounded } from '../../../../shared/brief-claim-rules.js';
+import { energyEvidenceGrounded, evidenceNumbersGrounded, imageryEvidenceGrounded, isEvidenceLimitClaim, sanctionsEvidenceGrounded } from '../../../../shared/brief-claim-rules.js';
+import { headlineWithoutPublisher } from '../../../../shared/headline-publisher.js';
 import { confirmedFlagsTag } from '../../../../shared/orbital/country-rollup.js';
 import { briefSectionHeading, type BriefSectionKey } from '../../../../shared/brief-sections.js';
 import {

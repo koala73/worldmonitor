@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import { parseCountryBriefSources, renderEvidenceGroundedCountryBrief } from '../server/worldmonitor/intelligence/v1/get-country-intel-brief.ts';
 import { briefCitationGroundingGap, parseBriefSections } from '../scripts/crawlable-developments.mjs';
-import { headlineWithoutPublisher } from '../shared/brief-claim-rules.js';
+import { headlineWithoutPublisher } from '../shared/headline-publisher.js';
 
 describe('country assessment energy grounding', () => {
   const sources = [
