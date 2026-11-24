@@ -136,6 +136,14 @@ describe('country mention matcher', () => {
     assert.equal(mentions('TD', "Triple H 'addressed the Shorty G thing' before Chad Gable re-signed with WWE"), false);
     assert.equal(mentions('TD', 'DeFi Development closes Strategy-style $11 million CHAD offering to grow Solana treasury'), false);
     assert.equal(mentions('NE', 'Obi Meets Niger State Residents, Urges Nigerians To Turn Out For 2027 Elections'), false);
+    assert.equal(mentions('JO', 'Jim  Jordan speaks'), false, 'a double space still joins a two-word name');
+    assert.equal(mentions('JO', 'Jordan\tHawkins scores'), false, 'a tab still joins a two-word name');
+  });
+
+  it('reads an all-caps weak name as the country unless it is also a first name', () => {
+    assert.equal(mentions('TR', 'TURKEY raises interest rates'), true);
+    assert.equal(mentions('NE', 'NIGER junta extends transition'), true);
+    assert.equal(mentions('JO', 'JORDAN scores 40 in season opener'), false);
   });
 
   it('keeps country stories that name a weak country with no co-term', () => {

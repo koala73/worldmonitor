@@ -397,20 +397,22 @@ export function mentionsCountry(rawText, terms) {
 }
 
 const CAPITALIZED = /^\p{Lu}\p{Ll}/u;
+const ALL_CAPS = /^\p{Lu}+$/u;
 
 // One mention of the weak name, on diacritic-stripped raw text, is written as
 // a proper noun and, for a first name, is not part of a two-word name. One is
 // enough: a Jordan Times story ends "- Jordan Times". A possessive ends the
 // name ("Jordan's Karak province"); punctuation between two words does too
-// ("Qatar, Jordan, Egypt").
+// ("Qatar, Jordan, Egypt"). All caps counts only for a name that is not a
+// first name: "TURKEY raises rates" is the country, "CHAD" is a token ticker.
 function standsAlone(rawText, name, firstName) {
-  const text = rawText.normalize('NFKD').replace(/\p{Diacritic}/gu, '');
+  const text = rawText.normalize('NFKD').replace(/\p{Diacritic}/gu, '').replace(/\s+/gu, ' ');
   const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])(${escapeRegExp(name)})(?=$|[^\\p{L}\\p{N}])`, 'giu');
   return [...text.matchAll(pattern)].some((match) => {
     const at = match.index + match[1].length;
     const word = match[2];
+    if (!firstName) return CAPITALIZED.test(word) || ALL_CAPS.test(word);
     if (!CAPITALIZED.test(word)) return false;
-    if (!firstName) return true;
     const previous = text.slice(0, at).match(/(\S+) $/)?.[1];
     if (previous && CAPITALIZED.test(previous) && /\p{L}$/u.test(previous)) return false;
     const after = text.slice(at + word.length);
