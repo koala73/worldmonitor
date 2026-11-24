@@ -208,7 +208,9 @@ export function sealAliases(
     }
     const pro = registryByName.get(family.proTarget);
     if (!pro) fail(family.name, `unregistered target ${family.proTarget}`);
-    if (accessOf(pro) !== 'subscription') fail(family.name, `${pro.name} is not subscription`);
+    if (!['subscription', 'free-account'].includes(accessOf(pro))) {
+      fail(family.name, `${pro.name} is not available to authenticated accounts`);
+    }
     if (!apiPaths(pro).includes(TARIFF_ROUTE)) fail(family.name, `${pro.name} does not list ${TARIFF_ROUTE}`);
     const rest = registryByName.get(family.restTarget);
     if (!rest) fail(family.name, `unregistered target ${family.restTarget}`);

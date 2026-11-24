@@ -3250,10 +3250,9 @@ export class UnifiedSettings {
         </div>`
       : `
         <p class="mcp-agents-plan-note">
-          ${signedIn
-            ? 'Your free account includes source listings and a few cached datasets: up to 5 calls a day, in up to 3 sessions.'
-            : 'Your agent asks you to sign in with your World Monitor account. A free account includes a few cached datasets: up to 5 calls a day, in up to 3 sessions.'}
-          Pro unlocks every tool.
+  ${signedIn
+  ? 'Your free account includes access to every tool, with a daily usage allowance.'
+  : 'Sign in with your Bhumi-Watch account to access every tool with a daily usage allowance.'}
           <a ${LEGAL_LINK_ATTR} href="${escapeHtml(`${WEB_APP_ORIGIN}/pro`)}" target="_blank" rel="noopener noreferrer">Compare plans</a>
         </p>`;
 

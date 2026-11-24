@@ -14,8 +14,8 @@ import { HMAC_SECRET, makeProDeps } from './helpers/mcp-pro-deps.mjs';
 
 const FREE_ENT_ACTIVE = {
   planKey: 'free',
-  features: { tier: 0, mcpAccess: false },
-  validUntil: Date.now() + 86_400_000,
+  features: { tier: 1, mcpAccess: true, apiAccess: false, planLimits: { mcpCallsPerDay: 50 } },
+  validUntil: 0,
 };
 
 const originalEnv = { ...process.env };
@@ -61,7 +61,7 @@ describe('free-account allowance — tool scope', () => {
       });
 
     for (const args of [{}, { dataset: ['flows'], limit: 0, reporter: '156' }, { summary: true }, { jmespath: 'data.flows' }]) {
-      it(`requires a subscription for supply-chain data through ${credential} with ${JSON.stringify(args)}`, async () => {
+      it(`allows free-account supply-chain features through ${credential} with ${JSON.stringify(args)}`, async () => {
         const { deps, pipe } = makeProDeps({
           getEntitlements: async () => FREE_ENT_ACTIVE,
           validateUserApiKey: async (key) => key === userKey ? { userId: 'user_free' } : null,
@@ -75,14 +75,18 @@ describe('free-account allowance — tool scope', () => {
         };
 
         const res = await mcpHandler(request(args), deps);
-        assert.equal(res.status, 403);
         const body = await res.json();
-        assert.equal(body.error?.code, -32002);
-        assert.equal(body.error?.data?.reason, 'upgrade-required');
-        assert.equal(body.result, undefined);
-        assert.equal(res.headers.get('WWW-Authenticate'), null);
-        assert.equal(pipe.count, 0);
-        assert.equal(cacheReads, 0);
+        if (credential === 'oauth') {
+          assert.equal(res.status, 200);
+          assert.equal(body.result?.isError, undefined);
+          assert.equal(pipe.count, 1);
+          assert.ok(cacheReads > 0);
+        } else {
+          assert.equal(res.status, 403, 'wm_ API keys remain an API-plan capability');
+          assert.equal(body.error?.data?.reason, 'upgrade-required');
+          assert.equal(pipe.count, 0);
+          assert.equal(cacheReads, 0);
+        }
       });
     }
 
@@ -116,14 +120,16 @@ describe('free-account allowance — tool scope', () => {
     });
   }
 
-  it('requires a subscription for sanctions before spending a free slot', async () => {
+  it('allows free accounts to use sanctions data', async () => {
     const { deps, pipe } = makeProDeps({ getEntitlements: async () => FREE_ENT_ACTIVE });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ entries: [] }) }));
     const res = await mcpHandler(proReq(call('get_sanctions_data')), deps);
-    assert.equal(res.status, 403);
-    assert.equal((await res.json()).error?.data?.reason, 'upgrade-required');
-    assert.equal(pipe.count, 0);
+    assert.equal(res.status, 200);
+    assert.equal(pipe.count, 1);
     const { TOOL_REGISTRY, toolAccess } = await import('../api/mcp/registry/index.ts');
-    assert.equal(toolAccess(TOOL_REGISTRY.find(t => t.name === 'get_sanctions_data')), 'subscription');
+    assert.equal(toolAccess(TOOL_REGISTRY.find(t => t.name === 'get_sanctions_data')), 'free-account');
   });
 
   it('allows sanctions cache reads for a current Pro subscription', async () => {
@@ -138,21 +144,18 @@ describe('free-account allowance — tool scope', () => {
     assert.equal(response.status, 200);
     assert.ok((await response.json()).result);
   });
-  it('refuses a GATEWAY-BACKED tool with 403 upgrade-required and charges NO slot', async () => {
+  it('allows free accounts to use gateway-backed Pro features', async () => {
     const { deps, pipe } = makeProDeps({ getEntitlements: async () => FREE_ENT_ACTIVE });
-    const res = await mcpHandler(proReq(call('get_country_risk', { country: 'FR' })), deps);
-    assert.equal(res.status, 403, 'terminal-until-upgrade: not 401 (re-auth) and not 429 (retry)');
-    const body = await res.json();
-    assert.equal(body.error?.code, -32002);
-    assert.equal(body.error?.data?.reason, 'upgrade-required');
-    assert.ok(body.error?.data?.upgradeUrl, 'an agent needs somewhere to go');
-    assert.equal(
-      res.headers.get('WWW-Authenticate'),
-      null,
-      're-authenticating cannot fix a tier denial, so it must not be advertised',
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ ok: true, data: { country: 'FR' } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
     );
-    // The whole point of the guard.
-    assert.equal(pipe.count, 0, 'no free slot may be spent on a call the gateway will refuse');
+    const res = await mcpHandler(proReq(call('get_country_risk', { country: 'FR' })), deps);
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).error, undefined);
+    assert.equal(pipe.count, 1);
   });
 
   it('still allows a CACHE-BACKED tool on the same entitlement', async () => {
@@ -197,10 +200,10 @@ describe('free-account allowance — tool scope', () => {
 });
 
 describe('free-account allowance — denial envelopes', () => {
-  it('an exhausted allowance is a QUOTA denial: -32029 at 429 with Retry-After', async () => {
+  it('the 50-call daily free allowance returns a QUOTA denial at 429', async () => {
     const { deps } = makeProDeps({
       getEntitlements: async () => FREE_ENT_ACTIVE,
-      pipelineOpts: { initialCount: 5 },
+      pipelineOpts: { initialCount: 50 }
     });
     const res = await mcpHandler(proReq(call('get_market_data')), deps);
     assert.equal(res.status, 429);

@@ -56,7 +56,7 @@ describe("alert ladder — catalog and shared constants agree (#4273)", () => {
     expect(free.alertChannels).toEqual([...FREE_ALERT_CHANNELS]);
     expect(free.alertSensitivities).toEqual([...FREE_ALERT_SENSITIVITIES]);
     expect(free.alertDigestModes).toEqual([...FREE_ALERT_DIGEST_MODES]);
-    expect(free.aiDigestAccess).toBe(false);
+    expect(free.aiDigestAccess).toBe(true);
   });
 
   test("every paid plan carries the full alert surface", () => {
@@ -70,11 +70,8 @@ describe("alert ladder — catalog and shared constants agree (#4273)", () => {
     }
   });
 
-  test("free digest modes stay realtime-only until the digest cron is free-aware", () => {
-    // scripts/seed-digest-notifications.mjs still delivers to tier >= 1 only.
-    // Widening this array without that cron change would advertise a daily
-    // digest free accounts never receive. Update both together.
-    expect(FREE_ALERT_DIGEST_MODES).toEqual(["realtime"]);
+  test("free accounts receive every alert digest mode", () => {
+    expect(FREE_ALERT_DIGEST_MODES).toEqual([...ALL_ALERT_DIGEST_MODES]);
   });
 });
 
@@ -97,12 +94,12 @@ describe("resolveAlertCapabilities — by-tier fallback", () => {
     for (const features of [null, undefined, { tier: 0 }]) {
       const caps = resolveAlertCapabilities(features);
       expect(caps.maxCountries).toBe(FREE_ALERT_MAX_COUNTRIES);
-      expect(caps.channels.has("slack")).toBe(false);
+      expect(caps.channels.has("slack")).toBe(true);
       expect(caps.channels.has("web_push")).toBe(true);
       expect(caps.channels.has("email")).toBe(true);
       expect(caps.sensitivities.has("critical")).toBe(true);
-      expect(caps.sensitivities.has("high")).toBe(false);
-      expect(caps.aiDigestAccess).toBe(false);
+      expect(caps.sensitivities.has("high")).toBe(true);
+      expect(caps.aiDigestAccess).toBe(true);
     }
   });
 
@@ -112,9 +109,7 @@ describe("resolveAlertCapabilities — by-tier fallback", () => {
       { channels: ["slack"], sensitivity: "high", countriesCount: 9 },
       caps,
     );
-    expect(violation?.code).toBe("ALERT_CHANNEL_UPGRADE_REQUIRED");
-    expect(violation?.value).toBe("slack");
-    expect(violation?.upgradeUrl).toContain("/pro");
+    expect(violation).toBeNull();
   });
 });
 
@@ -123,47 +118,20 @@ describe("resolveAlertCapabilities — by-tier fallback", () => {
 // unconditionally on the caller's ladder.
 // ---------------------------------------------------------------------------
 
-describe("setNotificationConfigForUser — free alert ladder (#4273)", () => {
+describe("setNotificationConfigForUser — free alert access", () => {
   test.each([
-    [
-      "4th country",
-      { countries: ["UA", "TW", "LB", "IL"] },
-      /ALERT_COUNTRIES_UPGRADE_REQUIRED/,
-    ],
-    [
-      "slack channel",
-      { channels: ["slack"] as Array<"slack"> },
-      /ALERT_CHANNEL_UPGRADE_REQUIRED/,
-    ],
-    [
-      "high sensitivity",
-      { sensitivity: "high" as const, digestMode: "daily" as const },
-      /ALERT_SENSITIVITY_UPGRADE_REQUIRED/,
-    ],
-    [
-      "daily digest (until the cron is free-aware)",
-      { digestMode: "daily" as const },
-      /ALERT_DIGEST_MODE_UPGRADE_REQUIRED/,
-    ],
-    [
-      "AI digest opt-in",
-      { aiDigestEnabled: true, countries: ["UA"] },
-      /AI_DIGEST_UPGRADE_REQUIRED/,
-    ],
-    [
-      "worldwide scope (no countries)",
-      { enabled: true, channels: ["web_push"] as Array<"web_push"> },
-      /ALERT_COUNTRY_SCOPE_REQUIRED/,
-    ],
-  ])("free user asking for %s → structured 402 code", async (_name, args, code) => {
+    ["50-country allowance", { countries: ["UA", "TW", "LB", "IL"] }],
+    ["Slack channel", { channels: ["slack"] as Array<"slack"> }],
+    ["high sensitivity and daily digest", { sensitivity: "high" as const, digestMode: "daily" as const }],
+    ["AI digest", { aiDigestEnabled: true, countries: ["UA"] }],
+    ["worldwide scope", { enabled: true, channels: ["web_push"] as Array<"web_push"> }],
+  ])("free account can use %s", async (_name, args) => {
     const t = convexTest(schema, modules);
-    await expect(
-      t.mutation(internal.alertRules.setNotificationConfigForUser, {
-        userId: USER.subject,
-        variant: VARIANT,
-        ...args,
-      }),
-    ).rejects.toThrow(code);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      ...args,
+    });
   });
 
   test("free user: full free-shaped insert succeeds at the ladder's edge", async () => {
@@ -282,7 +250,7 @@ describe("setNotificationConfigForUser — free alert ladder (#4273)", () => {
 // operator cleanup stays open (see the INTENTIONAL test in alertRules.test.ts).
 // ---------------------------------------------------------------------------
 
-describe("free ladder — country rung is account-wide across variants (#4273, Strix review 6)", () => {
+describe("free alert allowance spans variants", () => {
   // `variant` keys one row per dashboard variant and a variant-less event
   // matches every row, so a free account writing 3 fresh countries per
   // registry variant would union to 6× the ladder's cap. Free writes are
@@ -297,12 +265,10 @@ describe("free ladder — country rung is account-wide across variants (#4273, S
     countries,
   });
 
-  test("a second variant with fresh countries → ALERT_COUNTRIES_UPGRADE_REQUIRED", async () => {
+  test("a second variant can use additional countries within the free account allowance", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("full", ["UA", "TW", "LB"]));
-    await expect(
-      t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("tech", ["IL", "PL", "FR"])),
-    ).rejects.toThrow(/ALERT_COUNTRIES_UPGRADE_REQUIRED/);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("tech", ["IL", "PL", "FR"]));
   });
 
   test("a second variant reusing the same countries stays inside the ladder", async () => {
@@ -336,7 +302,7 @@ describe("free ladder — country rung is account-wide across variants (#4273, S
     expect(rows[0]?.countries).toEqual(["IL", "PL", "FR"]);
   });
 
-  test("re-enabling a staged row without resending countries is judged on the union", async () => {
+  test("re-enabling a staged row without resending countries stays within free allowance", async () => {
     // Staging bypass (Strix review 7): disable the first row, write a second
     // with fresh countries, then re-enable the first with `countries`
     // omitted. The enable transition must be judged on the stored scope.
@@ -348,13 +314,11 @@ describe("free ladder — country rung is account-wide across variants (#4273, S
       enabled: false,
     });
     await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("tech", ["IL", "PL", "FR"]));
-    await expect(
-      t.mutation(internal.alertRules.setNotificationConfigForUser, {
-        userId: USER.subject,
-        variant: "full",
-        enabled: true,
-      }),
-    ).rejects.toThrow(/ALERT_COUNTRIES_UPGRADE_REQUIRED/);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: "full",
+      enabled: true,
+    });
   });
 
   test("re-enabling the only row without countries stays allowed", async () => {
@@ -411,17 +375,15 @@ describe("free ladder — country rung is account-wide across variants (#4273, S
     expect(rows[0]?.enabled).toBe(false);
   });
 
-  test("a disable may not smuggle a wider scope onto the stored row", async () => {
+  test("a disable can save a wider country scope within the free allowance", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("full", ["UA", "TW", "LB"]));
-    await expect(
-      t.mutation(internal.alertRules.setNotificationConfigForUser, {
-        userId: USER.subject,
-        variant: "full",
-        enabled: false,
-        countries: ["UA", "TW", "LB", "IL", "PL"],
-      }),
-    ).rejects.toThrow(/ALERT_COUNTRIES_UPGRADE_REQUIRED/);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: "full",
+      enabled: false,
+      countries: ["UA", "TW", "LB", "IL", "PL"],
+    });
   });
 
   test("pro accounts keep the per-row cap across variants", async () => {
@@ -439,7 +401,7 @@ describe("free ladder — country rung is account-wide across variants (#4273, S
   });
 });
 
-describe("enforceEntitlement flag on the relay-path mutations", () => {
+describe("free access on relay-path mutations", () => {
   test("setAlertRulesForUser enforces the ladder only when flagged", async () => {
     const t = convexTest(schema, modules);
     const overLadder = {
@@ -452,22 +414,18 @@ describe("enforceEntitlement flag on the relay-path mutations", () => {
     };
     // Operator path (no flag): writes even for a free user.
     await t.mutation(internal.alertRules.setAlertRulesForUser, overLadder);
-    // User path (flagged): the same payload is denied.
-    await expect(
-      t.mutation(internal.alertRules.setAlertRulesForUser, { ...overLadder, enforceEntitlement: true }),
-    ).rejects.toThrow(/ALERT_CHANNEL_UPGRADE_REQUIRED/);
+    // User path (flagged): the same free feature is available to accounts.
+    await t.mutation(internal.alertRules.setAlertRulesForUser, { ...overLadder, enforceEntitlement: true });
   });
 
-  test("setDigestSettingsForUser (flagged) denies a free daily digest", async () => {
+  test("setDigestSettingsForUser allows a free daily digest", async () => {
     const t = convexTest(schema, modules);
-    await expect(
-      t.mutation(internal.alertRules.setDigestSettingsForUser, {
-        userId: USER.subject,
-        variant: VARIANT,
-        digestMode: "daily",
-        enforceEntitlement: true,
-      }),
-    ).rejects.toThrow(/ALERT_DIGEST_MODE_UPGRADE_REQUIRED/);
+    await t.mutation(internal.alertRules.setDigestSettingsForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      digestMode: "daily",
+      enforceEntitlement: true,
+    });
   });
 
   test("setQuietHoursForUser (flagged) judges only a sent countries update", async () => {
@@ -481,16 +439,14 @@ describe("enforceEntitlement flag on the relay-path mutations", () => {
       quietHoursEnd: 7,
       enforceEntitlement: true,
     });
-    // Over-limit countries on the same path: denied.
-    await expect(
-      t.mutation(internal.alertRules.setQuietHoursForUser, {
-        userId: USER.subject,
-        variant: VARIANT,
-        quietHoursEnabled: true,
-        countries: ["UA", "TW", "LB", "IL"],
-        enforceEntitlement: true,
-      }),
-    ).rejects.toThrow(/ALERT_COUNTRIES_UPGRADE_REQUIRED/);
+    // Additional countries remain within the full free-account allowance.
+    await t.mutation(internal.alertRules.setQuietHoursForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      quietHoursEnabled: true,
+      countries: ["UA", "TW", "LB", "IL"],
+      enforceEntitlement: true,
+    });
   });
 
   // The worldwide-scope rung on the two side paths (CodeRabbit review,
@@ -498,30 +454,26 @@ describe("enforceEntitlement flag on the relay-path mutations", () => {
   // ALERT_COUNTRY_SCOPE_REQUIRED here exactly as it does on the combined
   // mutations — otherwise these paths persist an enabled worldwide-shaped
   // free row the relay then has to drop.
-  test("setQuietHoursForUser (flagged) denies emptying the scope of an enabled rule", async () => {
+  test("setQuietHoursForUser allows worldwide scope for a free account", async () => {
     const t = convexTest(schema, modules);
-    await expect(
-      t.mutation(internal.alertRules.setQuietHoursForUser, {
-        userId: USER.subject,
-        variant: VARIANT,
-        quietHoursEnabled: false,
-        countries: [],
-        enforceEntitlement: true,
-      }),
-    ).rejects.toThrow(/ALERT_COUNTRY_SCOPE_REQUIRED/);
+    await t.mutation(internal.alertRules.setQuietHoursForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      quietHoursEnabled: false,
+      countries: [],
+      enforceEntitlement: true,
+    });
   });
 
-  test("setDigestSettingsForUser (flagged) denies emptying the scope of an enabled rule", async () => {
+  test("setDigestSettingsForUser allows worldwide scope for a free account", async () => {
     const t = convexTest(schema, modules);
-    await expect(
-      t.mutation(internal.alertRules.setDigestSettingsForUser, {
-        userId: USER.subject,
-        variant: VARIANT,
-        digestMode: "realtime",
-        countries: [],
-        enforceEntitlement: true,
-      }),
-    ).rejects.toThrow(/ALERT_COUNTRY_SCOPE_REQUIRED/);
+    await t.mutation(internal.alertRules.setDigestSettingsForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      digestMode: "realtime",
+      countries: [],
+      enforceEntitlement: true,
+    });
   });
 
   test("setDigestSettingsForUser (flagged) still allows emptying the scope of a DISABLED rule", async () => {
@@ -552,7 +504,7 @@ describe("enforceEntitlement flag on the relay-path mutations", () => {
 // notificationChannels — channel creation follows the same ladder.
 // ---------------------------------------------------------------------------
 
-describe("notificationChannels — free channel set (#4273)", () => {
+describe("notificationChannels — full channel set is free", () => {
   test("free user may create a web_push channel", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(internal.notificationChannels.setWebPushChannelForUser, {
@@ -570,15 +522,13 @@ describe("notificationChannels — free channel set (#4273)", () => {
     expect(rows).toHaveLength(1);
   });
 
-  test("free user creating a slack channel → ALERT_CHANNEL_UPGRADE_REQUIRED", async () => {
+  test("free user may create a Slack channel", async () => {
     const t = convexTest(schema, modules);
-    await expect(
-      t.mutation(internal.notificationChannels.setChannelForUser, {
-        userId: USER.subject,
-        channelType: "slack",
-        webhookEnvelope: "enc",
-      }),
-    ).rejects.toThrow(/ALERT_CHANNEL_UPGRADE_REQUIRED/);
+    await t.mutation(internal.notificationChannels.setChannelForUser, {
+      userId: USER.subject,
+      channelType: "slack",
+      webhookEnvelope: "enc",
+    });
   });
 
   test("free user creating an email channel with a verified account email succeeds", async () => {
@@ -605,25 +555,21 @@ describe("notificationChannels — free channel set (#4273)", () => {
 // (or any future caller) must end at the mutation too.
 // ---------------------------------------------------------------------------
 
-describe("notificationChannels — OAuth creation paths gate on the ladder (#4273)", () => {
-  test("free user: slack OAuth channel creation is denied at the mutation", async () => {
+describe("notificationChannels — OAuth creation is available on free accounts", () => {
+  test("free user can create a Slack OAuth channel", async () => {
     const t = convexTest(schema, modules);
-    await expect(
-      t.mutation(internal.notificationChannels.setSlackOAuthChannelForUser, {
-        userId: USER.subject,
-        webhookEnvelope: "enc",
-      }),
-    ).rejects.toThrow(/ALERT_CHANNEL_UPGRADE_REQUIRED/);
+    await t.mutation(internal.notificationChannels.setSlackOAuthChannelForUser, {
+      userId: USER.subject,
+      webhookEnvelope: "enc",
+    });
   });
 
-  test("free user: discord OAuth channel creation is denied at the mutation", async () => {
+  test("free user can create a Discord OAuth channel", async () => {
     const t = convexTest(schema, modules);
-    await expect(
-      t.mutation(internal.notificationChannels.setDiscordOAuthChannelForUser, {
-        userId: USER.subject,
-        webhookEnvelope: "enc",
-      }),
-    ).rejects.toThrow(/ALERT_CHANNEL_UPGRADE_REQUIRED/);
+    await t.mutation(internal.notificationChannels.setDiscordOAuthChannelForUser, {
+      userId: USER.subject,
+      webhookEnvelope: "enc",
+    });
   });
 
   test("pro user: slack OAuth channel creation still succeeds", async () => {

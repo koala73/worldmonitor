@@ -11,9 +11,8 @@
  * Capability semantics: these fields are plan STRUCTURE, like the desktop-key
  * limits — `mergeEntitlementFeatures` takes them from the catalog, never from
  * a stored row, so a pricing change applies to existing subscribers at read
- * time. `resolveAlertCapabilities` falls back BY TIER when a features object
- * predates the fields: a paid row keeps full access (never punish a paying
- * customer for a stale cache), a free row fails closed to the free ladder.
+ * time. `resolveAlertCapabilities` falls back to the full free-account feature
+ * set when a features object predates these fields.
  */
 
 export const ALERT_UPGRADE_URL = "https://worldmonitor.app/pro";
@@ -37,19 +36,13 @@ export const ALL_ALERT_DIGEST_MODES = [
   "weekly",
 ] as const;
 
-// The free ladder (#4273): get pinged when something CRITICAL happens in up
-// to 3 countries you follow, over the two zero-cost channels. 3 mirrors
-// FREE_TIER_FOLLOW_LIMIT (convex/followedCountries.ts); the paid ceiling
-// mirrors COUNTRIES_MAX (convex/alertRules.ts).
-export const FREE_ALERT_MAX_COUNTRIES = 3;
-export const FREE_ALERT_CHANNELS = ["web_push", "email"] as const;
-export const FREE_ALERT_SENSITIVITIES = ["critical"] as const;
-// Daily digests for free accounts land with the digest-cron follow-up
-// (scripts/seed-digest-notifications.mjs still delivers to tier >= 1 only);
-// advertising a mode that cron drops would be a silent lie, so the free
-// ladder opens with realtime only. Widen to ["realtime", "daily"] in the
-// same change that makes the cron free-aware.
-export const FREE_ALERT_DIGEST_MODES = ["realtime"] as const;
+// Subscription-gated alert capabilities are included in the free account.
+// Keep these fallbacks aligned with the full capability set so legacy rows
+// without explicit plan fields receive the same access as newly written rows.
+export const FREE_ALERT_MAX_COUNTRIES = 50;
+export const FREE_ALERT_CHANNELS = ALL_ALERT_CHANNELS;
+export const FREE_ALERT_SENSITIVITIES = ALL_ALERT_SENSITIVITIES;
+export const FREE_ALERT_DIGEST_MODES = ALL_ALERT_DIGEST_MODES;
 
 export const PAID_ALERT_MAX_COUNTRIES = 50;
 
@@ -68,37 +61,20 @@ export interface AlertCapabilities {
   sensitivities: ReadonlySet<string>;
   digestModes: ReadonlySet<string>;
   aiDigestAccess: boolean;
-  /**
-   * Worldwide (unscoped) alert rules are a paid capability: a free rule must
-   * name 1..maxCountries countries, or `eventMatchesCountryScope` treats the
-   * empty scope as every country and the ladder's country limit means
-   * nothing (Greptile P1 on #10303). Keyed off tier until a plan needs its
-   * own value.
-   */
+  /** Whether this plan requires alert rules to be limited to selected countries. */
   requireCountryScope: boolean;
 }
 
 export function resolveAlertCapabilities(
   features: AlertCapabilityFeatures | null | undefined,
 ): AlertCapabilities {
-  const paid = (features?.tier ?? 0) >= 1;
   return {
-    maxCountries:
-      features?.alertMaxCountries ??
-      (paid ? PAID_ALERT_MAX_COUNTRIES : FREE_ALERT_MAX_COUNTRIES),
-    channels: new Set(
-      features?.alertChannels ?? (paid ? ALL_ALERT_CHANNELS : FREE_ALERT_CHANNELS),
-    ),
-    sensitivities: new Set(
-      features?.alertSensitivities ??
-        (paid ? ALL_ALERT_SENSITIVITIES : FREE_ALERT_SENSITIVITIES),
-    ),
-    digestModes: new Set(
-      features?.alertDigestModes ??
-        (paid ? ALL_ALERT_DIGEST_MODES : FREE_ALERT_DIGEST_MODES),
-    ),
-    aiDigestAccess: features?.aiDigestAccess ?? paid,
-    requireCountryScope: !paid,
+    maxCountries: features?.alertMaxCountries ?? FREE_ALERT_MAX_COUNTRIES,
+    channels: new Set(features?.alertChannels ?? FREE_ALERT_CHANNELS),
+    sensitivities: new Set(features?.alertSensitivities ?? FREE_ALERT_SENSITIVITIES),
+    digestModes: new Set(features?.alertDigestModes ?? FREE_ALERT_DIGEST_MODES),
+    aiDigestAccess: features?.aiDigestAccess ?? true,
+    requireCountryScope: false,
   };
 }
 

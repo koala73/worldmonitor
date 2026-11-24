@@ -17,7 +17,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Ratelimit } from '@upstash/ratelimit';
 
-import { TOOL_REGISTRY, TOOL_LIST_RESPONSE } from '../api/mcp/registry/index.ts';
+import { TOOL_REGISTRY, TOOL_LIST_RESPONSE, toolAccess } from '../api/mcp/registry/index.ts';
 import { buildAuthHeaders } from '../api/mcp/auth.ts';
 import { setUsageContext, createMcpUsage } from '../api/mcp/usage.ts';
 import { principalIdForLog } from '../api/mcp/telemetry.ts';
@@ -93,11 +93,7 @@ describe('free-tier roster', () => {
       const internal = TOOL_REGISTRY.find((candidate) => candidate.name === tool.name);
       assert.ok(internal, `${tool.name} must exist in the registry`);
       const marker = tool._meta?.['worldmonitor/access'];
-      const expected = internal._subscriptionOnly ? 'subscription' : internal._freeTier === true
-        ? 'free'
-        : internal._execute === undefined || internal.name === 'describe_tool' || internal.name === 'get_mcp_allowance' || internal.name === 'start_upgrade'
-          ? 'free-account'
-          : 'subscription';
+      const expected = toolAccess(internal);
       assert.equal(marker, expected, `${tool.name} must advertise ${expected} access`);
     }
   });

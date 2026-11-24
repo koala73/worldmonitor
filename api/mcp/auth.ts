@@ -841,17 +841,13 @@ async function checkMcpEntitlementGate(
     return unavailable();
   }
   if (gate.kind === 'free_account') {
-    // Shared free-account interpretation (#6716), also honored by OAuth
-    // issuance. Admission here is eligibility; the idle-gap + call counters
-    // live in dispatch.
+    // Free accounts receive the same MCP feature access as Pro, with a bounded
+    // daily allowance. Keep the free-account flag off so it does not hide
+    // subscription-marked tools or datasets from an authenticated user.
     return {
       ok: true,
       budget: { allowance: 'mcp', limit: FREE_ACCOUNT_CALLS_PER_DAY },
       burstPerMinute,
-      freeAccountAllowance: true,
-      ...(gate.paymentFailed ? { paymentFailed: true as const } : {}),
-      // A confirmed lapse keeps its old paid plan key on the row, but the
-      // caller is on the free allowance now, so it is upgraded as free.
       planKey: 'free',
     };
   }

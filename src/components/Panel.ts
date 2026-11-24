@@ -301,11 +301,6 @@ export class Panel {
       headerLeft.appendChild(this.newBadgeEl);
     }
 
-    if (options.premium && !getSecretState('WORLDMONITOR_API_KEY').present) {
-      const proBadge = h('span', { className: 'panel-pro-badge' }, t('premium.pro'));
-      headerLeft.appendChild(proBadge);
-    }
-
     this.header.appendChild(headerLeft);
 
     this.statusBadgeEl = document.createElement('span');

@@ -122,10 +122,10 @@
     }
   },
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
-    "description": "World Monitor Pro adds an AI analyst, scheduled intelligence digests, custom widgets, market research, and MCP access to live geopolitical and financial data.",
-    "ogTitle": "World Monitor Pro | Geopolitical AI",
-    "ogDescription": "Ask it, subscribe to it, build on it. WM Analyst chat, an AI digest on your schedule (daily, twice-daily, or weekly), custom widget builder, and MCP for Claude/GPT — across live services under one key."
+    "title": "Bhumi-Watch plans | Paramount International School",
+    "description": "Compare commercial, API and enterprise plans for organizations building with Bhumi-Watch.",
+    "ogTitle": "Bhumi-Watch plans | Paramount International School",
+    "ogDescription": "Personal dashboard features are free. Explore paid commercial licensing, organization API access, higher quotas and enterprise deployments."
   },
   "nav": {
     "free": "Free",
@@ -133,7 +133,7 @@
     "api": "API",
     "enterprise": "Enterprise",
     "signIn": "Sign In",
-    "upgradeToPro": "Upgrade to Pro",
+    "upgradeToPro": "View plans",
     "goToDashboard": "Go to Dashboard"
   },
   "hero": {
@@ -361,10 +361,10 @@
   "soonBadge": "Soon",
   "welcome": {
     "meta": {
-      "title": "World Monitor: Free Live Geopolitical Intelligence Dashboard",
-      "description": "Monitor the situation live: World Monitor is a free real-time map of wars and conflicts, shipping, flights, markets and cyber, with an API and MCP server.",
-      "ogTitle": "World Monitor: Free Live Geopolitical Intelligence Dashboard",
-      "ogDescription": "Monitor the situation live: World Monitor is a free real-time map of wars and conflicts, shipping, flights, markets and cyber, with an API and MCP server."
+    "title": "Bhumi-Watch | Paramount International School",
+    "description": "Bhumi-Watch by Paramount International School is a free live intelligence dashboard for conflicts, shipping, flights, markets and cyber.",
+    "ogTitle": "Bhumi-Watch | Paramount International School",
+    "ogDescription": "Bhumi-Watch by Paramount International School is a free live intelligence dashboard for conflicts, shipping, flights, markets and cyber."
     },
     "nav": {
       "useCases": "Use cases",

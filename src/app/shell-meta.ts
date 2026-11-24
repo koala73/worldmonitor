@@ -5,7 +5,7 @@
  */
 export function localizeShellMeta(doc: Document, lang: string, translate: (key: string) => string): void {
   if (lang === 'en') return;
-  const title = translate('shell.documentTitle');
+  const title = 'Bhumi-Watch | Paramount International School';
   const description = translate('shell.metaDescription');
   const setMeta = (selector: string, value: string) => {
     doc.querySelector(selector)?.setAttribute('content', value);

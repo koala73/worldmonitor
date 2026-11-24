@@ -11,6 +11,7 @@ import {
   toolWeight,
 } from '../api/mcp/registry/index.ts';
 import { RESOURCE_TEMPLATE_LIST_RESPONSE } from '../api/mcp/resources/index.ts';
+import { getRequiredTier } from '../server/_shared/entitlement-check.ts';
 
 const accessFor = (name) => TOOL_LIST_RESPONSE
   .find((tool) => tool.name === name)?._meta?.['worldmonitor/access'];
@@ -23,16 +24,16 @@ describe('agent-visible MCP access contract', () => {
     assert.equal(accessFor('get_market_data'), 'free-account');
     assert.equal(accessFor('get_mcp_allowance'), 'free-account');
     assert.equal(accessFor('start_upgrade'), 'free-account');
-    assert.equal(accessFor('get_country_risk'), 'subscription');
-    assert.equal(accessFor('get_sanctions_data'), 'subscription');
-    assert.equal(accessFor('get_supply_chain_data'), 'subscription');
+    assert.equal(accessFor('get_country_risk'), 'free-account');
+    assert.equal(accessFor('get_sanctions_data'), 'free-account');
+    assert.equal(accessFor('get_supply_chain_data'), 'free-account');
 
     for (const tool of TOOL_REGISTRY) {
-      const expected = tool._subscriptionOnly ? 'subscription' : tool._freeTier === true
-        ? 'free'
-        : tool._execute === undefined || tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance' || tool.name === 'start_upgrade'
-          ? 'free-account'
-          : 'subscription';
+      const requiresPaidApiPlan = (tool._apiPaths ?? []).some((apiPath) => {
+        const pathname = apiPath.replace(/^[A-Z]+\s+/, '').split('?')[0];
+        return getRequiredTier(pathname) >= 2;
+      });
+      const expected = tool._freeTier === true ? 'free' : (tool._planFeature || requiresPaidApiPlan) ? 'subscription' : 'free-account';
       assert.equal(accessFor(tool.name), expected, `${tool.name} access marker`);
     }
   });
@@ -103,7 +104,7 @@ describe('agent-visible MCP access contract', () => {
     );
     assert.equal(
       byUri.get('worldmonitor://countries/{iso2}/risk')?._meta?.['worldmonitor/access'],
-      'subscription',
+      'free-account',
     );
   });
 

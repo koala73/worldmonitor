@@ -29,7 +29,6 @@ const SUB_ID = "sub_payment_failed";
 const PRO = PRODUCT_CATALOG.pro_monthly.dodoProductId!;
 const SECRET = "test-convex-secret-payment-failed";
 const PRO_PATH = "/api/market/v1/analyze-stock";
-const PORTAL_URL = "https://www.worldmonitor.app/dashboard?billing=portal";
 
 const ACTIVATED = Date.UTC(2026, 11, 1);
 const RENEWAL = ACTIVATED + 31 * DAY;
@@ -141,21 +140,23 @@ describe("a failed renewal from webhook to edge gate", () => {
     expect(checkProMcpAccess(await getEntitlements(USER), Date.now())).toBeNull();
   });
 
-  test("past the grace, denies with payment_failed and the billing portal while Dodo retries", async () => {
+  test("past the grace, free Pro features stay available while Dodo retries", async () => {
     await failedRenewal();
     atTime(HOLD + ON_HOLD_ACCESS_GRACE_MS + DAY);
 
-    const denied = (await checkEntitlementDetailed(USER, PRO_PATH, {})).response;
-    expect(denied?.status).toBe(403);
-    expect(denied?.headers.get("X-Billing-Verification")).toBe("payment_failed");
-    const body = await denied!.json() as { error: string; code: string };
-    expect(body.code).toBe("payment_failed");
-    expect(body.error).toContain(PORTAL_URL);
-
+    expect((await checkEntitlementDetailed(USER, PRO_PATH, {})).response).toBeNull();
     expect(checkProMcpAccess(await getEntitlements(USER), Date.now())).toEqual({
       kind: "free_account",
       paymentFailed: true,
     });
+  });
+
+  test("free Pro features stay available after the unpaid period ends", async () => {
+    await failedRenewal();
+    atTime(NEXT_RENEWAL + DAY);
+
+    expect((await checkEntitlementDetailed(USER, PRO_PATH, {})).response).toBeNull();
+  });
   });
 
   test("once the unpaid period has ended, the denial is subscription_lapsed again", async () => {

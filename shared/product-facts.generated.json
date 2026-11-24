@@ -1,11 +1,11 @@
 {
   "_generated": "scripts/generate-public-product-facts.mjs — do not edit by hand; run `npm run product:facts`",
   "product": {
-    "name": "World Monitor",
+    "name": "Bhumi-Watch",
     "lifecycle": "launched",
     "canonicalUrl": "https://www.worldmonitor.app/",
     "pricingUrl": "https://www.worldmonitor.app/pro#pricing",
-    "primaryCtaLabel": "View Pro plans"
+    "primaryCtaLabel": "Open dashboard"
   },
   "currency": "USD",
   "plans": [
@@ -21,7 +21,7 @@
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": false,
       "selfServe": false,
-      "dashboardAiCallsPerDay": 0,
+      "dashboardAiCallsPerDay": 500,
       "travelRiskAssessment": false,
       "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view, 3 dashboard tabs"
     },

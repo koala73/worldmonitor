@@ -20,7 +20,7 @@ interface LogoProps {
  *
  * One anchor wrapping the whole lockup on purpose: the 32px glyph gives the
  * link a target that clears the 24x24 minimum, and the accessible name comes
- * from the visible WORLD MONITOR text rather than a mismatched aria-label.
+ * from the visible brand text rather than a mismatched aria-label.
  * Splitting this into stacked 14px/10px text links scored 0 on axe
  * target-size (#7382).
  *
@@ -43,8 +43,9 @@ export const Logo = ({ href = '/', onClick, compactOnNarrow = false }: LogoProps
       <Globe className="w-5 h-5 text-wm-blue opacity-50 absolute" />
       <Activity className="w-6 h-6 text-wm-green absolute z-10" />
     </span>
-    <span className={`font-display font-bold text-sm leading-none tracking-tight${compactOnNarrow ? ' sr-only min-[375px]:not-sr-only' : ''}`}>
-      WORLD MONITOR
+    <span className={`flex flex-col gap-0.5 font-display font-bold text-sm leading-tight tracking-tight${compactOnNarrow ? ' sr-only min-[375px]:not-sr-only' : ''}`}>
+      <span>Bhumi-Watch</span>
+      <span className="text-[9px] font-medium tracking-normal text-wm-muted">Paramount International School</span>
     </span>
   </a>
 );

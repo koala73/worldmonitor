@@ -88,7 +88,7 @@ export function emailFrame(args: {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <meta name="supported-color-schemes" content="dark">
-<title>WorldMonitor</title>
+<title>Bhumi-Watch | Paramount International School</title>
 </head>
 <body style="margin: 0; padding: 0; background: #111;">
 <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: #111;">${escapeEmailHtml(args.preheader)}</div>
@@ -102,10 +102,11 @@ export function emailFrame(args: {
             <table cellpadding="0" cellspacing="0" border="0" role="presentation">
               <tr>
                 <td style="width: 36px; height: 36px; vertical-align: middle;">
-                  <img src="${LOGO_URL}" width="36" height="36" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
+                  <img src="${LOGO_URL}" width="36" height="36" alt="Bhumi-Watch" style="border-radius: 50%; display: block;" />
                 </td>
                 <td style="padding-left: 10px;">
-                  <div style="font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -0.3px;">WORLD MONITOR</div>
+                  <div style="font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -0.3px;">Bhumi-Watch</div>
+                  <div style="font-size: 10px; color: #999; margin-top: 2px;">Paramount International School</div>
                 </td>
               </tr>
             </table>

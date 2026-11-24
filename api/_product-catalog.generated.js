@@ -5,11 +5,11 @@
 export const PUBLIC_PRODUCT_FACTS = {
   "_generated": "scripts/generate-public-product-facts.mjs — do not edit by hand; run `npm run product:facts`",
   "product": {
-    "name": "World Monitor",
+    "name": "Bhumi-Watch",
     "lifecycle": "launched",
     "canonicalUrl": "https://www.worldmonitor.app/",
     "pricingUrl": "https://www.worldmonitor.app/pro#pricing",
-    "primaryCtaLabel": "View Pro plans"
+    "primaryCtaLabel": "Open dashboard"
   },
   "currency": "USD",
   "plans": [
@@ -25,7 +25,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": false,
       "selfServe": false,
-      "dashboardAiCallsPerDay": 0,
+      "dashboardAiCallsPerDay": 500,
       "travelRiskAssessment": false,
       "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view, 3 dashboard tabs"
     },
@@ -266,14 +266,14 @@ export const TIER_CONFIG = {
     "planLimits": {
       "apiRequestsPerDay": 0,
       "apiBurstRequestsPerMinute": 0,
-      "mcpCallsPerDay": 0,
-      "dashboardAiCallsPerDay": 0,
-      "mcpBurstRequestsPerMinute": 0,
-      "desktopKeyRequestsPerDay": 0,
-      "desktopKeyBurstPerMinute": 0,
+      "mcpCallsPerDay": 50,
+      "dashboardAiCallsPerDay": 500,
+      "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
-    "maxDashboards": 3,
+    "maxDashboards": 10,
     "dataExport": false,
     "cta": "Get Started",
     "href": "https://www.worldmonitor.app/dashboard",

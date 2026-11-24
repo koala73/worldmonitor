@@ -1,4 +1,5 @@
 interface EntitlementCoverage {
+  planKey?: string;
   validUntil: number;
   billingStatus?: string;
   verificationUnavailable?: boolean;
@@ -20,7 +21,7 @@ export function isTerminalBillingStatus(
   return (TERMINAL_BILLING_STATUSES as readonly unknown[]).includes(status);
 }
 
-/** Pending renewal may retain a current paid fallback; a confirmed lapse or pause cannot. */
+/** A confirmed free plan grants its feature floor; paid plans require current coverage. */
 export function hasCurrentEntitlementCoverage<T extends EntitlementCoverage>(
   entitlement: T | null | undefined,
   now = Date.now(),
@@ -29,5 +30,5 @@ export function hasCurrentEntitlementCoverage<T extends EntitlementCoverage>(
     && entitlement.verificationUnavailable !== true
     && !isTerminalBillingStatus(entitlement.billingStatus)
     && Number.isFinite(entitlement.validUntil)
-    && entitlement.validUntil >= now;
+    && (entitlement.planKey === 'free' || entitlement.validUntil >= now);
 }

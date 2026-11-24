@@ -66,11 +66,11 @@ describe('reported landing-page SEO metadata', () => {
     const englishSandboxDescription = englishSandbox.match(/^description:\s*"([^"]+)"$/m)?.[1];
     const sandboxDescription = sandbox.match(/^description:\s*"([^"]+)"$/m)?.[1];
 
-    assertTitle('Pro', proTitle);
-    assertDescription('Pro', proDescription);
-    assertTitle('built Pro', builtProTitle);
-    assertDescription('built Pro', builtProDescription);
-    assert.equal(proLocale.meta.title, 'World Monitor Pro | AI Intelligence & MCP');
+    assertTitle('plans', proTitle);
+    assertDescription('plans', proDescription);
+    assertTitle('built plans', builtProTitle);
+    assertDescription('built plans', builtProDescription);
+    assert.equal(proLocale.meta.title, 'Bhumi-Watch plans | Paramount International School');
     assertDescription('Pro locale', proLocale.meta.description);
     assertDescription('English sandbox', englishSandboxDescription);
     assertDescription('Chinese sandbox', sandboxDescription);
@@ -83,10 +83,10 @@ describe('reported landing-page SEO metadata', () => {
   it('keeps the homepage snippet brand-first, bounded, and identical on every emission', () => {
     const welcomeHtml = source('pro-test/welcome.html');
     const welcomeLocale = JSON.parse(source('pro-test/src/locales/en.json')).welcome.meta;
-    const expectedTitle = 'World Monitor: Free Live Geopolitical Intelligence Dashboard';
-    const expectedDescription = 'Monitor the situation live: World Monitor is a free real-time map of wars and conflicts, shipping, flights, markets and cyber, with an API and MCP server.';
+    const expectedTitle = 'Bhumi-Watch | Paramount International School';
+    const expectedDescription = 'Bhumi-Watch by Paramount International School is a free live intelligence dashboard for conflicts, shipping, flights, markets and cyber.';
 
-    assert.match(welcomeLocale.title, /^World Monitor: /, 'the homepage title must lead with the brand');
+    assert.match(welcomeLocale.title, /^Bhumi-Watch \| Paramount International School/, 'the homepage title must lead with the brand and school');
     assertTitle('homepage locale', welcomeLocale.title);
     assertDescription('homepage locale', welcomeLocale.description);
     assert.ok(

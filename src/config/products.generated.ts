@@ -14,7 +14,7 @@ export const DODO_PRODUCTS = {
 } as const;
 
 export const PLAN_LIMITS = {
-  "free": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":0,"dashboardAiCallsPerDay":0,"mcpBurstRequestsPerMinute":0,"desktopKeyRequestsPerDay":0,"desktopKeyBurstPerMinute":0},
+  "free": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":50,"dashboardAiCallsPerDay":500,"mcpBurstRequestsPerMinute":60,"desktopKeyRequestsPerDay":7500,"desktopKeyBurstPerMinute":120},
   "pro_monthly": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":50,"dashboardAiCallsPerDay":500,"mcpBurstRequestsPerMinute":60,"desktopKeyRequestsPerDay":7500,"desktopKeyBurstPerMinute":120},
   "pro_annual": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":50,"dashboardAiCallsPerDay":500,"mcpBurstRequestsPerMinute":60,"desktopKeyRequestsPerDay":7500,"desktopKeyBurstPerMinute":120},
   "pro_business_monthly": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":250,"dashboardAiCallsPerDay":2500,"mcpBurstRequestsPerMinute":60,"desktopKeyRequestsPerDay":7500,"desktopKeyBurstPerMinute":120},

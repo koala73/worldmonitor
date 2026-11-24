@@ -25,6 +25,7 @@ export const DIRECT_LLM_REDIS_UNAVAILABLE_RETRY_AFTER_SECONDS = 30;
 export const DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT = 50;
 
 export type DirectLlmEntitlementShape = {
+  planKey?: string;
   features?: {
     tier?: number;
     planLimits?: {
@@ -68,7 +69,8 @@ function isActivePaidEntitlement(ent: DirectLlmEntitlementShape | null | undefin
   if (!ent || ent.verificationUnavailable) return false;
   const tier = ent.features?.tier;
   if (typeof tier !== 'number' || tier < 1) return false;
-  return typeof ent.validUntil === 'number' && ent.validUntil >= Date.now();
+  return ent.planKey === 'free'
+    || (typeof ent.validUntil === 'number' && ent.validUntil >= Date.now());
 }
 
 /**

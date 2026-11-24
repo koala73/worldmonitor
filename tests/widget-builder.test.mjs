@@ -2182,10 +2182,10 @@ describe('CustomWidgetPanel — header buttons and events', () => {
     );
   });
 
-  it('PRO badge rendered in header when tier is pro', () => {
+  it('does not label free custom widgets as PRO', () => {
     assert.ok(
-      panel.includes('widget-pro-badge'),
-      'CustomWidgetPanel must render .widget-pro-badge for PRO widgets',
+      !panel.includes('widget-pro-badge'),
+      'free custom widgets must not render a PRO badge',
     );
   });
 });
@@ -3094,10 +3094,10 @@ describe('PRO widget — i18n keys and CSS', () => {
     }
   });
 
-  it('.widget-pro-badge CSS class defined', () => {
+  it('does not define an obsolete PRO widget badge style', () => {
     assert.ok(
-      css.includes('.widget-pro-badge'),
-      'CSS must define .widget-pro-badge class for PRO pill badge',
+      !css.includes('.widget-pro-badge'),
+      'CSS must not retain the obsolete PRO widget badge',
     );
   });
 

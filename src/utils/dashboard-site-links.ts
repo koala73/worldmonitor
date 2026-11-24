@@ -23,7 +23,7 @@ export function dashboardSiteLinksHtml(origin: string): string {
     `<a class="dashboard-site-links-item" href="${escapeHtml(href)}"`
     + ` target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`
   )).join('');
-  return `<nav aria-label="World Monitor site" class="dashboard-site-links-row">`
+  return `<nav aria-label="Bhumi-Watch site" class="dashboard-site-links-row">`
     + `${reference}${pricing}${external}</nav>`;
 }
 

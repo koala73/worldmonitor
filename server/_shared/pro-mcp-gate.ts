@@ -38,6 +38,7 @@ import {
 
 /** The entitlement shape this gate reads. */
 export type ProMcpEntitlement = {
+  planKey?: string;
   features: { tier: number; mcpAccess?: boolean };
   validUntil: number;
   /**
@@ -73,9 +74,8 @@ export type ProMcpGateDenial =
  * Free-account eligibility is intentionally narrower than "not Pro".
  *
  * A configured entitlement backend returning no row is an authoritative free
- * verdict. A stored row must be a complete, internally consistent tier-0
- * shape. Expired/disabled paid rows, malformed values, and unconfigured lookup
- * nulls are not free accounts and must remain fail-closed.
+ * verdict. A free-plan feature floor is valid without a paid billing period.
+ * Malformed values and unconfigured lookup nulls remain fail-closed.
  */
 function isConfirmedFreeMcpAccount(
   entitlements: unknown,
@@ -99,8 +99,9 @@ function isConfirmedFreeMcpAccount(
   // that is a data fault, and a data fault should fail closed rather than land
   // on an allowance by looking enough like a free account.
   return candidate.planKey === 'free'
-    && candidate.features?.tier === 0
-    && candidate.features.mcpAccess === false
+    && typeof candidate.features?.tier === 'number'
+    && candidate.features.tier >= 1
+    && candidate.features.mcpAccess === true
     && typeof candidate.validUntil === 'number'
     && Number.isFinite(candidate.validUntil);
 }
@@ -123,7 +124,7 @@ export function checkProMcpAccess(
     entitlements.features &&
     entitlements.features.tier >= 1 &&
     entitlements.features.mcpAccess === true &&
-    hasCurrentEntitlementCoverage(entitlements, now)
+    (entitlements.planKey === 'free' || hasCurrentEntitlementCoverage(entitlements, now))
   ) {
     return null;
   }
