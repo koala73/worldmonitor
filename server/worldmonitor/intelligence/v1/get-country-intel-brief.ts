@@ -264,6 +264,19 @@ function storyTitle(source: CountryIntelBriefSource): string {
   return headlineWithoutPublisher(source.title, source.url, source.source);
 }
 
+// Non-English briefs read the raw context, where each source title appears in
+// its Source line and again in the headline lines.
+function withoutSourceBylines(context: string, sources: CountryIntelBriefSource[]): string {
+  let out = context;
+  for (const source of sources) {
+    const story = storyTitle(source);
+    if (story === source.title) continue;
+    out = out.split(JSON.stringify(source.title).slice(1, -1)).join(JSON.stringify(story).slice(1, -1));
+    out = out.split(source.title).join(story);
+  }
+  return out;
+}
+
 function cleanSourceText(value: unknown, maxLen: number): string {
   if (typeof value !== 'string') return '';
   const text = value.replace(/\s+/g, ' ').trim();
@@ -585,7 +598,7 @@ Rules:
         }
 
         if (promptContext) {
-          userPromptParts.push(`Context snapshot:\n${promptContext}`);
+          userPromptParts.push(`Context snapshot:\n${withoutSourceBylines(promptContext, entrySources)}`);
         }
       }
 

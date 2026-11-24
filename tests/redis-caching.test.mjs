@@ -2501,7 +2501,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(counters.llmCalls, 6, 'custom framework requests keep full context and exact framework identity');
       assert.match(systemPrompts[2], /CUSTOM LENS A/);
       assert.match(systemPrompts[4], /CUSTOM LENS B/);
-      assert.ok(setKeys.slice(0, 2).every(key => key.startsWith('ci-sebuf:v10:FR:fr:')));
+      assert.ok(setKeys.slice(0, 2).every(key => key.startsWith('ci-sebuf:v11:FR:fr:')));
       assert.ok(setKeys.slice(2).every(key => key.startsWith('ci-sebuf:v14:FR:en:') && !key.includes(':sources:')));
     } finally {
       globalThis.fetch = originalFetch;

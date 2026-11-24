@@ -86,8 +86,8 @@ describe('country intel brief cache key derivation', () => {
     const options = { countryCode: 'FR', lang: 'en', isPremium: true, contextHash: 'abc', frameworkHash: '', energyYear: '2024', energyImportYear: '2023' };
     assert.equal(deriveCountryIntelCacheKey(options), 'ci-sebuf:v14:FR:en:sources:abc:e2024:i2023');
     assert.equal(deriveCountryIntelCacheKey({ ...options, frameworkHash: 'def' }), 'ci-sebuf:v14:FR:en:abc:def:e2024:i2023');
-    assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr' }), 'ci-sebuf:v10:FR:fr:abc:e2024:i2023');
-    assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr', frameworkHash: 'def' }), 'ci-sebuf:v10:FR:fr:abc:def:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr' }), 'ci-sebuf:v11:FR:fr:abc:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr', frameworkHash: 'def' }), 'ci-sebuf:v11:FR:fr:abc:def:e2024:i2023');
     assert.equal(deriveCountryIntelCacheKey({ ...options, isPremium: false }), 'ci-sebuf:v13:FR:en:shared:e2024:i2023');
   });
 });
@@ -99,8 +99,8 @@ describe('country relationship grounding generation namespace', () => {
       const key = deriveCountryIntelCacheKey(options);
       assert.ok(key.startsWith(isPremium ? 'ci-sebuf:v14:FR:en:' : 'ci-sebuf:v13:FR:en:'));
       assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr' }), isPremium
-        ? 'ci-sebuf:v10:FR:fr:abc:def:e2024:i2023'
-        : 'ci-sebuf:v9:FR:fr:shared:e2024:i2023');
+        ? 'ci-sebuf:v11:FR:fr:abc:def:e2024:i2023'
+        : 'ci-sebuf:v10:FR:fr:shared:e2024:i2023');
     }
   });
 });
