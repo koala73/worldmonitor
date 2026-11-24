@@ -641,6 +641,10 @@ describe('publisher byline in brief source titles (#11217)', () => {
       'Corrupt payments to director of Kuwait public pension fund',
     );
     assert.equal(headlineWithoutPublisher('Turkey hosts talks - Al-Monitor', gn, 'Mideast'), 'Turkey hosts talks');
+    assert.equal(
+      headlineWithoutPublisher('Italy rescues migrants off Lampedusa - UNHCR - The UN Refugee Agency', gn, 'UNHCR'),
+      'Italy rescues migrants off Lampedusa',
+    );
   });
 
   it('drops a byline that names the item source on any host', () => {
