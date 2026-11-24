@@ -3183,6 +3183,7 @@ export class EventHandlerManager implements AppModule {
       document.body.classList.toggle('map-fullscreen-active', isFullscreen);
       setTrustedHtml(btn, trustedHtml(isFullscreen ? shrinkSvg : expandSvg, "legacy direct innerHTML migration"));
       btn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
+      this.mobilePrimaryNav.syncMapFullscreen(isFullscreen);
       this.syncMapAfterLayoutChange();
     };
 
