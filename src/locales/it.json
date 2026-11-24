@@ -1462,7 +1462,7 @@
       },
       "clickToViewMap": "Fare clic per visualizzare sulla mappa",
       "refresh": "Aggiorna",
-      "infoTooltip": "<strong>Metodologia</strong><p>Conta gli aerei militari e i vascelli navali tracciati in ogni teatro.</p><ul><li><strong>Normale:</strong> Sotto la soglia del teatro</li><li><strong>Elevato:</strong> 3-8 aerei o più, per teatro</li><li><strong>Critico:</strong> 8-20 aerei o più, per teatro</li></ul><p>I vascelli si aggiungono al conteggio fino a metà della soglia elevata, quindi i vascelli da soli non aumentano mai il livello.</p><p><strong>Capace di Strike:</strong> Rifornitori + Allarme aereo anticipato + Fighter presenti in numero sufficiente per operazioni sostenute.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Conta gli aerei militari e i vasi navali tracciati in ogni teatro.</p><ul><li><strong>Normale:</strong> Al di sotto della soglia del teatro</li><li><strong>Elevato:</strong> Il conteggio raggiunge 3-8, per teatro</li><li><strong>Critico:</strong> Il conteggio raggiunge 8-20, per teatro</li></ul><p>I vasi contribuiscono al conteggio fino a metà della soglia elevata, quindi i vasi da soli non possono mai aumentare il livello.</p><p><strong>Capace di colpire:</strong> Cisterne + Avviso precoce aereo + Caccia presenti in numero sufficiente per operazioni sostenute.</p>",
       "scanningTheaters": "Scansione teatri operativi",
       "positions": "Posizioni aeromobili",
       "navalVesselsLoading": "Navi militari",

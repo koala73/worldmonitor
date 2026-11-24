@@ -1345,7 +1345,7 @@
         "auxiliary": "Msaidizi",
         "navalVessels": "Vyombo vya Majini"
       },
-      "infoTooltip": "<strong>Mbinu</strong><p>Hinahesabu ndege za harbini na meli za bahari zilizofuatiliwa katika kila jukwaa.</p><ul><li><strong>Kawaida:</strong> Chini ya kizingiti cha jukwaa</li><li><strong>Iliyoinuliwa:</strong> Ndege 3 hadi 8 au zaidi, kwa jukwaa</li><li><strong>Muhimu:</strong> Ndege 8 hadi 20 au zaidi, kwa jukwaa</li></ul><p>Meli zinaongeza kwa hesabu hadi nusu ya kizingiti kilichoinuliwa, kwa hivyo meli peke yake haziwezi kuinua kiwango.</p><p><strong>Wenye Uwezo wa Mgogoleri:</strong> Tanker + Onyo ya mapema ya hewa + Ndege za mapigano zinazowepo katika idadi inayotosha kwa shughuli endelevu.</p>",
+      "infoTooltip": "<strong>Mbinu</strong><p>Huhesabu ndege wa kijeshi na meli zilizosimuliwa katika kila teatro.</p><ul><li><strong>Kawaida:</strong> Chini ya kizingiti cha teatro</li><li><strong>Imeongezwa:</strong> Hesabu inafikia 3 hadi 8, kwa teatro</li><li><strong>Muhimu:</strong> Hesabu inafikia 8 hadi 20, kwa teatro</li></ul><p>Meli zinachangia hesabu hadi nusu ya kizingiti kilichoongezwa, kwa hivyo meli peke yake haziwezi kuinua kiwango.</p><p><strong>Wenye Uwezo wa Shambulio:</strong> Tanki za mafuta + Onyo wa mapema ya angani + Ndege zililizo katika idadi ya kutosha kwa shughuli endelevu.</p>",
       "scanningTheaters": "Kuchanganua Sinema",
       "positions": "Nafasi za ndege",
       "navalVesselsLoading": "Vyombo vya majini",

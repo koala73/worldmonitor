@@ -1192,7 +1192,7 @@
         "auxiliary": "輔助艦",
         "navalVessels": "海軍艦艇"
       },
-      "infoTooltip": "<strong>方法論</strong><p>統計各戰區內的軍用飛機和監控的海軍艦船數量。</p><ul><li><strong>正常：</strong>低於該戰區閾值</li><li><strong>升高：</strong>各戰區 3 至 8 架飛機或更多</li><li><strong>嚴重：</strong>各戰區 8 至 20 架飛機或更多</li></ul><p>艦船計數不超過升高閾值的一半，因此單獨的艦船不會提升威脅等級。</p><p><strong>具備打擊能力：</strong>加油機、預警機和戰鬥機數量充足，足以維持持續作戰能力。</p>",
+      "infoTooltip": "<strong>方法論</strong><p>統計各軍事行動區的軍用飛機和被跟蹤的海軍艦艇數量。</p><ul><li><strong>正常：</strong>低於該行動區的閾值</li><li><strong>升高：</strong>計數達到 3 至 8，因行動區而異</li><li><strong>嚴重：</strong>計數達到 8 至 20，因行動區而異</li></ul><p>艦艇計入計數，最多可達升高閾值的一半，因此單獨的艦艇永遠不會引發等級提升。</p><p><strong>具有打擊能力：</strong>油料補給機、預警機以及戰鬥機數量充足，足以維持持續作戰。</p>",
       "scanningTheaters": "掃描戰區",
       "positions": "飛機位置",
       "navalVesselsLoading": "海軍艦艇",

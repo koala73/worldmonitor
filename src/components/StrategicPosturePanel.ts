@@ -21,6 +21,8 @@ const INSTABILITY_NOTE_MIN_SCORE = 70;
  */
 export class StrategicPosturePanel extends Panel {
   private postures: TheaterPostureSummary[] = [];
+  /** False while the no-data or error screen is up, so a chip refresh cannot bring old theaters back. */
+  private showingTheaters = false;
   private loadingElapsedInterval: ReturnType<typeof setInterval> | null = null;
   private loadingStartTime: number = 0;
   private onLocationClick?: (lat: number, lon: number) => void;
@@ -225,11 +227,12 @@ export class StrategicPosturePanel extends Panel {
 
   /** Re-render after CII scores change, so the instability chips match them. */
   public refreshInstabilityNotes(): void {
-    if (this.postures.length === 0 || !this.element?.isConnected) return;
+    if (!this.showingTheaters || !this.element?.isConnected) return;
     this.render();
   }
 
   private showNoData(): void {
+    this.showingTheaters = false;
     this.stopLoadingTimer();
     this.setSafeContent(unsafeRawHtml(`
       <div class="posture-panel">
@@ -257,6 +260,7 @@ export class StrategicPosturePanel extends Panel {
   }
 
   private showFetchError(): void {
+    this.showingTheaters = false;
     this.stopLoadingTimer();
     this.setSafeContent(unsafeRawHtml(`
       <div class="posture-panel">
@@ -331,7 +335,7 @@ export class StrategicPosturePanel extends Panel {
       if (instability) chips.push(instability);
 
       return `
-        <div class="posture-theater posture-compact" role="button" tabindex="0" data-lat="${p.centerLat}" data-lon="${p.centerLon}" title="${t('components.strategicPosture.clickToView', { name: escapeHtml(displayName) })}">
+        <div class="posture-theater posture-compact" role="button" tabindex="0" data-theater="${escapeHtml(p.theaterId)}" data-lat="${p.centerLat}" data-lon="${p.centerLon}" title="${t('components.strategicPosture.clickToView', { name: escapeHtml(displayName) })}">
           <span class="posture-name">${escapeHtml(p.shortName)}</span>
           <div class="posture-chips">${chips.join('')}</div>
           ${this.getPostureBadge(p.postureLevel)}
@@ -369,7 +373,7 @@ export class StrategicPosturePanel extends Panel {
     const hasNaval = navalChips.length > 0;
 
     return `
-      <div class="posture-theater posture-expanded ${p.postureLevel}" role="button" tabindex="0" data-lat="${p.centerLat}" data-lon="${p.centerLon}" title="${t('components.strategicPosture.clickToViewMap')}">
+      <div class="posture-theater posture-expanded ${p.postureLevel}" role="button" tabindex="0" data-theater="${escapeHtml(p.theaterId)}" data-lat="${p.centerLat}" data-lon="${p.centerLon}" title="${t('components.strategicPosture.clickToViewMap')}">
         <div class="posture-theater-header">
           <span class="posture-name">${escapeHtml(displayName)}</span>
           ${this.getPostureBadge(p.postureLevel)}
@@ -392,6 +396,7 @@ export class StrategicPosturePanel extends Panel {
   }
 
   private render(): void {
+    this.showingTheaters = true;
     this.stopLoadingTimer();
     const sorted = [...this.postures].sort((a, b) => {
       const order: Record<string, number> = { critical: 0, elevated: 1, normal: 2 };

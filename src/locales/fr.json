@@ -1146,7 +1146,7 @@
         "auxiliary": "Auxiliaires",
         "navalVessels": "Navires de guerre"
       },
-      "infoTooltip": "<strong>Méthodologie</strong><p>Compte les aéronefs militaires et les navires sous surveillance dans chaque théâtre d'opérations.</p><ul><li><strong>Normal :</strong> En dessous du seuil du théâtre</li><li><strong>Élevé :</strong> 3 à 8 aéronefs ou plus, par théâtre</li><li><strong>Critique :</strong> 8 à 20 aéronefs ou plus, par théâtre</li></ul><p>Les navires contribuent au comptage jusqu'à concurrence de la moitié du seuil élevé, donc les navires seuls ne peuvent jamais augmenter le niveau.</p><p><strong>Capacité de frappe :</strong> Ravitailleurs + Alerte aérienne précoce + Chasseurs présents en nombre suffisant pour des opérations durables.</p>",
+      "infoTooltip": "<strong>Méthodologie</strong><p>Compte les avions militaires et les navires suivis dans chaque théâtre d'opérations.</p><ul><li><strong>Normal :</strong> En dessous du seuil du théâtre</li><li><strong>Élevé :</strong> Le nombre atteint 3 à 8, selon le théâtre</li><li><strong>Critique :</strong> Le nombre atteint 8 à 20, selon le théâtre</li></ul><p>Les navires contribuent au nombre jusqu'à la moitié du seuil élevé, donc les navires seuls ne peuvent jamais augmenter le niveau.</p><p><strong>Capable de frappe :</strong> Ravitailleurs + Avertissement aérien précoce + Avions de combat présents en nombre suffisant pour des opérations soutenues.</p>",
       "scanningTheaters": "Scan des théâtres",
       "positions": "Positions des aéronefs",
       "navalVesselsLoading": "Navires de guerre",

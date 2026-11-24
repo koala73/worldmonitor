@@ -149,4 +149,18 @@ describe('strategic posture shows the published level', () => {
       fixtures.scores = { YE: 89 };
     }
   });
+
+  it('keeps the no-data screen when scores change after the posture went empty', async () => {
+    const { panel, element } = await renderPanel();
+
+    panel.updatePostures({ ...fixtures.posture, postures: [] });
+    await waitFor(() => element.querySelector('.posture-no-data') != null, 'the no-data screen');
+
+    panel.refreshInstabilityNotes();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(element.querySelector('.posture-no-data')).not.toBeNull();
+    expect(element.querySelectorAll('.posture-theater')).toHaveLength(0);
+
+    panel.destroy();
+  });
 });

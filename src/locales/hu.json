@@ -1345,7 +1345,7 @@
         "auxiliary": "Segédhajók",
         "navalVessels": "Hadihajók"
       },
-      "infoTooltip": "<strong>Módszertan</strong><p>Katonai repülőgépek és nyomon követett haditengerészeti hajók száma az egyes színtérenként.</p><ul><li><strong>Normál:</strong> A színtér küszöbértéke alatt</li><li><strong>Megemelkedett:</strong> 3–8 vagy több repülőgép színtérenként</li><li><strong>Kritikus:</strong> 8–20 vagy több repülőgép színtérenként</li></ul><p>A hajók a megemelkedett küszöb felének megfelelő mértékig adódnak hozzá, így a hajók egyedül soha nem emelik meg a szintet.</p><p><strong>Csapásmérésre képes:</strong> Tanker + Légi korai jelzés + Vadászrepülőgépek jelen vannak a tartós műveletek végrehajtásához szükséges számban.</p>",
+      "infoTooltip": "<strong>Módszertan</strong><p>Megszámolja a katonai repülőgépeket és a követett tengeri egységeket minden hadszíntéren.</p><ul><li><strong>Normál:</strong> A hadszínpad küszöbértéke alatt</li><li><strong>Fokozott:</strong> Az érték 3–8 közötti, hadszínterenként</li><li><strong>Kritikus:</strong> Az érték 8–20 közötti, hadszínterenként</li></ul><p>A hajók az érték számítására a fokozott küszöb feléig számítanak, így a hajók önmagukban soha nem emelnek szintet.</p><p><strong>Csapásmérésre képes:</strong> Támogatótartályok + Légfelderítő rendszerek + Vadászbombázók elegendő számban jelen vannak a fenntartott műveletek végrehajtásához.</p>",
       "scanningTheaters": "Színpadok átvizsgálása",
       "positions": "Repülőgépek pozíciói",
       "navalVesselsLoading": "Haditengerészeti járművek",

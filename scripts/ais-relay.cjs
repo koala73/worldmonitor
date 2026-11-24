@@ -7189,9 +7189,8 @@ function isStrictMilitaryVessel(v) {
   return false;
 }
 
-/** Strict-military AIS contacts seen in the last 6 hours inside the bounds, with their names. */
+/** Strict-military AIS contacts seen in the last 6 hours inside the bounds. */
 function militaryVesselsInBounds(bounds) {
-  const names = [];
   let count = 0;
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
   for (const v of candidateReports.values()) {
@@ -7199,23 +7198,36 @@ function militaryVesselsInBounds(bounds) {
     if (!isStrictMilitaryVessel(v)) continue;
     if (v.lat >= bounds.south && v.lat <= bounds.north && v.lon >= bounds.west && v.lon <= bounds.east) {
       count++;
-      if (v.name) names.push(v.name);
     }
   }
-  return { count, names };
+  return { count };
+}
+
+/** Names of every strict-military AIS contact seen in the last 6 hours, wherever it is. */
+function recentMilitaryVesselNames() {
+  const names = [];
+  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+  for (const v of candidateReports.values()) {
+    if ((v.timestamp || 0) < cutoff) continue;
+    if (v.name && isStrictMilitaryVessel(v)) names.push(v.name);
+  }
+  return names;
 }
 
 /**
  * Vessels per theater: strict-military AIS contacts plus deployed USNI-roster
- * ships the AIS stream did not already count. The level comes from the shared
- * rule (scripts/shared/theater-posture.js), which caps the vessel contribution.
+ * ships the AIS stream has not reported anywhere. A USNI position is weekly, so
+ * a ship AIS now places in another theater counts there, not at its stale USNI
+ * position. The level comes from the shared rule
+ * (scripts/shared/theater-posture.js), which caps the vessel contribution.
  */
 function theaterVesselCounts(usniVessels) {
   const byTheater = {};
   const totals = new Map();
+  const aisNames = recentMilitaryVesselNames();
   for (const theater of POSTURE_THEATERS) {
     const ais = militaryVesselsInBounds(theater.bounds);
-    const usni = countUsniVesselsInBounds(usniVessels, theater.bounds, ais.names);
+    const usni = countUsniVesselsInBounds(usniVessels, theater.bounds, aisNames);
     byTheater[theater.id] = { ais: ais.count, usni };
     totals.set(theater.id, ais.count + usni);
   }
@@ -7240,10 +7252,17 @@ let theaterPostureLastRun = null;
  * One entry an hour of per-theater AIS and USNI counts, kept 31 days, so ship
  * thresholds can be calibrated on real traffic (scripts/shared/theater-posture.js). A
  * failed read or write only costs that hour's entry; it never fails the publish.
+ * A failed read skips the write, because writing then would replace the stored
+ * history with a single entry.
  */
 async function recordTheaterVesselHistory(at, byTheater) {
   try {
-    const stored = await upstashGet(VESSEL_HISTORY_KEY);
+    let readFailure = null;
+    const stored = await upstashGet(VESSEL_HISTORY_KEY, (reason) => { readFailure = reason; });
+    if (readFailure) {
+      console.warn('[TheaterPosture] Vessel history not recorded: redis read failed:', readFailure);
+      return;
+    }
     const prior = Array.isArray(stored?.history) ? stored.history : [];
     const history = appendVesselHistory(prior, { at, theaters: byTheater });
     if (history[history.length - 1]?.at !== at) return; // under an hour since the last entry

@@ -1195,7 +1195,7 @@
         "auxiliary": "Yardimci",
         "navalVessels": "Deniz Gemileri"
       },
-      "infoTooltip": "<strong>Metodoloji</strong><p>Her tiyatroda askeri uçak ve izlenen deniz gemilerini sayar.</p><ul><li><strong>Normal:</strong> Tiyatronun eşiğinin altında</li><li><strong>Yükseltilmiş:</strong> Tiyatroya göre 3 ila 8 veya daha fazla uçak</li><li><strong>Kritik:</strong> Tiyatroya göre 8 ila 20 veya daha fazla uçak</li></ul><p>Gemiler sayıya yükseltilmiş eşiğin yarısına kadar katkıda bulunur, bu nedenle gemiler tek başına bir seviyeyi yükseltmez.</p><p><strong>Vuruş Yeteneği:</strong> Tankıklar + Hava erken uyarı + Sürdürülen operasyonlar için yeterli sayıda avcı uçak mevcut.</p>",
+      "infoTooltip": "<strong>Metodoloji</strong><p>Her tiyatroda yer alan askeri uçak ve izlenen deniz gemilerini sayar.</p><ul><li><strong>Normal:</strong> Tiyatronun eşik değerinin altında</li><li><strong>Yükseltilmiş:</strong> Sayı tiyatroya göre 3 ile 8 arasına ulaşır</li><li><strong>Kritik:</strong> Sayı tiyatroya göre 8 ile 20 arasına ulaşır</li></ul><p>Gemiler sayıya yükseltilmiş eşik değerinin yarısına kadar eklenir, bu nedenle gemiler tek başına bir seviyeyi yükseltmez.</p><p><strong>Vuruş Yeteneğine Sahip:</strong> Yakıt uçağı + Erken uyarı sistemi + Sürdürülen harekatlar için yeterli sayıda avcı uçak bulunmaktadır.</p>",
       "scanningTheaters": "Harekat Alanlari Taraniyor",
       "positions": "Ucak konumlari",
       "navalVesselsLoading": "Deniz gemileri",

@@ -913,7 +913,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             },
             seeded_surges_available: { type: 'boolean', description: 'False when the seeder surge record was missing or not cleared for redistribution; seeded_surges is then empty, not quiet.' },
             history_available: { type: 'boolean', description: 'False when surge history was unreadable; every posture trend then reads stable.' },
-            posture_available: { type: 'boolean', description: 'False when the published theater posture was unreadable; postureLevel is then rated on aircraft alone and totalVessels is 0.' },
+            posture_available: { type: 'boolean', description: 'False when the published theater posture was unreadable; postureLevel is then rated on aircraft alone and totalVessels is 0. When true, postures lists only the theaters the relay published.' },
             flight_count: { type: 'number', description: 'Military flights read from the snapshot before theater filtering.' },
           },
           required: [],
@@ -946,11 +946,10 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
 
       const flights = militaryFlightsToSurgeInputs(flightsPayload);
       const history = surgeHistoryToActivityHistory(historyPayload);
-      const postures = flightsPayload !== null || posturePayload !== null
-        ? getTheaterPostureSummaries(flights, history)
-        : [];
       const published = publishedTheaterPostures(posturePayload);
-      applyPublishedPostures(postures, published);
+      const postures = flightsPayload !== null || posturePayload !== null
+        ? applyPublishedPostures(getTheaterPostureSummaries(flights, history), published)
+        : [];
 
       const engine = new MilitarySurgeEngine();
       const foreignPresence = engine.detectForeignMilitaryPresence(flights).map((alert) => ({

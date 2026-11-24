@@ -1165,6 +1165,19 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     }
   });
 
+  it('leaves out a theater the relay did not publish instead of reporting an aircraft-only level as published', async () => {
+    const payloads = analysisPayloads();
+    payloads['military:flights:v1'].flights.push(...Array.from({ length: 12 }, (_, i) => ({
+      id: `baltic-${i}`, callsign: `BALT${i}`, lat: 58, lon: 20, lastSeenMs: Date.now(),
+      operator: 'usaf', aircraftType: 'transport', sourceMeta: { source: 'wingbits' },
+    })));
+    installUpstashStub(payloads);
+    const result = await findTool('get_military_surge')._execute({}, '', {}, {});
+
+    assert.equal(result.data.posture_available, true);
+    assert.deepEqual(result.data.postures.map((p) => p.theaterId), ['iran-theater']);
+  });
+
   it('does not synthesize CII-only military postures when both asset feeds are unavailable', async () => {
     installUpstashStub(analysisPayloads(), {
       misses: ['military:flights:v1', 'theater-posture:sebuf:v1'],

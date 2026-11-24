@@ -543,15 +543,20 @@ export function publishedTheaterPostures(payload: unknown): Map<string, Publishe
  * Replace the flight-derived level and vessel total with the published ones, in
  * place. The aircraft breakdown, trend and strike flag stay as computed from
  * the flight snapshot; only the relay knows the vessels, so only it rates the
- * theater.
+ * theater. When anything was published, a theater without a published entry is
+ * dropped rather than reported with an aircraft-only level as if published.
+ * With nothing published, every theater keeps its aircraft-only rating.
  */
 export function applyPublishedPostures(
   postures: TheaterPostureSummary[],
   published: ReadonlyMap<string, PublishedTheaterPosture>,
-): void {
+): TheaterPostureSummary[] {
+  if (published.size === 0) return postures;
+  const kept: TheaterPostureSummary[] = [];
   for (const posture of postures) {
     const entry = published.get(posture.theaterId);
     if (!entry) continue;
+    kept.push(posture);
     // Only the total is recoverable: the posture cache carries no per-class breakdown.
     posture.totalVessels = entry.trackedVessels;
     posture.postureLevel = entry.postureLevel;
@@ -565,6 +570,7 @@ export function applyPublishedPostures(
         ? `Elevated military activity - ${posture.theaterName} (${assets || 'No assets'})`
         : `Normal activity - ${posture.theaterName}`;
   }
+  return kept;
 }
 
 /**

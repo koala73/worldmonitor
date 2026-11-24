@@ -1462,7 +1462,7 @@
       },
       "clickToViewMap": "Haga clic para ver en el mapa",
       "refresh": "Refrescar",
-      "infoTooltip": "<strong>Metodología</strong><p>Cuenta aeronaves militares y buques navales monitoreados en cada teatro.</p><ul><li><strong>Normal:</strong> Por debajo del umbral del teatro</li><li><strong>Elevado:</strong> 3 a 8 aeronaves o más, por teatro</li><li><strong>Crítico:</strong> 8 a 20 aeronaves o más, por teatro</li></ul><p>Los buques se cuentan hasta la mitad del umbral elevado, por lo que los buques solos nunca elevan el nivel.</p><p><strong>Con Capacidad de Ataque:</strong> Reabastecedores + Alerta Temprana Aerotransportada + Cazas presentes en números suficientes para operaciones sostenidas.</p>",
+      "infoTooltip": "<strong>Metodología</strong><p>Cuenta aeronaves militares y buques navales monitoreados en cada teatro de operaciones.</p><ul><li><strong>Normal:</strong> Por debajo del umbral del teatro</li><li><strong>Elevado:</strong> El conteo alcanza 3 a 8, por teatro</li><li><strong>Crítico:</strong> El conteo alcanza 8 a 20, por teatro</li></ul><p>Los buques se suman al conteo hasta la mitad del umbral elevado, por lo que los buques solos nunca elevan el nivel.</p><p><strong>Con Capacidad de Ataque:</strong> Cisternas + Alerta temprana aerotransportada + Cazas presentes en números suficientes para operaciones sostenidas.</p>",
       "scanningTheaters": "Escaneando teatros",
       "positions": "Posiciones de aeronaves",
       "navalVesselsLoading": "Buques de guerra",

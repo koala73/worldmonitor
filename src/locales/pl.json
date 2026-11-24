@@ -1425,7 +1425,7 @@
       },
       "clickToViewMap": "Kliknij, żeby zobaczyć na mapie",
       "refresh": "Odświeżać",
-      "infoTooltip": "<strong>Metodologia</strong><p>Liczy wojskowe statki powietrzne i monitorowane okręty wojenne w każdym teatrze operacji.</p><ul><li><strong>Normalny:</strong> Poniżej progu teatru operacji</li><li><strong>Podwyższony:</strong> Od 3 do 8 statków powietrznych lub więcej, w zależności od teatru</li><li><strong>Krytyczny:</strong> Od 8 do 20 statków powietrznych lub więcej, w zależności od teatru</li></ul><p>Okręty są dodawane do licznika do połowy progu podwyższonego, więc same okręty nigdy nie podnoszą poziomu.</p><p><strong>Zdolność do przeprowadzenia uderzenia:</strong> Tankowce + Wczesne ostrzeganie + Myśliwce obecne w wystarczającej liczbie do operacji długotrwałych.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Liczy samoloty wojskowe i monitorowane jednostki marynarki wojennej w każdym teatrze operacyjnym.</p><ul><li><strong>Normalny:</strong> Poniżej progu teatru operacyjnego</li><li><strong>Podwyższony:</strong> Liczba osiąga 3 do 8, zależnie od teatru</li><li><strong>Krytyczny:</strong> Liczba osiąga 8 do 20, zależnie od teatru</li></ul><p>Statki liczą się aż do połowy progu podwyższonego, więc same statki nigdy nie podnoszą poziomu.</p><p><strong>Gotowość do przeprowadzenia uderzenia:</strong> Tankowce + Systemy wczesnego ostrzegania + Myśliwce obecne w wystarczającej liczbie do przeprowadzania operacji bojowych.</p>",
       "scanningTheaters": "Skanowanie teatrów",
       "positions": "Pozycje lotnicze",
       "navalVesselsLoading": "Okręty marynarki",

@@ -356,10 +356,9 @@ export class InsightsPanel extends Panel {
 
       let signalSummary: ReturnType<typeof signalAggregator.getSummary>;
       if (SITE_VARIANT === 'full') {
-        const theaterPostures = getCachedPosture()?.postures ?? [];
-        if (theaterPostures.length > 0) {
-          signalAggregator.ingestTheaterPostures(theaterPostures);
-        }
+        // An empty list clears earlier theater signals; the posture cache returns
+        // null once it expires.
+        signalAggregator.ingestTheaterPostures(getCachedPosture()?.postures ?? []);
         signalSummary = signalAggregator.getSummary();
         this.lastConvergenceZones = signalSummary.convergenceZones;
         this.lastFocalPoints = focalPointDetector.analyze(clusters, signalSummary).focalPoints;
@@ -459,10 +458,9 @@ export class InsightsPanel extends Panel {
       let focalSummary: ReturnType<typeof focalPointDetector.analyze>;
 
       if (SITE_VARIANT === 'full') {
-        const theaterPostures = getCachedPosture()?.postures ?? [];
-        if (theaterPostures.length > 0) {
-          signalAggregator.ingestTheaterPostures(theaterPostures);
-        }
+        // An empty list clears earlier theater signals; the posture cache returns
+        // null once it expires.
+        signalAggregator.ingestTheaterPostures(getCachedPosture()?.postures ?? []);
         signalSummary = signalAggregator.getSummary();
         this.lastConvergenceZones = signalSummary.convergenceZones;
         focalSummary = focalPointDetector.analyze(clusters, signalSummary);

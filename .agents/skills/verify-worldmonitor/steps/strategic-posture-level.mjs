@@ -1,6 +1,6 @@
 // Strategic Posture shows the level /api published, not a browser recalculation.
-// Captures the panel, then reads each theater's badge and compares it with the
-// get-theater-posture response the page itself received.
+// Captures the panel, then reads each theater's badge and fails when it differs
+// from the get-theater-posture response the page itself received.
 import { seedProfile, waitForBoot } from './_profile.mjs';
 
 export default async function ({ page, base, shot, log, expectVisible }) {
@@ -43,6 +43,7 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await shot('strategic-posture-panel', { locator: page.locator(panel) });
 
   const rows = await page.$$eval(`${panel} .posture-theater`, (els) => els.map((el) => ({
+    theater: el.getAttribute('data-theater'),
     name: el.querySelector('.posture-name')?.textContent?.trim(),
     badge: el.querySelector('.posture-badge')?.className.replace('posture-badge', '').trim(),
     chips: [...el.querySelectorAll('.posture-chip, .posture-stat')].map((c) => `${c.className.replace(/posture-(chip|stat)/, '').trim()}:${c.textContent.trim()}`),
@@ -51,4 +52,10 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   log('rows', JSON.stringify(rows));
   log('published', JSON.stringify([...published]));
   log('panel critical badges', rows.filter((r) => r.badge === 'posture-critical').length);
+
+  if (published.size === 0) throw new Error('captured no published theater posture to compare against');
+  const mismatches = rows
+    .map((r) => ({ theater: r.theater, shown: r.badge?.replace('posture-', ''), published: published.get(r.theater) }))
+    .filter((r) => r.shown !== r.published);
+  if (mismatches.length > 0) throw new Error(`panel level differs from the published level: ${JSON.stringify(mismatches)}`);
 }

@@ -1192,7 +1192,7 @@
         "auxiliary": "보조함",
         "navalVessels": "해군 함정"
       },
-      "infoTooltip": "<strong>방법론</strong><p>각 작전 지역의 군용 항공기 및 추적 중인 해군 함선을 계산합니다.</p><ul><li><strong>정상:</strong> 작전 지역의 임계값 미만</li><li><strong>상향:</strong> 작전 지역별로 항공기 3~8대 이상</li><li><strong>위험:</strong> 작전 지역별로 항공기 8~20대 이상</li></ul><p>함선은 상향 임계값의 절반까지 계산에 포함되므로, 함선만으로는 수준이 올라가지 않습니다.</p><p><strong>공격 가능:</strong> 급유기 + 조기경보기 + 지속적인 작전에 충분한 수의 전투기가 현존합니다.</p>",
+      "infoTooltip": "<strong>방법론</strong><p>각 작전 지역의 군용 항공기와 추적 중인 해군 함정을 집계합니다.</p><ul><li><strong>정상:</strong> 작전 지역의 기준값 이하</li><li><strong>상승:</strong> 작전 지역별로 3~8대에 도달</li><li><strong>심각:</strong> 작전 지역별로 8~20대에 도달</li></ul><p>함정은 상승 기준값의 절반까지 집계에 포함되므로, 함정만으로는 수준이 상향되지 않습니다.</p><p><strong>공격 가능:</strong> 급유기 + 조기경보기 + 전투기가 지속적 작전에 필요한 충분한 수량으로 존재함.</p>",
       "scanningTheaters": "작전지역 스캔 중",
       "positions": "항공기 위치",
       "navalVesselsLoading": "해군 함정",

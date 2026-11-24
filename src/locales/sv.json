@@ -872,7 +872,7 @@
       },
       "clickToViewMap": "Klicka för att se på kartan",
       "refresh": "Uppdatera",
-      "infoTooltip": "<strong>Metod</strong><p>Räknar militära flygplan och övervakade örlogsfartyg i varje operationsområde.</p><ul><li><strong>Normal:</strong> Under operationsområdets tröskel</li><li><strong>Elevated:</strong> 3 till 8 flygplan eller fler, per operationsområde</li><li><strong>Critical:</strong> 8 till 20 flygplan eller fler, per operationsområde</li></ul><p>Fartyg bidrar till räkningen upp till hälften av den höjda tröskeln, så fartyg ensamt kan aldrig höja nivån.</p><p><strong>Slagkapabelt:</strong> Tankerflygplan + Tidig varning från luften + Jaktflygplan närvarande i tillräcklig omfattning för fortsatt verksamhet.</p>",
+      "infoTooltip": "<strong>Metodik</strong><p>Räknar militära flygplan och spårade marinefartyg i varje militär teater.</p><ul><li><strong>Normal:</strong> Under teaterns tröskel</li><li><strong>Förhöjd:</strong> Antal når 3 till 8, per teater</li><li><strong>Kritisk:</strong> Antal når 8 till 20, per teater</li></ul><p>Fartyg bidrar till antalet upp till hälften av den förhöjda tröskeln, så fartyg ensamt kan aldrig höja nivån.</p><p><strong>Slagkraftig:</strong> Tankfartyg + Luftövervakning + Jagare närvarande i tillräckligt antal för fortsatta operationer.</p>",
       "scanningTheaters": "Skannar teatrar",
       "positions": "Flygplanspositioner",
       "navalVesselsLoading": "Marinfartyg",

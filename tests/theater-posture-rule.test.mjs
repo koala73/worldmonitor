@@ -125,3 +125,84 @@ describe('one writer', () => {
     assert.doesNotMatch(relay, /^const POSTURE_THEATERS = \[/m, 'the relay keeps its own copy of the theater table');
   });
 });
+
+// The relay's vessel functions, run against stubbed AIS reports and Redis.
+const RELAY_SOURCE = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+function extractRelayFunction(name) {
+  const start = RELAY_SOURCE.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `could not find ${name} in ais-relay.cjs`);
+  const bodyStart = RELAY_SOURCE.indexOf('{', RELAY_SOURCE.indexOf(')', start));
+  let depth = 0;
+  for (let i = bodyStart; i < RELAY_SOURCE.length; i += 1) {
+    if (RELAY_SOURCE[i] === '{') depth += 1;
+    if (RELAY_SOURCE[i] === '}') depth -= 1;
+    if (depth === 0) {
+      const isAsync = RELAY_SOURCE.slice(Math.max(0, start - 6), start) === 'async ';
+      return `${isAsync ? 'async ' : ''}${RELAY_SOURCE.slice(start, i + 1)}`;
+    }
+  }
+  throw new Error(`unterminated ${name} in ais-relay.cjs`);
+}
+const relayVesselFunctions = (deps) => Function(
+  ...Object.keys(deps),
+  `${['isStrictMilitaryVessel', 'militaryVesselsInBounds', 'recentMilitaryVesselNames', 'theaterVesselCounts', 'recordTheaterVesselHistory']
+    .filter((name) => RELAY_SOURCE.includes(`function ${name}(`))
+    .map(extractRelayFunction).join('\n')}
+  return { theaterVesselCounts, recordTheaterVesselHistory };`,
+)(...Object.values(deps));
+
+const quietConsole = { log() {}, warn() {} };
+const relayDeps = (overrides = {}) => ({
+  candidateReports: new Map(),
+  NAVAL_PREFIX_RE: /^(USS|HMS)\s/,
+  POSTURE_THEATERS,
+  countUsniVesselsInBounds,
+  appendVesselHistory,
+  VESSEL_HISTORY_KEY: 'military:theater-vessels:history:v1',
+  VESSEL_HISTORY_TTL_SECONDS: 1,
+  upstashGet: async () => null,
+  upstashSet: async () => true,
+  console: quietConsole,
+  ...overrides,
+});
+
+describe('relay vessel counts', () => {
+  it('does not count a USNI ship in one theater when AIS reports it in another', () => {
+    const iran = theater('iran-theater').bounds;
+    const redSea = theater('yemen-redsea-theater').bounds;
+    const mid = (b) => ({ lat: (b.north + b.south) / 2, lon: (b.east + b.west) / 2 });
+    const candidateReports = new Map([[1, { name: 'USS SPRUANCE', shipType: 35, timestamp: Date.now(), ...mid(redSea) }]]);
+    const usni = [{ name: 'USS Spruance', hullNumber: 'DDG-111', deploymentStatus: 'deployed', regionLat: mid(iran).lat, regionLon: mid(iran).lon }];
+    const { byTheater } = relayVesselFunctions(relayDeps({ candidateReports })).theaterVesselCounts(usni);
+    assert.deepEqual(byTheater['yemen-redsea-theater'], { ais: 1, usni: 0 });
+    assert.deepEqual(byTheater['iran-theater'], { ais: 0, usni: 0 }, 'the stale USNI position counts the same ship twice');
+  });
+});
+
+describe('relay vessel history', () => {
+  const stored = { history: Array.from({ length: 50 }, (_, i) => ({ at: i * 3_600_000, theaters: {} })) };
+
+  it('appends to the stored history', async () => {
+    const writes = [];
+    const fns = relayVesselFunctions(relayDeps({ upstashGet: async () => stored, upstashSet: async (_k, v) => { writes.push(v); return true; } }));
+    await fns.recordTheaterVesselHistory(60 * 3_600_000, {});
+    assert.equal(writes[0].history.length, 51);
+  });
+
+  it('skips the hour instead of replacing the history when the read fails', async () => {
+    const writes = [];
+    const fns = relayVesselFunctions(relayDeps({
+      upstashGet: async (_key, onFailure) => { onFailure?.('HTTP 503'); return null; },
+      upstashSet: async (_k, v) => { writes.push(v); return true; },
+    }));
+    await fns.recordTheaterVesselHistory(60 * 3_600_000, {});
+    assert.equal(writes.length, 0, 'a failed read overwrote the history with one entry');
+  });
+
+  it('starts a new history when the key does not exist yet', async () => {
+    const writes = [];
+    const fns = relayVesselFunctions(relayDeps({ upstashSet: async (_k, v) => { writes.push(v); return true; } }));
+    await fns.recordTheaterVesselHistory(60 * 3_600_000, {});
+    assert.equal(writes[0].history.length, 1);
+  });
+});

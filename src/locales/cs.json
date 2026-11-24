@@ -1189,7 +1189,7 @@
         "auxiliary": "Pomocná plavidla",
         "navalVessels": "Námořní plavidla"
       },
-      "infoTooltip": "<strong>Metodologie</strong><p>Počítá vojenská letadla a sledované námořní jednotky v každém operačním teritoriu.</p><ul><li><strong>Normální:</strong> Pod prahovou hodnotou teritoria</li><li><strong>Zvýšená:</strong> 3 až 8 letadel nebo více, podle teritoria</li><li><strong>Kritická:</strong> 8 až 20 letadel nebo více, podle teritoria</li></ul><p>Lodě se připočítávají až do poloviny zvýšené prahové hodnoty, takže lodě samotné nikdy nezvýší úroveň.</p><p><strong>Schopné úderu:</strong> Tankery + Letouny včasného varování + Stíhačky přítomné v dostatečném počtu pro udržované operace.</p>",
+      "infoTooltip": "<strong>Metodologie</strong><p>Počítá vojenská letadla a sledované námořní jednotky v každém operačním distrikt.</p><ul><li><strong>Normální:</strong> Pod prahovou hodnotou distriktu</li><li><strong>Zvýšená:</strong> Počet dosáhne 3 až 8, podle distriktu</li><li><strong>Kritická:</strong> Počet dosáhne 8 až 20, podle distriktu</li></ul><p>Lodě přispívají k počtu až do poloviny zvýšeného prahu, takže samotné lodě nikdy nezvýší úroveň.</p><p><strong>Schopné útoku:</strong> Tankery + Letadla včasného varování + Stíhačky přítomny v dostatečném počtu pro udržované operace.</p>",
       "scanningTheaters": "Skenování válčišť",
       "positions": "Pozice letadel",
       "navalVesselsLoading": "Námořní plavidla",

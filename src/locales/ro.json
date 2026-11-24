@@ -1198,7 +1198,7 @@
         "auxiliary": "Auxiliar",
         "navalVessels": "Nave Militare"
       },
-      "infoTooltip": "<strong>Metodologie</strong><p>Numără aeronavele militare și vasele navale monitorizate în fiecare teatru de operații.</p><ul><li><strong>Normal:</strong> Sub pragul teatrului de operații</li><li><strong>Ridicat:</strong> 3 la 8 aeronave sau mai multe, după teatrul de operații</li><li><strong>Critic:</strong> 8 la 20 aeronave sau mai multe, după teatrul de operații</li></ul><p>Navele se adaugă la numărare până la jumătate din pragul ridicat, deci navele singure nu ridică niciodată un nivel.</p><p><strong>Capabil de lovituri:</strong> Avioane de aprovizionare + Avion de avertizare timpurie + Avioane de luptă prezente în numere suficiente pentru operații susținute.</p>",
+      "infoTooltip": "<strong>Metodologie</strong><p>Numără avioane militare și nave maritime monitorizate în fiecare teatru de operații.</p><ul><li><strong>Normal:</strong> Sub pragul teatrului</li><li><strong>Ridicat:</strong> Numărătoarea atinge 3 la 8, în funcție de teatru</li><li><strong>Critic:</strong> Numărătoarea atinge 8 la 20, în funcție de teatru</li></ul><p>Navele contribuie la numărătoare până la jumătate din pragul ridicat, deci navele singure nu vor ridica niciodată un nivel.</p><p><strong>Capabil de lovituri:</strong> Tancuri de combustibil + Avertizare timpurie aeriană + Avioane de luptă prezente în numere suficiente pentru operații susținute.</p>",
       "scanningTheaters": "Se scanează teatrele de operațiuni",
       "positions": "Pozițiile aeronavei",
       "navalVesselsLoading": "Nave navale",

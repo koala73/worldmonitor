@@ -873,7 +873,7 @@
       },
       "clickToViewMap": "Clique para visualizar no mapa",
       "refresh": "Atualizar",
-      "infoTooltip": "<strong>Metodologia</strong><p>Conta aeronaves militares e navios navais rastreados em cada teatro.</p><ul><li><strong>Normal:</strong> Abaixo do limite do teatro</li><li><strong>Elevado:</strong> 3 a 8 aeronaves ou mais, por teatro</li><li><strong>Crítico:</strong> 8 a 20 aeronaves ou mais, por teatro</li></ul><p>Navios adicionam à contagem até a metade do limite elevado, então navios sozinhos nunca elevam um nível.</p><p><strong>Capaz de Ataque:</strong> Reabastecedores + Alerta aéreo antecipado + Caças presentes em número suficiente para operações sustentadas.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Conta aeronaves militares e navios rastreados em cada teatro.</p><ul><li><strong>Normal:</strong> Abaixo do limite do teatro</li><li><strong>Elevado:</strong> A contagem atinge 3 a 8, por teatro</li><li><strong>Crítico:</strong> A contagem atinge 8 a 20, por teatro</li></ul><p>Navios somam à contagem até a metade do limite elevado, então navios sozinhos nunca elevam um nível.</p><p><strong>Capaz de Ataque:</strong> Aviões-tanque + Alerta aéreo antecipado + Caças presentes em números suficientes para operações sustentadas.</p>",
       "scanningTheaters": "Rastreando teatros",
       "positions": "Posições de aeronaves",
       "navalVesselsLoading": "Embarcações navais",

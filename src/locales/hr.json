@@ -1352,7 +1352,7 @@
         "auxiliary": "Pomoćni",
         "navalVessels": "Brodovi"
       },
-      "infoTooltip": "<strong>Metodologija</strong><p>Broji vojnu aerodramu i praćene pomorske brodove u svakom teatru operacija.</p><ul><li><strong>Normalno:</strong> Ispod praga za teatar operacija</li><li><strong>Povišeno:</strong> 3 do 8 zrakoplova ili više, po teatru</li><li><strong>Kritično:</strong> 8 do 20 zrakoplova ili više, po teatru</li></ul><p>Brodovi se broje do polovice praga za povišeno, pa brodovi sami nikada ne podižu razinu.</p><p><strong>Sposoban za udarac:</strong> Tankeri + Zrakoplovi za rano upozorenje + Borbeni zrakoplovi prisutni u dovoljan broju za održane operacije.</p>",
+      "infoTooltip": "<strong>Metodologija</strong><p>Broji vojne zrakoplove i praćene mornaričke brodove u svakom području operacija.</p><ul><li><strong>Normalno:</strong> Ispod praga područja</li><li><strong>Povišeno:</strong> Broj doseže 3 do 8, po području</li><li><strong>Kritično:</strong> Broj doseže 8 do 20, po području</li></ul><p>Brodovi se dodaju u broj do polovice povišenog praga, pa brodovi sami nikada ne podižu razinu.</p><p><strong>Sposoban za udarce:</strong> Tankeri + Zrakoplovi ranog upozorenja + Borbeni zrakoplovi prisutni u dovoljnom broju za održane operacije.</p>",
       "scanningTheaters": "Skeniranje teatara",
       "positions": "Pozicije zrakoplova",
       "navalVesselsLoading": "Brojevni brodovi",

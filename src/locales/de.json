@@ -1459,7 +1459,7 @@
       },
       "clickToViewMap": "Klicken, um es auf der Karte anzuzeigen",
       "refresh": "Aktualisieren",
-      "infoTooltip": "<strong>Methodik</strong><p>Zählt Militärflugzeuge und überwachte Kriegsschiffe in jedem Einsatzgebiet.</p><ul><li><strong>Normal:</strong> Unter dem Schwellwert des Einsatzgebiets</li><li><strong>Erhöht:</strong> 3 bis 8 Flugzeuge oder mehr, je nach Einsatzgebiet</li><li><strong>Kritisch:</strong> 8 bis 20 Flugzeuge oder mehr, je nach Einsatzgebiet</li></ul><p>Schiffe zählen bis zur Hälfte des erhöhten Schwellwerts mit, daher können Schiffe allein nie zu einer Stufenerhöhung führen.</p><p><strong>Luftschlagfähig:</strong> Tankflugzeuge + Frühwarnflugzeuge + Kampfflugzeuge in ausreichender Anzahl für anhaltende Operationen vorhanden.</p>",
+      "infoTooltip": "<strong>Methodik</strong><p>Zählt Militärflugzeuge und überwachte Kriegsschiffe in jedem Einsatzgebiet.</p><ul><li><strong>Normal:</strong> Unter der Schwelle des Einsatzgebiets</li><li><strong>Erhöht:</strong> Anzahl erreicht 3 bis 8, je Einsatzgebiet</li><li><strong>Kritisch:</strong> Anzahl erreicht 8 bis 20, je Einsatzgebiet</li></ul><p>Schiffe zählen bis zur Hälfte der erhöhten Schwelle, daher können Schiffe allein ein Level nicht erhöhen.</p><p><strong>Luftschlagfähig:</strong> Tankflugzeuge + Frühwarnflugzeuge + Jagdflugzeuge in ausreichender Anzahl für anhaltende Operationen.</p>",
       "scanningTheaters": "Schauplätze werden gescannt",
       "positions": "Flugzeugpositionen",
       "navalVesselsLoading": "Marineschiffe",
