@@ -31,11 +31,16 @@ const REFUSED_OPTIONS = [
   '--restore', '--restore-save', '--restore-check-url', '--restore-check-text', '--restore-check-fn', '--session-name',
   '--namespace', '--enable',
 ];
-/** Options a locked-down call may carry; the value-taking ones consume the next word. */
+/**
+ * Options a locked-down call may carry; the value-taking ones consume the next word unless it is itself an
+ * option. Short forms mean different things per command (`wait -f` is `--fn`, `screenshot -f` is `--full`), so
+ * a short form is allowed only on the command it was checked for.
+ */
 const LOCKED_FLAGS = new Set([
-  '--json', '-i', '--interactive', '-c', '--compact', '-u', '--urls', '--full', '-f', '--annotate', '--delta',
+  '--json', '-i', '--interactive', '-c', '--compact', '-u', '--urls', '--full', '--annotate', '--delta',
   '--clear', '--raw', '--outline', '--exact', '--new-tab', '-h', '--help',
 ]);
+const LOCKED_COMMAND_FLAGS = { screenshot: new Set(['-f']) };
 const LOCKED_VALUE_OPTIONS = new Set([
   '-d', '--depth', '-s', '--selector', '--filter', '--type', '--method', '--status', '--timeout', '--label', '--fps',
   '--url', '--load', '--name', '--button', '--delay', '--count',
@@ -79,8 +84,15 @@ export function refusal(args, { lockedDown = false } = {}) {
     const word = rest[i];
     if (!word.startsWith('-')) { positional.push(word); continue; }
     const name = word.split('=')[0];
-    if (LOCKED_VALUE_OPTIONS.has(name)) { if (!word.includes('=')) i += 1; continue; }
-    if (!LOCKED_FLAGS.has(name)) return `option ${name} while the browser holds a Pro session`;
+    if (LOCKED_VALUE_OPTIONS.has(name)) {
+      // A following option is checked in its own right, never swallowed as this one's value: agent-browser
+      // finds `--fn` anywhere in the call.
+      if (!word.includes('=') && rest[i + 1] !== undefined && !rest[i + 1].startsWith('-')) i += 1;
+      continue;
+    }
+    if (!LOCKED_FLAGS.has(name) && !LOCKED_COMMAND_FLAGS[command]?.has(name)) {
+      return `option ${name} while the browser holds a Pro session`;
+    }
   }
   if (command === 'eval') return 'eval while the browser holds a Pro session';
   if (command === 'network') {

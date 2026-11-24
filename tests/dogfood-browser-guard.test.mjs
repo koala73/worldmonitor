@@ -15,6 +15,7 @@ describe('dogfood browser guard', () => {
       s('wait', '--load', 'networkidle'),
       s('find', 'role', 'button', '--name', 'Close', '--exact'),
       s('screenshot', '/tmp/out/screenshots/a.png'),
+      s('screenshot', '-f', '/tmp/out/screenshots/full.png'),
       s('scrollintoview', '[data-panel="markets"]'),
       s('get', 'text', '[data-panel="markets"]'),
       s('network', 'requests', '--filter', '/api/'),
@@ -99,6 +100,10 @@ describe('dogfood browser guard', () => {
       s('tab', '--label', 'new', 'new', 'localhost'),
       s('record', 'start', 'demo', 'localhost'),
       s('record', 'start', '/tmp/out/videos/a.webm', 'localhost'),
+      s('wait', '-f', 'document.title'),
+      s('wait', '--name', '--fn', 'document.title'),
+      s('wait', '--timeout', '-f', 'document.title'),
+      s('find', 'role', 'button', '--name', '--init-script', 'x'),
     ]) {
       assert.ok(refusal(args, locked), args.join(' '));
     }
