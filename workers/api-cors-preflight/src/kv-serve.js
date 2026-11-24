@@ -20,7 +20,7 @@
 // edge cache rather than Redis.
 
 import { bootstrapTierFromPublicRequest } from '../../../api/_bootstrap-public-tier.js';
-import { classifyKvEnvelope, emit } from './kv-shadow.js';
+import { TIER_MAX_AGE_MS, emit, parseAndClassifyKvEnvelope } from './kv-shadow.js';
 import { isBootstrapKvServingTier } from './kv-serve-mode.js';
 
 // Per-tier read cacheTtl (seconds): keep low-traffic POPs hot, trading a little staleness.
@@ -40,9 +40,13 @@ function hedgeTimer(ms) {
   return { promise, cancel: () => clearTimeout(id) };
 }
 
-// Read + classify a tier, never rejecting. On a servable value it also lifts the payload body (a
-// deliberate second parse kept OUT of classifyKvEnvelope so the live U-K2 shadow path stays
-// byte-for-byte unchanged; ~1-2 ms on the 452 KB fast tier, negligible next to the KV read).
+// Per-isolate cache of the serialized payload for each tier. KV's cacheTtl (60 s / 300 s) hands
+// every request on a POP the identical raw envelope string, so a repeat hit can reuse the body
+// instead of re-parsing and re-stringifying 700 KB to 1.44 MB. Staleness is re-checked on every hit.
+const isolatePayloadCache = new Map();
+
+// Read + classify a tier, never rejecting. Parses a new envelope once and reuses its serialized
+// payload on repeat hits of the same raw value.
 async function readKvEnvelope(env, tier) {
   let raw = null;
   try {
@@ -50,10 +54,21 @@ async function readKvEnvelope(env, tier) {
   } catch {
     return { decision: { outcome: 'fallback', reason: 'error' } };
   }
-  const decision = classifyKvEnvelope(tier, raw, Date.now());
+  const now = Date.now();
+  const cached = isolatePayloadCache.get(tier);
+  if (cached && raw != null && raw === cached.raw) {
+    if (now - cached.generatedAt > TIER_MAX_AGE_MS[tier]) {
+      isolatePayloadCache.delete(tier);
+      return { decision: { outcome: 'fallback', reason: 'stale' } };
+    }
+    return { decision: { outcome: 'kv', reason: null }, body: cached.body };
+  }
+  const { decision, envelope } = parseAndClassifyKvEnvelope(tier, raw, now);
   if (decision.outcome !== 'kv') return { decision };
   try {
-    return { decision, body: JSON.stringify(JSON.parse(raw).payload) };
+    const body = JSON.stringify(envelope.payload);
+    isolatePayloadCache.set(tier, { raw, generatedAt: envelope.generatedAt, body });
+    return { decision, body };
   } catch {
     return { decision: { outcome: 'fallback', reason: 'invalid' } };
   }
