@@ -91,6 +91,12 @@ describe('country mention matcher', () => {
     assert.equal(mentions('SD', 'South Sudanese forces regroup near Juba'), false, '"South Sudanese" must not reach "Sudanese"');
     assert.equal(mentions('SS', 'South Sudanese forces regroup near Juba'), true);
     assert.equal(mentions('MX', 'New Mexico wildfire spreads'), false);
+    assert.equal(mentions('NE', 'Niger State killings: 35 dead in reprisals'), false, 'Niger State is in Nigeria');
+    assert.equal(mentions('NE', 'Niger Delta oil spill spreads'), false, 'the Niger Delta is in Nigeria');
+    assert.equal(mentions('NE', 'Niger junta extends transition'), true);
+    assert.equal(mentions('NE', 'Niger states it will reopen the border'), true, 'an exclusion must not swallow a longer word');
+    assert.equal(mentions('NE', 'Niger deltas of opinion widen'), true);
+    assert.equal(mentions('GN', 'Guinea-Bissauan president wins election'), false, 'prefix exclusions still cover a longer word');
     assert.equal(mentions('WS', 'American Samoa storm damage'), false);
     assert.equal(mentions('IN', 'Indian Ocean tsunami warning lifted'), false);
     assert.equal(mentions('FR', 'French Open final draws record crowd'), false);

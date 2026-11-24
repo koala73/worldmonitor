@@ -5,8 +5,10 @@ export interface CountryMentionTerms {
   names: string[];
   /** Raw-cased demonyms, matched case-sensitively. */
   demonyms: string[];
-  /** Normalized phrases removed from the text before the name match. */
+  /** Normalized phrases removed from the text before the name match, including longer words they start. */
   exclusions: string[];
+  /** Normalized phrases removed only as whole phrases. Optional for hand-built terms. */
+  wordExclusions?: string[];
 }
 
 export const CODE_TOKEN_ALLOWLIST: ReadonlySet<string>;

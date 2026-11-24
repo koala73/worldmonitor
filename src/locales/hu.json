@@ -1701,7 +1701,7 @@
       "briefFreshness": "Generálva {{minutes}}m idővel ezelőtt · legfrissebb forrás {{hours}}ó régi",
       "briefStoryDetails": "A hír részletei ({{count}})",
       "streamIdleStopLabel": "Élő videó leállítása üresjárat során",
-      "streamIdleStopDesc": "Az Élő Hírek és Élő Webkamerák leállnak ennyi idő után inaktivitás esetén, és egy értesítés jelenik meg a panelen.",
+      "streamIdleStopDesc": "Az Élő Hírek és Élő Webkamerák leállnak ennyi idő után inaktivitás esetén, és egy értesítés jelenik meg a panelen. Az Élő Hírek lejátszása folytatódik, amíg a hang be van kapcsolva.",
       "streamIdleStopNever": "Soha",
       "liveNewsAutoplayLabel": "Élő hírek automatikus lejátszása",
       "liveNewsAutoplayDesc": "Az élő hírek videója néma hanggal elindul, amint megjelenik a képernyőn. Ezt kikapcsolva a videó csak akkor töltődik be, amikor Ön elindítja."

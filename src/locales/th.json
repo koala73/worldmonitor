@@ -1547,7 +1547,7 @@
       "briefFreshness": "สร้างเมื่อ {{minutes}}m ที่แล้ว · แหล่งข้อมูลล่าสุด {{hours}}h เก่า",
       "briefStoryDetails": "รายละเอียดข่าว ({{count}})",
       "streamIdleStopLabel": "หยุดวิดีโอสดเมื่อไม่มีกิจกรรม",
-      "streamIdleStopDesc": "หยุด Live News และ Live Webcams หลังจากที่ไม่มีกิจกรรมนาน ๆ และแสดงประกาศในแผง",
+      "streamIdleStopDesc": "หยุด Live News และ Live Webcams หลังจากที่ไม่มีกิจกรรมนาน ๆ และแสดงประกาศในแผง Live News จะเล่นต่อไปตราบที่เปิดเสียงอยู่",
       "streamIdleStopNever": "ไม่เลย",
       "liveNewsAutoplayLabel": "เล่นข่าวสดโดยอัตโนมัติ",
       "liveNewsAutoplayDesc": "เริ่มเล่นวิดีโอข่าวสดโดยปิดเสียง ทันทีที่ปรากฏบนหน้าจอ ปิดตัวเลือกนี้เพื่อโหลดวิดีโอเฉพาะเมื่อคุณเล่นด้วยตัวเอง"
