@@ -7,7 +7,23 @@
 // the close before that session, which only a daily chart carries.
 
 const PREVIOUS_SESSION_CHART_QUERY = '?range=5d&interval=1d';
-const TAIEX_SYMBOL = '^TWII';
+// Yahoo-backed cash equity indexes in the Markets catalog. Non-cash
+// proxies (ETFs and futures), volatility indexes and yields are not included.
+const INDEX_TIME_ZONES = Object.freeze({
+  '^GSPC': 'America/New_York', '^DJI': 'America/New_York', '^IXIC': 'America/New_York',
+  '000001.SS': 'Asia/Shanghai', '^HSI': 'Asia/Hong_Kong',
+  '^NSEI': 'Asia/Kolkata', '^BSESN': 'Asia/Kolkata',
+  '^FTSE': 'Europe/London', '^GDAXI': 'Europe/Berlin', '^FCHI': 'Europe/Paris',
+  '^SSMI': 'Europe/Zurich', '^AEX': 'Europe/Amsterdam', '^IBEX': 'Europe/Madrid', 'FTSEMIB.MI': 'Europe/Rome',
+  '^N225': 'Asia/Tokyo', '^KS11': 'Asia/Seoul', '^TWII': 'Asia/Taipei', '^AXJO': 'Australia/Sydney',
+  '^STI': 'Asia/Singapore', '^JKSE': 'Asia/Jakarta', '^TASI.SR': 'Asia/Riyadh', 'DFMGI.AE': 'Asia/Dubai',
+  '^BVSP': 'America/Sao_Paulo', '^GSPTSE': 'America/Toronto', '^MXX': 'America/Mexico_City',
+  '^MERV': 'America/Argentina/Buenos_Aires',
+});
+
+const SESSION_FORMATTERS = new Map();
+const INDEX_BASIS_TTL_SECONDS = 7 * 86400;
+const INDEX_BASIS_RETRY_MS = 15 * 60 * 1000;
 
 function finiteNumber(value) {
   if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
@@ -49,36 +65,52 @@ function previousSessionClose(data, lastTradeAt = data?.chart?.result?.[0]?.meta
   return sessionCloses.length >= 2 ? sessionCloses[sessionCloses.length - 2] : null;
 }
 
-/** Taipei's UTC+8 civil day identifies the TAIEX session that traded. */
-function taiexSessionDay(timestamp) {
+function isYahooEquityIndex(symbol) {
+  return Object.hasOwn(INDEX_TIME_ZONES, symbol);
+}
+
+function sessionFormatter(symbol) {
+  if (!isYahooEquityIndex(symbol)) return null;
+  let formatter = SESSION_FORMATTERS.get(symbol);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: INDEX_TIME_ZONES[symbol], year: 'numeric', month: '2-digit', day: '2-digit',
+    });
+    SESSION_FORMATTERS.set(symbol, formatter);
+  }
+  return formatter;
+}
+
+function indexSessionDay(formatter, timestamp) {
   const epochSeconds = finiteNumber(timestamp);
-  return epochSeconds != null && epochSeconds > 0
-    ? Math.floor((epochSeconds + 8 * 3600) / 86400)
-    : null;
+  if (!formatter || !(epochSeconds > 0) || epochSeconds > 8.64e12) return null;
+  return formatter.format(epochSeconds * 1000);
 }
 
 /**
- * On Nov 24 Yahoo's 1d ^TWII metadata used Nov 20 as the prior close, skipping
- * Nov 23. Use daily bars for this index even after the market is open.
- * Require a row matching the quote session (the current close may be null
- * intraday), and do not skip a missing preceding close to an older value.
+ * The 1d metadata can skip a trading day (e.g. Nov 24 Taiwan, Hong Kong,
+ * Shanghai, Australia and Jakarta all quoted Nov 20 instead of Nov 23).
+ * Establish the quote's exchange-local session via the daily rows and use
+ * the preceding session's bar, never a range-level previous close field.
  */
-function taiexPreviousSessionClose(data, lastTradeAt) {
+function equityIndexPreviousSessionClose(symbol, data, lastTradeAt) {
+  const formatter = sessionFormatter(symbol);
   const tradeAt = finiteNumber(lastTradeAt);
-  const session = taiexSessionDay(tradeAt);
+  const session = indexSessionDay(formatter, tradeAt);
   const result = data?.chart?.result?.[0];
   const timestamps = result?.timestamp;
   const closes = result?.indicators?.quote?.[0]?.close;
   if (session == null || !Array.isArray(timestamps) || !Array.isArray(closes)) return null;
 
   let foundSession = false;
-  let priorSession = -Infinity;
+  let priorSession = '';
   let priorClose = null;
   for (let i = 0; i < timestamps.length; i += 1) {
     const barAt = finiteNumber(timestamps[i]);
-    const day = taiexSessionDay(barAt);
+    const day = indexSessionDay(formatter, barAt);
     if (day == null || barAt > tradeAt) continue;
     if (day === session) {
+      // The current daily close may still be null during the session.
       foundSession = true;
     } else if (day < session && day > priorSession) {
       priorSession = day;
@@ -88,11 +120,56 @@ function taiexPreviousSessionClose(data, lastTradeAt) {
   return foundSession && priorClose > 0 ? priorClose : null;
 }
 
+/**
+ * Memoize a verified close per exchange session and symbol. Railway relay
+ * and short-lived cron processes also share the optional Redis cache. A
+ * miss/429 delays retries briefly, without backfilling an older close or
+ * publishing a move calculated from the unreliable quote metadata.
+ */
+function createYahooEquityIndexBasisResolver({ read, write, now = Date.now } = {}) {
+  const local = new Map();
+  const inFlight = new Map();
+  const usable = (entry) => (
+    (Number.isFinite(entry?.close) && entry.close > 0) ||
+    (entry?.close === null && Number.isFinite(entry.retryAt) && entry.retryAt > now())
+  );
+  return async function resolveIndexClose(symbol, lastTradeAt, loadDaily) {
+    const day = indexSessionDay(sessionFormatter(symbol), lastTradeAt);
+    if (!day) return null;
+    const key = `market:yahoo-index-close:v1:${symbol}:${day}`;
+    const remembered = local.get(symbol);
+    if (remembered?.day === day && usable(remembered)) return remembered.close;
+    if (inFlight.has(key)) return inFlight.get(key);
+
+    const request = (async () => {
+      const cached = await Promise.resolve().then(() => read?.(key)).catch(() => null);
+      if (usable(cached)) {
+        local.set(symbol, { ...cached, day });
+        return cached.close;
+      }
+      const daily = await Promise.resolve().then(loadDaily).catch(() => null);
+      const close = equityIndexPreviousSessionClose(symbol, daily, lastTradeAt);
+      const entry = { close, ...(close === null ? { retryAt: now() + INDEX_BASIS_RETRY_MS } : {}) };
+      local.set(symbol, { ...entry, day });
+      const ttl = close === null ? INDEX_BASIS_RETRY_MS / 1000 : INDEX_BASIS_TTL_SECONDS;
+      await Promise.resolve().then(() => write?.(key, entry, ttl)).catch(() => {});
+      return close;
+    })();
+    inFlight.set(key, request);
+    try {
+      return await request;
+    } finally {
+      inFlight.delete(key);
+    }
+  };
+}
+
 module.exports = {
   PREVIOUS_SESSION_CHART_QUERY,
-  TAIEX_SYMBOL,
+  INDEX_TIME_ZONES,
   awaitsSessionOpen,
   previousSessionClose,
-  taiexPreviousSessionClose,
-  taiexSessionDay,
+  isYahooEquityIndex,
+  equityIndexPreviousSessionClose,
+  createYahooEquityIndexBasisResolver,
 };
