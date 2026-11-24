@@ -16080,8 +16080,7 @@ button.popup-link {
      footer links reachable (#11157). */
   .mobile-menu {
     display: block;
-    padding-bottom: calc(58px + 12px + env(safe-area-inset-bottom, 0px));
-    box-sizing: border-box;
+    padding-bottom: calc(var(--wm-bottom-base) + 12px);
     overscroll-behavior: contain;
   }
 
