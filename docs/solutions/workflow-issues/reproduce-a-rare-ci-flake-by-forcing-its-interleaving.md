@@ -33,17 +33,18 @@ Earlier triage on two of these issues guessed at the cause from the error text, 
 2. **Name the event that must land in the window.** The trace or the logged test durations usually show which timer, network response or chunk load arrived at the wrong moment.
 3. **Force that event deterministically.**
    - For a timer, hold it from a preload and fire it when the vulnerable state exists.
-   - For a network response, route the request to a handler that never answers.
+   - For a stalled request or a hook timeout, route the request to a handler that never answers.
+   - For a response that arrived too late or out of order, hold the response and release it at the point the trace shows.
    - For a lazy chunk, delay its module request.
    - For a re-render, trigger it explicitly between the two steps it raced.
-4. **Run a control that differs in one dimension.** Run the same pair of tests without the forcing, and the forced trigger with the victim test alone. Both must pass on unfixed code, or the forcing created the bug.
+4. **Run a control that differs in one dimension.** For a race inside one test, run that test with and without the forced event. Only the forced run should fail on unfixed code. For interference between tests, also run the same pair without the forcing, and the forced trigger with the victim test alone. Both of those should pass on unfixed code, or the forcing created the bug.
 5. **Count both sides.** Before the fix, the forced trigger should fail every run. After the fix, it should pass every run, and you should log that the trigger fired, so a pass is not a missed trigger.
 
 ## Why This Matters
 
 A fix verified only by "it didn't fail in N natural runs" proves nothing when the natural failure rate is near zero. Each of the four fixes was proven by a trigger that failed 100% before the fix and passed 100% after.
 
-Forcing the interleaving also decides whether the bug is in the test or the app. One of the four (#11159) was a real app bug that users could hit, not a test race.
+Forcing the interleaving shows the mechanism. It does not by itself say whether the bug is in the test or the app. Read the failing code and check whether the same event order can happen for a real user. One of the four (#11159) was a real app bug that users could hit: any background refresh while the user typed in the watchlist search. The other three were test faults.
 
 ## When to Apply
 
