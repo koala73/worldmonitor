@@ -160,6 +160,13 @@ describe('billing tone contrast', () => {
     assert.fail(`${name} not found in any :root block`);
   };
 
+  it('the paused-plan button keeps its label on the card surface when hovered', () => {
+    // A tone-tinted hover fill under tone-coloured text drops light-theme
+    // contrast below 4.5:1 (#a16207 over a 10% tint on white is 4.32:1).
+    const hover = extractBlock(mainCss.slice(mainCss.indexOf('.manage-billing-btn-primary:hover {')), '.manage-billing-btn-primary:hover {');
+    assert.doesNotMatch(hover, /background:\s*color-mix/, 'hover must not tint the background under the attention-tone label');
+  });
+
   it('paints the plan name from data-billing-tone, not an inlined hex', () => {
     assert.match(
       settingsSource,

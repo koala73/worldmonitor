@@ -370,6 +370,8 @@ export async function buildResourceResponse(
   planKey?: string,
   // Forwarded so the request's wm_api_usage row records the tool outcome (#9431).
   usage?: McpUsage,
+  // Forwarded so a paused subscriber's denial names the billing portal (#11213).
+  paymentFailed?: boolean,
 ): Promise<Response> {
   const outerId = body.id ?? null;
   const params = body.params as { uri?: unknown } | null;
@@ -427,6 +429,9 @@ export async function buildResourceResponse(
     undefined,
     planKey,
     usage,
+    undefined,
+    undefined,
+    paymentFailed,
   );
 
   // Parse the dispatched body. dispatched.json() is safe — the dispatcher

@@ -1547,7 +1547,7 @@
       "briefFreshness": "Vygenerováno před {{minutes}}m · nejnovější zdroj starý {{hours}}h",
       "briefStoryDetails": "Podrobnosti zprávy ({{count}})",
       "streamIdleStopLabel": "Zastavit živé video při nečinnosti",
-      "streamIdleStopDesc": "Zastaví Live News a Live Webcams po této době bez aktivity a zobrazí upozornění na panelu.",
+      "streamIdleStopDesc": "Zastaví Live News a Live Webcams po této době bez aktivity a zobrazí upozornění na panelu. Live News hraje dál, dokud má zapnutý zvuk.",
       "streamIdleStopNever": "Nikdy",
       "liveNewsAutoplayLabel": "Automatické přehrávání živých zpráv",
       "liveNewsAutoplayDesc": "Spustí video živých zpráv ztlumeně, jakmile se zobrazí na obrazovce. Vypněte, chcete-li video načíst pouze sami."

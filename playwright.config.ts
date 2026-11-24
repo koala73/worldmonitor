@@ -154,7 +154,9 @@ export default defineConfig({
   webServer: webMcpProduction
     ? undefined
     : {
-        command: 'VITE_E2E=1 npm run dev -- --host 127.0.0.1 --port 4173',
+        // WM_E2E_OFFLINE keeps the dev server's own handlers off the network
+        // (shared/e2e-dev-network-guard.ts); page.route only reaches the browser.
+        command: 'VITE_E2E=1 WM_E2E_OFFLINE=1 npm run dev -- --host 127.0.0.1 --port 4173',
         url: 'http://127.0.0.1:4173/tests/map-harness.html',
         reuseExistingServer: false,
         timeout: 120000,

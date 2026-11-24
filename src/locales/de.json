@@ -1934,7 +1934,7 @@
       "briefFreshness": "Generiert vor {{minutes}}m · neueste Quelle {{hours}}h alt",
       "briefStoryDetails": "Details zur Meldung ({{count}})",
       "streamIdleStopLabel": "Live-Video bei Inaktivität stoppen",
-      "streamIdleStopDesc": "Stoppt Live News und Live Webcams nach dieser Zeit ohne Aktivität und zeigt einen Hinweis im Panel an.",
+      "streamIdleStopDesc": "Stoppt Live News und Live Webcams nach dieser Zeit ohne Aktivität und zeigt einen Hinweis im Panel an. Live News läuft weiter, solange der Ton eingeschaltet ist.",
       "streamIdleStopNever": "Nie",
       "liveNewsAutoplayLabel": "Live-News automatisch abspielen",
       "liveNewsAutoplayDesc": "Startet das Live-News-Video automatisch und stummgeschaltet, sobald es auf dem Bildschirm angezeigt wird. Deaktivieren Sie dies, um das Video nur zu laden, wenn Sie es selbst starten."

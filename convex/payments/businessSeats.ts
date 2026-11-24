@@ -33,7 +33,7 @@ import {
   signBusinessInviteToken,
   verifyBusinessInviteToken,
 } from "../lib/identitySigning";
-import { isBusinessPlan, isCoveringAt } from "./subscriptionHelpers";
+import { hasAccessAt, isBusinessPlan, isCoveringAt } from "./subscriptionHelpers";
 
 const MAX_SEATS = 4;
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -94,9 +94,10 @@ async function getCoveringBusinessSubscription(
     .query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .collect();
-  return subs.find(
-    (s) => isBusinessPlan(s.planKey) && isCoveringAt(s, at),
-  ) ?? null;
+  // Prefer a row that grants access: a failed renewal past its access grace
+  // still covers for billing and must not hide another, live Business row.
+  const business = subs.filter((s) => isBusinessPlan(s.planKey) && isCoveringAt(s, at));
+  return business.find((s) => hasAccessAt(s, at)) ?? business[0] ?? null;
 }
 
 /**
@@ -139,7 +140,10 @@ export const inviteSeats = mutation({
 
     const now = Date.now();
     const businessSub = await getCoveringBusinessSubscription(ctx, userId, now);
-    if (!businessSub) {
+    // A failed renewal past its access grace still covers for billing, but
+    // its seats would grant nothing (pickBestAcceptedBusinessGrant reads
+    // hasAccessAt), so new invites wait until the owner fixes payment.
+    if (!businessSub || !hasAccessAt(businessSub, now)) {
       throw new ConvexError({ kind: "OWNER_NOT_BUSINESS" });
     }
 
@@ -509,7 +513,7 @@ export const acceptBusinessInvite = mutation({
         q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
       )
       .unique();
-    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !isCoveringAt(businessSub, now)) {
+    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !hasAccessAt(businessSub, now)) {
       throw new ConvexError({ kind: "BUSINESS_NOT_ACTIVE" });
     }
 
@@ -569,7 +573,7 @@ export const extendBusinessInvite = internalMutation({
         q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
       )
       .unique();
-    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !isCoveringAt(businessSub, now)) {
+    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !hasAccessAt(businessSub, now)) {
       throw new ConvexError({ kind: "BUSINESS_NOT_ACTIVE" });
     }
     // The owner may have re-invited the same address after this invite lapsed.

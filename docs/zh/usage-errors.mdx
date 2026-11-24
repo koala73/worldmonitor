@@ -32,7 +32,7 @@ OAuth 端点遵循 [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc674
 | `304` | 未修改（条件缓存命中） | — |
 | `400` | 错误请求 — 校验错误 | 否 — 修正输入 |
 | `401` | 缺失 / 无效的认证 | 否 — 修正认证 |
-| `403` | 已认证但无权限（通常为 `pro_required`）；非 OAuth handler 或执行中的 Pro MCP 调用也可能返回带 `X-Billing-Verification` 的 `subscription_lapsed` | 否 — 对权益拒绝应升级 / 重新订阅 |
+| `403` | 已认证但无权限（通常为 `pro_required`）；非 OAuth handler 或执行中的 Pro MCP 调用也可能返回带 `X-Billing-Verification` 的 `subscription_lapsed` 或 `payment_failed` | 否 — 对权益拒绝应升级 / 重新订阅（`payment_failed` 则应更新付款方式） |
 | `404` | 资源 / 工具 / brief / 实体未找到 | 否 |
 | `405` | 方法不允许 | 否 |
 | `409` | 冲突（重复的 webhook 注册等） | 否 |
@@ -45,9 +45,9 @@ OAuth 端点遵循 [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc674
 
 ### 读取 `X-Billing-Verification`
 
-对于返回 JSON 的网关入口，`X-Billing-Verification` 通常与响应体中的计费 `code` 一致。Pro-MCP OAuth 流程有意采用两种响应结构：grant 握手端点以 `TIER_VERIFICATION_UNAVAILABLE` 表示可重试的校验故障，以 `INSUFFICIENT_TIER` 表示真正的权益不足；`/oauth/authorize-pro` 则返回 HTML。服务方确认付费覆盖期已经结束时，OAuth 预检查不会返回这两种拒绝，而会保留 OAuth 身份并签发受限、按额度计量的免费账户令牌。该响应头已列入 `Access-Control-Expose-Headers`，因此浏览器客户端可以跨域读取。请依据响应头而非仅依据状态码分支：这些入口返回的 `503` 也可能表示「必需的环境变量未配置」——那是**不可重试**的；其他 API handler 仍可能返回终态的 `subscription_lapsed`。
+对于返回 JSON 的网关入口，`X-Billing-Verification` 通常与响应体中的计费 `code` 一致。Pro-MCP OAuth 流程有意采用两种响应结构：grant 握手端点以 `TIER_VERIFICATION_UNAVAILABLE` 表示可重试的校验故障，以 `INSUFFICIENT_TIER` 表示真正的权益不足；`/oauth/authorize-pro` 则返回 HTML。服务方确认付费覆盖期已经结束时，OAuth 预检查不会返回这两种拒绝，而会保留 OAuth 身份并签发受限、按额度计量的免费账户令牌。该响应头已列入 `Access-Control-Expose-Headers`，因此浏览器客户端可以跨域读取。请依据响应头而非仅依据状态码分支：这些入口返回的 `503` 也可能表示「必需的环境变量未配置」——那是**不可重试**的；其他 API handler 仍可能返回终态的 `subscription_lapsed` 或 `payment_failed`。
 
-当非 OAuth handler 返回 `subscription_lapsed`，或覆盖期在一次 Pro MCP 调用执行中途结束而返回该错误时，它是终态且不携带 `Retry-After`；正确动作是恢复订阅，而不是重试。若 OAuth grant 预检查已经确认该失效，调用方会改走受限免费账户路径。即使没有计费响应头，也应将 `INSUFFICIENT_TIER` 视为终态，并将 `TIER_VERIFICATION_UNAVAILABLE` 视为可重试。
+当非 OAuth handler 返回 `subscription_lapsed`，或覆盖期在一次 Pro MCP 调用执行中途结束而返回该错误时，它是终态且不携带 `Retry-After`；正确动作是恢复订阅，而不是重试。`payment_failed` 遵循同样的规则，正确动作是更新付款方式而不是重新订阅。若 OAuth grant 预检查已经确认该失效或扣款失败导致的暂停，调用方会改走受限免费账户路径。即使没有计费响应头，也应将 `INSUFFICIENT_TIER` 视为终态，并将 `TIER_VERIFICATION_UNAVAILABLE` 视为可重试。
 
 ### 生成式 RPC 的计费拒绝
 
@@ -67,6 +67,7 @@ OAuth 端点遵循 [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc674
 | `service_unavailable` | 签名密钥 / 必需的环境变量未配置。 |
 | `Failed to enqueue scenario job` | `/api/scenario/v1/run-scenario` 上的 Redis 管道故障。 |
 | `subscription_lapsed` | 服务方已确认付费覆盖期结束。非 OAuth handler 或执行中的 Pro MCP 调用可能返回这一终态错误并携带 `X-Billing-Verification: subscription_lapsed`，此时应恢复订阅而非重试。OAuth 权益预检查遇到同一确认结果时会改走受限免费账户路径：OAuth 身份保留，但只允许按免费额度计量的 `free-account` 工具。 |
+| `payment_failed` | 订阅的续费扣款失败、访问宽限期已结束，计费提供方仍在重试扣款。账户处于暂停状态而非已取消。终态 403，携带 `X-Billing-Verification: payment_failed`，不带 `Retry-After`；响应体为 `Payment failed. Update your payment method at https://www.worldmonitor.app/dashboard?billing=portal to restore access.`。应在账单门户更新付款方式，而不是重试或发起新结账（扣款重试期间新结账会被阻止）。未付款的计费周期结束且扣款仍未成功后，错误码变为 `subscription_lapsed`。与失效相同，OAuth 权益预检查和 MCP 会让该账户改走免费账户路径，MCP 对 Pro-only 工具返回 `reason: "payment-failed"`。 |
 | `renewal_verification_pending` | 你的订阅在本地记录中刚刚到期，服务端正在与计费提供方重新确认。可重试的 503 —— 遵守 `Retry-After`（1-60 秒）；已续订的订阅通常在一到两次重试内恢复。 |
 | `renewal_verification_failed` | 提供方复查未能完成，处于短暂冷却期。可重试的 503 —— 遵守 `Retry-After`。 |
 | `entitlement_verification_unavailable` | 计费后端未能就访问权限给出结论 —— 不可达、报错，或拒绝了服务端自身的凭据 —— 因此该拒绝不构成对套餐的任何判定，绝不可按套餐不足解读。在所有已认证入口均可能出现（`wm_` API 密钥、bootstrap、会话/bearer 层级检查、MCP）。可重试的 503，携带 `Retry-After: 5` 与 `X-Billing-Verification: entitlement_verification_unavailable`。 |
