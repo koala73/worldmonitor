@@ -44,10 +44,13 @@ test.describe('Mobile map native experience', () => {
   test.describe('region presets', () => {
     test.use(mobileContext);
 
-    // #11157: fixed pixel pans tuned for a desktop map put America over the
-    // Pacific and Asia and Oceania off a phone's map.
+    // #11157: fixed pixel pans tuned for a desktop map put Europe over the
+    // Arctic, the Middle East over Central Asia, America over the Pacific,
+    // and Asia and Oceania off a phone's map.
     for (const [view, lat, lon] of [
       ['america', 38, -95],
+      ['eu', 50, 15],
+      ['mena', 28, 45],
       ['asia', 35, 105],
       ['oceania', -25, 135],
     ] as const) {

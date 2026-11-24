@@ -572,17 +572,18 @@ export class MapComponent {
     else this.scheduleRender();
   }
 
-  /** The pan is in pixels of the size it was set for, so move it to keep the same place centered at the new size. */
+  /**
+   * The pan is in pixels of the size it was set for, so move it to keep the same place centered at the new size.
+   * The projection is linear and centred on the container, so the pan scales with it. Inverting and re-projecting
+   * the centre would wrap one past ±180° longitude into the other side of the world.
+   */
   private keepCenterAcrossResize(width: number, height: number): void {
-    const basis = this.panBasis ?? (this.baseRendered ? { width: this.baseWidth, height: this.baseHeight } : null);
+    // baseWidth stays the size the pan was drawn at even after a theme change or topology load clears baseRendered.
+    const basis = this.panBasis ?? { width: this.baseWidth, height: this.baseHeight };
     this.panBasis = null;
-    if (!basis || basis.width === 0 || basis.height === 0 || (basis.width === width && basis.height === height)) return;
-    const center = this.getProjection(basis.width, basis.height).invert?.([
-      basis.width / 2 - this.state.pan.x,
-      basis.height / 2 - this.state.pan.y,
-    ]);
-    const point = center && this.getProjection(width, height)(center);
-    if (point) this.state.pan = { x: width / 2 - point[0], y: height / 2 - point[1] };
+    if (basis.width === 0 || basis.height === 0 || (basis.width === width && basis.height === height)) return;
+    const ratio = this.getProjection(width, height).scale() / this.getProjection(basis.width, basis.height).scale();
+    this.state.pan = { x: this.state.pan.x * ratio, y: this.state.pan.y * ratio };
   }
 
   public destroy(): void {
