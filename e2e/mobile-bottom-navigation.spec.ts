@@ -76,6 +76,18 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(section.locator('.map-controls .map-locate')).toBeVisible();
   });
 
+  test('the More drawer scrolls its footer clear of the tab bar (#11157)', async ({ page }) => {
+    await page.locator('[data-mobile-tab="more"]').click();
+    const menu = page.locator('#mobileMenu');
+    await expect(menu).toHaveClass(/open/);
+    await menu.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await expect.poll(async () => {
+      const versionBox = await page.locator('.mobile-menu-version').boundingBox();
+      const barBox = await page.locator('#mobileTabBar').boundingBox();
+      return (versionBox?.y ?? Infinity) + (versionBox?.height ?? 0) <= (barBox?.y ?? 0);
+    }).toBe(true);
+  });
+
   test('the last dashboard tile scrolls clear of the tab bar (#11157)', async ({ page }) => {
     const tile = page.locator('#panelsGrid > .add-panel-block:visible').last();
     await expect(tile).toBeVisible();
