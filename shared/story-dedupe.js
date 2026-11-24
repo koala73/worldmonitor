@@ -38,14 +38,17 @@ import { candidateTokens, cosineSimilarity, storyVector, STORY_SIMILARITY_THRESH
 export const MIN_SHARED_TERMS = 4;
 export const MIN_SHARED_TERM_RATIO = 0.5;
 
-// candidateTokens drops connector words and short tokens, and adds a
-// de-pluralized copy ("sanctions" and "sanction"). Keep one form per word, and
-// drop the character pairs it emits for non-Latin scripts, which would count
-// as many shared terms for one shared word.
+// candidateTokens drops connector words and short tokens, and adds a copy
+// without the final "s" ("sanctions" and "sanction", but also "congress" and
+// "congres"). Skip that copy and fold the word itself the same way, so each
+// word is one term and "sanction" in one headline matches "sanctions" in
+// another. Also drop the character pairs it emits for non-Latin scripts, which
+// would count as many shared terms for one shared word.
 function storyTerms(title) {
+  const tokens = candidateTokens(title);
   const terms = new Set();
-  for (const token of candidateTokens(title)) {
-    if (token.length < 3) continue;
+  for (const token of tokens) {
+    if (token.length < 3 || tokens.has(`${token}s`)) continue;
     terms.add(token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token);
   }
   return terms;

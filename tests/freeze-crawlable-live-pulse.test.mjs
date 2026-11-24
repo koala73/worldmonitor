@@ -2540,6 +2540,17 @@ describe('strip headline story identity (#11190)', () => {
 
     assert.equal(rows.length, 3);
   });
+
+  // Words ending in "ss" must count once: "congress" and "access" are each one
+  // shared term here, three in all, under the four-term floor.
+  it('counts a word ending in ss as one shared term', () => {
+    const { rows } = selectFrozenHeadlines(digest([
+      item('Congress blocks access to Pentagon budget', 'Reuters', 'https://www.reuters.com/a', 60),
+      item('Congress grants access to Pentagon archives', 'AP News', 'https://apnews.com/b', 55),
+    ]), 4);
+
+    assert.equal(rows.length, 2);
+  });
 });
 
 // One wire story reaches the flattened strip selection through several of a
