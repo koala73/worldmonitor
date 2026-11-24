@@ -222,6 +222,7 @@ const DENIAL_REASONS: ReadonlySet<string> = new Set<McpDenialReason>([
   'allowance-exhausted',
   'upgrade-required',
   'lapsed-subscription',
+  'payment-failed',
   'quota-exceeded',
 ]);
 

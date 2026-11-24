@@ -7,6 +7,7 @@
  */
 
 import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
+import { BILLING_PORTAL_URL } from '../../server/_shared/entitlement-check';
 import { recommendedPlanFor, recommendedPlanForFeature, START_UPGRADE_TOOL } from './checkout';
 import type { McpPlanFeature } from './types';
 
@@ -29,7 +30,8 @@ export type McpStaticDenialReason =
   | 'no-account'
   | 'allowance-exhausted'
   | 'upgrade-required'
-  | 'lapsed-subscription';
+  | 'lapsed-subscription'
+  | 'payment-failed';
 
 /** Machine-readable denial reasons agents can branch on. */
 export type McpDenialReason = McpStaticDenialReason | 'quota-exceeded';
@@ -55,9 +57,14 @@ type McpUpgradeableReason = 'allowance-exhausted' | 'upgrade-required' | 'quota-
  * flag the caller lacks (#10451). The reason stays `upgrade-required`, so
  * clients that branch on it keep working; the copy and the recommended plan
  * name the plans that carry the flag instead of the next tier up.
+ *
+ * `paymentFailed` marks a spent free allowance whose owner is paused after a
+ * failed renewal (#11213). It carries no `upgradeFrom`: checkout is blocked
+ * while the hold lasts, so the denial points at the billing portal instead.
  */
 export type McpDenial =
   | { reason: McpStaticDenialReason; upgradeFrom?: string }
+  | { reason: 'allowance-exhausted'; paymentFailed: true; upgradeFrom?: undefined }
   | { reason: 'upgrade-required'; planFeature: McpPlanFeature; upgradeFrom?: string }
   | {
       reason: 'quota-exceeded';
@@ -120,6 +127,10 @@ function checkoutHint(denial: McpDenial): McpCheckoutHint {
   return denial.upgradeFrom === 'free' ? { recommendedPlan, checkoutTool: START_UPGRADE_TOOL } : { recommendedPlan };
 }
 
+/** States the pause without a link, so inform-only hosts can keep it as is. */
+export const PAYMENT_FAILED_MCP_MESSAGE =
+  'Payment failed, so Pro access is paused while the charge is retried. Re-authenticating will not help.';
+
 const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: string }> = {
   'no-account': {
     message: 'Authentication required to call this tool.',
@@ -159,7 +170,22 @@ const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: st
       'Resubscribe at the upgrade URL. The existing credential stays valid — '
       + 're-authenticating will not restore access.',
   },
+  // #11213: the subscription is paused, not ended. Dodo keeps retrying the
+  // charge and blocks a second checkout meanwhile, so the only way back is a
+  // working payment method. `upgradeUrl` is the billing portal for this reason.
+  'payment-failed': {
+    message: PAYMENT_FAILED_MCP_MESSAGE,
+    nextStep:
+      `Update the payment method in the billing portal at ${BILLING_PORTAL_URL}. `
+      + 'Pro access returns once the retried charge succeeds. A new checkout is blocked while the payment is retried, '
+      + 'and re-authenticating will not restore access.',
+  },
 };
+
+const PAYMENT_FAILED_ALLOWANCE_NEXT_STEP =
+  'Pro access is paused because a payment failed, so this account is on the free allowance. '
+  + `Update the payment method at ${BILLING_PORTAL_URL} to restore Pro, `
+  + 'or wait until the next UTC day for another free allowance window.';
 
 /**
  * Copy for a plan-feature refusal. The message only states which plans include
@@ -234,6 +260,9 @@ const INFORM_ONLY_NEXT_STEP: Record<McpStaticDenialReason, string> = {
   'lapsed-subscription':
     'The subscription is no longer active. The existing credential stays valid — '
     + 're-authenticating will not restore access.',
+  'payment-failed':
+    'Pro access is paused because the last payment failed. It returns once the payment method on the account '
+    + 'is updated. Re-authenticating will not restore access.',
 };
 
 /**
@@ -299,6 +328,16 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
       },
     };
   }
+  if ('paymentFailed' in denial) {
+    return {
+      message: DENIAL_COPY[denial.reason].message,
+      data: {
+        reason: denial.reason,
+        nextStep: PAYMENT_FAILED_ALLOWANCE_NEXT_STEP,
+        upgradeUrl: BILLING_PORTAL_URL,
+      },
+    };
+  }
   if ('planFeature' in denial) {
     const copy = PLAN_FEATURE_COPY[denial.planFeature];
     return {
@@ -318,7 +357,7 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
     data: {
       reason: denial.reason,
       nextStep: copy.nextStep,
-      upgradeUrl: MCP_UPGRADE_URL,
+      upgradeUrl: denial.reason === 'payment-failed' ? BILLING_PORTAL_URL : MCP_UPGRADE_URL,
       ...checkoutHint(denial),
     },
   };

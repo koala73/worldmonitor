@@ -23,7 +23,7 @@ import {
 } from './_idempotency.js';
 import { assertNotificationWebhookRegistrationUrlSafe, blockedTeamsWebhookUrlReason } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
-import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+import { getBillingVerificationDenial, getEntitlements, isTerminalBillingStatus } from '../server/_shared/entitlement-check';
 import { hasCurrentEntitlementCoverage } from '../server/_shared/entitlement-coverage';
 import {
   RATE_LIMIT_DEGRADED_HEADERS,
@@ -81,10 +81,10 @@ const DENIAL_CAPTURE_DEDUP_WINDOW_MS = 60_000;
 const lastDenialCaptureAtByCode = new Map<string, number>();
 
 function shouldCaptureDenial(code: string | null, now: number): boolean {
-  // `subscription_lapsed` is a confirmed terminal answer already visible in
-  // Convex — eventing it would turn ordinary churn into a permanent Sentry
-  // stream and bury the anomaly.
-  if (!code || code === 'subscription_lapsed') return false;
+  // A lapse or a payment-failed pause is a confirmed terminal answer already
+  // visible in Convex — eventing it would turn ordinary churn into a permanent
+  // Sentry stream and bury the anomaly.
+  if (!code || isTerminalBillingStatus(code)) return false;
   const last = lastDenialCaptureAtByCode.get(code);
   if (last !== undefined && now - last < DENIAL_CAPTURE_DEDUP_WINDOW_MS) return false;
   lastDenialCaptureAtByCode.set(code, now);
@@ -474,13 +474,13 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       // after which the refreshed entitlement restores their paid ladder.
       // Making that state 503 instead would hand every never-subscribed free
       // user a retryable error in place of a working free tier.
-      // A confirmed `subscription_lapsed` is NOT denied here: the provider
-      // says coverage ended, so the account is a free account and gets the
-      // free ladder like any other tier-0 caller. The old terminal 403 left a
+      // A confirmed `subscription_lapsed` or `payment_failed` is NOT denied
+      // here: the provider says paid access ended, so the account is a free
+      // account and gets the free ladder like any other tier-0 caller. The old terminal 403 left a
       // churned subscriber unable to disable or delete anything while the
       // relay (#4273) began delivering their leftover scoped rule.
       const rawBillingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
-      const billingDenial = rawBillingDenial?.headers.get('X-Billing-Verification') === 'subscription_lapsed'
+      const billingDenial = isTerminalBillingStatus(rawBillingDenial?.headers.get('X-Billing-Verification'))
         ? null
         : rawBillingDenial;
       if (billingDenial) {

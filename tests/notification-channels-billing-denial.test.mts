@@ -147,14 +147,14 @@ describe('/api/notification-channels POST billing-verification capture', () => {
     assert.equal(captures.length, 1, 'second denial inside the dedup window must not re-emit');
   });
 
-  it('does NOT report a confirmed lapse — that is ordinary churn, already visible in Convex', async () => {
+  for (const terminal of ['subscription_lapsed', 'payment_failed'] as const) it(`does NOT report a confirmed ${terminal} — that is ordinary churn, already visible in Convex`, async () => {
     const mod = await importFreshNotificationChannels();
     const captures: Capture[] = [];
     mod.__resetDenialCaptureDedupForTests();
     mod.__setNotificationChannelsDepsForTests({
       checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-lapsed-nocapture' }),
-      getEntitlements: async () => freeShapedEntitlements({ billingStatus: 'subscription_lapsed' }),
+      getEntitlements: async () => freeShapedEntitlements({ billingStatus: terminal }),
       fetch: async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
       captureSilentError: makeCaptureSpy(captures),
     });
@@ -163,7 +163,7 @@ describe('/api/notification-channels POST billing-verification capture', () => {
     // Past-the-ladder channel: denied like any free caller, never captured.
     const res = await mod.default(makeProChannelRequest(), ctx);
     assert.equal(res.status, 403);
-    assert.notEqual(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    assert.notEqual(res.headers.get('X-Billing-Verification'), terminal);
     assert.deepEqual(captures, []);
   });
 
@@ -263,7 +263,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
     });
   });
 
-  it('admits a lapsed subscriber to the free ladder so leftover alerts can be turned off', async () => {
+  for (const terminal of ['subscription_lapsed', 'payment_failed'] as const) it(`admits a ${terminal} subscriber to the free ladder so leftover alerts can be turned off`, async () => {
     // #4273: the relay now delivers a tier-0 account's scoped rule. A terminal
     // 403 here left a churned subscriber receiving alerts with no way to
     // disable them in-app, so a confirmed lapse is a free caller instead.
@@ -273,7 +273,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
       checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-lapsed' }),
       getEntitlements: async () => freeShapedEntitlements({
-        billingStatus: 'subscription_lapsed',
+        billingStatus: terminal,
       }),
       fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
         relayBodies.push(JSON.parse(String(init?.body ?? '{}')));

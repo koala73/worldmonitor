@@ -1,4 +1,6 @@
-import { hasCurrentEntitlementCoverage } from './entitlement-coverage.js';
+import { hasCurrentEntitlementCoverage, isTerminalBillingStatus } from './entitlement-coverage.js';
+
+export { isTerminalBillingStatus, TERMINAL_BILLING_STATUSES } from './entitlement-coverage.js';
 /**
  * Entitlement enforcement middleware for the Vercel API gateway.
  *
@@ -39,6 +41,7 @@ import { getCachedJson, setCachedJson } from './redis.js';
 // four surfaces cannot silently drift when a status is added.
 export type BillingVerificationStatus =
   | 'subscription_lapsed'
+  | 'payment_failed'
   | 'renewal_verification_pending'
   | 'renewal_verification_failed';
 
@@ -470,14 +473,14 @@ function clampRetryAfterSeconds(raw: number | undefined): number {
 function isBillingVerificationStatus(
   value: unknown,
 ): value is NonNullable<CachedEntitlements['billingStatus']> {
-  return value === 'subscription_lapsed'
+  return isTerminalBillingStatus(value)
     || value === 'renewal_verification_pending'
     || value === 'renewal_verification_failed';
 }
 
 function billingMarkerTtlSeconds(entitlements: CachedEntitlements): number | null {
   if (!isBillingVerificationStatus(entitlements.billingStatus)) return null;
-  if (entitlements.billingStatus === 'subscription_lapsed') {
+  if (isTerminalBillingStatus(entitlements.billingStatus)) {
     return LAPSED_BILLING_MARKER_TTL_SECONDS;
   }
   return clampRetryAfterSeconds(entitlements.retryAfterSeconds);
@@ -820,6 +823,16 @@ export type BillingVerificationInput = Pick<
   'billingStatus' | 'retryAfterSeconds' | 'verificationUnavailable'
 >;
 
+/** Where a paused subscriber updates their card. Same URL as api/customer-portal.ts's fallback. */
+export const BILLING_PORTAL_URL = 'https://www.worldmonitor.app/dashboard?billing=portal';
+
+/**
+ * A paused subscription cannot be fixed by buying again: checkout is blocked
+ * while the hold lasts, so the copy sends the caller to the billing portal.
+ */
+export const PAYMENT_FAILED_MESSAGE =
+  `Payment failed. Update your payment method at ${BILLING_PORTAL_URL} to restore access.`;
+
 /** Wire code for a billing-verification denial, mirrored into `X-Billing-Verification`. */
 export type BillingVerificationCode =
   | BillingVerificationStatus
@@ -834,8 +847,8 @@ export function isBillingVerificationCode(
 
 export interface BillingVerificationDenial {
   /**
-   * False ONLY for a lapse the provider confirmed. Everything else in this
-   * union is a statement about the *verification*, not the subscription, so a
+   * False ONLY for a state the provider confirmed (lapsed or paused). Everything
+   * else in this union is a statement about the *verification*, not the subscription, so a
    * caller that renders it as terminal reproduces #5600.
    */
   retryable: boolean;
@@ -897,15 +910,14 @@ export function classifyBillingVerification(
   const status = entitlements?.billingStatus;
   if (!isBillingVerificationStatus(status)) return null;
 
-  if (status === 'subscription_lapsed') {
-    // The ONLY terminal member: the provider confirmed coverage ended, so
-    // retrying cannot flip it (tests/premium-denial.test.mts pins the same
-    // reading on the client side).
+  if (isTerminalBillingStatus(status)) {
+    // The provider confirmed the state, so retrying cannot flip it
+    // (tests/premium-denial.test.mts pins the same reading on the client side).
     return {
       retryable: false,
       code: status,
       retryAfterSeconds: 0,
-      message: 'Subscription lapsed',
+      message: status === 'payment_failed' ? PAYMENT_FAILED_MESSAGE : 'Subscription lapsed',
       status: 403,
     };
   }
