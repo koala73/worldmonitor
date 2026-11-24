@@ -28,7 +28,7 @@ tags:
 
 The app-perf hill-climb scores a build with one composite number (lower is better) from a headless Chromium run under 4x CPU throttle, plus a mobile holdout. The bench script is a local file on the hill-climb branch, not committed to `main`.
 
-On 2026-11-24 the first A/B reported 109.5 for `main` and 82.2 for the candidate, a 25% drop, and the mobile holdout seemed to agree (642 to 445). After controlling the setup, the same candidate measured 104.2 against 81.7 over five alternating rounds. Roughly 8 of those 22 points were edge CPU under 2 ms per request, roughly 4 were the time a news request starts, and roughly 9 were main-thread lag and bytes on the SVG map renderer. The headline had overstated the user-visible gain by about 2x, and the holdout was not an independent check. The work shipped as #11235 (KV serve) and #11237 (SVG map).
+On 2026-11-24 the first A/B reported 109.5 for `main` and 82.2 for the candidate, a 25% drop, and the mobile holdout seemed to agree (642 to 445). After controlling the setup, the same candidate measured 81.7 against a 104.2 baseline over five alternating rounds. Roughly 8 of those 22 points were edge CPU under 2 ms per request, roughly 4 were the time a news request starts, and roughly 9 were main-thread lag and bytes on the SVG map renderer. The headline had overstated the user-visible gain by about 2x, and the holdout was not an independent check. The work was opened as #11235 (KV serve) and #11237 (SVG map).
 
 ## Guidance
 
