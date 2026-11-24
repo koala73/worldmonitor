@@ -235,6 +235,8 @@ describe('FirecrawlProvider fetch, search and validate', () => {
       query: 'bread', limit: 2, includeDomains: ['retailer.example'],
       scrapeOptions: { formats: ['markdown'], maxAge: 0 },
     });
+    // v2 defaults to 60 s; the server must give up before the 30 s client abort.
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1].body)).timeout).toBeLessThan(30_000);
     await expect(provider.search('missing')).resolves.toEqual([]);
   });
 });

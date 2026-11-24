@@ -102,6 +102,8 @@ export class FirecrawlProvider implements AcquisitionProvider {
         limit: opts.numResults ?? 10,
         includeDomains: opts.includeDomains,
         scrapeOptions: { formats: ['markdown'], maxAge: 0 },
+        // v2 defaults to 60 s; finish server-side before the client abort below.
+        timeout: 25_000,
       }),
       // Same bound as fetch/extract: a wedged provider connection must not
       // eat the whole run budget for one retailer.
