@@ -7,6 +7,7 @@ const SITE_DATA_BLOCKED_MESSAGE = 'Your browser is blocking cookies and site dat
 
 let moduleUrl: string;
 let browser: Window;
+let autoChoice: MutationObserver | undefined;
 const originalGlobals = new Map<string, PropertyDescriptor | undefined>();
 
 before(async () => {
@@ -30,6 +31,10 @@ before(async () => {
 });
 
 afterEach(async () => {
+  // happyDOM.abort() leaves observers attached, and checkout's real 200 ms
+  // interstitial removal still mutates this document after the test ends.
+  autoChoice?.disconnect();
+  autoChoice = undefined;
   await browser?.happyDOM.abort();
   mock.restoreAll();
   for (const [key, descriptor] of originalGlobals) {
@@ -103,8 +108,8 @@ async function fixture(options: {
   }
   const authChoice = options.authChoice === undefined ? /create account/i : options.authChoice;
   if (authChoice) {
-    new browser.MutationObserver(() => chooserButton(authChoice)?.click())
-      .observe(browser.document.body, { childList: true });
+    autoChoice = new browser.MutationObserver(() => chooserButton(authChoice)?.click());
+    autoChoice.observe(browser.document.body, { childList: true });
   }
   const checkout = await import(`${moduleUrl}#${Math.random()}`);
   const phases: Array<{ kind: string; productId?: string }> = [];
