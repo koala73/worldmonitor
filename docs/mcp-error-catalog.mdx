@@ -388,7 +388,7 @@ A member's data calls (a data `tools/call` and a data-bearing `resources/read`) 
 }
 ```
 
-`recommendedPlan` and `checkoutTool` follow the checkout hint rules under `-32002` above. `start_upgrade` spends no allowance, so it still works after this denial. A paused account (`reason: "payment-failed"` above) gets neither field, and its `nextStep` names the billing portal: `Paid access is paused after a failed payment. Update the payment method at https://www.worldmonitor.app/dashboard?billing=portal, or wait for the next UTC day.`
+`recommendedPlan` and `checkoutTool` follow the checkout hint rules under `-32002` above. `start_upgrade` spends no allowance, so it still works after this denial. A paused account (`reason: "payment-failed"` above) gets neither field. It gets `paymentFailed: true` instead, and its `nextStep` names the billing portal: `Paid access is paused after a failed payment. Update the payment method at https://www.worldmonitor.app/dashboard?billing=portal, or wait for the next UTC day.`
 
 **`start_upgrade` checkout limit — HTTP 429 + `Retry-After`.** The tool shares the per-account checkout limit with the pricing page. When it trips, the response is `-32029` with message `Checkout is temporarily rate limited. Retry shortly.` and `data: { reason: "checkout-rate-limited", retryAfterSeconds }`. Honour `Retry-After`.
 

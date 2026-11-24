@@ -93,6 +93,18 @@ describe('a paused subscriber over MCP', () => {
     assert.doesNotMatch(body.error.data.nextStep, /https?:\/\/|subscribe|checkout|\bbuy\b/i);
     assert.doesNotMatch(body.error.message, /https?:\/\/|subscribe|checkout|\bbuy\b/i);
   });
+
+  it('keeps the card-update advice when the allowance runs out on ChatGPT', async () => {
+    const { response, body } = await invoke(PAUSED, callBody(FREE_ACCOUNT_CACHE_TOOL.name, {}), {
+      pipelineOpts: { initialCount: 5 },
+      userAgent: CHATGPT_UA,
+    });
+    assert.equal(response.status, 429);
+    assert.equal(body.error.data.reason, 'allowance-exhausted');
+    assert.equal('upgradeUrl' in body.error.data, false);
+    assert.match(body.error.data.nextStep, /payment method/i);
+    assert.doesNotMatch(body.error.data.nextStep, /https?:\/\/|subscribe|checkout|\bbuy\b/i);
+  });
 });
 
 describe('the callers around a paused subscriber keep their own answers', () => {

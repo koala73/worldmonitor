@@ -100,7 +100,7 @@ interface McpCheckoutHint {
  * when the caller has a plan to move to.
  */
 export type McpStructuredDenial =
-  | ({ reason: McpStaticDenialReason; nextStep: string; upgradeUrl: string } & McpCheckoutHint)
+  | ({ reason: McpStaticDenialReason; nextStep: string; upgradeUrl: string; paymentFailed?: true } & McpCheckoutHint)
   | ({ reason: 'upgrade-required'; nextStep: string; upgradeUrl: string; planFeature: McpPlanFeature } & McpCheckoutHint)
   | ({
       reason: 'quota-exceeded';
@@ -270,9 +270,12 @@ const ACCOUNT_SAFETY_LIMIT_NEXT_STEP =
   + "Contact the account's administrator if the account needs a higher limit.";
 
 /** `nextStep` for an inform-only host, from the denial's own `data`. */
-export function informOnlyNextStep(data: { reason: McpDenialReason; sharedWithRestApi?: boolean; allowance?: unknown; planFeature?: unknown }): string {
+export function informOnlyNextStep(data: { reason: McpDenialReason; sharedWithRestApi?: boolean; allowance?: unknown; planFeature?: unknown; paymentFailed?: unknown }): string {
   if (data.reason === 'upgrade-required' && isPlanFeature(data.planFeature)) {
     return PLAN_FEATURE_COPY[data.planFeature].informOnlyNextStep;
+  }
+  if (data.reason === 'allowance-exhausted' && data.paymentFailed === true) {
+    return `${INFORM_ONLY_NEXT_STEP['allowance-exhausted']} ${INFORM_ONLY_NEXT_STEP['payment-failed']}`;
   }
   if (data.reason !== 'quota-exceeded') return INFORM_ONLY_NEXT_STEP[data.reason];
   if (typeof data.allowance === 'number') return ACCOUNT_SAFETY_LIMIT_NEXT_STEP;
@@ -329,6 +332,7 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
       data: {
         reason: denial.reason,
         nextStep: PAYMENT_FAILED_ALLOWANCE_NEXT_STEP,
+        paymentFailed: true,
         upgradeUrl: BILLING_PORTAL_URL,
       },
     };

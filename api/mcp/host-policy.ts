@@ -239,6 +239,7 @@ function rewriteError(message: unknown): boolean {
     sharedWithRestApi: data.sharedWithRestApi === true,
     allowance: data.allowance,
     planFeature: data.planFeature,
+    paymentFailed: data.paymentFailed,
   });
   delete data.recommendedPlan;
   delete data.checkoutTool;
