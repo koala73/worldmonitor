@@ -291,6 +291,8 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
   const learnedRequest = firecrawlRequests.find(({ url }) => url === learnedUrl);
   assert.ok(learnedRequest, 'the learned item used Firecrawl v2');
   assert.equal(learnedRequest.maxAge, 0);
+  // v2's server default is 60 s; it must give up before the seeder's 30 s abort.
+  assert.ok(learnedRequest.timeout < 30_000, 'Firecrawl server timeout fits inside the client abort');
   assert.equal(learnedRequest.formats.length, 1);
   assert.equal(learnedRequest.formats[0].type, 'json');
   assert.equal(learnedRequest.formats[0].schema.type, 'object');

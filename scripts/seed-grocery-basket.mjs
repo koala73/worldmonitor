@@ -148,6 +148,8 @@ async function scrapeFirecrawl(url, item, currency, fxRate) {
         formats: [{ type: 'json', prompt: offerPrompt(item, currency), schema: OFFER_SCHEMA }],
         // Don't publish cached prices as new observations.
         maxAge: 0,
+        // v2 defaults to 60 s; finish server-side before the client abort below.
+        timeout: 25_000,
       }),
       signal: AbortSignal.timeout(30_000),
     });
