@@ -7,10 +7,9 @@ import { build } from 'esbuild';
 
 // Run in the normal unit-shards inventory. These reproducible esbuild + gzip-9
 // budgets are an early warning, not a substitute for Vercel's deployed artifact
-// measurement. MCP reserves 24 KiB below the 1 MiB Edge ceiling; displacement
-// gets a separate 300 KiB growth budget even though it has more platform room.
+// measurement. The MCP endpoint uses Node.js because its complete tool registry
+// exceeds the Edge Function plan limit.
 for (const [entry, budget] of [
-  ['api/mcp.ts', 1024 * 1000],
   ['api/displacement/v1/[rpc].ts', 300 * 1024],
   // Orbital Watch point and country RPCs: about 166 KiB after #10725 added per-mission coverage grids (85 KB minified);
   // the budget leaves room for one more mission grid.
@@ -32,6 +31,11 @@ for (const [entry, budget] of [
 // docs/solutions/performance-issues/zod-named-z-import-bloats-edge-bundle.md
 // Type-only imports (`import type { z }`, `import { type z }`) are erased and stay allowed.
 // Anchoring at line start skips commented-out imports and quoted fixtures.
+test('the MCP endpoint uses Node.js, not the Edge Function size-limited runtime', () => {
+  const source = readFileSync('api/mcp.ts', 'utf8');
+  assert.match(source, /export const config = \{ runtime: ['\"]nodejs['\"] \};/);
+});
+
 function importsZodValueZ(source) {
   for (const [, typeOnly, specifiers] of source.matchAll(/^import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"]zod['"]/gm)) {
     if (typeOnly) continue;
