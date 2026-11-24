@@ -9,6 +9,7 @@
 
 import { readFileSync } from 'node:fs';
 
+import { PRODUCT_CATALOG, PUBLIC_PRODUCT_METADATA } from '../convex/config/productCatalog.ts';
 import { ORGANIZATION_ID, PERSON_ID, SOFTWARE_SHARED_PROPERTIES } from '../src/config/schema-graph-ids.ts';
 import { computeStats } from './docs-stats.mjs';
 
@@ -70,8 +71,20 @@ const STATS = computeStats();
 
 function catalogPlan(planKey) {
   const plan = PRODUCT_FACTS.plans.find((candidate) => candidate.planKey === planKey);
-  if (!Number.isFinite(plan?.price)) throw new Error(`product facts are missing a priced ${planKey} plan`);
-  return plan;
+  if (Number.isFinite(plan?.price)) return plan;
+
+  const sourcePlan = PRODUCT_CATALOG[planKey];
+  if (!Number.isFinite(sourcePlan?.priceCents)) {
+    throw new Error(`product facts are missing a priced ${planKey} plan`);
+  }
+  return {
+    planKey,
+    name: sourcePlan.displayName,
+    price: sourcePlan.priceCents / 100,
+    priceCurrency: PUBLIC_PRODUCT_METADATA.currency,
+    availability: PUBLIC_PRODUCT_METADATA.availability,
+    url: PUBLIC_PRODUCT_METADATA.pricingUrl,
+  };
 }
 
 function catalogLimit(tier, field) {
@@ -80,7 +93,10 @@ function catalogLimit(tier, field) {
   return value.toLocaleString('en-US');
 }
 
-const CATALOG_PRICES = new Set(PRODUCT_FACTS.plans.map((plan) => plan.price).filter(Number.isFinite));
+const CATALOG_PRICES = new Set([
+  ...PRODUCT_FACTS.plans.map((plan) => plan.price),
+  ...Object.values(PRODUCT_CATALOG).map((plan) => plan.priceCents / 100),
+].filter(Number.isFinite));
 // A currency amount in entry prose: $65,000, £40,500, $9.54.
 const PROSE_AMOUNT_RE = /[$£€]\d[\d,]*(?:\.\d+)?/g;
 

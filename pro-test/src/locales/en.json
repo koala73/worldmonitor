@@ -26,11 +26,11 @@
       "free": {
         "description": "Get started with the essentials",
         "features": [
-          "Core dashboard panels",
-          "Global news feed",
-          "Earthquake & weather alerts",
-          "Basic map view",
-          "3 dashboard tabs"
+          "Full Bhumi-Watch dashboard and map layers",
+          "Global news, markets, alerts, and country briefs",
+          "Analyst tools, historical intelligence, and custom widgets",
+          "AI digests, alert rules, and MCP + SDK access",
+          "10 dashboards and unlimited followed countries"
         ],
         "cta": "Get Started"
       },
@@ -55,8 +55,8 @@
       "proBusiness": {
         "description": "The Pro dashboard, licensed for work",
         "features": [
-          "Everything in Pro",
-          "Use for client work, internal tools & reporting",
+          "Commercial license for client work, internal tools & reporting",
+          "Full Bhumi-Watch dashboard included",
           "Data export — CSV, JSON & PDF reports",
           "25 custom dashboards (vs 10)",
           "MCP + SDK: 250 calls/day (vs 50)",
@@ -72,7 +72,7 @@
       "api": {
         "description": "Build internal tools on live intelligence data",
         "features": [
-          "Full Pro dashboard included (1 named user)",
+          "Full Bhumi-Watch dashboard included (1 named user)",
           "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
           "License / API key included",
           "Real-time data streams",
@@ -91,7 +91,7 @@
           "R1–R3 redistribution rights for customer-facing products",
           "300 requests/minute",
           "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
-          "5 Pro licenses — invite users at any corporate email domain",
+          "5 named user seats for your organization",
           "Shared team dashboards",
           "Priority support",
           "Travel risk assessment drafts in the dashboard and over MCP"
@@ -103,7 +103,7 @@
       "enterprise": {
         "description": "Custom solutions for organizations",
         "features": [
-          "Everything in Pro + API",
+          "Full Bhumi-Watch dashboard and API capabilities",
           "Shared team dashboards",
           "10,000 API requests a day, more by contract",
           "Dedicated support",
@@ -361,10 +361,10 @@
   "soonBadge": "Soon",
   "welcome": {
     "meta": {
-    "title": "Bhumi-Watch | Paramount International School",
-    "description": "Bhumi-Watch by Paramount International School is a free live intelligence dashboard for conflicts, shipping, flights, markets and cyber.",
-    "ogTitle": "Bhumi-Watch | Paramount International School",
-    "ogDescription": "Bhumi-Watch by Paramount International School is a free live intelligence dashboard for conflicts, shipping, flights, markets and cyber."
+      "title": "Bhumi-Watch | Paramount International School",
+      "description": "Bhumi-Watch by Paramount International School is a free live intelligence dashboard for conflicts, shipping, flights, markets and cyber.",
+      "ogTitle": "Bhumi-Watch | Paramount International School",
+      "ogDescription": "Bhumi-Watch by Paramount International School is a free live intelligence dashboard for conflicts, shipping, flights, markets and cyber."
     },
     "nav": {
       "useCases": "Use cases",

@@ -557,7 +557,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     selfServe: false,
     highlighted: false,
     currentForCheckout: false,
-    publicVisible: false,
+    publicVisible: true,
   },
 
   pro_annual: {
@@ -572,7 +572,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     selfServe: false,
     highlighted: false,
     currentForCheckout: false,
-    publicVisible: false,
+    publicVisible: true,
   },
 
   pro_business_monthly: {
@@ -580,7 +580,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     // 2026-07-25 under the activation runbook (plan 2026-07-25-001).
     dodoProductId: "pdt_0NjyFDbhURh2oROgPIU3G",
     planKey: "pro_business_monthly",
-    displayName: "Business Monthly"}},{
+    displayName: "Business Monthly",
     priceCents: 4999,
     billingPeriod: "monthly",
     tierGroup: "pro_business",
@@ -612,7 +612,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     // Live Dodo product "Pro Business Yearly" (USD 449.99/year), created 2026-07-26.
     dodoProductId: "pdt_0Nk072fxPUcHWivZRtlQW",
     planKey: "pro_business_annual",
-    displayName: "Business Annual"}},{
+    displayName: "Business Annual",
     priceCents: 44999,
     billingPeriod: "annual",
     tierGroup: "pro_business",

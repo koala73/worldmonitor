@@ -56,9 +56,7 @@ export class MobilePanelNav {
     }
     this.element.replaceChildren(...categories.map(({ key, label }) => {
       const chip = document.createElement('button');
-      chip.className = key === PRO_CATEGORY
-        ? 'mobile-panel-nav-chip mobile-panel-nav-chip-pro'
-        : 'mobile-panel-nav-chip';
+      chip.className = 'mobile-panel-nav-chip';
       chip.dataset.category = key;
       chip.textContent = label;
       this.setChipState(chip, key === this.activeCategory);

@@ -31,6 +31,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Best for: Personal research, situational awareness, markets, geopolitics and news monitoring
 - Includes: the complete Bhumi-Watch dashboard, every standard map layer, all analyst tools, historical intelligence, custom widgets, AI digests, alert rules, all followed countries, and the Resilience layer
 - Limits: 10 dashboards, 500 dashboard-AI requests/day, 50 MCP + SDK calls/day, and two desktop keys
+- MCP: 50 cached-data MCP calls/day with a free account; other MCP tools require a paid plan
 - MCP: all standard tools are available to signed-in free accounts; API-tier routes retain their separate API-plan requirements
 - License: Personal use; paid commercial licensing is not required for individual use
 
