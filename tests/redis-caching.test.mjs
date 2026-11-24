@@ -2510,6 +2510,93 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     }
   });
 
+  // #11217: the model read the " - Compliance Week" byline as the institution.
+  const kuwaitHeadline = {
+    title: "Financial firms facilitated 'breathtaking' corrupt payments to director of Kuwait public pension fund - Compliance Week",
+    source: 'Sovereign Wealth',
+    url: 'https://news.google.com/rss/articles/CBMi6gFBVV95cUxOQzFm?oc=5',
+  };
+  const longHeadline = `Kuwait investment authority probe widens - the sovereign fund board says reforms will follow ${'a long review '.repeat(6)}- Kuwait Times`;
+  const kuwaitStory = "Financial firms facilitated 'breathtaking' corrupt payments to director of Kuwait public pension fund";
+
+  it('keeps a Google News publisher byline out of the brief prompt but in the returned source', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const userPrompts = [];
+    installIntelFetchMock({ store: new Map(), setKeys: [], userPrompts, counters: { llmCalls: 0 } });
+    const context = `Source [1]: ${JSON.stringify(kuwaitHeadline)}`;
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=KW&context=${encodeURIComponent(context)}`),
+        { countryCode: 'KW' },
+      );
+      assert.match(userPrompts[0], /\[1\] Financial firms facilitated/);
+      assert.doesNotMatch(userPrompts[0], /Compliance Week/);
+      assert.match(out.brief, /Kuwait public pension fund \[1\]/);
+      assert.equal(out.sources[0].title, kuwaitHeadline.title, 'the returned source keeps its publisher credit');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('keeps a Google News publisher byline out of the shared digest brief prompt', async () => {
+    const { module, cleanup } = await importCountryIntelBrief();
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const userPrompts = [];
+    const store = new Map([['news:digest:v1:full:en', JSON.stringify([
+      { title: kuwaitHeadline.title, source: kuwaitHeadline.source, link: kuwaitHeadline.url },
+      { title: longHeadline, source: 'Gulf Investments', link: 'https://news.google.com/rss/articles/CBMiLong?oc=5' },
+    ])]]);
+    installIntelFetchMock({ store, setKeys: [], userPrompts, counters: { llmCalls: 0 } });
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=KW'),
+        { countryCode: 'KW' },
+      );
+      assert.equal(userPrompts.length, 1);
+      assert.doesNotMatch(userPrompts[0], /Compliance Week/);
+      assert.match(userPrompts[0], /- the sovereign fund board says reforms will follow/, 'a clipped title keeps the text after its own dash');
+      assert.equal(out.sources[0].title, kuwaitHeadline.title);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('withholds a claim that names a source publisher byline as an entity', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    installIntelFetchMock({
+      store: new Map(), setKeys: [], userPrompts: [], counters: { llmCalls: 0 },
+      completion: JSON.stringify({
+        situation: [
+          { text: kuwaitStory, sources: [1], evidence: [] },
+          { text: 'Compliance Week oversees the director of the Kuwait public pension fund', sources: [1], evidence: [] },
+        ],
+        implications: [], risks: [], outlook: [], watch: [],
+      }),
+    });
+    const context = `Source [1]: ${JSON.stringify(kuwaitHeadline)}`;
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=KW&context=${encodeURIComponent(context)}`),
+        { countryCode: 'KW' },
+      );
+      assert.match(out.brief, /Kuwait public pension fund \[1\]/);
+      assert.doesNotMatch(out.brief, /Compliance Week/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
   it('bounds sourced briefs to numbered titles instead of forcing infrastructure forecasts', async () => {
     const { module, cleanup } = await importCountryIntelBrief({ premium: true });
     const restoreEnv = withEnv(INTEL_TEST_ENV);
