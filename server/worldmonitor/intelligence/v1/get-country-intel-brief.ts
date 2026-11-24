@@ -264,15 +264,33 @@ function storyTitle(source: CountryIntelBriefSource): string {
   return headlineWithoutPublisher(source.title, source.url, source.source);
 }
 
+const SOURCE_CONTEXT_LINE_RE = /^(Source \[\d{1,2}\]:\s*)(\{.*\})$/gm;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Non-English briefs read the raw context, where each source title appears in
-// its Source line and again in the headline lines.
+// its Source line and again in the headline lines. Source lines are rewritten
+// from their parsed JSON, so escaped titles match; a headline is rewritten only
+// when the whole headline is a known source title.
 function withoutSourceBylines(context: string, sources: CountryIntelBriefSource[]): string {
-  let out = context;
+  let out = context.replace(SOURCE_CONTEXT_LINE_RE, (line, prefix: string, json: string) => {
+    try {
+      const payload = JSON.parse(json) as Record<string, unknown>;
+      if (typeof payload?.title !== 'string') return line;
+      const title = headlineWithoutPublisher(payload.title, String(payload.url ?? ''), String(payload.source ?? ''));
+      // Decoding can turn an escaped line separator into a raw one; keep the line single.
+      return sanitizeForPrompt(`${prefix}${JSON.stringify({ ...payload, title })}`).replace(/[\r\n\u2028\u2029]/g, ' ');
+    } catch {
+      return line;
+    }
+  });
   for (const source of sources) {
     const story = storyTitle(source);
     if (story === source.title) continue;
-    out = out.split(JSON.stringify(source.title).slice(1, -1)).join(JSON.stringify(story).slice(1, -1));
-    out = out.split(source.title).join(story);
+    const headline = new RegExp(`(^(?:- |Headlines: )?| \\| )${escapeRegExp(source.title)}(?=$| \\| )`, 'gm');
+    out = out.replace(headline, (_match, lead: string) => `${lead}${story}`);
   }
   return out;
 }
