@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-24",
+  "observedAt": "2026-11-24T05:43:02.052Z",
+  "status": "available",
+  "reason": null,
+  "tool": {
+    "name": "answerrank",
+    "revision": "7bcc853840cf05a92eed6926a3d012fef371753a"
+  },
+  "inputsDigest": "sha256:a04181c95de8f11c01ebb1554638729666545dc8dd85906a51ef26845d1d3f1b",
+  "design": {
+    "questions": 13,
+    "repetitions": 3,
+    "judgeModel": "anthropic/claude-sonnet-5-5",
+    "variants": [
+      "claude",
+      "claude +web",
+      "gpt",
+      "gpt +web",
+      "perplexity"
+    ]
+  },
+  "answers": {
+    "planned": 195,
+    "scored": 195,
+    "unscored": 0,
+    "unscoredByVariant": {}
+  },
+  "overall": {
+    "answers": 195,
+    "mentions": 15,
+    "topPicks": 2,
+    "recommendations": 14,
+    "webAnswers": 117,
+    "searchedAnswers": 89,
+    "citations": 24,
+    "aeoScore": 5.4,
+    "shareOfVoice": 0.05791505791505792
+  },
+  "byVariant": {
+    "claude": {
+      "answers": 39,
+      "mentions": 0,
+      "topPicks": 0,
+      "recommendations": 0,
+      "webAnswers": 0,
+      "searchedAnswers": null,
+      "citations": null,
+      "aeoScore": 0,
+      "shareOfVoice": 0
+    },
+    "claude +web": {
+      "answers": 39,
+      "mentions": 5,
+      "topPicks": 0,
+      "recommendations": 4,
+      "webAnswers": 39,
+      "searchedAnswers": 30,
+      "citations": 4,
+      "aeoScore": 5.3,
+      "shareOfVoice": 0.08928571428571429
+    },
+    "gpt": {
+      "answers": 39,
+      "mentions": 0,
+      "topPicks": 0,
+      "recommendations": 0,
+      "webAnswers": 0,
+      "searchedAnswers": null,
+      "citations": null,
+      "aeoScore": 0,
+      "shareOfVoice": 0
+    },
+    "gpt +web": {
+      "answers": 39,
+      "mentions": 0,
+      "topPicks": 0,
+      "recommendations": 0,
+      "webAnswers": 39,
+      "searchedAnswers": 20,
+      "citations": 2,
+      "aeoScore": 0.5,
+      "shareOfVoice": 0
+    },
+    "perplexity": {
+      "answers": 39,
+      "mentions": 10,
+      "topPicks": 2,
+      "recommendations": 10,
+      "webAnswers": 39,
+      "searchedAnswers": 39,
+      "citations": 18,
+      "aeoScore": 16.9,
+      "shareOfVoice": 0.23255813953488372
+    }
+  },
+  "spendUsd": {
+    "answer": 5.1627,
+    "search": 0.65,
+    "judge": 1.5935,
+    "total": 7.4062
+  },
+  "comparison": {
+    "previousDate": "2026-11-17",
+    "comparable": true,
+    "reason": null,
+    "verdict": "no measurable change",
+    "mentions": {
+      "before": 0.08205128205128205,
+      "after": 0.07692307692307693,
+      "z": -0.19,
+      "verdict": "no measurable change"
+    },
+    "citations": {
+      "before": 0.20512820512820512,
+      "after": 0.20512820512820512,
+      "z": 0,
+      "verdict": "no measurable change"
+    }
+  }
+}

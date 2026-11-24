@@ -64,6 +64,80 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
   });
 
+  test('the More drawer scrolls its footer clear of the tab bar (#11157)', async ({ page }) => {
+    await page.locator('[data-mobile-tab="more"]').click();
+    const menu = page.locator('#mobileMenu');
+    await expect(menu).toHaveClass(/open/);
+    await menu.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await expect.poll(async () => {
+      const versionBox = await page.locator('.mobile-menu-version').boundingBox();
+      const barBox = await page.locator('#mobileTabBar').boundingBox();
+      return (versionBox?.y ?? Infinity) + (versionBox?.height ?? 0) <= (barBox?.y ?? 0);
+    }).toBe(true);
+  });
+
+  test('the last dashboard tile scrolls clear of the tab bar (#11157)', async ({ page }) => {
+    const tile = page.locator('#panelsGrid > .add-panel-block:visible').last();
+    await expect(tile).toBeVisible();
+    await expect.poll(async () => {
+      // Panels keep mounting, so scroll to the current end on every attempt.
+      await page.locator('#main').evaluate((main) => main.scrollTo(0, main.scrollHeight));
+      const tileBox = await tile.boundingBox();
+      const barBox = await page.locator('#mobileTabBar').boundingBox();
+      if (!tileBox || !barBox) return false;
+      return tileBox.y + tileBox.height <= barBox.y;
+    }).toBe(true);
+  });
+
+  test('the Map tab follows map fullscreen however it is toggled (#11157)', async ({ page }) => {
+    const mapTab = page.locator('[data-mobile-tab="map"]');
+    const todayTab = page.locator('[data-mobile-tab="today"]');
+    await page.locator('#mapFullscreenBtn').click();
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+    await page.locator('#mapFullscreenBtn').click();
+    await expect(page.locator('#mapSection')).not.toHaveClass(/live-news-fullscreen/);
+    await expect(todayTab).toHaveAttribute('aria-current', 'page');
+
+    await mapTab.click();
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+    // Cmd/Ctrl+K opens Search over the fullscreen map; closing it (here with
+    // Back) returns to Map.
+    await page.keyboard.press('ControlOrMeta+k');
+    await expect(page.locator('[data-mobile-tab="search"]')).toHaveAttribute('aria-current', 'page');
+    await page.goBack();
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#mapSection')).not.toHaveClass(/live-news-fullscreen/);
+    await expect(todayTab).toHaveAttribute('aria-current', 'page');
+    await expect(mapTab).not.toHaveAttribute('aria-current', 'page');
+  });
+
+  test('re-tapping Search over the fullscreen map closes it and keeps Map active (#11157)', async ({ page }) => {
+    const mapTab = page.locator('[data-mobile-tab="map"]');
+    const searchTab = page.locator('[data-mobile-tab="search"]');
+    await mapTab.click();
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await page.keyboard.press('ControlOrMeta+k');
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveClass(/open/);
+    await expect(searchTab).toHaveAttribute('aria-current', 'page');
+    // The Search tab toggles its own overlay closed; the map is still fullscreen.
+    await searchTab.click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(0, { timeout: 2_000 });
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+
+    // Off the fullscreen map, the same toggle lands on Today.
+    await page.locator('#mapFullscreenBtn').click();
+    await expect(page.locator('#mapSection')).not.toHaveClass(/live-news-fullscreen/);
+    await searchTab.click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveClass(/open/);
+    await searchTab.click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(0, { timeout: 2_000 });
+    await expect(page.locator('[data-mobile-tab="today"]')).toHaveAttribute('aria-current', 'page');
+  });
+
   test('keeps the account entry visible in the header before More opens', async ({ page }) => {
     const headerAuth = page.locator('#authWidgetMount');
     const signIn = headerAuth.locator('.auth-signin-btn');
@@ -348,6 +422,15 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await disablePanels(['oref-sirens', 'intel', 'strategic-risk']);
     await page.locator('[data-mobile-tab="alerts"]').click();
     await expect(page.locator('.toast-notification')).toContainText('No active alerts yet');
+  });
+
+  test('the fullscreen Map view keeps its zoom, time range, Layers and Legend (#11157)', async ({ page }) => {
+    const section = page.locator('#mapSection');
+    await page.locator('[data-mobile-tab="map"]').click();
+    await expect(section).toHaveClass(/live-news-fullscreen/);
+    for (const control of ['.map-controls', '.time-slider', '.layer-toggles', '.map-legend']) {
+      await expect(section.locator(control).first(), control).toBeVisible();
+    }
   });
 });
 

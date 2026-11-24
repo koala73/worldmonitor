@@ -301,6 +301,7 @@
       "scripts/shared/notification-dedup.cjs",
       "scripts/shared/notification-link-suppression.cjs",
       "scripts/shared/notify-fields.cjs",
+      "scripts/shared/publisher-families.js",
       "scripts/shared/story-identity.js"
     ],
     "cronSchedule": null,
@@ -2390,8 +2391,12 @@
       "scripts/package.json",
       "scripts/railpack.json",
       "scripts/seed-country-history.mjs",
+      "scripts/shared/article-url.js",
       "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-mention.js",
       "scripts/shared/country-names.json",
+      "scripts/shared/news-catalog.json",
+      "scripts/shared/publisher-families.js",
       "scripts/shared/rankable-universe.mjs",
       "scripts/shared/sovereign-status.json"
     ],
@@ -2719,6 +2724,7 @@
       "scripts/_seed-utils.mjs",
       "scripts/crawlable-developments.mjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/shared/article-url.js",
       "scripts/shared/brief-llm-core.js",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",

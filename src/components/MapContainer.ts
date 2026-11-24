@@ -86,7 +86,8 @@ import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 
 export type { ScenarioVisualState, ScenarioResult };
 
-export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
+import type { TimeRange } from '@/utils/time-range';
+export type { TimeRange } from '@/utils/time-range';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 
 type PendingCenter = { lat: number; lon: number; zoom?: number; actionToken?: number };

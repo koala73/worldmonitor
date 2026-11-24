@@ -231,4 +231,25 @@ describe('notification relay email delivery', () => {
     assert.match(email.html, /Read the original report/);
     assert.match(email.html, /The report opens on www\.egyptindependent\.com\./);
   });
+
+  it('shows the publishers used to score related headlines, counting Mehr once', async () => {
+    sent.length = 0;
+    await relay.processEvent({
+      eventType: 'rss_alert',
+      severity: 'critical',
+      variant: 'full',
+      payload: {
+        title: 'Reports of a shipping disruption near the Strait of Hormuz',
+        source: 'IRNA',
+        link: 'https://en.irna.ir/news/12345',
+        importanceScore: 90,
+        corroborationCount: 1,
+        corroboratedBy: ['label:irna', 'label:mehr news', 'label:mehr news agency', 'label:middle east eye'],
+      },
+    });
+    assert.equal(sent.length, 1);
+    const [email] = sent;
+    assert.match(email.text, /^Source: IRNA · Coverage: 3 independent publishers$/m);
+    assert.match(email.html, />3 independent publishers<\/td>/);
+  });
 });

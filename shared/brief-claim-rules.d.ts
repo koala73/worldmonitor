@@ -22,3 +22,5 @@ export function imageryEvidenceGrounded(
   headlineCount: number,
   evidence: ReadonlyArray<{ kind: string; factText: string }>,
 ): boolean;
+
+export function headlineWithoutPublisher(title: string, url: string, source: string): string;

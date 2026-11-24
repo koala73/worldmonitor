@@ -495,6 +495,36 @@ describe("payments businessSeats inviteSeats", () => {
     ).rejects.toThrow(/OWNER_NOT_BUSINESS/);
   });
 
+  test("a locked failed-renewal hold does not hide the owner's other, active Business subscription", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_locked",
+      status: "on_hold",
+      currentPeriodEnd: NOW + 20 * DAY_MS,
+    });
+    await t.run(async (ctx) => {
+      const locked = await ctx.db.query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_business_locked")).unique();
+      await ctx.db.patch(locked!._id, { accessEndsAt: NOW - DAY_MS });
+    });
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_live",
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+
+    const result = await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.inviteSeats, {
+      emails: ["teammate@acme.com"],
+    });
+    expect(result.invited).toHaveLength(1);
+    const grant = await t.run(async (ctx) => ctx.db.query("businessProGrants").first());
+    expect(grant?.businessSubscriptionId).toBe("sub_business_live");
+  });
+
   test("lapsed Business owner → OWNER_NOT_BUSINESS", async () => {
     const t = convexTest(schema, modules);
     await seedBusinessSubscription(t, {
