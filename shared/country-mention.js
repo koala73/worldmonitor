@@ -86,6 +86,7 @@ const NAME_EXCLUSIONS = {
   IN: ['indian ocean'],
   KR: ['democratic people s republic of korea'],
   MX: ['new mexico'],
+  NE: ['niger state', 'niger delta'],
   NL: ['holland america'],
   SD: ['south sudan'],
   TR: ['turks and caicos'],

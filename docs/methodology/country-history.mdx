@@ -14,9 +14,12 @@ The archive starts when its daily worker is activated. It cannot reconstruct ear
 Each UTC date contains a capture time, optional CII and resilience scores, and up to five headlines.
 Each score carries its source observation time and formula identity.
 Headlines retain a title, source, category and HTTP or HTTPS link. The archive stores no article body.
-Selection uses explicit country-name mentions in the English digest headline. It is not a complete event census.
+Selection reads every headline the English edition's feeds published in the preceding 24 hours, the same feed pool the country panel uses. Some of those feeds publish in other languages.
+Headlines from the ranked news digest come first. Other matching headlines follow, newest first, with one per publisher before any publisher repeats.
+A headline matches when its title names the country, uses its demonym or uses a listed alias. It is not a complete event census.
 Ambiguous names require a qualifying alias, such as `Republic of Georgia`, `Guinea Conakry` or `Congo Brazzaville`. This conservative selection can omit relevant headlines.
-News selection covers the preceding 24 hours. A partial digest remains marked `news_partial`.
+Revoked links and aggregator redirect links are never stored.
+A partial digest, or a feed pool with no readable feed, marks the date `news_partial`.
 
 CII is available for its monitored country set. Resilience uses the published ranking cache, including scored countries outside the headline ranking.
 Missing scores remain absent. An observed numeric zero remains zero.
@@ -32,7 +35,7 @@ The response marks these with `ciiVersionBreak` and `resilienceVersionBreak`.
 Compare changes only within a continuous series with the same formula identity.
 The archive does not interpolate missing days or replace them with zero.
 
-No selected headline does not prove that nothing happened. It means the digest selection stored no eligible headline for that country and date.
+No selected headline does not prove that nothing happened. It means the selection stored no eligible headline for that country and date.
 An empty archive does not imply a stable country.
 
 ## Read history
