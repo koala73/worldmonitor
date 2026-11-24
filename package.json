@@ -19,7 +19,7 @@
   },
   "type": "module",
   "scripts": {
-    "lint": "biome lint ./src ./server ./api ./tests ./e2e ./scripts ./middleware.ts && npm run lint:safe-html",
+    "lint": "npm run lint:constraint-comments && biome lint ./src ./server ./api ./tests ./e2e ./scripts ./middleware.ts && npm run lint:safe-html",
     "lint:fix": "biome check ./src ./server ./api ./tests ./e2e ./scripts ./middleware.ts --fix",
     "lint:boundaries": "node scripts/lint-boundaries.mjs",
     "lint:api-contract": "node scripts/enforce-sebuf-api-contract.mjs",
@@ -248,7 +248,8 @@
     "legal:pdfs:check": "node scripts/build-legal-pdfs.mjs --check",
     "docs:dates": "node scripts/generate-docs-page-dates.mjs",
     "docs:dates:check": "node scripts/generate-docs-page-dates.mjs --check",
-    "freeze:github-stars": "node scripts/freeze-github-stars.mjs"
+    "freeze:github-stars": "node scripts/freeze-github-stars.mjs",
+    "lint:constraint-comments": "node scripts/lint-constraint-comments.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
