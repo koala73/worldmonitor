@@ -24,6 +24,7 @@ const testWorkflow = read(resolve(workflowsDir, 'test.yml'));
 const desktopBuildWorkflow = read(resolve(workflowsDir, 'build-desktop.yml'));
 const desktopCanaryWorkflow = read(resolve(workflowsDir, 'test-linux-app.yml'));
 const lintCodeWorkflow = read(resolve(workflowsDir, 'lint-code.yml'));
+const lintCodeClassifier = read(resolve(root, '.github/scripts/lint-code-changes.sh'));
 const protoCheckWorkflow = read(resolve(workflowsDir, 'proto-check.yml'));
 const playwrightConfig = read(resolve(root, 'playwright.config.ts'));
 
@@ -173,7 +174,7 @@ describe('root dependency cache (#8710)', () => {
   for (const [workflowText, jobIds, setupCache] of [
     [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output', 'variant-smoke-pro-webmcp'], undefined],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
-    [lintCodeWorkflow, ['biome', 'markdown'], undefined],
+    [lintCodeWorkflow, ['biome', 'docs-lint'], undefined],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], undefined],
   ] as const) {
     for (const jobId of jobIds) {
@@ -607,8 +608,7 @@ const REQUIRED_GATE_WORKFLOWS = [
 const REQUIRED_NON_TEST_GATE_CHECKS = [
   'typecheck',
   'biome',
-  'markdown',
-  'public-docs',
+  'docs-lint',
   'security-audit',
   'stacked-merge-guard',
   'proto-freshness',
@@ -900,8 +900,23 @@ function parseJsonArrayLiteral(source: string, regex: RegExp, label: string): st
   return parsed;
 }
 
+// The checks the gate requires of a commit built from these workflows. While
+// open PRs still run the old Lint Code and Typecheck layout, deploy-gate.sh
+// keeps the old names in `required` and swaps them for `lint_layout.marker`
+// when a commit publishes it (#11220). These workflows publish the marker, so
+// apply the same swap.
 function deployGateRequiredChecks(): string[] {
-  return parseJsonArrayLiteral(deployGateScript, /\n\s*required='(\[[^\n]+])'/, 'required checks');
+  const required = parseJsonArrayLiteral(deployGateScript, /\n\s*required='(\[[^\n]+])'/, 'required checks');
+  const layoutLiteral = deployGateScript.match(/\n\s*lint_layout='(\{[^\n]+\})'/)?.[1];
+  if (!layoutLiteral) {
+    return required;
+  }
+  const layout = JSON.parse(layoutLiteral) as { marker: string; replaces: string[] };
+  const effective = required.filter((check) => !layout.replaces.includes(check));
+  if (!effective.includes(layout.marker)) {
+    effective.push(layout.marker);
+  }
+  return effective;
 }
 
 function deployGateWorkflowRunNames(): string[] {
@@ -1605,10 +1620,10 @@ describe('CI workflow coverage', () => {
   });
 
   it('runs the public documentation boundary on docs-only pull requests', () => {
-    const publicDocsJob = workflowJobBlock(lintCodeWorkflow, 'public-docs');
-
-    assert.match(publicDocsJob, /npm run lint:public-docs/);
-    assert.doesNotMatch(publicDocsJob, /needs: changes/);
+    const step = (YAML.parse(lintCodeWorkflow) as { jobs: Record<string, { steps: { run?: string; if?: string }[] }> })
+      .jobs['docs-lint'].steps.find((candidate) => candidate.run === 'npm run lint:public-docs');
+    assert.ok(step, 'docs-lint must run the public documentation boundary');
+    assert.equal(step.if, '${{ !cancelled() }}', 'the boundary runs on every PR, docs-only included');
   });
 
   it('keeps required PR smoke scripts defined and wired into workflows', () => {
@@ -2363,20 +2378,26 @@ describe('CI workflow coverage', () => {
   });
 
   it('lints markdown once, in a gate-required job that skips when no markdown changed (#7772)', () => {
-    const markdownJob = workflowJobBlock(lintCodeWorkflow, 'markdown');
-    assert.match(markdownJob, /\n {4}needs: changes\n/);
-    assert.match(
-      markdownJob,
-      /\n {4}if: \$\{\{ \(needs\.changes\.outputs\.markdown == 'true'\) && \(github\.event_name != 'schedule' \|\| github\.repository == 'koala73\/worldmonitor'\) \}\}\n/,
-      'markdown lint must skip on PRs that touch no markdown; the gate counts skipped as passing',
+    const docsLint = (YAML.parse(lintCodeWorkflow) as {
+      jobs: Record<string, { 'timeout-minutes'?: number; steps: { name?: string; run?: string; if?: string; 'timeout-minutes'?: number; 'continue-on-error'?: boolean }[] }>;
+    }).jobs['docs-lint'];
+    assert.ok(
+      Number(docsLint['timeout-minutes']) > 0,
+      'a stalled dependency install or docs export must not hold the required docs-lint check for the 360-minute default; the step timeout covers lint:md only',
     );
-    assert.match(markdownJob, /\n {6}- run: npm run lint:md\n/);
-    assert.doesNotMatch(
-      markdownJob,
-      /continue-on-error/,
-      'a continue-on-error on the lint step would turn the required check green while lint is red',
+    const markdownStep = docsLint.steps.find((step) => step.run === 'npm run lint:md');
+    assert.ok(markdownStep, 'docs-lint must own markdown lint');
+    assert.equal(
+      markdownStep.if,
+      "${{ !cancelled() && steps.diff.outputs.markdown == 'true' }}",
+      'markdown lint must skip on PRs that touch no markdown, and still run after an earlier docs check fails',
     );
-    assert.match(markdownJob, /\n {4}timeout-minutes: \d+\n/, 'a hung npm ci must not hold the deploy gate for the 360-minute default');
+    assert.equal(
+      docsLint.steps.some((step) => step['continue-on-error']),
+      false,
+      'a continue-on-error on a lint step would turn the required check green while lint is red',
+    );
+    assert.ok(Number(markdownStep['timeout-minutes']) > 0, 'a hung lint must not hold the deploy gate for the 360-minute default');
     assert.doesNotMatch(
       workflowJobBlock(lintCodeWorkflow, 'biome'),
       /lint:md/,
@@ -2392,20 +2413,18 @@ describe('CI workflow coverage', () => {
       'lint.yml was the second owner; a path-filtered workflow publishes no check run on code PRs, so it can never be gate-required',
     );
     assert.ok(
-      deployGateRequiredChecks().includes('markdown'),
+      deployGateRequiredChecks().includes('docs-lint'),
       'markdown lint left biome (a branch-protection context), so it must block through the gate instead',
     );
 
-    const parsed = YAML.parse(lintCodeWorkflow) as { jobs: Record<string, { outputs?: Record<string, string> }> };
-    assert.equal(parsed.jobs.changes.outputs?.markdown, '${{ steps.diff.outputs.markdown }}');
-    assert.match(lintCodeWorkflow, /echo "markdown=true" >> "\$GITHUB_OUTPUT"/, 'pushes to main keep markdown coverage');
+    assert.match(lintCodeClassifier, /echo "markdown=true" >> "\$GITHUB_OUTPUT"/, 'pushes to main keep markdown coverage');
 
     // The filter must fire for every lint:md input (the markdown, its config,
     // and package.json, which holds the command and pins markdownlint-cli2:
     // LINT_MD_INPUTS from .husky/pre-push plus the lockfile) and stay quiet
     // for a code-only PR, or the job either never runs or runs on every PR.
-    const filter = lintCodeWorkflow.match(/^ +MARKDOWN=\$\([^\n]*\)\n +echo "markdown=[^\n]*$/m)?.[0];
-    assert.ok(filter, 'lint-code.yml must derive markdown= from the PR file list');
+    const filter = lintCodeClassifier.match(/^ *MARKDOWN=\$\([^\n]*\)\n *echo "markdown=[^\n]*$/m)?.[0];
+    assert.ok(filter, 'the Lint Code classifier must derive markdown= from the PR file list');
     const markdownSays = (files: string[]): string => {
       const fileArgs = files.map((file) => JSON.stringify(file)).join(' ');
       const body = filter.replace(/>> "\$GITHUB_OUTPUT"/, '');
