@@ -5,3 +5,6 @@ export function takeDistinctStories<T>(
   getTitle: (row: T) => unknown,
   limit?: number,
 ): { rows: T[]; duplicates: number };
+
+export const MIN_SHARED_TERMS: number;
+export const MIN_SHARED_TERM_RATIO: number;
