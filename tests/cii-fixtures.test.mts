@@ -193,6 +193,8 @@ it('capture and reader retain every full-window party group without changing v14
 it('calibration captures retain both maps and the entire UCDP payload', () => {
   const f = FIXTURES[0]!;
   const raw = { ...f.inputs,
+    strikePressureV2: { version: 2, updatedAt: f.nowMs, days: { '2026-10-22': { IL: 4 } } },
+    iranEventsV2: { events: [{ countryCode: 'IL', category: 'defense', severity: 'high', timestamp: f.nowMs }] },
     structuralPrior: { countries: Object.fromEntries(CII_EXPANDED_CAPTURE_TARGETS.map(code => [code, { pv: -0.5, year: 2024 }])) },
     economicStress: { schemaVersion: 1, countries: Object.fromEntries(Object.keys(TIER1_COUNTRIES).map((code, i) => [code, { measured: i < 25, members: {} }])) },
     ucdp: (() => {
@@ -204,6 +206,14 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
       return { events, ...summary, window: { startMs, endMs, complete: true, gapMonths: summary.gapMonths, missingReleases: [], months: summary.months } };
     })(),
   };
+  for (const [incomplete, error] of [
+    [{ strikePressureV2: null }, /strike-pressure:v2/],
+    [{ strikePressureV2: { ...raw.strikePressureV2, version: 1 } }, /strike-pressure:v2/],
+    [{ iranEventsV2: null }, /iran-events:v2/],
+    [{ iranEventsV2: { ...raw.iranEventsV2, version: 1 } }, /iran-events:v2/],
+  ] as const) {
+    assert.throws(() => validateCiiCalibrationInputs({ ...raw, ...incomplete }, CII_EXPANDED_CAPTURE_TARGETS), error);
+  }
   const trimmed = trimCiiRawInputs(raw, CII_EXPANDED_CAPTURE_TARGETS, true);
   assert.deepEqual(trimmed.ucdp, raw.ucdp);
   assert.deepEqual(trimmed.structuralPrior, raw.structuralPrior);
@@ -212,6 +222,8 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
   const captured = buildCiiFixture(raw, { label: 'calibration-test', capturedAt: f.capturedAt, nowMs: f.nowMs,
     iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: CII_EXPANDED_CAPTURE_TARGETS, calibration: true });
   assert.equal(captured.calibration, true);
+  assert.deepEqual(captured.inputs.strikePressureV2, raw.strikePressureV2);
+  assert.deepEqual(captured.inputs.iranEventsV2, raw.iranEventsV2);
   // Global capture may include measured countries with no prior yet. The 37
   // calibration countries still require their priors and cannot be omitted.
   const globalTargets = [...CII_EXPANDED_CAPTURE_TARGETS, 'NO'];

@@ -27,7 +27,12 @@ export const CII_FIXTURE_SCHEMA = 'worldmonitor-cii-fixture/v1';
 export const CII_FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../tests/fixtures/cii');
 
 /** Recorded for future calibration; the released scorer does not consume it. */
-export type CiiCaptureInputs = CiiRawInputs & { structuralPrior?: unknown; economicStress?: unknown };
+export type CiiCaptureInputs = CiiRawInputs & {
+  structuralPrior?: unknown;
+  economicStress?: unknown;
+  strikePressureV2?: unknown;
+  iranEventsV2?: unknown;
+};
 export const CII_EXPANDED_CAPTURE_TARGETS = [...Object.keys(TIER1_COUNTRIES), 'PH', 'TH', 'ID', 'VN', 'MY', 'KH'];
 
 /** Producer coverage is independent of the released scoring set. */
@@ -187,6 +192,20 @@ function trimDisplacement(raw: unknown): unknown {
   return { summary: { countries: keep(rows((raw as Obj)?.summary, 'countries')) } };
 }
 
+function trimIranEvents(raw: unknown, preserveV2Fields = false): unknown {
+  if (raw == null) return null;
+  return {
+    ...(preserveV2Fields && isObj(raw) ? pick(raw, ['version']) : {}),
+    events: rows(raw, 'events').flatMap((e) => {
+      const severity = String(e?.severity ?? '').toLowerCase();
+      const code = strikeEventCountry(e);
+      return code && typeof e?.timestamp === 'number' && Number.isFinite(e.timestamp)
+        ? [{ severity, timestamp: e.timestamp, countryCode: code, ...(preserveV2Fields ? pick(e, ['category']) : {}) }]
+        : [];
+    }),
+  };
+}
+
 function trimStrikeTally(raw: unknown): unknown {
   if (!isObj(raw)) return raw ?? null;
   const days: Obj = {};
@@ -237,15 +256,8 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
         return geoToCountry(lat, lon) ? [{ lat, lon, level: h.level }] : [];
       }),
     })),
-    iranEvents: nullable(raw.iranEvents, (v) => ({
-      events: rows(v, 'events').flatMap((e) => {
-        const severity = String(e?.severity ?? '').toLowerCase();
-        const code = strikeEventCountry(e);
-        return code && typeof e?.timestamp === 'number' && Number.isFinite(e.timestamp)
-          ? [{ severity, timestamp: e.timestamp, countryCode: code }]
-          : [];
-      }),
-    })),
+    iranEvents: trimIranEvents(raw.iranEvents),
+    ...(raw.iranEventsV2 !== undefined ? { iranEventsV2: trimIranEvents(raw.iranEventsV2, true) } : {}),
     oref: nullable(raw.oref, (v) => pick(v, ['activeAlertCount', 'historyCount24h'])),
     advisories: nullable(raw.advisories, (v) => (isObj(v.byCountry) ? { byCountry: tier1Entries(v.byCountry) } : {})),
     displacement: trimDisplacement(raw.displacement),
@@ -283,6 +295,7 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
         .map(([code, row]) => [code, pick(row as Obj, ['conflict', 'protest', 'week', 'strikes'])])),
     })),
     strikePressure: trimStrikeTally(raw.strikePressure),
+    ...(raw.strikePressureV2 !== undefined ? { strikePressureV2: trimStrikeTally(raw.strikePressureV2) } : {}),
     // Seed envelopes of public aggregate border statistics, kept whole: the
     // projection reads most of their fields.
     crossBorder: raw.crossBorder ?? {},
@@ -407,6 +420,14 @@ export function validateCiiCalibrationInputs(raw: CiiCaptureInputs, targets: rea
   const economic = raw.economicStress as Obj | null;
   if (economic?.schemaVersion !== 1 || !isObj(economic.countries) || [...TIER1].some(code => typeof economic.countries[code]?.measured !== 'boolean')) fail('economic key missing or incomplete');
   if ([...TIER1].filter(code => economic!.countries[code].measured === true).length < 25) fail('at least 25 measured economic countries required');
+  if (!isObj(raw.strikePressureV2) || raw.strikePressureV2.version !== 2 || !isObj(raw.strikePressureV2.days)) {
+    fail('conflict:strike-pressure:v2 missing or invalid (requires version 2)');
+  }
+  // The canonical v2 events publisher versions the Redis key, not the payload.
+  const eventsV2 = raw.iranEventsV2;
+  if (!isObj(eventsV2) || !Array.isArray(eventsV2.events) || ('version' in eventsV2 && eventsV2.version !== 2)) {
+    fail('conflict:iran-events:v2 missing or invalid');
+  }
   const u = raw.ucdp as Obj | null;
   const w = u?.window;
   if (!w || w.complete !== true || !Array.isArray(w.gapMonths) || w.gapMonths.length || !Array.isArray(w.missingReleases) || w.missingReleases.length
