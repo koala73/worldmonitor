@@ -13,6 +13,7 @@ import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
 import { removeSourceMaps, shouldEmitPublicSourceMaps, viteSourcemapSetting } from './shared/source-map-policy';
 import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
+import { CLIENT_COMPAT } from './src/bootstrap/client-compat';
 import {
   WEB_DASHBOARD_VARIANTS,
   renderVariantDashboardHtml,
@@ -1141,10 +1142,22 @@ export default defineConfig(({ mode }) => {
         name: 'wm-emit-build-hash',
         apply: 'build',
         generateBundle() {
+          const BUILD_SHA = process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev';
           this.emitFile({
             type: 'asset',
             fileName: 'build-hash.txt',
-            source: process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev',
+            source: BUILD_SHA,
+          });
+          // The compatibility marker a tab on an older build reads after it
+          // sees a new hash. Unchanged marker: the tab updates when hidden and
+          // quiet. Changed marker: it reloads at once. Its own file, so
+          // build-hash.txt stays a bare SHA for its other readers. The second
+          // line names the build, so the reader can tell that the marker and
+          // the hash it read a moment earlier came from the same deploy.
+          this.emitFile({
+            type: 'asset',
+            fileName: 'client-compat.txt',
+            source: `${CLIENT_COMPAT}\n${BUILD_SHA}\n`,
           });
         },
       },
