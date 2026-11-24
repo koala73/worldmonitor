@@ -413,7 +413,7 @@ function standsAlone(rawText, name, firstName) {
     const word = match[2];
     if (!firstName) return CAPITALIZED.test(word) || ALL_CAPS.test(word);
     if (!CAPITALIZED.test(word)) return false;
-    const previous = text.slice(0, at).match(/(\S+) $/)?.[1];
+    const previous = text[at - 1] === ' ' ? text.slice(text.lastIndexOf(' ', at - 2) + 1, at - 1) : '';
     if (previous && CAPITALIZED.test(previous) && /\p{L}$/u.test(previous)) return false;
     const after = text.slice(at + word.length);
     if (/^['’]s(?![\p{L}\p{N}])/u.test(after)) return true;

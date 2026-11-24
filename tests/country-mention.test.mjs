@@ -162,6 +162,13 @@ describe('country mention matcher', () => {
     assert.equal(mentions('GE', 'Citing Trafficking Risks, Georgia Plans Total Ban on Surrogacy'), true);
   });
 
+  it('checks a weak name in linear time on long text with no spaces', () => {
+    const text = `${'x'.repeat(100_000)},Jordan`;
+    const started = performance.now();
+    assert.equal(mentions('JO', text), true);
+    assert.ok(performance.now() - started < 500, 'the neighbouring-word check must not backtrack over the whole prefix');
+  });
+
   it('accepts a name-shaped weak name beside a co-term', () => {
     assert.equal(mentions('JO', 'Israeli forces prevent 104 teachers from reaching schools in northern Jordan Valley - WAFA Agency'), true);
     assert.equal(mentions('TR', 'turkey prices climb in Istanbul markets'), true);
