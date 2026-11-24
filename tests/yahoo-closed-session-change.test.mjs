@@ -467,6 +467,16 @@ describe('index basis backoff and Redis adapters', () => {
     assert.equal(await createYahooEquityIndexBasisResolver({ ...options, scope: 'cron' })(TAIEX, NOV24_TRADE, loaded), 36811.89);
   });
 
+  it('a warm producer in backoff adopts a close another producer verified, without refetching', async () => {
+    const redis = sharedRedis();
+    const relay = createYahooEquityIndexBasisResolver({ ...redis, scope: 'relay', now: () => 0 });
+    let calls = 0;
+    assert.equal(await relay(TAIEX, NOV24_TRADE, async () => { calls += 1; return null; }), null);
+    redis.values.set(`market:yahoo-index-close:v1:${TAIEX}:2026-11-24`, { close: 36811.89 });
+    assert.equal(await relay(TAIEX, NOV24_TRADE + 60, async () => { calls += 1; return NOV24_DAILY; }), 36811.89);
+    assert.equal(calls, 1, 'the backoff still applies to Yahoo');
+  });
+
   it('still resolves when Redis reads and writes fail', async () => {
     const broken = async () => { throw new Error('redis down'); };
     const resolve = createYahooEquityIndexBasisResolver({ read: broken, write: broken, writeIfAbsent: broken });

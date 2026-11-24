@@ -146,12 +146,19 @@ function createYahooEquityIndexBasisResolver({ read, write, writeIfAbsent, scope
     const day = indexSessionDay(sessionFormatter(symbol), lastTradeAt);
     if (!day) return null;
     const key = `market:yahoo-index-close:v1:${symbol}:${day}`;
+    const remember = (entry) => local.set(symbol, { ...entry, day });
     const remembered = local.get(symbol);
-    if (remembered?.day === day && usable(remembered)) return remembered.close;
+    if (remembered?.day === day && usable(remembered)) {
+      if (remembered.close !== null) return remembered.close;
+      // The backoff limits Yahoo requests, not adopting a close another producer verified.
+      const shared = await attempt(() => read?.(key));
+      if (!(Number.isFinite(shared?.close) && shared.close > 0)) return null;
+      remember(shared);
+      return shared.close;
+    }
     if (inFlight.has(key)) return inFlight.get(key);
 
     const retryKey = `${key}:retry:${scope}`;
-    const remember = (entry) => local.set(symbol, { ...entry, day });
     const request = (async () => {
       for (const candidate of [key, retryKey]) {
         const cached = await attempt(() => read?.(candidate));
