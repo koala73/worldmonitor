@@ -12,6 +12,7 @@ import {
   CII_FIXTURE_DIR,
   CII_FIXTURE_SCHEMA,
   ciiScoredVersion,
+  ciiV2StrikeInputs,
   expectedFromTable,
   loadCiiFixtures,
   readCiiVersionClaim,
@@ -105,6 +106,32 @@ describe('CII fixtures', () => {
     assert.equal(raw.aux.iranEvents.length, 1);
     assert.deepEqual(trimmed.rows, raw.rows);
     assert.deepEqual(trimmed.scores, raw.scores);
+  });
+
+  it('keeps v2 strike data for every capture target and drops at-sea events', () => {
+    const fixture = FIXTURES.find(f => f.calibration && f.inputs.strikePressureV2 === undefined)!;
+    const targets = [...fixture.captureTargets!, 'NO'];
+    const date = new Date(fixture.nowMs).toISOString().slice(0, 10);
+    const inputs = {
+      ...fixture.inputs,
+      strikePressureV2: { version: 2, updatedAt: fixture.nowMs, days: { [date]: { IL: [1, 0, 0, 0], NO: [0, 1, 0, 0], KW: [0, 0, 1, 0] } } },
+      iranEventsV2: { events: [
+        { countryCode: 'NO', severity: 'high', timestamp: fixture.nowMs },
+        { countryCode: 'KW', severity: 'high', timestamp: fixture.nowMs },
+        { countryCode: '', location: 'Israel', lat: 25.1, lon: 56.6, severity: 'high', timestamp: fixture.nowMs },
+      ] },
+    };
+    const trimmed = trimCiiRawInputs(inputs, targets, true);
+    assert.deepEqual((trimmed.strikePressureV2 as any).days, { [date]: { IL: [1, 0, 0, 0], NO: [0, 1, 0, 0] } });
+    assert.deepEqual(trimmed.iranEventsV2, { events: [{ severity: 'high', timestamp: fixture.nowMs, countryCode: 'NO' }] });
+  });
+
+  it('gives a base scorer that reads v2 the same strike inputs as the head', () => {
+    const fixture = FIXTURES.find(f => f.calibration && f.inputs.strikePressureV2 === undefined)!;
+    const selected = ciiV2StrikeInputs(fixture.inputs);
+    assert.equal(selected.strikePressure, undefined);
+    assert.equal(selected.iranEvents, undefined);
+    assert.deepEqual(expectedFromTable(computeCiiScoreTable(selected, fixture)), expectedFromTable(scoreCiiFixture(fixture)));
   });
 
   it(`reproduce the recorded ${SCORED} table on every fixture`, () => {
