@@ -265,6 +265,7 @@ function storyTitle(source: CountryIntelBriefSource): string {
   return headlineWithoutPublisher(source.title, source.url, source.source);
 }
 
+const CONTEXT_LABEL_LINE_RE = /^[A-Za-z][A-Za-z _-]{0,40}: /;
 const SOURCE_CONTEXT_LINE_RE = /^(Source \[\d{1,2}\]:\s*)(\{.*\})$/gm;
 
 function escapeRegExp(text: string): string {
@@ -287,12 +288,26 @@ function withoutSourceBylines(context: string, sources: CountryIntelBriefSource[
       return line;
     }
   });
-  for (const source of sources) {
-    const story = storyTitle(source);
-    if (story === source.title) continue;
-    const headline = new RegExp(`(^(?:- |Headlines: )?| \\| )${escapeRegExp(source.title)}(?=$| \\| )`, 'gm');
-    out = out.replace(headline, (_match, lead: string) => `${lead}${story}`);
-  }
+  const rewrites = sources
+    .filter((source) => storyTitle(source) !== source.title)
+    .map((source) => ({
+      story: storyTitle(source),
+      headline: new RegExp(`(^(?:- |Headlines: )?| \\| )${escapeRegExp(source.title)}(?=$| \\| )`, 'g'),
+    }));
+  if (rewrites.length === 0) return out;
+  // Only headline lines: the dashboard's "Headlines: a | b", the "- " lines, and
+  // the lines under a bare "Headlines:" heading up to the next labelled line.
+  // Signal lines also use " | ".
+  let inHeadlineBlock = false;
+  out = out.split('\n').map((line) => {
+    if (line === 'Headlines:') {
+      inHeadlineBlock = true;
+      return line;
+    }
+    if (inHeadlineBlock && (line === '' || CONTEXT_LABEL_LINE_RE.test(line))) inHeadlineBlock = false;
+    if (!inHeadlineBlock && !line.startsWith('Headlines: ') && !line.startsWith('- ')) return line;
+    return rewrites.reduce((text, { story, headline }) => text.replace(headline, (_match, lead: string) => `${lead}${story}`), line);
+  }).join('\n');
   return out;
 }
 
