@@ -519,16 +519,27 @@ print(json.dumps({
 # and a stale "in progress" on the head's last event would skip the only
 # re-poll. So the run whose completion fired this event never counts, and every
 # other candidate must still read as unfinished on its own run record.
+#
+# A run's `name` in the runs API is its run-name when the workflow sets one:
+# Test's is "PR #N into BASE: TITLE" (#10926), so matching on name never saw a
+# PR Test run, and every evaluation while Test ran slept 60s on a runner. Runs
+# are matched to the gated workflows by workflow_id, read from the workflow
+# listing only when an unfinished run exists.
 gated_run_in_flight() {
-  local eval_sha="$1" pages candidates run_id run_status
+  local eval_sha="$1" pages unfinished workflows gated_ids candidates run_id run_status
   [ -n "${GATED_WORKFLOWS:-}" ] || return 1
   pages=$(gh_api_with_rate_limit_retry core \
     "repos/$REPO/actions/runs?head_sha=$eval_sha&per_page=100" --paginate --slurp) || return 1
-  candidates=$(printf '%s\n' "$pages" | jq -r --arg gated "$GATED_WORKFLOWS" --arg trigger "${TRIGGER_RUN_ID:-}" '
+  unfinished=$(printf '%s\n' "$pages" | jq -c --arg trigger "${TRIGGER_RUN_ID:-}" '
+    [.[].workflow_runs[]? | select(.status != "completed" and (.id | tostring) != $trigger) | {id, workflow_id}]') || return 1
+  [ "$unfinished" != "[]" ] || return 1
+  workflows=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/workflows?per_page=100" --paginate --slurp) || return 1
+  gated_ids=$(printf '%s\n' "$workflows" | jq -c --arg gated "$GATED_WORKFLOWS" '
     ($gated | split(",")) as $names
-    | .[].workflow_runs[]?
-    | select(.status != "completed" and (.id | tostring) != $trigger and (.name as $name | $names | index($name)))
-    | .id') || return 1
+    | [.[].workflows[]? | select(.name as $name | $names | index($name)) | .id]') || return 1
+  candidates=$(jq -nr --argjson runs "$unfinished" --argjson ids "$gated_ids" '
+    $runs[] | select(.workflow_id as $id | $ids | index($id)) | .id') || return 1
   for run_id in $candidates; do
     run_status=$(gh_api_with_rate_limit_retry core "repos/$REPO/actions/runs/$run_id" --jq .status) || continue
     if [ -n "$run_status" ] && [ "$run_status" != "completed" ]; then
