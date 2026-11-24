@@ -7,6 +7,9 @@ import {
   DUNNING_DAY0_RETRY_MIN_AGE_MS,
   DUNNING_DAY3_AGE_MS,
   DUNNING_DAY7_AGE_MS,
+  DUNNING_DAY10_AGE_MS,
+  DUNNING_DAY18_AGE_MS,
+  DUNNING_DAY25_AGE_MS,
   DUNNING_ENDED_PERIOD_MAX_AGE_MS,
   WINBACK_MIN_AGE_MS,
   WINBACK_MAX_AGE_MS,
@@ -355,12 +358,12 @@ describe("sendDunningEmail guards", () => {
 });
 
 describe("runDunningScan windows", () => {
-  test("4-day-old hold gets day-3 only; scan is idempotent across ticks", async () => {
+  test("12-day-old hold gets the day-10 reminder only; scan is idempotent across ticks", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
     const fetchMock = mockResend();
     const t = convexTest(schema, modules);
-    await seedSub(t, { onHoldAt: Date.now() - (DUNNING_DAY3_AGE_MS + DAY_MS) });
+    await seedSub(t, { onHoldAt: Date.now() - (DUNNING_DAY10_AGE_MS + 2 * DAY_MS) });
 
     const summary = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
     expect(summary.scheduled).toBe(1);
@@ -369,6 +372,7 @@ describe("runDunningScan windows", () => {
     const sends = resendSends(fetchMock);
     expect(sends).toHaveLength(1);
     expect(sends[0]!.subject).toContain("Reminder");
+    expect((await ledgerRows(t)).map((row) => row.step)).toEqual(["dunning_day10"]);
 
     const again = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
     expect(again.scheduled).toBe(0);
@@ -376,13 +380,40 @@ describe("runDunningScan windows", () => {
     expect(resendSends(fetchMock)).toHaveLength(1);
   });
 
-  test("pre-existing 20-day hold (no onHoldAt) gets ONE catch-up email — the final notice", async () => {
+  test("pre-existing 15-day hold (no onHoldAt) gets ONE catch-up email — the day-10 reminder", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
     const fetchMock = mockResend();
     const t = convexTest(schema, modules);
     // Pre-deploy row shape: on_hold with no onHoldAt; updatedAt is the anchor.
-    await seedSub(t, { updatedAt: Date.now() - 20 * DAY_MS });
+    await seedSub(t, { updatedAt: Date.now() - 15 * DAY_MS });
+
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.subject).toContain("Reminder");
+  });
+
+  test("day-25 final notice fires after day-10 and day-18 were already sent", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const anchor = Date.now() - (DUNNING_DAY25_AGE_MS + DAY_MS);
+    await seedSub(t, { onHoldAt: anchor, currentPeriodEnd: Date.now() + DAY_MS });
+    await t.run(async (ctx) => {
+      for (const [step, age] of [["dunning_day10", DUNNING_DAY10_AGE_MS], ["dunning_day18", DUNNING_DAY18_AGE_MS]] as const) {
+        await ctx.db.insert("dunningEmails", {
+          dodoSubscriptionId: SUB_ID,
+          step,
+          episodeAt: anchor,
+          email: EMAIL,
+          sentAt: anchor + age,
+        });
+      }
+    });
 
     await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
     await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -390,16 +421,81 @@ describe("runDunningScan windows", () => {
     const sends = resendSends(fetchMock);
     expect(sends).toHaveLength(1);
     expect(sends[0]!.subject).toContain("Final notice");
+    expect(await ledgerRows(t)).toHaveLength(3);
   });
 
-  test("day-7 fires after day-3 was already sent for the same episode", async () => {
+  test("the scan no longer schedules day-3 or day-7 for a new episode", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    mockResend();
+    const t = convexTest(schema, modules);
+    const anchor = Date.now() - (DUNNING_DAY7_AGE_MS + DAY_MS);
+    await seedSub(t, { onHoldAt: anchor });
+    await t.mutation(internal.payments.subscriptionEmails.recordDunningStepSent, {
+      dodoSubscriptionId: SUB_ID,
+      step: "dunning_day0",
+      episodeAt: anchor,
+      email: EMAIL,
+    });
+
+    const summary = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    expect(summary.scheduled).toBe(0);
+  });
+
+  test("an episode already told 'final notice' under the old day-7 schedule gets nothing more", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
     const fetchMock = mockResend();
     const t = convexTest(schema, modules);
-    const anchor = Date.now() - (DUNNING_DAY7_AGE_MS + DAY_MS);
+    const anchor = Date.now() - 12 * DAY_MS;
     await seedSub(t, { onHoldAt: anchor });
-    // Simulate the day-3 send having happened earlier in this episode.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("dunningEmails", {
+        dodoSubscriptionId: SUB_ID,
+        step: "dunning_day7",
+        episodeAt: anchor,
+        email: EMAIL,
+        sentAt: anchor + DUNNING_DAY7_AGE_MS,
+      });
+    });
+
+    vi.setSystemTime(anchor + DUNNING_DAY10_AGE_MS + 60_000);
+    expect((await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {})).scheduled).toBe(0);
+    vi.setSystemTime(anchor + DUNNING_DAY25_AGE_MS + 60_000);
+    expect((await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {})).scheduled).toBe(0);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
+  test("an episode told 'final notice' on day 7 gets no day-0 retry even when day 0 never sent", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const anchor = Date.now() - 8 * DAY_MS;
+    await seedSub(t, { onHoldAt: anchor });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("dunningEmails", {
+        dodoSubscriptionId: SUB_ID,
+        step: "dunning_day7",
+        episodeAt: anchor,
+        email: EMAIL,
+        sentAt: anchor + DUNNING_DAY7_AGE_MS,
+      });
+    });
+
+    expect((await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {})).scheduled).toBe(0);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
+  test("an in-flight episode that only got day-0 and day-3 moves onto the new schedule", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const anchor = Date.now() - (DUNNING_DAY10_AGE_MS + DAY_MS);
+    await seedSub(t, { onHoldAt: anchor });
     await t.run(async (ctx) => {
       await ctx.db.insert("dunningEmails", {
         dodoSubscriptionId: SUB_ID,
@@ -412,11 +508,8 @@ describe("runDunningScan windows", () => {
 
     await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-
-    const sends = resendSends(fetchMock);
-    expect(sends).toHaveLength(1);
-    expect(sends[0]!.subject).toContain("Final notice");
-    expect(await ledgerRows(t)).toHaveLength(2);
+    expect(resendSends(fetchMock)).toHaveLength(1);
+    expect((await ledgerRows(t)).map((row) => row.step).sort()).toEqual(["dunning_day10", "dunning_day3"]);
   });
 
   test("repeat on_hold webhook does NOT re-open a finished pre-existing episode (PR #4935 F1)", async () => {
@@ -428,14 +521,14 @@ describe("runDunningScan windows", () => {
     const anchor = Date.now() - 20 * DAY_MS;
     await seedSub(t, { updatedAt: anchor });
 
-    // Catch-up scan sends the final notice for episode `anchor`.
+    // Catch-up scan sends the latest due step for episode `anchor`.
     await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(resendSends(fetchMock)).toHaveLength(1);
 
     // A Dodo payment-retry failure fires another on_hold webhook. The anchor
     // must FREEZE at the pre-patch updatedAt — falling back to the event
-    // timestamp would restart the 3/7-day clock and re-send the sequence.
+    // timestamp would restart the dunning clock and re-send the sequence.
     await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
       webhookId: "wh_repeat_hold",
       eventType: "subscription.on_hold",
@@ -480,12 +573,12 @@ describe("runDunningScan windows", () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
     const t = convexTest(schema, modules);
-    // 12 distinct subs all past the day-7 window → 12 due sends in one tick.
+    // 12 distinct subs all past the day-10 window → 12 due sends in one tick.
     // Pre-fix every send was scheduled at runAfter(0), bursting concurrently and
     // tripping Resend's 10 req/s limit (the 11th+ threw a 429 out of sendEmail).
     // Start-staggering spreads the Dodo portal load and the initial Resend load;
     // the hard POST-rate guarantee is reserveResendSlot (see the pacing test).
-    const anchor = Date.now() - (DUNNING_DAY7_AGE_MS + DAY_MS);
+    const anchor = Date.now() - (DUNNING_DAY10_AGE_MS + DAY_MS);
     const N = 12;
     for (let i = 0; i < N; i++) {
       await seedSub(t, {
@@ -984,7 +1077,7 @@ describe("winback", () => {
 });
 
 describe("failed-renewal hold whose period ended at hold start", () => {
-  test("still receives day0 then day3 then day7", async () => {
+  test("still receives day0, day10, day18 and the day-25 final notice", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
     const fetchMock = mockResend();
@@ -1006,14 +1099,19 @@ describe("failed-renewal hold whose period ended at hold start", () => {
     expect(resendSends(fetchMock)[0]!.subject).toContain("restore access");
     expect(resendSends(fetchMock)[0]!.html).toContain("/api/customer-portal?t=");
 
-    vi.setSystemTime(holdAt + DUNNING_DAY3_AGE_MS + 60_000);
+    vi.setSystemTime(holdAt + DUNNING_DAY10_AGE_MS + 60_000);
     await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(resendSends(fetchMock).map((s) => s.subject)).toContain(
       "Reminder: update your payment method to restore Pro (Monthly)",
     );
 
-    vi.setSystemTime(holdAt + DUNNING_DAY7_AGE_MS + 60_000);
+    vi.setSystemTime(holdAt + DUNNING_DAY18_AGE_MS + 60_000);
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(3);
+
+    vi.setSystemTime(holdAt + DUNNING_DAY25_AGE_MS + 60_000);
     await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     const sends = resendSends(fetchMock);
@@ -1023,7 +1121,39 @@ describe("failed-renewal hold whose period ended at hold start", () => {
       expect(send.html).not.toContain("access ends with your paid period");
       expect(send.html).not.toContain("access continues for now");
     }
-    expect(await ledgerRows(t)).toHaveLength(3);
+    expect((await ledgerRows(t)).map((row) => row.step)).toEqual([
+      "dunning_day0",
+      "dunning_day10",
+      "dunning_day18",
+      "dunning_day25",
+    ]);
+  });
+
+  test("production shape: a 28-day unpaid period that starts at the hold still gets every email", async () => {
+    // Dodo advances the period to the unpaid month before the hold, so the
+    // row starts at the hold and ends one period later (28 days in February).
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const holdAt = Date.now();
+    await seedSub(t, { onHoldAt: holdAt, currentPeriodEnd: holdAt + 28 * DAY_MS });
+    await t.mutation(internal.payments.subscriptionEmails.recordDunningStepSent, {
+      dodoSubscriptionId: SUB_ID,
+      step: "dunning_day0",
+      episodeAt: holdAt,
+      email: EMAIL,
+    });
+
+    for (const age of [DUNNING_DAY10_AGE_MS, DUNNING_DAY18_AGE_MS, DUNNING_DAY25_AGE_MS]) {
+      // The daily cron can run up to a day after the step falls due.
+      vi.setSystemTime(holdAt + age + 23 * 60 * 60 * 1000);
+      await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+    }
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(3);
+    expect(sends[2]!.subject).toContain("Final notice");
   });
 
   test("comped user whose held period ended is not told access has ended", async () => {
@@ -1260,6 +1390,29 @@ describe("day-0 copy", () => {
       .toContain("Once your paid period ends");
     expect(buildDunningEmail("dunning_day7", "Pro (Monthly)", ctaUrl, covered).html)
       .toContain("access ends with your paid period");
+  });
+
+  test("day-10 and day-18 are reminders; only day-25 is the final notice", () => {
+    const ctaUrl = "https://www.worldmonitor.app/api/customer-portal";
+    const covered = Date.now() + 3 * DAY_MS;
+    const ended = Date.now() - DAY_MS;
+    for (const accessUntil of [covered, ended]) {
+      const day10 = buildDunningEmail("dunning_day10", "Pro (Monthly)", ctaUrl, accessUntil);
+      const day18 = buildDunningEmail("dunning_day18", "Pro (Monthly)", ctaUrl, accessUntil);
+      const day25 = buildDunningEmail("dunning_day25", "Pro (Monthly)", ctaUrl, accessUntil);
+      for (const reminder of [day10, day18]) {
+        expect(reminder.subject).not.toContain("Final notice");
+        expect(reminder.html).not.toContain("last email");
+        expect(reminder.html).toContain(ctaUrl);
+      }
+      expect(day10.subject).not.toBe(day18.subject);
+      expect(day25.subject).toContain("Final notice");
+      expect(day25.html).toContain("last email");
+      // The day-7 copy said "paused for a week"; day-25 must not reuse it.
+      expect(day25.html).not.toContain("for a week");
+    }
+    expect(buildDunningEmail("dunning_day25", "Pro (Monthly)", ctaUrl, ended).html)
+      .not.toContain("access ends with your paid period");
   });
 
   test("comp-covered access after the paid period does not cite the paid period", () => {
