@@ -544,6 +544,40 @@ describe("Business owners", () => {
     expect((await entitlementOf(t, "grace-invitee"))?.validUntil).toBe(GRACE_END);
   });
 
+  test("a paid hold that recovers as cancelled restores accepted invitees to the paid period", async () => {
+    vi.useFakeTimers();
+    const t = await setup("api_business", BUSINESS);
+    await activate(t, BUSINESS);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: SUB_ID,
+        ownerUserId: USER,
+        inviteeEmail: "invitee@example.com",
+        domain: "example.com",
+        status: "accepted",
+        inviteeUserId: "grace-invitee",
+        createdAt: ACTIVATED,
+        acceptedAt: ACTIVATED,
+        expiresAt: NEXT_RENEWAL + 365 * DAY_MS,
+      });
+    });
+    const advanced = { product_id: BUSINESS, ...UNPAID_MONTH };
+    await event(t, "wh_renewed_b", "subscription.renewed", payload(advanced), RENEWAL);
+    await charge(t, "pay_failed", RENEWAL, "failed");
+    await event(t, "wh_hold_b", "subscription.on_hold", payload({ ...advanced, status: "on_hold" }), HOLD);
+    expect((await entitlementOf(t, "grace-invitee"))?.validUntil).toBe(GRACE_END);
+    // A late retry pays the month (webhook lost), then the owner cancels.
+    await charge(t, "pay_late_retry", HOLD + 9 * DAY_MS);
+    const sweepAt = HOLD + 10 * DAY_MS;
+    vi.setSystemTime(sweepAt);
+    await t.action(internal.payments.billing.reconcileLockedOnHoldSubscriptions, {
+      now: sweepAt,
+      remoteSubscriptionsForTest: [{ ...remote("cancelled", BUSINESS), cancelled_at: iso(sweepAt - 60_000) }],
+    });
+    expect((await entitlementOf(t))?.validUntil).toBe(NEXT_RENEWAL);
+    expect((await entitlementOf(t, "grace-invitee"))?.validUntil).toBe(NEXT_RENEWAL);
+  });
+
   test("a hold found by the reconciler gives accepted invitees the same grace", async () => {
     vi.useFakeTimers();
     const t = await setup("api_business", BUSINESS);

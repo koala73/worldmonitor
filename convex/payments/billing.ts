@@ -1858,6 +1858,9 @@ export const applyOnHoldRecovery = internalMutation({
           await ctx.db.patch(existing._id, { accessEndsAt: undefined });
         }
         await handleSubscriptionCancelled(ctx, args.remoteRaw, args.observedAt);
+        // Accepted invitees still hold the grace date from the hold; bring
+        // them to the owner's (possibly restored) coverage.
+        await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, args.observedAt);
       } else {
         await handleSubscriptionExpired(ctx, args.remoteRaw, args.observedAt);
       }
