@@ -1198,7 +1198,7 @@
         "auxiliary": "Auxiliar",
         "navalVessels": "Nave Militare"
       },
-      "infoTooltip": "<strong>Metodologie</strong><p>Agregă aeronave militare și nave militare pe teatru.</p><ul><li><strong>Normal:</strong> Activitate de referință</li><li><strong>Ridicat:</strong> Deasupra pragului (50+ aeronave)</li><li><strong>Critic:</strong> Concentrare ridicată (100+ aeronave)</li></ul><p><strong>Capabil de atac aerian:</strong> Cisterne + Avertizare timpurie aeriană + Avioane de vânătoare prezente în număr suficient pentru operații susținute.</p>",
+      "infoTooltip": "<strong>Metodologie</strong><p>Numără aeronavele militare și vasele navale monitorizate în fiecare teatru de operații.</p><ul><li><strong>Normal:</strong> Sub pragul teatrului de operații</li><li><strong>Ridicat:</strong> 3 la 8 aeronave sau mai multe, după teatrul de operații</li><li><strong>Critic:</strong> 8 la 20 aeronave sau mai multe, după teatrul de operații</li></ul><p>Navele se adaugă la numărare până la jumătate din pragul ridicat, deci navele singure nu ridică niciodată un nivel.</p><p><strong>Capabil de lovituri:</strong> Avioane de aprovizionare + Avion de avertizare timpurie + Avioane de luptă prezente în numere suficiente pentru operații susținute.</p>",
       "scanningTheaters": "Se scanează teatrele de operațiuni",
       "positions": "Pozițiile aeronavei",
       "navalVesselsLoading": "Nave navale",
@@ -1240,7 +1240,9 @@
       },
       "emojiKeyLabel": "Cheia Emoji",
       "emojiKeyAir": "Active Aeriene",
-      "emojiKeyNaval": "Active Navale"
+      "emojiKeyNaval": "Active Navale",
+      "instabilityChip": "Instabilitate {{score}}",
+      "instabilityNote": "Scor de instabilitate {{nation}}: {{score}} din 100. Afișat pentru context. Nu modifică nivelul, care numără aeronavele și navele din teatrul de operații."
     },
     "countryBrief": {
       "moreActions": "Mai multe acțiuni",

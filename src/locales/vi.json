@@ -1192,7 +1192,7 @@
         "auxiliary": "Hỗ trợ",
         "navalVessels": "Tàu Hải quân"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>Tổng hợp các tàu hải quân và máy bay quân sự theo khu vực chiến lược.</p><ul><li><strong>Normal:</strong> Hoạt động cơ bản</li><li><strong>Elevated:</strong> Vượt quá ngưỡng (50+ máy bay)</li><li><strong>Critical:</strong> Tập trung cao (100+ máy bay)</li></ul><p><strong>Strike Capable:</strong> Máy bay tiếp liệu + Cảnh báo sớm trên không + Máy bay chiến đấu có mặt với số lượng đủ cho các hoạt động bền vững.</p>",
+      "infoTooltip": "<strong>Phương pháp</strong><p>Tính toán số lượng máy bay quân sự và tàu chiến được theo dõi trong mỗi khu vực.</p><ul><li><strong>Bình thường:</strong> Dưới ngưỡng của khu vực</li><li><strong>Nâng cao:</strong> 3 đến 8 máy bay trở lên, theo từng khu vực</li><li><strong>Tới hạn:</strong> 8 đến 20 máy bay trở lên, theo từng khu vực</li></ul><p>Tàu chiến được tính vào tổng số lên đến nửa ngưỡng nâng cao, do đó tàu chiến một mình không bao giờ nâng mức độ.</p><p><strong>Có khả năng tấn công:</strong> Các máy bay tiếp liệu + Cảnh báo sớm trên không + Máy bay chiến đấu có mặt với số lượng đủ cho các hoạt động liên tục.</p>",
       "scanningTheaters": "Quét Chiến trường",
       "positions": "Vị trí máy bay",
       "navalVesselsLoading": "Tàu hải quân",
@@ -1234,7 +1234,9 @@
       },
       "emojiKeyLabel": "Chú giải Emoji",
       "emojiKeyAir": "Tài sản hàng không",
-      "emojiKeyNaval": "Tài sản hải quân"
+      "emojiKeyNaval": "Tài sản hải quân",
+      "instabilityChip": "Mức độ bất ổn {{score}}",
+      "instabilityNote": "Điểm bất ổn của {{nation}}: {{score}} trên 100. Hiển thị để tham khảo. Nó không thay đổi mức độ, mức độ được tính dựa trên số lượng máy bay và tàu chiến trong khu vực."
     },
     "countryBrief": {
       "moreActions": "Thao tác khác",

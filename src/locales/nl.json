@@ -872,7 +872,7 @@
       },
       "clickToViewMap": "Klik om op de kaart te bekijken",
       "refresh": "Vernieuwen",
-      "infoTooltip": "<strong>Methodologie</strong><p>Aggregeert militaire vliegtuigen en marineschepen per theater.</p><ul><li><strong>Normaal:</strong> Basisactiviteit</li><li><strong>Verhoogd:</strong> Boven drempel (50+ vliegtuigen)</li><li><strong>Kritiek:</strong> Hoge concentratie (100+ vliegtuigen)</li></ul><p><strong>Aanvalscapabel:</strong> Tankers + Vroegtijdige waarschuwing vanuit de lucht + Gevechtsvliegtuigen aanwezig in voldoende aantal voor aanhoudende operaties.</p>",
+      "infoTooltip": "<strong>Methodologie</strong><p>Telt militaire vliegtuigen en gemonitorde marineschepen in elk theater.</p><ul><li><strong>Normaal:</strong> Onder de drempel van het theater</li><li><strong>Verhoogd:</strong> 3 tot 8 vliegtuigen of meer, per theater</li><li><strong>Kritiek:</strong> 8 tot 20 vliegtuigen of meer, per theater</li></ul><p>Schepen tellen mee tot de helft van de verhoogde drempel, dus alleen schepen verhogen het niveau nooit.</p><p><strong>Aanvalscapabel:</strong> Tankervliegtuigen + Vliegtuigen voor vroege waarschuwing + Jagers aanwezig in voldoende aantallen voor aanhoudende operaties.</p>",
       "scanningTheaters": "Operatiegebieden scannen",
       "positions": "Vliegtuigposities",
       "navalVesselsLoading": "Marineschepen",
@@ -914,7 +914,9 @@
       },
       "emojiKeyLabel": "Emojicode",
       "emojiKeyAir": "Luchtvaartuigen",
-      "emojiKeyNaval": "Marineeenheden"
+      "emojiKeyNaval": "Marineeenheden",
+      "instabilityChip": "Instabiliteit {{score}}",
+      "instabilityNote": "{{nation}} instabiliteitsscore: {{score}} van de 100. Weergegeven ter context. Dit verandert het niveau niet, dat telt de vliegtuigen en schepen in het theater."
     },
     "techEvents": {
       "loading": "Technische evenementen laden...",

@@ -1462,7 +1462,7 @@
       },
       "clickToViewMap": "Fare clic per visualizzare sulla mappa",
       "refresh": "Aggiorna",
-      "infoTooltip": "<strong>Metodologia</strong><p>Aggrega aeromobili militari e navi navali per teatro.</p><ul><li><strong>Normale:</strong> Attività di base</li><li><strong>Elevato:</strong> Al di sopra della soglia (50+ aeromobili)</li><li><strong>Critico:</strong> Alta concentrazione (100+ aeromobili)</li></ul><p><strong>Capace di strike:</strong> Tanker + Avviso aereo anticipato + Fighter presenti in numero sufficiente per operazioni sostenute.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Conta gli aerei militari e i vascelli navali tracciati in ogni teatro.</p><ul><li><strong>Normale:</strong> Sotto la soglia del teatro</li><li><strong>Elevato:</strong> 3-8 aerei o più, per teatro</li><li><strong>Critico:</strong> 8-20 aerei o più, per teatro</li></ul><p>I vascelli si aggiungono al conteggio fino a metà della soglia elevata, quindi i vascelli da soli non aumentano mai il livello.</p><p><strong>Capace di Strike:</strong> Rifornitori + Allarme aereo anticipato + Fighter presenti in numero sufficiente per operazioni sostenute.</p>",
       "scanningTheaters": "Scansione teatri operativi",
       "positions": "Posizioni aeromobili",
       "navalVesselsLoading": "Navi militari",
@@ -1504,7 +1504,9 @@
       },
       "emojiKeyLabel": "Legenda Emoji",
       "emojiKeyAir": "Asset Aerei",
-      "emojiKeyNaval": "Asset Navali"
+      "emojiKeyNaval": "Asset Navali",
+      "instabilityChip": "Instabilità {{score}}",
+      "instabilityNote": "Punteggio di instabilità di {{nation}}: {{score}} su 100. Mostrato per contesto. Non modifica il livello, che conta gli aerei e le navi nel teatro."
     },
     "techEvents": {
       "loading": "Caricamento eventi tecnici...",

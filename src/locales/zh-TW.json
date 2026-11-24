@@ -1192,7 +1192,7 @@
         "auxiliary": "輔助艦",
         "navalVessels": "海軍艦艇"
       },
-      "infoTooltip": "<strong>方法論</strong><p>按作戰區域聚合軍用飛機和海軍艦艇。</p><ul><li><strong>正常：</strong> 基準活動</li><li><strong>升高：</strong> 超過閾值（50+ 架飛機）</li><li><strong>嚴重：</strong> 高度集中（100+ 架飛機）</li></ul><p><strong>具備打擊能力：</strong> 加油機 + 預警機 + 戰鬥機數量充足以維持持續作戰。</p>",
+      "infoTooltip": "<strong>方法論</strong><p>統計各戰區內的軍用飛機和監控的海軍艦船數量。</p><ul><li><strong>正常：</strong>低於該戰區閾值</li><li><strong>升高：</strong>各戰區 3 至 8 架飛機或更多</li><li><strong>嚴重：</strong>各戰區 8 至 20 架飛機或更多</li></ul><p>艦船計數不超過升高閾值的一半，因此單獨的艦船不會提升威脅等級。</p><p><strong>具備打擊能力：</strong>加油機、預警機和戰鬥機數量充足，足以維持持續作戰能力。</p>",
       "scanningTheaters": "掃描戰區",
       "positions": "飛機位置",
       "navalVesselsLoading": "海軍艦艇",
@@ -1234,7 +1234,9 @@
       },
       "emojiKeyLabel": "表情符號圖例",
       "emojiKeyAir": "空中資產",
-      "emojiKeyNaval": "海軍資產"
+      "emojiKeyNaval": "海軍資產",
+      "instabilityChip": "不穩定指數 {{score}}",
+      "instabilityNote": "{{nation}} 不穩定指數：{{score}} 分（滿分100分）。僅供參考。該指數不影響威脅等級，威脅等級由該戰區內的飛機和艦船數量決定。"
     },
     "countryBrief": {
       "moreActions": "更多操作",

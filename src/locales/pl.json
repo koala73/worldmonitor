@@ -1425,7 +1425,7 @@
       },
       "clickToViewMap": "Kliknij, żeby zobaczyć na mapie",
       "refresh": "Odświeżać",
-      "infoTooltip": "<strong>Metodologia</strong><p>Agreguje lotnictwo wojskowe i okręty marynarki wojennej podle teatru operacji.</p><ul><li><strong>Normalne:</strong> Aktywność bazowa</li><li><strong>Podwyższone:</strong> Powyżej progu (50+ samolotów)</li><li><strong>Krytyczne:</strong> Wysoka koncentracja (100+ samolotów)</li></ul><p><strong>Zdolność do uderzeń:</strong> Tankowce + Wczesne ostrzeganie lotnicze + Myśliwce w wystarczającej liczbie do operacji trwałych.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Liczy wojskowe statki powietrzne i monitorowane okręty wojenne w każdym teatrze operacji.</p><ul><li><strong>Normalny:</strong> Poniżej progu teatru operacji</li><li><strong>Podwyższony:</strong> Od 3 do 8 statków powietrznych lub więcej, w zależności od teatru</li><li><strong>Krytyczny:</strong> Od 8 do 20 statków powietrznych lub więcej, w zależności od teatru</li></ul><p>Okręty są dodawane do licznika do połowy progu podwyższonego, więc same okręty nigdy nie podnoszą poziomu.</p><p><strong>Zdolność do przeprowadzenia uderzenia:</strong> Tankowce + Wczesne ostrzeganie + Myśliwce obecne w wystarczającej liczbie do operacji długotrwałych.</p>",
       "scanningTheaters": "Skanowanie teatrów",
       "positions": "Pozycje lotnicze",
       "navalVesselsLoading": "Okręty marynarki",
@@ -1467,7 +1467,9 @@
       },
       "emojiKeyLabel": "Legenda emoji",
       "emojiKeyAir": "Zasoby powietrzne",
-      "emojiKeyNaval": "Zasoby morskie"
+      "emojiKeyNaval": "Zasoby morskie",
+      "instabilityChip": "Niestabilność {{score}}",
+      "instabilityNote": "Wskaźnik niestabilności {{nation}}: {{score}} na 100. Pokazane dla kontekstu. Nie wpływa na poziom, który liczy statki powietrzne i okręty w teatrze operacji."
     },
     "techEvents": {
       "loading": "Ładowanie wydarzeń technicznych...",

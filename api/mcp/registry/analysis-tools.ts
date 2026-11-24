@@ -33,7 +33,7 @@ import {
   getGraphStats,
 } from '../../../shared/analysis-infrastructure-cascade';
 import {
-  applyVesselCountsToPostures,
+  applyPublishedPostures,
   crossSourceSignalsToSignalSummary,
   earthquakesToGeoEvents,
   filterFocalPointsByCountry,
@@ -42,10 +42,10 @@ import {
   MCP_GEO_PLACES,
   militaryFlightsToGeoEvents,
   militaryFlightsToSurgeInputs,
+  publishedTheaterPostures,
   riskScoresToCiiLookup,
   submarineCablesToCableInputs,
   surgeHistoryToActivityHistory,
-  theaterPostureVesselCounts,
   unrestEventsToGeoEvents,
   usniVesselsToGeoEvents,
 } from '../../../shared/analysis-mcp-adapters';
@@ -53,7 +53,6 @@ import {
   getTheaterPostureSummaries,
   MilitarySurgeEngine,
   POSTURE_THEATERS,
-  recalcPostureWithVessels,
 } from '../../../shared/analysis-military-surge';
 import {
   getRadiusForEventType,
@@ -849,7 +848,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     title: 'Military surge alerts',
     _outputBudgetBytes: 65536,
     description:
-      'Return the military surge watch computed server-side over the seeded flight snapshot: per-theater posture summaries counting fighters, tankers, AWACS, reconnaissance, transports, bombers and drones inside each theater boundary with trend context from persisted surge history and tracked-vessel counts; foreign_presence detections (operators flying far from home above per-operator thresholds); and seeded_surges, the alerts the flights seeder computed against its own baselines (reported separately because it uses different thresholds). Inputs are flagged stale after 30 minutes; flight_count and the *_available flags report which inputs were present. Requires a paid plan; weight 2 on API plans. theater narrows by id or name substring. Read-only.',
+      'Return the military surge watch computed server-side over the seeded flight snapshot: per-theater posture summaries counting fighters, tankers, AWACS, reconnaissance, transports, bombers and drones inside each theater boundary with trend context from persisted surge history, the tracked-vessel count and the posture level the AIS relay published (the level the dashboard shows); foreign_presence detections (operators flying far from home above per-operator thresholds); and seeded_surges, the alerts the flights seeder computed against its own baselines (reported separately because it uses different thresholds). Inputs are flagged stale after 30 minutes; flight_count and the *_available flags report which inputs were present. Requires a paid plan; weight 2 on API plans. theater narrows by id or name substring. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -875,13 +874,13 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
                   theaterId: { type: 'string' },
                   theaterName: { type: 'string' },
                   shortName: { type: 'string' },
-                  targetNation: { type: ['string', 'null'], description: 'Nation the theater watches; its CII score can raise postureLevel.' },
+                  targetNation: { type: ['string', 'null'], description: 'Nation the theater watches.' },
                   fighters: { type: 'number' }, tankers: { type: 'number' }, awacs: { type: 'number' },
                   reconnaissance: { type: 'number' }, transport: { type: 'number' }, bombers: { type: 'number' }, drones: { type: 'number' },
                   totalAircraft: { type: 'number', description: 'Military aircraft currently inside the theater boundary.' },
                   totalVessels: { type: 'number', description: 'Tracked military vessels in the theater from the posture cache; per-class vessel counts stay 0 on this server path.' },
                   byOperator: { type: 'object', description: 'Aircraft counts keyed by operator.' },
-                  postureLevel: { type: 'string', enum: ['normal', 'elevated', 'critical'], description: 'Highest of the air, naval and target-nation CII levels against per-theater thresholds.' },
+                  postureLevel: { type: 'string', enum: ['normal', 'elevated', 'critical'], description: 'Level the AIS relay published: aircraft plus tracked vessels (vessels capped at half the elevated threshold) against per-theater thresholds. A country instability score is not an input. Rated on aircraft alone when posture_available is false.' },
                   strikeCapable: { type: 'boolean', description: 'True when tanker, AWACS and fighter counts all meet the theater strike-package minimums.' },
                   trend: { type: 'string', enum: ['increasing', 'stable', 'decreasing'], description: 'Direction of changePercent; beyond plus or minus 10 percent counts as a change. Always stable without surge history.' },
                   changePercent: { type: 'number', description: 'Percent change of the mean aircraft count over the latest 6 history runs versus the 6 before them.' },
@@ -914,7 +913,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             },
             seeded_surges_available: { type: 'boolean', description: 'False when the seeder surge record was missing or not cleared for redistribution; seeded_surges is then empty, not quiet.' },
             history_available: { type: 'boolean', description: 'False when surge history was unreadable; every posture trend then reads stable.' },
-            cii_available: { type: 'boolean', description: 'False when CII scores were unreadable; postureLevel then ignores target-nation instability.' },
+            posture_available: { type: 'boolean', description: 'False when the published theater posture was unreadable; postureLevel is then rated on aircraft alone and totalVessels is 0.' },
             flight_count: { type: 'number', description: 'Military flights read from the snapshot before theater filtering.' },
           },
           required: [],
@@ -929,16 +928,14 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         'theater-posture:sebuf:v1',
         'military:surges:v1',
         'military:surges:history:v1',
-        CII_RISK_SCORE_CACHE_KEYS.live,
       ];
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:military:flights', maxStaleMin: 30 },
         { key: 'seed-meta:theater-posture', maxStaleMin: 60 },
         { key: 'seed-meta:military-surges', maxStaleMin: 30 },
-        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: CII_REALTIME_COVERAGE_MIN },
       ];
       const {
-        payloads: [flightsPayload, posturePayload, surgesPayload, historyPayload, riskScores],
+        payloads: [flightsPayload, posturePayload, surgesPayload, historyPayload],
         freshness,
       } = await readCachesWithFreshness(keys, checks);
       requireAnyInput(
@@ -952,10 +949,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       const postures = flightsPayload !== null || posturePayload !== null
         ? getTheaterPostureSummaries(flights, history)
         : [];
-      if (postures.length > 0) {
-        applyVesselCountsToPostures(postures, theaterPostureVesselCounts(posturePayload));
-        recalcPostureWithVessels(postures, riskScoresToCiiLookup(riskScores));
-      }
+      const published = publishedTheaterPostures(posturePayload);
+      applyPublishedPostures(postures, published);
 
       const engine = new MilitarySurgeEngine();
       const foreignPresence = engine.detectForeignMilitaryPresence(flights).map((alert) => ({
@@ -998,7 +993,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           seeded_surges: seededSurges.filter((surge) => matchesTheater(surge.theaterId, surge.theater)),
           seeded_surges_available: redistributableSurgesPayload !== null,
           history_available: historyPayload !== null,
-          cii_available: riskScores !== null,
+          posture_available: published.size > 0,
           flight_count: flights.length,
         },
       };
@@ -1008,7 +1003,6 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       'theater-posture:sebuf:v1',
       'military:surges:v1',
       'military:surges:history:v1',
-      CII_RISK_SCORE_CACHE_KEYS.live,
     ],
     _apiPaths: [],
   },

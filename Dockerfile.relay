@@ -73,6 +73,9 @@ COPY scripts/lib/news-story-key.cjs ./scripts/lib/news-story-key.cjs
 # news-story-key.cjs loads this copy, not /app/shared/: it imports
 # @noble/hashes, which resolves from scripts/node_modules only.
 COPY scripts/shared/story-identity.js ./scripts/shared/story-identity.js
+# The one theater posture rule; the relay is its only publisher and the
+# military-flights seeder imports the same file from its scripts/ container.
+COPY scripts/shared/theater-posture.js ./scripts/shared/theater-posture.js
 # Cross-wording corroboration (#10977) and its import closure.
 COPY scripts/lib/news-corroboration.mjs ./scripts/lib/news-corroboration.mjs
 COPY scripts/lib/brief-embedding.mjs ./scripts/lib/brief-embedding.mjs

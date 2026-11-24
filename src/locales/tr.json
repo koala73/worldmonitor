@@ -1195,7 +1195,7 @@
         "auxiliary": "Yardimci",
         "navalVessels": "Deniz Gemileri"
       },
-      "infoTooltip": "<strong>Metodoloji</strong><p>Askeri uçaklar ve deniz gemilerini operasyon bölgesine göre toplar.</p><ul><li><strong>Normal:</strong> Temel aktivite</li><li><strong>Yükseltilmiş:</strong> Eşiğin üstü (50+ uçak)</li><li><strong>Kritik:</strong> Yüksek yoğunlaşma (100+ uçak)</li></ul><p><strong>Vuruş Yeteneği:</strong> Tankerler + Hava erken uyarı + Sürdürülebilir operasyonlar için yeterli sayıda savaş uçağı mevcuttur.</p>",
+      "infoTooltip": "<strong>Metodoloji</strong><p>Her tiyatroda askeri uçak ve izlenen deniz gemilerini sayar.</p><ul><li><strong>Normal:</strong> Tiyatronun eşiğinin altında</li><li><strong>Yükseltilmiş:</strong> Tiyatroya göre 3 ila 8 veya daha fazla uçak</li><li><strong>Kritik:</strong> Tiyatroya göre 8 ila 20 veya daha fazla uçak</li></ul><p>Gemiler sayıya yükseltilmiş eşiğin yarısına kadar katkıda bulunur, bu nedenle gemiler tek başına bir seviyeyi yükseltmez.</p><p><strong>Vuruş Yeteneği:</strong> Tankıklar + Hava erken uyarı + Sürdürülen operasyonlar için yeterli sayıda avcı uçak mevcut.</p>",
       "scanningTheaters": "Harekat Alanlari Taraniyor",
       "positions": "Ucak konumlari",
       "navalVesselsLoading": "Deniz gemileri",
@@ -1237,7 +1237,9 @@
       },
       "emojiKeyLabel": "Emoji Anahtarı",
       "emojiKeyAir": "Hava Varlıkları",
-      "emojiKeyNaval": "Deniz Varlıkları"
+      "emojiKeyNaval": "Deniz Varlıkları",
+      "instabilityChip": "İstikrarsızlık {{score}}",
+      "instabilityNote": "{{nation}} istikrarsızlık puanı: {{score}}/100. Bağlam için gösterilmektedir. Tiyatrodaki uçak ve gemileri sayan seviyeyi değiştirmez."
     },
     "countryBrief": {
       "moreActions": "Diğer işlemler",

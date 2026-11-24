@@ -1345,7 +1345,7 @@
         "auxiliary": "Segédhajók",
         "navalVessels": "Hadihajók"
       },
-      "infoTooltip": "<strong>Módszertan</strong><p>Katonai repülőgépeket és hadihajókat összesít a hadszíntér szerint.</p><ul><li><strong>Normális:</strong> Alapértelmezett tevékenység</li><li><strong>Megemelkedett:</strong> A küszöbérték felett (50+ repülőgép)</li><li><strong>Kritikus:</strong> Magas koncentráció (100+ repülőgép)</li></ul><p><strong>Sztrájk képes:</strong> Tankerhajók + Légköri korai figyelmeztető + Vadászrepülőgépek megfelelő számban a fenntartott műveletek érdekében.</p>",
+      "infoTooltip": "<strong>Módszertan</strong><p>Katonai repülőgépek és nyomon követett haditengerészeti hajók száma az egyes színtérenként.</p><ul><li><strong>Normál:</strong> A színtér küszöbértéke alatt</li><li><strong>Megemelkedett:</strong> 3–8 vagy több repülőgép színtérenként</li><li><strong>Kritikus:</strong> 8–20 vagy több repülőgép színtérenként</li></ul><p>A hajók a megemelkedett küszöb felének megfelelő mértékig adódnak hozzá, így a hajók egyedül soha nem emelik meg a szintet.</p><p><strong>Csapásmérésre képes:</strong> Tanker + Légi korai jelzés + Vadászrepülőgépek jelen vannak a tartós műveletek végrehajtásához szükséges számban.</p>",
       "scanningTheaters": "Színpadok átvizsgálása",
       "positions": "Repülőgépek pozíciói",
       "navalVesselsLoading": "Haditengerészeti járművek",
@@ -1387,7 +1387,9 @@
         "east-med-theater": "Keleti Mediterráneum",
         "israel-gaza-theater": "Izrael/Gáza",
         "yemen-redsea-theater": "Jemen/Vörös-tenger"
-      }
+      },
+      "instabilityChip": "Instabilitás {{score}}",
+      "instabilityNote": "{{nation}} instabilitási pontszáma: {{score}} a 100-ból. Csak tájékoztatásul. Ez nem befolyásolja a szintet, amely a színtéren lévő repülőgépek és hajók számából adódik."
     },
     "countryBrief": {
       "moreActions": "További műveletek",

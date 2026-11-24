@@ -9,17 +9,17 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
 import {
-  applyVesselCountsToPostures,
+  applyPublishedPostures,
   crossSourceSignalsToSignalSummary,
   CROSS_SOURCE_TO_FOCAL_SIGNAL,
   filterFocalPointsByCountry,
   insightsToFocalClusters,
   MCP_CASCADE_WATERWAYS,
   militaryFlightsToSurgeInputs,
+  publishedTheaterPostures,
   riskScoresToCiiLookup,
   submarineCablesToCableInputs,
   surgeHistoryToActivityHistory,
-  theaterPostureVesselCounts,
 } from '../shared/analysis-mcp-adapters.ts';
 import { buildEntityIndex } from '../shared/entity-extraction-core.js';
 import { ENTITY_REGISTRY } from '../shared/entity-registry.js';
@@ -228,7 +228,7 @@ function analysisPayloads() {
     },
     'theater-posture:sebuf:v1': {
       provider: 'wingbits',
-      theaters: [{ theater: 'iran-theater', trackedVessels: 2 }],
+      theaters: [{ theater: 'iran-theater', postureLevel: 'elevated', activeFlights: 3, trackedVessels: 2 }],
     },
     'military:surges:v1': {
       sourceVersion: 'wingbits',
@@ -575,36 +575,41 @@ describe('military-surge seed adapters', () => {
     }).map((flight) => flight.id), ['wingbits']);
   });
 
-  it('reads per-theater vessel counts out of the theater-posture payload', () => {
-    const counts = theaterPostureVesselCounts({
+  it('reads the published level and vessel count out of the theater-posture payload', () => {
+    const published = publishedTheaterPostures({
       provider: 'wingbits',
       theaters: [
         { theater: 'iran-theater', postureLevel: 'elevated', activeFlights: 9, trackedVessels: 6 },
         { theater: 'taiwan-theater', postureLevel: 'normal', activeFlights: 2, trackedVessels: 0 },
-        { theater: 'bogus', trackedVessels: 'nope' },
+        { theater: 'korea-theater', postureLevel: 'normal', activeFlights: 1, trackedVessels: 'nope' },
+        { theater: 'bogus', postureLevel: 'extreme', trackedVessels: 1 },
         null,
       ],
     });
-    assert.equal(counts.get('iran-theater'), 6);
-    assert.equal(counts.get('taiwan-theater'), 0);
-    assert.equal(counts.get('bogus'), undefined);
-    assert.equal(theaterPostureVesselCounts(null).size, 0);
-    assert.equal(theaterPostureVesselCounts({ theaters: 'nope' }).size, 0);
-    assert.equal(theaterPostureVesselCounts({ provider: 'opensky', theaters: [{ theater: 'iran-theater', trackedVessels: 6 }] }).size, 0);
-    assert.equal(theaterPostureVesselCounts({ theaters: [{ theater: 'iran-theater', trackedVessels: 6 }] }).size, 0);
+    assert.deepEqual(published.get('iran-theater'), { postureLevel: 'elevated', trackedVessels: 6 });
+    assert.deepEqual(published.get('taiwan-theater'), { postureLevel: 'normal', trackedVessels: 0 });
+    assert.deepEqual(published.get('korea-theater'), { postureLevel: 'normal', trackedVessels: 0 });
+    assert.equal(published.get('bogus'), undefined, 'an unknown level is left out, not guessed');
+    assert.equal(publishedTheaterPostures(null).size, 0);
+    assert.equal(publishedTheaterPostures({ theaters: 'nope' }).size, 0);
+    assert.equal(publishedTheaterPostures({ provider: 'opensky', theaters: [{ theater: 'iran-theater', postureLevel: 'critical' }] }).size, 0);
+    assert.equal(publishedTheaterPostures({ theaters: [{ theater: 'iran-theater', postureLevel: 'critical' }] }).size, 0);
   });
 
-  it('applies vessel counts and lets naval strength drive the posture level', () => {
+  it('replaces the flight-derived level with the published one', () => {
     const postures = getTheaterPostureSummaries(militaryFlightsToSurgeInputs(flights()));
     const iran = postures.find((p) => p.theaterId === 'iran-theater');
+    const taiwan = postures.find((p) => p.theaterId === 'taiwan-theater');
     assert.equal(iran.totalAircraft, 3);
     assert.equal(iran.postureLevel, 'normal', '3 aircraft is below the iran-theater elevated floor of 8');
+    const taiwanBefore = taiwan.postureLevel;
 
-    applyVesselCountsToPostures(postures, new Map([['iran-theater', 6]]));
+    applyPublishedPostures(postures, new Map([['iran-theater', { postureLevel: 'elevated', trackedVessels: 6 }]]));
     assert.equal(iran.totalVessels, 6);
-    // recalcPostureWithVessels is the core's job; the adapter only sets the
-    // count. Verify it set the field the recalc reads, not the level itself.
-    assert.equal(iran.postureLevel, 'normal');
+    assert.equal(iran.postureLevel, 'elevated');
+    assert.equal(iran.headline, 'Elevated military activity - Iran Theater (3 aircraft + 6 vessels)');
+    assert.equal(iran.totalAircraft, 3, 'the aircraft breakdown stays as computed from the flights');
+    assert.equal(taiwan.postureLevel, taiwanBefore, 'a theater the relay did not publish keeps its flight level');
   });
 
   it('rebuilds the theater activity history the trend calculation needs', () => {
@@ -777,11 +782,11 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     const military = await findTool('get_military_surge')._execute({}, '', {}, {});
     assert.equal(military.data.history_available, true);
     assert.equal(military.data.seeded_surges_available, true);
-    assert.equal(military.data.cii_available, true);
+    assert.equal(military.data.posture_available, true);
     assert.equal(
       military.data.postures.find((posture) => posture.theaterId === 'iran-theater').postureLevel,
-      'critical',
-      'the server posture must include the same CII elevation as the dashboard',
+      'elevated',
+      'the tool reports the level the relay published, the one the dashboard shows; Iran instability does not raise it',
     );
     assert.deepEqual(military.unavailable_inputs, []);
 
@@ -1169,7 +1174,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(result.stale, true);
     assert.deepEqual(result.data.postures, []);
     assert.ok(result.data.seeded_surges.length > 0, 'the independent seeded surge feed remains usable');
-    assert.equal(result.data.cii_available, true);
+    assert.equal(result.data.posture_available, false);
   });
 
   for (const [theater, regionId, lat, lon] of [

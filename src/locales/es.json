@@ -1462,7 +1462,7 @@
       },
       "clickToViewMap": "Haga clic para ver en el mapa",
       "refresh": "Refrescar",
-      "infoTooltip": "<strong>Metodología</strong><p>Agrupa aviones militares y buques navales por teatro.</p><ul><li><strong>Normal:</strong> Actividad de referencia</li><li><strong>Elevado:</strong> Por encima del umbral (50+ aviones)</li><li><strong>Crítico:</strong> Alta concentración (100+ aviones)</li></ul><p><strong>Capaz de ataque:</strong> Reabastecedores + Alerta temprana aerotransportada + Cazas presentes en números suficientes para operaciones sostenidas.</p>",
+      "infoTooltip": "<strong>Metodología</strong><p>Cuenta aeronaves militares y buques navales monitoreados en cada teatro.</p><ul><li><strong>Normal:</strong> Por debajo del umbral del teatro</li><li><strong>Elevado:</strong> 3 a 8 aeronaves o más, por teatro</li><li><strong>Crítico:</strong> 8 a 20 aeronaves o más, por teatro</li></ul><p>Los buques se cuentan hasta la mitad del umbral elevado, por lo que los buques solos nunca elevan el nivel.</p><p><strong>Con Capacidad de Ataque:</strong> Reabastecedores + Alerta Temprana Aerotransportada + Cazas presentes en números suficientes para operaciones sostenidas.</p>",
       "scanningTheaters": "Escaneando teatros",
       "positions": "Posiciones de aeronaves",
       "navalVesselsLoading": "Buques de guerra",
@@ -1504,7 +1504,9 @@
       },
       "emojiKeyLabel": "Clave de emoji",
       "emojiKeyAir": "Activos aéreos",
-      "emojiKeyNaval": "Activos navales"
+      "emojiKeyNaval": "Activos navales",
+      "instabilityChip": "Inestabilidad {{score}}",
+      "instabilityNote": "Puntuación de inestabilidad de {{nation}}: {{score}} de 100. Se muestra para contexto. No cambia el nivel, que cuenta las aeronaves y buques en el teatro."
     },
     "techEvents": {
       "loading": "Cargando eventos tecnológicos...",

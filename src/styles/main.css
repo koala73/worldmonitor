@@ -23164,6 +23164,14 @@ body.has-breaking-alert .panels-grid {
   color: rgba(100, 220, 180, 0.9);
 }
 
+/* Context, not a level: outlined and muted so it never reads as a badge. */
+.posture-chip.instability {
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: help;
+  white-space: nowrap;
+}
+
 /* Expanded theater with inline forces */
 .posture-forces {
   display: flex;
