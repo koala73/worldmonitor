@@ -193,8 +193,11 @@ it('capture and reader retain every full-window party group without changing v14
 it('calibration captures retain both maps and the entire UCDP payload', () => {
   const f = FIXTURES[0]!;
   const raw = { ...f.inputs,
-    strikePressureV2: { version: 2, updatedAt: f.nowMs, days: { '2026-10-22': { IL: 4 } } },
-    iranEventsV2: { events: [{ countryCode: 'IL', category: 'defense', severity: 'high', timestamp: f.nowMs }] },
+    strikePressureV2: { version: 2, updatedAt: f.nowMs, days: { '2026-10-22': { IL: [1, 0, 0, 0] } } },
+    iranEventsV2: { events: [
+      { countryCode: 'IL', category: 'defense', severity: 'high', timestamp: f.nowMs },
+      { countryCode: '', location: 'Israel', severity: 'high', timestamp: f.nowMs },
+    ] },
     structuralPrior: { countries: Object.fromEntries(CII_EXPANDED_CAPTURE_TARGETS.map(code => [code, { pv: -0.5, year: 2024 }])) },
     economicStress: { schemaVersion: 1, countries: Object.fromEntries(Object.keys(TIER1_COUNTRIES).map((code, i) => [code, { measured: i < 25, members: {} }])) },
     ucdp: (() => {
@@ -223,7 +226,7 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
     iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: CII_EXPANDED_CAPTURE_TARGETS, calibration: true });
   assert.equal(captured.calibration, true);
   assert.deepEqual(captured.inputs.strikePressureV2, raw.strikePressureV2);
-  assert.deepEqual(captured.inputs.iranEventsV2, raw.iranEventsV2);
+  assert.deepEqual(captured.inputs.iranEventsV2, { events: raw.iranEventsV2.events.slice(0, 1) });
   // Global capture may include measured countries with no prior yet. The 37
   // calibration countries still require their priors and cannot be omitted.
   const globalTargets = [...CII_EXPANDED_CAPTURE_TARGETS, 'NO'];

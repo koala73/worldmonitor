@@ -198,7 +198,8 @@ function trimIranEvents(raw: unknown, preserveV2Fields = false): unknown {
     ...(preserveV2Fields && isObj(raw) ? pick(raw, ['version']) : {}),
     events: rows(raw, 'events').flatMap((e) => {
       const severity = String(e?.severity ?? '').toLowerCase();
-      const code = strikeEventCountry(e);
+      // The v2 publisher supplies the country hit and uses an empty code at sea.
+      const code = preserveV2Fields ? ciiCountryForIso2(e?.countryCode) : strikeEventCountry(e);
       return code && typeof e?.timestamp === 'number' && Number.isFinite(e.timestamp)
         ? [{ severity, timestamp: e.timestamp, countryCode: code, ...(preserveV2Fields ? pick(e, ['category']) : {}) }]
         : [];
