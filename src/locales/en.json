@@ -1770,7 +1770,7 @@
       "streamAlwaysOnLabel": "Auto-play live webcams",
       "streamAlwaysOnDesc": "Starts the live webcam videos as soon as they are on screen. Leave this off to load them only when you start them yourself.",
       "streamIdleStopLabel": "Stop live video when idle",
-      "streamIdleStopDesc": "Stops Live News and Live Webcams after this long without activity and shows a notice in the panel.",
+      "streamIdleStopDesc": "Stops Live News and Live Webcams after this long without activity and shows a notice in the panel. Live News keeps playing while its sound is on.",
       "streamIdleStopNever": "Never",
       "frameworkNote": "Applies to client-generated analysis only",
       "loadingServerInsights": "Loading server insights...",

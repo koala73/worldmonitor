@@ -1551,7 +1551,7 @@
       "briefFreshness": "Δημιουργήθηκε πριν {{minutes}}λ · νεότερη πηγή {{hours}}ώ παλιά",
       "briefStoryDetails": "Λεπτομέρειες είδησης ({{count}})",
       "streamIdleStopLabel": "Διακοπή ζωντανού βίντεο όταν είναι αδρανές",
-      "streamIdleStopDesc": "Διακόπτει τα Live News και τις Live Webcams μετά από αυτή τη διάρκεια χωρίς δραστηριότητα και εμφανίζει ένα σημείωμα στο panel.",
+      "streamIdleStopDesc": "Διακόπτει τα Live News και τις Live Webcams μετά από αυτή τη διάρκεια χωρίς δραστηριότητα και εμφανίζει ένα σημείωμα στο panel. Τα Live News συνεχίζουν να παίζουν όσο ο ήχος τους είναι ενεργός.",
       "streamIdleStopNever": "Ποτέ",
       "liveNewsAutoplayLabel": "Αυτόματη αναπαραγωγή live news",
       "liveNewsAutoplayDesc": "Ξεκινά το video live news, σε σίγαση, μόλις εμφανιστεί στην οθόνη. Απενεργοποιήστε για να φορτωθεί το video μόνο όταν το ξεκινήσετε εσείς."

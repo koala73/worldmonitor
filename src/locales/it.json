@@ -1939,7 +1939,7 @@
       "briefFreshness": "Generato {{minutes}}m fa · fonte più recente {{hours}}h fa",
       "briefStoryDetails": "Dettagli della notizia ({{count}})",
       "streamIdleStopLabel": "Arresta il video in diretta durante l'inattività",
-      "streamIdleStopDesc": "Interrompe Live News e Live Webcams dopo questo periodo di inattività e mostra un avviso nel pannello.",
+      "streamIdleStopDesc": "Interrompe Live News e Live Webcams dopo questo periodo di inattività e mostra un avviso nel pannello. Live News continua a essere riprodotto finché l'audio è attivo.",
       "streamIdleStopNever": "Mai",
       "liveNewsAutoplayLabel": "Riproduzione automatica notizie in diretta",
       "liveNewsAutoplayDesc": "Avvia il video delle notizie in diretta, senza audio, non appena è visibile. Disattiva per caricare il video solo quando lo avvii manualmente."
