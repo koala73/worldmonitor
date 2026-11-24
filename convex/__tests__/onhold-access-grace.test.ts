@@ -109,7 +109,7 @@ async function activate(t: T, productId = PRO) {
   await charge(t, "pay_first", ACTIVATED);
 }
 
-/** Dodo's failed-renewal sequence: renewed (dates advance to the unpaid month), a failed charge, then on_hold. */
+/** A failed renewal: the period advances to the unpaid month, the charge fails, then on_hold. Production advances it with subscription.updated; see the any-order tests. */
 async function failRenewal(t: T, productId = PRO, holdAt = HOLD) {
   await activate(t, productId);
   const advanced = { product_id: productId, ...UNPAID_MONTH };
@@ -635,5 +635,184 @@ describe("day-0 email names the date access ends", () => {
     const day0 = sends.find((send) => send.subject.includes("payment failed"));
     expect(day0?.html).toContain(formatAccessEndDate(GRACE_END));
     expect(day0?.html).not.toContain(formatAccessEndDate(NEXT_RENEWAL));
+  });
+});
+
+// Production's failed renewal (webhookEvents, 2026-08-14 to 2026-11-24): a
+// subscription.updated(active) moves the period to the unpaid month, the charge
+// fails, then subscription.on_hold and subscription.updated(on_hold) arrive
+// with one shared timestamp. No subscription.renewed is sent.
+describe("failed-renewal webhooks in any order", () => {
+  const ADVANCE = RENEWAL + 20_000;
+  const unpaid = { product_id: PRO, ...UNPAID_MONTH };
+  const advance = (t: T) => event(t, "wh_advance", "subscription.updated", payload(unpaid), ADVANCE);
+  const hold = (t: T, id = "wh_hold", type = "subscription.on_hold") =>
+    event(t, id, type, payload({ ...unpaid, status: "on_hold" }), HOLD + 30_000);
+  const holdAt = HOLD + 30_000;
+  const graceEnd = holdAt + ON_HOLD_ACCESS_GRACE_MS;
+
+  async function day0Html(t: T, fetchMock: ReturnType<typeof vi.spyOn>) {
+    vi.setSystemTime(holdAt);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    return fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as { subject: string; html: string })
+      .filter((send) => send.subject.includes("payment failed"))
+      .map((send) => send.html);
+  }
+
+  async function expectFailedRenewalHold(t: T) {
+    const sub = await subscriptionOf(t);
+    expect(sub).toMatchObject({
+      status: "on_hold",
+      onHoldAt: holdAt,
+      currentPeriodStart: RENEWAL,
+      currentPeriodEnd: NEXT_RENEWAL,
+      accessEndsAt: graceEnd,
+    });
+    expect((await entitlementOf(t))?.validUntil).toBe(graceEnd);
+    expect(await checkoutBlocker(t, holdAt + 10 * DAY_MS)).toMatchObject({ status: "on_hold" });
+  }
+
+  test("in production's order the hold is stamped once and one day-0 email names the grace end", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = await setup();
+    await activate(t);
+    await advance(t);
+    await charge(t, "pay_failed", ADVANCE + 15_000, "failed");
+    await hold(t);
+    await hold(t, "wh_hold_updated", "subscription.updated");
+    const sends = await day0Html(t, fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]).toContain(formatAccessEndDate(graceEnd));
+    await expectFailedRenewalHold(t);
+  });
+
+  test("on_hold processed before the period-advancing updated still gets the 7-day grace", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = await setup();
+    await activate(t);
+    await charge(t, "pay_failed", ADVANCE + 15_000, "failed");
+    await hold(t);
+    await advance(t);
+    const sends = await day0Html(t, fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]).toContain(formatAccessEndDate(graceEnd));
+    await expectFailedRenewalHold(t);
+  });
+
+  test("on_hold processed before a late subscription.renewed still gets the 7-day grace", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await charge(t, "pay_failed", ADVANCE + 15_000, "failed");
+    await hold(t);
+    await event(t, "wh_renewed", "subscription.renewed", payload(unpaid), RENEWAL);
+    await expectFailedRenewalHold(t);
+  });
+
+  test("an unstamped hold left on the paid period gets the grace, not the unpaid month, when a repeat hold moves it", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await t.run(async (ctx) => {
+      const sub = await ctx.db.query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", SUB_ID)).unique();
+      await ctx.db.patch(sub!._id, { status: "on_hold", onHoldAt: holdAt, updatedAt: holdAt });
+    });
+    const retryAt = holdAt + 2 * DAY_MS;
+    await event(t, "wh_hold_retry", "subscription.on_hold", payload({ ...unpaid, status: "on_hold" }), retryAt);
+    expect(await subscriptionOf(t)).toMatchObject({
+      onHoldAt: holdAt,
+      currentPeriodStart: RENEWAL,
+      currentPeriodEnd: NEXT_RENEWAL,
+      accessEndsAt: graceEnd,
+    });
+    expect((await entitlementOf(t))?.validUntil).toBe(graceEnd);
+  });
+
+  test("renewed and on_hold sharing one timestamp, renewed first: the hold lands with its grace and day-0 email", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = await setup();
+    await activate(t);
+    await charge(t, "pay_failed", ADVANCE, "failed");
+    await event(t, "wh_renewed", "subscription.renewed", payload(unpaid), holdAt);
+    await hold(t);
+    const sends = await day0Html(t, fetchMock);
+    expect(sends).toHaveLength(1);
+    await expectFailedRenewalHold(t);
+  });
+
+  test("an active event sharing the hold's timestamp does not undo the hold", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await charge(t, "pay_failed", ADVANCE, "failed");
+    await hold(t);
+    await event(t, "wh_renewed", "subscription.renewed", payload(unpaid), holdAt);
+    await event(t, "wh_advance", "subscription.updated", payload(unpaid), holdAt);
+    await expectFailedRenewalHold(t);
+  });
+
+  test("a hold sharing a cancellation's timestamp leaves the row cancelled", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await advance(t);
+    await event(t, "wh_cancel", "subscription.cancelled", payload({ ...unpaid, status: "cancelled", cancelled_at: iso(holdAt) }), holdAt);
+    await hold(t);
+    expect((await subscriptionOf(t))?.status).toBe("cancelled");
+  });
+
+  test("a repeat hold that moves only the period end does not extend an unstamped unpaid hold", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await advance(t);
+    await t.run(async (ctx) => {
+      const sub = await ctx.db.query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", SUB_ID)).unique();
+      await ctx.db.patch(sub!._id, { status: "on_hold", onHoldAt: holdAt, updatedAt: holdAt });
+    });
+    const laterEnd = NEXT_RENEWAL + 11 * DAY_MS;
+    await event(t, "wh_hold_retry", "subscription.on_hold",
+      payload({ ...unpaid, status: "on_hold", next_billing_date: iso(laterEnd) }), holdAt + 2 * DAY_MS);
+    expect(await subscriptionOf(t)).toMatchObject({ currentPeriodEnd: laterEnd, accessEndsAt: NEXT_RENEWAL });
+    expect((await entitlementOf(t))?.validUntil).toBe(NEXT_RENEWAL);
+  });
+
+  test("a repeat hold that moves the end of a paid period follows Dodo's date", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await advance(t);
+    await charge(t, "pay_second", ADVANCE);
+    const midPeriod = RENEWAL + 10 * DAY_MS;
+    await event(t, "wh_hold", "subscription.on_hold", payload({ ...unpaid, status: "on_hold" }), midPeriod);
+    const laterEnd = NEXT_RENEWAL + 11 * DAY_MS;
+    await event(t, "wh_hold_retry", "subscription.on_hold",
+      payload({ ...unpaid, status: "on_hold", next_billing_date: iso(laterEnd) }), midPeriod + DAY_MS);
+    expect((await subscriptionOf(t))?.accessEndsAt).toBeUndefined();
+    expect((await entitlementOf(t))?.validUntil).toBe(laterEnd);
+  });
+
+  test("an on_hold payload without billing dates keeps the stored period", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await advance(t);
+    await event(t, "wh_hold", "subscription.on_hold",
+      payload({ status: "on_hold", previous_billing_date: undefined, next_billing_date: undefined }), holdAt);
+    expect(await subscriptionOf(t)).toMatchObject({
+      currentPeriodStart: RENEWAL,
+      currentPeriodEnd: NEXT_RENEWAL,
+      accessEndsAt: graceEnd,
+    });
   });
 });
