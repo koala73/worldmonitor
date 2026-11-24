@@ -151,7 +151,7 @@ Content-Type: application/json
 
 ### `-32002` — Terminal entitlement denial
 
-The entitlement denials are HTTP **403**, `Cache-Control: no-store`, and **no** `WWW-Authenticate` header — the credential is valid, the entitlement is not, and re-authenticating cannot change that. Two triggers, distinguished by `data.reason`:
+The entitlement denials are HTTP **403**, `Cache-Control: no-store`, and **no** `WWW-Authenticate` header — the credential is valid, the entitlement is not, and re-authenticating cannot change that. Three triggers, distinguished by `data.reason`:
 
 **`reason: "lapsed-subscription"`** — the rare race where a lapse lands after the entitlement pre-check but before a Pro tool's downstream fetch. A provider-confirmed lapse already present at the pre-check is reclassified onto the restricted free-account path, so it does **not** emit this denial there. A later downstream `BillingDenialError` is re-emitted by `api/mcp/dispatch.ts` with `X-Billing-Verification: subscription_lapsed` because that in-flight Pro operation can no longer complete.
 
@@ -177,6 +177,24 @@ HTTP/1.1 403 Forbidden
 Cache-Control: no-store
 X-Billing-Verification: subscription_lapsed
 Content-Type: application/json
+```
+
+**`reason: "payment-failed"`** — the subscription's renewal charge failed and its access grace has ended while the payment provider still retries the charge. The account is paused, not cancelled: it keeps the free allowance, and a Pro-only tool, a plan-feature tool or a Pro-only resource returns this denial from `api/mcp/dispatch.ts` instead of `upgrade-required`. `upgradeUrl` is the billing portal, and there is no `recommendedPlan` or `checkoutTool`, because a new checkout is blocked while the charge is retried. The same reason rides the in-flight form above, with `data.code: "payment_failed"` and `X-Billing-Verification: payment_failed`, when the payment fails during a Pro call. The message carries no URL, and ChatGPT gets an inform-only `nextStep` without one.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "error": {
+    "code": -32002,
+    "message": "Payment failed; paid access is paused. Re-authenticating will not help.",
+    "data": {
+      "reason": "payment-failed",
+      "nextStep": "Update the payment method at https://www.worldmonitor.app/dashboard?billing=portal. A new checkout is blocked until then.",
+      "upgradeUrl": "https://www.worldmonitor.app/dashboard?billing=portal"
+    }
+  }
+}
 ```
 
 **`reason: "upgrade-required"`** — a signed-in account on the free allowance called a tool outside it. The free allowance covers **`free-account` (direct cache-read) tools only**; every `subscription` tool — anything with server-side execute logic, live-fetch or not — stays Pro-only. Fires from `api/mcp/dispatch.ts` before any allowance slot is charged, so a refused call costs the caller nothing. No `X-Billing-Verification` header (nothing is being verified). The same `reason: "upgrade-required"` also fires from the auth pre-check in `api/mcp/auth.ts` when a non-free entitlement is insufficient (an expired or disabled paid row) — there the `message` is `Subscription not active.` instead.
@@ -232,7 +250,7 @@ An operator key calling `start_upgrade` also gets `-32002` at HTTP 200, with mes
 
 One `-32002` emission is different: `resources/read` of `worldmonitor://account/mcp-allowance` with a credential that is not user-bound returns `-32002` with message `Account allowance status requires a user-bound credential.` inside **HTTP 200** and with no `data` payload — it is a plain JSON-RPC error, not an entitlement denial.
 
-**What to do.** For an entitlement denial (HTTP 403, or the HTTP 200 forms with `reason: "upgrade-required"` or `"lapsed-subscription"`), do not retry and do not re-run OAuth — both will reproduce the same denial. The `start_upgrade` refusals above are the exception: `payment-in-progress` clears once the pending payment completes or lapses, so a later call can succeed. Surface the state to the user: the subscription must be renewed (worldmonitor.app → Pricing) before MCP access resumes. Renewal takes effect within seconds of the provider webhook; no re-authentication is needed afterwards. While the same subscription is still being *verified* (provider re-check in flight), the server instead returns a retryable `-32603` at HTTP 503 with `X-Billing-Verification: renewal_verification_pending|renewal_verification_failed` and a dynamic `Retry-After` — see `-32603` below.
+**What to do.** For an entitlement denial (HTTP 403, or the HTTP 200 forms with `reason: "upgrade-required"` or `"lapsed-subscription"`), do not retry and do not re-run OAuth — both will reproduce the same denial. The `start_upgrade` refusals above are the exception: `payment-in-progress` clears once the pending payment completes or lapses, so a later call can succeed. Surface the state to the user: the subscription must be renewed (worldmonitor.app → Pricing) before MCP access resumes. For `payment-failed`, the user updates the payment method at the billing portal instead; do not call `start_upgrade`. Renewal takes effect within seconds of the provider webhook; no re-authentication is needed afterwards. While the same subscription is still being *verified* (provider re-check in flight), the server instead returns a retryable `-32603` at HTTP 503 with `X-Billing-Verification: renewal_verification_pending|renewal_verification_failed` and a dynamic `Retry-After` — see `-32603` below.
 
 ### `-32003` — Required data inputs unavailable
 
@@ -370,7 +388,7 @@ A member's data calls (a data `tools/call` and a data-bearing `resources/read`) 
 }
 ```
 
-`recommendedPlan` and `checkoutTool` follow the checkout hint rules under `-32002` above. `start_upgrade` spends no allowance, so it still works after this denial.
+`recommendedPlan` and `checkoutTool` follow the checkout hint rules under `-32002` above. `start_upgrade` spends no allowance, so it still works after this denial. A paused account (`reason: "payment-failed"` above) gets neither field. It gets `paymentFailed: true` instead, and its `nextStep` names the billing portal: `Paid access is paused after a failed payment. Update the payment method at https://www.worldmonitor.app/dashboard?billing=portal, or wait for the next UTC day.`
 
 **`start_upgrade` checkout limit — HTTP 429 + `Retry-After`.** The tool shares the per-account checkout limit with the pricing page. When it trips, the response is `-32029` with message `Checkout is temporarily rate limited. Retry shortly.` and `data: { reason: "checkout-rate-limited", retryAfterSeconds }`. Honour `Retry-After`.
 
@@ -537,7 +555,7 @@ Every status the MCP handler can return. Most JSON-RPC replies — including mos
 | **204** | empty                     | n/a              | `OPTIONS` preflight on canonical `/mcp`, `/api/mcp`, the well-known aliases, and the listed production alias hosts |
 | **400** | JSON-RPC envelope         | `-32600`         | Invalid notification `params`, invalid or unsupported `MCP-Protocol-Version` on any request except `initialize`, or SSE replay `GET` missing a valid `Mcp-Session-Id`. A `HEAD` response has no body. |
 | **401** | JSON-RPC envelope         | `-32001`         | Missing/invalid/expired credentials, or a revoked Pro MCP token, on canonical `/mcp` and `/api/mcp` (and well-known gated methods). `data.reason: "no-account"`; `WWW-Authenticate` header set. Alias-host transport is 410, not 401. |
-| **403** | JSON-RPC envelope or plain text | `-32002` or n/a         | Invalid Origin returns plain text before auth or dispatch, with an empty body for `HEAD`. Otherwise, terminal entitlement denial: `data.reason: "lapsed-subscription"` only when a provider-confirmed lapse lands during an in-flight Pro call (also sets `X-Billing-Verification: subscription_lapsed`), or `"upgrade-required"` when the free allowance calls a Pro-only tool or a non-free entitlement is inactive. A lapse already present at the pre-check is admitted onto the restricted free-account path instead. No `WWW-Authenticate` (re-auth cannot fix a denial already emitted). |
+| **403** | JSON-RPC envelope or plain text | `-32002` or n/a         | Invalid Origin returns plain text before auth or dispatch, with an empty body for `HEAD`. Otherwise, terminal entitlement denial: `data.reason: "lapsed-subscription"` only when a provider-confirmed lapse lands during an in-flight Pro call (also sets `X-Billing-Verification: subscription_lapsed`), `"payment-failed"` when a paused account (failed renewal, past its access grace) calls a Pro-only tool or a payment fails during an in-flight Pro call (the in-flight form sets `X-Billing-Verification: payment_failed`), or `"upgrade-required"` when the free allowance calls a Pro-only tool or a non-free entitlement is inactive. A lapse already present at the pre-check is admitted onto the restricted free-account path instead. No `WWW-Authenticate` (re-auth cannot fix a denial already emitted). |
 | **404** | JSON-RPC envelope         | `-32004`         | SSE replay cursor not found (stream expired or reconnect reached another instance). |
 | **405** | empty                     | n/a              | Request method outside `POST`/`GET`/`HEAD`/`OPTIONS`, or an SSE-flavoured `GET`/`HEAD` with no `Last-Event-ID` (no standalone server→client stream is offered). `Allow: POST, GET, HEAD, OPTIONS` header set. On listed production aliases the 405 also carries `Link: <https://worldmonitor.app/mcp>; rel="canonical"`. |
 | **406** | JSON-RPC envelope         | `-32600`         | SSE replay `GET` without `Accept: text/event-stream`. |

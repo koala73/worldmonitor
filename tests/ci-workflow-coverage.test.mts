@@ -542,6 +542,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/news-panel-resize-hit-target.spec.ts',
   'e2e/oil-price-freshness.spec.ts',
   'e2e/panel-font-scaling.spec.ts',
+  'e2e/dev-server-hermetic.spec.ts',
   'e2e/pinned-webcams.spec.ts',
   'e2e/pro-activation.spec.ts',
   'e2e/pro-banner-mobile.spec.ts',

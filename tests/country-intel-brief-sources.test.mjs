@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import { parseCountryBriefSources, renderEvidenceGroundedCountryBrief } from '../server/worldmonitor/intelligence/v1/get-country-intel-brief.ts';
 import { briefCitationGroundingGap, parseBriefSections } from '../scripts/crawlable-developments.mjs';
+import { headlineWithoutPublisher } from '../shared/brief-claim-rules.js';
 
 describe('country assessment energy grounding', () => {
   const sources = [
@@ -628,5 +629,44 @@ describe('country assessment imagery grounding', () => {
     ]) {
       assert.equal(render([bad]).withheld, 1, bad.text);
     }
+  });
+});
+
+describe('publisher byline in brief source titles (#11217)', () => {
+  const gn = 'https://news.google.com/rss/articles/CBMiabc?oc=5';
+
+  it('drops the Google News byline even when the feed name differs from the publisher', () => {
+    assert.equal(
+      headlineWithoutPublisher('Corrupt payments to director of Kuwait public pension fund - Compliance Week', gn, 'Sovereign Wealth'),
+      'Corrupt payments to director of Kuwait public pension fund',
+    );
+    assert.equal(headlineWithoutPublisher('Turkey hosts talks - Al-Monitor', gn, 'Mideast'), 'Turkey hosts talks');
+    assert.equal(
+      headlineWithoutPublisher('Italy rescues migrants off Lampedusa - UNHCR - The UN Refugee Agency', gn, 'UNHCR'),
+      'Italy rescues migrants off Lampedusa',
+    );
+  });
+
+  it('drops a byline that names the item source on any host', () => {
+    assert.equal(headlineWithoutPublisher('Saudi and Kuwaiti leaders meet | Arab News', 'https://arabnews.com/a', 'Arab News'), 'Saudi and Kuwaiti leaders meet');
+  });
+
+  it('keeps a headline dash that is not a byline', () => {
+    assert.equal(headlineWithoutPublisher('Kyiv - Moscow talks stall', 'https://example.com/a', 'Reuters'), 'Kyiv - Moscow talks stall');
+    const clipped = 'Eswatini minister - says the plan seeks to destroy Swaziland News amid...';
+    assert.equal(headlineWithoutPublisher(clipped, gn, 'Swaziland News'), clipped);
+  });
+
+  it('does not let the byline ground a name in the corpus check', () => {
+    const sources = [{
+      title: "Iran claims 3 oil tankers struck mines in Strait of Hormuz - The Times of India",
+      source: 'Strategic Chokepoints', url: gn, publishedAt: '2026-11-24T00:00:00.000Z',
+    }];
+    const brief = (line) => ({ text: `SITUATION NOW\n${line}`, sources, evidence: [] });
+    assert.equal(briefCitationGroundingGap(brief('Iran claims 3 oil tankers struck mines in the Strait of Hormuz. [1]'), { countryCode: 'IR', countryName: 'Iran' }), null);
+    assert.match(
+      briefCitationGroundingGap(brief('Iran claims 3 oil tankers struck mines, affecting shipments to India. [1]'), { countryCode: 'IR', countryName: 'Iran' }),
+      /does not ground|do not ground/,
+    );
   });
 });

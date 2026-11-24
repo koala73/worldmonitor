@@ -16,6 +16,7 @@ import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/service
 import type { ClusteredEvent, Feed, NewsItem, MapLayers, MilitaryFlight } from '@/types';
 import type { MarketData, InternetOutage } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
+import { TIME_RANGE_MS } from '@/utils/time-range';
 import {
   FEEDS,
   CANONICAL_FEEDS,
@@ -1724,15 +1725,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   getTimeRangeWindowMs(range: TimeRange): number {
-    const ranges: Record<TimeRange, number> = {
-      '1h': 60 * 60 * 1000,
-      '6h': 6 * 60 * 60 * 1000,
-      '24h': 24 * 60 * 60 * 1000,
-      '48h': 48 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000,
-      'all': Infinity,
-    };
-    return ranges[range];
+    return TIME_RANGE_MS[range];
   }
 
   filterItemsByTimeRange(items: NewsItem[], range: TimeRange = this.ctx.currentTimeRange): NewsItem[] {

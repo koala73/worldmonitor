@@ -36,7 +36,8 @@
  * risks a duplicate write. A billing-verification denial is emitted by the gate
  * BEFORE the handler runs, so retrying it is side-effect-free.
  *
- * `subscription_lapsed` is absent on purpose: it is a 403 and terminal.
+ * `subscription_lapsed` and `payment_failed` are absent on purpose: both are
+ * 403s and terminal.
  */
 const RETRYABLE_BILLING_CODES = new Set([
   'entitlement_verification_unavailable',

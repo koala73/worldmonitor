@@ -60,6 +60,7 @@ import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.
 import DIGEST_EDITIONS from './shared/news-digest-editions.json' with { type: 'json' };
 import { isBriefRelevantTitle } from '../shared/brief-relevance.js';
 import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
+import { takeDistinctStories } from '../shared/story-dedupe.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -584,7 +585,7 @@ function emptyDevelopments(freezeStartedAt, briefSkipped) {
 // would leave a shortfall with no recorded cause, since the request itself
 // succeeded -- the operator would see a count and no reason.
 export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
-  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0, duplicateUrl: 0 };
+  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0, duplicateUrl: 0, duplicateStory: 0 };
   const categories = payload && typeof payload === 'object' ? payload.categories : null;
   if (!categories || typeof categories !== 'object') return { rows: [], rejections };
   const rows = Object.values(categories)
@@ -618,7 +619,13 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
   const deduped = dedupeByArticleUrl(rows, (entry) => entry.row.url);
   rejections.duplicateUrl = rows.length - deduped.length;
 
-  return { rows: deduped.slice(0, limit).map((entry) => entry.row), rejections };
+  // Then one row per story: two outlets' articles on one event have different
+  // URLs (#11190). Also before the cap, for the same reason. The tally counts
+  // the copies skipped while filling the strip.
+  const distinct = takeDistinctStories(deduped, (entry) => entry.row.title, limit);
+  rejections.duplicateStory = distinct.duplicates;
+
+  return { rows: distinct.rows.map((entry) => entry.row), rejections };
 }
 
 // Country matching is the shared matcher (shared/country-mention.js), the

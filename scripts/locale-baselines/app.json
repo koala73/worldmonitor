@@ -1085,7 +1085,7 @@
   "components.insights.step": "Step {{step}}/{{total}}",
   "components.insights.streamAlwaysOnDesc": "Starts the live webcam videos as soon as they are on screen. Leave this off to load them only when you start them yourself.",
   "components.insights.streamAlwaysOnLabel": "Auto-play live webcams",
-  "components.insights.streamIdleStopDesc": "Stops Live News and Live Webcams after this long without activity and shows a notice in the panel.",
+  "components.insights.streamIdleStopDesc": "Stops Live News and Live Webcams after this long without activity and shows a notice in the panel. Live News keeps playing while its sound is on.",
   "components.insights.streamIdleStopLabel": "Stop live video when idle",
   "components.insights.streamIdleStopNever": "Never",
   "components.insights.streamQualityDesc": "Set quality for all live streams (lower saves bandwidth)",

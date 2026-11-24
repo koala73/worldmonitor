@@ -71,11 +71,58 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(section.locator('.map-controls [data-action="reset"]')).toBeHidden();
     await page.locator('[data-mobile-tab="map"]').click();
     await expect(section).toHaveClass(/live-news-fullscreen/);
-    // Only this rule's display:none is checked; fullscreen visibility is #11196's.
-    const displays = await section.evaluate((el) => ['.time-slider', '.map-controls [data-action="reset"]', '.map-controls .map-locate']
-      .map((selector) => { const node = el.querySelector(selector); return node ? getComputedStyle(node).display : 'missing'; }));
-    expect(displays).not.toContain('none');
-    expect(displays).not.toContain('missing');
+    await expect(section.locator('.time-slider')).toBeVisible();
+    await expect(section.locator('.map-controls [data-action="reset"]')).toBeVisible();
+    await expect(section.locator('.map-controls .map-locate')).toBeVisible();
+  });
+
+  test('the Map tab follows map fullscreen however it is toggled (#11157)', async ({ page }) => {
+    const mapTab = page.locator('[data-mobile-tab="map"]');
+    const todayTab = page.locator('[data-mobile-tab="today"]');
+    await page.locator('#mapFullscreenBtn').click();
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+    await page.locator('#mapFullscreenBtn').click();
+    await expect(page.locator('#mapSection')).not.toHaveClass(/live-news-fullscreen/);
+    await expect(todayTab).toHaveAttribute('aria-current', 'page');
+
+    await mapTab.click();
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+    // Cmd/Ctrl+K opens Search over the fullscreen map; closing it (here with
+    // Back) returns to Map.
+    await page.keyboard.press('ControlOrMeta+k');
+    await expect(page.locator('[data-mobile-tab="search"]')).toHaveAttribute('aria-current', 'page');
+    await page.goBack();
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#mapSection')).not.toHaveClass(/live-news-fullscreen/);
+    await expect(todayTab).toHaveAttribute('aria-current', 'page');
+    await expect(mapTab).not.toHaveAttribute('aria-current', 'page');
+  });
+
+  test('re-tapping Search over the fullscreen map closes it and keeps Map active (#11157)', async ({ page }) => {
+    const mapTab = page.locator('[data-mobile-tab="map"]');
+    const searchTab = page.locator('[data-mobile-tab="search"]');
+    await mapTab.click();
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await page.keyboard.press('ControlOrMeta+k');
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveClass(/open/);
+    await expect(searchTab).toHaveAttribute('aria-current', 'page');
+    // The Search tab toggles its own overlay closed; the map is still fullscreen.
+    await searchTab.click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(0, { timeout: 2_000 });
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+
+    // Off the fullscreen map, the same toggle lands on Today.
+    await page.locator('#mapFullscreenBtn').click();
+    await expect(page.locator('#mapSection')).not.toHaveClass(/live-news-fullscreen/);
+    await searchTab.click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveClass(/open/);
+    await searchTab.click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(0, { timeout: 2_000 });
+    await expect(page.locator('[data-mobile-tab="today"]')).toHaveAttribute('aria-current', 'page');
   });
 
   test('keeps the account entry visible in the header before More opens', async ({ page }) => {
@@ -362,6 +409,15 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await disablePanels(['oref-sirens', 'intel', 'strategic-risk']);
     await page.locator('[data-mobile-tab="alerts"]').click();
     await expect(page.locator('.toast-notification')).toContainText('No active alerts yet');
+  });
+
+  test('the fullscreen Map view keeps its zoom, time range, Layers and Legend (#11157)', async ({ page }) => {
+    const section = page.locator('#mapSection');
+    await page.locator('[data-mobile-tab="map"]').click();
+    await expect(section).toHaveClass(/live-news-fullscreen/);
+    for (const control of ['.map-controls', '.time-slider', '.layer-toggles', '.map-legend']) {
+      await expect(section.locator(control).first(), control).toBeVisible();
+    }
   });
 });
 

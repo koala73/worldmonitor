@@ -11,6 +11,7 @@ import {
 const layout = readFileSync(new URL('../src/app/panel-layout.ts', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/styles/main.css', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const globe = readFileSync(new URL('../src/components/GlobeMap.ts', import.meta.url), 'utf8');
 
 /**
  * Records the effect sequence `reconcileOverlayForTab` performs. The ORDER is
@@ -217,6 +218,16 @@ describe('mobile P0 navigation shell (#5201)', () => {
     assert.match(css, /\.map-section:not\(\.live-news-fullscreen\) \.time-slider,\s*\.map-section:not\(\.live-news-fullscreen\) \.map-controls \[data-action="reset"\],\s*\.map-section:not\(\.live-news-fullscreen\) \.map-controls \.zoom-reset,\s*\.map-section:not\(\.live-news-fullscreen\) \.map-controls \.map-locate \{\s*display: none;/);
   });
 
+  it('keeps map controls in a fullscreen map while a fullscreen panel still hides them (#11157)', () => {
+    const handlers = readFileSync(new URL('../src/app/event-handlers.ts', import.meta.url), 'utf8');
+    assert.match(handlers, /document\.body\.classList\.toggle\('map-fullscreen-active', isFullscreen\)/);
+    for (const control of ['time-slider', 'deckgl-layer-toggles', 'map-legend', 'map-controls', 'map-timestamp', 'layer-toggles']) {
+      const hides = css.match(new RegExp(`body\\.live-news-fullscreen-active([^\\s,{]*) \\.${control},?\\s`, 'g')) ?? [];
+      assert.ok(hides.length > 0, `${control} is hidden behind a fullscreen panel`);
+      for (const hide of hides) assert.match(hide, /:not\(\.map-fullscreen-active\)/, `${control} stays visible in a fullscreen map`);
+    }
+  });
+
   it('lets the open phone layer list fill the map and scroll instead of zooming it (#11157)', () => {
     const rule = css.match(/\n  \.layer-toggles\.map-control-panel:not\(\.deckgl-layer-toggles\):not\(\.map-control-collapsed\) \{([^}]*)\}/);
     assert.ok(rule, 'mobile open layer list rule');
@@ -227,5 +238,44 @@ describe('mobile P0 navigation shell (#5201)', () => {
     assert.match(rule[1], /overscroll-behavior: contain;/);
     const map = readFileSync(new URL('../src/components/Map.ts', import.meta.url), 'utf8');
     assert.match(map, /'wheel',\s*\(e\) => \{\s*\/\/[^\n]*\n\s*if \(e\.target instanceof Element && e\.target\.closest\('\.layer-toggles[^']*'\)\) return;\s*e\.preventDefault\(\);/);
+  });
+});
+
+describe('3D globe controls on phones (#11157)', () => {
+  it('re-shows the globe layer list that the blanket phone rule hides', () => {
+    assert.match(css, /body:not\(\.live-news-fullscreen-active\) \.globe-mode > \.layer-toggles\.map-control-panel,\s*body\.map-fullscreen-active \.globe-mode > \.layer-toggles\.map-control-panel \{\s*display: flex !important;/);
+  });
+
+  it('fits the open globe layer list to the map strip, above the time range', () => {
+    assert.match(css, /\.globe-mode > \.deckgl-layer-toggles \{\s*max-height: calc\(100% - 20px\);\s*\}/);
+    assert.match(css, /\.globe-mode > \.deckgl-layer-toggles:not\(\.map-control-collapsed\) \{\s*z-index: 101;/);
+    assert.match(css, /\.globe-mode > \.deckgl-layer-toggles \.toggle-list \{\s*max-height: none !important;/);
+  });
+
+  it('gives the globe a time range wired to MapContainer', () => {
+    assert.match(globe, /this\.createLayerToggles\(\);\s*this\.createTimeSlider\(\);/);
+    assert.match(globe, /onTimeRangeChanged\(cb: \(r: TimeRange\) => void\): void \{ this\.onTimeRangeChangeCb = cb; \}/);
+    assert.match(globe, /this\.onTimeRangeChangeCb\?\.\(range\);\s*this\.updateTimeSliderButtons\(\);/);
+  });
+
+  it('applies the time range to timed markers, not only UKMTO incidents', () => {
+    assert.match(globe, /markers\.filter\(m => m\._time == null \|\| m\._time >= cutoff\)/);
+    for (const field of ['occurredAt', 'e.date', 'e.time', 'acq_date', 'pubDate', 'startDate', 'e.timestamp', 'a.onset', 'updatedAt', 'lastAisUpdate', 'observedAt', 'detected_at', 's.datetime', 'a.reported', 'd.timestamp']) {
+      assert.ok(globe.includes(`_time: parseTimestamp(`) && new RegExp(`_time: parseTimestamp\\([^)]*${field.replace('.', '\\.')}`).test(globe), field);
+    }
+    assert.match(globe, /this\.inTimeRange\(this\.stormTrackPaths\)/);
+    assert.match(globe, /this\.inTimeRange\(this\.imageryFootprintPolygons\)/);
+    assert.match(globe, /if \(this\.timedPaths\(\)\.length !== this\.shownTimedPaths\) this\.flushPaths\(\);\s*if \(this\.timedPolygons\(\)\.length !== this\.shownTimedPolygons\) this\.flushPolygons\(\);/);
+    assert.match(globe, /if \(source && !cluster\) \{/);
+    assert.match(globe, /this\.inTimeRange\(this\.stormConePolygons\)/);
+    assert.match(globe, /_kind: 'notamRing' as const,[^}]*_time: parseTimestamp\(d\.updatedAt\)/);
+    assert.match(globe, /add\('military', this\.clusterMarkersInRange\(cutoff\)\)/);
+    assert.match(globe, /vesselCount: vessels\.length/);
+    assert.match(globe, /if \(vessels\.length < 2\) return null;/);
+    assert.match(globe, /lon: Math\.atan2\(/);
+    assert.match(globe, /_lat: cluster\.lat, _lng: cluster\.lon, vesselCount: cluster\.vesselCount/);
+    assert.match(globe, /if \(this\.layers\.natural\) this\.flushPaths\(\);\s*if \(this\.layers\.satellites \|\| this\.layers\.natural\) this\.flushPolygons\(\);/);
+    assert.match(globe, /aria-pressed="\$\{this\.timeRange === range\}"/);
+    assert.match(globe, /btn\.setAttribute\('aria-pressed', String\(btn\.dataset\.range === this\.timeRange\)\)/);
   });
 });

@@ -646,6 +646,7 @@ describe('the client classifies every string classifyBillingVerification can emi
   const BILLING_INPUTS = [
     { label: 'transient lookup failure', input: { verificationUnavailable: true as const } },
     { label: 'confirmed lapse', input: { billingStatus: 'subscription_lapsed' as const } },
+    { label: 'paused after a failed payment', input: { billingStatus: 'payment_failed' as const } },
     { label: 'renewal pending', input: { billingStatus: 'renewal_verification_pending' as const } },
     { label: 'renewal failed', input: { billingStatus: 'renewal_verification_failed' as const } },
   ];
@@ -670,9 +671,16 @@ describe('the client classifies every string classifyBillingVerification can emi
           'upgrade_required',
           `${label} is transient and must never render as "buy Pro"`,
         );
+      } else if (denial.code === 'payment_failed') {
+        // Checkout is blocked while the hold lasts, so the upsell would be a
+        // dead end. The unknown-code path retries a bounded number of times
+        // and then gives up without an upsell.
+        assert.equal(verdict, 'access_denied', `${label} must never render as "buy Pro"`);
+        assert.equal(routeDenial(verdict, 1, 1), 'retry');
+        assert.equal(routeDenial(verdict, 2, 1), 'give_up');
       } else {
-        // The one terminal member. It must upsell even for a client convinced it
-        // is Pro, or a lapsed subscriber retries forever with no way back.
+        // A lapse must upsell even for a client convinced it is Pro, or a
+        // lapsed subscriber retries forever with no way back.
         assert.equal(
           verdict,
           'upgrade_required',
@@ -682,12 +690,19 @@ describe('the client classifies every string classifyBillingVerification can emi
     });
   }
 
-  it('the terminal member is the only one that upsells', () => {
+  it('the confirmed lapse is the only billing state that upsells', () => {
     const terminal = BILLING_INPUTS.filter(
       ({ input }) => classifyBillingVerification(input)?.retryable === false,
     );
-    assert.equal(terminal.length, 1, 'exactly one billing state may be terminal');
-    assert.equal(classifyBillingVerification(terminal[0].input)?.code, 'subscription_lapsed');
+    assert.deepEqual(
+      terminal.map(({ input }) => classifyBillingVerification(input)?.code),
+      ['subscription_lapsed', 'payment_failed'],
+    );
+    const upsells = BILLING_INPUTS.filter(({ input }) => {
+      const denial = classifyBillingVerification(input)!;
+      return classifyPremiumDenial({ status: denial.status, errorCode: denial.message, belief: PRO }) === 'upgrade_required';
+    });
+    assert.deepEqual(upsells.map(({ label }) => label), ['confirmed lapse']);
   });
 });
 
