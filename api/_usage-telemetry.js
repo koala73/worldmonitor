@@ -102,33 +102,10 @@ function deliveryMode() {
   return 'probe';
 }
 
-function isBootstrapR2Event(event) {
-  return event?.event_type === 'bootstrap_r2_shadow' || event?.event_type === 'bootstrap_r2';
-}
-
-function logBootstrapR2DeliveryHealth(failureClass) {
-  console.warn(JSON.stringify({
-    event_type: 'bootstrap_r2_telemetry_delivery',
-    failure_class: failureClass,
-    breaker_state: breakerTripped ? 'open' : 'closed',
-  }));
-}
-
-function recordEventDelivery(event, ok, isProbe, failureClass = null) {
-  const wasTripped = breakerTripped;
-  recordDelivery(ok, isProbe);
-  if (!isBootstrapR2Event(event)) return;
-  if (failureClass) logBootstrapR2DeliveryHealth(failureClass);
-  if (wasTripped !== breakerTripped) logBootstrapR2DeliveryHealth('breaker_transition');
-}
-
 async function deliver(event) {
   if (process.env.USAGE_TELEMETRY !== '1') return;
   const token = process.env.AXIOM_API_TOKEN;
-  if (!token) {
-    if (isBootstrapR2Event(event)) logBootstrapR2DeliveryHealth('missing_token');
-    return;
-  }
+  if (!token) return;
   const mode = deliveryMode();
   if (!mode) return;
 
@@ -145,19 +122,9 @@ async function deliver(event) {
       body: JSON.stringify([event]),
       signal: controller.signal,
     });
-    recordEventDelivery(
-      event,
-      response.ok,
-      mode === 'probe',
-      response.ok ? null : 'http_error',
-    );
+    recordDelivery(response.ok, mode === 'probe');
   } catch {
-    recordEventDelivery(
-      event,
-      false,
-      mode === 'probe',
-      controller.signal.aborted ? 'timeout' : 'network_error',
-    );
+    recordDelivery(false, mode === 'probe');
     // Observability must never alter the session-mint response path.
   } finally {
     clearTimeout(timer);
@@ -169,40 +136,6 @@ export function __resetWmSessionTelemetryForTests() {
   breakerTripped = false;
   breakerOpenUntil = 0;
   breakerProbeInFlight = false;
-}
-
-/**
- * Queue one bootstrap-R2 shadow result. This emitter deliberately receives no
- * Request object and constructs a fresh event from a closed allowlist so
- * request, user, credential, and payload fields cannot leak into the dataset.
- */
-function bootstrapR2ShadowDelivery(input) {
-  return deliver({
-    event_type: 'bootstrap_r2_shadow',
-    route: '/api/bootstrap',
-    r2_outcome: input.r2Outcome,
-    r2_reason: input.r2Reason,
-    bootstrap_tier: input.bootstrapTier,
-    r2_duration_ms: input.r2DurationMs,
-    redis_duration_ms: input.redisDurationMs,
-    execution_region: input.executionRegion,
-    execution_cold: input.executionCold,
-    status: input.status,
-  });
-}
-
-export function deliverBootstrapR2Shadow(input) {
-  if (process.env.USAGE_TELEMETRY !== '1') return Promise.resolve();
-  return bootstrapR2ShadowDelivery(input);
-}
-
-export function emitBootstrapR2Shadow(ctx, input) {
-  if (!ctx?.waitUntil || process.env.USAGE_TELEMETRY !== '1') return;
-  try {
-    ctx.waitUntil(deliverBootstrapR2Shadow(input));
-  } catch {
-    // Observability must never alter the bootstrap response path.
-  }
 }
 
 /**
