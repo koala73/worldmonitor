@@ -735,6 +735,31 @@ describe("failed-renewal webhooks in any order", () => {
     expect((await entitlementOf(t))?.validUntil).toBe(graceEnd);
   });
 
+  test("renewed and on_hold sharing one timestamp, renewed first: the hold lands with its grace and day-0 email", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = await setup();
+    await activate(t);
+    await charge(t, "pay_failed", ADVANCE, "failed");
+    await event(t, "wh_renewed", "subscription.renewed", payload(unpaid), holdAt);
+    await hold(t);
+    const sends = await day0Html(t, fetchMock);
+    expect(sends).toHaveLength(1);
+    await expectFailedRenewalHold(t);
+  });
+
+  test("an active event sharing the hold's timestamp does not undo the hold", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await charge(t, "pay_failed", ADVANCE, "failed");
+    await hold(t);
+    await event(t, "wh_renewed", "subscription.renewed", payload(unpaid), holdAt);
+    await event(t, "wh_advance", "subscription.updated", payload(unpaid), holdAt);
+    await expectFailedRenewalHold(t);
+  });
+
   test("an on_hold payload without billing dates keeps the stored period", async () => {
     vi.useFakeTimers();
     const t = await setup();

@@ -1934,7 +1934,12 @@ export async function handleSubscriptionOnHold(
     return;
   }
 
-  if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
+  const enteringHold = existing.status !== "on_hold";
+  // A hold wins a timestamp tie with the event before it: a renewal's charge
+  // fails after the period moves. The active and renewed handlers stay
+  // strict, so a same-timestamp active event cannot undo the hold.
+  const tiedHoldEntry = enteringHold && eventTimestamp === existing.updatedAt;
+  if (!isNewerEvent(existing.updatedAt, eventTimestamp) && !tiedHoldEntry) return;
 
   // Episode anchor (#4932): only the transition INTO on_hold opens a new
   // dunning episode. Repeated on_hold webhooks (Dodo payment-retry failures,
@@ -1945,7 +1950,6 @@ export async function handleSubscriptionOnHold(
   // dedup stays consistent. Falling back to eventTimestamp would move the
   // anchor on every repeat webhook and re-open the finished sequence
   // (duplicate day-3/day-7 sends — PR #4935 review finding 1).
-  const enteringHold = existing.status !== "on_hold";
   const onHoldAt = enteringHold ? eventTimestamp : (existing.onHoldAt ?? existing.updatedAt);
   // The payload is a full snapshot and names the period that failed to bill.
   // The event that moved the row to that period can be processed after this
