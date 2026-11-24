@@ -233,6 +233,7 @@
 *Could not find public function for 'payments/billing:admitProBusinessUpgrade'*
 *Could not find public function for 'payments/billing:applyBillingEmailUpdate'*
 *Could not find public function for 'payments/billing:applyDodoSubscriptionReconciliation'*
+*Could not find public function for 'payments/billing:applyOnHoldRecovery'*
 *Could not find public function for 'payments/billing:backfillMissingCustomers'*
 *Could not find public function for 'payments/billing:backfillSubscriptionDodoCustomerId'*
 *Could not find public function for 'payments/billing:claimBillingEmailUpdate'*
@@ -256,9 +257,11 @@
 *Could not find public function for 'payments/billing:inspectCustomerOwnership'*
 *Could not find public function for 'payments/billing:internalGetCustomerPortalUrl'*
 *Could not find public function for 'payments/billing:internalUpgradeToProBusiness'*
+*Could not find public function for 'payments/billing:listLockedOnHoldForRecovery'*
 *Could not find public function for 'payments/billing:listStaleActiveSubscriptionsForRenewalReconciliation'*
 *Could not find public function for 'payments/billing:listStuckPendingPaymentCandidates'*
 *Could not find public function for 'payments/billing:markDodoReconcileAttempt'*
+*Could not find public function for 'payments/billing:reconcileLockedOnHoldSubscriptions'*
 *Could not find public function for 'payments/billing:reconcileMissedDodoRenewals'*
 *Could not find public function for 'payments/billing:reconcileStuckPendingPayments'*
 *Could not find public function for 'payments/billing:releaseProBusinessUpgrade'*

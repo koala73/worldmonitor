@@ -282,3 +282,26 @@ describe('returning-subscriber surfaces (#4799)', () => {
     assert.match(src, /endsWith\('_annual'\)/);
   });
 });
+
+describe('paused failed-renewal surfaces', () => {
+  it('Unified Settings shows a paused card with Update Payment before the free Upgrade card', async () => {
+    const src = await read('src/components/UnifiedSettings.ts');
+    const paused = src.indexOf("billingState === 'on_hold' && sub && !isEntitled()");
+    const freeCard = src.indexOf('data-billing-state="free"');
+    assert.ok(paused > 0, 'paused branch present');
+    assert.ok(freeCard > paused, 'paused branch returns before the free Upgrade card');
+    const branch = src.slice(paused, freeCard);
+    assert.match(branch, /components\.billingState\.onHoldDesc/);
+    assert.match(branch, /class="manage-billing-btn manage-billing-btn-primary"/);
+    assert.match(branch, /components\.billingState\.updatePayment/);
+    assert.doesNotMatch(branch.slice(0, branch.indexOf('</div>\n      `;')), /upgrade-pro-cta"/);
+  });
+
+  it('the Pro banner asks getProBannerVariant before reserving an Upgrade strip', async () => {
+    const src = await read('src/components/ProBanner.ts');
+    const check = src.indexOf('getProBannerVariant(billingState) === null');
+    assert.ok(check > 0, 'variant check present');
+    assert.ok(check < src.indexOf("trackGateHit('pro-banner')"), 'checked before the gate hit and reservation');
+    assert.match(src, /const nextState = getProBannerVariant\(/);
+  });
+});

@@ -626,6 +626,7 @@ async function doCheckout(
           // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
           // pairing; every other pairing keeps the portal line.
           targetProductId: productId,
+          paused: err?.subscription?.status === 'on_hold',
           onConfirm: async () => {
             // Pre-open the tab SYNCHRONOUSLY inside the click handler
             // BEFORE any await so the popup blocker treats it as a
@@ -1077,6 +1078,8 @@ interface ProDuplicateDialogOptions {
   planDisplayName: string;
   /** Product the blocked checkout was for — selects the copy variant. */
   targetProductId?: string;
+  /** The blocking subscription is on_hold: its last payment failed. */
+  paused?: boolean;
   onConfirm: () => void;
   onDismiss: () => void;
 }
@@ -1084,6 +1087,9 @@ interface ProDuplicateDialogOptions {
 /** Mirrors src/services/checkout-duplicate-dialog.ts — keep the copy in sync. */
 function proDuplicateBodyHtml(options: ProDuplicateDialogOptions): string {
   const plan = escapeHtml(options.planDisplayName);
+  if (options.paused === true) {
+    return `Your ${plan} subscription is paused because its last payment failed, so a new checkout would bill you twice. Update your payment method in the billing portal and your access comes back right away.`;
+  }
   if (options.targetProductId !== undefined && PRO_BUSINESS_PRODUCT_IDS.has(options.targetProductId)) {
     return `Your account already has an active ${plan} subscription. Pro Business is a separate plan, so the upgrade takes two steps: cancel ${plan} in the billing portal, then start the Pro Business checkout again — you don't have to wait for your current term to end. Your ${plan} access continues until the term you've already paid for runs out, and Pro Business starts a new billing cycle as soon as you buy it. Need a hand? Email <a href="mailto:support@worldmonitor.app" style="color:#44ff88;">support@worldmonitor.app</a>.`;
   }
@@ -1125,13 +1131,13 @@ function showProDuplicateSubscriptionDialog(options: ProDuplicateDialogOptions):
   });
 
   card.innerHTML = `
-    <h2 style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">Subscription already active</h2>
+    <h2 style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">${options.paused === true ? 'Payment needs updating' : 'Subscription already active'}</h2>
     <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;">
       ${proDuplicateBodyHtml(options)}
     </p>
     <div style="display:flex;justify-content:flex-end;gap:10px;">
       <button id="${PRO_DUP_DIALOG_ID}-dismiss" type="button" style="background:transparent;color:#aaa;border:1px solid #2a2a2a;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Dismiss</button>
-      <button id="${PRO_DUP_DIALOG_ID}-confirm" type="button" style="background:#44ff88;color:#0a0a0a;border:none;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Open billing portal</button>
+      <button id="${PRO_DUP_DIALOG_ID}-confirm" type="button" style="background:#44ff88;color:#0a0a0a;border:none;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">${options.paused === true ? 'Update payment method' : 'Open billing portal'}</button>
     </div>
   `;
 

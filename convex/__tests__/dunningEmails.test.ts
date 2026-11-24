@@ -235,7 +235,7 @@ describe("sendDunningEmail guards", () => {
     expect(sends[0]!.subject).toContain("restore access");
     expect(sends[0]!.html).toContain("/api/customer-portal?t=");
     expect(await verifyDunningPortalToken(ctaPortalToken(sends[0]!.html), Date.now())).toBe(USER_ID);
-    expect(sends[0]!.html).not.toContain("access continues for now");
+    expect(sends[0]!.html).not.toContain("access continues");
     expect(sends[0]!.html).toContain("Paid access has already ended");
     expect(await ledgerRows(t)).toHaveLength(1);
   });
@@ -1119,7 +1119,7 @@ describe("failed-renewal hold whose period ended at hold start", () => {
     for (const send of sends) {
       expect(send.html).not.toContain("Once your paid period ends");
       expect(send.html).not.toContain("access ends with your paid period");
-      expect(send.html).not.toContain("access continues for now");
+      expect(send.html).not.toContain("access continues");
     }
     expect((await ledgerRows(t)).map((row) => row.step)).toEqual([
       "dunning_day0",
@@ -1191,7 +1191,7 @@ describe("failed-renewal hold whose period ended at hold start", () => {
     const sends = resendSends(fetchMock);
     expect(sends).toHaveLength(1);
     expect(sends[0]!.html).not.toContain("Paid access has already ended");
-    expect(sends[0]!.html).toContain("access continues for now");
+    expect(sends[0]!.html).toContain("access continues until");
   });
 
   test("ended-period hold skips as resubscribed when another subscription covers the user", async () => {
@@ -1374,7 +1374,7 @@ describe("day-0 copy", () => {
     );
     expect(ended.subject).toContain("restore access");
     expect(ended.html).toContain("Paid access has already ended");
-    expect(ended.html).not.toContain("access continues for now");
+    expect(ended.html).not.toContain("access continues");
   });
 
   test("ended access day-3 and day-7 do not promise access until the period ends", () => {
@@ -1437,6 +1437,6 @@ describe("day-0 copy", () => {
       Date.now() + 3 * DAY_MS,
     );
     expect(covered.subject).toContain("access continues");
-    expect(covered.html).toContain("access continues for now");
+    expect(covered.html).toContain("access continues until");
   });
 });

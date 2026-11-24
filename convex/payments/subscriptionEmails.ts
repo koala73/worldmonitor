@@ -15,12 +15,14 @@ import { signDunningPortalToken } from "../lib/identitySigning";
 import { buildUnsubscribeUrl, listUnsubscribeHeaders } from "../lib/emailUnsubscribe";
 import { ResendSendError, sendResendEmail, type EmailPurpose } from "../lib/resendEmail";
 import {
+  accessEndAt,
   billingDeletionForEvent,
   billingDeletionForUser,
   isCancellationScheduled,
   isCoveringAt,
   resolveBillingRecipient,
 } from "./subscriptionHelpers";
+import { formatAccessEndDate } from "./cancellationEmailCopy";
 
 export { formatAccessEndDate } from "./cancellationEmailCopy";
 
@@ -918,6 +920,9 @@ export const getDunningContext = internalQuery({
       cancelledAt: sub.cancelledAt ?? null,
       cancelScheduledAt: isCancellationScheduled(sub) ? (sub.cancelScheduledAt ?? null) : null,
       currentPeriodEnd: sub.currentPeriodEnd,
+      // Paid access from this subscription: shorter than currentPeriodEnd for
+      // a failed renewal inside its access grace (see accessEndAt).
+      accessEndsAt: accessEndAt(sub),
       email,
       hasLiveSub,
       entitlementCoveredUntil,
@@ -1048,7 +1053,7 @@ export function buildDunningEmail(
         html: dunningEmailShell(
           "Your latest payment didn't go through.",
           stillCovered
-            ? `<p style="font-size: 14px; color: #999; margin: 0; line-height: 1.5;">Your ${planName} subscription is paused because the last charge failed — usually an expired card or a bank decline. Your access continues for now: update your payment method and the subscription resumes automatically. No new checkout needed.</p>`
+            ? `<p style="font-size: 14px; color: #999; margin: 0; line-height: 1.5;">Your ${planName} subscription is paused because the last charge failed — usually an expired card or a bank decline. Your access continues until ${formatAccessEndDate(accessUntil!)}: update your payment method before then and the subscription resumes automatically. No new checkout needed.</p>`
             : `<p style="font-size: 14px; color: #999; margin: 0; line-height: 1.5;">Your ${planName} subscription is paused because the last charge failed — usually an expired card or a bank decline. Paid access has already ended. Update your payment method to restore briefs, alerts and Pro panels. No new checkout needed.</p>`,
           "Update payment method",
           ctaUrl,
@@ -1218,6 +1223,7 @@ type DunningContext = {
   cancelledAt: number | null;
   cancelScheduledAt: number | null;
   currentPeriodEnd: number;
+  accessEndsAt: number;
   email: string;
   hasLiveSub: boolean;
   entitlementCoveredUntil: number;
@@ -1291,7 +1297,9 @@ function evaluateDunningEligibility(
       return { ok: false, reason: "not_cancelled" };
     }
     if (cancellationEpisode !== episodeAt) return { ok: false, reason: "stale_episode" };
-    if (sub.currentPeriodEnd <= now) return { ok: false, reason: "not_covering" };
+    // accessEndsAt, not currentPeriodEnd: a cancel during a failed-renewal
+    // hold promises access only to the end of the hold's grace.
+    if (sub.accessEndsAt <= now) return { ok: false, reason: "not_covering" };
     return { ok: true };
   }
   // Dunning only while THIS episode is still open — a recovery or a
@@ -1413,9 +1421,9 @@ export const sendDunningEmail = internalAction({
       planName,
       ctaUrl,
       args.step === "cancellation_confirm"
-        ? fresh.sub.currentPeriodEnd
-        : Math.max(fresh.sub.currentPeriodEnd, fresh.sub.entitlementCoveredUntil),
-      fresh.sub.currentPeriodEnd,
+        ? fresh.sub.accessEndsAt
+        : Math.max(fresh.sub.accessEndsAt, fresh.sub.entitlementCoveredUntil),
+      fresh.sub.accessEndsAt,
       unsubscribeUrl,
     );
     const sent = await sendEmail(ctx, apiKey, fresh.sub.email, subject, html, {
@@ -1554,7 +1562,7 @@ export const runDunningScan = internalMutation({
       // Same rule as winback: no cancelledAt means no stable episode key.
       // The index omits missing fields; this guard keeps episodeAt typed.
       if (sub.cancelledAt === undefined) continue;
-      if (sub.currentPeriodEnd < now) continue;
+      if (accessEndAt(sub) < now) continue;
       paidThroughCancelled.push(sub);
       due.push({
         dodoSubscriptionId: sub.dodoSubscriptionId,
