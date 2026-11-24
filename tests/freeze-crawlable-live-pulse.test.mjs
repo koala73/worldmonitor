@@ -2515,6 +2515,31 @@ describe('strip headline story identity (#11190)', () => {
     assert.equal(rows.length, 2, 'same-topic different events are two stories');
     assert.equal(rejections.duplicateStory, 0);
   });
+
+  // 2026-11-24: the manual refresh after #11201 still froze one North Korea
+  // story in two rows. The outlets worded it differently ("shutting down" vs
+  // "force closure"), so the digest's matcher scored the pair 0.44, under its
+  // 0.604 threshold.
+  it('gives one row to a story two outlets word differently', () => {
+    const { rows, rejections } = selectFrozenHeadlines(digest([
+      item('North Korea to consider shutting down Swiss diplomatic office in Pyongyang, KCNA says', 'Daily Maverick', 'https://www.dailymaverick.co.za/a', 90),
+      item('North Korea threatens to force closure of Swiss diplomatic office over sanctions', 'NK News', 'https://www.nknews.org/b', 85),
+      item("Zelensky urges four-way peace talks with Russia, Europe and US 'as soon as possible'", 'France 24', 'https://www.france24.com/c', 80),
+    ]), 2);
+
+    assert.deepEqual(rows.map((row) => row.source), ['Daily Maverick', 'France 24']);
+    assert.equal(rejections.duplicateStory, 1);
+  });
+
+  it('keeps two stories that share only a place and a verb', () => {
+    const { rows } = selectFrozenHeadlines(digest([
+      item('Iran threatens to close Strait of Hormuz', 'Reuters', 'https://www.reuters.com/a', 60),
+      item('North Korea threatens to close Swiss diplomatic office', 'AP News', 'https://apnews.com/b', 55),
+      item('US imposes sanctions on dozens linked to Iran shadow banking networks', 'Le Monde', 'https://www.lemonde.fr/c', 50),
+    ]), 4);
+
+    assert.equal(rows.length, 3);
+  });
 });
 
 // One wire story reaches the flattened strip selection through several of a
