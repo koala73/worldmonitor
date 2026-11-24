@@ -192,14 +192,22 @@ function trimDisplacement(raw: unknown): unknown {
   return { summary: { countries: keep(rows((raw as Obj)?.summary, 'countries')) } };
 }
 
-function trimIranEvents(raw: unknown, preserveV2Fields = false): unknown {
+// A v2 country is kept when it is scored, attributed to a scored country, or
+// a capture target; a target outside the scored set keeps its own code.
+const v2Country = (iso2: unknown, targets: ReadonlySet<string>): string | null => {
+  const code = typeof iso2 === 'string' ? iso2.trim().toUpperCase() : '';
+  return ciiCountryForIso2(code) ?? (targets.has(code) ? code : null);
+};
+
+function trimIranEvents(raw: unknown, v2Targets?: ReadonlySet<string>): unknown {
   if (raw == null) return null;
+  const preserveV2Fields = v2Targets !== undefined;
   return {
     ...(preserveV2Fields && isObj(raw) ? pick(raw, ['version']) : {}),
     events: rows(raw, 'events').flatMap((e) => {
       const severity = String(e?.severity ?? '').toLowerCase();
       // The v2 publisher supplies the country hit and uses an empty code at sea.
-      const code = preserveV2Fields ? ciiCountryForIso2(e?.countryCode) : strikeEventCountry(e);
+      const code = preserveV2Fields ? v2Country(e?.countryCode, v2Targets) : strikeEventCountry(e);
       return code && typeof e?.timestamp === 'number' && Number.isFinite(e.timestamp)
         ? [{ severity, timestamp: e.timestamp, countryCode: code, ...(preserveV2Fields ? pick(e, ['category']) : {}) }]
         : [];
@@ -207,12 +215,13 @@ function trimIranEvents(raw: unknown, preserveV2Fields = false): unknown {
   };
 }
 
-function trimStrikeTally(raw: unknown): unknown {
+function trimStrikeTally(raw: unknown, v2Targets?: ReadonlySet<string>): unknown {
   if (!isObj(raw)) return raw ?? null;
   const days: Obj = {};
+  const keep = (iso2: string) => (v2Targets ? v2Country(iso2, v2Targets) : ciiCountryForIso2(iso2));
   for (const [date, byCountry] of Object.entries(isObj(raw.days) ? raw.days : {})) {
     if (!isObj(byCountry)) continue;
-    const kept = Object.fromEntries(Object.entries(byCountry).filter(([iso2]) => ciiCountryForIso2(iso2)));
+    const kept = Object.fromEntries(Object.entries(byCountry).filter(([iso2]) => keep(iso2)));
     if (Object.keys(kept).length) days[date] = kept;
   }
   return { version: raw.version, updatedAt: raw.updatedAt, days };
@@ -258,7 +267,7 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
       }),
     })),
     iranEvents: trimIranEvents(raw.iranEvents),
-    ...(raw.iranEventsV2 !== undefined ? { iranEventsV2: trimIranEvents(raw.iranEventsV2, true) } : {}),
+    ...(raw.iranEventsV2 !== undefined ? { iranEventsV2: trimIranEvents(raw.iranEventsV2, targets) } : {}),
     oref: nullable(raw.oref, (v) => pick(v, ['activeAlertCount', 'historyCount24h'])),
     advisories: nullable(raw.advisories, (v) => (isObj(v.byCountry) ? { byCountry: tier1Entries(v.byCountry) } : {})),
     displacement: trimDisplacement(raw.displacement),
@@ -296,7 +305,7 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
         .map(([code, row]) => [code, pick(row as Obj, ['conflict', 'protest', 'week', 'strikes'])])),
     })),
     strikePressure: trimStrikeTally(raw.strikePressure),
-    ...(raw.strikePressureV2 !== undefined ? { strikePressureV2: trimStrikeTally(raw.strikePressureV2) } : {}),
+    ...(raw.strikePressureV2 !== undefined ? { strikePressureV2: trimStrikeTally(raw.strikePressureV2, targets) } : {}),
     // Seed envelopes of public aggregate border statistics, kept whole: the
     // projection reads most of their fields.
     crossBorder: raw.crossBorder ?? {},

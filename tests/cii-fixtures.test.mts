@@ -235,6 +235,24 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
     targetCodes: globalTargets, calibration: true });
   assert.deepEqual(globalCapture.captureTargets, globalTargets);
   assert.deepEqual(globalCapture.inputs.ucdp, raw.ucdp);
+  // A v2 strike for a capture target outside the scored set keeps its own
+  // code; a country that is neither scored nor a target is still dropped.
+  const widerV2 = { ...raw,
+    strikePressureV2: { ...raw.strikePressureV2, days: { '2026-10-22': { IL: [1, 0, 0, 0], NO: [0, 1, 0, 0], KW: [0, 0, 1, 0] } } },
+    iranEventsV2: { events: [
+      { countryCode: 'NO', severity: 'high', timestamp: f.nowMs },
+      { countryCode: 'KW', severity: 'high', timestamp: f.nowMs },
+    ] },
+  };
+  const widerCapture = buildCiiFixture(widerV2, { label: 'global-v2-test', capturedAt: f.capturedAt,
+    nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null,
+    targetCodes: globalTargets, calibration: true });
+  assert.deepEqual(widerCapture.inputs.strikePressureV2,
+    { ...raw.strikePressureV2, days: { '2026-10-22': { IL: [1, 0, 0, 0], NO: [0, 1, 0, 0] } } });
+  assert.deepEqual(widerCapture.inputs.iranEventsV2, { events: [{ severity: 'high', timestamp: f.nowMs, countryCode: 'NO' }] });
+  const scoredOnly = trimCiiRawInputs(widerV2, CII_EXPANDED_CAPTURE_TARGETS, true);
+  assert.deepEqual(scoredOnly.strikePressureV2, raw.strikePressureV2);
+  assert.deepEqual(scoredOnly.iranEventsV2, { events: [] });
   assert.throws(() => validateCiiCalibrationInputs(raw, globalTargets.filter(code => code !== 'PH')), /37-country/);
   const missingPrior = { ...raw, structuralPrior: { countries: { ...raw.structuralPrior.countries } } };
   delete missingPrior.structuralPrior.countries.PH;
