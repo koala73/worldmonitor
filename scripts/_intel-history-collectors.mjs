@@ -348,6 +348,17 @@ export const earthquakeHistoryAfterPublish = makeSeedHistoryAfterPublish({
 // EONET, GDACS and NHC ids are upstream event identities (storm id, GDACS
 // eventtype+eventid, EONET id); an advisory update keeps the id, so the first
 // observation of a hazard is what history keeps. 17 rows on 2026-11-24.
+// NHC ids end in the advisory number (nhc-al05-12), which changes with every
+// advisory. Basin and storm number identify the storm; storm numbers restart
+// each season, so the advisory's UTC year completes the identity.
+const NHC_ADVISORY_ID = /^nhc-([a-z]{2}\d{2})-[^-]*$/i;
+
+function naturalEventIdentity(id, occurredAt) {
+  const nhc = NHC_ADVISORY_ID.exec(id);
+  if (!nhc) return id;
+  return `nhc-${nhc[1].toLowerCase()}-${new Date(occurredAt).getUTCFullYear()}`;
+}
+
 export function buildNaturalEventHistoryRecords(data) {
   return (data?.events ?? []).map((event) => {
     const id = String(event?.id ?? '').trim();
@@ -361,7 +372,7 @@ export function buildNaturalEventHistoryRecords(data) {
     // storm itself arrives as its own cyclone row.
     if (event.category === 'earthquakes' || id.startsWith('hko-warning:')) return null;
     return {
-      dedupeKey: boundedKey('natural:events', id),
+      dedupeKey: boundedKey('natural:events', naturalEventIdentity(id, occurredAt)),
       category: event.category || undefined,
       title,
       summary: clip(event.description, SUMMARY_MAX) || undefined,

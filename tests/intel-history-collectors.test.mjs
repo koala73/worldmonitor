@@ -311,3 +311,14 @@ test('earthquake country never treats a US state abbreviation as a country code'
   });
   assert.equal(row.country, undefined);
 });
+
+test('NHC storms key on basin, storm number and season, not the advisory number', () => {
+  const keyFor = (id, date) => buildNaturalEventHistoryRecords({
+    events: [{ ...NATURAL_EVENT, id, date, category: 'severeStorms', title: 'Hurricane Erin' }],
+  })[0].dedupeKey;
+  const advisory12 = keyFor('nhc-al05-12', Date.parse('2026-08-18T15:00:00Z'));
+  assert.equal(advisory12, keyFor('nhc-al05-13A', Date.parse('2026-08-18T21:00:00Z')));
+  assert.equal(advisory12, 'natural:events:nhc-al05-2026');
+  // Storm numbers restart each season.
+  assert.notEqual(advisory12, keyFor('nhc-al05-1', Date.parse('2027-07-02T15:00:00Z')));
+});
