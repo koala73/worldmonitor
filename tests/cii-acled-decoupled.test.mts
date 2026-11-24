@@ -90,8 +90,8 @@ describe('CII ACLED is per country: an optional source that never gates another 
       const aux = FIXTURE_AUX.get(fixture.label)!;
       assert.equal(assessCiiInputAvailability([], aux, fixture.nowMs, false).acled, 'not_configured');
       assert.equal(assessCiiInputAvailability([], aux, fixture.nowMs, true).acled, 'quiet');
-      const expected = fixture.expected[Object.keys(fixture.expected).at(-1)!]!;
-      for (const r of table(fixture, []).rows) assert.equal(r.combinedScore, expected[r.region]!.combinedScore, r.region);
+      const expected = byRegion(scoreCiiFixture(fixture).rows);
+      for (const r of table(fixture, []).rows) assert.equal(r.combinedScore, expected.get(r.region)!.combinedScore, r.region);
     });
   }
 

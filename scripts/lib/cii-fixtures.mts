@@ -29,7 +29,12 @@ export const CII_FIXTURE_SCHEMA = 'worldmonitor-cii-fixture/v1';
 export const CII_FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../tests/fixtures/cii');
 
 /** Recorded for future calibration; the released scorer does not consume it. */
-export type CiiCaptureInputs = CiiRawInputs & { structuralPrior?: unknown; economicStress?: unknown };
+export type CiiCaptureInputs = CiiRawInputs & {
+  structuralPrior?: unknown;
+  economicStress?: unknown;
+  strikePressureV2?: unknown;
+  iranEventsV2?: unknown;
+};
 export const CII_EXPANDED_CAPTURE_TARGETS = [...Object.keys(TIER1_COUNTRIES), 'PH', 'TH', 'ID', 'VN', 'MY', 'KH'];
 
 /** One country's score as a formula version computed it on a fixture. */
@@ -231,6 +236,20 @@ function trimDisplacement(raw: unknown): unknown {
   return { summary: { countries: keep(rows((raw as Obj)?.summary, 'countries')) } };
 }
 
+function trimIranEvents(raw: unknown, preserveV2Fields = false): unknown {
+  if (raw == null) return null;
+  return {
+    ...(preserveV2Fields && isObj(raw) ? pick(raw, ['version']) : {}),
+    events: rows(raw, 'events').flatMap((event) => {
+      const countryCode = strikeEventCountry(event);
+      if (!countryCode || (!preserveV2Fields && isInterceptStrikeEvent(event))
+        || typeof event.timestamp !== 'number' || !Number.isFinite(event.timestamp)) return [];
+      const severity = String(event.severity ?? '').toLowerCase();
+      return [{ severity, timestamp: event.timestamp, countryCode, ...(preserveV2Fields ? pick(event, ['category']) : {}) }];
+    }),
+  };
+}
+
 function trimStrikeTally(raw: unknown): unknown {
   if (!isObj(raw)) return raw ?? null;
   const days: Obj = {};
@@ -326,15 +345,8 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
         return geoToCountry(lat, lon) || ciiIsLand(lat, lon) ? [{ lat, lon, level: h.level }] : [];
       }),
     })),
-    iranEvents: nullable(raw.iranEvents, (v) => ({
-      events: rows(v, 'events').flatMap((e) => {
-        const severity = String(e?.severity ?? '').toLowerCase();
-        const code = strikeEventCountry(e);
-        return code && !isInterceptStrikeEvent(e) && typeof e?.timestamp === 'number' && Number.isFinite(e.timestamp)
-          ? [{ severity, timestamp: e.timestamp, countryCode: code }]
-          : [];
-      }),
-    })),
+    iranEvents: trimIranEvents(raw.iranEvents),
+    ...(raw.iranEventsV2 !== undefined ? { iranEventsV2: trimIranEvents(raw.iranEventsV2, true) } : {}),
     oref: nullable(raw.oref, (v) => pick(v, ['activeAlertCount', 'historyCount24h'])),
     advisories: nullable(raw.advisories, trimAdvisories),
     // Read by production only when the live advisory read cannot be scored.
@@ -374,6 +386,7 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
         .map(([code, row]) => [code, pick(row as Obj, ['conflict', 'protest', 'week', 'strikes'])])),
     })),
     strikePressure: trimStrikeTally(raw.strikePressure),
+    ...(raw.strikePressureV2 !== undefined ? { strikePressureV2: trimStrikeTally(raw.strikePressureV2) } : {}),
     // Seed envelopes of public aggregate border statistics, kept whole: the
     // projection reads most of their fields.
     crossBorder: raw.crossBorder ?? {},
@@ -439,7 +452,11 @@ export function spearman(a: number[], b: number[]): number {
 }
 
 export function scoreCiiFixture(fixture: Pick<CiiFixture, 'inputs' | 'nowMs' | 'iranEventsEnabled'>): CiiScoreTable {
-  return computeCiiScoreTable(fixture.inputs, { nowMs: fixture.nowMs, iranEventsEnabled: fixture.iranEventsEnabled });
+  const { strikePressureV2: strikePressure, iranEventsV2: iranEvents } = fixture.inputs;
+  return computeCiiScoreTable({ ...fixture.inputs, strikePressure, iranEvents }, {
+    nowMs: fixture.nowMs,
+    iranEventsEnabled: fixture.iranEventsEnabled,
+  });
 }
 
 /**
@@ -466,8 +483,8 @@ export function buildCiiFixture(raw: CiiCaptureInputs, meta: {
   if (meta.calibration) validateCiiCalibrationInputs(raw, meta.targetCodes ?? []);
   const inputs = trimCiiRawInputs(raw, meta.targetCodes, meta.calibration);
   const options = { nowMs: meta.nowMs, iranEventsEnabled: meta.iranEventsEnabled };
-  const full = computeCiiScoreTable(raw, options);
-  const trimmed = computeCiiScoreTable(inputs, options);
+  const full = scoreCiiFixture({ inputs: raw, ...options });
+  const trimmed = scoreCiiFixture({ inputs, ...options });
   const fingerprint = (table: CiiScoreTable) => JSON.stringify({
     rows: table.rows,
     health: assessCiiInputAvailability([], table.aux, meta.nowMs, false),

@@ -90,7 +90,10 @@ const out: string[] = [
 let writes = 0;
 try {
   for (const fixture of fixtures) {
-    const headRows: Row[] = scoreCiiFixture(fixture).rows;
+    const headTable = scoreCiiFixture(fixture);
+    const headRows: Row[] = headTable.rows;
+    const frozen = scoredVersion !== CII_FORMULA_VERSION && fixture.expected[scoredVersion] !== undefined
+      && fixture.inputs.strikePressureV2 === undefined && fixture.inputs.iranEventsV2 === undefined;
     const baseRows = new Map(scoreWithBase(base, fixture).map((r) => [r.region, r]));
     const rows = [...headRows].sort((a, b) => b.combinedScore - a.combinedScore || a.region.localeCompare(b.region));
     out.push('', `### ${fixture.label}`, '');
@@ -113,7 +116,8 @@ try {
     out.push(footer('Countries moved by ≥ 3', moved, '–'));
     out.push('', `Spearman ρ of final scores, base vs head: ${spearman(baseList.map((r) => r.combinedScore), rows.map((r) => r.combinedScore)).toFixed(4)}.`);
 
-    if (values['write-expected'] && recordExpectedTable(fixture, expectedFromTable(scoreCiiFixture(fixture)))) {
+    // Keep historical expectations recorded before fixtures carried the v2 feeds.
+    if (values['write-expected'] && !frozen && recordExpectedTable(fixture, expectedFromTable(headTable))) {
       writeFileSync(join(CII_FIXTURE_DIR, `${fixture.label}.json`), `${JSON.stringify(fixture)}\n`);
       writes++;
     }

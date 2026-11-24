@@ -85,11 +85,37 @@ describe('CII fixtures', () => {
     }
   });
 
+  it('replays v2 strike inputs and reports missing v2 data as unavailable', () => {
+    const fixture = FIXTURES.find(f => f.calibration && f.inputs.strikePressureV2 === undefined)!;
+    const withoutV2 = scoreCiiFixture(fixture);
+    assert.equal(withoutV2.aux.inputReads?.strikePressure, 'missing');
+    assert.equal(withoutV2.aux.confirmedStrikes, null);
+    assert.deepEqual(withoutV2.aux.iranEvents, []);
+
+    const date = new Date(fixture.nowMs).toISOString().slice(0, 10);
+    const inputs = {
+      ...fixture.inputs,
+      strikePressureV2: { version: 2, updatedAt: fixture.nowMs, days: { [date]: { SA: [1, 0, 0, 0] } } },
+      iranEventsV2: { events: [{ countryCode: 'IL', category: 'defense', severity: 'critical', timestamp: fixture.nowMs }] },
+    };
+    const raw = scoreCiiFixture({ ...fixture, inputs });
+    const trimmed = scoreCiiFixture({ ...fixture, inputs: trimCiiRawInputs(inputs, fixture.captureTargets, true) });
+    assert.equal(raw.aux.inputReads?.strikePressure, 'present');
+    assert.ok(Object.keys(raw.aux.confirmedStrikes?.SA ?? {}).length > 0);
+    assert.equal(raw.aux.iranEvents.length, 1);
+    assert.deepEqual(trimmed.rows, raw.rows);
+    assert.deepEqual(trimmed.scores, raw.scores);
+  });
+
   it(`reproduce the recorded ${SCORED} table on every fixture`, () => {
     for (const f of FIXTURES) {
       const expected = f.expected[SCORED];
       assert.ok(expected, `${f.label} has no ${SCORED} table; record one with scripts/cii-table-diff.mts --write-expected`);
-      assert.deepEqual(expectedFromTable(scoreCiiFixture(f)), expected,
+      // Historical tables used the v1 event feed before the v2 feeds were captured.
+      const historical = SCORED !== CII_FORMULA_VERSION
+        && f.inputs.strikePressureV2 === undefined && f.inputs.iranEventsV2 === undefined;
+      const table = historical ? computeCiiScoreTable(f.inputs, f) : scoreCiiFixture(f);
+      assert.deepEqual(expectedFromTable(table), expected,
         SCORED === CII_FORMULA_VERSION
           ? `${f.label}: scores moved without a CII_FORMULA_VERSION bump`
           : `${f.label}: the ${SCORED} table is out of date; regenerate it with scripts/cii-table-diff.mts --write-expected`);
