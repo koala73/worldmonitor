@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 export const EMBEDDINGS_MODEL = 'Xenova/all-MiniLM-L6-v2';
 const REVISION = '751bff37182d3f1213fa05d7196b954e230abad9';
@@ -69,7 +70,7 @@ async function main() {
   console.log(`[e2e-model] ${EMBEDDINGS_MODEL}@${REVISION} ready in ${MODEL_DIR}`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error: unknown) => {
     console.error(`[e2e-model] ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
