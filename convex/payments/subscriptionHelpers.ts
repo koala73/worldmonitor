@@ -538,11 +538,14 @@ type SubscriptionRow = {
 export const ON_HOLD_ACCESS_GRACE_MS = 7 * 86_400_000;
 
 /**
- * A charge this long before `currentPeriodStart` still pays for the period:
- * Dodo charges at the renewal instant and the two timestamps come from
- * different events.
+ * A charge this long before `currentPeriodStart` still pays for the period.
+ * Dodo charges at the renewal instant, but the two timestamps come from
+ * different events, so this covers clock and event skew only (in production
+ * every renewal charge lands at or within a minute after the start). Charges
+ * carry no billing period, so a wider window would also count a late payment
+ * of the previous period's invoice as paying this one.
  */
-const PERIOD_PAYMENT_SLACK_MS = 86_400_000;
+const PERIOD_PAYMENT_SLACK_MS = 15 * 60_000;
 
 type AccessFields = Pick<SubscriptionRow, "status" | "currentPeriodEnd"> & {
   accessEndsAt?: number;

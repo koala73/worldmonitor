@@ -191,6 +191,19 @@ describe("stamping the grace on entering a hold", () => {
     expect((await subscriptionOf(t))?.accessEndsAt).toBe(lateHold + ON_HOLD_ACCESS_GRACE_MS);
   });
 
+  test("a charge that settled the previous period late does not count as paying this one", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    // The previous invoice settles in the last hours of its own period.
+    await charge(t, "pay_previous_late", RENEWAL - 12 * 60 * 60 * 1000);
+    const advanced = { product_id: PRO, ...UNPAID_MONTH };
+    await event(t, "wh_renewed", "subscription.renewed", payload(advanced), RENEWAL);
+    await charge(t, "pay_failed", RENEWAL, "failed");
+    await event(t, "wh_hold", "subscription.on_hold", payload({ ...advanced, status: "on_hold" }), HOLD);
+    expect((await subscriptionOf(t))?.accessEndsAt).toBe(GRACE_END);
+  });
+
   test("a retry failing after the grace leaves the user on free and the stamp unchanged", async () => {
     vi.useFakeTimers();
     const t = await setup();
