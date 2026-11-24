@@ -301,6 +301,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Silah tedarikçisi bağımlılığı ve askeri kapasite için PRO'ya yükseltin"
+    },
+    "intelMemory": {
+      "title": "Tarihsel İstihbarat Hafızası",
+      "help": "Çatışma, askeri ve enerji olaylarının 180 günlük arşivi ile talep üzerine anlamsal öncül eşleştirmesi.",
+      "loading": "Tarihsel istihbarat hafızası yükleniyor…",
+      "proLocked": "180 günlük tarihsel istihbarat hafızası ve öncül araması için PRO sürümüne yükseltin",
+      "unavailable": "Tarihsel istihbarat hafızası geçici olarak kullanılamıyor.",
+      "retry": "Yeniden Dene",
+      "empty": "Bu ülke ve alan için 180 günlük pencerede arşivlenmiş istihbarat olayı yok.",
+      "partial": "Bu sorgu için arşiv kapsamı kısmi; mevcut kayıtlar görünür.",
+      "domainFilterLabel": "Tarihsel istihbaratı alan türüne göre filtrele",
+      "domains": {
+        "all": "Tümü",
+        "conflict": "Çatışma",
+        "military": "Askeri",
+        "energy": "Enerji"
+      },
+      "loadMore": "Daha fazla yükle",
+      "loadingMore": "Daha fazla yükleniyor…",
+      "loadMoreError": "Ek olaylar yüklenemedi. Lütfen tekrar deneyin.",
+      "sourceLink": "Kaynak ↗",
+      "similarTitle": "Benzer geçmiş olayları bul",
+      "useLatestHeadline": "En son başlığı kullan",
+      "similarPlaceholder": "Gelişen bir durumu açıklayın (en az 10 karakter)…",
+      "findSimilar": "Benzer olayları bul",
+      "similarMinLength": "Geçmiş öncülleri aramak için en az 10 karakter girin.",
+      "similarLoading": "Tarihsel öncüller aranıyor…",
+      "similarEmpty": "Benzer geçmiş olaylar benzerlik eşiğini geçmedi.",
+      "similarUnavailable": "Öncül araması geçici olarak kullanılamıyor. Lütfen tekrar deneyin."
     }
   },
   "header": {

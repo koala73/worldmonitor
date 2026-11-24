@@ -4466,6 +4466,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Uppgradera till PRO för vapenleverantörsberoende och militär kapacitet"
+    },
+    "intelMemory": {
+      "title": "Historiskt underrättelsearkiv",
+      "help": "180-dagars arkiv över konflikt-, militär- och energihändelser med sökbar semantisk jämförelse mot tidigare fall.",
+      "loading": "Läser in historiskt underrättelsearkiv…",
+      "proLocked": "Uppgradera till PRO för 180-dagars historiskt underrättelsearkiv och sökning efter tidigare fall",
+      "unavailable": "Historiskt underrättelsearkiv är temporärt otillgängligt.",
+      "retry": "Försök igen",
+      "empty": "Inga arkiverade underrättelsehändelser matchar detta land och denna domän inom 180-dagarsfönstret.",
+      "partial": "Arkivtäckningen är ofullständig för denna sökning; tillgängliga poster visas fortfarande.",
+      "domainFilterLabel": "Filtrera historiskt underrättelsearkiv efter domän",
+      "domains": {
+        "all": "Alla",
+        "conflict": "Konflikt",
+        "military": "Militär",
+        "energy": "Energi"
+      },
+      "loadMore": "Läs in mer",
+      "loadingMore": "Läser in mer…",
+      "loadMoreError": "Kunde inte läsa in fler händelser. Försök igen.",
+      "sourceLink": "Källa ↗",
+      "similarTitle": "Hitta liknande tidigare händelser",
+      "useLatestHeadline": "Använd senaste rubriken",
+      "similarPlaceholder": "Beskriv en utveckling (minst 10 tecken)…",
+      "findSimilar": "Hitta liknande händelser",
+      "similarMinLength": "Ange minst 10 tecken för att söka tidigare fall.",
+      "similarLoading": "Söker historiska fall…",
+      "similarEmpty": "Inga liknande tidigare händelser passerade likhetströskeln.",
+      "similarUnavailable": "Sökning efter tidigare fall är temporärt otillgänglig. Försök igen."
     }
   },
   "preferences": {

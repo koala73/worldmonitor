@@ -370,6 +370,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Boreshaji hadi PRO kwa utegemezi wa wauzaji wa silaha na uwezo wa kijeshi"
+    },
+    "intelMemory": {
+      "title": "Kumbukumbu la Habari za Mitaala Zilizopita",
+      "help": "Hifadhidata ya siku 180 ya matukio ya mgogoro, kijeshi, na nishati yenye kulinganisha kwa msingi wa maelezo kwa ombi.",
+      "loading": "Inapakia kumbukumbu la habari za mitaala zilizopita…",
+      "proLocked": "Boresha hadi PRO kwa kumbukumbu la habari za mitaala za siku 180 na utaftaji wa matukio yaliyopita",
+      "unavailable": "Kumbukumbu la habari za mitaala zilizopita haipatikani kwa sasa.",
+      "retry": "Jaribu tena",
+      "empty": "Hakuna matukio ya habari za mitaala yaliyohifadhiwa yanayolingana na nchi hii na kikoa katika dirisha la siku 180.",
+      "partial": "Kغطية ya hifadhidata haijafuzu kabisa kwa utaftaji huu; rekodi inayopatikana inabaki kuonekana.",
+      "domainFilterLabel": "Chuja habari za mitaala zilizopita kwa kikoa",
+      "domains": {
+        "all": "Zote",
+        "conflict": "Mgogoro",
+        "military": "Kijeshi",
+        "energy": "Nishati"
+      },
+      "loadMore": "Pakia zaidi",
+      "loadingMore": "Inapakia zaidi…",
+      "loadMoreError": "Haikuweza kupakia matukio zaidi. Jaribu tena.",
+      "sourceLink": "Chanzo ↗",
+      "similarTitle": "Tafuta matukio yaliyofanana zilizopita",
+      "useLatestHeadline": "Tumia kichwa cha habari cha mwisho",
+      "similarPlaceholder": "Eleza hali inayoendelea (angalau herufi 10)…",
+      "findSimilar": "Tafuta matukio yaliyofanana",
+      "similarMinLength": "Ingiza angalau herufi 10 kutafuta matukio yaliyopita.",
+      "similarLoading": "Inatafuta matukio yaliyopita…",
+      "similarEmpty": "Hakuna matukio yaliyofanana yanayopita kiwango cha kufanana.",
+      "similarUnavailable": "Utaftaji wa matukio yaliyopita haipatikani kwa sasa. Jaribu tena."
     }
   },
   "header": {

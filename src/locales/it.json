@@ -303,6 +303,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Esegui l'upgrade a PRO per le dipendenze dai fornitori di armi e la capacità militare"
+    },
+    "intelMemory": {
+      "title": "Memoria storica dell'intelligence",
+      "help": "Archivio di 180 giorni di eventi relativi a conflitti, operazioni militari ed energia con corrispondenza semantica su richiesta.",
+      "loading": "Caricamento della memoria storica dell'intelligence…",
+      "proLocked": "Passa a PRO per la memoria storica dell'intelligence di 180 giorni e la ricerca di precedenti",
+      "unavailable": "La memoria storica dell'intelligence non è temporaneamente disponibile.",
+      "retry": "Riprova",
+      "empty": "Nessun evento di intelligence archiviato corrisponde a questo paese e dominio nella finestra di 180 giorni.",
+      "partial": "La copertura dell'archivio è parziale per questa query; i record disponibili rimangono visibili.",
+      "domainFilterLabel": "Filtra l'intelligence storica per dominio",
+      "domains": {
+        "all": "Tutti",
+        "conflict": "Conflitto",
+        "military": "Operazioni militari",
+        "energy": "Energia"
+      },
+      "loadMore": "Carica altri",
+      "loadingMore": "Caricamento in corso…",
+      "loadMoreError": "Impossibile caricare altri eventi. Riprova.",
+      "sourceLink": "Fonte ↗",
+      "similarTitle": "Trova eventi passati simili",
+      "useLatestHeadline": "Usa il titolo più recente",
+      "similarPlaceholder": "Descrivi una situazione in sviluppo (almeno 10 caratteri)…",
+      "findSimilar": "Trova eventi simili",
+      "similarMinLength": "Immetti almeno 10 caratteri per cercare precedenti storici.",
+      "similarLoading": "Ricerca di precedenti storici in corso…",
+      "similarEmpty": "Nessun evento passato simile ha superato la soglia di somiglianza.",
+      "similarUnavailable": "La ricerca di precedenti non è temporaneamente disponibile. Riprova."
     }
   },
   "header": {

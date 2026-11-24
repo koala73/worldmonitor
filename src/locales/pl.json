@@ -305,6 +305,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Uaktualnij do PRO, aby zobaczyć zależność od dostawców broni i potencjał militarny"
+    },
+    "intelMemory": {
+      "title": "Historyczna pamięć wywiadu",
+      "help": "Archiwum 180 dni zdarzeń konfliktowych, militarnych i energetycznych z wyszukiwaniem precedensów na żądanie.",
+      "loading": "Ładowanie historycznej pamięci wywiadu…",
+      "proLocked": "Uaktualnij do PRO, aby uzyskać dostęp do 180-dniowej historycznej pamięci wywiadu i wyszukiwania precedensów",
+      "unavailable": "Historyczna pamięć wywiadu jest czasowo niedostępna.",
+      "retry": "Ponów",
+      "empty": "Brak zarchiwizowanych zdarzeń wywiadu dopasowanych do tego kraju i dziedziny w oknie 180 dni.",
+      "partial": "Zasięg archiwum dla tego zapytania jest częściowy; dostępne rekordy pozostają widoczne.",
+      "domainFilterLabel": "Filtruj historyczny wywiad według dziedziny",
+      "domains": {
+        "all": "Wszystkie",
+        "conflict": "Konflikt",
+        "military": "Militarne",
+        "energy": "Energia"
+      },
+      "loadMore": "Załaduj więcej",
+      "loadingMore": "Ładowanie…",
+      "loadMoreError": "Nie udało się załadować dodatkowych zdarzeń. Spróbuj ponownie.",
+      "sourceLink": "Źródło ↗",
+      "similarTitle": "Znajdź podobne poprzednie zdarzenia",
+      "useLatestHeadline": "Użyj najnowszego nagłówka",
+      "similarPlaceholder": "Opisz rozwijającą się sytuację (co najmniej 10 znaków)…",
+      "findSimilar": "Znajdź podobne zdarzenia",
+      "similarMinLength": "Wpisz co najmniej 10 znaków, aby wyszukać poprzednie precedensy.",
+      "similarLoading": "Wyszukiwanie historycznych precedensów…",
+      "similarEmpty": "Brak podobnych poprzednich zdarzeń przekroczyło próg podobieństwa.",
+      "similarUnavailable": "Wyszukiwanie precedensów jest czasowo niedostępne. Spróbuj ponownie."
     }
   },
   "header": {
