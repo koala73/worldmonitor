@@ -16343,6 +16343,16 @@ button.popup-link {
     display: none;
   }
 
+  /* The strip has ~220px of map, and the time-range row plus the reset and
+     locate buttons covered about half of it (#11157). Zoom stays (pinch also
+     works); the full set returns in the fullscreen Map view. */
+  .map-section:not(.live-news-fullscreen) .time-slider,
+  .map-section:not(.live-news-fullscreen) .map-controls [data-action="reset"],
+  .map-section:not(.live-news-fullscreen) .map-controls .zoom-reset,
+  .map-section:not(.live-news-fullscreen) .map-controls .map-locate {
+    display: none;
+  }
+
   /* Collapsed map on mobile — higher specificity overrides .map-section above */
   .main-content .map-section.collapsed {
     height: auto !important;

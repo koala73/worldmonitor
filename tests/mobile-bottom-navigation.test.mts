@@ -214,6 +214,8 @@ describe('mobile P0 navigation shell (#5201)', () => {
     assert.match(css, /\.map-section\.live-news-fullscreen \{\s*height: auto !important;/);
     // The ruler's panel does not fit the strip, so it is hidden there only.
     assert.match(css, /\.map-section:not\(\.live-news-fullscreen\) \.map-distance-control \{\s*display: none;/);
+    // The time range and the reset/locate buttons covered half the strip (#11157).
+    assert.match(css, /\.map-section:not\(\.live-news-fullscreen\) \.time-slider,\s*\.map-section:not\(\.live-news-fullscreen\) \.map-controls \[data-action="reset"\],\s*\.map-section:not\(\.live-news-fullscreen\) \.map-controls \.zoom-reset,\s*\.map-section:not\(\.live-news-fullscreen\) \.map-controls \.map-locate \{\s*display: none;/);
   });
 
   it('keeps map controls in a fullscreen map while a fullscreen panel still hides them (#11157)', () => {

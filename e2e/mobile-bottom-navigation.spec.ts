@@ -64,6 +64,18 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
   });
 
+  test('the Today map strip keeps zoom and leaves the time range to the Map view (#11157)', async ({ page }) => {
+    const section = page.locator('#mapSection');
+    await expect(section.locator('[data-action="zoom-in"]')).toBeVisible();
+    await expect(section.locator('.time-slider')).toBeHidden();
+    await expect(section.locator('.map-controls [data-action="reset"]')).toBeHidden();
+    await page.locator('[data-mobile-tab="map"]').click();
+    await expect(section).toHaveClass(/live-news-fullscreen/);
+    await expect(section.locator('.time-slider')).toBeVisible();
+    await expect(section.locator('.map-controls [data-action="reset"]')).toBeVisible();
+    await expect(section.locator('.map-controls .map-locate')).toBeVisible();
+  });
+
   test('the More drawer scrolls its footer clear of the tab bar (#11157)', async ({ page }) => {
     await page.locator('[data-mobile-tab="more"]').click();
     const menu = page.locator('#mobileMenu');
