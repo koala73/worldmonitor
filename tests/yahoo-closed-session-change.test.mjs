@@ -407,3 +407,182 @@ describe('Yahoo-backed equity benchmark scope and shared basis', () => {
     assert.deepEqual(ttls, [7 * 86400]);
   });
 });
+
+describe('index basis backoff and Redis adapters', () => {
+  const NO_BASIS_DAILY = taiexDaily([[NOV23_OPEN, 36811.89], [NOV24_OPEN + 86400, 40130]]);
+
+  function sharedRedis() {
+    const values = new Map();
+    const calls = [];
+    return {
+      values,
+      calls,
+      read: async (key) => values.get(key) ?? null,
+      write: async (key, entry, ttl) => { calls.push(['set', key, ttl]); values.set(key, entry); },
+      writeIfAbsent: async (key, entry, ttl) => {
+        calls.push(['setnx', key, ttl]);
+        if (!values.has(key)) values.set(key, entry);
+      },
+    };
+  }
+
+  it('shares a missing prior-session bar across producers without replacing a verified close', async () => {
+    let now = 0;
+    const redis = sharedRedis();
+    const cron = createYahooEquityIndexBasisResolver({ ...redis, scope: 'cron', now: () => now });
+    assert.equal(await cron(TAIEX, NOV24_TRADE, async () => NO_BASIS_DAILY), null);
+    assert.deepEqual(redis.calls, [['setnx', `market:yahoo-index-close:v1:${TAIEX}:2026-11-24`, 900]]);
+
+    let relayCalls = 0;
+    const relay = createYahooEquityIndexBasisResolver({ ...redis, scope: 'relay', now: () => now });
+    assert.equal(await relay(TAIEX, NOV24_TRADE, async () => { relayCalls += 1; return NOV24_DAILY; }), null);
+    assert.equal(relayCalls, 0, 'the same chart would show the same gap');
+
+    redis.values.set(`market:yahoo-index-close:v1:${TAIEX}:2026-11-24`, { close: 36811.89 });
+    now += 16 * 60 * 1000;
+    const late = createYahooEquityIndexBasisResolver({ ...redis, scope: 'cron', now: () => now });
+    assert.equal(await late(TAIEX, NOV24_TRADE, async () => NO_BASIS_DAILY), 36811.89);
+  });
+
+  it('backs off a failed request for its own producer only, for five minutes', async () => {
+    let now = 0;
+    const redis = sharedRedis();
+    const options = { ...redis, now: () => now };
+    let calls = 0;
+    const failing = async () => { calls += 1; return null; };
+    const loaded = async () => { calls += 1; return NOV24_DAILY; };
+
+    assert.equal(await createYahooEquityIndexBasisResolver({ ...options, scope: 'cron' })(TAIEX, NOV24_TRADE, failing), null);
+    assert.deepEqual(redis.calls, [['set', `market:yahoo-index-close:v1:${TAIEX}:2026-11-24:retry:cron`, 300]]);
+    assert.equal(await createYahooEquityIndexBasisResolver({ ...options, scope: 'cron' })(TAIEX, NOV24_TRADE, loaded), null,
+      'a restarted cron process keeps its own backoff');
+    assert.equal(calls, 1);
+
+    assert.equal(await createYahooEquityIndexBasisResolver({ ...options, scope: 'relay' })(TAIEX, NOV24_TRADE, loaded), 36811.89,
+      "the relay's route is tried even while the cron backs off");
+    assert.equal(calls, 2);
+
+    redis.values.delete(`market:yahoo-index-close:v1:${TAIEX}:2026-11-24`);
+    now += 5 * 60 * 1000 + 1;
+    assert.equal(await createYahooEquityIndexBasisResolver({ ...options, scope: 'cron' })(TAIEX, NOV24_TRADE, loaded), 36811.89);
+  });
+
+  it('still resolves when Redis reads and writes fail', async () => {
+    const broken = async () => { throw new Error('redis down'); };
+    const resolve = createYahooEquityIndexBasisResolver({ read: broken, write: broken, writeIfAbsent: broken });
+    assert.equal(await resolve(TAIEX, NOV24_TRADE, async () => NOV24_DAILY), 36811.89);
+    const missing = createYahooEquityIndexBasisResolver({ read: broken, write: broken, writeIfAbsent: broken });
+    assert.equal(await missing(TAIEX, NOV24_TRADE, async () => NO_BASIS_DAILY), null);
+  });
+
+  it('cron adapter sends GET, SET EX and SET NX EX with the right keys and TTLs', async () => {
+    const store = new Map();
+    const commands = [];
+    const command = async (args) => {
+      commands.push(args);
+      if (args[0] === 'GET') return store.get(args[1]) ?? null;
+      if (args.includes('NX') && store.has(args[1])) return null;
+      store.set(args[1], args[2]);
+      return 'OK';
+    };
+    const key = `market:yahoo-index-close:v1:${TAIEX}:2026-11-24`;
+    let now = 0;
+    const cron = yahooFetch.createRedisIndexBasisResolver({ command, now: () => now });
+    assert.equal(await cron(TAIEX, NOV24_TRADE, async () => null), null);
+    assert.deepEqual(commands.at(-1), ['SET', `${key}:retry:cron`, JSON.stringify({ close: null, retryAt: 300000 }), 'EX', 300]);
+
+    now += 6 * 60 * 1000;
+    const noBasis = yahooFetch.createRedisIndexBasisResolver({ command, now: () => now });
+    assert.equal(await noBasis(TAIEX, NOV24_TRADE, async () => NO_BASIS_DAILY), null);
+    assert.deepEqual(commands.at(-1), ['SET', key, JSON.stringify({ close: null, retryAt: now + 900000 }), 'NX', 'EX', 900]);
+
+    store.set(key, JSON.stringify({ close: 36811.89 }));
+    const reader = yahooFetch.createRedisIndexBasisResolver({ command, now: () => now });
+    assert.equal(await reader(TAIEX, NOV24_TRADE, async () => assert.fail('a verified close is reused')), 36811.89);
+    assert.deepEqual(commands.at(-1), ['GET', key]);
+
+    store.clear();
+    const writer = yahooFetch.createRedisIndexBasisResolver({ command, now: () => now });
+    assert.equal(await writer(TAIEX, NOV24_TRADE, async () => NOV24_DAILY), 36811.89);
+    assert.deepEqual(commands.at(-1), ['SET', key, JSON.stringify({ close: 36811.89 }), 'EX', 7 * 86400]);
+  });
+
+  it('relay adapter routes verified closes to SET and missing bars to SET NX', async () => {
+    const start = RELAY_SOURCE.indexOf('const resolveYahooIndexClose = createYahooEquityIndexBasisResolver(');
+    assert.notEqual(start, -1);
+    const open = RELAY_SOURCE.indexOf('(', start);
+    let depth = 0;
+    let end = open;
+    for (; end < RELAY_SOURCE.length; end += 1) {
+      if (RELAY_SOURCE[end] === '(') depth += 1;
+      if (RELAY_SOURCE[end] === ')') depth -= 1;
+      if (depth === 0) break;
+    }
+    const calls = [];
+    const resolver = Function(
+      'createYahooEquityIndexBasisResolver', 'upstashGet', 'upstashSet', 'upstashSetNx',
+      `return createYahooEquityIndexBasisResolver${RELAY_SOURCE.slice(open, end + 1)};`,
+    )(
+      createYahooEquityIndexBasisResolver,
+      async (...args) => { calls.push(['get', ...args]); return null; },
+      async (...args) => { calls.push(['set', args[0], args[2]]); return true; },
+      async (...args) => { calls.push(['setnx', args[0], args[2]]); return 'ok'; },
+    );
+    const key = `market:yahoo-index-close:v1:${TAIEX}:2026-11-24`;
+    assert.equal(await resolver(TAIEX, NOV24_TRADE, async () => NO_BASIS_DAILY), null);
+    assert.deepEqual(calls, [
+      ['get', key, undefined, 1500], ['get', `${key}:retry:relay`, undefined, 1500], ['setnx', key, 900],
+    ]);
+    const fresh = Function(
+      'createYahooEquityIndexBasisResolver', 'upstashGet', 'upstashSet', 'upstashSetNx',
+      `return createYahooEquityIndexBasisResolver${RELAY_SOURCE.slice(open, end + 1)};`,
+    )(createYahooEquityIndexBasisResolver, async () => null,
+      async (...args) => { calls.push(['set', args[0], args[2]]); return true; }, async () => 'ok');
+    assert.equal(await fresh(TAIEX, NOV24_TRADE, async () => NOV24_DAILY), 36811.89);
+    assert.deepEqual(calls.at(-1), ['set', key, 7 * 86400]);
+  });
+});
+
+describe('relay Gulf quotes (seedGulfQuotes)', () => {
+  const GULF = [
+    { symbol: '^TASI.SR', name: 'Tadawul All Share', country: 'Saudi Arabia', flag: 'SA', type: 'index' },
+    { symbol: 'QAT', name: 'Qatar (iShares)', country: 'Qatar', flag: 'QA', type: 'index' },
+    { symbol: 'SARUSD=X', name: 'Saudi Riyal', country: 'Saudi Arabia', flag: 'SA', type: 'currency' },
+  ];
+
+  async function loadSeedGulf({ fresh, previous }) {
+    const { isYahooEquityIndex } = await import('../scripts/shared/yahoo-closed-session.cjs');
+    const writes = [];
+    const seed = Function(
+      'GULF_SYMBOLS', 'GULF_SEED_TTL', 'envelopeRead', 'envelopeWrite', 'upstashSet',
+      'fetchYahooChartDirect', 'sleep', 'isYahooEquityIndex', 'console',
+      `${extractFunction('seedGulfQuotes')}
+       return seedGulfQuotes;`,
+    )(
+      GULF, 5400, async () => previous, async (key, payload) => { writes.push(payload); return true; }, async () => true,
+      async (symbol) => fresh[symbol] ?? null, async () => {}, isYahooEquityIndex, { log() {}, warn() {} },
+    );
+    return { seed, writes };
+  }
+
+  it('keeps the last Tadawul row while its prior close is unverified', async () => {
+    const tasiRow = { symbol: '^TASI.SR', name: 'Tadawul All Share', country: 'Saudi Arabia', flag: 'SA', type: 'index', price: 11000, change: 0.5, sparkline: [] };
+    const qatRow = { symbol: 'QAT', price: 17, change: 1, sparkline: [] };
+    const { seed, writes } = await loadSeedGulf({
+      fresh: { 'SARUSD=X': { price: 0.2666, change: 0, sparkline: [] } },
+      previous: { quotes: [tasiRow, qatRow] },
+    });
+    assert.equal(await seed(), 2);
+    assert.deepEqual(writes[0].quotes.map((q) => q.symbol), ['^TASI.SR', 'SARUSD=X']);
+    assert.equal(writes[0].quotes[0], tasiRow);
+  });
+
+  it('does not republish retained rows when nothing was fetched', async () => {
+    const { seed, writes } = await loadSeedGulf({
+      fresh: {},
+      previous: { quotes: [{ symbol: '^TASI.SR', price: 11000, change: 0.5, sparkline: [] }] },
+    });
+    assert.equal(await seed(), 0);
+    assert.equal(writes.length, 0);
+  });
+});

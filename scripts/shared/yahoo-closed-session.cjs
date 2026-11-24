@@ -24,6 +24,7 @@ const INDEX_TIME_ZONES = Object.freeze({
 const SESSION_FORMATTERS = new Map();
 const INDEX_BASIS_TTL_SECONDS = 7 * 86400;
 const INDEX_BASIS_RETRY_MS = 15 * 60 * 1000;
+const INDEX_BASIS_FETCH_RETRY_MS = 5 * 60 * 1000;
 
 function finiteNumber(value) {
   if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
@@ -122,13 +123,21 @@ function equityIndexPreviousSessionClose(symbol, data, lastTradeAt) {
 
 /**
  * Memoize a verified close per exchange session and symbol. Railway relay
- * and short-lived cron processes also share the optional Redis cache. A
- * miss/429 delays retries briefly, without backfilling an older close or
- * publishing a move calculated from the unreliable quote metadata.
+ * and short-lived cron processes also share the optional Redis cache. A miss
+ * delays retries briefly, without backfilling an older close or publishing a
+ * move calculated from the unreliable quote metadata.
+ *
+ * Two kinds of miss back off differently:
+ * - The daily chart loaded but has no prior-session bar. Every producer would
+ *   see the same chart, so the 15-minute backoff is shared, and `writeIfAbsent`
+ *   keeps it from replacing a close another producer verified.
+ * - The request failed (429, timeout, block). That says nothing about the data
+ *   and another producer's route may work, so only this `scope` backs off.
  */
-function createYahooEquityIndexBasisResolver({ read, write, now = Date.now } = {}) {
+function createYahooEquityIndexBasisResolver({ read, write, writeIfAbsent, scope = 'process', now = Date.now } = {}) {
   const local = new Map();
   const inFlight = new Map();
+  const attempt = (operation) => Promise.resolve().then(operation).catch(() => null);
   const usable = (entry) => (
     (Number.isFinite(entry?.close) && entry.close > 0) ||
     (entry?.close === null && Number.isFinite(entry.retryAt) && entry.retryAt > now())
@@ -141,18 +150,32 @@ function createYahooEquityIndexBasisResolver({ read, write, now = Date.now } = {
     if (remembered?.day === day && usable(remembered)) return remembered.close;
     if (inFlight.has(key)) return inFlight.get(key);
 
+    const retryKey = `${key}:retry:${scope}`;
+    const remember = (entry) => local.set(symbol, { ...entry, day });
     const request = (async () => {
-      const cached = await Promise.resolve().then(() => read?.(key)).catch(() => null);
-      if (usable(cached)) {
-        local.set(symbol, { ...cached, day });
-        return cached.close;
+      for (const candidate of [key, retryKey]) {
+        const cached = await attempt(() => read?.(candidate));
+        if (usable(cached)) {
+          remember(cached);
+          return cached.close;
+        }
       }
-      const daily = await Promise.resolve().then(loadDaily).catch(() => null);
+      const daily = await attempt(loadDaily);
+      if (!daily) {
+        const entry = { close: null, retryAt: now() + INDEX_BASIS_FETCH_RETRY_MS };
+        remember(entry);
+        await attempt(() => write?.(retryKey, entry, INDEX_BASIS_FETCH_RETRY_MS / 1000));
+        return null;
+      }
       const close = equityIndexPreviousSessionClose(symbol, daily, lastTradeAt);
-      const entry = { close, ...(close === null ? { retryAt: now() + INDEX_BASIS_RETRY_MS } : {}) };
-      local.set(symbol, { ...entry, day });
-      const ttl = close === null ? INDEX_BASIS_RETRY_MS / 1000 : INDEX_BASIS_TTL_SECONDS;
-      await Promise.resolve().then(() => write?.(key, entry, ttl)).catch(() => {});
+      if (close === null) {
+        const entry = { close: null, retryAt: now() + INDEX_BASIS_RETRY_MS };
+        remember(entry);
+        await attempt(() => writeIfAbsent?.(key, entry, INDEX_BASIS_RETRY_MS / 1000));
+        return null;
+      }
+      remember({ close });
+      await attempt(() => write?.(key, { close }, INDEX_BASIS_TTL_SECONDS));
       return close;
     })();
     inFlight.set(key, request);

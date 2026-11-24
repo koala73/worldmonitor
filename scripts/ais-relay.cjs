@@ -3772,10 +3772,10 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
 // Rolled non-index charts keep one lookup until the next trade.
 const _previousSessionCloses = new Map();
 const resolveYahooIndexClose = createYahooEquityIndexBasisResolver({
+  scope: 'relay',
   read: (key) => upstashGet(key, undefined, 1500),
-  write: (key, entry, ttl) => entry.close === null
-    ? upstashSetNx(key, entry, ttl) // A failed refresh must not replace a verified basis from the cron.
-    : upstashSet(key, entry, ttl),
+  write: (key, entry, ttl) => upstashSet(key, entry, ttl),
+  writeIfAbsent: (key, entry, ttl) => upstashSetNx(key, entry, ttl),
 });
 
 async function _withPreviousSessionChange(symbol, quote) {
@@ -4252,19 +4252,28 @@ const GULF_SYMBOLS = [
 const GULF_SEED_TTL = 5400; // 90min — survives 1 missed cycle
 
 async function seedGulfQuotes() {
+  const previousPayload = await envelopeRead('market:gulf-quotes:v1');
+  const previousBySymbol = new Map((Array.isArray(previousPayload?.quotes) ? previousPayload.quotes : [])
+    .filter((quote) => quote && typeof quote.symbol === 'string')
+    .map((quote) => [quote.symbol, quote]));
   const quotes = [];
+  let freshCount = 0;
   for (const meta of GULF_SYMBOLS) {
     const yahoo = await fetchYahooChartDirect(meta.symbol);
     if (yahoo) {
+      freshCount += 1;
       quotes.push({
         symbol: meta.symbol, name: meta.name, country: meta.country,
         flag: meta.flag, type: meta.type,
         price: yahoo.price, change: +(yahoo.change).toFixed(2), sparkline: yahoo.sparkline,
       });
+    } else if (isYahooEquityIndex(meta.symbol) && previousBySymbol.has(meta.symbol)) {
+      // An index is withheld until its prior close is verified; keep its last row meanwhile.
+      quotes.push(previousBySymbol.get(meta.symbol));
     }
     await sleep(150);
   }
-  if (quotes.length === 0) { console.warn('[Gulf] No quotes fetched — skipping'); return 0; }
+  if (freshCount === 0) { console.warn('[Gulf] No quotes fetched — skipping'); return 0; }
   const payload = { quotes, rateLimited: false };
   const ok1 = await envelopeWrite('market:gulf-quotes:v1', payload, GULF_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-gulf' });
   const ok2 = await upstashSet('seed-meta:market:gulf-quotes', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);

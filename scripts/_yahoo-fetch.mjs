@@ -26,7 +26,7 @@
 // the CONNECT pool), add a second leg following the
 // scripts/_open-meteo-archive.mjs cascade pattern.
 
-import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart, roundSparkline } from './_seed-utils.mjs';
+import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart, roundSparkline, getRedisCredentials, redisCommand } from './_seed-utils.mjs';
 import {
   PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose, isYahooEquityIndex, createYahooEquityIndexBasisResolver,
 } from './shared/yahoo-closed-session.cjs';
@@ -198,6 +198,28 @@ export async function fetchYahooJson(url, opts = {}) {
 
 const SPARKLINE_HISTORY_TTL_SECONDS = 2 * 24 * 60 * 60;
 const resolveIndexCloseInProcess = createYahooEquityIndexBasisResolver();
+
+async function seederRedisCommand(command) {
+  const { url, token } = getRedisCredentials();
+  return (await redisCommand(url, token, command, { timeoutMs: 1500 })).result;
+}
+
+/**
+ * Index basis resolver backed by the Redis cache the relay also reads, so a
+ * cron process that starts fresh each run still reuses a verified close.
+ */
+export function createRedisIndexBasisResolver({ command = seederRedisCommand, scope = 'cron', now } = {}) {
+  return createYahooEquityIndexBasisResolver({
+    scope,
+    now,
+    read: async (key) => {
+      const raw = await command(['GET', key]);
+      return raw ? JSON.parse(raw) : null;
+    },
+    write: (key, entry, ttl) => command(['SET', key, JSON.stringify(entry), 'EX', ttl]),
+    writeIfAbsent: (key, entry, ttl) => command(['SET', key, JSON.stringify(entry), 'NX', 'EX', ttl]),
+  });
+}
 
 /**
  * A cron seeder starts a fresh process every run. This keeps the sparkline

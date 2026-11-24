@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, runSeed, writeExtraKey, extendExistingTtl, extendExistingTtlDetailed, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata, writeFreshnessMetadataSafely, getRedisCredentials, redisCommand } from './_seed-utils.mjs';
-import { fetchYahooJson, fetchYahooQuoteChart } from './_yahoo-fetch.mjs';
-import { createYahooEquityIndexBasisResolver } from './shared/yahoo-closed-session.cjs';
+import { loadEnvFile, loadSharedConfig, sleep, runSeed, writeExtraKey, extendExistingTtl, extendExistingTtlDetailed, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata, writeFreshnessMetadataSafely } from './_seed-utils.mjs';
+import { createRedisIndexBasisResolver, fetchYahooJson, fetchYahooQuoteChart } from './_yahoo-fetch.mjs';
 import { buildCountryStockIndexSnapshot, countryStockIndexKey } from './_country-stock-index.mjs';
 import { loadCountryStockIndexes } from './_country-stock-index-registry.mjs';
 import { MOEX_SOURCE, fetchMoexCountryStockIndexSnapshot } from './_country-stock-index-moex.mjs';
@@ -41,19 +40,7 @@ const RPC_KEY = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
 
 const YAHOO_ONLY = new Set(stocksConfig.yahooOnly);
 
-const resolveIndexClose = createYahooEquityIndexBasisResolver({
-  read: async (key) => {
-    const { url, token } = getRedisCredentials();
-    const { result } = await redisCommand(url, token, ['GET', key], { timeoutMs: 1500 });
-    return result ? JSON.parse(result) : null;
-  },
-  write: (key, entry, ttl) => {
-    const { url, token } = getRedisCredentials();
-    // A failed cron refresh cannot replace a verified close written by the relay.
-    const mode = entry.close === null ? ['NX'] : [];
-    return redisCommand(url, token, ['SET', key, JSON.stringify(entry), ...mode, 'EX', ttl], { timeoutMs: 1500 });
-  },
-});
+const resolveIndexClose = createRedisIndexBasisResolver();
 
 async function fetchYahooQuote(symbol) {
   try {
