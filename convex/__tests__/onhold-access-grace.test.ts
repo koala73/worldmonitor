@@ -469,6 +469,25 @@ describe("locked-hold recovery sweep", () => {
     expect(await checkoutBlocker(t, sweepAt)).toBeNull();
   });
 
+  test("a hold paid by a late retry and then cancelled keeps the paid period", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await failRenewal(t);
+    // A retry pays the unpaid month (Dodo keeps next_billing_date); its
+    // subscription.active webhook is lost. The customer then cancels.
+    await charge(t, "pay_late_retry", HOLD + 9 * DAY_MS);
+    const sweepAt = HOLD + 10 * DAY_MS;
+    vi.setSystemTime(sweepAt);
+    await t.action(internal.payments.billing.reconcileLockedOnHoldSubscriptions, {
+      now: sweepAt,
+      remoteSubscriptionsForTest: [{ ...remote("cancelled"), cancelled_at: iso(sweepAt - 60_000) }],
+    });
+    const sub = await subscriptionOf(t);
+    expect(sub?.status).toBe("cancelled");
+    expect(sub?.accessEndsAt).toBeUndefined();
+    expect((await entitlementOf(t))?.validUntil).toBe(NEXT_RENEWAL);
+  });
+
   test("a hold Dodo has since expired is closed locally", async () => {
     vi.useFakeTimers();
     const t = await setup();

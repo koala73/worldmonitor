@@ -1819,6 +1819,7 @@ export const applyOnHoldRecovery = internalMutation({
     observedAt: v.number(),
     remoteStatus: v.optional(v.string()),
     remoteRaw: v.optional(v.any()),
+    remoteCurrentPeriodStart: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<"recovered" | "closed" | "checked" | "skipped"> => {
     const existing = await ctx.db.get(args.subscriptionId);
@@ -1846,6 +1847,16 @@ export const applyOnHoldRecovery = internalMutation({
       isNewerEvent(existing.updatedAt, args.observedAt)
     ) {
       if (args.remoteStatus === "cancelled") {
+        // A late retry may have paid the period before the cancel, with its
+        // recovery webhook lost. The cancel keeps the stored cutoff, so drop
+        // it first when a succeeded charge covers the period Dodo reports.
+        if (
+          existing.accessEndsAt !== undefined &&
+          args.remoteCurrentPeriodStart !== undefined &&
+          (await failedRenewalAccessEndsAt(ctx, existing, args.remoteCurrentPeriodStart, args.observedAt)) === undefined
+        ) {
+          await ctx.db.patch(existing._id, { accessEndsAt: undefined });
+        }
         await handleSubscriptionCancelled(ctx, args.remoteRaw, args.observedAt);
       } else {
         await handleSubscriptionExpired(ctx, args.remoteRaw, args.observedAt);
@@ -1895,7 +1906,11 @@ export const reconcileLockedOnHoldSubscriptions = internalAction({
           subscriptionId: row._id,
           observedAt: now,
           ...(normalized.kind === "supported"
-            ? { remoteStatus: normalized.value.status, remoteRaw: normalized.value.rawPayload }
+            ? {
+                remoteStatus: normalized.value.status,
+                remoteRaw: normalized.value.rawPayload,
+                remoteCurrentPeriodStart: normalized.value.currentPeriodStart,
+              }
             : {}),
         })) as "recovered" | "closed" | "checked" | "skipped";
         if (outcome === "recovered") summary.recovered++;
