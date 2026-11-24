@@ -2019,7 +2019,7 @@ test('a stall whose only failure ran on an earlier build does not fail the tick'
   assert.equal(code, 0, `a failure from an earlier build says nothing about this one; stderr:\n${stderr}`);
   assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:10 deferred:1 failed:0 graceful:0 stalled:1/);
   assert.match(stderr, /\[VICTIM\] Deferred, but its data is \d+min old .* Not yet run on this build: its last admitted run at \S+ ended GRACEFUL_FAIL \(graceful fetch failure \(exit 75\)\) on build aaaaaaaaaaaa, and this build \(bbbbbbbbbbbb\) has not run it\./);
-  assert.match(stderr, /older than 2x their interval — 0 failing at the source, 0 starved by the budget, 1 not yet run on this build\. Exiting 0\./);
+  assert.match(stderr, /older than 2x their interval — 0 failing at the source, 0 starved by the budget, 1 not yet run on this build\. No stall fails this tick\./);
   assert.doesNotMatch(stderr, /Exiting non-zero|failing source, not starvation/);
 });
 
@@ -2043,7 +2043,9 @@ test('without a build identity a stall blamed on the source still fails the tick
   assert.doesNotMatch(stderr, /Not yet run on this build/);
 });
 
-test('an earlier-build stall does not claim exit 0 when a sibling hard-failed', async () => {
+test('an earlier-build stall does not excuse a sibling that hard-failed', async () => {
+  // The stall summary speaks only for the stalls: it must not predict the
+  // process exit, which a hard failure or the terminal hook can still fail.
   const brokenScript = '_bundle-fixture-earlier-build-broken.mjs';
   const cleanup = writeFixture(brokenScript, `process.exit(1);\n`);
   try {
@@ -2053,11 +2055,23 @@ test('an earlier-build stall does not claim exit 0 when a sibling hard-failed', 
     });
     assert.equal(code, 1, 'the hard failure still fails the tick');
     assert.match(stdout, /failed:1 graceful:0 stalled:1/);
-    assert.match(stderr, /1 not yet run on this build\. Exiting non-zero\./);
+    assert.match(stderr, /1 not yet run on this build\. No stall fails this tick\./);
     assert.doesNotMatch(stderr, /Exiting 0/);
   } finally {
     cleanup();
   }
+});
+
+test('an earlier-build stall fails the tick when its deferral record was not saved', async () => {
+  // The exemption lasts one tick because this tick's deferral turns the next
+  // one into starvation. If that record is lost, nothing would end the
+  // exemption, so it does not apply.
+  const { code, stderr } = await runStalledVictim('earlier-build-unsaved', gracefulFailureOn(EARLIER_BUILD), undefined, {
+    failCommand: ({ command }) => (command[0] === 'SET' && command[1] === sectionDeferralKey('test', 'VICTIM') ? 'OOM command not allowed' : null),
+  }, { env: { RAILWAY_GIT_COMMIT_SHA: THIS_BUILD } });
+  assert.equal(code, 1, `an unbounded exemption is not an exemption; stderr:\n${stderr}`);
+  assert.match(stderr, /\[VICTIM\] .* Not yet run on this build: .* but this tick's deferral record was not saved, so the next tick could not tell it was deferred\. It fails this tick\./);
+  assert.match(stderr, /1 not yet run on this build\. Exiting non-zero\./);
 });
 
 test('an unreadable failure record leaves the stall cause unknown', async () => {
