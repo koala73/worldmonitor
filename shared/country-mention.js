@@ -92,6 +92,12 @@ const NAME_EXCLUSIONS = {
   WS: ['american samoa'],
 };
 
+// Exclusions removed only as whole phrases. A prefix removal would let
+// "niger state" swallow "Niger states it will reopen the border".
+const WHOLE_WORD_EXCLUSIONS = {
+  NE: ['niger state', 'niger delta'],
+};
+
 // Demonyms as they are written: capitalized, matched case-sensitively.
 // Ambiguous ones are deliberately absent — "American" (Latin American),
 // "Congolese" (CD or CG), "Dominican" (DM or DO), "Guinean" (four states),
@@ -298,6 +304,7 @@ export function countryMentionTerms(code) {
     names: [...names],
     demonyms: [...(DEMONYMS[normalizedCode] || [])],
     exclusions: [...(NAME_EXCLUSIONS[normalizedCode] || [])],
+    wordExclusions: [...(WHOLE_WORD_EXCLUSIONS[normalizedCode] || [])],
   };
 }
 
@@ -313,20 +320,30 @@ function matchesCasedToken(rawText, token) {
 // the NORMALIZED text (where "Guinea-Bissau" is already "guinea bissau"), and
 // the demonym path scrubs them from the raw text with hyphens and whitespace
 // treated alike. Both are prefix matches on purpose: "south sudan" also
-// blanks the start of "South Sudanese", which is the point.
-function scrubNormalizedExclusions(normalizedText, exclusions) {
+// blanks the start of "South Sudanese", and "guinea bissau" the start of
+// "Guinea-Bissauan", which is the point. Whole-word exclusions are the
+// exception and must end on a word boundary.
+function scrubNormalizedExclusions(normalizedText, exclusions, wordExclusions = []) {
   let out = normalizedText;
   for (const phrase of exclusions) {
     if (phrase) out = out.split(phrase).join(' ');
   }
+  for (const phrase of wordExclusions) {
+    if (phrase) out = out.replace(new RegExp(`(^|[^a-z0-9])${escapeRegExp(phrase)}(?=$|[^a-z0-9])`, 'g'), '$1 ');
+  }
   return out;
 }
 
-function scrubRawExclusions(rawText, exclusions) {
+function scrubRawExclusions(rawText, exclusions, wordExclusions = []) {
   let out = rawText;
+  const pattern = phrase => String(phrase || '').trim().split(/\s+/).filter(Boolean).map(escapeRegExp).join('[\\s-]+');
   for (const phrase of exclusions) {
-    const pattern = String(phrase || '').trim().split(/\s+/).filter(Boolean).map(escapeRegExp).join('[\\s-]+');
-    if (pattern) out = out.replace(new RegExp(pattern, 'gi'), ' ');
+    const source = pattern(phrase);
+    if (source) out = out.replace(new RegExp(source, 'gi'), ' ');
+  }
+  for (const phrase of wordExclusions) {
+    const source = pattern(phrase);
+    if (source) out = out.replace(new RegExp(`(^|[^A-Za-z0-9])${source}(?=$|[^A-Za-z0-9])`, 'gi'), '$1 ');
   }
   return out;
 }
@@ -335,9 +352,10 @@ function scrubRawExclusions(rawText, exclusions) {
 export function mentionsCountry(rawText, terms) {
   if (!terms) return false;
   const exclusions = terms.exclusions || [];
-  const text = scrubRawExclusions(String(rawText || ''), exclusions);
+  const wordExclusions = terms.wordExclusions || [];
+  const text = scrubRawExclusions(String(rawText || ''), exclusions, wordExclusions);
   if (!text.trim()) return false;
-  const normalized = scrubNormalizedExclusions(normalizeMentionText(String(rawText || '')), exclusions);
+  const normalized = scrubNormalizedExclusions(normalizeMentionText(String(rawText || '')), exclusions, wordExclusions);
   for (const name of terms.names || []) {
     if (name && matchesNormalizedWord(normalized, name)) return true;
   }
