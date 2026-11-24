@@ -2379,8 +2379,12 @@ describe('CI workflow coverage', () => {
 
   it('lints markdown once, in a gate-required job that skips when no markdown changed (#7772)', () => {
     const docsLint = (YAML.parse(lintCodeWorkflow) as {
-      jobs: Record<string, { steps: { name?: string; run?: string; if?: string; 'timeout-minutes'?: number; 'continue-on-error'?: boolean }[] }>;
+      jobs: Record<string, { 'timeout-minutes'?: number; steps: { name?: string; run?: string; if?: string; 'timeout-minutes'?: number; 'continue-on-error'?: boolean }[] }>;
     }).jobs['docs-lint'];
+    assert.ok(
+      Number(docsLint['timeout-minutes']) > 0,
+      'a stalled dependency install or docs export must not hold the required docs-lint check for the 360-minute default; the step timeout covers lint:md only',
+    );
     const markdownStep = docsLint.steps.find((step) => step.run === 'npm run lint:md');
     assert.ok(markdownStep, 'docs-lint must own markdown lint');
     assert.equal(

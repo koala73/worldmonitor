@@ -76,6 +76,10 @@ jobs:
   docs-lint:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
+    # Runs take about 2 minutes. Bound the whole job, not just lint:md, so a
+    # stalled npm ci or docs export cannot hold this required check for the
+    # 360-minute default.
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: read
