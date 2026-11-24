@@ -257,6 +257,15 @@ describe('TAIEX prior-session basis', () => {
     assert.deepEqual(requestOptions.map(({ maxRetries }) => maxRetries), [undefined, 0]);
   });
 
+  it('accepts a current-session daily bar stamped after the quote, but not a later session', async () => {
+    const { equityIndexPreviousSessionClose } = await import('../scripts/shared/yahoo-closed-session.cjs');
+    // The daily chart is fetched after the quote, so its live bar can carry a newer trade time.
+    const later = taiexDaily([[NOV20_OPEN, 36033.29], [NOV23_OPEN, 36811.89], [NOV24_TRADE + 30, 40130]]);
+    assert.equal(equityIndexPreviousSessionClose(TAIEX, later, NOV24_TRADE), 36811.89);
+    const nextOnly = taiexDaily([[NOV20_OPEN, 36033.29], [NOV23_OPEN, 36811.89], [NOV24_OPEN + 86400, 40130]]);
+    assert.equal(equityIndexPreviousSessionClose(TAIEX, nextOnly, NOV24_TRADE), null);
+  });
+
   it('downgrades the reproduced false alert and caches its basis across same-session quotes', async () => {
     const responses = { [TAIEX]: taiexQuote(), [TAIEX + DAILY]: NOV24_DAILY };
     let now = 0;

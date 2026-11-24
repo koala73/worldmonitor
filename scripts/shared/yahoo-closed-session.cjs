@@ -95,8 +95,7 @@ function indexSessionDay(formatter, timestamp) {
  */
 function equityIndexPreviousSessionClose(symbol, data, lastTradeAt) {
   const formatter = sessionFormatter(symbol);
-  const tradeAt = finiteNumber(lastTradeAt);
-  const session = indexSessionDay(formatter, tradeAt);
+  const session = indexSessionDay(formatter, lastTradeAt);
   const result = data?.chart?.result?.[0];
   const timestamps = result?.timestamp;
   const closes = result?.indicators?.quote?.[0]?.close;
@@ -106,9 +105,10 @@ function equityIndexPreviousSessionClose(symbol, data, lastTradeAt) {
   let priorSession = '';
   let priorClose = null;
   for (let i = 0; i < timestamps.length; i += 1) {
-    const barAt = finiteNumber(timestamps[i]);
-    const day = indexSessionDay(formatter, barAt);
-    if (day == null || barAt > tradeAt) continue;
+    // Compare session days, not times: the daily chart is fetched after the
+    // quote, so its current bar can be stamped after the quote's last trade.
+    const day = indexSessionDay(formatter, timestamps[i]);
+    if (day == null) continue;
     if (day === session) {
       // The current daily close may still be null during the session.
       foundSession = true;
