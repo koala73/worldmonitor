@@ -313,12 +313,14 @@ function matchesCasedToken(rawText, token) {
 // Exclusion phrases are stored normalized, so the name path scrubs them from
 // the NORMALIZED text (where "Guinea-Bissau" is already "guinea bissau"), and
 // the demonym path scrubs them from the raw text with hyphens and whitespace
-// treated alike. Both are prefix matches on purpose: "south sudan" also
-// blanks the start of "South Sudanese", which is the point.
+// treated alike. The demonym path is a prefix match on purpose: "south sudan"
+// also blanks the start of "South Sudanese", which is the point. The name path
+// scrubs whole words only, since names already match on word boundaries: a
+// prefix scrub would let "niger state" swallow "Niger states it will...".
 function scrubNormalizedExclusions(normalizedText, exclusions) {
   let out = normalizedText;
   for (const phrase of exclusions) {
-    if (phrase) out = out.split(phrase).join(' ');
+    if (phrase) out = out.replace(new RegExp(`(^|[^a-z0-9])${escapeRegExp(phrase)}(?=$|[^a-z0-9])`, 'g'), '$1 ');
   }
   return out;
 }
