@@ -117,9 +117,11 @@ describe('the callers around a paused subscriber keep their own answers', () => 
 
   it('a hold still inside its access grace reaches Pro-only tools', async () => {
     globalThis.fetch = async () => new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    const { response, body } = await invoke(IN_GRACE_PRO, callBody('get_country_risk', { country: 'FR' }));
-    assert.notEqual(response.status, 403);
-    assert.equal(body.error?.data?.reason, undefined, JSON.stringify(body.error));
+    const { response, body } = await invoke(IN_GRACE_PRO, callBody('get_country_risk', { country_code: 'FR' }));
+    assert.equal(response.status, 200, JSON.stringify(body.error));
+    assert.equal(body.error, undefined, JSON.stringify(body.error));
+    assert.ok(body.result, 'the Pro tool returned a result');
+    assert.notEqual(body.result.isError, true, JSON.stringify(body.result));
   });
 });
 
