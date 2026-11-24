@@ -27,13 +27,13 @@ export const issueTitle = (week) => `Dogfood review: ${week}`;
 // Everything in the findings file was written by an agent that read third-party page text, so all of it is
 // untrusted. It renders only as code spans, where GitHub turns no @mention, #reference, link, image or HTML into
 // anything live. The only Markdown outside code spans is fixed text and numbers this script composes.
-function code(value) {
+export function code(value) {
   let text = String(value ?? '').replace(/\s+/g, ' ').trim();
   if (text.length > MAX_FIELD_CHARS) text = `${text.slice(0, MAX_FIELD_CHARS)}…`;
   return text ? `\`${text.replace(/`/g, "'")}\`` : '—';
 }
 
-const strings = (value) => (Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []);
+export const strings = (value) => (Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []);
 
 /** The report as data: throws when the agent left no usable file, so the run fails visibly. */
 export function readReport(raw) {
@@ -117,13 +117,11 @@ function ghJson(args, payload) {
 }
 
 /**
- * The repository is public, so anyone can open an issue with this week's title. The bot rewrites only an issue
- * it opened itself, matched on the exact title.
+ * The repository is public, so anyone can open an issue with a bot title. The bot rewrites only an issue it
+ * opened itself, matched on the exact title.
  */
-export function publishReview(report, { repository, week, runUrl = '', openIssues = new Set(), summaryPath, gh = ghJson }) {
+export function publishIssue({ repository, title, body, summaryPath, gh = ghJson }) {
   if (!repository) throw new Error('GITHUB_REPOSITORY is required to publish the dogfood review');
-  const title = issueTitle(week);
-  const body = issueBody(report, { week, runUrl, openIssues });
   if (summaryPath) appendFileSync(summaryPath, `${body}\n`);
   const query = `repo:${repository} is:issue in:title "${title}"`;
   const pages = gh(['api', '--paginate', '--slurp', '--method', 'GET', 'search/issues', '-f', `q=${query}`, '-f', 'per_page=100']);
@@ -131,10 +129,15 @@ export function publishReview(report, { repository, week, runUrl = '', openIssue
     .find((issue) => !issue.pull_request && issue.title === title && issue.user?.login === ISSUE_AUTHOR);
   if (existing) {
     gh(['api', '--method', 'PATCH', `repos/${repository}/issues/${existing.number}`, '--input', '-'], { body });
-    return { action: 'updated', issue: existing.number, findings: report.findings.length };
+    return { action: 'updated', issue: existing.number };
   }
   const created = gh(['api', '--method', 'POST', `repos/${repository}/issues`, '--input', '-'], { title, body });
-  return { action: 'created', issue: created.number, findings: report.findings.length };
+  return { action: 'created', issue: created.number };
+}
+
+export function publishReview(report, { repository, week, runUrl = '', openIssues = new Set(), summaryPath, gh = ghJson }) {
+  const body = issueBody(report, { week, runUrl, openIssues });
+  return { ...publishIssue({ repository, title: issueTitle(week), body, summaryPath, gh }), findings: report.findings.length };
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {

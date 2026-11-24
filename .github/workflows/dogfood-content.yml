@@ -1,0 +1,239 @@
+name: Panel Content Review
+
+# Run by hand. Agents check whether the content of every dashboard panel is valid: current, internally consistent,
+# matching its API response, relevant, and, for AI-written text, specific and supported by what the dashboard
+# shows. The findings land in one review issue per day ("Panel content review: <date>"). Nothing is filed or fixed
+# automatically: a maintainer reviews the list and files what is real.
+#
+# `plan` reads each monitor's panel catalog from the live app and splits the panels into shards; a panel several
+# monitors share is checked once, on the first host listed. Each `explore` shard opens the dashboard with only its
+# panels enabled and one agent reviews them. It runs sandboxed like dogfood-weekly.yml: read-only permissions, no
+# checked-out credentials, agent-browser as its only shell command behind scripts/dogfood/browser-guard.mjs, file
+# access only in its output directory, and the browser as a separate user with an empty environment.
+#
+# With DOGFOOD_PRO_KEY set (an enterprise key from WORLDMONITOR_VALID_KEYS kept for this run, so it can be revoked
+# alone), run-agent.sh gives the browser a Pro session before the agent starts: the key goes in as an HttpOnly
+# cookie on the API host, which page JavaScript cannot read, and is dropped from the environment the agent
+# inherits. The guard then also refuses everything that runs JavaScript the agent chose, network mocking, the
+# debugging-port URL and any URL off worldmonitor.app hosts, because a page on the browser's debugging port could
+# read the cookie. The agent can still use the session to load Pro data, for at most the run's budget. Without the
+# secret, or with pro_session off, Pro-locked panels are reported as locked.
+
+on:
+  workflow_dispatch:
+    inputs:
+      hosts:
+        description: 'Monitors to check, in priority order (comma-separated: www, finance, tech, commodity, energy, happy)'
+        required: false
+        default: 'www,finance,tech,commodity,energy,happy'
+        type: string
+      panels:
+        description: 'Only these panel ids (comma-separated); empty checks every panel'
+        required: false
+        type: string
+      panels_per_shard:
+        description: 'Panels each agent reviews'
+        required: false
+        default: '10'
+        type: string
+      pro_session:
+        description: 'Give the agents a Pro session (needs the DOGFOOD_PRO_KEY secret)'
+        required: false
+        default: true
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: dogfood-content
+  cancel-in-progress: false
+
+env:
+  OUT_DIR: /tmp/dogfood-output
+  AGENT_BROWSER_USER: dogfood-browser
+  AGENT_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/dogfood
+            scripts/lib/main-module.mjs
+            .github/actions/dogfood-browser
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - uses: ./.github/actions/dogfood-browser
+        with:
+          agent: 'false'
+
+      # No agent reads these pages: this step only reads the catalog the app writes to localStorage on boot.
+      - name: Read each monitor's panel catalog
+        env:
+          HOSTS: ${{ inputs.hosts }}
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/catalogs.jsonl"
+          read_catalog='JSON.stringify(Object.entries(JSON.parse(localStorage.getItem("worldmonitor-panels") || "{}")).map(([id, c]) => ({ id, name: c && c.name })))'
+          for host in ${HOSTS//,/ }; do
+            case "$host" in
+              www|finance|tech|commodity|energy|happy) ;;
+              *) echo "::error::Unknown monitor '$host'"; exit 1 ;;
+            esac
+            target="https://$host.worldmonitor.app"
+            agent-browser --session plan open "$target/dashboard" > /dev/null
+            agent-browser --session plan wait 8000 > /dev/null
+            agent-browser --session plan eval "$read_catalog" \
+              | jq -c --arg host "$host" --arg target "$target" '{ host: $host, target: $target, panels: fromjson }' >> "$RUNNER_TEMP/catalogs.jsonl"
+            echo "$host: $(tail -n 1 "$RUNNER_TEMP/catalogs.jsonl" | jq '.panels | length') panels"
+          done
+          agent-browser --session plan close > /dev/null
+          jq -s . "$RUNNER_TEMP/catalogs.jsonl" > "$RUNNER_TEMP/catalogs.json"
+
+      - name: Split the panels into shards
+        id: plan
+        env:
+          DOGFOOD_CATALOGS: ${{ runner.temp }}/catalogs.json
+          DOGFOOD_PLAN: ${{ runner.temp }}/plan/plan.json
+          ONLY_PANELS: ${{ inputs.panels }}
+          PANELS_PER_SHARD: ${{ inputs.panels_per_shard }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/plan"
+          node scripts/dogfood/plan-content-shards.mjs
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dogfood-content-plan
+          path: ${{ runner.temp }}/plan/plan.json
+          retention-days: 30
+          if-no-files-found: error
+
+  explore:
+    needs: plan
+    runs-on: ubuntu-latest
+    # About 3 for installs, 1 for setup, at most 40 for the agent, 2 for the rest.
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      issues: read
+    strategy:
+      fail-fast: false
+      # Keeps the agents inside the API's rate limits and a failed run's cost bounded.
+      max-parallel: 6
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: explore (${{ matrix.id }})
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/dogfood
+            scripts/lib/main-module.mjs
+            .github/actions/dogfood-browser
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - uses: ./.github/actions/dogfood-browser
+
+      - name: List open issues for duplicate checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$OUT_DIR"
+          gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > "$OUT_DIR/open-issues.json"
+
+      # A failed or over-budget agent still uploads what it wrote; the publish job reports a shard with no
+      # findings file as such.
+      - name: Review this shard's panels
+        timeout-minutes: 42
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DOGFOOD_PRO_KEY: ${{ inputs.pro_session && secrets.DOGFOOD_PRO_KEY || '' }}
+          PRO_SESSION: ${{ inputs.pro_session }}
+          TARGET_URL: ${{ matrix.target }}
+          DOGFOOD_PANELS: ${{ matrix.panels }}
+          PROMPT_FILE: scripts/dogfood/content-prompt.md
+          MAX_BUDGET_USD: '10'
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "::error::ANTHROPIC_API_KEY is not set, so the agent cannot run."
+            exit 1
+          fi
+          if [ "$PRO_SESSION" = true ] && [ -z "${DOGFOOD_PRO_KEY:-}" ]; then
+            echo "::warning::DOGFOOD_PRO_KEY is not set, so Pro panels are checked as an anonymous visitor and report as locked."
+          fi
+          bash scripts/dogfood/run-agent.sh
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        continue-on-error: true
+        with:
+          name: content-${{ matrix.id }}
+          path: |
+            ${{ env.OUT_DIR }}
+            ${{ env.OUT_DIR }}.setup.json
+            ${{ env.OUT_DIR }}.result.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  publish:
+    needs: [plan, explore]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/report-dogfood-content.mjs
+            scripts/report-dogfood-review.mjs
+            scripts/lib/main-module.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dogfood-content-plan
+          path: ${{ runner.temp }}/plan
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: content-*
+          path: ${{ runner.temp }}/shards
+
+      # Listed again here: the artifacts' copies sit in directories the agents can edit.
+      - name: List open issues for duplicate links
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > "$RUNNER_TEMP/open-issues.json"
+
+      - name: Publish the review issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DOGFOOD_PLAN: ${{ runner.temp }}/plan/plan.json
+          DOGFOOD_SHARDS: ${{ runner.temp }}/shards
+          DOGFOOD_OPEN_ISSUES: ${{ runner.temp }}/open-issues.json
+        run: node scripts/report-dogfood-content.mjs
