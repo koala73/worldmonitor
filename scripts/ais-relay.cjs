@@ -155,7 +155,9 @@ const {
 const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
-const { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } = require('./shared/yahoo-closed-session.cjs');
+const {
+  PREVIOUS_SESSION_CHART_QUERY, TAIEX_SYMBOL, awaitsSessionOpen, previousSessionClose, taiexPreviousSessionClose, taiexSessionDay,
+} = require('./shared/yahoo-closed-session.cjs');
 const { SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline, capQuoteSparklines } = require('./shared/quote-sparkline.cjs');
 const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
@@ -3767,18 +3769,24 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
   });
 }
 
-// A rolled chart's previous close stays the same until the next trade, so one
-// daily-chart request per symbol covers a whole weekend of 5-minute cycles.
+// A rolled chart shares one daily lookup until the next trade. TAIEX
+// shares it for the Taipei session so intraday ticks do not multiply calls.
 const _previousSessionCloses = new Map();
 
 async function _withPreviousSessionChange(symbol, quote) {
+  const isTaiex = symbol === TAIEX_SYMBOL;
+  const sessionKey = isTaiex ? taiexSessionDay(quote.lastTradeAt) : quote.lastTradeAt;
+  if (isTaiex && sessionKey == null) return null;
   let cached = _previousSessionCloses.get(symbol);
-  if (cached?.lastTradeAt !== quote.lastTradeAt) {
+  if (!cached || cached.sessionKey !== sessionKey) {
     await sleep(150);
     const daily = await _fetchYahooChartOnce(symbol, PREVIOUS_SESSION_CHART_QUERY);
-    const close = previousSessionClose(daily?.chart, quote.lastTradeAt);
-    if (!close) return quote;
-    cached = { lastTradeAt: quote.lastTradeAt, close };
+    const close = isTaiex
+      ? taiexPreviousSessionClose(daily?.chart, quote.lastTradeAt)
+      : previousSessionClose(daily?.chart, quote.lastTradeAt);
+    // An unverifiable TAIEX denominator cannot produce a new seed or alert.
+    if (!close) return isTaiex ? null : quote;
+    cached = { sessionKey, close };
     _previousSessionCloses.set(symbol, cached);
   }
   return { ...quote, change: ((quote.price - cached.close) / cached.close) * 100 };
@@ -3813,7 +3821,11 @@ async function _commoditySparkline(symbol, quote) {
 
 function fetchYahooChartDirect(symbol, query = '') {
   return _fetchYahooChartOnce(symbol, query)
-    .then((quote) => (!query && quote?.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote));
+    .then((quote) => (
+      !query && quote && (symbol === TAIEX_SYMBOL || quote.awaitingSessionOpen)
+        ? _withPreviousSessionChange(symbol, quote)
+        : quote
+    ));
 }
 
 function _fetchYahooChartOnce(symbol, query = '') {

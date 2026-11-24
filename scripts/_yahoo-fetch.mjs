@@ -27,7 +27,9 @@
 // scripts/_open-meteo-archive.mjs cascade pattern.
 
 import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart, roundSparkline } from './_seed-utils.mjs';
-import { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } from './shared/yahoo-closed-session.cjs';
+import {
+  PREVIOUS_SESSION_CHART_QUERY, TAIEX_SYMBOL, awaitsSessionOpen, previousSessionClose, taiexPreviousSessionClose, taiexSessionDay,
+} from './shared/yahoo-closed-session.cjs';
 import { crudeOilQuoteProvenance } from './shared/oil-quote-provenance.cjs';
 import { SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline } from './shared/quote-sparkline.cjs';
 
@@ -235,6 +237,7 @@ export function createSparklineHistoryCache(command, keyPrefix) {
  * Fetch and parse one Yahoo quote. A chart rolled to a session that has not
  * traded costs a second, staggered request for the daily chart holding the
  * last completed session's previous close; without it the change reads 0.00%.
+ * TAIEX also needs daily bars because its 1d previous close can skip a session.
  * `sparklineWindow` adds the 24-hour sparkline. Its history chart costs one
  * more request unless `historyCache` already holds it for this session.
  */
@@ -247,12 +250,16 @@ export async function fetchYahooQuoteChart(symbol, {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
   const chart = await fetchJson(url);
   const lastTradeAt = chart?.chart?.result?.[0]?.meta?.regularMarketTime;
+  const isTaiex = symbol === TAIEX_SYMBOL;
+  if (isTaiex && taiexSessionDay(lastTradeAt) == null) return null;
   let previousClose = null;
-  if (awaitsSessionOpen(chart)) {
+  if (isTaiex || awaitsSessionOpen(chart)) {
     await sleep(delayMs);
     // Optional: a 429 with Retry-After must not hold the sequential basket for minutes.
     const daily = await fetchJson(`${url}${PREVIOUS_SESSION_CHART_QUERY}`, { maxRetries: 0 }).catch(() => null);
-    previousClose = previousSessionClose(daily, lastTradeAt);
+    previousClose = isTaiex ? taiexPreviousSessionClose(daily, lastTradeAt) : previousSessionClose(daily, lastTradeAt);
+    // Leave this symbol to normal last-good handling if its move cannot be verified.
+    if (isTaiex && previousClose == null) return null;
   }
   const quote = parseYahooChart(chart, symbol, { previousClose });
   if (!quote) return null;

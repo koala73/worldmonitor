@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import * as yahooFetch from '../scripts/_yahoo-fetch.mjs';
+import { marketMoveSeverity } from '../scripts/lib/notification-publish-policy.cjs';
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/yahoo-closed-session/${name}`, import.meta.url), 'utf8'));
 
@@ -155,11 +156,15 @@ async function loadRelayQuoteFetch(responses) {
     return match ? parse(JSON.stringify(match)) : null;
   };
   const fetchYahooChartDirect = Function(
-    '_fetchYahooChartOnce', 'sleep', 'PREVIOUS_SESSION_CHART_QUERY', 'previousSessionClose', '_previousSessionCloses',
+    '_fetchYahooChartOnce', 'sleep', 'PREVIOUS_SESSION_CHART_QUERY', 'TAIEX_SYMBOL',
+    'previousSessionClose', 'taiexPreviousSessionClose', 'taiexSessionDay', '_previousSessionCloses',
     `${extractFunction('_withPreviousSessionChange')}
      ${extractFunction('fetchYahooChartDirect')}
      return fetchYahooChartDirect;`,
-  )(fetchOnce, async () => {}, shared.PREVIOUS_SESSION_CHART_QUERY, shared.previousSessionClose, new Map());
+  )(
+    fetchOnce, async () => {}, shared.PREVIOUS_SESSION_CHART_QUERY, shared.TAIEX_SYMBOL,
+    shared.previousSessionClose, shared.taiexPreviousSessionClose, shared.taiexSessionDay, new Map(),
+  );
   return { fetchYahooChartDirect, requests };
 }
 
@@ -195,5 +200,101 @@ describe('relay market loop (fetchYahooChartDirect)', () => {
     assert.equal(+live.change.toFixed(2), GC_MONDAY_MOVE);
     await fetchYahooChartDirect('GC=F', '?range=1y&interval=1d');
     assert.deepEqual(requests, ['GC=F', 'GC=F?range=1y&interval=1d']);
+  });
+});
+
+// Minimal projection of the Nov 24 Yahoo quote capture. Daily rows are
+// fixtures from TWSE's index history, not a captured Yahoo daily response.
+const TAIEX = '^TWII';
+const DAILY = '?range=5d&interval=1d';
+const NOV24_OPEN = 1795482000;
+const NOV24_TRADE = 1795498395;
+const NOV23_OPEN = NOV24_OPEN - 86400;
+const NOV20_OPEN = NOV23_OPEN - 3 * 86400;
+const NOV19_OPEN = NOV20_OPEN - 86400;
+
+function taiexQuote(time = NOV24_TRADE, price = 40122.35, staleClose = 36033.30) {
+  return { chart: { result: [{
+    meta: {
+      symbol: TAIEX,
+      regularMarketPrice: price,
+      regularMarketTime: time,
+      exchangeTimezoneName: 'Asia/Taipei',
+      currentTradingPeriod: { regular: { start: Math.floor(time / 86400) * 86400 + 3600 } },
+      chartPreviousClose: staleClose,
+      previousClose: staleClose,
+    },
+    indicators: { quote: [{ close: [price] }] },
+  }] } };
+}
+
+function taiexDaily(bars) {
+  const last = bars.filter(([, close]) => close != null).at(-1);
+  return { chart: { result: [{
+    meta: { symbol: TAIEX, regularMarketPrice: last[1], regularMarketTime: last[0] },
+    timestamp: bars.map(([date]) => date),
+    indicators: { quote: [{ close: bars.map(([, close]) => close) }] },
+  }] } };
+}
+
+const NOV24_DAILY = taiexDaily([
+  [NOV20_OPEN, 36033.29], [NOV23_OPEN, 36811.89], [NOV24_OPEN, 40122.35],
+]);
+
+describe('TAIEX prior-session basis', () => {
+  it('normalizes the cron quote against the preceding session and preserves its intraday sparkline', async () => {
+    const { fetchJson, requestOptions } = stubYahoo([
+      ['/%5ETWII', taiexQuote()],
+      ['/%5ETWII' + DAILY, NOV24_DAILY],
+    ]);
+    const quote = await yahooFetch.fetchYahooQuoteChart(TAIEX, { fetchJson, delayMs: 0 });
+    assert.equal(quote.price, 40122.35);
+    assert.equal(quote.change, 8.99);
+    assert.deepEqual(quote.sparkline, [40122.35]);
+    assert.deepEqual(requestOptions.map(({ maxRetries }) => maxRetries), [undefined, 0]);
+  });
+
+  it('downgrades the reproduced false alert and caches its basis across same-session quotes', async () => {
+    const responses = { [TAIEX]: taiexQuote(), [TAIEX + DAILY]: NOV24_DAILY };
+    const { fetchYahooChartDirect, requests } = await loadRelayQuoteFetch(responses);
+    const q = await fetchYahooChartDirect(TAIEX);
+    assert.equal(+q.change.toFixed(2), 8.99);
+    assert.equal(marketMoveSeverity({ assetClass: 'equity', symbol: TAIEX, changePct: q.change }), 'high');
+
+    responses[TAIEX] = taiexQuote(NOV24_TRADE + 15, 40100);
+    assert.equal(+(await fetchYahooChartDirect(TAIEX)).change.toFixed(2), 8.93);
+    assert.deepEqual(requests, [TAIEX, TAIEX + DAILY, TAIEX]);
+
+    // A new session must not inherit the cached baseline. The daily chart
+    // might not have its current row yet or might have an incomplete close.
+    responses[TAIEX] = taiexQuote(NOV24_TRADE + 86400, 40000);
+    assert.equal(await fetchYahooChartDirect(TAIEX), null);
+    responses[TAIEX + DAILY] = taiexDaily([
+      [NOV23_OPEN, 36811.89], [NOV24_OPEN, 40122.35], [NOV24_OPEN + 86400, null],
+    ]);
+    assert.equal(+(await fetchYahooChartDirect(TAIEX)).change.toFixed(2), -0.3);
+  });
+
+  it('never uses stale fields on history failure or an empty preceding bar, and accepts a weekend gap', async () => {
+    // Synthetic intraday observation within the Nov 20 exchange range.
+    const friday = taiexQuote(NOV20_OPEN + 4 * 3600 + 94, 36000, 40194.91);
+    const responses = { [TAIEX]: friday };
+    const { fetchYahooChartDirect } = await loadRelayQuoteFetch(responses);
+    assert.equal(await fetchYahooChartDirect(TAIEX), null);
+    const failing = stubYahoo([['/%5ETWII', friday]]);
+    assert.equal(await yahooFetch.fetchYahooQuoteChart(TAIEX, { fetchJson: failing.fetchJson, delayMs: 0 }), null);
+
+    responses[TAIEX + DAILY] = taiexDaily([
+      [NOV19_OPEN - 86400, 40194.91], [NOV19_OPEN, null], [NOV20_OPEN, 36000],
+    ]);
+    assert.equal(await fetchYahooChartDirect(TAIEX), null, 'do not skip a missing Thursday close back to Wednesday');
+    responses[TAIEX + DAILY] = taiexDaily([[NOV19_OPEN, 38426.89], [NOV20_OPEN, 36000]]);
+    const q = await fetchYahooChartDirect(TAIEX);
+    assert.equal(+q.change.toFixed(2), -6.32);
+    assert.equal(marketMoveSeverity({ assetClass: 'equity', symbol: TAIEX, changePct: q.change }), 'high');
+
+    responses[TAIEX] = taiexQuote(NOV23_OPEN + 3600, 36500);
+    responses[TAIEX + DAILY] = NOV24_DAILY;
+    assert.equal(+(await fetchYahooChartDirect(TAIEX)).change.toFixed(2), 1.3);
   });
 });

@@ -7,6 +7,7 @@
 // the close before that session, which only a daily chart carries.
 
 const PREVIOUS_SESSION_CHART_QUERY = '?range=5d&interval=1d';
+const TAIEX_SYMBOL = '^TWII';
 
 function finiteNumber(value) {
   if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
@@ -48,8 +49,50 @@ function previousSessionClose(data, lastTradeAt = data?.chart?.result?.[0]?.meta
   return sessionCloses.length >= 2 ? sessionCloses[sessionCloses.length - 2] : null;
 }
 
+/** Taipei's UTC+8 civil day identifies the TAIEX session that traded. */
+function taiexSessionDay(timestamp) {
+  const epochSeconds = finiteNumber(timestamp);
+  return epochSeconds != null && epochSeconds > 0
+    ? Math.floor((epochSeconds + 8 * 3600) / 86400)
+    : null;
+}
+
+/**
+ * On Nov 24 Yahoo's 1d ^TWII metadata used Nov 20 as the prior close, skipping
+ * Nov 23. Use daily bars for this index even after the market is open.
+ * Require a row matching the quote session (the current close may be null
+ * intraday), and do not skip a missing preceding close to an older value.
+ */
+function taiexPreviousSessionClose(data, lastTradeAt) {
+  const tradeAt = finiteNumber(lastTradeAt);
+  const session = taiexSessionDay(tradeAt);
+  const result = data?.chart?.result?.[0];
+  const timestamps = result?.timestamp;
+  const closes = result?.indicators?.quote?.[0]?.close;
+  if (session == null || !Array.isArray(timestamps) || !Array.isArray(closes)) return null;
+
+  let foundSession = false;
+  let priorSession = -Infinity;
+  let priorClose = null;
+  for (let i = 0; i < timestamps.length; i += 1) {
+    const barAt = finiteNumber(timestamps[i]);
+    const day = taiexSessionDay(barAt);
+    if (day == null || barAt > tradeAt) continue;
+    if (day === session) {
+      foundSession = true;
+    } else if (day < session && day > priorSession) {
+      priorSession = day;
+      priorClose = finiteNumber(closes[i]);
+    }
+  }
+  return foundSession && priorClose > 0 ? priorClose : null;
+}
+
 module.exports = {
   PREVIOUS_SESSION_CHART_QUERY,
+  TAIEX_SYMBOL,
   awaitsSessionOpen,
   previousSessionClose,
+  taiexPreviousSessionClose,
+  taiexSessionDay,
 };
