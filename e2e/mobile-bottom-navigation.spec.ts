@@ -89,6 +89,30 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(mapTab).not.toHaveAttribute('aria-current', 'page');
   });
 
+  test('re-tapping Search over the fullscreen map closes it and keeps Map active (#11157)', async ({ page }) => {
+    const mapTab = page.locator('[data-mobile-tab="map"]');
+    const searchTab = page.locator('[data-mobile-tab="search"]');
+    await mapTab.click();
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await page.keyboard.press('ControlOrMeta+k');
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveClass(/open/);
+    await expect(searchTab).toHaveAttribute('aria-current', 'page');
+    // The Search tab toggles its own overlay closed; the map is still fullscreen.
+    await searchTab.click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(0, { timeout: 2_000 });
+    await expect(page.locator('#mapSection')).toHaveClass(/live-news-fullscreen/);
+    await expect(mapTab).toHaveAttribute('aria-current', 'page');
+
+    // Off the fullscreen map, the same toggle lands on Today.
+    await page.locator('#mapFullscreenBtn').click();
+    await expect(page.locator('#mapSection')).not.toHaveClass(/live-news-fullscreen/);
+    await searchTab.click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveClass(/open/);
+    await searchTab.click();
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(0, { timeout: 2_000 });
+    await expect(page.locator('[data-mobile-tab="today"]')).toHaveAttribute('aria-current', 'page');
+  });
+
   test('keeps the account entry visible in the header before More opens', async ({ page }) => {
     const headerAuth = page.locator('#authWidgetMount');
     const signIn = headerAuth.locator('.auth-signin-btn');
