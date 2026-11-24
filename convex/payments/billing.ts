@@ -1351,6 +1351,13 @@ export const getOnDemandRenewalFallbackState = internalQuery({
       strongestRecentlyStaleFeatures: strongestRecentlyStaleSubscription
         ? getFeaturesForPlan(strongestRecentlyStaleSubscription.planKey)
         : null,
+      // A failed renewal past its access grace that Dodo is still retrying:
+      // the subscription is paused, not ended, and checkout stays blocked.
+      paymentFailedHold: subscriptions.some((subscription) =>
+        subscription.status === "on_hold" &&
+        isCoveringAt(subscription, args.now) &&
+        !hasAccessAt(subscription, args.now),
+      ),
     };
   },
 });
