@@ -29,6 +29,8 @@ import {
   accessEndAt,
   billingDeletionForUser,
   failedRenewalAccessEndsAt,
+  handleSubscriptionCancelled,
+  handleSubscriptionExpired,
   handleSubscriptionPlanChanged,
   handleSubscriptionRenewed,
   hasAccessAt,
@@ -1805,9 +1807,10 @@ export const listLockedOnHoldForRecovery = internalQuery({
 });
 
 /**
- * Applies a Dodo lookup to a locked hold. Recovers only when the row is still
- * on_hold, Dodo reports `active`, and no webhook wrote the row at or after the
- * lookup; anything else records the check so the row waits for the next
+ * Applies a Dodo lookup to a locked hold. While the row is still on_hold and
+ * no webhook wrote it at or after the lookup, an `active` remote recovers it
+ * and a `cancelled` or `expired` remote closes it through the matching webhook
+ * handler; anything else records the check so the row waits for the next
  * window. Never touches `updatedAt` on a no-op (it carries webhook ordering).
  */
 export const applyOnHoldRecovery = internalMutation({
@@ -1817,7 +1820,7 @@ export const applyOnHoldRecovery = internalMutation({
     remoteStatus: v.optional(v.string()),
     remoteRaw: v.optional(v.any()),
   },
-  handler: async (ctx, args): Promise<"recovered" | "checked" | "skipped"> => {
+  handler: async (ctx, args): Promise<"recovered" | "closed" | "checked" | "skipped"> => {
     const existing = await ctx.db.get(args.subscriptionId);
     if (!existing || existing.status !== "on_hold") return "skipped";
     if (
@@ -1834,6 +1837,20 @@ export const applyOnHoldRecovery = internalMutation({
         await handleSubscriptionPlanChanged(ctx, args.remoteRaw, args.observedAt);
       }
       return "recovered";
+    }
+    // Dodo ended the subscription while it was held and that webhook was lost.
+    // Apply it, or the row keeps blocking a new checkout until its period ends.
+    if (
+      (args.remoteStatus === "cancelled" || args.remoteStatus === "expired") &&
+      args.remoteRaw !== undefined &&
+      isNewerEvent(existing.updatedAt, args.observedAt)
+    ) {
+      if (args.remoteStatus === "cancelled") {
+        await handleSubscriptionCancelled(ctx, args.remoteRaw, args.observedAt);
+      } else {
+        await handleSubscriptionExpired(ctx, args.remoteRaw, args.observedAt);
+      }
+      return "closed";
     }
     await ctx.db.patch(existing._id, { lastReconcileAttemptAt: args.observedAt });
     return "checked";
@@ -1880,7 +1897,7 @@ export const reconcileLockedOnHoldSubscriptions = internalAction({
           ...(normalized.kind === "supported"
             ? { remoteStatus: normalized.value.status, remoteRaw: normalized.value.rawPayload }
             : {}),
-        })) as "recovered" | "checked" | "skipped";
+        })) as "recovered" | "closed" | "checked" | "skipped";
         if (outcome === "recovered") summary.recovered++;
       } catch (err) {
         summary.failed++;

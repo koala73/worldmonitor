@@ -451,6 +451,38 @@ describe("locked-hold recovery sweep", () => {
     expect((await entitlementOf(t))?.planKey).toBe("pro_monthly");
   });
 
+  test("a hold Dodo has since cancelled is closed locally and stops blocking checkout", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await failRenewal(t);
+    const sweepAt = HOLD + 10 * DAY_MS;
+    vi.setSystemTime(sweepAt);
+    expect(await checkoutBlocker(t, sweepAt)).not.toBeNull();
+    // The customer cancelled in the portal; that webhook was lost.
+    await t.action(internal.payments.billing.reconcileLockedOnHoldSubscriptions, {
+      now: sweepAt,
+      remoteSubscriptionsForTest: [{ ...remote("cancelled"), cancelled_at: iso(sweepAt - DAY_MS) }],
+    });
+    const sub = await subscriptionOf(t);
+    expect(sub?.status).toBe("cancelled");
+    expect(sub?.accessEndsAt).toBe(GRACE_END);
+    expect(await checkoutBlocker(t, sweepAt)).toBeNull();
+  });
+
+  test("a hold Dodo has since expired is closed locally", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await failRenewal(t);
+    const sweepAt = HOLD + 10 * DAY_MS;
+    vi.setSystemTime(sweepAt);
+    await t.action(internal.payments.billing.reconcileLockedOnHoldSubscriptions, {
+      now: sweepAt,
+      remoteSubscriptionsForTest: [remote("expired")],
+    });
+    expect((await subscriptionOf(t))?.status).toBe("expired");
+    expect(await checkoutBlocker(t, sweepAt)).toBeNull();
+  });
+
   test("holds inside their grace are not looked up", async () => {
     vi.useFakeTimers();
     const t = await setup();
