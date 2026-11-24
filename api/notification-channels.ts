@@ -476,9 +476,10 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       // user a retryable error in place of a working free tier.
       // A confirmed `subscription_lapsed` or `payment_failed` is NOT denied
       // here: the provider says paid access ended, so the account is a free
-      // account and gets the free ladder like any other tier-0 caller. The old terminal 403 left a
-      // churned subscriber unable to disable or delete anything while the
-      // relay (#4273) began delivering their leftover scoped rule.
+      // account and gets the free ladder like any other tier-0 caller. The
+      // old terminal 403 left a churned subscriber unable to disable or delete
+      // anything while the relay (#4273) began delivering their leftover
+      // scoped rule.
       const rawBillingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
       const billingDenial = isTerminalBillingStatus(rawBillingDenial?.headers.get('X-Billing-Verification'))
         ? null
