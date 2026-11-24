@@ -22770,7 +22770,7 @@
           "path": "server/_shared/deprecation-policy.ts"
         },
         {
-          "path": "server/_shared/entitlement-check.ts"
+          "path": "server/_shared/entitlement-coverage.ts"
         },
         {
           "path": "server/worldmonitor/cyber/v1/get-network-info.ts"

@@ -4,6 +4,9 @@ interface EntitlementCoverage {
   verificationUnavailable?: boolean;
 }
 
+/** Where a paused subscriber updates their card. Same URL as api/customer-portal.ts's fallback. */
+export const BILLING_PORTAL_URL = 'https://www.worldmonitor.app/dashboard?billing=portal';
+
 /**
  * Billing states the provider confirmed, so retrying cannot change them: the
  * subscription ended, or it is paused because a renewal payment failed and

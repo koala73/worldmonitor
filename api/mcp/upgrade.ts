@@ -7,7 +7,7 @@
  */
 
 import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
-import { BILLING_PORTAL_URL } from '../../server/_shared/entitlement-check';
+import { BILLING_PORTAL_URL } from '../../server/_shared/entitlement-coverage';
 import { recommendedPlanFor, recommendedPlanForFeature, START_UPGRADE_TOOL } from './checkout';
 import type { McpPlanFeature } from './types';
 
@@ -129,7 +129,7 @@ function checkoutHint(denial: McpDenial): McpCheckoutHint {
 
 /** States the pause without a link, so inform-only hosts can keep it as is. */
 export const PAYMENT_FAILED_MCP_MESSAGE =
-  'Payment failed, so paid access is paused while the charge is retried. Re-authenticating will not help.';
+  'Payment failed; paid access is paused. Re-authenticating will not help.';
 
 const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: string }> = {
   'no-account': {
@@ -176,16 +176,12 @@ const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: st
   'payment-failed': {
     message: PAYMENT_FAILED_MCP_MESSAGE,
     nextStep:
-      `Update the payment method in the billing portal at ${BILLING_PORTAL_URL}. `
-      + 'Access returns once the retried charge succeeds. A new checkout is blocked while the payment is retried, '
-      + 'and re-authenticating will not restore access.',
+      `Update the payment method at ${BILLING_PORTAL_URL}. A new checkout is blocked until then.`,
   },
 };
 
 const PAYMENT_FAILED_ALLOWANCE_NEXT_STEP =
-  'Paid access is paused because a payment failed, so this account is on the free allowance. '
-  + `Update the payment method at ${BILLING_PORTAL_URL} to restore paid access, `
-  + 'or wait until the next UTC day for another free allowance window.';
+  `Paid access is paused after a failed payment. Update the payment method at ${BILLING_PORTAL_URL}, or wait for the next UTC day.`;
 
 /**
  * Copy for a plan-feature refusal. The message only states which plans include
@@ -261,8 +257,7 @@ const INFORM_ONLY_NEXT_STEP: Record<McpStaticDenialReason, string> = {
     'The subscription is no longer active. The existing credential stays valid — '
     + 're-authenticating will not restore access.',
   'payment-failed':
-    'Paid access is paused because the last payment failed. It returns once the payment method on the account '
-    + 'is updated. Re-authenticating will not restore access.',
+    'Paid access is paused until the payment method is updated.',
 };
 
 /**

@@ -1,6 +1,6 @@
-import { hasCurrentEntitlementCoverage, isTerminalBillingStatus } from './entitlement-coverage.js';
+import { BILLING_PORTAL_URL, hasCurrentEntitlementCoverage, isTerminalBillingStatus } from './entitlement-coverage.js';
 
-export { isTerminalBillingStatus, TERMINAL_BILLING_STATUSES } from './entitlement-coverage.js';
+export { BILLING_PORTAL_URL, isTerminalBillingStatus, TERMINAL_BILLING_STATUSES } from './entitlement-coverage.js';
 /**
  * Entitlement enforcement middleware for the Vercel API gateway.
  *
@@ -823,8 +823,6 @@ export type BillingVerificationInput = Pick<
   'billingStatus' | 'retryAfterSeconds' | 'verificationUnavailable'
 >;
 
-/** Where a paused subscriber updates their card. Same URL as api/customer-portal.ts's fallback. */
-export const BILLING_PORTAL_URL = 'https://www.worldmonitor.app/dashboard?billing=portal';
 
 /**
  * A paused subscription cannot be fixed by buying again: checkout is blocked
