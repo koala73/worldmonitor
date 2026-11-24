@@ -214,6 +214,11 @@ export class CountryIntelMemory {
     for (const btn of this.filtersEl.querySelectorAll<HTMLButtonElement>('.country-intel-memory-pill')) {
       btn.setAttribute('aria-pressed', String((btn.dataset.domain ?? '') === domain));
     }
+    this.similarAbort?.abort();
+    this.similarAbort = null;
+    this.similarSubmitBtn.disabled = false;
+    this.similarResultsEl.setAttribute('aria-busy', 'false');
+    this.similarResultsEl.replaceChildren();
     void this.loadTimeline();
   }
 
@@ -436,15 +441,13 @@ export class CountryIntelMemory {
 
     if (this.records.length === 0) {
       frag.append(el('p', 'country-intel-memory-empty', t('countryBrief.intelMemory.empty')));
-      this.timelineEl.replaceChildren(frag);
-      return;
+    } else {
+      const list = el('ul', 'country-intel-memory-list');
+      for (const record of this.records) {
+        list.append(this.renderRecordItem(record, false));
+      }
+      frag.append(list);
     }
-
-    const list = el('ul', 'country-intel-memory-list');
-    for (const record of this.records) {
-      list.append(this.renderRecordItem(record, false));
-    }
-    frag.append(list);
 
     if (this.loadMoreError) {
       const err = el('p', 'country-intel-memory-notice', t('countryBrief.intelMemory.loadMoreError'));

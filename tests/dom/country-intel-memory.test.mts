@@ -329,6 +329,106 @@ describe('CountryIntelMemory', () => {
     component.destroy();
   });
 
+  it('keeps Load more available when a scanned page returns zero records with a nextCursor', async () => {
+    const mount = document.createElement('div');
+    document.body.append(mount);
+    const parentAbort = new AbortController();
+
+    const fetchTimeline = vi.fn(async (params: { cursor?: string }): Promise<GetIntelTimelineResponse> => {
+      if (!params.cursor) {
+        return { records: [], partial: false, upstreamUnavailable: false, nextCursor: 'older-page-cursor' };
+      }
+      return {
+        records: [makeRecord({ id: 'older-1', title: 'Older matching archive event' })],
+        partial: false,
+        upstreamUnavailable: false,
+        nextCursor: '',
+      };
+    });
+
+    const component = new CountryIntelMemory(mount, 'UA', parentAbort.signal, {
+      fetchTimeline,
+      fetchSimilar: vi.fn(),
+    });
+    await flushMicrotasks();
+
+    const loadMoreBtn = mount.querySelector<HTMLButtonElement>('.country-intel-memory-load-more');
+    expect(loadMoreBtn).not.toBeNull();
+    loadMoreBtn!.click();
+    await flushMicrotasks();
+
+    expect(fetchTimeline).toHaveBeenCalledTimes(2);
+    expect(fetchTimeline).toHaveBeenLastCalledWith(
+      { country: 'UA', domain: '', limit: 20, cursor: 'older-page-cursor' },
+      expect.any(AbortSignal),
+    );
+    expect(mount.querySelectorAll('.country-intel-memory-timeline .country-intel-memory-item')).toHaveLength(1);
+    expect(mount.querySelector('.country-intel-memory-title')?.textContent).toBe('Older matching archive event');
+    expect(mount.querySelector('.country-intel-memory-load-more')).toBeNull();
+
+    component.destroy();
+  });
+
+  it('cancels in-flight precedent search and clears similar results when switching domain pills', async () => {
+    const mount = document.createElement('div');
+    document.body.append(mount);
+    const parentAbort = new AbortController();
+
+    const fetchTimeline = vi.fn(async (): Promise<GetIntelTimelineResponse> => ({
+      records: [makeRecord({ id: 'evt-1', domain: 'conflict', title: 'Artillery barrage near logistics hub' })],
+      partial: false,
+      upstreamUnavailable: false,
+      nextCursor: '',
+    }));
+
+    let resolvePendingSimilar: ((value: GetSimilarEventsResponse) => void) | null = null;
+    const similarSignals: AbortSignal[] = [];
+    const fetchSimilar = vi.fn(
+      (_params: unknown, signal?: AbortSignal) => new Promise<GetSimilarEventsResponse>((resolve) => {
+        if (signal) similarSignals.push(signal);
+        resolvePendingSimilar = resolve;
+      }),
+    );
+
+    const component = new CountryIntelMemory(mount, 'UA', parentAbort.signal, {
+      fetchTimeline,
+      fetchSimilar,
+    });
+    await flushMicrotasks();
+
+    // Start a similar search under default domain, then switch to energy before it settles
+    const input = mount.querySelector<HTMLInputElement>('.country-intel-memory-input')!;
+    const form = mount.querySelector<HTMLFormElement>('.country-intel-memory-similar-form')!;
+    const submitBtn = mount.querySelector<HTMLButtonElement>('.country-intel-memory-similar-submit')!;
+    input.value = 'Artillery barrage near logistics hub';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushMicrotasks();
+
+    expect(fetchSimilar).toHaveBeenCalledTimes(1);
+    expect(submitBtn.disabled).toBe(true);
+    expect(similarSignals[0]!.aborted).toBe(false);
+
+    const energyPill = mount.querySelector<HTMLButtonElement>('.country-intel-memory-pill[data-domain="energy"]')!;
+    energyPill.click();
+    await flushMicrotasks();
+
+    expect(similarSignals[0]!.aborted).toBe(true);
+    expect(submitBtn.disabled).toBe(false);
+    expect(mount.querySelector('.country-intel-memory-similar-results')?.childNodes.length).toBe(0);
+
+    // Late resolution of the aborted search must not paint stale results
+    resolvePendingSimilar!({
+      situation: 'Artillery barrage near logistics hub',
+      records: [makeRecord({ id: 'stale-sim', domain: 'conflict', title: 'Stale conflict match', score: 0.9 })],
+      partial: false,
+      upstreamUnavailable: false,
+    });
+    await flushMicrotasks();
+    expect(mount.querySelector('.country-intel-memory-similar-results')?.childNodes.length).toBe(0);
+
+    component.destroy();
+  });
+
   it('renders honest unavailable and empty states and prevents late mutation after destroy()', async () => {
     const mount = document.createElement('div');
     document.body.append(mount);
