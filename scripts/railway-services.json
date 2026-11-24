@@ -301,6 +301,7 @@
       "scripts/shared/notification-dedup.cjs",
       "scripts/shared/notification-link-suppression.cjs",
       "scripts/shared/notify-fields.cjs",
+      "scripts/shared/publisher-families.js",
       "scripts/shared/story-identity.js"
     ],
     "cronSchedule": null,

@@ -141,6 +141,7 @@ const PUBLISHER_FAMILY_DATA = {
   'kitco': { publisher: "Kitco", labels: ["Kitco Gold", "Kitco News"] },
   'kyiv-independent': { publisher: "The Kyiv Independent", labels: ["Kyiv Independent"] },
   'marketwatch': { publisher: "MarketWatch", labels: ["MarketWatch", "MarketWatch Tech"] },
+  'mehr-news': { publisher: "Mehr News Agency", labels: ["Mehr News"] },
   'mit-technology-review': {
     publisher: "MIT Technology Review",
     labels: [
@@ -334,6 +335,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'kitco': ['kitco.com'],
   'kyiv-independent': ['kyivindependent.com'],
   'marketwatch': ['marketwatch.com'],
+  'mehr-news': ['mehrnews.com'],
   'mit-technology-review': ['technologyreview.com'],
   'nbc-news': ['nbcnews.com', 'today.com'],
   'ndtv': ['ndtv.com', 'ndtv.in'],

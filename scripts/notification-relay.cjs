@@ -31,7 +31,7 @@ const {
   allowedProvidersFor,
   createAiRoutingPolicyResolver,
 } = require('./lib/ai-routing-policy.cjs');
-const { corroborationFromItemCount, corroborationText } = require('./lib/corroboration-text.cjs');
+const { countRecordedPublisherFamilies, corroborationFromItemCount, corroborationText } = require('./lib/corroboration-text.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 const ISO2_TO_REGION = require('./shared/iso2-to-region.json');
@@ -1762,7 +1762,11 @@ async function refreshAlertCoverage(events) {
  */
 function eventCorroboration(event) {
   if (event.userId) return null;
-  return corroborationFromItemCount(event.observedPublisherCount ?? event.payload?.corroborationCount);
+  const count = event.observedPublisherCount ?? event.payload?.corroborationCount;
+  const matched = event.payload?.corroboratedBy;
+  if (event.eventType !== 'rss_alert' || !Array.isArray(matched)) return corroborationFromItemCount(count);
+  const matchedCount = countRecordedPublisherFamilies(matched);
+  return corroborationFromItemCount(matchedCount > (count ?? 0) ? matchedCount : count);
 }
 
 /**
