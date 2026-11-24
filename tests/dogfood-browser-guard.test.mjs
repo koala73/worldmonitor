@@ -84,6 +84,7 @@ describe('dogfood browser guard', () => {
       s('goto', 'https://www.worldmonitor.app', 'https://evil.example'),
       s('tab', 'new', 'evil.example'),
       s('tab', '--label', 'x', 'new', 'evil.example'),
+      s('tab', '--label', 'x', 'new', 'https://www.worldmonitor.app/'),
       s('record', 'start', '/tmp/out/videos/a.webm', 'evil.example'),
       s('record', '--fps', '5', 'start', '/tmp/out/videos/a.webm', 'http://127.0.0.1:9222'),
       s('read', 'https://evil.example'),
@@ -104,6 +105,11 @@ describe('dogfood browser guard', () => {
       s('wait', '--name', '--fn', 'document.title'),
       s('wait', '--timeout', '-f', 'document.title'),
       s('find', 'role', 'button', '--name', '--init-script', 'x'),
+      s('open', '--url', 'evil.example', 'https://www.worldmonitor.app/'),
+      s('goto', '--depth', 'localhost', 'https://www.worldmonitor.app/'),
+      s('read', '--filter', 'evil.example', 'https://www.worldmonitor.app/'),
+      s('tab', 'new', '--name', 'evil.example', 'https://www.worldmonitor.app/'),
+      s('record', 'start', '/tmp/out/videos/a.webm', '--timeout', 'evil.example', 'https://www.worldmonitor.app/'),
     ]) {
       assert.ok(refusal(args, locked), args.join(' '));
     }

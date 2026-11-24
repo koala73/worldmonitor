@@ -46,6 +46,12 @@ const LOCKED_VALUE_OPTIONS = new Set([
   '--url', '--load', '--name', '--button', '--delay', '--count',
 ]);
 const NAVIGATING = new Set(['open', 'goto', 'navigate', 'read']);
+/**
+ * Commands that load a URL given as an argument. They take no value option the agent needs, and a value option
+ * they do not accept would hide a word they still load (`open --url evil.example <product url>`), so a
+ * locked-down call refuses every value option on them.
+ */
+const DESTINATION_COMMANDS = new Set([...NAVIGATING, 'tab', 'record']);
 const URL_LIKE = /:\/\/|^(javascript|data|blob|file|about|chrome|chrome-[a-z-]+|devtools|view-source|filesystem|ws|wss|http):/i;
 
 /** True for https://worldmonitor.app or a subdomain, written plainly. */
@@ -85,6 +91,7 @@ export function refusal(args, { lockedDown = false } = {}) {
     if (!word.startsWith('-')) { positional.push(word); continue; }
     const name = word.split('=')[0];
     if (LOCKED_VALUE_OPTIONS.has(name)) {
+      if (DESTINATION_COMMANDS.has(command)) return `option ${name} on ${command} while the browser holds a Pro session`;
       // A following option is checked in its own right, never swallowed as this one's value: agent-browser
       // finds `--fn` anywhere in the call.
       if (!word.includes('=') && rest[i + 1] !== undefined && !rest[i + 1].startsWith('-')) i += 1;
