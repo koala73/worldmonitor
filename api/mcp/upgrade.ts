@@ -129,7 +129,7 @@ function checkoutHint(denial: McpDenial): McpCheckoutHint {
 
 /** States the pause without a link, so inform-only hosts can keep it as is. */
 export const PAYMENT_FAILED_MCP_MESSAGE =
-  'Payment failed, so Pro access is paused while the charge is retried. Re-authenticating will not help.';
+  'Payment failed, so paid access is paused while the charge is retried. Re-authenticating will not help.';
 
 const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: string }> = {
   'no-account': {
@@ -177,14 +177,14 @@ const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: st
     message: PAYMENT_FAILED_MCP_MESSAGE,
     nextStep:
       `Update the payment method in the billing portal at ${BILLING_PORTAL_URL}. `
-      + 'Pro access returns once the retried charge succeeds. A new checkout is blocked while the payment is retried, '
+      + 'Access returns once the retried charge succeeds. A new checkout is blocked while the payment is retried, '
       + 'and re-authenticating will not restore access.',
   },
 };
 
 const PAYMENT_FAILED_ALLOWANCE_NEXT_STEP =
-  'Pro access is paused because a payment failed, so this account is on the free allowance. '
-  + `Update the payment method at ${BILLING_PORTAL_URL} to restore Pro, `
+  'Paid access is paused because a payment failed, so this account is on the free allowance. '
+  + `Update the payment method at ${BILLING_PORTAL_URL} to restore paid access, `
   + 'or wait until the next UTC day for another free allowance window.';
 
 /**
@@ -261,7 +261,7 @@ const INFORM_ONLY_NEXT_STEP: Record<McpStaticDenialReason, string> = {
     'The subscription is no longer active. The existing credential stays valid — '
     + 're-authenticating will not restore access.',
   'payment-failed':
-    'Pro access is paused because the last payment failed. It returns once the payment method on the account '
+    'Paid access is paused because the last payment failed. It returns once the payment method on the account '
     + 'is updated. Re-authenticating will not restore access.',
 };
 
