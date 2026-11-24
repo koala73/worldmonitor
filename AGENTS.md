@@ -85,6 +85,7 @@ The browser import direction is `types -> config -> services -> components -> ap
 - Edge code must not import `node:http`, `node:https`, or `node:zlib`. Use `(...args) => globalThis.fetch(...args)`, never `fetch.bind(globalThis)`.
 - Include a `User-Agent` on server fetches. Stagger Yahoo Finance requests by 150 ms.
 - Wire new shared startup data into `api/bootstrap.js`. Keep opt-in panels on the on-demand path. Register datasets with no dashboard consumer as standalone health keys.
+- Deploys no longer reload open tabs. A change an already-open tab cannot survive (a response shape the old bundle misreads, a removed endpoint) must change `CLIENT_COMPAT` in `src/bootstrap/client-compat.ts` in the same PR.
 - Redis seeds must write `seed-meta:<key>`. Load credentials through `loadEnvFile()`. Never add an env parser or resolve credentials from `$HOME` or an absolute literal.
 
 ## Load guidance when relevant

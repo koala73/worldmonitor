@@ -1547,7 +1547,7 @@
       "briefFreshness": "{{minutes}}m前に生成 · 最新ソース{{hours}}h前",
       "briefStoryDetails": "記事の詳細 ({{count}})",
       "streamIdleStopLabel": "アイドル時にライブ動画を停止",
-      "streamIdleStopDesc": "設定した時間、操作がない状態が続くと、ライブニュースとライブウェブカメラを停止し、パネルに通知を表示します。",
+      "streamIdleStopDesc": "設定した時間、操作がない状態が続くと、ライブニュースとライブウェブカメラを停止し、パネルに通知を表示します。音声がオンの間、ライブニュースは再生を続けます。",
       "streamIdleStopNever": "なし",
       "liveNewsAutoplayLabel": "ライブニュースの自動再生",
       "liveNewsAutoplayDesc": "ライブニュースビデオが画面に表示されると同時にミュート状態で自動再生されます。これをオフにすると、自分で再生を開始したときだけビデオが読み込まれます。"

@@ -13,7 +13,7 @@ async function setup(t: TestContext) {
   for (const [name, value] of Object.entries({
     IRAN_EVENTS_ENABLED: 'false', WM_SESSION_SECRET: 'bootstrap-contract-synthetic-secret-32',
     UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'fixture',
-    VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_SHA: 'abcdef123456', BOOTSTRAP_R2_SHADOW_MEASURE: '0',
+    VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_SHA: 'abcdef123456',
   })) {
     const previous = process.env[name]; process.env[name] = value;
     t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });

@@ -59,7 +59,6 @@ test('public Redis fallback and CDN assembly strip diagnostics from legacy seed 
   for (const [name, value] of Object.entries({
     UPSTASH_REDIS_REST_URL: 'https://redis.test',
     UPSTASH_REDIS_REST_TOKEN: 'fixture-token',
-    BOOTSTRAP_R2_SHADOW_MEASURE: '0',
   })) {
     const original = process.env[name];
     process.env[name] = value;

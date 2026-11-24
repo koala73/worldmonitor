@@ -85,6 +85,18 @@ describe('withBillingVerificationRetry', () => {
     assert.deepEqual(h.slept, [5000], 'waited exactly the Retry-After the server asked for');
   });
 
+  for (const status of [403, 503]) it(`never retries a payment_failed ${status}: the card has to be updated first`, async () => {
+    const h = harness([
+      () => billingRes(status, 'payment_failed', null),
+      () => fakeRes(200),
+    ]);
+
+    const res = await h.fetch(PREMIUM_TARGET);
+    assert.equal(res.status, status);
+    assert.equal(h.calls(), 1);
+    assert.deepEqual(h.slept, []);
+  });
+
   it('is route-agnostic — a non-premium path retries too', async () => {
     // Matches the server, whose legacy-bearer gate can 503 any authenticated
     // request. No browser-origin event has landed on a non-premium route yet

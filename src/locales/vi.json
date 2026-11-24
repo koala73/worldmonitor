@@ -1547,7 +1547,7 @@
       "briefFreshness": "Được tạo {{minutes}}m trước · nguồn mới nhất {{hours}}h tuổi",
       "briefStoryDetails": "Chi tiết tin tức ({{count}})",
       "streamIdleStopLabel": "Dừng video trực tiếp khi không hoạt động",
-      "streamIdleStopDesc": "Dừng Live News và Live Webcams sau khoảng thời gian này nếu không có hoạt động và hiển thị thông báo trong panel.",
+      "streamIdleStopDesc": "Dừng Live News và Live Webcams sau khoảng thời gian này nếu không có hoạt động và hiển thị thông báo trong panel. Live News tiếp tục phát khi âm thanh đang bật.",
       "streamIdleStopNever": "Không bao giờ",
       "liveNewsAutoplayLabel": "Tự động phát tin tức trực tiếp",
       "liveNewsAutoplayDesc": "Bắt đầu phát video tin tức trực tiếp, không âm thanh, ngay khi nó xuất hiện trên màn hình. Tắt tùy chọn này để chỉ tải video khi bạn bắt đầu phát."

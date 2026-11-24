@@ -1400,7 +1400,7 @@
       "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal",
       "briefStoryDetails": "Detaljer om nyheten ({{count}})",
       "streamIdleStopLabel": "Stoppa livevideo när inaktiv",
-      "streamIdleStopDesc": "Stoppar Live News och Live Webcams efter denna tid utan aktivitet och visar ett meddelande i panelen.",
+      "streamIdleStopDesc": "Stoppar Live News och Live Webcams efter denna tid utan aktivitet och visar ett meddelande i panelen. Live News fortsätter spelas så länge ljudet är på.",
       "streamIdleStopNever": "Aldrig",
       "liveNewsAutoplayLabel": "Automatisk uppspelning av direktnyheter",
       "liveNewsAutoplayDesc": "Startar direktnyhetsvideon, avstängd, så snart den visas på skärmen. Stäng av detta för att endast ladda videon när du startar den själv."

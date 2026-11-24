@@ -4089,11 +4089,12 @@ body.live-news-fullscreen-active {
   overflow: hidden;
 }
 
-body.live-news-fullscreen-active .time-slider,
-body.live-news-fullscreen-active .deckgl-layer-toggles,
-body.live-news-fullscreen-active .map-legend,
-body.live-news-fullscreen-active .map-controls,
-body.live-news-fullscreen-active .map-timestamp {
+/* A fullscreen Live News/Webcams panel covers the map; a fullscreen map keeps its controls. */
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .time-slider,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .deckgl-layer-toggles,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-legend,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-controls,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-timestamp {
   visibility: hidden !important;
   pointer-events: none !important;
 }
@@ -4119,8 +4120,8 @@ body.live-news-fullscreen-active .map-popup {
 }
 
 /* Hide map overlays and sibling panels behind fullscreen panel (#829, #859) */
-body.live-news-fullscreen-active .layer-toggles,
-body.live-news-fullscreen-active .map-legend {
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .layer-toggles,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-legend {
   display: none !important;
 }
 
@@ -28119,6 +28120,21 @@ body.map-width-resizing {
 
 .manage-billing-btn:hover { color: var(--text); }
 
+/* Paused plan: updating the card is the only way back, so the button takes
+   the card's attention tone (the same text-on-surface pairing as the plan
+   name, which keeps contrast in every theme). */
+.manage-billing-btn-primary {
+  color: var(--billing-tone-attention);
+  border-color: color-mix(in srgb, var(--billing-tone-attention) 60%, transparent);
+}
+
+/* Hover strengthens the border only: a tone-tinted fill under tone-coloured
+   text drops the light theme below 4.5:1. */
+.manage-billing-btn-primary:hover {
+  color: var(--billing-tone-attention);
+  border-color: var(--billing-tone-attention);
+}
+
 /* ---- API Keys + Embeds Settings Tabs ---- */
 /* Two tabs, two credential classes, one layout. The selectors are aliased
    rather than duplicated so a spacing fix cannot land on one list and miss
@@ -31596,10 +31612,12 @@ body.map-width-resizing {
 .layer-toggles.map-control-collapsed { width: auto; }
 
 @media (max-width: 768px) {
-  body:not(.live-news-fullscreen-active) .layer-toggles.map-control-panel:not(.deckgl-layer-toggles) {
+  body:not(.live-news-fullscreen-active) .layer-toggles.map-control-panel:not(.deckgl-layer-toggles),
+  body.map-fullscreen-active .layer-toggles.map-control-panel:not(.deckgl-layer-toggles) {
     display: flex !important;
   }
-  body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend) {
+  body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend),
+  body.map-fullscreen-active .map-legend.map-control-panel:not(.deckgl-legend) {
     display: flex;
   }
   /* The open list fills the map strip above the legend and scrolls on its own;
@@ -31627,6 +31645,40 @@ body.map-width-resizing {
     top: -6px;
     z-index: 1;
     background: var(--panel-bg);
+  }
+}
+
+/* The globe's layer list sits top-left, so its time range goes bottom-left. */
+.globe-mode > .globe-time-slider {
+  top: auto;
+  bottom: 10px;
+}
+
+/* The phone rule above only re-shows the SVG map's layer list; the 3D globe
+   needs its own, or it has no Layers control at all (#11157). */
+@media (max-width: 768px) {
+  body:not(.live-news-fullscreen-active) .globe-mode > .layer-toggles.map-control-panel,
+  body.map-fullscreen-active .globe-mode > .layer-toggles.map-control-panel {
+    display: flex !important;
+  }
+
+  /* Fit the list to the map strip and scroll it, instead of its fixed 32vh.
+     Open, it sits above the time range so every row stays tappable. */
+  .globe-mode > .deckgl-layer-toggles {
+    max-height: calc(100% - 20px);
+  }
+
+  .globe-mode > .deckgl-layer-toggles:not(.map-control-collapsed) {
+    z-index: 101;
+  }
+
+  .globe-mode > .deckgl-layer-toggles .toggle-list {
+    max-height: none !important;
+  }
+
+  .globe-mode > .globe-time-slider {
+    right: auto;
+    bottom: 34px;
   }
 }
 

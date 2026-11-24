@@ -8,7 +8,6 @@ import {
 } from '../scripts/_kv-storage.mjs';
 import {
   publishBootstrapTier,
-  publishTierToKv,
 } from '../scripts/publish-bootstrap-tiers.mjs';
 import { BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION } from '../shared/bootstrap-tier-envelope.js';
 
@@ -27,19 +26,20 @@ function pipelineResponse(results, status = 200) {
 }
 const raw = (value) => ({ result: JSON.stringify(value) });
 
-// A publishBootstrapTier call with everything but the storage writers stubbed, so a test can
-// capture exactly what the R2 and KV writers each receive.
+// A publishBootstrapTier call with Redis and KV writers stubbed so tests can
+// verify the required KV primary write contract without network I/O.
 async function runPublish(overrides = {}) {
-  const captured = { r2: null, kv: null };
+  const captured = { kv: null };
   const result = await publishBootstrapTier('fast', {
     env: { ...TEST_ENV, ...KV_ENV },
     now: () => 1_721_000_000_000,
     resolveRegistry: () => ({ fast: { example: 'example:key' } }),
     fetchFn: async () => pipelineResponse([raw({ answer: 42 })]),
-    resolveStorage: () => ({ mode: 's3' }),
-    putObject: async (_s, key, envelope) => { captured.r2 = { key, envelope }; return { bytes: 10 }; },
     resolveKvStorage: () => ({ accountId: 'a', namespaceId: 'n', token: 't' }),
-    putKv: async (_c, key, envelope) => { captured.kv = { key, envelope }; return { bytes: 20 }; },
+    putKv: async (config, key, envelope) => {
+      captured.kv = { config, key, envelope };
+      return { key, bytes: 20 };
+    },
     ...overrides,
   });
   return { result, captured };
@@ -60,7 +60,7 @@ describe('resolveKvStorageConfig', () => {
     assert.equal(cfg.accountId, 'r2acct');
   });
 
-  it('returns null when unconfigured (so the publisher skips KV gracefully)', () => {
+  it('returns null when unconfigured', () => {
     assert.equal(resolveKvStorageConfig({}), null);
     assert.equal(resolveKvStorageConfig({ KV_BOOTSTRAP_NAMESPACE_ID: 'ns' }), null); // token missing
   });
@@ -118,70 +118,75 @@ describe('putKvJsonValue', () => {
   });
 });
 
-describe('publishTierToKv (best-effort wrapper)', () => {
-  const envelope = { generatedAt: 1, tier: 'fast', payload: { data: {}, missing: [] } };
-
-  it('skips silently when KV is unconfigured', async () => {
-    assert.deepEqual(await publishTierToKv('fast', envelope, { resolveKvStorage: () => null }), { skipped: true });
-  });
-
-  it('returns ok with bytes on success', async () => {
-    const out = await publishTierToKv('fast', envelope, {
-      resolveKvStorage: () => ({ accountId: 'a', namespaceId: 'n', token: 't' }),
-      putKv: async () => ({ bytes: 128 }),
-    });
-    assert.deepEqual(out, { ok: true, bytes: 128 });
-  });
-
-  it('never throws on failure — logs loudly and returns ok:false', async () => {
-    const logs = [];
-    const out = await publishTierToKv('fast', envelope, {
-      resolveKvStorage: () => ({ accountId: 'a', namespaceId: 'n', token: 't' }),
-      putKv: async () => { throw new Error('kv boom'); },
-      logger: { error: (m) => logs.push(m) },
-    });
-    assert.equal(out.ok, false);
-    assert.match(out.error, /kv boom/);
-    assert.ok(logs.some((l) => /\[bootstrap-kv\] tier=fast/.test(l)), 'failure is logged loudly');
-  });
-});
-
-describe('publishBootstrapTier — KV parity', () => {
-  it('writes the SAME envelope to KV and R2, R2 keyed by <tier>.json, KV by bare <tier>', async () => {
+describe('publishBootstrapTier — required KV primary sink', () => {
+  it('writes the versioned envelope to KV keyed by bare <tier> and returns the primary byte count', async () => {
     const { result, captured } = await runPublish();
-    assert.deepEqual(captured.kv.envelope, captured.r2.envelope, 'KV must get the identical envelope');
-    assert.equal(captured.kv.envelope.schemaVersion, BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION);
-    assert.equal(captured.r2.key, 'fast.json');
     assert.equal(captured.kv.key, 'fast', 'KV key is the bare tier so the Worker reads env.KV.get(tier)');
-    assert.equal(result.kv.ok, true);
-  });
-
-  it('a KV failure never aborts the canonical R2 publish', async () => {
-    const logs = [];
-    const { result } = await runPublish({
-      putKv: async () => { throw new Error('kv down'); },
-      logger: { error: (m) => logs.push(m) },
+    assert.deepEqual(captured.kv.envelope, {
+      schemaVersion: BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION,
+      generatedAt: 1_721_000_000_000,
+      tier: 'fast',
+      payload: { data: { example: { answer: 42 } }, missing: [] },
     });
-    assert.equal(result.bytes, 10, 'R2 write still succeeded');
-    assert.equal(result.kv.ok, false);
-    assert.ok(logs.some((l) => /bootstrap-kv/.test(l)));
+    assert.equal(result.bytes, 20);
+    assert.equal(Object.hasOwn(result, 'kv'), false);
   });
 
-  it('never attempts the best-effort KV mirror when the canonical R2 write fails', async () => {
+  it('throws loudly when KV credentials are missing without touching Redis or KV', async () => {
+    let redisCalled = false;
     let kvCalled = false;
     await assert.rejects(
       runPublish({
-        putObject: async () => { throw new Error('r2 down'); },
-        putKv: async () => { kvCalled = true; return { bytes: 1 }; },
+        env: TEST_ENV,
+        resolveKvStorage: resolveKvStorageConfig,
+        fetchFn: async () => { redisCalled = true; return pipelineResponse([raw({ answer: 42 })]); },
+        putKv: async () => { kvCalled = true; return { key: 'fast', bytes: 1 }; },
       }),
-      /r2 down/,
+      /Bootstrap publisher KV credentials are missing/,
     );
+    assert.equal(redisCalled, false);
     assert.equal(kvCalled, false);
   });
 
-  it('skips KV entirely when unconfigured, leaving the R2-only path intact', async () => {
-    const { result } = await runPublish({ resolveKvStorage: () => null });
-    assert.deepEqual(result.kv, { skipped: true });
-    assert.equal(result.bytes, 10);
+  it('propagates KV write failures loudly instead of swallowing them', async () => {
+    await assert.rejects(
+      runPublish({
+        putKv: async () => { throw new Error('kv down'); },
+      }),
+      /kv down/,
+    );
+  });
+
+  it('propagates default putKvJsonValue HTTP failures and forwards kvFetchFn', async () => {
+    let seenUrl;
+    await assert.rejects(
+      publishBootstrapTier('fast', {
+        env: { ...TEST_ENV, ...KV_ENV },
+        now: () => 1_721_000_000_000,
+        resolveRegistry: () => ({ fast: { example: 'example:key' } }),
+        fetchFn: async () => pipelineResponse([raw({ answer: 42 })]),
+        kvFetchFn: async (url) => {
+          seenUrl = url;
+          return new Response('quota exceeded', { status: 503 });
+        },
+      }),
+      /KV write 'fast' failed: HTTP 503/,
+    );
+    assert.equal(
+      seenUrl,
+      'https://api.cloudflare.com/client/v4/accounts/acct123/storage/kv/namespaces/ns456/values/fast',
+    );
+  });
+
+  it('never attempts a KV write when Redis assembly fails', async () => {
+    let kvCalled = false;
+    await assert.rejects(
+      runPublish({
+        fetchFn: async () => pipelineResponse([], 503),
+        putKv: async () => { kvCalled = true; return { key: 'fast', bytes: 1 }; },
+      }),
+      /pipeline/i,
+    );
+    assert.equal(kvCalled, false);
   });
 });

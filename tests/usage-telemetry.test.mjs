@@ -3,7 +3,9 @@ import { afterEach, beforeEach, test } from 'node:test';
 
 import {
   __resetWmSessionTelemetryForTests,
-  emitBootstrapR2Shadow,
+  deriveExecutionRegion,
+  emitOAuthTokenUsage,
+  emitWmSessionUsage,
 } from '../api/_usage-telemetry.js';
 
 const originalEnv = { ...process.env };
@@ -36,7 +38,21 @@ afterEach(() => {
   __resetWmSessionTelemetryForTests();
 });
 
-test('bootstrap R2 shadow telemetry emits only the exact privacy allowlist', async () => {
+test('deriveExecutionRegion extracts the Vercel edge region prefix from x-vercel-id', () => {
+  const withRegion = new Request('https://api.worldmonitor.app/api/wm-session', {
+    headers: { 'x-vercel-id': 'iad1::12345-abcdef' },
+  });
+  const withoutSeparator = new Request('https://api.worldmonitor.app/api/wm-session', {
+    headers: { 'x-vercel-id': 'no-region' },
+  });
+  const withoutHeader = new Request('https://api.worldmonitor.app/api/wm-session');
+
+  assert.equal(deriveExecutionRegion(withRegion), 'iad1');
+  assert.equal(deriveExecutionRegion(withoutSeparator), null);
+  assert.equal(deriveExecutionRegion(withoutHeader), null);
+});
+
+test('emitWmSessionUsage emits allowlisted request metadata without leaking secrets or query strings', async () => {
   const events = [];
   const deliveryHeaders = [];
   globalThis.fetch = async (_input, init) => {
@@ -46,145 +62,66 @@ test('bootstrap R2 shadow telemetry emits only the exact privacy allowlist', asy
   };
   const { ctx, settle } = makeWaitUntilCtx();
 
-  emitBootstrapR2Shadow(ctx, {
-    r2Outcome: 'fallback',
-    r2Reason: 'timeout',
-    bootstrapTier: 'slow',
-    r2DurationMs: 432.75,
-    redisDurationMs: 125.5,
-    executionRegion: 'iad1',
-    executionCold: true,
-    status: 200,
-    request_id: 'must-not-pass',
-    ip: '203.0.113.10',
-    user_agent: 'must-not-pass',
-    cookie: 'secret=must-not-pass',
-    url: 'https://example.test/?token=must-not-pass',
-    body: { token: 'must-not-pass' },
+  const req = new Request('https://api.worldmonitor.app/api/wm-session?secret=must-not-pass', {
+    method: 'POST',
+    headers: {
+      origin: 'https://worldmonitor.app',
+      referer: 'https://worldmonitor.app/dashboard?token=must-not-pass',
+      cookie: 'wm-session=must-not-pass',
+      'x-vercel-id': 'iad1::req-1',
+      'user-agent': 'test-browser/1.0',
+    },
   });
+  const res = new Response(null, { status: 204 });
+
+  emitWmSessionUsage(ctx, req, res, Date.now() - 10, 'minted');
   await settle();
 
   assert.equal(events.length, 1);
-  assert.deepEqual(Object.keys(events[0]).sort(), [
-    'bootstrap_tier',
-    'event_type',
-    'execution_cold',
-    'execution_region',
-    'r2_duration_ms',
-    'redis_duration_ms',
-    'r2_outcome',
-    'r2_reason',
-    'route',
-    'status',
-  ].sort());
-  assert.deepEqual(events[0], {
-    event_type: 'bootstrap_r2_shadow',
-    route: '/api/bootstrap',
-    r2_outcome: 'fallback',
-    r2_reason: 'timeout',
-    bootstrap_tier: 'slow',
-    r2_duration_ms: 432.75,
-    redis_duration_ms: 125.5,
-    execution_region: 'iad1',
-    execution_cold: true,
-    status: 200,
-  });
+  assert.equal(events[0].event_type, 'request');
+  assert.equal(events[0].route, '/api/wm-session');
+  assert.equal(events[0].domain, 'auth');
+  assert.equal(events[0].status, 204);
+  assert.equal(events[0].reason, 'minted');
+  assert.equal(events[0].execution_region, 'iad1');
+  assert.equal(events[0].referer, 'https://worldmonitor.app/dashboard');
   assert.equal(JSON.stringify(events[0]).includes('must-not-pass'), false);
   assert.equal(deliveryHeaders.length, 1);
   assert.equal(deliveryHeaders[0]['User-Agent'], 'worldmonitor-edge/1.0');
 });
 
-test('bootstrap R2 shadow telemetry is disabled without telemetry configuration or waitUntil', async () => {
+test('emitOAuthTokenUsage is disabled without telemetry configuration or waitUntil', async () => {
   let attempts = 0;
   globalThis.fetch = async () => {
     attempts += 1;
     return new Response('{}', { status: 200 });
   };
-  const input = {
-    r2Outcome: 'r2',
-    r2Reason: null,
-    bootstrapTier: 'fast',
-    r2DurationMs: 12,
-    executionRegion: null,
-    executionCold: false,
-    status: 200,
-  };
+  const req = new Request('https://api.worldmonitor.app/api/oauth/token', { method: 'POST' });
+  const res = new Response('{}', { status: 429 });
 
-  emitBootstrapR2Shadow(undefined, input);
+  emitOAuthTokenUsage(undefined, req, res, Date.now(), 'rate_limited');
   delete process.env.USAGE_TELEMETRY;
   const { ctx, settle } = makeWaitUntilCtx();
-  emitBootstrapR2Shadow(ctx, input);
+  emitOAuthTokenUsage(ctx, req, res, Date.now(), 'rate_limited');
   await settle();
 
   assert.equal(attempts, 0);
 });
 
-test('bootstrap R2 delivery failures produce only a privacy-minimal platform log', async () => {
-  globalThis.fetch = async () => new Response('{}', { status: 503 });
-  const originalWarn = console.warn;
-  const warnings = [];
-  console.warn = (...args) => warnings.push(args);
-  try {
-    const { ctx, settle } = makeWaitUntilCtx();
-    emitBootstrapR2Shadow(ctx, {
-      r2Outcome: 'fallback',
-      r2Reason: 'timeout',
-      bootstrapTier: 'fast',
-      r2DurationMs: 5000,
-      executionRegion: 'iad1',
-      executionCold: true,
-      status: 200,
-      secret: 'must-not-pass',
-    });
-    await settle();
-
-    assert.equal(warnings.length, 1);
-    assert.deepEqual(JSON.parse(warnings[0][0]), {
-      event_type: 'bootstrap_r2_telemetry_delivery',
-      failure_class: 'http_error',
-      breaker_state: 'closed',
-    });
-    assert.equal(JSON.stringify(warnings).includes('must-not-pass'), false);
-    assert.equal(JSON.stringify(warnings).includes('iad1'), false);
-  } finally {
-    console.warn = originalWarn;
-  }
-});
-
-test('bootstrap R2 telemetry logs the circuit-breaker transition without event payloads', async () => {
+test('telemetry circuit breaker trips after repeated delivery failures and skips while open', async () => {
   let attempts = 0;
   globalThis.fetch = async () => {
     attempts += 1;
     return new Response('{}', { status: 503 });
   };
-  const originalWarn = console.warn;
-  const warnings = [];
-  console.warn = (...args) => warnings.push(args);
-  try {
-    for (let index = 0; index < 20; index += 1) {
-      const { ctx, settle } = makeWaitUntilCtx();
-      emitBootstrapR2Shadow(ctx, {
-        r2Outcome: 'fallback',
-        r2Reason: 'unreadable',
-        bootstrapTier: 'slow',
-        r2DurationMs: index,
-        executionRegion: 'sfo1',
-        executionCold: index === 0,
-        status: 200,
-      });
-      await settle();
-    }
+  const req = new Request('https://api.worldmonitor.app/api/oauth/token', { method: 'POST' });
+  const res = new Response('{}', { status: 200 });
 
-    const parsed = warnings.map(args => JSON.parse(args[0]));
-    assert.equal(attempts, 20);
-    assert.deepEqual(parsed.at(-1), {
-      event_type: 'bootstrap_r2_telemetry_delivery',
-      failure_class: 'breaker_transition',
-      breaker_state: 'open',
-    });
-    assert.equal(JSON.stringify(parsed).includes('sfo1'), false);
-    assert.equal(JSON.stringify(parsed).includes('slow'), false);
-  } finally {
-    console.warn = originalWarn;
+  for (let index = 0; index < 25; index += 1) {
+    const { ctx, settle } = makeWaitUntilCtx();
+    emitOAuthTokenUsage(ctx, req, res, Date.now(), 'issued');
+    await settle();
   }
+
+  assert.equal(attempts, 20);
 });

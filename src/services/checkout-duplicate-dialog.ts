@@ -31,6 +31,12 @@ export interface DuplicateSubscriptionDialogOptions {
    * the caller resolves this — see `isProBusinessCheckoutTarget` in checkout.ts.
    */
   isProBusinessUpgrade?: boolean;
+  /**
+   * True when the blocking subscription is `on_hold`: its last payment failed,
+   * Pro may already be paused, and the provider is still retrying the card.
+   * The fix is the card, not a second subscription.
+   */
+  paused?: boolean;
   /** User clicked "Open billing portal". */
   onConfirm: () => void;
   /** User clicked "Dismiss" or the backdrop. */
@@ -53,8 +59,16 @@ export interface DuplicateSubscriptionDialogOptions {
 export function buildDuplicateSubscriptionBody(options: {
   planDisplayName: string;
   isProBusinessUpgrade?: boolean;
+  paused?: boolean;
 }): string {
   const { planDisplayName } = options;
+  if (options.paused === true) {
+    return (
+      `Your ${planDisplayName} subscription is paused because its last payment failed, ` +
+      'so a new checkout would bill you twice. Update your payment method in the ' +
+      'billing portal and your access comes back right away.'
+    );
+  }
   if (options.isProBusinessUpgrade === true) {
     return (
       `Your account already has an active ${planDisplayName} subscription. ` +
@@ -77,9 +91,9 @@ export function buildDuplicateSubscriptionBody(options: {
 export function showDuplicateSubscriptionDialog(options: DuplicateSubscriptionDialogOptions): void {
   showCheckoutConfirmDialog({
     id: DIALOG_ID,
-    title: 'Subscription already active',
+    title: options.paused === true ? 'Payment needs updating' : 'Subscription already active',
     body: buildDuplicateSubscriptionBody(options),
-    confirmLabel: 'Open billing portal',
+    confirmLabel: options.paused === true ? 'Update payment method' : 'Open billing portal',
     dismissLabel: 'Dismiss',
     onConfirm: options.onConfirm,
     onDismiss: options.onDismiss,

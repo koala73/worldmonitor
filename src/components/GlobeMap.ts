@@ -49,7 +49,8 @@ import { getCountryMapBbox, getCountriesGeoJson, getCountryAtCoordinates, getCou
 import { escapeHtml } from '@/utils/sanitize';
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { trackedSatelliteType } from '@/services/orbital/yaogan-class';
-import { installLongPressContextMenu } from '@/utils/long-press';
+import { installLongPressContextMenu, isMapControlTarget } from '@/utils/long-press';
+import { parseTimestamp, timeRangeCutoff } from '@/utils/time-range';
 import type { FocusFitBounds } from '@/utils/focus-map';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import { showLayerWarning } from '@/utils/layer-warning';
@@ -133,7 +134,10 @@ interface BaseMarker {
   _kind: string;
   _lat: number;
   _lng: number;
+  /** Event time in ms, for the time range filter. Unset markers always show. */
+  _time?: number | null;
 }
+
 interface ConflictMarker extends BaseMarker {
   _kind: 'conflict';
   id: string;
@@ -495,11 +499,15 @@ interface GlobePath {
   status: string;
   country?: string;
   windKt?: number;
+  /** Event time in ms, for the time range filter. Unset paths always show. */
+  _time?: number | null;
 }
 interface GlobePolygon {
   coords: number[][][];
   name: string;
   _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario' | 'focusChosen' | 'focusNeighbour' | 'orbitalFootprint' | 'orbitalSwept';
+  /** Event time in ms, for the time range filter. Unset polygons always show. */
+  _time?: number | null;
   level?: string;
   score?: number;
 
@@ -668,6 +676,9 @@ export class GlobeMap {
     }
   })();
   private imageryFootprintPolygons: GlobePolygon[] = [];
+  /** Timed paths and polygons the last flushes drew, so ones aging out of the time range get redrawn. */
+  private shownTimedPaths = 0;
+  private shownTimedPolygons = 0;
   private lastImageryCenter: { lat: number; lon: number } | null = null;
   private imageryFetchTimer: ReturnType<typeof setTimeout> | null = null;
   private imageryFetchVersion = 0;
@@ -692,6 +703,7 @@ export class GlobeMap {
   // Click callbacks
   private onNewsClick?: (item: Pick<NewsLocationInput, 'article' | 'title'>) => void;
   private onHotspotClickCb: ((h: Hotspot) => void) | null = null;
+  private onTimeRangeChangeCb: ((r: TimeRange) => void) | null = null;
 
   // Auto-rotate timer (like Sentinel: resume after 60 s idle)
   private autoRotateTimer: ReturnType<typeof setTimeout> | null = null;
@@ -727,6 +739,8 @@ export class GlobeMap {
   private onMapContextMenuCb?: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void;
   private removeLongPress: (() => void) | null = null;
   private readonly handleContextMenu = (e: MouseEvent): void => {
+    // The time range, layer list and zoom buttons sit inside the container; holding one is not a map lookup.
+    if (isMapControlTarget(e.target)) return;
     e.preventDefault();
     if (!this.onMapContextMenuCb || !this.globe) return;
     const rect = this.container.getBoundingClientRect();
@@ -736,6 +750,12 @@ export class GlobeMap {
     if (!coords) return;
     this.onMapContextMenuCb({ lat: coords.lat, lon: coords.lng, screenX: e.clientX, screenY: e.clientY });
   };
+
+  /** Right-click, or a long press on a phone, opens the point lookup. */
+  private installContextMenu(): void {
+    this.container.addEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress = installLongPressContextMenu(this.container, { ignore: isMapControlTarget });
+  }
 
   constructor(container: HTMLElement, initialState: MapContainerState, options: GlobeMapOptions = {}) {
     this.container = container;
@@ -944,8 +964,7 @@ export class GlobeMap {
       });
     }
 
-    this.container.addEventListener('contextmenu', this.handleContextMenu);
-    this.removeLongPress = installLongPressContextMenu(this.container);
+    this.installContextMenu();
 
     // Wire HTML marker layer
     globe
@@ -1145,6 +1164,7 @@ export class GlobeMap {
     if (this.chrome) {
       this.createControls();
       this.createLayerToggles();
+      this.createTimeSlider();
     }
 
     // Load static datasets
@@ -1636,7 +1656,14 @@ export class GlobeMap {
     }
 
     if (d._kind === 'cluster' && this.popup) {
-      const cluster = this.clusterData.get(d.id);
+      const source = this.clusterData.get(d.id);
+      const cluster = source && this.vesselClusterInRange(source, this.timeRangeCutoff());
+      if (source && !cluster) {
+        // Its vessels aged out of the time range since the marker was drawn.
+        this.hideTooltip();
+        this.flushMarkers();
+        return;
+      }
       if (cluster) {
         const aRect = anchor.getBoundingClientRect();
         const cRect = this.container.getBoundingClientRect();
@@ -2331,6 +2358,27 @@ export class GlobeMap {
     if (this.mountedMapControl) this.zoomControlsEl?.append(this.mountedMapControl);
   }
 
+  private createTimeSlider(): void {
+    const ranges: TimeRange[] = ['1h', '6h', '24h', '48h', '7d', 'all'];
+    const slider = document.createElement('div');
+    slider.className = 'time-slider deckgl-time-slider globe-time-slider';
+    setTrustedHtml(slider, trustedHtml(`
+      <div class="time-options">
+        ${ranges.map(range => `<button class="time-btn ${this.timeRange === range ? 'active' : ''}" data-range="${range}" aria-pressed="${this.timeRange === range}">${range === 'all' ? t('components.deckgl.timeAll') : range}</button>`).join('')}
+      </div>`, 'static time range buttons'));
+    this.container.appendChild(slider);
+    slider.querySelectorAll<HTMLElement>('.time-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.setTimeRange(btn.dataset.range as TimeRange));
+    });
+  }
+
+  private updateTimeSliderButtons(): void {
+    this.container.querySelectorAll<HTMLElement>('.globe-time-slider .time-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.range === this.timeRange);
+      btn.setAttribute('aria-pressed', String(btn.dataset.range === this.timeRange));
+    });
+  }
+
   private zoomInGlobe(): void {
     if (!this.globe) return;
     const pov = this.globe.pointOfView();
@@ -2558,13 +2606,19 @@ export class GlobeMap {
     // actually oversized (#5368). Every marker here becomes a DOM node that
     // CSS2DRenderer repositions on every frame, so the total has to be bounded.
     const groups: GlobeMarkerGroup<GlobeMarker>[] = [];
+    const cutoff = this.timeRangeCutoff();
+    if (this.timedPaths().length !== this.shownTimedPaths) this.flushPaths();
+    if (this.timedPolygons().length !== this.shownTimedPolygons) this.flushPolygons();
     const add = (
       layer: string,
       markers: readonly GlobeMarker[],
       // Only the tuning knobs — spreading a full Partial would let a caller
       // silently overwrite the `layer`/`markers` this function just set.
       extra: Pick<Partial<GlobeMarkerGroup<GlobeMarker>>, 'rank' | 'exempt'> = {},
-    ): void => { if (markers.length) groups.push({ layer, markers, ...extra }); };
+    ): void => {
+      const inRange = cutoff == null ? markers : markers.filter(m => m._time == null || m._time >= cutoff);
+      if (inRange.length) groups.push({ layer, markers: inRange, ...extra });
+    };
 
     if (this.layers.hotspots) add('hotspots', this.hotspots, { rank: m => (m._kind === 'hotspot' ? m.escalationScore : 0) });
     if (this.layers.conflicts) add('conflicts', this.conflictZoneMarkers);
@@ -2577,7 +2631,7 @@ export class GlobeMap {
       // Carriers first: the AIS feed is the largest on the globe (1,526 markers
       // measured on production) and is the one most likely to be trimmed.
       add('military', this.vessels, { rank: m => (m._kind === 'vessel' && m.type === 'carrier' ? 1 : 0) });
-      add('military', this.clusterMarkers);
+      add('military', this.clusterMarkersInRange(cutoff));
     }
     if (this.layers.weather) add('weather', this.weatherMarkers);
     if (this.layers.natural) {
@@ -2595,9 +2649,7 @@ export class GlobeMap {
     }
     if (this.layers.ais) add('ais', this.aisMarkers);
     if (this.layers.ais) {
-      const hours = { '1h': 1, '6h': 6, '24h': 24, '48h': 48, '7d': 168, all: Infinity }[this.timeRange];
-      const cutoff = Date.now() - hours * 3600000;
-      add('ais', this.ukmtoMarkers.filter(marker => marker.incident.occurredAt >= cutoff));
+      add('ais', cutoff == null ? this.ukmtoMarkers : this.ukmtoMarkers.filter(marker => marker.incident.occurredAt >= cutoff));
     }
     if (this.layers.reservoirLevels) add('reservoirLevels', this.reservoirMarkers);
     if (this.layers.iranAttacks) add('iranAttacks', this.iranMarkers);
@@ -2690,7 +2742,8 @@ export class GlobeMap {
       ? this.globePaths
       : this.globePaths.filter(p => p.pathType === 'cable' ? showCables : showPipelines);
     const orbitPaths = this.layers.satellites ? this.satelliteTrailPaths : [];
-    const stormPaths = this.layers.natural ? this.stormTrackPaths : [];
+    const stormPaths = this.timedPaths();
+    this.shownTimedPaths = stormPaths.length;
     (this.globe as any).pathsData([...paths, ...orbitPaths, ...stormPaths, ...this.orbitalOutlinePaths, ...this.orbitalTrackPaths, ...this.orbitalReplayPaths]);
   }
 
@@ -2719,6 +2772,59 @@ export class GlobeMap {
       this.reversedRingCache.set(key, cached);
     }
     return cached;
+  }
+
+  private timedPaths(): GlobePath[] {
+    return this.layers.natural ? this.inTimeRange(this.stormTrackPaths) : [];
+  }
+
+  private timedPolygons(): GlobePolygon[] {
+    return [
+      ...(this.layers.satellites ? this.inTimeRange(this.imageryFootprintPolygons) : []),
+      ...(this.layers.natural ? this.inTimeRange(this.stormConePolygons) : []),
+    ];
+  }
+
+  private inTimeRange<T extends { _time?: number | null }>(items: T[]): T[] {
+    const cutoff = this.timeRangeCutoff();
+    return cutoff == null ? items : items.filter(item => item._time == null || item._time >= cutoff);
+  }
+
+  /** The cluster with only the vessels seen inside the selected range, centered on them, or null when fewer than two are. */
+  private vesselClusterInRange(cluster: MilitaryVesselCluster, cutoff: number | null): MilitaryVesselCluster | null {
+    if (cutoff == null || !cluster.vessels?.length) return cluster;
+    const vessels = cluster.vessels.filter(v => (parseTimestamp(v.lastAisUpdate) ?? Infinity) >= cutoff);
+    if (vessels.length === cluster.vessels.length) return cluster;
+    // A lone vessel is already drawn as its own marker, and clusters are built from two or more.
+    if (vessels.length < 2) return null;
+    const rad = Math.PI / 180;
+    return {
+      ...cluster,
+      vessels,
+      vesselCount: vessels.length,
+      lat: vessels.reduce((sum, v) => sum + v.lat, 0) / vessels.length,
+      // Circular mean, so a group straddling the date line stays in the Pacific.
+      lon: Math.atan2(
+        vessels.reduce((sum, v) => sum + Math.sin(v.lon * rad), 0),
+        vessels.reduce((sum, v) => sum + Math.cos(v.lon * rad), 0),
+      ) / rad,
+    };
+  }
+
+  private clusterMarkersInRange(cutoff: number | null): ClusterMarker[] {
+    if (cutoff == null) return this.clusterMarkers;
+    return this.clusterMarkers.flatMap(m => {
+      const source = this.clusterData.get(m.id);
+      if (!source) return [m];
+      const cluster = this.vesselClusterInRange(source, cutoff);
+      if (!cluster) return [];
+      return [cluster === source ? m : { ...m, _lat: cluster.lat, _lng: cluster.lon, vesselCount: cluster.vesselCount }];
+    });
+  }
+
+  /** Oldest event time the selected range shows, or null for all. */
+  private timeRangeCutoff(): number | null {
+    return timeRangeCutoff(this.timeRange);
   }
 
   private flushPolygons(): void {
@@ -2769,13 +2875,9 @@ export class GlobeMap {
       }
     }
 
-    if (this.layers.satellites) {
-      polys.push(...this.imageryFootprintPolygons);
-    }
-
-    if (this.layers.natural) {
-      polys.push(...this.stormConePolygons);
-    }
+    const timedPolygons = this.timedPolygons();
+    this.shownTimedPolygons = timedPolygons.length;
+    polys.push(...timedPolygons);
 
     if (this.scenarioPolygons.length) {
       polys.push(...this.scenarioPolygons);
@@ -3169,6 +3271,7 @@ export class GlobeMap {
       _kind: 'flight' as const,
       _lat: f.lat,
       _lng: f.lon,
+      _time: parseTimestamp(f.lastSeen),
       id: f.id,
       callsign: f.callsign ?? '',
       type: (f as any).aircraftType ?? (f as any).type ?? 'fighter',
@@ -3241,6 +3344,7 @@ export class GlobeMap {
       _kind: 'vessel' as const,
       _lat: v.lat,
       _lng: v.lon,
+      _time: parseTimestamp(v.lastAisUpdate),
       id: v.id,
       name: v.name ?? 'vessel',
       type: v.vesselType,                                                    // raw enum — color/icon key
@@ -3277,6 +3381,7 @@ export class GlobeMap {
         _kind: 'weather' as const,
         _lat: a.centroid![1],   // centroid is [lon, lat]
         _lng: a.centroid![0],
+        _time: parseTimestamp(a.onset),
         id: a.id,
         severity: a.severity ?? 'Minor',
         headline: a.headline ?? a.event ?? '',
@@ -3289,6 +3394,7 @@ export class GlobeMap {
       _kind: 'natural' as const,
       _lat: e.lat,
       _lng: e.lon,
+      _time: parseTimestamp(e.date),
       id: e.id,
       category: e.category ?? '',
       title: e.title ?? '',
@@ -3308,6 +3414,7 @@ export class GlobeMap {
           ],
           pathType: 'stormTrack',
           status: 'active',
+          _time: parseTimestamp(e.date),
         });
       }
       if (e.pastTrack?.length) {
@@ -3322,6 +3429,7 @@ export class GlobeMap {
             pathType: 'stormHistory',
             status: 'active',
             windKt: b.windKt ?? a.windKt ?? 0,
+            _time: parseTimestamp(e.date),
           });
         }
       }
@@ -3331,6 +3439,7 @@ export class GlobeMap {
             coords: [ring],
             name: `${e.stormName || e.title || ''} Forecast Cone`,
             _kind: 'forecastCone',
+            _time: parseTimestamp(e.date),
           });
         }
       }
@@ -3724,7 +3833,11 @@ export class GlobeMap {
 
   public setTimeRange(range: TimeRange): void {
     this.timeRange = range;
+    this.onTimeRangeChangeCb?.(range);
+    this.updateTimeSliderButtons();
     this.flushMarkers();
+    if (this.layers.natural) this.flushPaths();
+    if (this.layers.satellites || this.layers.natural) this.flushPolygons();
   }
 
   public getTimeRange(): TimeRange {
@@ -3904,6 +4017,7 @@ export class GlobeMap {
         _kind: 'earthquake' as const,
         _lat: e.location!.latitude,
         _lng: e.location!.longitude,
+        _time: parseTimestamp(e.occurredAt),
         id: e.id,
         place: e.place ?? '',
         magnitude: e.magnitude ?? 0,
@@ -3916,6 +4030,7 @@ export class GlobeMap {
       _kind: 'radiation' as const,
       _lat: observation.lat,
       _lng: observation.lon,
+      _time: parseTimestamp(observation.observedAt),
       id: observation.id,
       location: observation.location,
       country: observation.country,
@@ -3958,6 +4073,7 @@ export class GlobeMap {
         _kind: 'imageryScene' as const,
         _lat: centerLat,
         _lng: centerLon,
+        _time: parseTimestamp(s.datetime),
         satellite: s.satellite,
         datetime: s.datetime,
         resolutionM: s.resolutionM,
@@ -3970,6 +4086,7 @@ export class GlobeMap {
         coords: geom.coordinates as number[][][],
         name: `${s.satellite} ${s.datetime}`,
         _kind: 'imageryFootprint' as const,
+        _time: parseTimestamp(s.datetime),
         satellite: s.satellite,
         datetime: s.datetime,
         resolutionM: s.resolutionM,
@@ -4014,6 +4131,7 @@ export class GlobeMap {
       _kind: 'outage' as const,
       _lat: o.lat,
       _lng: o.lon,
+      _time: parseTimestamp(o.pubDate),
       id: o.id,
       title: o.title ?? '',
       severity: o.severity ?? 'partial',
@@ -4029,6 +4147,7 @@ export class GlobeMap {
         _kind: 'trafficAnomaly' as const,
         _lat: a.latitude,
         _lng: a.longitude,
+        _time: parseTimestamp(a.startDate),
         id: a.uuid || `ta-${a.locationCode}-${a.startDate}`,
         type: a.type || '',
         locationName: a.locationName || '',
@@ -4109,6 +4228,7 @@ export class GlobeMap {
         _kind: 'cableAdvisory' as const,
         _lat: a.lat,
         _lng: a.lon,
+        _time: parseTimestamp(a.reported),
         id: a.id,
         cableId: a.cableId,
         title: a.title ?? '',
@@ -4139,6 +4259,7 @@ export class GlobeMap {
       _kind: 'protest' as const,
       _lat: e.lat,
       _lng: e.lon,
+      _time: parseTimestamp(e.time),
       id: e.id,
       title: e.title ?? '',
       eventType: e.eventType ?? 'protest',
@@ -4154,6 +4275,7 @@ export class GlobeMap {
         _kind: 'flightDelay' as const,
         _lat: d.lat,
         _lng: d.lon,
+        _time: parseTimestamp(d.updatedAt),
         id: d.id,
         iata: d.iata,
         name: d.name,
@@ -4170,6 +4292,7 @@ export class GlobeMap {
         _kind: 'notamRing' as const,
         _lat: d.lat,
         _lng: d.lon,
+        _time: parseTimestamp(d.updatedAt),
         name: d.name || d.iata,
         reason: d.reason || 'Airspace closure',
       }));
@@ -4182,6 +4305,7 @@ export class GlobeMap {
         _kind: 'newsLocation' as const,
         _lat: d.lat,
         _lng: d.lon,
+        _time: parseTimestamp(d.timestamp),
         id: `news-${i}-${d.title.slice(0, 20)}`,
         article: d.article,
         title: d.title,
@@ -4204,6 +4328,7 @@ export class GlobeMap {
       _kind: 'cyber' as const,
       _lat: t.lat,
       _lng: t.lon,
+      _time: parseTimestamp(t.lastSeen ?? t.firstSeen),
       id: t.id,
       indicator: t.indicator ?? '',
       severity: t.severity ?? 'low',
@@ -4216,6 +4341,7 @@ export class GlobeMap {
       _kind: 'iran' as const,
       _lat: e.latitude,
       _lng: e.longitude,
+      _time: parseTimestamp(e.timestamp),
       id: e.id,
       title: e.title ?? '',
       category: e.category ?? '',
@@ -4229,6 +4355,7 @@ export class GlobeMap {
       _kind: 'fire' as const,
       _lat: f.lat,
       _lng: f.lon,
+      _time: parseTimestamp(f.detected_at ?? f.acq_date),
       id: (f.id as string | undefined) ?? `${f.lat},${f.lon}`,
       region: f.region ?? '',
       brightness: f.brightness ?? 330,
@@ -4469,7 +4596,7 @@ export class GlobeMap {
     this.flushMarkers();
   }
   public onHotspotClicked(cb: (h: Hotspot) => void): void { this.onHotspotClickCb = cb; }
-  public onTimeRangeChanged(_cb: (r: TimeRange) => void): void {}
+  public onTimeRangeChanged(cb: (r: TimeRange) => void): void { this.onTimeRangeChangeCb = cb; }
   public onStateChanged(cb: (s: MapContainerState) => void): void { this.onStateChangeCb = cb; }
 
   private async applyEnhancedVisuals(): Promise<void> {

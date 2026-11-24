@@ -1939,7 +1939,7 @@
       "briefFreshness": "Generado hace {{minutes}}m · fuente más reciente con {{hours}}h de antigüedad",
       "briefStoryDetails": "Detalles de la noticia ({{count}})",
       "streamIdleStopLabel": "Detener vídeo en directo cuando está inactivo",
-      "streamIdleStopDesc": "Detiene Noticias en Directo y Cámaras Web en Directo después de este tiempo sin actividad y muestra una notificación en el panel.",
+      "streamIdleStopDesc": "Detiene Noticias en Directo y Cámaras Web en Directo después de este tiempo sin actividad y muestra una notificación en el panel. Noticias en Directo sigue reproduciéndose mientras el sonido esté activado.",
       "streamIdleStopNever": "Nunca",
       "liveNewsAutoplayLabel": "Reproducción automática de noticias en directo",
       "liveNewsAutoplayDesc": "Inicia el vídeo de noticias en directo, silenciado, tan pronto como aparece en pantalla. Desactívalo para cargar el vídeo solo cuando lo inicies."

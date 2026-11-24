@@ -1551,7 +1551,7 @@
       "briefFreshness": "{{minutes}}m önce oluşturuldu · en yeni kaynak {{hours}}s eski",
       "briefStoryDetails": "Haber ayrıntıları ({{count}})",
       "streamIdleStopLabel": "Hareketsizlik sırasında canlı videoyu durdur",
-      "streamIdleStopDesc": "Canlı Haber ve Canlı Web Kameralarını bu kadar süre etkinlik olmadan durdurur ve panelde bir bildirim gösterir.",
+      "streamIdleStopDesc": "Canlı Haber ve Canlı Web Kameralarını bu kadar süre etkinlik olmadan durdurur ve panelde bir bildirim gösterir. Sesi açıkken Canlı Haber oynamaya devam eder.",
       "streamIdleStopNever": "Asla",
       "liveNewsAutoplayLabel": "Canlı haberleri otomatik oynat",
       "liveNewsAutoplayDesc": "Canlı haber videosunu, sessiz olarak, ekranda görüntülenir görüntülenmez başlatır. Videoyu yalnızca siz başlattığınızda yüklemek için bunu kapatın."

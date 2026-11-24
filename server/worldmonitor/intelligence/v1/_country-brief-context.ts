@@ -66,7 +66,8 @@ export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): stri
   const airportTag = opts.airportTag ? `:a${opts.airportTag}` : '';
   // Likewise a newly confirmed satellite imagery change re-keys the brief.
   const imageryTag = opts.imageryTag ? `:o${opts.imageryTag}` : '';
-  const version = opts.lang === 'en' ? 'v12' : 'v9';
+  // v13 (#11217): prompt titles no longer carry the publisher byline.
+  const version = opts.lang === 'en' ? 'v13' : 'v9';
   if (!opts.isPremium) {
     // Anonymous tier: caller inputs must not reach the key, or the shared
     // cache degenerates back into a per-caller one (and one caller's
@@ -74,7 +75,7 @@ export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): stri
     return `ci-sebuf:${version}:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}${airportTag}${imageryTag}`;
   }
   // Retire premium entries whose parsed sources could differ from their hashed context.
-  const premiumVersion = opts.lang === 'en' ? 'v13' : 'v10';
+  const premiumVersion = opts.lang === 'en' ? 'v14' : 'v10';
   const fw = opts.frameworkHash ? `:${opts.frameworkHash}` : '';
   const context = opts.lang === 'en' && !opts.frameworkHash ? `sources:${opts.contextHash}` : opts.contextHash;
   return `ci-sebuf:${premiumVersion}:${opts.countryCode}:${opts.lang}:${context}${fw}${energyTag}${energyImportTag}${airportTag}${imageryTag}`;

@@ -1709,7 +1709,7 @@
       "briefFreshness": "Generirano prije {{minutes}}m · najnoviji izvor star {{hours}}h",
       "briefStoryDetails": "Detalji priče ({{count}})",
       "streamIdleStopLabel": "Zaustavi live video kada je korisnik neaktivan",
-      "streamIdleStopDesc": "Zaustavlja Live News i Live Webcams nakon ovog vremena bez aktivnosti i prikazuje obavijest u panelu.",
+      "streamIdleStopDesc": "Zaustavlja Live News i Live Webcams nakon ovog vremena bez aktivnosti i prikazuje obavijest u panelu. Live News nastavlja s reprodukcijom dok mu je zvuk uključen.",
       "streamIdleStopNever": "Nikada",
       "liveNewsAutoplayLabel": "Automatska reprodukcija uživo vijesti",
       "liveNewsAutoplayDesc": "Pokreće video uživo vijesti, utišan, čim se pojavi na zaslonu. Isključite ovo da se video učita samo kada ga sami pokrenete."

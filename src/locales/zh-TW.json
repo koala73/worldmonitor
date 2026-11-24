@@ -1548,7 +1548,7 @@
       "briefStoryDetails": "報道詳情 ({{count}})",
       "streamIdleStopLabel": "空閒時停止即時影片",
       "streamIdleStopNever": "從不",
-      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。",
+      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。聲音開啟時，即時新聞會繼續播放。",
       "liveNewsAutoplayLabel": "自動播放即時新聞",
       "liveNewsAutoplayDesc": "即時新聞影片出現在螢幕上時自動開始播放，靜音狀態。關閉此選項可僅在您手動啟動時載入影片。"
     },
