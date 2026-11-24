@@ -76,6 +76,19 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(section.locator('.map-controls .map-locate')).toBeVisible();
   });
 
+  test('the last dashboard tile scrolls clear of the tab bar (#11157)', async ({ page }) => {
+    const tile = page.locator('#panelsGrid > .add-panel-block:visible').last();
+    await expect(tile).toBeVisible();
+    await expect.poll(async () => {
+      // Panels keep mounting, so scroll to the current end on every attempt.
+      await page.locator('#main').evaluate((main) => main.scrollTo(0, main.scrollHeight));
+      const tileBox = await tile.boundingBox();
+      const barBox = await page.locator('#mobileTabBar').boundingBox();
+      if (!tileBox || !barBox) return false;
+      return tileBox.y + tileBox.height <= barBox.y;
+    }).toBe(true);
+  });
+
   test('the Map tab follows map fullscreen however it is toggled (#11157)', async ({ page }) => {
     const mapTab = page.locator('[data-mobile-tab="map"]');
     const todayTab = page.locator('[data-mobile-tab="today"]');
