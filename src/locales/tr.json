@@ -304,7 +304,7 @@
     },
     "intelMemory": {
       "title": "Tarihsel İstihbarat Hafızası",
-      "help": "180 günlük, çatışma, askeri operasyon, enerji, kargaşa, siber, denizcilik, doğal afet ve havacılık olaylarının arşivi; isteğe bağlı anlamsal öncel eşleştirmesi ile.",
+      "help": "Önemli çatışma, askeri, enerji, toplumsal huzursuzluk, siber, denizcilik, doğal afet ve havacılık olaylarının 180 günlük arşivi; isteğe bağlı anlamsal emsal eşleştirmesiyle.",
       "loading": "Tarihsel istihbarat hafızası yükleniyor…",
       "proLocked": "180 günlük tarihsel istihbarat hafızası ve öncül araması için PRO sürümüne yükseltin",
       "unavailable": "Tarihsel istihbarat hafızası geçici olarak kullanılamıyor.",
@@ -317,7 +317,7 @@
         "conflict": "Çatışma",
         "military": "Askeri",
         "energy": "Enerji",
-        "unrest": "İç çatışma",
+        "unrest": "Huzursuzluk",
         "cyber": "Siber",
         "maritime": "Denizcilik",
         "natural": "Doğal afetler",
