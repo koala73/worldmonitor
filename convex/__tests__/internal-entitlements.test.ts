@@ -57,6 +57,7 @@ describe("/api/internal-entitlements HTTP action", () => {
       };
     };
     expect(body.planKey).toBe("free");
+    expect(body).not.toHaveProperty("billingStatus");
     expect(body.renewalVerificationFreshness).toEqual({
       status: "not_applicable",
       checkedAt: NOW,
@@ -282,6 +283,88 @@ describe("/api/internal-entitlements HTTP action", () => {
       billingStatus: "subscription_lapsed",
     });
   });
+
+  async function insertHold(
+    t: ReturnType<typeof convexTest>,
+    row: { status: "on_hold" | "cancelled"; accessEndsAt: number; currentPeriodEnd: number },
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: USER_A,
+        dodoSubscriptionId: `sub_http_${row.status}`,
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: row.status,
+        currentPeriodStart: row.currentPeriodEnd - 31 * DAY_MS,
+        currentPeriodEnd: row.currentPeriodEnd,
+        accessEndsAt: row.accessEndsAt,
+        rawPayload: {},
+        updatedAt: NOW - 10 * DAY_MS,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: USER_A,
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: Math.min(row.accessEndsAt, row.currentPeriodEnd),
+        updatedAt: NOW - 10 * DAY_MS,
+      });
+    });
+  }
+
+  async function fetchEntitlements(t: ReturnType<typeof convexTest>) {
+    const res = await t.fetch("/api/internal-entitlements", {
+      method: "POST",
+      headers: validHeaders(),
+      body: JSON.stringify({ userId: USER_A }),
+    });
+    expect(res.status).toBe(200);
+    return (await res.json()) as Record<string, unknown> & { features: { tier: number } };
+  }
+
+  test("a hold past its access grace while Dodo still retries surfaces payment_failed", async () => {
+    const t = convexTest(schema, modules);
+    await insertHold(t, {
+      status: "on_hold",
+      accessEndsAt: NOW - 2 * DAY_MS,
+      currentPeriodEnd: NOW + 20 * DAY_MS,
+    });
+
+    expect(await fetchEntitlements(t)).toMatchObject({
+      planKey: "free",
+      features: { tier: 0 },
+      billingStatus: "payment_failed",
+    });
+  });
+
+  test("a hold inside its access grace keeps paid features and no billing marker", async () => {
+    const t = convexTest(schema, modules);
+    await insertHold(t, {
+      status: "on_hold",
+      accessEndsAt: NOW + 2 * DAY_MS,
+      currentPeriodEnd: NOW + 20 * DAY_MS,
+    });
+
+    const body = await fetchEntitlements(t);
+    expect(body).toMatchObject({ planKey: "pro_monthly", features: { tier: 1 } });
+    expect(body).not.toHaveProperty("billingStatus");
+  });
+
+  test.each(["on_hold", "cancelled"] as const)(
+    "a %s row whose period has ended stays subscription_lapsed",
+    async (status) => {
+      const t = convexTest(schema, modules);
+      await insertHold(t, {
+        status,
+        accessEndsAt: NOW - 20 * DAY_MS,
+        currentPeriodEnd: NOW - 5 * DAY_MS,
+      });
+
+      expect(await fetchEntitlements(t)).toMatchObject({
+        planKey: "free",
+        billingStatus: "subscription_lapsed",
+      });
+    },
+  );
 
   test("missing secret header → 401 UNAUTHORIZED", async () => {
     const t = convexTest(schema, modules);

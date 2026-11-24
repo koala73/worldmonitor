@@ -392,6 +392,7 @@ export async function internalEntitlementsHttpHandler(
     );
     let billingStatus:
       | "subscription_lapsed"
+      | "payment_failed"
       | "renewal_verification_pending"
       | "renewal_verification_failed"
       | undefined;
@@ -461,7 +462,11 @@ export async function internalEntitlementsHttpHandler(
             verificationCouldExpandCoverage
           )
         ) {
-          billingStatus = verification.status;
+          billingStatus =
+            verification.status === "subscription_lapsed" &&
+            fallbackState?.paymentFailedHold
+              ? "payment_failed"
+              : verification.status;
           if ("retryAfterSeconds" in verification) {
             retryAfterSeconds = verification.retryAfterSeconds;
           }

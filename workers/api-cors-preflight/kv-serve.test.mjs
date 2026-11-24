@@ -384,10 +384,10 @@ test('a served tier skips the redundant shadow read during cutover', async () =>
   } finally { restore(); }
 });
 
-test('wrangler.toml stage 2 serves both public tiers from KV', () => {
+test('wrangler.toml stage 3 serves both public tiers from KV with shadow off', () => {
   const toml = readFileSync(new URL('./wrangler.toml', import.meta.url), 'utf8');
   assert.match(toml, /^BOOTSTRAP_KV_SERVE = "all"$/m, 'fast-tier cutover (#7291) must stay deployed');
-  assert.match(toml, /^BOOTSTRAP_KV_SHADOW = "1"$/m, 'keep the shadow baseline until stage 3');
+  assert.match(toml, /^BOOTSTRAP_KV_SHADOW = "0"$/m, 'stage 3 (#11194) disables shadow reads once serve=all is proven');
 });
 
 test('serve=slow keeps the unserved fast tier on the shadow path', async () => {
