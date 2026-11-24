@@ -54,5 +54,23 @@ describe('jsonResponse', () => {
     assert.equal(res.headers.get('Content-Length'), String(bytes.byteLength));
     assert.deepEqual(await res.json(), { text: 'héllo 世界 🌍' });
   });
+
+  it('replaces an Error that a toJSON method returns, keeping only its message', async () => {
+    const error = new Error('safe message');
+    error.toJSON = () => ({ message: 'unsafe custom value', stack: 'secret stack' });
+
+    assert.deepEqual(await roundTrip({ toJSON: () => ({ error }) }), { error: { error: 'safe message' } });
+  });
+
+  it('replaces a plain Error that a toJSON method returns', async () => {
+    assert.deepEqual(await roundTrip({ toJSON: () => ({ failure: new Error('boom') }) }), { failure: { error: 'boom' } });
+  });
+
+  it('serializes the value a getter returns on its first read', async () => {
+    let reads = 0;
+    const body = { get value() { reads += 1; return reads; } };
+
+    assert.deepEqual(await roundTrip(body), { value: 1 });
+  });
 });
 
