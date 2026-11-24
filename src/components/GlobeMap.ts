@@ -49,7 +49,8 @@ import { getCountryMapBbox, getCountriesGeoJson, getCountryAtCoordinates, getCou
 import { escapeHtml } from '@/utils/sanitize';
 import { ORBITAL_WATCH_ENABLED } from '@/config/orbital-watch-flag';
 import { trackedSatelliteType } from '@/services/orbital/yaogan-class';
-import { installLongPressContextMenu } from '@/utils/long-press';
+import { installLongPressContextMenu, isMapControlTarget } from '@/utils/long-press';
+import { parseTimestamp, timeRangeCutoff } from '@/utils/time-range';
 import type { FocusFitBounds } from '@/utils/focus-map';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import { showLayerWarning } from '@/utils/layer-warning';
@@ -137,11 +138,6 @@ interface BaseMarker {
   _time?: number | null;
 }
 
-function markerTime(value: Date | string | number | undefined | null): number | null {
-  if (value == null) return null;
-  const ts = value instanceof Date ? value.getTime() : new Date(value).getTime();
-  return Number.isFinite(ts) ? ts : null;
-}
 interface ConflictMarker extends BaseMarker {
   _kind: 'conflict';
   id: string;
@@ -743,6 +739,8 @@ export class GlobeMap {
   private onMapContextMenuCb?: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void;
   private removeLongPress: (() => void) | null = null;
   private readonly handleContextMenu = (e: MouseEvent): void => {
+    // The time range, layer list and zoom buttons sit inside the container; holding one is not a map lookup.
+    if (isMapControlTarget(e.target)) return;
     e.preventDefault();
     if (!this.onMapContextMenuCb || !this.globe) return;
     const rect = this.container.getBoundingClientRect();
@@ -752,6 +750,12 @@ export class GlobeMap {
     if (!coords) return;
     this.onMapContextMenuCb({ lat: coords.lat, lon: coords.lng, screenX: e.clientX, screenY: e.clientY });
   };
+
+  /** Right-click, or a long press on a phone, opens the point lookup. */
+  private installContextMenu(): void {
+    this.container.addEventListener('contextmenu', this.handleContextMenu);
+    this.removeLongPress = installLongPressContextMenu(this.container, { ignore: isMapControlTarget });
+  }
 
   constructor(container: HTMLElement, initialState: MapContainerState, options: GlobeMapOptions = {}) {
     this.container = container;
@@ -960,8 +964,7 @@ export class GlobeMap {
       });
     }
 
-    this.container.addEventListener('contextmenu', this.handleContextMenu);
-    this.removeLongPress = installLongPressContextMenu(this.container);
+    this.installContextMenu();
 
     // Wire HTML marker layer
     globe
@@ -2646,9 +2649,7 @@ export class GlobeMap {
     }
     if (this.layers.ais) add('ais', this.aisMarkers);
     if (this.layers.ais) {
-      const hours = { '1h': 1, '6h': 6, '24h': 24, '48h': 48, '7d': 168, all: Infinity }[this.timeRange];
-      const cutoff = Date.now() - hours * 3600000;
-      add('ais', this.ukmtoMarkers.filter(marker => marker.incident.occurredAt >= cutoff));
+      add('ais', cutoff == null ? this.ukmtoMarkers : this.ukmtoMarkers.filter(marker => marker.incident.occurredAt >= cutoff));
     }
     if (this.layers.reservoirLevels) add('reservoirLevels', this.reservoirMarkers);
     if (this.layers.iranAttacks) add('iranAttacks', this.iranMarkers);
@@ -2792,7 +2793,7 @@ export class GlobeMap {
   /** The cluster with only the vessels seen inside the selected range, centered on them, or null when fewer than two are. */
   private vesselClusterInRange(cluster: MilitaryVesselCluster, cutoff: number | null): MilitaryVesselCluster | null {
     if (cutoff == null || !cluster.vessels?.length) return cluster;
-    const vessels = cluster.vessels.filter(v => (markerTime(v.lastAisUpdate) ?? Infinity) >= cutoff);
+    const vessels = cluster.vessels.filter(v => (parseTimestamp(v.lastAisUpdate) ?? Infinity) >= cutoff);
     if (vessels.length === cluster.vessels.length) return cluster;
     // A lone vessel is already drawn as its own marker, and clusters are built from two or more.
     if (vessels.length < 2) return null;
@@ -2823,8 +2824,7 @@ export class GlobeMap {
 
   /** Oldest event time the selected range shows, or null for all. */
   private timeRangeCutoff(): number | null {
-    const rangeHours = { '1h': 1, '6h': 6, '24h': 24, '48h': 48, '7d': 168, all: null }[this.timeRange];
-    return rangeHours == null ? null : Date.now() - rangeHours * 3600000;
+    return timeRangeCutoff(this.timeRange);
   }
 
   private flushPolygons(): void {
@@ -3271,7 +3271,7 @@ export class GlobeMap {
       _kind: 'flight' as const,
       _lat: f.lat,
       _lng: f.lon,
-      _time: markerTime(f.lastSeen),
+      _time: parseTimestamp(f.lastSeen),
       id: f.id,
       callsign: f.callsign ?? '',
       type: (f as any).aircraftType ?? (f as any).type ?? 'fighter',
@@ -3344,7 +3344,7 @@ export class GlobeMap {
       _kind: 'vessel' as const,
       _lat: v.lat,
       _lng: v.lon,
-      _time: markerTime(v.lastAisUpdate),
+      _time: parseTimestamp(v.lastAisUpdate),
       id: v.id,
       name: v.name ?? 'vessel',
       type: v.vesselType,                                                    // raw enum — color/icon key
@@ -3381,7 +3381,7 @@ export class GlobeMap {
         _kind: 'weather' as const,
         _lat: a.centroid![1],   // centroid is [lon, lat]
         _lng: a.centroid![0],
-        _time: markerTime(a.onset),
+        _time: parseTimestamp(a.onset),
         id: a.id,
         severity: a.severity ?? 'Minor',
         headline: a.headline ?? a.event ?? '',
@@ -3394,7 +3394,7 @@ export class GlobeMap {
       _kind: 'natural' as const,
       _lat: e.lat,
       _lng: e.lon,
-      _time: markerTime(e.date),
+      _time: parseTimestamp(e.date),
       id: e.id,
       category: e.category ?? '',
       title: e.title ?? '',
@@ -3414,7 +3414,7 @@ export class GlobeMap {
           ],
           pathType: 'stormTrack',
           status: 'active',
-          _time: markerTime(e.date),
+          _time: parseTimestamp(e.date),
         });
       }
       if (e.pastTrack?.length) {
@@ -3429,7 +3429,7 @@ export class GlobeMap {
             pathType: 'stormHistory',
             status: 'active',
             windKt: b.windKt ?? a.windKt ?? 0,
-            _time: markerTime(e.date),
+            _time: parseTimestamp(e.date),
           });
         }
       }
@@ -3439,7 +3439,7 @@ export class GlobeMap {
             coords: [ring],
             name: `${e.stormName || e.title || ''} Forecast Cone`,
             _kind: 'forecastCone',
-            _time: markerTime(e.date),
+            _time: parseTimestamp(e.date),
           });
         }
       }
@@ -4017,7 +4017,7 @@ export class GlobeMap {
         _kind: 'earthquake' as const,
         _lat: e.location!.latitude,
         _lng: e.location!.longitude,
-        _time: markerTime(e.occurredAt),
+        _time: parseTimestamp(e.occurredAt),
         id: e.id,
         place: e.place ?? '',
         magnitude: e.magnitude ?? 0,
@@ -4030,7 +4030,7 @@ export class GlobeMap {
       _kind: 'radiation' as const,
       _lat: observation.lat,
       _lng: observation.lon,
-      _time: markerTime(observation.observedAt),
+      _time: parseTimestamp(observation.observedAt),
       id: observation.id,
       location: observation.location,
       country: observation.country,
@@ -4073,7 +4073,7 @@ export class GlobeMap {
         _kind: 'imageryScene' as const,
         _lat: centerLat,
         _lng: centerLon,
-        _time: markerTime(s.datetime),
+        _time: parseTimestamp(s.datetime),
         satellite: s.satellite,
         datetime: s.datetime,
         resolutionM: s.resolutionM,
@@ -4086,7 +4086,7 @@ export class GlobeMap {
         coords: geom.coordinates as number[][][],
         name: `${s.satellite} ${s.datetime}`,
         _kind: 'imageryFootprint' as const,
-        _time: markerTime(s.datetime),
+        _time: parseTimestamp(s.datetime),
         satellite: s.satellite,
         datetime: s.datetime,
         resolutionM: s.resolutionM,
@@ -4131,7 +4131,7 @@ export class GlobeMap {
       _kind: 'outage' as const,
       _lat: o.lat,
       _lng: o.lon,
-      _time: markerTime(o.pubDate),
+      _time: parseTimestamp(o.pubDate),
       id: o.id,
       title: o.title ?? '',
       severity: o.severity ?? 'partial',
@@ -4147,7 +4147,7 @@ export class GlobeMap {
         _kind: 'trafficAnomaly' as const,
         _lat: a.latitude,
         _lng: a.longitude,
-        _time: markerTime(a.startDate),
+        _time: parseTimestamp(a.startDate),
         id: a.uuid || `ta-${a.locationCode}-${a.startDate}`,
         type: a.type || '',
         locationName: a.locationName || '',
@@ -4228,7 +4228,7 @@ export class GlobeMap {
         _kind: 'cableAdvisory' as const,
         _lat: a.lat,
         _lng: a.lon,
-        _time: markerTime(a.reported),
+        _time: parseTimestamp(a.reported),
         id: a.id,
         cableId: a.cableId,
         title: a.title ?? '',
@@ -4259,7 +4259,7 @@ export class GlobeMap {
       _kind: 'protest' as const,
       _lat: e.lat,
       _lng: e.lon,
-      _time: markerTime(e.time),
+      _time: parseTimestamp(e.time),
       id: e.id,
       title: e.title ?? '',
       eventType: e.eventType ?? 'protest',
@@ -4275,7 +4275,7 @@ export class GlobeMap {
         _kind: 'flightDelay' as const,
         _lat: d.lat,
         _lng: d.lon,
-        _time: markerTime(d.updatedAt),
+        _time: parseTimestamp(d.updatedAt),
         id: d.id,
         iata: d.iata,
         name: d.name,
@@ -4292,7 +4292,7 @@ export class GlobeMap {
         _kind: 'notamRing' as const,
         _lat: d.lat,
         _lng: d.lon,
-        _time: markerTime(d.updatedAt),
+        _time: parseTimestamp(d.updatedAt),
         name: d.name || d.iata,
         reason: d.reason || 'Airspace closure',
       }));
@@ -4305,7 +4305,7 @@ export class GlobeMap {
         _kind: 'newsLocation' as const,
         _lat: d.lat,
         _lng: d.lon,
-        _time: markerTime(d.timestamp),
+        _time: parseTimestamp(d.timestamp),
         id: `news-${i}-${d.title.slice(0, 20)}`,
         article: d.article,
         title: d.title,
@@ -4328,7 +4328,7 @@ export class GlobeMap {
       _kind: 'cyber' as const,
       _lat: t.lat,
       _lng: t.lon,
-      _time: markerTime(t.lastSeen ?? t.firstSeen),
+      _time: parseTimestamp(t.lastSeen ?? t.firstSeen),
       id: t.id,
       indicator: t.indicator ?? '',
       severity: t.severity ?? 'low',
@@ -4341,7 +4341,7 @@ export class GlobeMap {
       _kind: 'iran' as const,
       _lat: e.latitude,
       _lng: e.longitude,
-      _time: markerTime(e.timestamp),
+      _time: parseTimestamp(e.timestamp),
       id: e.id,
       title: e.title ?? '',
       category: e.category ?? '',
@@ -4355,7 +4355,7 @@ export class GlobeMap {
       _kind: 'fire' as const,
       _lat: f.lat,
       _lng: f.lon,
-      _time: markerTime(f.detected_at ?? f.acq_date),
+      _time: parseTimestamp(f.detected_at ?? f.acq_date),
       id: (f.id as string | undefined) ?? `${f.lat},${f.lon}`,
       region: f.region ?? '',
       brightness: f.brightness ?? 330,

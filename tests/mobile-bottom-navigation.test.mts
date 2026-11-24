@@ -249,14 +249,14 @@ describe('3D globe controls on phones (#11157)', () => {
   it('applies the time range to timed markers, not only UKMTO incidents', () => {
     assert.match(globe, /markers\.filter\(m => m\._time == null \|\| m\._time >= cutoff\)/);
     for (const field of ['occurredAt', 'e.date', 'e.time', 'acq_date', 'pubDate', 'startDate', 'e.timestamp', 'a.onset', 'updatedAt', 'lastAisUpdate', 'observedAt', 'detected_at', 's.datetime', 'a.reported', 'd.timestamp']) {
-      assert.ok(globe.includes(`_time: markerTime(`) && new RegExp(`_time: markerTime\\([^)]*${field.replace('.', '\\.')}`).test(globe), field);
+      assert.ok(globe.includes(`_time: parseTimestamp(`) && new RegExp(`_time: parseTimestamp\\([^)]*${field.replace('.', '\\.')}`).test(globe), field);
     }
     assert.match(globe, /this\.inTimeRange\(this\.stormTrackPaths\)/);
     assert.match(globe, /this\.inTimeRange\(this\.imageryFootprintPolygons\)/);
     assert.match(globe, /if \(this\.timedPaths\(\)\.length !== this\.shownTimedPaths\) this\.flushPaths\(\);\s*if \(this\.timedPolygons\(\)\.length !== this\.shownTimedPolygons\) this\.flushPolygons\(\);/);
     assert.match(globe, /if \(source && !cluster\) \{/);
     assert.match(globe, /this\.inTimeRange\(this\.stormConePolygons\)/);
-    assert.match(globe, /_kind: 'notamRing' as const,[^}]*_time: markerTime\(d\.updatedAt\)/);
+    assert.match(globe, /_kind: 'notamRing' as const,[^}]*_time: parseTimestamp\(d\.updatedAt\)/);
     assert.match(globe, /add\('military', this\.clusterMarkersInRange\(cutoff\)\)/);
     assert.match(globe, /vesselCount: vessels\.length/);
     assert.match(globe, /if \(vessels\.length < 2\) return null;/);

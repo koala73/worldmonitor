@@ -66,7 +66,8 @@ import {
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryMapBbox } from '@/services/country-geometry';
-import { installLongPressContextMenu } from '@/utils/long-press';
+import { installLongPressContextMenu, isMapControlTarget } from '@/utils/long-press';
+import { TIME_RANGE_MS, type TimeRange } from '@/utils/time-range';
 
 import type { CountryClickPayload } from './DeckGLMap';
 import { initI18n, t } from '@/services/i18n';
@@ -109,7 +110,7 @@ import { resolveClusterGlContext } from './map-cluster-gl';
 export interface MapContextMenuPayload { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }
 
 
-export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
+export type { TimeRange } from '@/utils/time-range';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 
 export interface MapState {
@@ -686,15 +687,7 @@ export class MapComponent {
   }
 
   private getTimeRangeMs(): number {
-    const ranges: Record<TimeRange, number> = {
-      '1h': 60 * 60 * 1000,
-      '6h': 6 * 60 * 60 * 1000,
-      '24h': 24 * 60 * 60 * 1000,
-      '48h': 48 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000,
-      'all': Infinity,
-    };
-    return ranges[this.state.timeRange];
+    return TIME_RANGE_MS[this.state.timeRange];
   }
 
 
@@ -1182,14 +1175,7 @@ export class MapComponent {
     let lastTouchDist = 0;
     let lastTouchCenter = { x: 0, y: 0 };
     const countryClickGesture = createCountryClickGestureTracker();
-    const shouldIgnoreInteractionStart = (target: EventTarget | null): boolean => {
-      if (!(target instanceof Element)) return false;
-      return Boolean(
-        target.closest(
-          '.map-controls, .time-slider, .layer-toggles, .map-legend, .layer-help-popup, .layer-explanation-popup, .map-popup, button, select, input, textarea, a'
-        )
-      );
-    };
+    const shouldIgnoreInteractionStart = isMapControlTarget;
 
     // Wheel zoom with smooth delta
     this.container.addEventListener(
