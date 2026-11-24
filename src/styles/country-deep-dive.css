@@ -2416,7 +2416,7 @@
 .country-intel-memory-notice {
   margin: 0;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-elevated-text, var(--semantic-warning));
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   line-height: 1.4;
 }
 .country-intel-memory-empty,
@@ -2469,7 +2469,7 @@
   letter-spacing: 0.03em;
 }
 .country-intel-memory-domain[data-domain="conflict"] {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   border-color: color-mix(in srgb, var(--semantic-critical) 40%, transparent);
   background: color-mix(in srgb, var(--semantic-critical) 10%, transparent);
 }
