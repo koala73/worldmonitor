@@ -7,6 +7,11 @@ test.describe('RAG vector store (worker-side)', () => {
 
   test.beforeAll(async ({ browser }) => {
     sharedPage = await browser.newPage();
+    const offHostRequests: string[] = [];
+    await sharedPage.context().route((url) => url.hostname !== '127.0.0.1', (route) => {
+      offHostRequests.push(route.request().url());
+      return route.abort();
+    });
     await sharedPage.goto('/tests/runtime-harness.html');
     const supported = await sharedPage.evaluate(async () => {
       const { initI18n } = await import('/src/services/i18n.ts');
@@ -17,6 +22,7 @@ test.describe('RAG vector store (worker-side)', () => {
       await mlWorker.loadModel('embeddings');
       return true;
     });
+    expect(offHostRequests, 'the model and runtime load without leaving the test host').toEqual([]);
     if (!supported) test.skip(true, 'ML worker not supported');
   });
 
