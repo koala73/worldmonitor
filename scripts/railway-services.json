@@ -484,41 +484,6 @@
     "documentedAt": "issue #11194 KV bootstrap publisher contract"
   },
   {
-    "entry": "scripts/seed-bundle-portwatch-port-activity.mjs",
-    "deployMode": "dockerfile",
-    "dockerfile": "Dockerfile.seed-bundle-portwatch-port-activity",
-    "service": "seed-bundle-portwatch-port-activity",
-    "requiredEnv": [
-      "UPSTASH_REDIS_REST_URL",
-      "UPSTASH_REDIS_REST_TOKEN",
-      "PROXY_URL"
-    ],
-    "watchPatterns": [
-      ".dockerignore",
-      "Dockerfile.seed-bundle-portwatch-port-activity",
-      "scripts/_bundle-runner.mjs",
-      "scripts/_country-resolver.mjs",
-      "scripts/_env-file.mjs",
-      "scripts/_portwatch-content-freshness.mjs",
-      "scripts/_portwatch-request-diagnostics.mjs",
-      "scripts/_proxy-utils.cjs",
-      "scripts/_seed-contract.mjs",
-      "scripts/_seed-envelope-source.mjs",
-      "scripts/_seed-payload-codec.mjs",
-      "scripts/_seed-utils.mjs",
-      "scripts/lib/llm-telemetry.cjs",
-      "scripts/seed-bundle-portwatch-port-activity.mjs",
-      "scripts/seed-portwatch-port-activity.mjs",
-      "scripts/shared/compare-and-delete-script.cjs",
-      "scripts/shared/country-names.json",
-      "scripts/shared/iso3-to-iso2.json",
-      "shared/country-names.json",
-      "shared/iso3-to-iso2.json"
-    ],
-    "cronSchedule": "0 */12 * * *",
-    "documentedAt": "Dockerfile.seed-bundle-portwatch-port-activity"
-  },
-  {
     "entry": "scripts/scenario-worker.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "scenario-worker",

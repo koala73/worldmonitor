@@ -93,6 +93,9 @@ describe('Global procurement DataLoader cancellation', () => {
 
     await loader.loadGlobalTenders();
     expect(procurementMocks.fetchGlobalTenders).toHaveBeenCalledTimes(2);
+    const refreshController = new AbortController();
+    await loader.loadGlobalTenders(undefined, false, refreshController.signal);
+    expect(procurementMocks.fetchGlobalTenders).toHaveBeenCalledTimes(2);
 
     controller.abort();
     expect((procurementMocks.fetchGlobalTenders.mock.calls[1]?.[1] as AbortSignal).aborted).toBe(true);
@@ -138,5 +141,93 @@ describe('Global procurement DataLoader cancellation', () => {
 
     expect(procurementPanel.update).not.toHaveBeenCalled();
     expect(statusPanel.updateApi).not.toHaveBeenCalled();
+  });
+
+  it('clears panel loading when an in-flight scheduled refresh is aborted', async () => {
+    const procurementPanel = {
+      setRequestHandler: vi.fn(),
+      setPrincipalResetHandler: vi.fn(),
+      setLoading: vi.fn(),
+      update: vi.fn(),
+      clear: vi.fn(),
+      showUnavailable: vi.fn(),
+    };
+    const statusPanel = { updateApi: vi.fn() };
+    const ctx = {
+      panels: {
+        'global-procurement': procurementPanel,
+      },
+      statusPanel,
+    } as unknown as AppContext;
+    const pendingFetch = deferred<ListGlobalTendersResponse>();
+    procurementMocks.fetchGlobalTenders.mockReset();
+    procurementMocks.fetchGlobalTenders.mockImplementationOnce(() => pendingFetch.promise);
+    const { DataLoaderManager } = await import('@/app/data-loader');
+    const loader = new DataLoaderManager(ctx, {
+      renderCriticalBanner: () => undefined,
+      refreshOpenCountryBrief: () => undefined,
+    });
+
+    const controller = new AbortController();
+    const load = loader.loadGlobalTenders(undefined, false, controller.signal);
+    await vi.waitFor(() => expect(procurementMocks.fetchGlobalTenders).toHaveBeenCalledTimes(1));
+    expect(procurementPanel.setLoading).toHaveBeenCalledWith(true, false);
+
+    controller.abort();
+    pendingFetch.resolve(response(12));
+    await load;
+
+    expect(procurementPanel.setLoading).toHaveBeenNthCalledWith(2, false);
+    expect(procurementPanel.update).not.toHaveBeenCalled();
+    expect(procurementPanel.clear).not.toHaveBeenCalled();
+    expect(procurementPanel.showUnavailable).not.toHaveBeenCalled();
+  });
+
+  it('does not clear panel loading when a newer request supersedes an aborted scheduled refresh', async () => {
+    const procurementPanel = {
+      setRequestHandler: vi.fn(),
+      setPrincipalResetHandler: vi.fn(),
+      setLoading: vi.fn(),
+      update: vi.fn(),
+      clear: vi.fn(),
+      showUnavailable: vi.fn(),
+    };
+    const statusPanel = { updateApi: vi.fn() };
+    const ctx = {
+      panels: {
+        'global-procurement': procurementPanel,
+      },
+      statusPanel,
+    } as unknown as AppContext;
+    const firstFetch = deferred<ListGlobalTendersResponse>();
+    const secondFetch = deferred<ListGlobalTendersResponse>();
+    procurementMocks.fetchGlobalTenders.mockReset();
+    procurementMocks.fetchGlobalTenders
+      .mockImplementationOnce(() => firstFetch.promise)
+      .mockImplementationOnce(() => secondFetch.promise);
+    const { DataLoaderManager } = await import('@/app/data-loader');
+    const loader = new DataLoaderManager(ctx, {
+      renderCriticalBanner: () => undefined,
+      refreshOpenCountryBrief: () => undefined,
+    });
+
+    const firstController = new AbortController();
+    const firstLoad = loader.loadGlobalTenders(undefined, false, firstController.signal);
+    await vi.waitFor(() => expect(procurementMocks.fetchGlobalTenders).toHaveBeenCalledTimes(1));
+
+    const secondLoad = loader.loadGlobalTenders();
+    await vi.waitFor(() => expect(procurementMocks.fetchGlobalTenders).toHaveBeenCalledTimes(2));
+
+    firstController.abort();
+    firstFetch.resolve(response(1));
+    await firstLoad;
+
+    expect(procurementPanel.setLoading).not.toHaveBeenCalledWith(false);
+    expect(procurementPanel.update).not.toHaveBeenCalled();
+
+    secondFetch.resolve(response(2));
+    await secondLoad;
+
+    expect(procurementPanel.update).toHaveBeenCalledWith(expect.objectContaining({ total: 2 }), false);
   });
 });
