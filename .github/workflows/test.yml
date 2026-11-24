@@ -1176,6 +1176,18 @@ jobs:
             uses: ./.github/actions/install-browser-fonts
             timeout-minutes: 4
             continue-on-error: true
+      # rag-vector-store.spec.ts serves the embeddings model from this cache.
+      # Downloading it from Hugging Face inside the test let one stalled CDN
+      # transfer time out the spec's 90 s hook (#11158). A miss downloads it
+      # here, with per-attempt timeouts and sha256 checks, and fails loudly.
+      - name: Cache the e2e embeddings model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/e2e-models
+          key: e2e-embeddings-model-${{ hashFiles('e2e/fetch-embeddings-model.ts') }}
+      - name: Fetch the e2e embeddings model
+        timeout-minutes: 5
+        run: node e2e/fetch-embeddings-model.ts
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
