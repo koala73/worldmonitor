@@ -150,12 +150,21 @@ trap post_pending_on_exit EXIT
 # `typecheck-changes` / `lint-changes` so all three are evaluated
 # instead of two being masked by the third (#5822).
 required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-node-windows","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","markdown","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness","zapier"]'
+# #11215 folds Typecheck's and Lint Code's small jobs into `docs-lint` (with the
+# existing `typecheck` and `biome`). This script runs from main for every PR,
+# so while open PRs carry either workflow version the gate takes the layout
+# from each commit's own check runs: a run named `docs-lint` means the new
+# layout, where `docs-lint` replaces these six names; otherwise the six stay
+# required. Remove it once no open PR runs the old workflows.
+lint_layout='{"marker":"docs-lint","replaces":["typecheck-changes","lint-changes","markdown","public-docs","mintlify-slugs","doc-anchors"]}'
+# Check runs are fetched for every name either layout can require.
+check_run_names=$(jq -nc --argjson required "$required" --argjson layout "$lint_layout" '$required + [$layout.marker] + $layout.replaces | unique')
 # The contract stamp covers the gate's PASS/FAIL RULES, not just the list of
 # names it inspects. A rules change that left the stamp alone would inherit
 # every success earned under the old rules, because the sweep only re-evaluates
 # a SUCCESS whose stamp differs (#5851). Bump this whenever the meaning of a
 # passing gate changes.
-gate_rules='pr-target-drift-v4'
+gate_rules='pr-target-drift-v4;lint-layout-v1'
 gate_contract=$(REQUIRED_JOBS="$required" GATE_RULES="$gate_rules" python3 -c 'import hashlib, os; print(hashlib.sha256((os.environ["REQUIRED_JOBS"] + "\n" + os.environ["GATE_RULES"]).encode()).hexdigest()[:12])')
 gate_stamp="[gate-contract:$gate_contract]"
 BASE_DRIFT_REMOTE=${BASE_DRIFT_REMOTE:-origin}
@@ -268,7 +277,7 @@ fetch_required_check_runs() {
       }
     }' 2>"$gql_error"); then
     rm -f "$gql_error"
-    printf '%s\n' "$gql_pages" | jq -c --argjson required "$required" '[.[].data.repository.object.statusCheckRollup.contexts.nodes[]? | select(has("name") and (.name as $name | $required | index($name)))]'
+    printf '%s\n' "$gql_pages" | jq -c --argjson required "$check_run_names" '[.[].data.repository.object.statusCheckRollup.contexts.nodes[]? | select(has("name") and (.name as $name | $required | index($name)))]'
     return 0
   fi
   cat "$gql_error" >&2
@@ -277,7 +286,7 @@ fetch_required_check_runs() {
   rest_pages=$(gh_api_with_rate_limit_retry core \
     "repos/$REPO/commits/$eval_sha/check-runs?per_page=100" \
     --paginate --slurp) || return $?
-  printf '%s\n' "$rest_pages" | jq -c --argjson required "$required" '[.[].check_runs[]? | select(.name as $name | $required | index($name)) | {name, conclusion, databaseId: .id, startedAt: .started_at, completedAt: .completed_at}]'
+  printf '%s\n' "$rest_pages" | jq -c --argjson required "$check_run_names" '[.[].check_runs[]? | select(.name as $name | $required | index($name)) | {name, conclusion, databaseId: .id, startedAt: .started_at, completedAt: .completed_at}]'
 }
 
 
@@ -599,12 +608,21 @@ max_attempts=${CHECK_ATTEMPTS:-2}
 for attempt in 1 2; do
   runs=$(fetch_required_check_runs "$SHA")
 
-  status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
+  status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" LINT_LAYOUT="$lint_layout" python3 -c "
 import json
 import os
 
 runs = json.loads(os.environ['RUNS_JSON'])
 required = json.loads(os.environ['REQUIRED_JOBS'])
+layout = json.loads(os.environ['LINT_LAYOUT'])
+names = {r.get('name') for r in runs}
+if layout['marker'] in names:
+  required = [n for n in required if n not in layout['replaces']]
+  if layout['marker'] not in required:
+    required.append(layout['marker'])
+else:
+  required = [n for n in required if n != layout['marker']]
+  required += [n for n in layout['replaces'] if n not in required]
 latest = {}
 
 for name in required:
