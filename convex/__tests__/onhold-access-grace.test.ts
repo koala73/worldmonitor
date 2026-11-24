@@ -760,6 +760,48 @@ describe("failed-renewal webhooks in any order", () => {
     await expectFailedRenewalHold(t);
   });
 
+  test("a hold sharing a cancellation's timestamp leaves the row cancelled", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await advance(t);
+    await event(t, "wh_cancel", "subscription.cancelled", payload({ ...unpaid, status: "cancelled", cancelled_at: iso(holdAt) }), holdAt);
+    await hold(t);
+    expect((await subscriptionOf(t))?.status).toBe("cancelled");
+  });
+
+  test("a repeat hold that moves only the period end does not extend an unstamped unpaid hold", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await advance(t);
+    await t.run(async (ctx) => {
+      const sub = await ctx.db.query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", SUB_ID)).unique();
+      await ctx.db.patch(sub!._id, { status: "on_hold", onHoldAt: holdAt, updatedAt: holdAt });
+    });
+    const laterEnd = NEXT_RENEWAL + 11 * DAY_MS;
+    await event(t, "wh_hold_retry", "subscription.on_hold",
+      payload({ ...unpaid, status: "on_hold", next_billing_date: iso(laterEnd) }), holdAt + 2 * DAY_MS);
+    expect(await subscriptionOf(t)).toMatchObject({ currentPeriodEnd: laterEnd, accessEndsAt: NEXT_RENEWAL });
+    expect((await entitlementOf(t))?.validUntil).toBe(NEXT_RENEWAL);
+  });
+
+  test("a repeat hold that moves the end of a paid period follows Dodo's date", async () => {
+    vi.useFakeTimers();
+    const t = await setup();
+    await activate(t);
+    await advance(t);
+    await charge(t, "pay_second", ADVANCE);
+    const midPeriod = RENEWAL + 10 * DAY_MS;
+    await event(t, "wh_hold", "subscription.on_hold", payload({ ...unpaid, status: "on_hold" }), midPeriod);
+    const laterEnd = NEXT_RENEWAL + 11 * DAY_MS;
+    await event(t, "wh_hold_retry", "subscription.on_hold",
+      payload({ ...unpaid, status: "on_hold", next_billing_date: iso(laterEnd) }), midPeriod + DAY_MS);
+    expect((await subscriptionOf(t))?.accessEndsAt).toBeUndefined();
+    expect((await entitlementOf(t))?.validUntil).toBe(laterEnd);
+  });
+
   test("an on_hold payload without billing dates keeps the stored period", async () => {
     vi.useFakeTimers();
     const t = await setup();

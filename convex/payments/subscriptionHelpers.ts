@@ -1935,10 +1935,11 @@ export async function handleSubscriptionOnHold(
   }
 
   const enteringHold = existing.status !== "on_hold";
-  // A hold wins a timestamp tie with the event before it: a renewal's charge
-  // fails after the period moves. The active and renewed handlers stay
-  // strict, so a same-timestamp active event cannot undo the hold.
-  const tiedHoldEntry = enteringHold && eventTimestamp === existing.updatedAt;
+  // A hold wins a timestamp tie with the active event before it: a renewal's
+  // charge fails after the period moves. The active and renewed handlers stay
+  // strict, so a same-timestamp active event cannot undo the hold, and a
+  // cancelled or expired row keeps its terminal status.
+  const tiedHoldEntry = existing.status === "active" && eventTimestamp === existing.updatedAt;
   if (!isNewerEvent(existing.updatedAt, eventTimestamp) && !tiedHoldEntry) return;
 
   // Episode anchor (#4932): only the transition INTO on_hold opens a new
@@ -1958,11 +1959,20 @@ export async function handleSubscriptionOnHold(
   const currentPeriodStart = payloadEpochMs(data.previous_billing_date) ?? existing.currentPeriodStart;
   const currentPeriodEnd = payloadEpochMs(data.next_billing_date) ?? existing.currentPeriodEnd;
   // The access grace is decided on the transition into the hold, and again
-  // only when the period moves. A repeat on_hold for the same period (each
-  // failed retry) cannot extend or reset it.
-  const accessEndsAt = enteringHold || currentPeriodStart !== existing.currentPeriodStart
-    ? await failedRenewalAccessEndsAt(ctx, existing, currentPeriodStart, onHoldAt)
-    : existing.accessEndsAt;
+  // only when the period start moves. A repeat on_hold for the same period
+  // (each failed retry) cannot extend or reset it.
+  let accessEndsAt = existing.accessEndsAt;
+  if (enteringHold || currentPeriodStart !== existing.currentPeriodStart) {
+    accessEndsAt = await failedRenewalAccessEndsAt(ctx, existing, currentPeriodStart, onHoldAt);
+  } else if (
+    accessEndsAt === undefined &&
+    currentPeriodEnd > existing.currentPeriodEnd &&
+    (await failedRenewalAccessEndsAt(ctx, existing, currentPeriodStart, onHoldAt)) !== undefined
+  ) {
+    // An unpaid hold from before stamping keeps the end it already had; a
+    // later next_billing_date must not lengthen access to an unpaid period.
+    accessEndsAt = existing.currentPeriodEnd;
+  }
 
   await ctx.db.patch(existing._id, {
     status: "on_hold",
