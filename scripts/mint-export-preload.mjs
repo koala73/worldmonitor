@@ -1,4 +1,4 @@
-// Preloaded into `mint export` by the doc-anchors job (lint-code.yml) through
+// Preloaded into `mint export` by the docs-lint job (lint-code.yml) through
 // NODE_OPTIONS=--import. It changes nothing about how pages render; it removes
 // one crash and names the pages that fail.
 //

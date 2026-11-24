@@ -17,85 +17,39 @@ permissions:
   contents: read
 
 jobs:
-  changes:
+  # Two jobs, not six. Each job holds a runner for its whole setup, and the
+  # account's concurrent-job cap is what makes PR bursts queue: on 2026-11-23
+  # the pool sat at the cap for 50 minutes. The old classifier, markdown,
+  # public-docs and mintlify-slugs jobs each spent more time getting a runner
+  # and checking out than checking. Each job now classifies the PR itself
+  # (.github/scripts/lint-code-changes.sh) and skips the steps it doesn't need.
+  #
+  # `biome` keeps its name: branch protection requires that check-run name.
+  biome:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
-    # Distinct check-run name — see the note in typecheck.yml (#5822). The job
-    # id stays `changes` so `needs: changes` below keeps resolving.
-    name: lint-changes
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: read
-    outputs:
-      code: ${{ steps.diff.outputs.code }}
-      markdown: ${{ steps.diff.outputs.markdown }}
-      docs: ${{ steps.diff.outputs.docs }}
-    steps:
-      - id: diff
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          emit_all_true() {
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "markdown=true" >> "$GITHUB_OUTPUT"
-            echo "docs=true" >> "$GITHUB_OUTPUT"
-          }
-          if [ "${{ github.event_name }}" = "push" ]; then
-            emit_all_true
-            exit 0
-          fi
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            emit_all_true
-            exit 0
-          fi
-          if ! PR_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}") ||
-             ! FILES_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
-               --paginate --slurp | jq -ce 'add | arrays'); then
-            echo "PR file lookup failed; running every gated Lint Code job."
-            emit_all_true
-            exit 0
-          fi
-          FILE_COUNT=$(jq 'length' <<< "$FILES_JSON")
-          if ! jq -e --arg head "${{ github.event.pull_request.head.sha }}" \
-            --arg base "${{ github.event.pull_request.base.sha }}" --argjson count "$FILE_COUNT" \
-            '.head.sha == $head and .base.sha == $base and .changed_files == $count and $count < 3000' <<< "$PR_JSON" >/dev/null; then
-            echo "PR metadata moved or its file list is incomplete; running every gated Lint Code job."
-            emit_all_true
-            exit 0
-          fi
-          # Include both sides of renames. A deleted file remains at filename.
-          if ! FILES=$(jq -er '
-            [.[] | .filename, (.previous_filename // empty)] as $paths
-            | if ($paths | length > 0) and all($paths[]; type == "string" and length > 0 and (explode | all(. != 0 and . != 10 and . != 13)))
-              then $paths[] else error("invalid path listing") end
-          ' <<< "$FILES_JSON"); then
-            echo "Unusable PR file list; running every gated Lint Code job."
-            emit_all_true
-            exit 0
-          fi
-          CODE=$(echo "$FILES" | grep -vcE '\.md$|^docs/|^src-tauri/|^CHANGELOG\.md$|^LICENSE$|\.github/workflows/(build-desktop|docker-publish)\.yml$' || echo 0)
-          echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
-          # markdown job: only the lint:md inputs (the markdown, its config, and
-          # package.json, which holds the command and pins markdownlint-cli2), so
-          # a code-only PR skips it. LINT_MD_INPUTS in .husky/pre-push plus the lockfile.
-          MARKDOWN=$(printf '%s\n' "$FILES" | grep -cE '\.md$|^\.markdownlint|^package(-lock)?\.json$' || true)
-          echo "markdown=$( [ "$MARKDOWN" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
-          DOCS=$(printf '%s\n' "$FILES" | grep -cE '^docs/|^scripts/check-doc-anchors\.mjs$|^scripts/_html-entities\.mjs$|^scripts/mint-export-preload\.mjs$|^\.github/workflows/lint-code\.yml$' || true)
-          echo "docs=$( [ "$DOCS" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
-
-  biome:
-    needs: changes
-    if: ${{ (needs.changes.outputs.code == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
-    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash .github/scripts/lint-code-changes.sh
+      - if: steps.diff.outputs.code == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-      - uses: ./.github/actions/install-root-deps
+      - if: steps.diff.outputs.code == 'true'
+        uses: ./.github/actions/install-root-deps
       - name: Run lint and invariant checks
+        if: steps.diff.outputs.code == 'true'
         # Biome already saturates the runner's 2 physical cores, so run `lint`
         # alone first, then run the 13 single-threaded Node/tsx checks at
         # concurrency=2 (matching the 2 physical cores to avoid SMT thrashing).
@@ -115,64 +69,47 @@ jobs:
           version:check
           sync:bootstrap-tier-keys:check
 
-  # One owner for markdown lint (#7772). It used to run inside biome as well
-  # as in a path-filtered lint.yml, so a code+markdown PR linted twice, and
-  # the path filter published no check run on code PRs, so the deploy gate
-  # could never require it. Here it skips when no markdown changed (the gate
-  # counts skipped as passing) and blocks merge through `gate` when it runs.
-  markdown:
-    needs: changes
-    if: ${{ (needs.changes.outputs.markdown == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
-      - uses: ./.github/actions/install-root-deps
-      - run: npm run lint:md
-
-  public-docs:
+  # The documentation checks, one runner. Each check step runs after an
+  # earlier one fails (`!cancelled()`), so one push reports every failure.
+  # One owner for markdown lint (#7772): it skips when no markdown changed and
+  # blocks merge through `gate` when it runs.
+  docs-lint:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash .github/scripts/lint-code-changes.sh
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-      - run: npm run lint:public-docs
-
-  mintlify-slugs:
-    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /scripts/enforce-mintlify-reserved-slugs.mjs
-            /docs/docs.json
-            /docs/mcp.mdx
-            /docs/authed/mcp.mdx
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
-          package-manager-cache: false
-      - run: node scripts/enforce-mintlify-reserved-slugs.mjs
-
-  doc-anchors:
-    # Why this gate exists, and how Mintlify slugs a heading, is documented
-    # once in scripts/check-doc-anchors.mjs. Keep it there, not in both.
-    needs: changes
-    if: ${{ (needs.changes.outputs.docs == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
+      - if: steps.diff.outputs.markdown == 'true'
+        uses: ./.github/actions/install-root-deps
+      - name: Markdown lint
+        if: ${{ !cancelled() && steps.diff.outputs.markdown == 'true' }}
+        timeout-minutes: 10
+        run: npm run lint:md
+      - name: Public docs name no plan the product lacks
+        if: ${{ !cancelled() }}
+        run: npm run lint:public-docs
+      - name: Mintlify reserved slugs
+        if: ${{ !cancelled() }}
+        run: node scripts/enforce-mintlify-reserved-slugs.mjs
+      # Why the anchor check exists, and how Mintlify slugs a heading, is
+      # documented once in scripts/check-doc-anchors.mjs. Keep it there.
       - name: Export rendered docs
+        id: export
+        if: ${{ !cancelled() && steps.diff.outputs.docs == 'true' }}
         working-directory: docs
         # The pin holds the CLI wrapper only. `mint export` downloads its
         # RENDERER at run time, and that is what assigns the ids this gate
@@ -208,6 +145,8 @@ jobs:
             mint export --disable-openapi --output "$RUNNER_TEMP/docs-export.zip"
           fi
       - name: Unpack export
+        if: ${{ !cancelled() && steps.export.outcome == 'success' }}
         run: unzip -q "$RUNNER_TEMP/docs-export.zip" -d "$RUNNER_TEMP/docs-export"
       - name: Every doc anchor resolves
+        if: ${{ !cancelled() && steps.export.outcome == 'success' }}
         run: node scripts/check-doc-anchors.mjs "$RUNNER_TEMP/docs-export"
