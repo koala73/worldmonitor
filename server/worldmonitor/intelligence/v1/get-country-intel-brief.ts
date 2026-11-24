@@ -22,7 +22,7 @@ import { ENERGY_SPINE_KEY_PREFIX } from '../../../_shared/cache-keys';
 import { deriveCountryIntelCacheKey, fetchSharedCountryContext } from './_country-brief-context';
 import { buildCountryBriefEvidence, readCountryAirportNotams, readCountryImageryFlags } from './_country-brief-evidence';
 import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
-import { energyEvidenceGrounded, evidenceNumbersGrounded, imageryEvidenceGrounded, isEvidenceLimitClaim, sanctionsEvidenceGrounded } from '../../../../shared/brief-claim-rules.js';
+import { energyEvidenceGrounded, evidenceNumbersGrounded, headlineWithoutPublisher, imageryEvidenceGrounded, isEvidenceLimitClaim, sanctionsEvidenceGrounded } from '../../../../shared/brief-claim-rules.js';
 import { confirmedFlagsTag } from '../../../../shared/orbital/country-rollup.js';
 import { briefSectionHeading, type BriefSectionKey } from '../../../../shared/brief-sections.js';
 import {
@@ -234,7 +234,7 @@ export function renderEvidenceGroundedCountryBrief(
       if (sourceIndexes === 'out-of-range' || cited === null || !text || text.length > 500 || /[\r\n\[\]*]/.test(text)
         || accepted.length >= rule.maxClaims
         || !rule.accepts({ sources: sourceIndexes.length, evidence: cited })
-        || !claimIsGrounded(text, sourceIndexes.map((index) => sources[index - 1]!.title), cited)) {
+        || !claimIsGrounded(text, sourceIndexes.map((index) => storyTitle(sources[index - 1]!)), cited)) {
         withheld++;
         continue;
       }
@@ -256,6 +256,12 @@ export function renderEvidenceGroundedCountryBrief(
     evidence: evidence.filter((item) => citedEvidence.has(item)).map((item) => ({ ...item, url: item.url ?? '' })),
     withheld,
   };
+}
+
+// The prompt and the claim checks read the story without its publisher byline;
+// the returned source keeps it as the publisher credit.
+function storyTitle(source: CountryIntelBriefSource): string {
+  return headlineWithoutPublisher(source.title, source.url, source.source);
 }
 
 function cleanSourceText(value: unknown, maxLen: number): string {
@@ -556,7 +562,7 @@ Rules:
 
       if (english) {
         userPromptParts.push('Headlines:\n' + entrySources.map((source, index) =>
-          `[${index + 1}] ${sanitizeForPrompt(source.title)}`).join('\n'));
+          `[${index + 1}] ${sanitizeForPrompt(storyTitle(source))}`).join('\n'));
         if (evidence.length > 0) {
           userPromptParts.push('World Monitor data points:\n' + evidence.map((item) =>
             `[${item.id}] (${item.kind}) ${item.factText}`).join('\n'));
@@ -627,7 +633,7 @@ Rules:
       // own false-positive window first; see #4921).
       const grounded = checkLeadGrounding(
         { lead: citationCheck.text.slice(0, 600) },
-        entrySources.map((source) => ({ headline: source.title })),
+        entrySources.map((source) => ({ headline: storyTitle(source) })),
         entrySources.length || 1,
       );
       if (!grounded) {

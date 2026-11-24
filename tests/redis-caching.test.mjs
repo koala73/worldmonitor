@@ -2502,7 +2502,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.match(systemPrompts[2], /CUSTOM LENS A/);
       assert.match(systemPrompts[4], /CUSTOM LENS B/);
       assert.ok(setKeys.slice(0, 2).every(key => key.startsWith('ci-sebuf:v10:FR:fr:')));
-      assert.ok(setKeys.slice(2).every(key => key.startsWith('ci-sebuf:v13:FR:en:') && !key.includes(':sources:')));
+      assert.ok(setKeys.slice(2).every(key => key.startsWith('ci-sebuf:v14:FR:en:') && !key.includes(':sources:')));
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();
@@ -2620,7 +2620,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.match(systemPrompts[0], /do not invent.*forecasts/i);
       assert.doesNotMatch(systemPrompts[0], /\[Risk 3\]|\[Named entity\]: \[mechanism\]/);
       assert.equal(out.sources[0].title, 'Finland completes border fence');
-      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v13:')));
+      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v14:')));
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();
@@ -2957,7 +2957,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       assert.equal(counters.llmCalls, 1, 'anon context variations must share one cache entry');
       assert.equal(setKeys.length, 1, 'one shared cache write');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v12:IL:en:shared'), `anon key should use the shared v12 namespace, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v13:IL:en:shared'), `anon key should use the shared v13 namespace, got ${setKeys[0]}`);
       assert.ok(setKeys[0]?.includes(':i2023'), `anon key should include the import data year, got ${setKeys[0]}`);
       assert.match(alpha.brief, /Israel announces new security framework \[1\]/);
       assert.equal(beta.brief, alpha.brief, 'second anon caller must be served from cache');
@@ -2997,7 +2997,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(counters.llmCalls, 2, 'different premium contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique premium context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate premium cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v13:IL:'), 'premium cache key should use the repaired country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v14:IL:'), 'premium cache key should use the repaired country-intel namespace');
       assert.ok(!setKeys[0]?.includes(':shared'), 'premium keys must not use the shared namespace');
       assert.equal(alpha.brief, 'SITUATION NOW\nIsrael announces alpha framework [1]');
       assert.equal(beta.brief, 'SITUATION NOW\nIsrael announces beta framework [1]');
@@ -3070,7 +3070,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(second.brief, '');
       assert.deepEqual(first.evidence, []);
       assert.equal(setKeys.length, 1, 'one shared negative-cache write; the second call is served from it');
-      assert.ok(setKeys.every((key) => key.startsWith('ci-sebuf:v12:US:en:shared')), `anon callers land on the shared key, got ${setKeys}`);
+      assert.ok(setKeys.every((key) => key.startsWith('ci-sebuf:v13:US:en:shared')), `anon callers land on the shared key, got ${setKeys}`);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
