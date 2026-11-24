@@ -16,7 +16,7 @@ Every command's output stays in your context and is paid for again on every late
 
 ## API data
 
-Most panels are filled from the dashboard's startup data (`/api/bootstrap?tier=fast|slow&public=1`), which is too large to read whole. It was fetched just before you started and saved as one file per key in `{{OUT_DIR}}/api/`, named `<tier>-<key>.json`, with one record per line. Read the file whose key matches the panel with the Read tool; for a file over 20 KB, read it in parts with `offset` and `limit`. It may be a minute older than what the page shows, so allow for a value that has just refreshed. The files: {{API_FILES}}.
+Most panels are filled from the dashboard's startup data (`/api/bootstrap?tier=fast|slow&public=1`), which is too large to read whole. It was fetched just before you started and saved as one file per key in `{{OUT_DIR}}/api/`, named `<tier>-<key>.json`, with one record per line. Read the file whose key matches the panel with the Read tool; for a file over 20 KB, read it in parts with `offset` and `limit`. The files are fixed at setup, so the page may have refreshed since. When a finding rests on a file value that changes minute to minute (a price, a flight or ship count), confirm it against the live response with `network requests --filter <path>` and `network request <id>` before you call it `contradicted`; if you cannot, record it as `implausible` and say the snapshot may be stale. Name the file in `evidence_source`. The files: {{API_FILES}}.
 
 ## How to run
 
