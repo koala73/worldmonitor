@@ -22,10 +22,10 @@
     "unlock365": "Unlock 365 days with an API plan"
   },
   "shell": {
-    "documentTitle": "World Monitor — Real-Time Global Intelligence Dashboard",
-    "metaDescription": "Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, open-source intelligence in one view.",
+    "documentTitle": "Bhumi-Watch | Paramount International School",
+    "metaDescription": "Bhumi-Watch is the real-time global intelligence dashboard from Paramount International School.",
     "offlineTitle": "You're Offline",
-    "offlineMessage": "World Monitor requires an internet connection for real-time intelligence data.",
+    "offlineMessage": "Bhumi-Watch requires an internet connection for real-time intelligence data.",
     "offlineRetry": "Retry"
   },
   "widgets": {

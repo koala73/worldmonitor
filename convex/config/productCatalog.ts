@@ -20,11 +20,11 @@
  * in PRODUCT_CATALOG; only deliberately public facts belong here.
  */
 export const PUBLIC_PRODUCT_METADATA = {
-  name: "World Monitor",
+  name: "Bhumi-Watch",
   lifecycle: "launched",
   canonicalUrl: "https://www.worldmonitor.app/",
   pricingUrl: "https://www.worldmonitor.app/pro#pricing",
-  primaryCtaLabel: "View Pro plans",
+  primaryCtaLabel: "Open dashboard",
   currency: "USD",
   availability: "https://schema.org/InStock",
 } as const;
@@ -217,13 +217,10 @@ export type PlanFeatures = {
   /**
    * Alert-ladder capabilities (#4273) — what the plan's notification rules
    * may hold: followed-country count, delivery channels, event sensitivities,
-   * delivery modes, and whether the AI-composed digest is included. Free is a
-   * deliberately small ladder (critical-only, 3 countries, web push + email)
-   * so the retention loop forms before the paywall; every paid tier gets the
-   * full surface. Read through `resolveAlertCapabilities`
-   * (shared/alert-capabilities.ts), whose BY-TIER fallback covers rows
-   * written before these fields existed: a paid row without them keeps full
-   * access, a free row fails closed to the free ladder.
+   * delivery modes, and whether the AI-composed digest is included. These
+   * Pro capabilities are included in the free account. Read through
+   * `resolveAlertCapabilities` (shared/alert-capabilities.ts), whose fallback
+   * also supplies the complete feature set for legacy rows.
    *
    * These are plan STRUCTURE, like the desktop-key limits:
    * `mergeEntitlementFeatures` takes them from the catalog regardless of what
@@ -297,19 +294,17 @@ export interface CatalogEntry {
 // generator consumes it), so these literals are the authoritative copy and
 // shared/alert-capabilities.ts carries the matching fallback constants;
 // convex/__tests__/alertRules-free-ladder.test.ts pins the two together.
-// Free `alertDigestModes` opens with realtime only: the digest cron
-// (scripts/seed-digest-notifications.mjs) still delivers to tier >= 1, and
-// advertising a daily digest it would drop is a silent lie. Widen to
-// ["realtime", "daily"] in the change that makes the cron free-aware.
+// All Pro alert capabilities are included in the free account; delivery still
+// requires a signed-in account and uses the existing delivery infrastructure.
 type AlertCapabilityFields = Required<Pick<PlanFeatures,
   "alertMaxCountries" | "alertChannels" | "alertSensitivities" | "alertDigestModes" | "aiDigestAccess">>;
 
 const FREE_ALERT_CAPABILITIES: AlertCapabilityFields = {
-  alertMaxCountries: 3,
-  alertChannels: ["web_push", "email"],
-  alertSensitivities: ["critical"],
-  alertDigestModes: ["realtime"],
-  aiDigestAccess: false,
+  alertMaxCountries: 50,
+  alertChannels: ["telegram", "slack", "email", "discord", "teams", "webhook", "web_push"],
+  alertSensitivities: ["all", "high", "critical"],
+  alertDigestModes: ["realtime", "daily", "twice_daily", "weekly"],
+  aiDigestAccess: true,
 };
 
 const PAID_ALERT_CAPABILITIES: AlertCapabilityFields = {
@@ -321,35 +316,30 @@ const PAID_ALERT_CAPABILITIES: AlertCapabilityFields = {
 };
 
 const FREE_FEATURES: PlanFeatures = {
-  tier: 0,
-  historyDays: 7,
-  maxDashboards: 3,
+  // The free account receives the complete Pro feature set. Authentication is
+  // still required for account-bound features; API Business and Enterprise
+  // capabilities remain separate plans.
+  tier: 1,
+  historyDays: 90,
+  maxDashboards: 10,
   apiAccess: false,
   apiRateLimit: 0,
   apiDailyAllowance: 0,
   planLimits: {
     apiRequestsPerDay: 0,
     apiBurstRequestsPerMinute: 0,
-    // #6716: stays 0. The free-account allowance is NOT a plan allowance — it
-    // is a paid-funnel taste metered at the MCP call site against its own Redis
-    // counters, and `FREE_ACCOUNT_CALLS_PER_DAY` (api/mcp/upgrade-constants.ts)
-    // is its single source of truth. Publishing 5 here bought nothing —
-    // dispatch ignores `mcpDailyLimit` entirely on the free branch — and cost a
-    // real bug: it made the settings endpoint advertise a ceiling it reads the
-    // wrong counter for. Consumers that must show the free allowance read the
-    // constant and the free counter (see api/user/mcp-quota.ts).
-    mcpCallsPerDay: 0,
-    dashboardAiCallsPerDay: 0,
-    mcpBurstRequestsPerMinute: 0,
-    desktopKeyRequestsPerDay: 0,
-    desktopKeyBurstPerMinute: 0,
+    mcpCallsPerDay: 50,
+    dashboardAiCallsPerDay: 500,
+    mcpBurstRequestsPerMinute: 60,
+    desktopKeyRequestsPerDay: DESKTOP_KEY_DAILY_CEILING,
+    desktopKeyBurstPerMinute: DESKTOP_KEY_BURST_PER_MINUTE,
   },
   prioritySupport: false,
   exportFormats: [],
-  mcpAccess: false,
-  embedAccess: false,
-  desktopKeyAccess: false,
-  maxDesktopKeys: 0,
+  mcpAccess: true,
+  embedAccess: true,
+  desktopKeyAccess: true,
+  maxDesktopKeys: 2,
   dataExport: false,
   ...FREE_ALERT_CAPABILITIES,
   tabFocus: false,
@@ -532,11 +522,11 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     tierGroup: "free",
     features: FREE_FEATURES,
     marketingFeatures: [
-      "Core dashboard panels",
-      "Global news feed",
-      "Earthquake & weather alerts",
-      "Basic map view",
-      "3 dashboard tabs",
+      "Full Bhumi-Watch dashboard and map layers",
+      "Global news, markets, alerts, and country briefs",
+      "Analyst tools, historical intelligence, and custom widgets",
+      "AI digests, alert rules, and MCP + SDK access",
+      "10 dashboards and unlimited followed countries",
     ],
     selfServe: false,
     highlighted: false,
@@ -564,9 +554,9 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "Desktop key for the desktop app (2 keys)",
     ],
     highlightFeatures: ["Personal license", "1 named user"],
-    selfServe: true,
-    highlighted: true,
-    currentForCheckout: true,
+    selfServe: false,
+    highlighted: false,
+    currentForCheckout: false,
     publicVisible: true,
   },
 
@@ -579,9 +569,9 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     tierGroup: "pro",
     features: PRO_FEATURES,
     marketingFeatures: [],
-    selfServe: true,
-    highlighted: true,
-    currentForCheckout: true,
+    selfServe: false,
+    highlighted: false,
+    currentForCheckout: false,
     publicVisible: true,
   },
 
@@ -590,14 +580,14 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     // 2026-07-25 under the activation runbook (plan 2026-07-25-001).
     dodoProductId: "pdt_0NjyFDbhURh2oROgPIU3G",
     planKey: "pro_business_monthly",
-    displayName: "Pro Business Monthly",
+    displayName: "Business Monthly",
     priceCents: 4999,
     billingPeriod: "monthly",
     tierGroup: "pro_business",
     features: PRO_BUSINESS_FEATURES,
     marketingFeatures: [
-      "Everything in Pro",
-      "Use for client work, internal tools & reporting",
+      "Commercial license for client work, internal tools & reporting",
+      "Full Bhumi-Watch dashboard included",
       "Data export — CSV, JSON & PDF reports",
       "25 custom dashboards (vs 10)",
       "MCP + SDK: 250 calls/day (vs 50)",
@@ -622,7 +612,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     // Live Dodo product "Pro Business Yearly" (USD 449.99/year), created 2026-07-26.
     dodoProductId: "pdt_0Nk072fxPUcHWivZRtlQW",
     planKey: "pro_business_annual",
-    displayName: "Pro Business Annual",
+    displayName: "Business Annual",
     priceCents: 44999,
     billingPeriod: "annual",
     tierGroup: "pro_business",
@@ -644,7 +634,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     tierGroup: "api_starter",
     features: API_STARTER_FEATURES,
     marketingFeatures: [
-      "Full Pro dashboard included (1 named user)",
+      "Full Bhumi-Watch dashboard included (1 named user)",
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
       "License / API key included",
       "Real-time data streams",
@@ -691,7 +681,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "R1–R3 redistribution rights for customer-facing products",
       "300 requests/minute",
       "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
-      "5 Pro licenses — invite users at any corporate email domain",
+      "5 named user seats for your organization",
       "Shared team dashboards",
       "Priority support",
       "Travel risk assessment drafts in the dashboard and over MCP",
@@ -740,7 +730,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     tierGroup: "enterprise",
     features: ENTERPRISE_FEATURES,
     marketingFeatures: [
-      "Everything in Pro + API",
+      "Full Bhumi-Watch dashboard and API capabilities",
       "Shared team dashboards",
       "10,000 API requests a day, more by contract",
       "Dedicated support",

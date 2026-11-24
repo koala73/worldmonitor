@@ -20,6 +20,7 @@ import { COST_SHOCK_TOOLS } from './cost-shock-tools';
 import { PUBLIC_DOMAIN_TOOLS } from './public-domain-tools';
 import { TARIFF_TOOLS } from './tariff-tools';
 import { WEBCAM_TOOLS } from './webcam-tools';
+import { getRequiredTier } from '../../../server/_shared/entitlement-check.js';
 
 // `openai/toolInvocation` status labels for every tool that renders a ui://
 // view. Keyed by tool name; tests/mcp-view-metadata.test.mjs fails if a tool
@@ -94,12 +95,19 @@ export function toolWeight(tool: ToolDef): number {
 
 /** Single access classifier used by tools/list, describe_tool, and resources. */
 export function toolAccess(tool: ToolDef): McpAccessClass {
-  if (tool._subscriptionOnly) return 'subscription';
+  if (
+    tool._planFeature
+    || (tool._apiPaths ?? []).some((apiPath) => {
+      const pathname = apiPath.replace(/^[A-Z]+\s+/, '').split('?')[0];
+      return typeof pathname === 'string' && (getRequiredTier(pathname) ?? 0) >= 2;
+    })
+  ) {
+    return 'subscription';
+  }
   if (tool._freeTier === true) return 'free';
-  // Local metadata escape hatch: authenticated free accounts may call it and
-  // dispatch exempts it from both the allowance and Pro daily quota.
-  if (isQuotaExemptMetadataTool(tool)) return 'free-account';
-  return tool._execute === undefined ? 'free-account' : 'subscription';
+  // Pro-tier tools are available to authenticated free accounts. Anonymous
+  // access remains limited to the explicit `_freeTier` roster above.
+  return 'free-account';
 }
 
 export const TOOL_ALIASES = loadToolAliases(TOOL_REGISTRY, RETIRED_TOOLS, toolAccess);

@@ -322,12 +322,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
   let html = '';
   if (signedIn) {
     html += `<div class="wm-pref-group-content wm-notif-tab-content">`;
-    if (!isPro && !entitlementsPending) {
-      html += `<div class="us-notif-ladder-banner">`;
-      html += `<div class="us-notif-ladder-banner-text">Free plan: critical alerts for up to ${caps.maxCountries} countries over browser push and email. Pro unlocks Slack, Discord, Telegram, Teams and webhooks, all sensitivities, digests and worldwide scope.</div>`;
-      html += `<button type="button" class="panel-locked-cta us-notif-ladder-cta" data-ladder-upgrade>Upgrade</button>`;
-      html += `</div>`;
-    }
     html += `<div class="us-notif-loading" id="usNotifLoading">${entitlementsUnavailable
       ? 'Could not confirm your plan. Notification settings will load once it is confirmed.'
       : 'Loading...'}</div>`;
@@ -337,7 +331,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
     html += `<div class="wm-pref-group-content wm-notif-tab-content panel-locked-state settings-access-gate">`;
     html += `<h3>Intelligence alerts</h3>`;
     html += `<p class="panel-locked-desc">Get alerts in Telegram, Slack, Discord or email. Choose your sensitivity, quiet hours and digest schedule.</p>`;
-    html += `<p class="panel-locked-desc">Sign in to configure notifications. Free accounts get critical alerts for up to 3 countries over browser push and email.</p>`;
+    html += `<p class="panel-locked-desc">Sign in to configure notifications. Free accounts include every alert channel, sensitivity, digest schedule, and up to 50 countries.</p>`;
     html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Sign In</button>`;
     html += `</div>`;
   }

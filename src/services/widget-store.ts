@@ -2,7 +2,7 @@ import { loadFromStorage, saveToStorage } from '@/utils';
 import { safeStorageGet } from '@/utils/safe-storage';
 import { clearPanelColSpanEntry, clearPanelSpanEntry } from '@/utils/panel-storage';
 import { getAuthState } from '@/services/auth-state';
-import { isEntitled, getEntitlementState } from '@/services/entitlements';
+import { hasTier, isEntitled, getEntitlementState } from '@/services/entitlements';
 import {
   clearBrowserKeySession,
   migrateLegacyKeysToHttpOnlySession,
@@ -282,10 +282,12 @@ export function isProWidgetEnabled(): boolean {
 }
 
 export function isProUser(): boolean {
+  const user = getAuthState().user;
   return (
     isWidgetFeatureEnabled() ||
     isProWidgetEnabled() ||
-    getAuthState().user?.role === 'pro' ||
+    user?.role === 'pro' ||
+    hasTier(1) ||
     isEntitled() ||
     isSelfHostKeyUnlocked()
   );

@@ -2,7 +2,7 @@ import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
 import schema from "../schema";
 import { api, internal } from "../_generated/api";
-import { getFeaturesForPlan } from "../lib/entitlements";
+import { getFeaturesForPlan, mergeEntitlementFeatures } from "../lib/entitlements";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -46,7 +46,8 @@ describe("entitlement query", () => {
     const result = await t.query(api.entitlements.getEntitlementsForUser, {});
 
     expect(result.planKey).toBe("free");
-    expect(result.features.tier).toBe(0);
+    expect(result.features.tier).toBe(1);
+    expect(result.features.mcpAccess).toBe(true);
     expect(result.features.apiAccess).toBe(false);
     expect(result.validUntil).toBe(0);
   });
@@ -59,7 +60,8 @@ describe("entitlement query", () => {
     });
 
     expect(result.planKey).toBe("free");
-    expect(result.features.tier).toBe(0);
+    expect(result.features.tier).toBe(1);
+    expect(result.features.mcpAccess).toBe(true);
     expect(result.features.apiAccess).toBe(false);
     expect(result.validUntil).toBe(0);
   });
@@ -97,7 +99,8 @@ describe("entitlement query", () => {
     });
 
     expect(result.planKey).toBe("free");
-    expect(result.features.tier).toBe(0);
+    expect(result.features.tier).toBe(1);
+    expect(result.features.mcpAccess).toBe(true);
     expect(result.features.apiAccess).toBe(false);
     expect(result.validUntil).toBe(0);
   });
@@ -143,17 +146,36 @@ describe("entitlement query", () => {
     );
   });
 
-  test("mcpAccess: free is false, paid tiers are true (plan 2026-05-10-001)", () => {
-    // Free tier — must NOT grant Pro MCP access.
-    expect(getFeaturesForPlan("free").mcpAccess).toBe(false);
+  test("MCP access is included in the free plan and every paid tier", () => {
+    expect(getFeaturesForPlan("free").mcpAccess).toBe(true);
 
-    // All paid tiers grant MCP access.
+    // Paid tiers retain MCP access.
     expect(getFeaturesForPlan("pro_monthly").mcpAccess).toBe(true);
     expect(getFeaturesForPlan("pro_annual").mcpAccess).toBe(true);
     expect(getFeaturesForPlan("api_starter").mcpAccess).toBe(true);
     expect(getFeaturesForPlan("api_starter_annual").mcpAccess).toBe(true);
     expect(getFeaturesForPlan("api_business").mcpAccess).toBe(true);
     expect(getFeaturesForPlan("enterprise").mcpAccess).toBe(true);
+  });
+
+  test("free entitlement snapshots read the current catalog after plan changes", () => {
+    const current = getFeaturesForPlan("free");
+    const stale = {
+      ...current,
+      tier: 0,
+      historyDays: 7,
+      maxDashboards: 3,
+      mcpAccess: false,
+      desktopKeyAccess: false,
+      maxDesktopKeys: 0,
+      planLimits: {
+        ...current.planLimits,
+        mcpCallsPerDay: 3,
+        dashboardAiCallsPerDay: 0,
+      },
+    };
+
+    expect(mergeEntitlementFeatures("free", stale)).toEqual(current);
   });
 
   test("read-time catalog merge surfaces mcpAccess on legacy rows lacking the field (reviewer round-2 P1.3)", async () => {

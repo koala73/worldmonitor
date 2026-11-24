@@ -8,7 +8,10 @@ export const Footer = ({ disclaimer = true }: { disclaimer?: boolean }) => (
       <div className="flex flex-col md:flex-row items-center justify-between w-full">
         <div className="flex items-center gap-3 mb-4 md:mb-0">
           <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
-          <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
+          <span className="flex flex-col gap-0.5 text-left font-display font-bold leading-tight tracking-tight text-wm-text">
+            <span className="text-sm">Bhumi-Watch</span>
+            <span className="text-[9px] font-medium tracking-normal text-wm-muted">Paramount International School</span>
+          </span>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
           <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
@@ -26,11 +29,8 @@ export const Footer = ({ disclaimer = true }: { disclaimer?: boolean }) => (
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X (Twitter)</a>
         </div>
       </div>
-      {/* The visible byline backs the welcome page's JSON-LD `author` (#7459a).
-          It sits on its own row under the logo and links at every width. */}
       <span className="text-xs text-wm-muted mt-4" suppressHydrationWarning>
-        &copy; {new Date().getFullYear()} World Monitor · Built by{' '}
-        <a href="/blog/authors/elie-habib/" className="hover:text-wm-text transition-colors">Elie Habib</a>
+        &copy; {new Date().getFullYear()} Bhumi-Watch · Paramount International School
       </span>
     </div>
     <LegalFooterNav />
@@ -39,7 +39,7 @@ export const Footer = ({ disclaimer = true }: { disclaimer?: boolean }) => (
         where geo.new's YMYL disclaimer check (EAT-18) reads. */}
     {disclaimer && (
       <p className="max-w-3xl mx-auto mt-4 text-xs text-wm-muted">
-        World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice.
+        Bhumi-Watch is for informational purposes only and is not financial, investment, legal, security or safety advice.
         Verify what you see, and consult a qualified professional before decisions where an error could cause loss or harm.
       </p>
     )}

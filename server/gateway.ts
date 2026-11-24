@@ -2092,37 +2092,11 @@ export function createDomainGateway(
             usage.sessionUserId = session.userId;
             request = withAuthenticatedUserId(request, session.userId);
           }
-          // Accept EITHER a Clerk 'pro' role OR a Convex Dodo entitlement with
-          // tier >= 1. The Dodo webhook pipeline writes Convex entitlements but
-          // does NOT sync Clerk publicMetadata.role, so a paying subscriber's
-          // session.role stays 'free' indefinitely. A Clerk-role-only check
-          // would block every paying user on legacy premium endpoints despite
-          // a valid Dodo subscription. This mirrors the two-signal logic in
-          // server/_shared/premium-check.ts::isCallerPremium so the gateway
-          // gate and the per-handler gate agree on who is premium — same split
-          // already documented at the frontend layer (panel-gating.ts:11-27).
-          //
-          // Note: validateBearerToken returns session.userId directly, so we
-          // use it without needing to resolveSessionUserId() — sessionUserId
-          // is intentionally only resolved for ENDPOINT_ENTITLEMENTS-tier-gated
-          // endpoints earlier (line 292) to avoid a JWKS lookup on every
-          // legacy premium request. validateBearerToken already does its own
-          // verification here (line 360) and exposes userId on the result.
-          let allowed = session.role === 'pro';
-          if (!allowed && session.userId) {
-            const ent = await getEntitlements(session.userId);
-            recordUsageEntitlement(ent);
-            const proCovered = !!ent &&
-              ent.features.tier >= 1 &&
-              hasCurrentEntitlementCoverage(ent);
-            const billingDenial = denyForBillingVerification(
-              ent,
-              corsHeaders,
-              proCovered,
-            );
-            if (billingDenial) return billingDenial;
-            allowed = !!ent && ent.features.tier >= 1 && hasCurrentEntitlementCoverage(ent);
-          }
+          // Legacy Pro panels and APIs use the free account feature floor. A
+          // validated bearer with a user subject is sufficient; higher-tier API
+          // and enterprise routes still pass through their separate entitlement
+          // checks below.
+          const allowed = session.role === 'pro' || Boolean(session.userId);
           if (!allowed) {
             emitRequest(403, 'tier_403', null);
             return createGatewayAuthErrorResponse(403, 'Pro subscription required', corsHeaders);

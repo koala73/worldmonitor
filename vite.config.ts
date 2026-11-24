@@ -1612,6 +1612,7 @@ export default defineConfig(({ mode, command }) => {
     },
     server: {
       port: devPort,
+      allowedHosts: ['sb-zbtlmu36te6o.vercel.run'],
       open: !isE2E,
       hmr: isE2E ? false : undefined,
       watch: {

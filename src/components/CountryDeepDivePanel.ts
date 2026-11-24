@@ -3652,7 +3652,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const flag = this.el('span', 'cdp-flag', CountryDeepDivePanel.toFlagEmoji(code));
     const titleWrap = this.el('div', 'cdp-title-wrap');
     const name = this.el('h2', 'cdp-country-name', country);
-    const subtitle = this.el('div', 'cdp-country-subtitle', `WORLD MONITOR · COUNTRY BRIEF · ${code.toUpperCase()}`);
+    const subtitle = this.el('div', 'cdp-country-subtitle', `BHUMI-WATCH · COUNTRY BRIEF · ${code.toUpperCase()}`);
     titleWrap.append(subtitle, name);
 
     // `resetPanelContent` (called at the top of renderSkeleton) already

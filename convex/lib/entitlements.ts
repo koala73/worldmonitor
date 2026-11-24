@@ -45,6 +45,12 @@ export function mergeEntitlementFeatures(
   },
 ): PlanFeatures {
   const catalogDefaults = getFeaturesForPlan(planKey);
+  // Free entitlements are plan snapshots, not per-user overrides. Returning the
+  // current catalog entry lets existing free accounts receive newly included
+  // features immediately instead of waiting for a billing event to rewrite a
+  // stale tier-0 row. API access and commercial capabilities remain catalog-gated.
+  if (planKey === "free") return catalogDefaults;
+
   const planLimits = {
     ...catalogDefaults.planLimits,
     ...storedFeatures.planLimits,

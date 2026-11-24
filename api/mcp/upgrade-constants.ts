@@ -4,8 +4,8 @@
  * tests can import the numbers without pulling Redis or denial copy.
  */
 
-/** Absolute tools/call ceiling per UTC day for a free account. */
-export const FREE_ACCOUNT_CALLS_PER_DAY = 5;
+  /** Free accounts receive the Pro MCP allowance, without a paid subscription. */
+  export const FREE_ACCOUNT_CALLS_PER_DAY = 50;
 
 /** Idle-gap request windows allowed per UTC day. */
 export const FREE_ACCOUNT_REQUESTS_PER_DAY = 3;

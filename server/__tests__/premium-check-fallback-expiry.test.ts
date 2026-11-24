@@ -27,6 +27,7 @@ import {
 } from "../_shared/entitlement-check";
 import { resolvePremiumCallerIdentity } from "../_shared/premium-check";
 import { OPERATOR_KEY_DAILY_CEILINGS } from "../_shared/high-usage-alarm";
+import { DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT } from "../_shared/direct-llm-quota";
 import { checkProMcpAccess } from '../_shared/pro-mcp-gate';
 import { checkEntitlementDetailed } from '../_shared/entitlement-check';
 import {
@@ -89,13 +90,15 @@ describe("Convex paid fallback through the marker cache and premium resolver", (
       validUntil: NOW + DAY, billingStatus: 'subscription_lapsed',
     } satisfies CachedEntitlements);
     for (const caller of ['bearer', 'user-api-key', 'internal-mcp'] as const) {
-      expect(await resolvePremiumCallerIdentity(requestFor(caller))).toMatchObject({
-        isPremium: false, billingDenial: { code: 'subscription_lapsed' },
-      });
+      expect(await resolvePremiumCallerIdentity(requestFor(caller))).toMatchObject(
+        caller === 'bearer'
+          ? { isPremium: true, directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT }
+          : { isPremium: false, billingDenial: { code: 'subscription_lapsed' } },
+      );
     }
     const ent = await getEntitlements(USER);
     expect(checkProMcpAccess(ent, NOW)).not.toBeNull();
-    expect((await checkEntitlementDetailed(USER, '/api/market/v1/get-insider-transactions', {})).response?.status).toBe(403);
+    expect((await checkEntitlementDetailed(USER, '/api/market/v1/get-insider-transactions', {})).response).toBeNull();
   });
   for (const caller of ["bearer", "user-api-key", "internal-mcp"] as const) {
     test.each([
@@ -166,10 +169,12 @@ describe("Convex paid fallback through the marker cache and premium resolver", (
       expect(await getEntitlements(USER)).toMatchObject({
         planKey, billingStatus, validUntil, features: { tier: caller === "user-api-key" ? 2 : 1 },
       });
-      expect(await resolvePremiumCallerIdentity(request)).toMatchObject({
-        isPremium: false,
-        billingDenial: { code: billingStatus, status: 503, retryable: true },
-      });
+      const expiredIdentity = await resolvePremiumCallerIdentity(request);
+      expect(expiredIdentity).toMatchObject(
+        caller === "bearer"
+          ? { isPremium: true, directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT }
+          : { isPremium: false, billingDenial: { code: billingStatus, status: 503, retryable: true } },
+      );
       expect(producerFetch).toHaveBeenCalledTimes(1);
     });
   }
@@ -182,9 +187,11 @@ describe("Convex paid fallback through the marker cache and premium resolver", (
       billingStatus: "renewal_verification_pending",
     } satisfies CachedEntitlements);
     for (const caller of ["bearer", "user-api-key", "internal-mcp"] as const) {
-      expect(await resolvePremiumCallerIdentity(requestFor(caller))).toMatchObject({
-        isPremium: false, billingDenial: { code: "renewal_verification_pending" },
-      });
+      expect(await resolvePremiumCallerIdentity(requestFor(caller))).toMatchObject(
+        caller === "bearer"
+          ? { isPremium: true, directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT }
+          : { isPremium: false, billingDenial: { code: "renewal_verification_pending" } },
+      );
     }
   });
 

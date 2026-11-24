@@ -661,7 +661,7 @@ const LivePreview = () => (
             <source type="image/webp" srcSet={DASHBOARD_SCREENSHOT_WEBP_SRCSET} sizes={LIVE_PREVIEW_IMAGE_SIZES} />
             <img
               src={DASHBOARD_SCREENSHOT_JPG}
-              alt="World Monitor Dashboard"
+              alt="Bhumi-Watch dashboard"
               className="absolute inset-0 w-full h-full object-cover"
               loading="lazy"
               decoding="async"
@@ -1256,7 +1256,10 @@ const EnterprisePage = () => (
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
         <div className="flex items-center gap-3 mb-4 md:mb-0">
           <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
-          <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
+          <span className="flex flex-col gap-0.5 text-left font-display font-bold leading-tight tracking-tight text-wm-text">
+            <span className="text-sm">Bhumi-Watch</span>
+            <span className="text-[9px] font-medium tracking-normal text-wm-muted">Paramount International School</span>
+          </span>
         </div>
         <div className="flex items-center gap-6">
           <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
@@ -1267,7 +1270,7 @@ const EnterprisePage = () => (
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X (Twitter)</a>
         </div>
-        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} World Monitor</span>
+        <span className="text-xs opacity-60 mt-4 md:mt-0">&copy; {new Date().getFullYear()} Bhumi-Watch · Paramount International School</span>
       </div>
       <PressNav />
       {/* This is the pricing page — the footer a buyer sees on the way to

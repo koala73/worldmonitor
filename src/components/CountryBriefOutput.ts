@@ -128,7 +128,7 @@ export function createCountryBriefOutput(snapshot: BriefOutputSnapshot, kind: 's
   let selectedTopic: BriefTopic = 'all';
   let slide = 0;
   const selected = () => snapshot.sections.filter(section => selectedTopic === 'all' || section.topics.includes(selectedTopic));
-  const heading = () => h('header', {}, h('p', { className: 'cdp-country-subtitle' }, 'WORLD MONITOR · COUNTRY BRIEF'),
+  const heading = () => h('header', {}, h('p', { className: 'cdp-country-subtitle' }, 'BHUMI-WATCH · COUNTRY BRIEF'),
     h('h1', {}, snapshot.country), h('p', { className: 'cdp-measure-note' }, `Captured ${new Date(snapshot.capturedAt).toLocaleString()} · ${snapshot.code}`));
   const renderReport = (): void => {
     const sections = selected();

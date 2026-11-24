@@ -1015,7 +1015,7 @@ export async function checkEntitlementDetailed(
   userId: string | null,
   pathname: string,
   corsHeaders: Record<string, string>,
-  options: EntitlementCheckOptions = {},
+  _options: EntitlementCheckOptions = {},
 ): Promise<EntitlementCheckResult> {
   const requiredTier = getRequiredTier(pathname);
   if (requiredTier === null) {
@@ -1033,10 +1033,9 @@ export async function checkEntitlementDetailed(
     };
   }
 
-  // Preserve the legacy Pro bearer contract for tier-1 gates. Complimentary,
-  // tester, and legacy Clerk-role grants can have no Convex entitlement row,
-  // while the frontend still unlocks Pro panels for role='pro'.
-  if (options.clerkRole === 'pro' && requiredTier <= 1) {
+  // Tier 1 is the free account feature floor. Only higher-tier capabilities
+  // require a current paid entitlement; tier 2+ checks below remain unchanged.
+  if (requiredTier <= 1) {
     return { response: null, entitlements: null };
   }
 

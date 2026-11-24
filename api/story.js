@@ -55,7 +55,7 @@ export default function handler(req, res) {
   const corpusSlug = COUNTRY_CORPUS_SLUGS[countryCode] || '';
   const corpusUrl = corpusSlug ? `${WWW_ORIGIN}/countries/${corpusSlug}/` : '';
   const canonicalUrl = corpusUrl || dashboardUrl;
-  const title = `${countryName} Intelligence Brief | World Monitor`;
+  const title = `${countryName} Intelligence Brief | Bhumi-Watch`;
   const description = `Real-time instability analysis for ${countryName}. Country Instability Index, military posture, threat classification, and prediction markets. Free, open-source geopolitical intelligence.`;
   const imageParams = new URLSearchParams({ c: countryCode, t: type });
   if (score) imageParams.set('s', score);
@@ -77,7 +77,7 @@ export default function handler(req, res) {
   <meta property="og:image:width" content="1200"/>
   <meta property="og:image:height" content="630"/>
   <meta property="og:url" content="${esc(storyUrl)}"/>
-  <meta property="og:site_name" content="World Monitor"/>
+  <meta property="og:site_name" content="Bhumi-Watch"/>
 
   <meta name="twitter:card" content="summary_large_image"/>
   <meta name="twitter:site" content="@WorldMonitorApp"/>

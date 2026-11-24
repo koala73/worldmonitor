@@ -29,7 +29,7 @@ describe('real-time alert email', () => {
 
   it('uses the digest frame: logo, accent bar, footer slot', () => {
     assert.match(out, /android-chrome-192x192\.png/);
-    assert.match(out, /WORLD MONITOR/);
+    assert.match(out, /Bhumi-Watch/);
     assert.match(out, /background: #4ade80; height: 3px/);
     assert.ok(out.includes(UNSUBSCRIBE_SLOT));
   });
@@ -200,7 +200,7 @@ describe('notification relay email delivery', () => {
     const [email] = sent;
     assert.match(email.text, /Extreme wind warning/);
     assert.match(email.text, /Unsubscribe from alert emails: https:\/\/x\.convex\.site/);
-    assert.match(email.html, /WORLD MONITOR/);
+    assert.match(email.html, /Bhumi-Watch/);
     assert.match(email.html, /Kazakhstan \(KZ\)/);
     assert.match(email.html, />Unsubscribe from alert emails</);
     assert.ok(!email.html.includes(UNSUBSCRIBE_SLOT));

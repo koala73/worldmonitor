@@ -483,7 +483,16 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
           enterprisePlan: ent.features.tier >= 3,
         };
       }
-      return denyFor(ent);
+      // Signed-in accounts receive the free-access floor for subscription-gated
+      // features. Existing per-user quotas and route-specific controls still apply.
+      return {
+        isPremium: true,
+        userId: session.userId,
+        kind: 'bearer',
+        quotaExempt: false,
+        directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
+        enterprisePlan: false,
+      };
     }
   }
   // A wm_ key was presented and its lookup never completed. That is an outage,

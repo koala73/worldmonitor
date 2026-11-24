@@ -7,7 +7,7 @@
 //
 // What is observed in the built markup, not the TSX:
 // - the nav lockup is ONE anchor whose accessible name is the visible
-//   WORLD MONITOR text (no aria-label, decorative glyphs aria-hidden), so
+//   Bhumi-Watch and its school byline (no aria-label, decorative glyphs aria-hidden), so
 //   axe target-size and name-mismatch stay green;
 // - the Launch CTA's aria-label equals its visible text, which the
 //   prerender's critical-CSS selector also keys off;
@@ -38,7 +38,7 @@ const section = (markup, open, close) => {
 };
 
 describe('welcome page a11y (#7382), built output', { skip }, () => {
-  it('renders the nav lockup as one anchor named by its visible WORLD MONITOR text', () => {
+  it('renders the nav lockup as one anchor named by its visible Bhumi-Watch lockup', () => {
     const nav = section(html(), '<nav data-wm-nav="primary"', '</nav>');
     const window = new Window();
     try {
@@ -58,7 +58,7 @@ describe('welcome page a11y (#7382), built output', { skip }, () => {
     } finally {
       window.close();
     }
-    const lockups = anchors(nav).filter((a) => textOf(a.inner) === 'WORLD MONITOR');
+    const lockups = anchors(nav).filter((a) => textOf(a.inner) === 'Bhumi-Watch Paramount International School');
     assert.equal(lockups.length, 1, 'exactly one lockup anchor in the nav');
     const [lockup] = lockups;
     assert.doesNotMatch(lockup.full, /aria-label(?:ledby)?=/, 'neither the lockup nor its descendants may override the visible name');

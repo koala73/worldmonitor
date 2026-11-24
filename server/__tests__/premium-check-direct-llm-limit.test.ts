@@ -143,27 +143,31 @@ describe("premium identity carries a direct-LLM limit for every arm", () => {
     });
   });
 
-  test("LAPSED Pro Business bearer loses premium access", async () => {
+  test("LAPSED Pro Business bearer retains the free account feature floor", async () => {
     validateBearerToken.mockResolvedValue({ valid: true, role: "free", userId: "u1" });
     getEntitlements.mockResolvedValue(entitlement(1, 2_500, LAPSED()));
 
     const identity = await resolvePremiumCallerIdentity(bearerRequest());
 
     expect(identity).toMatchObject({
-      isPremium: false,
+      isPremium: true,
+      kind: "bearer",
+      directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
     });
   });
 
-  test("LAPSED Enterprise bearer loses premium access", async () => {
+  test("LAPSED Enterprise bearer retains only the free account feature floor", async () => {
     validateBearerToken.mockResolvedValue({ valid: true, role: "free", userId: "u1" });
     getEntitlements.mockResolvedValue(entitlement(3, null, LAPSED()));
 
     const identity = await resolvePremiumCallerIdentity(bearerRequest());
 
     expect(identity).toMatchObject({
-      isPremium: false,
+      isPremium: true,
+      kind: "bearer",
+      directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
+      enterprisePlan: false,
     });
-    expect(identity).not.toHaveProperty("directLlmDailyLimit");
   });
 
   test("active Enterprise bearer IS unlimited", async () => {

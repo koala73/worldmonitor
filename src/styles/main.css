@@ -662,10 +662,25 @@ canvas,
   text-align: center;
 }
 
+.brand-lockup {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.05;
+}
+
+.school-name {
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.2px;
+  font-weight: 500;
+}
+
 .logo {
   font-weight: bold;
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   color: var(--accent);
 }
 
@@ -15843,10 +15858,20 @@ button.popup-link {
 }
 
 .mobile-menu-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-weight: bold;
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 2px;
+  letter-spacing: 0.04em;
   color: var(--accent);
+}
+
+.mobile-menu-subtitle {
+  color: var(--text-dim);
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 .mobile-menu-close {
@@ -16460,7 +16485,7 @@ button.popup-link {
     display: none !important;
   }
 
-  /* Mobile: show "World Monitor" instead of "MONITOR" */
+  /* Keep the school wordmark visible on small screens. */
   .logo {
     display: none;
   }
@@ -25672,24 +25697,6 @@ body.map-width-resizing {
   height: 400px;
   border: none;
   display: block;
-}
-
-.widget-pro-badge {
-  display: inline-block;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  font-weight: 700;
-  line-height: 1;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #f5a623;
-  color: #000;
-  vertical-align: middle;
-  margin-left: 6px;
-  letter-spacing: 0.03em;
-}
-
-.ai-widget-block-pro {
-  position: relative;
 }
 
 /* ─── Widget Chat Modal ─────────────────────────────────────────────────────── */
