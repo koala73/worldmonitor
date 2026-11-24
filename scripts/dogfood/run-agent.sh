@@ -35,7 +35,7 @@ case "$DOGFOOD_PANELS" in
   *[!a-z0-9,-]*) echo "DOGFOOD_PANELS may hold only panel ids (a-z, 0-9, -) separated by commas" >&2; exit 2 ;;
 esac
 
-mkdir -p "$OUT_DIR/screenshots" "$OUT_DIR/videos"
+mkdir -p "$OUT_DIR/screenshots" "$OUT_DIR/videos" "$OUT_DIR/panels"
 [ -f "$OUT_DIR/open-issues.json" ] || echo '[]' > "$OUT_DIR/open-issues.json"
 
 prompt="$(cat "$PROMPT_FILE")"
@@ -129,6 +129,15 @@ setup_session() {
 [ -n "$DOGFOOD_PANELS" ] && setup_session
 pro_key=""
 
+# The content run also gets the dashboard's startup data split into one small file per key (split-bootstrap.mjs),
+# listed in the prompt with sizes, so comparing a panel with its API data costs a few kilobytes of context.
+api_files="(none: the startup data could not be fetched)"
+if [ -n "$DOGFOOD_PANELS" ]; then
+  index="$("$node_bin" "$here/split-bootstrap.mjs" "$API_ORIGIN" "${TARGET_URL%/}" "$OUT_DIR/api" | awk '{ printf "%s (%.0f KB), ", $1, $2 / 1024 }')"
+  [ -n "$index" ] && api_files="${index%, }"
+fi
+prompt="${prompt//\{\{API_FILES\}\}/$api_files}"
+
 export PATH="$wrap:$PATH"
 
 # --bare skips local settings, hooks and CLAUDE.md, and authenticates only from ANTHROPIC_API_KEY. A local run
@@ -136,10 +145,13 @@ export PATH="$wrap:$PATH"
 bare=(--bare)
 [ "${DOGFOOD_BARE:-1}" = 0 ] && bare=()
 cd "$OUT_DIR"
+# --setting-sources project keeps user settings out even where --bare reads them: a local advisorModel there turns
+# on a server-side advisor on another model, which no tool rule can refuse (it cost a pilot a third of its spend).
 # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is not used: it forces the default permission mode, which waits on a
 # permission prompt in a headless run instead of denying. `//` marks an absolute path in a permission rule.
 claude -p "$prompt" \
   ${bare[@]+"${bare[@]}"} \
+  --setting-sources project \
   --model "$MODEL" \
   --max-budget-usd "$MAX_BUDGET_USD" \
   --permission-mode dontAsk \

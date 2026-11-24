@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { planShards } from '../scripts/dogfood/plan-content-shards.mjs';
 import { MAX_ISSUE_BODY_CHARS } from '../scripts/report-dogfood-review.mjs';
-import { contentIssueBody, contentIssueTitle, mergeShards, renderContentBody } from '../scripts/report-dogfood-content.mjs';
+import { contentIssueBody, contentIssueTitle, mergeShards, readShardReport, renderContentBody } from '../scripts/report-dogfood-content.mjs';
 
 const catalog = (host, ids) => ({ host, target: `https://${host}.worldmonitor.app`, panels: ids.map((id) => ({ id, name: id.toUpperCase() })) });
 
@@ -140,5 +143,24 @@ describe('panel content review issue', () => {
     for (const [i, id] of ids.entries()) if (i % 3 !== 0) assert.ok(body.includes(`\`${id}\``), id);
     for (const line of body.split('\n')) assert.equal((line.match(/`/g) ?? []).length % 2, 0, line.slice(0, 80));
     assert.doesNotMatch(outsideCode(body), /@koala73|<img/);
+  });
+
+  it('assembles a shard report from the per-panel files the agent writes, skipping unreadable ones', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dogfood-shard-'));
+    mkdirSync(join(dir, 'panels'));
+    writeFileSync(join(dir, 'panels', 'markets.json'), JSON.stringify({
+      panel: { id: 'markets', status: 'suspect', note: 'x' },
+      findings: [{ panel: 'markets', title: 't' }],
+      dismissed: [{ what: 'w', why: 'y' }],
+    }));
+    writeFileSync(join(dir, 'panels', 'cii.json'), JSON.stringify({ panel: { id: 'cii', status: 'ok' }, findings: [] }));
+    writeFileSync(join(dir, 'panels', 'broken.json'), '{ not json');
+    writeFileSync(join(dir, 'panels', 'list.json'), '[]');
+    writeFileSync(join(dir, 'panels', 'notes.txt'), 'ignored');
+    const report = readShardReport(dir);
+    assert.deepEqual(report.panels.map((p) => p.id).sort(), ['cii', 'markets']);
+    assert.equal(report.findings.length, 1);
+    assert.equal(report.dismissed.length, 1);
+    assert.equal(readShardReport(mkdtempSync(join(tmpdir(), 'dogfood-empty-'))), null);
   });
 });

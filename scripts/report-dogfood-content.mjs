@@ -9,7 +9,7 @@
 // field renders as an inert code span, a panel row counts only for a panel the plan gave that shard, and a panel
 // the agent never reported shows as not reported, so silence never reads as a clean panel.
 // Run with: DOGFOOD_PLAN=<plan.json> DOGFOOD_SHARDS=<dir> DOGFOOD_OPEN_ISSUES=<file> node scripts/report-dogfood-content.mjs
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isMainModule } from './lib/main-module.mjs';
 import { MAX_ISSUE_BODY_CHARS, code, publishIssue, strings } from './report-dogfood-review.mjs';
@@ -29,6 +29,26 @@ const clip = (value, max) => {
 function readJson(file) {
   if (!existsSync(file)) return null;
   try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; }
+}
+
+/**
+ * One shard's report, from the agent's output directory. The agent writes `panels/<id>.json` per panel
+ * (`{ panel, findings, dismissed }`) and never rereads them, which keeps its context small; this joins them. A
+ * `findings.json`, the older single-file form, is used when there are no panel files. Returns null when the
+ * shard wrote neither, so it reports as not reported.
+ */
+export function readShardReport(outDir) {
+  const panelDir = join(outDir, 'panels');
+  const files = existsSync(panelDir) ? readdirSync(panelDir).filter((name) => name.endsWith('.json')).sort() : [];
+  const parts = files.map((name) => readJson(join(panelDir, name)))
+    .filter((part) => part && typeof part === 'object' && !Array.isArray(part));
+  if (parts.length === 0) return readJson(join(outDir, 'findings.json'));
+  const list = (value) => (Array.isArray(value) ? value : []);
+  return {
+    panels: parts.map((part) => part.panel).filter((panel) => panel && typeof panel === 'object' && !Array.isArray(panel)),
+    findings: parts.flatMap((part) => list(part.findings)),
+    dismissed: parts.flatMap((part) => list(part.dismissed)),
+  };
 }
 
 /**
@@ -186,7 +206,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
     const plan = JSON.parse(readFileSync(process.env.DOGFOOD_PLAN, 'utf8'));
     const dir = process.env.DOGFOOD_SHARDS;
     const shardFiles = Object.fromEntries(plan.shards.map(({ id }) => [id, {
-      findings: readJson(join(dir, `content-${id}`, 'dogfood-output', 'findings.json')),
+      findings: readShardReport(join(dir, `content-${id}`, 'dogfood-output')),
       setup: readJson(join(dir, `content-${id}`, 'dogfood-output.setup.json')),
       result: readJson(join(dir, `content-${id}`, 'dogfood-output.result.json')),
     }]));

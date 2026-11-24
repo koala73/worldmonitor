@@ -39,7 +39,7 @@ on:
       panels_per_shard:
         description: 'Panels each agent reviews'
         required: false
-        default: '10'
+        default: '4'
         type: string
       pro_session:
         description: 'Give the agents a Pro session (needs the DOGFOOD_PRO_KEY secret)'
@@ -138,7 +138,6 @@ jobs:
     timeout-minutes: 50
     permissions:
       contents: read
-      issues: read
     strategy:
       fail-fast: false
       # Keeps the agents inside the API's rate limits and a failed run's cost bounded.
@@ -161,13 +160,6 @@ jobs:
 
       - uses: ./.github/actions/dogfood-browser
 
-      - name: List open issues for duplicate checks
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p "$OUT_DIR"
-          gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > "$OUT_DIR/open-issues.json"
-
       # A failed or over-budget agent still uploads what it wrote; the publish job reports a shard with no
       # findings file as such.
       - name: Review this shard's panels
@@ -180,7 +172,8 @@ jobs:
           TARGET_URL: ${{ matrix.target }}
           DOGFOOD_PANELS: ${{ matrix.panels }}
           PROMPT_FILE: scripts/dogfood/content-prompt.md
-          MAX_BUDGET_USD: '10'
+          # A 4-panel shard measured $0.41-0.58 on 2026-11-24; the cap only stops a runaway agent.
+          MAX_BUDGET_USD: '3'
         run: |
           if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
             echo "::error::ANTHROPIC_API_KEY is not set, so the agent cannot run."
@@ -196,8 +189,10 @@ jobs:
         continue-on-error: true
         with:
           name: content-${{ matrix.id }}
+          # api/ holds the public startup data the agent compared against: re-fetchable, and 2 MB a shard.
           path: |
             ${{ env.OUT_DIR }}
+            !${{ env.OUT_DIR }}/api
             ${{ env.OUT_DIR }}.setup.json
             ${{ env.OUT_DIR }}.result.json
           retention-days: 30

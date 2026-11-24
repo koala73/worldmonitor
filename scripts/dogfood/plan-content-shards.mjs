@@ -15,7 +15,7 @@ const SKIPPED = new Set(['map']);
  * @param {Array<{ host: string, target: string, panels: Array<{ id: string, name?: string }> }>} catalogs
  * @returns {{ shards: Array<{ id: string, target: string, panels: string[] }>, panels: Array<{ id: string, name: string, host: string, shard: string }> }}
  */
-export function planShards(catalogs, { perShard = 10, only = [] } = {}) {
+export function planShards(catalogs, { perShard = 4, only = [] } = {}) {
   if (!Number.isInteger(perShard) || perShard < 1) throw new Error('panels per shard must be a positive integer');
   const wanted = new Set(only);
   const seen = new Set();
@@ -50,7 +50,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   try {
     const catalogs = JSON.parse(readFileSync(process.env.DOGFOOD_CATALOGS, 'utf8'));
     const only = (process.env.ONLY_PANELS ?? '').split(',').map((id) => id.trim()).filter(Boolean);
-    const plan = planShards(catalogs, { perShard: Number(process.env.PANELS_PER_SHARD || 10), only });
+    const plan = planShards(catalogs, { perShard: Number(process.env.PANELS_PER_SHARD || 4), only });
     if (plan.shards.length === 0) throw new Error('no panels to check');
     writeFileSync(process.env.DOGFOOD_PLAN, JSON.stringify(plan, null, 2));
     const matrix = { include: plan.shards.map(({ id, target, panels }) => ({ id, target, panels: panels.join(',') })) };
