@@ -17,7 +17,10 @@
  *
  * Rules → Transform Rules → Modify Request Header → custom filter expression:
  *
- *   (http.request.uri.path matches "^/(api|mcp|ask|oauth|a2a|docs/mcp)(/|$)" or http.request.uri.path matches "^/.+\.md$") and not (starts_with(http.request.uri.path, "/docs/") and http.request.uri.path ne "/docs/mcp")
+ *   (http.request.uri.path in {"/api" "/mcp" "/ask" "/oauth" "/a2a" "/docs/mcp"} or starts_with(http.request.uri.path, "/api/") or starts_with(http.request.uri.path, "/mcp/") or starts_with(http.request.uri.path, "/ask/") or starts_with(http.request.uri.path, "/oauth/") or starts_with(http.request.uri.path, "/a2a/") or ends_with(http.request.uri.path, ".md")) and (not starts_with(http.request.uri.path, "/docs/") or http.request.uri.path eq "/docs/mcp")
+ *
+ * The zone's plan does not allow the `matches` (regex) operator, so the
+ * expression uses only `in`, `starts_with`, `ends_with` and `eq`.
  *
  * The proof is a shared secret, so it must never reach a path that vercel.json
  * proxies to another host: whoever receives it can forge Cloudflare transit.
@@ -51,30 +54,30 @@ export const EDGE_PROOF_PATH_ALTERNATIVES = Object.freeze([
   'docs/mcp',
 ]);
 
-/** Regex source pasted into Cloudflare's `matches` operator (anchors included). */
-export const EDGE_PROOF_PATH_MATCHER_SOURCE = `^/(${EDGE_PROOF_PATH_ALTERNATIVES.join('|')})(/|$)`;
-
-/** Same matcher Cloudflare evaluates against `http.request.uri.path`. */
-export const EDGE_PROOF_PATH_MATCHER = new RegExp(EDGE_PROOF_PATH_MATCHER_SOURCE);
-
 /**
  * Public `/{page}.md` URLs, which vercel.json rewrites to /api/md-twin. That
  * route limits per client IP, so these paths need the proof too.
  */
-export const EDGE_PROOF_PAGE_MATCHER_SOURCE = '^/.+\\.md$';
-const EDGE_PROOF_PAGE_MATCHER = new RegExp(EDGE_PROOF_PAGE_MATCHER_SOURCE);
+export const EDGE_PROOF_PAGE_SUFFIX = '.md';
 
 /** Proxied off-site by vercel.json (Mintlify), so never sent the proof. */
 export const EDGE_PROOF_OFFSITE_PREFIX = '/docs/';
 /** The one path under the off-site prefix that rewrites to our own API first. */
 export const EDGE_PROOF_OFFSITE_EXCEPTION = '/docs/mcp';
 
+const PATH = 'http.request.uri.path';
+const exactPaths = EDGE_PROOF_PATH_ALTERNATIVES.map((alt) => `/${alt}`);
+// /docs/mcp/* is proxied to Mintlify, so only /docs/mcp itself is covered.
+const subtreePrefixes = EDGE_PROOF_PATH_ALTERNATIVES
+  .filter((alt) => !`/${alt}/`.startsWith(EDGE_PROOF_OFFSITE_PREFIX))
+  .map((alt) => `/${alt}/`);
+
 /** Filter expression operators must paste into the Cloudflare Transform Rule. */
 export const EDGE_PROOF_TRANSFORM_EXPRESSION =
-  `(http.request.uri.path matches "${EDGE_PROOF_PATH_MATCHER_SOURCE}"`
-  + ` or http.request.uri.path matches "${EDGE_PROOF_PAGE_MATCHER_SOURCE}")`
-  + ` and not (starts_with(http.request.uri.path, "${EDGE_PROOF_OFFSITE_PREFIX}")`
-  + ` and http.request.uri.path ne "${EDGE_PROOF_OFFSITE_EXCEPTION}")`;
+  `(${PATH} in {${exactPaths.map((p) => `"${p}"`).join(' ')}}`
+  + subtreePrefixes.map((p) => ` or starts_with(${PATH}, "${p}")`).join('')
+  + ` or ends_with(${PATH}, "${EDGE_PROOF_PAGE_SUFFIX}"))`
+  + ` and (not starts_with(${PATH}, "${EDGE_PROOF_OFFSITE_PREFIX}") or ${PATH} eq "${EDGE_PROOF_OFFSITE_EXCEPTION}")`;
 
 /** Human-readable path prefixes the Transform Rule must cover. */
 export const EDGE_PROOF_PATH_PREFIXES = Object.freeze([
@@ -88,8 +91,10 @@ export const EDGE_PROOF_PATH_PREFIXES = Object.freeze([
 
 /** True when pathname would match the published Transform Rule expression. */
 export function pathCoveredByExpression(pathname) {
-  const offsite = pathname.startsWith(EDGE_PROOF_OFFSITE_PREFIX) && pathname !== EDGE_PROOF_OFFSITE_EXCEPTION;
-  return (EDGE_PROOF_PATH_MATCHER.test(pathname) || EDGE_PROOF_PAGE_MATCHER.test(pathname)) && !offsite;
+  const matched = exactPaths.includes(pathname)
+    || subtreePrefixes.some((prefix) => pathname.startsWith(prefix))
+    || pathname.endsWith(EDGE_PROOF_PAGE_SUFFIX);
+  return matched && (!pathname.startsWith(EDGE_PROOF_OFFSITE_PREFIX) || pathname === EDGE_PROOF_OFFSITE_EXCEPTION);
 }
 
 function endpointPolicyPathsFromSource() {

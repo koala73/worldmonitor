@@ -26,8 +26,6 @@ import {
   EDGE_PROOF_TRANSFORM_EXPRESSION,
   EDGE_PROOF_PATH_PREFIXES,
   EDGE_PROOF_PATH_ALTERNATIVES,
-  EDGE_PROOF_PATH_MATCHER,
-  EDGE_PROOF_PATH_MATCHER_SOURCE,
   pathCoveredByExpression,
 } from '../scripts/cloudflare-edge-proof-rule.mjs';
 
@@ -203,30 +201,33 @@ describe('IP-scoped endpoint rate limits reject unproven CF client IP (#8402)', 
 
 describe('Cloudflare edge-proof Transform Rule coverage (#8402)', () => {
   it('documents path prefixes that must receive x-wm-edge-proof', () => {
-    assert.equal(
-      EDGE_PROOF_TRANSFORM_EXPRESSION,
-      `(http.request.uri.path matches "${EDGE_PROOF_PATH_MATCHER_SOURCE}" or http.request.uri.path matches "^/.+\\.md$")`
-        + ' and not (starts_with(http.request.uri.path, "/docs/") and http.request.uri.path ne "/docs/mcp")',
-    );
     assert.deepEqual([...EDGE_PROOF_PATH_ALTERNATIVES], ['api', 'mcp', 'ask', 'oauth', 'a2a', 'docs/mcp']);
     assert.deepEqual(EDGE_PROOF_PATH_PREFIXES, ['/api/', '/mcp', '/ask', '/oauth/', '/a2a', '/docs/mcp']);
   });
 
+  it('uses no regex operator, which the zone plan rejects', () => {
+    assert.doesNotMatch(EDGE_PROOF_TRANSFORM_EXPRESSION, /\bmatches\b|~/);
+  });
+
   it('covers every ENDPOINT_RATE_POLICIES path with the published expression', () => {
-    // Re-parse the matcher from the published expression so a drifted
-    // EDGE_PROOF_TRANSFORM_EXPRESSION cannot pass while pathCoveredByExpression
-    // still uses the old source.
-    const embedded = EDGE_PROOF_TRANSFORM_EXPRESSION.match(/matches "([^"]+)"/)?.[1];
-    assert.equal(embedded, EDGE_PROOF_PATH_MATCHER_SOURCE);
-    const fromExpression = new RegExp(embedded!);
-    assert.equal(fromExpression.source, EDGE_PROOF_PATH_MATCHER.source);
+    // Evaluate the published text itself, so a drifted expression cannot pass
+    // while pathCoveredByExpression still uses the old logic.
+    const expr = EDGE_PROOF_TRANSFORM_EXPRESSION;
+    const shape = /^\(http\.request\.uri\.path in \{([^}]*)\}((?: or starts_with\(http\.request\.uri\.path, "[^"]+"\))*) or ends_with\(http\.request\.uri\.path, "([^"]+)"\)\) and \(not starts_with\(http\.request\.uri\.path, "([^"]+)"\) or http\.request\.uri\.path eq "([^"]+)"\)$/;
+    const m = expr.match(shape);
+    assert.ok(m, `unexpected expression shape: ${expr}`);
+    const exact = [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+    const prefixes = [...m![2].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+    const [suffix, offsite, exception] = [m![3], m![4], m![5]];
+    const fromExpression = (p: string) =>
+      (exact.includes(p) || prefixes.some((x) => p.startsWith(x)) || p.endsWith(suffix))
+      && (!p.startsWith(offsite) || p === exception);
     for (const pathname of [...Object.keys(ENDPOINT_RATE_POLICIES), ...EDGE_PROOF_PATH_PREFIXES]) {
-      const matched = fromExpression.test(pathname);
-      assert.ok(
-        matched,
-        `${pathname} must match the Transform Rule expression ${EDGE_PROOF_TRANSFORM_EXPRESSION}`,
-      );
-      assert.equal(pathCoveredByExpression(pathname), matched);
+      assert.ok(fromExpression(pathname), `${pathname} must match the Transform Rule expression ${expr}`);
+    }
+    for (const pathname of [...Object.keys(ENDPOINT_RATE_POLICIES), ...EDGE_PROOF_PATH_PREFIXES,
+      '/pro.md', '/docs/x.md', '/docs/mcp/x', '/docs/intro', '/install.sh', '/apix', '/mcpx', '/oauth']) {
+      assert.equal(pathCoveredByExpression(pathname), fromExpression(pathname), pathname);
     }
   });
 
