@@ -10,7 +10,8 @@ import { publisherFamilyFor, publisherFamilyForDomain } from '../shared/publishe
 import { AGGREGATOR_LINK_HOSTS, isVerifiableArticleUrl } from '../shared/article-url.js';
 export { AGGREGATOR_LINK_HOSTS, isVerifiableArticleUrl };
 import { validateNoHallucinatedFacts, validateNoHallucinatedProperNouns, validateNoHallucinatedStatusQualifiers } from '../shared/brief-llm-core.js';
-import { energyEvidenceGrounded, evidenceNumbersGrounded, headlineWithoutPublisher, imageryEvidenceGrounded, isEvidenceLimitClaim } from '../shared/brief-claim-rules.js';
+import { energyEvidenceGrounded, evidenceNumbersGrounded, imageryEvidenceGrounded, isEvidenceLimitClaim } from '../shared/brief-claim-rules.js';
+import { headlineWithoutPublisher } from '../shared/headline-publisher.js';
 import { resolveIso2 } from './_country-resolver.mjs';
 import { BRIEF_FIXED_SECTION_HEADINGS, briefSectionKey } from '../shared/brief-sections.js';
 const BRIEF_SECTION_HEADERS = BRIEF_FIXED_SECTION_HEADINGS;

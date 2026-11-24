@@ -2734,6 +2734,7 @@
       "server/_shared/source-tiers.ts",
       "shared/article-url.js",
       "shared/brief-claim-rules.js",
+      "shared/headline-publisher.js",
       "shared/brief-llm-core.js",
       "shared/brief-sections.js",
       "shared/country-names.json",
