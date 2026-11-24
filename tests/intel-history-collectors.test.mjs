@@ -303,3 +303,11 @@ test('natural events skip GDACS earthquakes and HKO warning signals', () => {
   }).map((r) => r.dedupeKey);
   assert.deepEqual(kept, [`natural:events:${NATURAL_EVENT.id}`]);
 });
+
+test('earthquake country never treats a US state abbreviation as a country code', () => {
+  // USGS writes California quakes as '..., CA'; that is not Canada.
+  const [row] = buildEarthquakeHistoryRecords({
+    earthquakes: [{ ...EARTHQUAKE, id: 'nc75000001', place: '7km NW of The Geysers, CA' }],
+  });
+  assert.equal(row.country, undefined);
+});

@@ -37,7 +37,6 @@
 import { createHash } from 'node:crypto';
 import { makeSeedHistoryAfterPublish } from './_seed-history.mjs';
 import { resolveIso2 } from './_country-resolver.mjs';
-import countryNameMap from './shared/country-name-to-iso2.cjs';
 
 const TITLE_MAX = 480;
 const SUMMARY_MAX = 1900;
@@ -57,11 +56,15 @@ function isoDay(epochMs) {
   return new Date(epochMs).toISOString().slice(0, 10);
 }
 
-// resolveIso2 has no entry for UCDP's historical parentheticals ('DR Congo
-// (Zaire)', 'Myanmar (Burma)'); the relay's resolver strips them. A row keeps
-// the country it was first stored with, so a miss here is permanent.
+// UCDP names carry historical parentheticals ('DR Congo (Zaire)', 'Myanmar
+// (Burma)') that resolveIso2 has no entry for, so retry without them. No bare
+// two-letter passthrough: USGS ends California places with ', CA'. A row keeps
+// the country it was first stored with, so a wrong match here is permanent.
 function iso2FromName(name) {
-  return resolveIso2({ name }) ?? countryNameMap.countryNameToIso2(name) ?? undefined;
+  const direct = resolveIso2({ name });
+  if (direct) return direct;
+  const stripped = String(name ?? '').replace(/\s*\([^)]*\)\s*$/, '');
+  return stripped !== name ? resolveIso2({ name: stripped }) ?? undefined : undefined;
 }
 
 function iso2OrUndefined(value) {
