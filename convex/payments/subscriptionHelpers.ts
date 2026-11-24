@@ -1217,6 +1217,14 @@ function toEpochMs(value: unknown, fieldName?: string, fallback?: number): numbe
   return fb;
 }
 
+/** A payload date in epoch ms, or `undefined` when it is missing or invalid. */
+function payloadEpochMs(value: unknown): number | undefined {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string" && !(value instanceof Date)) return undefined;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? undefined : ms;
+}
+
 // ---------------------------------------------------------------------------
 // Subscription event handlers
 // ---------------------------------------------------------------------------
@@ -1939,16 +1947,25 @@ export async function handleSubscriptionOnHold(
   // (duplicate day-3/day-7 sends — PR #4935 review finding 1).
   const enteringHold = existing.status !== "on_hold";
   const onHoldAt = enteringHold ? eventTimestamp : (existing.onHoldAt ?? existing.updatedAt);
-  // The access grace is decided once, on the transition into the hold, so
-  // repeat on_hold webhooks (each failed retry) cannot extend or reset it.
-  const accessEndsAt = enteringHold
-    ? await failedRenewalAccessEndsAt(ctx, existing, existing.currentPeriodStart, onHoldAt)
+  // The payload is a full snapshot and names the period that failed to bill.
+  // The event that moved the row to that period can be processed after this
+  // one and then be dropped as older, so the stored period may still be the
+  // paid one.
+  const currentPeriodStart = payloadEpochMs(data.previous_billing_date) ?? existing.currentPeriodStart;
+  const currentPeriodEnd = payloadEpochMs(data.next_billing_date) ?? existing.currentPeriodEnd;
+  // The access grace is decided on the transition into the hold, and again
+  // only when the period moves. A repeat on_hold for the same period (each
+  // failed retry) cannot extend or reset it.
+  const accessEndsAt = enteringHold || currentPeriodStart !== existing.currentPeriodStart
+    ? await failedRenewalAccessEndsAt(ctx, existing, currentPeriodStart, onHoldAt)
     : existing.accessEndsAt;
 
   await ctx.db.patch(existing._id, {
     status: "on_hold",
     onHoldAt,
     accessEndsAt,
+    currentPeriodStart,
+    currentPeriodEnd,
     dodoCustomerId: mergeDodoCustomerId(data, existing),
     rawPayload: data,
     updatedAt: eventTimestamp,
