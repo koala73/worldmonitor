@@ -31,7 +31,7 @@ for (const file of [...changed, ...untracked]) {
   if (!matches.length) continue;
 
   const diff = changed.includes(file)
-    ? git('diff', '--follow', '--no-ext-diff', '--no-color', '--unified=0', base, '--', file)
+    ? git('diff', '--follow', '--no-ext-diff', '--no-color', '--unified=0', '--inter-hunk-context=0', base, '--', file)
     : null;
   const ranges = diff?.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm);
   const additions = ranges && Array.from(ranges, ([, start, length]) => [Number(start), Number(start) + Number(length ?? 1)]);
