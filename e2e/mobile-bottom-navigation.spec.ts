@@ -349,6 +349,15 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await page.locator('[data-mobile-tab="alerts"]').click();
     await expect(page.locator('.toast-notification')).toContainText('No active alerts yet');
   });
+
+  test('the fullscreen Map view keeps its zoom, time range, Layers and Legend (#11157)', async ({ page }) => {
+    const section = page.locator('#mapSection');
+    await page.locator('[data-mobile-tab="map"]').click();
+    await expect(section).toHaveClass(/live-news-fullscreen/);
+    for (const control of ['.map-controls', '.time-slider', '.layer-toggles', '.map-legend']) {
+      await expect(section.locator(control).first(), control).toBeVisible();
+    }
+  });
 });
 
 test.describe('desktop navigation parity (#5201 P0)', () => {
