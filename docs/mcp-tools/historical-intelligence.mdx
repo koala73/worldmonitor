@@ -8,7 +8,26 @@ Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every too
 
 The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
 
-These three Pro-gated tools read the durable history store that the conflict, military, and energy seeders append to after each run. They share one record shape — `id`, `domain`, `resource`, `country`, `category`, `title`, `summary`, `sourceUrl`, `occurredAt`, `ingestedAt`, `score` — so a client can hold a single parser for all three.
+These three Pro-gated tools read the durable history store that the history collectors append to after each run. They share one record shape — `id`, `domain`, `resource`, `country`, `category`, `title`, `summary`, `sourceUrl`, `occurredAt`, `ingestedAt`, `score` — so a client can hold a single parser for all three.
+
+## Domains
+
+Each collector writes one `domain` and `resource`. Collectors keep only events above a significance bar, so the store is a record of notable events, not a mirror of each feed.
+
+| `domain` | `resource` | Source | What is kept |
+|---|---|---|---|
+| `conflict` | `acled-intel` | Conflict intelligence feed (HDX HAPI and GDELT) | Every published event |
+| `conflict` | `ucdp-events` | UCDP GED candidate and annual events | Events with at least 10 deaths (best estimate) |
+| `military` | `cross-strait-activity` | Taiwan and Japan defence ministry reports | Every published observation |
+| `energy` | `intelligence` | Energy news feeds | Every published item |
+| `unrest` | `events` | GDELT unrest mentions and ACLED protests | ACLED events; GDELT places with at least 10 reports, one row per place per UTC day, marked `media-signal` because GDELT does not verify the event |
+| `cyber` | `threats` | C2Intel, Feodo Tracker and other IOC feeds | Command-and-control servers only |
+| `maritime` | `portwatch-disruptions` | IMF PortWatch | Every port and chokepoint disruption |
+| `natural` | `earthquakes` | USGS and NRCan | Magnitude 5.0 and above |
+| `natural` | `events` | NASA EONET, GDACS and NHC | Every published hazard |
+| `aviation` | `intl` | AviationStack airport departures | Major or severe disruptions, and any closure or ground stop; one row per airport, severity and UTC day |
+
+An event that changes after it is stored keeps its first stored version: a later casualty revision or a longer airport closure does not rewrite the row.
 
 <Note>
 The store begins at the day history capture was activated and deepens from there; there is no deep backfill. An empty result for an early window means that window is not covered yet, not that nothing happened. Every response also carries `upstreamUnavailable`: when it is `true`, `records` is empty because the lookup failed, never because nothing matched.
@@ -31,7 +50,7 @@ Semantic search over the stored history, ranked by similarity to a free-text que
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
 | `query` | string | **yes** | Free-text search phrase, 2-500 characters, e.g. "artillery strikes near Kharkiv" |
-| `domain` | string | no | One of `conflict`, `military`, `energy`. Omit to search every domain |
+| `domain` | string | no | One of the [domains](#domains) above. Omit to search every domain |
 | `country` | string | no | ISO 3166-1 alpha-2, uppercase, e.g. "UA". Omit to search every country |
 | `from` | number | no | Earliest `occurredAt`, Unix epoch milliseconds, inclusive. Omit for no lower bound |
 | `to` | number | no | Latest `occurredAt`, Unix epoch milliseconds, inclusive. Omit for no upper bound |
@@ -67,7 +86,7 @@ At least one of `domain` or `country` is required. Those are the two indexed sco
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `domain` | string | one of the two | One of `conflict`, `military`, `energy`. Required unless `country` is set |
+| `domain` | string | one of the two | One of the [domains](#domains) above. Required unless `country` is set |
 | `country` | string | one of the two | ISO 3166-1 alpha-2, uppercase, e.g. "UA". Required unless `domain` is set |
 | `from` | number | no | Earliest `occurredAt`, Unix epoch milliseconds, inclusive. Omit for no lower bound |
 | `to` | number | no | Latest `occurredAt`, Unix epoch milliseconds, inclusive. Omit for no upper bound |
@@ -103,7 +122,7 @@ Leaving `country` unset is usually the right choice — a precedent elsewhere is
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
 | `situation` | string | **yes** | Description of the situation, 10-1000 characters, e.g. "a naval blockade closes a major grain export corridor for weeks" |
-| `domain` | string | no | One of `conflict`, `military`, `energy`. Omit to search every domain |
+| `domain` | string | no | One of the [domains](#domains) above. Omit to search every domain |
 | `country` | string | no | ISO 3166-1 alpha-2, uppercase, e.g. "EG". Omit to search every country |
 | `limit` | integer | no | Maximum precedents. MCP returns 8 when omitted and caps at 8 to stay within its output budget |
 

@@ -12,7 +12,7 @@ There is no single "incident" endpoint today. Incidents come from the feeds belo
 | Geolocated armed-conflict events | `GET /api/conflict/v1/list-ucdp-events` | `get_conflict_events` | UCDP event |
 | Geolocated protests, riots and strikes | `GET /api/unrest/v1/list-unrest-events` | `get_conflict_events` | Unrest event |
 | Breaking stories, grouped across outlets | `GET /api/news/v1/list-feed-digest` (headlines) | `get_news_clusters` (clusters) | News item, news cluster |
-| Past conflict, military and energy events | `GET /api/intelligence/v1/get-intel-timeline`, `POST /api/intelligence/v1/search-intel-history` | `get_intel_timeline`, `search_intel_history` | History record |
+| Past events from the intelligence-history store | `GET /api/intelligence/v1/get-intel-timeline`, `POST /api/intelligence/v1/search-intel-history` | `get_intel_timeline`, `search_intel_history` | History record |
 
 REST calls go to `https://api.worldmonitor.app` with an `X-WorldMonitor-Key: wm_...` header. See [Authentication](/usage-auth) for keys and [Rate limits](/usage-rate-limits) for per-plan quotas.
 
