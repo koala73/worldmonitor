@@ -258,6 +258,8 @@ export class MapComponent {
   private dynamicLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private baseRendered = false;
   private baseWidth = 0;
+  /** Size setCenter computed the pan for, when the base has not been rendered at it yet. */
+  private panBasis: { width: number; height: number } | null = null;
   private baseHeight = 0;
   private hotspots: HotspotWithBreaking[];
   private earthquakes: Earthquake[] = [];
@@ -569,6 +571,20 @@ export class MapComponent {
     else if (pendingCenter) this.setCenter(pendingCenter.lat, pendingCenter.lon);
     if (renderNow) this.render();
     else this.scheduleRender();
+  }
+
+  /**
+   * The pan is in pixels of the size it was set for, so move it to keep the same place centered at the new size.
+   * The projection is linear and centred on the container, so the pan scales with it. Inverting and re-projecting
+   * the centre would wrap one past ±180° longitude into the other side of the world.
+   */
+  private keepCenterAcrossResize(width: number, height: number): void {
+    // baseWidth stays the size the pan was drawn at even after a theme change or topology load clears baseRendered.
+    const basis = this.panBasis ?? { width: this.baseWidth, height: this.baseHeight };
+    this.panBasis = null;
+    if (basis.width === 0 || basis.height === 0 || (basis.width === width && basis.height === height)) return;
+    const ratio = this.getProjection(width, height).scale() / this.getProjection(basis.width, basis.height).scale();
+    this.state.pan = { x: this.state.pan.x * ratio, y: this.state.pan.y * ratio };
   }
 
   public destroy(): void {
@@ -1598,6 +1614,7 @@ export class MapComponent {
     }
 
     if (shouldRenderBase) {
+      this.keepCenterAcrossResize(width, height);
       this.baseWidth = width;
       this.baseHeight = height;
       // Use native DOM clear for guaranteed effect
@@ -4606,22 +4623,26 @@ export class MapComponent {
     this.pendingFocusFit = null;
     this.state.view = view;
 
-    // Region-specific zoom and pan settings
-    // Pan: +x = west, -x = east, +y = north, -y = south
-    const viewSettings: Record<MapView, { zoom: number; pan: { x: number; y: number } }> = {
-      global: { zoom: 1, pan: { x: 0, y: 0 } },
-      america: { zoom: 1.8, pan: { x: 180, y: 30 } },
-      mena: { zoom: 3.5, pan: { x: -100, y: 50 } },
-      eu: { zoom: 2.4, pan: { x: -30, y: 100 } },
-      asia: { zoom: 2.0, pan: { x: -320, y: 40 } },
-      latam: { zoom: 2.0, pan: { x: 120, y: -100 } },
-      africa: { zoom: 2.2, pan: { x: -40, y: -30 } },
-      oceania: { zoom: 2.2, pan: { x: -420, y: -100 } },
+    // Each region is a geographic center [lon, lat] (DeckGLMap's VIEW_PRESETS),
+    // projected for this map's size. Fixed pixel pans only framed the region at
+    // one desktop width; on a phone they put America over the Pacific and
+    // Asia and Oceania off the map.
+    const viewSettings: Record<MapView, { zoom: number; center: [number, number] | null }> = {
+      global: { zoom: 1, center: null },
+      america: { zoom: 1.8, center: [-95, 38] },
+      mena: { zoom: 3.5, center: [45, 28] },
+      eu: { zoom: 2.4, center: [15, 50] },
+      asia: { zoom: 2.0, center: [105, 35] },
+      latam: { zoom: 2.0, center: [-60, -15] },
+      africa: { zoom: 2.2, center: [20, 5] },
+      oceania: { zoom: 2.2, center: [135, -25] },
     };
 
     const settings = viewSettings[view];
     this.state.zoom = zoom ?? settings.zoom;
-    this.state.pan = settings.pan;
+    this.state.pan = { x: 0, y: 0 };
+    // setCenter defers to the first resize while the map has no size.
+    if (settings.center) this.setCenter(settings.center[1], settings.center[0]);
     this.applyTransform();
     this.render();
   }
@@ -5570,6 +5591,7 @@ export class MapComponent {
       x: width / 2 - pos[0],
       y: height / 2 - pos[1],
     };
+    this.panBasis = { width, height };
     this.applyTransform();
     // Ensure base layer is intact after pan
     this.ensureBaseLayerIntact();
