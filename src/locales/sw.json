@@ -385,7 +385,12 @@
         "all": "Zote",
         "conflict": "Mgogoro",
         "military": "Kijeshi",
-        "energy": "Nishati"
+        "energy": "Nishati",
+        "unrest": "Machafuko",
+        "cyber": "Cyber",
+        "maritime": "Baharini",
+        "natural": "Majanga ya asili",
+        "aviation": "Anga"
       },
       "loadMore": "Pakia zaidi",
       "loadingMore": "Inapakia zaidi…",

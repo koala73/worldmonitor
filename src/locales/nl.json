@@ -4481,7 +4481,12 @@
         "all": "Alle",
         "conflict": "Conflict",
         "military": "Militair",
-        "energy": "Energie"
+        "energy": "Energie",
+        "unrest": "Onrust",
+        "cyber": "Cyber",
+        "maritime": "Maritiem",
+        "natural": "Natuurrampen",
+        "aviation": "Luchtvaart"
       },
       "loadMore": "Meer laden",
       "loadingMore": "Meer laden…",

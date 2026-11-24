@@ -314,7 +314,12 @@
         "all": "全部",
         "conflict": "冲突",
         "military": "军事",
-        "energy": "能源"
+        "energy": "能源",
+        "unrest": "动荡",
+        "cyber": "网络",
+        "maritime": "海事",
+        "natural": "自然灾害",
+        "aviation": "航空"
       },
       "loadMore": "加载更多",
       "loadingMore": "正在加载…",

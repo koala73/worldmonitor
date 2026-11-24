@@ -385,7 +385,12 @@
         "all": "सभी",
         "conflict": "संघर्ष",
         "military": "सैन्य",
-        "energy": "ऊर्जा"
+        "energy": "ऊर्जा",
+        "unrest": "अशांति",
+        "cyber": "साइबर",
+        "maritime": "समुद्री",
+        "natural": "प्राकृतिक आपदाएं",
+        "aviation": "विमानन"
       },
       "loadMore": "और लोड करें",
       "loadingMore": "और लोड हो रहा है…",

@@ -318,7 +318,12 @@
         "all": "Tous",
         "conflict": "Conflit",
         "military": "Militaire",
-        "energy": "Énergie"
+        "energy": "Énergie",
+        "unrest": "Troubles civils",
+        "cyber": "Cyber",
+        "maritime": "Maritime",
+        "natural": "Risques naturels",
+        "aviation": "Aviation"
       },
       "loadMore": "Charger plus",
       "loadingMore": "Chargement en cours…",

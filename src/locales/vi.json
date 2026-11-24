@@ -314,7 +314,12 @@
         "all": "Tất cả",
         "conflict": "Xung đột",
         "military": "Quân sự",
-        "energy": "Năng lượng"
+        "energy": "Năng lượng",
+        "unrest": "Bất ổn",
+        "cyber": "An ninh mạng",
+        "maritime": "Hàng hải",
+        "natural": "Thảm họa thiên nhiên",
+        "aviation": "Hàng không"
       },
       "loadMore": "Tải thêm",
       "loadingMore": "Đang tải thêm…",

@@ -320,7 +320,12 @@
         "all": "Všechny",
         "conflict": "Konflikt",
         "military": "Vojenské",
-        "energy": "Energie"
+        "energy": "Energie",
+        "unrest": "Nepokoje",
+        "cyber": "Kybernetika",
+        "maritime": "Námořní",
+        "natural": "Přírodní hrozby",
+        "aviation": "Letectví"
       },
       "loadMore": "Načíst více",
       "loadingMore": "Načítám více…",

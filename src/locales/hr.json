@@ -387,7 +387,12 @@
         "all": "Sve",
         "conflict": "Sukobi",
         "military": "Vojna",
-        "energy": "Energija"
+        "energy": "Energija",
+        "unrest": "Nemiri",
+        "cyber": "Kibernetika",
+        "maritime": "Pomorstvo",
+        "natural": "Prirodne opasnosti",
+        "aviation": "Zrakoplovstvo"
       },
       "loadMore": "Učitaj više",
       "loadingMore": "Učitavanje…",

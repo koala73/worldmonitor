@@ -385,7 +385,12 @@
         "all": "همه",
         "conflict": "درگیری",
         "military": "نظامی",
-        "energy": "انرژی"
+        "energy": "انرژی",
+        "unrest": "ناآرامی",
+        "cyber": "سایبری",
+        "maritime": "دریایی",
+        "natural": "خطرات طبیعی",
+        "aviation": "هوانوردی"
       },
       "loadMore": "بارگذاری بیشتر",
       "loadingMore": "در حال بارگذاری بیشتر…",

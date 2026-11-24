@@ -316,7 +316,12 @@
         "all": "Tümü",
         "conflict": "Çatışma",
         "military": "Askeri",
-        "energy": "Enerji"
+        "energy": "Enerji",
+        "unrest": "İç çatışma",
+        "cyber": "Siber",
+        "maritime": "Denizcilik",
+        "natural": "Doğal afetler",
+        "aviation": "Havacılık"
       },
       "loadMore": "Daha fazla yükle",
       "loadingMore": "Daha fazla yükleniyor…",

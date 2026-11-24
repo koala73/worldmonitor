@@ -318,7 +318,12 @@
         "all": "Toate",
         "conflict": "Conflict",
         "military": "Militar",
-        "energy": "Energie"
+        "energy": "Energie",
+        "unrest": "Tulburări",
+        "cyber": "Cyber",
+        "maritime": "Maritim",
+        "natural": "Pericole naturale",
+        "aviation": "Aviație"
       },
       "loadMore": "Încărcați mai mult",
       "loadingMore": "Se încarcă mai mult…",

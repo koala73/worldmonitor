@@ -4503,7 +4503,12 @@
         "all": "Todos",
         "conflict": "Conflito",
         "military": "Militar",
-        "energy": "Energia"
+        "energy": "Energia",
+        "unrest": "Distúrbios",
+        "cyber": "Cibernética",
+        "maritime": "Marítima",
+        "natural": "Riscos naturais",
+        "aviation": "Aviação"
       },
       "loadMore": "Carregar mais",
       "loadingMore": "Carregando mais…",

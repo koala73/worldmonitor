@@ -314,7 +314,12 @@
         "all": "전체",
         "conflict": "분쟁",
         "military": "군사",
-        "energy": "에너지"
+        "energy": "에너지",
+        "unrest": "소요",
+        "cyber": "사이버",
+        "maritime": "해양",
+        "natural": "자연재해",
+        "aviation": "항공"
       },
       "loadMore": "더 로드",
       "loadingMore": "로드하는 중…",

@@ -4481,7 +4481,12 @@
         "all": "Alla",
         "conflict": "Konflikt",
         "military": "Militär",
-        "energy": "Energi"
+        "energy": "Energi",
+        "unrest": "Oro",
+        "cyber": "Cyber",
+        "maritime": "Maritim",
+        "natural": "Naturolyckor",
+        "aviation": "Luftfart"
       },
       "loadMore": "Läs in mer",
       "loadingMore": "Läser in mer…",

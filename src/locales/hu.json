@@ -385,7 +385,12 @@
         "all": "Összes",
         "conflict": "Konfliktus",
         "military": "Katonai",
-        "energy": "Energia"
+        "energy": "Energia",
+        "unrest": "Zavargások",
+        "cyber": "Kibernetikai",
+        "maritime": "Tengeri",
+        "natural": "Természeti veszélyek",
+        "aviation": "Légiforgalom"
       },
       "loadMore": "Továbbiak betöltése",
       "loadingMore": "Betöltés…",
