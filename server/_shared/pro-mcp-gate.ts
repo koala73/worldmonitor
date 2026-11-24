@@ -166,9 +166,10 @@ export function checkProMcpAccess(
     //
     // `retryable: false` is documented as true "ONLY for a lapse the provider
     // confirmed", so it is precisely the signal that we have stopped trying to
-    // collect. Dunning happens earlier, while the row is `on_hold`, and
-    // `isCoveringAt` (convex/payments/subscriptionHelpers.ts) keeps those users
-    // on FULL Pro throughout — so by the time a lapse is confirmed the billing
+    // collect. Dunning happens earlier, while the row is `on_hold`: a failed
+    // renewal keeps FULL Pro for its access grace (`accessEndAt` in
+    // convex/payments/subscriptionHelpers.ts), then its entitlement expires
+    // while retries continue — so by the time a lapse is confirmed the billing
     // attempts are over and the account is simply a free one.
     //
     // Every RETRYABLE state stays a billing_verification denial: renewal

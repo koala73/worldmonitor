@@ -776,6 +776,13 @@ export default defineSchema({
     // rows that entered on_hold before this field existed fall back
     // to `updatedAt` in the dunning scan.
     onHoldAt: v.optional(v.number()),
+    // End of paid access for a failed renewal (`accessEndAt` in
+    // payments/subscriptionHelpers.ts). Stamped only on the transition INTO
+    // on_hold, and only when no succeeded charge covers the current period;
+    // cleared on every return to active; kept through cancelled. Unset means
+    // access runs to currentPeriodEnd, which is also how holds that began
+    // before this field existed keep the access they were promised.
+    accessEndsAt: v.optional(v.number()),
     rawPayload: v.any(),
     updatedAt: v.number(),
     // Renewal-reconciliation bookkeeping (see

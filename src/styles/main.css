@@ -28115,6 +28115,21 @@ body.map-width-resizing {
 
 .manage-billing-btn:hover { color: var(--text); }
 
+/* Paused plan: updating the card is the only way back, so the button takes
+   the card's attention tone (the same text-on-surface pairing as the plan
+   name, which keeps contrast in every theme). */
+.manage-billing-btn-primary {
+  color: var(--billing-tone-attention);
+  border-color: color-mix(in srgb, var(--billing-tone-attention) 60%, transparent);
+}
+
+/* Hover strengthens the border only: a tone-tinted fill under tone-coloured
+   text drops the light theme below 4.5:1. */
+.manage-billing-btn-primary:hover {
+  color: var(--billing-tone-attention);
+  border-color: var(--billing-tone-attention);
+}
+
 /* ---- API Keys + Embeds Settings Tabs ---- */
 /* Two tabs, two credential classes, one layout. The selectors are aliased
    rather than duplicated so a spacing fix cannot land on one list and miss
