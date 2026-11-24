@@ -7,11 +7,16 @@
  * Lookup prefers the newest snapshot but falls back to older valid ones: a
  * single corrupt file must not fail the deploy. Only the absence of any valid
  * snapshot is fatal. Every failure names the file and the remediation.
+ *
+ * Run directly (`node scripts/github-stars-snapshot.mjs`) to check that the
+ * newest valid snapshot is fresh enough to publish.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { isMainModule } from './lib/main-module.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -22,15 +27,15 @@ const REPOSITORY = 'koala73/worldmonitor';
 
 // The committed snapshot is published as the homepage star count, and nothing
 // re-runs the freeze automatically except
-// .github/workflows/github-stars-refresh.yml — so bound the age here: a
-// forgotten or failed refresh must red the build rather than silently publish
-// a rotting figure under a live count (#7641). The lookup still falls back
-// past corrupt files to older valid ones, but only inside this bound: a missed
-// refresh degrades gracefully until the ceiling trips.
+// .github/workflows/github-stars-refresh.yml — so official publishing checks
+// the age: a forgotten or failed refresh must block the deploy rather than
+// silently publish a rotting figure under a live count (#7641). The build
+// itself renders any valid snapshot, so a pinned checkout such as a release
+// tag still builds after the ceiling passes (#11050).
 //
 // Sized to clear the MONTHLY refresh cadence with slack: the cron freezes on
-// the 1st, so this leaves ~2 weeks to merge a refresh PR before the build
-// reds. The ceiling and the cron are one contract: relaxing either without the
+// the 1st, so this leaves ~2 weeks to merge a refresh PR before publishing
+// stops. The ceiling and the cron are one contract: relaxing either without the
 // other reopens the gap, and a guard in tests/github-stars-snapshot.test.mjs
 // asserts they still agree.
 export const MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS = 45;
@@ -91,13 +96,19 @@ export function latestValidGithubStarsSnapshot(
       `no docs/snapshots/github-stars-*.json snapshot; run npm run freeze:github-stars`,
     );
   }
-  const ageDays = (Date.parse(`${currentUtcDate}T00:00:00Z`) - Date.parse(`${newestValid.capturedAt}T00:00:00Z`)) / 86_400_000;
-  if (ageDays > MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS) {
+  return newestValid;
+}
+
+export function assertGithubStarsSnapshotFresh(
+  snapshot,
+  currentUtcDate = new Date().toISOString().slice(0, 10),
+) {
+  const ageDays = (Date.parse(`${currentUtcDate}T00:00:00Z`) - Date.parse(`${snapshot.capturedAt}T00:00:00Z`)) / 86_400_000;
+  if (!(ageDays <= MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS)) {
     throw new Error(
-      `star snapshot ${newestValid.snapshotFile} is ${Math.round(ageDays)} days old (max ${MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS}); run npm run freeze:github-stars`,
+      `star snapshot ${snapshot.snapshotFile} is ${Math.round(ageDays)} days old (max ${MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS}); run npm run freeze:github-stars`,
     );
   }
-  return newestValid;
 }
 
 export function starsInteractionCounter(snapshot) {
@@ -137,4 +148,10 @@ export function injectStarsInteractionCounter(html, snapshot) {
     },
   );
   return { html: next, injected };
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
+  const snapshot = latestValidGithubStarsSnapshot(join(process.cwd(), 'docs/snapshots'));
+  assertGithubStarsSnapshotFresh(snapshot);
+  console.log(`GitHub star snapshot is fresh: ${snapshot.snapshotFile}`);
 }
