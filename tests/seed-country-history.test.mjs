@@ -134,6 +134,20 @@ test('revoked, aggregator, stale and future pool rows never enter the archive', 
   assert.deepEqual(us.topEvents.map(event => event.link), ['https://example.org/kept']);
 });
 
+test('a revoked link is dropped in either its raw or normalized spelling, and the normalized link is stored', () => {
+  const data = inputs();
+  data.countries = ['US'];
+  data.digest.categories.politics.items = [];
+  data.revoked = new Set(['https://example.com/story', 'https://EXAMPLE.org:443/raw']);
+  data.pool = { feedsTotal: 1, feedsCached: 1, items: [
+    poolRow('United States normalized revoked', 'https://EXAMPLE.com:443/story'),
+    poolRow('United States raw revoked', 'https://EXAMPLE.org:443/raw'),
+    poolRow('United States kept', 'https://EXAMPLE.net:443/kept'),
+  ] };
+  const [us] = composeCountrySnapshots(data);
+  assert.deepEqual(us.topEvents.map(event => event.link), ['https://example.net/kept']);
+});
+
 test('revoked digest links are dropped and an empty feed pool marks news partial', () => {
   const data = inputs();
   data.revoked = new Set(['https://example.com/1']);

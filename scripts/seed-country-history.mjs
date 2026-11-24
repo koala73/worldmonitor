@@ -132,18 +132,25 @@ export function composeCountrySnapshots({ countries, risk, ranking, digest, pool
   const scores = new Map(risk.ciiScores.map(row => [row.region, row]));
   const resilience = new Map([...ranking.items, ...ranking.greyedOut].map(row => [row.countryCode, row]));
   const usable = item => typeof item.title === 'string' && item.title && typeof item.source === 'string' && item.source
-    && typeof item.category === 'string' && storableLink(item.link) && !revoked.has(item.link)
+    && typeof item.category === 'string' && storableLink(item.link)
     && Number.isFinite(item.publishedAt) && item.publishedAt > 0 && item.publishedAt >= now - DAY && item.publishedAt <= now + FUTURE_TOLERANCE;
+  // As in the country headline RPC: a revocation may name the raw or the normalized
+  // spelling, and the archive stores the normalized one.
+  const normalizeLink = item => {
+    const url = URL.parse(item.link);
+    if (!url || url.username || url.password || revoked.has(item.link) || revoked.has(url.href) || !storableLink(url.href)) return null;
+    return { ...item, link: url.href };
+  };
   const prepare = item => ({ ...item, normalized: normalizeMentionText(item.title) });
   // The digest is the editorially ranked front page, so its headlines lead.
   const digestEvents = Object.entries(digest.categories).flatMap(([category, bucket]) => {
     if (!Array.isArray(bucket?.items)) throw new Error('country history malformed news bucket');
     return bucket.items.map(item => ({ ...item, category }));
-  }).filter(usable)
+  }).filter(usable).map(normalizeLink).filter(Boolean)
     .sort((a, b) => (b.importanceScore || 0) - (a.importanceScore || 0) || b.publishedAt - a.publishedAt)
     .map(prepare);
   // The feed pool holds every headline the feeds published, newest first.
-  const poolEvents = (pool?.items ?? []).filter(usable)
+  const poolEvents = (pool?.items ?? []).filter(usable).map(normalizeLink).filter(Boolean)
     .sort((a, b) => b.publishedAt - a.publishedAt || a.link.localeCompare(b.link))
     .map(prepare);
   const newsPartial = digest.coverage.state === 'partial' || !pool || pool.feedsCached === 0;
