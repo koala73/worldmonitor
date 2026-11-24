@@ -86,7 +86,7 @@ const poolRow = (title, link, extra = {}) => ({ title, link, source: 'Feed', cat
 
 test('headlines come from the whole feed pool, not only the front-page digest', () => {
   const data = inputs();
-  data.countries = ['AE', 'IE', 'MX', 'RU'];
+  data.countries = ['AE', 'IE', 'MX', 'RU', 'NE'];
   data.digest.categories.politics.items = [];
   data.pool = { feedsTotal: 2, feedsCached: 2, items: [
     poolRow('Somalia-UAE rupture deepens over port deal', 'https://example.org/ae'),
@@ -94,6 +94,8 @@ test('headlines come from the whole feed pool, not only the front-page digest', 
     poolRow('New Mexico approves uranium mine petition', 'https://example.org/nm'),
     poolRow('Russian strike kills 11 in residential block', 'https://example.org/ru'),
     poolRow('Emirati envoy meets Somali president', 'https://example.org/ae2'),
+    poolRow('Niger State killings: 35 dead in reprisals', 'https://example.org/ng'),
+    poolRow('Niger states it will reopen the border', 'https://example.org/ne'),
   ] };
   const rows = new Map(composeCountrySnapshots(data).map(row => [row.countryCode, row]));
   assert.deepEqual(rows.get('AE').topEvents.map(event => event.link), ['https://example.org/ae', 'https://example.org/ae2']);
@@ -101,6 +103,7 @@ test('headlines come from the whole feed pool, not only the front-page digest', 
   assert.deepEqual(rows.get('IE').topEvents, []);
   assert.deepEqual(rows.get('MX').topEvents, []);
   assert.deepEqual(rows.get('RU').topEvents.map(event => event.link), ['https://example.org/ru']);
+  assert.deepEqual(rows.get('NE').topEvents.map(event => event.link), ['https://example.org/ne']);
 });
 
 test('digest headlines rank first, then pool headlines from distinct publishers before repeats', () => {

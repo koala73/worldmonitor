@@ -112,7 +112,7 @@ function countryMatcher(countryCode) {
       .filter(([name, code]) => code !== countryCode && names.some(alias => ` ${normalizeMentionText(name)} `.includes(` ${alias} `)))
       .map(([name]) => normalizeMentionText(name)),
   ])];
-  const terms = { code: countryCode, names, demonyms: shared.demonyms, exclusions };
+  const terms = { code: countryCode, names, demonyms: shared.demonyms, exclusions, wordExclusions: shared.wordExclusions };
   const tokens = [...shared.demonyms, ...(countryCode === 'US' ? ['US'] : [])];
   // Cheap substring prefilter before the regex match: ~18k titles x ~200 countries.
   return item => (names.some(name => item.normalized.includes(name)) || tokens.some(token => item.title.includes(token)))
