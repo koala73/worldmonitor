@@ -136,16 +136,18 @@ async function scrapeFirecrawl(url, item, currency, fxRate) {
   const apiKey = process.env.FIRECRAWL_API_KEY || '';
   if (!apiKey) return null;
   try {
-    const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    const resp = await fetch('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'User-Agent': 'WorldMonitor-GroceryBasket/1.0',
       },
       body: JSON.stringify({
         url,
-        formats: ['extract'],
-        extract: { prompt: offerPrompt(item, currency), schema: OFFER_SCHEMA },
+        formats: [{ type: 'json', prompt: offerPrompt(item, currency), schema: OFFER_SCHEMA }],
+        // Don't publish cached prices as new observations.
+        maxAge: 0,
       }),
       signal: AbortSignal.timeout(30_000),
     });
@@ -155,7 +157,7 @@ async function scrapeFirecrawl(url, item, currency, fxRate) {
       return null;
     }
     const data = await resp.json();
-    const price = normalizeOffer(data?.data?.extract, item, currency, fxRate);
+    const price = normalizeOffer(data?.data?.json, item, currency, fxRate);
     return price === null ? null : { price, source: url };
   } catch (err) {
     console.warn(`    [Firecrawl] error: ${err.message}`);

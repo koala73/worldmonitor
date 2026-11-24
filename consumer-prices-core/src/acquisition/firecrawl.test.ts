@@ -17,7 +17,7 @@ describe('FirecrawlProvider.extract', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: true,
       data: {
-        extract: { productName: 'Full Fat Fresh Milk 1L', price: null },
+        json: { productName: 'Full Fat Fresh Milk 1L', price: null },
         metadata: { statusCode: 403 },
         markdown: '# 403 Forbidden',
       },
@@ -54,7 +54,7 @@ describe('FirecrawlProvider.extract', () => {
 
   it('wires an abort signal onto the extract request', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true, data: { extract: { price: 1 } } }), { status: 200 }),
+      new Response(JSON.stringify({ success: true, data: { json: { price: 1 } } }), { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -68,7 +68,7 @@ describe('FirecrawlProvider.extract', () => {
   // A successful call that found nothing is a PAGE outcome, not an outage —
   // returning empty lets the caller record `missing-price` and move to the next
   // candidate URL instead of accruing a provider-outage streak.
-  it('returns empty rather than throwing when a successful response has no extract', async () => {
+  it('returns empty rather than throwing when a successful response has no JSON extraction', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true, data: { metadata: {} } }), { status: 200 }),
     );
@@ -80,7 +80,7 @@ describe('FirecrawlProvider.extract', () => {
 
   it('sends a User-Agent on extract requests', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true, data: { extract: { price: 1 } } }), { status: 200 }),
+      new Response(JSON.stringify({ success: true, data: { json: { price: 1 } } }), { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -96,7 +96,7 @@ describe('FirecrawlProvider.extract', () => {
   it('requests markdown alongside extract and returns it as pageContent', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
-        JSON.stringify({ success: true, data: { extract: { price: 4.6 }, markdown: '# Bread\n\n$4.60' } }),
+        JSON.stringify({ success: true, data: { json: { price: 4.6 }, markdown: '# Bread\n\n$4.60' } }),
         { status: 200 },
       ),
     );
@@ -104,14 +104,27 @@ describe('FirecrawlProvider.extract', () => {
 
     const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/p/bread', schema);
 
-    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as { formats: string[] };
-    expect(body.formats).toEqual(['extract', 'markdown']);
-    expect(result.pageContent).toBe('# Bread\n\n$4.60');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.firecrawl.dev/v2/scrape');
+    const body = JSON.parse(String(init.body));
+    expect(body.formats).toEqual([
+      { type: 'json', schema: {
+        type: 'object',
+        properties: {
+          productName: { type: 'string', description: 'Product title' },
+          price: { type: 'number', description: 'Retail price' },
+        },
+      } },
+      'markdown',
+    ]);
+    expect(body).not.toHaveProperty('extract');
+    expect(body.maxAge).toBe(0);
+    expect(result).toMatchObject({ data: { price: 4.6 }, pageContent: '# Bread\n\n$4.60' });
   });
 
   it('omits pageContent when the response carries no usable markdown', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true, data: { extract: { price: 4.6 }, markdown: '   ' } }), {
+      new Response(JSON.stringify({ success: true, data: { json: { price: 4.6 }, markdown: '   ' } }), {
         status: 200,
       }),
     );
@@ -128,7 +141,7 @@ describe('FirecrawlProvider.extract', () => {
   ])('returns the page-declared product title from metadata %o', async (metadata, expected) => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { extract: { price: 4.6 }, metadata } }), { status: 200 })),
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { json: { price: 4.6 }, metadata } }), { status: 200 })),
     );
 
     const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/p/bread', schema);
@@ -139,7 +152,7 @@ describe('FirecrawlProvider.extract', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ success: true, data: { extract: { price: 4.6 }, metadata: { title: 'Fresh Milk' } } }), { status: 200 }),
+        new Response(JSON.stringify({ success: true, data: { json: { price: 4.6 }, metadata: { title: 'Fresh Milk' } } }), { status: 200 }),
       ),
     );
 
@@ -153,7 +166,7 @@ describe('FirecrawlProvider.extract', () => {
   // aborted before its successful response could arrive.
   it('forwards waitFor to the request body and extends the abort deadline by it', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true, data: { extract: { price: 1 } } }), { status: 200 }),
+      new Response(JSON.stringify({ success: true, data: { json: { price: 1 } } }), { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -168,7 +181,7 @@ describe('FirecrawlProvider.extract', () => {
 
   it('omits waitFor from the body when not configured', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true, data: { extract: { price: 1 } } }), { status: 200 }),
+      new Response(JSON.stringify({ success: true, data: { json: { price: 1 } } }), { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -176,5 +189,52 @@ describe('FirecrawlProvider.extract', () => {
 
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as { waitFor?: number };
     expect(body.waitFor).toBeUndefined();
+  });
+});
+
+describe('FirecrawlProvider fetch, search and validate', () => {
+  const base = 'https://api.firecrawl.dev/v2';
+  const url = 'https://retailer.example/p/bread';
+
+  it('reads HTML and markdown and validates through the v2 scrape endpoint', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({
+        success: true, data: { html: '<p>Bread</p>', markdown: 'Bread', metadata: { statusCode: 200 } },
+      }))
+      .mockResolvedValueOnce(Response.json({ success: true, data: { markdown: 'Example' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new FirecrawlProvider('test-key');
+
+    await expect(provider.fetch(url)).resolves.toMatchObject({
+      url, html: '<p>Bread</p>', markdown: 'Bread', metadata: { statusCode: 200 },
+    });
+    await expect(provider.validate()).resolves.toBe(true);
+    expect(fetchMock.mock.calls.map(([endpoint]) => endpoint)).toEqual([`${base}/scrape`, `${base}/scrape`]);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1].body))).toMatchObject({
+      url, formats: ['html', 'markdown'], maxAge: 0,
+    });
+  });
+
+  it('reads web matches from the v2 search response and retains domain scoping', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({
+      success: true,
+      data: { web: [
+        { url, title: 'Bread', description: 'Fresh bread', markdown: '# Breadcrumbs' },
+        { url: url + '/nutrition', title: 'Nutrition', markdown: 'Nutrition label' },
+      ] },
+    })).mockResolvedValueOnce(Response.json({ success: true, data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new FirecrawlProvider('test-key');
+
+    await expect(provider.search('bread', { numResults: 2, includeDomains: ['retailer.example'] })).resolves.toEqual([
+      { url, title: 'Bread', text: 'Fresh bread' },
+      { url: url + '/nutrition', title: 'Nutrition', text: 'Nutrition label' },
+    ]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${base}/search`);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1].body))).toMatchObject({
+      query: 'bread', limit: 2, includeDomains: ['retailer.example'],
+      scrapeOptions: { formats: ['markdown'], maxAge: 0 },
+    });
+    await expect(provider.search('missing')).resolves.toEqual([]);
   });
 });

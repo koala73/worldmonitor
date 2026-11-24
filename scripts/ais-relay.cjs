@@ -15581,10 +15581,10 @@ async function performWidgetPageRead(url, { signal } = {}) {
 
   if (WIDGET_FIRECRAWL_KEY && !signal?.aborted) {
     try {
-      const res = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      const res = await fetch('https://api.firecrawl.dev/v2/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor-WidgetAgent/1.0', Authorization: `Bearer ${WIDGET_FIRECRAWL_KEY}` },
-        body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true, timeout: 20_000 }),
+        body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true, maxAge: 0, timeout: 20_000 }),
         signal: within(25_000),
       });
       if (res.ok) {
