@@ -1153,8 +1153,12 @@ export async function fetchAndParseRss(
       const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0, attempt };
       // Our own deadline says nothing about the feed: caching it would make
       // the next builds serve an empty row for 5 minutes instead of fetching.
+      // Absent-only: a probe waits up to 16 s, and another build may have
+      // stored a healthy parse of this feed meanwhile.
       if (attempt.failure !== 'deadline-abort') {
-        await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+        await setCachedJsonIfAbsent(cacheKey, empty, CACHE_TTL_EMPTY_S);
+      } else {
+        scheduleFeedProbe(feed, variant);
       }
       return empty;
     }
@@ -1306,6 +1310,28 @@ async function withRefreshSlot<T>(task: () => Promise<T>): Promise<T> {
   }
 }
 
+// One probe per feed across concurrent builds; a probe takes at most 16 s.
+const FEED_PROBE_LOCK_S = 30;
+const feedProbes = new Set<Promise<void>>();
+
+/**
+ * A feed the digest deadline cut was never judged on its own timeouts, and a
+ * feed that started late in the build is cut before them every time. Fetch it
+ * again after the response with no deadline, so its own 8 s direct and relay
+ * timers decide: a feed that hangs is cached as failed, a healthy one is
+ * cached healthy, and later builds stop waiting on it (#11134).
+ */
+function scheduleFeedProbe(feed: ServerFeed, variant: string): void {
+  const probe = withRefreshSlot(async () => {
+    const locked = await setCachedJsonIfAbsent(`rss:feed-probe-lock:v1:${variant}:${feed.url}`, 1, FEED_PROBE_LOCK_S);
+    if (locked) await fetchAndParseRss(feed, variant, new AbortController().signal);
+  }).catch(() => undefined);
+  feedProbes.add(probe);
+  void probe.finally(() => feedProbes.delete(probe));
+  const ctx = getUsageScope()?.ctx;
+  if (ctx) ctx.waitUntil(probe);
+}
+
 function scheduleFeedRefresh(feed: ServerFeed, variant: string, cached: ParseResult): void {
   const refresh = withRefreshSlot(() => refreshFeedCache(feed, variant, cached)).catch(() => 'failed' as const);
   const ctx = getUsageScope()?.ctx;
@@ -1434,7 +1460,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     const blockLower = asciiLower(block);
     const forDigest = index < ITEMS_PER_FEED;
 
-    const title = extractTag(block, sitemap ? 'news:title' : 'title', blockLower);
+    const title = extractTitleTag(block, sitemap ? 'news:title' : 'title', blockLower);
     if (!title) continue;
 
     if (forDigest) parsedTotal++;
@@ -1679,6 +1705,16 @@ function extractDescription(
   if (normalizeForDescriptionEquality(best) === normalizeForDescriptionEquality(title)) return '';
 
   return best.slice(0, MAX_DESCRIPTION_LEN);
+}
+
+// Headlines are displayed as text, and some publishers (The Korea Herald) put
+// HTML-escaped text inside CDATA: "Sudan&apos;s capital". Left encoded, it took
+// a different story key from the plain wording, and an alert already sent went
+// out again on 2026-11-23. A bare `&` is not an entity and stays as it is.
+function extractTitleTag(xml: string, tag: string, lower = asciiLower(xml)): string {
+  const cdata = matchCdataTag(xml, lower, tag);
+  if (cdata !== null) return decodeXmlEntities(cdata.trim());
+  return extractTag(xml, tag, lower);
 }
 
 function extractTag(xml: string, tag: string, lower = asciiLower(xml)): string {
@@ -4267,6 +4303,9 @@ async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, dead
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  settleFeedProbes: async (): Promise<void> => {
+    while (feedProbes.size > 0) await Promise.all(feedProbes);
+  },
   topFeedCapDrops,
   recordPublisherCoverage,
   writeCoverageLedger,

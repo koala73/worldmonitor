@@ -121,10 +121,9 @@ describe('Railway service registry coverage', () => {
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
       'IRAN_EVENTS_ENABLED',
-      'R2_ACCOUNT_ID',
-      'R2_BOOTSTRAP_BUCKET',
-      'R2_BOOTSTRAP_ACCESS_KEY_ID',
-      'R2_BOOTSTRAP_SECRET_ACCESS_KEY',
+      'KV_BOOTSTRAP_ACCOUNT_ID',
+      'KV_BOOTSTRAP_NAMESPACE_ID',
+      'KV_BOOTSTRAP_WRITE_TOKEN',
     ]);
     assert.deepEqual(
       publisher.watchPatterns,

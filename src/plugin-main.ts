@@ -26,6 +26,7 @@ import { newsPanelAdmissionSchema, type NewsPanelAdmission } from '../shared/pan
 import { hostContextFromInitialize, layoutFlags, mergeHostContext, type PluginHostContext } from './plugin-host-context';
 import { applyHostLayout, createExpandButton, EXPAND_REFUSED } from './plugin-display-mode';
 import { loaderHostChannel } from './plugin-host-channel';
+import { timeRangeCutoff } from '@/utils/time-range';
 
 const DIGEST_RELOAD_FAILED = 'The news feed could not be loaded. Ask for the dashboard again.';
 
@@ -253,13 +254,12 @@ function mountPlugin(): void {
       }
       const allItems = bucket.items.map(protoItemToNewsItem);
       news.push(...allItems);
-      const hours = { '1h': 1, '6h': 6, '24h': 24, '48h': 48, '7d': 168, all: Infinity }[view.time_range ?? 'all'];
-      const cutoff = Date.now() - hours * 3_600_000;
+      const cutoff = timeRangeCutoff(view.time_range ?? 'all');
       const terms = view.country ? countryMentionTerms(view.country) : null;
       const items = allItems.filter(item =>
         (!view.source || item.source === view.source) &&
         (!terms || mentionsCountry(`${item.title} ${item.locationName ?? ''}`, terms)) &&
-        (hours === Infinity || (!item.pubDateMissing && item.pubDate.getTime() >= cutoff)));
+        (cutoff == null || (!item.pubDateMissing && item.pubDate.getTime() >= cutoff)));
       panel.getElement().hidden = Boolean(view.category && view.category !== category);
       panel.setRefreshDegraded(digest.coverage?.servedStale === true);
       if (items.length || !allItems.length) panel.renderNews(items);

@@ -1400,7 +1400,7 @@
       "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud",
       "briefStoryDetails": "Details van het bericht ({{count}})",
       "streamIdleStopLabel": "Livevideostream stoppen bij inactiviteit",
-      "streamIdleStopDesc": "Stopt Live News en Live Webcams na deze periode zonder activiteit en toont een melding in het paneel.",
+      "streamIdleStopDesc": "Stopt Live News en Live Webcams na deze periode zonder activiteit en toont een melding in het paneel. Live News blijft spelen zolang het geluid aanstaat.",
       "streamIdleStopNever": "Nooit",
       "liveNewsAutoplayLabel": "Automatisch afspelen van live nieuws",
       "liveNewsAutoplayDesc": "Start de live nieuwsvideo automatisch, zonder geluid, zodra deze op het scherm verschijnt. Zet dit uit om de video alleen te laden wanneer je deze zelf start."

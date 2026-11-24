@@ -464,7 +464,7 @@ World Monitor publishes 1358 named providers across 27 source catalog pages. Eac
 <a id="corpus-comparisons"></a>
 ## Comparisons
 
-A comparison hub plus 12 head-to-head and category pages. Every page uses the same 11-column matrix (Product, Price, Update latency, Domains covered, Signup required, REST API, MCP server, Open source, Source count & licensing, Historical archive, Best for), states what each competitor wins, and answers the questions engines lift verbatim. Prices were checked at publication and can change.
+A comparison hub plus 12 head-to-head and category pages. Each comparison matrix starts with 11 common columns (Product, Price, Update latency, Domains covered, Signup required, REST API, MCP server, Open source, Source count & licensing, Historical archive, Best for). The shortlist adds 3 columns (Pricing model, Free tier or trial, Seats / team plan). The pages explain where competitors excel and answer common questions. Prices were checked at publication and can change.
 
 - [Compare World Monitor](https://www.worldmonitor.app/compare/): Compare World Monitor with Liveuamap, ACLED, GDELT, Dataminr, Recorded Future, and more: one master matrix, honest concessions, and FAQs.
 - [Liveuamap Alternatives](https://www.worldmonitor.app/compare/liveuamap-alternatives/): Eleven-column matrix comparing World Monitor with Liveuamap, Deep State Map, ACLED, ConflictZone.io, ISW, UNOSAT and ICG CrisisWatch on price, latency, API access and licensing, with the cells each competitor wins.

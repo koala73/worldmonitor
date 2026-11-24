@@ -46,6 +46,7 @@ function vectorFor(text) {
 let relay;
 let originalFetch;
 let originalKey;
+let originalAnthropicKey;
 let seq = 0;
 
 before(() => {
@@ -55,7 +56,11 @@ before(() => {
 beforeEach(() => {
   originalFetch = globalThis.fetch;
   originalKey = process.env.OPENROUTER_API_KEY;
+  originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
   process.env.OPENROUTER_API_KEY = 'stub-openrouter';
+  // Each test that wants the direct route sets it; a developer's own key must
+  // not reach a stubbed fetch.
+  delete process.env.ANTHROPIC_API_KEY;
   relay.__resetBlockedLinkCacheForTests();
 });
 
@@ -63,6 +68,8 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalKey === undefined) delete process.env.OPENROUTER_API_KEY;
   else process.env.OPENROUTER_API_KEY = originalKey;
+  if (originalAnthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+  else process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
 });
 
 function alert(title) {
@@ -77,15 +84,15 @@ function alert(title) {
   };
 }
 
-function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStatus = 200, coverage = {} } = {}) {
+function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStatus = 200, anthropicVerdict = null, anthropicStatus = 200, coverage = {} } = {}) {
   const zsets = new Map();
   // Publisher history per exact headline, as the digest writes it.
   for (const [title, families] of Object.entries(coverage)) {
     zsets.set(newsPublisherCoverageKey(title), new Map(families.map(f => [f, Date.now() - 60_000])));
   }
   const sets = new Map();
-  const calls = { sends: [], judge: [], judgeBodies: [], embed: 0, anchorWrites: [] };
-  const state = { users, verdict, judgeStatus };
+  const calls = { sends: [], judge: [], judgeBodies: [], anthropicBodies: [], embed: 0, anchorWrites: [] };
+  const state = { users, verdict, judgeStatus, anthropicVerdict, anthropicStatus };
   const logs = [];
   const orig = { log: console.log, warn: console.warn, info: console.info, error: console.error };
   console.log = (...a) => logs.push(a.join(' '));
@@ -175,6 +182,18 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
       // An array gives each judge call its own reply, in order.
       const content = Array.isArray(state.verdict) ? state.verdict.shift() : state.verdict;
       return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content }, finish_reason: 'stop' }] }) };
+    }
+    if (host === 'api.anthropic.com') {
+      const body = JSON.parse(String(opts.body));
+      calls.anthropicBodies.push(body);
+      if (state.anthropicStatus !== 200) {
+        return new Response(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'down' } }), { status: state.anthropicStatus, headers: { 'content-type': 'application/json' } });
+      }
+      const text = Array.isArray(state.anthropicVerdict) ? state.anthropicVerdict.shift() : state.anthropicVerdict;
+      return new Response(JSON.stringify({
+        id: 'msg_1', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text }],
+        stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 40, output_tokens: 6 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
     if (path === '/pipeline') {
       const body = JSON.parse(opts.body);
@@ -409,6 +428,40 @@ describe('reworded news alerts (#10916)', () => {
     });
   }
 
+  // 2026-11-23 05:46Z: the OpenRouter account ran out of credit, every judge
+  // call returned 402, and every rewrite went out again for the rest of the
+  // morning (a 0.99 match on the Sudan drone strikes among them).
+  it('asks Claude directly when OpenRouter refuses the judge', async () => {
+    const h = installHarness({ judgeStatus: 402, anthropicVerdict: '{"same": 1}' });
+    process.env.ANTHROPIC_API_KEY = 'stub-anthropic';
+    try {
+      await relay.processEvent(alert(CNN));
+      await relay.processEvent(alert(SUN));
+      assert.deepEqual(h.sentTo(), ['chat-user-1'], 'the rewrite must not alert again');
+      assert.equal(h.calls.judgeBodies.length, 2, 'OpenRouter is still tried first');
+      assert.equal(h.calls.anthropicBodies.length, 2, 'both replies come from the direct route');
+      const body = h.calls.anthropicBodies[0];
+      assert.equal(body.model, 'claude-sonnet-5-5');
+      assert.deepEqual(body.output_config, {
+        effort: 'low',
+        format: { type: 'json_schema', schema: { type: 'object', properties: { same: { type: 'integer' } }, required: ['same'], additionalProperties: false } },
+      });
+      assert.equal(h.record().skippedUsers, 1);
+      assert.equal(h.record().error, null);
+    } finally { h.restore(); }
+  });
+
+  it('sends when OpenRouter and the direct route both fail', async () => {
+    const h = installHarness({ judgeStatus: 402, anthropicStatus: 500 });
+    process.env.ANTHROPIC_API_KEY = 'stub-anthropic';
+    try {
+      await relay.processEvent(alert(CNN));
+      await relay.processEvent(alert(SUN));
+      assert.equal(h.calls.sends.length, 2);
+      assert.equal(h.record().error, 'judge returned nothing');
+    } finally { h.restore(); }
+  });
+
   it('sends every alert, and asks nothing, without the OpenRouter key', async () => {
     const h = installHarness();
     delete process.env.OPENROUTER_API_KEY;
@@ -431,5 +484,73 @@ describe('reworded news alerts (#10916)', () => {
       assert.equal(h.calls.judge.length, 0);
       assert.equal(h.calls.embed, 0, 'an anchored story must not be embedded for a sighting nobody realtime gets');
     } finally { h.restore(); }
+  });
+});
+
+describe('rewrite judge deadline', () => {
+  // A reply after the check's deadline cannot change delivery, so the direct
+  // route must not start once the check has given up.
+  it('does not ask Claude directly after the check has expired', async () => {
+    const lib = await import('../scripts/lib/news-alert-coverage.mjs');
+    process.env.ANTHROPIC_API_KEY = 'stub-anthropic';
+    const hosts = [];
+    const aborted = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      const host = new URL(String(url)).hostname;
+      hosts.push(host);
+      if (host === 'openrouter.ai') {
+        opts.signal?.addEventListener('abort', () => aborted.push(host));
+        // Hangs until the per-provider timeout aborts it.
+        return new Promise((_, reject) => opts.signal?.addEventListener('abort', () => reject(opts.signal.reason)));
+      }
+      return new Response('{}', { status: 500 });
+    };
+    const now = Date.now();
+    const anchor = JSON.stringify({ id: 'full:earlier', title: SUN });
+    const pipeline = async () => [{ result: [anchor, String(now - 60_000)] }];
+    const embed = async titles => titles.map(() => vectorFor('dirty bomb'));
+    const orig = { log: console.log, warn: console.warn };
+    console.log = () => {}; console.warn = () => {};
+    try {
+      const decision = await lib.findRewriteAnchor(alert(CNN), { now, pipeline, embed, deadlineMs: 300 });
+      assert.equal(decision.error, 'deadline');
+      // The OpenRouter attempts are cut at the check's deadline, not at their
+      // own 8 s timeout, and the chain then starts nothing more.
+      await new Promise(done => setTimeout(done, 1_000));
+      assert.equal(aborted.length, 2, 'both OpenRouter attempts end at the deadline');
+      assert.equal(hosts.includes('api.anthropic.com'), false, `hosts: ${hosts.join(',')}`);
+    } finally { Object.assign(console, orig); }
+  });
+
+  // The judge's calls abort at deadlineAt, the instant the check's own timer
+  // fires, so either can finish first. Empty replies that come back at or past
+  // the deadline are the deadline's doing; earlier ones are the judge's. The
+  // timer here is far off and the judge moves the clock, so neither case
+  // depends on timer order.
+  it('labels empty replies by the clock: deadline once it has passed, the judge before it', async () => {
+    const lib = await import('../scripts/lib/news-alert-coverage.mjs');
+    const realNow = Date.now;
+    const now = realNow();
+    const anchor = JSON.stringify({ id: 'full:earlier', title: SUN });
+    const pipeline = async () => [{ result: [anchor, String(now - 60_000)] }];
+    const embed = async titles => titles.map(() => vectorFor('dirty bomb'));
+    const orig = { log: console.log, warn: console.warn };
+    console.log = () => {}; console.warn = () => {};
+    try {
+      const deadlineMs = 60_000;
+      const late = await lib.findRewriteAnchor(alert(CNN), {
+        now, pipeline, embed, deadlineMs,
+        judge: async (_system, _user, { deadlineAt }) => { Date.now = () => deadlineAt; return null; },
+      });
+      Date.now = realNow;
+      assert.equal(late.error, 'deadline');
+      assert.equal(late.judged, true);
+
+      const early = await lib.findRewriteAnchor(alert(CNN), { now, pipeline, embed, deadlineMs, judge: async () => null });
+      assert.equal(early.error, 'judge returned nothing');
+    } finally {
+      Date.now = realNow;
+      Object.assign(console, orig);
+    }
   });
 });

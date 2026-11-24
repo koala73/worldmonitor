@@ -3180,8 +3180,10 @@ export class EventHandlerManager implements AppModule {
       isFullscreen = !isFullscreen;
       mapSection.classList.toggle('live-news-fullscreen', isFullscreen);
       document.body.classList.toggle('live-news-fullscreen-active', isFullscreen);
+      document.body.classList.toggle('map-fullscreen-active', isFullscreen);
       setTrustedHtml(btn, trustedHtml(isFullscreen ? shrinkSvg : expandSvg, "legacy direct innerHTML migration"));
       btn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
+      this.mobilePrimaryNav.syncMapFullscreen(isFullscreen);
       this.syncMapAfterLayoutChange();
     };
 

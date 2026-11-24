@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 5192332
+    "raw": 5202522
   },
   "chunks": {
     "LiveBriefCard": {
@@ -108,6 +108,10 @@
     },
     "sentry": {
       "raw": 86676,
+      "files": 1
+    },
+    "story-dedupe": {
+      "raw": 10190,
       "files": 1
     },
     "sv": {

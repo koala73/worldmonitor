@@ -15,12 +15,15 @@ export type BillingVerificationCode =
   // BillingVerificationStatus union — Convex never produces it.
   | 'entitlement_verification_unavailable';
 
-const BILLING_VERIFICATION_CODES: ReadonlySet<string> = new Set([
-  'subscription_lapsed',
-  'renewal_verification_pending',
-  'renewal_verification_failed',
-  'entitlement_verification_unavailable',
-] satisfies BillingVerificationCode[]);
+// A keyed record, so a status added to the union fails typecheck here instead
+// of reaching dispatch as a generic -32603.
+const BILLING_VERIFICATION_CODES: ReadonlySet<string> = new Set(Object.keys({
+  subscription_lapsed: true,
+  payment_failed: true,
+  renewal_verification_pending: true,
+  renewal_verification_failed: true,
+  entitlement_verification_unavailable: true,
+} satisfies Record<BillingVerificationCode, true>));
 
 export class BillingDenialError extends Error {
   readonly operation: string;

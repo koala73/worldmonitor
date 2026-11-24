@@ -90,10 +90,7 @@ function serveFromKv(env, ctx, { tier, body, cf, started, corsHeaders }) {
   // (#7047).
   //
   // This DOES diverge from the origin fallback, which serves TIER_CACHE's `max-age=60` (fast) /
-  // `max-age=300` (slow) for the same URL — considered, not missed. Do not justify it by what
-  // production currently returns from the origin: that is also `no-store` today, but only because
-  // finishBootstrapR2ShadowResponse overrides it while BOOTSTRAP_R2_SHADOW_MEASURE=1, a temporary
-  // U3a flag. The reasons above stand on their own once that flag is off.
+  // `max-age=300` (slow) for the same URL — considered, not missed, for the reasons above.
   return new Response(body, {
     status: 200,
     headers: {

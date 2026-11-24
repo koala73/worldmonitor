@@ -165,6 +165,36 @@ it('recovers a shallow build checkout without changing its selected revision', (
   }
 }));
 
+it('dates a renamed page in a blobless CI checkout without fetching from its remote (#10015)', () => withDateFixture((root) => {
+  // CI checks out with `filter: blob:none`. Rename detection compares file
+  // contents, so it fetched blobs from github.com mid-test, and a 503 there
+  // failed the unit shard. An unreachable remote here stands in for that 503.
+  writeFileSync(join(root, 'docs/guide.mdx'), '# Guide\nline one\nline two\nline three\n');
+  execFileSync('git', ['add', 'docs/guide.mdx'], { cwd: root, env: isolatedGitEnv() });
+  execFileSync('git', ['commit', '--quiet', '-m', 'docs: add guide'], {
+    cwd: root,
+    env: isolatedGitEnv({ GIT_AUTHOR_DATE: '2026-08-01T12:00:00Z', GIT_COMMITTER_DATE: '2026-08-01T12:00:00Z' }),
+  });
+  execFileSync('git', ['mv', 'docs/guide.mdx', 'docs/handbook.mdx'], { cwd: root, env: isolatedGitEnv() });
+  writeFileSync(join(root, 'docs/handbook.mdx'), '# Guide\nline one\nline two\nline three\nline four\n');
+  execFileSync('git', ['commit', '--quiet', '-am', 'docs: rename guide to handbook'], {
+    cwd: root,
+    env: isolatedGitEnv({ GIT_AUTHOR_DATE: '2026-08-03T12:00:00Z', GIT_COMMITTER_DATE: '2026-08-03T12:00:00Z' }),
+  });
+  execFileSync('git', ['config', 'uploadpack.allowFilter', 'true'], { cwd: root, env: isolatedGitEnv() });
+  const blobless = mkdtempSync(join(tmpdir(), 'wm-docs-dates-blobless-'));
+  try {
+    execFileSync('git', ['clone', '--quiet', '--filter=blob:none', pathToFileURL(root).href, blobless], { env: isolatedGitEnv() });
+    execFileSync('git', ['remote', 'set-url', 'origin', join(blobless, 'unreachable-origin')], { cwd: blobless, env: isolatedGitEnv() });
+    generate(blobless);
+    const output = readFileSync(join(blobless, OUTPUT), 'utf8');
+    assert.match(output, /"handbook": \{"datePublished":"2026-08-03","dateModified":"2026-08-03"\}/);
+    assert.doesNotMatch(output, /"guide"/);
+  } finally {
+    rmSync(blobless, { recursive: true, force: true });
+  }
+}));
+
 it('rejects missing history and corrupted generated dates', () => withDateFixture((root) => {
   generate(root);
   const good = readFileSync(join(root, OUTPUT), 'utf8');

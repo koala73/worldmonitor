@@ -158,6 +158,56 @@ describe('SVG map centers requested while hidden', () => {
     expect(leaks).toEqual([]);
   });
 
+  describe('base re-render at a new size', () => {
+    type ResizeMap = CenterMap & {
+      baseRendered: boolean;
+      baseWidth: number;
+      baseHeight: number;
+      panBasis: { width: number; height: number } | null;
+      keepCenterAcrossResize: (width: number, height: number) => void;
+    };
+    // The pan is pixels of the size it was set for; return the place it draws at the centre, unwrapped.
+    const centredAt = (map: ResizeMap, width: number, height: number) => {
+      const pxPerDegree = map.getProjection(width, height).scale() * Math.PI / 180;
+      return { lon: -map.state.pan.x / pxPerDegree, lat: 8 + map.state.pan.y / pxPerDegree };
+    };
+    const renderedAt = (width: number, height: number) => {
+      const map = createMap().map as ResizeMap;
+      Object.assign(map, { baseRendered: true, baseWidth: width, baseHeight: height, panBasis: null });
+      return map;
+    };
+
+    it('keeps the same place centred when the width changes', () => {
+      const map = renderedAt(388, 221);
+      const pos = map.getProjection(388, 221)([135, -25])!;
+      map.state.pan = { x: 194 - pos[0], y: 110.5 - pos[1] };
+      map.keepCenterAcrossResize(320, 221);
+      expect(centredAt(map, 320, 221).lon).toBeCloseTo(135, 6);
+      expect(centredAt(map, 320, 221).lat).toBeCloseTo(-25, 6);
+    });
+
+    it('does not jump a world width when the centre was panned past the antimeridian', () => {
+      // Panned east of the map's edge (clampPan allows it once zoom > 1.25), then the phone URL bar changes the height.
+      const map = renderedAt(388, 221);
+      map.state.pan = { x: -234, y: 0 };
+      const before = centredAt(map, 388, 221);
+      expect(before.lon).toBeGreaterThan(180);
+      map.keepCenterAcrossResize(388, 180);
+      expect(centredAt(map, 388, 180).lon).toBeCloseTo(before.lon, 6);
+      expect(map.state.pan.x).toBeCloseTo(-234, 6);
+    });
+
+    it('rescales the pan when the base was invalidated (theme change, topology load) before the resize render', () => {
+      const map = renderedAt(388, 221);
+      map.baseRendered = false;
+      const pos = map.getProjection(388, 221)([105, 35])!;
+      map.state.pan = { x: 194 - pos[0], y: 110.5 - pos[1] };
+      map.keepCenterAcrossResize(320, 221);
+      expect(centredAt(map, 320, 221).lon).toBeCloseTo(105, 6);
+      expect(centredAt(map, 320, 221).lat).toBeCloseTo(35, 6);
+    });
+  });
+
   it('keeps a point near the antimeridian in the drawn world when the offset would push the centre past it', () => {
     const { map, size, reveal } = createMap();
     reveal();

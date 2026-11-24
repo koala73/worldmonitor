@@ -1701,7 +1701,7 @@
       "briefFreshness": "تولید شده {{minutes}}m پیش · جدیدترین منبع {{hours}}h قدیمی",
       "briefStoryDetails": "جزئیات خبر ({{count}})",
       "streamIdleStopLabel": "توقف ویدیوی زنده هنگام عدم فعالیت",
-      "streamIdleStopDesc": "پخش Live News و Live Webcams را پس از این مدت بدون فعالیت متوقف می‌کند و یک پیام را در پنل نمایش می‌دهد.",
+      "streamIdleStopDesc": "پخش Live News و Live Webcams را پس از این مدت بدون فعالیت متوقف می‌کند و یک پیام را در پنل نمایش می‌دهد. Live News تا وقتی صدایش روشن است به پخش ادامه می‌دهد.",
       "streamIdleStopNever": "هرگز",
       "liveNewsAutoplayLabel": "پخش خودکار اخبار زندهٔ",
       "liveNewsAutoplayDesc": "ویدیوی اخبار زندهٔ را بدون صدا به محض ظاهر شدن روی صفحه شروع می‌کند. این گزینه را خاموش کنید تا ویدیو تنها زمانی بارگذاری شود که خود آن را شروع کنید."
