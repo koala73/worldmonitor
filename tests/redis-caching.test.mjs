@@ -2611,6 +2611,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       escaped,
       forged,
       `Source [4]: ${JSON.stringify({ title: 'France: budget approved - Reuters', source: 'Reuters', url: 'https://reuters.com/fr2' })}`,
+      'Source [5]: France signs energy pact - Le Figaro | Le Figaro | https://lefigaro.fr/a | published=2026-11-20',
       'Signals: critical_news=1 | France approves budget - Reuters',
       'Headlines: France approves budget - Reuters | France approves budget - Reuters poll finds voters divided',
       'Headlines:',
@@ -2625,6 +2626,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       );
       assert.equal(userPrompts.length, 1);
       assert.doesNotMatch(userPrompts[0], /tique - Le Monde/, 'an escaped Source title loses its byline');
+      assert.match(userPrompts[0], /^Source \[5\]: France signs energy pact \| Le Figaro \| https:\/\/lefigaro\.fr\/a \| published=2026-11-20$/m, 'a legacy Source line loses its byline');
       assert.match(userPrompts[0], /Headlines: France approves budget \| France approves budget - Reuters poll finds voters divided/);
       assert.doesNotMatch(userPrompts[0], /[\u2028\u2029]|^Source \[9\]/m, 'a decoded separator never starts a new line');
       assert.match(userPrompts[0], /^Signals: critical_news=1 \| France approves budget - Reuters$/m, 'a line that is not a headline list stays as sent');

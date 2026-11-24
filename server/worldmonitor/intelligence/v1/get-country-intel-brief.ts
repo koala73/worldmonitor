@@ -266,7 +266,9 @@ function storyTitle(source: CountryIntelBriefSource): string {
 }
 
 const CONTEXT_LABEL_LINE_RE = /^[A-Za-z][A-Za-z _-]{0,40}: /;
-const SOURCE_CONTEXT_LINE_RE = /^(Source \[\d{1,2}\]:\s*)(\{.*\})$/gm;
+const SOURCE_CONTEXT_LINE_RE = /^(Source \[\d{1,2}\]:\s*)(.+)$/gm;
+// The pre-JSON Source format: title | source | url [| published=...].
+const LEGACY_SOURCE_PAYLOAD_RE = /^(.+?)\s*\|\s*(.+?)\s*\|\s*(https?:\/\/\S+)(?:\s*\|\s*published=([^\n|]+))?$/;
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -274,12 +276,17 @@ function escapeRegExp(text: string): string {
 
 // Non-English briefs read the raw context, where each source title appears in
 // its Source line and again in the headline lines. Source lines are rewritten
-// from their parsed JSON, so escaped titles match; a headline is rewritten only
-// when the whole headline is a known source title.
+// from their parsed JSON or legacy fields, so escaped titles match; a headline
+// is rewritten only when the whole headline is a known source title.
 function withoutSourceBylines(context: string, sources: CountryIntelBriefSource[]): string {
-  let out = context.replace(SOURCE_CONTEXT_LINE_RE, (line, prefix: string, json: string) => {
+  let out = context.replace(SOURCE_CONTEXT_LINE_RE, (line, prefix: string, body: string) => {
+    if (!body.startsWith('{')) {
+      const legacy = body.match(LEGACY_SOURCE_PAYLOAD_RE);
+      if (!legacy) return line;
+      return `${prefix}${headlineWithoutPublisher(legacy[1]!, legacy[3]!, legacy[2]!)}${body.slice(legacy[1]!.length)}`;
+    }
     try {
-      const payload = JSON.parse(json) as Record<string, unknown>;
+      const payload = JSON.parse(body) as Record<string, unknown>;
       if (typeof payload?.title !== 'string') return line;
       const title = headlineWithoutPublisher(payload.title, String(payload.url ?? ''), String(payload.source ?? ''));
       // Decoding can turn an escaped line separator into a raw one; keep the line single.
@@ -355,7 +362,7 @@ export function parseCountryBriefSources(contextSnapshot: string): CountryIntelB
     }
 
     if (!candidate) {
-      const legacy = rawPayload.match(/^(.+?)\s*\|\s*(.+?)\s*\|\s*(https?:\/\/\S+)(?:\s*\|\s*published=([^\n|]+))?$/);
+      const legacy = rawPayload.match(LEGACY_SOURCE_PAYLOAD_RE);
       if (legacy) {
         candidate = {
           title: legacy[1],
