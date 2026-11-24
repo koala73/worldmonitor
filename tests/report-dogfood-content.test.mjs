@@ -34,6 +34,11 @@ describe('panel content shard plan', () => {
     assert.deepEqual(plan.shards.map((shard) => shard.panels), [['cii']]);
   });
 
+  it('fails when a requested monitor yields no catalog, so a slow boot cannot drop it from the review', () => {
+    assert.throws(() => planShards([catalog('www', ['markets']), catalog('energy', [])]), /no panel catalog was read from energy/);
+    assert.throws(() => planShards([catalog('www', ['map'])]), /no panel catalog/);
+  });
+
   it('refuses a host that is not a worldmonitor.app monitor', () => {
     assert.throws(() => planShards([{ host: 'www', target: 'https://evil.example', panels: [] }]), /bad host/);
   });
@@ -102,7 +107,38 @@ describe('panel content review issue', () => {
     assert.ok(contentIssueBody(merged, { date: '2026-11-24' }).length <= MAX_ISSUE_BODY_CHARS);
   });
 
-  it('names one issue per day', () => {
+  it('names one issue per day, and gives a filtered run its own issue so it cannot replace the full one', () => {
     assert.equal(contentIssueTitle('2026-11-24'), 'Panel content review: 2026-11-24');
+    assert.equal(contentIssueTitle('2026-11-24', { partialRunId: '123' }), 'Panel content review: 2026-11-24 (partial, run 123)');
+  });
+
+  it('does not count a findings file of the wrong shape as a report', () => {
+    const merged = mergeShards(plan, { 'www-1': { findings: [] }, 'www-2': { findings: { panels: [], findings: [] } } });
+    assert.deepEqual(merged.shards.map((shard) => shard.report), [false, true]);
+  });
+
+  it('renders agent fields that are not text as absent instead of failing the whole report', () => {
+    const merged = mergeShards(plan, {
+      'www-1': { findings: { panels: [{ id: 'markets', status: 'suspect', note: { toString: 1 } }], findings: [finding({ quote: { toString: 1 }, title: 'T' })] } },
+    });
+    assert.doesNotThrow(() => contentIssueBody(merged, { date: '2026-11-24' }));
+  });
+
+  it('keeps the totals and every non-ok panel when the body must shrink, and never cuts through a code span', () => {
+    const ids = Array.from({ length: 400 }, (_, i) => `panel-${i}`);
+    const big = planShards([catalog('www', ids)], { perShard: 400 });
+    const long = `${'y'.repeat(3000)} @koala73 <img src=x>`;
+    const merged = mergeShards(big, {
+      'www-1': { findings: {
+        panels: ids.map((id, i) => ({ id, status: i % 3 === 0 ? 'ok' : 'suspect', note: long, checked: long })),
+        findings: ids.map((id) => finding({ panel: id, title: long, quote: long })),
+      } },
+    });
+    const body = contentIssueBody(merged, { date: '2026-11-24' });
+    assert.ok(body.length <= MAX_ISSUE_BODY_CHARS);
+    assert.match(body, /134 ok, 266 suspect/);
+    for (const [i, id] of ids.entries()) if (i % 3 !== 0) assert.ok(body.includes(`\`${id}\``), id);
+    for (const line of body.split('\n')) assert.equal((line.match(/`/g) ?? []).length % 2, 0, line.slice(0, 80));
+    assert.doesNotMatch(outsideCode(body), /@koala73|<img/);
   });
 });

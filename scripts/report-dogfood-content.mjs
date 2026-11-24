@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Turns the panel content run's shards (scripts/dogfood/content-prompt.md) into one review issue per day,
-// "Panel content review: <date>". A rerun on the same day rewrites that issue.
+// "Panel content review: <date>". A rerun on the same day rewrites that issue; a run filtered by host or panel
+// gets its own "(partial, run <id>)" issue, so it never replaces the full run's.
 //
 // The plan (which panels each shard had to check) comes from the workflow's plan job and is trusted. Each shard's
 // setup file and Claude result are written outside the agent's directory and are trusted for their shape only.
@@ -16,8 +17,14 @@ import { MAX_ISSUE_BODY_CHARS, code, publishIssue, strings } from './report-dogf
 const STATUSES = ['suspect', 'broken', 'ok', 'locked', 'not_reached'];
 const SEVERITIES = ['high', 'medium', 'low'];
 const MAX_FINDINGS = 40;
+/** Panel rows are bounded so every non-ok panel can always be named within GitHub's body limit. */
+const ROW_NOTE_CHARS = 200;
 
-export const contentIssueTitle = (date) => `Panel content review: ${date}`;
+/** Shorten agent text before it is wrapped in a code span, never after: a cut span would turn live. */
+const clip = (value, max) => {
+  if (typeof value !== 'string') return '';
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+};
 
 function readJson(file) {
   if (!existsSync(file)) return null;
@@ -37,7 +44,8 @@ export function mergeShards(plan, shardFiles) {
   const shardStates = [];
   for (const shard of plan.shards) {
     const files = shardFiles[shard.id] ?? {};
-    const report = files.findings && typeof files.findings === 'object' ? files.findings : null;
+    const raw = files.findings;
+    const report = raw && typeof raw === 'object' && !Array.isArray(raw) && (Array.isArray(raw.panels) || Array.isArray(raw.findings)) ? raw : null;
     const setup = files.setup && typeof files.setup === 'object' ? files.setup : {};
     const result = files.result && typeof files.result === 'object' ? files.result : {};
     if (Number.isFinite(result.total_cost_usd)) cost += result.total_cost_usd;
@@ -95,7 +103,9 @@ function findingLines(finding, index, openIssues) {
   ];
 }
 
-export function renderContentBody(merged, { date, runUrl = '', openIssues = new Set(), maxFindings = MAX_FINDINGS }) {
+export function renderContentBody(merged, {
+  date, runUrl = '', openIssues = new Set(), maxFindings = MAX_FINDINGS, showOk = true, noteChars = ROW_NOTE_CHARS, showDismissed = true,
+}) {
   const count = (status) => merged.panels.filter((panel) => panel.status === status).length;
   const contradicted = merged.findings.filter((finding) => finding.kind === 'contradicted');
   const implausible = merged.findings.filter((finding) => finding.kind === 'implausible');
@@ -129,31 +139,46 @@ export function renderContentBody(merged, { date, runUrl = '', openIssues = new 
   lines.push('', '### Panels that are not ok', '');
   if (notOk.length === 0) lines.push('Every panel was checked and found ok.');
   for (const panel of notOk) {
-    lines.push(`- ${code(panel.id)} ${code(panel.name)} on ${code(panel.host)}: **${panel.status.replace(/_/g, ' ')}**${panel.note ? ` ${code(panel.note)}` : ''}`);
+    const note = clip(panel.note, noteChars);
+    lines.push(`- ${code(panel.id)} ${code(panel.name)} on ${code(panel.host)}: **${panel.status.replace(/_/g, ' ')}**${note ? ` ${code(note)}` : ''}`);
   }
   const ok = merged.panels.filter((panel) => panel.status === 'ok');
-  if (ok.length > 0) {
+  if (ok.length > 0 && showOk) {
     lines.push('', '<details><summary>Panels found ok</summary>', '');
-    for (const panel of ok) lines.push(`- ${code(panel.id)} on ${code(panel.host)}: ${code(panel.checked)}`);
+    for (const panel of ok) lines.push(`- ${code(panel.id)} on ${code(panel.host)}: ${code(clip(panel.checked, noteChars))}`);
     lines.push('', '</details>');
   }
-  if (merged.dismissed.length > 0) {
+  if (ok.length > 0 && !showOk) lines.push('', 'The ok panels are listed in the shard artifacts; this body had no room for them.');
+  if (merged.dismissed.length > 0 && showDismissed) {
     lines.push('', '### Dismissed as runner artifacts', '', 'Check these too: a real bug can hide behind a known artifact.', '');
     for (const item of merged.dismissed.slice(0, maxFindings)) lines.push(`- ${code(item.what)}: ${code(item.why)}`);
   }
   return lines.join('\n');
 }
 
-/** A body GitHub will accept: findings, then the ok list, are cut until it fits. */
+/**
+ * A body GitHub will accept. Findings are cut first, then the ok list and dismissals, then panel notes; the
+ * totals and every non-ok panel row always stay. Nothing rendered is ever sliced, because cutting through a code
+ * span would make agent text live.
+ */
 export function contentIssueBody(merged, rendering) {
-  for (let maxFindings = MAX_FINDINGS; ; maxFindings = Math.floor(maxFindings / 2)) {
-    const body = renderContentBody(merged, { ...rendering, maxFindings });
+  const attempts = [];
+  for (let maxFindings = MAX_FINDINGS; maxFindings > 0; maxFindings = Math.floor(maxFindings / 2)) attempts.push({ maxFindings });
+  attempts.push(
+    { maxFindings: 0 },
+    { maxFindings: 0, showOk: false, showDismissed: false },
+    { maxFindings: 0, showOk: false, showDismissed: false, noteChars: 0 },
+  );
+  for (const attempt of attempts) {
+    const body = renderContentBody(merged, { ...rendering, ...attempt });
     if (body.length <= MAX_ISSUE_BODY_CHARS) return body;
-    if (maxFindings === 0) {
-      const trimmed = renderContentBody({ ...merged, panels: merged.panels.filter((panel) => panel.status !== 'ok'), dismissed: [] }, { ...rendering, maxFindings: 0 });
-      return trimmed.slice(0, MAX_ISSUE_BODY_CHARS);
-    }
   }
+  throw new Error('the review does not fit in an issue body even without findings and notes');
+}
+
+/** "Panel content review: <date>" for a full run; a filtered run gets its own issue so it cannot replace one. */
+export function contentIssueTitle(date, { partialRunId = '' } = {}) {
+  return partialRunId ? `Panel content review: ${date} (partial, run ${partialRunId})` : `Panel content review: ${date}`;
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {
@@ -174,7 +199,9 @@ if (isMainModule(import.meta.url, process.argv[1])) {
       : '';
     const date = new Date().toISOString().slice(0, 10);
     const body = contentIssueBody(merged, { date, runUrl, openIssues });
-    const result = publishIssue({ repository: GITHUB_REPOSITORY, title: contentIssueTitle(date), body, summaryPath: process.env.GITHUB_STEP_SUMMARY });
+    const partialRunId = process.env.DOGFOOD_PARTIAL === 'true' ? (GITHUB_RUN_ID || 'local') : '';
+    const title = contentIssueTitle(date, { partialRunId });
+    const result = publishIssue({ repository: GITHUB_REPOSITORY, title, body, summaryPath: process.env.GITHUB_STEP_SUMMARY });
     console.log(JSON.stringify({ ...result, panels: merged.panels.length, findings: merged.findings.length }));
   } catch (error) {
     console.error(`Panel content review could not report: ${error.message}`);

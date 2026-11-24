@@ -28,7 +28,9 @@ export const issueTitle = (week) => `Dogfood review: ${week}`;
 // untrusted. It renders only as code spans, where GitHub turns no @mention, #reference, link, image or HTML into
 // anything live. The only Markdown outside code spans is fixed text and numbers this script composes.
 export function code(value) {
-  let text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  // Only text and numbers render; an object from the agent's JSON (which could even throw on String()) is absent.
+  const raw = typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
+  let text = raw.replace(/\s+/g, ' ').trim();
   if (text.length > MAX_FIELD_CHARS) text = `${text.slice(0, MAX_FIELD_CHARS)}…`;
   return text ? `\`${text.replace(/`/g, "'")}\`` : '—';
 }
@@ -127,6 +129,10 @@ export function publishIssue({ repository, title, body, summaryPath, gh = ghJson
   const pages = gh(['api', '--paginate', '--slurp', '--method', 'GET', 'search/issues', '-f', `q=${query}`, '-f', 'per_page=100']);
   const existing = pages.flatMap((page) => page?.items ?? [])
     .find((issue) => !issue.pull_request && issue.title === title && issue.user?.login === ISSUE_AUTHOR);
+  // Search can time out and say so; a miss then proves nothing, and creating would duplicate the issue.
+  if (!existing && pages.some((page) => page?.incomplete_results)) {
+    throw new Error(`issue search for "${title}" returned incomplete results; not creating a duplicate`);
+  }
   if (existing) {
     gh(['api', '--method', 'PATCH', `repos/${repository}/issues/${existing.number}`, '--input', '-'], { body });
     return { action: 'updated', issue: existing.number };

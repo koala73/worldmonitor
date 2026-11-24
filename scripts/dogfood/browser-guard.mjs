@@ -9,8 +9,10 @@
 // A locked-down run is one whose browser holds a Pro session. The key sits in an HttpOnly cookie, which page
 // JavaScript cannot read, but Chrome's debugging port can: a page served from 127.0.0.1:<port> may open the
 // DevTools socket and list every cookie. A locked-down run therefore also refuses everything that runs JavaScript
-// the agent chose (`eval`, `wait --fn`), network mocking (`network route` can serve a script), `get cdp-url`, URL
-// arguments that are not https on a worldmonitor.app host, including the one `read` would fetch. Navigation
+// the agent chose: `eval`, and every option outside a short allowlist, because several options evaluate
+// JavaScript (`wait --fn`, `--restore-check-fn`, `--init-script`, `--enable`) and new ones can appear. It also
+// refuses network mocking (`network route` can serve a script), `get cdp-url`, and URL arguments that are not
+// https on a worldmonitor.app host, including the ones `read`, `tab new` and `record start` would load. Navigation
 // the agent starts can then reach only the product's own hosts; a page reached by clicking a third-party link
 // cannot learn the debugging port or a target id.
 //
@@ -26,7 +28,18 @@ const COMMANDS = new Set([
 const REFUSED_OPTIONS = [
   '--executable-path', '--engine', '--config', '--extension', '--init-script', '--args', '--provider', '--proxy',
   '--allowed-domains', '--allow-file-access', '--auto-connect', '--cdp', '--profile', '--state', '--credential-provider',
+  '--restore', '--restore-save', '--restore-check-url', '--restore-check-text', '--restore-check-fn', '--session-name',
+  '--namespace', '--enable',
 ];
+/** Options a locked-down call may carry; the value-taking ones consume the next word. */
+const LOCKED_FLAGS = new Set([
+  '--json', '-i', '--interactive', '-c', '--compact', '-u', '--urls', '--full', '-f', '--annotate', '--delta',
+  '--clear', '--raw', '--outline', '--exact', '--new-tab', '-h', '--help',
+]);
+const LOCKED_VALUE_OPTIONS = new Set([
+  '-d', '--depth', '-s', '--selector', '--filter', '--type', '--method', '--status', '--timeout', '--label', '--fps',
+  '--url', '--load', '--name', '--button', '--delay', '--count',
+]);
 const NAVIGATING = new Set(['open', 'goto', 'navigate', 'read']);
 const URL_LIKE = /:\/\/|^(javascript|data|blob|file|about|chrome|chrome-[a-z-]+|devtools|view-source|filesystem|ws|wss|http):/i;
 
@@ -58,12 +71,18 @@ export function refusal(args, { lockedDown = false } = {}) {
   }
   if (!lockedDown) return null;
 
-  // Subcommands are matched anywhere in the call, not only as the first word after the command: a value-taking
-  // option placed first would otherwise shift which word reads as the subcommand.
+  // Split options from positional words. Subcommands are then matched anywhere in the call, not only as the first
+  // word after the command, so a value-taking option placed first cannot shift which word reads as the subcommand.
+  const positional = [];
   const rest = words.slice(1);
-  const positional = rest.filter((word) => !word.startsWith('-'));
+  for (let i = 0; i < rest.length; i += 1) {
+    const word = rest[i];
+    if (!word.startsWith('-')) { positional.push(word); continue; }
+    const name = word.split('=')[0];
+    if (LOCKED_VALUE_OPTIONS.has(name)) { if (!word.includes('=')) i += 1; continue; }
+    if (!LOCKED_FLAGS.has(name)) return `option ${name} while the browser holds a Pro session`;
+  }
   if (command === 'eval') return 'eval while the browser holds a Pro session';
-  if (words.some((word) => word === '--fn' || word.startsWith('--fn='))) return 'wait --fn while the browser holds a Pro session';
   if (command === 'network') {
     const banned = positional.find((word) => ['route', 'unroute', 'har'].includes(word));
     if (banned || !positional.some((word) => word === 'requests' || word === 'request')) {
@@ -71,16 +90,26 @@ export function refusal(args, { lockedDown = false } = {}) {
     }
   }
   if (command === 'get' && positional.includes('cdp-url')) return 'get cdp-url';
+  const offProduct = (list) => list.find((word) => !isProductUrl(word));
   if (NAVIGATING.has(command)) {
     if (positional.length === 0 && command !== 'read') return `${command} with no URL`;
-    const bad = positional.find((word) => !isProductUrl(word));
+    const bad = offProduct(positional);
     if (bad !== undefined) return `opening ${bad}: only https URLs on worldmonitor.app hosts`;
   }
-  // `tab new <url>` and `record start <path> <url>` navigate too. Tab ids, labels and absolute paths have no dot
-  // or colon outside a path, so any other word that does must be a product URL.
-  if (command === 'tab' || command === 'record') {
-    const bad = positional.find((word) => !word.startsWith('/') && /[.:]/.test(word) && !isProductUrl(word));
+  // `tab new [url]` loads its argument; other tab operations take ids and labels and load nothing.
+  if (command === 'tab' && positional.includes('new')) {
+    const bad = offProduct(positional.slice(positional.indexOf('new') + 1));
     if (bad !== undefined) return `opening ${bad}: only https URLs on worldmonitor.app hosts`;
+  }
+  // `record start|restart <absolute path> [url]`.
+  if (command === 'record') {
+    const at = positional.findIndex((word) => word === 'start' || word === 'restart');
+    if (at !== -1) {
+      const [path, ...urls] = positional.slice(at + 1);
+      if (path !== undefined && !path.startsWith('/')) return `record to ${path}: give an absolute path`;
+      const bad = offProduct(urls);
+      if (bad !== undefined) return `opening ${bad}: only https URLs on worldmonitor.app hosts`;
+    }
   }
   const urlArg = words.find((word) => URL_LIKE.test(word) && !isProductUrl(word));
   if (urlArg !== undefined) return `the URL ${urlArg}: only https URLs on worldmonitor.app hosts`;

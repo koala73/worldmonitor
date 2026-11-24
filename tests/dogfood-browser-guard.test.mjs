@@ -11,6 +11,9 @@ describe('dogfood browser guard', () => {
     for (const args of [
       s('open', 'https://www.worldmonitor.app/dashboard'),
       s('snapshot', '-i'),
+      s('snapshot', '-i', '-c', '--depth', '4', '--json'),
+      s('wait', '--load', 'networkidle'),
+      s('find', 'role', 'button', '--name', 'Close', '--exact'),
       s('screenshot', '/tmp/out/screenshots/a.png'),
       s('scrollintoview', '[data-panel="markets"]'),
       s('get', 'text', '[data-panel="markets"]'),
@@ -42,6 +45,12 @@ describe('dogfood browser guard', () => {
   it('cannot be steered past the command check by a --session value', () => {
     assert.match(refusal(['--session', 'open', 'cookies', 'get']), /cookies/);
     assert.match(refusal(s('get', '--session', 'x', 'cdp-url'), locked), /cdp-url/);
+  });
+
+  it('refuses the restore and init-script options in both modes: they load state or run JavaScript', () => {
+    for (const args of [s('snapshot', '--restore-check-fn', 'x'), s('open', 'https://www.worldmonitor.app', '--enable', 'react-devtools'), s('open', 'x', '--namespace=y')]) {
+      assert.ok(refusal(args), args.join(' '));
+    }
   });
 
   it('keeps the anonymous weekly run as it was: eval and outside links still work there', () => {
@@ -82,6 +91,14 @@ describe('dogfood browser guard', () => {
       s('network', '--filter', 'x', 'requests', 'route', '**/*'),
       s('network', '--json', 'har', 'start'),
       s('find', 'text', 'view-source:https://www.worldmonitor.app'),
+      s('snapshot', '--restore', 'dogfood', '--restore-check-fn', 'fetch(1)'),
+      s('snapshot', '--restore-check-fn=fetch(1)'),
+      s('open', 'https://www.worldmonitor.app', '--enable', 'react-devtools'),
+      s('click', '@e1', '--some-future-option', 'x'),
+      s('tab', 'new', 'localhost'),
+      s('tab', '--label', 'new', 'new', 'localhost'),
+      s('record', 'start', 'demo', 'localhost'),
+      s('record', 'start', '/tmp/out/videos/a.webm', 'localhost'),
     ]) {
       assert.ok(refusal(args, locked), args.join(' '));
     }

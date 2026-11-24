@@ -23,6 +23,10 @@ export function planShards(catalogs, { perShard = 10, only = [] } = {}) {
   const panels = [];
   for (const { host, target, panels: catalog } of catalogs) {
     if (!/^[a-z]+$/.test(host) || !/^https:\/\/[a-z]+\.worldmonitor\.app$/.test(target)) throw new Error(`bad host ${host} ${target}`);
+    if (!Array.isArray(catalog) || !catalog.some((panel) => PANEL_ID.test(panel?.id ?? '') && !SKIPPED.has(panel.id))) {
+      // A monitor that did not boot in time must fail the run, not vanish from the review.
+      throw new Error(`no panel catalog was read from ${host}`);
+    }
     const mine = [];
     for (const panel of catalog) {
       if (!PANEL_ID.test(panel?.id ?? '') || SKIPPED.has(panel.id) || seen.has(panel.id)) continue;
