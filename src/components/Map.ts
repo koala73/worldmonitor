@@ -2139,7 +2139,7 @@ export class MapComponent {
           return vessels.length === 0 ? [] : [{ ...cluster, vessels: [...vessels], vesselCount: vessels.length }];
         })
         : [],
-      fires: layers.fires ? this.filterByTime(this.firmsFireData, (fire) => fire.acq_date) : [],
+      fires: layers.fires ? this.filterByTime(this.firmsFireData, (fire) => fire.detected_at ?? fire.acq_date) : [],
     };
   }
 
