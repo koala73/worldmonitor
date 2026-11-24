@@ -10,6 +10,7 @@ import {
   QUESTION_MARKER,
   buildAnalystLiveContext,
   buildAnalystMessages,
+  buildAnalystPriceGroundText,
   buildAnalystSystemPrompt,
   buildAnalystUserTurn,
 } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt.ts';
@@ -2390,5 +2391,38 @@ describe('Issue #11244 — assembleAnalystContext intelHistory retrieval, AI-rou
       logs.restore();
       harness.restore();
     }
+  });
+
+  it('excludes dated Historical Intelligence Memory prices from live price grounding text', () => {
+    const context = {
+      timestamp: '2026-11-24T16:00:00Z',
+      activeSources: ['Markets', 'History'],
+      degraded: false,
+      marketData: 'Market Data: Brent Crude $109.76 (+1.2%)',
+      intelHistory: '[2026-06-15 | energy | GLOBAL] Refinery outage — Brent traded at $63.27 during maintenance.',
+    };
+    const groundText = buildAnalystPriceGroundText({
+      context,
+      domainFocus: 'market',
+      history: [{ role: 'user', content: 'Watch Brent if it drops below $95.' }],
+      query: 'Where is Brent trading today?',
+    });
+
+    assert.ok(!groundText.includes('$63.27'), 'historical prices must not enter live price groundText');
+    assert.ok(!groundText.includes('Historical Intelligence Memory'), 'history section must not enter live price groundText');
+    assert.deepEqual(
+      findUnsupportedPrices('Brent is trading at $63.27 today.', groundText),
+      ['$63.27'],
+      'a dated archive price must still trigger the unverified live-price caveat',
+    );
+    assert.deepEqual(
+      findUnsupportedPrices('Brent is trading at $109.76, above the $95 threshold.', groundText),
+      [],
+      'live market quotes and prior user-turn figures remain grounded',
+    );
+
+    const apiSrc = readFileSync(new URL('../api/chat-analyst.ts', import.meta.url), 'utf-8');
+    assert.match(apiSrc, /const groundText = buildAnalystPriceGroundText\(/,
+      'api/chat-analyst.ts must build price groundText without dated intelHistory records');
   });
 });

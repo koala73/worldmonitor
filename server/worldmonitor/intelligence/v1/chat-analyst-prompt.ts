@@ -165,3 +165,24 @@ export function buildAnalystMessages(opts: {
     { role: 'user', content: buildAnalystUserTurn(opts.context, opts.domainFocus, opts.query) },
   ];
 }
+
+/**
+ * Build the text used for live price grounding: prior user turns plus the
+ * live-context user turn WITHOUT dated Historical Intelligence Memory records,
+ * so a historical price (e.g. "Brent traded at $63.27" months ago) cannot
+ * validate a current-price claim.
+ */
+export function buildAnalystPriceGroundText(opts: {
+  context: AnalystContext;
+  domainFocus?: string;
+  history: AnalystChatTurn[];
+  query: string;
+}): string {
+  const userHistory = opts.history.filter((m) => m.role === 'user').map((m) => m.content);
+  const liveUserTurn = buildAnalystUserTurn(
+    { ...opts.context, intelHistory: undefined },
+    opts.domainFocus,
+    opts.query,
+  );
+  return [...userHistory, liveUserTurn].join('\n');
+}
