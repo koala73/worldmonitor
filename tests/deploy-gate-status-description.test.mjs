@@ -244,7 +244,9 @@ function runGate(conclusions, {
         .filter(({ status }) => status)
         .map(({ sha, status }) => [sha, { ...status, context: 'gate', state: status.state.toLowerCase() }]),
     )));
-    const runsFor = (values, timestamp, idBase) => REQUIRED.flatMap((name, index) => values?.[name]
+    // Required names keep their index (and so their run ids); any other name
+    // given, like `docs-lint`, gets a run after them, as GitHub would serve it.
+    const runsFor = (values, timestamp, idBase) => [...new Set([...REQUIRED, ...Object.keys(values ?? {})])].flatMap((name, index) => values?.[name]
       ? [{
         name,
         conclusion: values[name] === 'pending' ? null : values[name].toUpperCase(),
@@ -1129,6 +1131,55 @@ describe('deploy gate commit-status description', () => {
     assert.equal(result.posted[0].state, 'pending');
     assert.equal(result.posted[0].description, stamped('Waiting for required PR gates (2): unit,biome'));
     assert.doesNotMatch(result.posted[0].description, /\.\.\. /, 'a description that fits must not be cut');
+  });
+
+  describe('Lint Code and Typecheck job layout (#11215)', () => {
+    // #11215 folds six Lint Code and Typecheck jobs into `docs-lint` (and into
+    // the existing `biome` and `typecheck`). Deploy Gate runs main's copy of
+    // this script, so for the switch the gate accepts either layout per
+    // commit: a `docs-lint` check run means the new one.
+    const LEGACY = ['typecheck-changes', 'lint-changes', 'markdown', 'public-docs', 'mintlify-slugs', 'doc-anchors'];
+    const newLayout = (docsLint) => {
+      const conclusions = conclusionsFor('success');
+      for (const name of LEGACY) delete conclusions[name];
+      conclusions['docs-lint'] = docsLint;
+      return conclusions;
+    };
+
+    it('passes a commit on the new layout without the six old jobs', () => {
+      const result = runGate(newLayout('success'));
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.posted, [{ state: 'success', description: stamped('All required PR gates passed') }]);
+    });
+
+    it('fails a commit whose docs-lint failed', () => {
+      const result = runGate(newLayout('failure'));
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted.at(-1).state, 'failure');
+      assert.match(result.posted.at(-1).description, /did not pass \(1\): docs-lint /);
+    });
+
+    it('waits for a docs-lint run that has not finished', () => {
+      const result = runGate(newLayout('pending'));
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted.at(-1).description, stamped('Waiting for required PR gates (1): docs-lint'));
+    });
+
+    it('still requires every old job on a commit without docs-lint', () => {
+      const conclusions = conclusionsFor('success');
+      delete conclusions.markdown;
+      const result = runGate(conclusions);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted.at(-1).description, stamped('Waiting for required PR gates (1): markdown'));
+    });
+
+    it('does not let a docs-lint run excuse a failed job outside the six', () => {
+      const conclusions = newLayout('success');
+      conclusions.biome = 'failure';
+      const result = runGate(conclusions);
+      assert.equal(result.posted.at(-1).state, 'failure');
+      assert.match(result.posted.at(-1).description, /: biome /);
+    });
   });
 
   it('still posts success when everything passed or skipped', () => {
