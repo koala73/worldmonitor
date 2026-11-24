@@ -370,6 +370,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Frissítsen PRO verzióra a fegyverszállító függőségek és katonai kapacitások megtekintéséhez"
+    },
+    "intelMemory": {
+      "title": "Historical Intelligence Memory",
+      "help": "180-day archive of conflict, military, and energy events with on-demand semantic precedent matching.",
+      "loading": "Loading historical intelligence memory…",
+      "proLocked": "Upgrade to PRO for 180-day historical intelligence memory and precedent search",
+      "unavailable": "Historical intelligence memory is temporarily unavailable.",
+      "retry": "Retry",
+      "empty": "No archived intelligence events match this country and domain in the 180-day window.",
+      "partial": "Archive coverage is partial for this query; available records remain visible.",
+      "domainFilterLabel": "Filter historical intelligence by domain",
+      "domains": {
+        "all": "All",
+        "conflict": "Conflict",
+        "military": "Military",
+        "energy": "Energy"
+      },
+      "loadMore": "Load more",
+      "loadingMore": "Loading more…",
+      "loadMoreError": "Could not load additional events. Try again.",
+      "sourceLink": "Source ↗",
+      "similarTitle": "Find similar past events",
+      "useLatestHeadline": "Use latest headline",
+      "similarPlaceholder": "Describe a developing situation (at least 10 characters)…",
+      "findSimilar": "Find similar events",
+      "similarMinLength": "Enter at least 10 characters to search past precedents.",
+      "similarLoading": "Searching historical precedents…",
+      "similarEmpty": "No similar past events cleared the similarity threshold.",
+      "similarUnavailable": "Precedent search is temporarily unavailable. Try again."
     }
   },
   "header": {

@@ -306,9 +306,10 @@ export default async function handler(req: Request): Promise<Response> {
     // from its allowed providers (ai-routing-policy.ts). The routing lookup
     // reads only the caller, so it runs alongside the context reads instead of
     // adding its round trip before the first streamed token.
+    const routingDecisionPromise = getAiRoutingDecisionForUser(premiumIdentity.userId);
     const [context, routingDecision] = await Promise.all([
-      assembleAnalystContext(geoContext, domainFocus, retrievalQuery, query),
-      getAiRoutingDecisionForUser(premiumIdentity.userId),
+      assembleAnalystContext(geoContext, domainFocus, retrievalQuery, query, { routingDecisionPromise }),
+      routingDecisionPromise,
     ]);
     // Instructions in the system prompt, feed-derived context in the final user
     // turn next to the question: untrusted text never shares the system role.

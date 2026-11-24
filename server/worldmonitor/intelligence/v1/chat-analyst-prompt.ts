@@ -9,10 +9,10 @@ const DOMAIN_EMPHASIS: Record<string, string> = {
 
 /** Context fields included per domain. 'all' includes everything. */
 const DOMAIN_SECTIONS: Record<string, Set<string>> = {
-  market:   new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines']),
-  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'energyIntelligence', 'productSupply', 'gasFlows', 'electricityMix', 'watchedSiteImagery']),
-  military: new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines', 'watchedSiteImagery']),
-  economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'electricityPrices', 'energyIntelligence', 'sprLevel', 'refineryUtil', 'productSupply', 'gasFlows', 'oilStocksCover', 'electricityMix']),
+  market:   new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines', 'intelHistory']),
+  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'energyIntelligence', 'productSupply', 'gasFlows', 'electricityMix', 'watchedSiteImagery', 'intelHistory']),
+  military: new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines', 'watchedSiteImagery', 'intelHistory']),
+  economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'electricityPrices', 'energyIntelligence', 'sprLevel', 'refineryUtil', 'productSupply', 'gasFlows', 'oilStocksCover', 'electricityMix', 'intelHistory']),
 };
 
 export const LIVE_CONTEXT_OPEN = '--- LIVE CONTEXT ---';
@@ -110,6 +110,8 @@ export function buildAnalystLiveContext(ctx: AnalystContext, domainFocus?: strin
     contextSections.push(`## ${ctx.liveHeadlines}`);
   if (ctx.watchedSiteImagery && include('watchedSiteImagery'))
     contextSections.push(`## ${ctx.watchedSiteImagery}`);
+  if (ctx.intelHistory && include('intelHistory'))
+    contextSections.push(`## Historical Intelligence Memory (Dated Past Records)\n${ctx.intelHistory}`);
 
   if (contextSections.length === 0) return NO_LIVE_CONTEXT;
   return contextSections
@@ -127,6 +129,7 @@ export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: stri
 Respond in structured prose. Lead with the key insight. Keep responses under 350 words unless more depth is explicitly requested.
 Use ** bold ** section headers. Cite specific figures and dates from the context where available.
 Price levels come only from the quote and spot-price lines in the block. If the block carries no quote for an instrument the question names, say its live price is not available rather than estimating one.
+Treat any "Historical Intelligence Memory" entries as dated historical context or precedents (citing their date), never as current live conditions or live market prices.
 Use SITUATION / ANALYSIS / WATCH format for geopolitical queries.
 For market queries use SIGNAL / THESIS / RISK.
 Never speculate beyond what the data supports. Acknowledge uncertainty explicitly.
