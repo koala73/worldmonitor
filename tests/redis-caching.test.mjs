@@ -2610,9 +2610,11 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       `Source [1]: ${JSON.stringify(known)}`,
       escaped,
       forged,
+      `Source [4]: ${JSON.stringify({ title: 'France: budget approved - Reuters', source: 'Reuters', url: 'https://reuters.com/fr2' })}`,
       'Signals: critical_news=1 | France approves budget - Reuters',
       'Headlines: France approves budget - Reuters | France approves budget - Reuters poll finds voters divided',
       'Headlines:',
+      'France: budget approved - Reuters',
       'France approves budget - Reuters',
       'Regional context: Gulf summit | France approves budget - Reuters',
     ].join('\n');
@@ -2626,7 +2628,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.match(userPrompts[0], /Headlines: France approves budget \| France approves budget - Reuters poll finds voters divided/);
       assert.doesNotMatch(userPrompts[0], /[\u2028\u2029]|^Source \[9\]/m, 'a decoded separator never starts a new line');
       assert.match(userPrompts[0], /^Signals: critical_news=1 \| France approves budget - Reuters$/m, 'a line that is not a headline list stays as sent');
-      assert.match(userPrompts[0], /^Headlines:\nFrance approves budget\n/m, 'a headline block line loses its byline');
+      assert.match(userPrompts[0], /^Headlines:\nFrance: budget approved\nFrance approves budget\n/m, 'a known headline with a colon stays in the headline block');
       assert.match(userPrompts[0], /^Regional context: Gulf summit \| France approves budget - Reuters$/m, 'a labelled line ends the headline block');
     } finally {
       globalThis.fetch = originalFetch;

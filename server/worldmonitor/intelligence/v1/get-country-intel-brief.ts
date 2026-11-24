@@ -295,6 +295,7 @@ function withoutSourceBylines(context: string, sources: CountryIntelBriefSource[
       headline: new RegExp(`(^(?:- |Headlines: )?| \\| )${escapeRegExp(source.title)}(?=$| \\| )`, 'g'),
     }));
   if (rewrites.length === 0) return out;
+  const knownTitles = new Set(sources.map((source) => source.title));
   // Only headline lines: the dashboard's "Headlines: a | b", the "- " lines, and
   // the lines under a bare "Headlines:" heading up to the next labelled line.
   // Signal lines also use " | ".
@@ -304,7 +305,10 @@ function withoutSourceBylines(context: string, sources: CountryIntelBriefSource[
       inHeadlineBlock = true;
       return line;
     }
-    if (inHeadlineBlock && (line === '' || CONTEXT_LABEL_LINE_RE.test(line))) inHeadlineBlock = false;
+    // A known headline such as "France: budget approved" is not a label.
+    if (inHeadlineBlock && (line === '' || (CONTEXT_LABEL_LINE_RE.test(line) && !knownTitles.has(line)))) {
+      inHeadlineBlock = false;
+    }
     if (!inHeadlineBlock && !line.startsWith('Headlines: ') && !line.startsWith('- ')) return line;
     return rewrites.reduce((text, { story, headline }) => text.replace(headline, (_match, lead: string) => `${lead}${story}`), line);
   }).join('\n');
