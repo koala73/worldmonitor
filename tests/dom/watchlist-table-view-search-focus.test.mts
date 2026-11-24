@@ -4,7 +4,7 @@ import { WatchlistTableView } from '@/components/WatchlistTableView';
 
 type Item = { symbol: string };
 
-function mount(): { root: HTMLElement; commit: () => void } {
+function mount(): { root: HTMLElement; view: WatchlistTableView<Item>; commit: () => void } {
   const view = new WatchlistTableView<Item>({
     columns: [{ key: 'symbol', label: 'Symbol', cell: item => item.symbol }],
     filters: [{ key: 'all', label: 'All', match: () => true }],
@@ -24,7 +24,7 @@ function mount(): { root: HTMLElement; commit: () => void } {
     view.bind(root, commit);
   };
   commit();
-  return { root, commit };
+  return { root, view, commit };
 }
 
 const search = (root: HTMLElement): HTMLInputElement =>
@@ -40,6 +40,16 @@ describe('WatchlistTableView search focus across content commits', () => {
     search(root).focus();
     commit();
     await Promise.resolve();
+    commit();
+    await Promise.resolve();
+    expect(document.activeElement).toBe(search(root));
+  });
+
+  it('keeps focus when a same-markup commit rebinds the focused input', async () => {
+    const { root, view, commit } = mount();
+    search(root).focus();
+    // Panel skips the DOM write when the markup is unchanged but still rebinds.
+    view.bind(root, commit);
     commit();
     await Promise.resolve();
     expect(document.activeElement).toBe(search(root));
