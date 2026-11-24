@@ -25,6 +25,8 @@ const OLD_BASE = 'abcdef0123456789abcdef0123456789abcdef01';
 // pinning a shorter list than production actually gates on.
 const REQUIRED_LITERAL = gateScript.match(/required='(\[[^']*\])'/)[1];
 const REQUIRED = JSON.parse(REQUIRED_LITERAL);
+// Workflow ids the fake GitHub serves for the runs and workflows listings.
+const FAKE_WORKFLOW_IDS = { Test: 1, 'Lint Code': 2, 'Deploy Gate': 3 };
 // Read the rules version from the script too: a bump must change the stamp, and
 // a test that recomputed the stamp from the name list alone would not notice.
 const GATE_RULES = gateScript.match(/gate_rules='([^']*)'/)[1];
@@ -183,6 +185,7 @@ function runGate(conclusions, {
   openPulls,
   gatedRuns,
   gatedRunsReadFails = false,
+  workflowsReadFails = false,
   triggerRunId = '',
   superseded,
 } = {}) {
@@ -229,7 +232,20 @@ function runGate(conclusions, {
     writeFileSync(mainTestRunsFile, JSON.stringify({ workflow_runs: superseded?.mainTestRuns ?? [] }));
     writeFileSync(runJobsFile, JSON.stringify([{ jobs: (superseded?.jobs ?? []).map((name) => ({ name })) }]));
     const gatedRunsFile = join(tempDir, 'gated-runs.json');
-    writeFileSync(gatedRunsFile, JSON.stringify((gatedRuns ?? []).map((run, index) => ({ id: 100 + index, ...run }))));
+    // The runs API reports a run's `name` as its run-name when the workflow
+    // sets one (Test: "PR #N into main: ..."), so only workflow_id says which
+    // workflow a run belongs to. `name` here is the workflow; `runName` is
+    // what the API would show.
+    writeFileSync(gatedRunsFile, JSON.stringify((gatedRuns ?? []).map((run, index) => ({
+      id: 100 + index,
+      ...run,
+      workflow_id: FAKE_WORKFLOW_IDS[run.name] ?? 999,
+      api_name: run.runName ?? run.name,
+    }))));
+    const workflowsFile = join(tempDir, 'workflows.json');
+    writeFileSync(workflowsFile, JSON.stringify([{
+      workflows: Object.entries(FAKE_WORKFLOW_IDS).map(([name, id]) => ({ id, name })),
+    }]));
     const drifting = {
       mergeBase: MAIN_TIP, mainTip: MAIN_TIP, headTip: HEAD_TIP,
       headFiles: [], mainFiles: [], fetchFails: false, mergeBaseFails: false,
@@ -244,7 +260,9 @@ function runGate(conclusions, {
         .filter(({ status }) => status)
         .map(({ sha, status }) => [sha, { ...status, context: 'gate', state: status.state.toLowerCase() }]),
     )));
-    const runsFor = (values, timestamp, idBase) => REQUIRED.flatMap((name, index) => values?.[name]
+    // Required names keep their index (and so their run ids); any other name
+    // given, like `docs-lint`, gets a run after them, as GitHub would serve it.
+    const runsFor = (values, timestamp, idBase) => [...new Set([...REQUIRED, ...Object.keys(values ?? {})])].flatMap((name, index) => values?.[name]
       ? [{
         name,
         conclusion: values[name] === 'pending' ? null : values[name].toUpperCase(),
@@ -492,7 +510,7 @@ function runGate(conclusions, {
         '  *"actions/runs?head_sha="*)',
         '    echo "head-runs-page" >> "$FAKE_CALLS"',
         '    [ "$FAKE_GATED_RUNS_FAIL" = "1" ] && { echo "gh: forced runs read failure (HTTP 502)" >&2; exit 1; }',
-        '    jq -c \'[{workflow_runs: [.[] | {id, name, status}]}]\' "$FAKE_GATED_RUNS"',
+        '    jq -c \'[{workflow_runs: [.[] | {id, name: .api_name, workflow_id, status}]}]\' "$FAKE_GATED_RUNS"',
         '    exit 0',
         '    ;;',
         '  *"/actions/runs/"[0-9]*)',
@@ -501,6 +519,12 @@ function runGate(conclusions, {
         '    fresh=$(jq -r --argjson id "$run_id" \'.[] | select(.id == $id) | .fresh // .status\' "$FAKE_GATED_RUNS")',
         '    [ "$fresh" = "error" ] && { echo "gh: forced run read failure (HTTP 502)" >&2; exit 1; }',
         '    printf \'%s\\n\' "$fresh"',
+        '    exit 0',
+        '    ;;',
+        '  *"actions/workflows?"*)',
+        '    echo "workflows-page" >> "$FAKE_CALLS"',
+        '    [ "$FAKE_WORKFLOWS_FAIL" = "1" ] && { echo "gh: forced workflows read failure (HTTP 502)" >&2; exit 1; }',
+        '    cat "$FAKE_WORKFLOWS"',
         '    exit 0',
         '    ;;',
         '  *"actions/workflows/deploy-gate.yml/runs"*)',
@@ -682,6 +706,8 @@ function runGate(conclusions, {
           FAKE_COMPARE_STATUS: superseded?.compare ?? 'identical',
           FAKE_GATED_RUNS: gatedRunsFile,
           FAKE_GATED_RUNS_FAIL: gatedRunsReadFails ? '1' : '0',
+          FAKE_WORKFLOWS: workflowsFile,
+          FAKE_WORKFLOWS_FAIL: workflowsReadFails ? '1' : '0',
           GATED_WORKFLOWS: gatedRuns === undefined ? '' : 'Test,Lint Code',
           TRIGGER_RUN_ID: triggerRunId,
           FAKE_SHA: SHA,
@@ -986,7 +1012,7 @@ describe('deploy gate commit-status description', () => {
       assert.equal(result.status, 0, result.stderr);
       assert.deepEqual(
         result.calls,
-        ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:101', 'status:pending'],
+        ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'workflows-page', 'run-read:101', 'status:pending'],
         `a ${status} Test run fires its own evaluation, so this one must not hold the runner`,
       );
       assert.equal(result.posted[0].state, 'pending');
@@ -1000,11 +1026,11 @@ describe('deploy gate commit-status description', () => {
     ];
     for (const [label, options, reads] of [
       ['all gated runs completed', { gatedRuns: [{ name: 'Test', status: 'completed' }, { name: 'Lint Code', status: 'completed' }] }, []],
-      ['only an ungated run in flight', { gatedRuns: [{ name: 'Deploy Gate', status: 'in_progress' }, { name: 'Test', status: 'completed' }] }, []],
+      ['only an ungated run in flight', { gatedRuns: [{ name: 'Deploy Gate', status: 'in_progress' }, { name: 'Test', status: 'completed' }] }, ['workflows-page']],
       ['the runs listing failed', { gatedRuns: [{ name: 'Test', status: 'in_progress' }], gatedRunsReadFails: true }, []],
       // A stale listing snapshot still shows a finished run as running.
-      ['the run record says completed', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'completed' }] }, ['run-read:100']],
-      ['the run record cannot be read', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'error' }] }, ['run-read:100']],
+      ['the run record says completed', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'completed' }] }, ['workflows-page', 'run-read:100']],
+      ['the run record cannot be read', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'error' }] }, ['workflows-page', 'run-read:100']],
       // On the head's last event, the listing can lag this event's own run.
       ['only the triggering run reads as running', { gatedRuns: [{ name: 'Test', status: 'in_progress' }], triggerRunId: '100' }, []],
     ]) {
@@ -1014,13 +1040,41 @@ describe('deploy gate commit-status description', () => {
     }
   });
 
+  it('recognises an unfinished PR Test run by its workflow, not its run-name', () => {
+    // test.yml sets `run-name: PR #N into BASE: TITLE` (#10926), and the runs
+    // API reports that as the run's `name`. Matching on name alone missed every
+    // PR Test run, so on 2026-11-23 98 of 171 burst evaluations slept 60s on a
+    // runner while Test was still running.
+    const result = runGate({}, {
+      gatedRuns: [
+        { name: 'Lint Code', status: 'completed' },
+        { name: 'Test', runName: 'PR #11204 into main: fix(reload): stop reloading open tabs', status: 'in_progress' },
+      ],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      result.calls,
+      ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'workflows-page', 'run-read:101', 'status:pending'],
+    );
+    assert.equal(result.posted[0].state, 'pending');
+  });
+
+  it('keeps the stale-read wait when the workflow listing cannot be read', () => {
+    const result = runGate({}, { gatedRuns: [{ name: 'Test', status: 'in_progress' }], workflowsReadFails: true });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-check-page', 'graphql-check-page', 'head-runs-page', 'workflows-page',
+      'sleep:60', 'graphql-check-page', 'graphql-check-page', 'status:pending',
+    ]);
+  });
+
   it('skips the wait for another unfinished run beside the triggering one', () => {
     const result = runGate({}, {
       gatedRuns: [{ name: 'Lint Code', status: 'in_progress' }, { name: 'Test', status: 'in_progress' }],
       triggerRunId: '100',
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(result.calls, ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:101', 'status:pending']);
+    assert.deepEqual(result.calls, ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'workflows-page', 'run-read:101', 'status:pending']);
   });
 
   it('skips the wait on one confirmed unfinished run even when another read failed', () => {
@@ -1032,7 +1086,7 @@ describe('deploy gate commit-status description', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(
       result.calls,
-      ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:100', 'run-read:101', 'status:pending'],
+      ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'workflows-page', 'run-read:100', 'run-read:101', 'status:pending'],
     );
   });
 
@@ -1129,6 +1183,55 @@ describe('deploy gate commit-status description', () => {
     assert.equal(result.posted[0].state, 'pending');
     assert.equal(result.posted[0].description, stamped('Waiting for required PR gates (2): unit,biome'));
     assert.doesNotMatch(result.posted[0].description, /\.\.\. /, 'a description that fits must not be cut');
+  });
+
+  describe('Lint Code and Typecheck job layout (#11215)', () => {
+    // #11215 folds six Lint Code and Typecheck jobs into `docs-lint` (and into
+    // the existing `biome` and `typecheck`). Deploy Gate runs main's copy of
+    // this script, so for the switch the gate accepts either layout per
+    // commit: a `docs-lint` check run means the new one.
+    const LEGACY = ['typecheck-changes', 'lint-changes', 'markdown', 'public-docs', 'mintlify-slugs', 'doc-anchors'];
+    const newLayout = (docsLint) => {
+      const conclusions = conclusionsFor('success');
+      for (const name of LEGACY) delete conclusions[name];
+      conclusions['docs-lint'] = docsLint;
+      return conclusions;
+    };
+
+    it('passes a commit on the new layout without the six old jobs', () => {
+      const result = runGate(newLayout('success'));
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.posted, [{ state: 'success', description: stamped('All required PR gates passed') }]);
+    });
+
+    it('fails a commit whose docs-lint failed', () => {
+      const result = runGate(newLayout('failure'));
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted.at(-1).state, 'failure');
+      assert.match(result.posted.at(-1).description, /did not pass \(1\): docs-lint /);
+    });
+
+    it('waits for a docs-lint run that has not finished', () => {
+      const result = runGate(newLayout('pending'));
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted.at(-1).description, stamped('Waiting for required PR gates (1): docs-lint'));
+    });
+
+    it('still requires every old job on a commit without docs-lint', () => {
+      const conclusions = conclusionsFor('success');
+      delete conclusions.markdown;
+      const result = runGate(conclusions);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted.at(-1).description, stamped('Waiting for required PR gates (1): markdown'));
+    });
+
+    it('does not let a docs-lint run excuse a failed job outside the six', () => {
+      const conclusions = newLayout('success');
+      conclusions.biome = 'failure';
+      const result = runGate(conclusions);
+      assert.equal(result.posted.at(-1).state, 'failure');
+      assert.match(result.posted.at(-1).description, /: biome /);
+    });
   });
 
   it('still posts success when everything passed or skipped', () => {

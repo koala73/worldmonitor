@@ -145,16 +145,26 @@ trap post_pending_on_exit EXIT
 # aggregate evaluates its per-lockfile verdicts and covers it instead.
 #
 # Entries are check-run NAMES, and the lookup below keeps only the
-# last-completed run per name, so two workflows must never publish the
-# same job name (#5822). Typecheck and Lint Code classify the PR inside
-# their own jobs, so only Test still has a `changes` job.
-required='["changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-node-windows","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","docs-lint","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness","zapier"]'
+# last-completed run per name. Test, Typecheck and Lint Code each
+# define a job with the id `changes`; the latter two publish under
+# `typecheck-changes` / `lint-changes` so all three are evaluated
+# instead of two being masked by the third (#5822).
+required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-node-windows","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","markdown","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness","zapier"]'
+# #11215 folds Typecheck's and Lint Code's small jobs into `docs-lint` (with the
+# existing `typecheck` and `biome`). This script runs from main for every PR,
+# so while open PRs carry either workflow version the gate takes the layout
+# from each commit's own check runs: a run named `docs-lint` means the new
+# layout, where `docs-lint` replaces these six names; otherwise the six stay
+# required. Remove it once no open PR runs the old workflows.
+lint_layout='{"marker":"docs-lint","replaces":["typecheck-changes","lint-changes","markdown","public-docs","mintlify-slugs","doc-anchors"]}'
+# Check runs are fetched for every name either layout can require.
+check_run_names=$(jq -nc --argjson required "$required" --argjson layout "$lint_layout" '$required + [$layout.marker] + $layout.replaces | unique')
 # The contract stamp covers the gate's PASS/FAIL RULES, not just the list of
 # names it inspects. A rules change that left the stamp alone would inherit
 # every success earned under the old rules, because the sweep only re-evaluates
 # a SUCCESS whose stamp differs (#5851). Bump this whenever the meaning of a
 # passing gate changes.
-gate_rules='pr-target-drift-v4'
+gate_rules='pr-target-drift-v4;lint-layout-v1'
 gate_contract=$(REQUIRED_JOBS="$required" GATE_RULES="$gate_rules" python3 -c 'import hashlib, os; print(hashlib.sha256((os.environ["REQUIRED_JOBS"] + "\n" + os.environ["GATE_RULES"]).encode()).hexdigest()[:12])')
 gate_stamp="[gate-contract:$gate_contract]"
 BASE_DRIFT_REMOTE=${BASE_DRIFT_REMOTE:-origin}
@@ -267,7 +277,7 @@ fetch_required_check_runs() {
       }
     }' 2>"$gql_error"); then
     rm -f "$gql_error"
-    printf '%s\n' "$gql_pages" | jq -c --argjson required "$required" '[.[].data.repository.object.statusCheckRollup.contexts.nodes[]? | select(has("name") and (.name as $name | $required | index($name)))]'
+    printf '%s\n' "$gql_pages" | jq -c --argjson required "$check_run_names" '[.[].data.repository.object.statusCheckRollup.contexts.nodes[]? | select(has("name") and (.name as $name | $required | index($name)))]'
     return 0
   fi
   cat "$gql_error" >&2
@@ -276,7 +286,7 @@ fetch_required_check_runs() {
   rest_pages=$(gh_api_with_rate_limit_retry core \
     "repos/$REPO/commits/$eval_sha/check-runs?per_page=100" \
     --paginate --slurp) || return $?
-  printf '%s\n' "$rest_pages" | jq -c --argjson required "$required" '[.[].check_runs[]? | select(.name as $name | $required | index($name)) | {name, conclusion, databaseId: .id, startedAt: .started_at, completedAt: .completed_at}]'
+  printf '%s\n' "$rest_pages" | jq -c --argjson required "$check_run_names" '[.[].check_runs[]? | select(.name as $name | $required | index($name)) | {name, conclusion, databaseId: .id, startedAt: .started_at, completedAt: .completed_at}]'
 }
 
 
@@ -518,16 +528,27 @@ print(json.dumps({
 # and a stale "in progress" on the head's last event would skip the only
 # re-poll. So the run whose completion fired this event never counts, and every
 # other candidate must still read as unfinished on its own run record.
+#
+# A run's `name` in the runs API is its run-name when the workflow sets one:
+# Test's is "PR #N into BASE: TITLE" (#10926), so matching on name never saw a
+# PR Test run, and every evaluation while Test ran slept 60s on a runner. Runs
+# are matched to the gated workflows by workflow_id, read from the workflow
+# listing only when an unfinished run exists.
 gated_run_in_flight() {
-  local eval_sha="$1" pages candidates run_id run_status
+  local eval_sha="$1" pages unfinished workflows gated_ids candidates run_id run_status
   [ -n "${GATED_WORKFLOWS:-}" ] || return 1
   pages=$(gh_api_with_rate_limit_retry core \
     "repos/$REPO/actions/runs?head_sha=$eval_sha&per_page=100" --paginate --slurp) || return 1
-  candidates=$(printf '%s\n' "$pages" | jq -r --arg gated "$GATED_WORKFLOWS" --arg trigger "${TRIGGER_RUN_ID:-}" '
+  unfinished=$(printf '%s\n' "$pages" | jq -c --arg trigger "${TRIGGER_RUN_ID:-}" '
+    [.[].workflow_runs[]? | select(.status != "completed" and (.id | tostring) != $trigger) | {id, workflow_id}]') || return 1
+  [ "$unfinished" != "[]" ] || return 1
+  workflows=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/workflows?per_page=100" --paginate --slurp) || return 1
+  gated_ids=$(printf '%s\n' "$workflows" | jq -c --arg gated "$GATED_WORKFLOWS" '
     ($gated | split(",")) as $names
-    | .[].workflow_runs[]?
-    | select(.status != "completed" and (.id | tostring) != $trigger and (.name as $name | $names | index($name)))
-    | .id') || return 1
+    | [.[].workflows[]? | select(.name as $name | $names | index($name)) | .id]') || return 1
+  candidates=$(jq -nr --argjson runs "$unfinished" --argjson ids "$gated_ids" '
+    $runs[] | select(.workflow_id as $id | $ids | index($id)) | .id') || return 1
   for run_id in $candidates; do
     run_status=$(gh_api_with_rate_limit_retry core "repos/$REPO/actions/runs/$run_id" --jq .status) || continue
     if [ -n "$run_status" ] && [ "$run_status" != "completed" ]; then
@@ -587,12 +608,21 @@ max_attempts=${CHECK_ATTEMPTS:-2}
 for attempt in 1 2; do
   runs=$(fetch_required_check_runs "$SHA")
 
-  status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
+  status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" LINT_LAYOUT="$lint_layout" python3 -c "
 import json
 import os
 
 runs = json.loads(os.environ['RUNS_JSON'])
 required = json.loads(os.environ['REQUIRED_JOBS'])
+layout = json.loads(os.environ['LINT_LAYOUT'])
+names = {r.get('name') for r in runs}
+if layout['marker'] in names:
+  required = [n for n in required if n not in layout['replaces']]
+  if layout['marker'] not in required:
+    required.append(layout['marker'])
+else:
+  required = [n for n in required if n != layout['marker']]
+  required += [n for n in layout['replaces'] if n not in required]
 latest = {}
 
 for name in required:

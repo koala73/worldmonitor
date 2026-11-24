@@ -900,8 +900,23 @@ function parseJsonArrayLiteral(source: string, regex: RegExp, label: string): st
   return parsed;
 }
 
+// The checks the gate requires of a commit built from these workflows. While
+// open PRs still run the old Lint Code and Typecheck layout, deploy-gate.sh
+// keeps the old names in `required` and swaps them for `lint_layout.marker`
+// when a commit publishes it (#11220). These workflows publish the marker, so
+// apply the same swap.
 function deployGateRequiredChecks(): string[] {
-  return parseJsonArrayLiteral(deployGateScript, /\n\s*required='(\[[^\n]+])'/, 'required checks');
+  const required = parseJsonArrayLiteral(deployGateScript, /\n\s*required='(\[[^\n]+])'/, 'required checks');
+  const layoutLiteral = deployGateScript.match(/\n\s*lint_layout='(\{[^\n]+\})'/)?.[1];
+  if (!layoutLiteral) {
+    return required;
+  }
+  const layout = JSON.parse(layoutLiteral) as { marker: string; replaces: string[] };
+  const effective = required.filter((check) => !layout.replaces.includes(check));
+  if (!effective.includes(layout.marker)) {
+    effective.push(layout.marker);
+  }
+  return effective;
 }
 
 function deployGateWorkflowRunNames(): string[] {
