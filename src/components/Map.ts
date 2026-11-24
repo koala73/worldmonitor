@@ -1475,7 +1475,11 @@ export class MapComponent {
         return;
       }
       const hiRes = await worldResponse.json() as WorldTopology;
-      if (this.destroyed || !hiRes) return;
+      if (this.destroyed) return;
+      if (!hiRes) {
+        this.hiResWorldFailures += 1;
+        return;
+      }
       this.worldData = hiRes;
       const countries = topojson.feature(hiRes, hiRes.objects.countries);
       this.countryFeatures = 'features' in countries ? countries.features : [countries];

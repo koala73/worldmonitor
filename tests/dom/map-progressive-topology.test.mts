@@ -160,6 +160,19 @@ describe('progressive world topology', () => {
     expect(map.countryFeatures).toBeNull();
   });
 
+  it('counts an empty 200 response as a failed upgrade', async () => {
+    fetchMock.mockImplementation(async () => new Response('null', { status: 200 }));
+    const map = createMap({}, 3);
+
+    for (let i = 0; i < 6; i++) {
+      map.applyTransform();
+      await settle();
+    }
+
+    expect(fetchedUrls()).toEqual([HIGH_RES_URL, HIGH_RES_URL]);
+    expect(map.countryFeatures).toBeNull();
+  });
+
   it('counts a network error as a failed upgrade', async () => {
     fetchMock.mockImplementation(async () => { throw new TypeError('offline'); });
     const map = createMap({}, 3);
