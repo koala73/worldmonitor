@@ -1933,7 +1933,7 @@ test('a deferred section older than 2x its interval fails the tick even when sib
   }
 });
 
-async function runStalledVictim(prefix, failureRecord, deferralRecord, redisOptions = {}) {
+async function runStalledVictim(prefix, failureRecord, deferralRecord, redisOptions = {}, { env = {}, siblings = [] } = {}) {
   // Same budget shape as the stall test above: ten slow freshness reads leave
   // VICTIM too little budget, and its 3h-old seed-meta (3x a 1h interval)
   // makes the deferral a stall.
@@ -1956,10 +1956,13 @@ async function runStalledVictim(prefix, failureRecord, deferralRecord, redisOpti
           label: `FRESH_${k.toUpperCase()}`, script, seedMetaKey: `${prefix}:${k}`, intervalMs: DAY, timeoutMs: 5_000,
         })),
         { label: 'RUNS', script, intervalMs: 1, timeoutMs: 5_000 },
+        ...siblings,
         { label: 'VICTIM', script, seedMetaKey: `${prefix}:victim`, intervalMs: HOUR, timeoutMs: 35_000 },
       ],
       { maxBundleMs: 60_000 },
-      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+      // The build is pinned per test: the runner reads RAILWAY_GIT_COMMIT_SHA,
+      // and a value inherited from the shell must not change a verdict.
+      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token, RAILWAY_GIT_COMMIT_SHA: '', ...env },
       { compressTime: { clock: STARVE_TIME_SCALE } },
     );
     return { ...run, redis };
@@ -1997,6 +2000,64 @@ test('a stalled section deferred after its last failed run is not blamed on the 
   assert.match(stderr, /\[VICTIM\] .* This is starvation, not pressure: its last admitted run at \S+ ended GRACEFUL_FAIL \(graceful fetch failure \(exit 75\)\), and a tick deferred it again at \S+\. Check both the upstream and the budget\./);
   assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
   assert.doesNotMatch(stderr, /failing source/);
+});
+
+const EARLIER_BUILD = 'a'.repeat(40);
+const THIS_BUILD = 'b'.repeat(40);
+const gracefulFailureOn = (build) => (fetchedAt) => ({
+  at: fetchedAt + 60_000, status: 'GRACEFUL_FAIL', reason: 'graceful fetch failure (exit 75)', build,
+});
+
+test('a stall whose only failure ran on an earlier build does not fail the tick', async () => {
+  // seed-bundle-macro, 2026-11-24 08:00: Food-UCDA's last run failed on the
+  // build before its parser fix (#11182). The fixed build had never run it,
+  // this tick deferred it, and the bundle exited 1 blaming the source. Nothing
+  // on this build has failed, so the stall is reported but does not crash.
+  const { code, stdout, stderr } = await runStalledVictim('earlier-build', gracefulFailureOn(EARLIER_BUILD), undefined, {}, {
+    env: { RAILWAY_GIT_COMMIT_SHA: THIS_BUILD },
+  });
+  assert.equal(code, 0, `a failure from an earlier build says nothing about this one; stderr:\n${stderr}`);
+  assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:10 deferred:1 failed:0 graceful:0 stalled:1/);
+  assert.match(stderr, /\[VICTIM\] Deferred, but its data is \d+min old .* Not yet run on this build: its last admitted run at \S+ ended GRACEFUL_FAIL \(graceful fetch failure \(exit 75\)\) on build aaaaaaaaaaaa, and this build \(bbbbbbbbbbbb\) has not run it\./);
+  assert.match(stderr, /older than 2x their interval — 0 failing at the source, 0 starved by the budget, 1 not yet run on this build\. Exiting 0\./);
+  assert.doesNotMatch(stderr, /Exiting non-zero|failing source, not starvation/);
+});
+
+test('a stall whose failure ran on this build still fails the tick', async () => {
+  // The dead-feed alarm: Amman (2026-11-16) and Food-MIT (2026-11-19) were
+  // found through this exit, and /api/health only warns on a stale food source.
+  const { code, stderr } = await runStalledVictim('same-build', gracefulFailureOn(THIS_BUILD), undefined, {}, {
+    env: { RAILWAY_GIT_COMMIT_SHA: THIS_BUILD },
+  });
+  assert.equal(code, 1);
+  assert.match(stderr, /\[VICTIM\] .* This is a failing source, not starvation/);
+  assert.match(stderr, /1 failing at the source, 0 starved by the budget\. Exiting non-zero\./);
+});
+
+test('without a build identity a stall blamed on the source still fails the tick', async () => {
+  // A local run, or a host that does not set RAILWAY_GIT_COMMIT_SHA, cannot
+  // tell builds apart, so it keeps the strict verdict.
+  const { code, stderr } = await runStalledVictim('no-build', gracefulFailureOn(EARLIER_BUILD));
+  assert.equal(code, 1);
+  assert.match(stderr, /\[VICTIM\] .* This is a failing source, not starvation/);
+  assert.doesNotMatch(stderr, /Not yet run on this build/);
+});
+
+test('an earlier-build stall does not claim exit 0 when a sibling hard-failed', async () => {
+  const brokenScript = '_bundle-fixture-earlier-build-broken.mjs';
+  const cleanup = writeFixture(brokenScript, `process.exit(1);\n`);
+  try {
+    const { code, stdout, stderr } = await runStalledVictim('earlier-build-broken', gracefulFailureOn(EARLIER_BUILD), undefined, {}, {
+      env: { RAILWAY_GIT_COMMIT_SHA: THIS_BUILD },
+      siblings: [{ label: 'BROKEN', script: brokenScript, intervalMs: 1, timeoutMs: 5_000 }],
+    });
+    assert.equal(code, 1, 'the hard failure still fails the tick');
+    assert.match(stdout, /failed:1 graceful:0 stalled:1/);
+    assert.match(stderr, /1 not yet run on this build\. Exiting non-zero\./);
+    assert.doesNotMatch(stderr, /Exiting 0/);
+  } finally {
+    cleanup();
+  }
 });
 
 test('an unreadable failure record leaves the stall cause unknown', async () => {
@@ -2061,12 +2122,13 @@ test('a failed section run records its status and reason for the stall guard', a
     const { code } = await runBundleWith(
       [{ label: 'FLAKY', script: '_bundle-fixture-failure-record.mjs', intervalMs: 7 * DAY, timeoutMs: 5_000 }],
       {},
-      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token, RAILWAY_GIT_COMMIT_SHA: THIS_BUILD },
     );
     assert.equal(code, 0, 'recording the failure does not change the graceful exit');
     const set = redis.pipelines.flat().find((command) => command[0] === 'SET' && command[1] === sectionFailureKey('test', 'FLAKY'));
     assert.ok(set, `expected SET ${sectionFailureKey('test', 'FLAKY')}; pipelines=${JSON.stringify(redis.pipelines)}`);
     const record = JSON.parse(set[2]);
+    assert.equal(record.build, THIS_BUILD, 'a later build can tell this failure is not its own');
     assert.equal(record.status, 'GRACEFUL_FAIL');
     assert.equal(record.reason, `graceful fetch failure (exit ${GRACEFUL_FETCH_FAILURE_EXIT_CODE})`);
     assert.ok(record.at >= before);

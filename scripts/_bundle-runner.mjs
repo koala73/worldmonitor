@@ -701,6 +701,11 @@ export async function runBundle(label, sections, opts = {}) {
   }
 
   const t0 = Date.now();
+  // The deployed commit, stamped on failure records so a stall can tell a
+  // failure on this build from one on the build it replaced. Railway's
+  // variable only: GITHUB_SHA or VERCEL_GIT_COMMIT_SHA on a test or CI host
+  // must not make two runs of one build look different.
+  const currentBuild = String(process.env.RAILWAY_GIT_COMMIT_SHA ?? '').trim();
   const budgetLabel = Number.isFinite(maxBundleMs) ? `, budget ${Math.round(maxBundleMs / 1000)}s` : '';
   console.log(`[Bundle:${label}] Starting (${sections.length} sections${budgetLabel})`);
   if (disabledMembers.size > 0) {
@@ -857,6 +862,7 @@ export async function runBundle(label, sections, opts = {}) {
         at: Date.now(),
         status,
         reason: (result.reason || 'unknown').replace(/\s+/g, ' '),
+        ...(currentBuild ? { build: currentBuild } : {}),
       });
     }
   }
@@ -878,7 +884,7 @@ export async function runBundle(label, sections, opts = {}) {
     return { failure, deferredAfter, deferralUnknown: false };
   }));
   await writeSectionOutcomes(label, outcomeWrites);
-  let failingAtSource = 0, unknownCause = 0;
+  let failingAtSource = 0, unknownCause = 0, notYetRunOnBuild = 0;
   for (const [i, { section, ageMs }] of stalledSections.entries()) {
     const ageMin = Math.round(ageMs / 60_000);
     const intervalMin = Math.round(section.intervalMs / 60_000);
@@ -898,6 +904,18 @@ export async function runBundle(label, sections, opts = {}) {
       console.error(
         `${head}This may be starvation: ${lastRun}, but its deferral record could not be read, `
         + 'so a later budget loss cannot be ruled out. Check both the upstream and the budget.',
+      );
+    } else if (cause && cause.deferredAfter == null && currentBuild
+      && typeof cause.failure.build === 'string' && cause.failure.build && cause.failure.build !== currentBuild) {
+      // The failure ran on the build this one replaced, and this build has not
+      // run the section yet, so nothing says its source still fails. Seen on
+      // seed-bundle-macro 2026-11-24: Food-UCDA's parser fix deployed after
+      // its last failed run, and the next tick deferred it. One more deferral
+      // after this tick's makes it starvation, which fails the tick.
+      notYetRunOnBuild++;
+      console.error(
+        `${head}Not yet run on this build: ${lastRun} on build ${cause.failure.build.slice(0, 12)}, `
+        + `and this build (${currentBuild.slice(0, 12)}) has not run it.`,
       );
     } else if (cause && cause.deferredAfter == null) {
       failingAtSource++;
@@ -950,7 +968,9 @@ export async function runBundle(label, sections, opts = {}) {
   // with a graceful skip, where real work published and one source blipped. A
   // tick that published NOTHING has no successful work to vouch for it.
   const starvedTick = ran === 0 && deferred > 0;
-  const exitsNonZero = failed > 0 || starvedTick || stalled > 0;
+  // A stall whose only failure ran on an earlier build is reported but does not
+  // fail the tick: see notYetRunOnBuild above. Every other stall does.
+  const exitsNonZero = failed > 0 || starvedTick || stalled - notYetRunOnBuild > 0;
   if (starvedTick) {
     console.error(
       `[Bundle:${label}] ran:0 while ${deferred} due section(s) were deferred — this tick published nothing and shed work. `
@@ -963,11 +983,16 @@ export async function runBundle(label, sections, opts = {}) {
     // exemption does not soften this: a 2x-interval-old deferral cannot be
     // produced by a single transient blip, so exiting non-zero here pages on
     // a genuinely stalled member, not on alert fatigue.
+    // A stall not yet run on this build does not fail the tick on its own, so
+    // the verdict follows the exit code rather than assuming non-zero.
     const unknownField = unknownCause > 0 ? `, ${unknownCause} with an unknown cause` : '';
-    console.error(failingAtSource === 0 && unknownCause === 0
-      ? `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — starvation while the bundle reported progress. Exiting non-zero.`
+    const notYetRunField = notYetRunOnBuild > 0 ? `, ${notYetRunOnBuild} not yet run on this build` : '';
+    const verdict = exitsNonZero ? 'Exiting non-zero.' : 'Exiting 0.';
+    const starvedByBudget = stalled - failingAtSource - unknownCause - notYetRunOnBuild;
+    console.error(starvedByBudget === stalled
+      ? `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — starvation while the bundle reported progress. ${verdict}`
       : `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — `
-        + `${failingAtSource} failing at the source, ${stalled - failingAtSource - unknownCause} starved by the budget${unknownField}. Exiting non-zero.`);
+        + `${failingAtSource} failing at the source, ${starvedByBudget} starved by the budget${unknownField}${notYetRunField}. ${verdict}`);
   } else if (failed === 0 && gracefulFailed > 0) {
     // Graceful-only run (transient skips, no hard failures): exit 0 so Railway
     // does not paint CRASHED and fire a spurious alert. Real staleness is caught
