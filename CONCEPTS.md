@@ -1134,7 +1134,7 @@ A Fallback Stream decays with no code change. The provider ends the broadcast, r
 
 The resource-saving stop of live video after a viewer-chosen stretch with no pointer, keyboard, scroll, wheel, click, or touch input, which the viewer can also set to never. Every live panel that was playing ends at once and shows a notice naming inactivity as the cause, with a way to resume and a way to stop pausing. Input alone never restarts video; only the notice or a Play action does.
 
-The pause keys on input, not on whether anyone is watching, so input inside an embedded player does not count. A panel in fullscreen and a video the viewer paused are left alone. A separate, shorter, fixed stretch freezes page animation and is not governed by this preference. See also: Always-On Playback.
+The pause keys on input, not on whether anyone is watching, so input inside an embedded player does not count, with one exception: muting from the player's own controls counts as input, so the stretch starts again from the mute. Live News playing with sound is exempt, since someone listening gives no input. A panel in fullscreen and a video the viewer paused are left alone. A separate, shorter, fixed stretch freezes page animation and is not governed by this preference. See also: Always-On Playback.
 
 ### Always-On Playback
 
