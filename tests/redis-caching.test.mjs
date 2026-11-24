@@ -2568,6 +2568,61 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     }
   });
 
+  it('keeps a publisher byline out of the non-English context the dashboard sends', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const userPrompts = [];
+    installIntelFetchMock({ store: new Map(), setKeys: [], userPrompts, counters: { llmCalls: 0 } });
+    const context = [
+      `Source [1]: ${JSON.stringify(kuwaitHeadline)}`,
+      'Signals: critical_news=1',
+      `Headlines: ${kuwaitHeadline.title} | Kuwait - Saudi talks resume`,
+    ].join('\n');
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=KW&lang=fr&context=${encodeURIComponent(context)}`),
+        { countryCode: 'KW' },
+      );
+      assert.equal(userPrompts.length, 1);
+      assert.doesNotMatch(userPrompts[0], /Compliance Week/);
+      assert.match(userPrompts[0], /Kuwait public pension fund/);
+      assert.match(userPrompts[0], /Kuwait - Saudi talks resume/, 'a headline that is not a known source keeps its dash');
+      assert.match(userPrompts[0], /Signals: critical_news=1/);
+      assert.equal(out.sources[0].title, kuwaitHeadline.title);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('keeps a publisher byline out of the non-English shared digest prompt', async () => {
+    const { module, cleanup } = await importCountryIntelBrief();
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const userPrompts = [];
+    const store = new Map([['news:digest:v1:full:en', JSON.stringify([
+      { title: kuwaitHeadline.title, source: kuwaitHeadline.source, link: kuwaitHeadline.url },
+      { title: longHeadline, source: 'Gulf Investments', link: 'https://news.google.com/rss/articles/CBMiLong?oc=5' },
+    ])]]);
+    installIntelFetchMock({ store, setKeys: [], userPrompts, counters: { llmCalls: 0 } });
+    try {
+      await module.getCountryIntelBrief(
+        makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=KW&lang=fr'),
+        { countryCode: 'KW' },
+      );
+      assert.equal(userPrompts.length, 1);
+      assert.doesNotMatch(userPrompts[0], /Compliance Week/);
+      assert.doesNotMatch(userPrompts[0], /- Kuwait Times/, 'an unclipped headline line loses its byline too');
+      assert.match(userPrompts[0], /- the sovereign fund board says reforms will follow/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
   it('withholds a claim that names a source publisher byline as an entity', async () => {
     const { module, cleanup } = await importCountryIntelBrief({ premium: true });
     const restoreEnv = withEnv(INTEL_TEST_ENV);
