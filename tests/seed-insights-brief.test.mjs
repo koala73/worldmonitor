@@ -1554,6 +1554,14 @@ describe('low-credibility single-source attribution (#11274)', () => {
     assert.equal(out.brief.lead, 'Israeli opposition advanced a coalition deal to replace Netanyahu [2].');
   });
 
+  it('publishes the claim when the outlet credit follows its citation', () => {
+    const out = compose(
+      'Israeli opposition advanced a coalition deal to replace Netanyahu [2]. Four Palestinians were killed in an Israeli airstrike [1], WAFA English reported.',
+    );
+    assert.equal(out.rejection, null);
+    assert.match(out.brief.lead, /Four Palestinians were killed in an Israeli airstrike \[1\], WAFA English reported\.$/);
+  });
+
   it('publishes the claim when the lead names its outlet', () => {
     const out = compose(
       'WAFA English reported four Palestinians were killed in an Israeli airstrike [1], while Israeli opposition advanced a coalition deal to replace Netanyahu [2].',
