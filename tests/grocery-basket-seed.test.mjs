@@ -321,6 +321,82 @@ describe('grocery basket offer pages', () => {
     offerEvidence: 'Canola oil 1 L listed with a price',
   });
 
+  it('replaces Canadian listings with a complete basket of product offers', async (t) => {
+    const canada = COUNTRIES.find(({ code }) => code === 'CA');
+    const offers = [
+      ['sugar', /white granulated sugar/, 'Special Fine Granulated Sugar', '062847210233', 3.49, 2, 'kg'],
+      ['salt', /table salt/, 'Iodized Table Salt', '066010001055', 1.29, 1, 'kg'],
+      ['rice', /white rice/, 'Long Grain White Rice', '059749902373', 2.99, 900, 'g'],
+      ['pasta', /spaghetti pasta/, 'Dry Spaghetti Pasta', '064200130776', 2.49, 454, 'g'],
+      ['potatoes', /potatoes/, 'Russet Potatoes', '059749911153', 4.99, 5, 'lb'],
+      ['oil', /canola oil/, 'Pure Canola Oil', '059749888738', 3.79, 473, 'ml'],
+      ['flour', /all purpose wheat flour/, 'All-Purpose Flour', '059749892582', 3.99, 2.5, 'kg'],
+      ['eggs', /fresh eggs/, 'Large White Eggs', '059749896054', 3.99, 12, 'pc'],
+      ['milk', /fresh whole milk/, '3.25% Milk', '068200010045', 7.99, 4, 'l'],
+      ['bread', /white bread/, 'Enriched White Loaf', '063400012271', 4.69, 675, 'g'],
+    ];
+    const oldListing = 'https://www.loblaws.ca/en/collection/my-shop?navid=flyout-L1-my-shop-node';
+    const metroListing = 'https://www.metro.ca/en/online-grocery/aisles/pantry';
+    const learned = new Map(offers.map(([id]) => [`CA:${id}`, {
+      url: oldListing, hits: 4, failsSinceSuccess: 0,
+    }]));
+    const scraped = [];
+    const keys = ['EXA_API_KEYS', 'FIRECRAWL_API_KEY'];
+    const saved = keys.map(key => process.env[key]);
+    for (const key of keys) process.env[key] = 'test';
+    t.after(() => {
+      keys.forEach((key, index) => {
+        if (saved[index] === undefined) delete process.env[key];
+        else process.env[key] = saved[index];
+      });
+    });
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+      const request = JSON.parse(options.body);
+      if (url === 'https://api.firecrawl.dev/v2/scrape') {
+        scraped.push(request.url);
+        return Response.json({ success: true, data: { json: null } });
+      }
+      const fixture = offers.find(([, query]) => query.test(request.query));
+      if (!fixture || !request.includeDomains.includes('metro.ca') || request.numResults !== 10
+        || /\d/.test(request.query) || !request.query.endsWith('price Canadian grocery single product add to cart')) {
+        return Response.json({ results: [] });
+      }
+      const [, , productName, sku, price, quantity, unit] = fixture;
+      const summary = JSON.stringify({
+        productName, price, quantity, unit, currency: 'CAD', matchesStaple: true,
+        offerEvidence: `${productName} is available at the shown pack price`,
+      });
+      return Response.json({ results: [
+        { url: metroListing, summary },
+        { url: `${metroListing}/${productName.toLowerCase().replaceAll(' ', '-')}/p/${sku}`, summary },
+      ] });
+    });
+    const updates = new Map();
+    const deletes = new Set();
+    const result = await fetchGroceryBasketPrices(null, {
+      getFxRatesFn: async () => ({ CAD: 0.72 }),
+      fetchCountryItemsFn: (country, options) => country === canada ? fetchCountryItems(country, options) : [],
+      routes: {
+        read: async () => learned,
+        write: async (_scope, routeUpdates, routeDeletes) => {
+          for (const [key, route] of routeUpdates) updates.set(key, route);
+          for (const key of routeDeletes) deletes.add(key);
+        },
+      },
+    });
+    const row = result.countries.find(({ code }) => code === 'CA');
+    assert.equal(row.items.filter(({ available }) => available).length, offers.length);
+    assert.equal(result.cheapestCountry, 'CA');
+    assert.deepEqual(scraped, []);
+    for (const item of row.items) {
+      const key = `CA:${item.itemId}`;
+      assert.match(item.sourceSite, /\/p\/\d+$/);
+      assert.equal(isListingUrl(item.sourceSite), false);
+      assert.equal(deletes.has(key), true);
+      assert.equal(updates.get(key)?.url, item.sourceSite);
+    }
+  });
+
   function mockRetailers(t, exaResults) {
     const scraped = [];
     t.mock.method(globalThis, 'fetch', async (url, options) => {
@@ -383,6 +459,9 @@ describe('grocery basket offer pages', () => {
       'https://www.carrefour.fr/r/epicerie-salee/pates',
       'https://www.loblaws.ca/en/search?search-bar=no+name+spaghetti',
       'https://www.loblaws.ca/en/food/bakery/bread/c/28251?page=4',
+      'https://www.realcanadiansuperstore.ca/en/collection/pc-grocery-staples',
+      'https://www.metro.ca/en/online-grocery/aisles/pantry/pasta-rice-beans/rice',
+      'https://www.walmart.ca/en/browse/grocery/pantry-food',
       'https://mercado.carrefour.com.br/busca/ovos%20galinha%20organicos',
       'https://www.woolworths.com.au/shop/browse/pantry/baking/flour',
       'https://www.daraz.pk/tag/flat-pasta/',
@@ -423,6 +502,7 @@ describe('grocery basket offer pages', () => {
       'https://www.loblaws.ca/en/long-grain-white-rice/p/21689592_EA',
       'https://www.realcanadiansuperstore.ca/en/rice-long-grain-white/p/21689592_EA?pdp_prior=21415930_EA',
       'https://www.walmart.ca/en/ip/Long-Grain-White-Rice/58DTZVN8AN08',
+      'https://www.metro.ca/epicerie-en-ligne/allees/garde-manger/fines-herbes-epices-et-sauces/sels-et-poivres/sel-de-mer/p/062356541637',
       'https://mercado.carrefour.com.br/produto/acucar-refinado-carrefour-1kg-17755',
       'https://newsitefood.cloud.carrefour.com.br/sal-refinado-globo-1-kg-280127/p',
       'https://www.extra.com.br/arroz-tio-joao-branco-1kg/p/1582273846',
