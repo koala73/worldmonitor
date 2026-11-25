@@ -1011,7 +1011,8 @@ async function fetchSanctionsPressure() {
     et: ET_CODE[e.entityType] ?? 'entity',
     cc: e.countryCodes.slice(0, 3),
     pr: e.programs.slice(0, 3),
-    al: (e._aliases ?? []).slice(0, 10),
+    // An OFAC alias can carry a Latin and a native-script form, so ten aliases can fill twenty slots.
+    al: (e._aliases ?? []).slice(0, 20),
     ids: e._identifiers ?? [],
     sl: e.sourceLists,
   }));
