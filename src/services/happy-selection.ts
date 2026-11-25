@@ -24,7 +24,11 @@ const RECOVERY_EVIDENCE_RE = /\b(revers\w*|restor\w*|recover\w*|rebound\w*|cure[
 const WORSENING_EVIDENCE_RE = /\b(accelerat\w*|rising|rises|rose|surg(?:e|es|ed|ing)|soar\w*|spik(?:e|es|ed|ing)|worsen\w*|escalat\w*|record high)\b/i;
 
 // "Poaching falls" is recovery; "populations fall as habitat loss continues" is not.
-const DECLINING_PROBLEM_RE = new RegExp(`${NEGATIVE_EVIDENCE_RE.source}\\s+(?:\\w+\\s+)?(?:fall(?:s|en)?|fell|drops?|dropped|plummet\\w*|plung\\w*)\\b`, 'i');
+const DECLINE_VERB = '(?:fall(?:s|en)?|fell|drops?|dropped|declines?|declined|plummet\\w*|plung\\w*)';
+const DECLINING_PROBLEM_RE = new RegExp(
+  `${NEGATIVE_EVIDENCE_RE.source}\\s+(?:[\\w'-]+\\s+){0,3}${DECLINE_VERB}\\b|\\b${DECLINE_VERB}\\s+in\\s+(?:[\\w'-]+\\s+){0,2}${NEGATIVE_EVIDENCE_RE.source}`,
+  'i',
+);
 
 function hasNegativeEvidence(title: string): boolean {
   return NEGATIVE_EVIDENCE_RE.test(title)

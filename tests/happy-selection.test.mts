@@ -91,6 +91,8 @@ test('broad-source negative reporting is screened even when the ML gate passes e
     story('Mongabay', 'Rangers halt illegal logging across a third of the reserve'),
     story('Mongabay', 'Wildlife trafficking reduced by half after joint patrols'),
     story('Mongabay', 'Fall survey finds tiger poaching drops to a record low'),
+    story('Mongabay', 'Tiger poaching in Kenya falls to record low'),
+    story('Mongabay', 'Sharp drop in tiger poaching as patrols expand'),
     story('ScienceDaily', 'Vaccine halts spread of a parasite that kills thousands of children'),
     story('Live Science', 'Fetal surgery reverses spinal damage before birth'),
   ];
