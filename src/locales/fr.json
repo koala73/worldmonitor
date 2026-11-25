@@ -303,6 +303,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Passez à PRO pour les dépendances fournisseurs d'armements et la capacité militaire"
+    },
+    "intelMemory": {
+      "title": "Mémoire d'intelligence historique",
+      "help": "Archive de 180 jours des événements de conflit, militaires et énergétiques avec appariement sémantique de précédents à la demande.",
+      "loading": "Chargement de la mémoire d'intelligence historique…",
+      "proLocked": "Passez à PRO pour la mémoire d'intelligence historique de 180 jours et la recherche de précédents",
+      "unavailable": "La mémoire d'intelligence historique est temporairement indisponible.",
+      "retry": "Réessayer",
+      "empty": "Aucun événement d'intelligence archivé ne correspond à ce pays et ce domaine sur la période de 180 jours.",
+      "partial": "La couverture d'archive est partielle pour cette requête ; les enregistrements disponibles restent visibles.",
+      "domainFilterLabel": "Filtrer l'intelligence historique par domaine",
+      "domains": {
+        "all": "Tous",
+        "conflict": "Conflit",
+        "military": "Militaire",
+        "energy": "Énergie"
+      },
+      "loadMore": "Charger plus",
+      "loadingMore": "Chargement en cours…",
+      "loadMoreError": "Impossible de charger les événements supplémentaires. Réessayez.",
+      "sourceLink": "Source ↗",
+      "similarTitle": "Trouver des événements passés similaires",
+      "useLatestHeadline": "Utiliser le dernier titre",
+      "similarPlaceholder": "Décrivez une situation en cours (au moins 10 caractères)…",
+      "findSimilar": "Trouver des événements similaires",
+      "similarMinLength": "Entrez au moins 10 caractères pour rechercher les précédents historiques.",
+      "similarLoading": "Recherche dans les précédents historiques…",
+      "similarEmpty": "Aucun événement passé similaire n'a dépassé le seuil de similarité.",
+      "similarUnavailable": "La recherche de précédents est temporairement indisponible. Réessayez."
     }
   },
   "header": {
@@ -1503,7 +1532,7 @@
       "briefFreshness": "Généré il y a {{minutes}}m · source la plus récente datant de {{hours}}h",
       "briefStoryDetails": "Détails de l’article ({{count}})",
       "streamIdleStopLabel": "Arrêter la vidéo en direct en cas d'inactivité",
-      "streamIdleStopDesc": "Arrête Live News et Live Webcams après cette durée sans activité et affiche une notification dans le panneau.",
+      "streamIdleStopDesc": "Arrête Live News et Live Webcams après cette durée sans activité et affiche une notification dans le panneau. Live News continue de jouer tant que le son est activé.",
       "streamIdleStopNever": "Jamais",
       "liveNewsAutoplayLabel": "Lecture automatique des actualités en direct",
       "liveNewsAutoplayDesc": "Lance la vidéo des actualités en direct, en sourdine, dès qu'elle apparaît à l'écran. Désactivez cette option pour charger la vidéo uniquement quand vous la lancez vous-même."

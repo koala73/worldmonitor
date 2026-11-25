@@ -299,6 +299,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Nâng cấp lên PRO để xem phụ thuộc nhà cung cấp vũ khí và năng lực quân sự"
+    },
+    "intelMemory": {
+      "title": "Bộ Nhớ Tình Báo Lịch Sử",
+      "help": "Kho lưu trữ 180 ngày về các sự kiện xung đột, quân sự và năng lượng với tính năng khớp tiền lệ theo ngữ nghĩa theo yêu cầu.",
+      "loading": "Đang tải bộ nhớ tình báo lịch sử…",
+      "proLocked": "Nâng cấp lên PRO để có bộ nhớ tình báo lịch sử 180 ngày và tìm kiếm tiền lệ",
+      "unavailable": "Bộ nhớ tình báo lịch sử hiện không khả dụng.",
+      "retry": "Thử lại",
+      "empty": "Không có sự kiện tình báo được lưu trữ nào khớp với quốc gia và lĩnh vực này trong cửa sổ 180 ngày.",
+      "partial": "Phạm vi lưu trữ là không đầy đủ cho truy vấn này; các bản ghi có sẵn vẫn hiển thị.",
+      "domainFilterLabel": "Lọc tình báo lịch sử theo lĩnh vực",
+      "domains": {
+        "all": "Tất cả",
+        "conflict": "Xung đột",
+        "military": "Quân sự",
+        "energy": "Năng lượng"
+      },
+      "loadMore": "Tải thêm",
+      "loadingMore": "Đang tải thêm…",
+      "loadMoreError": "Không thể tải thêm sự kiện. Vui lòng thử lại.",
+      "sourceLink": "Nguồn ↗",
+      "similarTitle": "Tìm các sự kiện tương tự trong quá khứ",
+      "useLatestHeadline": "Sử dụng tiêu đề mới nhất",
+      "similarPlaceholder": "Mô tả một tình huống đang phát triển (ít nhất 10 ký tự)…",
+      "findSimilar": "Tìm sự kiện tương tự",
+      "similarMinLength": "Nhập ít nhất 10 ký tự để tìm kiếm tiền lệ trong quá khứ.",
+      "similarLoading": "Đang tìm kiếm tiền lệ lịch sử…",
+      "similarEmpty": "Không có sự kiện tương tự trong quá khứ vượt qua ngưỡng độ tương tự.",
+      "similarUnavailable": "Tìm kiếm tiền lệ hiện không khả dụng. Vui lòng thử lại."
     }
   },
   "header": {
@@ -1547,7 +1576,7 @@
       "briefFreshness": "Được tạo {{minutes}}m trước · nguồn mới nhất {{hours}}h tuổi",
       "briefStoryDetails": "Chi tiết tin tức ({{count}})",
       "streamIdleStopLabel": "Dừng video trực tiếp khi không hoạt động",
-      "streamIdleStopDesc": "Dừng Live News và Live Webcams sau khoảng thời gian này nếu không có hoạt động và hiển thị thông báo trong panel.",
+      "streamIdleStopDesc": "Dừng Live News và Live Webcams sau khoảng thời gian này nếu không có hoạt động và hiển thị thông báo trong panel. Live News tiếp tục phát khi âm thanh đang bật.",
       "streamIdleStopNever": "Không bao giờ",
       "liveNewsAutoplayLabel": "Tự động phát tin tức trực tiếp",
       "liveNewsAutoplayDesc": "Bắt đầu phát video tin tức trực tiếp, không âm thanh, ngay khi nó xuất hiện trên màn hình. Tắt tùy chọn này để chỉ tải video khi bạn bắt đầu phát."

@@ -251,6 +251,22 @@ function pad(str, len) {
   return str.length > len ? str.slice(0, len - 1) + '…' : str.padEnd(len);
 }
 
+// The DEAD table truncates detail to 20 characters, which hides the
+// disallowed host. This report is what CI fails on, so it names every feed.
+export function formatConfigDriftFailure(feeds) {
+  const rows = feeds.map((feed) => `  ${feed.name} | ${feed.detail} | ${feed.url}`);
+  return [
+    `FAIL: ${feeds.length} feed(s) violate the CI guardrails ` +
+      `(allowlist drift or plaintext URL).`,
+    ...rows,
+    `Fix shared/news-catalog.json and/or the 4 ` +
+      `allowlist mirrors (shared/rss-allowed-domains.json, .cjs, ` +
+      `scripts/shared/rss-allowed-domains.json, ` +
+      `api/_rss-allowed-domains.js). vite.config.ts now imports isAllowedDomain ` +
+      `from api/_rss-allowed-domain-match.js — no separate dev mirror to sync.`,
+  ].join('\n');
+}
+
 async function main() {
   const clientFeeds = extractFeeds().map((f) => ({ ...f, catalog: 'client' }));
   const serverFeeds = extractServerFeeds();
@@ -327,14 +343,7 @@ async function main() {
   const thirdPartyDead = dead.filter(r => !isConfigDrift(r));
 
   if (configDrift.length) {
-    console.error(
-      `\nFAIL: ${configDrift.length} feed(s) violate the CI guardrails ` +
-      `(allowlist drift or plaintext URL). Fix shared/news-catalog.json and/or the 4 ` +
-      `allowlist mirrors (shared/rss-allowed-domains.json, .cjs, ` +
-      `scripts/shared/rss-allowed-domains.json, ` +
-      `api/_rss-allowed-domains.js). vite.config.ts now imports isAllowedDomain ` +
-      `from api/_rss-allowed-domain-match.js — no separate dev mirror to sync.`
-    );
+    console.error(`\n${formatConfigDriftFailure(configDrift)}`);
     process.exit(1);
   }
 

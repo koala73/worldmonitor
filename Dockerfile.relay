@@ -68,6 +68,7 @@ COPY scripts/lib/wsb-tickers.cjs ./scripts/lib/wsb-tickers.cjs
 COPY scripts/lib/x-post-budget.cjs ./scripts/lib/x-post-budget.cjs
 # Stale-digest alert gate required by ais-relay.cjs (#7084).
 COPY scripts/lib/digest-stale-gate.cjs ./scripts/lib/digest-stale-gate.cjs
+COPY scripts/lib/headline-language.cjs ./scripts/lib/headline-language.cjs
 COPY scripts/lib/news-story-key.cjs ./scripts/lib/news-story-key.cjs
 # news-story-key.cjs loads this copy, not /app/shared/: it imports
 # @noble/hashes, which resolves from scripts/node_modules only.

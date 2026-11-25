@@ -10,9 +10,11 @@ import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { closeExternalProxyRules, installE2eOutboundFetchGuard } from './shared/e2e-dev-network-guard';
 import { removeSourceMaps, shouldEmitPublicSourceMaps, viteSourcemapSetting } from './shared/source-map-policy';
 import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
+import { CLIENT_COMPAT } from './src/bootstrap/client-compat';
 import {
   WEB_DASHBOARD_VARIANTS,
   renderVariantDashboardHtml,
@@ -1053,7 +1055,7 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const dashboardPrecache = createDashboardPrecache();
   const env = loadEnv(mode, process.cwd(), '');
   // Inject environment variables from .env files into process.env.
@@ -1071,6 +1073,11 @@ export default defineConfig(({ mode }) => {
       : 3000;
 
   const isE2E = process.env.VITE_E2E === '1';
+  // Set only by playwright.config.ts. Other VITE_E2E launches (wm-verify.sh,
+  // profiling scripts) want the readiness markers but still need live data.
+  const isOfflineE2E = isE2E && command === 'serve' && process.env.WM_E2E_OFFLINE === '1';
+  // Installed before any dev handler loads, so every server-side fetch is guarded.
+  if (isOfflineE2E) installE2eOutboundFetchGuard();
   const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
   const activeVariant = process.env.VITE_VARIANT || 'full';
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
@@ -1086,6 +1093,11 @@ export default defineConfig(({ mode }) => {
   return {
     html: {
       cspNonce: STATIC_SCRIPT_NONCE,
+    },
+    optimizeDeps: {
+      // The initial scan misses the ML worker. Discovering its dependency later
+      // replaces shared chunks while an open dashboard can still request them.
+      include: ['@xenova/transformers'],
     },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
@@ -1136,10 +1148,22 @@ export default defineConfig(({ mode }) => {
         name: 'wm-emit-build-hash',
         apply: 'build',
         generateBundle() {
+          const BUILD_SHA = process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev';
           this.emitFile({
             type: 'asset',
             fileName: 'build-hash.txt',
-            source: process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev',
+            source: BUILD_SHA,
+          });
+          // The compatibility marker a tab on an older build reads after it
+          // sees a new hash. Unchanged marker: the tab updates when hidden and
+          // quiet. Changed marker: it reloads at once. Its own file, so
+          // build-hash.txt stays a bare SHA for its other readers. The second
+          // line names the build, so the reader can tell that the marker and
+          // the hash it read a moment earlier came from the same deploy.
+          this.emitFile({
+            type: 'asset',
+            fileName: 'client-compat.txt',
+            source: `${CLIENT_COMPAT}\n${BUILD_SHA}\n`,
           });
         },
       },
@@ -1599,7 +1623,8 @@ export default defineConfig(({ mode }) => {
           '**/src-tauri/target/**',
         ],
       },
-      proxy: {
+      // E2E runs must not depend on live upstreams; see shared/e2e-dev-network-guard.ts.
+      proxy: closeExternalProxyRules(isOfflineE2E, {
         // Widget agent — forward to Railway relay for SSE streaming
         '/widget-agent': {
           target: 'https://proxy.worldmonitor.app',
@@ -1972,7 +1997,7 @@ export default defineConfig(({ mode }) => {
             });
           },
         },
-      },
+      }),
     },
   };
 });

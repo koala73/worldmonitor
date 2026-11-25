@@ -33,7 +33,7 @@ function settingsWithFreeSlots(
   const settings = cloneSettings(variant);
   let counted = 0;
   for (const [key, config] of Object.entries(settings)) {
-    if (!isFreePanelCapCounted(key)) continue;
+    if (!isFreePanelCapCounted(key, config, variant)) continue;
     if (counted < 5 && config.enabled) {
       counted += 1;
       continue;
@@ -57,7 +57,7 @@ function settingsAtFreeCap(
       config.enabled = false;
       continue;
     }
-    if (!isFreePanelCapCounted(key)) continue;
+    if (!isFreePanelCapCounted(key, config, variant)) continue;
     if (counted < FREE_MAX_PANELS) {
       config.enabled = true;
       counted += 1;
@@ -65,7 +65,7 @@ function settingsAtFreeCap(
       config.enabled = false;
     }
   }
-  assert.equal(countFreePanelCapUsage(settings), FREE_MAX_PANELS);
+  assert.equal(countFreePanelCapUsage(settings, variant), FREE_MAX_PANELS);
   assert.equal(settings[leaveDisabled]?.enabled, false);
   return settings;
 }
@@ -262,6 +262,31 @@ describe('evaluateSetPanelEnabled', () => {
     const result = evaluate({
       panelSettings,
       panelId: 'map',
+      enabled: true,
+      isPro: false,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.changed, true);
+    assert.equal(result.reason, undefined);
+  });
+
+  it('does not count locked Pro teaser panels against the free-tier cap', () => {
+    const panelSettings = settingsAtFreeCap('full', 'windy-webcams');
+    // Free up 1 real slot while keeping locked Pro teaser panels enabled (including one with stripped premium metadata).
+    const firstCountedEnabled = Object.entries(panelSettings).find(([key, cfg]) =>
+      cfg.enabled && isFreePanelCapCounted(key, cfg, 'full')
+    );
+    assert.ok(firstCountedEnabled);
+    firstCountedEnabled[1].enabled = false;
+    panelSettings['stock-analysis'] = { ...panelSettings['stock-analysis']!, enabled: true };
+    const strippedLocked = { ...panelSettings['trade-policy']!, enabled: true };
+    delete strippedLocked.premium;
+    panelSettings['trade-policy'] = strippedLocked;
+
+    assert.equal(countFreePanelCapUsage(panelSettings, 'full'), FREE_MAX_PANELS - 1);
+    const result = evaluate({
+      panelSettings,
+      panelId: 'windy-webcams',
       enabled: true,
       isPro: false,
     });

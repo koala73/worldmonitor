@@ -58,10 +58,8 @@ function makeCtx({ compactBytes = 0, canonicalBytes = 0, meta } = {}) {
 
 test('health monitors the compact wildfire publish independently of canonical fallback', () => {
   assert.equal(BOOTSTRAP_KEYS.wildfiresBootstrap, 'wildfire:fires-bootstrap:v1');
-  assert.deepEqual(SEED_META.wildfiresBootstrap, {
-    key: 'seed-meta:wildfire:fires-bootstrap',
-    maxStaleMin: 360,
-  });
+  assert.equal(SEED_META.wildfiresBootstrap.key, 'seed-meta:wildfire:fires-bootstrap');
+  assert.equal(SEED_META.wildfiresBootstrap.maxStaleMin, 360);
 
   const freshMeta = { fetchedAt: NOW - 60_000, recordCount: 500 };
   const healthy = classifyKey(

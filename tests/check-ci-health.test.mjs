@@ -160,6 +160,58 @@ describe('timeout detector', () => {
     assert.deepEqual(findings.map((finding) => finding.title), ['CI health (timeout): Test / unit-shard (5)']);
     assert.match(findings[0].evidence[0].detail, /attempt 1 cancelled after 916s/);
   });
+
+  // Test cancels a main push run when a newer main commit lands. The cancel
+  // follows the newer run's creation within seconds; a job timeout does not.
+  // job() starts at 04:10:00, so a 916s job ends at 04:25:16.
+  const superseded = run({ id: 1, conclusion: 'cancelled', created_at: '2026-10-31T04:08:21Z' });
+
+  it('does not report a job a newer main push cancelled', () => {
+    const newer = run({ id: 2, created_at: '2026-10-31T04:25:10Z' });
+    const findings = findTimeouts([{ run: superseded, attempt: 1, jobs: [job('unit-shard (5)', 'cancelled', 916)] }], [superseded, newer]);
+    assert.deepEqual(findings, []);
+  });
+
+  it('still reports a timeout when the newer push landed long before the cancel', () => {
+    const newer = run({ id: 2, created_at: '2026-10-31T04:12:00Z' });
+    const findings = findTimeouts([{ run: superseded, attempt: 1, jobs: [job('unit-shard (5)', 'cancelled', 916)] }], [superseded, newer]);
+    assert.deepEqual(findings.map((finding) => finding.title), ['CI health (timeout): Test / unit-shard (5)']);
+  });
+
+  it('never excuses a workflow that keeps every main run (only Test cancels them)', () => {
+    const lint = run({ id: 1, name: 'Lint Code', conclusion: 'cancelled', created_at: '2026-10-31T04:08:21Z' });
+    const newer = run({ id: 2, name: 'Lint Code', created_at: '2026-10-31T04:25:10Z' });
+    const findings = findTimeouts([{ run: lint, attempt: 1, jobs: [job('biome', 'cancelled', 916)] }], [lint, newer]);
+    assert.deepEqual(findings.map((finding) => finding.title), ['CI health (timeout): Lint Code / biome']);
+  });
+
+  it('still reports a timeout inside a failed Test attempt when a newer push lands', () => {
+    const failed = run({ id: 1, conclusion: 'failure', created_at: '2026-10-31T04:08:21Z' });
+    const newer = run({ id: 2, created_at: '2026-10-31T04:25:10Z' });
+    const findings = findTimeouts([{ run: failed, attempt: 1, jobs: [job('unit-shard (5)', 'cancelled', 916)] }], [failed, newer]);
+    assert.deepEqual(findings.map((finding) => finding.title), ['CI health (timeout): Test / unit-shard (5)']);
+  });
+
+  it('judges a re-run first attempt by its own conclusion, not the re-run', () => {
+    const rerun = run({ id: 1, run_attempt: 2, conclusion: 'success', created_at: '2026-10-31T04:08:21Z' });
+    const newer = run({ id: 2, created_at: '2026-10-31T04:25:10Z' });
+    const jobs = [job('unit-shard (5)', 'cancelled', 916)];
+    assert.deepEqual(findTimeouts([{ run: rerun, attempt: 1, jobs, conclusion: 'cancelled' }], [rerun, newer]), []);
+    assert.equal(findTimeouts([{ run: rerun, attempt: 1, jobs, conclusion: 'failure' }], [rerun, newer]).length, 1);
+    assert.equal(findTimeouts([{ run: rerun, attempt: 1, jobs }], [rerun, newer]).length, 1, 'unknown attempt conclusion is reported');
+  });
+
+  it('counts a superseding run that is still in progress', () => {
+    const newer = run({ id: 2, created_at: '2026-10-31T04:25:10Z', status: 'in_progress', conclusion: null });
+    const findings = findTimeouts([{ run: superseded, attempt: 1, jobs: [job('unit-shard (5)', 'cancelled', 916)] }], [superseded, newer]);
+    assert.deepEqual(findings, []);
+  });
+
+  it('only lets a newer run of the same workflow supersede', () => {
+    const otherWorkflow = run({ id: 2, name: 'Typecheck', created_at: '2026-10-31T04:25:10Z' });
+    const findings = findTimeouts([{ run: superseded, attempt: 1, jobs: [job('unit-shard (5)', 'cancelled', 916)] }], [superseded, otherWorkflow]);
+    assert.equal(findings.length, 1);
+  });
 });
 
 describe('failing-main detector', () => {
@@ -441,8 +493,9 @@ describe('issue sync', () => {
 });
 
 describe('collection against a fake GitHub API', () => {
+  const WORKFLOW_NAMES = { 'test.yml': 'Test', 'typecheck.yml': 'Typecheck', 'lint-code.yml': 'Lint Code', 'proto-check.yml': 'Proto Generation Check' };
   // NOW is Saturday 12:00 UTC. The event window reaches back 7 days and 6 hours.
-  function fakeGh({ daily = {}, attempts = {}, newestMain = [], staleMain = null, successMain = [], logs = {}, commits = {}, pulls = {} }) {
+  function fakeGh({ daily = {}, attempts = {}, attemptConclusions = {}, newestMain = [], staleMain = null, successMain = [], logs = {}, commits = {}, pulls = {} }) {
     const paths = [];
     let mainReads = 0;
     const gh = (args) => {
@@ -458,6 +511,8 @@ describe('collection against a fake GitHub API', () => {
       if (history) return JSON.stringify(commits[decodeURIComponent(history[1])] ?? []);
       const association = /^repos\/o\/r\/commits\/(\w+)\/pulls$/.exec(path);
       if (association) return JSON.stringify((pulls[association[1]] ?? []).map((number) => ({ number })));
+      const definition = /^repos\/o\/r\/actions\/workflows\/([^/?]+)$/.exec(path);
+      if (definition) return JSON.stringify({ name: WORKFLOW_NAMES[definition[1]] });
       const workflow = /workflows\/([^/]+)\/runs/.exec(path)?.[1];
       const date = /runs\?created=(\d{4}-\d{2}-\d{2})&/.exec(path)?.[1];
       if (date) return JSON.stringify({ workflow_runs: workflow === 'test.yml' ? (daily[date] ?? []) : [] });
@@ -470,6 +525,8 @@ describe('collection against a fake GitHub API', () => {
       if (path.includes('runs?event=push&branch=main&status=success')) return JSON.stringify({ workflow_runs: workflow === 'test.yml' ? successMain : [] });
       const attempt = /runs\/(\d+)\/attempts\/(\d+)\/jobs/.exec(path);
       if (attempt) return JSON.stringify({ jobs: attempts[`${attempt[1]}/${attempt[2]}`] ?? [] });
+      const attemptRun = /runs\/(\d+)\/attempts\/(\d+)$/.exec(path);
+      if (attemptRun) return JSON.stringify({ conclusion: attemptConclusions[`${attemptRun[1]}/${attemptRun[2]}`] ?? 'failure' });
       throw new Error(`unexpected path ${path}`);
     };
     return { gh, paths };
@@ -498,6 +555,20 @@ describe('collection against a fake GitHub API', () => {
       assert.match(result.findings[0].evidence[0].detail, /failing: `tests\/mcp-modern-era\.test\.mjs:1:1`$/);
     }
     assert.deepEqual(scan({}).skipped, ['CI health (flaky): Test / unit-shard (3)']);
+  });
+
+  it('names a pull request run by its workflow, not by the run-name test.yml gives it', () => {
+    // test.yml sets `run-name: PR #N into <base>: <title>` on pull requests
+    // (#10926), and the runs API returns that run-name as `name`. Titled by it,
+    // one flaky job became one issue per pull request (#11158-#11170).
+    const rerun = run({ id: 7, run_attempt: 2, event: 'pull_request', name: 'PR #10989 into main: fix(status): keep the reason readable', created_at: '2026-10-29T19:32:00Z' });
+    const { gh } = fakeGh({
+      daily: { '2026-10-29': [rerun] },
+      attempts: { '7/1': [job('variant-smoke (8)', 'failure', 150)], '7/2': [job('variant-smoke (8)', 'success', 150)] },
+    });
+    assert.deepEqual(checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true }).findings.map((finding) => finding.title), [
+      'CI health (flaky): Test / variant-smoke (8)',
+    ]);
   });
 
   it('reads every calendar day the overlapping window touches, so nothing falls between weekly scans', () => {
@@ -624,6 +695,34 @@ describe('collection against a fake GitHub API', () => {
     const timeout = findings.find((finding) => finding.kind === 'timeout');
     assert.equal(timeout?.title, 'CI health (timeout): Test / unit-shard (5)');
     assert.match(timeout.evidence[0].detail, /attempt 1 cancelled after 916s/);
+  });
+
+  it('does not report a main Test job that a still-running newer main push cancelled', () => {
+    const cancelled = run({ id: 9, conclusion: 'cancelled', event: 'push', head_branch: 'main', created_at: '2026-10-31T04:08:21Z' });
+    // job() runs from 04:10:00; 916s ends at 04:25:16, six seconds after this run started.
+    const replacement = run({ id: 10, status: 'in_progress', conclusion: null, event: 'push', head_branch: 'main', created_at: '2026-10-31T04:25:10Z' });
+    const { gh } = fakeGh({
+      daily: { '2026-10-31': [cancelled, replacement] },
+      attempts: { '9/1': [job('unit-shard (5)', 'cancelled', 916)] },
+    });
+    assert.deepEqual(checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true }).findings, []);
+  });
+
+  it('reads a re-run\'s first attempt conclusion before excusing it as superseded', () => {
+    const rerun = run({ id: 9, run_attempt: 2, conclusion: 'success', event: 'push', head_branch: 'main', created_at: '2026-10-31T04:08:21Z' });
+    const replacement = run({ id: 10, event: 'push', head_branch: 'main', created_at: '2026-10-31T04:25:10Z' });
+    const scan = (firstConclusion) => {
+      const { gh, paths } = fakeGh({
+        daily: { '2026-10-31': [rerun, replacement] },
+        attempts: { '9/1': [job('unit-shard (5)', 'cancelled', 916)], '9/2': [job('unit-shard (5)', 'success', 180)] },
+        attemptConclusions: { '9/1': firstConclusion },
+      });
+      const { findings } = checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
+      assert.ok(paths.includes('repos/o/r/actions/runs/9/attempts/1'));
+      return findings.filter((finding) => finding.kind === 'timeout');
+    };
+    assert.deepEqual(scan('cancelled'), []);
+    assert.equal(scan('failure').length, 1);
   });
 
   it('overlaps the previous scan by six hours and ignores anything older', () => {

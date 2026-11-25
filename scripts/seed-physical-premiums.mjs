@@ -63,7 +63,8 @@ export const COMMODITY_QUOTES_KEY = 'market:commodities-bootstrap:v1';
 export const FX_RATES_KEY = 'shared:fx-rates:v1';
 export const TROY_OUNCE_GRAMS = 31.1034768;
 
-const CACHE_TTL_SECONDS = 3 * 24 * 3600;
+// Twice the 3-day health budget, so a late seeder reads STALE_SEED, not EMPTY.
+const CACHE_TTL_SECONDS = 6 * 24 * 3600;
 export const PHYSICAL_PREMIUM_LOCK_TTL_MS = 10 * 60 * 1000;
 export const PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS = 60 * 1000;
 const DIVERGENCE_TTL_SECONDS = 16 * 24 * 3600;

@@ -8,12 +8,17 @@
  * millisecond the page goes away (Sentry WORLDMONITOR-1AY: the update toast's
  * reload, the stale-bundle reload, and a tab close all produced it).
  *
- * `beforeunload` fires synchronously inside `location.reload()` and every
- * navigation, before the browser aborts those fetches, so it is set before any
- * of the rejections run. The window is bounded because `beforeunload` also
- * fires for navigations that never happen (a cancelled prompt, a download
- * link); a failure after the window reports normally. `pageshow` clears it
- * when a bfcache page comes back.
+ * The listeners mark the page at `beforeunload` and `pagehide`. That was
+ * meant to land before the aborted fetches reject, but on WebKit it did not:
+ * after a `[stale-bundle] reload`, every in-flight API fetch failed within
+ * milliseconds and the scorecard capture still went out 828 ms later with the
+ * flag unset (WORLDMONITOR-1AY). So the three bootstrap updaters
+ * (stale-bundle-check, chunk-reload, sw-update) call `markPageUnloading()`
+ * immediately before `reload()`; other reloads and navigations still rely on
+ * the events. The window is bounded because a marked
+ * navigation can fail to happen (a cancelled prompt, a download link, a
+ * blocked reload); a failure after the window reports normally. `pageshow`
+ * clears it when a bfcache page comes back.
  */
 const UNLOAD_WINDOW_MS = 3_000;
 
@@ -25,10 +30,15 @@ type UnloadTarget = Pick<Window, 'addEventListener'>;
 export function installPageUnloadSignal(target: UnloadTarget | undefined = typeof window === 'undefined' ? undefined : window): void {
   if (installed || !target) return;
   installed = true;
-  const mark = (): void => { unloadStartedAt = Date.now(); };
+  const mark = (): void => { markPageUnloading(); };
   target.addEventListener('beforeunload', mark);
   target.addEventListener('pagehide', mark);
   target.addEventListener('pageshow', () => { unloadStartedAt = null; });
+}
+
+/** Open the unload window now. Call immediately before a first-party reload. */
+export function markPageUnloading(now: number = Date.now()): void {
+  unloadStartedAt = now;
 }
 
 export function isPageUnloading(now: number = Date.now()): boolean {

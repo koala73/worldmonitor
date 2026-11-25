@@ -93,10 +93,16 @@ function commitDateRanges() {
     );
   }
   // One pass, newest-first: retain the latest date and walk back to publication.
+  // --no-renames: rename detection compares file contents, and CI checks out
+  // with `filter: blob:none`, so git fetched each compared blob from
+  // github.com mid-test, and a 503 there failed the unit shard (#10015).
+  // Without --follow a renamed page is listed under its new name either way;
+  // the old path it adds is never a current page, so no date changes.
   const output = execFileSync(
     'git',
     [
       'log',
+      '--no-renames',
       '--topo-order',
       '--date=format-local:%Y-%m-%d',
       '--format=COMMIT:%cd',

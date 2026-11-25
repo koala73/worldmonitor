@@ -19,6 +19,8 @@ async function seedDashboard(page: Page): Promise<void> {
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+    // Breaking-news alerts can cover the controls used to verify font scaling.
+    localStorage.setItem('wm-breaking-alerts-v1', JSON.stringify({ enabled: false }));
     // Live News autoplays by default (#10218); with it off the panel shows
     // its click-to-play card, whose title is the panel body text measured here.
     localStorage.setItem(autoplayKey, 'false');

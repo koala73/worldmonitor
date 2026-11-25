@@ -36,8 +36,10 @@ export const BRIEF_ONLY_RSS_FETCH_POLICY: RssFetchPolicy = Object.freeze({
 export interface FetchFeedOptions {
   policy?: RssFetchPolicy;
   signal?: AbortSignal;
+  maxItems?: number;
 }
 
+const DEFAULT_FEED_ITEM_LIMIT = 5;
 const FEED_COOLDOWN_MS = 5 * 60 * 1000;
 const MAX_FAILURES = 2;
 const MAX_CACHE_ENTRIES = 100;
@@ -261,7 +263,10 @@ export async function fetchFeed(feed: Feed, options: FetchFeedOptions = {}): Pro
   throwIfAborted(signal);
   if (feedCache.size > MAX_CACHE_ENTRIES / 2) cleanupCaches();
   const currentLang = getCurrentLanguage();
-  const feedScope = getFeedScope(feed.name, currentLang);
+  const maxItems = options.maxItems ?? DEFAULT_FEED_ITEM_LIMIT;
+  // A larger sample must neither read nor overwrite a cached default sample.
+  const cacheName = maxItems === DEFAULT_FEED_ITEM_LIMIT ? feed.name : `${feed.name} [${maxItems} items]`;
+  const feedScope = getFeedScope(cacheName, currentLang);
 
   if (isFeedOnCooldown(feedScope)) {
     const cached = feedCache.get(feedScope);
@@ -310,7 +315,7 @@ export async function fetchFeed(feed: Feed, options: FetchFeedOptions = {}): Pro
     const isAtom = items.length === 0;
     if (isAtom) items = doc.querySelectorAll('entry');
 
-    const itemNodes = Array.from(items).slice(0, 5);
+    const itemNodes = Array.from(items).slice(0, maxItems);
     const parsed: Array<NewsItem & { threat: ReturnType<typeof classifyByKeyword> }> = [];
     for (const [index, item] of itemNodes.entries()) {
       const title = item.querySelector('title')?.textContent || '';
@@ -358,7 +363,7 @@ export async function fetchFeed(feed: Feed, options: FetchFeedOptions = {}): Pro
 
       // Each item performs DOM queries, date normalization, classification,
       // and geo inference. Let paint/input run before the next item instead
-      // of concatenating all five into the same task on mobile. (#5165)
+      // of concatenating the sample into the same task on mobile. (#5165)
       if (isMobile && index < itemNodes.length - 1) await yieldToMain();
     }
 

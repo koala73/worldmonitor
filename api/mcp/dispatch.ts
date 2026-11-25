@@ -540,6 +540,9 @@ export async function dispatchToolsCall(
   // The pre-check read `travelRiskAssessment: true` off the caller's
   // entitlement (#10451). Omitted → tools that require it are refused.
   travelRiskAssessment?: boolean,
+  // The free-allowance owner is paused after a failed renewal (#11213).
+  // Denials then name the billing portal and carry no checkout hint.
+  paymentFailed?: boolean,
 ): Promise<Response> {
   const id = body.id ?? null;
   // Every argument-validation failure goes through here. Protocol errors (a
@@ -552,10 +555,14 @@ export async function dispatchToolsCall(
     : rpcError(id, -32602, message, corsHeaders, data);
   // Only a user-bound caller can call start_upgrade, so only they get a
   // checkout hint. The free allowance is upgraded as free even when a lapsed
-  // paid row still carries its old plan key.
-  const upgradeFrom = context.kind === 'pro' || context.kind === 'user_key'
-    ? (freeAccountAllowance ? 'free' : planKey)
-    : undefined;
+  // paid row still carries its old plan key. A paused owner gets none:
+  // checkout is blocked until the card is fixed.
+  const pausedAfterPaymentFailure = freeAccountAllowance === true && paymentFailed === true;
+  const upgradeFrom = pausedAfterPaymentFailure
+    ? undefined
+    : context.kind === 'pro' || context.kind === 'user_key'
+      ? (freeAccountAllowance ? 'free' : planKey)
+      : undefined;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
   const dedicatedPanel = !freeAccountAllowance && budget?.allowance !== 'api'
     && (context.kind === 'pro' || context.kind === 'user_key');
@@ -691,10 +698,11 @@ export async function dispatchToolsCall(
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
       if (limited) return limited;
     }
+    if (pausedAfterPaymentFailure) return mcpDenialResponse({ reason: 'payment-failed' }, -32002, 403, id, corsHeaders);
     return mcpDenialResponse({ reason: 'upgrade-required', planFeature: tool._planFeature, upgradeFrom }, -32002, 403, id, corsHeaders);
   }
   if (freeAccountAllowance && toolAccess(tool) === 'subscription') {
-    return mcpDenialResponse({ reason: 'upgrade-required', upgradeFrom }, -32002, 403, id, corsHeaders);
+    return mcpDenialResponse(pausedAfterPaymentFailure ? { reason: 'payment-failed' } : { reason: 'upgrade-required', upgradeFrom }, -32002, 403, id, corsHeaders);
   }
 
   // Panel allocation can also spend quota, so reject caller-input errors
@@ -970,7 +978,10 @@ export async function dispatchToolsCall(
           // It must never be -32001/401: docs/mcp-error-catalog.mdx documents that
           // pair as "re-authenticate via OAuth", so an RFC-9728 client would loop
           // (OAuth succeeds, retry, 401 again) on a condition re-auth cannot fix.
-          return mcpDenialResponse({ reason: 'allowance-exhausted', upgradeFrom }, -32029, 429, id, corsHeaders, {
+          const exhausted = pausedAfterPaymentFailure
+            ? { reason: 'allowance-exhausted' as const, paymentFailed: true as const }
+            : { reason: 'allowance-exhausted' as const, upgradeFrom };
+          return mcpDenialResponse(exhausted, -32029, 429, id, corsHeaders, {
             retryAfter: String(secondsUntilUtcMidnight()),
           });
         }

@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 455196
+    "raw": 456084
   },
   "chunks": {
     "analytics": {
-      "raw": 52362,
+      "raw": 52318,
       "files": 1
     },
     "auth-state": {
@@ -19,11 +19,11 @@
       "files": 1
     },
     "clerk": {
-      "raw": 26000,
+      "raw": 26560,
       "files": 1
     },
     "convex-client": {
-      "raw": 6798,
+      "raw": 6934,
       "files": 1
     },
     "debugbear-rum": {
@@ -31,7 +31,7 @@
       "files": 1
     },
     "dom-utils": {
-      "raw": 2980,
+      "raw": 3039,
       "files": 1
     },
     "entitlements": {
@@ -55,7 +55,7 @@
       "files": 1
     },
     "main": {
-      "raw": 142712,
+      "raw": 142780,
       "files": 1
     },
     "map-layer-definitions": {
@@ -87,7 +87,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 72542,
+      "raw": 72651,
       "files": 1
     },
     "theme-manager": {
@@ -101,11 +101,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1843216
+      "raw": 1860730
     },
     "chunks": {
       "App": {
-        "raw": 1015859,
+        "raw": 1023740,
         "files": 1
       },
       "ai-flow-settings": {
@@ -125,7 +125,7 @@
         "files": 1
       },
       "cached-risk-scores": {
-        "raw": 20147,
+        "raw": 20148,
         "files": 1
       },
       "checkout": {
@@ -133,7 +133,7 @@
         "files": 1
       },
       "cloud-prefs-sync": {
-        "raw": 6928,
+        "raw": 6992,
         "files": 1
       },
       "continuous": {
@@ -141,7 +141,7 @@
         "files": 1
       },
       "corroboration": {
-        "raw": 20304,
+        "raw": 22202,
         "files": 1
       },
       "country-names": {
@@ -161,11 +161,11 @@
         "files": 1
       },
       "feeds": {
-        "raw": 191400,
+        "raw": 193336,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 193697,
+        "raw": 196023,
         "files": 1
       },
       "index": {
@@ -182,10 +182,6 @@
       },
       "news-credibility": {
         "raw": 9393,
-        "files": 1
-      },
-      "page-unload-signal": {
-        "raw": 420,
         "files": 1
       },
       "panel-display-name": {
@@ -229,7 +225,7 @@
         "files": 1
       },
       "source-provenance": {
-        "raw": 207614,
+        "raw": 211264,
         "files": 1
       },
       "storage-facility-registry-store": {
@@ -245,7 +241,7 @@
         "files": 1
       },
       "widget-store": {
-        "raw": 28091,
+        "raw": 28269,
         "files": 1
       }
     }

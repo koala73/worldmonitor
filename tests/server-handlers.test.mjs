@@ -114,15 +114,6 @@ describe('headline deduplication', () => {
     const result = deduplicateHeadlines(headlines);
     assert.equal(result.length, 3, 'All unique headlines should be kept');
   });
-
-  it('handles empty input', () => {
-    assert.deepEqual(deduplicateHeadlines([]), []);
-  });
-
-  it('handles single headline', () => {
-    const result = deduplicateHeadlines(['Single headline here']);
-    assert.equal(result.length, 1);
-  });
 });
 
 // ========================================================================

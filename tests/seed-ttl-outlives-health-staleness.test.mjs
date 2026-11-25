@@ -23,9 +23,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 import { ACLED_TTL } from '../scripts/seed-conflict-intel.mjs';
 import { __testing__ } from '../api/health.js';
+import { CABLE_HEALTH_CACHE_TTL_SECONDS } from '../server/worldmonitor/infrastructure/v1/get-cable-health.ts';
+
+const { DIGEST_WARM_HEARTBEAT_TTL_SECONDS } = createRequire(import.meta.url)('../scripts/lib/news-digest-warm.cjs');
 
 const radarSeeder = readFileSync(new URL('../scripts/seed-internet-outages.mjs', import.meta.url), 'utf8');
 for (const [name, constant] of [['ddosAttacks', 'DDOS_TTL'], ['trafficAnomalies', 'ANOMALIES_TTL']]) {
@@ -76,3 +80,18 @@ test('the ACLED key survives more than one missed cron tick', () => {
       + `(${2 * CRON_INTERVAL_SECONDS}s) so a single skipped tick cannot drop the data`,
   );
 });
+
+// Health rounds a key's age to whole minutes and calls it stale only above
+// maxStaleMin, so a payload must outlive (maxStaleMin + 0.5) minutes or a late
+// writer reads as EMPTY (crit) before STALE_SEED (warn) can fire.
+for (const [name, ttl] of [
+  ['cableHealth', CABLE_HEALTH_CACHE_TTL_SECONDS], // Sentry WORLDMONITOR-1C3: age 90, maxStaleMin 90, EMPTY
+  ['newsDigestWarmRelayHeartbeat', DIGEST_WARM_HEARTBEAT_TTL_SECONDS], // Sentry WORLDMONITOR-1CN
+]) {
+  test(`${name} payload TTL outlives the rounded health staleness boundary`, () => {
+    const { maxStaleMin } = __testing__.SEED_META[name];
+    assert.ok(Number.isFinite(ttl), `${name} TTL must be a number`);
+    assert.ok(ttl > (maxStaleMin + 0.5) * 60,
+      `${name} TTL (${ttl}s) must exceed (${maxStaleMin} + 0.5) min = ${(maxStaleMin + 0.5) * 60}s`);
+  });
+}

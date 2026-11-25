@@ -163,16 +163,16 @@
     "askIt": "Tanyakan",
     "askItDesc": "Chat WM Analyst. Layanan langsung yang bisa ditanyai dengan bahasa sehari-hari.",
     "subscribeIt": "Langgani",
-    "subscribeItDesc": "Rangkuman AI sesuai jadwal Anda — harian, dua kali sehari, atau mingguan. Slack, Discord, Telegram, Email, webhook.",
+    "subscribeItDesc": "Rangkuman AI sesuai jadwal Anda — harian, dua kali sehari, atau mingguan. Slack, Teams, Discord, Telegram, Email, webhook.",
     "buildOnIt": "Bangun di atasnya",
     "buildOnItDesc": "Pembuat Widget Kustom (HTML/CSS/JS + AI) dan MCP untuk Claude, GPT, dan LLM kustom."
   },
   "deliveryDesk": {
     "eyebrow": "MEJA PENGIRIMAN",
     "title": "Apa itu meja intelijen pribadi?",
-    "body": "Hingga 30 item berperingkat per kiriman, tanpa duplikasi antarsumber, dan dinilai berdasarkan daftar pantau Anda. Pilih frekuensinya — harian, dua kali sehari, atau mingguan — lengkap dengan Penilaian AI dan Sinyal yang perlu dipantau, dikirim ke Slack, Discord, Telegram, Email, atau webhook.",
+    "body": "Hingga 30 item berperingkat per kiriman, tanpa duplikasi antarsumber, dan dinilai berdasarkan daftar pantau Anda. Pilih frekuensinya — harian, dua kali sehari, atau mingguan — lengkap dengan Penilaian AI dan Sinyal yang perlu dipantau, dikirim ke Slack, Microsoft Teams, Discord, Telegram, Email, atau webhook.",
     "closer": "Bukan buletin. Seorang analis.",
-    "channels": "Slack · Discord · Telegram · Email · Webhook · Terenkripsi AES-256 · Jam tenang"
+    "channels": "Slack · Teams · Discord · Telegram · Email · Webhook · Terenkripsi AES-256 · Jam tenang"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Dasbor Langsung",
@@ -184,8 +184,7 @@
   "socialProof": {
     "uniqueVisitors": "Pengunjung unik",
     "peakDailyUsers": "Puncak pengguna harian",
-    "countriesReached": "Negara terjangkau",
-    "liveDataSources": "Sumber data langsung"
+    "countriesReached": "Negara terjangkau"
   },
   "audience": {
     "title": "Untuk siapa World Monitor dibuat?",
@@ -205,34 +204,6 @@
     "aiTeamsDesc": "Alirkan konteks dunia terkini ke asisten perusahaan Anda melalui MCP, dengan hak penggunaan internal secara tertulis.",
     "teamsTitle": "Tim & organisasi",
     "teamsDesc": "Beralih dari penggunaan perorangan ke alur kerja bersama, akses API, aplikasi TV, dan deployment terkelola."
-  },
-  "dataCoverage": {
-    "title": "Apa saja yang dipantau World Monitor?",
-    "subtitle": "Berbagai domain layanan diserap secara bersamaan. Pasar, makro, geopolitik, energi, infrastruktur — semuanya dinormalisasi dan ditampilkan pada globe WebGL.",
-    "markets": "Pasar Keuangan & Ekuitas",
-    "marketsDesc": "Analisis saham global, komoditas, kripto, arus ETF, target analis, dan data makro FRED",
-    "economy": "Ekonomi & Bank Sentral",
-    "economyDesc": "Pelacakan PDB, inflasi, suku bunga, siklus pertumbuhan, dan kebijakan moneter di negara-negara ekonomi utama",
-    "geopolitical": "Analisis Geopolitik",
-    "geopoliticalDesc": "Peristiwa ACLED & UCDP dengan skor eskalasi, kerangka risiko, dan analisis tren",
-    "maritime": "Maritim & Perdagangan",
-    "maritimeDesc": "Pergerakan kapal, deteksi kapal, aktivitas pelabuhan, dan inferensi kargo",
-    "aviation": "Pelacakan Penerbangan",
-    "aviationDesc": "Pelacakan transponder ADS-B atas pola penerbangan global",
-    "infra": "Infrastruktur Kritis",
-    "infraDesc": "Situs nuklir, jaringan listrik, pipa, kilang — aset yang dipetakan",
-    "fire": "Deteksi Kebakaran lewat Satelit",
-    "fireDesc": "Data kebakaran dan titik panas NASA FIRMS yang nyaris real-time",
-    "cables": "Kabel Bawah Laut",
-    "cablesDesc": "Rute kabel bawah laut dan stasiun pendaratan",
-    "internet": "Internet dan GPS",
-    "internetDesc": "Deteksi gangguan, anomali BGP, zona jamming GPS",
-    "cyber": "Ancaman Siber",
-    "cyberDesc": "Feed ransomware, pembajakan BGP, deteksi DDoS",
-    "gdelt": "GDELT & Berita",
-    "gdeltDesc": "Feed RSS terkurasi, peristiwa GDELT yang dinilai AI, siaran langsung",
-    "seismology": "Seismologi & Bencana Alam",
-    "seismologyDesc": "Gempa bumi USGS, aktivitas vulkanik, cuaca ekstrem"
   },
   "tiers": {
     "free": "Gratis",
@@ -255,13 +226,12 @@
     "riskMonitoring": "Pemantauan Risiko & Skenario",
     "riskMonitoringDesc": "Skor risiko global, analisis skenario, dan penilaian risiko geopolitik. Simulasi prakiraan mendalam berjalan otomatis lewat cron per jam — hasil terbaru muncul tanpa perlu dipicu manual. Deteksi konvergensi lintas sinyal pasar dan politik.",
     "morningBriefs": "Meja Intelijen Pribadi",
-    "morningBriefsDesc": "Hingga 30 berita berperingkat per rangkuman, tanpa duplikasi antarsumber. Pilih frekuensi harian, dua kali sehari, atau mingguan — atau peringatan real-time untuk peristiwa kritis. Penilaian AI dan Sinyal yang perlu dipantau dikirim ke Slack, Discord, Telegram, Email, atau webhook. Bukan buletin — seorang analis.",
+    "morningBriefsDesc": "Hingga 30 berita berperingkat per rangkuman, tanpa duplikasi antarsumber. Pilih frekuensi harian, dua kali sehari, atau mingguan — atau peringatan real-time untuk peristiwa kritis. Penilaian AI dan Sinyal yang perlu dipantau dikirim ke Slack, Microsoft Teams, Discord, Telegram, Email, atau webhook. Bukan buletin — seorang analis.",
     "oneKey": "Layanan Langsung, 1 Kunci",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, dan lainnya — semuanya aktif, tanpa pendaftaran terpisah.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky, dan lainnya — semuanya aktif, tanpa pendaftaran terpisah.",
     "deliveryLabel": "Pilih cara intelijen sampai ke Anda",
     "supplyChainLab": "Lab Uji Ketahanan Rantai Pasok",
-    "supplyChainLabDesc": "Modelkan guncangan biaya lintas negara dan sektor. Urutkan kerentanan komoditas berdasarkan ketergantungan pada chokepoint. Pantau konsentrasi dari tambang hingga kilang serta divergensi premi fisik SGE–COMEX — deret data yang bergerak sebelum berita utamanya muncul.",
-    "roadmapNote": "Dalam peta jalan: riwayat lebih panjang, lapisan peta premium."
+    "supplyChainLabDesc": "Modelkan guncangan biaya lintas negara dan sektor. Urutkan kerentanan komoditas berdasarkan ketergantungan pada chokepoint. Pantau konsentrasi dari tambang hingga kilang serta divergensi premi fisik SGE–COMEX — deret data yang bergerak sebelum berita utamanya muncul."
   },
   "apiSection": {
     "apiTier": "PAKET API",
@@ -573,7 +543,7 @@
       "n5Title": "Kabel bawah laut",
       "n5Desc": "{{submarineCables}} kabel bawah laut yang menjadi tulang punggung internet, ditumpangi sinyal gangguan dan ancaman.",
       "n6Title": "Pelacakan protes",
-      "n6Desc": "Deteksi protes dari ACLED dan GDELT; laporan dari satu sumber di sel 0,1° yang sama pada hari yang sama digabung menjadi satu peristiwa — sinyal, bukan rumor.",
+      "n6Desc": "Deteksi protes dari GDELT; laporan dari satu sumber di sel 0,1° yang sama pada hari yang sama digabung menjadi satu peristiwa — sinyal, bukan rumor.",
       "faith": "Jangan percaya begitu saja pada angkanya —",
       "faithCta": "buka aplikasinya dan hitung sendiri.",
       "faithNote": "Sumber dicantumkan di setiap panel."
@@ -631,7 +601,7 @@
       "q2": "Apa itu dasbor intelijen global?",
       "a2": "Satu tampilan langsung yang memadukan sinyal yang biasanya dipisahkan oleh kebanyakan alat: peristiwa konflik, pelacakan kapal dan pesawat, chokepoint pelayaran, satelit, kabel bawah laut, pipa, pasar, dan ancaman siber — pada satu peta dunia real-time, dilengkapi skor dan ringkasan AI. World Monitor adalah salah satunya, dan gratis.",
       "q3": "Dari mana datanya berasal?",
-      "a3": "Dari {{providers}} penyedia yang dicantumkan namanya. Di antaranya ACLED dan UCDP untuk konflik, AISStream untuk posisi kapal langsung, OpenSky untuk pesawat, NASA FIRMS untuk kebakaran, USGS untuk gempa bumi, IMF, BIS, FRED, dan Finnhub untuk pasar dan makro — ditambah feed berita terkurasi. Setiap panel menampilkan sumber dan stempel waktunya.",
+      "a3": "Dari {{providers}} penyedia yang dicantumkan namanya. Di antaranya GDELT dan UCDP untuk konflik, AISStream untuk posisi kapal langsung, OpenSky untuk pesawat, NASA FIRMS untuk kebakaran, USGS untuk gempa bumi, IMF, BIS, FRED, dan Finnhub untuk pasar dan makro — ditambah feed berita terkurasi. Setiap panel menampilkan sumber dan stempel waktunya.",
       "q4": "Bisakah saya memantau chokepoint seperti Hormuz atau Bab el-Mandeb secara real-time?",
       "a4": "Ya. {{chokepoints}} chokepoint, baik selat maupun terusan, dari Hormuz dan Bab el-Mandeb hingga Suez, dipantau dengan jumlah kapal AIS langsung, perubahan lintasan dari minggu ke minggu, dan skor gangguan — dan anomali kepadatan ditandai terhadap garis dasar bergulir tiap chokepoint.",
       "q5": "Apa bedanya dengan peta konflik seperti Liveuamap?",

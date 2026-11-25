@@ -114,84 +114,83 @@ for (const mobile of [false, true]) {
     await form.locator('.operational-summary').scrollIntoViewIfNeeded();
     expect(await output.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   });
-
-  test(`operational worksheet ${mobile ? 'mobile' : 'desktop'} rejects invalid inputs and retains reopened drafts`, async ({ page, countryBrief }, testInfo) => {
-    void countryBrief;
-    await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
-    await installDecisionBriefData(page);
-    await page.goto(`/dashboard?country=DE${mobile ? '' : '&expanded=1'}`);
-    const panel = page.locator('#country-deep-dive-panel');
-    await expect(panel).toHaveAttribute('aria-hidden', 'false');
-    if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
-    await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-    const output = panel.getByRole('region', { name: 'Decision brief', exact: true });
-    const form = output.getByRole('region', { name: 'Operational what-if worksheet', exact: true });
-    const worksheetFile = {
-      name: 'recovery-worksheet.json', mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify({
-        schema: 'worldmonitor-operational-worksheet/v1',
-        input: {
-          operation: 'Recovery example', basis: 'user', unit: 'units',
-          startDate: '2026-09-10', horizonDays: 10, startingStock: 100, dailyDemand: 20,
-          deliveries: [{ date: '2026-09-13', quantity: 40, unit: 'units', costUsd: null }],
-          alternativeDeliveries: [{ date: '2026-09-17', quantity: 40, unit: 'units', costUsd: null }],
-          alternativeDailyDemand: null,
-        },
-      })),
-    };
-    await form.getByLabel('Import worksheet JSON', { exact: true }).setInputFiles(worksheetFile);
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-    await output.getByRole('button', { name: 'Capture / refresh both' }).click();
-    await expect(output.getByRole('status')).toContainText('Captured.');
-    const paper = output.locator('.cdp-decision-paper');
-    await form.getByLabel('Starting usable stock', { exact: true }).fill('');
-    await expect(form.locator('.operational-result')).toHaveCount(0);
-    await expect(paper).toContainText('Operational worksheet incomplete or invalid');
-    await expect(paper.locator('.operational-result')).toHaveCount(0);
-    const invalidEvent = page.waitForEvent('download');
-    await output.getByRole('button', { name: 'Download decision JSON' }).click();
-    const invalidDownload = await invalidEvent;
-    const invalidPath = testInfo.outputPath('incomplete-decision.json');
-    await invalidDownload.saveAs(invalidPath);
-    expect(JSON.parse(await readFile(invalidPath, 'utf8')).operationalWorksheet).toBeNull();
-    await form.getByLabel('Import worksheet JSON', { exact: true }).setInputFiles(worksheetFile);
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-    await form.getByLabel('Alternative daily demand (blank keeps baseline)', { exact: true }).fill('10');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: None within horizon');
-    const alternativeDemand = form.getByLabel('Alternative daily demand (blank keeps baseline)', { exact: true });
-    await alternativeDemand.fill('');
-    await alternativeDemand.press('e');
-    expect(await alternativeDemand.evaluate((field: HTMLInputElement) => field.validity.badInput)).toBe(true);
-    await expect(form.locator('.operational-result')).toHaveCount(0);
-    await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeDisabled();
-    await expect(paper.locator('.operational-result')).toHaveCount(0);
-    expect(JSON.parse(await paper.locator('#decision-brief-snapshot').textContent() ?? 'null').operationalWorksheet).toBeNull();
-    await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
-    if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
-    await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-    await expect(form.locator('.operational-result')).toHaveCount(0);
-    await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeDisabled();
-    await alternativeDemand.fill('10');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: None within horizon');
-    await alternativeDemand.fill('');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-    await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeEnabled();
-    await alternativeDemand.fill('10');
-    await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
-    if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
-    await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-    await expect(form.getByLabel('Alternative daily demand (blank keeps baseline)', { exact: true })).toHaveValue('10');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: None within horizon');
-    await form.getByLabel('Daily demand', { exact: true }).fill('');
-    await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
-    if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
-    await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-    await expect(form.getByLabel('Daily demand', { exact: true })).toHaveValue('');
-    await expect(form.locator('.operational-result')).toHaveCount(0);
-    await expect(form).toContainText('Daily demand is required');
-  });
 }
 
+test('operational worksheet mobile rejects invalid inputs and retains reopened drafts', async ({ page, countryBrief }, testInfo) => {
+  void countryBrief;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installDecisionBriefData(page);
+  await page.goto('/dashboard?country=DE');
+  const panel = page.locator('#country-deep-dive-panel');
+  await expect(panel).toHaveAttribute('aria-hidden', 'false');
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
+  await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
+  const output = panel.getByRole('region', { name: 'Decision brief', exact: true });
+  const form = output.getByRole('region', { name: 'Operational what-if worksheet', exact: true });
+  const worksheetFile = {
+    name: 'recovery-worksheet.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      schema: 'worldmonitor-operational-worksheet/v1',
+      input: {
+        operation: 'Recovery example', basis: 'user', unit: 'units',
+        startDate: '2026-09-10', horizonDays: 10, startingStock: 100, dailyDemand: 20,
+        deliveries: [{ date: '2026-09-13', quantity: 40, unit: 'units', costUsd: null }],
+        alternativeDeliveries: [{ date: '2026-09-17', quantity: 40, unit: 'units', costUsd: null }],
+        alternativeDailyDemand: null,
+      },
+    })),
+  };
+  await form.getByLabel('Import worksheet JSON', { exact: true }).setInputFiles(worksheetFile);
+  await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
+  await output.getByRole('button', { name: 'Capture / refresh both' }).click();
+  await expect(output.getByRole('status')).toContainText('Captured.');
+  const paper = output.locator('.cdp-decision-paper');
+  await form.getByLabel('Starting usable stock', { exact: true }).fill('');
+  await expect(form.locator('.operational-result')).toHaveCount(0);
+  await expect(paper).toContainText('Operational worksheet incomplete or invalid');
+  await expect(paper.locator('.operational-result')).toHaveCount(0);
+  const invalidEvent = page.waitForEvent('download');
+  await output.getByRole('button', { name: 'Download decision JSON' }).click();
+  const invalidDownload = await invalidEvent;
+  const invalidPath = testInfo.outputPath('incomplete-decision.json');
+  await invalidDownload.saveAs(invalidPath);
+  expect(JSON.parse(await readFile(invalidPath, 'utf8')).operationalWorksheet).toBeNull();
+  await form.getByLabel('Import worksheet JSON', { exact: true }).setInputFiles(worksheetFile);
+  await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
+  await form.getByLabel('Alternative daily demand (blank keeps baseline)', { exact: true }).fill('10');
+  await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: None within horizon');
+  const alternativeDemand = form.getByLabel('Alternative daily demand (blank keeps baseline)', { exact: true });
+  await alternativeDemand.fill('');
+  await alternativeDemand.press('e');
+  expect(await alternativeDemand.evaluate((field: HTMLInputElement) => field.validity.badInput)).toBe(true);
+  await expect(form.locator('.operational-result')).toHaveCount(0);
+  await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeDisabled();
+  await expect(paper.locator('.operational-result')).toHaveCount(0);
+  expect(JSON.parse(await paper.locator('#decision-brief-snapshot').textContent() ?? 'null').operationalWorksheet).toBeNull();
+  await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
+  await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
+  await expect(form.locator('.operational-result')).toHaveCount(0);
+  await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeDisabled();
+  await alternativeDemand.fill('10');
+  await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: None within horizon');
+  await alternativeDemand.fill('');
+  await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
+  await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeEnabled();
+  await alternativeDemand.fill('10');
+  await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
+  await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
+  await expect(form.getByLabel('Alternative daily demand (blank keeps baseline)', { exact: true })).toHaveValue('10');
+  await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: None within horizon');
+  await form.getByLabel('Daily demand', { exact: true }).fill('');
+  await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
+  await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
+  await expect(form.getByLabel('Daily demand', { exact: true })).toHaveValue('');
+  await expect(form.locator('.operational-result')).toHaveCount(0);
+  await expect(form).toContainText('Daily demand is required');
+});
 
 for (const mobile of [false, true]) {
   test(`decision brief ${mobile ? 'mobile' : 'desktop'} preserves evidence and actions in actual downloads`, async ({ page, countryBrief }, testInfo) => {
@@ -594,36 +593,36 @@ test('English panel picker names financial and regional topics in plain language
   await evidenceScreenshot(page, { path }, { testInfo, name: 'English panel names' });
 });
 
-for (const mobile of [false, true]) {
-  test(`market breadth labels preserve percentage meaning on ${mobile ? 'mobile' : 'desktop'}`, async ({ page, countryBrief }, testInfo) => {
-    void countryBrief;
-    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
-    await page.route('**/api/market/v1/get-market-breadth-history', route => route.fulfill({ json: {
-      currentPctAbove20d: 0, currentPctAbove50d: 52, currentPctAbove200d: 68,
-      history: [{ date: '2026-10-07', pctAbove20d: 0, pctAbove50d: 52, pctAbove200d: 68 }],
-      updatedAt: '2026-10-08T00:00:00Z',
-    } }));
-    await page.goto('/dashboard');
-    await page.evaluate(async () => {
-      const { MarketBreadthPanel } = await import('/src/components/MarketBreadthPanel.ts');
-      const panel = new MarketBreadthPanel();
-      await panel.fetchData();
-      const preview = document.createElement('div');
-      preview.id = 'breadth-copy-preview';
-      preview.style.cssText = 'position:fixed;z-index:99999;inset:20px auto auto 20px;width:min(420px,calc(100vw - 40px));background:var(--bg);';
-      preview.appendChild(panel.getElement());
-      document.body.appendChild(preview);
-    });
-    const panel = page.locator('#breadth-copy-preview');
-    await expect(panel).toContainText('Stocks above 20-day moving average (%)');
-    await expect(panel).toContainText('Stocks above 50-day moving average (%)');
-    await expect(panel).toContainText('Stocks above 200-day moving average (%)');
-    await expect(panel.getByText('0.0%', { exact: true })).toBeVisible();
-    await expect(panel).not.toContainText('% Above Stocks');
-    const path = testInfo.outputPath(`market-breadth-${mobile ? 'mobile' : 'desktop'}.png`);
-    await evidenceScreenshot(panel, { path }, { testInfo, name: 'Controlled market breadth component preview' });
+test('market breadth labels preserve percentage meaning on desktop and mobile', async ({ page, countryBrief }, testInfo) => {
+  void countryBrief;
+  await page.route('**/api/market/v1/get-market-breadth-history', route => route.fulfill({ json: {
+    currentPctAbove20d: 0, currentPctAbove50d: 52, currentPctAbove200d: 68,
+    history: [{ date: '2026-10-07', pctAbove20d: 0, pctAbove50d: 52, pctAbove200d: 68 }],
+    updatedAt: '2026-10-08T00:00:00Z',
+  } }));
+  await page.goto('/dashboard');
+  await page.evaluate(async () => {
+    const { MarketBreadthPanel } = await import('/src/components/MarketBreadthPanel.ts');
+    const panel = new MarketBreadthPanel();
+    await panel.fetchData();
+    const preview = document.createElement('div');
+    preview.id = 'breadth-copy-preview';
+    preview.style.cssText = 'position:fixed;z-index:99999;inset:20px auto auto 20px;width:min(420px,calc(100vw - 40px));background:var(--bg);';
+    preview.appendChild(panel.getElement());
+    document.body.appendChild(preview);
   });
-}
+  const panel = page.locator('#breadth-copy-preview');
+  await expect(panel).toContainText('Stocks above 20-day moving average (%)');
+  await expect(panel).toContainText('Stocks above 50-day moving average (%)');
+  await expect(panel).toContainText('Stocks above 200-day moving average (%)');
+  await expect(panel).not.toContainText('% Above Stocks');
+  for (const size of ['desktop', 'mobile'] as const) {
+    if (size === 'mobile') await page.setViewportSize({ width: 390, height: 844 });
+    await expect(panel.getByText('0.0%', { exact: true })).toBeVisible();
+    const path = testInfo.outputPath(`market-breadth-${size}.png`);
+    await evidenceScreenshot(panel, { path }, { testInfo, name: `Market breadth on ${size}` });
+  }
+});
 
 for (const mobile of [false, true]) {
   test(`reviewed Swahili panel names render on ${mobile ? 'mobile' : 'desktop'}`, async ({ page, countryBrief }, testInfo) => {

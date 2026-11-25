@@ -1,10 +1,10 @@
 name: Refresh GitHub Stars Snapshot
 
 # The homepage star InteractionCounter is build-populated from the committed
-# freeze snapshot (docs/snapshots/github-stars-*.json), and
-# scripts/github-stars-snapshot.mjs rejects a snapshot older than
-# MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS (45) — so this monthly refresh is what
-# keeps the prerender buildable as well as truthful (#7641).
+# freeze snapshot (docs/snapshots/github-stars-*.json), and official
+# publishing runs scripts/github-stars-snapshot.mjs, which rejects a snapshot
+# older than MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS (45) — so this monthly refresh
+# is what keeps welcome.html publishable as well as truthful (#7641).
 #
 # The ceiling and the cron are one contract: relaxing either without the other
 # reopens the rotting-figure gap, and a guard in

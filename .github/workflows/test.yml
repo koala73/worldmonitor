@@ -10,15 +10,18 @@ on:
   push:
     branches: [main]
 
-# A superseded PR run owes nobody a verdict. Branch protection and
-# deploy-gate.sh both evaluate the head SHA only. Letting it finish burned
-# 59% of this workflow's runs on dead commits and queued the live commit
-# behind them. Cancellation is pull_request-only. A push to main still owes
-# the deploy gate a verdict, and `github.run_id` gives it a group of one so
-# nothing can evict it (#8443).
+# A superseded run owes nobody a verdict. Branch protection and deploy-gate.sh
+# both evaluate the head SHA only. Letting superseded PR runs finish burned 59%
+# of this workflow's runs on dead commits (#8443). Main pushes share one group
+# too: the newer main run tests a tree that contains the older commit, and 35
+# of 64 main runs (55% of main run time) were still going when the next merge
+# landed (2026-11-18..20). deploy-gate.sh posts "Superseded on main" pending,
+# not failure, for the cancelled commit, and the CI health scan does not count
+# the cancel as a timeout. A re-run of an old main run keeps a group of one
+# (run_id) so it cannot cancel the newer commit's run; so does any other event.
 concurrency:
-  group: test-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: test-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && 'main') || github.run_id }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -94,11 +97,35 @@ jobs:
               emit_all_true
               exit 0
             fi
+            # A newer main push cancels the run in progress (see concurrency),
+            # so the previous commit may have no verdict. Diff from the newest
+            # main commit whose Test run succeeded, or a code commit cancelled
+            # by a docs-only one would never be tested on main. A red run is
+            # not a base either: the jobs it failed or never reached must
+            # still run for its commit.
+            if ! RUNS_JSON=$(gh api "repos/${{ github.repository }}/actions/workflows/test.yml/runs?event=push&branch=main&status=completed&per_page=50") ||
+               ! DECIDED=$(jq -er --argjson self "${{ github.run_id }}" '
+                 [.workflow_runs[]? | select(.id != $self and .conclusion == "success")]
+                 | first | .head_sha | strings' <<< "$RUNS_JSON"); then
+              echo "No successful main Test run found; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            if [ "$DECIDED" != "$BEFORE" ]; then
+              echo "Main Test runs after $DECIDED did not succeed; diffing from it instead of $BEFORE."
+            fi
+            BEFORE="$DECIDED"
             if ! COMPARE_JSON=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}"); then
               echo "Compare API failed; running every Test job."
               emit_all_true
               exit 0
             fi
+            if ! jq -e '.status == "ahead"' <<< "$COMPARE_JSON" >/dev/null; then
+              echo "This commit does not descend from $BEFORE; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            echo "push_base=$BEFORE" >> "$GITHUB_OUTPUT"
             if ! FILES_JSON=$(jq -ce '.files | arrays' <<< "$COMPARE_JSON"); then
               emit_all_true
               exit 0
@@ -332,6 +359,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
+          PUSH_BASE: ${{ steps.diff.outputs.push_base }}
           FILES_JSON: ${{ steps.diff.outputs.files_json }}
         run: node .github/scripts/reuse-pr-test-verdict.mjs
 
@@ -366,7 +394,11 @@ jobs:
         with:
           # Docs page dates derive from git history; a shallow checkout would
           # resolve every file to HEAD instead of its last content change.
+          # Blobless: git log --name-only reads commits and trees, not
+          # historical blobs (matching unit-shards, unit-built-output, and
+          # scripts/generate-docs-page-dates.mjs --fetch-history).
           fetch-depth: 0
+          filter: blob:none
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
@@ -510,7 +542,12 @@ jobs:
           WM_EXPECT_BUILT_OUTPUT: '1'
           WM_EXPECT_SCRIPTS_DEPS: '1'
           DURATIONS_KEY: ${{ needs.changes.outputs.durations_key }}
-        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl ${DURATIONS_KEY:+--durations="$HOME/data-test-durations/durations.json"}
+        run: >-
+          npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4
+          --exclude=tests/docs-page-dates.test.mjs
+          --exclude=tests/docs-i18n-parity.test.mjs
+          --exclude=tests/internal-link-redirects.test.mjs
+          --timings=${{ runner.temp }}/data-test-timings.jsonl ${DURATIONS_KEY:+--durations="$HOME/data-test-durations/durations.json"}
       # The next run's estimates, saved whether the tests passed or not: a cache
       # saved only by green runs goes stale exactly while main is red. The next
       # run reads only the newest entry, so if every shard saved, whichever
@@ -648,6 +685,12 @@ jobs:
           # The merge commit's FIRST parent is the base tip this tree was merged
           # onto, so it tracks what is actually under test. The pre-push hook
           # compares against origin/main for the same reason.
+          #
+          # On push, the base stays the push parent even when its Test run was
+          # cancelled or red. The check validates one transition: cutover.fromKey
+          # must equal the base's key, so an older base rejects a valid cutover
+          # that follows a commit which already repointed the probe. Each commit's
+          # own transition was checked by its pull request run.
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
@@ -746,7 +789,6 @@ jobs:
         # exits 0 when its glob finds zero entry points, so "green" must
         # also mean "every discovered domain actually produced a bundle".
         run: |
-          node scripts/build-sidecar-sebuf.mjs
           node scripts/build-sidecar-handlers.mjs
           node -e '
             const { readdirSync, existsSync } = require("node:fs");
@@ -904,15 +946,13 @@ jobs:
       # The desktop app loads these bundles, not the api/ sources the suite
       # imports. Build them so the shipped-route check below reads what ships.
       - name: Build the sidecar handler bundles
-        run: |
-          node scripts/build-sidecar-sebuf.mjs
-          node scripts/build-sidecar-handlers.mjs
+        run: node scripts/build-sidecar-handlers.mjs
 
       - name: Test sidecar with the shipped Node.js runtime
         run: |
           export PATH="$PWD/src-tauri/sidecar/node:$PATH"
           node --version
-          npm run test:sidecar
+          npm run test:sidecar:desktop
           # Every route the app ships must load from the shipped files alone
           # on this runtime (#9906).
           node scripts/check-sidecar-shipped-routes.mjs
@@ -1133,6 +1173,23 @@ jobs:
             uses: ./.github/actions/install-browser-fonts
             timeout-minutes: 4
             continue-on-error: true
+      # rag-vector-store.spec.ts serves the embeddings model from this cache.
+      # Downloading it from Hugging Face inside the test let one stalled CDN
+      # transfer time out the spec's 90 s hook (#11158). A miss downloads it
+      # here, with per-attempt timeouts and sha256 checks, and fails loudly.
+      - name: Check whether this shard runs the RAG vector store spec
+        id: rag-spec
+        run: echo "needed=$(node -p "require('./package.json').scripts['test:e2e:ci-smoke:${{ matrix.shard }}'].includes('e2e/rag-vector-store.spec.ts')")" >> "$GITHUB_OUTPUT"
+      - name: Cache the e2e embeddings model
+        if: steps.rag-spec.outputs.needed == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/e2e-models
+          key: e2e-embeddings-model-${{ hashFiles('e2e/fetch-embeddings-model.ts') }}
+      - name: Fetch the e2e embeddings model
+        if: steps.rag-spec.outputs.needed == 'true'
+        timeout-minutes: 5
+        run: node e2e/fetch-embeddings-model.ts
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -1295,19 +1352,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          # node_modules comes from install-root-deps, so ~/.npm serves only
-          # the pro-test install inside build:pro. Keyed on the root lockfile
-          # it restored the 583 MB root download cache, and both parts pulling
-          # it at once took 12-62s instead of ~6s. The plugin parts never build
-          # /pro, so they skip the restore (8s median).
-          cache: ${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}
-          cache-dependency-path: pro-test/package-lock.json
       - uses: ./.github/actions/install-root-deps
-        with:
-          # The /pro parts restore ~/.npm through setup-node. The plugin parts
-          # restore nothing there, so a node_modules miss uses the action's
-          # root download cache instead.
-          npm-cache: ${{ startsWith(matrix.part, 'plugin-') && 'true' || 'false' }}
+      - name: Install /pro dependencies
+        if: ${{ !startsWith(matrix.part, 'plugin-') }}
+        uses: ./.github/actions/install-pro-deps
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -1394,9 +1442,10 @@ jobs:
             # public/pro/ is built output since #6898. Keep this explicit and
             # immediately before the focused specs so the browser checks cannot
             # run against missing or stale bytes from another build.
-            # The plugin parts never load /pro.
+            # The plugin parts never load /pro. Dependencies are restored above
+            # via install-pro-deps (matching the install half of build:pro).
             if: ${{ !startsWith(matrix.part, 'plugin-') }}
-            run: npm run build:pro
+            run: npm --prefix pro-test run build
       - name: Run fail-closed prehydration browser checks
         id: prehydration
         if: matrix.part == 'pro-gates'

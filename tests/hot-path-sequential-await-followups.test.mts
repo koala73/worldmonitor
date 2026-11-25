@@ -238,14 +238,14 @@ describe('request handlers', () => {
     assert.doesNotMatch(source, /await getAiRoutingDecisionForUser\(/, 'the routing lookup must not be awaited alone');
     assert.match(
       source,
-      /Promise\.all\(\[\s*assembleAnalystContext\([^)]*\),\s*getAiRoutingDecisionForUser\(premiumIdentity\.userId\),?\s*\]\)/,
+      /const routingDecisionPromise = getAiRoutingDecisionForUser\(premiumIdentity\.userId\);\s*const \[context, routingDecision\] = await Promise\.all\(\[\s*assembleAnalystContext\([^)]*\{\s*routingDecisionPromise\s*\}[^)]*\),\s*routingDecisionPromise,?\s*\]\)/,
     );
   });
 
   it('classify-event hashes the title alongside the routing lookup', () => {
     const source = read('server/worldmonitor/intelligence/v1/classify-event.ts');
     assert.doesNotMatch(source, /const aiRouting = await resolveAiRouting\(ctx\.request\);\s*\n\s*const cacheKey = `\$\{await buildClassifyCacheKey/);
-    assert.match(source, /Promise\.all\(\[\s*resolveAiRouting\(ctx\.request\),\s*buildClassifyCacheKey\(title\)/);
+    assert.match(source, /Promise\.all\(\[\s*resolveAiRouting\(ctx\.request\),\s*buildClassifyCacheKey\(title, \{ callerTitle: true \}\)/);
   });
 
   it('get-risk-scores reads its auxiliary fallbacks together', () => {

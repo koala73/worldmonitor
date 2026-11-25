@@ -52,6 +52,58 @@ describe('relay digest stale gate (#7084)', () => {
     assert.equal(buildClassifyCandidateMap(stale, [], 'full', now, 6 * 60 * 60 * 1000, undefined, pool).size, 0);
   });
 
+  it('marks a headline from a feed in another language, served or pooled, so it is labelled but never alerts', () => {
+    const now = Date.now();
+    const digest = { categories: { europe: { items: [
+      { title: 'Es war Völkermord', source: 'Neue Zürcher Zeitung', publishedAt: now - 60_000 },
+      { title: 'Court rules on genocide', source: 'BBC World', publishedAt: now - 60_000 },
+      // lang ko, but an English Google News query.
+      { title: 'Supreme Court overturns jail term', source: 'Hankyoreh', publishedAt: now - 60_000 },
+    ] } } };
+    const pool = [
+      { title: 'Xi, Trump, dan Putin akhiri pertemuan', source: 'ANTARA News', publishedAt: now - 60_000 },
+      { title: 'Tanker hit in Hormuz', source: 'Strategic Chokepoints', originPublisher: 'Reuters', publishedAt: now - 60_000 },
+      { title: 'Unlisted feed headline', source: 'Not In The Catalog', publishedAt: now - 60_000 },
+    ];
+    const candidates = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000, undefined, pool);
+    assert.deepEqual([...candidates].filter(([, c]) => c.otherLanguage).map(([title]) => title), ['Es war Völkermord', 'Xi, Trump, dan Putin akhiri pertemuan']);
+  });
+
+  it('marks the two feeds that alerted English subscribers in Norwegian and Polish', () => {
+    const now = Date.now();
+    const digest = { categories: { europe: { items: [
+      { title: 'Oil tanker struck near Hormuz', source: 'NRK', publishedAt: now - 60_000 },
+      { title: 'Missiles cross into Poland', source: 'TVN24', publishedAt: now - 60_000 },
+      // An English Google News query that returns Spanish headlines.
+      { title: 'Court rules on extradition', source: 'El País Uruguay', publishedAt: now - 60_000 },
+    ] } } };
+    const candidates = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000, undefined, []);
+    assert.deepEqual([...candidates.values()].map(c => c.otherLanguage), [true, true, true]);
+  });
+
+  it('marks a headline in another language whatever its feed is tagged', () => {
+    const now = Date.now();
+    const item = title => ({ title, source: 'Business Wire', publishedAt: now - 60_000 });
+    const digest = { categories: { finance: { items: [
+      item('ISACA lanza la versión actualizada de COBIT 7 con un modelo de evaluación mejorado y una plataforma digital moderna'),
+      item('ISACA推出更新版COBIT 7，強化評估模型與現代化數位平台'),
+      item('ISACA launches updated COBIT 7'),
+    ] } } };
+    const candidates = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000, undefined, []);
+    assert.deepEqual([...candidates.values()].map(c => c.otherLanguage), [true, true, undefined]);
+  });
+
+  it('an English copy of a headline replaces a copy that cannot alert', () => {
+    const now = Date.now();
+    const title = 'Ukraine says missiles damaged Kerch Bridge';
+    const digest = { categories: { europe: { items: [{ title, source: 'Hromadske', publishedAt: now - 60_000 }] } } };
+    const pool = [{ title, source: 'BBC World', publishedAt: now - 120_000 }, { title, source: 'Koha', publishedAt: now - 30_000 }];
+    const candidate = buildClassifyCandidateMap(digest, [], 'full', now, 6 * 60 * 60 * 1000, undefined, pool).get(title);
+    assert.deepEqual([candidate.source, candidate.otherLanguage, candidate.fromPool], ['BBC World', undefined, undefined], 'a served headline stays served');
+    const pooled = buildClassifyCandidateMap({ categories: {} }, [], 'full', now, 6 * 60 * 60 * 1000, undefined, [pool[1], pool[0]]).get(title);
+    assert.deepEqual([pooled.source, pooled.otherLanguage, pooled.fromPool], ['BBC World', undefined, true]);
+  });
+
   it('skips a server-marked stale replay', () => {
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'build-error' } }), true);
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'gate-held' } }), true);

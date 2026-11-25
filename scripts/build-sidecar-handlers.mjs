@@ -25,7 +25,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const apiDir = path.join(ROOT, 'api');
 
-// Skip the catch-all [domain] directory (handled by build-sidecar-sebuf.mjs)
+// Skip leftover catch-all directories (removed in #785) from dirty checkouts
 const SKIP_DIRS = new Set(['[domain]', '[[...path]]']);
 
 /**

@@ -35,16 +35,16 @@
     "askIt": "Fråga det",
     "askItDesc": "WM Analyst chat. Live-tjänster som kan frågas på vanlig engelska.",
     "subscribeIt": "Prenumerera",
-    "subscribeItDesc": "AI-digest i din takt: dagligen, två gånger om dagen eller veckovis. Slack, Discord, Telegram, E-post, webhook.",
+    "subscribeItDesc": "AI-digest i din takt: dagligen, två gånger om dagen eller veckovis. Slack, Teams, Discord, Telegram, E-post, webhook.",
     "buildOnIt": "Bygg på det",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) och MCP för Claude, GPT, egna LLM:er."
   },
   "deliveryDesk": {
     "eyebrow": "LEVERANSSKRIVBORD",
     "title": "Vad är det personliga intelligensskribordet?",
-    "body": "Upp till 30 rankade objekt per sändning, avduplicerade över källor, poängsatta mot din bevakningslista. Välj din cadence — dagligen, två gånger dagligen eller veckovis — med en AI-bedömning och signaler att bevaka levererade till Slack, Discord, Telegram, E-post eller webhook.",
+    "body": "Upp till 30 rankade objekt per sändning, avduplicerade över källor, poängsatta mot din bevakningslista. Välj din cadence — dagligen, två gånger dagligen eller veckovis — med en AI-bedömning och signaler att bevaka levererade till Slack, Microsoft Teams, Discord, Telegram, E-post eller webhook.",
     "closer": "Inte ett nyhetsbrev. En analytiker.",
-    "channels": "Slack · Discord · Telegram · E-post · Webhook · AES-256-krypterat · Tysta timmar"
+    "channels": "Slack · Teams · Discord · Telegram · E-post · Webhook · AES-256-krypterat · Tysta timmar"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Live-dashboard",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "Unika besökare",
     "peakDailyUsers": "Dagliga användare (topp)",
-    "countriesReached": "Länder nådda",
-    "liveDataSources": "Live-datakällor"
+    "countriesReached": "Länder nådda"
   },
   "audience": {
     "title": "Vem är World Monitor utformat för?",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "Ge företagets assistent aktuell världsbild via MCP, med skriftliga rättigheter för internt bruk.",
     "teamsTitle": "Team och organisationer",
     "teamsDesc": "Gå från individuellt bruk till delade flöden, API-åtkomst, TV-appar och hanterade deployments."
-  },
-  "dataCoverage": {
-    "title": "Vad spårar World Monitor?",
-    "subtitle": "Tjänstedomäner inmatade samtidigt. Marknader, makro, geopolitik, energi, infrastruktur — allt normaliserat och renderat på en WebGL-glob.",
-    "markets": "Finansmarknader och aktier",
-    "marketsDesc": "Global aktieanalys, råvaror, krypto, ETF-flöden, analytikermål och FRED-makrodata",
-    "economy": "Ekonomi och centralbanker",
-    "economyDesc": "BNP, inflation, räntor, tillväxtcykler och penningpolitisk spårning av de största ekonomierna",
-    "geopolitical": "Geopolitisk analys",
-    "geopoliticalDesc": "ACLED- och UCDP-händelser med eskaleringspoäng, riskramverk och trendanalys",
-    "maritime": "Sjöfart och handel",
-    "maritimeDesc": "Fartygsrörelser, detektering av fartyg, hamnaktivitet och last-inferens",
-    "aviation": "Flygspårning",
-    "aviationDesc": "ADS-B-spårning av globala flygmönster",
-    "infra": "Kritisk infrastruktur",
-    "infraDesc": "Kärnkraftsanläggningar, elnät, ledningar, raffinerier — kartlagda resurser",
-    "fire": "Satellit-branddetektering",
-    "fireDesc": "NASA FIRMS nästan realtidsdata om bränder och hotspots",
-    "cables": "Undervattenskablar",
-    "cablesDesc": "Rutter för undervattenskablar och landningsstationer",
-    "internet": "Internet och GPS",
-    "internetDesc": "Avbrottsdetektering, BGP-anomalier, GPS-störningszoner",
-    "cyber": "Cyberhot",
-    "cyberDesc": "Ransomware-feeds, BGP-kapningar, DDoS-detektering",
-    "gdelt": "GDELT och nyheter",
-    "gdeltDesc": "Kurerade RSS-flöden, AI-poängsatta GDELT-händelser, live-sändningar",
-    "seismology": "Seismologi och natur",
-    "seismologyDesc": "USGS-jordbävningar, vulkanisk aktivitet, extremväder"
   },
   "tiers": {
     "free": "Gratis",
@@ -127,13 +98,12 @@
     "riskMonitoring": "Riskövervakning och scenarier",
     "riskMonitoringDesc": "Global riskpoäng, scenarieanalys och geopolitisk riskbedömning. Konvergensdetektering över marknads- och politiska signaler.",
     "morningBriefs": "Personligt intelligence-skrivbord",
-    "morningBriefsDesc": "Upp till 30 rankade nyhetsartiklar per sammandrag, avduplicerade över källor. Välj daglig, två gånger daglig eller veckovis cadence — eller realtidsaviseringar för kritiska händelser. AI-bedömning och signaler att bevaka levererade till Slack, Discord, Telegram, E-post eller webhook. Inte ett nyhetsbrev — en analytiker.",
+    "morningBriefsDesc": "Upp till 30 rankade nyhetsartiklar per sammandrag, avduplicerade över källor. Välj daglig, två gånger daglig eller veckovis cadence — eller realtidsaviseringar för kritiska händelser. AI-bedömning och signaler att bevaka levererade till Slack, Microsoft Teams, Discord, Telegram, E-post eller webhook. Inte ett nyhetsbrev — en analytiker.",
     "oneKey": "Live-tjänster, 1 nyckel",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky och fler — alla aktiva, inga separata registreringar.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky och fler — alla aktiva, inga separata registreringar.",
     "deliveryLabel": "Välj hur intelligence hittar dig",
     "supplyChainLab": "Stresstestlabb för leveranskedjan",
-    "supplyChainLabDesc": "Modellera en kostnadschock över länder och sektorer. Rangordna råvaruöversälj efter beroende av flaskhalsar. Spåra koncentration från gruva till raffin och SGE–COMEX-premiumskillnaden — serien som rör sig före rubrikerna.",
-    "roadmapNote": "På vägkartan: längre historik, premiumkartlager."
+    "supplyChainLabDesc": "Modellera en kostnadschock över länder och sektorer. Rangordna råvaruöversälj efter beroende av flaskhalsar. Spåra koncentration från gruva till raffin och SGE–COMEX-premiumskillnaden — serien som rör sig före rubrikerna."
   },
   "apiSection": {
     "apiTier": "API-NIVÅ",
@@ -560,7 +530,7 @@
       "n5Title": "Undersjökablar",
       "n5Desc": "{{submarineCables}} undersjöiska kablar som bär internet, överlagrat med avbrott- och hotsignaler.",
       "n6Title": "Protestspårning",
-      "n6Desc": "Protestdetektering från ACLED och GDELT; rapporter från en källa i samma 0,1°-cell samma dag slås samman till en händelse — signal, inte rykten.",
+      "n6Desc": "Protestdetektering från GDELT; rapporter från en källa i samma 0,1°-cell samma dag slås samman till en händelse — signal, inte rykten.",
       "faith": "Lita inte på siffrorna blint —",
       "faithCta": "öppna appen och räkna själv.",
       "faithNote": "Källor citeras på varje panel."
@@ -617,7 +587,7 @@
       "q2": "Vad är en global intelligence-instrumentbräda?",
       "a2": "En enda live-vy som sammanfogar signaler som de flesta verktyg håller åtskilda: konflikthändelser, fartygs- och flygspårning, sjövägsflaskhalsar, satelliter, undersjökablar, pipelines, marknader och cyberhotningar — på en realtids-världskarta, med AI-poäng och sammanfattningar överst. World Monitor är en gratis sådan.",
       "q3": "Var kommer data från?",
-      "a3": "Från {{providers}} verifierade källor. Namngivna inkluderar ACLED och UCDP för konflikter, AISStream för live fartyg, OpenSky för flygplan, NASA FIRMS för bränder, USGS för jordbävningar, IMF, BIS, FRED och Finnhub för marknader och makro — plus utvalda nyhetsflöden. Varje panel citerar sina källor och tidsstämplar inline.",
+      "a3": "Från {{providers}} verifierade källor. Namngivna inkluderar GDELT och UCDP för konflikter, AISStream för live fartyg, OpenSky för flygplan, NASA FIRMS för bränder, USGS för jordbävningar, IMF, BIS, FRED och Finnhub för marknader och makro — plus utvalda nyhetsflöden. Varje panel citerar sina källor och tidsstämplar inline.",
       "q4": "Kan jag övervaka flaskhalsar som Hormuz eller Bab el-Mandeb i realtid?",
       "a4": "Ja. {{chokepoints}} flaskhalsar, både sund och kanaler, från Hormuz och Bab el-Mandeb till Suez, övervakas med live AIS-fartygsantal, vecka-för-vecka-ändringar i transit och avbrottspoäng — och densitetsavvikelser flaggas mot varje flaskhals' rullande baslinje.",
       "q5": "Hur skiljer sig detta från en konfliktkarta som Liveuamap?",

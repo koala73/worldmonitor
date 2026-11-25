@@ -35,16 +35,16 @@
     "askIt": "Zeptejte se",
     "askItDesc": "WM Analyst chat. Živé služby dotazovatelné v běžné angličtině.",
     "subscribeIt": "Odebírejte",
-    "subscribeItDesc": "AI digest ve vašem tempu: denně, dvakrát denně nebo týdně. Slack, Discord, Telegram, E-mail, webhook.",
+    "subscribeItDesc": "AI digest ve vašem tempu: denně, dvakrát denně nebo týdně. Slack, Teams, Discord, Telegram, E-mail, webhook.",
     "buildOnIt": "Stavte na tom",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) a MCP pro Claude, GPT, vlastní LLM."
   },
   "deliveryDesk": {
     "eyebrow": "DORUČOVACÍ PULT",
     "title": "Co je osobní intelligence desk?",
-    "body": "Až 30 řazených položek na odeslání, deduplikovány napříč zdroji, vyhodnoceny podle vašeho sledovacího seznamu. Zvolte si svůj rytmus — denně, dvakrát denně nebo týdně — s AI vyhodnocením a signály k monitorování doručovanými na Slack, Discord, Telegram, Email nebo webhook.",
+    "body": "Až 30 řazených položek na odeslání, deduplikovány napříč zdroji, vyhodnoceny podle vašeho sledovacího seznamu. Zvolte si svůj rytmus — denně, dvakrát denně nebo týdně — s AI vyhodnocením a signály k monitorování doručovanými na Slack, Microsoft Teams, Discord, Telegram, Email nebo webhook.",
     "closer": "Žádný newsletter. Analytik.",
-    "channels": "Slack · Discord · Telegram · E-mail · Webhook · AES-256 šifrované · Tiché hodiny"
+    "channels": "Slack · Teams · Discord · Telegram · E-mail · Webhook · AES-256 šifrované · Tiché hodiny"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Živý dashboard",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "Unikátní návštěvníci",
     "peakDailyUsers": "Denní uživatelé (vrchol)",
-    "countriesReached": "Dosažené země",
-    "liveDataSources": "Živé datové zdroje"
+    "countriesReached": "Dosažené země"
   },
   "audience": {
     "title": "Pro koho je World Monitor určen?",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "Dodávejte firemnímu asistentovi živý světový kontext přes MCP, s písemnými právy k internímu použití.",
     "teamsTitle": "Týmy a organizace",
     "teamsDesc": "Přejděte od individuálního použití ke sdíleným workflow, API přístupu, TV aplikacím a řízeným nasazením."
-  },
-  "dataCoverage": {
-    "title": "Co World Monitor sleduje?",
-    "subtitle": "Domény služeb příjímané současně. Trhy, makroekonomika, geopolitika, energetika, infrastruktura — vše normalizováno a vykresleno na globu WebGL.",
-    "markets": "Finanční trhy a akcie",
-    "marketsDesc": "Globální analýza akcií, komodit, krypta, toky ETF, cíle analytiků a makro data FRED",
-    "economy": "Ekonomika a centrální banky",
-    "economyDesc": "HDP, inflace, úrokové sazby, růstové cykly a sledování měnové politiky v hlavních ekonomikách",
-    "geopolitical": "Geopolitická analýza",
-    "geopoliticalDesc": "Události ACLED a UCDP s bodováním eskalace, rámce rizika a analýza trendů",
-    "maritime": "Námořní a obchod",
-    "maritimeDesc": "Pohyby lodí, detekce plavidel, přístavní aktivita a odvozování nákladu",
-    "aviation": "Letecké sledování",
-    "aviationDesc": "ADS-B sledování globálních letových vzorů",
-    "infra": "Kritická infrastruktura",
-    "infraDesc": "Jaderná zařízení, elektrické sítě, potrubí, rafinerie — mapované prvky",
-    "fire": "Satelitní detekce požárů",
-    "fireDesc": "NASA FIRMS data téměř v reálném čase o požárech a hotspotech",
-    "cables": "Podmořské kabely",
-    "cablesDesc": "Trasy podmořských kabelů a dopadové stanice",
-    "internet": "Internet a GPS",
-    "internetDesc": "Detekce výpadků, anomálie BGP, zóny rušení GPS",
-    "cyber": "Kybernetické hrozby",
-    "cyberDesc": "Ransomware feedy, BGP únosy, detekce DDoS",
-    "gdelt": "GDELT a zprávy",
-    "gdeltDesc": "Kurované kanály RSS, AI-vyhodnocené události GDELT, živé přenosy",
-    "seismology": "Seismologie a přírodní",
-    "seismologyDesc": "USGS zemětřesení, vulkanická aktivita, extrémní počasí"
   },
   "tiers": {
     "free": "Zdarma",
@@ -127,13 +98,12 @@
     "riskMonitoring": "Monitoring rizik a scénáře",
     "riskMonitoringDesc": "Globální hodnocení rizika, analýza scénářů a posouzení geopolitického rizika. Detekce konvergence napříč tržními a politickými signály.",
     "morningBriefs": "Osobní zpravodajské pracoviště",
-    "morningBriefsDesc": "Až 30 řazených příspěvků na souhrn, deduplikovány napříč zdroji. Zvolte si denní, dvakrát denní nebo týdenní rytmus — nebo upozornění v reálném čase na kritické události. AI vyhodnocení a signály k monitorování doručované na Slack, Discord, Telegram, Email nebo webhook. Není to bulletin — je to analytik.",
+    "morningBriefsDesc": "Až 30 řazených příspěvků na souhrn, deduplikovány napříč zdroji. Zvolte si denní, dvakrát denní nebo týdenní rytmus — nebo upozornění v reálném čase na kritické události. AI vyhodnocení a signály k monitorování doručované na Slack, Microsoft Teams, Discord, Telegram, Email nebo webhook. Není to bulletin — je to analytik.",
     "oneKey": "Živé služby, 1 klíč",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky a další — všechny aktivní, bez samostatných registrací.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky a další — všechny aktivní, bez samostatných registrací.",
     "deliveryLabel": "Zvolte, jak vás zpravodajství najde",
     "supplyChainLab": "Laboratoř zátěže dodavatelského řetězce",
-    "supplyChainLabDesc": "Modelujte nákladový šok napříč zeměmi a sektory. Řaďte zranitelnost komodit podle závislosti na kritických místech. Sledujte koncentraci od těžby až po rafinerii a divergenci fyzické prémie SGE–COMEX — řadu, která se pohybuje dříve než titulky.",
-    "roadmapNote": "Na plánu: delší historie, prémiové vrstvy mapy."
+    "supplyChainLabDesc": "Modelujte nákladový šok napříč zeměmi a sektory. Řaďte zranitelnost komodit podle závislosti na kritických místech. Sledujte koncentraci od těžby až po rafinerii a divergenci fyzické prémie SGE–COMEX — řadu, která se pohybuje dříve než titulky."
   },
   "apiSection": {
     "apiTier": "API ÚROVEŇ",
@@ -560,7 +530,7 @@
       "n5Title": "Podmořské kabely",
       "n5Desc": "{{submarineCables}} podvodních kabelů, které přenášejí internet, překryté signály výpadků a hrozeb.",
       "n6Title": "Sledování protestů",
-      "n6Desc": "Detekce protestů z ACLED a GDELT; zprávy z jednoho zdroje ve stejné 0,1° buňce ve stejný den se sloučí do jedné události — signál, nikoli zvěst.",
+      "n6Desc": "Detekce protestů z GDELT; zprávy z jednoho zdroje ve stejné 0,1° buňce ve stejný den se sloučí do jedné události — signál, nikoli zvěst.",
       "faith": "Nevěřte číslům na slovo —",
       "faithCta": "otevřete aplikaci a počítejte sami.",
       "faithNote": "Zdroje jsou citovány na každém panelu."
@@ -617,7 +587,7 @@
       "q2": "Co je globální inteligentní panel?",
       "a2": "Jediné živé zobrazení, které spojuje signály, které většina nástrojů drží odděleně: konfliktní události, sledování lodí a letadel, kritická místa v přepravě, satelity, podmořské kabely, potrubí, trhy a kybernetické hrozby — na jedné mapě světa v reálném čase s AI skórováním a souhrny. World Monitor je ten zdarma.",
       "q3": "Odkud data pocházejí?",
-      "a3": "Od {{providers}} atribuovaných poskytovatelů. Pojmenovaní poskytovatelé zahrnují ACLED a UCDP pro konflikty, AISStream pro živé lodě, OpenSky pro letadla, NASA FIRMS pro požáry, USGS pro zemětřesení, IMF, BIS, FRED a Finnhub pro trhy a makro – plus kurátorské zpravodajské zdroje. Každý panel cituje své zdroje a časové značky přímo v textu.",
+      "a3": "Od {{providers}} atribuovaných poskytovatelů. Pojmenovaní poskytovatelé zahrnují GDELT a UCDP pro konflikty, AISStream pro živé lodě, OpenSky pro letadla, NASA FIRMS pro požáry, USGS pro zemětřesení, IMF, BIS, FRED a Finnhub pro trhy a makro – plus kurátorské zpravodajské zdroje. Každý panel cituje své zdroje a časové značky přímo v textu.",
       "q4": "Mohu sledovat kritická místa jako Hormuz nebo Bab el-Mandeb v reálném čase?",
       "a4": "Ano. {{chokepoints}} kritických bodů, jak průlivy tak kanály, od Hormuzského průlivu a Babelmandebského průlivu až po Suez, jsou sledovány s živými počty plavidel z AIS, změnami tranzitu týden na týden a skóre narušení — a anomálie hustoty jsou označeny vůči základní linii každého kritického bodu.",
       "q5": "Jak se liší od mapy konfliktů jako Liveuamap?",

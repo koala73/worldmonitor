@@ -21,6 +21,7 @@ export interface CountryIntelData {
   skipped?: boolean;
   reason?: string;
   fallback?: boolean;
+  accessNotice?: 'sign-in' | 'pro' | 'unavailable';
   /** The brief is one signal per line (no sentences), not prose. */
   signalRows?: boolean;
   sources?: BriefSource[];
@@ -250,6 +251,7 @@ export interface CountryBriefPanel {
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary | null): void;
   updateDefenseIndustrialBase?(data: GetDefenseIndustrialBaseResponse | null): void;
   syncCountryPremiumSectionsAccess?(hasAccess: boolean): void;
+  mountIntelMemory?(code: string, signal: AbortSignal): void;
   updateEconomicIndicators?(indicators: CountryDeepDiveEconomicIndicator[]): void;
   updateChinaCountrySummary?(data: ChinaCountrySummaryData): void;
   updateCountryFacts?(data: CountryFactsData): void;

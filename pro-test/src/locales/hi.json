@@ -35,16 +35,16 @@
     "askIt": "इससे पूछें",
     "askItDesc": "WM Analyst chat। लाइव सेवाएं साधारण अंग्रेजी में क्वेरी योग्य।",
     "subscribeIt": "इसकी सदस्यता लें",
-    "subscribeItDesc": "आपके schedule पर AI digest — daily, twice-daily या weekly. Slack, Discord, Telegram, Email, webhook.",
+    "subscribeItDesc": "आपके schedule पर AI digest — daily, twice-daily या weekly. Slack, Teams, Discord, Telegram, Email, webhook.",
     "buildOnIt": "इस पर निर्माण करें",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) और Claude, GPT, custom LLMs के लिए MCP."
   },
   "deliveryDesk": {
     "eyebrow": "डिलीवरी डेस्क",
     "title": "व्यक्तिगत इंटेलिजेंस डेस्क क्या है?",
-    "body": "प्रति भेजने पर 30 तक क्रमबद्ध आइटम, स्रोतों के पार डीडुप किए गए, आपकी निगरानी सूची के विरुद्ध स्कोर किए गए। अपनी आवृत्ति चुनें — दैनिक, दिन में दो बार, या साप्ताहिक — एक AI मूल्यांकन और Slack, Discord, Telegram, Email, या webhook को वितरित देखने के लिए संकेत।",
+    "body": "प्रति भेजने पर 30 तक क्रमबद्ध आइटम, स्रोतों के पार डीडुप किए गए, आपकी निगरानी सूची के विरुद्ध स्कोर किए गए। अपनी आवृत्ति चुनें — दैनिक, दिन में दो बार, या साप्ताहिक — एक AI मूल्यांकन और Slack, Microsoft Teams, Discord, Telegram, Email, या webhook को वितरित देखने के लिए संकेत।",
     "closer": "Newsletter नहीं। एक analyst.",
-    "channels": "Slack · Discord · Telegram · ईमेल · Webhook · AES-256 एन्क्रिप्टेड · शांत घंटे"
+    "channels": "Slack · Teams · Discord · Telegram · ईमेल · Webhook · AES-256 एन्क्रिप्टेड · शांत घंटे"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — लाइव डैशबोर्ड",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "अद्वितीय आगंतुक",
     "peakDailyUsers": "सर्वाधिक दैनिक उपयोगकर्ता",
-    "countriesReached": "पहुँचे हुए देश",
-    "liveDataSources": "लाइव डेटा स्रोत"
+    "countriesReached": "पहुँचे हुए देश"
   },
   "audience": {
     "title": "World Monitor किसके लिए बनाया गया है?",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "MCP के ज़रिए अपनी कंपनी के सहायक को लाइव वैश्विक संदर्भ दें, आंतरिक उपयोग के लिखित अधिकारों के साथ।",
     "teamsTitle": "Teams और organizations",
     "teamsDesc": "Individual use से shared workflows, API access, TV apps और managed deployments तक जाएँ।"
-  },
-  "dataCoverage": {
-    "title": "World Monitor क्या ट्रैक करता है?",
-    "subtitle": "सेवा डोमेन एक साथ ग्रहण किए गए। बाजार, मैक्रो, भू-राजनीति, ऊर्जा, बुनियादी ढांचे — सब कुछ सामान्यीकृत और एक WebGL ग्लोब पर प्रस्तुत।",
-    "markets": "Financial Markets और Equities",
-    "marketsDesc": "Global stock analysis, commodities, crypto, ETF flows, analyst targets और FRED macro data",
-    "economy": "Economy और Central Banks",
-    "economyDesc": "GDP, inflation, interest rates, growth cycles और major economies में monetary policy tracking",
-    "geopolitical": "भू-राजनीतिक विश्लेषण",
-    "geopoliticalDesc": "ACLED और UCDP events, escalation scoring, risk frameworks और trend analysis के साथ",
-    "maritime": "Maritime और Trade",
-    "maritimeDesc": "Ship movements, vessel detection, port activity और cargo inference",
-    "aviation": "विमानन ट्रैकिंग",
-    "aviationDesc": "Global flight patterns की ADS-B transponder tracking",
-    "infra": "महत्वपूर्ण बुनियादी ढांचा",
-    "infraDesc": "परमाणु साइटें, विद्युत ग्रिड, पाइपलाइनें, रिफाइनरियां — मैप की गई संपत्तियां",
-    "fire": "सैटेलाइट से आग की पहचान",
-    "fireDesc": "NASA FIRMS near-real-time fire और hotspot data",
-    "cables": "पनडुब्बी केबलें",
-    "cablesDesc": "Undersea cable routes और landing stations",
-    "internet": "Internet और GPS",
-    "internetDesc": "आउटेज पहचान, BGP विसंगतियां, GPS जैमिंग जोन",
-    "cyber": "साइबर खतरे",
-    "cyberDesc": "रैंसमवेयर फ़ीड, BGP हाईजैक, DDoS पहचान",
-    "gdelt": "GDELT और News",
-    "gdeltDesc": "क्यूरेटेड RSS फीड, AI-स्कोर किए गए GDELT ईवेंट, लाइव प्रसारण",
-    "seismology": "भूकंप विज्ञान और प्राकृतिक घटनाएँ",
-    "seismologyDesc": "USGS भूकंप, ज्वालामुखी गतिविधि, गंभीर मौसम"
   },
   "tiers": {
     "free": "मुफ़्त",
@@ -127,13 +98,12 @@
     "riskMonitoring": "Risk Monitoring और Scenarios",
     "riskMonitoringDesc": "Global risk scoring, scenario analysis और geopolitical risk assessment. Market और political signals में convergence detection.",
     "morningBriefs": "व्यक्तिगत इंटेलिजेंस डेस्क",
-    "morningBriefsDesc": "प्रति डाइजेस्ट 30 तक क्रमबद्ध कहानियां, स्रोतों के पार डीडुप की गई। दैनिक, दिन में दो बार, या साप्ताहिक आवृत्ति चुनें — या महत्वपूर्ण ईवेंटों के लिए रीयल-टाइम सतर्कताएं। AI मूल्यांकन और Slack, Discord, Telegram, Email, या webhook को वितरित देखने के लिए संकेत। एक समाचार पत्र नहीं — एक विश्लेषक।",
+    "morningBriefsDesc": "प्रति डाइजेस्ट 30 तक क्रमबद्ध कहानियां, स्रोतों के पार डीडुप की गई। दैनिक, दिन में दो बार, या साप्ताहिक आवृत्ति चुनें — या महत्वपूर्ण ईवेंटों के लिए रीयल-टाइम सतर्कताएं। AI मूल्यांकन और Slack, Microsoft Teams, Discord, Telegram, Email, या webhook को वितरित देखने के लिए संकेत। एक समाचार पत्र नहीं — एक विश्लेषक।",
     "oneKey": "लाइव सेवाएं, 1 कुंजी",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky और अधिक — सब active, अलग registrations नहीं।",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky और अधिक — सब active, अलग registrations नहीं।",
     "deliveryLabel": "चुनें कि intelligence आप तक कैसे पहुँचे",
     "supplyChainLab": "सप्लाई-चेन स्ट्रेस लैब",
-    "supplyChainLabDesc": "देशों और क्षेत्रों में लागत आघात का मॉडल बनाएं। चोकपॉइंट निर्भरता द्वारा कमोडिटी कमजोरी को रैंक करें। खदान-से-रिफाइनरी एकाग्रता और SGE–COMEX भौतिक प्रीमियम विचलन को ट्रैक करें — वह श्रृंखला जो हेडलाइन से पहले हिलती है।",
-    "roadmapNote": "रोडमैप पर: लंबा इतिहास, प्रीमियम मैप लेयर्स।"
+    "supplyChainLabDesc": "देशों और क्षेत्रों में लागत आघात का मॉडल बनाएं। चोकपॉइंट निर्भरता द्वारा कमोडिटी कमजोरी को रैंक करें। खदान-से-रिफाइनरी एकाग्रता और SGE–COMEX भौतिक प्रीमियम विचलन को ट्रैक करें — वह श्रृंखला जो हेडलाइन से पहले हिलती है।"
   },
   "apiSection": {
     "apiTier": "API टियर",
@@ -560,7 +530,7 @@
       "n5Title": "पनडुब्बी केबल",
       "n5Desc": "{{submarineCables}} समुद्रतल केबलें जो इंटरनेट ले जाती हैं, आउटेज और खतरे के संकेतों के साथ ओवरलेड।",
       "n6Title": "विरोध ट्रैकिंग",
-      "n6Desc": "ACLED और GDELT से विरोध प्रदर्शन का पता लगाना; एक ही 0.1° सेल में एक ही दिन के एक स्रोत से रिपोर्ट एक ईवेंट में मर्ज हो जाती हैं — यह सिग्नल है, अफवाह नहीं।",
+      "n6Desc": "GDELT से विरोध प्रदर्शन का पता लगाना; एक ही 0.1° सेल में एक ही दिन के एक स्रोत से रिपोर्ट एक ईवेंट में मर्ज हो जाती हैं — यह सिग्नल है, अफवाह नहीं।",
       "faith": "संख्याओं पर आस्था न रखें —",
       "faithCta": "ऐप खोलें और गिनती करें।",
       "faithNote": "हर पैनल पर स्रोत का हवाला दिया गया है।"
@@ -617,7 +587,7 @@
       "q2": "वैश्विक बुद्धिमत्ता डैशबोर्ड क्या है?",
       "a2": "एक एकल लाइव दृश्य जो सिग्नल को जोड़ता है जो अधिकांश उपकरण अलग रखते हैं: संघर्ष घटनाएं, जहाज और विमान ट्रैकिंग, शिपिंग अड़चनें, उपग्रह, सबसी केबल, पाइपलाइन, बाजार और साइबर खतरे — एक रीयल-टाइम विश्व मानचित्र पर, AI स्कोरिंग और संक्षिप्त विवरण के साथ। World Monitor एक मुफ्त है।",
       "q3": "डेटा कहां से आता है?",
-      "a3": "{{providers}} श्रेय प्राप्त प्रदाताओं से। नामित प्रदाताओं में संघर्ष के लिए ACLED और UCDP, लाइव पोत के लिए AISStream, विमान के लिए OpenSky, आग के लिए NASA FIRMS, भूकंप के लिए USGS, बाजार और मैक्रो के लिए IMF, BIS, FRED और Finnhub शामिल हैं — साथ ही क्यूरेट किए गए समाचार फीड। प्रत्येक पैनल अपने स्रोतों और टाइमस्टैम्प को इनलाइन में उद्धृत करता है।",
+      "a3": "{{providers}} श्रेय प्राप्त प्रदाताओं से। नामित प्रदाताओं में संघर्ष के लिए GDELT और UCDP, लाइव पोत के लिए AISStream, विमान के लिए OpenSky, आग के लिए NASA FIRMS, भूकंप के लिए USGS, बाजार और मैक्रो के लिए IMF, BIS, FRED और Finnhub शामिल हैं — साथ ही क्यूरेट किए गए समाचार फीड। प्रत्येक पैनल अपने स्रोतों और टाइमस्टैम्प को इनलाइन में उद्धृत करता है।",
       "q4": "क्या मैं हॉर्मुज़ या बाब अल-मांडब जैसी अड़चनों को रीयल टाइम में देख सकता हूं?",
       "a4": "हां। {{chokepoints}} चोकपॉइंट, जलडमरूमध्य और नहरें दोनों, होर्मुज़ और बाब अल-मंडेब से लेकर स्वेज़ तक, लाइव AIS पोत गणना, सप्ताह-दर-सप्ताह ट्रांज़िट परिवर्तन और व्यवधान स्कोरिंग के साथ ट्रैक किए जाते हैं — और घनत्व विसंगतियों को प्रत्येक चोकपॉइंट की रोलिंग बेसलाइन के विरुद्ध फ़्लैग किया जाता है।",
       "q5": "यह Liveuamap जैसे संघर्ष मानचित्र से कैसे अलग है?",

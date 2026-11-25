@@ -32,6 +32,7 @@ const DELIVERY_HOST_FEEDS = [
   ['Business Wire', 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==', 'https://www.businesswire.com/news/home/1/en/'],
   ['NDTV India', 'https://feeds.feedburner.com/ndtvkhabar-latest', 'https://ndtv.in/india/story-1'],
   ['InfoQ', 'https://feed.infoq.com/', 'https://www.infoq.com/news/2026/10/story/'],
+  ['Korea Times', 'https://feed.koreatimes.co.kr/k/allnews.xml', 'https://www.koreatimes.co.kr/world/20261120/story'],
   ['El Mundo', 'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml', 'https://www.elmundo.es/espana/2026/10/28/story.html'],
   ['Die Zeit', 'https://newsfeed.zeit.de/index', 'https://www.zeit.de/politik/2026-10/story'],
   ['El País', 'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada', 'https://elpais.com/espana/2026-10-28/story.html'],
@@ -55,6 +56,22 @@ describe('publisher-link gate: feeds served from a delivery host keep their arti
       assert.equal(gateRelayStoryLink(article, name), article, 'relay keeps the link');
     });
   }
+
+  it('keeps a Tages-Anzeiger article on tagesanzeiger.ch when the feed is on the Tamedia partner host', () => {
+    const feed = (catalog.feeds as Array<{ name: string; url: string; lang?: string; linkHosts?: string[] }>).find((entry) => entry.name === 'Tages-Anzeiger');
+    assert.ok(feed);
+    assert.equal(new URL(feed.url).hostname, 'partner-feeds.publishing.tamedia.ch');
+    assert.deepEqual(feed.linkHosts, ['tagesanzeiger.ch']);
+    const article = 'https://www.tagesanzeiger.ch/story-1';
+    const kept = __testing__.parseRssXml(rssWithLink(article), feed, 'full');
+    assert.equal(kept?.items[0]?.link, article);
+    assert.equal(
+      __testing__.storyTrackLinkForPersist({ link: article, source: feed.name, originPublisher: '', originPublisherTrusted: false }),
+      article,
+    );
+    const dropped = __testing__.parseRssXml(rssWithLink('https://evil.example/story'), feed, 'full');
+    assert.equal(dropped?.items[0]?.link, '');
+  });
 
   it('still blanks a link that leaves the publisher', () => {
     const [name, url] = DELIVERY_HOST_FEEDS[0];

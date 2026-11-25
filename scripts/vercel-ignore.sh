@@ -22,6 +22,7 @@ if [ "$VERCEL_GIT_COMMIT_REF" = "main" ] && [ -n "$VERCEL_GIT_PREVIOUS_SHA" ]; t
       'scripts/country-related-links.mjs' 'scripts/data/country-centroids.json' 'scripts/related-reading.mjs' 'scripts/data/related-reading.json' \
       'scripts/chokepoint-page-content.mjs' 'scripts/live-pages/' 'scripts/build-live-topic-pages.mjs' 'scripts/data/crisis-editorial.json' \
       'scripts/data/search-links/' 'scripts/search-links.mjs' 'scripts/lib/search-links.mjs' 'scripts/lib/main-module.mjs' \
+      'scripts/check-crawlable-live-pulse.mjs' 'scripts/github-stars-snapshot.mjs' \
       'scripts/source-origin.mjs' 'scripts/source-origin.d.mts' \
       'scripts/generate-inventory-facts.mjs' \
       'scripts/docs-stats.mjs' 'scripts/source-attribution.mjs' 'scripts/vercel-ignore.sh' \
@@ -117,6 +118,8 @@ git diff --name-only "$COMPARE_SHA" HEAD -- \
   'scripts/search-links.mjs' \
   'scripts/lib/search-links.mjs' \
   'scripts/lib/main-module.mjs' \
+  'scripts/check-crawlable-live-pulse.mjs' \
+  'scripts/github-stars-snapshot.mjs' \
   'scripts/source-origin.mjs' \
   'scripts/source-origin.d.mts' \
   'scripts/generate-inventory-facts.mjs' \
