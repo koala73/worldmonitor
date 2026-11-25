@@ -525,9 +525,6 @@ export function cosineSimilarity(a, b) {
   // Rescue only applies to lexical vectors carrying token sets — a
   // semantic provider's vectors skip it (semantic cosine already
   // handles truncation).
-  if (score < STORY_SIMILARITY_THRESHOLD && score >= SAME_PARTIES_SCORE_FLOOR && a.e && b.e && sameParties(a, b)) {
-    return STORY_SIMILARITY_THRESHOLD;
-  }
   if (score < CONTAINMENT_RESCUE_SCORE && a.t && b.t) {
     const [small, large] = a.t.size <= b.t.size ? [a.t, b.t] : [b.t, a.t];
     if (small.size >= CONTAINMENT_RESCUE_MIN_TOKENS) {
@@ -539,6 +536,9 @@ export function cosineSimilarity(a, b) {
         return CONTAINMENT_RESCUE_SCORE;
       }
     }
+  }
+  if (score < STORY_SIMILARITY_THRESHOLD && score >= SAME_PARTIES_SCORE_FLOOR && a.e && b.e && sameParties(a, b)) {
+    return STORY_SIMILARITY_THRESHOLD;
   }
   return score;
 }

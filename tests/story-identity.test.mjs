@@ -189,6 +189,19 @@ describe('clusterTexts', () => {
     assert.ok(!clusters.some((c) => c.includes(7) && c.includes(8)), 'same parties, different events stay apart');
   });
 
+  it('#11274: same parties sharing one topic word stay separate events', () => {
+    assert.equal(isSameStory(
+      'Iran seizes Saudi Arabia oil tanker near Strait of Hormuz overnight',
+      'Iran threatens to close Strait of Hormuz to Saudi Arabia oil exports',
+    ), false);
+  });
+
+  it('#11274: the same-parties rescue never lowers a containment match', () => {
+    const short = 'Australia Solomon Islands China security pact';
+    const texts = [short, `${short} war war war war war`];
+    assert.equal(clusterTexts(texts, { threshold: 0.8 }).length, 1);
+  });
+
   it('is deterministic and order-stable for a fixed input', () => {
     const texts = [
       'Turkey hikes interest rates to 50% in surprise move',
