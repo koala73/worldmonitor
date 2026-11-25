@@ -60,6 +60,11 @@ describe('clusterNewsCore groups reworded reports of one event (#11266)', () => 
       item('Cameco Corporation (TSX:CCO) Stock Declines 3.52%: Uranium Market Volatility and Valuation Risks Pressure Investor Sentiment', 'Kalkine Media'),
     ];
     assert.equal(clusterNewsCore(bylined, () => 3).length, 2, 'a byline and a feed label naming one outlet are one publisher');
+    const kalkineDomain = [
+      item('IAMGOLD Corporation (TSX:IMG) Stock Declines 2.07%: Production Costs and Gold Market Volatility Weigh on Investor Sentiment - kalkine.ca', 'Google News'),
+      item('Cameco Corporation (TSX:CCO) Stock Declines 3.52%: Uranium Market Volatility and Valuation Risks Pressure Investor Sentiment', 'Kalkine Media'),
+    ];
+    assert.equal(clusterNewsCore(kalkineDomain, () => 3).length, 2, 'a kalkine.ca credit and a Kalkine Media label are one publisher');
     const domainCredited = [
       item('IAMGOLD Corporation (TSX:IMG) Stock Declines 2.07%: Production Costs and Gold Market Volatility Weigh on Investor Sentiment - bbc.com', 'Google News'),
       item('Cameco Corporation (TSX:CCO) Stock Declines 3.52%: Uranium Market Volatility and Valuation Risks Pressure Investor Sentiment', 'BBC News'),
