@@ -106,9 +106,11 @@ export const DISEASE_WARNING_RE = new RegExp(`\\b(?:${DISEASE_WARNING_KEYWORDS.j
 // outbreak" is a count, not a year.
 const ALERT_WORD = `(?:${DISEASE_ALERT_KEYWORDS.join('|')})s?`;
 const NOT_COUNT_WORD = String.raw`(?!(?:cases?|deaths?|infections?|people|patients|children)\b)[\p{L}\p{N}()'-]+`;
+// "2025-2026" or "2025 to 2026" runs into the publication year.
+const NOT_A_RANGE = String.raw`(?!\s*(?:[-–—/]|to\s)\s*\d)`;
 const DATED_ALERT_RES = [
-  new RegExp(String.raw`(?<!\d)((?:19|20)\d{2})(?:\s+${NOT_COUNT_WORD}){0,3}\s+${ALERT_WORD}\b`, 'giu'),
-  new RegExp(String.raw`\b${ALERT_WORD}\s+(?:of|in|from|during)\s+((?:19|20)\d{2})(?!\d)(?!\s+(?:new\s+|confirmed\s+|suspected\s+)?(?:cases?|deaths?|infections?|people|patients|children)\b)`, 'giu'),
+  new RegExp(String.raw`(?<!\d)((?:19|20)\d{2})${NOT_A_RANGE}(?:\s+${NOT_COUNT_WORD}){0,3}\s+${ALERT_WORD}\b`, 'giu'),
+  new RegExp(String.raw`\b${ALERT_WORD}\s+(?:of|in|from|during)\s+((?:19|20)\d{2})(?!\d)${NOT_A_RANGE}(?!\s+(?:new\s+|confirmed\s+|suspected\s+)?(?:cases?|deaths?|infections?|people|patients|children)\b)`, 'giu'),
 ];
 
 function isRetrospectiveHeadline(title, publishedMs) {
