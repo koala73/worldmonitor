@@ -152,6 +152,17 @@ describe('gold reserve quantities through HTTP and MCP', () => {
     assert.deepEqual(cbReserves.topHolders.map(h => h.iso3), ['CHN', 'FRA', 'ITA', 'DEU', 'USA']);
   });
 
+  it('drops non-country movers from ounce snapshots cached before the seed filter', async () => {
+    seedQuotes([quote('GC=F', 3200)]);
+    const payload = reservesFixture('IRFCLDT1_IRFCL56_FTO');
+    payload.topBuyers12m.unshift({ iso3: 'G163', name: 'G163', deltaTonnes12m: 9 });
+    payload.topSellers12m = [{ iso3: 'G163', name: 'G163', deltaTonnes12m: -9 }, { iso3: 'TUR', name: 'Turkey', deltaTonnes12m: -2 }];
+    cacheStore.set(GOLD_CB_RESERVES_KEY, payload);
+    const { cbReserves } = await callTool();
+    assert.ok(!cbReserves.topBuyers12m.some(m => m.iso3 === 'G163'));
+    assert.deepEqual(cbReserves.topSellers12m.map(m => m.iso3), ['TUR']);
+  });
+
   it('keeps a missing reserves snapshot absent without making valid quotes unavailable', async () => {
     seedQuotes([quote('GC=F', 3200)]);
     const result = await callTool();

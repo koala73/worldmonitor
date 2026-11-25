@@ -260,9 +260,9 @@ export async function getGoldIntelligence(
     }));
 
     // Snapshots seeded before the country filter can hold IMF group codes (G163).
-    const cbHolders = Array.isArray(rawCbReserves?.topHolders)
-      ? rawCbReserves.topHolders.filter(h => IRFCL_COUNTRY_CODE.test(String(h?.iso3 ?? '')))
-      : [];
+    const countriesOnly = <T extends { iso3: string }>(rows: T[] | undefined): T[] =>
+      Array.isArray(rows) ? rows.filter(r => IRFCL_COUNTRY_CODE.test(String(r?.iso3 ?? ''))) : [];
+    const cbHolders = countriesOnly(rawCbReserves?.topHolders);
     const cbReserves: GoldCbReserves | undefined = rawCbReserves && cbHolders.length >= 5
       ? {
         asOfMonth: rawCbReserves.asOfMonth,
@@ -274,10 +274,10 @@ export async function getGoldIntelligence(
           tonnes: rawCbReserves.valueIsOunces === true ? h.tonnes : 0,
           pctOfReserves: h.pctOfReserves,
         })),
-        topBuyers12m: (rawCbReserves.valueIsOunces === true ? rawCbReserves.topBuyers12m ?? [] : []).map<GoldCbMover>(m => ({
+        topBuyers12m: (rawCbReserves.valueIsOunces === true ? countriesOnly(rawCbReserves.topBuyers12m) : []).map<GoldCbMover>(m => ({
           iso3: m.iso3, name: m.name, deltaTonnes12m: m.deltaTonnes12m,
         })),
-        topSellers12m: (rawCbReserves.valueIsOunces === true ? rawCbReserves.topSellers12m ?? [] : []).map<GoldCbMover>(m => ({
+        topSellers12m: (rawCbReserves.valueIsOunces === true ? countriesOnly(rawCbReserves.topSellers12m) : []).map<GoldCbMover>(m => ({
           iso3: m.iso3, name: m.name, deltaTonnes12m: m.deltaTonnes12m,
         })),
       }

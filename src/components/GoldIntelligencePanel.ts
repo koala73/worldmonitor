@@ -365,7 +365,7 @@ export class GoldIntelligencePanel extends Panel {
 
     return `<div class="energy-tape-section" style="margin-top:10px">
       <div class="energy-section-title">Central-Bank Reserves</div>
-      <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:4px">${inTonnes ? 'Top holders (tonnes)' : 'Top holders by USD value (tonnes unavailable)'}</div>
+      <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:4px">${inTonnes ? 'Top holders (tonnes)' : cb.valueIsOunces === false ? 'Top holders by USD value (tonnes unavailable)' : 'Top holders'}</div>
       ${holders}
       ${moversHtml}
       <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:6px;text-align:right">IMF IFS • as of ${escapeHtml(cb.asOfMonth)}</div>
