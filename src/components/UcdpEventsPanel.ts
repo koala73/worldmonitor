@@ -238,7 +238,7 @@ export class UcdpEventsPanel extends Panel {
         const bestHtml = e.deaths_best > 0
           ? `<span class="${deathsClass}">${e.deaths_best}</span>`
           : '<span class="ucdp-deaths-zero">0</span>';
-        const deathsHtml = e.deaths_high > 0
+        const deathsHtml = e.deaths_best > 0 || e.deaths_high > 0
           ? `${bestHtml} <small class="ucdp-range">(${e.deaths_low}-${e.deaths_high})</small>`
           : bestHtml;
         const actors = `${escapeHtml(e.side_a)} vs ${escapeHtml(e.side_b)}`;
