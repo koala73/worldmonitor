@@ -54,9 +54,14 @@ describe('funding panel: only headlines about a financing event', () => {
       'Merck Just Raised Its Dividend. These 3 Dow Healthcare Giants Are Paying More - Yahoo Finance',
       'Arts news: Peninsula-raised artists earn Grammy nominations - Palo Alto Online',
       'Reward raised to $250K in 2013 killing of Maryland mail carrier - WTOP News',
+      'Dollar Tree stock jumps after Q3 beat and a raised 2026 profit outlook - Startup Fortune',
+      'Alonso’s 31 Homers for Heroes raised $77,500 to support Maryland veterans - MASN',
     ], false);
     keepsEach('Startup Funding', [
       'Anthropic valued at $1.5 trillion as IPO raises record $81 billion - Reuters',
+      'AI startup Acme raised $10 million - Reuters',
+      'Robotics startup Acme raised $30 million to build warehouse robots - TechCrunch',
+      'Acme raises $10M to automate payroll - Axios',
     ], true);
   });
 
@@ -109,6 +114,7 @@ describe('hardware panel: Tom\'s Hardware headlines must be about hardware', () 
     'TP-Link\'s Archer 770 tri-band Wi-Fi 7 router is $120 off',
     'The state of China\'s memory industry in 2026',
     '512GB MacBook Neo drops to $699',
+    'Best graphics cards for gaming in 2026',
   ], true);
 
   it('leaves the SemiAnalysis feed in the same panel ungated', () => {
@@ -130,6 +136,11 @@ describe('link aggregators keep the submitted article link', () => {
     const item = { link: 'https://example.org/autograd', source: 'YC News', originPublisher: '', originPublisherTrusted: false };
     assert.equal(storyTrackLinkForPersist(item), 'https://example.org/autograd');
     assert.equal(storyTrackLinkForPersist({ ...item, link: 'javascript:alert(1)' }), '');
+  });
+
+  it('does not mark aggregator links as publisher-verified for alerts', () => {
+    const xml = rss([{ title: 'How PyTorch autograd works', link: 'https://example.org/autograd' }]);
+    assert.notEqual(parseRssXml(xml, techFeed('YC News'), 'tech')?.items[0]?.linkVerified, true);
   });
 
   it('still rejects non-HTTP links from an aggregator', () => {
