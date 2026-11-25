@@ -53,6 +53,8 @@ export interface ThreatTimelineDay {
   total: number;
   /** True when the history does not cover the whole day (before recording began, or after the last update). */
   partial?: boolean;
+  /** True for the current UTC day, which is still accumulating stories. */
+  ongoing: boolean;
 }
 
 export interface ThreatTimelineGroup {
@@ -127,6 +129,7 @@ export function buildThreatTimelineState(
       startMs: dayStart,
       counts: emptyCounts(),
       total: 0,
+      ongoing: dayIndex === 6,
     });
   }
 
@@ -229,6 +232,7 @@ export function buildThreatTimelineStateFromHistory(
       counts,
       total,
       partial: key < recordingSince || key > lastRecorded || outageDays.has(key),
+      ongoing: dayIndex === 6,
     });
   }
 
@@ -261,27 +265,31 @@ export function countHighSeverityDays(state: ThreatTimelineState): number {
 }
 
 export function describeThreatTimelineTrend(days: ThreatTimelineDay[]): ThreatTimelineTrend {
-  // A comparison against days the history never covered would read an empty
-  // past as a rising present.
-  const partialDays = days.filter(day => day.partial).length;
-  if (partialDays > 0) {
-    const recorded = days.length - partialDays;
-    return { label: 'Building', copy: `${recorded} of ${days.length} days fully recorded`, className: 'noisy' };
-  }
-  const firstThree = days.slice(0, 3).reduce((sum, day) => sum + day.counts.critical + day.counts.high, 0);
-  const lastThree = days.slice(-3).reduce((sum, day) => sum + day.counts.critical + day.counts.high, 0);
-  if (lastThree === 0 && firstThree === 0) {
+  const highSeverity = (day: ThreatTimelineDay) => day.counts.critical + day.counts.high;
+  if (days.every(day => highSeverity(day) === 0)) {
     return { label: 'Quiet', copy: 'No critical/high days', className: 'quiet' };
   }
+  // The current day is still filling, so the trend compares only full days.
+  const completeDays = days.filter(day => !day.ongoing);
+  // A comparison against days the history never covered would read an empty
+  // past as a rising present.
+  const partialDays = completeDays.filter(day => day.partial).length;
+  if (partialDays > 0) {
+    const recorded = completeDays.length - partialDays;
+    return { label: 'Building', copy: `${recorded} of ${days.length} days fully recorded`, className: 'noisy' };
+  }
+  const windowSize = Math.floor(completeDays.length / 2);
+  const earlier = completeDays.slice(0, windowSize).reduce((sum, day) => sum + highSeverity(day), 0);
+  const recent = completeDays.slice(-windowSize).reduce((sum, day) => sum + highSeverity(day), 0);
   // A move must be both absolute (2+) and relative (25%+): the seeded history
   // counts dozens of critical/high stories a week, where a swing of two is noise.
-  if (isMaterialChange(firstThree, lastThree, 1.25)) {
-    return { label: 'Worsening', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'worsening' };
+  if (isMaterialChange(earlier, recent, 1.25)) {
+    return { label: 'Worsening', copy: `${recent} recent vs ${earlier} earlier`, className: 'worsening' };
   }
-  if (isMaterialChange(firstThree, lastThree, 0.75)) {
-    return { label: 'Easing', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'easing' };
+  if (isMaterialChange(earlier, recent, 0.75)) {
+    return { label: 'Easing', copy: `${recent} recent vs ${earlier} earlier`, className: 'easing' };
   }
-  return { label: 'Noisy', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'noisy' };
+  return { label: 'Noisy', copy: `${recent} recent vs ${earlier} earlier`, className: 'noisy' };
 }
 
 /** Both moves measured against the earlier count: 25% up or 25% down, and at least 2 stories. */

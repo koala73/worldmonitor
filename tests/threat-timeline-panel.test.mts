@@ -452,8 +452,8 @@ describe('ThreatTimelinePanel utilities', () => {
 
     assert.deepEqual(
       trendForStories([
-        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(0), primaryTitle: 'Recent high' }),
-        serverStory({ threatLevel: 'critical', pubDate: isoDaysAgo(1), primaryTitle: 'Recent critical' }),
+        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(1), primaryTitle: 'Recent high' }),
+        serverStory({ threatLevel: 'critical', pubDate: isoDaysAgo(2), primaryTitle: 'Recent critical' }),
       ]),
       { label: 'Worsening', copy: '2 recent vs 0 earlier', className: 'worsening' },
     );
@@ -469,7 +469,7 @@ describe('ThreatTimelinePanel utilities', () => {
     assert.deepEqual(
       trendForStories([
         serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(6), primaryTitle: 'Earlier high' }),
-        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(0), primaryTitle: 'Recent high' }),
+        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(1), primaryTitle: 'Recent high' }),
       ]),
       { label: 'Noisy', copy: '1 recent vs 1 earlier', className: 'noisy' },
     );
@@ -499,28 +499,39 @@ describe('ThreatTimelinePanel seeded history', () => {
     assert.equal(state.days.some(day => day.partial), false);
     assert.deepEqual(
       describeThreatTimelineTrend(state.days),
-      { label: 'Easing', copy: '2 recent vs 4 earlier', className: 'easing' },
+      { label: 'Easing', copy: '1 recent vs 4 earlier', className: 'easing' },
+    );
+  });
+
+  it('compares the last three full days with the three before, leaving out the unfinished current day', () => {
+    // Live shape from #11273: ~300 a day, and only 40 so far at 04:21 UTC today.
+    const history = seededHistory(NOW_MS, [{ high: 300 }, { high: 300 }, { high: 300 }, { high: 300 }, { high: 300 }, { high: 300 }, { high: 40 }]);
+    const state = buildThreatTimelineStateFromHistory(history, [], { nowMs: NOW_MS });
+    assert.ok(state);
+    assert.deepEqual(
+      describeThreatTimelineTrend(state.days),
+      { label: 'Noisy', copy: '900 recent vs 900 earlier', className: 'noisy' },
     );
   });
 
   it('does not call a small move in a large week a trend', () => {
-    const steady = seededHistory(NOW_MS, [{ high: 16 }, { high: 16 }, { high: 16 }, {}, { high: 17 }, { high: 17 }, { high: 16 }]);
+    const steady = seededHistory(NOW_MS, [{ high: 16 }, { high: 16 }, { high: 16 }, { high: 17 }, { high: 17 }, { high: 16 }, { high: 3 }]);
     const steadyState = buildThreatTimelineStateFromHistory(steady, [], { nowMs: NOW_MS });
     assert.ok(steadyState);
     assert.equal(describeThreatTimelineTrend(steadyState.days).label, 'Noisy', '50 vs 48 is not worsening');
 
-    const rising = seededHistory(NOW_MS, [{ high: 16 }, { high: 16 }, { high: 16 }, {}, { high: 20 }, { high: 20 }, { high: 21 }]);
+    const rising = seededHistory(NOW_MS, [{ high: 16 }, { high: 16 }, { high: 16 }, { high: 20 }, { high: 20 }, { high: 21 }, { high: 3 }]);
     const risingState = buildThreatTimelineStateFromHistory(rising, [], { nowMs: NOW_MS });
     assert.ok(risingState);
     assert.equal(describeThreatTimelineTrend(risingState.days).label, 'Worsening', '61 vs 48 is');
 
     // Drops are measured against the earlier count too: 10 to 8 is 20%, not 25%.
-    const dip = seededHistory(NOW_MS, [{ high: 4 }, { high: 3 }, { high: 3 }, {}, { high: 3 }, { high: 3 }, { high: 2 }]);
+    const dip = seededHistory(NOW_MS, [{ high: 4 }, { high: 3 }, { high: 3 }, { high: 3 }, { high: 3 }, { high: 2 }, {}]);
     const dipState = buildThreatTimelineStateFromHistory(dip, [], { nowMs: NOW_MS });
     assert.ok(dipState);
     assert.equal(describeThreatTimelineTrend(dipState.days).label, 'Noisy', '8 vs 10 is not easing');
 
-    const drop = seededHistory(NOW_MS, [{ high: 4 }, { high: 3 }, { high: 3 }, {}, { high: 3 }, { high: 2 }, { high: 2 }]);
+    const drop = seededHistory(NOW_MS, [{ high: 4 }, { high: 3 }, { high: 3 }, { high: 3 }, { high: 2 }, { high: 2 }, {}]);
     const dropState = buildThreatTimelineStateFromHistory(drop, [], { nowMs: NOW_MS });
     assert.ok(dropState);
     assert.equal(describeThreatTimelineTrend(dropState.days).label, 'Easing', '7 vs 10 is');
@@ -543,7 +554,7 @@ describe('ThreatTimelinePanel seeded history', () => {
     assert.deepEqual(state.days.map(day => Boolean(day.partial)), [true, true, true, true, true, false, false]);
     assert.deepEqual(
       describeThreatTimelineTrend(state.days),
-      { label: 'Building', copy: '2 of 7 days fully recorded', className: 'noisy' },
+      { label: 'Building', copy: '1 of 7 days fully recorded', className: 'noisy' },
     );
   });
 
@@ -690,6 +701,35 @@ describe('ThreatTimelinePanel refresh behavior', () => {
       assert.match(html, /Top stories now/);
       assert.doesNotMatch(html, /Info: \d|Info <strong>/, 'info is neither charted nor in the legend');
       assert.match(html, /Fresh server-backed escalation/);
+    } finally {
+      panel.destroy();
+      harness.cleanup();
+    }
+  });
+
+  it('labels stories from the last hour with their age in minutes', async () => {
+    const harness = await loadThreatTimelinePanelHarness();
+    const { ThreatTimelinePanel } = harness;
+    const panel = new ThreatTimelinePanel();
+    try {
+      const contentEl = panel.getElement().querySelector('.panel-content');
+      assert.ok(contentEl, 'panel content node should exist');
+
+      const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000).toISOString();
+      panel.updateFromServerInsights(runtimeServerInsights({
+        topStories: [
+          serverStory({ primaryTitle: 'North Korea missile launch', primarySource: 'Reuters', pubDate: minutesAgo(24) }),
+          serverStory({ primaryTitle: 'Strait patrol expanded', primarySource: 'BBC Asia', pubDate: minutesAgo(44), threatLevel: 'critical' }),
+          serverStory({ primaryTitle: 'Ceasefire talks stall', primarySource: 'BBC World', pubDate: minutesAgo(90) }),
+        ],
+      }));
+      await waitForPanelRender();
+
+      const html = contentEl.innerHTML;
+      assert.match(html, /<span>24m ago<\/span>/);
+      assert.match(html, /<span>44m ago<\/span>/);
+      assert.match(html, /<span>1h ago<\/span>/);
+      assert.doesNotMatch(html, /just now/);
     } finally {
       panel.destroy();
       harness.cleanup();
