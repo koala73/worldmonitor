@@ -34,6 +34,8 @@ import { GulfEconomiesPanel } from '@/components/GulfEconomiesPanel';
 import { MacroSignalsPanel } from '@/components/MacroSignalsPanel';
 import { NationalDebtPanel } from '@/components/NationalDebtPanel';
 
+const utcDate = (ms: number, opts: Intl.DateTimeFormatOptions) =>
+  new Date(ms).toLocaleDateString(undefined, { ...opts, timeZone: 'UTC' });
 const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
 
 beforeAll(async () => {
@@ -63,7 +65,7 @@ describe('#11270 FSI panel', () => {
     const panel = mount(new FSIPanel());
     await panel.fetchData();
     await settle();
-    expect(panel.getElement().querySelector('.fsi-us-as-of')?.textContent).toBe('As of Nov 21, 2026');
+    expect(panel.getElement().querySelector('.fsi-us-as-of')?.textContent).toBe(`As of ${utcDate(Date.UTC(2026, 10, 21), { year: 'numeric', month: 'short', day: 'numeric' })}`);
   });
 });
 
@@ -80,7 +82,7 @@ describe('#11270 Gulf economies panel', () => {
     await panel.fetchData();
     await settle();
     const symbols = [...panel.getElement().querySelectorAll('.market-symbol')].map((el) => el.textContent);
-    expect(symbols).toEqual(['Saudi Arabia · Nov 24', 'UAE']);
+    expect(symbols).toEqual([`Saudi Arabia · ${utcDate(Date.UTC(2026, 10, 24, 12), { month: 'short', day: 'numeric' })}`, 'UAE']);
   });
 });
 
