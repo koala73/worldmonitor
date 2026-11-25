@@ -1,6 +1,6 @@
 // Google News search feeds put every result in the configured panel, so a
-// loose query term is how off-topic stories reach finance and commodity
-// panels (#11266). This models Google's query operators over a title and the
+// loose query term is how off-topic stories reach finance, commodity and
+// startup panels (#11266, #11267). This models Google's query operators over a title and the
 // page text and checks each feed's shipped query against live titles.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -62,7 +62,9 @@ function feedQueries(name: string): string[] {
     .map((u) => new URL(u).searchParams.get('q') ?? '');
 }
 
-const CASES: Record<string, { drop: Story[]; keep: Story[] }> = {
+type Cases = Record<string, { drop: Story[]; keep: Story[] }>;
+
+const CASES: Cases = {
   'Treasury Watch': {
     drop: [{ title: 'Researchers Take Over Five US Treasury Subdomains for About $3 Each - Hackread' }],
     keep: [
@@ -169,8 +171,55 @@ const CASES: Record<string, { drop: Story[]; keep: Story[] }> = {
   },
 };
 
-describe('finance and commodity search feeds match only their topic (#11266)', () => {
-  for (const [name, { drop, keep }] of Object.entries(CASES)) {
+const STARTUP_CASES: Cases = {
+  'YC News': {
+    drop: [
+      { title: 'A few questions for the guy who went snorkeling in a Home Depot retention pond' },
+      { title: 'Button Sounds – collection of professionally-recorded button clicks and presses' },
+      { title: 'Matrix Multiplication is Θ(n^2.25) [pdf]' },
+    ],
+    keep: [
+      { title: 'YC-backed LATO raises $4.7M seed to put AI agents on private equity’s due diligence calls - Tech Funding News' },
+      { title: 'Madrone raises $500K from NVIDIA, Y Combinator for data-center cooling - Dealroom' },
+    ],
+  },
+  'Startup Funding': {
+    drop: [
+      { title: "Six key questions raised by Jensen Huang's return to Nvidia - CNBC" },
+      { title: 'More Than $1.2 Million Raised at Sleep Out at the Ballpark - MLB.com' },
+    ],
+    keep: [
+      { title: 'Israeli startup secures $2.5M to recycle industrial gas waste instead of burning it - CTech' },
+      { title: 'Swedish startup raises $3 million seed to help retailers become more visible in AI-powered shopping - ArcticStartup' },
+    ],
+  },
+  'VC News': {
+    drop: [
+      { title: 'Venture capital in developing economies: five key facts - World Bank Blogs' },
+      { title: 'Yard Stick PBC: What Climate Tech Founders Need to Know About Venture Capital - Harvard Business School' },
+      { title: 'MetLife Series A Preferreds: The Limitations Of Floating-Rate Protection (NYSE:MET.PR.A) - Seeking Alpha' },
+      { title: '‘Secret Service’ series a twist on espionage drama - Boston Herald' },
+    ],
+    keep: [
+      { title: "Agon raises $70 million in Series A round to build Europe's defence AI lab - AFP.com" },
+      { title: 'Codex lands $30m Series A to scale stablecoin FX - FinTech Global' },
+    ],
+  },
+  'IPO Filing News': {
+    drop: [
+      { title: 'Hot Upcoming IPOs to Watch - Kiplinger' },
+      { title: 'Insurance AI startup Voltaire adds $573K via SAFEs - Dealroom' },
+      { title: 'Phio Pharmaceuticals Begins PH-762 Phase 2b Study Start-Up with Prosoft - TradingView' },
+    ],
+    keep: [
+      { title: 'Nvidia-Backed SB Energy Updates IPO Filing - Moomoo' },
+      { title: 'NLC India Renewables Files For IPO, Draft Prospectus Shows - TradingView' },
+    ],
+  },
+};
+
+function assertScope(cases: Cases) {
+  for (const [name, { drop, keep }] of Object.entries(cases)) {
     it(name, () => {
       for (const query of feedQueries(name)) {
         const matches = parseQuery(query);
@@ -179,4 +228,16 @@ describe('finance and commodity search feeds match only their topic (#11266)', (
       }
     });
   }
+}
+
+describe('finance and commodity search feeds match only their topic (#11266)', () => assertScope(CASES));
+
+describe('startup and accelerator search feeds match only their topic (#11267)', () => {
+  assertScope(STARTUP_CASES);
+
+  it('labels name what the feed carries', () => {
+    const urlOf = (name: string) => NEWS_CATALOG.feeds.find((f) => f.name === name)?.url;
+    assert.equal(urlOf('YC Launches'), 'https://hnrss.org/launches', 'YC Launches reads only Launch HN posts');
+    assert.equal(urlOf('SEC Filings'), undefined, 'no news search is labelled as SEC filings');
+  });
 });
