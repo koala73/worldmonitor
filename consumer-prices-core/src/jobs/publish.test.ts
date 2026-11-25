@@ -9,10 +9,12 @@ const mockBuildOverviewSnapshot = vi.fn();
 const mockBuildMoversSnapshot = vi.fn();
 const mockBuildCategoriesSnapshot = vi.fn();
 const mockFetch = vi.fn();
+const mockLoadBaskets = vi.fn();
+const mockBuildRetailerSpreadSnapshot = vi.fn();
 
 vi.mock('../config/loader.js', () => ({
   loadAllRetailerConfigs: () => [{ slug: 'retailer-a', marketCode: 'ae', enabled: true }],
-  loadAllBasketConfigs: () => [],
+  loadAllBasketConfigs: mockLoadBaskets,
 }));
 vi.mock('../db/client.js', () => ({ closePool: vi.fn() }));
 vi.mock('../snapshots/coverage.js', () => ({ buildCoverageSnapshot: mockBuildCoverageSnapshot }));
@@ -22,7 +24,7 @@ vi.mock('../snapshots/worldmonitor.js', () => ({
   buildMoversSnapshot: mockBuildMoversSnapshot,
   buildCategoriesSnapshot: mockBuildCategoriesSnapshot,
   buildBasketSeriesSnapshot: vi.fn(),
-  buildRetailerSpreadSnapshot: vi.fn(),
+  buildRetailerSpreadSnapshot: mockBuildRetailerSpreadSnapshot,
 }));
 
 const { publishAll, runPublishCli } = await import('./publish.js');
@@ -54,6 +56,8 @@ function commands() {
 
 beforeEach(() => {
   mockFetch.mockReset().mockResolvedValue({ ok: true, status: 200, json: async () => ({ result: 1 }) });
+  mockLoadBaskets.mockReset().mockReturnValue([]);
+  mockBuildRetailerSpreadSnapshot.mockReset().mockResolvedValue({ retailers: [], spreadPct: 0 });
   mockBuildCoverageSnapshot.mockReset().mockResolvedValue(coverage);
   mockBuildFreshnessSnapshot.mockReset().mockResolvedValue({ marketCode: 'ae', retailers: [{ freshnessMin: 10 }] });
   mockBuildOverviewSnapshot.mockReset().mockResolvedValue({ marketCode: 'ae' });
@@ -256,4 +260,14 @@ it.skipIf(!hasRedis && !process.env.CI)('reconciles recovered and empty category
 it('fails publication on an HTTP 200 Redis command error', async () => {
   mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ error: 'ERR command failed' }) });
   await expect(publishAll()).rejects.toThrow('1 snapshot publication failed');
+});
+
+it('prices the overview and the retailer comparison from one read of the basket', async () => {
+  mockLoadBaskets.mockReturnValue([{ slug: 'essentials-ae', marketCode: 'ae' }]);
+  await publishAll();
+
+  const overviewLoader = mockBuildOverviewSnapshot.mock.calls[0][1];
+  const spreadLoader = mockBuildRetailerSpreadSnapshot.mock.calls[0][2];
+  expect(overviewLoader).toBeTypeOf('function');
+  expect(spreadLoader).toBe(overviewLoader);
 });

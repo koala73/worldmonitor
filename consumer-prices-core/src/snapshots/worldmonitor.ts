@@ -3,7 +3,7 @@
  * All types are shaped to match the proto-generated TypeScript interfaces so
  * snapshots can be written to Redis and read directly by WorldMonitor handlers.
  */
-import { computeRetailerSpread, confirmationAgeMin, getBasketRows } from '../basket-observations.js';
+import { type BasketRow, computeRetailerSpread, confirmationAgeMin, getBasketRows } from '../basket-observations.js';
 import { query } from '../db/client.js';
 import { INDEX_METHODOLOGY_VERSION } from '../index-methodology.js';
 
@@ -190,7 +190,14 @@ async function buildTopCategories(basketId: string, rangeDays = 7): Promise<WMCa
 // Public builders
 // ---------------------------------------------------------------------------
 
-export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverviewSnapshot> {
+// Publishing passes one memoized loader to both the overview and the retailer
+// comparison so a scrape landing between them cannot split their spreads.
+export type BasketRowLoader = (basketSlug: string, marketCode: string) => Promise<BasketRow[]>;
+
+export async function buildOverviewSnapshot(
+  marketCode: string,
+  loadBasketRows: BasketRowLoader = getBasketRows,
+): Promise<WMOverviewSnapshot> {
   const now = Date.now();
 
   const basketResult = await query<{ id: string; slug: string }>(
@@ -246,7 +253,7 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
         `SELECT currency_code FROM retailers WHERE market_code = $1 AND active = true LIMIT 1`,
         [marketCode],
       ),
-      basket ? getBasketRows(basket.slug, marketCode) : Promise.resolve([]),
+      basket ? loadBasketRows(basket.slug, marketCode) : Promise.resolve([]),
     ]);
 
   const metrics: Record<string, number> = {};
@@ -448,10 +455,11 @@ export async function buildMoversSnapshot(
 export async function buildRetailerSpreadSnapshot(
   marketCode: string,
   basketSlug: string,
+  loadBasketRows: BasketRowLoader = getBasketRows,
 ): Promise<WMRetailerSpreadSnapshot> {
   const now = Date.now();
 
-  const spread = computeRetailerSpread(await getBasketRows(basketSlug, marketCode));
+  const spread = computeRetailerSpread(await loadBasketRows(basketSlug, marketCode));
   const cheapest = spread.retailers[0]?.basketTotal ?? 0;
   const retailers: WMRetailerSpread[] = spread.retailers.map((r) => ({
     slug: r.slug,
