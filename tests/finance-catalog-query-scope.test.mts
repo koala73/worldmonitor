@@ -158,7 +158,13 @@ const CASES: Record<string, { drop: Story[]; keep: Story[] }> = {
     keep: [{ title: 'Gold falters ahead of key US inflation print - Reuters' }],
   },
   'CNBC Commodities': {
-    drop: [],
+    drop: [
+      { title: 'Anthropic shares fall below IPO price. Traders see even more pain - CNBC', page: 'gold oil' },
+      {
+        title: 'Kilmar Ábrego García, a Salvadoran national mistakenly deported from the U.S., arrives in Spain - CNBC',
+        page: 'commodities',
+      },
+    ],
     keep: [{ title: 'Oil prices fall as supply glut concerns offset Middle East disruption fears - CNBC' }],
   },
 };
