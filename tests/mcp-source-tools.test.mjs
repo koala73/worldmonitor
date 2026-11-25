@@ -31,9 +31,7 @@ it('ships exactly the provider fields consumed from the canonical attribution ma
   const active = manifest.entries.filter((entry) => entry.observed === true
     && entry.catalogActive !== false
     && ['reviewed', 'terms-review'].includes(entry.status));
-  const providers = active.map((entry) => Object.fromEntries(
-    fields.filter((field) => Object.hasOwn(entry, field)).map((field) => [field, entry[field]]),
-  ));
+  const providers = active.map((entry) => fields.map((field) => entry[field]));
   const generated = read('../api/mcp/registry/_source-providers.generated.json');
   assert.deepEqual(generated.providers, providers);
   assert.equal(generated.excludedProviderCount, manifest.entries.filter((entry) => entry.status === 'excluded').length);
