@@ -33,18 +33,20 @@ const REFUSED_OPTIONS = [
 ];
 /**
  * Options a locked-down call may carry; the value-taking ones consume the next word unless it is itself an
- * option. Short forms mean different things per command (`wait -f` is `--fn`, `screenshot -f` is `--full`), so
- * a short form is allowed only on the command it was checked for.
+ * option. Short forms mean different things per command, and some of those meanings are missing from the help
+ * (`wait -f` is `--fn` and `wait -d` is `--download`, which saves a file wherever it is told), so a short form
+ * is allowed only on the commands whose agent-browser 0.43.0 help lists it.
  */
 const LOCKED_FLAGS = new Set([
-  '--json', '-i', '--interactive', '-c', '--compact', '-u', '--urls', '--full', '--annotate', '--delta',
+  '--json', '--interactive', '--compact', '--urls', '--full', '--annotate', '--delta',
   '--clear', '--raw', '--outline', '--exact', '--new-tab', '-h', '--help',
 ]);
-const LOCKED_COMMAND_FLAGS = { screenshot: new Set(['-f']) };
+const LOCKED_COMMAND_FLAGS = { screenshot: new Set(['-f']), snapshot: new Set(['-i', '-c', '-u']) };
 const LOCKED_VALUE_OPTIONS = new Set([
-  '-d', '--depth', '-s', '--selector', '--filter', '--type', '--method', '--status', '--timeout', '--label', '--fps',
+  '--depth', '--selector', '--filter', '--type', '--method', '--status', '--timeout', '--label', '--fps',
   '--url', '--load', '--name', '--button', '--delay', '--count',
 ]);
+const LOCKED_COMMAND_VALUE_OPTIONS = { snapshot: new Set(['-d', '-s']), scroll: new Set(['-s']) };
 const NAVIGATING = new Set(['open', 'goto', 'navigate', 'read']);
 /**
  * Commands that load a URL given as an argument. They take no value option the agent needs, and a value option
@@ -90,7 +92,7 @@ export function refusal(args, { lockedDown = false } = {}) {
     const word = rest[i];
     if (!word.startsWith('-')) { positional.push(word); continue; }
     const name = word.split('=')[0];
-    if (LOCKED_VALUE_OPTIONS.has(name)) {
+    if (LOCKED_VALUE_OPTIONS.has(name) || LOCKED_COMMAND_VALUE_OPTIONS[command]?.has(name)) {
       if (DESTINATION_COMMANDS.has(command)) return `option ${name} on ${command} while the browser holds a Pro session`;
       // A following option is checked in its own right, never swallowed as this one's value: agent-browser
       // finds `--fn` anywhere in the call.

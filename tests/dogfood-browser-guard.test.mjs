@@ -115,6 +115,27 @@ describe('dogfood browser guard', () => {
     }
   });
 
+  it('allows a short option only on the commands whose help documents it, so `wait -d` cannot save a download', () => {
+    for (const args of [
+      s('snapshot', '-d', '3'),
+      s('snapshot', '-s', '[data-panel="markets"]', '-u'),
+      s('scroll', 'down', '500', '-s', '.panel-body'),
+    ]) {
+      assert.equal(refusal(args, locked), null, args.join(' '));
+    }
+    // agent-browser 0.43.0 reads `wait -d <path>` as `--download <path>` and saves the file there.
+    for (const args of [
+      s('wait', '-d', '/home/runner/elsewhere/file.bin'),
+      s('wait', '-d'),
+      s('wait', '--download', '/home/runner/elsewhere/file.bin'),
+      s('wait', '-s', '#x'),
+      s('click', '-i', '@e1'),
+      s('get', 'text', '-c', '@e1'),
+    ]) {
+      assert.ok(refusal(args, locked), args.join(' '));
+    }
+  });
+
   it('accepts only plain https URLs on worldmonitor.app hosts as product URLs', () => {
     for (const url of ['https://worldmonitor.app', 'https://www.worldmonitor.app/dashboard', 'https://finance.worldmonitor.app/dashboard?x=1#y']) {
       assert.equal(isProductUrl(url), true, url);
