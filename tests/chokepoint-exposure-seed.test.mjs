@@ -4,6 +4,8 @@ import {
   computeFlowWeightedExposures,
   computeCountryLevelExposure,
 } from '../scripts/seed-hs2-chokepoint-exposure.mjs';
+import { buildPayloadFromSources } from '../scripts/seed-supply-vulnerability.mjs';
+import { COMMODITY_REGISTRY } from '../scripts/shared/supply-vulnerability-coverage.mjs';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -184,7 +186,10 @@ describe('bilateral chokepoint transit', () => {
   });
 
   it('counts a supplier share when exactly one partner is inside the Gulf', () => {
-    assert.equal(hormuzScore('MO', '27', product('2711', [['QA', 0.4], ['AU', 0.6]])), 60, 'Qatari LNG share, energy-boosted');
+    const lng = product('2711', [['QA', 0.4], ['AU', 0.6]]);
+    for (const hs2 of ['27', '027']) {
+      assert.equal(hormuzScore('MO', hs2, lng), 60, `Qatari LNG share for energy chapter ${hs2}`);
+    }
     assert.equal(hormuzScore('IQ', '81', product('8112', [['CN', 0.7], ['SA', 0.3]])), 70, 'Saudi-Iraqi trade stays inside the Gulf');
     assert.equal(hormuzScore('US', '27', product('2709', [['SA', 0.3], ['CA', 0.7]])), 45, 'Saudi crude to the US');
   });
@@ -285,6 +290,54 @@ describe('seed coverage manifest', () => {
       const landlocked = JSON.parse(writes.find(c => c[1] === 'supply-chain:exposure:ET:10:v1')[2]);
       assert.notEqual(landlocked.coverage, 'flow_weighted', 'landlocked Ethiopia has no modeled sea route to evaluate');
     } finally { globalThis.fetch = originalFetch; process.env = env; }
+  });
+
+  it('scores each HS27 commodity from its own seeded Hormuz share', async (t) => {
+    const { main } = await import('../scripts/seed-hs2-chokepoint-exposure.mjs');
+    const originalEnv = { ...process.env };
+    t.after(() => { process.env = originalEnv; });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fixture.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    const bilateral = {
+      products: [
+        US_COMTRADE[0],
+        {
+          hs4: '2711', totalValue: 100_000_000, year: 2023,
+          topExporters: [{ partnerIso2: 'QA', share: 0.4 }, { partnerIso2: 'AU', share: 0.6 }],
+        },
+      ],
+    };
+    const writes = new Map();
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      if (!String(url).endsWith('/pipeline')) return Response.json({ result: 'OK' });
+      return Response.json(JSON.parse(init.body).map(([command, key, value]) => {
+        if (command === 'GET') {
+          return { result: key === 'comtrade:bilateral-hs4:US:v1' ? JSON.stringify(bilateral) : null };
+        }
+        writes.set(key, JSON.parse(value));
+        return { result: 'OK' };
+      }));
+    });
+
+    await main();
+    const exposure = writes.get('supply-chain:exposure:US:27:v1');
+    const evaluatedAt = exposure.fetchedAt;
+    const sources = {
+      bilateralByCountry: { US: { data: bilateral, fetchedAt: evaluatedAt } },
+      exposureByCountryHs2: { 'US:27': { data: exposure, fetchedAt: evaluatedAt } },
+      chokepointFlows: { data: { hormuz_strait: { disrupted: false } }, fetchedAt: evaluatedAt },
+    };
+    const mappings = COMMODITY_REGISTRY.commodities.filter(mapping => mapping.transitHs2 === '27');
+    const payload = buildPayloadFromSources(sources, { mappings, evaluatedAt });
+    const shares = Object.fromEntries(payload.chokepoints.hormuz_strait.dependencies
+      .filter(row => row.countryIso2 === 'US')
+      .map(row => [row.commodityId, row.transitShare]));
+    assert.deepEqual(shares, { crude_oil: 0.3, lng: 0.4 });
+
+    // A record from before this seeder version has chapter totals only.
+    delete exposure.commodityExposures;
+    const legacy = buildPayloadFromSources(sources, { mappings, evaluatedAt });
+    assert.equal(legacy.chokepoints.hormuz_strait, undefined);
   });
 
   // The gap that let the manifest blackout ship: only the success path was covered, so
