@@ -7,7 +7,8 @@ import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
 import { regionForCountry } from './shared/geography.js';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { physicalDivergenceStaleReason } from './shared/physical-divergence-staleness.js';
-import { OTHER_FIRE_REGION } from './wildfire/fire-country.mjs';
+import { countryDisplayName } from './shared/country-mention.js';
+import { OTHER_FIRE_REGION, fireRegionAt } from './wildfire/fire-country.mjs';
 import { METHODOLOGY_VERSION as PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION } from './lib/physical-divergence.mjs';
 
 loadEnvFile(import.meta.url);
@@ -137,6 +138,34 @@ function normalizeTheater(raw) {
   }
   // Title-case the raw value as fallback
   return String(raw).trim().replace(/\b\w/g, c => c.toUpperCase()) || 'Global';
+}
+
+// Keyed by the ids classifyRegion() in _gpsjam-parse.mjs assigns. Its 'other'
+// catch-all pools unrelated places, so those hexes are placed by coordinates.
+const GPSJAM_REGION_THEATER = Object.freeze({
+  'iran-iraq': 'Middle East',
+  levant: 'Levant',
+  'israel-sinai': 'Middle East',
+  'ukraine-russia': 'Eastern Europe',
+  'russia-north': 'Eastern Europe',
+  'turkey-caucasus': 'Middle East',
+  'afghanistan-pakistan': 'South Asia',
+  'yemen-horn': 'Middle East',
+  'east-africa': 'Sub-Saharan Africa',
+  'sudan-sahel': 'Sub-Saharan Africa',
+  'north-africa': 'North Africa',
+  'northern-europe': 'Western Europe',
+  'western-europe': 'Western Europe',
+  'southeast-asia': 'Southeast Asia',
+  'east-asia': 'East Asia',
+  'north-america': 'North America',
+});
+
+function gpsJamTheater(hex) {
+  const theater = GPSJAM_REGION_THEATER[hex.region];
+  if (theater) return theater;
+  const country = fireRegionAt(hex.lat, hex.lon);
+  return country === OTHER_FIRE_REGION ? null : normalizeTheater(country);
 }
 
 function weatherTheaterForCountry(countryCode) {
@@ -313,15 +342,15 @@ function extractGpsJamming(d) {
   const hexes = Array.isArray(payload.hexes) ? payload.hexes : [];
   const highHexes = hexes.filter(h => h.level === 'high' || (safeNum(h.npAvg) < 0.5 && safeNum(h.npAvg) > 0));
   if (highHexes.length === 0) return [];
-  // Group by region
   const regionMap = new Map();
   for (const h of highHexes) {
-    const theater = normalizeTheater(h.region || '');
+    const theater = gpsJamTheater(h);
+    if (!theater) continue;
     const existing = regionMap.get(theater) || { count: 0, theater };
     existing.count += 1;
     regionMap.set(theater, existing);
   }
-  return [...regionMap.values()].slice(0, 3).map(({ theater, count }) => {
+  return [...regionMap.values()].sort((a, b) => b.count - a.count).slice(0, 3).map(({ theater, count }) => {
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING'] * Math.min(2, 1 + count / 50);
     return {
       id: `gpsjam:${theater.replace(/\s+/g, '-').toLowerCase()}`,
@@ -932,17 +961,15 @@ function extractRiskScoreSpike(d) {
   const spiking = ciiScores.filter(s => safeNum(s.combinedScore) > 80 || s.trend === 'TREND_DIRECTION_RISING');
   if (spiking.length === 0) return [];
   return spiking.slice(0, 3).map(s => {
-    // s.region is an uppercase ISO2 code (get-risk-scores.ts:1206), so it
-    // title-cases into 'Ua'/'Cn' rather than mapping to a theater. Left as-is:
-    // resolving codes to theater names needs a country resolver this seeder does
-    // not have, and the value is at least stable and unique per country.
-    const theater = normalizeTheater(s.region || '');
+    // s.region is an uppercase ISO2 code (get-risk-scores.ts:1206).
+    const country = countryDisplayName(s.region) || s.region || 'unknown';
+    const theater = normalizeTheater(country);
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE'] * Math.min(2, safeNum(s.combinedScore) / 60);
     return {
       id: `risk:${(s.region || 'unknown').replace(/\s+/g, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE',
       theater,
-      summary: `Risk score spike: ${s.region || 'unknown'} CII score ${safeNum(s.combinedScore).toFixed(0)} — trend ${s.trend === 'TREND_DIRECTION_RISING' ? 'rising' : 'elevated'}`,
+      summary: `Risk score spike: ${country} CII score ${safeNum(s.combinedScore).toFixed(0)} — trend ${s.trend === 'TREND_DIRECTION_RISING' ? 'rising' : 'elevated'}`,
       severity: scoreTier(score),
       severityScore: score,
       detectedAt: Date.now(),
