@@ -91,11 +91,14 @@ describe('ThermalEscalationPanel', () => {
     panel.notifyConnected();
     panel.setData(watch);
     await vi.waitFor(() => expect(document.querySelector('.te-card')).not.toBeNull());
-    const regions = [...document.querySelectorAll('.te-card .te-region')].map((el) => el.textContent?.replace(/\s+/g, ' ').trim());
-    expect(regions).toEqual([
-      'Iran · 30.28°N 47.37°E',
-      'Iran · 31.32°N 48.67°E',
-      'Iran · 2.50°S 60.25°W',
+    const rows = [...document.querySelectorAll('.te-card')].map((card) => [
+      card.querySelector('.te-region')?.textContent?.trim(),
+      card.querySelector('.te-coords')?.textContent?.trim(),
+    ]);
+    expect(rows).toEqual([
+      ['Iran', '30.28°N 47.37°E'],
+      ['Iran', '31.32°N 48.67°E'],
+      ['Iran', '2.50°S 60.25°W'],
     ]);
   });
 });

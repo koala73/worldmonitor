@@ -3021,7 +3021,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 }
 
 .te-coords {
-  font-weight: 400;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted);
 }
 
