@@ -41,6 +41,7 @@ describe('FuelPricesPanel row-level observation dates', () => {
         country('BF', 'Burkina Faso', fuel(1.4025, '2026-07-08', 'Super 91'), fuel(1.2375, '2026-07-08', 'Diesel')),
         country('US', 'United States', fuel(0.95, '2026-11-17'), fuel(1.05, '2026-11-17', 'Diesel')),
         country('ZM', 'Zambia', fuel(1.607, '2026-11-01', 'Petrol'), fuel(1.674, '2026-11-01', 'Diesel')),
+        country('IS', 'Iceland', fuel(2.1, '2026-08-01', 'RON95 (monthly mean)'), fuel(2.0, '2026-08-01', 'Diesel (monthly mean)')),
         country('NO', 'Norway', fuel(1.9, '2026-10-01', 'RON95 (monthly mean)'), fuel(1.8, '2026-10-01', 'Diesel (monthly mean)')),
       ],
       cheapestGasoline: 'US', mostExpensiveGasoline: 'NO', cheapestDiesel: 'US', mostExpensiveDiesel: 'NO',
@@ -85,5 +86,12 @@ describe('FuelPricesPanel row-level observation dates', () => {
     const [gas] = cells(await render(), 'Norway');
     expect(gas!.textContent).toContain('Oct 2026 avg');
     expect(gas!.textContent).not.toContain('Oct 1');
+    expect(gas!.querySelector('.gb-observed-stale')).toBeNull();
+  });
+
+  it('flags a monthly mean whose month ended more than a cycle ago, aged from month end', async () => {
+    const [gas] = cells(await render(), 'Iceland');
+    expect(gas!.textContent).toContain('Aug 2026 avg, 85 days old');
+    expect(gas!.querySelector('.gb-observed-stale')).not.toBeNull();
   });
 });

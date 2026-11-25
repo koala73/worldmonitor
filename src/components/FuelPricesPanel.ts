@@ -18,16 +18,16 @@ function observedLabel(fuel: Fuel, asOfMs: number): string {
   const observedMs = Date.parse(`${fuel.observedAt}T00:00:00Z`);
   if (!Number.isFinite(observedMs)) return '';
   const date = new Date(observedMs);
-  if (/monthly/i.test(fuel.grade)) {
-    const month = date.toLocaleDateString(getLocale(), { month: 'short', year: 'numeric', timeZone: 'UTC' });
-    return `<span class="gb-observed">${escapeHtml(t('components.fuelPrices.monthlyMean', { month }))}</span>`;
-  }
-  const ageDays = Math.floor((asOfMs - observedMs) / DAY_MS);
+  const monthly = /monthly/i.test(fuel.grade);
+  const periodEndMs = monthly ? Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0) : observedMs;
+  const ageDays = Math.floor((asOfMs - periodEndMs) / DAY_MS);
   const stale = ageDays > STALE_AFTER_DAYS;
   const showYear = stale || date.getUTCFullYear() !== new Date(asOfMs).getUTCFullYear();
-  const day = date.toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', year: showYear ? 'numeric' : undefined, timeZone: 'UTC' });
-  if (!stale) return `<span class="gb-observed">${escapeHtml(day)}</span>`;
-  return `<span class="gb-observed gb-observed-stale">${escapeHtml(t('components.fuelPrices.observedStale', { date: day, days: ageDays }))}</span>`;
+  const label = monthly
+    ? t('components.fuelPrices.monthlyMean', { month: date.toLocaleDateString(getLocale(), { month: 'short', year: 'numeric', timeZone: 'UTC' }) })
+    : date.toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', year: showYear ? 'numeric' : undefined, timeZone: 'UTC' });
+  if (!stale) return `<span class="gb-observed">${escapeHtml(label)}</span>`;
+  return `<span class="gb-observed gb-observed-stale">${escapeHtml(t('components.fuelPrices.observedStale', { date: label, days: ageDays }))}</span>`;
 }
 
 export class FuelPricesPanel extends Panel {
