@@ -102,6 +102,17 @@ const evidenceFixture = [
 // buildNarrativePrompt
 // ────────────────────────────────────────────────────────────────────────────
 
+function assertBuffersOriented(userPrompt) {
+  const pressures = userPrompt.match(/PRESSURES \(([^)]*)\): ([^|\n]*)/);
+  const buffers = userPrompt.match(/BUFFERS \(([^)]*)\): ([^|\n]*)/);
+  assert.ok(pressures && buffers, 'balance is split into pressures and buffers');
+  assert.match(pressures[1], /higher.*more risk/i);
+  assert.match(buffers[1], /higher.*less risk/i);
+  assert.match(buffers[2], /maritime_access=\d\.\d\d/);
+  assert.doesNotMatch(pressures[2], /maritime/);
+  assert.doesNotMatch(userPrompt, /\bmaritime=/);
+}
+
 describe('buildNarrativePrompt', () => {
   it('returns system + user prompt strings', () => {
     const { systemPrompt, userPrompt } = buildNarrativePrompt(menaRegion, stubSnapshot(), evidenceFixture);
@@ -111,8 +122,13 @@ describe('buildNarrativePrompt', () => {
 
   it('includes balance axes in the user prompt', () => {
     const { userPrompt } = buildNarrativePrompt(menaRegion, stubSnapshot(), evidenceFixture);
-    assert.match(userPrompt, /coercive=0\.72/);
-    assert.match(userPrompt, /net=0\.03/);
+    assert.match(userPrompt, /coercive_pressure=0\.72/);
+    assert.match(userPrompt, /net_balance=0\.03/);
+  });
+
+  it('presents maritime access as a buffer where a higher value means lower risk', () => {
+    const { userPrompt } = buildNarrativePrompt(menaRegion, stubSnapshot(), evidenceFixture);
+    assertBuffersOriented(userPrompt);
   });
 
   it('includes top actors and regime in the user prompt', () => {
