@@ -13,6 +13,7 @@ export class OrefSirensPanel extends Panel {
   private alerts: OrefAlert[] = [];
   private historyCount24h = 0;
   private historyWaves: OrefHistoryEntry[] = [];
+  private historyLoaded = false;
   private historyFetchInFlight = false;
   private historyLastFetchAt = 0;
 
@@ -54,10 +55,10 @@ export class OrefSirensPanel extends Panel {
     this.historyLastFetchAt = Date.now();
     fetchOrefHistory()
       .then(resp => {
-        if (resp.history?.length) {
-          this.historyWaves = resp.history;
-          this.render();
-        }
+        if (resp.error) return;
+        this.historyLoaded = true;
+        if (resp.history?.length) this.historyWaves = resp.history;
+        this.render();
       })
       .catch((err) => { console.warn('[OrefSirensPanel] History fetch failed:', err); })
       .finally(() => { this.historyFetchInFlight = false; });
@@ -99,7 +100,7 @@ export class OrefSirensPanel extends Panel {
       .slice(0, MAX_HISTORY_WAVES);
 
     if (!recent.length) {
-      if (this.historyCount24h > 0) {
+      if (this.historyCount24h > 0 && !this.historyLoaded) {
         return safeHtml`<div class="oref-history-section">
           <div class="oref-history-title">${t('components.orefSirens.historySummary', { count: String(this.historyCount24h), waves: '...' })}</div>
           <div class="oref-wave-list" style="opacity:0.5;text-align:center;padding:8px">${t('components.orefSirens.loadingHistory', { defaultValue: 'Loading history...' })}</div>

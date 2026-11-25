@@ -62,3 +62,13 @@ it('shows no history section when no wave falls inside the 24-hour window', asyn
   expect(document.querySelector('.oref-history-section')).toBeNull();
   expect(document.body.textContent).not.toContain('Even Menahem');
 });
+
+it('stops showing the loading placeholder once loaded history has no wave inside the 24-hour window', async () => {
+  state.history = [wave(25, ['Even Menahem', 'Shetula'])];
+  const panel = new OrefSirensPanel();
+  panel.setData({ configured: true, alerts: [], historyCount24h: 2, totalHistoryCount: 2, timestamp: '' });
+  await flush();
+  expect(document.body.textContent).not.toContain('Loading history');
+  expect(document.body.textContent).not.toContain('Even Menahem');
+  expect(state.count).toBe(2);
+});
