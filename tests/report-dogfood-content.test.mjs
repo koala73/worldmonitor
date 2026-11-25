@@ -157,10 +157,23 @@ describe('panel content review issue', () => {
     writeFileSync(join(dir, 'panels', 'broken.json'), '{ not json');
     writeFileSync(join(dir, 'panels', 'list.json'), '[]');
     writeFileSync(join(dir, 'panels', 'notes.txt'), 'ignored');
+    mkdirSync(join(dir, 'panels', 'folder.json'));
+    writeFileSync(join(dir, 'panels', 'folder.json', 'child'), '{}');
     const report = readShardReport(dir);
     assert.deepEqual(report.panels.map((p) => p.id).sort(), ['cii', 'markets']);
     assert.equal(report.findings.length, 1);
     assert.equal(report.dismissed.length, 1);
     assert.equal(readShardReport(mkdtempSync(join(tmpdir(), 'dogfood-empty-'))), null);
+  });
+
+  it('keeps a panel whose quote holds a raw tab copied from table text', () => {
+    // Run 45540163911: the agent quoted a table row from `get text`, tabs and all, and the whole verdict was dropped.
+    const dir = mkdtempSync(join(tmpdir(), 'dogfood-tabs-'));
+    mkdirSync(join(dir, 'panels'));
+    writeFileSync(join(dir, 'panels', 'trade-policy.json'),
+      '{\n\t"panel": { "id": "trade-policy", "status": "suspect" },\n\t"findings": [{ "panel": "trade-policy", "quote": "2026-05-31\t$-0.0B\t$188.6B" }]\n}');
+    const report = readShardReport(dir);
+    assert.deepEqual(report.panels.map((p) => p.id), ['trade-policy']);
+    assert.equal(report.findings[0].quote, '2026-05-31 $-0.0B $188.6B');
   });
 });
