@@ -12,7 +12,7 @@ import type {
   EnergyDisruptionEntry,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { formatEventWindow, formatCapacityOffline } from '@/shared/disruption-timeline';
-import { deriveStoragePublicBadge } from '@/shared/storage-evidence';
+import { deriveStoragePublicBadge, isStorageEvidenceStale, STORAGE_EVIDENCE_STALENESS_DAYS } from '@/shared/storage-evidence';
 import {
   ensureStorageFacilityRegistryHydrated,
   getCachedStorageFacilityRegistry,
@@ -59,6 +59,26 @@ function badgeChip(badge: string | undefined): string {
   const safe = badge && BADGE_COLOR[badge] ? badge : 'disputed';
   const color = BADGE_COLOR[safe] ?? '#5d6d7e';
   return `<span class="sf-badge" style="background:${color}">${escapeHtml(badgeLabel(safe))}</span>`;
+}
+
+interface EvidenceAge { date: string; stale: boolean }
+
+function evidenceAge(f: StorageFacilityEntry): EvidenceAge {
+  const iso = f.evidence?.lastEvidenceUpdate;
+  const t = iso ? Date.parse(iso) : Number.NaN;
+  return {
+    date: Number.isNaN(t) ? 'date unknown' : new Date(t).toISOString().slice(0, 10),
+    stale: isStorageEvidenceStale(iso),
+  };
+}
+
+const STALE_EVIDENCE_NOTE = `older than ${STORAGE_EVIDENCE_STALENESS_DAYS} days, status may have changed`;
+
+function evidenceAgeLine(f: StorageFacilityEntry): string {
+  const { date, stale } = evidenceAge(f);
+  return stale
+    ? `<div class="sf-sub sf-ev-age sf-ev-stale" title="Evidence ${escapeHtml(STALE_EVIDENCE_NOTE)}">Evidence <span class="sf-val">${escapeHtml(date)}</span> · stale</div>`
+    : `<div class="sf-sub sf-ev-age">Evidence <span class="sf-val">${escapeHtml(date)}</span></div>`;
 }
 
 function capacityLabel(f: StorageFacilityEntry): string {
@@ -446,6 +466,9 @@ export class StorageFacilityMapPanel extends Panel {
         .sf-drawer h3 { margin: 0 0 6px 0; font-size: calc(13px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }
         .sf-drawer .sf-kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-bottom: 10px; }
         .sf-drawer .sf-kv-key { color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding-top: 2px; }
+        .sf-ev-age { margin-top: 2px; }
+        .sf-ev-age .sf-val { white-space: nowrap; }
+        .sf-ev-stale { color: var(--text-dim, #888); font-style: italic; }
         .sf-evidence { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
         .sf-ev-item { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); margin-bottom: 6px; }
         .sf-ev-item a { color: #4ade80; text-decoration: none; }
@@ -467,7 +490,7 @@ export class StorageFacilityMapPanel extends Panel {
         </td>
         <td role="cell"><span class="sf-val">${escapeHtml(f.country)}</span> · <span class="sf-val">${escapeHtml(typeLabel)}</span></td>
         <td role="cell" class="sf-val">${escapeHtml(capacityLabel(f))}</td>
-        <td role="cell">${badgeChip(f.publicBadge)}</td>
+        <td role="cell">${badgeChip(f.publicBadge)}${evidenceAgeLine(f)}</td>
       </tr>`;
   }
 
@@ -512,6 +535,7 @@ export class StorageFacilityMapPanel extends Panel {
       : `<div class="sf-ev-item"><strong>Fill levels:</strong> not publicly disclosed</div>`;
 
     const typeLabel = TYPE_LABEL[f.facilityType] ?? f.facilityType;
+    const age = evidenceAge(f);
 
     return `
       <div class="sf-drawer">
@@ -531,6 +555,7 @@ export class StorageFacilityMapPanel extends Panel {
             <strong>Physical state:</strong> ${escapeHtml(ev?.physicalState || 'unknown')}
             (source: ${escapeHtml(ev?.physicalStateSource || 'unknown')})
           </div>
+          <div class="sf-ev-item${age.stale ? ' sf-ev-stale' : ''}"><strong>Evidence as of:</strong> ${escapeHtml(age.date)}${age.stale ? ` · stale (${escapeHtml(STALE_EVIDENCE_NOTE)})` : ''}</div>
           <div class="sf-ev-item"><strong>Commercial:</strong> ${escapeHtml(ev?.commercialState || 'unknown')}</div>
           ${fillLine}
           ${operatorStatement}
