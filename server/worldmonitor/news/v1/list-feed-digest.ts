@@ -1769,10 +1769,11 @@ const REFERENCE_PAGE_TITLE_PATTERNS: readonly RegExp[] = [
   /\bVideo News Clips\b/i,
   /\bNews, Opinion & Analysis$/i,
   /^Price of \w+ per (?:Pound|Ounce)$/i,
-  /^[^|]+ \| [^|]+ \| [^|]+$/, // landing pages: Live Gold Prices | Gold News And Analysis | Mining News
+  /^(?:Live \w+ Prices|\w+ Spot Prices|\w+ Price Today) \| /, // Kitco: Live Gold Prices | Gold News And Analysis | Mining News
 ];
 
 const REFERENCE_PAGE_TITLES = new Set([
+  'about dow jones newswires',
   'my fan picks',
   'research center',
   's&p dow jones indices',

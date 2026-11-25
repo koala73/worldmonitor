@@ -45,6 +45,8 @@ describe('parseRssXml: quote, chart, tag and section pages are not articles', ()
     'Jiaxing Huansu RMB Fund: Performance - PitchBook',
     'TPG AG Realty Value XII Co-Investment 4: Fund Performance - PitchBook',
     'My Fan Picks - AP News',
+    'About Dow Jones Newswires - MarketWatch',
+    'Gold Spot Prices | Silver Prices | Platinum & Palladium - Kitco',
     'Invesco US Treasury Bond 7-10 Year UCITS ETF USD Dist (TRXG.L) Seasonal returns chart - Yahoo Finance Australia',
     'Harbor Funds - Harbor High-Yield Bond Fund (HYFAX) Seasonal Returns Chart - Yahoo Finance - Yahoo! Finance Canada',
     'CIBC 2031 Investment Grade Bond Fund ETF Series (CTBG.NE) performance history - Yahoo Finance UK',
@@ -66,6 +68,8 @@ describe('parseRssXml: quote, chart, tag and section pages are not articles', ()
     'Anthropic’s $81.3B haul makes it the largest tech IPO ever - PitchBook',
     'TCW MetWest High Yield Bond Fund Q3 2026 Commentary (MWHIX) - Seeking Alpha',
     'HYGH: Rate-Hedged High-Yield Bond ETF, Good Performance, Terrible Price - Seeking Alpha',
+    'Taiwan holds annual Han Kuang drills | Taiwan News | Nov. 25, 2026 14:02 - Taiwan News',
+    'Oil prices rise on supply fears | Markets | Reuters - Reuters',
     'Turkish military helicopter crashes during training flight, killing 5 crew members - AP News',
   ];
   for (const title of articles) {
