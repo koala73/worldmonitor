@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { sanitizeUrl } from '@/utils/sanitize';
+import { parseLocalDate } from '@/utils/calendar-date';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { isDesktopRuntime } from '@/services/runtime';
 
@@ -15,11 +16,6 @@ type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
 
 function localDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function parseLocalDate(dateKey: string): Date {
-  const [year, month, day] = dateKey.split('-').map(Number);
-  return new Date(year!, month! - 1, day);
 }
 
 function isNotOver(event: TechEvent, todayKey: string): boolean {
