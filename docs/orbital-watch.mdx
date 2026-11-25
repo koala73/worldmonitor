@@ -48,6 +48,29 @@ Measured on 2026-11-14 against a CelesTrak active list recorded that day (16,896
 | Catalog response | 1.09 MB before compression |
 | Default lookup (7 days back, 72 hours ahead) over every profiled satellite | 2.3 to 2.8 seconds, about 8 to 10 ms per satellite |
 
+### Element history
+
+The catalog seeder also keeps a 30-day history of the profiled satellites' orbit elements in R2, at `seed-data/orbital/elements-history-v1.json`. It adds one entry each time a satellite's elements carry a new epoch, so a satellite with several element sets a day keeps all of them. It drops entries whose epoch is older than 30 days. Each entry holds the NORAD number, epoch, mean motion, eccentricity, inclination, right ascension of the ascending node and drag term, about 147 bytes. At two new element sets per satellite per day, 30 days is about 2.6 MB. Only the seeder reads it; it is not sent to browsers.
+
+The history is best effort. Without R2 credentials, when R2 fails, or when the update takes longer than its 25-second budget, the catalog is still published and the history is left as it was. A stored history the seeder cannot read is never replaced.
+
+### Candidate manoeuvres
+
+`scripts/seed-orbital-maneuvers.mjs` reads the history every 6 hours and publishes `orbital:maneuvers:v1`. For each satellite it compares semi-major axis, inclination and the right ascension of the ascending node left after J2 nodal regression with the trend of the 10 days before. A step is a **candidate** when it exceeds the larger of a per-regime floor and six times the baseline's own scatter, and the next epoch keeps at least half of it. Each candidate carries both element sets, the expected and observed values, and the threshold used.
+
+| Regime | Semi-major axis | Inclination | Node |
+|---|---|---|---|
+| LEO | 0.2 km | 0.01° | 0.02° |
+| MEO | 1 km | 0.01° | 0.02° |
+| GEO | 2 km | 0.02° | 0.2° |
+| HEO | 5 km | 0.05° | 0.1° |
+
+The baseline is a Theil-Sen line, so one element set that the next set corrects (a refit) cannot tilt it. The J2 nodal rate for each interval comes from elements smoothed over neighbouring epochs, so a real inclination change does not leave a false node step after it. Thresholds and the drag rule follow the regime of the orbit the step started from.
+
+The detector fails closed. A satellite with fewer than 5 epochs in the 10-day baseline, a gap of more than 3 days between the compared epochs, a newest epoch older than 3 days, or a perigee below 250 km is not judged, and its entry in `satellites` says why. A satellite is `evaluated` only when every element that applies judged its newest step; otherwise `unjudgedElements` names the ones that did not, for example the element whose trend restarted after a candidate. A step on the newest epoch waits for the next one. A fall in LEO semi-major axis is never flagged, because a geomagnetic-storm drag spike looks the same and no space-weather source is wired in yet; the trend restarts after such a fall. The node is not compared within 1° of an equatorial orbit, prograde or retrograde, where it is poorly defined.
+
+An R2 failure or missing R2 credentials fail the run, so the previous list stays and `seed-meta` ages; the bundle requires those credentials only while Orbital Watch is on. A run publishes nothing, and reports itself blocked, when no satellite could be judged, when the history has not been updated for 12 hours, or when its update time is unreadable. The record count is the number of satellites judged. In the first 11 days after the history starts, no satellite has a full baseline, so the key stays pending in `/api/health` for up to 14 days before its first publication.
+
 ### Matching against archives
 
 Your browser asks the public archives directly: Earth Search and Microsoft Planetary Computer for Sentinel-2, Sentinel-1 and Landsat scenes, NASA GIBS for daily mosaics and geostationary frames, and EUMETSAT for Meteosat frames. A scene belongs to a pass when its acquisition time is within 5 minutes of the computed pass. For optical scenes, Orbital Watch also reads the scene's cloud classification at the point itself, not just the scene-wide cloud percentage.

@@ -295,7 +295,7 @@ const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLower
 // (server/worldmonitor/orbital/v1/dark-launch.ts). While it is off the seeder
 // writes nothing, so these keys read NOT_CONFIGURED and claim no rollout deadline.
 const ORBITAL_WATCH_ENABLED = (process.env.ORBITAL_WATCH_ENABLED ?? '').trim().toLowerCase() === 'true';
-const DARK_LAUNCHED_KEYS = new Set(ORBITAL_WATCH_ENABLED ? [] : ['orbitalSites', 'orbitalWaterExtent']);
+const DARK_LAUNCHED_KEYS = new Set(ORBITAL_WATCH_ENABLED ? [] : ['orbitalSites', 'orbitalWaterExtent', 'orbitalManeuvers']);
 
 const BOOTSTRAP_KEYS = {
   earthquakes:       'seismology:earthquakes:v1',
@@ -425,6 +425,8 @@ const STANDALONE_KEYS = {
   // per-country records sit beside it. Read by the orbital RPCs, not the dashboard.
   orbitalSites: 'orbital:sites:v1',
   orbitalWaterExtent: 'orbital:water-extent:v1',
+  // Candidate satellite manoeuvres (scripts/seed-orbital-maneuvers.mjs, #9110). No dashboard consumer yet.
+  orbitalManeuvers: 'orbital:maneuvers:v1',
   // Public chokepoint status open dataset index (/data/v1/chokepoints/), published
   // daily by .github/workflows/open-data-chokepoints.yml. Read only by
   // api/open-data-chokepoints.js, never by the dashboard.
@@ -1027,6 +1029,12 @@ const SEED_META = {
   // NOT_CONFIGURED while Orbital Watch is dark (DARK_LAUNCHED_KEYS).
   orbitalWaterExtent: { key: 'seed-meta:orbital:water-extent', maxStaleMin: 4320, minRecordCount: 35, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:orbital:water-extent',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10714, activationKey: 'seed-activated:orbital:water-extent' } },
+  // Climate bundle member every 6h; 1440 = 4 missed runs. Counts satellites the detector could evaluate
+  // (full baseline, fresh epochs), so a history too short or stale to judge anything is EMPTY, never an all-clear.
+  // First publication waits for the R2 history to hold a 10-day baseline plus a confirming epoch (~11 days
+  // after it starts), so the wait is 14 days. NOT_CONFIGURED while Orbital Watch is dark (DARK_LAUNCHED_KEYS).
+  orbitalManeuvers: { key: 'seed-meta:orbital:maneuvers', maxStaleMin: 1440, firstPublicationMaxWaitMin: 20160, activationKey: 'seed-activated:orbital:maneuvers',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9110, activationKey: 'seed-activated:orbital:maneuvers' } },
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
   cveReference: {
@@ -2944,6 +2952,7 @@ const ON_DEMAND_KEYS = new Set([
   'orbitalCatalog',
   'orbitalSites',
   'orbitalWaterExtent',
+  'orbitalManeuvers',
 
   'globalTendersColombiaSecop',
   'globalTendersKenyaPpip',
@@ -3182,6 +3191,7 @@ const ACTIVATION_MARKERS = {
   orbitalCatalog: SEED_META.orbitalCatalog.activationKey,
   orbitalSites: SEED_META.orbitalSites.activationKey,
   orbitalWaterExtent: SEED_META.orbitalWaterExtent.activationKey,
+  orbitalManeuvers: SEED_META.orbitalManeuvers.activationKey,
 
   globalTendersColombiaSecop: SEED_META.globalTendersColombiaSecop.activationKey,
   globalTendersKenyaPpip: SEED_META.globalTendersKenyaPpip.activationKey,
