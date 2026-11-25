@@ -81,7 +81,7 @@ We do not publish a bare `sanctions_blocked` or `political_cutoff` label. Public
 }
 ```
 
-The visible `publicBadge` (`flowing | reduced | offline | disputed | cancelled | closed`) is a deterministic function with freshness weights. A pipeline with a sourced `lifecycleState` (a project terminated before service, or a line permanently closed) shows that state regardless of evidence age; the validator requires a statement of the termination with non-blank text, a source URL, and a date. When a pipeline reopens or a sanctions list changes, the evidence fields update and the badge re-derives automatically. We ship the evidence; the badge is a convenience view of it.
+The visible `publicBadge` (`flowing | reduced | offline | disputed | cancelled | closed`) is a deterministic function with freshness weights. A pipeline with a sourced `lifecycleState` (a project terminated before service, or a line permanently closed) shows that state regardless of evidence age; the validator requires a statement of the termination with non-blank text, a source URL, and a date. A pipeline that reopens needs its `lifecycleState` removed in the same change that records the new evidence. When the evidence fields update, for example on a sanctions-list change, the badge re-derives automatically. We ship the evidence; the badge is a convenience view of it.
 
 ## How public badges move
 

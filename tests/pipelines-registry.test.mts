@@ -223,9 +223,10 @@ describe('pipeline registries — validateRegistry rejects bad input', () => {
     assert.equal(validateRegistry(withLifecycle({ lifecycleState: 'retired' })), false);
     assert.equal(validateRegistry(withLifecycle({ operatorStatement: null })), false);
     const statement = oil.pipelines['keystone-xl-cancelled']!.evidence.operatorStatement;
-    for (const patch of [{ text: '   ' }, { text: true }, { url: '' }, { url: 'not a url' }, { date: '' }, { date: '2021-13-45' }]) {
+    for (const patch of [{ text: '   ' }, { text: true }, { url: '' }, { url: 'not a url' }, { url: 'https://example.com:abc/statement' }, { url: 'ftp://example.com/x' }, { date: '' }, { date: '2021-13-45' }, { date: '2021-02-30' }, { date: '2021-02-29' }]) {
       assert.equal(validateRegistry(withLifecycle({ operatorStatement: { ...statement, ...patch } })), false, JSON.stringify(patch));
     }
+    assert.equal(validateRegistry(withLifecycle({ operatorStatement: { ...statement, date: '2020-02-29' } })), true);
   });
 
   test('rejects below MIN_PIPELINES_PER_REGISTRY', () => {
