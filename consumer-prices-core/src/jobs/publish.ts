@@ -10,7 +10,9 @@ import {
   buildMoversSnapshot,
   buildOverviewSnapshot,
   buildRetailerSpreadSnapshot,
+  type BasketRowLoader,
 } from '../snapshots/worldmonitor.js';
+import { type BasketRow, getBasketRows } from '../basket-observations.js';
 import { buildCoverageSnapshot } from '../snapshots/coverage.js';
 import { loadAllBasketConfigs, loadAllRetailerConfigs } from '../config/loader.js';
 import { closePool } from '../db/client.js';
@@ -198,6 +200,19 @@ export async function publishAll() {
     let pagesOk = 0;
     let pagesFailed = 0;
     let pagesSkipped = 0;
+    const basketRows = new Map<string, Promise<BasketRow[]>>();
+    const loadBasketRows: BasketRowLoader = (slug, market) => {
+      let rows = basketRows.get(slug);
+      if (!rows) {
+        const pending = getBasketRows(slug, market);
+        pending.catch(() => {
+          if (basketRows.get(slug) === pending) basketRows.delete(slug);
+        });
+        basketRows.set(slug, pending);
+        rows = pending;
+      }
+      return rows;
+    };
 
     try {
       const coverage = await buildCoverageSnapshot(marketCode);
@@ -225,7 +240,7 @@ export async function publishAll() {
     }
 
     try {
-      const overview = await buildOverviewSnapshot(marketCode);
+      const overview = await buildOverviewSnapshot(marketCode, loadBasketRows);
       await writeSnapshot(url, token, makeKey(['consumer-prices', 'overview', marketCode]), overview, TTL, advanceSeedMeta, { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 });
       pagesOk++;
     } catch (err) {
@@ -277,7 +292,7 @@ export async function publishAll() {
 
     for (const basket of baskets.filter((b) => b.marketCode === marketCode)) {
       try {
-        const spread = await buildRetailerSpreadSnapshot(marketCode, basket.slug);
+        const spread = await buildRetailerSpreadSnapshot(marketCode, basket.slug, loadBasketRows);
         await writeSnapshot(
           url, token,
           makeKey(['consumer-prices', 'retailer-spread', marketCode, basket.slug]),

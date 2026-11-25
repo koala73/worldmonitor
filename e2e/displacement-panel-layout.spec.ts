@@ -60,7 +60,7 @@ test('German displacement fits individual narrow panels and keeps tab scrolling 
     await testInfo.attach(`geometry-${width}-${scale}`, { body: JSON.stringify(geometry), contentType: 'application/json' });
     await evidenceScreenshot(panel, { path: testInfo.outputPath(`displacement-${width}-${scale}.png`) });
     expect.soft(geometry['.panel-content']!.scrollWidth - geometry['.panel-content']!.width, `${width}px: outer scroll`).toBeLessThanOrEqual(1);
-    await expect.soft(grid).toHaveCSS('grid-template-columns', width <= 480 ? /^\S+ \S+$/ : /^\S+ \S+ \S+ \S+$/, { timeout: 2000 });
+    await expect.soft(grid).toHaveCSS('grid-template-columns', width <= 480 ? /^\S+ \S+$/ : /^\S+ \S+ \S+ \S+ \S+$/, { timeout: 2000 });
     expect.soft(await grid.locator('.disp-stat-label').evaluateAll(labels => labels.every(el => el.scrollWidth <= el.clientWidth + 1)), `${width}px: metric labels fit`).toBe(true);
     const count = panel.locator('.panel-header > .panel-count');
     await expect(count).toHaveText('212');
@@ -108,7 +108,7 @@ test('German displacement fits individual narrow panels and keeps tab scrolling 
   await expect.poll(async () => {
     await panel.scrollIntoViewIfNeeded().catch(() => {});
     return panel.locator('.disp-stat-box').count();
-  }).toBe(4);
+  }).toBe(5);
   await expect(grid).toHaveCSS('grid-template-columns', /^\S+ \S+$/);
   expect(await content.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
 });

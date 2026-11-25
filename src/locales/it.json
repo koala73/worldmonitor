@@ -1014,8 +1014,11 @@
       "mineral": "Minerale",
       "topProducers": "Principali produttori",
       "risk": "Rischio",
-      "aisDisruptions": "Interruzioni del tracciamento delle navi",
+      "aisDisruptions_one": "{{count}} interruzione del tracciamento delle navi",
+      "aisDisruptions_many": "{{count}} interruzioni del tracciamento delle navi",
+      "aisDisruptions_other": "{{count}} interruzioni del tracciamento delle navi",
       "wowChange": "Variazione settimanale",
+      "asOf": "al {{date}}",
       "riskLevel": "Livello di rischio",
       "flowUnavailable": "Dati di flusso non disponibili",
       "containerRates": "Tariffe container",
@@ -1690,6 +1693,7 @@
       "refugees": "Rifugiati",
       "asylumSeekers": "Richiedenti asilo",
       "idps": "Sfollati interni",
+      "stateless": "Apolidi",
       "total": "Totale",
       "origins": "Origini",
       "hosts": "Paesi ospitanti",
@@ -1876,7 +1880,7 @@
       "noData": "nessun dato",
       "enable": "Abilita",
       "convergenceMetric": "Convergenza",
-      "ciiDeviation": "Deviazione dell'Indice di instabilità del paese",
+      "topCiiScore": "Punteggio massimo di instabilità del paese",
       "infraEvents": "Eventi infrastrutturali",
       "highAlerts": "Avvisi elevati",
       "topRisks": "Principali rischi",
@@ -2612,7 +2616,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Prezzi al dettaglio della benzina e del diesel in oltre 30 paesi, normalizzati a USD/litro per il confronto. I prezzi provengono da programmi ufficiali di open data governativi e vengono aggiornati settimanalmente. I paesi più economici e più cari sono evidenziati. La variazione settimanale rispetto alla settimana precedente viene mostrata quando i dati della settimana precedente sono disponibili.",
-      "countries": "paesi"
+      "countries": "paesi",
+      "observedStale": "{{date}}, {{days}} giorni fa",
+      "monthlyMean": "media di {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> L'indice dei prezzi alimentari dell'Organizzazione delle Nazioni Unite per l'Alimentazione e l'Agricoltura traccia i prezzi all'esportazione internazionali per un paniere di merci alimentari (Cereali, Latticini, Carne, Oli, Zucchero), base 2014-2016=100. Aggiornato mensilmente il primo venerdì di ogni mese.",
@@ -2904,7 +2910,21 @@
       "saved": "Ultimo aggiornamento noto {{time}} · Ricerca di aggiornamenti",
       "savedOffline": "Ultimo aggiornamento noto {{time}} · Non in linea",
       "localSignals": "Basato sui segnali caricati nella dashboard",
-      "emptySaved": "Nessuna convergenza nell’ultimo aggiornamento noto."
+      "emptySaved": "Nessuna convergenza nell’ultimo aggiornamento noto.",
+      "signalTypes": {
+        "militaryFlight": "Volo militare",
+        "militaryVessel": "Nave militare",
+        "aisGap": "Interruzione AIS",
+        "conflictEvent": "Evento di conflitto",
+        "escalationOutage": "Interruzione comunicazioni",
+        "newsSeverity": "Notizie gravi",
+        "sanctionsNews": "Notizie sulle sanzioni",
+        "marketMove": "Movimento di mercato",
+        "commoditySpike": "Impennata materie prime",
+        "earthquake": "Terremoto",
+        "infraOutage": "Interruzione infrastrutture",
+        "other": "Segnale"
+      }
     },
     "thermalEscalation": {
       "title": "Escalation Termica",
@@ -4437,7 +4457,13 @@
     "alert": "Allerta: {{location}}",
     "multipleRegions": "Regioni multiple",
     "trending": "\"{{term}}\" in tendenza — {{count}} menzioni in {{hours}}h",
-    "eventsDetected": "{{count}} eventi rilevati nella regione ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} eventi rilevati: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "proteste",
+      "military_flight": "voli militari",
+      "military_vessel": "navi militari",
+      "earthquake": "attività sismica"
+    }
   },
   "intel": {
     "topics": {

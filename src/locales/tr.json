@@ -1014,7 +1014,8 @@
       "upstreamUnavailable": "Tedarik zinciri verileri geçici olarak kullanılamıyor — önbellek verileri gösteriliyor",
       "spikeAlert": "Ani artış tespit edildi — ücret 52 haftalık ortalamanın önemli ölçüde üzerinde (haftalık)",
       "warnings": "uyarı(lar)",
-      "aisDisruptions": "Gemi izleme kesintileri",
+      "aisDisruptions_one": "{{count}} gemi izleme kesintisi",
+      "aisDisruptions_other": "{{count}} gemi izleme kesintisi",
       "disruption": "Aksama",
       "vessels": "gemi",
       "incidents7d": "olay (7g)",
@@ -1025,6 +1026,7 @@
       "topProducers": "En Büyük Üreticiler",
       "risk": "Risk",
       "wowChange": "Haftadan haftaya değişim",
+      "asOf": "{{date}} itibarıyla",
       "riskLevel": "Risk seviyesi",
       "flowUnavailable": "Akış verileri kullanılamıyor",
       "containerRates": "Konteyner Tarifeleri",
@@ -1658,7 +1660,7 @@
       "noData": "veri yok",
       "enable": "Etkinleştir",
       "convergenceMetric": "Yakınsama",
-      "ciiDeviation": "Ülke İstikrarsızlık Endeksi Sapması",
+      "topCiiScore": "En yüksek ülke istikrarsızlık puanı",
       "infraEvents": "Altyapı Olayları",
       "highAlerts": "Yüksek Uyarılar",
       "topRisks": "Başlıca Riskler",
@@ -1836,6 +1838,7 @@
       "refugees": "Multeciler",
       "asylumSeekers": "Siginmacilar",
       "idps": "Ulke Ici Yerinden Edilmisler",
+      "stateless": "Vatansızlar",
       "total": "Toplam",
       "origins": "Cikis Ulkeleri",
       "hosts": "Ev Sahibi Ulkeler",
@@ -2601,7 +2604,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Yakıt Fiyatları</strong> 30+ ülkede benzin ve dizel perakende pompa fiyatları, karşılaştırma için USD/litre'ye normalize edilmiş. Fiyatlar resmi hükümet açık veri programlarından kaynaklanır ve haftalık güncellenir. En ucuz ve en pahalı ülkeler vurgulanır. Haftalık değişim, önceki hafta verisi mevcut olduğunda gösterilir.",
-      "countries": "ülke"
+      "countries": "ülke",
+      "observedStale": "{{date}}, {{days}} gün önce",
+      "monthlyMean": "{{month}} ortalaması"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Gıda Fiyat Endeksi</strong> BM Gıda ve Tarım Örgütü'nün Gıda Fiyat Endeksi, gıda emtiası sepeti (Tahıllar, Süt Ürünleri, Et, Yağlar, Şeker) için uluslararası ihracat fiyatlarını izler; taban 2014-2016=100. Her ayın ilk Cuma günü aylık olarak güncellenir.",
@@ -2889,7 +2894,21 @@
       "saved": "Bilinen son güncelleme {{time}} · Güncellemeler kontrol ediliyor",
       "savedOffline": "Bilinen son güncelleme {{time}} · Çevrimdışı",
       "localSignals": "Panoya yüklenen sinyallere dayanır",
-      "emptySaved": "Bilinen son güncellemede yakınsama yoktu."
+      "emptySaved": "Bilinen son güncellemede yakınsama yoktu.",
+      "signalTypes": {
+        "militaryFlight": "Askeri uçuş",
+        "militaryVessel": "Askeri gemi",
+        "aisGap": "AIS boşluğu",
+        "conflictEvent": "Çatışma olayı",
+        "escalationOutage": "İletişim kesintisi",
+        "newsSeverity": "Ciddi haberler",
+        "sanctionsNews": "Yaptırım haberleri",
+        "marketMove": "Piyasa hareketi",
+        "commoditySpike": "Emtia sıçraması",
+        "earthquake": "Deprem",
+        "infraOutage": "Altyapı kesintisi",
+        "other": "Sinyal"
+      }
     },
     "thermalEscalation": {
       "title": "Termal Yükseltme",
@@ -4415,7 +4434,13 @@
     "alert": "Uyari: {{location}}",
     "multipleRegions": "Birden Fazla Bolge",
     "trending": "\"{{term}}\" Gundemde - {{hours}} saatte {{count}} bahis",
-    "eventsDetected": "Bolgede {{count}} olay tespit edildi ({{lat}} derece, {{lon}} derece)"
+    "eventsDetected": "{{count}} olay tespit edildi: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protestolar",
+      "military_flight": "askeri uçuşlar",
+      "military_vessel": "deniz kuvvetleri gemileri",
+      "earthquake": "sismik aktivite"
+    }
   },
   "intel": {
     "topics": {

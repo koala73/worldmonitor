@@ -1011,7 +1011,7 @@
       "upstreamUnavailable": "供應鏈資料暫時不可用 — 顯示快取資料",
       "spikeAlert": "檢測到異常飆升 — 費率顯著高於52周均值（周度）",
       "warnings": "條警告",
-      "aisDisruptions": "船舶追蹤中斷",
+      "aisDisruptions_other": "{{count}} 次船舶追蹤中斷",
       "disruption": "中斷",
       "vessels": "船舶",
       "incidents7d": "事件（7天）",
@@ -1022,6 +1022,7 @@
       "topProducers": "主要生產國",
       "risk": "風險",
       "wowChange": "周環比變化",
+      "asOf": "截至 {{date}}",
       "riskLevel": "風險等級",
       "flowUnavailable": "流量資料不可用",
       "containerRates": "集裝箱運費",
@@ -1654,7 +1655,7 @@
       "noData": "無資料",
       "enable": "啟用",
       "convergenceMetric": "匯聚度",
-      "ciiDeviation": "國家不穩定指數偏差",
+      "topCiiScore": "最高國家不穩定得分",
       "infraEvents": "基礎設施事件",
       "highAlerts": "高等級警報",
       "topRisks": "主要風險",
@@ -1831,6 +1832,7 @@
       "refugees": "難民",
       "asylumSeekers": "尋求庇護者",
       "idps": "國內流離失所者",
+      "stateless": "無國籍者",
       "total": "總計",
       "origins": "來源國",
       "hosts": "收容國",
@@ -2590,7 +2592,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>燃油價格</strong>30多個國家的汽油和柴油零售泵價，以美元/升為單位進行比較。價格來自官方政府開放資料計劃，每週更新。最便宜和最昂貴的國家突出顯示。當獲得上週資料時顯示周環比變化。",
-      "countries": "個國家"
+      "countries": "個國家",
+      "observedStale": "{{date}}，{{days}} 天前",
+      "monthlyMean": "{{month}}均價"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>糧農組織食品價格指數</strong>聯合國糧食及農業組織的食品價格指數跟蹤食品商品籃（穀物、乳製品、肉類、油類、糖）的國際出口價格，基數2014-2016=100。每月第一個星期五更新。",
@@ -2874,7 +2878,21 @@
       "saved": "最近一次已知更新 {{time}} · 正在檢查更新",
       "savedOffline": "最近一次已知更新 {{time}} · 離線",
       "localSignals": "基於儀表板中已載入的訊號",
-      "emptySaved": "最近一次已知更新中未發現匯聚。"
+      "emptySaved": "最近一次已知更新中未發現匯聚。",
+      "signalTypes": {
+        "militaryFlight": "軍機飛行",
+        "militaryVessel": "軍艦",
+        "aisGap": "AIS 中斷",
+        "conflictEvent": "衝突事件",
+        "escalationOutage": "通訊中斷",
+        "newsSeverity": "嚴重新聞",
+        "sanctionsNews": "制裁新聞",
+        "marketMove": "市場波動",
+        "commoditySpike": "大宗商品飆升",
+        "earthquake": "地震",
+        "infraOutage": "基礎設施中斷",
+        "other": "訊號"
+      }
     },
     "thermalEscalation": {
       "title": "熱異常升級",
@@ -4393,7 +4411,13 @@
     "alert": "警報：{{location}}",
     "multipleRegions": "多個區域",
     "trending": "「{{term}}」趨勢上升 — {{hours}}小時內{{count}}次提及",
-    "eventsDetected": "在區域（{{lat}}°, {{lon}}°）檢測到{{count}}個事件"
+    "eventsDetected": "檢測到{{count}}個事件：{{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗議",
+      "military_flight": "軍機飛行",
+      "military_vessel": "海軍艦艇",
+      "earthquake": "地震活動"
+    }
   },
   "intel": {
     "topics": {
