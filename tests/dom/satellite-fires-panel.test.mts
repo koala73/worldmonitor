@@ -67,7 +67,7 @@ describe('SatelliteFiresPanel', () => {
 
   it('lists agency reports apart from thermal detections, with their report dates', async () => {
     await flush();
-    const thermalRegions = Array.from(panel.getElement().querySelectorAll('.fires-table .fire-region')).map((cell) => cell.textContent);
+    const thermalRegions = Array.from(panel.getElement().querySelectorAll('.fires-table:not(.fires-agency-table) .fire-region')).map((cell) => cell.textContent);
     expect(thermalRegions).toEqual(['Ukraine', 'Iran']);
     expect(text('.fires-agency-table tbody')).toBe('Quebec 2 Aug 4 – Nov 20');
   });

@@ -1112,7 +1112,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS detecções térmicas de satélite em regiões de conflito monitoradas. Alta intensidade = brilho >360K e confiança >80%.",
       "possibleExplosions": "{{count}} possível(is) explosão(ões) detectada(s)",
-      "explosionTooltip": "Assinatura térmica consistente com explosão (potência radiativa do fogo >80 MW, brilho >380 K)"
+      "explosionTooltip": "Assinatura térmica consistente com explosão (potência radiativa do fogo >80 MW, brilho >380 K)",
+      "agencyReports": "Incêndios relatados por agências",
+      "reportDates": "Datas dos relatórios",
+      "shownOfTotal": "Mostrando {{shown}} de {{total}} registros de incêndio"
     },
     "displacement": {
       "refugees": "Refugiados",

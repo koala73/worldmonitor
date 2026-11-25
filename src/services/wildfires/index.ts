@@ -92,25 +92,85 @@ export async function fetchAllFires(_days?: number): Promise<FetchResult> {
   return { regions, totalCount: resolveFireDetectionTotalCount(response) };
 }
 
-export function computeRegionStats(regions: Record<string, FireDetection[]>): FireRegionStats[] {
-  const stats: FireRegionStats[] = [];
+export interface AgencyFireReportStats {
+  region: string;
+  fireCount: number;
+  oldestReportAt: number;
+  newestReportAt: number;
+}
 
-  for (const [region, fires] of Object.entries(regions)) {
-    const highIntensity = fires.filter(
-      f => f.brightness > 360 && f.confidence === 'FIRE_CONFIDENCE_HIGH',
-    );
-    const possibleExplosions = fires.filter(f => f.possibleExplosion);
-    stats.push({
-      region,
-      fires,
-      fireCount: fires.length,
-      totalFrp: fires.reduce((sum, f) => sum + (f.frp || 0), 0),
-      highIntensityCount: highIntensity.length,
-      possibleExplosionCount: possibleExplosions.length,
-    });
+export interface FireSummary {
+  /** FIRMS thermal detections from the last 24 hours, by region. */
+  regions: FireRegionStats[];
+  /** Agency-reported fires (CWFIS, BC Wildfire Service), dated by their report, not by an observation. */
+  agencyReports: AgencyFireReportStats[];
+  /** Satellites and agencies that produced the rows, as reported by each detection. */
+  sources: string[];
+  shownCount: number;
+}
+
+// Absent source means FIRMS, for rows written before agency feeds were merged in.
+function isAgencyReport(f: FireDetection): boolean {
+  return Boolean(f.source) && f.source !== 'firms';
+}
+
+export function summarizeFires(regions: Record<string, FireDetection[]>): FireSummary {
+  const thermal: FireRegionStats[] = [];
+  const agencyReports: AgencyFireReportStats[] = [];
+  const satellites = new Set<string>();
+  const agencies = new Set<string>();
+  let shownCount = 0;
+
+  for (const [region, all] of Object.entries(regions)) {
+    shownCount += all.length;
+    const fires = all.filter(f => !isAgencyReport(f));
+    const reports = all.filter(isAgencyReport);
+    for (const f of fires) if (f.satellite) satellites.add(f.satellite);
+    for (const f of reports) agencies.add(f.satellite || f.source || '');
+    if (fires.length > 0) {
+      thermal.push({
+        region,
+        fires,
+        fireCount: fires.length,
+        totalFrp: fires.reduce((sum, f) => sum + (f.frp || 0), 0),
+        highIntensityCount: fires.filter(f => f.brightness > 360 && f.confidence === 'FIRE_CONFIDENCE_HIGH').length,
+        possibleExplosionCount: fires.filter(f => f.possibleExplosion).length,
+      });
+    }
+    const dates = reports.map(f => f.detectedAt).filter(Number.isFinite);
+    if (reports.length > 0) {
+      agencyReports.push({
+        region,
+        fireCount: reports.length,
+        oldestReportAt: dates.length ? Math.min(...dates) : 0,
+        newestReportAt: dates.length ? Math.max(...dates) : 0,
+      });
+    }
   }
 
-  return stats.sort((a, b) => b.fireCount - a.fireCount);
+  const firmsLabel = satellites.size > 0
+    ? [`NASA FIRMS (VIIRS ${[...new Set([...satellites].map(firmsSatelliteName))].sort().join(', ')})`]
+    : [];
+  return {
+    regions: thermal.sort((a, b) => b.fireCount - a.fireCount),
+    agencyReports: agencyReports.sort((a, b) => b.fireCount - a.fireCount),
+    sources: [...firmsLabel, ...[...agencies].filter(Boolean).sort()],
+    shownCount,
+  };
+}
+
+// FIRMS CSV `satellite` codes, plus the FIRMS source names some rows carry instead.
+const FIRMS_SATELLITE_NAMES: Record<string, string> = {
+  N: 'SNPP',
+  VIIRS_SNPP_NRT: 'SNPP',
+  N20: 'NOAA-20',
+  VIIRS_NOAA20_NRT: 'NOAA-20',
+  N21: 'NOAA-21',
+  VIIRS_NOAA21_NRT: 'NOAA-21',
+};
+
+function firmsSatelliteName(code: string): string {
+  return FIRMS_SATELLITE_NAMES[code] ?? code;
 }
 
 export function flattenFires(regions: Record<string, FireDetection[]>): FireDetection[] {

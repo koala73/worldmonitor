@@ -1914,7 +1914,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS műhold termális detektálása a megfigyelési területeken. Magas intenzitás = fényerő >360K és megbízhatóság >80%.",
       "possibleExplosions": "{{count}} lehetséges robbanás detektálva",
-      "explosionTooltip": "Hőjelenség konzisztens a robbanással (tűz sugárzási teljesítménye >80 MW, fényesség >380 K)"
+      "explosionTooltip": "Hőjelenség konzisztens a robbanással (tűz sugárzási teljesítménye >80 MW, fényesség >380 K)",
+      "agencyReports": "Hatóságok által jelentett tüzek",
+      "reportDates": "Jelentések dátuma",
+      "shownOfTotal": "{{total}} tűzrekordból {{shown}} látható"
     },
     "ucdpEvents": {
       "stateBased": "Állami szintű",

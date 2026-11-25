@@ -1627,7 +1627,10 @@
       },
       "infoTooltip": "Die NASA FIRST die thermischen Erkennungen von VIIRS-Satelliten in überwachten Konfliktregionen. Hohe Intensität = Helligkeit >360K und Zuverlässigkeit >80 %.",
       "possibleExplosions": "{{count}} mögliche Explosion(en) erkannt",
-      "explosionTooltip": "Thermische Signatur vereinbar mit Explosion (Feuer-Strahlungsleistung >80 MW, Helligkeit >380 K)"
+      "explosionTooltip": "Thermische Signatur vereinbar mit Explosion (Feuer-Strahlungsleistung >80 MW, Helligkeit >380 K)",
+      "agencyReports": "Von Behörden gemeldete Brände",
+      "reportDates": "Meldedaten",
+      "shownOfTotal": "{{shown}} von {{total}} Branddatensätzen angezeigt"
     },
     "giving": {
       "activityIndex": "Aktivitätsindex",

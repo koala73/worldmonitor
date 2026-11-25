@@ -1923,7 +1923,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS satelitske toplinske detekcije na monitoriranim područjima sukoba. Visok intenzitet = sjajnost >360K i pouzdanost >80%.",
       "possibleExplosions": "Detektirano {{count}} mogućih eksplozija",
-      "explosionTooltip": "Termalna signatura skladna s eksplozijom (radijacijska snaga vatra >80 MW, sjaj >380 K)"
+      "explosionTooltip": "Termalna signatura skladna s eksplozijom (radijacijska snaga vatra >80 MW, sjaj >380 K)",
+      "agencyReports": "Požari koje su prijavile agencije",
+      "reportDates": "Datumi izvješća",
+      "shownOfTotal": "Prikazano {{shown}} od {{total}} zapisa o požarima"
     },
     "ucdpEvents": {
       "stateBased": "Državni konflikt",

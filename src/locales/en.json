@@ -2011,7 +2011,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS satellite thermal detections across monitored conflict regions. High-intensity = brightness >360K & confidence >80%.",
       "possibleExplosions": "{{count}} possible explosion(s) detected",
-      "explosionTooltip": "Thermal signature consistent with explosion (fire radiative power >80 MW, brightness >380 K)"
+      "explosionTooltip": "Thermal signature consistent with explosion (fire radiative power >80 MW, brightness >380 K)",
+      "agencyReports": "Agency-reported fires",
+      "reportDates": "Report dates",
+      "shownOfTotal": "Showing {{shown}} of {{total}} fire records"
     },
     "ucdpEvents": {
       "stateBased": "State-Based",

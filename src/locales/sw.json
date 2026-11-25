@@ -1914,7 +1914,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS ugunduzi wa joto wa setilaiti katika maeneo yenye migogoro inayofuatiliwa. Kiwango cha juu = mwangaza > 360K & kujiamini > 80%.",
       "possibleExplosions": "{{count}} milipuko inayoweza kutokea imetambuliwa",
-      "explosionTooltip": "Dalili ya joto inayolingana na mlipuko (nguvu ya radiyesivu ya moto >80 MW, mwangaza >380 K)"
+      "explosionTooltip": "Dalili ya joto inayolingana na mlipuko (nguvu ya radiyesivu ya moto >80 MW, mwangaza >380 K)",
+      "agencyReports": "Moto ulioripotiwa na mashirika",
+      "reportDates": "Tarehe za ripoti",
+      "shownOfTotal": "Inaonyesha rekodi {{shown}} kati ya {{total}} za moto"
     },
     "ucdpEvents": {
       "stateBased": "Kulingana na Jimbo",

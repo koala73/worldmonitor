@@ -1,10 +1,10 @@
 import { Panel } from './Panel';
-import type { FireRegionStats } from '@/services/wildfires';
-import { t } from '@/services/i18n';
+import type { FireSummary } from '@/services/wildfires';
+import { getLocale, t } from '@/services/i18n';
 import { unsafeRawHtml } from '@/utils/sanitize';
 
 export class SatelliteFiresPanel extends Panel {
-  private stats: FireRegionStats[] = [];
+  private summary: FireSummary = { regions: [], agencyReports: [], sources: [], shownCount: 0 };
   private totalCount = 0;
   private lastUpdated: Date | null = null;
 
@@ -19,9 +19,9 @@ export class SatelliteFiresPanel extends Panel {
     this.showLoading(t('common.scanningThermalData'));
   }
 
-  public update(stats: FireRegionStats[], totalCount: number): void {
+  public update(summary: FireSummary, totalCount: number): void {
     const prevCount = this.totalCount;
-    this.stats = stats;
+    this.summary = summary;
     this.totalCount = totalCount;
     this.lastUpdated = new Date();
     this.setCount(totalCount);
@@ -34,12 +34,13 @@ export class SatelliteFiresPanel extends Panel {
   }
 
   private render(): void {
-    if (this.stats.length === 0) {
+    const { regions, agencyReports, sources, shownCount } = this.summary;
+    if (regions.length === 0 && agencyReports.length === 0) {
       this.setSafeContent(unsafeRawHtml(`<div class="panel-empty">${t('common.noDataAvailable')}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
-    const rows = this.stats.map(s => {
+    const rows = regions.map(s => {
       const frpStr = s.totalFrp >= 1000
         ? `${(s.totalFrp / 1000).toFixed(1)}k`
         : Math.round(s.totalFrp).toLocaleString();
@@ -55,14 +56,20 @@ export class SatelliteFiresPanel extends Panel {
       </tr>`;
     }).join('');
 
-    const totalFrp = this.stats.reduce((sum, s) => sum + s.totalFrp, 0);
-    const totalHigh = this.stats.reduce((sum, s) => sum + s.highIntensityCount, 0);
-    const totalExplosions = this.stats.reduce((sum, s) => sum + s.possibleExplosionCount, 0);
+    const totalFires = regions.reduce((sum, s) => sum + s.fireCount, 0);
+    const totalFrp = regions.reduce((sum, s) => sum + s.totalFrp, 0);
+    const totalHigh = regions.reduce((sum, s) => sum + s.highIntensityCount, 0);
+    const totalExplosions = regions.reduce((sum, s) => sum + s.possibleExplosionCount, 0);
+    const agencyRows = agencyReports.map(a => `<tr class="fire-row">
+        <td class="fire-region">${escapeHtml(a.region)}</td>
+        <td class="fire-count">${a.fireCount}</td>
+        <td class="fire-reported">${reportDateRange(a.oldestReportAt, a.newestReportAt)}</td>
+      </tr>`).join('');
     const ago = this.lastUpdated ? timeSince(this.lastUpdated) : t('components.satelliteFires.never');
 
     this.setSafeContent(unsafeRawHtml(`
       <div class="fires-panel-content">
-        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        ${regions.length > 0 ? `<div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
           <table class="wm-table fires-table">
             <thead>
               <tr>
@@ -76,16 +83,30 @@ export class SatelliteFiresPanel extends Panel {
             <tfoot>
               <tr class="fire-totals">
                 <td>${t('components.satelliteFires.total')}</td>
-                <td>${this.totalCount}</td>
+                <td>${totalFires}</td>
                 <td>${totalHigh}</td>
                 <td>${totalFrp >= 1000 ? `${(totalFrp / 1000).toFixed(1)}k` : Math.round(totalFrp).toLocaleString()}</td>
               </tr>
             </tfoot>
           </table>
-        </div>
+        </div>` : ''}
+        ${agencyRows ? `<div class="table-scroll" role="group" tabindex="0" aria-label="${t('components.satelliteFires.agencyReports')}">
+          <table class="wm-table fires-table fires-agency-table">
+            <caption>${t('components.satelliteFires.agencyReports')}</caption>
+            <thead>
+              <tr>
+                <th scope="col">${t('components.satelliteFires.region')}</th>
+                <th scope="col">${t('components.satelliteFires.fires')}</th>
+                <th scope="col">${t('components.satelliteFires.reportDates')}</th>
+              </tr>
+            </thead>
+            <tbody>${agencyRows}</tbody>
+          </table>
+        </div>` : ''}
+        ${this.totalCount > shownCount ? `<div class="fires-shown-of-total">${t('components.satelliteFires.shownOfTotal', { shown: shownCount.toLocaleString(), total: this.totalCount.toLocaleString() })}</div>` : ''}
         ${totalExplosions > 0 ? `<div class="fires-explosion-alert">${t('components.satelliteFires.possibleExplosions', { count: String(totalExplosions) })}</div>` : ''}
         <div class="fires-footer">
-          <span class="fires-source">NASA FIRMS (VIIRS SNPP)</span>
+          <span class="fires-source">${escapeHtml(sources.join(' · '))}</span>
           <span class="fires-updated">${ago}</span>
         </div>
       </div>
@@ -95,6 +116,14 @@ export class SatelliteFiresPanel extends Panel {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function reportDateRange(oldest: number, newest: number): string {
+  if (!oldest) return '';
+  const format = (ms: number) => new Date(ms).toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const from = format(oldest);
+  const to = format(newest);
+  return from === to ? from : `${from} – ${to}`;
 }
 
 function timeSince(date: Date): string {

@@ -1685,7 +1685,10 @@
       },
       "infoTooltip": "Détections thermiques par satellite FIRMS VIIRS de la NASA dans les régions de conflit surveillées. Haute intensité = luminosité >360K et confiance >80 %.",
       "possibleExplosions": "{{count}} explosion(s) possible(s) détectée(s)",
-      "explosionTooltip": "Signature thermique compatible avec une explosion (puissance radiative du feu >80 MW, luminosité >380 K)"
+      "explosionTooltip": "Signature thermique compatible avec une explosion (puissance radiative du feu >80 MW, luminosité >380 K)",
+      "agencyReports": "Incendies signalés par les agences",
+      "reportDates": "Dates des rapports",
+      "shownOfTotal": "{{shown}} enregistrements d’incendie affichés sur {{total}}"
     },
     "ucdpEvents": {
       "stateBased": "Étatique",

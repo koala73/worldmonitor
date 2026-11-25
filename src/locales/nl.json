@@ -1111,7 +1111,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS thermische satellietdetectie in bewaakte conflictgebieden. Hoge intensiteit = helderheid >360K en betrouwbaarheid >80%.",
       "possibleExplosions": "{{count}} mogelijke explosie(s) gedetecteerd",
-      "explosionTooltip": "Thermische handtekening consistent met explosie (vuurradiatiefvermogen >80 MW, helderheid >380 K)"
+      "explosionTooltip": "Thermische handtekening consistent met explosie (vuurradiatiefvermogen >80 MW, helderheid >380 K)",
+      "agencyReports": "Door instanties gemelde branden",
+      "reportDates": "Rapportdata",
+      "shownOfTotal": "{{shown}} van {{total}} brandrecords weergegeven"
     },
     "displacement": {
       "refugees": "Vluchtelingen",

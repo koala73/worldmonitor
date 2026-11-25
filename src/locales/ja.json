@@ -1759,7 +1759,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS衛星による監視対象紛争地域の熱検知。高強度 = 輝度>360K & 信頼度>80%。",
       "possibleExplosions": "{{count}} 件の爆発の可能性を検出",
-      "explosionTooltip": "熱署名が爆発と一致(火放射電力>80 MW、輝度>380 K)"
+      "explosionTooltip": "熱署名が爆発と一致(火放射電力>80 MW、輝度>380 K)",
+      "agencyReports": "機関が報告した火災",
+      "reportDates": "報告日",
+      "shownOfTotal": "火災記録 {{total}} 件中 {{shown}} 件を表示"
     },
     "ucdpEvents": {
       "stateBased": "国家間",

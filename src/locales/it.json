@@ -1630,7 +1630,10 @@
       },
       "infoTooltip": "Rilevamenti termici satellitari della NASA FIRMS VIIRS nelle regioni di conflitto monitorate. Alta intensità = luminosità >360K e confidenza >80%.",
       "possibleExplosions": "{{count}} possibile/i esplosione/i rilevata/e",
-      "explosionTooltip": "Firma termica coerente con esplosione (potenza radiativa del fuoco >80 MW, luminosità >380 K)"
+      "explosionTooltip": "Firma termica coerente con esplosione (potenza radiativa del fuoco >80 MW, luminosità >380 K)",
+      "agencyReports": "Incendi segnalati dalle agenzie",
+      "reportDates": "Date dei rapporti",
+      "shownOfTotal": "Visualizzati {{shown}} di {{total}} record di incendi"
     },
     "giving": {
       "activityIndex": "Indice di attività",

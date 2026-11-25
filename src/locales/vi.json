@@ -1759,7 +1759,10 @@
       },
       "infoTooltip": "Phát hiện nhiệt vệ tinh NASA FIRMS VIIRS trên các vùng xung đột được giám sát. Cường độ cao = độ sáng >360K & độ tin cậy >80%.",
       "possibleExplosions": "Phát hiện {{count}} vụ nổ có thể xảy ra",
-      "explosionTooltip": "Chữ ký nhiệt phù hợp với vụ nổ (công suất bức xạ nhiệt >80 MW, độ sáng >380 K)"
+      "explosionTooltip": "Chữ ký nhiệt phù hợp với vụ nổ (công suất bức xạ nhiệt >80 MW, độ sáng >380 K)",
+      "agencyReports": "Đám cháy do cơ quan báo cáo",
+      "reportDates": "Ngày báo cáo",
+      "shownOfTotal": "Hiển thị {{shown}} trên {{total}} bản ghi cháy"
     },
     "ucdpEvents": {
       "stateBased": "Nhà nước",
