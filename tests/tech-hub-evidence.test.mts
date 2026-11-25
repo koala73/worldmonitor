@@ -38,6 +38,16 @@ describe('tech hub evidence', () => {
     assert.deepEqual(hubCities([baidu, google]), ['Beijing', 'Mountain View']);
   });
 
+  it('places a funding story by its accelerator outside the tech category', () => {
+    const funding = cluster('Hub71 startup raises $12 million seed round', 'Wamda', 'https://example.com/hub71', 'economic');
+    assert.deepEqual(hubCities([funding]), ['Abu Dhabi']);
+  });
+
+  it('does not read the ordinary word alphabet as the company', () => {
+    const language = cluster('Linguists revive a forgotten alphabet in Peru', 'BBC', 'https://www.bbc.com/x', 'general');
+    assert.deepEqual(hubCities([language]), []);
+  });
+
   it('ignores a city that only appears in the publisher byline', () => {
     const parks = cluster(
       'Opposition MPs say they want answers on planned Parks Canada cuts, layoffs - Toronto Star',

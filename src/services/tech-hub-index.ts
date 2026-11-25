@@ -31,6 +31,10 @@ const GENERIC_PRODUCT_TERMS = new Set([
   'music streaming', '3nm process', '5nm process', 'european hq', 'european engineering hub', 'apac operations',
 ]);
 
+// 'Google/Alphabet' -> 'Google': the joined form never appears in a headline, and
+// the holding-company name is an ordinary word.
+const brandName = (companyName: string) => companyName.replace(/\/.*$/, '');
+
 let cachedIndex: TechHubIndex | null = null;
 
 function normalizeTier(tier: string | undefined): 'mega' | 'major' | 'emerging' {
@@ -129,7 +133,7 @@ function buildTechHubIndex(): TechHubIndex {
     if (existingHub) {
       // Add company name as keyword to existing hub
       existingHub.keywords.push(company.name.toLowerCase());
-      for (const name of company.name.split('/')) addKeyword(name, existingHub.id);
+      addKeyword(brandName(company.name), existingHub.id);
       addProducts(existingHub, company.keyProducts);
     } else {
       // Create new hub for this company
@@ -145,7 +149,7 @@ function buildTechHubIndex(): TechHubIndex {
         keywords: [company.name.toLowerCase(), company.city.toLowerCase()],
       };
 
-      for (const name of company.name.split('/')) addKeyword(name, company.id);
+      addKeyword(brandName(company.name), company.id);
       addPlace(company.city, company.id);
       addProducts(hub, company.keyProducts);
 
@@ -160,10 +164,10 @@ function buildTechHubIndex(): TechHubIndex {
     for (const hub of hubs.values()) {
       if (hub.city.toLowerCase() === sh.city.toLowerCase()) {
         exists = true;
-        // Add the hub's nickname as keyword
+        // Hub nicknames and accelerators (Silicon Beach, Station F, Hub71) name the tech scene, not just the city
         if (sh.name !== sh.city) {
           hub.keywords.push(sh.name.toLowerCase());
-          addPlace(sh.name, hub.id);
+          addKeyword(sh.name, hub.id);
         }
         break;
       }
@@ -184,7 +188,7 @@ function buildTechHubIndex(): TechHubIndex {
 
       if (sh.name !== sh.city) {
         hub.keywords.push(sh.name.toLowerCase());
-        addPlace(sh.name, sh.id);
+        addKeyword(sh.name, sh.id);
       }
 
       addPlace(sh.city, sh.id);
