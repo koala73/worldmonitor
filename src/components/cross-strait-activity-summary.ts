@@ -382,6 +382,18 @@ function comparisonModel(window: CrossStraitBaselineWindow): CrossStraitComparis
   };
 }
 
+const DAY_MS = 86_400_000;
+
+function shipCount(count: number, navy: string): string {
+  return `${count} ${navy} ship${count === 1 ? '' : 's'}`;
+}
+
+function contentFreshnessState(provenance: unknown): unknown {
+  if (!isRecord(provenance) || !isRecord(provenance.claims)) return undefined;
+  const claim = provenance.claims.content_freshness;
+  return isRecord(claim) && isRecord(claim.value) ? claim.value.state : undefined;
+}
+
 function safeOfficialSourceUrl(value: string): string | null {
   try {
     const url = new URL(value);
@@ -431,12 +443,15 @@ export function buildCrossStraitActivityPanelModel(
       const counts = row.categories;
       const countSummary = [
         counts.plaAircraft != null ? `${counts.plaAircraft} Chinese military aircraft` : null,
-        counts.planShips != null ? `${counts.planShips} Chinese navy ships` : null,
-        counts.russianNavyShips != null ? `${counts.russianNavyShips} Russian Navy ships` : null,
+        counts.planShips != null ? shipCount(counts.planShips, 'Chinese navy') : null,
+        counts.russianNavyShips != null ? shipCount(counts.russianNavyShips, 'Russian Navy') : null,
       ].filter(Boolean).join(', ');
+      const ageDays = Math.floor((Date.parse(snapshot.generatedAt) - Date.parse(row.reportingDay)) / DAY_MS);
       return {
         label: `Japan Joint Staff · ${countSummary || 'reviewed activity document'}`,
-        reportingLabel: row.reportingDay,
+        reportingLabel: contentFreshnessState(row.provenance) === 'stale'
+          ? `${row.reportingDay} · ${ageDays} days old; not current activity`
+          : row.reportingDay,
         summary: row.summary ?? 'Reviewed regional augmentation; not reconciled with Taiwan Ministry of National Defense counts.',
         sourceUrl: safeOfficialSourceUrl(row.sourceUrl) ?? '',
       };
