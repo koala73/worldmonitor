@@ -252,7 +252,9 @@ function adaptPortwatch(
         summary: `PortWatch activity observation available for ${portName}.`,
         metrics: metrics([
           ['tankerCalls30d', numberValue(port.tankerCalls30d)],
-          ['trendDelta', numberValue(port.trendDelta)],
+          // The seeder writes trendDelta 0 when the prior window had no calls;
+          // that is an undefined comparison, not a measured flat trend.
+          ['trendDelta', numberValue(port.prevTankerCalls30d) === 0 ? null : numberValue(port.trendDelta)],
           ['importTankerDwt30d', numberValue(port.importTankerDwt30d)],
           ['exportTankerDwt30d', numberValue(port.exportTankerDwt30d)],
           ['anomalySignal', booleanValue(port.anomalySignal)],
