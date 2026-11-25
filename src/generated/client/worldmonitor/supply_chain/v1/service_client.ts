@@ -529,6 +529,7 @@ export interface PipelineEvidence {
   lastEvidenceUpdate: string;
   classifierVersion: string;
   classifierConfidence: number;
+  lifecycleState: string;
 }
 
 export interface OperatorStatement {

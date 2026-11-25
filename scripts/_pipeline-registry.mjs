@@ -29,6 +29,9 @@ export const PIPELINES_TTL_SECONDS = 21 * 24 * 3600;
 
 const VALID_PHYSICAL_STATES = new Set(['flowing', 'reduced', 'offline', 'unknown']);
 const VALID_COMMERCIAL_STATES = new Set(['under_contract', 'expired', 'suspended', 'unknown']);
+// Terminal lifecycle states. Optional; absent means in service or planned.
+// Each one must cite an operator or regulator statement of the termination.
+const VALID_LIFECYCLE_STATES = new Set(['cancelled', 'closed']);
 // `gem` covers rows imported from Global Energy Monitor's Oil & Gas
 // Infrastructure Trackers (CC-BY 4.0). Treated as an evidence-bearing source
 // for non-flowing badges in the same way as `press` / `satellite` / `ais-relay`,
@@ -112,6 +115,8 @@ export function validateRegistry(data) {
     if (!VALID_SOURCES.has(ev.physicalStateSource)) return false;
     if (!VALID_COMMERCIAL_STATES.has(ev.commercialState)) return false;
     if (!Array.isArray(ev.sanctionRefs)) return false;
+    if (ev.lifecycleState !== undefined &&
+        (!VALID_LIFECYCLE_STATES.has(ev.lifecycleState) || !ev.operatorStatement?.text)) return false;
     if (typeof ev.lastEvidenceUpdate !== 'string') return false;
     if (typeof ev.classifierVersion !== 'string') return false;
     if (typeof ev.classifierConfidence !== 'number' ||

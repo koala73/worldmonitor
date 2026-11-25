@@ -173,6 +173,22 @@ function resolveEvidenceTimestamp(envelope) {
  * @returns {{ gas: any[], oil: any[] }}
  * @throws {Error} on schema drift, malformed input, or unknown capacity units.
  */
+/**
+ * GEM writes a missing ownership share as "[unknown %]" and a missing owner
+ * as "unknown". Drop both so the registry stores only known facts; an owner
+ * with no known share keeps its name, an unknown owner becomes "".
+ * @param {unknown} raw
+ * @returns {string}
+ */
+export function normalizeOperator(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .split(';')
+    .map((part) => part.replace(/\s*\[\s*unknown\s*%?\s*\]/gi, '').trim())
+    .filter((part) => part && part.toLowerCase() !== 'unknown')
+    .join('; ');
+}
+
 export function parseGemPipelines(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('parseGemPipelines: input must be an object');
@@ -257,7 +273,7 @@ export function parseGemPipelines(data) {
     const candidate = {
       id,
       name: r.name,
-      operator: r.operator,
+      operator: normalizeOperator(r.operator),
       commodityType: fuel,
       fromCountry: r.fromCountry,
       toCountry: r.toCountry,
