@@ -2592,7 +2592,7 @@ export class DataLoaderManager implements AppModule {
 
     // Happy variant: run multi-stage positive news pipeline + map layers
     if (SITE_VARIANT === 'happy') {
-      await this.loadHappySupplementaryAndRender();
+      await this.loadHappySupplementaryAndRender(generation);
       await Promise.allSettled([
         this.ctx.mapLayers.positiveEvents ? this.loadPositiveEvents() : Promise.resolve(),
         this.ctx.mapLayers.kindness ? Promise.resolve(this.loadKindnessData()) : Promise.resolve(),
@@ -5216,8 +5216,9 @@ export class DataLoaderManager implements AppModule {
     );
   }
 
-  private async loadHappySupplementaryAndRender(): Promise<void> {
+  private async loadHappySupplementaryAndRender(generation: number): Promise<void> {
     const curated = await selectCuratedHappyItems(this.ctx.happyAllItems, filterBySentiment);
+    if (!this.isCurrentNewsLoad(generation)) return;
     this.ctx.happyAllItems = curated;
     this.callPanel('positive-feed', 'renderPositiveNews', curated);
 
@@ -5240,6 +5241,7 @@ export class DataLoaderManager implements AppModule {
     } catch (err) {
       console.warn('[App] Happy supplementary pipeline failed, using curated only:', err);
     }
+    if (!this.isCurrentNewsLoad(generation)) return;
 
     if (supplementary.length > 0) {
       const merged = dedupeHappyItems([...curated, ...supplementary]);
