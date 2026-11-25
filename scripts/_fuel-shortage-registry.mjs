@@ -110,8 +110,7 @@ function isIsoDate(v) {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** @param {Date} now */
-export function buildPayload(now = new Date()) {
-  const registry = loadRegistry();
+export function buildPayload(now = new Date(), registry = loadRegistry()) {
   if (!validateRegistry(registry)) throw new Error('Invalid curated fuel shortage registry');
 
   const shortages = {};
