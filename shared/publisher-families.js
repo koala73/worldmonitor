@@ -103,6 +103,8 @@ const PUBLISHER_FAMILY_DATA = {
   'cnn': { publisher: "CNN", labels: ["CNN World"] },
   'csis': { publisher: "CSIS", labels: ["CSIS", "CSIS Tech"] },
   'die-zeit': { publisher: "Die Zeit", labels: [] },
+  // feed.koreatimes.co.kr serves items on www.koreatimes.co.kr.
+  'korea-times': { publisher: "Korea Times", labels: [] },
   'deutschlandradio': { publisher: "Deutschlandradio", labels: ["Deutschlandfunk"] },
   'dw': { publisher: "Deutsche Welle", labels: ["DW News", "DW Turkish", "DW Brasil"] },
   'eia': { publisher: "US Energy Information Administration", labels: ["EIA Press Room", "EIA Reports"] },
@@ -139,6 +141,7 @@ const PUBLISHER_FAMILY_DATA = {
   'kitco': { publisher: "Kitco", labels: ["Kitco Gold", "Kitco News"] },
   'kyiv-independent': { publisher: "The Kyiv Independent", labels: ["Kyiv Independent"] },
   'marketwatch': { publisher: "MarketWatch", labels: ["MarketWatch", "MarketWatch Tech"] },
+  'mehr-news': { publisher: "Mehr News Agency", labels: ["Mehr News"] },
   'mit-technology-review': {
     publisher: "MIT Technology Review",
     labels: [
@@ -305,6 +308,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'cnn': ['cnn.com'],
   'csis': ['csis.org'],
   'die-zeit': ['zeit.de'],
+  'korea-times': ['koreatimes.co.kr'],
   'deutschlandradio': ['deutschlandfunk.de'],
   'zdf': ['zdfheute.de', 'zdf.de'],
   'dw': ['dw.com'],
@@ -331,6 +335,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'kitco': ['kitco.com'],
   'kyiv-independent': ['kyivindependent.com'],
   'marketwatch': ['marketwatch.com'],
+  'mehr-news': ['mehrnews.com'],
   'mit-technology-review': ['technologyreview.com'],
   'nbc-news': ['nbcnews.com', 'today.com'],
   'ndtv': ['ndtv.com', 'ndtv.in'],

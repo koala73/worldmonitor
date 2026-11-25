@@ -138,8 +138,9 @@ release-candidate checklist:
    `workflow_dispatch` defaults to `draft: false` so a dispatched build is
    actually served, and the unbuildable tech/finance packaging surface is gone.
    `tests/desktop-one-binary-model.test.mjs` fails if any surface drifts back.
-2. **#5909 addressed:** the bundle pins Node 22.23.4. The `sidecar` CI job
-   runs `test:sidecar` on both repository Node 24 and the exact runtime from
+2. **#5909 addressed:** the `sidecar` CI job runs `test:sidecar` on repository Node 24,
+   including the Railway relay tests. It repeats the desktop and API suites
+   (`test:sidecar:desktop`) on the exact runtime from
    `scripts/download-node.sh`. The bundle stays on 22.x because the Node 24
    macOS binaries require macOS 13.5, while 22.x runs on macOS 11.
    The downloader requires GnuPG and verifies `SHASUMS256.txt.sig` before

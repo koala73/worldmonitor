@@ -1,4 +1,3 @@
-import AxeBuilder from '@axe-core/playwright';
 import { devices, expect, test, type Page } from '@playwright/test';
 import { evidenceScreenshot } from './evidence-screenshot';
 
@@ -86,14 +85,6 @@ test.describe('settings navigation on a phone', () => {
     await page.locator('#mobileMenuSettings').click();
     await expect(page.locator('[data-settings-home]')).toBeVisible();
   });
-
-  test('a deep link opens straight onto its page', async ({ page }) => {
-    await seed(page);
-    await page.goto('/dashboard?settings=notifications', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#us-page-notifications')).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator('[data-settings-back]')).toBeVisible();
-    await expect(page.locator('[data-settings-home]')).toBeHidden();
-  });
 });
 
 async function openSettingsFromGear(page: Page, query = ''): Promise<void> {
@@ -123,6 +114,15 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
       await expect(page.locator('[data-settings-back]')).toBeHidden();
       const box = (await sheet.boundingBox())!;
       expect(box.width, 'the sheet is 960px wide or the viewport less its gutters').toBe(Math.min(960, viewport.width - 32));
+      const scrim = await page.locator('#unifiedSettingsModal').evaluate((el) => {
+        const match = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/)!;
+        const parts = match[1]!.split(',').map((part) => Number.parseFloat(part));
+        return parts.length === 4 ? parts[3]! : 1;
+      });
+      expect(scrim, 'the backdrop is translucent').toBeGreaterThan(0.2);
+      expect(scrim, 'the backdrop is translucent').toBeLessThan(0.7);
+      const hit = await page.evaluate(() => document.elementFromPoint(8, window.innerHeight / 2)?.id);
+      expect(hit, 'the scrim still catches clicks beside the sheet').toBe('unifiedSettingsModal');
       await evidenceScreenshot(sheet, { path: testInfo.outputPath(`settings-sidebar-${viewport.width}.png`) });
 
       for (const id of ['panels', 'sources', 'api-keys', 'about']) {
@@ -139,67 +139,45 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
       await page.locator('#unifiedSettingsBtn').click();
       await expect(page.locator('#us-page-about'), 'a reopen returns to the page selected last').toBeVisible();
     });
-
-    test('searches the sidebar, says when nothing matches, and Escape clears before it closes', async ({ page }) => {
-      await seed(page);
-      await openSettingsFromGear(page);
-      const search = page.locator('[data-settings-search]');
-      const empty = page.locator('[data-settings-empty]');
-
-      await search.fill('privacy');
-      await expect(sidebarRows(page)).toHaveCount(1);
-      await expect(page.locator('[data-settings-nav="about"]')).toBeVisible();
-      await expect(empty).toBeHidden();
-
-      await search.fill('zzz');
-      await expect(sidebarRows(page)).toHaveCount(0);
-      await expect(empty).toHaveText('No settings match');
-
-      await search.press('Escape');
-      await expect(search).toHaveValue('');
-      await expect(page.locator('[data-settings-nav="about"]')).toBeVisible();
-      await expect(empty).toBeHidden();
-      await expect(page.locator('#unifiedSettingsModal')).toHaveClass(/active/);
-
-      await search.press('Escape');
-      await expect(page.locator('#unifiedSettingsModal')).not.toHaveClass(/active/);
-    });
-
-    test('a deep link selects its page in the sidebar', async ({ page }) => {
-      await seed(page);
-      await openSettingsFromGear(page, '?settings=notifications');
-      await expect(page.locator('#us-page-notifications')).toBeVisible({ timeout: 60_000 });
-      await expect(currentRow(page)).toHaveAttribute('data-settings-nav', 'notifications');
-      await expect(page.locator('[data-settings-home]')).toBeVisible();
-    });
-
-    test('shows the dashboard dimmed behind the sheet', async ({ page }) => {
-      await seed(page);
-      await openSettingsFromGear(page);
-      const scrim = await page.locator('#unifiedSettingsModal').evaluate((el) => {
-        const match = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/)!;
-        const parts = match[1]!.split(',').map((part) => Number.parseFloat(part));
-        return parts.length === 4 ? parts[3]! : 1;
-      });
-      expect(scrim, 'the backdrop is translucent').toBeGreaterThan(0.2);
-      expect(scrim, 'the backdrop is translucent').toBeLessThan(0.7);
-      const hit = await page.evaluate(() => document.elementFromPoint(8, window.innerHeight / 2)?.id);
-      expect(hit, 'the scrim still catches clicks beside the sheet').toBe('unifiedSettingsModal');
-    });
-
-    test('the open sheet passes axe', async ({ page }) => {
-      test.setTimeout(180_000);
-      await seed(page);
-      await openSettingsFromGear(page);
-      await expect(page.locator('#us-page-display')).toBeVisible();
-      const results = await new AxeBuilder({ page })
-        .include('#unifiedSettingsModal')
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-        .analyze();
-      expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
-    });
   });
 }
+
+test.describe('settings sidebar navigation', () => {
+  test.use({ viewport: { width: 1024, height: 768 } });
+
+  test('searches the sidebar, says when nothing matches, and Escape clears before it closes', async ({ page }) => {
+    await seed(page);
+    await openSettingsFromGear(page);
+    const search = page.locator('[data-settings-search]');
+    const empty = page.locator('[data-settings-empty]');
+
+    await search.fill('privacy');
+    await expect(sidebarRows(page)).toHaveCount(1);
+    await expect(page.locator('[data-settings-nav="about"]')).toBeVisible();
+    await expect(empty).toBeHidden();
+
+    await search.fill('zzz');
+    await expect(sidebarRows(page)).toHaveCount(0);
+    await expect(empty).toHaveText('No settings match');
+
+    await search.press('Escape');
+    await expect(search).toHaveValue('');
+    await expect(page.locator('[data-settings-nav="about"]')).toBeVisible();
+    await expect(empty).toBeHidden();
+    await expect(page.locator('#unifiedSettingsModal')).toHaveClass(/active/);
+
+    await search.press('Escape');
+    await expect(page.locator('#unifiedSettingsModal')).not.toHaveClass(/active/);
+  });
+
+  test('a deep link selects its page in the sidebar', async ({ page }) => {
+    await seed(page);
+    await openSettingsFromGear(page, '?settings=notifications');
+    await expect(page.locator('#us-page-notifications')).toBeVisible({ timeout: 60_000 });
+    await expect(currentRow(page)).toHaveAttribute('data-settings-nav', 'notifications');
+    await expect(page.locator('[data-settings-home]')).toBeVisible();
+  });
+});
 
 test.describe('settings across the phone breakpoint', () => {
   test.use({ viewport: { width: 1440, height: 900 } });

@@ -75,6 +75,8 @@ export function searchSourceItemsEqual(
   });
 }
 
+const CONNECTIVE_QUERY_WORDS = new Set(['of', 'on', 'in', 'at', 'to', 'for', 'the', 'and']);
+
 function matchCommands(
   query: string,
   options: SearchIndexQueryOptions,
@@ -87,14 +89,21 @@ function matchCommands(
   // three, Sudan two), then on how well: exact beats prefix beats substring,
   // so "brief ukraine" picks Ukraine over Russia, whose aliases mention Ukraine.
   const words = query.split(/\s+/).filter((word) => word.length >= 2);
-  const coverage = new Map<SearchCommandMatch, { matched: number; strength: number }>();
+  // Words a command term rarely carries ("map of france", "brief on china");
+  // a command still covers the query without them.
+  const requiredWords = words.filter((word) => !CONNECTIVE_QUERY_WORDS.has(word));
+  const coverage = new Map<SearchCommandMatch, { matched: number; strength: number; countryNamePrefix: number; coversQuery: boolean }>();
   const wordScore = (terms: string[], word: string): number => Math.max(0, ...terms.map((term) => (
     term === word ? 3 : term.startsWith(word) ? 2 : term.includes(word) ? 1 : 0
   )));
-  const wordCoverage = (terms: string[]): { matched: number; strength: number } => {
-    if (words.length < 2) return { matched: 0, strength: 0 };
+  const wordCoverage = (terms: string[]): { matched: number; strength: number; coversQuery: boolean } => {
+    if (words.length < 2) return { matched: 0, strength: 0, coversQuery: false };
     const scores = words.map((word) => wordScore(terms, word));
-    return { matched: scores.filter((score) => score > 0).length, strength: scores.reduce((sum, score) => sum + score, 0) };
+    return {
+      matched: scores.filter((score) => score > 0).length,
+      strength: scores.reduce((sum, score) => sum + score, 0),
+      coversQuery: requiredWords.length > 0 && requiredWords.every((word) => wordScore(terms, word) > 0),
+    };
   };
 
   for (const command of options.commands) {
@@ -112,7 +121,7 @@ function matchCommands(
     let bestScore = 0;
     for (const term of terms) {
       if (term.includes(query) || (term.length >= 3 && query.includes(term))) {
-        const score = term === query ? 3 : term.startsWith(query) ? 2 : 1;
+        const score = term.trim() === query ? 3 : term.startsWith(query) ? 2 : 1;
         if (score > bestScore) bestScore = score;
       }
     }
@@ -125,15 +134,28 @@ function matchCommands(
         subtitle: options.resolveCommandCategoryLabel(command),
       };
       matched.push(match);
-      coverage.set(match, wordCoverage(terms));
+      const { canonicalCountryName } = command;
+      const countryNamePrefix = Number(canonicalCountryName !== undefined && (
+        command.label.toLowerCase().startsWith(query) || canonicalCountryName.toLowerCase().startsWith(query)
+      ));
+      coverage.set(match, { ...wordCoverage(terms), countryNamePrefix });
     }
   }
 
-  // Whole-query exact, then whole-query prefix, then matched words, then strength.
-  return matched
+  // For multi-word queries ("brief china", "map france"), drop commands that
+  // only matched a subset of words (e.g., boilerplate "brief" across every
+  // country) once at least one command covers every non-connective query word.
+  const fullCoverage = words.length >= 2
+    ? matched.filter((match) => coverage.get(match)!.coversQuery)
+    : [];
+  const candidates = fullCoverage.length > 0 ? fullCoverage : matched;
+
+  // Break remaining ties in favor of a country whose name starts with the query.
+  return candidates
     .sort((left, right) => (right.score - left.score)
       || (coverage.get(right)!.matched - coverage.get(left)!.matched)
-      || (coverage.get(right)!.strength - coverage.get(left)!.strength))
+      || (coverage.get(right)!.strength - coverage.get(left)!.strength)
+      || (coverage.get(right)!.countryNamePrefix - coverage.get(left)!.countryNamePrefix))
     .slice(0, MAX_COMMANDS);
 }
 

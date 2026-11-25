@@ -32,19 +32,18 @@ export const RETENTION_RUNNER_SERVICE = 'umami-retention';
 
 // A cron tick does NOT create a deployment record — it re-runs the active one —
 // so the record that decides health is written only by a deploy or redeploy and
-// can be days old while the service is perfectly healthy. Meanwhile every push
+// can be weeks old while the service is perfectly healthy. Meanwhile every push
 // to main writes a SKIPPED refusal for this service ("No changes to watched
-// files"), so refusals accumulate and the record we want sinks.
+// files"), ~30/day.
 //
-// Depth alone cannot fix that. Refusals arrived at ~29.5/day through August, so
-// a window of N records is exhausted after N/29.5 days: the old window of 200
-// lasted 6.8 days, and on 2026-08-22 the active deployment — 5.5 days old and
-// healthy, 71 of 71 ticks fired that day — sat at index 206 and went unseen.
-// Any constant is a false alarm on a schedule; this is the CLI's maximum
-// (`railway deployment list --limit`, max 1000), which costs the same single
-// call and buys ~34 days, and `HISTORY_WINDOW_SATURATED` below reports honestly
-// when even that is not enough instead of blaming the database.
-export const RETENTION_HISTORY_WINDOW = 1000;
+// Reading the plain history could never keep up: a 200-record window missed a
+// healthy runner on 2026-08-22, and the CLI's 1000-record maximum filled with
+// refusals on 2026-11-22 above a 24-day-old active deployment that ticked every
+// 15 minutes. scripts/read-umami-retention-deployments.mjs now excludes SKIPPED
+// on the server, so this window counts only deploys, builds and their
+// transitions. 100 of those is months of history; filling it with records that
+// never ran is a real signal, and HISTORY_WINDOW_SATURATED still says so.
+export const RETENTION_HISTORY_WINDOW = 100;
 
 export function normalizeDeploymentRows(payload) {
   if (Array.isArray(payload)) return payload;
@@ -121,7 +120,7 @@ export function evaluateRetentionRunner(payload, historyWindow = RETENTION_HISTO
         detail: `none of the ${ordered.length} records read reached a running state `
           + `(${refusals} were ${REJECTED_STATUS} refusals) and the read filled its `
           + `${historyWindow}-record window, so the deployment that decides health is older `
-          + 'than the window rather than absent — widen --limit (Railway CLI max 1000) or '
+          + 'than the window rather than absent — check for a run of failed builds, or '
           + 'redeploy the service to mint a fresh record',
       };
     }

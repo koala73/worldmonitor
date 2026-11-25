@@ -5,6 +5,7 @@ import type { StoryData } from '@/services/story-data';
 import { generateStoryDeepLink, getShareUrls, shareTexts } from '@/services/story-share';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { copyText } from '@/utils/copy-text';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import { LatestRequestGuard } from '@/utils/latest-request-guard';
 import { declareOverlay } from '@/utils/open-modal';
@@ -192,8 +193,8 @@ async function shareLinkedIn(data: StoryData): Promise<void> {
 
 async function copyDeepLink(data: StoryData): Promise<void> {
   const link = generateStoryDeepLink(data.countryCode);
-  await navigator.clipboard.writeText(link);
-  flashButton('.story-copy', t('modals.story.copied'), t('modals.story.copyLink'));
+  const copied = await copyText(link);
+  if (copied) flashButton('.story-copy', t('modals.story.copied'), t('modals.story.copyLink'));
 }
 
 function flashButton(selector: string, flashText: string, originalText: string): void {

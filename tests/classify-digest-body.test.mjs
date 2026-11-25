@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const helpers = require('../scripts/lib/classify-digest-request.cjs');
+const { reachesRealtimeRules, reachesLocalRules } = require('../scripts/lib/news-story-key.cjs');
 const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
 const start = source.indexOf('async function seedClassifyForVariant');
 const end = source.indexOf('\nasync function seedClassify()', start);
@@ -31,6 +32,13 @@ function loadVariant(url, observedErrors, { timeoutMs, digests = [], pools = [],
     upstashGet, upstashPipeline,
     // #10977: publisher coverage and cross-wording checks add nothing here.
     readObservedPublishers: async () => new Map(), crossWordingFamilies: async () => new Map(),
+    // #10976: a cached critical label goes through the publish path; by
+    // default it scores 0 and publishes nothing.
+    reachesRealtimeRules, reachesLocalRules, upstashSetNx: async () => true,
+    shouldDropRelaySourceForTier: () => false, RELAY_GATES_READY: false, RELAY_TIER4_SOURCES: new Set(),
+    relayComputeImportanceScore: () => 0, newsAlertClaimKey: () => '', NEWS_STORY_DEDUP_TTL_SECONDS: 86_400,
+    matchCountryNamesInText: () => [], countriesNamedInHeadline: () => [],
+    notifyPolicy: { primaryNewsCountryCode: () => null }, publishNotificationEvent: async () => {},
     RELAY_SOURCE_TIERS: {}, buildClassifyCandidateMap: (digest, _x, _v, _n, _r, _f, pool) => { digests.push(digest); pools.push(pool); return new Map(); },
     ...extra,
   });
@@ -116,6 +124,7 @@ test('a pool headline keeps its own label per edition and stays out of the count
     classifyCacheKey: title => `label:${title}`,
     upstashMGet: async keys => { read.push(...keys); return keys.map(key => stored[key] ?? null); },
     upstashSet: async key => { written.push(key); },
+    upstashSetNx: async key => { written.push(key); },
     classifyFetchLlm: async () => null,
     threatSummaryCountries: title => [title.split(' ').at(-1)],
     CLASSIFY_VALID_LEVELS: ['critical', 'high', 'medium', 'low', 'info'],
@@ -138,7 +147,7 @@ test('the first read of an edition\'s pool is a backlog that never alerts, and h
   await once(server, 'listening');
   t.after(() => { server.closeAllConnections(); server.close(); });
   const url = `http://127.0.0.1:${server.address().port}/digest`;
-  const warmKey = 'classify:alert-pool-warm:v1:full';
+  const warmKey = 'classify:alert-pool-warm:v3:full';
   const critical = async chunk => chunk.map((_t, i) => ({ i, l: 'critical', c: 'conflict' }));
   const pass = async (store, titles, { classifyFetchLlm = critical, markerWrites = true, labelWrites = true } = {}) => {
     const published = [];
@@ -156,12 +165,14 @@ test('the first read of an edition\'s pool is a backlog that never alerts, and h
         classifyCacheKey: title => `label:${title}`,
         upstashMGet: async keys => keys.map(key => store.get(key) ?? null),
         upstashSet: async (key, value) => { if (labelWrites) store.set(key, JSON.stringify(value)); return labelWrites; },
+        upstashSetNx: async (key, value) => { if (!labelWrites || store.has(key)) return false; store.set(key, JSON.stringify(value)); return true; },
         classifyFetchLlm,
         publishNotificationEvent: async event => { published.push(event.payload.title); },
         threatSummaryCountries: () => [], matchCountryNamesInText: () => [], countriesNamedInHeadline: () => [],
         notifyPolicy: { primaryNewsCountryCode: () => null },
         shouldDropRelaySourceForTier: () => false, RELAY_GATES_READY: false, RELAY_TIER4_SOURCES: new Set(), RELAY_RECENCY_MS: 900_000,
-        relayComputeImportanceScore: () => 88, newsStoryKey: () => '', NEWS_STORY_DEDUP_TTL_SECONDS: 86_400,
+        // A story key, so a cached critical label re-publishes unless it is backlog (#10976).
+        relayComputeImportanceScore: () => 88, newsAlertClaimKey: () => 'news-story:realtime:x', NEWS_STORY_DEDUP_TTL_SECONDS: 86_400,
         recordAlertLatency() {}, alertLatency: () => ({}), observeJevShadow: async () => null,
         CLASSIFY_VALID_LEVELS: ['critical', 'high', 'medium', 'low', 'info'], CLASSIFY_VALID_CATEGORIES: ['conflict'],
         CLASSIFY_BATCH_SIZE: 50, CLASSIFY_SKIP_TTL: 1800, CLASSIFY_CACHE_TTL: 86_400,
@@ -199,6 +210,32 @@ test('the first read of an edition\'s pool is a backlog that never alerts, and h
   assert.deepEqual(await pass(refused, [backlog, fresh, 'Third strike closes strait']), ['Third strike closes strait']);
 });
 
+test('a critical headline from a feed in another language is labelled but not alerted', async t => {
+  const server = http.createServer((_req, response) => response.end('{"categories":{}}'));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const url = `http://127.0.0.1:${server.address().port}/digest`;
+  const published = [];
+  const written = [];
+  const meta = { source: 'Reuters', publishedAt: Date.now(), corroborationCount: 1, link: '' };
+  await bounded(loadVariant(url, [], { upstashPipeline: async commands => commands.map(() => ({ result: 'OK' })), extra: {
+    buildClassifyCandidateMap: () => new Map([['Strike closes strait', meta], ['Serangan menutup selat', { ...meta, source: 'ANTARA News', otherLanguage: true }]]),
+    classifyCacheKey: title => `label:${title}`,
+    upstashMGet: async keys => keys.map(() => null),
+    upstashSet: async key => { written.push(key); return true; },
+    classifyFetchLlm: async chunk => chunk.map((_t, i) => ({ i, l: 'critical', c: 'conflict' })),
+    publishNotificationEvent: async event => { published.push(event.payload.title); },
+    threatSummaryCountries: () => [],
+    relayComputeImportanceScore: () => 88, newsAlertClaimKey: () => 'news-story:realtime:x',
+    RELAY_RECENCY_MS: 900_000, recordAlertLatency() {}, alertLatency: () => ({}), observeJevShadow: async () => null,
+    CLASSIFY_VALID_LEVELS: ['critical', 'high', 'medium', 'low', 'info'], CLASSIFY_VALID_CATEGORIES: ['conflict'],
+    CLASSIFY_BATCH_SIZE: 50, CLASSIFY_SKIP_TTL: 1800, CLASSIFY_CACHE_TTL: 86_400,
+  } })('full', new Set()));
+  assert.deepEqual(written, ['label:Strike closes strait', 'label:Serangan menutup selat']);
+  assert.deepEqual(published, ['Strike closes strait']);
+});
+
 test('the revocation read keeps a multi-byte URL whole when the network splits it (#10978)', async t => {
   const revokedUrl = 'https://example.com/caf\u00e9';
   const body = Buffer.from(JSON.stringify([{ result: [revokedUrl] }]));
@@ -231,7 +268,7 @@ test('a label write settles when Redis breaks off mid-response (#10978)', async 
   t.after(() => { server.closeAllConnections(); server.close(); });
   const from = source.indexOf('function upstashSet(key, value, ttlSeconds)');
   const context = vm.createContext({
-    URL, setTimeout, clearTimeout, UPSTASH_ENABLED: true, UPSTASH_HTTP_MODULE: http, UPSTASH_REDIS_REST_TOKEN: 'fixture',
+    URL, UPSTASH_ENABLED: true, UPSTASH_HTTP_MODULE: http, UPSTASH_REDIS_REST_TOKEN: 'fixture',
     UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${server.address().port}`,
   });
   vm.runInContext(source.slice(from, source.indexOf('\n}\n', from) + 2), context);

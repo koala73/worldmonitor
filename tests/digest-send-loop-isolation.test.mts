@@ -300,9 +300,9 @@ test('the delivered-log loop iterates cooldownIterableStories', () => {
   assert.ok(sendIdx > 0 && loopIdx > sendIdx);
 });
 
-test('the l10n call site sits after deriveThreadsFromOrderedStories and before the envelope SETEX', () => {
+test('the l10n call site sits after deriveThreadsFromOrderedStories and before the brief is stored', () => {
   const threadsIdx = source.indexOf('deriveThreadsFromOrderedStories(finalEnvelope.data.stories)');
   const l10nIdx = source.indexOf('await localizeBrief(');
-  const setexIdx = source.indexOf("['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(finalEnvelope)]");
-  assert.ok(threadsIdx > 0 && l10nIdx > threadsIdx && setexIdx > l10nIdx);
+  const storeIdx = source.indexOf('await storeBrief(');
+  assert.ok(threadsIdx > 0 && l10nIdx > threadsIdx && storeIdx > l10nIdx);
 });

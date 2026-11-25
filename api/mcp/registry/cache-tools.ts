@@ -2382,11 +2382,11 @@ export const CACHE_TOOLS: ToolDef[] = [
     title: 'Sanctions lists and pressure scores',
     _subscriptionOnly: true,
     _outputBudgetBytes: 131072,
-    description: 'Screen OFAC SDN, OFAC Consolidated, Canada SEMA and six US Consolidated Screening List export-control lists (BIS Entity, Denied Persons, Unverified, Military End User; State ITAR debarred, nonproliferation), or read country pressure and designation changes. Pressure counts OFAC and SEMA only; CSL rows have et unspecified, and their events carry notice (Federal Register citation) and url. screen matches names, up to 10 aliases and exact IMO IDs, returning score/matched_on/matched_text; query filters primary names. changes_since_days selects history only, paged by changes_cursor, max 100 events/page. Gaps include held diffs above 5% removals; history keeps 90 days/10,000 events (truncatedBefore marks cap loss). Seeded every 6 hours, stale after 12 hours; no live fetch. Subscription required, weight 1. Matches are leads to confirm with the issuing agency, not legal advice.',
+    description: 'Screen OFAC SDN, OFAC Consolidated, Canada SEMA and six US Consolidated Screening List export-control lists (BIS Entity, Denied Persons, Unverified, Military End User; State ITAR debarred, nonproliferation) plus four US lists the CSL lacks (DoD 1260H, Section 889, FCC Covered List, UFLPA), or read country pressure and designation changes. Pressure counts OFAC and SEMA only; CSL rows have et unspecified, and their events carry notice (Federal Register citation) and url. screen matches names, up to 10 aliases and exact IMO IDs, returning score/matched_on/matched_text; query filters primary names. changes_since_days selects history only, paged by changes_cursor, max 100 events/page. Gaps include held diffs above 5% removals; history keeps 90 days/10,000 events (truncatedBefore marks cap loss). Seeded every 6 hours, stale after 12 hours; no live fetch. Subscription required, weight 1. Matches are leads to confirm with the issuing agency, not legal advice.',
     inputSchema: {
       type: 'object',
       properties: {
-        country: { type: 'string', description: 'Country to filter sanctioned entities and pressure scores to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params.' },
+        country: { type: 'string', description: 'Country to filter sanctioned entities and pressure scores to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params. Omit this filter to allow entries without a country code to match, including entries from the four US restricted-party lists.' },
         entity_type: { type: 'string', description: 'Entity type to keep, matched as a case-insensitive substring: "vessel", "aircraft", "individual" or "entity". Consolidated Screening List rows are typed "unspecified".' },
         query: { type: 'string', description: 'Keep only sanctioned entities whose name contains this text (case-insensitive).' },
         screen: { type: 'string', minLength: 2, maxLength: 200, description: 'Name, alias or IMO number to screen against the seeded lists. Names are fuzzy-matched by tokens; an IMO number must match exactly. Cannot be combined with changes_since_days.' },
@@ -2536,9 +2536,9 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     _cacheKeys: ['sanctions:entities:v1', 'sanctions:pressure:v1', 'sanctions:changes:v1'],
     _freshnessChecks: [
-      { key: 'seed-meta:sanctions:entities', maxStaleMin: 720 },
+      { key: 'seed-meta:sanctions:entities', maxStaleMin: 720, honorSourceError: true },
       { key: 'seed-meta:sanctions:pressure', maxStaleMin: 720 },
-      { key: 'seed-meta:sanctions:changes', maxStaleMin: 720 },
+      { key: 'seed-meta:sanctions:changes', maxStaleMin: 720, honorSourceError: true },
     ],
     _apiPaths: [
       "GET /api/sanctions/v1/list-sanctions-pressure",

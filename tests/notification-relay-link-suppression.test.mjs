@@ -257,7 +257,7 @@ describe('notification-relay link suppression (#8401)', () => {
   });
 
   it('renders observed publisher families on a realtime alert while retaining its original score', async () => {
-    const h = installHarness({ publisherFamilies: ['a', 'b'] });
+    const h = installHarness({ publisherFamilies: ['label:mehr news', 'mehr-news', 'reuters'] });
     try {
       const event = { ...makeEvent(), variant: 'full' };
       event.payload.importanceScore = 83;

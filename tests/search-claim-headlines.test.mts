@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { newsHandler } from '../server/worldmonitor/news/v1/handler';
 import { __testing__ as digest } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { __testing__ as claimPool } from '../server/worldmonitor/news/v1/search-claim-headlines';
-import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
+import { rssFeedCacheKey, rssFeedCountryCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
 import { REVOKED_URLS_KEY, __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
 import { drainResponseHeaders } from '../server/_shared/response-headers';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
@@ -35,8 +35,11 @@ function feed(name: string) {
 const hoursAgo = (hours: number) => Date.now() - hours * 3600_000;
 const row = (source: string, title: string, link: string, publishedAt = hoursAgo(1)) => ({ source, title, link, publishedAt });
 
+// Rows past the digest cap live in the feed's country key, tied to its parse.
 function put(source: string, items: unknown[], countryItems?: unknown[]) {
-  cache.set(rssFeedCacheKey('full', feed(source).url), { items, ...(countryItems ? { countryItems } : {}) });
+  const parsedAt = Date.now() - 600_000;
+  cache.set(rssFeedCacheKey('full', feed(source).url), { items, parsedAt });
+  if (countryItems) cache.set(rssFeedCountryCacheKey('full', feed(source).url), { parsedAt, items: countryItems });
 }
 
 async function request(claim: string) {

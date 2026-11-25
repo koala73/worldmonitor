@@ -6,6 +6,7 @@ import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { renderCrosshairIconSvg, renderExpandIconSvg } from '@/utils/ui-icons';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   ALL_CHANNEL_TIP_KEYS,
@@ -112,10 +113,15 @@ const SEARCH_DEBOUNCE_MS = 180;
 const SCOPE_ICONS: Record<SearchScope, string> = {
   all: '\u2318',
   signals: '\u25C9',
-  map: '\u2316',
+  map: renderCrosshairIconSvg('1em'),
   panels: '\u25A6',
   actions: '\u26A1',
 };
+
+function renderCommandIcon(command: Command): string {
+  if (command.id === 'view:fullscreen') return renderExpandIconSvg('1em');
+  return escapeHtml(command.icon);
+}
 
 const SCOPE_LABELS: Record<SearchScope, string> = {
   all: 'All intel',
@@ -847,7 +853,7 @@ export class SearchModal {
     // Channel scopes keep a narrower, task-focused set.
     const hasFlight = this.sources.some((source) => source.type === 'flight');
     const tipMeta: Record<string, { icon: string }> = {
-      'commands.tips.map': { icon: '\u2316' },
+      'commands.tips.map': { icon: renderCrosshairIconSvg('1em') },
       'commands.tips.panel': { icon: '\u25A6' },
       'commands.tips.brief': { icon: '\u25C9' },
       'commands.tips.layers': { icon: '\u26A1' },
@@ -1003,7 +1009,7 @@ export class SearchModal {
         const ariaLabel = addable ? ` aria-label="${escapeHtml(`${addLabel}: ${resolveCommandLabel(cmd)}`)}"` : '';
         html += `
           <div class="search-result-item command-item ${addable ? 'command-addable' : ''}" data-command="${escapeHtml(cmd.id)}"${ariaLabel}>
-            <span class="search-result-icon">${escapeHtml(cmd.icon)}</span>
+            <span class="search-result-icon">${renderCommandIcon(cmd)}</span>
             <div class="search-result-content">
               <div class="search-result-title">${escapeHtml(resolveCommandLabel(cmd))}</div>
             </div>
@@ -1118,7 +1124,7 @@ export class SearchModal {
         const ariaLabel = addable ? ` aria-label="${escapeHtml(`${addLabel}: ${resolveCommandLabel(command)}`)}"` : '';
         html += `
           <div class="search-result-item command-item ${addable ? 'command-addable' : ''} ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${escapeHtml(command.id)}"${ariaLabel}>
-            <span class="search-result-icon">${escapeHtml(command.icon)}</span>
+            <span class="search-result-icon">${renderCommandIcon(command)}</span>
             <div class="search-result-content">
               <div class="search-result-title">${escapeHtml(resolveCommandLabel(command))}</div>
             </div>

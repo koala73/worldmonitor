@@ -1,4 +1,5 @@
 import { t } from '@/services/i18n';
+import { copyText } from '@/utils/copy-text';
 import { showToast } from '@/utils/toast';
 import { REPORT_MAX_COUNTRIES, assessmentRequestText, type ReportHandoff } from '../../shared/report-handoff';
 import { focusCountryName, formatCountryList } from './focus-format';
@@ -13,10 +14,10 @@ export async function copyHandoffRequest(
   handoff: ReportHandoff,
   clipboard: Pick<Clipboard, 'writeText'> | null = typeof navigator === 'undefined' ? null : (navigator.clipboard ?? null),
 ): Promise<boolean> {
-  try {
-    if (!clipboard) throw new Error('no clipboard');
-    await clipboard.writeText(assessmentRequestText(handoff, focusCountryName));
-  } catch {
+  const copied = await copyText(assessmentRequestText(handoff, focusCountryName), {
+    writeText: clipboard ? (value) => clipboard.writeText(value) : null,
+  });
+  if (!copied) {
     showToast(t('focus.draftCopyFailed'));
     return false;
   }

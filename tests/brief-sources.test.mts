@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  briefContextHeadlines,
   buildBriefSourceContextLines,
   collectBriefSources,
   normalizeCachedBriefSources,
@@ -92,5 +93,18 @@ describe('brief source helpers', () => {
       legacySourceShape: false,
       sources: [],
     });
+  });
+});
+
+describe('brief context headlines (#11217)', () => {
+  it('drops the publisher byline from a headline longer than a clipped source title', () => {
+    const story = `Kuwait investment authority probe widens - the sovereign fund board says reforms will follow ${'a long review '.repeat(6)}`.trim();
+    const headlines = briefContextHeadlines([
+      { title: `${story} - Kuwait Times`, source: 'Gulf Investments', link: 'https://news.google.com/rss/articles/CBMiLong?oc=5' },
+      { title: 'Kuwait - Saudi talks resume', source: 'Reuters', link: 'https://reuters.com/kw' },
+      { title: 'Kuwait cabinet meets | Arab Times', source: 'Arab Times', link: 'https://arabtimesonline.com/a' },
+    ]);
+    assert.ok(story.length > 160, 'the headline is longer than a clipped source title');
+    assert.deepEqual(headlines, [story, 'Kuwait - Saudi talks resume', 'Kuwait cabinet meets']);
   });
 });

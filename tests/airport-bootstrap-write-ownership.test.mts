@@ -17,7 +17,6 @@ for (const mode of ['healthy', 'miss', 'intl-error', 'timeout'] as const) {
     for (const [name, value] of Object.entries({
       UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'fixture-token',
       VERCEL_ENV: 'production', ICAO_API_KEY: undefined, SEED_FALLBACK_NOTAM: undefined,
-      BOOTSTRAP_R2_SHADOW_MEASURE: '0',
     })) {
       const original = process.env[name];
       if (value === undefined) delete process.env[name];

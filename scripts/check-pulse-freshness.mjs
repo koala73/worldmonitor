@@ -5,7 +5,7 @@
 // and opens a review PR. Between 2026-09-02 and 2026-09-14 it ran four times,
 // failed four times, and nobody was told (#8339). The committed snapshot went
 // ten days stale and reached the MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS ceiling that
-// fails the corpus build, so the first visible symptom would have been a
+// blocks official publishing, so the first visible symptom would have been a
 // blocked deploy.
 //
 // Nothing was broken about the notifications; that is the platform default.
@@ -36,7 +36,7 @@ import { join } from 'node:path';
 import {
   MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
   livePulseSnapshotAgeDays,
-} from './build-crawlable-corpus.mjs';
+} from './check-crawlable-live-pulse.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 import { corroborateRunListings, reduceRunListings } from './lib/gh-run-listing.mjs';
 
@@ -47,7 +47,7 @@ const SNAPSHOT_RE = /^crawlable-live-pulse-(\d{4}-\d{2}-\d{2})\.json$/;
 
 // Must sit strictly between the refresh cadence and the build ceiling, and the
 // band is only two days wide. Below the cadence it would fire on every healthy
-// week; at or above the ceiling the corpus build has already failed and the
+// week; above the ceiling official publishing is already blocked and the
 // alarm is too late to be an alarm. 8 leaves one day of slack for the review PR
 // to be merged before the next cron lands. tests/pulse-freshness-monitor.test.mjs
 // asserts this against the workflow's own cron so relaxing either alone cannot
@@ -73,12 +73,7 @@ function ghWrite(args, payload) {
   return JSON.parse(result.stdout);
 }
 
-/**
- * Newest committed snapshot and its age. Deliberately NOT
- * resolveLatestLivePulseSnapshotPath: that throws once the snapshot passes the
- * build ceiling, which is precisely the state this monitor exists to report.
- * An alarm that crashes on the condition it watches is not an alarm.
- */
+/** Read the newest snapshot and its age, reporting a missing snapshot to the monitor. */
 export function readNewestSnapshot(rootDir, now = Date.now()) {
   const dir = join(rootDir, SNAPSHOT_DIR);
   const dated = readdirSync(dir)
@@ -130,14 +125,14 @@ export function evaluatePulseFreshness(snapshot, lastRun, {
     reasons.push({
       kind: 'build-blocked',
       detail: `${snapshot.filename} is ${age} days old, past the ${ceilingDays}-day ceiling. `
-        + 'The corpus build is already failing; a deploy is blocked until the pulse is refreshed.',
+        + 'Every official deploy is blocked until the pulse is refreshed.',
     });
   } else if (snapshot.ageDays > warnAgeDays) {
     reasons.push({
       kind: 'stale',
       detail: `${snapshot.filename} is ${age} days old, past the ${warnAgeDays}-day warning line `
         + `and ${Math.max(0, Math.ceil(ceilingDays - snapshot.ageDays))} day(s) from the `
-        + `${ceilingDays}-day ceiling that fails the corpus build.`,
+        + `${ceilingDays}-day ceiling that blocks publishing.`,
     });
   }
 
@@ -160,7 +155,7 @@ export function evaluatePulseFreshness(snapshot, lastRun, {
       kind: 'refresh-failed',
       detail: `The most recent ${REFRESH_WORKFLOW} run concluded \`${lastRun.conclusion}\``
         + `${lastRun.createdAt ? ` (${lastRun.createdAt})` : ''}. `
-        + 'Left unfixed the snapshot ages out and the corpus build fails.',
+        + 'Left unfixed the snapshot ages out and blocks official publishing.',
     });
   }
 

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openComponentHarness } from './component-harness';
 
 const insightsFixture = {
   worldBrief:
@@ -45,8 +46,7 @@ const insightsFixture = {
 };
 
 test('server World Brief keeps the main insight concise and citations usable', async ({ page }) => {
-  await page.goto('/tests/map-harness.html', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(() => document.body.replaceChildren());
+  await openComponentHarness(page);
 
   const rendered = await page.evaluate(async (fixture) => {
     const { InsightsPanel } = await import('/src/components/InsightsPanel.ts');

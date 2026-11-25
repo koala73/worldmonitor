@@ -16,6 +16,7 @@ import ts from 'typescript';
 import vm from 'node:vm';
 import { mergeSanctionEntries, parseSemaXml, SEMA_SOURCE } from '../scripts/_sema-sanctions.mjs';
 import { CSL_SOURCES, CSL_ROW_ID } from '../scripts/_csl-sanctions.mjs';
+import { URP_ROW_ID, URP_SOURCES } from '../scripts/_us-restricted-sanctions.mjs';
 
 import { CURATED_COUNTRIES, TIER1_COUNTRIES } from '../src/config/countries.ts';
 import {
@@ -599,7 +600,7 @@ function emptyAux() {
 
 it('keeps SEMA regulation targets out of the sanctions boost, including the new-entry increment', () => {
   const source = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
-  const producer = vm.createContext({ console, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID });
+  const producer = vm.createContext({ console, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID, URP_SOURCES, URP_ROW_ID });
   vm.runInContext(source.replace(/^import\s.*$/gm, '').replace(/loadEnvFile\([^)]+\);/, '')
     .split('async function fetchSource')[0], producer);
   const ofac = Array.from({ length: 100 }, (_, i) => ({

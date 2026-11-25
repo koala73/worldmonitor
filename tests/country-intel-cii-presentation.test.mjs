@@ -41,6 +41,7 @@ const preloadMilitaryBases = async () => [];
 const preloadInfrastructureTables = async () => {};
 const getSignalAggregator = async () => ({ getCountryClusters: () => [], getRegionalConvergence: () => [] });
 const collectBriefSources = () => [];
+const briefContextHeadlines = items => items.map(item => item.title);
 const isHeadlineMemoryEnabled = () => false;
 const mlWorker = { isAvailable: false };
 const getActiveFrameworkForPanel = () => null;

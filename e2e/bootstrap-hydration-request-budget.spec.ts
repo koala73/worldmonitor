@@ -344,9 +344,11 @@ async function installHydrationRequestAccounting(
   return log;
 }
 
-/** The `full` variant enables 39 priority-1 panels and free tier caps at 40, so
- * a fixture may promote exactly ONE priority-2 panel into range. Promoting two
- * pushes the set over the cap and enforceFreePanelLimit silently drops one. */
+/** The `full` variant enables 31 cap-counted priority-1 free panels (locked Pro
+ * teasers and `map` are excluded from the 40-panel free cap), leaving 9 slots
+ * for priority-2 panels sorted alphabetically. These three priority-2 panels
+ * still sort past the 9th slot, so promoting each one to priority 1 guarantees
+ * it survives enforceFreePanelLimit. */
 const SANCTIONS_PANEL_PROMOTION = {
   'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 1 },
 };
@@ -705,12 +707,13 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
   // always does. Energy-variant startup demand races the tier instead and can
   // legitimately miss it, which is why that path is the #7046 spec's job.
   //
-  // ONE arm per registry, each promoting its own consumer panel, because the
-  // free-tier cap has exactly zero headroom: FULL_PANELS already enables 40
-  // priority-1 panels (39 cap-counted plus `map`, which enforceFreePanelLimit
-  // excludes), so promoting a second panel would silently drop one. A single
-  // arm looping all three keys would assert `toBe(0)` for a registry nothing on
-  // the page ever demanded — true no matter what the store does.
+  // ONE arm per registry, each promoting its own consumer panel to priority 1:
+  // FULL_PANELS enables 31 cap-counted priority-1 free panels (locked Pro
+  // teasers and `map` are excluded from the 40-panel free cap), leaving 9
+  // priority-2 slots sorted alphabetically, and both `pipeline-status` and
+  // `storage-facility-map` sort past those 9 slots. Keeping one arm per
+  // registry isolates each consumer's hydration path and proves the rendered
+  // panel itself demanded the key before asserting `toBe(0)`.
   for (const { arm, panel, promotion, rowSelector, rowCount, renders, keys } of [
     {
       arm: 'pipeline',

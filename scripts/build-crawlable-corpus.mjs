@@ -134,6 +134,18 @@ import { EIA_OIL_TRANSIT_BASELINES_PATH, EIA_OIL_TRANSIT_REFERENCE_YEAR, EIA_OIL
 import { buildMicrostateCoverageStoryContent } from './microstate-coverage-stories.mjs';
 import { buildUnrankedCountryInventory } from './unranked-country-inventory.mjs';
 
+import {
+  LIVE_PULSE_SNAPSHOT_RE,
+  livePulseSnapshotAgeDays,
+  resolveLatestLivePulseSnapshotPath,
+} from './check-crawlable-live-pulse.mjs';
+
+export {
+  MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
+  livePulseSnapshotAgeDays,
+  resolveLatestLivePulseSnapshotPath,
+} from './check-crawlable-live-pulse.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DEFAULT_ROOT = resolve(__dirname, '..');
@@ -142,23 +154,9 @@ const DEFAULT_BASE_URL = 'https://www.worldmonitor.app';
 const SCHEMA_ORG_CONTEXT_URL = 'https://schema.org';
 const RESILIENCE_SNAPSHOT_DIR = 'docs/snapshots';
 const RESILIENCE_SNAPSHOT_RE = /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/;
-const LIVE_PULSE_SNAPSHOT_RE = /^crawlable-live-pulse-(\d{4}-\d{2}-\d{2})\.json$/;
 // A crisis reference period must be a real calendar month/day, never a sentinel.
 const OBSERVATION_PERIOD_RE = /^\d{4}-\d{2}(-\d{2})?$/;
-// The committed pulse is published as "Current signal". Nothing re-runs the
-// freeze automatically except .github/workflows/crawlable-pulse-refresh.yml, so
-// bound the age here: a forgotten or failed refresh must red the build rather
-// than silently republish stale numbers under a current-state heading.
-//
-// Sized to clear the WEEKLY refresh cadence with slack: the cron freezes every
-// Monday, so this leaves ~3 days to merge a refresh PR before the build reds.
-// It was 45 days against a monthly cron, which let pages headed "Approx.
-// 24-hour movement" ship on data up to six weeks old — the freshness
-// overstatement in #7530. The ceiling and the cron are one contract: relaxing
-// either without the other reopens the gap, and a guard in
-// tests/crawlable-corpus.test.mjs asserts they still agree.
-export const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 10;
-// The freeze ceiling above is a pipeline fuse. A page that still says
+// The publishing ceiling is a pipeline fuse. A page that still says
 // "approximately 24 hours" needs a tighter claim fuse: a three-day-old
 // reading is inside the 10-day bound and still a false recency claim (#8072,
 // recurrence of #7530). Keep this at 2 while any generated page uses the
@@ -498,13 +496,6 @@ export function resolveLatestResilienceSnapshotPath(rootDir = DEFAULT_ROOT) {
   return relativePath;
 }
 
-export function livePulseSnapshotAgeDays(capturedAt, now = Date.now()) {
-  const capturedAtMs = Date.parse(`${String(capturedAt || '').slice(0, 10)}T00:00:00Z`);
-  return Number.isFinite(capturedAtMs)
-    ? (now - capturedAtMs) / 86_400_000
-    : Number.POSITIVE_INFINITY;
-}
-
 export function livePulseMovementClaim(ageDays) {
   const recencyOk = Number.isFinite(ageDays)
     && ageDays <= MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS;
@@ -553,37 +544,6 @@ export function assertLivePulseMovementClaim(html, { pagePath, ageDays }) {
       );
     }
   }
-}
-
-export function resolveLatestLivePulseSnapshotPath(rootDir = DEFAULT_ROOT) {
-  const snapshotDir = repoPath(rootDir, RESILIENCE_SNAPSHOT_DIR);
-  const candidates = readdirSync(snapshotDir)
-    .map((filename) => ({ filename, match: filename.match(LIVE_PULSE_SNAPSHOT_RE) }))
-    .filter(({ match }) => match)
-    .sort((a, b) => b.match[1].localeCompare(a.match[1], 'en-US'));
-  if (candidates.length === 0) {
-    throw new Error(`No crawlable live-pulse snapshot found in ${RESILIENCE_SNAPSHOT_DIR}`);
-  }
-
-  const [{ filename, match }] = candidates;
-  const relativePath = join(RESILIENCE_SNAPSHOT_DIR, filename);
-  const snapshot = readJson(rootDir, relativePath);
-  if (snapshot.capturedAt !== match[1]) {
-    throw new Error(
-      `${relativePath} filename date ${match[1]} does not match capturedAt ${snapshot.capturedAt}`,
-    );
-  }
-  if (!snapshot.countries || !snapshot.chokepoints || !snapshot.crises || !snapshot.signalConvergence) {
-    throw new Error(`${relativePath} is missing required live-pulse sections`);
-  }
-  const ageDays = livePulseSnapshotAgeDays(snapshot.capturedAt);
-  if (ageDays > MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS) {
-    throw new Error(
-      `${relativePath} is ${Math.round(ageDays)} days old (max ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}); `
-      + 'run `npm run freeze:crawlable-live-pulse` to republish current values',
-    );
-  }
-  return relativePath;
 }
 
 // parseCiiMovement returns movementText null when the pulse supports no
@@ -2031,10 +1991,8 @@ function probeGitFileLastmod(rootDir, relativePath) {
 // clocks stop inheriting whatever the freeze last committed. Relative paths
 // resolve against rootDir (production never passes this), absolute paths are
 // read as-is so tests can point at temp-dir snapshots. Omitting it preserves
-// the default "newest committed snapshot" behaviour exactly. Injected pulses
-// keep the resolver's shape contract (required sections, filename↔capturedAt
-// coherence) but skip its 10-day staleness fuse — that fuse is what tests
-// legitimately need to bypass.
+// the default newest committed snapshot. Injected pulses still need the
+// required sections and a capture date that agrees with any canonical filename.
 export async function loadCorpusData({
   rootDir = DEFAULT_ROOT,
   livePulseSnapshotPath,
@@ -4082,7 +4040,7 @@ export function assertCountryBriefPresentation({ pagePath, html, sources, eviden
 // covered 61 of 196 pages (54 headline-matched, 40 briefs, 18 timelines), so
 // the gate rejected every snapshot the freeze could produce. That left the
 // weekly refresh unable to publish and armed the
-// MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS fuse against the whole corpus build.
+// publishing freshness gate against the entire corpus.
 //
 // Rendering is not this gate's job -- assertDevelopmentsRendered already fails
 // per page when a frozen item is dropped, and it compares against the same

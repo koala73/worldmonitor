@@ -3,6 +3,7 @@
  */
 
 import { hashString, sha256Hex } from '../../../_shared/hash';
+import { classifyCacheIdentity } from '../../../../shared/story-identity.js';
 
 // ========================================================================
 // Constants
@@ -68,6 +69,11 @@ export const TIER1_COUNTRIES: Record<string, string> = {
 
 export { hashString, sha256Hex };
 
-export async function buildClassifyCacheKey(title: string): Promise<string> {
-  return `${CLASSIFY_CACHE_PREFIX}${(await sha256Hex(title.toLowerCase())).slice(0, 16)}`;
+// #10976: keyed on the story, so outlet suffixes and punctuation share one label.
+// scripts/ais-relay.cjs classifyCacheKey derives the same identity.
+// A caller-supplied title (classify-event) keys in its own namespace, so no
+// variant of a headline (suffix, punctuation, case) can write a story's label.
+export async function buildClassifyCacheKey(title: string, { callerTitle = false }: { callerTitle?: boolean } = {}): Promise<string> {
+  if (callerTitle) return `${CLASSIFY_CACHE_PREFIX}caller:${(await sha256Hex(title.toLowerCase())).slice(0, 16)}`;
+  return `${CLASSIFY_CACHE_PREFIX}${(await sha256Hex(classifyCacheIdentity(title))).slice(0, 16)}`;
 }

@@ -11,6 +11,7 @@ import { AGGREGATOR_LINK_HOSTS, isVerifiableArticleUrl } from '../shared/article
 export { AGGREGATOR_LINK_HOSTS, isVerifiableArticleUrl };
 import { validateNoHallucinatedFacts, validateNoHallucinatedProperNouns, validateNoHallucinatedStatusQualifiers } from '../shared/brief-llm-core.js';
 import { energyEvidenceGrounded, evidenceNumbersGrounded, imageryEvidenceGrounded, isEvidenceLimitClaim } from '../shared/brief-claim-rules.js';
+import { headlineWithoutPublisher } from '../shared/headline-publisher.js';
 import { resolveIso2 } from './_country-resolver.mjs';
 import { BRIEF_FIXED_SECTION_HEADINGS, briefSectionKey } from '../shared/brief-sections.js';
 const BRIEF_SECTION_HEADERS = BRIEF_FIXED_SECTION_HEADINGS;
@@ -212,7 +213,9 @@ export function briefCitationGroundingGap(brief, country = {}, { requireHeadline
     return 'missing source titles';
   }
   const comparable = (text) => text.normalize('NFKD').replace(/\p{M}/gu, '');
-  const titles = brief.sources.map((source) => comparable(stripMarkdownMarkers(source.title)));
+  // Grounded on the story without its byline, as the server validated it.
+  const titles = brief.sources.map((source) =>
+    comparable(stripMarkdownMarkers(headlineWithoutPublisher(source.title, source.url, source.source))));
   // An evidence array marks the evidence-grounded format, whose claims follow
   // the server's rules (shared/brief-claim-rules.js); pre-migration briefs keep
   // the per-title rule they were published under.

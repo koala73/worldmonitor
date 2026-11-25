@@ -11,7 +11,7 @@ import { countryMentionTerms, mentionsCountry } from '../../../../shared/country
 import { publisherFamilyFor } from '../../../../shared/publisher-families.js';
 import { isVerifiableArticleUrl } from '../../../../shared/article-url.js';
 import { INTEL_SOURCES, isServerFeedReachableForLanguage, VARIANT_FEEDS } from './_feeds';
-import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
+import { FUTURE_DATE_TOLERANCE_MS, feedRowsWithCountryItems, resolveMaxAgeMs, rssFeedCacheKey, rssFeedCountryCacheKey } from './_rss-cache';
 
 const HEADLINE_LIMIT = 5;
 
@@ -48,7 +48,7 @@ export async function listCountryHeadlines(
     countries: {}, state: 'unavailable', feedTotal: feeds.length, feedCached: 0, readAt: new Date(now).toISOString(),
   };
   if (codes.length === 0) return response;
-  const keys = [...new Set(feeds.map(feed => rssFeedCacheKey('full', feed.url)))];
+  const keys = [...new Set(feeds.flatMap(feed => [rssFeedCacheKey('full', feed.url), rssFeedCountryCacheKey('full', feed.url)]))];
   const [cached, revoked] = await Promise.all([getCachedJsonBatch(keys), readRevokedUrlSet()]);
   if (!revoked.readable) {
     markNoCacheResponse(ctx.request);
@@ -61,8 +61,7 @@ export async function listCountryHeadlines(
     const entry = cached.get(rssFeedCacheKey('full', feed.url));
     if (!entry || typeof entry !== 'object' || !('items' in entry) || !Array.isArray(entry.items)) continue;
     response.feedCached++;
-    const rows = 'countryItems' in entry && Array.isArray(entry.countryItems)
-      ? [...entry.items, ...entry.countryItems] : entry.items;
+    const rows = feedRowsWithCountryItems(entry as { items: unknown[] }, cached.get(rssFeedCountryCacheKey('full', feed.url)));
     for (const value of rows) {
       const item = headlineFromCache(value, feed.name, now, cutoff, revoked.urls);
       if (!item || seen.has(item.link)) continue;

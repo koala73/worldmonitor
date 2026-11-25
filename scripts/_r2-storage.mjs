@@ -55,18 +55,6 @@ const R2_STORAGE_PROFILES = Object.freeze({
     forcePathStyle: ['CLOUDFLARE_R2_FORCE_PATH_STYLE'],
     defaultPrefix: 'seed-data/forecast-traces',
   }),
-  bootstrap: Object.freeze({
-    accountId: ['R2_ACCOUNT_ID'],
-    endpoint: ['R2_ENDPOINT'],
-    bucket: ['R2_BOOTSTRAP_BUCKET'],
-    accessKeyId: ['R2_BOOTSTRAP_ACCESS_KEY_ID'],
-    secretAccessKey: ['R2_BOOTSTRAP_SECRET_ACCESS_KEY'],
-    apiToken: [],
-    apiBaseUrl: [],
-    region: [],
-    forcePathStyle: [],
-    defaultPrefix: '',
-  }),
 });
 
 function getEnvValue(env, keys) {

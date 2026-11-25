@@ -143,16 +143,22 @@ async function startDigestApi(t) {
 }
 
 // Chat-completions stand-in: labels every headline `terrorism`, at the level
-// `state.levels` gives its title (critical when unlisted).
+// `state.levels` gives its title (critical when unlisted). Titles in
+// `state.unanswered` get no label; `state.asked` records every title sent.
+// `state.onRequest` runs before each answer, and `state.fail` answers 500.
 async function startLlm(t) {
-  const state = { levels: {} };
+  const state = { levels: {}, unanswered: new Set(), asked: [], onRequest: null, fail: false };
   const server = http.createServer(async (req, res) => {
     const body = JSON.parse(await readBody(req));
+    state.onRequest?.();
     const lines = String(body.messages.at(-1).content).split('\n');
-    const labels = lines.map((line) => {
-      const [index, ...title] = line.split('|');
-      return { i: Number(index), l: state.levels[title.join('|')] ?? 'critical', c: 'terrorism' };
+    const labels = lines.flatMap((line) => {
+      const [index, ...rest] = line.split('|');
+      const title = rest.join('|');
+      state.asked.push(title);
+      return state.unanswered.has(title) ? [] : [{ i: Number(index), l: state.levels[title] ?? 'critical', c: 'terrorism' }];
     });
+    if (state.fail) { res.writeHead(500); return res.end(); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(labels) } }] }));
   });
@@ -161,7 +167,7 @@ async function startLlm(t) {
   return { url: `http://127.0.0.1:${port}`, state };
 }
 
-async function startRelay(t) {
+async function startRelay(t, { env = {} } = {}) {
   const upstash = await startUpstash(t);
   const digest = await startDigestApi(t);
   const llm = await startLlm(t);
@@ -183,6 +189,7 @@ async function startRelay(t) {
       UPSTASH_ALLOW_INSECURE_HTTP: 'true',
       API_BASE_URL: digest.url,
       OLLAMA_API_URL: llm.url,
+      ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -227,7 +234,9 @@ test('a publisher repeating an alerted headline does not raise a second alert fo
 test('API webhook subscribers still get the repeat, to filter for themselves', async (t) => {
   const { upstash, cycle, output } = await startRelay(t);
   await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
-  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' }]);
+  // A repeat from the label cache is re-published only when it reaches
+  // realtime rules, as a Reuters copy does.
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Reuters' }]);
 
   // One alert for realtime rules. Webhook subscribers each apply their own
   // importance floor, severity and keywords, so the sighting that claimed the
@@ -246,20 +255,147 @@ test('the story stays claimed for a day, the window an exact repeat is already h
   assert.deepEqual(claims.map(([, claim]) => claim.ttl), [86_400]);
 });
 
-test('a story first graded high still alerts when a later sighting is graded critical', async (t) => {
+test('a later copy of a story takes the label the story already has', async (t) => {
   const { upstash, llm, cycle, output } = await startRelay(t);
-  // Realtime rules deliver critical only, so the high sighting reaches nobody
-  // and must not use up the story.
-  llm.state.levels = { [CNN_TITLE]: 'high' };
+  // One story gets one label (#10976): the copy without the " - CNN" suffix
+  // reads the cached label instead of asking the classifier again.
+  llm.state.levels = { [CNN_TITLE]: 'high', [EGYPT_INDEPENDENT_TITLE]: 'critical' };
 
   await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
-  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' }]);
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Reuters' }]);
 
-  assert.deepEqual(
-    upstash.alerts().map((e) => [e.severity, e.payload.title]),
-    [['high', CNN_TITLE], ['critical', EGYPT_INDEPENDENT_TITLE]],
-    output(),
-  );
+  assert.deepEqual(llm.state.asked, [CNN_TITLE], output());
+  assert.deepEqual(upstash.alerts().map((e) => [e.severity, e.payload.title]), [['high', CNN_TITLE]], output());
+});
+
+test('a copy that hits the label cache still alerts once when it reaches realtime rules', async (t) => {
+  const { upstash, llm, cycle, output } = await startRelay(t);
+  // The unlisted aggregator is tier 4, so its critical copy scores 73 and
+  // reaches nobody. The Al Jazeera copy reads that cached label and scores
+  // 82 or more. A third, Reuters copy is the same story and is stopped by
+  // the story key.
+  await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
+  await cycle([{ title: DIRECT_TITLE, source: 'Al Jazeera' }]);
+  await cycle([{ title: `${DIRECT_TITLE} - Reuters`, source: 'Reuters' }]);
+
+  assert.deepEqual(llm.state.asked, [AGGREGATED_TITLE], output());
+  const alerts = upstash.alerts();
+  assert.deepEqual(titles(alerts), [AGGREGATED_TITLE, DIRECT_TITLE], output());
+  assert.ok(alerts[0].payload.importanceScore < 82, `first copy scored ${alerts[0].payload.importanceScore}`);
+  assert.ok(alerts[1].payload.importanceScore >= 82, `second copy scored ${alerts[1].payload.importanceScore}`);
+});
+
+test('two copies of one story in one cycle are classified once and keep the real label', async (t) => {
+  const { upstash, llm, cycle, output } = await startRelay(t);
+  // If both copies went in one request and only one were answered, the
+  // unanswered copy's skip marker would land on the same cache row.
+  llm.state.unanswered.add(EGYPT_INDEPENDENT_TITLE);
+  await cycle([
+    { title: CNN_TITLE, source: 'CNN World' },
+    { title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' },
+  ]);
+  assert.deepEqual(llm.state.asked, [CNN_TITLE], output());
+  const rows = [...upstash.store].filter(([key]) => key.startsWith('classify:sebuf:v6:'));
+  assert.deepEqual(rows.map(([, row]) => JSON.parse(row.value).level), ['critical'], output());
+});
+
+for (const [failure, fail] of [['leaves the story unanswered', (llm) => llm.state.unanswered.add(CNN_TITLE)], ['fails the request', (llm) => { llm.state.fail = true; }]]) {
+  test(`a skip marker does not replace a label stored while the classifier ${failure}`, async (t) => {
+    const { upstash, llm, cycle, output } = await startRelay(t);
+    await cycle([{ title: `${EGYPT_INDEPENDENT_TITLE} - Reuters`, source: 'Reuters' }]);
+    const [[key, label]] = [...upstash.store].filter(([k]) => k.startsWith('classify:sebuf:v6:'));
+    upstash.store.delete(key);
+
+    // Another writer stores the story's label after this pass read the row empty.
+    llm.state.onRequest = () => upstash.store.set(key, label);
+    fail(llm);
+    await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+
+    assert.equal(llm.state.asked.at(-1), CNN_TITLE, output());
+    assert.deepEqual(upstash.store.get(key), label, output());
+    assert.equal(label.ttl, 86_400);
+  });
+}
+
+test('a cached copy below realtime rules reaches neither the queue nor webhook subscribers', async (t) => {
+  const { upstash, llm, cycle, output } = await startRelay(t);
+  llm.state.levels = { [CNN_TITLE]: 'high' };
+  await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Reuters' }]);
+  assert.deepEqual(titles(upstash.alerts()), [CNN_TITLE], output());
+  assert.deepEqual(titles(upstash.apiEvents()), [CNN_TITLE], output());
+});
+
+test('a cached headline too short for a story key never alerts again', async (t) => {
+  const { upstash, cycle, output } = await startRelay(t);
+  const short = 'Iran invades Iraq';
+  await cycle([{ title: short, source: 'Reuters' }]);
+  assert.deepEqual(upstash.alerts().map((e) => [e.payload.title, e.payload.importanceScore >= 82]), [[short, true]], output());
+
+  // The 30-minute title claims expire; the exact-title story claim and the
+  // label last a day.
+  for (const key of [...upstash.store.keys()]) if (key.startsWith('wm:notif:scan-dedup:') && !key.includes(':story-')) upstash.store.delete(key);
+  await cycle([{ title: short, source: 'Reuters' }]);
+  assert.deepEqual(titles(upstash.alerts()), [short], output());
+});
+
+test('a trusted copy alerts when the copy that wrote its label was dropped by the tier gate', async (t) => {
+  const { upstash, llm, cycle, output } = await startRelay(t, { env: { RELAY_GATES_READY: '1' } });
+  llm.state.levels = { [EGYPT_INDEPENDENT_TITLE]: 'high', [CNN_TITLE]: 'high' };
+  // An explicit tier-4 source: labelled, then dropped before any alert.
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Agriculture' }]);
+  assert.deepEqual(upstash.alerts(), [], output());
+  await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  assert.equal(llm.state.asked.length, 1, output());
+  assert.deepEqual(titles(upstash.alerts()), [CNN_TITLE], output());
+  assert.deepEqual(titles(upstash.apiEvents()), [CNN_TITLE], output());
+});
+
+test('a short headline alerts from a trusted copy when the copy that wrote its label was dropped', async (t) => {
+  const short = 'Iran invades Iraq';
+  const { upstash, llm, cycle, output } = await startRelay(t, { env: { RELAY_GATES_READY: '1' } });
+  llm.state.levels = { [short]: 'high' };
+  await cycle([{ title: short, source: 'Agriculture' }]);
+  assert.deepEqual(upstash.alerts(), [], output());
+  await cycle([{ title: short, source: 'CNN World' }]);
+  for (const key of [...upstash.store.keys()]) if (key.startsWith('wm:notif:scan-dedup:') && !key.includes(':story-')) upstash.store.delete(key);
+  await cycle([{ title: short, source: 'CNN World' }]);
+  assert.equal(llm.state.asked.length, 1, output());
+  assert.deepEqual(titles(upstash.alerts()), [short], output());
+});
+
+test('the newest copy of a story is the one asked, so the recency gate keeps it', async (t) => {
+  const { llm, cycle, output } = await startRelay(t, { env: { RELAY_GATES_READY: '1' } });
+  await cycle([
+    { title: EGYPT_INDEPENDENT_TITLE, source: 'Reuters', publishedAt: Date.now() - 60 * 60_000 },
+    { title: CNN_TITLE, source: 'CNN World' },
+  ]);
+  assert.deepEqual(llm.state.asked, [CNN_TITLE], output());
+});
+
+test('a headline served again every cycle alerts once', async (t) => {
+  const { upstash, llm, cycle, output } = await startRelay(t);
+  for (let i = 0; i < 3; i += 1) await cycle([{ title: CNN_TITLE, source: 'CNN World' }]);
+  assert.deepEqual(llm.state.asked, [CNN_TITLE], output());
+  assert.deepEqual(titles(upstash.alerts()), [CNN_TITLE], output());
+});
+
+test('a cached tier-4 headline alerts once per audience as more outlets carry it', async (t) => {
+  const { upstash, llm, cycle, output } = await startRelay(t);
+  // The digest serves the same title every cycle with a rising outlet count.
+  for (const corroborationCount of [1, 2, 3, 4, 5]) {
+    await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator', corroborationCount }]);
+  }
+  assert.deepEqual(llm.state.asked, [AGGREGATED_TITLE], output());
+  // The fresh label at 73 reaches no rule. The headline names Iran, so the
+  // cached copy at 78 or more reaches Iran-scoped rules (#10977), and at 82
+  // every realtime rule. Each audience is alerted once.
+  const keys = upstash.alerts().map((e) => e.payload.importanceScore);
+  assert.equal(keys.length, 3, output());
+  assert.ok(keys[0] < 78, `scored ${keys}`);
+  assert.ok(keys[1] >= 78 && keys[1] < 82, `scored ${keys}`);
+  assert.ok(keys[2] >= 82, `scored ${keys}`);
 });
 
 test('a critical sighting scored below the delivery bar does not use up the story', async (t) => {
@@ -286,6 +422,19 @@ test('publishers seen carrying the headline in earlier builds and other editions
   // The payload keeps the build's own count; the history is re-read on render.
   assert.equal(alert.payload.corroborationCount, 1);
   assert.ok(alert.payload.importanceScore >= 82, `scored ${alert.payload.importanceScore}`);
+});
+
+test('a cached copy alerts once the coverage history lifts it over the realtime bar', async (t) => {
+  const { upstash, llm, cycle, output } = await startRelay(t);
+  await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
+  // #10977 on the cache-hit path (#10976): five families carry it later.
+  upstash.state.coverage.set(newsPublisherCoverageKey(AGGREGATED_TITLE), ['a', 'b', 'c', 'd', 'e'].map((family) => [family, Date.now()]));
+  await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
+  await cycle([{ title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
+  assert.deepEqual(llm.state.asked, [AGGREGATED_TITLE], output());
+  const scores = upstash.alerts().map((e) => e.payload.importanceScore);
+  assert.equal(scores.length, 2, output());
+  assert.ok(scores[0] < 78 && scores[1] >= 82, `scored ${scores}`);
 });
 
 test('publishers last seen over a day ago do not count toward the score', async (t) => {
@@ -378,12 +527,10 @@ test('a failed queue write whose rollback also fails does not hold the story for
   // Redis recovers; the stale claim is still there.
   upstash.state.failLpush = false;
   upstash.state.failDel = false;
-  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' }]);
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Reuters' }]);
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 
-  // Once a copy is queued, the claim holds again. The copy carries a title
-  // not yet classified: a cached title never reaches publishing, so it would
-  // pass this check even if the claim were still treated as unreleased.
+  // Once a copy is queued, the claim holds again.
   await cycle([{ title: `${EGYPT_INDEPENDENT_TITLE} - Reuters`, source: 'Reuters' }]);
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });
@@ -397,7 +544,7 @@ test('a failed queue write during a Redis outage does not hold the story in memo
   assert.deepEqual(titles(upstash.alerts()), []);
 
   upstash.state.failLpush = false;
-  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' }]);
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Reuters' }]);
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });
 
@@ -408,6 +555,6 @@ test('a story whose queue write failed is not claimed, so the next sighting aler
   assert.deepEqual(titles(upstash.alerts()), []);
 
   upstash.state.failLpush = false;
-  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Egypt Independent' }]);
+  await cycle([{ title: EGYPT_INDEPENDENT_TITLE, source: 'Reuters' }]);
   assert.deepEqual(titles(upstash.alerts()), [EGYPT_INDEPENDENT_TITLE], output());
 });

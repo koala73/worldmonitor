@@ -125,4 +125,48 @@ describe('ensureHydrated public on-demand key guard (WORLDMONITOR-XP)', () => {
     assert.equal(requested.length, 1);
     assert.match(requested[0] ?? '', /\/api\/bootstrap\?keys=idmcIduDisplacement&public=1$/);
   });
+
+  it('aborts the in-flight on-demand fetch when its sole caller aborts, and keeps shared fetches alive for remaining waiters', async () => {
+    const preAborted = new AbortController();
+    preAborted.abort();
+    assert.equal(await ensureHydrated('ukmtoIncidents', preAborted.signal), undefined);
+    assert.equal(requested.length, 0, 'already-aborted caller must not issue a request');
+
+    // Sole caller abort cancels the underlying fetch.
+    let fetchSignal: AbortSignal | undefined;
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      fetchSignal = init?.signal ?? undefined;
+      return new Promise<Response>((_resolve, reject) => {
+        fetchSignal?.addEventListener('abort', () => reject(fetchSignal?.reason ?? new DOMException('Aborted', 'AbortError')), { once: true });
+      });
+    }) as typeof fetch;
+
+    const sole = new AbortController();
+    const solePromise = ensureHydrated('ukmtoIncidents', sole.signal);
+    assert.ok(fetchSignal, 'fetch receives a composed AbortSignal');
+    assert.equal(fetchSignal.aborted, false);
+    sole.abort(new DOMException('Refresh lane lease expired', 'AbortError'));
+    assert.equal(fetchSignal.aborted, true, 'aborting sole waiter cancels underlying fetch');
+    assert.equal(await solePromise, undefined);
+
+    // Coalesced waiters: aborting one caller leaves the shared fetch alive for the other.
+    let sharedSignal: AbortSignal | undefined;
+    let resolveShared!: (resp: Response) => void;
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      sharedSignal = init?.signal ?? undefined;
+      return new Promise<Response>((resolve) => { resolveShared = resolve; });
+    }) as typeof fetch;
+
+    const first = new AbortController();
+    const p1 = ensureHydrated('ukmtoIncidents', first.signal);
+    const p2 = ensureHydrated('ukmtoIncidents');
+    first.abort();
+    assert.equal(await p1, undefined);
+    assert.equal(sharedSignal?.aborted, false, 'shared fetch stays alive while another waiter remains');
+    resolveShared(new Response(JSON.stringify({ data: { ukmtoIncidents: { incidents: [] } } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    assert.deepEqual(await p2, { incidents: [] });
+  });
 });

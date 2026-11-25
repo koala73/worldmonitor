@@ -3652,6 +3652,39 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.data?.code, 'subscription_lapsed');
   });
 
+  it('a payment failure during a Pro tool call keeps its terminal code and names the billing portal', async () => {
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes('/api/aviation/v1/track-aircraft')) {
+        return new Response(
+          JSON.stringify({ error: 'Payment failed. Update your payment method at https://www.worldmonitor.app/dashboard?billing=portal to restore access.', code: 'payment_failed' }),
+          {
+            status: 403,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+              'X-Billing-Verification': 'payment_failed',
+            },
+          },
+        );
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 17, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'DE', type: 'civilian' } },
+    }));
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'payment_failed');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.code, 'payment_failed');
+    assert.equal(body.error?.data?.reason, 'payment-failed');
+    assert.equal(body.error?.data?.upgradeUrl, 'https://www.worldmonitor.app/dashboard?billing=portal');
+  });
+
   it('get_airspace type=civilian skips military fetch', async () => {
     let militaryFetched = false;
     globalThis.fetch = async (url) => {
@@ -4979,6 +5012,17 @@ describe('get_sanctions_data screening contract', () => {
     assert.equal(envelope.data.entities[0].score, 100);
     assert.equal(envelope.stale, false);
     assert.ok(requests.length >= 4);
+    Object.assign(cache['seed-meta:sanctions:entities'], {
+      sourceState: 'error', errorCode: 'URP_INGEST_FAILED', failedSources: ['US-FCC'],
+    });
+    const partial = await mcpHandler(proReq('POST', callBody('get_sanctions_data', {
+      screen: 'Northern Star', min_score: 100,
+    }, 100)), deps);
+    const partialBody = await partial.json();
+    assert.equal(partialBody.error, undefined, JSON.stringify(partialBody));
+    const partialEnvelope = JSON.parse(partialBody.result.content[0].text);
+    assert.equal(partialEnvelope.stale, true);
+    assert.equal(partialEnvelope.data.entities[0].matched_on, 'alias');
     const invalid = await mcpHandler(proReq('POST', callBody('get_sanctions_data', { screen: 'x' }, 101)), deps);
     assert.equal((await invalid.json()).error.code, -32602);
   });

@@ -140,6 +140,21 @@ describe("on_hold entitlement lifecycle (GHSA-hw94-8c4h-m9qp)", () => {
         makeSubscriptionPayload(),
         BASE_TIMESTAMP,
       );
+      // The period was paid: without a succeeded charge the hold would be a
+      // failed renewal and keep only the 7-day access grace.
+      await t.run(async (ctx) => {
+        await ctx.db.insert("paymentEvents", {
+          userId: "test-user-001",
+          dodoPaymentId: "pay_paid_period",
+          type: "charge",
+          amount: 3900,
+          currency: "USD",
+          status: "succeeded",
+          dodoSubscriptionId: "sub_test_001",
+          rawPayload: {},
+          occurredAt: BASE_TIMESTAMP,
+        });
+      });
       await processEvent(
         t,
         "wh_hold_2",

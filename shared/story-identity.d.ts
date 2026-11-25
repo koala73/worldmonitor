@@ -39,5 +39,6 @@ export function setFeatureHashSalt(value: string | null | undefined): number;
 export function activeFeatureHashSalt(): number;
 
 export function normalizeNewsStoryTitle(title: string): string;
+export function classifyCacheIdentity(title: string): string;
 export const NEWS_PUBLISHER_COVERAGE_PREFIX: string;
 export function newsPublisherCoverageKey(title: string): string;

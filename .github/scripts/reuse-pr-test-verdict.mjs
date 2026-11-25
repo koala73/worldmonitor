@@ -12,11 +12,12 @@ import { isMainModule } from '../../scripts/lib/main-module.mjs';
 
 // Shared caches are saved by main runs on a key miss, and these paths feed
 // their keys (root and nested lockfiles, .npmrc, the vendored packages, the
-// install actions, the sidecar's shipped-Node download script: every
+// install actions, the sidecar's shipped-Node download script, the e2e
+// embeddings model fetcher: every
 // hashFiles() input in test.yml and its actions). Skipping such a push would
 // leave the new entry unsaved and every later PR missing it. Workflow edits
 // change what the jobs do.
-export const REUSE_BLOCKER = /(^|\/)(package(-lock)?\.json|\.npmrc)$|^vendor\/|^\.github\/|^scripts\/download-node\.sh$/;
+export const REUSE_BLOCKER = /(^|\/)(package(-lock)?\.json|\.npmrc)$|^vendor\/|^\.github\/|^scripts\/download-node\.sh$|^e2e\/fetch-embeddings-model\.ts$/;
 export const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 // The jobs each `changes` output gates. A group is reusable only when every
@@ -35,9 +36,16 @@ function groupPassed(jobs, patterns) {
 }
 
 // api(path) resolves to parsed JSON or throws. Returns { reuse: {code?, browser?}, reason, run? }.
-export async function decideReuse({ api, repo, sha, before, files, now = Date.now() }) {
+// decidedBase: the newest main commit whose Test run succeeded (the diff
+// step's push_base). When it is not `before`, the commits between them were
+// never tested on main (their runs were cancelled or red), and this PR's run
+// never checked them either: its base already contained them.
+export async function decideReuse({ api, repo, sha, before, files, decidedBase, now = Date.now() }) {
   const none = (reason) => ({ reuse: {}, reason });
   if (!before || /^0+$/.test(before)) return none('no parent SHA');
+  if (decidedBase !== undefined && decidedBase !== before) {
+    return none(decidedBase ? `main since ${decidedBase.slice(0, 10)} has no successful Test run` : 'no successful main Test run to diff from');
+  }
   if (!Array.isArray(files) || files.length === 0) return none('no file list');
   const blocker = files.find((file) => REUSE_BLOCKER.test(file));
   if (blocker) return none(`${blocker} changed (cache key or workflow input)`);
@@ -103,10 +111,10 @@ function githubApi(token) {
 
 // The step entry point. Writes only the overrides; an error anywhere leaves none.
 export async function main({ env = process.env, api = githubApi(env.GH_TOKEN), now = Date.now() } = {}) {
-  const { GITHUB_REPOSITORY, GITHUB_SHA, BEFORE, FILES_JSON, GITHUB_OUTPUT, GITHUB_STEP_SUMMARY } = env;
+  const { GITHUB_REPOSITORY, GITHUB_SHA, BEFORE, FILES_JSON, PUSH_BASE = '', GITHUB_OUTPUT, GITHUB_STEP_SUMMARY } = env;
   let decision;
   try {
-    decision = await decideReuse({ api, repo: GITHUB_REPOSITORY, sha: GITHUB_SHA, before: BEFORE, files: JSON.parse(FILES_JSON || '[]'), now });
+    decision = await decideReuse({ api, repo: GITHUB_REPOSITORY, sha: GITHUB_SHA, before: BEFORE, files: JSON.parse(FILES_JSON || '[]'), decidedBase: PUSH_BASE, now });
   } catch (error) {
     decision = { reuse: {}, reason: `lookup failed, running every selected job: ${error.message}` };
   }

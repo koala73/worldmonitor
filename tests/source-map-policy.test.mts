@@ -128,7 +128,7 @@ describe('check-no-public-source-maps deploy gate', () => {
   it('runs at the end of the Vercel build command', async () => {
     const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
     const vercel = JSON.parse(await readFile(join(root, 'vercel.json'), 'utf8'));
-    assert.equal(vercel.buildCommand, 'npm run build:full');
+    assert.match(vercel.buildCommand, /(?:^| && )npm run build:full$/);
     assert.match(pkg.scripts['build:full'], /&& npm run check:source-maps$/);
     assert.match(pkg.scripts['check:source-maps'], /scripts\/check-no-public-source-maps\.mjs dist$/);
   });
