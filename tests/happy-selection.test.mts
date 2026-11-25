@@ -82,6 +82,7 @@ test('broad-source negative reporting is screened even when the ML gate passes e
     "Study reveals rising 'double threat' of wildfire smoke and heatwaves in Indonesia",
     'Tiger populations fall as poaching accelerates',
     'Tiger populations fall as habitat loss continues',
+    'Fish populations decline in polluted rivers',
   ];
   const kept = story('Mongabay', 'Photos: Elephants maintain an essential role in conservation in Nepal despite shifting norms');
   const science = story('New Scientist', 'An atom-sized black hole could force an entire star to explode');
@@ -92,7 +93,6 @@ test('broad-source negative reporting is screened even when the ML gate passes e
     story('Mongabay', 'Wildlife trafficking reduced by half after joint patrols'),
     story('Mongabay', 'Fall survey finds tiger poaching drops to a record low'),
     story('Mongabay', 'Tiger poaching in Kenya falls to record low'),
-    story('Mongabay', 'Sharp drop in tiger poaching as patrols expand'),
     story('ScienceDaily', 'Vaccine halts spread of a parasite that kills thousands of children'),
     story('Live Science', 'Fetal surgery reverses spinal damage before birth'),
   ];

@@ -23,12 +23,10 @@ const NEGATIVE_EVIDENCE_RE = /\b(droughts?|dries up|dried up|threats?|threaten\w
 const RECOVERY_EVIDENCE_RE = /\b(revers\w*|restor\w*|recover\w*|rebound\w*|cure[sd]?|curing|treat\w*|therap(?:y|ies)|vaccines?|saved?|saves|saving|rescu\w*|prevent\w*|protect\w*|halt\w*|tackl\w*|combat\w*|reduc\w*|slash\w*|fights?|fighting)\b/i;
 const WORSENING_EVIDENCE_RE = /\b(accelerat\w*|rising|rises|rose|surg(?:e|es|ed|ing)|soar\w*|spik(?:e|es|ed|ing)|worsen\w*|escalat\w*|record high)\b/i;
 
-// "Poaching falls" is recovery; "populations fall as habitat loss continues" is not.
+// "Poaching (in Kenya) falls" is recovery; "populations fall as habitat loss continues"
+// and "populations decline in polluted rivers" are not, so the verb must follow the problem.
 const DECLINE_VERB = '(?:fall(?:s|en)?|fell|drops?|dropped|declines?|declined|plummet\\w*|plung\\w*)';
-const DECLINING_PROBLEM_RE = new RegExp(
-  `${NEGATIVE_EVIDENCE_RE.source}\\s+(?:[\\w'-]+\\s+){0,3}${DECLINE_VERB}\\b|\\b${DECLINE_VERB}\\s+in\\s+(?:[\\w'-]+\\s+){0,2}${NEGATIVE_EVIDENCE_RE.source}`,
-  'i',
-);
+const DECLINING_PROBLEM_RE = new RegExp(`${NEGATIVE_EVIDENCE_RE.source}\\s+(?:in\\s+\\w+\\s+)?${DECLINE_VERB}\\b`, 'i');
 
 function hasNegativeEvidence(title: string): boolean {
   return NEGATIVE_EVIDENCE_RE.test(title)
