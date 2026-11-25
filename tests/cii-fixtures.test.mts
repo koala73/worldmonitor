@@ -12,6 +12,7 @@ import {
   CII_FIXTURE_DIR,
   CII_FIXTURE_SCHEMA,
   ciiScoredVersion,
+  ciiV2StrikeInputs,
   expectedFromTable,
   loadCiiFixtures,
   readCiiVersionClaim,
@@ -85,11 +86,63 @@ describe('CII fixtures', () => {
     }
   });
 
+  it('replays v2 strike inputs and reports missing v2 data as unavailable', () => {
+    const fixture = FIXTURES.find(f => f.calibration && f.inputs.strikePressureV2 === undefined)!;
+    const withoutV2 = scoreCiiFixture(fixture);
+    assert.equal(withoutV2.aux.inputReads?.strikePressure, 'missing');
+    assert.equal(withoutV2.aux.confirmedStrikes, null);
+    assert.deepEqual(withoutV2.aux.iranEvents, []);
+
+    const date = new Date(fixture.nowMs).toISOString().slice(0, 10);
+    const inputs = {
+      ...fixture.inputs,
+      strikePressureV2: { version: 2, updatedAt: fixture.nowMs, days: { [date]: { SA: [1, 0, 0, 0] } } },
+      iranEventsV2: { events: [{ countryCode: 'IL', category: 'defense', severity: 'critical', timestamp: fixture.nowMs }] },
+    };
+    const raw = scoreCiiFixture({ ...fixture, inputs });
+    const trimmed = scoreCiiFixture({ ...fixture, inputs: trimCiiRawInputs(inputs, fixture.captureTargets, true) });
+    assert.equal(raw.aux.inputReads?.strikePressure, 'present');
+    assert.ok(Object.keys(raw.aux.confirmedStrikes?.SA ?? {}).length > 0);
+    assert.equal(raw.aux.iranEvents.length, 1);
+    assert.deepEqual(trimmed.rows, raw.rows);
+    assert.deepEqual(trimmed.scores, raw.scores);
+  });
+
+  it('keeps v2 strike data for every capture target and drops at-sea events', () => {
+    const fixture = FIXTURES.find(f => f.calibration && f.inputs.strikePressureV2 === undefined)!;
+    const targets = [...fixture.captureTargets!, 'NO'];
+    const date = new Date(fixture.nowMs).toISOString().slice(0, 10);
+    const inputs = {
+      ...fixture.inputs,
+      strikePressureV2: { version: 2, updatedAt: fixture.nowMs, days: { [date]: { IL: [1, 0, 0, 0], NO: [0, 1, 0, 0], KW: [0, 0, 1, 0] } } },
+      iranEventsV2: { events: [
+        { countryCode: 'NO', severity: 'high', timestamp: fixture.nowMs },
+        { countryCode: 'KW', severity: 'high', timestamp: fixture.nowMs },
+        { countryCode: '', location: 'Israel', lat: 25.1, lon: 56.6, severity: 'high', timestamp: fixture.nowMs },
+      ] },
+    };
+    const trimmed = trimCiiRawInputs(inputs, targets, true);
+    assert.deepEqual((trimmed.strikePressureV2 as any).days, { [date]: { IL: [1, 0, 0, 0], NO: [0, 1, 0, 0] } });
+    assert.deepEqual(trimmed.iranEventsV2, { events: [{ severity: 'high', timestamp: fixture.nowMs, countryCode: 'NO' }] });
+  });
+
+  it('gives a base scorer that reads v2 the same strike inputs as the head', () => {
+    const fixture = FIXTURES.find(f => f.calibration && f.inputs.strikePressureV2 === undefined)!;
+    const selected = ciiV2StrikeInputs(fixture.inputs);
+    assert.equal(selected.strikePressure, undefined);
+    assert.equal(selected.iranEvents, undefined);
+    assert.deepEqual(expectedFromTable(computeCiiScoreTable(selected, fixture)), expectedFromTable(scoreCiiFixture(fixture)));
+  });
+
   it(`reproduce the recorded ${SCORED} table on every fixture`, () => {
     for (const f of FIXTURES) {
       const expected = f.expected[SCORED];
       assert.ok(expected, `${f.label} has no ${SCORED} table; record one with scripts/cii-table-diff.mts --write-expected`);
-      assert.deepEqual(expectedFromTable(scoreCiiFixture(f)), expected,
+      // Historical tables used the v1 event feed before the v2 feeds were captured.
+      const historical = SCORED !== CII_FORMULA_VERSION
+        && f.inputs.strikePressureV2 === undefined && f.inputs.iranEventsV2 === undefined;
+      const table = historical ? computeCiiScoreTable(f.inputs, f) : scoreCiiFixture(f);
+      assert.deepEqual(expectedFromTable(table), expected,
         SCORED === CII_FORMULA_VERSION
           ? `${f.label}: scores moved without a CII_FORMULA_VERSION bump`
           : `${f.label}: the ${SCORED} table is out of date; regenerate it with scripts/cii-table-diff.mts --write-expected`);

@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CII_FIXTURE_DIR,
   ciiScoredVersion,
+  ciiV2StrikeInputs,
   distinctScoreCount,
   expectedFromTable,
   floorLiftedCount,
@@ -36,6 +37,7 @@ import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_ris
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const SCORER_PATH = 'server/worldmonitor/intelligence/v1/get-risk-scores.ts';
+const RISK_CONFIG_PATH = 'server/worldmonitor/intelligence/v1/_risk-config.ts';
 // Everything the scorer imports, transitively.
 const ARCHIVE_PATHS = ['server', 'shared', 'scripts/shared', 'src/generated', 'src/config', 'src/shared', 'src/types', 'package.json', 'tsconfig.json'];
 
@@ -49,18 +51,23 @@ const { values } = parseArgs({
 interface Row { region: string; blended: number | null; floor: number | null; bindingFloors: string[] | null; combinedScore: number }
 
 /** The base ref's scorer, extracted to a temporary tree that shares this checkout's node_modules. */
-async function loadBaseScorer(ref: string): Promise<{ module: any; cleanup: () => void }> {
+async function loadBaseScorer(ref: string): Promise<{ module: any; readsV2Strikes: boolean; cleanup: () => void }> {
   const dir = mkdtempSync(join(tmpdir(), 'cii-table-diff-'));
   const archive = execFileSync('git', ['archive', '--format=tar', ref, ...ARCHIVE_PATHS], { cwd: REPO_ROOT, maxBuffer: 1 << 30 });
   execFileSync('tar', ['-x', '-C', dir], { input: archive });
   symlinkSync(join(REPO_ROOT, 'node_modules'), join(dir, 'node_modules'));
   const module = await import(join(dir, SCORER_PATH));
-  return { module, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  // A base that reads the v2 strike keys gets the captured v2 feeds, as the
+  // head does; an older base gets the v1 feeds it read in production.
+  const config = await import(join(dir, RISK_CONFIG_PATH));
+  const readsV2Strikes = config.CII_STRIKE_TALLY_KEY === 'conflict:strike-pressure:v2';
+  return { module, readsV2Strikes, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-function scoreWithBase(base: any, fixture: CiiFixture): Row[] {
+function scoreWithBase(base: any, fixture: CiiFixture, readsV2Strikes: boolean): Row[] {
   if (typeof base.computeCiiScoreTable === 'function') {
-    return base.computeCiiScoreTable(fixture.inputs, { nowMs: fixture.nowMs, iranEventsEnabled: fixture.iranEventsEnabled }).rows;
+    const inputs = readsV2Strikes ? ciiV2StrikeInputs(fixture.inputs) : fixture.inputs;
+    return base.computeCiiScoreTable(inputs, { nowMs: fixture.nowMs, iranEventsEnabled: fixture.iranEventsEnabled }).rows;
   }
   // A ref from before the scoring seam: parse with this tree's builder (the
   // same parsing the old fetchAuxiliarySources did) and score with the base
@@ -77,7 +84,7 @@ const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `${n}` : '0');
 const scoredVersion = ciiScoredVersion();
 const fixtures = loadCiiFixtures();
 if (!fixtures.length) throw new Error(`no fixtures in ${CII_FIXTURE_DIR}`);
-const { module: base, cleanup } = await loadBaseScorer(values.base!);
+const { module: base, readsV2Strikes, cleanup } = await loadBaseScorer(values.base!);
 const headRef = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
 const baseSha = execFileSync('git', ['rev-parse', '--short', values.base!], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
 const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim() !== '';
@@ -90,8 +97,11 @@ const out: string[] = [
 let writes = 0;
 try {
   for (const fixture of fixtures) {
-    const headRows: Row[] = scoreCiiFixture(fixture).rows;
-    const baseRows = new Map(scoreWithBase(base, fixture).map((r) => [r.region, r]));
+    const headTable = scoreCiiFixture(fixture);
+    const headRows: Row[] = headTable.rows;
+    const frozen = scoredVersion !== CII_FORMULA_VERSION && fixture.expected[scoredVersion] !== undefined
+      && fixture.inputs.strikePressureV2 === undefined && fixture.inputs.iranEventsV2 === undefined;
+    const baseRows = new Map(scoreWithBase(base, fixture, readsV2Strikes).map((r) => [r.region, r]));
     const rows = [...headRows].sort((a, b) => b.combinedScore - a.combinedScore || a.region.localeCompare(b.region));
     out.push('', `### ${fixture.label}`, '');
     out.push('| Country | Blended base | Blended head | Binding floor | Final base | Final head | Δ final |');
@@ -113,7 +123,8 @@ try {
     out.push(footer('Countries moved by ≥ 3', moved, '–'));
     out.push('', `Spearman ρ of final scores, base vs head: ${spearman(baseList.map((r) => r.combinedScore), rows.map((r) => r.combinedScore)).toFixed(4)}.`);
 
-    if (values['write-expected'] && recordExpectedTable(fixture, expectedFromTable(scoreCiiFixture(fixture)))) {
+    // Keep historical expectations recorded before fixtures carried the v2 feeds.
+    if (values['write-expected'] && !frozen && recordExpectedTable(fixture, expectedFromTable(headTable))) {
       writeFileSync(join(CII_FIXTURE_DIR, `${fixture.label}.json`), `${JSON.stringify(fixture)}\n`);
       writes++;
     }

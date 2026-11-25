@@ -29,7 +29,12 @@ export const CII_FIXTURE_SCHEMA = 'worldmonitor-cii-fixture/v1';
 export const CII_FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../tests/fixtures/cii');
 
 /** Recorded for future calibration; the released scorer does not consume it. */
-export type CiiCaptureInputs = CiiRawInputs & { structuralPrior?: unknown; economicStress?: unknown };
+export type CiiCaptureInputs = CiiRawInputs & {
+  structuralPrior?: unknown;
+  economicStress?: unknown;
+  strikePressureV2?: unknown;
+  iranEventsV2?: unknown;
+};
 export const CII_EXPANDED_CAPTURE_TARGETS = [...Object.keys(TIER1_COUNTRIES), 'PH', 'TH', 'ID', 'VN', 'MY', 'KH'];
 
 /** One country's score as a formula version computed it on a fixture. */
@@ -231,12 +236,36 @@ function trimDisplacement(raw: unknown): unknown {
   return { summary: { countries: keep(rows((raw as Obj)?.summary, 'countries')) } };
 }
 
-function trimStrikeTally(raw: unknown): unknown {
+// A v2 country is kept when it is scored, attributed to a scored country, or
+// a capture target; a target outside the scored set keeps its own code.
+const v2Country = (iso2: unknown, targets: ReadonlySet<string>): string | null => {
+  const code = typeof iso2 === 'string' ? iso2.trim().toUpperCase() : '';
+  return ciiCountryForIso2(code) ?? (targets.has(code) ? code : null);
+};
+
+function trimIranEvents(raw: unknown, v2Targets?: ReadonlySet<string>): unknown {
+  if (raw == null) return null;
+  const preserveV2Fields = v2Targets !== undefined;
+  return {
+    ...(preserveV2Fields && isObj(raw) ? pick(raw, ['version']) : {}),
+    events: rows(raw, 'events').flatMap((event) => {
+      // The v2 publisher supplies the country hit and uses an empty code at sea.
+      const countryCode = preserveV2Fields ? v2Country(event?.countryCode, v2Targets) : strikeEventCountry(event);
+      if (!countryCode || (!preserveV2Fields && isInterceptStrikeEvent(event))
+        || typeof event.timestamp !== 'number' || !Number.isFinite(event.timestamp)) return [];
+      const severity = String(event.severity ?? '').toLowerCase();
+      return [{ severity, timestamp: event.timestamp, countryCode, ...(preserveV2Fields ? pick(event, ['category']) : {}) }];
+    }),
+  };
+}
+
+function trimStrikeTally(raw: unknown, v2Targets?: ReadonlySet<string>): unknown {
   if (!isObj(raw)) return raw ?? null;
   const days: Obj = {};
+  const keep = (iso2: string) => (v2Targets ? v2Country(iso2, v2Targets) : ciiCountryForIso2(iso2));
   for (const [date, byCountry] of Object.entries(isObj(raw.days) ? raw.days : {})) {
     if (!isObj(byCountry)) continue;
-    const kept = Object.fromEntries(Object.entries(byCountry).filter(([iso2]) => ciiCountryForIso2(iso2)));
+    const kept = Object.fromEntries(Object.entries(byCountry).filter(([iso2]) => keep(iso2)));
     if (Object.keys(kept).length) days[date] = kept;
   }
   return { version: raw.version, updatedAt: raw.updatedAt, days };
@@ -326,15 +355,8 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
         return geoToCountry(lat, lon) || ciiIsLand(lat, lon) ? [{ lat, lon, level: h.level }] : [];
       }),
     })),
-    iranEvents: nullable(raw.iranEvents, (v) => ({
-      events: rows(v, 'events').flatMap((e) => {
-        const severity = String(e?.severity ?? '').toLowerCase();
-        const code = strikeEventCountry(e);
-        return code && !isInterceptStrikeEvent(e) && typeof e?.timestamp === 'number' && Number.isFinite(e.timestamp)
-          ? [{ severity, timestamp: e.timestamp, countryCode: code }]
-          : [];
-      }),
-    })),
+    iranEvents: trimIranEvents(raw.iranEvents),
+    ...(raw.iranEventsV2 !== undefined ? { iranEventsV2: trimIranEvents(raw.iranEventsV2, targets) } : {}),
     oref: nullable(raw.oref, (v) => pick(v, ['activeAlertCount', 'historyCount24h'])),
     advisories: nullable(raw.advisories, trimAdvisories),
     // Read by production only when the live advisory read cannot be scored.
@@ -374,6 +396,7 @@ export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly st
         .map(([code, row]) => [code, pick(row as Obj, ['conflict', 'protest', 'week', 'strikes'])])),
     })),
     strikePressure: trimStrikeTally(raw.strikePressure),
+    ...(raw.strikePressureV2 !== undefined ? { strikePressureV2: trimStrikeTally(raw.strikePressureV2, targets) } : {}),
     // Seed envelopes of public aggregate border statistics, kept whole: the
     // projection reads most of their fields.
     crossBorder: raw.crossBorder ?? {},
@@ -438,8 +461,17 @@ export function spearman(a: number[], b: number[]): number {
   return num / Math.sqrt(da * db);
 }
 
+/** The fixture inputs as a scorer that reads the v2 strike keys sees them; no v2 capture reads as missing. */
+export function ciiV2StrikeInputs(inputs: CiiCaptureInputs): CiiCaptureInputs {
+  const { strikePressureV2: strikePressure, iranEventsV2: iranEvents } = inputs;
+  return { ...inputs, strikePressure, iranEvents };
+}
+
 export function scoreCiiFixture(fixture: Pick<CiiFixture, 'inputs' | 'nowMs' | 'iranEventsEnabled'>): CiiScoreTable {
-  return computeCiiScoreTable(fixture.inputs, { nowMs: fixture.nowMs, iranEventsEnabled: fixture.iranEventsEnabled });
+  return computeCiiScoreTable(ciiV2StrikeInputs(fixture.inputs), {
+    nowMs: fixture.nowMs,
+    iranEventsEnabled: fixture.iranEventsEnabled,
+  });
 }
 
 /**
@@ -466,8 +498,8 @@ export function buildCiiFixture(raw: CiiCaptureInputs, meta: {
   if (meta.calibration) validateCiiCalibrationInputs(raw, meta.targetCodes ?? []);
   const inputs = trimCiiRawInputs(raw, meta.targetCodes, meta.calibration);
   const options = { nowMs: meta.nowMs, iranEventsEnabled: meta.iranEventsEnabled };
-  const full = computeCiiScoreTable(raw, options);
-  const trimmed = computeCiiScoreTable(inputs, options);
+  const full = scoreCiiFixture({ inputs: raw, ...options });
+  const trimmed = scoreCiiFixture({ inputs, ...options });
   const fingerprint = (table: CiiScoreTable) => JSON.stringify({
     rows: table.rows,
     health: assessCiiInputAvailability([], table.aux, meta.nowMs, false),
