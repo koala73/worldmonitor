@@ -105,7 +105,7 @@ export const DISEASE_WARNING_RE = new RegExp(`\\b(?:${DISEASE_WARNING_KEYWORDS.j
 // and its description describes that past outbreak too. "2025 cases in measles
 // outbreak" is a count, not a year.
 const ALERT_WORD = `(?:${DISEASE_ALERT_KEYWORDS.join('|')})s?`;
-const NOT_COUNT_WORD = String.raw`(?!(?:new|confirmed|suspected|cases?|deaths?|infections?|people|patients|children)\b)[\p{L}\p{N}()'-]+`;
+const NOT_COUNT_WORD = String.raw`(?!(?:cases?|deaths?|infections?|people|patients|children)\b)[\p{L}\p{N}()'-]+`;
 const DATED_ALERT_RES = [
   new RegExp(String.raw`(?<!\d)((?:19|20)\d{2})(?:\s+${NOT_COUNT_WORD}){0,3}\s+${ALERT_WORD}\b`, 'giu'),
   new RegExp(String.raw`\b${ALERT_WORD}\s+(?:of|in|from|during)\s+((?:19|20)\d{2})(?!\d)(?!\s+(?:new\s+|confirmed\s+|suspected\s+)?(?:cases?|deaths?|infections?|people|patients|children)\b)`, 'giu'),
