@@ -1249,27 +1249,35 @@ export function buildTechnicalSnapshot(candles: Candle[]): TechnicalSnapshot {
 
   let macdStatus: MacdStatus = 'Bullish';
   let macdSignal = 'MACD is neutral.';
+  let macdTone: 'bullish' | 'bearish' | 'neutral' = 'neutral';
   if (isGoldenCross && macdDif > 0) {
     macdStatus = 'Golden cross above zero';
     macdSignal = 'MACD flashed a golden cross above the zero line.';
+    macdTone = 'bullish';
   } else if (isCrossingUp) {
     macdStatus = 'Crossing up';
     macdSignal = 'MACD moved back above the zero line.';
+    macdTone = 'bullish';
   } else if (isGoldenCross) {
     macdStatus = 'Golden cross';
     macdSignal = 'MACD turned up with a fresh golden cross.';
+    macdTone = 'bullish';
   } else if (isDeathCross) {
     macdStatus = 'Death cross';
     macdSignal = 'MACD rolled over into a death cross.';
+    macdTone = 'bearish';
   } else if (isCrossingDown) {
     macdStatus = 'Crossing down';
     macdSignal = 'MACD slipped below the zero line.';
+    macdTone = 'bearish';
   } else if (macdDif > 0 && macdDea > 0) {
     macdStatus = 'Bullish';
     macdSignal = 'MACD remains above zero and constructive.';
+    macdTone = 'bullish';
   } else if (macdDif < 0 && macdDea < 0) {
     macdStatus = 'Bearish';
     macdSignal = 'MACD remains below zero and defensive.';
+    macdTone = 'bearish';
   }
 
   let rsiStatus: RsiStatus = 'Neutral';
@@ -1364,9 +1372,8 @@ export function buildTechnicalSnapshot(candles: Candle[]): TechnicalSnapshot {
     'Death cross': 0,
   };
   signalScore += macdScores[macdStatus];
-  if (macdStatus === 'Golden cross above zero' || macdStatus === 'Golden cross') bullishFactors.push(macdSignal);
-  else if (macdStatus === 'Death cross' || macdStatus === 'Crossing down') riskFactors.push(macdSignal);
-  else bullishFactors.push(macdSignal);
+  if (macdTone === 'bullish') bullishFactors.push(macdSignal);
+  else if (macdTone === 'bearish') riskFactors.push(macdSignal);
 
   const rsiScores: Record<RsiStatus, number> = {
     'Oversold': 10,
@@ -1377,8 +1384,7 @@ export function buildTechnicalSnapshot(candles: Candle[]): TechnicalSnapshot {
   };
   signalScore += rsiScores[rsiStatus];
   if (rsiStatus === 'Oversold' || rsiStatus === 'Strong buy') bullishFactors.push(rsiSignal);
-  else if (rsiStatus === 'Overbought') riskFactors.push(rsiSignal);
-  else bullishFactors.push(rsiSignal);
+  else if (rsiStatus === 'Overbought' || rsiStatus === 'Weak') riskFactors.push(rsiSignal);
 
   signalScore = clamp(Math.round(signalScore), 0, 100);
 

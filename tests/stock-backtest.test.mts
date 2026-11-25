@@ -12,6 +12,7 @@ import { TRUSTED_USER_ID_HEADER } from '../server/_shared/mcp-internal-hmac.ts';
 import { mapErrorToResponse } from '../server/error-mapper.ts';
 import {
   backtestStock,
+  simulateEvaluation,
   stockBacktestCacheKey,
   STOCK_BACKTEST_ENGINE_VERSION,
   STOCK_BACKTEST_RATING_BASIS,
@@ -244,6 +245,7 @@ describe('backtestStock handler', () => {
     assert.match(response.evaluations[0]?.analysisId || '', /^ledger:v3-technical-only:/);
     assert.match(response.latestSignal, /buy/i);
     assert.match(response.summary, /technical-only signal/i);
+    assert.match(response.summary, /each scored over the next 10 trading days/);
     assert.match(response.summary, /fundamentals are not included/i);
     assert.equal(response.ratingBasis, STOCK_BACKTEST_RATING_BASIS);
     assert.equal(response.engineVersion, STOCK_BACKTEST_ENGINE_VERSION);
@@ -797,6 +799,28 @@ describe('backtestStock provider-work quota', () => {
   });
 });
 
+describe('simulateEvaluation', () => {
+  const analysis = {
+    analysisId: 'a1', analysisAt: 1, signal: 'Buy', signalScore: 70,
+    currentPrice: 100, stopLoss: 95, takeProfit: 110,
+  } as unknown as Parameters<typeof simulateEvaluation>[0];
+  const bar = (low: number, high: number, close: number) => ({ timestamp: 0, open: close, high, low, close, volume: 1 });
+
+  it('scores direction on the window close independently of the stopped trade return', () => {
+    const evaluation = simulateEvaluation(analysis, [bar(94, 101, 96), bar(97, 104, 104)]);
+    assert.equal(evaluation?.outcome, 'stop_loss');
+    assert.equal(evaluation?.simulatedReturnPct, -5);
+    assert.equal(evaluation?.directionCorrect, true);
+  });
+
+  it('marks a long signal wrong when the window closes below entry even after a take-profit exit', () => {
+    const evaluation = simulateEvaluation(analysis, [bar(99, 111, 108), bar(90, 100, 92)]);
+    assert.equal(evaluation?.outcome, 'take_profit');
+    assert.equal(evaluation?.simulatedReturnPct, 10);
+    assert.equal(evaluation?.directionCorrect, false);
+  });
+});
+
 describe('technical-only backtest disclosure', () => {
   it('labels the panel and persistent namespaces independently from live composite ratings', () => {
     const panelSource = readFileSync(
@@ -811,6 +835,7 @@ describe('technical-only backtest disclosure', () => {
     assert.match(panelSource, /technical signal model/i);
     assert.match(panelSource, /Point-in-time fundamentals are not included/i);
     assert.match(panelSource, /ratingBasis === 'technical_only'/);
+    assert.doesNotMatch(panelSource, /fmtPct\((?:i|item)\.(?:winRate|directionAccuracy)\)/);
     assert.match(storeSource, /market:stock-backtest-store:v3:/);
     assert.match(storeSource, /market:stock-analysis-ledger:index:v2:/);
     assert.match(storeSource, /market:stock-analysis-ledger:item:v2:/);
