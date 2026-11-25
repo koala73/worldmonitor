@@ -40,17 +40,21 @@ function parseDate(raw) {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === s ? s : '';
 }
 
-// CFTC releases COT every Friday ~3:30pm ET for the Tuesday reportDate. The
-// next release is the first of those Fridays (reportDate + 3, + 7n) that is not
-// before `now`'s UTC date, so a stored week never advertises a past release.
-// Holiday shifts are not modelled.
+// CFTC releases COT on Fridays for the reportDate week. The next release is
+// the first Friday after reportDate that is not before `now`'s UTC date, so a
+// stored week never advertises a past release. Holiday shifts are not modelled.
 export function computeNextCotRelease(reportDate, now = new Date()) {
   if (!reportDate) return '';
   const d = new Date(`${reportDate}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return '';
-  d.setUTCDate(d.getUTCDate() + 3);
-  const today = now.toISOString().slice(0, 10);
-  while (d.toISOString().slice(0, 10) < today) d.setUTCDate(d.getUTCDate() + 7);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return firstFridayFrom(d, now);
+}
+
+function firstFridayFrom(d, now) {
+  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  if (d < today) d.setTime(today.getTime());
+  while (d.getUTCDay() !== 5) d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 

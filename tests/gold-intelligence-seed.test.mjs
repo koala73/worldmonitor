@@ -18,6 +18,12 @@ describe('seed-cot: computeNextCotRelease', () => {
     assert.equal(computeNextCotRelease('2026-04-07', at('2026-04-11')), '2026-04-17');
   });
 
+  it('keeps Friday releases for reports dated off-Tuesday', () => {
+    // 2026-11-23 is a Monday; adding 3 days would give Thursday.
+    assert.equal(computeNextCotRelease('2026-11-23', at('2026-11-24')), '2026-11-27');
+    assert.equal(computeNextCotRelease('2026-11-23', at('2026-12-01')), '2026-12-04');
+  });
+
   it('handles month rollover', () => {
     assert.equal(computeNextCotRelease('2026-03-31', at('2026-04-01')), '2026-04-03');
   });

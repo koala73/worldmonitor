@@ -145,14 +145,15 @@ function mapCategory(c: RawCotCategory | undefined): GoldCotCategory | undefined
   };
 }
 
-// The seed stamps the release due when it wrote the row; roll it forward by
-// whole weeks so a cached report never advertises a release already past.
+// The seed stamps the release due when it wrote the row; move it to the first
+// Friday not before today so a cached report never advertises a past release.
 function upcomingCotRelease(stored: string, now: Date): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(stored)) return '';
   const d = new Date(`${stored}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return '';
-  const today = now.toISOString().slice(0, 10);
-  while (d.toISOString().slice(0, 10) < today) d.setUTCDate(d.getUTCDate() + 7);
+  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  if (d < today) d.setTime(today.getTime());
+  while (d.getUTCDay() !== 5) d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 

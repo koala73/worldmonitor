@@ -279,10 +279,11 @@ describe('getGoldIntelligence', () => {
     cacheStore.set(COT_KEY, gc('2026-11-20'));
     const { cot } = await call();
     assert.ok(cot.nextReleaseDate >= today, `${cot.nextReleaseDate} is before ${today}`);
-    const days = (Date.parse(cot.nextReleaseDate) - Date.parse('2026-11-20')) / 86_400_000;
-    assert.equal(days % 7, 0, 'stays on the weekly Friday schedule');
-    cacheStore.set(COT_KEY, gc('3026-01-02'));
-    assert.equal((await call()).cot.nextReleaseDate, '3026-01-02');
+    assert.equal(new Date(`${cot.nextReleaseDate}T00:00:00Z`).getUTCDay(), 5, 'stays on Fridays');
+    cacheStore.set(COT_KEY, gc('3026-01-06'));
+    assert.equal((await call()).cot.nextReleaseDate, '3026-01-06', 'a future Friday is kept');
+    cacheStore.set(COT_KEY, gc('3026-01-05'));
+    assert.equal((await call()).cot.nextReleaseDate, '3026-01-06', 'a Thursday stamp moves to Friday');
     cacheStore.set(COT_KEY, gc(''));
     assert.equal((await call()).cot.nextReleaseDate, '');
   });
