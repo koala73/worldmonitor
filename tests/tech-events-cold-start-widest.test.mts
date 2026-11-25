@@ -83,6 +83,14 @@ describe('fetchWidestTechEvents produces an unnarrowed payload (#5603 review)', 
     assert.ok(result.events.length > 1, `expected the unnarrowed set, got ${result.events.length}`);
   });
 
+  it('stores the last day of an all-day event, not the exclusive ICS DTEND', async () => {
+    const result = await fetchWidestTechEvents();
+    assert.ok(result);
+    const endDates = Object.fromEntries(result.events.map((e) => [e.title, e.endDate]));
+    assert.equal(endDates['Regression Test Conference 2026'], '2026-08-15');
+    assert.equal(endDates['Earnings: ExampleCorp Q3 2026'], '2026-09-01');
+  });
+
   it('takes no arguments, so caller state cannot be threaded back in', () => {
     assert.equal(fetchWidestTechEvents.length, 0);
   });

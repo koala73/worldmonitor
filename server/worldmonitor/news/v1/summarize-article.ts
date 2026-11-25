@@ -72,6 +72,14 @@ export function hasReasoningPreamble(text: string): boolean {
   return TASK_NARRATION.test(trimmed) || PROMPT_ECHO.test(trimmed);
 }
 
+// A summary that talks about the headlines instead of the story they report
+// ("The most important headline is about a study...") is task commentary.
+const HEADLINE_COMMENTARY_RE = /^(?:the|this|these|both|each|all) (?:\w+ ){0,2}headlines? (?:is|are|was|were|describes?|reports?|focus\w*|highlights?|discuss\w*|mentions?|says?|suggests?)\b|^(?:the|this|these) (?:\w+ ){0,2}(?:stor(?:y|ies)|articles?) (?:describes?|reports?|focus\w*|highlights?|discuss\w*|mentions?|(?:is|are) about)\b|\bmost (?:important|significant) (?:headline|story)\b|\bheadlines? (?:is|are|was|were) (?:about|describing|reporting)\b/i;
+
+export function describesHeadlines(text: string): boolean {
+  return HEADLINE_COMMENTARY_RE.test(text);
+}
+
 // Translate mode is free and skips the gateway's direct-LLM quota, and its
 // `variant` is the target language interpolated into the prompt. Accept only
 // the dashboard's UI languages (the digest set plus Traditional Chinese, which
@@ -471,8 +479,8 @@ export async function summarizeArticle(
           : systemPrompt;
 
         const translateOutputCap = maxTranslateOutputChars(uniqueHeadlines[0]?.length ?? 0);
-        const rejectsSummary = (text: string): boolean => (['brief', 'analysis'].includes(mode)
-          && (text.length < 20 || hasReasoningPreamble(text)))
+        const rejectsSummary = (text: string): boolean => (['brief', 'analysis', 'article'].includes(mode)
+          && (text.length < 20 || hasReasoningPreamble(text) || describesHeadlines(text)))
           || (mode === 'translate' && (text.length === 0 || text.length > translateOutputCap));
         // Echoed data-block markers are dropped on every provider path before
         // the answer is validated, served or cached.
@@ -544,13 +552,13 @@ export async function summarizeArticle(
         const rawText = typeof message?.content === 'string' ? message.content.trim() : '';
         const rawContent = cleanAnswer(stripThinkingTags(rawText));
 
-        if (['brief', 'analysis'].includes(mode) && rawContent.length < 20) {
+        if (['brief', 'analysis', 'article'].includes(mode) && rawContent.length < 20) {
           console.warn(`[SummarizeArticle:${provider}] Output too short after stripping (${rawContent.length} chars), rejecting`);
           await emitSummarizeLlmEvent({ provider, model, mode, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: 'stripped_empty' });
           return null;
         }
 
-        if (['brief', 'analysis'].includes(mode) && hasReasoningPreamble(rawContent)) {
+        if (['brief', 'analysis', 'article'].includes(mode) && (hasReasoningPreamble(rawContent) || describesHeadlines(rawContent))) {
           console.warn(`[SummarizeArticle:${provider}] Reasoning preamble detected, rejecting`);
           await emitSummarizeLlmEvent({ provider, model, mode, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: 'validate_reject' });
           return null;

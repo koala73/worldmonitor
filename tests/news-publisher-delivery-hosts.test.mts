@@ -9,7 +9,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { __testing__, toProtoItem } from '../server/worldmonitor/news/v1/list-feed-digest';
+import { __testing__, computeItemCredibilityScore, toProtoItem } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
 import catalog from '../shared/news-catalog.json' with { type: 'json' };
 import { publisherFamilyFor, PUBLISHER_FAMILY_DOMAIN_TABLE } from '../shared/publisher-families.js';
@@ -132,6 +132,23 @@ describe('publisher-link gate: a feed that lists other owners links to the hosts
   });
 });
 
+describe('publisher-link gate: YC Launches keeps its Launch HN thread links', () => {
+  // hnrss.org serves the feed; each Launch HN post is a thread on
+  // news.ycombinator.com, a multi-tenant host that cannot be a family domain.
+  const launches = (Object.values(VARIANT_FEEDS.tech ?? {}).flat() as Array<{ name: string; url: string; linkHosts?: string[] }>)
+    .find((feed) => feed.name === 'YC Launches')!;
+  const thread = 'https://news.ycombinator.com/item?id=46000000';
+
+  it('keeps a thread link at parse and at persist', () => {
+    assert.ok(launches, 'YC Launches has a server placement');
+    assert.equal(__testing__.parseRssXml(rssWithLink(thread), launches, 'tech')!.items[0]!.link, thread);
+    assert.equal(
+      __testing__.storyTrackLinkForPersist({ link: thread, source: launches.name, originPublisher: '', originPublisherTrusted: false }),
+      thread,
+    );
+  });
+});
+
 describe('publisher-link gate: the relay sends the links the digest verified, and no others', () => {
   // The digest knows the feed host; the relay sees only the served item. A
   // publisher outside the relay's family table (Egypt Independent, 2026-11-17)
@@ -245,5 +262,44 @@ describe('the relay scores a topic feed item on its original publisher (#10977)'
     const served = toProtoItem(parsed!.items[0]!);
     assert.equal(served.originPublisher, '');
     assert.equal(relaySource(served), 'Strategic Chokepoints');
+  });
+});
+
+describe('a search feed credits the publisher its aggregator names (#11266)', () => {
+  const searchFeed = (name: string, q: string) => ({ name, url: `https://news.google.com/rss/search?q=${q}&hl=en-US&gl=US&ceid=US:en`, lang: 'en' });
+  const served = (feed: ReturnType<typeof searchFeed>, title: string, publisher: string) => {
+    const xml = `<?xml version="1.0"?><rss><channel><item><title>${title} - ${publisher}</title><link>https://news.google.com/rss/articles/abc</link><pubDate>${new Date().toUTCString()}</pubDate><source url="https://example.com">${publisher}</source></item></channel></rss>`;
+    const item = __testing__.parseRssXml(xml, feed, 'full')!.items[0]!;
+    return { item, proto: toProtoItem(item) };
+  };
+
+  it('names an untiered publisher and marks its credibility unassessed', () => {
+    for (const [feed, title, publisher] of [
+      [searchFeed('Africa News', 'Africa'), 'Air quality in Highland Lakes', 'IQAir'],
+      [searchFeed('Mine Web (SNL)', 'mining'), 'DRC Residents Sue Chinese Mining Company Over Pollution', 'Africa Defense Forum'],
+      [searchFeed('Reuters Crypto', 'reuters+crypto'), 'South Korea moves to lift nine-year cryptocurrency fundraising ban', 'Latest news from Azerbaijan'],
+    ] as const) {
+      const { proto } = served(feed, title, publisher);
+      assert.equal(proto.source, feed.name);
+      assert.equal(proto.publisherName, publisher);
+      assert.equal(proto.originPublisher, '', publisher);
+      assert.equal(proto.credibilityUnassessed, true, publisher);
+    }
+  });
+
+  it('scores the Bloomberg.com label on the curated Bloomberg identity', () => {
+    const { item, proto } = served(searchFeed('Bloomberg Markets', 'site:bloomberg.com+markets'), 'Huawei Found Guilty of US Criminal Charges in Landmark Case', 'Bloomberg.com');
+    assert.equal(proto.publisherName, 'Bloomberg.com');
+    assert.equal(proto.originPublisher, 'Bloomberg');
+    assert.equal(proto.credibilityUnassessed, false);
+    assert.ok(computeItemCredibilityScore(item, 1) > computeItemCredibilityScore({ source: 'Unreviewed Blog' }, 1));
+  });
+
+  it('leaves a direct publisher feed attributed to itself', () => {
+    const feed = { name: 'BBC World', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', lang: 'en' };
+    const xml = `<?xml version="1.0"?><rss><channel><item><title>Ceasefire talks resume in Cairo</title><link>https://www.bbc.com/news/articles/x</link><pubDate>${new Date().toUTCString()}</pubDate><source url="https://example.com">Spoofed Wire</source></item></channel></rss>`;
+    const proto = toProtoItem(__testing__.parseRssXml(xml, feed, 'full')!.items[0]!);
+    assert.equal(proto.publisherName, '');
+    assert.equal(proto.credibilityUnassessed, false);
   });
 });

@@ -4076,7 +4076,7 @@
     "language": "en",
     "ownershipClass": "state"
   },
-  "SEC Filings": {
+  "IPO Filing News": {
     "country": "INTL",
     "audience": "international",
     "language": "en",
@@ -5184,17 +5184,17 @@
     "ownershipClass": "private"
   },
   "YC Launches": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "YC News": {
     "country": "INTL",
     "audience": "international",
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News keyword search with no site: filter; its rows come from many publishers."
-  },
-  "YC News": {
-    "country": "US",
-    "audience": "international",
-    "language": "en",
-    "ownershipClass": "private"
   },
   "Yedioth News": {
     "country": "IL",
