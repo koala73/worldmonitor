@@ -61,6 +61,8 @@ export interface NewsItem {
   credibilityScore: number;
   linkVerified: boolean;
   originPublisher: string;
+  publisherName: string;
+  credibilityUnassessed: boolean;
 }
 
 export interface ThreatClassification {

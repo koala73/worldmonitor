@@ -26877,9 +26877,9 @@ paths:
                                         "items":
                                             - "corroborationCount": 42
                                               "credibilityScore": 42
+                                              "credibilityUnassessed": true
                                               "importanceScore": 42
                                               "isAlert": true
-                                              "link": "https://example.com/worldmonitor"
                                               "source": "example"
                                               "title": "example"
                                 "coverage":
@@ -27381,9 +27381,9 @@ paths:
                                       "item":
                                           "corroborationCount": 42
                                           "credibilityScore": 42
+                                          "credibilityUnassessed": true
                                           "importanceScore": 42
                                           "isAlert": true
-                                          "link": "https://example.com/worldmonitor"
                                           "source": "example"
                                           "title": "example"
                                       "language": "fr"
@@ -27551,9 +27551,9 @@ paths:
                                 "items":
                                     - "corroborationCount": 42
                                       "credibilityScore": 42
+                                      "credibilityUnassessed": true
                                       "importanceScore": 42
                                       "isAlert": true
-                                      "link": "https://example.com/worldmonitor"
                                       "source": "France 24"
                                       "title": "example"
                                 "sources":
@@ -58627,6 +58627,20 @@ components:
                          item, resolved to its curated source name, so consumers can score it on
                          that publisher's tier instead of the feed's. Empty when the feed is not
                          a trusted aggregator, or the publisher it names has no curated tier.
+                publisherName:
+                    type: string
+                    description: |-
+                        The publisher a trusted aggregator (Google News) names for this item, as
+                         the aggregator writes it, for display. Unlike origin_publisher it is kept
+                         when that publisher has no curated tier, so a search feed's result is
+                         credited to its real outlet rather than the search label in `source`.
+                         Empty when the feed is not a trusted aggregator or names no publisher.
+                credibilityUnassessed:
+                    type: boolean
+                    description: |-
+                        True when credibility_score rests on no reviewed tier or propaganda-risk
+                         entry for the item's publisher: the score is a fallback, not an
+                         assessment, and consumers should show credibility as unknown.
             required:
                 - source
                 - title

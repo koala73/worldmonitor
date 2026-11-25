@@ -51,10 +51,14 @@ describe('PipelineStatusPanel bootstrap path — every raw pipeline yields a val
     assert.equal(derivePipelinePublicBadge({}), 'disputed');
   });
 
-  test('known Nord Stream 1 entry derives "offline" (paperwork + operator + sanction)', () => {
+  test('Nord Stream 1 is offline with fresh evidence and disputed after 14 days', () => {
     const ns1 = gasRaw.pipelines['nord-stream-1'];
     assert.ok(ns1, 'nord-stream-1 should exist in curated registry');
-    assert.equal(derivePipelinePublicBadge(ns1.evidence, Date.parse('2026-04-22T12:00:00Z')), 'offline');
+    assert.equal(derivePipelinePublicBadge(ns1.evidence, Date.parse('2026-11-25T12:00:00Z')), 'offline');
+    const evidenceTime = Date.parse(ns1.evidence.lastEvidenceUpdate);
+    const freshnessWindow = 14 * 24 * 60 * 60 * 1000;
+    assert.equal(derivePipelinePublicBadge(ns1.evidence, evidenceTime + freshnessWindow), 'offline');
+    assert.equal(derivePipelinePublicBadge(ns1.evidence, evidenceTime + freshnessWindow + 1), 'disputed');
   });
 
   test('known Druzhba-South entry derives "disputed" (stale evidence 2026-04 fixture)', () => {

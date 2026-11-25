@@ -5816,7 +5816,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
       "accelerators": [
         {
           "name": "YC News",
-          "url": "https://news.ycombinator.com/rss"
+          "url": "https://news.google.com/rss/search?q=(\"Y+Combinator\"+OR+\"YC-backed\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Demo Day News",
@@ -5914,17 +5914,20 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "YC Launches",
-          "url": "https://news.google.com/rss/search?q=(\"Y+Combinator\"+OR+\"YC+launch\"+OR+\"YC+W25\"+OR+\"YC+S25\")+when:7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://hnrss.org/launches",
+          "linkHosts": [
+            "news.ycombinator.com"
+          ]
         }
       ],
       "funding": [
         {
           "name": "VC News",
-          "url": "https://news.google.com/rss/search?q=(%22Series%20A%22%20OR%20%22Series%20B%22%20OR%20%22Series%20C%22%20OR%20%22venture%20capital%22%20OR%20%22funding%20round%22)%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(%22Series%20A%22%20OR%20%22Series%20B%22%20OR%20%22Series%20C%22)%20(raises%20OR%20raised%20OR%20secures%20OR%20lands%20OR%20closes)%20-preferred%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
-          "name": "SEC Filings",
-          "url": "https://news.google.com/rss/search?q=(S-1+OR+\"IPO+filing\"+OR+\"SEC+filing\")+startup+when:7d&hl=en-US&gl=US&ceid=US:en"
+          "name": "IPO Filing News",
+          "url": "https://news.google.com/rss/search?q=(\"IPO+filing\"+OR+\"files+for+IPO\"+OR+\"filed+for+an+IPO\"+OR+\"S-1+filing\"+OR+\"confidentially+filed\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Seed & Pre-Seed",
@@ -5932,7 +5935,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Startup Funding",
-          "url": "https://news.google.com/rss/search?q=(\"startup+funding\"+OR+\"raised+funding\"+OR+\"raised+$\"+OR+\"funding+announced\")+when:7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"startup+raises\"+OR+\"startup+raised\"+OR+\"startup+secures\"+OR+\"startup+funding+round\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "cloud": [

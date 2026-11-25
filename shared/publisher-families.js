@@ -87,6 +87,8 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'bloomberg': {
     publisher: "Bloomberg",
+    // Google News names the publisher this way in its <source> element (#11266).
+    aliases: ["Bloomberg.com"],
     labels: [
       "Bloomberg",
       "Bloomberg Commodities",
@@ -133,7 +135,7 @@ const PUBLISHER_FAMILY_DATA = {
     publisher: "The Guardian",
     labels: ["Guardian Africa", "Guardian Americas", "Guardian Australia", "Guardian Brazil", "Guardian Caribbean", "Guardian ME", "Guardian Pacific", "Guardian Science", "Guardian World", "Guardian — Angola", "Guardian — Paraguay", "Guardian — Barbados", "Guardian — Bolivia", "Guardian — Kiribati", "Guardian — Laos", "Guardian — Liechtenstein", "Guardian — Marshall Islands", "Guardian — Micronesia", "Guardian — Nauru", "Guardian — Palau", "Guardian — Tuvalu", "Guardian UK"],
   },
-  'hacker-news': { publisher: "Hacker News", labels: ["Hacker News", "Show HN", "YC News"] },
+  'hacker-news': { publisher: "Hacker News", labels: ["Hacker News", "Show HN", "YC Launches"] },
   'hromadske': { publisher: "Hromadske", labels: ["Hromadske", "Hromadske EN"] },
   'infoq': { publisher: "InfoQ", labels: [] },
   'interfax': { publisher: "Interfax", labels: ["Interfax EN", "Interfax RU"] },
@@ -232,7 +234,7 @@ const PUBLISHER_FAMILY_DATA = {
   'rfi': { publisher: "RFI", labels: ["RFI", "RFI Afrique", "RFI Brasil"] },
   // Le Monde Libre controls Le Monde, Courrier international and Le Nouvel Obs.
   'groupe-le-monde': { publisher: "Groupe Le Monde", labels: ["Le Monde", "Le Monde à la une", "Le Monde International", "Courrier international", "Le Nouvel Obs"] },
-  'y-combinator': { publisher: "Y Combinator", labels: ["YC Launches", "Y Combinator Blog"] },
+  'y-combinator': { publisher: "Y Combinator", labels: ["YC News", "Y Combinator Blog"] },
   'yahoo-finance': { publisher: "Yahoo Finance", labels: ["Yahoo Finance", "Yahoo Finance Commodities"] },
   'zdf': { publisher: "ZDF", labels: ["ZDFheute"] },
   'kalkine': { publisher: "Kalkine Media", labels: [] },
@@ -436,8 +438,10 @@ for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILY_DATA)) {
 // a curated LABEL always wins over a same-spelling publisher name, so label
 // resolution is unchanged by construction.
 for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILY_DATA)) {
-  const lowerName = entry.publisher.toLowerCase();
-  if (!familyByLowerLabel.has(lowerName)) familyByLowerLabel.set(lowerName, familyId);
+  for (const name of [entry.publisher, ...(entry.aliases ?? [])]) {
+    const lowerName = name.toLowerCase();
+    if (!familyByLowerLabel.has(lowerName)) familyByLowerLabel.set(lowerName, familyId);
+  }
 }
 
 /**
