@@ -145,8 +145,8 @@ export function evaluateSetPanelEnabled(
   if (
     input.enabled
     && !input.isPro
-    && isFreePanelCapCounted(panelId)
-    && countFreePanelCapUsage(input.panelSettings) >= FREE_MAX_PANELS
+    && isFreePanelCapCounted(panelId, catalogConfig, input.variant)
+    && countFreePanelCapUsage(input.panelSettings, input.variant) >= FREE_MAX_PANELS
   ) {
     return result({
       ok: false,

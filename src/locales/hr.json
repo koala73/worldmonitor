@@ -372,6 +372,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Nadogradi na PRO za ovisnost dobavljača oružja i vojnu kapacitetu"
+    },
+    "intelMemory": {
+      "title": "Arhiva povijesne obavještajne analize",
+      "help": "Arhiva od 180 dana sukoba, vojnih i energetskih događaja s mogućnošću usporedbe prema prethodnim slučajevima na zahtjev.",
+      "loading": "Učitavanje arhive povijesne obavještajne analize…",
+      "proLocked": "Nadogradite se na PRO za arhivu od 180 dana i pretragu prethodnih slučajeva",
+      "unavailable": "Arhiva povijesne obavještajne analize nije dostupna.",
+      "retry": "Pokušaj ponovno",
+      "empty": "Nema arhiviranih obavještajnih događaja koji se podudaraju s tom zemljom i domenom u prozoru od 180 dana.",
+      "partial": "Pokrivenost arhive je djelomična za ovaj upit; dostupni zapisi ostaju vidljivi.",
+      "domainFilterLabel": "Filtriraj povijesnu obavještajnu analizu po domeni",
+      "domains": {
+        "all": "Sve",
+        "conflict": "Sukobi",
+        "military": "Vojna",
+        "energy": "Energija"
+      },
+      "loadMore": "Učitaj više",
+      "loadingMore": "Učitavanje…",
+      "loadMoreError": "Nije moguće učitati dodatne događaje. Pokušaj ponovno.",
+      "sourceLink": "Izvor ↗",
+      "similarTitle": "Pronađi slične prethodne događaje",
+      "useLatestHeadline": "Koristi najnoviju vijest",
+      "similarPlaceholder": "Opiši razvijajuću se situaciju (najmanje 10 znakova)…",
+      "findSimilar": "Pronađi slične događaje",
+      "similarMinLength": "Unesi najmanje 10 znakova za pretragu prethodnih slučajeva.",
+      "similarLoading": "Pretraživanje povijesnih prethodnih slučajeva…",
+      "similarEmpty": "Nema sličnih prethodnih događaja koji su prošli prag sličnosti.",
+      "similarUnavailable": "Pretraga prethodnih slučajeva nije dostupna. Pokušaj ponovno."
     }
   },
   "header": {

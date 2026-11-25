@@ -370,6 +370,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Frissítsen PRO verzióra a fegyverszállító függőségek és katonai kapacitások megtekintéséhez"
+    },
+    "intelMemory": {
+      "title": "Történelmi Hírszerzési Memória",
+      "help": "180 napos archívum konfliktus-, katonai és energetikai eseményekről igény szerinti szemantikus precedens keresésével.",
+      "loading": "Történelmi hírszerzési memória betöltése…",
+      "proLocked": "Frissítsen PRO verzióra a 180 napos történelmi hírszerzési memória és precedens keresés eléréséhez",
+      "unavailable": "A történelmi hírszerzési memória ideiglenesen nem elérhető.",
+      "retry": "Újra",
+      "empty": "Nincsenek olyan archiválva hírszerzési események, amelyek ehhez az országhoz és domenhez passzolnának a 180 napos ablakban.",
+      "partial": "Az archívum lefedettése ennél a lekérdezésnél részleges; az elérhető rekordok továbbra is láthatók.",
+      "domainFilterLabel": "Történelmi hírszerzés szűrése domen szerint",
+      "domains": {
+        "all": "Összes",
+        "conflict": "Konfliktus",
+        "military": "Katonai",
+        "energy": "Energia"
+      },
+      "loadMore": "Továbbiak betöltése",
+      "loadingMore": "Betöltés…",
+      "loadMoreError": "Nem sikerült további eseményeket betölteni. Próbálkozzon újra.",
+      "sourceLink": "Forrás ↗",
+      "similarTitle": "Hasonló korábbi események keresése",
+      "useLatestHeadline": "Legutóbbi címsor használata",
+      "similarPlaceholder": "Írjon le egy alakulóban lévő helyzetet (legalább 10 karakter)…",
+      "findSimilar": "Hasonló események keresése",
+      "similarMinLength": "Adjon meg legalább 10 karaktert a korábbi precedensek kereséséhez.",
+      "similarLoading": "Történelmi precedensek keresése…",
+      "similarEmpty": "Nincsenek olyan korábbi események, amelyek átlépték volna a hasonlósági küszöbértéket.",
+      "similarUnavailable": "A precedens keresés ideiglenesen nem elérhető. Próbálkozzon újra."
     }
   },
   "header": {

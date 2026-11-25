@@ -7,7 +7,7 @@
 #
 # Scoped to source extensions on purpose. A repo-wide `* text=auto` would also
 # renormalize CSV fixtures whose CRLF bytes are part of what they fixture
-# (scripts/need-work.csv, tests/fixtures/mineral-production/mcs-sample.csv).
+# (tests/fixtures/mineral-production/mcs-sample.csv).
 *.ts   text eol=lf
 *.tsx  text eol=lf
 *.mts  text eol=lf

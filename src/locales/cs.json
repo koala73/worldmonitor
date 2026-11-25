@@ -305,6 +305,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Upgradujte na PRO pro závislosti dodavatelů zbraní a vojenskou kapacitu"
+    },
+    "intelMemory": {
+      "title": "Historická paměť zpravodajských informací",
+      "help": "180denní archiv konfliktů, vojenských a energetických událostí se sémantickým vyhledáváním precedentů na požádání.",
+      "loading": "Načítám historickou paměť zpravodajských informací…",
+      "proLocked": "Upgradujte na PRO pro 180denní historickou paměť zpravodajských informací a vyhledávání precedentů",
+      "unavailable": "Historická paměť zpravodajských informací je dočasně nedostupná.",
+      "retry": "Zkusit znovu",
+      "empty": "V 180denním období nejsou pro tuto zemi a doménu žádné archivované zpravodajské události.",
+      "partial": "Pokrytí archivu je pro tento dotaz částečné; dostupné záznamy zůstávají viditelné.",
+      "domainFilterLabel": "Filtrovat historické zpravodajské informace podle domény",
+      "domains": {
+        "all": "Všechny",
+        "conflict": "Konflikt",
+        "military": "Vojenské",
+        "energy": "Energie"
+      },
+      "loadMore": "Načíst více",
+      "loadingMore": "Načítám více…",
+      "loadMoreError": "Nepovedlo se načíst další události. Zkuste znovu.",
+      "sourceLink": "Zdroj ↗",
+      "similarTitle": "Najít podobné minulé události",
+      "useLatestHeadline": "Použít poslední titulek",
+      "similarPlaceholder": "Popište se vyvíjející situaci (nejméně 10 znaků)…",
+      "findSimilar": "Najít podobné události",
+      "similarMinLength": "Zadejte nejméně 10 znaků pro vyhledávání historických precedentů.",
+      "similarLoading": "Hledám historické precedenty…",
+      "similarEmpty": "Žádné podobné minulé události nepřekročily práh podobnosti.",
+      "similarUnavailable": "Vyhledávání precedentů je dočasně nedostupné. Zkuste znovu."
     }
   },
   "header": {

@@ -4466,6 +4466,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Upgrade naar PRO voor afhankelijkheid van wapenleveranciers en militaire capaciteit"
+    },
+    "intelMemory": {
+      "title": "Historisch inlichtingengeheugen",
+      "help": "180-daagse archive van conflicten, militaire en energiegebeurtenissen met semantische precedentmatchings op aanvraag.",
+      "loading": "Historisch inlichtingengeheugen laden…",
+      "proLocked": "Upgrade naar PRO voor 180-daagse historisch inlichtingengeheugen en precedentzoeking",
+      "unavailable": "Historisch inlichtingengeheugen is tijdelijk niet beschikbaar.",
+      "retry": "Opnieuw proberen",
+      "empty": "Geen gearchiveerde inlichtingengebeurtenissen komen overeen met dit land en domein in het 180-daagse venster.",
+      "partial": "Archiefdekking is gedeeltelijk voor deze zoekopdracht; beschikbare records blijven zichtbaar.",
+      "domainFilterLabel": "Filter historische inlichtingen op domein",
+      "domains": {
+        "all": "Alle",
+        "conflict": "Conflict",
+        "military": "Militair",
+        "energy": "Energie"
+      },
+      "loadMore": "Meer laden",
+      "loadingMore": "Meer laden…",
+      "loadMoreError": "Kon aanvullende gebeurtenissen niet laden. Probeer opnieuw.",
+      "sourceLink": "Bron ↗",
+      "similarTitle": "Zoek naar vergelijkbare vroegere gebeurtenissen",
+      "useLatestHeadline": "Gebruik meest recente kop",
+      "similarPlaceholder": "Beschrijf een zich ontwikkelende situatie (minimaal 10 tekens)…",
+      "findSimilar": "Zoek vergelijkbare gebeurtenissen",
+      "similarMinLength": "Voer minimaal 10 tekens in om zoeken naar precedenten.",
+      "similarLoading": "Historische precedenten zoeken…",
+      "similarEmpty": "Geen vergelijkbare vroegere gebeurtenissen hebben de gelijkenisdrempel bereikt.",
+      "similarUnavailable": "Precedentzoeking is tijdelijk niet beschikbaar. Probeer opnieuw."
     }
   },
   "preferences": {

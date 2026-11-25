@@ -104,4 +104,22 @@ describe('Telegram loader access', () => {
     await load;
     expect(panel.setData).not.toHaveBeenCalled();
   });
+
+  it('ignores AbortError from caller signal without blanking the panel or logging an error', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const controller = new AbortController();
+      state.fetch.mockImplementationOnce((_limit: number, sig?: AbortSignal) => new Promise((_resolve, reject) => {
+        sig?.addEventListener('abort', () => reject(sig.reason ?? new DOMException('Aborted', 'AbortError')), { once: true });
+      }));
+      const { loader, panel } = create();
+      const load = loader.loadTelegramIntel(controller.signal);
+      controller.abort(new DOMException('Refresh lane lease expired', 'AbortError'));
+      await load;
+      expect(panel.setData).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });
