@@ -408,9 +408,9 @@ async function fetchSource(source, { deadlineAt } = {}) {
     let profileId = '', profileSubTypeId = '', identityId = '';
     let curDoc = null;           // { typeId, identityId, number }
     let aliases = null;          // Alias[]
-    let curAlias = null;         // { primary, typeId, nameParts[] }
-    let inDocumentedName = false;
+    let curAlias = null;         // { primary, typeId, names[] }, Primary Latin name first
     let namePartsBuf = null;     // string[] collecting NamePartValue text
+    let docNamePrimaryLatin = false;
     let profileFeatures = null;  // Feature[]
     let curFeature = null;       // { featureTypeId, locationIds[], detail, details[] }
 
@@ -481,7 +481,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
       const primaryAlias = aliases?.find((a) => a.primary)
         || aliases?.find((a) => a.typeId === '1403')
         || aliases?.[0];
-      const name = primaryAlias?.nameParts.join(' ') || 'Unnamed designation';
+      const name = primaryAlias?.names[0] || 'Unnamed designation';
 
       let entityType = 'SANCTIONS_ENTITY_TYPE_ENTITY';
       if (profileSubTypeId === '1') entityType = 'SANCTIONS_ENTITY_TYPE_VESSEL';
@@ -506,7 +506,11 @@ async function fetchSource(source, { deadlineAt } = {}) {
       const flag = registryCode ? { code: registryCode, name: countryName(registryCode) } : null;
       const sorted = [...seen.entries()].sort(([a], [b]) => a.localeCompare(b));
 
-      const aliasNames = uniqueSorted((aliases ?? []).map((a) => a.nameParts.join(' ')).filter((part) => part && part !== name));
+      // The primary name's other scripts lead so the bounded screening index keeps them.
+      const aliasNames = [...new Set([
+        ...uniqueSorted(primaryAlias?.names.slice(1) ?? []),
+        ...uniqueSorted((aliases ?? []).flatMap((a) => a.names)),
+      ])].filter((part) => part !== name);
       const identifiers = uniqueSorted([
         ...(idRegDocsByIdentity.get(identityId) || []).map((doc) => (
           ofacRegistrationToIdentifier(idRegDocTypes.get(doc.typeId) || '', doc.number)
@@ -636,10 +640,11 @@ async function fetchSource(source, { deadlineAt } = {}) {
           if (inDistinctParties) identityId = attrs.ID || '';
           break;
         case 'Alias':
-          if (inDistinctParties) curAlias = { primary: attrs.Primary === 'true', typeId: attrs.AliasTypeID || '', nameParts: [] };
+          if (inDistinctParties) curAlias = { primary: attrs.Primary === 'true', typeId: attrs.AliasTypeID || '', names: [] };
           break;
         case 'DocumentedName':
-          if (curAlias) { inDocumentedName = true; namePartsBuf = []; }
+          // An alias holds one DocumentedName per script; DocNameStatusID 1 is "Primary Latin".
+          if (curAlias) { namePartsBuf = []; docNamePrimaryLatin = attrs.DocNameStatusID === '1'; }
           break;
         case 'Feature':
           if (inDistinctParties) curFeature = { featureTypeId: attrs.FeatureTypeID || '', locationIds: [], detail: '', details: [] };
@@ -763,7 +768,8 @@ async function fetchSource(source, { deadlineAt } = {}) {
           if (namePartsBuf !== null && t) namePartsBuf.push(t);
           break;
         case 'DocumentedName':
-          if (curAlias && namePartsBuf !== null) { curAlias.nameParts = namePartsBuf; namePartsBuf = null; inDocumentedName = false; }
+          if (curAlias && namePartsBuf?.length) curAlias.names[docNamePrimaryLatin ? 'unshift' : 'push'](namePartsBuf.join(' '));
+          namePartsBuf = null;
           break;
         case 'Alias':
           if (curAlias) { aliases.push(curAlias); curAlias = null; }
@@ -1005,7 +1011,8 @@ async function fetchSanctionsPressure() {
     et: ET_CODE[e.entityType] ?? 'entity',
     cc: e.countryCodes.slice(0, 3),
     pr: e.programs.slice(0, 3),
-    al: (e._aliases ?? []).slice(0, 10),
+    // An OFAC alias can carry a Latin and a native-script form, so ten aliases can fill twenty slots.
+    al: (e._aliases ?? []).slice(0, 20),
     ids: e._identifiers ?? [],
     sl: e.sourceLists,
   }));
