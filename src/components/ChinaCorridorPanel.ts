@@ -31,6 +31,36 @@ const AVAILABILITY_LABELS: Record<CorridorAvailability, string> = {
   stale: 'Stale',
   unavailable: 'Unavailable',
 };
+type MetricField = { key: string; label: string; format: (value: number) => string };
+
+const formatCount = (value: number): string => Math.round(value).toLocaleString();
+const formatSignedPercent = (value: number): string =>
+  `${value > 0 ? '+' : ''}${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+const formatDwt = (value: number): string =>
+  value >= 1_000_000
+    ? `${(value / 1_000_000).toFixed(1)}M DWT`
+    : value >= 1_000
+      ? `${(value / 1_000).toFixed(0)}K DWT`
+      : `${Math.round(value)} DWT`;
+
+const SIGNAL_METRIC_FIELDS: Partial<Record<ChinaCorridorSignalFamily, readonly MetricField[]>> = {
+  port: [
+    { key: 'tankerCalls30d', label: 'Tanker calls (30d)', format: formatCount },
+    { key: 'trendDelta', label: 'Change vs prior 30d', format: formatSignedPercent },
+    { key: 'importTankerDwt30d', label: 'Import tankers (30d)', format: formatDwt },
+    { key: 'exportTankerDwt30d', label: 'Export tankers (30d)', format: formatDwt },
+  ],
+};
+
+function metricsHtml(signal: CorridorSourceSignal): string {
+  const items = (SIGNAL_METRIC_FIELDS[signal.family] ?? []).flatMap(({ key, label, format }) => {
+    const value = signal.metrics[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) return [];
+    return [`<span><span class="china-corridor-source__metric-label">${escapeHtml(label)}</span> ${escapeHtml(format(value))}</span>`];
+  });
+  return items.length > 0 ? `<div class="china-corridor-source__metrics">${items.join(' ')}</div>` : '';
+}
+
 const RENDERER_HINT =
   'The active map renderer centers this corridor but cannot draw its boundary or nodes. Use the WebGL 2D map on a supported device to view the overlay.';
 
@@ -71,6 +101,7 @@ function signalHtml(signal: CorridorSourceSignal): string {
   return `
     <li class="china-corridor-source" data-source-availability="${signal.availability}">
       <div class="china-corridor-source__summary">${escapeHtml(signal.summary)}</div>
+      ${metricsHtml(signal)}
       <div class="china-corridor-source__meta">
         <span>${publisher}</span>
         <span>source ${escapeHtml(signal.availability)}</span>

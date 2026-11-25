@@ -432,6 +432,22 @@
   overflow-wrap: anywhere;
 }
 
+.china-corridor-source__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 3px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.3;
+}
+
+.china-corridor-source__metric-label {
+  color: var(--text-dim);
+  font-family: var(--font-body);
+}
+
 .china-corridor-source__meta {
   display: flex;
   flex-wrap: wrap;
