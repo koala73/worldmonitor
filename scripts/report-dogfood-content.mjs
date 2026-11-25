@@ -28,7 +28,11 @@ const clip = (value, max) => {
 
 function readJson(file) {
   if (!existsSync(file)) return null;
-  try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; }
+  const text = readFileSync(file, 'utf8');
+  try { return JSON.parse(text); } catch { /* retried below */ }
+  // Agents quote table text from `get text`, raw tabs included, which JSON forbids inside a string. Outside a
+  // string a control character is whitespace either way, so turning each into a space changes only the quote.
+  try { return JSON.parse(text.replace(/[\u0000-\u001f]/g, ' ')); } catch { return null; }
 }
 
 /**
