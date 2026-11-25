@@ -180,6 +180,7 @@ describe('search-fed category digests: topic relevance (#11266)', () => {
         'Watch Focused on Digital Shares Over Tokens: Cunningham - Bloomberg',
         'Stablecoin issuers race for bank charters - Bloomberg',
         'Decentralized finance lenders tighten collateral rules - Bloomberg',
+        '1inch launches DEX aggregator as restaking demand grows - Bloomberg',
       ],
     },
     {
