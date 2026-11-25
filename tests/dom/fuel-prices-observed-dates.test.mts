@@ -1,7 +1,7 @@
 /**
  * #11269 — a months-old fuel observation sat under the panel's recent
  * "Updated" fetch date with no row-level freshness. Each price cell must
- * show its own observation date, flag observations older than two weeks
+ * show its own observation date, flag observations older than a monthly cycle
  * at fetch time, and name monthly means by their month.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -40,6 +40,7 @@ describe('FuelPricesPanel row-level observation dates', () => {
       countries: [
         country('BF', 'Burkina Faso', fuel(1.4025, '2026-07-08', 'Super 91'), fuel(1.2375, '2026-07-08', 'Diesel')),
         country('US', 'United States', fuel(0.95, '2026-11-17'), fuel(1.05, '2026-11-17', 'Diesel')),
+        country('ZM', 'Zambia', fuel(1.607, '2026-11-01', 'Petrol'), fuel(1.674, '2026-11-01', 'Diesel')),
         country('NO', 'Norway', fuel(1.9, '2026-10-01', 'RON95 (monthly mean)'), fuel(1.8, '2026-10-01', 'Diesel (monthly mean)')),
       ],
       cheapestGasoline: 'US', mostExpensiveGasoline: 'NO', cheapestDiesel: 'US', mostExpensiveDiesel: 'NO',
@@ -69,9 +70,13 @@ describe('FuelPricesPanel row-level observation dates', () => {
     expect(gas!.textContent).toContain('$1.403');
   });
 
-  it('dates a recent observation without a stale flag', async () => {
-    const [gas] = cells(await render(), 'United States');
+  it('dates observations within a monthly cycle without a stale flag', async () => {
+    const panel = await render();
+    const [gas] = cells(panel, 'United States');
     expect(gas!.textContent).toContain('Nov 17');
+    const [zmGas] = cells(panel, 'Zambia');
+    expect(zmGas!.textContent).toContain('Nov 1');
+    expect(zmGas!.textContent).not.toContain('days old');
     expect(gas!.textContent).not.toContain('days old');
     expect(gas!.querySelector('.gb-observed-stale')).toBeNull();
   });

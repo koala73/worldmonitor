@@ -12,7 +12,7 @@ const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRp
 type Fuel = NonNullable<ListFuelPricesResponse['countries'][number]['gasoline']>;
 
 const DAY_MS = 86_400_000;
-const STALE_AFTER_DAYS = 14;
+const STALE_AFTER_DAYS = 31;
 
 function observedLabel(fuel: Fuel, asOfMs: number): string {
   const observedMs = Date.parse(`${fuel.observedAt}T00:00:00Z`);

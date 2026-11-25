@@ -2388,7 +2388,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Bei za pump ya rejareja kwa petroli na gesi kote nchi 30+, zilizosawazishwa kuwa USD/lita kwa kulinganisha. Bei zinakuja kutoka programu za data zilizofunguliwa za serikali na kusasishwa kila wiki. Nchi nyingi za bei nafuu zaidi na ghali zaidi zimeangaziwa. Mabadiliko ya juma kwa juma yanaonyeshwa wakati data ya juma iliyopita inapatikana.",
-      "countries": "nchi"
+      "countries": "nchi",
+      "observedStale": "{{date}}, umri wa siku {{days}}",
+      "monthlyMean": "wastani wa {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Fahirisi ya Bei ya Chakula ya Shirika la Umoja kwa Chakula na Ukulima linafuatilia bei za kumhimili kimataifa kwa kikapu cha bidhaa za chakula (Nafaka, Maziwa, Nyama, Mafuta, Sukari), msingi 2014-2016=100. Inasasishwa kila mwezi Ijumaa ya kwanza ya kila mwezi.",

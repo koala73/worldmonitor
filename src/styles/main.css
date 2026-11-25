@@ -27204,6 +27204,7 @@ body.map-width-resizing {
   display: block;
   font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
+  white-space: normal;
 }
 
 .gb-observed-stale { font-style: italic; }
