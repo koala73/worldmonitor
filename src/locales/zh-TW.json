@@ -2590,7 +2590,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>燃油價格</strong>30多個國家的汽油和柴油零售泵價，以美元/升為單位進行比較。價格來自官方政府開放資料計劃，每週更新。最便宜和最昂貴的國家突出顯示。當獲得上週資料時顯示周環比變化。",
-      "countries": "個國家"
+      "countries": "個國家",
+      "observedStale": "{{date}}，{{days}} 天前",
+      "monthlyMean": "{{month}}均價"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>糧農組織食品價格指數</strong>聯合國糧食及農業組織的食品價格指數跟蹤食品商品籃（穀物、乳製品、肉類、油類、糖）的國際出口價格，基數2014-2016=100。每月第一個星期五更新。",

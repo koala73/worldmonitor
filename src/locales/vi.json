@@ -2590,7 +2590,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Giá bán lẻ tại cây xăng dầu cho xăng và dầu diesel trên 30+ quốc gia, chuẩn hóa thành USD/lít để so sánh. Giá được lấy từ các chương trình dữ liệu mở chính thức của chính phủ và cập nhật hàng tuần. Các quốc gia có giá rẻ nhất và đắt nhất được làm nổi bật. Thay đổi tuần so với tuần trước được hiển thị khi dữ liệu tuần trước có sẵn.",
-      "countries": "quốc gia"
+      "countries": "quốc gia",
+      "observedStale": "{{date}}, {{days}} ngày trước",
+      "monthlyMean": "trung bình {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Chỉ số Giá Thực phẩm của Tổ chức Lương thực và Nông nghiệp Liên hợp quốc theo dõi giá xuất khẩu quốc tế cho một rổ hàng hóa thực phẩm (Ngũ cốc, Sữa, Thịt, Dầu, Đường), cơ sở 2014-2016=100. Cập nhật hàng tháng vào thứ Sáu đầu tiên của mỗi tháng.",

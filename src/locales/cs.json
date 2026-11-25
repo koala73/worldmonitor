@@ -2623,7 +2623,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Maloobchodní ceny benzínu a nafty na čerpacích stanicích v 30+ zemích, normalizované na USD/litr pro srovnání. Ceny pocházejí z oficiálních vládních programů otevřených dat a jsou aktualizovány týdně. Nejlevnější a nejdražší země jsou zvýrazněny. Změna týden na týden je zobrazena, pokud jsou dostupná data z předchozího týdne.",
-      "countries": "zemí"
+      "countries": "zemí",
+      "observedStale": "{{date}}, staré {{days}} dní",
+      "monthlyMean": "průměr {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Index cen potravin Organizace OSN pro potraviny a zemědělství sleduje mezinárodní exportní ceny koše potravinářských komodit (Obiloviny, Mléčné výrobky, Maso, Oleje, Cukr), báze 2014–2016 = 100. Aktualizován měsíčně v první pátek každého měsíce.",

@@ -2394,7 +2394,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Cijene goriva</strong> Maloprodajne cijene na crpkama za benzin i dizel u 30+ zemalja, normirane na USD/litar za usporedbu. Cijene potječu iz službenih vladinih programa otvorenih podataka i ažuriraju se tjedno. Najjeftinije i najskupnije zemlje su istaknuté. Promjena tjedna kroz tjedan se prikazuje kada su dostupni podaci iz prethodnog tjedna.",
-      "countries": "zemlje"
+      "countries": "zemlje",
+      "observedStale": "{{date}}, staro {{days}} dana",
+      "monthlyMean": "prosjek za {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO indeks cijena hrane</strong> Indeks cijena hrane Svjetske organizacije za hranu i poljoprivredu prati međunarodne izvozne cijene za košaricu hrane (Žitarice, Mliječni proizvodi, Meso, Ulja, Šećer), bazna vrijednost 2014-2016=100. Ažurira se mjesečno prvi petak svakog mjeseca.",

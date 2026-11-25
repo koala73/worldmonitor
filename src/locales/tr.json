@@ -2601,7 +2601,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Yakıt Fiyatları</strong> 30+ ülkede benzin ve dizel perakende pompa fiyatları, karşılaştırma için USD/litre'ye normalize edilmiş. Fiyatlar resmi hükümet açık veri programlarından kaynaklanır ve haftalık güncellenir. En ucuz ve en pahalı ülkeler vurgulanır. Haftalık değişim, önceki hafta verisi mevcut olduğunda gösterilir.",
-      "countries": "ülke"
+      "countries": "ülke",
+      "observedStale": "{{date}}, {{days}} gün önce",
+      "monthlyMean": "{{month}} ortalaması"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Gıda Fiyat Endeksi</strong> BM Gıda ve Tarım Örgütü'nün Gıda Fiyat Endeksi, gıda emtiası sepeti (Tahıllar, Süt Ürünleri, Et, Yağlar, Şeker) için uluslararası ihracat fiyatlarını izler; taban 2014-2016=100. Her ayın ilk Cuma günü aylık olarak güncellenir.",

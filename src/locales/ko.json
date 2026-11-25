@@ -2590,7 +2590,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>연료 가격</strong> 30개 이상의 국가에서 휘발유 및 경유의 소매 펌프 가격을 USD/리터로 정규화하여 비교. 가격은 공식 정부 공개 데이터 프로그램에서 수집되며 주간 단위로 업데이트됨. 가장 저렴한 국가와 가장 비싼 국가가 강조 표시됨. 전주 데이터를 사용할 수 있을 때 주 대비 변화를 표시.",
-      "countries": "개국"
+      "countries": "개국",
+      "observedStale": "{{date}}, {{days}}일 전",
+      "monthlyMean": "{{month}} 평균"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO 식량 가격 지수</strong> 유엔 식량농업기구의 식량 가격 지수는 식량 상품 바구니(곡물, 유제품, 육류, 유지류, 설탕)의 국제 수출 가격을 추적하며, 기준 2014-2016=100. 매월 첫 금요일에 업데이트됨.",

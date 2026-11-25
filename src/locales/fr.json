@@ -2612,7 +2612,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Prix de détail à la pompe pour l'essence et le diesel dans 30+ pays, normalisés en USD/litre pour la comparaison. Les prix proviennent de programmes officiels de données ouvertes gouvernementales et sont mis à jour hebdomadairement. Les pays les moins chers et les plus chers sont mis en évidence. La variation semaine après semaine s'affiche lorsque les données de la semaine précédente sont disponibles.",
-      "countries": "pays"
+      "countries": "pays",
+      "observedStale": "{{date}}, il y a {{days}} jours",
+      "monthlyMean": "moyenne {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> L'indice des prix alimentaires de l'Organisation des Nations unies pour l'alimentation et l'agriculture suit les prix d'exportation internationaux d'un panier de produits alimentaires (Céréales, Produits laitiers, Viande, Huiles, Sucre), base 2014-2016=100. Mise à jour mensuelle le premier vendredi de chaque mois.",
