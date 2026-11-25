@@ -76,6 +76,42 @@ describe('panel content review issue', () => {
     assert.equal(merged.panels.filter((panel) => panel.id === 'insights').length, 1);
   });
 
+  it('lists the views each agent left unchecked, so an ok panel does not read as fully covered', () => {
+    const merged = mergeShards(plan, {
+      'www-1': { findings: { panels: [
+        { id: 'markets', status: 'ok', checked: 'quotes', views_checked: ['Default', 'Crypto tab'], views_skipped: ['Forex tab', 'Sort by change'] },
+        { id: 'cii', status: 'suspect', note: 'x', views_checked: ['Default'], views_skipped: 'not a list' },
+      ] } },
+      'www-2': { findings: { panels: [
+        { id: 'insights', status: 'ok', views_checked: [], views_skipped: [] },
+        { id: 'latest-brief', status: 'ok', views_checked: ['Default'], views_skipped: [null] },
+      ] } },
+    });
+    assert.deepEqual(merged.panels.find((p) => p.id === 'markets').viewsSkipped, ['Forex tab', 'Sort by change']);
+    assert.deepEqual(merged.panels.find((p) => p.id === 'cii').viewsSkipped, []);
+    const body = renderContentBody(merged, { date: '2026-11-25' });
+    assert.match(body, /- Views: 1 panel left 2 views unchecked; 2 panels did not report their views\./);
+    assert.match(body, /### Views not checked/);
+    assert.match(body, /- `markets` on `www` \(ok\): `Forex tab` `Sort by change`/);
+  });
+
+  it('names every skipped view, and drops the list before the totals or any non-ok panel when the body is too long', () => {
+    const ids = Array.from({ length: 120 }, (_, i) => `panel-${i}`);
+    const big = planShards([catalog('www', ids)], { perShard: 120 });
+    const views = Array.from({ length: 60 }, (_, i) => `Filter choice number ${i} ${'x'.repeat(30)}`);
+    const merged = mergeShards(big, { 'www-1': { findings: { panels: ids.map((id, i) => ({
+      id, status: i === 0 ? 'suspect' : 'ok', note: 'n', views_checked: ['Default'], views_skipped: views,
+    })) } } });
+    const full = renderContentBody(merged, { date: '2026-11-25' });
+    assert.ok(full.includes('Filter choice number 59'), 'the 60th skipped view is named');
+    assert.ok(full.length > MAX_ISSUE_BODY_CHARS, 'fixture must overflow to reach the shrink step');
+    const lean = contentIssueBody(merged, { date: '2026-11-25' });
+    assert.ok(lean.length <= MAX_ISSUE_BODY_CHARS);
+    assert.doesNotMatch(lean, /### Views not checked/);
+    assert.match(lean, /- Views: 120 panels left 7200 views unchecked; 0 panels did not report their views\./);
+    assert.match(lean, /- `panel-0` `PANEL-0` on `www`: \*\*suspect\*\*/);
+  });
+
   it('lists contradicted findings before implausible ones, and treats an unknown kind as needing a human', () => {
     const merged = mergeShards(plan, {
       'www-1': { findings: { panels: [], findings: [finding({ kind: 'implausible', severity: 'high', title: 'A' }), finding({ kind: 'proved', title: 'B' }), finding({ severity: 'low', title: 'C' })] } },
