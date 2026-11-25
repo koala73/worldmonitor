@@ -1767,7 +1767,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS卫星在监控冲突区域的热异常探测。高强度 = 亮度温度>360K且置信度>80%。",
       "possibleExplosions": "检测到 {{count}} 起可能爆炸",
-      "explosionTooltip": "热信号与爆炸一致（火辐射功率 >80 MW，亮度 >380 K）"
+      "explosionTooltip": "热信号与爆炸一致（火辐射功率 >80 MW，亮度 >380 K）",
+      "agencyReports": "机构报告的火灾",
+      "agencyDates": "机构日期",
+      "shownOfTotal": "显示 {{total}} 条火灾记录中的 {{shown}} 条"
     },
     "ucdpEvents": {
       "stateBased": "国家冲突",

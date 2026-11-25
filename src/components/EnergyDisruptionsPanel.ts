@@ -42,17 +42,32 @@ const STATUS_COLOR: Record<DisruptionStatus, string> = {
   unknown:  '#6b7280',
 };
 
+const EVENT_TYPE_LABEL: Record<string, string> = {
+  sabotage:    'Sabotage',
+  sanction:    'Sanction',
+  mechanical:  'Mechanical',
+  maintenance: 'Maintenance',
+  war:         'War',
+  weather:     'Weather',
+  commercial:  'Commercial',
+  other:       'Other',
+};
+
 const EVENT_TYPE_FILTERS: Array<{ key: string; label: string }> = [
-  { key: '',            label: 'All events' },
-  { key: 'sabotage',    label: 'Sabotage' },
-  { key: 'sanction',    label: 'Sanction' },
-  { key: 'mechanical',  label: 'Mechanical' },
-  { key: 'maintenance', label: 'Maintenance' },
-  { key: 'war',         label: 'War' },
-  { key: 'weather',     label: 'Weather' },
-  { key: 'commercial',  label: 'Commercial' },
-  { key: 'other',       label: 'Other' },
+  { key: '', label: 'All events' },
+  ...Object.entries(EVENT_TYPE_LABEL).map(([key, label]) => ({ key, label })),
 ];
+
+const CAUSE_LABEL: Record<string, string> = {
+  sabotage:          'Sabotage',
+  sanction:          'Sanction',
+  logistics:         'Logistics',
+  policy:            'Policy',
+  war:               'War',
+  upstream_refinery: 'Upstream refinery',
+  chokepoint:        'Chokepoint',
+  import_cut:        'Import cut',
+};
 
 // Window and offline values may wrap between their parts ("2025-08-14 →
 // 2025-08-18", "15.0 bcm/yr · 1.60 mb/d") but never inside one.
@@ -346,7 +361,7 @@ export class EnergyDisruptionsPanel extends Panel {
     const status = statusForEvent({ startAt: e.startAt, endAt: e.endAt || undefined });
     const eventWindow = formatEventWindow(e.startAt, e.endAt || undefined);
     const offline = formatCapacityOffline(e.capacityOfflineBcmYr, e.capacityOfflineMbd);
-    const causeChain = e.causeChain.join(' → ') || '—';
+    const causeChain = e.causeChain.map(c => CAUSE_LABEL[c] ?? c).join(' → ') || '—';
 
     return `
       <tr class="ed-row" role="row" tabindex="0"
@@ -354,13 +369,13 @@ export class EnergyDisruptionsPanel extends Panel {
           data-asset-id="${escapeHtml(e.assetId)}"
           data-asset-type="${escapeHtml(e.assetType)}">
         <td role="cell">
-          <div class="ed-event">${glyph} ${escapeHtml(e.eventType)} ${scopeTagHtml(row)}</div>
+          <div class="ed-event">${glyph} ${escapeHtml(EVENT_TYPE_LABEL[e.eventType] ?? e.eventType)} ${scopeTagHtml(row)}</div>
           <div class="ed-sub ed-desc">${escapeHtml(e.shortDescription)}</div>
           <div class="ed-sub">${escapeHtml(causeChain)}</div>
         </td>
         <td role="cell" class="ed-asset">
           <span class="ed-asset-type">${escapeHtml(e.assetType)}</span>
-          <span class="ed-asset-id">${escapeHtml(e.assetId)}</span>
+          <span class="ed-asset-id">${escapeHtml(e.assetName || e.assetId)}</span>
         </td>
         <td role="cell">${wholeParts(eventWindow)}</td>
         <td role="cell" data-label="Offline"><span class="ed-offline">${wholeParts(offline || '—')}</span></td>

@@ -20,8 +20,8 @@ function flight(status: string): FlightInstance {
   return {
     flightNumber: 'EK3', date: '2026-10-13',
     carrier: { iata: 'EK', name: 'Emirates' },
-    origin: { iata: 'DXB', name: 'Dubai' },
-    destination: { iata: 'LHR', name: 'London Heathrow' },
+    origin: { iata: 'DXB', name: 'Dubai', timezone: 'Asia/Dubai' },
+    destination: { iata: 'LHR', name: 'London Heathrow', timezone: 'Europe/London' }, codeshares: [],
     scheduledDeparture: null, scheduledArrival: null,
     estimatedDeparture: null, estimatedArrival: null,
     status, delayMinutes: 0, cancelled: false, diverted: false,

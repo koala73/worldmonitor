@@ -197,6 +197,7 @@ export class FirecrawlProvider implements AcquisitionProvider {
         ? { pageContent: data.data.markdown }
         : {}),
       ...(pageTitle ? { pageTitle: pageTitle.trim() } : {}),
+      ...(typeof metadata.title === 'string' && metadata.title.trim() ? { documentTitle: metadata.title.trim() } : {}),
     };
   }
 

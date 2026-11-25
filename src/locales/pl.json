@@ -1593,7 +1593,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS satelitarne wykrywanie temperatury w monitorowanych regionach konfliktu. Wysoka intensywność = jasność > 360 K i pewność > 80%.",
       "possibleExplosions": "Wykryto {{count}} możliwą(e) eksplozję(e)",
-      "explosionTooltip": "Sygnatura termiczna zgodna z wybuchem (moc promieniowania ognia >80 MW, jasność >380 K)"
+      "explosionTooltip": "Sygnatura termiczna zgodna z wybuchem (moc promieniowania ognia >80 MW, jasność >380 K)",
+      "agencyReports": "Pożary zgłoszone przez agencje",
+      "agencyDates": "Daty agencji",
+      "shownOfTotal": "Wyświetlono {{shown}} z {{total}} rekordów pożarów"
     },
     "displacement": {
       "refugees": "Uchodźcy",
