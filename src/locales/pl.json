@@ -1602,6 +1602,7 @@
       "refugees": "Uchodźcy",
       "asylumSeekers": "Osoby ubiegające się o azyl",
       "idps": "IDP",
+      "stateless": "Bezpaństwowcy",
       "total": "Całkowity",
       "origins": "Początki",
       "hosts": "Zastępy niebieskie",
@@ -1789,7 +1790,7 @@
       "noData": "brak danych",
       "enable": "Włącz",
       "convergenceMetric": "Zbieżność",
-      "ciiDeviation": "Odchylenie Country Instability Index",
+      "topCiiScore": "Najwyższy wynik niestabilności kraju",
       "infraEvents": "Zdarzenia infrastrukturalne",
       "highAlerts": "Wysokie alerty",
       "topRisks": "Główne ryzyka",
@@ -2134,8 +2135,12 @@
       "topProducers": "Najwięksi producenci",
       "upstreamUnavailable": "Dane łańcucha dostaw tymczasowo niedostępne — wyświetlanie danych z pamięci podręcznej",
       "warnings": "ostrzeżenie(a)",
-      "aisDisruptions": "Zakłócenia śledzenia statków",
+      "aisDisruptions_one": "{{count}} zakłócenie śledzenia statków",
+      "aisDisruptions_few": "{{count}} zakłócenia śledzenia statków",
+      "aisDisruptions_many": "{{count}} zakłóceń śledzenia statków",
+      "aisDisruptions_other": "{{count}} zakłócenia śledzenia statków",
       "wowChange": "Zmiana tygodniowa",
+      "asOf": "stan na {{date}}",
       "riskLevel": "Poziom ryzyka",
       "flowUnavailable": "Dane przepływu niedostępne",
       "containerRates": "Stawki Kontenerowe",
@@ -2626,7 +2631,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Ceny detaliczne benzyny i oleju napędowego w ponad 30 krajach, znormalizowane do USD/litra dla porównywalności. Ceny pochodzą z oficjalnych rządowych programów otwartych danych i są aktualizowane co tydzień. Kraje z najtańszą i najdroższą paliwem są wyróżnione. Zmiana w stosunku do tygodnia poprzedniego jest wyświetlana, gdy dostępne są dane z poprzedniego tygodnia.",
-      "countries": "kraje"
+      "countries": "kraje",
+      "observedStale": "{{date}}, sprzed {{days}} dni",
+      "monthlyMean": "średnia za {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Indeks Cen Żywności Światowej Organizacji ds. Wyżywienia i Rolnictwa śledzi międzynarodowe ceny eksportowe koszyka towarów żywnościowych (Zboża, Nabiał, Mięso, Oleje, Cukier), podstawa 2014–2016=100. Aktualizowany co miesiąc w pierwszy piątek każdego miesiąca.",
@@ -2922,7 +2929,21 @@
       "saved": "Ostatnia znana aktualizacja {{time}} · Sprawdzanie aktualizacji",
       "savedOffline": "Ostatnia znana aktualizacja {{time}} · Brak połączenia",
       "localSignals": "Na podstawie sygnałów załadowanych w panelu",
-      "emptySaved": "Brak konwergencji w ostatniej znanej aktualizacji."
+      "emptySaved": "Brak konwergencji w ostatniej znanej aktualizacji.",
+      "signalTypes": {
+        "militaryFlight": "Lot wojskowy",
+        "militaryVessel": "Okręt wojskowy",
+        "aisGap": "Luka AIS",
+        "conflictEvent": "Zdarzenie konfliktowe",
+        "escalationOutage": "Awaria łączności",
+        "newsSeverity": "Poważne wiadomości",
+        "sanctionsNews": "Wiadomości o sankcjach",
+        "marketMove": "Ruch rynku",
+        "commoditySpike": "Skok cen surowców",
+        "earthquake": "Trzęsienie ziemi",
+        "infraOutage": "Awaria infrastruktury",
+        "other": "Sygnał"
+      }
     },
     "thermalEscalation": {
       "title": "Eskalacja termiczna",
@@ -4462,7 +4483,13 @@
     "alert": "Alarm: {{location}}",
     "multipleRegions": "Wiele regionów",
     "trending": "\"{{term}}\" w trendach — {{count}} wzmianek w {{hours}}h",
-    "eventsDetected": "{{count}} zdarzeń wykrytych w regionie ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "Wykryte zdarzenia ({{count}}): {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protesty",
+      "military_flight": "loty wojskowe",
+      "military_vessel": "okręty wojenne",
+      "earthquake": "aktywność sejsmiczna"
+    }
   },
   "intel": {
     "topics": {

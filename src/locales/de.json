@@ -1011,8 +1011,10 @@
       "mineral": "Rohstoff",
       "topProducers": "Top-Produzenten",
       "risk": "Risiko",
-      "aisDisruptions": "Schiffsverfolgungsstörungen",
+      "aisDisruptions_one": "{{count}} Störung der Schiffsverfolgung",
+      "aisDisruptions_other": "{{count}} Störungen der Schiffsverfolgung",
       "wowChange": "Woche-über-Woche Veränderung",
+      "asOf": "Stand: {{date}}",
       "riskLevel": "Risikostufe",
       "flowUnavailable": "Flussdaten nicht verfügbar",
       "containerRates": "Containerraten",
@@ -1690,6 +1692,7 @@
       "refugees": "Flüchtlinge",
       "asylumSeekers": "Asylbewerber",
       "idps": "Binnenvertriebene",
+      "stateless": "Staatenlose",
       "total": "Gesamt",
       "origins": "Herkunftsländer",
       "hosts": "Aufnahmeländer",
@@ -1875,7 +1878,7 @@
       "noData": "keine Daten",
       "enable": "Aktivieren",
       "convergenceMetric": "Konvergenz",
-      "ciiDeviation": "Länderinstabilitätsindex-Abweichung",
+      "topCiiScore": "Höchster Länderinstabilitätswert",
       "infraEvents": "Infra-Ereignisse",
       "highAlerts": "Hohe Warnstufen",
       "topRisks": "Top-Risiken",
@@ -2604,7 +2607,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Kraftstoffpreise</strong> Einzelhandelstankstellen-Preise für Benzin und Diesel in über 30 Ländern, normalisiert auf USD/Liter zum Vergleich. Die Preise stammen aus offiziellen staatlichen Open-Data-Programmen und werden wöchentlich aktualisiert. Billigste und teuerste Länder sind hervorgehoben. Veränderung Woche-für-Woche wird angezeigt, wenn Daten der Vorwoche verfügbar sind.",
-      "countries": "Länder"
+      "countries": "Länder",
+      "observedStale": "{{date}}, {{days}} Tage alt",
+      "monthlyMean": "Ø {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO-Lebensmittelpreisindex</strong> Der Lebensmittelpreisindex der UN-Ernährungs- und Landwirtschaftsorganisation verfolgt internationale Exportpreise für einen Lebensmittelkorb (Getreide, Milchprodukte, Fleisch, Öle, Zucker) mit Basis 2014–2016=100. Wird jeden ersten Freitag des Monats aktualisiert.",
@@ -2892,7 +2897,21 @@
       "saved": "Letzte bekannte Aktualisierung {{time}} · Suche nach Aktualisierungen",
       "savedOffline": "Letzte bekannte Aktualisierung {{time}} · Offline",
       "localSignals": "Basierend auf geladenen Dashboard-Signalen",
-      "emptySaved": "Keine Konvergenz in der letzten bekannten Aktualisierung."
+      "emptySaved": "Keine Konvergenz in der letzten bekannten Aktualisierung.",
+      "signalTypes": {
+        "militaryFlight": "Militärflug",
+        "militaryVessel": "Militärschiff",
+        "aisGap": "AIS-Lücke",
+        "conflictEvent": "Konfliktereignis",
+        "escalationOutage": "Kommunikationsausfall",
+        "newsSeverity": "Schwere Nachrichten",
+        "sanctionsNews": "Sanktionsnachrichten",
+        "marketMove": "Marktbewegung",
+        "commoditySpike": "Rohstoffsprung",
+        "earthquake": "Erdbeben",
+        "infraOutage": "Infrastrukturausfall",
+        "other": "Signalereignis"
+      }
     },
     "thermalEscalation": {
       "title": "Thermische Eskalation",
@@ -4418,7 +4437,13 @@
     "alert": "Warnung: {{location}}",
     "multipleRegions": "Mehrere Regionen",
     "trending": "\"{{term}}\" im Trend — {{count}} Erwähnungen in {{hours}}h",
-    "eventsDetected": "{{count}} Ereignisse in der Region erkannt ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} Ereignisse erkannt: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "Proteste",
+      "military_flight": "Militärflüge",
+      "military_vessel": "Marineschiffe",
+      "earthquake": "seismische Aktivität"
+    }
   },
   "intel": {
     "topics": {

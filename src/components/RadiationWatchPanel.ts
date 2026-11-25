@@ -203,9 +203,9 @@ function formatReading(value: number, unit: string): string {
   return `${value.toFixed(precision)} ${unit}`;
 }
 
-function formatDelta(value: number, unit: string, zScore: number): string {
+function formatDelta(value: number, unit: string, zScore: number | null): string {
   const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(1)} ${unit} · z${zScore.toFixed(1)}`;
+  return `${sign}${value.toFixed(1)} ${unit} · z${zScore === null ? '—' : zScore.toFixed(1)}`;
 }
 
 function formatObservedAt(date: Date): string {

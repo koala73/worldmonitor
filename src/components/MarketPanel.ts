@@ -2,10 +2,10 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { sparklineSpanHtml } from './_sparkline-span';
 import type { MarketData, CryptoData, TokenData } from '@/types';
-import { formatPrice, formatQuotePrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
+import { formatCommodityPrice, formatPrice, formatQuotePrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
-import { SITE_VARIANT } from '@/config';
+import { COMMODITIES, SITE_VARIANT } from '@/config';
 import { createWatchlistButton } from './watchlist-modal';
 import {
   renderChinaCorporateDisclosureSignals,
@@ -510,6 +510,8 @@ const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; 
   { symbol: 'USDTRY=X',  label: 'TRY', flag: '🇹🇷', multiply: true  },
 ];
 
+const COMMODITY_QUOTE_CURRENCY = new Map(COMMODITIES.map((c) => [c.symbol, c.currency]));
+
 type CommodityCard = Pick<MarketData, 'display' | 'price' | 'change' | 'sparkline' | 'sparklineIntervalSeconds' | 'sparklineStartAt'> & { symbol?: string };
 
 export class CommoditiesPanel extends Panel {
@@ -795,7 +797,7 @@ export class CommoditiesPanel extends Panel {
 
     // Metals/Commodities tab — exclude FX and spot gold symbols from the display grid.
     // Require a finite numeric price: the feed sometimes omits `price` (undefined),
-    // and `d.price !== null` lets undefined through to `formatPrice(c.price!)`
+    // and `d.price !== null` lets undefined through to the price formatter
     // (WORLDMONITOR-SH). A finite-price guard also keeps the adjacent `c.change!`
     // row meaningful (a record with no price carries no usable change either).
     const validData = this._commodityData.filter(
@@ -817,7 +819,7 @@ export class CommoditiesPanel extends Panel {
         <div class="commodity-item">
           <div class="commodity-name">${escapeHtml(c.display)}</div>
           ${chart ? chart + sparklineSpanHtml(c) : '<div class="commodity-spark-empty" aria-hidden="true"></div>'}
-          <div class="commodity-price">${escapeHtml(formatPrice(c.price!))}</div>
+          <div class="commodity-price">${escapeHtml(formatCommodityPrice(c.price, c.symbol ? COMMODITY_QUOTE_CURRENCY.get(c.symbol) : undefined))}</div>
           <div class="commodity-change ${getChangeClass(c.change!)}">${formatChange(c.change!)}</div>
         </div>
       `;

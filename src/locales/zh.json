@@ -1011,7 +1011,7 @@
       "upstreamUnavailable": "供应链数据暂时不可用 — 显示缓存数据",
       "spikeAlert": "检测到异常飙升 — 费率显著高于52周均值（周度）",
       "warnings": "条警告",
-      "aisDisruptions": "船舶追踪中断",
+      "aisDisruptions_other": "{{count}} 次船舶追踪中断",
       "disruption": "中断",
       "vessels": "船舶",
       "incidents7d": "事件（7天）",
@@ -1022,6 +1022,7 @@
       "topProducers": "主要生产国",
       "risk": "风险",
       "wowChange": "周环比变化",
+      "asOf": "截至 {{date}}",
       "riskLevel": "风险等级",
       "flowUnavailable": "流量数据不可用",
       "containerRates": "集装箱运费",
@@ -1654,7 +1655,7 @@
       "noData": "无数据",
       "enable": "启用",
       "convergenceMetric": "汇聚度",
-      "ciiDeviation": "国家不稳定指数偏差",
+      "topCiiScore": "最高国家不稳定得分",
       "infraEvents": "基础设施事件",
       "highAlerts": "高等级警报",
       "topRisks": "主要风险",
@@ -1834,6 +1835,7 @@
       "refugees": "难民",
       "asylumSeekers": "寻求庇护者",
       "idps": "国内流离失所者",
+      "stateless": "无国籍者",
       "total": "总计",
       "origins": "来源国",
       "hosts": "收容国",
@@ -2593,7 +2595,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>燃油价格</strong>30多个国家的汽油和柴油零售泵价，以美元/升为单位进行比较。价格来自官方政府开放数据计划，每周更新。最便宜和最昂贵的国家突出显示。当获得上周数据时显示周环比变化。",
-      "countries": "个国家"
+      "countries": "个国家",
+      "observedStale": "{{date}}，{{days}} 天前",
+      "monthlyMean": "{{month}}均价"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>粮农组织食品价格指数</strong>联合国粮食及农业组织的食品价格指数跟踪食品商品篮（谷物、乳制品、肉类、油类、糖）的国际出口价格，基数2014-2016=100。每月第一个星期五更新。",
@@ -2877,7 +2881,21 @@
       "saved": "最近一次已知更新 {{time}} · 正在检查更新",
       "savedOffline": "最近一次已知更新 {{time}} · 离线",
       "localSignals": "基于仪表板中已加载的信号",
-      "emptySaved": "最近一次已知更新中未发现汇聚。"
+      "emptySaved": "最近一次已知更新中未发现汇聚。",
+      "signalTypes": {
+        "militaryFlight": "军机飞行",
+        "militaryVessel": "军舰",
+        "aisGap": "AIS 中断",
+        "conflictEvent": "冲突事件",
+        "escalationOutage": "通信中断",
+        "newsSeverity": "严重新闻",
+        "sanctionsNews": "制裁新闻",
+        "marketMove": "市场波动",
+        "commoditySpike": "大宗商品飙升",
+        "earthquake": "地震",
+        "infraOutage": "基础设施中断",
+        "other": "信号"
+      }
     },
     "thermalEscalation": {
       "title": "热异常升级",
@@ -4396,7 +4414,13 @@
     "alert": "警报：{{location}}",
     "multipleRegions": "多个区域",
     "trending": "「{{term}}」趋势上升 — {{hours}}小时内{{count}}次提及",
-    "eventsDetected": "在区域（{{lat}}°, {{lon}}°）检测到{{count}}个事件"
+    "eventsDetected": "检测到{{count}}个事件：{{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗议",
+      "military_flight": "军机飞行",
+      "military_vessel": "海军舰艇",
+      "earthquake": "地震活动"
+    }
   },
   "intel": {
     "topics": {

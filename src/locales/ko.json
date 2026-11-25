@@ -1011,7 +1011,7 @@
       "upstreamUnavailable": "공급망 정보 일시적으로 사용 불가 — 캐시된 정보 표시 중",
       "spikeAlert": "급등 감지 — 52주 평균(주간)을 크게 상회하는 운임",
       "warnings": "경고",
-      "aisDisruptions": "선박 추적 중단",
+      "aisDisruptions_other": "선박 추적 중단 {{count}}건",
       "disruption": "차질",
       "vessels": "척",
       "incidents7d": "건(7일)",
@@ -1022,6 +1022,7 @@
       "topProducers": "주요 생산국",
       "risk": "위험도",
       "wowChange": "주간 변화",
+      "asOf": "{{date}} 기준",
       "riskLevel": "위험 수준",
       "flowUnavailable": "유동 데이터 미제공",
       "containerRates": "컨테이너 요금",
@@ -1654,7 +1655,7 @@
       "noData": "데이터 없음",
       "enable": "활성화",
       "convergenceMetric": "수렴도",
-      "ciiDeviation": "Country Instability Index 편차",
+      "topCiiScore": "최고 국가 불안정 점수",
       "infraEvents": "인프라 사건",
       "highAlerts": "고도 경보",
       "topRisks": "주요 위험",
@@ -1834,6 +1835,7 @@
       "refugees": "난민",
       "asylumSeekers": "망명 신청자",
       "idps": "국내 실향민",
+      "stateless": "무국적자",
       "total": "합계",
       "origins": "출발국",
       "hosts": "수용국",
@@ -2593,7 +2595,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>연료 가격</strong> 30개 이상의 국가에서 휘발유 및 경유의 소매 펌프 가격을 USD/리터로 정규화하여 비교. 가격은 공식 정부 공개 데이터 프로그램에서 수집되며 주간 단위로 업데이트됨. 가장 저렴한 국가와 가장 비싼 국가가 강조 표시됨. 전주 데이터를 사용할 수 있을 때 주 대비 변화를 표시.",
-      "countries": "개국"
+      "countries": "개국",
+      "observedStale": "{{date}}, {{days}}일 전",
+      "monthlyMean": "{{month}} 평균"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO 식량 가격 지수</strong> 유엔 식량농업기구의 식량 가격 지수는 식량 상품 바구니(곡물, 유제품, 육류, 유지류, 설탕)의 국제 수출 가격을 추적하며, 기준 2014-2016=100. 매월 첫 금요일에 업데이트됨.",
@@ -2877,7 +2881,21 @@
       "saved": "마지막으로 확인된 업데이트 {{time}} · 업데이트 확인 중",
       "savedOffline": "마지막으로 확인된 업데이트 {{time}} · 오프라인",
       "localSignals": "대시보드에 로드된 신호를 기반으로 함",
-      "emptySaved": "마지막으로 확인된 업데이트에는 수렴이 없었습니다."
+      "emptySaved": "마지막으로 확인된 업데이트에는 수렴이 없었습니다.",
+      "signalTypes": {
+        "militaryFlight": "군용기 비행",
+        "militaryVessel": "군함",
+        "aisGap": "AIS 공백",
+        "conflictEvent": "분쟁 사건",
+        "escalationOutage": "통신 장애",
+        "newsSeverity": "심각한 뉴스",
+        "sanctionsNews": "제재 뉴스",
+        "marketMove": "시장 변동",
+        "commoditySpike": "원자재 급등",
+        "earthquake": "지진",
+        "infraOutage": "인프라 장애",
+        "other": "신호"
+      }
     },
     "thermalEscalation": {
       "title": "열 급증",
@@ -4396,7 +4414,13 @@
     "alert": "경보: {{location}}",
     "multipleRegions": "다수 지역",
     "trending": "\"{{term}}\" 트렌딩 - {{hours}}시간 내 {{count}}건 언급",
-    "eventsDetected": "해당 지역({{lat}}°, {{lon}}°)에서 {{count}}건의 사건 감지"
+    "eventsDetected": "{{count}}건의 사건 감지: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "시위",
+      "military_flight": "군용기 비행",
+      "military_vessel": "해군 함정",
+      "earthquake": "지진 활동"
+    }
   },
   "intel": {
     "topics": {

@@ -118,9 +118,14 @@ export class TorontoSafetyPanel extends Panel {
   }
 
   private aggregateRow(row: TorontoAnnualAggregate): HTMLElement {
+    const calls = row.eventCount === 1 ? 'call' : 'calls';
+    const { divisionOriginal: original, divisionFinal: final } = row;
+    const division = original && final && original !== final
+      ? `Original ${original} · Final ${final}`
+      : final || original || 'Unknown division';
     return h('div', { className: 'intel-item' },
-      h('div', { className: 'intel-item-title' }, `${row.eventCount.toLocaleString()} calls attended`),
-      h('div', { className: 'intel-item-meta' }, `${row.eventYear || 'Unknown year'} · ${row.divisionFinal || row.divisionOriginal || 'Unknown division'}`),
+      h('div', { className: 'intel-item-title' }, `${row.eventCount.toLocaleString()} ${calls} attended`),
+      h('div', { className: 'intel-item-meta' }, `${row.eventYear || 'Unknown year'} · ${division}`),
       h('div', { className: 'intel-item-summary' }, `${row.neighbourhood || 'Unknown neighbourhood'} · Annual aggregate, not an incident point`),
     );
   }

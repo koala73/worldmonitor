@@ -27200,6 +27200,16 @@ body.map-width-resizing {
 /* Muted grey drops below 4.5:1 on the green tint in dark; the local price takes the cell's colour. */
 .gb-cheapest .gb-local, .gb-priciest .gb-local { color: inherit; }
 
+.gb-observed {
+  display: block;
+  font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  white-space: normal;
+}
+
+.gb-observed-stale { font-style: italic; }
+.gb-cheapest .gb-observed, .gb-priciest .gb-observed { color: inherit; }
+
 .gb-total-row td { font-weight: 600; background: var(--overlay-subtle); }
 .gb-total { font-size: calc(0.8rem * var(--wm-panel-effective-scale, 1)); }
 

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
+import { initTestI18n } from './helpers/i18n.mts';
+
 vi.mock('@/services/cached-risk-scores', () => ({ getCachedCountryScores: () => [], isElevatedCiiScore: () => false }));
 vi.mock('@/services/country-instability', () => ({ isInLearningMode: () => true }));
 vi.mock('@/services/sanctions-pressure', () => ({ getLatestSanctionsPressure: () => null }));
@@ -80,6 +82,21 @@ describe('unified alert lifecycle', () => {
       expect(service.getAlerts()).toHaveLength(2);
       service.createConvergenceAlert(convergence('near-berlin', 52.53, 13.42));
       expect(service.getAlerts()).toHaveLength(2);
+    });
+  }
+
+  for (const loaded of [false, true]) {
+    it(`names an offshore cell and lists its event types with geometry loaded=${loaded}`, async () => {
+      await initTestI18n();
+      if (loaded) await loadGeometry();
+      const service = await import('@/services/cross-module-integration');
+      const alert = service.createConvergenceAlert({
+        cellId: '-34,151', lat: -33.5, lon: 151.5, score: 80, totalEvents: 3,
+        types: ['protest', 'military_flight', 'military_vessel'],
+      });
+      expect(alert.title).toBe(loaded ? 'Geographic Alert: Australia' : 'Geographic Alert: -33.5°, 151.5°');
+      expect(alert.countries).toEqual(loaded ? ['AU'] : []);
+      expect(alert.summary).toBe('3 events detected: protests, military flights, naval vessels (-33.5°, 151.5°)');
     });
   }
 

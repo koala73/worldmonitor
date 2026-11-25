@@ -1014,8 +1014,11 @@
       "mineral": "Mineral",
       "topProducers": "Principales productores",
       "risk": "Riesgo",
-      "aisDisruptions": "Disrupciones en el seguimiento de buques",
+      "aisDisruptions_one": "{{count}} disrupción en el seguimiento de buques",
+      "aisDisruptions_many": "{{count}} disrupciones en el seguimiento de buques",
+      "aisDisruptions_other": "{{count}} disrupciones en el seguimiento de buques",
       "wowChange": "Cambio semana a semana",
+      "asOf": "a fecha de {{date}}",
       "riskLevel": "Nivel de riesgo",
       "flowUnavailable": "Datos de flujo no disponibles",
       "containerRates": "Tarifas de contenedores",
@@ -1693,6 +1696,7 @@
       "refugees": "Refugiados",
       "asylumSeekers": "Solicitantes de asilo",
       "idps": "desplazados internos",
+      "stateless": "Apátridas",
       "total": "Total",
       "origins": "Orígenes",
       "hosts": "Anfitriones",
@@ -1879,7 +1883,7 @@
       "noData": "sin datos",
       "enable": "Activar",
       "convergenceMetric": "Convergencia",
-      "ciiDeviation": "Desviación del Índice de Inestabilidad de País",
+      "topCiiScore": "Puntuación máxima de inestabilidad de país",
       "infraEvents": "Eventos de infraestructura",
       "highAlerts": "Alertas altas",
       "topRisks": "Principales riesgos",
@@ -2615,7 +2619,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Precios minoristas de gasolina y diésel en más de 30 países, normalizados a USD/litro para comparación. Los precios provienen de programas de datos abiertos de gobiernos oficiales y se actualizan semanalmente. Se destacan los países más baratos y más caros. Se muestra el cambio semana a semana cuando hay datos de la semana anterior disponibles.",
-      "countries": "países"
+      "countries": "países",
+      "observedStale": "{{date}}, hace {{days}} días",
+      "monthlyMean": "promedio de {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> El Índice de Precios de Alimentos de la Organización de las Naciones Unidas para la Alimentación y la Agricultura monitorea los precios de exportación internacionales de una canasta de productos alimentarios (Cereales, Lácteos, Carnes, Aceites, Azúcar), base 2014-2016=100. Se actualiza mensualmente el primer viernes de cada mes.",
@@ -2907,7 +2913,21 @@
       "saved": "Última actualización conocida {{time}} · Buscando actualizaciones",
       "savedOffline": "Última actualización conocida {{time}} · Sin conexión",
       "localSignals": "Basado en las señales cargadas en el panel",
-      "emptySaved": "No hubo convergencia en la última actualización conocida."
+      "emptySaved": "No hubo convergencia en la última actualización conocida.",
+      "signalTypes": {
+        "militaryFlight": "Vuelo militar",
+        "militaryVessel": "Buque militar",
+        "aisGap": "Brecha AIS",
+        "conflictEvent": "Evento de conflicto",
+        "escalationOutage": "Corte de comunicaciones",
+        "newsSeverity": "Noticias graves",
+        "sanctionsNews": "Noticias de sanciones",
+        "marketMove": "Movimiento de mercado",
+        "commoditySpike": "Alza de materias primas",
+        "earthquake": "Terremoto",
+        "infraOutage": "Corte de infraestructura",
+        "other": "Señal"
+      }
     },
     "thermalEscalation": {
       "title": "Escalada Térmica",
@@ -4440,7 +4460,13 @@
     "alert": "Alerta: {{location}}",
     "multipleRegions": "Múltiples regiones",
     "trending": "\"{{term}}\" en tendencia — {{count}} menciones en {{hours}}h",
-    "eventsDetected": "{{count}} eventos detectados en la región ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} eventos detectados: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protestas",
+      "military_flight": "vuelos militares",
+      "military_vessel": "buques navales",
+      "earthquake": "actividad sísmica"
+    }
   },
   "intel": {
     "topics": {

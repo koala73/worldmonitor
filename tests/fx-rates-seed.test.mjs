@@ -32,7 +32,7 @@ describe('shared FX fallback provenance', () => {
       calls += 1;
       if (calls === 1) {
         return new Response(JSON.stringify({
-          chart: { result: [{ meta: { regularMarketPrice: 1.087654321 } }] },
+          chart: { result: [{ indicators: { quote: [{ close: [1.087654321] }] } }] },
         }), { status: 200 });
       }
       return new Response('rate limited', { status: 429 });
@@ -49,6 +49,34 @@ describe('shared FX fallback provenance', () => {
       EUR: 1.087654321,
       KRW: SHARED_FX_FALLBACKS.KRW,
     });
+    assert.deepEqual(result.fallbackCurrencies, ['KRW']);
+  });
+
+  test('rates come from the latest precise chart close, not the rounded meta price', async () => {
+    const charts = {
+      'IDRUSD=X': { meta: { regularMarketPrice: 0.0001 }, closes: [0.00005499945109477267, 0.00005470459655043669, null] },
+      'VNDUSD=X': { meta: { regularMarketPrice: 0 }, closes: [0.000038797283195890486] },
+      'KRWUSD=X': { meta: { regularMarketPrice: 0.0007 }, closes: [] },
+    };
+    globalThis.fetch = async (url) => {
+      const symbol = decodeURIComponent(new URL(url).pathname.split('/').pop());
+      const { meta, closes } = charts[symbol];
+      return new Response(JSON.stringify({
+        chart: { result: [{ meta, indicators: { quote: [{ close: closes }] } }] },
+      }), { status: 200 });
+    };
+
+    const result = await fetchYahooFxRatesWithProvenance({
+      USD: 'USDUSD=X',
+      IDR: 'IDRUSD=X',
+      VND: 'VNDUSD=X',
+      KRW: 'KRWUSD=X',
+    }, SHARED_FX_FALLBACKS);
+
+    assert.equal(result.rates.IDR, 0.00005470459655043669);
+    assert.equal(Math.round(1 / result.rates.IDR), 18280);
+    assert.equal(result.rates.VND, 0.000038797283195890486);
+    assert.equal(result.rates.KRW, SHARED_FX_FALLBACKS.KRW);
     assert.deepEqual(result.fallbackCurrencies, ['KRW']);
   });
 
@@ -138,7 +166,7 @@ describe('shared FX fallback provenance', () => {
         }), { status: 200 });
       }
       return new Response(JSON.stringify({
-        chart: { result: [{ meta: { regularMarketPrice: 0.0007212345 } }] },
+        chart: { result: [{ indicators: { quote: [{ close: [0.0007212345] }] } }] },
       }), { status: 200 });
     };
 
@@ -168,7 +196,7 @@ describe('shared FX fallback provenance', () => {
       }
       yahooCalls += 1;
       return new Response(JSON.stringify({
-        chart: { result: [{ meta: { regularMarketPrice: 0.5 } }] },
+        chart: { result: [{ indicators: { quote: [{ close: [0.5] }] } }] },
       }), { status: 200 });
     };
 
@@ -224,7 +252,7 @@ describe('shared FX fallback provenance', () => {
       }
       yahooCalls += 1;
       return new Response(JSON.stringify({
-        chart: { result: [{ meta: { regularMarketPrice: 0.5 } }] },
+        chart: { result: [{ indicators: { quote: [{ close: [0.5] }] } }] },
       }), { status: 200 });
     };
 
@@ -278,7 +306,7 @@ describe('shared FX fallback provenance', () => {
         return new Response(JSON.stringify({ chart: { result: [{ meta: {} }] } }), { status: 200 });
       }
       return new Response(JSON.stringify({
-        chart: { result: [{ meta: { regularMarketPrice: price } }] },
+        chart: { result: [{ indicators: { quote: [{ close: [price] }] } }] },
       }), { status: 200 });
     };
 
@@ -307,7 +335,7 @@ describe('shared FX fallback provenance', () => {
       }
       yahooCalls += 1;
       return new Response(JSON.stringify({
-        chart: { result: [{ meta: { regularMarketPrice: 0.5 } }] },
+        chart: { result: [{ indicators: { quote: [{ close: [0.5] }] } }] },
       }), { status: 200 });
     };
 
