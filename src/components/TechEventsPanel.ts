@@ -13,6 +13,14 @@ import { ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
 
+function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function isNotOver(event: TechEvent, todayKey: string): boolean {
+  return (event.endDate || event.startDate) >= todayKey;
+}
+
 const getResearchClient = createLazyClient(() => new ResearchServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 export class TechEventsPanel extends Panel {
@@ -84,7 +92,8 @@ export class TechEventsPanel extends Panel {
     }
 
     const filteredEvents = this.getFilteredEvents();
-    const upcomingConferences = this.events.filter(e => e.type === 'conference' && new Date(e.startDate) >= new Date());
+    const todayKey = localDateKey(new Date());
+    const upcomingConferences = this.events.filter(e => e.type === 'conference' && isNotOver(e, todayKey));
     const mappableCount = upcomingConferences.filter(e => e.coords && !e.coords.virtual).length;
 
     const tabEntries: [ViewMode, string][] = [
@@ -121,23 +130,21 @@ export class TechEventsPanel extends Panel {
 
   private getFilteredEvents(): TechEvent[] {
     const now = new Date();
-    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const todayKey = localDateKey(now);
+    const thirtyDaysKey = localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30));
 
     switch (this.viewMode) {
       case 'upcoming':
-        return this.events.filter(e => {
-          const start = new Date(e.startDate);
-          return start >= now && start <= thirtyDaysFromNow;
-        }).slice(0, 20);
+        return this.events.filter(e => isNotOver(e, todayKey) && e.startDate <= thirtyDaysKey).slice(0, 20);
 
       case 'conferences':
-        return this.events.filter(e => e.type === 'conference' && new Date(e.startDate) >= now).slice(0, 30);
+        return this.events.filter(e => e.type === 'conference' && isNotOver(e, todayKey)).slice(0, 30);
 
       case 'earnings':
-        return this.events.filter(e => e.type === 'earnings' && new Date(e.startDate) >= now).slice(0, 30);
+        return this.events.filter(e => e.type === 'earnings' && isNotOver(e, todayKey)).slice(0, 30);
 
       case 'all':
-        return this.events.filter(e => new Date(e.startDate) >= now).slice(0, 50);
+        return this.events.filter(e => isNotOver(e, todayKey)).slice(0, 50);
 
       default:
         return [];
