@@ -23142,6 +23142,7 @@ body.has-breaking-alert .panels-grid {
   display: flex;
   gap: 6px;
   flex: 1;
+  min-width: 0;
 }
 
 .posture-chip {
@@ -23152,6 +23153,8 @@ body.has-breaking-alert .panels-grid {
   display: flex;
   align-items: center;
   gap: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .posture-chip.air {
@@ -23162,6 +23165,19 @@ body.has-breaking-alert .panels-grid {
 .posture-chip.naval {
   background: rgba(100, 220, 180, 0.15);
   color: rgba(100, 220, 180, 0.9);
+}
+
+/* Context, not a level: outlined and muted so it never reads as a badge. */
+.posture-chip.instability {
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: help;
+  /* The one chip that gives way in a narrow panel; the full text is in its title. */
+  display: block;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Expanded theater with inline forces */
