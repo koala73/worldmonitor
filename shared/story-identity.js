@@ -296,22 +296,23 @@ export function stripAttributionSuffix(text, options) {
  * (pre-lowercase) text. Callers should pass raw titles — lowercasing
  * upstream destroys the entity signal (harmless, but the boost is lost).
  * @param {string} text
- * @returns {Array<{ tok: string; boost: number }>}
+ * @returns {Array<{ tok: string; boost: number; entity: boolean }>}
  */
 function contentTokens(text) {
   const kept = [];
   const clamped = stripAttributionSuffix(text).slice(0, MAX_IDENTITY_CHARS);
   for (const raw of clamped.split(/\s+/)) {
     // Strip everything that is not a Unicode letter/number, keeping the
-    // original case so the entity heuristic can read it.
-    const clean = raw.replace(/[^\p{L}\p{N}]/gu, '');
+    // original case so the entity heuristic can read it. A possessive
+    // suffix goes first so "Australia’s" and "Australia" are one token.
+    const clean = raw.replace(/['\u2018\u2019\u02BC]s(?=[^\p{L}\p{N}]*$)/iu, '').replace(/[^\p{L}\p{N}]/gu, '');
     if (!clean) continue;
     const tok = clean.toLowerCase();
     if (!isNonAscii(tok) && tok.length < 3) continue;
     const capitalized = /^\p{Lu}/u.test(clean);
     const hasDigit = /\p{N}/u.test(clean);
     const boost = hasDigit ? BOOST_NUMBER : capitalized ? BOOST_ENTITY : 1;
-    kept.push({ tok, boost });
+    kept.push({ tok, boost, entity: capitalized && !hasDigit && !CANDIDATE_STOPWORDS.has(tok) });
   }
   return kept;
 }
@@ -415,6 +416,7 @@ function lexicalStoryVector(text) {
   // dedup metric (|∩|/min) handled exactly this class; keep that
   // guarantee via token containment.
   return { u: un, b: bn, t: new Set(tokens.map((entry) => entry.tok)),
+    e: new Set(tokens.filter((entry) => entry.entity).map((entry) => entry.tok)),
     f: { u: normalizeFeatures(fu), b: normalizeFeatures(fb) } };
 }
 
@@ -475,6 +477,41 @@ const CONTAINMENT_RESCUE_MIN_TOKENS = 4;
 const CONTAINMENT_RESCUE_RATIO = 0.9;
 const CONTAINMENT_RESCUE_SCORE = 0.9;
 
+// Same-parties rescue: reworded wire reports of one event ("Australia,
+// Solomon Islands sign security pact in blow to China" vs "Solomon
+// Islands ends controversial security pact with China for Australian
+// treaty") share few words but name the same ≥4 entity tokens. When the
+// cosine is already moderate and they also share a non-entity topic word,
+// they are the same story. "Australian" matches "Australia" by prefix.
+const SAME_PARTIES_MIN_ENTITIES = 4;
+const SAME_PARTIES_SCORE_FLOOR = 0.45;
+
+/** @param {Set<string>} from @param {Set<string>} to */
+function entitiesCovered(from, to) {
+  for (const tok of from) {
+    if (to.has(tok)) continue;
+    let matched = false;
+    for (const other of to) {
+      if (Math.min(tok.length, other.length) >= 4 && (tok.startsWith(other) || other.startsWith(tok))) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) return false;
+  }
+  return true;
+}
+
+/** @param {{ t: Set<string>; e: Set<string> }} a @param {{ t: Set<string>; e: Set<string> }} b */
+function sameParties(a, b) {
+  if (a.e.size < SAME_PARTIES_MIN_ENTITIES || b.e.size < SAME_PARTIES_MIN_ENTITIES) return false;
+  if (!entitiesCovered(a.e, b.e) || !entitiesCovered(b.e, a.e)) return false;
+  for (const tok of a.t) {
+    if (b.t.has(tok) && !a.e.has(tok) && !b.e.has(tok) && !CANDIDATE_STOPWORDS.has(tok)) return true;
+  }
+  return false;
+}
+
 export function cosineSimilarity(a, b) {
   if (!a || !b) return 0;
   // Exact lexical features prevent hash collisions and salt changes from
@@ -485,6 +522,9 @@ export function cosineSimilarity(a, b) {
   // Rescue only applies to lexical vectors carrying token sets — a
   // semantic provider's vectors skip it (semantic cosine already
   // handles truncation).
+  if (score < STORY_SIMILARITY_THRESHOLD && score >= SAME_PARTIES_SCORE_FLOOR && a.e && b.e && sameParties(a, b)) {
+    return STORY_SIMILARITY_THRESHOLD;
+  }
   if (score < CONTAINMENT_RESCUE_SCORE && a.t && b.t) {
     const [small, large] = a.t.size <= b.t.size ? [a.t, b.t] : [b.t, a.t];
     if (small.size >= CONTAINMENT_RESCUE_MIN_TOKENS) {
