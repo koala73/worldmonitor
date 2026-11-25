@@ -59,6 +59,9 @@ test('topic-gated feeds keep only climate or environment reports', () => {
         item('Bangladesh: Monsoon Floods Flash Update No. 3', 3),
         item('Sécheresse au Sahel : note de situation', 4),
         { ...item('Malawi: Country Brief, November 2026', 4.5), topics: ['Drought'] },
+        item('Inondations : bilan du mois de mars', 4.6),
+        item('Sécheresse au Sahel : note de situation - 24 mars 2027', 4.7),
+        item('Emisiones de carbono en América Latina', 4.8),
       ],
     },
     { feed: {}, items: [item('Lightning could strike more than twice as often', 5)] },
@@ -67,6 +70,9 @@ test('topic-gated feeds keep only climate or environment reports', () => {
     'Bangladesh: Monsoon Floods Flash Update No. 3',
     'Sécheresse au Sahel : note de situation',
     'Malawi: Country Brief, November 2026',
+    'Inondations : bilan du mois de mars',
+    'Sécheresse au Sahel : note de situation - 24 mars 2027',
+    'Emisiones de carbono en América Latina',
     'Lightning could strike more than twice as often',
   ]);
 });

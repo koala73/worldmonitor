@@ -59,11 +59,12 @@ export const CLIMATE_NEWS_MAX_CONTENT_AGE_MIN = 7 * 24 * 60;
 // carries 2021-2022 articles that would otherwise fill the 100-item cap.
 export const CLIMATE_NEWS_MAX_ITEM_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
-const OFF_EARTH_RE = /\b(mars|martian|rover|exoplanets?|jupiter|saturn|venus)\b/i;
+// French "mars" is the month ("24 mars 2027", "bilan de mars"), not the planet.
+const OFF_EARTH_RE = /\b(?:(?<!\b(?:\d{1,2}|de|du|en|fin|début|mi)[\s-]?)mars(?!\s+(?:19|20)\d{2})|martian|rover|exoplanets?|jupiter|saturn|venus)\b/i;
 
 // Applied to feeds whose scope is wider than climate (ReliefWeb's climate
 // theme also tags generic humanitarian bulletins and AI-policy reports).
-const CLIMATE_TOPIC_RE = /\b(climat\w*|clim[aá]tic\w*|weather|floods?|flooding|inondations?|inundaci\w*|droughts?|s[eé]cheresses?|sequ[ií]as?|heat\s*waves?|heatwaves?|extreme heat|canicul\w*|wildfires?|bushfires?|forest fires?|incendi\w*|cyclones?|hurricanes?|typhoons?|storms?|monsoons?|rainfall|el ni[nñ]o|la ni[nñ]a|emissions?|carbon|greenhouse|warming|sea[- ]level|glaciers?|deforestation|biodiversity|environment\w*|environnement\w*|disaster risk|resilience|adaptation)\b/i;
+const CLIMATE_TOPIC_RE = /\b(climat\w*|clim[aá]tic\w*|weather|floods?|flooding|inondations?|inundaci\w*|droughts?|s[eé]cheresses?|sequ[ií]as?|heat\s*waves?|heatwaves?|extreme heat|canicul\w*|wildfires?|bushfires?|forest fires?|incendi\w*|cyclones?|hurricanes?|typhoons?|storms?|monsoons?|rainfall|el ni[nñ]o|la ni[nñ]a|emissions?|emisiones|carbon[eo]?|greenhouse|calentamiento|clima|warming|sea[- ]level|glaciers?|deforestation|biodiversity|environment\w*|environnement\w*|disaster risk|resilience|adaptation)\b/i;
 
 export function resolveReliefWebUrl(urlAlias) {
   if (typeof urlAlias !== 'string' || !urlAlias.trim()) return '';
