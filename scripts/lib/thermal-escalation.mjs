@@ -27,6 +27,7 @@ const CONFLICT_REGIONS = new Set([
   'Niger',
   'Iraq',
   'Pakistan',
+  'Lebanon',
 ]);
 
 export function round(value, digits = 1) {
@@ -228,7 +229,6 @@ export function computeThermalEscalationWatch(detections, previousHistory = { ce
     ),
   };
   const output = [];
-  const writtenCells = new Set();
 
   for (const cluster of clusters) {
     const sorted = sortDetections(cluster.detections);
@@ -237,9 +237,11 @@ export function computeThermalEscalationWatch(detections, previousHistory = { ce
     const first = sorted[0];
     const last = sorted[sorted.length - 1];
     const { code: countryCode, name: countryName } = deriveCountry(cluster.regionLabel);
-    const key = cellKey(cluster.centroid);
-    const prevEntries = Array.isArray(previousCells[key]?.entries)
-      ? previousCells[key].entries.filter((entry) => (nowMs - Date.parse(entry.observedAt || 0)) <= HISTORY_RETENTION_MS)
+    const legacyKey = cellKey(cluster.centroid);
+    const key = `${legacyKey}|${cluster.regionLabel}`;
+    const prevCell = previousCells[key] ?? previousCells[legacyKey];
+    const prevEntries = Array.isArray(prevCell?.entries)
+      ? prevCell.entries.filter((entry) => (nowMs - Date.parse(entry.observedAt || 0)) <= HISTORY_RETENTION_MS)
       : [];
     const baselineEntries = prevEntries.filter((entry) => (nowMs - Date.parse(entry.observedAt || 0)) <= BASELINE_WINDOW_MS);
     const baselineCounts = baselineEntries.map((entry) => Number(entry.observationCount || 0)).filter(Number.isFinite);
@@ -321,22 +323,17 @@ export function computeThermalEscalationWatch(detections, previousHistory = { ce
       narrativeFlags,
     });
 
-    const observedAt = new Date(nowMs).toISOString();
-    const sameRunEntry = writtenCells.has(key) ? nextHistory.cells[key].entries.at(-1) : null;
-    if (sameRunEntry) {
-      sameRunEntry.observationCount += observationCount;
-      sameRunEntry.totalFrp = round(sameRunEntry.totalFrp + totalFrp, 1);
-      if (severityRank(status) > severityRank(sameRunEntry.status)) sameRunEntry.status = status;
-    } else {
-      writtenCells.add(key);
-      nextHistory.cells[key] = {
-        entries: [
-          ...prevEntries,
-          { observedAt, observationCount, totalFrp, status },
-        ].filter((entry) => (nowMs - Date.parse(entry.observedAt || 0)) <= HISTORY_RETENTION_MS),
-      };
-    }
-  }
+    nextHistory.cells[key] = {
+      entries: [
+        ...prevEntries,
+        {
+          observedAt: new Date(nowMs).toISOString(),
+          observationCount,
+          totalFrp,
+          status,
+        },
+      ].filter((entry) => (nowMs - Date.parse(entry.observedAt || 0)) <= HISTORY_RETENTION_MS),
+    };  }
 
   const sortedClusters = output.sort((a, b) => {
     return (

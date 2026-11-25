@@ -50,14 +50,34 @@ describe('thermal escalation model', () => {
     assert.equal(byRegion.Other.context, 'THERMAL_CONTEXT_WILDLAND');
   });
 
-  it('records one history sample per cell when clusters on both sides of a border share it', () => {
+  it('keeps a separate baseline for each country when clusters on both sides of a border share a cell', () => {
+    const hour = 60 * 60 * 1000;
+    const run1Ms = Date.UTC(2026, 2, 17, 12, 0, 0);
+    const run2Ms = run1Ms + 3 * hour;
+    const side = (prefix, region, lat, lon, count, frp, atMs) => Array.from({ length: count }, (_, i) =>
+      makeDetection(`${prefix}${i}`, lat + i * 0.001, lon, atMs - hour, { region, frp }));
+    const run1 = computeThermalEscalationWatch([
+      ...side('iq', 'Iraq', 30.25, 47.4, 4, 20, run1Ms),
+      ...side('ir', 'Iran', 30.3, 47.6, 4, 20, run1Ms),
+    ], emptyThermalEscalationWatch(), { nowMs: run1Ms });
+    const run2 = computeThermalEscalationWatch(
+      side('iq2-', 'Iraq', 30.25, 47.4, 6, 140 / 6, run2Ms),
+      run1.history,
+      { nowMs: run2Ms },
+    );
+    const [iraq] = run2.watch.clusters;
+    assert.equal(iraq.baselineExpectedCount, 4);
+    assert.equal(iraq.baselineExpectedFrp, 80);
+    assert.equal(iraq.frpDelta, 60);
+  });
+
+  it('takes the Lebanon context as conflict-adjacent', () => {
     const nowMs = Date.UTC(2026, 2, 17, 12, 0, 0);
     const result = computeThermalEscalationWatch([
-      makeDetection('iq', 30.25, 47.4, nowMs - 60 * 60 * 1000, { region: 'Iraq', frp: 20 }),
-      makeDetection('ir', 30.3, 47.6, nowMs - 60 * 60 * 1000, { region: 'Iran', frp: 30 }),
+      makeDetection('lb', 33.27, 35.4, nowMs - 60 * 60 * 1000, { region: 'Lebanon' }),
     ], emptyThermalEscalationWatch(), { nowMs });
-    assert.equal(result.watch.clusters.length, 2);
-    assert.deepEqual(result.history.cells['30.5:47.5'].entries.map((e) => [e.observationCount, e.totalFrp]), [[2, 50]]);
+    assert.equal(result.watch.clusters[0].countryCode, 'LB');
+    assert.equal(result.watch.clusters[0].context, 'THERMAL_CONTEXT_CONFLICT_ADJACENT');
   });
 
   it('builds an elevated or stronger conflict-adjacent cluster from raw detections', () => {
