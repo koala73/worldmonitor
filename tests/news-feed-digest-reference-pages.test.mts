@@ -70,6 +70,8 @@ describe('parseRssXml: quote, chart, tag and section pages are not articles', ()
     'HYGH: Rate-Hedged High-Yield Bond ETF, Good Performance, Terrible Price - Seeking Alpha',
     'Taiwan holds annual Han Kuang drills | Taiwan News | Nov. 25, 2026 14:02 - Taiwan News',
     'Oil prices rise on supply fears | Markets | Reuters - Reuters',
+    'Watch: CNBC Video News Clips on the Stock Market win industry award - CNBC',
+    'Gold Price Today | Gold jumps 2% as Fed rate-cut bets build - Kitco',
     'Turkish military helicopter crashes during training flight, killing 5 crew members - AP News',
   ];
   for (const title of articles) {

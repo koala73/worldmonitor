@@ -1766,10 +1766,10 @@ const REFERENCE_PAGE_TITLE_PATTERNS: readonly RegExp[] = [
   /^TAG: /,
   /: (?:Fund )?Performance$/, // PitchBook fund profiles
   /^[A-Z-]+ News$/, // Kitco sections: COMMODITIES News
-  /\bVideo News Clips\b/i,
+  /^CNBC (?:\w+ )?Video News Clips on /, // CNBC Asia Video News Clips on the Stock Market
   /\bNews, Opinion & Analysis$/i,
   /^Price of \w+ per (?:Pound|Ounce)$/i,
-  /^(?:Live \w+ Prices|\w+ Spot Prices|\w+ Price Today) \| /, // Kitco: Live Gold Prices | Gold News And Analysis | Mining News
+  /^(?:Live \w+ Prices|\w+ Spot Prices|\w+ Price Today) \| [^|]+ \| [^|]+$/, // Kitco: Live Gold Prices | Gold News And Analysis | Mining News
 ];
 
 const REFERENCE_PAGE_TITLES = new Set([
