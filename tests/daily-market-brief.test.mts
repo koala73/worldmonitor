@@ -394,6 +394,7 @@ describe('daily market brief quote-page filtering', () => {
       'Apple stock price \u2014 shares surge after earnings beat',
       'Apple earnings overview: Revenue beats estimates',
       'Bitcoin could rally in October based on historical data',
+      'BTC — Bitcoin could rally in October based on historical data',
       'Gold returns to historical prices - Reuters',
     ]) {
       assert.equal(isQuotePageTitle(title), false, title);
