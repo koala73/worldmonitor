@@ -104,9 +104,15 @@ export function documentTitleDeclaresProduct(
   sizeText?: string,
 ): boolean {
   if (!documentTitle) return false;
-  return documentTitle
-    .split(/\s+[|–—]\s+/)
-    .some((segment) => parseSize(segment) != null && pageDeclaresProduct(segment, productName, sizeText));
+  const productSize = parseSize(sizeText) ?? parseSize(productName);
+  return documentTitle.split(/\s+[|–—]\s+/).some((segment) => {
+    const segmentSize = parseSize(segment);
+    if (!segmentSize) return false;
+    // The quantity is what admits this segment, so it must be in the same unit
+    // as the extracted size: a "Whole Milk 1L" page is not "Whole Milk Powder 1kg".
+    if (productSize && productSize.baseUnit !== segmentSize.baseUnit) return false;
+    return pageDeclaresProduct(segment, productName, sizeText);
+  });
 }
 
 /**

@@ -10,7 +10,7 @@
  * discovery draw when the first one yields nothing in-policy).
  */
 import { describe, expect, it, vi } from 'vitest';
-import { SearchAdapter, SearchTargetError } from './search.js';
+import { SearchAdapter, SearchTargetError, documentTitleDeclaresProduct } from './search.js';
 import { COOLDOWN_PROBE_INTERVAL } from './provider-cooldown.js';
 import type { ExaProvider } from '../acquisition/exa.js';
 import type { FirecrawlProvider } from '../acquisition/firecrawl.js';
@@ -513,6 +513,11 @@ describe('page identity gate', () => {
     it('rejects a document title for the same product in another size', async () => {
       const { err } = await extractWith(undefined, {}, 'Naivas Online | Meadows White Sandwich Bread 600G');
       expect(err).toBeInstanceOf(SearchTargetError);
+    });
+
+    it('rejects a document title whose quantity is in another unit', () => {
+      expect(documentTitleDeclaresProduct('Shop | Whole Milk 1L', 'Whole Milk Powder', '1kg')).toBe(false);
+      expect(documentTitleDeclaresProduct('Shop | Whole Milk 1L', 'Whole Milk', '1L')).toBe(true);
     });
 
     it('keeps the og:title verdict when the page declares one', async () => {
