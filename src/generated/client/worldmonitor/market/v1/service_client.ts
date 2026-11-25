@@ -615,6 +615,7 @@ export interface EarningsEntry {
   revenueActual: number;
   hasActuals: boolean;
   surpriseDirection: string;
+  revenueCurrency: string;
 }
 
 export interface GetCotPositioningRequest {

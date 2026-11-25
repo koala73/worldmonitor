@@ -56927,6 +56927,9 @@ components:
                     type: boolean
                 surpriseDirection:
                     type: string
+                revenueCurrency:
+                    type: string
+                    description: ISO 4217 code of the revenue figures. Empty when the provider did not report one.
         worldmonitor_market_v1_GetCotPositioningRequest:
             type: object
         worldmonitor_market_v1_GetCotPositioningResponse:

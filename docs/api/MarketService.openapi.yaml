@@ -5292,6 +5292,9 @@ components:
                     type: boolean
                 surpriseDirection:
                     type: string
+                revenueCurrency:
+                    type: string
+                    description: ISO 4217 code of the revenue figures. Empty when the provider did not report one.
         GetCotPositioningRequest:
             type: object
         GetCotPositioningResponse:
