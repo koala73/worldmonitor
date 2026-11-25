@@ -306,7 +306,7 @@
     },
     "intelMemory": {
       "title": "Memorie istorică a informațiilor",
-      "help": "Arhivă de 180 de zile cu evenimente de conflict, militar și energie cu potrivire semantică de precedente la cerere.",
+      "help": "Arhivă de 180 de zile a evenimentelor notabile de conflict, militare, energetice, tulburări civile, cibernetice, maritime, catastrofe naturale și aviatice, cu potrivire semantică a precedenților la cerere.",
       "loading": "Se încarcă memorie istorică a informațiilor…",
       "proLocked": "Faceți upgrade la PRO pentru memorie istorică de 180 de zile și căutare de precedente",
       "unavailable": "Memorie istorică a informațiilor nu este disponibilă temporar.",
@@ -318,7 +318,12 @@
         "all": "Toate",
         "conflict": "Conflict",
         "military": "Militar",
-        "energy": "Energie"
+        "energy": "Energie",
+        "unrest": "Tulburări",
+        "cyber": "Cyber",
+        "maritime": "Maritim",
+        "natural": "Pericole naturale",
+        "aviation": "Aviație"
       },
       "loadMore": "Încărcați mai mult",
       "loadingMore": "Se încarcă mai mult…",
@@ -1198,7 +1203,7 @@
         "auxiliary": "Auxiliar",
         "navalVessels": "Nave Militare"
       },
-      "infoTooltip": "<strong>Metodologie</strong><p>Agregă aeronave militare și nave militare pe teatru.</p><ul><li><strong>Normal:</strong> Activitate de referință</li><li><strong>Ridicat:</strong> Deasupra pragului (50+ aeronave)</li><li><strong>Critic:</strong> Concentrare ridicată (100+ aeronave)</li></ul><p><strong>Capabil de atac aerian:</strong> Cisterne + Avertizare timpurie aeriană + Avioane de vânătoare prezente în număr suficient pentru operații susținute.</p>",
+      "infoTooltip": "<strong>Metodologie</strong><p>Numără avioane militare și nave maritime monitorizate în fiecare teatru de operații.</p><ul><li><strong>Normal:</strong> Sub pragul teatrului</li><li><strong>Ridicat:</strong> Numărătoarea atinge 3 la 8, în funcție de teatru</li><li><strong>Critic:</strong> Numărătoarea atinge 8 la 20, în funcție de teatru</li></ul><p>Navele contribuie la numărătoare până la jumătate din pragul ridicat, deci navele singure nu vor ridica niciodată un nivel.</p><p><strong>Capabil de lovituri:</strong> Tancuri de combustibil + Avertizare timpurie aeriană + Avioane de luptă prezente în numere suficiente pentru operații susținute.</p>",
       "scanningTheaters": "Se scanează teatrele de operațiuni",
       "positions": "Pozițiile aeronavei",
       "navalVesselsLoading": "Nave navale",
@@ -1240,7 +1245,9 @@
       },
       "emojiKeyLabel": "Cheia Emoji",
       "emojiKeyAir": "Active Aeriene",
-      "emojiKeyNaval": "Active Navale"
+      "emojiKeyNaval": "Active Navale",
+      "instabilityChip": "Instabilitate {{score}}",
+      "instabilityNote": "Scor de instabilitate {{nation}}: {{score}} din 100. Afișat pentru context. Nu modifică nivelul, care numără aeronavele și navele din teatrul de operații."
     },
     "countryBrief": {
       "moreActions": "Mai multe acțiuni",
@@ -1655,7 +1662,7 @@
       "noData": "fără date",
       "enable": "Activați",
       "convergenceMetric": "Convergență",
-      "ciiDeviation": "Abatere a indicelui de instabilitate la nivel de țară",
+      "topCiiScore": "Cel mai mare scor de instabilitate al unei țări",
       "infraEvents": "Evenimente Infra",
       "highAlerts": "Alerte mari",
       "topRisks": "Principalele riscuri",
@@ -1834,6 +1841,7 @@
       "refugees": "Refugiati",
       "asylumSeekers": "Solicitanții de azil",
       "idps": "Persoane strămutate intern",
+      "stateless": "Apatrizi",
       "total": "Total",
       "origins": "Țări de origine",
       "hosts": "Țări gazdă",
@@ -2897,7 +2905,21 @@
       "saved": "Ultima actualizare cunoscută {{time}} · Se caută actualizări",
       "savedOffline": "Ultima actualizare cunoscută {{time}} · Fără conexiune",
       "localSignals": "Pe baza semnalelor încărcate în tabloul de bord",
-      "emptySaved": "Nu a existat convergență în ultima actualizare cunoscută."
+      "emptySaved": "Nu a existat convergență în ultima actualizare cunoscută.",
+      "signalTypes": {
+        "militaryFlight": "Zbor militar",
+        "militaryVessel": "Navă militară",
+        "aisGap": "Întrerupere AIS",
+        "conflictEvent": "Eveniment de conflict",
+        "escalationOutage": "Întrerupere comunicații",
+        "newsSeverity": "Știri grave",
+        "sanctionsNews": "Știri despre sancțiuni",
+        "marketMove": "Mișcare de piață",
+        "commoditySpike": "Salt al mărfurilor",
+        "earthquake": "Cutremur",
+        "infraOutage": "Întrerupere infrastructură",
+        "other": "Semnal"
+      }
     },
     "thermalEscalation": {
       "title": "Escaladare termică",
@@ -4430,7 +4452,13 @@
     "alert": "Alertă: {{location}}",
     "multipleRegions": "Regiuni multiple",
     "trending": "Tendințe „{{term}}” - {{count}} mențiuni în {{hours}}h",
-    "eventsDetected": "{{count}} evenimente detectate în regiune ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} evenimente detectate: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "proteste",
+      "military_flight": "zboruri militare",
+      "military_vessel": "nave militare",
+      "earthquake": "activitate seismică"
+    }
   },
   "intel": {
     "topics": {

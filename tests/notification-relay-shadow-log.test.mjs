@@ -135,7 +135,7 @@ describe('reworded alert check (#10916)', () => {
     const same = [[1, 0], [1, 0]];
     const cases = {
       'redis down': { pipeline: async () => null, embed: async () => same, judge: async () => '{"same": 1}' },
-      'embedding error': { pipeline: rows, embed: async () => { throw new Error('provider 503'); }, judge: async () => '{"same": 1}' },
+      'embedding error, then judge gave nothing': { pipeline: rows, embed: async () => { throw new Error('provider 503'); }, judge: async () => null },
       'judge gave nothing': { pipeline: rows, embed: async () => same, judge: async () => null },
       'judge threw': { pipeline: rows, embed: async () => same, judge: async () => { throw new Error('timeout'); } },
     };
@@ -144,6 +144,23 @@ describe('reworded alert check (#10916)', () => {
       assert.equal(decision.anchor, null, name);
       assert.ok(decision.error, `${name} must be reported`);
     }
+  });
+
+  it('ranks by shared words when the embeddings fail, and says so', async () => {
+    const { findRewriteAnchor } = await import('../scripts/lib/news-alert-coverage.mjs');
+    const pipeline = async () => [{ result: [
+      ...anchor('Heavy snow closes mountain passes', 'full:snow'),
+      ...anchor('City votes to repair the downtown crossing', 'full:a'),
+    ] }];
+    let prompt = '';
+    const judge = async (_system, user) => { prompt = user; return '{"same": 1}'; };
+    const embed = async () => { throw new Error('provider 503'); };
+    const decision = await findRewriteAnchor(event, { now: at, pipeline, embed, judge });
+    assert.equal(decision.retrieval, 'words');
+    assert.equal(decision.embedError, 'Error: provider 503');
+    assert.equal(decision.error, null);
+    assert.equal(decision.anchor?.id, 'full:a');
+    assert.doesNotMatch(prompt, /snow/, 'a headline sharing no word is not shown');
   });
 
   it('never compares an exact repeat with itself', async () => {

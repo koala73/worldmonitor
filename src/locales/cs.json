@@ -308,7 +308,7 @@
     },
     "intelMemory": {
       "title": "Historická paměť zpravodajských informací",
-      "help": "180denní archiv konfliktů, vojenských a energetických událostí se sémantickým vyhledáváním precedentů na požádání.",
+      "help": "180denní archiv významných událostí: konfliktů, vojenských operací, energetických incidentů, občanských nepokojů, kybernetických hrozeb, námořních incidentů, přírodních katastrof a leteckých incidentů, se sémantickým vyhledáváním historických paralel na vyžádání.",
       "loading": "Načítám historickou paměť zpravodajských informací…",
       "proLocked": "Upgradujte na PRO pro 180denní historickou paměť zpravodajských informací a vyhledávání precedentů",
       "unavailable": "Historická paměť zpravodajských informací je dočasně nedostupná.",
@@ -320,7 +320,12 @@
         "all": "Všechny",
         "conflict": "Konflikt",
         "military": "Vojenské",
-        "energy": "Energie"
+        "energy": "Energie",
+        "unrest": "Nepokoje",
+        "cyber": "Kybernetika",
+        "maritime": "Námořní",
+        "natural": "Přírodní hrozby",
+        "aviation": "Letectví"
       },
       "loadMore": "Načíst více",
       "loadingMore": "Načítám více…",
@@ -1189,7 +1194,7 @@
         "auxiliary": "Pomocná plavidla",
         "navalVessels": "Námořní plavidla"
       },
-      "infoTooltip": "<strong>Metodologie</strong><p>Agreguje vojenská letadla a válečné lodě podle operačního oblasti.</p><ul><li><strong>Normální:</strong> Základní aktivita</li><li><strong>Zvýšená:</strong> Nad prahovou hodnotu (50+ letadel)</li><li><strong>Kritická:</strong> Vysoká koncentrace (100+ letadel)</li></ul><p><strong>Schopné udělat úder:</strong> Tankery + Letecké včasné varování + Stíhače přítomni v dostatečném počtu pro trvalé operace.</p>",
+      "infoTooltip": "<strong>Metodologie</strong><p>Počítá vojenská letadla a sledované námořní jednotky v každém operačním distrikt.</p><ul><li><strong>Normální:</strong> Pod prahovou hodnotou distriktu</li><li><strong>Zvýšená:</strong> Počet dosáhne 3 až 8, podle distriktu</li><li><strong>Kritická:</strong> Počet dosáhne 8 až 20, podle distriktu</li></ul><p>Lodě přispívají k počtu až do poloviny zvýšeného prahu, takže samotné lodě nikdy nezvýší úroveň.</p><p><strong>Schopné útoku:</strong> Tankery + Letadla včasného varování + Stíhačky přítomny v dostatečném počtu pro udržované operace.</p>",
       "scanningTheaters": "Skenování válčišť",
       "positions": "Pozice letadel",
       "navalVesselsLoading": "Námořní plavidla",
@@ -1231,7 +1236,9 @@
       },
       "emojiKeyLabel": "Legenda emojis",
       "emojiKeyAir": "Letecké prostředky",
-      "emojiKeyNaval": "Námořní prostředky"
+      "emojiKeyNaval": "Námořní prostředky",
+      "instabilityChip": "Nestabilita {{score}}",
+      "instabilityNote": "Skóre nestability {{nation}}: {{score}} ze 100. Zobrazeno pro kontext. Nemá vliv na úroveň, kterou určuje počet letadel a lodí v operačním teritoriu."
     },
     "countryBrief": {
       "shareStory": "Sdílet příběh",
@@ -1638,7 +1645,7 @@
       "noData": "žádná data",
       "enable": "Povolit",
       "convergenceMetric": "Konvergence",
-      "ciiDeviation": "Odchylka Country Instability Index",
+      "topCiiScore": "Nejvyšší skóre nestability země",
       "infraEvents": "Události infra",
       "highAlerts": "Vysoké pohotovosti",
       "topRisks": "Hlavní rizika",
@@ -1818,6 +1825,7 @@
       "refugees": "Uprchlíci",
       "asylumSeekers": "Žadatelé o azyl",
       "idps": "Vnitřně přesídlení",
+      "stateless": "Osoby bez státní příslušnosti",
       "total": "Celkem",
       "origins": "Původy",
       "hosts": "Hostitelé",
@@ -2912,7 +2920,21 @@
       "saved": "Poslední známá aktualizace {{time}} · Kontrola aktualizací",
       "savedOffline": "Poslední známá aktualizace {{time}} · Bez připojení",
       "localSignals": "Na základě načtených signálů přehledu",
-      "emptySaved": "V poslední známé aktualizaci nebyla zjištěna konvergence."
+      "emptySaved": "V poslední známé aktualizaci nebyla zjištěna konvergence.",
+      "signalTypes": {
+        "militaryFlight": "Vojenský let",
+        "militaryVessel": "Vojenské plavidlo",
+        "aisGap": "Výpadek AIS",
+        "conflictEvent": "Konfliktní událost",
+        "escalationOutage": "Výpadek spojení",
+        "newsSeverity": "Závažné zprávy",
+        "sanctionsNews": "Zprávy o sankcích",
+        "marketMove": "Pohyb trhu",
+        "commoditySpike": "Skok komodit",
+        "earthquake": "Zemětřesení",
+        "infraOutage": "Výpadek infrastruktury",
+        "other": "Signál"
+      }
     },
     "thermalEscalation": {
       "title": "Teplotní eskalace",
@@ -4452,7 +4474,13 @@
     "alert": "Upozornění: {{location}}",
     "multipleRegions": "Více regionů",
     "trending": "„{{term}}“ je trendy - {{count}} zmínek za {{hours}} h",
-    "eventsDetected": "V regionu ({{lat}}°, {{lon}}°) bylo detekováno událostí: {{count}}"
+    "eventsDetected": "Detekované události ({{count}}): {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protesty",
+      "military_flight": "vojenské lety",
+      "military_vessel": "námořní plavidla",
+      "earthquake": "seismická aktivita"
+    }
   },
   "intel": {
     "topics": {

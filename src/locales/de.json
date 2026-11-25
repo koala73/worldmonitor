@@ -304,7 +304,7 @@
     },
     "intelMemory": {
       "title": "Historisches Geheimdienst-Gedächtnis",
-      "help": "180-Tage-Archiv von Konflikt-, Militär- und Energieereignissen mit bedarfsgerechter semantischer Präzedenzsuche.",
+      "help": "180-Tage-Archiv mit bemerkenswerten Konflikt-, Militär-, Energie-, Unruhe-, Cyber-, See-, Naturkatastrophen- und Luftfahrtereignissen, mit bedarfsgesteuerten semantischen Treffer-Vergleichen.",
       "loading": "Historisches Geheimdienst-Gedächtnis wird geladen…",
       "proLocked": "Upgrade auf PRO für 180-Tage-Geheimdienst-Gedächtnis und Präzedenzsuche",
       "unavailable": "Historisches Geheimdienst-Gedächtnis ist vorübergehend nicht verfügbar.",
@@ -316,7 +316,12 @@
         "all": "Alle",
         "conflict": "Konflikt",
         "military": "Militär",
-        "energy": "Energie"
+        "energy": "Energie",
+        "unrest": "Unruhen",
+        "cyber": "Cyber",
+        "maritime": "Maritim",
+        "natural": "Naturgefahren",
+        "aviation": "Luftfahrt"
       },
       "loadMore": "Mehr laden",
       "loadingMore": "Wird geladen…",
@@ -1459,7 +1464,7 @@
       },
       "clickToViewMap": "Klicken, um es auf der Karte anzuzeigen",
       "refresh": "Aktualisieren",
-      "infoTooltip": "<strong>Methodik</strong><p>Aggregiert Militärflugzeuge und Kriegsschiffe nach Einsatzgebiet.</p><ul><li><strong>Normal:</strong> Baseline-Aktivität</li><li><strong>Erhöht:</strong> Über Schwellenwert (50+ Flugzeuge)</li><li><strong>Kritisch:</strong> Hohe Konzentration (100+ Flugzeuge)</li></ul><p><strong>Angriffsbereit:</strong> Tankflugzeuge + Frühwarnradar + Jagdflugzeuge in ausreichender Anzahl für anhaltende Operationen.</p>",
+      "infoTooltip": "<strong>Methodik</strong><p>Zählt Militärflugzeuge und überwachte Kriegsschiffe in jedem Einsatzgebiet.</p><ul><li><strong>Normal:</strong> Unter der Schwelle des Einsatzgebiets</li><li><strong>Erhöht:</strong> Anzahl erreicht 3 bis 8, je Einsatzgebiet</li><li><strong>Kritisch:</strong> Anzahl erreicht 8 bis 20, je Einsatzgebiet</li></ul><p>Schiffe zählen bis zur Hälfte der erhöhten Schwelle, daher können Schiffe allein ein Level nicht erhöhen.</p><p><strong>Luftschlagfähig:</strong> Tankflugzeuge + Frühwarnflugzeuge + Jagdflugzeuge in ausreichender Anzahl für anhaltende Operationen.</p>",
       "scanningTheaters": "Schauplätze werden gescannt",
       "positions": "Flugzeugpositionen",
       "navalVesselsLoading": "Marineschiffe",
@@ -1501,7 +1506,9 @@
       },
       "emojiKeyLabel": "Emoji-Legende",
       "emojiKeyAir": "Luftstreitkräfte",
-      "emojiKeyNaval": "Seestreitkräfte"
+      "emojiKeyNaval": "Seestreitkräfte",
+      "instabilityChip": "Instabilität {{score}}",
+      "instabilityNote": "{{nation}}-Instabilitätswert: {{score}} von 100. Nur zur Information angezeigt. Dieser beeinflusst nicht die Stufe, die sich nach der Anzahl der Flugzeuge und Schiffe im Einsatzgebiet richtet."
     },
     "techEvents": {
       "loading": "Tech-Events werden geladen...",
@@ -1680,6 +1687,7 @@
       "refugees": "Flüchtlinge",
       "asylumSeekers": "Asylbewerber",
       "idps": "Binnenvertriebene",
+      "stateless": "Staatenlose",
       "total": "Gesamt",
       "origins": "Herkunftsländer",
       "hosts": "Aufnahmeländer",
@@ -1865,7 +1873,7 @@
       "noData": "keine Daten",
       "enable": "Aktivieren",
       "convergenceMetric": "Konvergenz",
-      "ciiDeviation": "Länderinstabilitätsindex-Abweichung",
+      "topCiiScore": "Höchster Länderinstabilitätswert",
       "infraEvents": "Infra-Ereignisse",
       "highAlerts": "Hohe Warnstufen",
       "topRisks": "Top-Risiken",
@@ -2882,7 +2890,21 @@
       "saved": "Letzte bekannte Aktualisierung {{time}} · Suche nach Aktualisierungen",
       "savedOffline": "Letzte bekannte Aktualisierung {{time}} · Offline",
       "localSignals": "Basierend auf geladenen Dashboard-Signalen",
-      "emptySaved": "Keine Konvergenz in der letzten bekannten Aktualisierung."
+      "emptySaved": "Keine Konvergenz in der letzten bekannten Aktualisierung.",
+      "signalTypes": {
+        "militaryFlight": "Militärflug",
+        "militaryVessel": "Militärschiff",
+        "aisGap": "AIS-Lücke",
+        "conflictEvent": "Konfliktereignis",
+        "escalationOutage": "Kommunikationsausfall",
+        "newsSeverity": "Schwere Nachrichten",
+        "sanctionsNews": "Sanktionsnachrichten",
+        "marketMove": "Marktbewegung",
+        "commoditySpike": "Rohstoffsprung",
+        "earthquake": "Erdbeben",
+        "infraOutage": "Infrastrukturausfall",
+        "other": "Signalereignis"
+      }
     },
     "thermalEscalation": {
       "title": "Thermische Eskalation",
@@ -4408,7 +4430,13 @@
     "alert": "Warnung: {{location}}",
     "multipleRegions": "Mehrere Regionen",
     "trending": "\"{{term}}\" im Trend — {{count}} Erwähnungen in {{hours}}h",
-    "eventsDetected": "{{count}} Ereignisse in der Region erkannt ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} Ereignisse erkannt: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "Proteste",
+      "military_flight": "Militärflüge",
+      "military_vessel": "Marineschiffe",
+      "earthquake": "seismische Aktivität"
+    }
   },
   "intel": {
     "topics": {

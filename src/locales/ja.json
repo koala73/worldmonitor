@@ -302,7 +302,7 @@
     },
     "intelMemory": {
       "title": "過去の情報アーカイブ",
-      "help": "紛争、軍事、エネルギーイベントの180日間アーカイブと、オンデマンド意味論的先例マッチング。",
+      "help": "過去180日間の重要な紛争、軍事、エネルギー、騒乱、サイバー、海事、自然災害、航空の事象のアーカイブ。オンデマンドで意味的な先例照合が可能です。",
       "loading": "過去の情報アーカイブを読み込み中…",
       "proLocked": "PRO にアップグレードして、180日間の過去情報アーカイブと先例検索を利用可能にする",
       "unavailable": "過去の情報アーカイブは現在利用できません。",
@@ -314,7 +314,12 @@
         "all": "すべて",
         "conflict": "紛争",
         "military": "軍事",
-        "energy": "エネルギー"
+        "energy": "エネルギー",
+        "unrest": "騒乱",
+        "cyber": "サイバー",
+        "maritime": "海事",
+        "natural": "自然災害",
+        "aviation": "航空"
       },
       "loadMore": "もっと読み込む",
       "loadingMore": "読み込み中…",
@@ -1192,7 +1197,7 @@
         "auxiliary": "補助艦",
         "navalVessels": "海軍艦艇"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>軍用航空機および海軍艦艇を作戦劇場別に集約します。</p><ul><li><strong>Normal:</strong> ベースラインアクティビティ</li><li><strong>Elevated:</strong> 閾値超過(航空機50機以上)</li><li><strong>Critical:</strong> 高集中(航空機100機以上)</li></ul><p><strong>Strike Capable:</strong> 給油機 + 早期警戒機 + 戦闘機が継続的な作戦に必要な数で存在。</p>",
+      "infoTooltip": "<strong>方法論</strong><p>各軍事作戦地域における軍用機と追跡中の海上艦艇の数をカウントします。</p><ul><li><strong>通常:</strong> 作戦地域の閾値未満</li><li><strong>上昇:</strong> カウントが作戦地域ごとに3～8に達する</li><li><strong>重大:</strong> カウントが作戦地域ごとに8～20に達する</li></ul><p>艦艇は上昇閾値の半分までカウントに含まれるため、艦艇のみではレベルが上昇することはありません。</p><p><strong>ストライク能力あり:</strong> タンカー、早期警戒機、戦闘機が継続作戦に十分な数で存在している。</p>",
       "scanningTheaters": "戦域スキャン中",
       "positions": "航空機の位置",
       "navalVesselsLoading": "海軍艦艇",
@@ -1234,7 +1239,9 @@
       },
       "emojiKeyLabel": "絵文字キー",
       "emojiKeyAir": "空中資産",
-      "emojiKeyNaval": "海上資産"
+      "emojiKeyNaval": "海上資産",
+      "instabilityChip": "不安定性 {{score}}",
+      "instabilityNote": "{{nation}}の不安定性スコア: {{score}}/100。参考情報として表示されます。このスコアはレベルに影響しません。レベルは当該作戦地域の航空機と艦船の数によって決定されます。"
     },
     "countryBrief": {
       "moreActions": "その他の操作",
@@ -1647,7 +1654,7 @@
       "noData": "データなし",
       "enable": "有効にする",
       "convergenceMetric": "収束",
-      "ciiDeviation": "Country Instability Index 乖離",
+      "topCiiScore": "国別不安定スコアの最高値",
       "infraEvents": "インフラ関連イベント",
       "highAlerts": "高レベル警報",
       "topRisks": "主要リスク",
@@ -1824,6 +1831,7 @@
       "refugees": "難民",
       "asylumSeekers": "庇護申請者",
       "idps": "国内避難民",
+      "stateless": "無国籍者",
       "total": "合計",
       "origins": "出身国",
       "hosts": "受入国",
@@ -2867,7 +2875,21 @@
       "saved": "最後に確認できた更新 {{time}} · 更新を確認中",
       "savedOffline": "最後に確認できた更新 {{time}} · オフライン",
       "localSignals": "ダッシュボードに読み込まれたシグナルに基づく",
-      "emptySaved": "最後に確認できた更新では収束はありませんでした。"
+      "emptySaved": "最後に確認できた更新では収束はありませんでした。",
+      "signalTypes": {
+        "militaryFlight": "軍用機の飛行",
+        "militaryVessel": "軍用艦船",
+        "aisGap": "AIS途絶",
+        "conflictEvent": "紛争イベント",
+        "escalationOutage": "通信障害",
+        "newsSeverity": "深刻なニュース",
+        "sanctionsNews": "制裁ニュース",
+        "marketMove": "市場変動",
+        "commoditySpike": "商品価格急騰",
+        "earthquake": "地震",
+        "infraOutage": "インフラ障害",
+        "other": "シグナル"
+      }
     },
     "thermalEscalation": {
       "title": "熱的エスカレーション",
@@ -4386,7 +4408,13 @@
     "alert": "アラート: {{location}}",
     "multipleRegions": "複数地域",
     "trending": "\"{{term}}\" トレンド中 — {{hours}}時間で{{count}}件の言及",
-    "eventsDetected": "地域（{{lat}}°, {{lon}}°）で{{count}}件のイベントを検出"
+    "eventsDetected": "{{count}}件のイベントを検出: {{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗議活動",
+      "military_flight": "軍用機の飛行",
+      "military_vessel": "艦艇",
+      "earthquake": "地震活動"
+    }
   },
   "intel": {
     "topics": {

@@ -306,7 +306,7 @@
     },
     "intelMemory": {
       "title": "Memoria de Inteligencia Histórica",
-      "help": "Archivo de 180 días de eventos de conflicto, militares y energéticos con coincidencia semántica de precedentes bajo demanda.",
+      "help": "Archivo de 180 días de eventos notables de conflicto, operaciones militares, energía, disturbios, cibernética, marítima, peligros naturales y aviación, con búsqueda de precedentes semánticos bajo demanda.",
       "loading": "Cargando memoria de inteligencia histórica…",
       "proLocked": "Actualiza a PRO para acceder a memoria de inteligencia histórica de 180 días y búsqueda de precedentes",
       "unavailable": "La memoria de inteligencia histórica no está disponible temporalmente.",
@@ -318,7 +318,12 @@
         "all": "Todos",
         "conflict": "Conflicto",
         "military": "Militar",
-        "energy": "Energía"
+        "energy": "Energía",
+        "unrest": "Disturbios",
+        "cyber": "Cibernético",
+        "maritime": "Marítimo",
+        "natural": "Peligros naturales",
+        "aviation": "Aviación"
       },
       "loadMore": "Cargar más",
       "loadingMore": "Cargando más…",
@@ -1462,7 +1467,7 @@
       },
       "clickToViewMap": "Haga clic para ver en el mapa",
       "refresh": "Refrescar",
-      "infoTooltip": "<strong>Metodología</strong><p>Agrupa aviones militares y buques navales por teatro.</p><ul><li><strong>Normal:</strong> Actividad de referencia</li><li><strong>Elevado:</strong> Por encima del umbral (50+ aviones)</li><li><strong>Crítico:</strong> Alta concentración (100+ aviones)</li></ul><p><strong>Capaz de ataque:</strong> Reabastecedores + Alerta temprana aerotransportada + Cazas presentes en números suficientes para operaciones sostenidas.</p>",
+      "infoTooltip": "<strong>Metodología</strong><p>Cuenta aeronaves militares y buques navales monitoreados en cada teatro de operaciones.</p><ul><li><strong>Normal:</strong> Por debajo del umbral del teatro</li><li><strong>Elevado:</strong> El conteo alcanza 3 a 8, por teatro</li><li><strong>Crítico:</strong> El conteo alcanza 8 a 20, por teatro</li></ul><p>Los buques se suman al conteo hasta la mitad del umbral elevado, por lo que los buques solos nunca elevan el nivel.</p><p><strong>Con Capacidad de Ataque:</strong> Cisternas + Alerta temprana aerotransportada + Cazas presentes en números suficientes para operaciones sostenidas.</p>",
       "scanningTheaters": "Escaneando teatros",
       "positions": "Posiciones de aeronaves",
       "navalVesselsLoading": "Buques de guerra",
@@ -1504,7 +1509,9 @@
       },
       "emojiKeyLabel": "Clave de emoji",
       "emojiKeyAir": "Activos aéreos",
-      "emojiKeyNaval": "Activos navales"
+      "emojiKeyNaval": "Activos navales",
+      "instabilityChip": "Inestabilidad {{score}}",
+      "instabilityNote": "Puntuación de inestabilidad de {{nation}}: {{score}} de 100. Se muestra para contexto. No cambia el nivel, que cuenta las aeronaves y buques en el teatro."
     },
     "techEvents": {
       "loading": "Cargando eventos tecnológicos...",
@@ -1683,6 +1690,7 @@
       "refugees": "Refugiados",
       "asylumSeekers": "Solicitantes de asilo",
       "idps": "desplazados internos",
+      "stateless": "Apátridas",
       "total": "Total",
       "origins": "Orígenes",
       "hosts": "Anfitriones",
@@ -1869,7 +1877,7 @@
       "noData": "sin datos",
       "enable": "Activar",
       "convergenceMetric": "Convergencia",
-      "ciiDeviation": "Desviación del Índice de Inestabilidad de País",
+      "topCiiScore": "Puntuación máxima de inestabilidad de país",
       "infraEvents": "Eventos de infraestructura",
       "highAlerts": "Alertas altas",
       "topRisks": "Principales riesgos",
@@ -2897,7 +2905,21 @@
       "saved": "Última actualización conocida {{time}} · Buscando actualizaciones",
       "savedOffline": "Última actualización conocida {{time}} · Sin conexión",
       "localSignals": "Basado en las señales cargadas en el panel",
-      "emptySaved": "No hubo convergencia en la última actualización conocida."
+      "emptySaved": "No hubo convergencia en la última actualización conocida.",
+      "signalTypes": {
+        "militaryFlight": "Vuelo militar",
+        "militaryVessel": "Buque militar",
+        "aisGap": "Brecha AIS",
+        "conflictEvent": "Evento de conflicto",
+        "escalationOutage": "Corte de comunicaciones",
+        "newsSeverity": "Noticias graves",
+        "sanctionsNews": "Noticias de sanciones",
+        "marketMove": "Movimiento de mercado",
+        "commoditySpike": "Alza de materias primas",
+        "earthquake": "Terremoto",
+        "infraOutage": "Corte de infraestructura",
+        "other": "Señal"
+      }
     },
     "thermalEscalation": {
       "title": "Escalada Térmica",
@@ -4430,7 +4452,13 @@
     "alert": "Alerta: {{location}}",
     "multipleRegions": "Múltiples regiones",
     "trending": "\"{{term}}\" en tendencia — {{count}} menciones en {{hours}}h",
-    "eventsDetected": "{{count}} eventos detectados en la región ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} eventos detectados: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protestas",
+      "military_flight": "vuelos militares",
+      "military_vessel": "buques navales",
+      "earthquake": "actividad sísmica"
+    }
   },
   "intel": {
     "topics": {

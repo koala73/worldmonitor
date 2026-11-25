@@ -431,15 +431,17 @@ Nine geographic theaters are monitored continuously for posture analysis (this i
 
 | Theater | Bounds | Elevated Threshold | Critical Threshold |
 |---------|--------|--------------------|--------------------|
-| **Iran Theater** | Persian Gulf, Iraq, Syria (20N-42N, 30E-65E) | 50 aircraft | 100 aircraft |
-| **Taiwan Strait** | Taiwan, East China Sea (18N-30N, 115E-130E) | 30 aircraft | 60 aircraft |
-| **Korean Peninsula** | North/South Korea (33N-43N, 124E-132E) | 20 aircraft | 50 aircraft |
-| **Baltic Theater** | Baltics, Poland, Scandinavia (52N-65N, 10E-32E) | 20 aircraft | 40 aircraft |
-| **Black Sea** | Ukraine, Turkey, Romania (40N-48N, 26E-42E) | 15 aircraft | 30 aircraft |
-| **South China Sea** | Philippines, Vietnam (5N-25N, 105E-121E) | 25 aircraft | 50 aircraft |
-| **Eastern Mediterranean** | Syria, Cyprus, Lebanon (33N-37N, 25E-37E) | 15 aircraft | 30 aircraft |
-| **Israel/Gaza** | Israel, Gaza Strip (29N-33N, 33E-36E) | 10 aircraft | 25 aircraft |
-| **Yemen/Red Sea** | Bab el-Mandeb, Houthi areas (11N-22N, 32E-54E) | 15 aircraft | 30 aircraft |
+| **Iran Theater** | Persian Gulf, Iraq, Syria (20N-42N, 30E-65E) | 8 | 20 |
+| **Taiwan Strait** | Taiwan, East China Sea (18N-30N, 115E-130E) | 6 | 15 |
+| **Korean Peninsula** | North/South Korea (33N-43N, 124E-132E) | 5 | 12 |
+| **Baltic Theater** | Baltics, Poland, Scandinavia (52N-65N, 10E-32E) | 5 | 12 |
+| **Black Sea** | Ukraine, Turkey, Romania (40N-48N, 26E-42E) | 4 | 10 |
+| **South China Sea** | Philippines, Vietnam (5N-25N, 105E-121E) | 6 | 15 |
+| **Eastern Mediterranean** | Syria, Cyprus, Lebanon (33N-37N, 25E-37E) | 4 | 10 |
+| **Israel/Gaza** | Israel, Gaza Strip (29N-33N, 33E-36E) | 3 | 8 |
+| **Yemen/Red Sea** | Bab el-Mandeb, Houthi areas (11N-22N, 32E-54E) | 4 | 10 |
+
+The thresholds count aircraft plus tracked naval vessels, with vessels capped at half the elevated threshold (rounded down), so ships alone never raise a level. The cap stays until ship thresholds can be calibrated: the relay keeps an hourly per-theater vessel history (`military:theater-vessels:history:v1`, 31 days) for that. A country's instability score is not an input. The panel shows a high score (70 or more) beside its theater as context.
 
 ### Strike Capability Assessment
 
@@ -455,17 +457,15 @@ Each theater has custom thresholds reflecting realistic strike package sizes:
 
 | Theater | Min Tankers | Min AWACS | Min Fighters |
 |---------|-------------|-----------|--------------|
-| Iran Theater | 10 | 2 | 30 |
-| Taiwan Strait | 5 | 1 | 20 |
-| Korean Peninsula | 4 | 1 | 15 |
-| Baltic/Black Sea | 3-4 | 1 | 10-15 |
-| Israel/Gaza | 2 | 1 | 8 |
+| Iran Theater | 2 | 1 | 5 |
+| Taiwan Strait, South China Sea | 1 | 1 | 4 |
+| Every other theater | 1 | 1 | 3 |
 
 When all three criteria are met, the theater is flagged as **STRIKE CAPABLE**, indicating forces sufficient for sustained offensive operations.
 
 ### Naval Vessel Integration
 
-The panel augments aircraft data with real-time naval vessel positions from AIS tracking. Vessels are classified into categories:
+The AIS relay counts naval vessels for each theater when it publishes the posture: strict-military AIS contacts in the theater bounds, plus ships on the USNI fleet tracker that are deployed or underway there and that AIS did not already count under the same name. USNI positions are region centres, accurate to a region. The panel shows that published total. The map's vessel layer classifies vessels into categories:
 
 | Category | Examples | Strategic Significance |
 |----------|----------|------------------------|
@@ -476,7 +476,6 @@ The panel augments aircraft data with real-time naval vessel positions from AIS 
 | **Patrol** | PC, PG | Coastal defense |
 | **Auxiliary** | T-AO, AOR | Fleet support, logistics |
 
-**Data Accumulation Note**: On first load, the vessel view waits up to 8 seconds for the first AIS snapshot, so AIS military contacts appear beside the USNI roster from the start instead of the roster alone. The panel renders after that step, so a slow relay can delay its first view by up to 8 seconds, never longer. AIS data keeps accumulating after that, and the panel re-checks vessel counts at 30, 60, 90, and 120 seconds after initial load to capture late-arriving data.
 
 ### Posture Levels
 
@@ -498,11 +497,12 @@ Activity trends are computed from rolling historical data:
 
 ### Server-Side Caching
 
-Theater posture computations run on edge servers with Redis caching:
+The AIS relay is the only writer of theater posture. It publishes every 10 minutes (rule: `scripts/shared/theater-posture.js`), and the dashboard, the API and the MCP `get_military_surge` tool show the level it published without recomputing it:
 
 | Cache Type | TTL | Purpose |
 |------------|-----|---------|
-| **Active cache** | 5 minutes | Matches the military-flight seeder cadence |
-| **Stale cache** | 1 hour | Fallback when upstream APIs fail |
+| **Active cache** | 20 minutes | Outlives two relay cycles |
+| **Stale cache** | 24 hours | Fallback when upstream APIs fail |
+| **Backup** | 7 days | Last known good |
 
-This ensures consistent data across all users while keeping provider calls in the centralized seeder.
+This keeps one rule for every reader and keeps provider calls in the relay.

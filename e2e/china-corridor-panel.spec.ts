@@ -18,6 +18,8 @@ test.describe('China corridor control towers', () => {
     await expect(panel).toContainText('<script>unsafe publisher</script>');
     await expect(panel).toContainText('<img src=x onerror=alert(1)> unsafe title');
     await expect(panel).toContainText('released Jul 25, 2026');
+    await expect(panel.locator('[data-family="port"] .china-corridor-source__metrics'))
+      .toHaveText(/Tanker calls \(30d\)\s*423\s*Change vs prior 30d\s*-13%/);
 
     const firstTab = panel.getByRole('tab').first();
     await firstTab.focus();

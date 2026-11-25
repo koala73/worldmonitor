@@ -306,7 +306,7 @@
     },
     "intelMemory": {
       "title": "Mémoire d'intelligence historique",
-      "help": "Archive de 180 jours des événements de conflit, militaires et énergétiques avec appariement sémantique de précédents à la demande.",
+      "help": "Archive de 180 jours d'événements notables : conflits, opérations militaires, énergie, troubles civils, cyber, maritime, risques naturels et aviation, avec recherche sémantique de précédents à la demande.",
       "loading": "Chargement de la mémoire d'intelligence historique…",
       "proLocked": "Passez à PRO pour la mémoire d'intelligence historique de 180 jours et la recherche de précédents",
       "unavailable": "La mémoire d'intelligence historique est temporairement indisponible.",
@@ -318,7 +318,12 @@
         "all": "Tous",
         "conflict": "Conflit",
         "military": "Militaire",
-        "energy": "Énergie"
+        "energy": "Énergie",
+        "unrest": "Troubles civils",
+        "cyber": "Cyber",
+        "maritime": "Maritime",
+        "natural": "Risques naturels",
+        "aviation": "Aviation"
       },
       "loadMore": "Charger plus",
       "loadingMore": "Chargement en cours…",
@@ -1146,7 +1151,7 @@
         "auxiliary": "Auxiliaires",
         "navalVessels": "Navires de guerre"
       },
-      "infoTooltip": "<strong>Méthodologie</strong><p>Agrège les aéronefs militaires et les navires navals par théâtre d'opérations.</p><ul><li><strong>Normal :</strong> Activité de référence</li><li><strong>Élevé :</strong> Au-dessus du seuil (50+ aéronefs)</li><li><strong>Critique :</strong> Concentration élevée (100+ aéronefs)</li></ul><p><strong>Capable de frappes :</strong> Ravitailleurs + Alerte et contrôle aéroportés + Chasseurs présents en nombre suffisant pour les opérations soutenues.</p>",
+      "infoTooltip": "<strong>Méthodologie</strong><p>Compte les avions militaires et les navires suivis dans chaque théâtre d'opérations.</p><ul><li><strong>Normal :</strong> En dessous du seuil du théâtre</li><li><strong>Élevé :</strong> Le nombre atteint 3 à 8, selon le théâtre</li><li><strong>Critique :</strong> Le nombre atteint 8 à 20, selon le théâtre</li></ul><p>Les navires contribuent au nombre jusqu'à la moitié du seuil élevé, donc les navires seuls ne peuvent jamais augmenter le niveau.</p><p><strong>Capable de frappe :</strong> Ravitailleurs + Avertissement aérien précoce + Avions de combat présents en nombre suffisant pour des opérations soutenues.</p>",
       "scanningTheaters": "Scan des théâtres",
       "positions": "Positions des aéronefs",
       "navalVesselsLoading": "Navires de guerre",
@@ -1188,7 +1193,9 @@
       },
       "emojiKeyLabel": "Légende des emoji",
       "emojiKeyAir": "Actifs aériens",
-      "emojiKeyNaval": "Actifs navals"
+      "emojiKeyNaval": "Actifs navals",
+      "instabilityChip": "Instabilité {{score}}",
+      "instabilityNote": "Score d'instabilité de {{nation}} : {{score}} sur 100. Affiché à titre informatif. Cela ne modifie pas le niveau, qui compte les aéronefs et navires dans le théâtre d'opérations."
     },
     "countryBrief": {
       "shareStory": "Partager l'article",
@@ -1604,7 +1611,7 @@
       "noData": "pas de données",
       "enable": "Activer",
       "convergenceMetric": "Convergence",
-      "ciiDeviation": "Écart de l'Indice d'instabilité des pays",
+      "topCiiScore": "Score d'instabilité le plus élevé par pays",
       "infraEvents": "Événements Infra",
       "highAlerts": "Alertes élevées",
       "topRisks": "Risques principaux",
@@ -1703,6 +1710,7 @@
       "refugees": "Réfugiés",
       "asylumSeekers": "Demandeurs d'asile",
       "idps": "personnes déplacées",
+      "stateless": "Apatrides",
       "total": "Total",
       "origins": "Origines",
       "hosts": "Hôtes",
@@ -2897,7 +2905,21 @@
       "saved": "Dernière mise à jour connue {{time}} · Recherche de mises à jour",
       "savedOffline": "Dernière mise à jour connue {{time}} · Hors ligne",
       "localSignals": "Selon les signaux chargés dans le tableau de bord",
-      "emptySaved": "Aucune convergence dans la dernière mise à jour connue."
+      "emptySaved": "Aucune convergence dans la dernière mise à jour connue.",
+      "signalTypes": {
+        "militaryFlight": "Vol militaire",
+        "militaryVessel": "Navire militaire",
+        "aisGap": "Interruption AIS",
+        "conflictEvent": "Événement de conflit",
+        "escalationOutage": "Panne de communications",
+        "newsSeverity": "Actualités graves",
+        "sanctionsNews": "Actualités sur les sanctions",
+        "marketMove": "Mouvement de marché",
+        "commoditySpike": "Flambée des matières premières",
+        "earthquake": "Séisme",
+        "infraOutage": "Panne d’infrastructure",
+        "other": "Signal"
+      }
     },
     "thermalEscalation": {
       "title": "Escalade thermique",
@@ -4430,7 +4452,13 @@
     "alert": "Alerte : {{location}}",
     "multipleRegions": "Régions multiples",
     "trending": "\"{{term}}\" en tendance — {{count}} mentions en {{hours}}h",
-    "eventsDetected": "{{count}} événements détectés dans la région ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} événements détectés : {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "manifestations",
+      "military_flight": "vols militaires",
+      "military_vessel": "navires de guerre",
+      "earthquake": "activité sismique"
+    }
   },
   "intel": {
     "topics": {

@@ -47,33 +47,19 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-          sparse-checkout: scripts/dogfood
+          sparse-checkout: |
+            scripts/dogfood
+            scripts/lib/main-module.mjs
+            .github/actions/dogfood-browser
           sparse-checkout-cone-mode: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
 
-      # The runner image's Google Chrome and its libraries are used as they are. `agent-browser install --with-deps`
-      # stalled for the whole step on an apt mirror (run 44384562753). npm skips install scripts unless allowed, and
-      # both packages fetch their native binary in one.
-      - name: Install agent-browser and Claude Code
-        timeout-minutes: 5
-        run: |
-          npm install -g --allow-scripts=@anthropic-ai/claude-code,agent-browser agent-browser@0.43.0 @anthropic-ai/claude-code@2.1.327
-          sudo useradd --create-home "$AGENT_BROWSER_USER"
-          "$AGENT_BROWSER_EXECUTABLE_PATH" --version
-          agent-browser --version
-          claude --version
-
-      # The separation the agent step relies on: the browser user cannot read this job's process environment.
-      - name: Check the browser user cannot read the runner's environment
-        run: |
-          if sudo -n -u "$AGENT_BROWSER_USER" cat "/proc/$$/environ" > /dev/null 2>&1; then
-            echo "::error::$AGENT_BROWSER_USER can read /proc/$$/environ, so the agent could reach ANTHROPIC_API_KEY."
-            exit 1
-          fi
-          echo "$AGENT_BROWSER_USER cannot read /proc/$$/environ."
+      # Installs agent-browser and Claude Code, creates the browser user and checks it cannot read this job's
+      # process environment.
+      - uses: ./.github/actions/dogfood-browser
 
       # Five areas in rotation, so each comes round every five weeks. A manual run can name its own.
       - name: Pick this week's focus

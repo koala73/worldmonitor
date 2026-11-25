@@ -34,6 +34,7 @@ import {
   writePublicationCompletion,
   writeSourceHealth,
 } from '../scripts/seed-cross-strait-activity.mjs';
+import { withoutContentFreshness } from './helpers/cross-strait-observations.mjs';
 import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const root = resolve(import.meta.dirname, '..');
@@ -224,7 +225,7 @@ for (const listState of ['unchanged', 'changed-date', 'empty'] as const) {
     });
     assert.equal(entry.status, listState === 'unchanged' ? 'OK' : 'SEED_ERROR');
     assert.equal(snapshot.sources[0].lastSuccessAt, listState === 'unchanged' ? new Date(nextRun).toISOString() : retrievedAt);
-    assert.deepEqual(snapshot.observations, previousSnapshot.observations);
+    assert.deepEqual(withoutContentFreshness(snapshot.observations), withoutContentFreshness(previousSnapshot.observations));
     assert.deepEqual(crossStraitActivityContentMeta(snapshot), crossStraitActivityContentMeta(previousSnapshot));
     assert.equal(projectCrossStraitActivityBootstrap(snapshot).sources[0].transportStatus,
       listState === 'unchanged' ? 'fresh' : 'error');

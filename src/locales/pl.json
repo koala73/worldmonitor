@@ -308,7 +308,7 @@
     },
     "intelMemory": {
       "title": "Historyczna pamięć wywiadu",
-      "help": "Archiwum 180 dni zdarzeń konfliktowych, militarnych i energetycznych z wyszukiwaniem precedensów na żądanie.",
+      "help": "180-dniowe archiwum znaczących zdarzeń konfliktowych, militarnych, energetycznych, niepokojów społecznych, cyber, morskich, zagrożeń naturalnych i lotniczych, z wyszukiwaniem na żądanie podobnych przypadków w historii.",
       "loading": "Ładowanie historycznej pamięci wywiadu…",
       "proLocked": "Uaktualnij do PRO, aby uzyskać dostęp do 180-dniowej historycznej pamięci wywiadu i wyszukiwania precedensów",
       "unavailable": "Historyczna pamięć wywiadu jest czasowo niedostępna.",
@@ -320,7 +320,12 @@
         "all": "Wszystkie",
         "conflict": "Konflikt",
         "military": "Militarne",
-        "energy": "Energia"
+        "energy": "Energia",
+        "unrest": "Zamieszki",
+        "cyber": "Cyber",
+        "maritime": "Morskie",
+        "natural": "Zagrożenia naturalne",
+        "aviation": "Lotnictwo"
       },
       "loadMore": "Załaduj więcej",
       "loadingMore": "Ładowanie…",
@@ -1425,7 +1430,7 @@
       },
       "clickToViewMap": "Kliknij, żeby zobaczyć na mapie",
       "refresh": "Odświeżać",
-      "infoTooltip": "<strong>Metodologia</strong><p>Agreguje lotnictwo wojskowe i okręty marynarki wojennej podle teatru operacji.</p><ul><li><strong>Normalne:</strong> Aktywność bazowa</li><li><strong>Podwyższone:</strong> Powyżej progu (50+ samolotów)</li><li><strong>Krytyczne:</strong> Wysoka koncentracja (100+ samolotów)</li></ul><p><strong>Zdolność do uderzeń:</strong> Tankowce + Wczesne ostrzeganie lotnicze + Myśliwce w wystarczającej liczbie do operacji trwałych.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Liczy samoloty wojskowe i monitorowane jednostki marynarki wojennej w każdym teatrze operacyjnym.</p><ul><li><strong>Normalny:</strong> Poniżej progu teatru operacyjnego</li><li><strong>Podwyższony:</strong> Liczba osiąga 3 do 8, zależnie od teatru</li><li><strong>Krytyczny:</strong> Liczba osiąga 8 do 20, zależnie od teatru</li></ul><p>Statki liczą się aż do połowy progu podwyższonego, więc same statki nigdy nie podnoszą poziomu.</p><p><strong>Gotowość do przeprowadzenia uderzenia:</strong> Tankowce + Systemy wczesnego ostrzegania + Myśliwce obecne w wystarczającej liczbie do przeprowadzania operacji bojowych.</p>",
       "scanningTheaters": "Skanowanie teatrów",
       "positions": "Pozycje lotnicze",
       "navalVesselsLoading": "Okręty marynarki",
@@ -1467,7 +1472,9 @@
       },
       "emojiKeyLabel": "Legenda emoji",
       "emojiKeyAir": "Zasoby powietrzne",
-      "emojiKeyNaval": "Zasoby morskie"
+      "emojiKeyNaval": "Zasoby morskie",
+      "instabilityChip": "Niestabilność {{score}}",
+      "instabilityNote": "Wskaźnik niestabilności {{nation}}: {{score}} na 100. Pokazane dla kontekstu. Nie wpływa na poziom, który liczy statki powietrzne i okręty w teatrze operacji."
     },
     "techEvents": {
       "loading": "Ładowanie wydarzeń technicznych...",
@@ -1592,6 +1599,7 @@
       "refugees": "Uchodźcy",
       "asylumSeekers": "Osoby ubiegające się o azyl",
       "idps": "IDP",
+      "stateless": "Bezpaństwowcy",
       "total": "Całkowity",
       "origins": "Początki",
       "hosts": "Zastępy niebieskie",
@@ -1779,7 +1787,7 @@
       "noData": "brak danych",
       "enable": "Włącz",
       "convergenceMetric": "Zbieżność",
-      "ciiDeviation": "Odchylenie Country Instability Index",
+      "topCiiScore": "Najwyższy wynik niestabilności kraju",
       "infraEvents": "Zdarzenia infrastrukturalne",
       "highAlerts": "Wysokie alerty",
       "topRisks": "Główne ryzyka",
@@ -2912,7 +2920,21 @@
       "saved": "Ostatnia znana aktualizacja {{time}} · Sprawdzanie aktualizacji",
       "savedOffline": "Ostatnia znana aktualizacja {{time}} · Brak połączenia",
       "localSignals": "Na podstawie sygnałów załadowanych w panelu",
-      "emptySaved": "Brak konwergencji w ostatniej znanej aktualizacji."
+      "emptySaved": "Brak konwergencji w ostatniej znanej aktualizacji.",
+      "signalTypes": {
+        "militaryFlight": "Lot wojskowy",
+        "militaryVessel": "Okręt wojskowy",
+        "aisGap": "Luka AIS",
+        "conflictEvent": "Zdarzenie konfliktowe",
+        "escalationOutage": "Awaria łączności",
+        "newsSeverity": "Poważne wiadomości",
+        "sanctionsNews": "Wiadomości o sankcjach",
+        "marketMove": "Ruch rynku",
+        "commoditySpike": "Skok cen surowców",
+        "earthquake": "Trzęsienie ziemi",
+        "infraOutage": "Awaria infrastruktury",
+        "other": "Sygnał"
+      }
     },
     "thermalEscalation": {
       "title": "Eskalacja termiczna",
@@ -4452,7 +4474,13 @@
     "alert": "Alarm: {{location}}",
     "multipleRegions": "Wiele regionów",
     "trending": "\"{{term}}\" w trendach — {{count}} wzmianek w {{hours}}h",
-    "eventsDetected": "{{count}} zdarzeń wykrytych w regionie ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "Wykryte zdarzenia ({{count}}): {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protesty",
+      "military_flight": "loty wojskowe",
+      "military_vessel": "okręty wojenne",
+      "earthquake": "aktywność sejsmiczna"
+    }
   },
   "intel": {
     "topics": {

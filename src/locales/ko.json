@@ -302,7 +302,7 @@
     },
     "intelMemory": {
       "title": "과거 정보 기록",
-      "help": "분쟁, 군사, 에너지 사건의 180일 아카이브와 필요 시 의미론적 선례 매칭.",
+      "help": "분쟁, 군사, 에너지, 소요, 사이버, 해상, 자연재해, 항공 사건의 주요 사건에 대한 180일 보관소로, 필요시 의미론적 선례 매칭을 지원합니다.",
       "loading": "과거 정보 기록을 로드하는 중…",
       "proLocked": "PRO로 업그레이드하여 180일 과거 정보 기록 및 선례 검색 이용",
       "unavailable": "과거 정보 기록을 일시적으로 사용할 수 없습니다.",
@@ -314,7 +314,12 @@
         "all": "전체",
         "conflict": "분쟁",
         "military": "군사",
-        "energy": "에너지"
+        "energy": "에너지",
+        "unrest": "소요",
+        "cyber": "사이버",
+        "maritime": "해양",
+        "natural": "자연재해",
+        "aviation": "항공"
       },
       "loadMore": "더 로드",
       "loadingMore": "로드하는 중…",
@@ -1192,7 +1197,7 @@
         "auxiliary": "보조함",
         "navalVessels": "해군 함정"
       },
-      "infoTooltip": "<strong>방법론</strong><p>군용 항공기 및 해군 함정을 작전 지역별로 집계합니다.</p><ul><li><strong>정상:</strong> 기준 활동</li><li><strong>상향:</strong> 임계값 초과(항공기 50대 이상)</li><li><strong>중대:</strong> 고도 집중(항공기 100대 이상)</li></ul><p><strong>Strike Capable:</strong> 급유기 + 조기경보기 + 전투기가 지속 작전에 충분한 규모로 배치됨.</p>",
+      "infoTooltip": "<strong>방법론</strong><p>각 작전 지역의 군용 항공기와 추적 중인 해군 함정을 집계합니다.</p><ul><li><strong>정상:</strong> 작전 지역의 기준값 이하</li><li><strong>상승:</strong> 작전 지역별로 3~8대에 도달</li><li><strong>심각:</strong> 작전 지역별로 8~20대에 도달</li></ul><p>함정은 상승 기준값의 절반까지 집계에 포함되므로, 함정만으로는 수준이 상향되지 않습니다.</p><p><strong>공격 가능:</strong> 급유기 + 조기경보기 + 전투기가 지속적 작전에 필요한 충분한 수량으로 존재함.</p>",
       "scanningTheaters": "작전지역 스캔 중",
       "positions": "항공기 위치",
       "navalVesselsLoading": "해군 함정",
@@ -1234,7 +1239,9 @@
       },
       "emojiKeyLabel": "이모지 범례",
       "emojiKeyAir": "항공 자산",
-      "emojiKeyNaval": "해상 자산"
+      "emojiKeyNaval": "해상 자산",
+      "instabilityChip": "불안정성 {{score}}",
+      "instabilityNote": "{{nation}} 불안정성 점수: 100점 만점에 {{score}}점입니다. 맥락 제공용으로 표시됩니다. 작전 지역의 항공기와 함선 수를 계산하는 수준에는 영향을 주지 않습니다."
     },
     "countryBrief": {
       "moreActions": "추가 작업",
@@ -1647,7 +1654,7 @@
       "noData": "데이터 없음",
       "enable": "활성화",
       "convergenceMetric": "수렴도",
-      "ciiDeviation": "Country Instability Index 편차",
+      "topCiiScore": "최고 국가 불안정 점수",
       "infraEvents": "인프라 사건",
       "highAlerts": "고도 경보",
       "topRisks": "주요 위험",
@@ -1824,6 +1831,7 @@
       "refugees": "난민",
       "asylumSeekers": "망명 신청자",
       "idps": "국내 실향민",
+      "stateless": "무국적자",
       "total": "합계",
       "origins": "출발국",
       "hosts": "수용국",
@@ -2867,7 +2875,21 @@
       "saved": "마지막으로 확인된 업데이트 {{time}} · 업데이트 확인 중",
       "savedOffline": "마지막으로 확인된 업데이트 {{time}} · 오프라인",
       "localSignals": "대시보드에 로드된 신호를 기반으로 함",
-      "emptySaved": "마지막으로 확인된 업데이트에는 수렴이 없었습니다."
+      "emptySaved": "마지막으로 확인된 업데이트에는 수렴이 없었습니다.",
+      "signalTypes": {
+        "militaryFlight": "군용기 비행",
+        "militaryVessel": "군함",
+        "aisGap": "AIS 공백",
+        "conflictEvent": "분쟁 사건",
+        "escalationOutage": "통신 장애",
+        "newsSeverity": "심각한 뉴스",
+        "sanctionsNews": "제재 뉴스",
+        "marketMove": "시장 변동",
+        "commoditySpike": "원자재 급등",
+        "earthquake": "지진",
+        "infraOutage": "인프라 장애",
+        "other": "신호"
+      }
     },
     "thermalEscalation": {
       "title": "열 급증",
@@ -4386,7 +4408,13 @@
     "alert": "경보: {{location}}",
     "multipleRegions": "다수 지역",
     "trending": "\"{{term}}\" 트렌딩 - {{hours}}시간 내 {{count}}건 언급",
-    "eventsDetected": "해당 지역({{lat}}°, {{lon}}°)에서 {{count}}건의 사건 감지"
+    "eventsDetected": "{{count}}건의 사건 감지: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "시위",
+      "military_flight": "군용기 비행",
+      "military_vessel": "해군 함정",
+      "earthquake": "지진 활동"
+    }
   },
   "intel": {
     "topics": {

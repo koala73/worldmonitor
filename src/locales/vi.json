@@ -302,7 +302,7 @@
     },
     "intelMemory": {
       "title": "Bộ Nhớ Tình Báo Lịch Sử",
-      "help": "Kho lưu trữ 180 ngày về các sự kiện xung đột, quân sự và năng lượng với tính năng khớp tiền lệ theo ngữ nghĩa theo yêu cầu.",
+      "help": "Kho lưu trữ 180 ngày các sự kiện đáng chú ý về xung đột, quân sự, năng lượng, bất ổn, an ninh mạng, hàng hải, thảm họa thiên nhiên và hàng không, với tìm kiếm tiền lệ ngữ nghĩa theo yêu cầu.",
       "loading": "Đang tải bộ nhớ tình báo lịch sử…",
       "proLocked": "Nâng cấp lên PRO để có bộ nhớ tình báo lịch sử 180 ngày và tìm kiếm tiền lệ",
       "unavailable": "Bộ nhớ tình báo lịch sử hiện không khả dụng.",
@@ -314,7 +314,12 @@
         "all": "Tất cả",
         "conflict": "Xung đột",
         "military": "Quân sự",
-        "energy": "Năng lượng"
+        "energy": "Năng lượng",
+        "unrest": "Bất ổn",
+        "cyber": "An ninh mạng",
+        "maritime": "Hàng hải",
+        "natural": "Thảm họa thiên nhiên",
+        "aviation": "Hàng không"
       },
       "loadMore": "Tải thêm",
       "loadingMore": "Đang tải thêm…",
@@ -1192,7 +1197,7 @@
         "auxiliary": "Hỗ trợ",
         "navalVessels": "Tàu Hải quân"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>Tổng hợp các tàu hải quân và máy bay quân sự theo khu vực chiến lược.</p><ul><li><strong>Normal:</strong> Hoạt động cơ bản</li><li><strong>Elevated:</strong> Vượt quá ngưỡng (50+ máy bay)</li><li><strong>Critical:</strong> Tập trung cao (100+ máy bay)</li></ul><p><strong>Strike Capable:</strong> Máy bay tiếp liệu + Cảnh báo sớm trên không + Máy bay chiến đấu có mặt với số lượng đủ cho các hoạt động bền vững.</p>",
+      "infoTooltip": "<strong>Phương pháp</strong><p>Đếm máy bay quân sự và tàu hải quân được theo dõi trong mỗi khu vực tác chiến.</p><ul><li><strong>Bình thường:</strong> Dưới ngưỡng của khu vực tác chiến</li><li><strong>Nâng cao:</strong> Số lượng đạt 3 đến 8, tùy theo khu vực tác chiến</li><li><strong>Tối cấp:</strong> Số lượng đạt 8 đến 20, tùy theo khu vực tác chiến</li></ul><p>Tàu góp phần vào số lượng lên đến nửa ngưỡng nâng cao, do đó tàu riêng lẻ không bao giờ nâng mức.</p><p><strong>Khả năng Tiến công:</strong> Tàu chở nhiên liệu + Hệ thống cảnh báo sớm trên không + Chiến đấu cơ hiện diện với số lượng đủ cho các hoạt động liên tục.</p>",
       "scanningTheaters": "Quét Chiến trường",
       "positions": "Vị trí máy bay",
       "navalVesselsLoading": "Tàu hải quân",
@@ -1234,7 +1239,9 @@
       },
       "emojiKeyLabel": "Chú giải Emoji",
       "emojiKeyAir": "Tài sản hàng không",
-      "emojiKeyNaval": "Tài sản hải quân"
+      "emojiKeyNaval": "Tài sản hải quân",
+      "instabilityChip": "Mức độ bất ổn {{score}}",
+      "instabilityNote": "Điểm bất ổn của {{nation}}: {{score}} trên 100. Hiển thị để tham khảo. Nó không thay đổi mức độ, mức độ được tính dựa trên số lượng máy bay và tàu chiến trong khu vực."
     },
     "countryBrief": {
       "moreActions": "Thao tác khác",
@@ -1647,7 +1654,7 @@
       "noData": "không có dữ liệu",
       "enable": "Bật",
       "convergenceMetric": "Hội tụ",
-      "ciiDeviation": "Độ Lệch Chỉ số Bất ổn định Đất nước",
+      "topCiiScore": "Điểm bất ổn quốc gia cao nhất",
       "infraEvents": "Sự cố Hạ tầng",
       "highAlerts": "Cảnh báo Cao",
       "topRisks": "Rủi ro Hàng đầu",
@@ -1824,6 +1831,7 @@
       "refugees": "Người tị nạn",
       "asylumSeekers": "Người xin Tị nạn",
       "idps": "Người Di dời Nội bộ",
+      "stateless": "Người không quốc tịch",
       "total": "Tổng",
       "origins": "Nguồn gốc",
       "hosts": "Nước tiếp nhận",
@@ -2867,7 +2875,21 @@
       "saved": "Lần cập nhật gần nhất đã biết {{time}} · Đang kiểm tra cập nhật",
       "savedOffline": "Lần cập nhật gần nhất đã biết {{time}} · Ngoại tuyến",
       "localSignals": "Dựa trên các tín hiệu đã tải trong bảng điều khiển",
-      "emptySaved": "Không có sự hội tụ trong lần cập nhật gần nhất đã biết."
+      "emptySaved": "Không có sự hội tụ trong lần cập nhật gần nhất đã biết.",
+      "signalTypes": {
+        "militaryFlight": "Chuyến bay quân sự",
+        "militaryVessel": "Tàu quân sự",
+        "aisGap": "Gián đoạn AIS",
+        "conflictEvent": "Sự kiện xung đột",
+        "escalationOutage": "Gián đoạn liên lạc",
+        "newsSeverity": "Tin nghiêm trọng",
+        "sanctionsNews": "Tin trừng phạt",
+        "marketMove": "Biến động thị trường",
+        "commoditySpike": "Hàng hóa tăng vọt",
+        "earthquake": "Động đất",
+        "infraOutage": "Gián đoạn hạ tầng",
+        "other": "Tín hiệu"
+      }
     },
     "thermalEscalation": {
       "title": "Tăng cường nhiệt độ",
@@ -4386,7 +4408,13 @@
     "alert": "Cảnh báo: {{location}}",
     "multipleRegions": "Nhiều Khu vực",
     "trending": "\"{{term}}\" Xu hướng - {{count}} lượt nhắc trong {{hours}} giờ",
-    "eventsDetected": "Phát hiện {{count}} sự kiện trong khu vực ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "Phát hiện {{count}} sự kiện: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "biểu tình",
+      "military_flight": "chuyến bay quân sự",
+      "military_vessel": "tàu hải quân",
+      "earthquake": "hoạt động địa chấn"
+    }
   },
   "intel": {
     "topics": {

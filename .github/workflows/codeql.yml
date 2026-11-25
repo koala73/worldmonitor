@@ -60,9 +60,16 @@ jobs:
           # Generated upstream @vercel/og + satori bundle (scripts/vendor-vercel-og.mjs).
           # Its library internals re-raise ~22 alerts on every re-vendor; the generator
           # script and our patched vendor copies (braces, stream-json) stay scanned.
+          # Test code never ships: fetch stubs and assertion regexes raised about half of
+          # all dismissed alerts, every one a false positive. Fixtures read by scripts are
+          # data, not code, so skipping tests/ hides no shipped path.
           config: |
             paths-ignore:
               - vendor/vercel-og/dist
+              - tests
+              - e2e
+              - '**/__tests__'
+              - '**/*.test.*'
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           category: /language:${{ matrix.language }}

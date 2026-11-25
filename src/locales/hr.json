@@ -375,7 +375,7 @@
     },
     "intelMemory": {
       "title": "Arhiva povijesne obavještajne analize",
-      "help": "Arhiva od 180 dana sukoba, vojnih i energetskih događaja s mogućnošću usporedbe prema prethodnim slučajevima na zahtjev.",
+      "help": "Arhiva od 180 dana značajnih događaja vezanih uz konflikt, vojsku, energiju, nemire, kibernetiku, pomorstvo, prirodne katastrofe i zrakoplovstvo, s odgovarajućom semantičkom pretraživanjem prethodnih slučajeva.",
       "loading": "Učitavanje arhive povijesne obavještajne analize…",
       "proLocked": "Nadogradite se na PRO za arhivu od 180 dana i pretragu prethodnih slučajeva",
       "unavailable": "Arhiva povijesne obavještajne analize nije dostupna.",
@@ -387,7 +387,12 @@
         "all": "Sve",
         "conflict": "Sukobi",
         "military": "Vojna",
-        "energy": "Energija"
+        "energy": "Energija",
+        "unrest": "Nemiri",
+        "cyber": "Kibernetika",
+        "maritime": "Pomorstvo",
+        "natural": "Prirodne opasnosti",
+        "aviation": "Zrakoplovstvo"
       },
       "loadMore": "Učitaj više",
       "loadingMore": "Učitavanje…",
@@ -1352,7 +1357,7 @@
         "auxiliary": "Pomoćni",
         "navalVessels": "Brodovi"
       },
-      "infoTooltip": "<strong>Metodologija</strong><p>Agreguira vojnu zrakoplove i ratne brodove po teatru operacija.</p><ul><li><strong>Normalna:</strong> Temeljna aktivnost</li><li><strong>Pojačana:</strong> Iznad praga (50+ zrakoplova)</li><li><strong>Kritična:</strong> Visoka koncentracija (100+ zrakoplova)</li></ul><p><strong>Sposobna za udar:</strong> Tankeri + Radarsko upozorenje iz zraka + Borbeni zrakoplovi prisutni u dovoljan broju za održive operacije.</p>",
+      "infoTooltip": "<strong>Metodologija</strong><p>Broji vojne zrakoplove i praćene mornaričke brodove u svakom području operacija.</p><ul><li><strong>Normalno:</strong> Ispod praga područja</li><li><strong>Povišeno:</strong> Broj doseže 3 do 8, po području</li><li><strong>Kritično:</strong> Broj doseže 8 do 20, po području</li></ul><p>Brodovi se dodaju u broj do polovice povišenog praga, pa brodovi sami nikada ne podižu razinu.</p><p><strong>Sposoban za udarce:</strong> Tankeri + Zrakoplovi ranog upozorenja + Borbeni zrakoplovi prisutni u dovoljnom broju za održane operacije.</p>",
       "scanningTheaters": "Skeniranje teatara",
       "positions": "Pozicije zrakoplova",
       "navalVesselsLoading": "Brojevni brodovi",
@@ -1394,7 +1399,9 @@
         "east-med-theater": "Istočno Sredozemlje",
         "israel-gaza-theater": "Izrael/Gaza",
         "yemen-redsea-theater": "Jemen/Crveno more"
-      }
+      },
+      "instabilityChip": "Nestabilnost {{score}}",
+      "instabilityNote": "Indeks nestabilnosti {{nation}}: {{score}} od 100. Prikazano radi konteksta. Ne mijenja razinu, koja broji zrakoplove i brodove u teatru operacija."
     },
     "countryBrief": {
       "moreActions": "Više radnji",
@@ -1809,7 +1816,7 @@
       "noData": "nema podataka",
       "enable": "Aktiviraj",
       "convergenceMetric": "Konvergencija",
-      "ciiDeviation": "Odstupanje indeksa nestabilnosti država",
+      "topCiiScore": "Najviši rezultat nestabilnosti države",
       "infraEvents": "Događaji infrastrukture",
       "highAlerts": "Visoki alarmi",
       "topRisks": "Najveći rizici",
@@ -1988,6 +1995,7 @@
       "refugees": "Izbjeglice",
       "asylumSeekers": "Tražitelji azila",
       "idps": "Interno raseljene osobe",
+      "stateless": "Osobe bez državljanstva",
       "total": "Ukupno",
       "origins": "Zemlje porijekla",
       "hosts": "Zemlje domaćina",
@@ -2969,7 +2977,21 @@
       "saved": "Posljednje poznato ažuriranje {{time}} · Provjera ažuriranja",
       "savedOffline": "Posljednje poznato ažuriranje {{time}} · Izvan mreže",
       "localSignals": "Na temelju učitanih signala nadzorne ploče",
-      "emptySaved": "Nema konvergencije u posljednjem poznatom ažuriranju."
+      "emptySaved": "Nema konvergencije u posljednjem poznatom ažuriranju.",
+      "signalTypes": {
+        "militaryFlight": "Vojni let",
+        "militaryVessel": "Vojno plovilo",
+        "aisGap": "Prekid AIS-a",
+        "conflictEvent": "Sukobni događaj",
+        "escalationOutage": "Prekid komunikacija",
+        "newsSeverity": "Ozbiljne vijesti",
+        "sanctionsNews": "Vijesti o sankcijama",
+        "marketMove": "Kretanje tržišta",
+        "commoditySpike": "Skok robe",
+        "earthquake": "Potres",
+        "infraOutage": "Prekid infrastrukture",
+        "other": "Signal"
+      }
     },
     "thermalEscalation": {
       "title": "Toplinska eskalacija",
@@ -4509,7 +4531,13 @@
     "alert": "Alarm: {{location}}",
     "multipleRegions": "Više regija",
     "trending": "\"{{term}}\" u trendu - {{count}} spominjanja u {{hours}}h",
-    "eventsDetected": "{{count}} događaja detektirano u regiji ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} događaja detektirano: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "prosvjedi",
+      "military_flight": "vojni letovi",
+      "military_vessel": "ratni brodovi",
+      "earthquake": "seizmička aktivnost"
+    }
   },
   "intel": {
     "topics": {
