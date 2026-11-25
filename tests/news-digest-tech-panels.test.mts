@@ -60,6 +60,7 @@ describe('funding panel: only headlines about a financing event', () => {
       'Students raise $5,000 for charity - BBC',
       'Charity announces $20M funding round for flood victims - Reuters',
       'Acme raised $3 million from donors to rebuild the shelter - WTOP News',
+      'Donors raised $2 million in seed funding for a safe shelter - WTOP News',
     ], false);
     keepsEach('Startup Funding', [
       'Anthropic valued at $1.5 trillion as IPO raises record $81 billion - Reuters',
