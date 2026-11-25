@@ -223,8 +223,8 @@
       {
         "handle": "nhk_news",
         "accountId": "204245399",
-        "label": "NHK World",
-        "sourceName": "NHK World",
+        "label": "NHK News",
+        "sourceName": "NHK News",
         "topic": "geopolitics",
         "tier": 2,
         "enabled": true,

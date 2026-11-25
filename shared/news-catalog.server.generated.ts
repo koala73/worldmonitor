@@ -16,7 +16,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "AP News",
-          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com%20%22World%20News%22%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Reuters World",
@@ -393,7 +393,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Ukrainska Pravda EN",
-          "url": "https://news.google.com/rss/search?q=site%3Aeuromaidanpress.com%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site%3Apravda.com.ua%2Feng%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "NV EN",
@@ -5476,7 +5476,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
       "science": [
         {
           "name": "Reuters Science",
-          "url": "https://news.google.com/rss/search?q=site%3Areuters.com%20science%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com%2Fscience%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Nature News",

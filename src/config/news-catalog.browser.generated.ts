@@ -17,7 +17,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "AP News",
-          "url": "https://news.google.com/rss/search?q=site:apnews.com&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site:apnews.com+%22World+News%22&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Reuters World",
@@ -687,7 +687,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Ukrainska Pravda EN",
-          "url": "https://news.google.com/rss/search?q=site%3Aeuromaidanpress.com%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site%3Apravda.com.ua%2Feng%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "NV EN",
@@ -5569,7 +5569,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
       "science": [
         {
           "name": "Reuters Science",
-          "url": "https://news.google.com/rss/search?q=site%3Areuters.com%20science%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com%2Fscience%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Nature News",

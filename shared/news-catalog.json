@@ -243,9 +243,9 @@
     },
     {
       "name": "AP News",
-      "url": "https://news.google.com/rss/search?q=site%3Aapnews.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=site%3Aapnews.com%20%22World%20News%22%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
       "browser": {
-        "url": "https://news.google.com/rss/search?q=site:apnews.com&hl=en-US&gl=US&ceid=US:en"
+        "url": "https://news.google.com/rss/search?q=site:apnews.com+%22World+News%22&hl=en-US&gl=US&ceid=US:en"
       },
       "placements": [
         {
@@ -1363,7 +1363,7 @@
     },
     {
       "name": "Ukrainska Pravda EN",
-      "url": "https://news.google.com/rss/search?q=site%3Aeuromaidanpress.com%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=site%3Apravda.com.ua%2Feng%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
@@ -4616,7 +4616,7 @@
     },
     {
       "name": "Reuters Science",
-      "url": "https://news.google.com/rss/search?q=site%3Areuters.com%20science%20when%3A2d&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=site%3Areuters.com%2Fscience%20when%3A7d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",

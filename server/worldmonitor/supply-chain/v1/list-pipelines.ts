@@ -72,6 +72,7 @@ export function projectPipeline(raw: unknown): PipelineEntry | null {
         lastEvidenceUpdate: coerceString(evidence.lastEvidenceUpdate),
         classifierVersion: coerceString(evidence.classifierVersion, 'v1'),
         classifierConfidence: coerceNumber(evidence.classifierConfidence, 0),
+        lifecycleState: coerceString(evidence.lifecycleState),
       }
     : undefined;
 
