@@ -5748,7 +5748,8 @@
           "seatCap": "Mind a 4 hely használatban van. Előbb távolítson el egy helyet.",
           "ownerDomain": "Munkatársak meghívásához a fiókja e-mail-címének vállalati tartományból kell származnia.",
           "self": "Nem hívhatja meg saját magát.",
-          "inviteeDomain": "A meghívott személy e-mail-címének vállalati tartományból kell származnia."
+          "inviteeDomain": "A meghívott személy e-mail-címének vállalati tartományból kell származnia.",
+          "rateLimited": "Elérte a napi meghívások maximális számát. Próbálja újra holnap."
         }
       },
       "enterpriseSeats": {

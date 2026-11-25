@@ -821,14 +821,24 @@ async function readBody(req, maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES) {
 
   const chunks = [];
   let receivedBytes = 0;
+  let tooLarge = false;
   for await (const chunk of req) {
     receivedBytes += chunk.length;
     if (maxBytes != null && receivedBytes > maxBytes) {
-      const error = new Error(`Request body exceeds ${maxBytes} bytes`);
-      error.code = 'EBODYTOOLARGE';
-      throw error;
+      // Drain remaining chunks without buffering so the underlying socket stays
+      // open and the handler can send a clean 400 response before closing.
+      tooLarge = true;
+      chunks.length = 0;
+      continue;
     }
-    chunks.push(chunk);
+    if (!tooLarge) {
+      chunks.push(chunk);
+    }
+  }
+  if (tooLarge) {
+    const error = new Error(`Request body exceeds ${maxBytes} bytes`);
+    error.code = 'EBODYTOOLARGE';
+    throw error;
   }
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
   req[REQUEST_BODY_CACHE] = body;

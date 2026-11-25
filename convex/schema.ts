@@ -785,6 +785,10 @@ export default defineSchema({
     accessEndsAt: v.optional(v.number()),
     rawPayload: v.any(),
     updatedAt: v.number(),
+    // OCC serialization timestamp patched by Business seat mutations so even
+    // a brand-new subscription's first concurrent invite burst collides on an
+    // always-existing document rather than lazily inserted lock rows.
+    seatLockTouchedAt: v.optional(v.number()),
     // Renewal-reconciliation bookkeeping (see
     // `payments/billing:reconcileMissedDodoRenewals`). Orthogonal to
     // `updatedAt` — these are NEVER bumped on a webhook state change, only

@@ -49,6 +49,9 @@ COPY tsconfig.json tsconfig.api.json ./
 # NODE_OPTIONS).
 ENV NODE_OPTIONS="--max-old-space-size=8192 --dns-result-order=ipv4first --import=file:///app/node_modules/tsx/dist/loader.mjs"
 
+RUN mkdir -p /app/docs/methodology/country-resilience-index/validation \
+    && chown node:node /app/docs/methodology/country-resilience-index/validation
+
 USER node
 
 CMD ["node", "scripts/seed-bundle-resilience-validation.mjs"]

@@ -2332,6 +2332,9 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     cmd.env_remove("NODE_OPTIONS")
         .env_remove("NODE_PATH")
         .env_remove("NODE_EXTRA_CA_CERTS")
+        .env_remove("NODE_TLS_REJECT_UNAUTHORIZED")
+        .env_remove("SSL_CERT_FILE")
+        .env_remove("SSL_CERT_DIR")
         .env_remove("LOCAL_API_NODE_BIN");
     #[cfg(not(debug_assertions))]
     cmd.env_remove("LOCAL_API_REMOTE_BASE");

@@ -5748,7 +5748,8 @@
           "seatCap": "Alle 4 Plätze sind belegt. Entfernen Sie zuerst einen Platz.",
           "ownerDomain": "Ihre Konto-E-Mail muss eine Unternehmensdomäne sein, um Teamkollegen einzuladen.",
           "self": "Sie können sich nicht selbst einladen.",
-          "inviteeDomain": "Die E-Mail des Eingeladenen muss eine Unternehmensdomäne sein."
+          "inviteeDomain": "Die E-Mail des Eingeladenen muss eine Unternehmensdomäne sein.",
+          "rateLimited": "Sie haben die maximale Anzahl von Einladungen pro Tag versendet. Versuchen Sie es morgen erneut."
         }
       },
       "enterpriseSeats": {

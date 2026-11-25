@@ -5784,7 +5784,8 @@
           "seatCap": "Tutti i 4 posti sono utilizzati. Rimuovi prima un posto.",
           "ownerDomain": "L'email del tuo account deve essere un dominio aziendale per invitare i colleghi.",
           "self": "Non puoi invitare te stesso.",
-          "inviteeDomain": "L'email dell'invitato deve essere un dominio aziendale."
+          "inviteeDomain": "L'email dell'invitato deve essere un dominio aziendale.",
+          "rateLimited": "Hai inviato il massimo numero di inviti consentiti in un giorno. Riprova domani."
         }
       },
       "enterpriseSeats": {

@@ -5712,7 +5712,8 @@
           "seatCap": "4 个席位已全部使用。请先移除一个席位。",
           "ownerDomain": "您的账户邮箱必须是企业域名才能邀请团队成员。",
           "self": "您无法邀请自己。",
-          "inviteeDomain": "被邀请人的邮箱必须是企业域名。"
+          "inviteeDomain": "被邀请人的邮箱必须是企业域名。",
+          "rateLimited": "您今天发送的邀请已达上限。请明天再试。"
         }
       },
       "enterpriseSeats": {

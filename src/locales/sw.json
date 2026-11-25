@@ -5748,7 +5748,8 @@
           "seatCap": "Viti vyote 4 vinatumika. Ondoa kiti kwanza.",
           "ownerDomain": "Barua pepe ya akaunti yako lazima iwe ya kikoa cha kampuni ili kualika wenzako wa timu.",
           "self": "Huwezi kujialika mwenyewe.",
-          "inviteeDomain": "Barua pepe ya mwalikwa lazima iwe ya kikoa cha kampuni."
+          "inviteeDomain": "Barua pepe ya mwalikwa lazima iwe ya kikoa cha kampuni.",
+          "rateLimited": "Umetuma idadi ya juu ya mialiko inayoruhusiwa kwa siku. Jaribu tena kesho."
         }
       },
       "enterpriseSeats": {

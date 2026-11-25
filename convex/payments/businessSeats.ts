@@ -66,6 +66,19 @@ async function touchBusinessSeatLock(
   businessSubscriptionId: string,
   now: number,
 ): Promise<void> {
+  // Always patch the covering subscriptions document first so even a
+  // brand-new subscription's first concurrent invite burst triggers Convex
+  // document-level OCC serialization (a lazily inserted lock row alone cannot
+  // serialize parallel first-ever inserts).
+  const sub = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_dodoSubscriptionId", (q) =>
+      q.eq("dodoSubscriptionId", businessSubscriptionId),
+    )
+    .unique();
+  if (sub) {
+    await ctx.db.patch(sub._id, { seatLockTouchedAt: now });
+  }
   const lock = await ctx.db
     .query("businessSeatLocks")
     .withIndex("by_businessSubscriptionId", (q) =>

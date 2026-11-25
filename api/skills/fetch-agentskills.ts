@@ -127,10 +127,25 @@ export default async function handler(
   // App-owned self-cache (#7674): this route is its only writer, so read and
   // write ride the deployment-prefixed helper default.
   const cacheKey = `agentskills:v1:${skillUrl.hostname}${skillUrl.pathname}`;
+  const MAX_LEN = 2000;
+  const MAX_NAME_LEN = 200;
+  const MAX_DESCRIPTION_LEN = 1000;
+
+  const boundPayload = (raw: AgentSkillPayload): AgentSkillPayload => {
+    const rawInstructions = typeof raw.instructions === 'string' ? raw.instructions : '';
+    const isTruncated = raw.truncated || rawInstructions.length > MAX_LEN;
+    return {
+      name: typeof raw.name === 'string' ? raw.name.slice(0, MAX_NAME_LEN) : 'Imported Skill',
+      description: typeof raw.description === 'string' ? raw.description.slice(0, MAX_DESCRIPTION_LEN) : '',
+      instructions: rawInstructions.length > MAX_LEN ? rawInstructions.slice(0, MAX_LEN) : rawInstructions,
+      truncated: isTruncated,
+    };
+  };
+
   if (cacheable) {
     try {
       const cached = await readJsonFromUpstash<AgentSkillPayload>(cacheKey, 1_500);
-      if (cached) return Response.json(cached, { headers: corsHeaders });
+      if (cached) return Response.json(boundPayload(cached), { headers: corsHeaders });
     } catch { /* cache unavailable — fall through to the upstream fetch */ }
   }
 
@@ -157,19 +172,13 @@ export default async function handler(
     return Response.json({ error: "This skill has no instructions — it may use tools only (not supported)." }, { status: 422, headers: corsHeaders });
   }
 
-  const MAX_LEN = 2000;
-  const MAX_NAME_LEN = 200;
-  const MAX_DESCRIPTION_LEN = 1000;
   const truncated = instructions.length > MAX_LEN;
-  const name = typeof skillData.name === 'string' ? skillData.name.slice(0, MAX_NAME_LEN) : 'Imported Skill';
-  const description = typeof skillData.description === 'string' ? skillData.description.slice(0, MAX_DESCRIPTION_LEN) : '';
-
-  const payload: AgentSkillPayload = {
-    name,
-    description,
-    instructions: truncated ? instructions.slice(0, MAX_LEN) : instructions,
+  const payload = boundPayload({
+    name: typeof skillData.name === 'string' ? skillData.name : 'Imported Skill',
+    description: typeof skillData.description === 'string' ? skillData.description : '',
+    instructions,
     truncated,
-  };
+  });
 
   // Fire-and-forget write — never block the response on the cache fill. Use
   // ctx.waitUntil when Vercel provides it (keeps the function alive until the

@@ -5727,7 +5727,8 @@
           "seatCap": "All 4 seats are used. Remove a seat first.",
           "ownerDomain": "Your account email must be a company domain to invite teammates.",
           "self": "You cannot invite yourself.",
-          "inviteeDomain": "The invitee email must be a company domain."
+          "inviteeDomain": "The invitee email must be a company domain.",
+          "rateLimited": "You have sent the maximum of 20 invites in a rolling 24-hour window. Please wait before inviting more teammates."
         }
       },
       "enterpriseSeats": {

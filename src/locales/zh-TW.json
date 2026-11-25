@@ -5712,7 +5712,8 @@
           "seatCap": "4 個席位已全部使用。請先移除一個席位。",
           "ownerDomain": "您的帳戶郵箱必須是企業域名才能邀請團隊成員。",
           "self": "您無法邀請自己。",
-          "inviteeDomain": "被邀請人的郵箱必須是企業域名。"
+          "inviteeDomain": "被邀請人的郵箱必須是企業域名。",
+          "rateLimited": "您今天傳送的邀請已達上限。請明天再試。"
         }
       },
       "enterpriseSeats": {

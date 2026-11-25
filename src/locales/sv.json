@@ -5748,7 +5748,8 @@
           "seatCap": "Alla 4 platser är använda. Ta bort en plats först.",
           "ownerDomain": "Ditt kontos e-postadress måste ha en företagsdomän för att du ska kunna bjuda in kollegor.",
           "self": "Du kan inte bjuda in dig själv.",
-          "inviteeDomain": "Den inbjudnas e-postadress måste ha en företagsdomän."
+          "inviteeDomain": "Den inbjudnas e-postadress måste ha en företagsdomän.",
+          "rateLimited": "Du har skickat maximalt antal inbjudningar per dag. Försök igen imorgon."
         }
       },
       "enterpriseSeats": {

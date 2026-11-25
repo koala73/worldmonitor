@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 pub const PRODUCTION_FAPI_HOST: &str = "clerk.worldmonitor.app";
 /// Development instances, matching the desktop CSP's script-src entry.
+#[cfg(debug_assertions)]
 const DEVELOPMENT_FAPI_HOST_SUFFIX: &str = ".clerk.accounts.dev";
 pub const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 pub const MAX_RESPONSE_BODY_BYTES: usize = 8 * 1024 * 1024;
@@ -189,7 +190,10 @@ mod tests {
     #[test]
     fn allows_the_production_host_and_development_instances_only() {
         assert!(is_allowed_fapi_host("clerk.worldmonitor.app"));
-        assert!(is_allowed_fapi_host("happy-otter-12.clerk.accounts.dev"));
+        assert_eq!(
+            is_allowed_fapi_host("happy-otter-12.clerk.accounts.dev"),
+            cfg!(debug_assertions)
+        );
         assert!(!is_allowed_fapi_host("worldmonitor.app"));
         assert!(!is_allowed_fapi_host("clerk.worldmonitor.app.evil.com"));
         assert!(!is_allowed_fapi_host("evil.com"));
