@@ -135,6 +135,33 @@ describe('derivePublicBadge — staleness guard', () => {
   });
 });
 
+describe('derivePublicBadge — terminal lifecycle', () => {
+  const terminated = { text: 'Project terminated', url: 'https://x', date: '2021-06-09' };
+
+  test('cancelled project with unknown physical state stays cancelled', () => {
+    assert.equal(
+      derivePublicBadge(base({ physicalState: 'unknown', operatorStatement: terminated, lifecycleState: 'cancelled' }), NOW),
+      'cancelled',
+    );
+  });
+
+  test('closed pipeline with stale evidence stays closed', () => {
+    assert.equal(
+      derivePublicBadge(base({
+        physicalState: 'offline',
+        operatorStatement: terminated,
+        lastEvidenceUpdate: STALE,
+        lifecycleState: 'closed',
+      }), NOW),
+      'closed',
+    );
+  });
+
+  test('unrecognised lifecycle value falls back to the evidence rules', () => {
+    assert.equal(derivePublicBadge(base({ lifecycleState: 'retired' }), NOW), 'flowing');
+  });
+});
+
 describe('derivePublicBadge — versioning', () => {
   test('DERIVER_VERSION is exported and versioned', () => {
     assert.ok(DERIVER_VERSION.startsWith('badge-deriver-v'));

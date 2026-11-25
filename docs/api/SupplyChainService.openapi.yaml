@@ -1993,10 +1993,7 @@ paths:
                                           "classifierVersion": "example"
                                           "commercialState": "example"
                                           "lastEvidenceUpdate": "2026-01-15"
-                                          "operatorStatement":
-                                              "date": "2026-01-15"
-                                              "text": "example"
-                                              "url": "https://example.com/worldmonitor"
+                                          "lifecycleState": "example"
                                 "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListPipelinesResponse'
@@ -2127,10 +2124,7 @@ paths:
                                         "classifierVersion": "example"
                                         "commercialState": "example"
                                         "lastEvidenceUpdate": "2026-01-15"
-                                        "operatorStatement":
-                                            "date": "2026-01-15"
-                                            "text": "example"
-                                            "url": "https://example.com/worldmonitor"
+                                        "lifecycleState": "example"
                                 "revisions":
                                     - "classifierVersion": "example"
                                       "date": "2026-01-15"
@@ -6344,7 +6338,7 @@ components:
                     type: string
                     description: |-
                         Server-derived public badge. One of:
-                           "flowing" | "reduced" | "offline" | "disputed"
+                           "flowing" | "reduced" | "offline" | "disputed" | "cancelled" | "closed"
         LatLon:
             type: object
             properties:
@@ -6379,6 +6373,11 @@ components:
                 classifierConfidence:
                     type: number
                     format: double
+                lifecycleState:
+                    type: string
+                    description: |-
+                        Terminal lifecycle, independent of physical state and evidence age.
+                         One of: "" (in service or planned) | "cancelled" | "closed"
         OperatorStatement:
             type: object
             properties:

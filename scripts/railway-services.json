@@ -834,6 +834,7 @@
       "scripts/shared/cii-country-borders.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/correlation-runtime-mode.js",
+      "scripts/shared/country-mention.js",
       "scripts/shared/country-names.json",
       "scripts/shared/entity-extraction-core.js",
       "scripts/shared/entity-registry.js",

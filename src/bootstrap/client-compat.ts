@@ -16,4 +16,4 @@
 // vite.config.ts publishes this value as /client-compat.txt. Keep it to
 // letters, digits, dot, dash and underscore, 32 characters at most: the reader
 // treats anything else as an unknown marker and reloads.
-export const CLIENT_COMPAT = '1';
+export const CLIENT_COMPAT = '2';

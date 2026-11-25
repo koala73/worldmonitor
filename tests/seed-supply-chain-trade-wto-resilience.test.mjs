@@ -81,6 +81,20 @@ describe('wtoFetch: resilience contract — returns null on every failure mode',
     assert.equal(result, null);
   });
 
+  it('decodes Latin-1 /data bodies so accented reporter names survive', async () => {
+    const body = JSON.stringify({ Dataset: [{ ReportingEconomyCode: '792', ReportingEconomy: 'T\u00fcrkiye' }] });
+    globalThis.fetch = async () => new Response(Buffer.from(body, 'latin1'), { status: 200 });
+    const result = await wtoFetch('/data', { i: 'TP_A_0010', r: '792' });
+    assert.equal(result.Dataset[0].ReportingEconomy, 'T\u00fcrkiye');
+  });
+
+  it('keeps UTF-8 bodies as UTF-8', async () => {
+    const body = JSON.stringify({ Dataset: [{ ReportingEconomyCode: '384', ReportingEconomy: "C\u00f4te d'Ivoire" }] });
+    globalThis.fetch = async () => new Response(Buffer.from(body, 'utf8'), { status: 200 });
+    const result = await wtoFetch('/data', { i: 'TP_A_0010', r: '384' });
+    assert.equal(result.Dataset[0].ReportingEconomy, "C\u00f4te d'Ivoire");
+  });
+
   it('returns null when WTO_API_KEY is unset', async () => {
     delete process.env.WTO_API_KEY;
     let fetchCalled = false;

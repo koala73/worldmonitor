@@ -88,7 +88,30 @@ describe('China corridor source adapters (#5578)', () => {
       'stale',
       'a fresh retrieval of frozen upstream content is not current',
     );
-    assert.equal(signal?.observationTime, frozenPastBudgetIso);
+    assert.equal(signal?.observationTime, '2026-07-17T00:00:00.000Z');
+    assert.equal(signal?.observationTimePrecision, 'day');
+  });
+
+  // #11270: the content clock advances to refresh time when new upstream data
+  // lands, so showing it as the observation time reports today for data
+  // PortWatch dated days earlier.
+  it('reports the upstream asof day as observation time, not the refresh that found it', () => {
+    const bundle = buildChinaCorridorSourceBundle({
+      portwatchChina: {
+        fetchedAt: '2026-07-25T00:04:20.684Z',
+        asof: '2026-07-21',
+        contentAsOfChangedAt: Date.parse('2026-07-25T00:04:20.684Z'),
+        ports: [{ portId: 'port1188', portName: 'Shanghai', trendDelta: 2 }],
+      },
+      portwatchMeta: FRESH_META,
+    }, ASSESSED_AT);
+
+    const signal = bundle.families.port.signals[0];
+    assert.equal(signal?.observationTime, '2026-07-21T00:00:00.000Z');
+    assert.equal(signal?.observationTimePrecision, 'day');
+    assert.equal(signal?.retrievalTime, '2026-07-25T11:30:00.000Z');
+    assert.equal(signal?.contentFreshness, 'current');
+    assert.equal(signal?.availability, 'available');
   });
 
   it('keeps the content-budget boundary consistent for corridor consumers', () => {
