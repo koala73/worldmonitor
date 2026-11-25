@@ -506,7 +506,11 @@ async function fetchSource(source, { deadlineAt } = {}) {
       const flag = registryCode ? { code: registryCode, name: countryName(registryCode) } : null;
       const sorted = [...seen.entries()].sort(([a], [b]) => a.localeCompare(b));
 
-      const aliasNames = uniqueSorted((aliases ?? []).flatMap((a) => a.names).filter((part) => part && part !== name));
+      // The primary name's other scripts lead so the bounded screening index keeps them.
+      const aliasNames = [...new Set([
+        ...uniqueSorted(primaryAlias?.names.slice(1) ?? []),
+        ...uniqueSorted((aliases ?? []).flatMap((a) => a.names)),
+      ])].filter((part) => part !== name);
       const identifiers = uniqueSorted([
         ...(idRegDocsByIdentity.get(identityId) || []).map((doc) => (
           ofacRegistrationToIdentifier(idRegDocTypes.get(doc.typeId) || '', doc.number)

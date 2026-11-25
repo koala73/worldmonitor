@@ -144,8 +144,8 @@ it('names an OFAC party by its Primary Latin form and keeps other scripts as ali
   vm.runInContext(`${pureSrc}\n${seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc))}`, context);
   const { entries } = await context.fetchSource({ label: 'SDN' });
   assert.deepEqual(normalize(entries.map(entry => [entry.name, entry._aliases])), [
-    ['Berkeley Trading LLC', ['59184 Weak Alias', 'بیرکلی للتجارة ذ م م']],
-    ['Sharika Company', ['2 Weak Alias', 'شركة']],
+    ['Berkeley Trading LLC', ['بیرکلی للتجارة ذ م م', '59184 Weak Alias']],
+    ['Sharika Company', ['شركة', '2 Weak Alias']],
     ['Компания', ['3 Weak Alias']],
   ]);
 });
