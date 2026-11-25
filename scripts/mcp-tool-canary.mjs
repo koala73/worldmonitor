@@ -394,6 +394,7 @@ export async function runCanary({
 
   const ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
   const structuredByTool = new Map();
+  const callCounts = new Map();
   const waiters = new Map();
   const done = (name) => {
     if (!waiters.has(name)) {
@@ -415,6 +416,7 @@ export async function runCanary({
     if (budgetSpent()) return BUDGET_EXHAUSTED;
     await pace();
     if (budgetSpent()) return BUDGET_EXHAUSTED;
+    callCounts.set(tool.name, (callCounts.get(tool.name) ?? 0) + 1);
     const r = await rpc('tools/call', { name: tool.name, arguments: args });
     return { ...evaluateCall(r, validate, { acceptRpcErrorCodes }), ms: r.ms };
   }
@@ -468,13 +470,28 @@ export async function runCanary({
     return results;
   }
 
+  // Each tool gets at most two real calls. A dependent that could not chain
+  // runs again with its upstream, so its first real call may come in pass 2
+  // and earn a pass 3.
   const byName = new Map((await runPass(canaryTools, 1)).map((r) => [r.name, r]));
-  const retryNames = new Set([...byName.values()]
-    .filter((r) => !r.ok && r.kind !== 'budget_exhausted' && r.kind !== 'schema_invalid')
-    .map((r) => r.name));
-  if (retryNames.size > 0 && Date.now() + retryDelayMs < budgetEndsAt) {
+  for (let attempts = 2; ; attempts += 1) {
+    const failing = (name) => {
+      const r = byName.get(name);
+      return r && !r.ok && r.kind !== 'budget_exhausted' && r.kind !== 'schema_invalid';
+    };
+    const retryNames = new Set();
+    for (const t of canaryTools) {
+      if (!failing(t.name)) continue;
+      const calls = callCounts.get(t.name) ?? 0;
+      if (calls === 1) retryNames.add(t.name);
+    }
+    for (const t of canaryTools) {
+      const upstream = fixtures[t.name]?.after;
+      if (failing(t.name) && (callCounts.get(t.name) ?? 0) === 0 && retryNames.has(upstream)) retryNames.add(t.name);
+    }
+    if (retryNames.size === 0 || Date.now() + retryDelayMs >= budgetEndsAt) break;
     await sleep(retryDelayMs);
-    for (const result of await runPass(canaryTools.filter((t) => retryNames.has(t.name)), 2)) {
+    for (const result of await runPass(canaryTools.filter((t) => retryNames.has(t.name)), attempts)) {
       if (result.kind !== 'budget_exhausted') byName.set(result.name, result);
     }
   }

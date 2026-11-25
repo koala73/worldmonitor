@@ -176,12 +176,24 @@ describe('runCanary', () => {
     assert.deepEqual(calls.find((c) => c.name === 'get_webcam_media')?.args, { webcam_id: 'cam-1' });
   });
 
-  it('keeps the first failure when the run budget is spent before the retry pass', async () => {
-    const { fetchImpl, calls } = fakeFetch([tool('get_a')], async () => {
-      await new Promise((r) => setTimeout(r, 40));
-      return { status: 503, body: '' };
+  it('retries a dependent whose first real call came in the retry pass', async () => {
+    const tools = [
+      tool('get_webcam_media', { inputSchema: { type: 'object', properties: {}, required: ['webcam_id'] } }),
+      tool('find_webcams', { inputSchema: { type: 'object', properties: {}, required: ['bound_w'] } }),
+    ];
+    const found = { content: [], structuredContent: { data: { items: [], webcams: [{ webcamId: 'cam-1' }] } } };
+    const { fetchImpl, calls } = fakeFetch(tools, (name, _a, attempt) => {
+      if (name === 'find_webcams') return attempt === 1 ? { status: 503, body: '' } : { body: rpcResult(found) };
+      return attempt === 1 ? { status: 503, body: '' } : { body: rpcResult(GOOD) };
     });
-    const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST, runBudgetMs: 20 });
+    const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST });
+    assert.equal(summarize(report).healthy, true, JSON.stringify(report.results));
+    assert.equal(calls.filter((c) => c.name === 'get_webcam_media').length, 2);
+  });
+
+  it('keeps the first failure when the retry pass cannot start inside the run budget', async () => {
+    const { fetchImpl, calls } = fakeFetch([tool('get_a')], () => ({ status: 503, body: '' }));
+    const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST, retryDelayMs: 60_000, runBudgetMs: 30_000 });
     assert.equal(calls.length, 1);
     assert.equal(report.results[0].kind, 'http');
     assert.equal(report.results[0].attempts, 1);
