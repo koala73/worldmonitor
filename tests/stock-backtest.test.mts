@@ -819,6 +819,12 @@ describe('simulateEvaluation', () => {
     assert.equal(evaluation?.simulatedReturnPct, 10);
     assert.equal(evaluation?.directionCorrect, false);
   });
+
+  it('does not count a window close flat to the rounded entry price as a directional hit', () => {
+    const evaluation = simulateEvaluation(analysis, [bar(99, 101, 100.004)]);
+    assert.equal(evaluation?.outcome, 'window_close');
+    assert.equal(evaluation?.directionCorrect, false);
+  });
 });
 
 describe('technical-only backtest disclosure', () => {

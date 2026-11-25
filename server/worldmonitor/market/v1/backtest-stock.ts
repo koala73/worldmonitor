@@ -179,7 +179,7 @@ export function simulateEvaluation(
     entryPrice: round(entryPrice),
     exitPrice: round(exitPrice),
     simulatedReturnPct: round(simulatedReturnPct),
-    directionCorrect: direction === 'long' ? windowClose > entryPrice : windowClose < entryPrice,
+    directionCorrect: direction === 'long' ? round(windowClose) > entryPrice : round(windowClose) < entryPrice,
     outcome,
     stopLoss: round(stopLoss),
     takeProfit: round(takeProfit),
