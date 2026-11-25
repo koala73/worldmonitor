@@ -2959,7 +2959,21 @@
       "saved": "अंतिम ज्ञात अपडेट {{time}} · अपडेट की जाँच जारी है",
       "savedOffline": "अंतिम ज्ञात अपडेट {{time}} · ऑफ़लाइन",
       "localSignals": "डैशबोर्ड में लोड किए गए संकेतों पर आधारित",
-      "emptySaved": "अंतिम ज्ञात अपडेट में कोई अभिसरण नहीं था।"
+      "emptySaved": "अंतिम ज्ञात अपडेट में कोई अभिसरण नहीं था।",
+      "signalTypes": {
+        "militaryFlight": "सैन्य उड़ान",
+        "militaryVessel": "सैन्य पोत",
+        "aisGap": "AIS अंतराल",
+        "conflictEvent": "संघर्ष घटना",
+        "escalationOutage": "संचार बाधा",
+        "newsSeverity": "गंभीर समाचार",
+        "sanctionsNews": "प्रतिबंध समाचार",
+        "marketMove": "बाज़ार हलचल",
+        "commoditySpike": "कमोडिटी उछाल",
+        "earthquake": "भूकंप",
+        "infraOutage": "अवसंरचना बाधा",
+        "other": "संकेत"
+      }
     },
     "thermalEscalation": {
       "title": "थर्मल बढ़ोतरी",

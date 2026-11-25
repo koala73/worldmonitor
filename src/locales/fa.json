@@ -2962,7 +2962,21 @@
       "saved": "آخرین به‌روزرسانی شناخته‌شده {{time}} · در حال بررسی به‌روزرسانی‌ها",
       "savedOffline": "آخرین به‌روزرسانی شناخته‌شده {{time}} · آفلاین",
       "localSignals": "بر اساس سیگنال‌های بارگذاری‌شده در داشبورد",
-      "emptySaved": "در آخرین به‌روزرسانی شناخته‌شده همگرایی وجود نداشت."
+      "emptySaved": "در آخرین به‌روزرسانی شناخته‌شده همگرایی وجود نداشت.",
+      "signalTypes": {
+        "militaryFlight": "پرواز نظامی",
+        "militaryVessel": "شناور نظامی",
+        "aisGap": "قطع AIS",
+        "conflictEvent": "رویداد درگیری",
+        "escalationOutage": "قطع ارتباطات",
+        "newsSeverity": "اخبار جدی",
+        "sanctionsNews": "اخبار تحریم",
+        "marketMove": "حرکت بازار",
+        "commoditySpike": "جهش کالا",
+        "earthquake": "زلزله",
+        "infraOutage": "قطع زیرساخت",
+        "other": "سیگنال"
+      }
     },
     "thermalEscalation": {
       "title": "تشدید حرارتی",

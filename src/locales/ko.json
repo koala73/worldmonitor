@@ -2875,7 +2875,21 @@
       "saved": "마지막으로 확인된 업데이트 {{time}} · 업데이트 확인 중",
       "savedOffline": "마지막으로 확인된 업데이트 {{time}} · 오프라인",
       "localSignals": "대시보드에 로드된 신호를 기반으로 함",
-      "emptySaved": "마지막으로 확인된 업데이트에는 수렴이 없었습니다."
+      "emptySaved": "마지막으로 확인된 업데이트에는 수렴이 없었습니다.",
+      "signalTypes": {
+        "militaryFlight": "군용기 비행",
+        "militaryVessel": "군함",
+        "aisGap": "AIS 공백",
+        "conflictEvent": "분쟁 사건",
+        "escalationOutage": "통신 장애",
+        "newsSeverity": "심각한 뉴스",
+        "sanctionsNews": "제재 뉴스",
+        "marketMove": "시장 변동",
+        "commoditySpike": "원자재 급등",
+        "earthquake": "지진",
+        "infraOutage": "인프라 장애",
+        "other": "신호"
+      }
     },
     "thermalEscalation": {
       "title": "열 급증",

@@ -2950,7 +2950,21 @@
       "saved": "آخر تحديث معروف {{time}} · جارٍ البحث عن تحديثات",
       "savedOffline": "آخر تحديث معروف {{time}} · غير متصل",
       "localSignals": "استنادًا إلى الإشارات المحمّلة في لوحة المعلومات",
-      "emptySaved": "لم يظهر تقارب في آخر تحديث معروف."
+      "emptySaved": "لم يظهر تقارب في آخر تحديث معروف.",
+      "signalTypes": {
+        "militaryFlight": "رحلة عسكرية",
+        "militaryVessel": "سفينة عسكرية",
+        "aisGap": "انقطاع AIS",
+        "conflictEvent": "حدث نزاع",
+        "escalationOutage": "انقطاع الاتصالات",
+        "newsSeverity": "أخبار خطيرة",
+        "sanctionsNews": "أخبار العقوبات",
+        "marketMove": "تحرك السوق",
+        "commoditySpike": "ارتفاع السلع",
+        "earthquake": "زلزال",
+        "infraOutage": "انقطاع البنية التحتية",
+        "other": "إشارة"
+      }
     },
     "thermalEscalation": {
       "title": "التصعيد الحراري",

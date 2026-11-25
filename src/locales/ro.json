@@ -2905,7 +2905,21 @@
       "saved": "Ultima actualizare cunoscută {{time}} · Se caută actualizări",
       "savedOffline": "Ultima actualizare cunoscută {{time}} · Fără conexiune",
       "localSignals": "Pe baza semnalelor încărcate în tabloul de bord",
-      "emptySaved": "Nu a existat convergență în ultima actualizare cunoscută."
+      "emptySaved": "Nu a existat convergență în ultima actualizare cunoscută.",
+      "signalTypes": {
+        "militaryFlight": "Zbor militar",
+        "militaryVessel": "Navă militară",
+        "aisGap": "Întrerupere AIS",
+        "conflictEvent": "Eveniment de conflict",
+        "escalationOutage": "Întrerupere comunicații",
+        "newsSeverity": "Știri grave",
+        "sanctionsNews": "Știri despre sancțiuni",
+        "marketMove": "Mișcare de piață",
+        "commoditySpike": "Salt al mărfurilor",
+        "earthquake": "Cutremur",
+        "infraOutage": "Întrerupere infrastructură",
+        "other": "Semnal"
+      }
     },
     "thermalEscalation": {
       "title": "Escaladare termică",

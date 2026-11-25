@@ -2905,7 +2905,21 @@
       "saved": "Ultimo aggiornamento noto {{time}} · Ricerca di aggiornamenti",
       "savedOffline": "Ultimo aggiornamento noto {{time}} · Non in linea",
       "localSignals": "Basato sui segnali caricati nella dashboard",
-      "emptySaved": "Nessuna convergenza nell’ultimo aggiornamento noto."
+      "emptySaved": "Nessuna convergenza nell’ultimo aggiornamento noto.",
+      "signalTypes": {
+        "militaryFlight": "Volo militare",
+        "militaryVessel": "Nave militare",
+        "aisGap": "Interruzione AIS",
+        "conflictEvent": "Evento di conflitto",
+        "escalationOutage": "Interruzione comunicazioni",
+        "newsSeverity": "Notizie gravi",
+        "sanctionsNews": "Notizie sulle sanzioni",
+        "marketMove": "Movimento di mercato",
+        "commoditySpike": "Impennata materie prime",
+        "earthquake": "Terremoto",
+        "infraOutage": "Interruzione infrastrutture",
+        "other": "Segnale"
+      }
     },
     "thermalEscalation": {
       "title": "Escalation Termica",

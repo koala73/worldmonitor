@@ -2,6 +2,7 @@
 import type { AppContext } from '@/app/app-context';
 import type { DomainAdapter, SignalEvidence } from '../types';
 import { normalizeToCountryCode } from '../country-normalization';
+import { isVerifiedUnrestEvent } from './unrest-verification';
 
 // v1 weights: wildfire and cable_alert deferred — renormalized to sum to 1.0.
 const WEIGHTS: Record<string, number> = {
@@ -51,6 +52,7 @@ export const disasterAdapter: DomainAdapter = {
     // inflating correlation scores with duplicate signals)
     const conflictCountries = new Set(
       (cache.protests?.events ?? [])
+        .filter(isVerifiedUnrestEvent)
         .filter(p => {
           const age = now - (p.time?.getTime?.() ?? now);
           return age <= windowMs;
@@ -92,17 +94,14 @@ export const disasterAdapter: DomainAdapter = {
     const types = new Set(cluster.map(s => s.type));
     const parts: string[] = [];
 
-    if (types.has('earthquake')) {
-      const maxMag = Math.max(
-        ...cluster
-          .filter(s => s.type === 'earthquake')
-          .map(s => (s.rawData as { magnitude?: number })?.magnitude ?? 0),
-      );
-      parts.push(`M${maxMag.toFixed(1)} seismic`);
-    }
+    const magnitude = (s: SignalEvidence) => (s.rawData as { magnitude?: number })?.magnitude ?? 0;
+    const strongestQuake = cluster
+      .filter(s => s.type === 'earthquake')
+      .reduce<SignalEvidence | undefined>((max, s) => (!max || magnitude(s) > magnitude(max) ? s : max), undefined);
+    if (strongestQuake) parts.push(`M${magnitude(strongestQuake).toFixed(1)} seismic`);
     if (types.has('infra_outage')) parts.push('infra disruption');
 
-    const quakePlace = cluster.find(s => s.type === 'earthquake')?.label?.split('\u2014')[1]?.trim();
+    const quakePlace = strongestQuake?.label?.split('\u2014')[1]?.trim();
 
     return parts.length > 0
       ? `Disaster cascade: ${parts.join(' + ')}${quakePlace ? ` \u2014 ${quakePlace}` : ''}`

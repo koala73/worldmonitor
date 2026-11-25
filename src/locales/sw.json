@@ -2855,7 +2855,21 @@
       "saved": "Sasisho la mwisho linalojulikana {{time}} · Inatafuta masasisho",
       "savedOffline": "Sasisho la mwisho linalojulikana {{time}} · Nje ya mtandao",
       "localSignals": "Kulingana na ishara zilizopakiwa kwenye dashibodi",
-      "emptySaved": "Hakukuwa na muunganiko katika sasisho la mwisho linalojulikana."
+      "emptySaved": "Hakukuwa na muunganiko katika sasisho la mwisho linalojulikana.",
+      "signalTypes": {
+        "militaryFlight": "Safari ya kijeshi",
+        "militaryVessel": "Chombo cha kijeshi",
+        "aisGap": "Pengo la AIS",
+        "conflictEvent": "Tukio la mzozo",
+        "escalationOutage": "Kukatika kwa mawasiliano",
+        "newsSeverity": "Habari nzito",
+        "sanctionsNews": "Habari za vikwazo",
+        "marketMove": "Mwenendo wa soko",
+        "commoditySpike": "Kupanda kwa bidhaa",
+        "earthquake": "Tetemeko la ardhi",
+        "infraOutage": "Kukatika kwa miundombinu",
+        "other": "Ishara"
+      }
     },
     "thermalEscalation": {
       "title": "Kuongezeka kwa joto",

@@ -2875,7 +2875,21 @@
       "saved": "Lần cập nhật gần nhất đã biết {{time}} · Đang kiểm tra cập nhật",
       "savedOffline": "Lần cập nhật gần nhất đã biết {{time}} · Ngoại tuyến",
       "localSignals": "Dựa trên các tín hiệu đã tải trong bảng điều khiển",
-      "emptySaved": "Không có sự hội tụ trong lần cập nhật gần nhất đã biết."
+      "emptySaved": "Không có sự hội tụ trong lần cập nhật gần nhất đã biết.",
+      "signalTypes": {
+        "militaryFlight": "Chuyến bay quân sự",
+        "militaryVessel": "Tàu quân sự",
+        "aisGap": "Gián đoạn AIS",
+        "conflictEvent": "Sự kiện xung đột",
+        "escalationOutage": "Gián đoạn liên lạc",
+        "newsSeverity": "Tin nghiêm trọng",
+        "sanctionsNews": "Tin trừng phạt",
+        "marketMove": "Biến động thị trường",
+        "commoditySpike": "Hàng hóa tăng vọt",
+        "earthquake": "Động đất",
+        "infraOutage": "Gián đoạn hạ tầng",
+        "other": "Tín hiệu"
+      }
     },
     "thermalEscalation": {
       "title": "Tăng cường nhiệt độ",
