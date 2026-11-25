@@ -45,7 +45,10 @@ import {
   projectCrossStraitActivityBootstrap,
   writeSourceHealth,
 } from '../scripts/seed-cross-strait-activity.mjs';
-import { isCrossStraitActivitySnapshot } from '../src/components/cross-strait-activity-summary';
+import {
+  buildCrossStraitActivityPanelModel,
+  isCrossStraitActivitySnapshot,
+} from '../src/components/cross-strait-activity-summary';
 
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/cross-strait-activity');
 const fixture = (name: string) => readFileSync(resolve(fixtureRoot, name), 'utf8');
@@ -1501,6 +1504,53 @@ describe('quantified cross-Strait activity (#5575)', () => {
       REVIEWED_JAPAN_MOD_OBSERVATIONS.every(
         (row) => validateDecisionSignalProvenance(row.provenance).ok,
       ),
+    );
+  });
+
+  it('marks reviewed Japan reports stale once they age past the content window', () => {
+    const mnd = parseTaiwanMndDetail(fixture('mnd-detail.html'), {
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+      retrievedAt,
+      expectedPublicationDay: '2026-07-25',
+    });
+    const japanFreshness = (generatedAt: string) => {
+      const snapshot = buildCrossStraitActivitySnapshot({
+        generatedAt,
+        previousSnapshot: null,
+        mndOutcome: { ok: true, requestCount: 2, observations: [mnd] },
+        japanOutcome: { ok: true, requestCount: 1, availableDocumentUrls: [] },
+      });
+      const japan = snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'japan-mod');
+      for (const row of japan) assert.equal(validateDecisionSignalProvenance(row.provenance).ok, true);
+      return {
+        snapshot,
+        states: Object.fromEntries(japan.map((row: { reportingDay: string; provenance: any }) => [
+          row.reportingDay,
+          row.provenance.claims.content_freshness.value,
+        ])),
+      };
+    };
+
+    const july = japanFreshness('2026-07-25T09:00:00.000Z');
+    assert.equal(july.states['2026-07-21'].state, 'current');
+    assert.equal(july.states['2026-07-06'].state, 'stale');
+
+    const november = japanFreshness('2026-11-25T00:20:41.404Z');
+    assert.deepEqual(november.states['2026-07-21'], {
+      state: 'stale',
+      assessedAt: '2026-11-25T00:20:41.404Z',
+      contentAsOf: '2026-07-20T21:00:00.000Z',
+    });
+    assert.equal(november.states['2026-07-06'].state, 'stale');
+
+    const model = buildCrossStraitActivityPanelModel(november.snapshot);
+    assert.deepEqual(model.japan.map((row) => row.reportingLabel), [
+      '2026-07-21 · 127 days old; not current activity',
+      '2026-07-06 · 142 days old; not current activity',
+    ]);
+    assert.equal(
+      buildCrossStraitActivityPanelModel(july.snapshot).japan[0].reportingLabel,
+      '2026-07-21',
     );
   });
 
