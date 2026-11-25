@@ -208,7 +208,7 @@ const MAX_ITEMS_PER_CATEGORY = 20;
 // subject or a policy action, and never consumer offers.
 const DIGITAL_SUBJECT_RE = /\b(?:ai|artificial intelligence|tech|digital|data|privacy|cyber\w*|online|internet|platforms?|apps?|software|algorithm\w*|chips?|semiconductors?|google|apple|amazon|meta|microsoft|nvidia|openai|anthropic|tiktok|social media|gdpr|telecom\w*|encryption|deepfakes?|chatbots?|bots?|crypto\w*|e-commerce|adtech|robot\w*|drones?)\b/i;
 const POLICY_ACTION_RE = /\b(?:regulat\w*|laws?|acts?|bills?|rules?|ruling|bans?|antitrust|monopoly|competition|courts?|judge|lawsuit|sues?|sued|fines?|fined|probes?|investigat\w*|polic(?:y|ies)|compliance|guidelines?|legislat\w*|congress\w*|parliament|senate|lawmakers?|governance|enforcement|oversight|executive order|white house|government|national security|consultation|copyright|export controls?|sanctions?|watchdog|regulators?)\b/i;
-const CONSUMER_OFFER_RE = /\b(?:(?:best|top|early|holiday|daily|weekend) deals|deals? of the (?:day|week)|discounts?|coupons?|promo codes?|black friday|cyber monday|prime day|on sale|lowest price)\b|\$\d[\d,.]*\s+off\b/i;
+const CONSUMER_OFFER_RE = /\b(?:(?:best|top|early|holiday|daily|weekend) deals|deals? of the (?:day|week)|discounts?|coupons?|promo codes?|black friday|cyber monday|prime day|on sale|lowest price|save up to|deals?:)|\$\d[\d,.]*\s+off\b|\b\d+% off\b/i;
 
 const CATEGORY_ELIGIBILITY: Readonly<Record<string, (title: string) => boolean>> = {
   policy: (title) => !CONSUMER_OFFER_RE.test(title) && (DIGITAL_SUBJECT_RE.test(title) || POLICY_ACTION_RE.test(title)),

@@ -44,6 +44,7 @@ describe('keyword classifier: metaphorical coup language', () => {
         'Signing the striker is a transfer coup for Arsenal',
         'Landing the summit is a diplomatic coup for Brazil',
         "The ruling delivered the coup de grâce to the merger",
+        'Regulator delivers coup de grâce to merger attempt',
       ]) {
         const result = classify(title);
         assert.notEqual(result.category, 'military', title);
@@ -75,6 +76,7 @@ describe('policy digest: AI and digital policy eligibility', () => {
       ['Clean Energy Technology Observatory: Hydropower and Pumped Storage Hydropower in the European Union - 2026 status report on technology development, trends, value chains and markets - JRC Publications', 'JRC Publications'],
       ['European Cinema Night 2026 - Shaping Europe’s digital future', 'Shaping Europe’s digital future'],
       ['Apple AirPods are $50 off at Amazon - 9to5Toys', '9to5Toys'],
+      ['Apple Watch deals: save up to 40% at Amazon - 9to5Toys', '9to5Toys'],
     ]) {
       assert.equal(isCategoryEligible('policy', title, publisher), false, title);
     }
