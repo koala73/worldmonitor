@@ -333,7 +333,8 @@ export function computeThermalEscalationWatch(detections, previousHistory = { ce
           status,
         },
       ].filter((entry) => (nowMs - Date.parse(entry.observedAt || 0)) <= HISTORY_RETENTION_MS),
-    };  }
+    };
+  }
 
   const sortedClusters = output.sort((a, b) => {
     return (
