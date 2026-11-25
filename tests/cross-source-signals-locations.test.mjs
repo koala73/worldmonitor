@@ -26,7 +26,7 @@ describe('GPS jamming signal locations', () => {
 
     assert.deepEqual(signals.map((s) => s.summary), [
       'GPS jamming detected: 3 high-interference hexagons in Middle East',
-      'GPS jamming detected: 2 high-interference hexagons in Myanmar',
+      'GPS jamming detected: 2 high-interference hexagons in East Asia',
     ]);
   });
 
@@ -60,6 +60,7 @@ describe('risk score spike locations', () => {
         ciiScores: [
           { region: 'SA', combinedScore: 64, trend: 'TREND_DIRECTION_RISING' },
           { region: 'CN', combinedScore: 82, trend: 'TREND_DIRECTION_STABLE' },
+          { region: 'US', combinedScore: 85, trend: 'TREND_DIRECTION_STABLE' },
         ],
       },
     });
@@ -67,6 +68,7 @@ describe('risk score spike locations', () => {
     assert.deepEqual(signals.map((s) => [s.theater, s.summary]), [
       ['Middle East', 'Risk score spike: Saudi Arabia CII score 64 — trend rising'],
       ['East Asia', 'Risk score spike: China CII score 82 — trend elevated'],
+      ['North America', 'Risk score spike: United States CII score 85 — trend elevated'],
     ]);
   });
 });

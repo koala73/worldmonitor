@@ -4,11 +4,12 @@ import { pathToFileURL } from 'node:url';
 import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
+import { ciiCountryAt } from './shared/cii-country-borders.mjs';
 import { regionForCountry } from './shared/geography.js';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { physicalDivergenceStaleReason } from './shared/physical-divergence-staleness.js';
 import { countryDisplayName } from './shared/country-mention.js';
-import { OTHER_FIRE_REGION, fireRegionAt } from './wildfire/fire-country.mjs';
+import { OTHER_FIRE_REGION } from './wildfire/fire-country.mjs';
 import { METHODOLOGY_VERSION as PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION } from './lib/physical-divergence.mjs';
 
 loadEnvFile(import.meta.url);
@@ -130,14 +131,18 @@ const WEATHER_REGION_THEATER = Object.freeze({
   'sub-saharan-africa': 'Sub-Saharan Africa',
 });
 
-function normalizeTheater(raw) {
-  if (!raw) return 'Global';
+function matchTheater(raw) {
   const lower = String(raw).toLowerCase();
   for (const [key, theater] of Object.entries(REGION_THEATER_MAP)) {
     if (lower.includes(key)) return theater;
   }
+  return null;
+}
+
+function normalizeTheater(raw) {
+  if (!raw) return 'Global';
   // Title-case the raw value as fallback
-  return String(raw).trim().replace(/\b\w/g, c => c.toUpperCase()) || 'Global';
+  return matchTheater(raw) || String(raw).trim().replace(/\b\w/g, c => c.toUpperCase()) || 'Global';
 }
 
 // Keyed by the ids classifyRegion() in _gpsjam-parse.mjs assigns. Its 'other'
@@ -161,16 +166,20 @@ const GPSJAM_REGION_THEATER = Object.freeze({
   'north-america': 'North America',
 });
 
-function gpsJamTheater(hex) {
-  const theater = GPSJAM_REGION_THEATER[hex.region];
-  if (theater) return theater;
-  const country = fireRegionAt(hex.lat, hex.lon);
-  return country === OTHER_FIRE_REGION ? null : normalizeTheater(country);
-}
-
 function weatherTheaterForCountry(countryCode) {
   const regionId = regionForCountry(countryCode);
   return WEATHER_REGION_THEATER[regionId] || normalizeTheater(countryCode);
+}
+
+function countryTheater(iso2) {
+  return matchTheater(countryDisplayName(iso2)) || weatherTheaterForCountry(iso2);
+}
+
+function gpsJamTheater(hex) {
+  const theater = GPSJAM_REGION_THEATER[hex.region];
+  if (theater) return theater;
+  const iso2 = ciiCountryAt(hex.lat, hex.lon);
+  return iso2 ? countryTheater(iso2) : null;
 }
 
 // ── Signal category mapping for composite detection ────────────────────────────
@@ -963,7 +972,7 @@ function extractRiskScoreSpike(d) {
   return spiking.slice(0, 3).map(s => {
     // s.region is an uppercase ISO2 code (get-risk-scores.ts:1206).
     const country = countryDisplayName(s.region) || s.region || 'unknown';
-    const theater = normalizeTheater(country);
+    const theater = countryTheater(s.region || '');
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE'] * Math.min(2, safeNum(s.combinedScore) / 60);
     return {
       id: `risk:${(s.region || 'unknown').replace(/\s+/g, '-').toLowerCase()}`,
