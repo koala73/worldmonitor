@@ -71,7 +71,7 @@ export interface RadiationAlert {
   unit: string;
   baselineValue: number;
   delta: number;
-  zScore: number;
+  zScore: number | null;
   severity: 'elevated' | 'spike';
   confidence: RadiationObservation['confidence'];
   corroborated: boolean;
@@ -286,7 +286,7 @@ function getRadiationRank(observation: RadiationObservation): number {
   const confidenceRank = observation.confidence === 'high' ? 2 : observation.confidence === 'medium' ? 1 : 0;
   const corroborationBonus = observation.corroborated ? 300 : 0;
   const conflictPenalty = observation.conflictingSources ? 250 : 0;
-  return severityRank * 1000 + confidenceRank * 200 + corroborationBonus + observation.zScore * 100 + observation.delta - conflictPenalty;
+  return severityRank * 1000 + confidenceRank * 200 + corroborationBonus + (observation.zScore ?? 0) * 100 + observation.delta - conflictPenalty;
 }
 
 function createRadiationAlert(): UnifiedAlert | null {

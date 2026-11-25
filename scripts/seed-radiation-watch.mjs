@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -63,8 +64,8 @@ function classifyFreshness(observedAt) {
 
 function classifySeverity(delta, zScore, freshness) {
   if (freshness === 'RADIATION_FRESHNESS_HISTORICAL') return 'RADIATION_SEVERITY_NORMAL';
-  if (delta >= 15 || zScore >= 3) return 'RADIATION_SEVERITY_SPIKE';
-  if (delta >= 8 || zScore >= 2) return 'RADIATION_SEVERITY_ELEVATED';
+  if (delta >= 15 || (zScore ?? 0) >= 3) return 'RADIATION_SEVERITY_SPIKE';
+  if (delta >= 8 || (zScore ?? 0) >= 2) return 'RADIATION_SEVERITY_ELEVATED';
   return 'RADIATION_SEVERITY_NORMAL';
 }
 
@@ -186,7 +187,8 @@ function buildBaseObservation({
     freshness,
     baselineValue: round(baselineValue, 1),
     delta: round(delta, 1),
-    zScore: round(zScore, 2),
+    zScore: zScore === null ? 0 : round(zScore, 2),
+    zScoreAvailable: zScore !== null,
     severity,
     contributingSources: [source],
     confidence: 'RADIATION_CONFIDENCE_LOW',
@@ -209,7 +211,7 @@ function toEpaObservation(site, readings) {
   const baselineValue = baselineValues.length > 0 ? average(baselineValues) : latest.value;
   const sigma = baselineValues.length >= BASELINE_MIN_SAMPLES ? stdDev(baselineValues, baselineValue) : 0;
   const delta = latest.value - baselineValue;
-  const zScore = sigma > 0 ? delta / sigma : 0;
+  const zScore = sigma > 0 ? delta / sigma : null;
   const severity = classifySeverity(delta, zScore, freshness);
 
   return buildBaseObservation({
@@ -234,7 +236,7 @@ function toEpaObservation(site, readings) {
   });
 }
 
-function toSafecastObservation(site, measurements) {
+export function toSafecastObservation(site, measurements) {
   if (measurements.length < 2) return null;
 
   const latest = measurements[measurements.length - 1];
@@ -244,7 +246,7 @@ function toSafecastObservation(site, measurements) {
   const baselineValue = baselineValues.length > 0 ? average(baselineValues) : latest.value;
   const sigma = baselineValues.length >= SAFECAST_MIN_SAMPLES ? stdDev(baselineValues, baselineValue) : 0;
   const delta = latest.value - baselineValue;
-  const zScore = sigma > 0 ? delta / sigma : 0;
+  const zScore = sigma > 0 ? delta / sigma : null;
   const severity = classifySeverity(delta, zScore, freshness);
 
   return buildBaseObservation({
@@ -308,7 +310,7 @@ function materiallyConflicts(primary, secondary) {
   return oppositeDirection || Math.abs(primary.delta - secondary.delta) > 30;
 }
 
-function finalizeObservationGroup(group) {
+export function finalizeObservationGroup(group) {
   const sorted = [...group].sort((a, b) => {
     const priorityDelta = observationPriority(b) - observationPriority(a);
     if (priorityDelta !== 0) return priorityDelta;
@@ -340,6 +342,7 @@ function finalizeObservationGroup(group) {
     baselineValue: primary.baselineValue,
     delta: primary.delta,
     zScore: primary.zScore,
+    zScoreAvailable: primary.zScoreAvailable,
     severity: primary.severity,
     contributingSources: distinctSources,
     confidence,
@@ -466,16 +469,18 @@ export function declareRecords(data) {
   return Array.isArray(data?.observations) ? data.observations.length : 0;
 }
 
-runSeed('radiation', 'observations', CANONICAL_KEY, fetchRadiationWatch, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'epa-radnet-safecast-merge-v1',
-  recordCount: (data) => data?.observations?.length ?? 0,
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runSeed('radiation', 'observations', CANONICAL_KEY, fetchRadiationWatch, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'epa-radnet-safecast-merge-v1',
+    recordCount: (data) => data?.observations?.length ?? 0,
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 30,
-}).catch((err) => {
-  console.error('FATAL:', err.message || err);
-  process.exit(1);
-});
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 30,
+  }).catch((err) => {
+    console.error('FATAL:', err.message || err);
+    process.exit(1);
+  });
+}

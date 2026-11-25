@@ -188,7 +188,7 @@ export const LAYERS = [
       const p = loc(o);
       if (!p) return null;
       const sev = enumLabel(o.severity);
-      return { id: `rad:${o.id}`, name: `${o.locationName || o.country} · ${o.value} ${o.unit}`, lat: p[0], lon: p[1], glyph: '◉', color: /normal|low/i.test(sev) ? t.good : severityColor(t, sev), size: /normal|low/i.test(sev) ? 0 : 2, pulse: /spike|high|critical/i.test(sev), ts: o.observedAt, info: info([['Reading', `${o.value} ${o.unit}`], ['Baseline', o.baselineValue && `${o.baselineValue} ${o.unit} (Δ ${o.delta >= 0 ? '+' : ''}${o.delta}, z ${o.zScore})`], ['Severity', sev], ['Source', enumLabel(o.source)], ['Confidence', enumLabel(o.confidence)], ['Corroborated', o.corroborated ? 'yes' : 'no'], ['Observed', when(o.observedAt, now)]]) };
+      return { id: `rad:${o.id}`, name: `${o.locationName || o.country} · ${o.value} ${o.unit}`, lat: p[0], lon: p[1], glyph: '◉', color: /normal|low/i.test(sev) ? t.good : severityColor(t, sev), size: /normal|low/i.test(sev) ? 0 : 2, pulse: /spike|high|critical/i.test(sev), ts: o.observedAt, info: info([['Reading', `${o.value} ${o.unit}`], ['Baseline', o.baselineValue && `${o.baselineValue} ${o.unit} (Δ ${o.delta >= 0 ? '+' : ''}${o.delta}, z ${(o.zScoreAvailable ?? o.zScore !== 0) ? o.zScore : '—'})`], ['Severity', sev], ['Source', enumLabel(o.source)], ['Confidence', enumLabel(o.confidence)], ['Corroborated', o.corroborated ? 'yes' : 'no'], ['Observed', when(o.observedAt, now)]]) };
     }).filter(Boolean),
   },
   {
