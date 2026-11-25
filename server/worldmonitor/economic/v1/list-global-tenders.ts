@@ -98,13 +98,19 @@ function usdValue(tender: GlobalTender, usdPerUnit: UsdPerUnit): number | null {
   return amount * rate;
 }
 
-// Amounts without a USD rate cannot be ranked against the others, so they follow
-// them, grouped by currency and ranked within it.
+function valueTier(tender: GlobalTender, usd: number | null): number {
+  if (usd !== null) return 0;
+  return (tender.money?.amount || 0) > 0 ? 1 : 2;
+}
+
+// Amounts without a USD rate cannot be ranked against converted ones, so they
+// follow them, grouped by currency and ranked within it. Tenders with no amount come last.
 function compareEstimatedValue(left: GlobalTender, right: GlobalTender, usdPerUnit: UsdPerUnit): number {
   const leftUsd = usdValue(left, usdPerUnit);
   const rightUsd = usdValue(right, usdPerUnit);
+  const byTier = valueTier(left, leftUsd) - valueTier(right, rightUsd);
+  if (byTier) return byTier;
   if (leftUsd !== null && rightUsd !== null) return rightUsd - leftUsd;
-  if (leftUsd !== null || rightUsd !== null) return leftUsd === null ? 1 : -1;
   return normalized(left.money?.currency).localeCompare(normalized(right.money?.currency))
     || (right.money?.amount || 0) - (left.money?.amount || 0);
 }
