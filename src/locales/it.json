@@ -3377,6 +3377,10 @@
       },
       "warningAge": "Dal primo avviso ancora in vigore",
       "days": "{{amount}} g"
+    },
+    "externalNavigation": {
+      "blocked": "Il tuo browser ha bloccato la nuova scheda.",
+      "openLink": "Apri {{host}}"
     }
   },
   "popups": {

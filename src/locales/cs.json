@@ -3399,6 +3399,10 @@
       },
       "warningAge": "Od první dosud platné výstrahy",
       "days": "{{amount}} d."
+    },
+    "externalNavigation": {
+      "blocked": "Váš prohlížeč zablokoval novou kartu.",
+      "openLink": "Otevřít {{host}}"
     }
   },
   "popups": {

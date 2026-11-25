@@ -2937,6 +2937,10 @@
       },
       "warningAge": "Tid sedan den första varning som ännu gäller",
       "days": "{{amount}} d"
+    },
+    "externalNavigation": {
+      "blocked": "Din webbläsare blockerade den nya fliken.",
+      "openLink": "Öppna {{host}}"
     }
   },
   "popups": {

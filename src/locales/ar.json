@@ -3443,6 +3443,10 @@
       },
       "warningAge": "منذ أول تحذير ما زال ساريًا",
       "days": "{{amount}} يوم"
+    },
+    "externalNavigation": {
+      "blocked": "منع متصفحك فتح علامة التبويب الجديدة.",
+      "openLink": "فتح {{host}}"
     }
   },
   "popups": {

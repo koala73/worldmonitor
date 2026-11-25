@@ -2937,6 +2937,10 @@
       },
       "warningAge": "Sinds de eerste nog geldige waarschuwing",
       "days": "{{amount}} d"
+    },
+    "externalNavigation": {
+      "blocked": "Uw browser heeft het nieuwe tabblad geblokkeerd.",
+      "openLink": "{{host}} openen"
     }
   },
   "popups": {

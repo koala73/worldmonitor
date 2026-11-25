@@ -3399,6 +3399,10 @@
       },
       "warningAge": "Czas od pierwszego nadal ważnego ostrzeżenia",
       "days": "{{amount}} dni"
+    },
+    "externalNavigation": {
+      "blocked": "Twoja przeglądarka zablokowała nową kartę.",
+      "openLink": "Otwórz {{host}}"
     }
   },
   "popups": {

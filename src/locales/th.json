@@ -3333,6 +3333,10 @@
       },
       "warningAge": "เวลานับจากคำเตือนแรกที่ยังมีผล",
       "days": "{{amount}} วัน"
+    },
+    "externalNavigation": {
+      "blocked": "เบราว์เซอร์ของคุณบล็อกแท็บใหม่",
+      "openLink": "เปิด {{host}}"
     }
   },
   "popups": {

@@ -80,6 +80,19 @@ function reportOpenFailure(url: string, reason: string): void {
   }));
 }
 
+/**
+ * A refused tab for a caller that stays on the page left the click dead
+ * (Sentry WORLDMONITOR-1ED). Offer the URL as a link the user can follow.
+ * Loaded on demand: the notice needs i18n, which this module's tsx tests
+ * cannot load, and only this path uses it.
+ */
+function offerBlockedLink(url: string): void {
+  if (typeof document === 'undefined') return;
+  void import('./blocked-open-notice')
+    .then((m) => m.showBlockedOpenNotice(url))
+    .catch(() => { /* chunk failed to load: the Sentry report above still stands */ });
+}
+
 /** Distinguishes "the native side said no" from "it never answered". */
 class OpenUrlTimeout extends Error {}
 
@@ -277,6 +290,7 @@ export async function openExternalUrl(
   // unsaved input, which opts out and gets the failure instead.
   if (options?.sameTabFallback === false) {
     reportOpenFailure(targetUrl, 'popup-blocked');
+    offerBlockedLink(targetUrl);
     return 'failed';
   }
   try {

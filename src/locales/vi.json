@@ -3333,6 +3333,10 @@
       },
       "warningAge": "Thời gian từ cảnh báo đầu tiên còn hiệu lực",
       "days": "{{amount}} ngày"
+    },
+    "externalNavigation": {
+      "blocked": "Trình duyệt của bạn đã chặn tab mới.",
+      "openLink": "Mở {{host}}"
     }
   },
   "popups": {
