@@ -797,7 +797,7 @@ export class CommoditiesPanel extends Panel {
 
     // Metals/Commodities tab — exclude FX and spot gold symbols from the display grid.
     // Require a finite numeric price: the feed sometimes omits `price` (undefined),
-    // and `d.price !== null` lets undefined through to `formatPrice(c.price!)`
+    // and `d.price !== null` lets undefined through to the price formatter
     // (WORLDMONITOR-SH). A finite-price guard also keeps the adjacent `c.change!`
     // row meaningful (a record with no price carries no usable change either).
     const validData = this._commodityData.filter(
