@@ -235,11 +235,9 @@ export function attributeLowCredibilityClaim(story, text) {
 
 // The credit must sit in the clause that carries the claim: text from the
 // previous citation run up to and including the citation of that story. Text
-// after the last citation ("..., WAFA English reported.") joins the last clause.
+// after the last citation credits nothing, because it can carry its own claim.
 function unattributedLowCredibilityStory(sentence, topStories) {
-  const clauses = sentence.match(/[^[\]]*?(?:\[\d{1,3}\]\s*)+/g) ?? [];
-  if (clauses.length > 0) clauses[clauses.length - 1] += sentence.slice(sentence.lastIndexOf(']') + 1);
-  for (const clause of clauses) {
+  for (const clause of sentence.match(/[^[\]]*?(?:\[\d{1,3}\]\s*)+/g) ?? []) {
     const story = [...clause.matchAll(/\[(\d{1,3})\]/g)]
       .map((match) => topStories[Number.parseInt(match[1], 10) - 1])
       .find((cited) => requiresSourceAttribution(cited) && !namesOutlet(clause, cited));
