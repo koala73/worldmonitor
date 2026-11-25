@@ -1654,7 +1654,7 @@
       "noData": "無資料",
       "enable": "啟用",
       "convergenceMetric": "匯聚度",
-      "ciiDeviation": "國家不穩定指數偏差",
+      "topCiiScore": "最高國家不穩定得分",
       "infraEvents": "基礎設施事件",
       "highAlerts": "高等級警報",
       "topRisks": "主要風險",
@@ -1831,6 +1831,7 @@
       "refugees": "難民",
       "asylumSeekers": "尋求庇護者",
       "idps": "國內流離失所者",
+      "stateless": "無國籍者",
       "total": "總計",
       "origins": "來源國",
       "hosts": "收容國",
@@ -4393,7 +4394,13 @@
     "alert": "警報：{{location}}",
     "multipleRegions": "多個區域",
     "trending": "「{{term}}」趨勢上升 — {{hours}}小時內{{count}}次提及",
-    "eventsDetected": "在區域（{{lat}}°, {{lon}}°）檢測到{{count}}個事件"
+    "eventsDetected": "檢測到{{count}}個事件：{{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗議",
+      "military_flight": "軍機飛行",
+      "military_vessel": "海軍艦艇",
+      "earthquake": "地震活動"
+    }
   },
   "intel": {
     "topics": {

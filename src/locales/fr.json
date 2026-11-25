@@ -1611,7 +1611,7 @@
       "noData": "pas de données",
       "enable": "Activer",
       "convergenceMetric": "Convergence",
-      "ciiDeviation": "Écart de l'Indice d'instabilité des pays",
+      "topCiiScore": "Score d'instabilité le plus élevé par pays",
       "infraEvents": "Événements Infra",
       "highAlerts": "Alertes élevées",
       "topRisks": "Risques principaux",
@@ -1710,6 +1710,7 @@
       "refugees": "Réfugiés",
       "asylumSeekers": "Demandeurs d'asile",
       "idps": "personnes déplacées",
+      "stateless": "Apatrides",
       "total": "Total",
       "origins": "Origines",
       "hosts": "Hôtes",
@@ -4437,7 +4438,13 @@
     "alert": "Alerte : {{location}}",
     "multipleRegions": "Régions multiples",
     "trending": "\"{{term}}\" en tendance — {{count}} mentions en {{hours}}h",
-    "eventsDetected": "{{count}} événements détectés dans la région ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} événements détectés : {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "manifestations",
+      "military_flight": "vols militaires",
+      "military_vessel": "navires de guerre",
+      "earthquake": "activité sismique"
+    }
   },
   "intel": {
     "topics": {

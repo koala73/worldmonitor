@@ -1658,7 +1658,7 @@
       "noData": "няма данни",
       "enable": "Активирайте",
       "convergenceMetric": "Конвергенция",
-      "ciiDeviation": "Отклонение на Country Instability Index",
+      "topCiiScore": "Най-висок резултат за нестабилност на страна",
       "infraEvents": "Инфра събития",
       "highAlerts": "Високи алерти",
       "topRisks": "Топ рискове",
@@ -1836,6 +1836,7 @@
       "refugees": "Бежанци",
       "asylumSeekers": "Лица, ищещи убежище",
       "idps": "BDP",
+      "stateless": "Лица без гражданство",
       "total": "Общо",
       "origins": "Произход",
       "hosts": "Домакини",
@@ -4415,7 +4416,13 @@
     "alert": "Алерт: {{location}}",
     "multipleRegions": "Множество региони",
     "trending": "\"{{term}}\" Тренд - {{count}} споменава в {{hours}}h",
-    "eventsDetected": "{{count}} събитие открита в регион ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} открити събития: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "протести",
+      "military_flight": "военни полети",
+      "military_vessel": "военноморски кораби",
+      "earthquake": "сеизмична активност"
+    }
   },
   "intel": {
     "topics": {

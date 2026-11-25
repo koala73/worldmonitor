@@ -1654,7 +1654,7 @@
       "noData": "データなし",
       "enable": "有効にする",
       "convergenceMetric": "収束",
-      "ciiDeviation": "Country Instability Index 乖離",
+      "topCiiScore": "国別不安定スコアの最高値",
       "infraEvents": "インフラ関連イベント",
       "highAlerts": "高レベル警報",
       "topRisks": "主要リスク",
@@ -1831,6 +1831,7 @@
       "refugees": "難民",
       "asylumSeekers": "庇護申請者",
       "idps": "国内避難民",
+      "stateless": "無国籍者",
       "total": "合計",
       "origins": "出身国",
       "hosts": "受入国",
@@ -4393,7 +4394,13 @@
     "alert": "アラート: {{location}}",
     "multipleRegions": "複数地域",
     "trending": "\"{{term}}\" トレンド中 — {{hours}}時間で{{count}}件の言及",
-    "eventsDetected": "地域（{{lat}}°, {{lon}}°）で{{count}}件のイベントを検出"
+    "eventsDetected": "{{count}}件のイベントを検出: {{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗議活動",
+      "military_flight": "軍用機の飛行",
+      "military_vessel": "艦艇",
+      "earthquake": "地震活動"
+    }
   },
   "intel": {
     "topics": {

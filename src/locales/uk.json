@@ -1823,7 +1823,7 @@
       "noData": "немає даних",
       "enable": "Увімкнути",
       "convergenceMetric": "Конвергенція",
-      "ciiDeviation": "Відхилення Country Instability Index",
+      "topCiiScore": "Найвищий бал нестабільності країни",
       "infraEvents": "Події інфраструктури",
       "highAlerts": "Критичні сповіщення",
       "dataFreshness": "Актуальність даних",
@@ -1998,6 +1998,7 @@
       "refugees": "Біженці",
       "asylumSeekers": "Шукачі Притулку",
       "idps": "Внутрішньо Переміщені Особи",
+      "stateless": "Особи без громадянства",
       "total": "Всього",
       "origins": "Походження",
       "hosts": "Країни-господарки",
@@ -4528,7 +4529,13 @@
     "alert": "Сповіщення: {{location}}",
     "multipleRegions": "Кілька регіонів",
     "trending": "«{{term}}» в тренді — {{count}} згадувань за {{hours}}h",
-    "eventsDetected": "{{count}} подій виявлено в регіоні ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} подій виявлено: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "протести",
+      "military_flight": "військові польоти",
+      "military_vessel": "військові кораблі",
+      "earthquake": "сейсмічна активність"
+    }
   },
   "intel": {
     "topics": {

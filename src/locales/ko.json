@@ -1654,7 +1654,7 @@
       "noData": "데이터 없음",
       "enable": "활성화",
       "convergenceMetric": "수렴도",
-      "ciiDeviation": "Country Instability Index 편차",
+      "topCiiScore": "최고 국가 불안정 점수",
       "infraEvents": "인프라 사건",
       "highAlerts": "고도 경보",
       "topRisks": "주요 위험",
@@ -1831,6 +1831,7 @@
       "refugees": "난민",
       "asylumSeekers": "망명 신청자",
       "idps": "국내 실향민",
+      "stateless": "무국적자",
       "total": "합계",
       "origins": "출발국",
       "hosts": "수용국",
@@ -4393,7 +4394,13 @@
     "alert": "경보: {{location}}",
     "multipleRegions": "다수 지역",
     "trending": "\"{{term}}\" 트렌딩 - {{hours}}시간 내 {{count}}건 언급",
-    "eventsDetected": "해당 지역({{lat}}°, {{lon}}°)에서 {{count}}건의 사건 감지"
+    "eventsDetected": "{{count}}건의 사건 감지: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "시위",
+      "military_flight": "군용기 비행",
+      "military_vessel": "해군 함정",
+      "earthquake": "지진 활동"
+    }
   },
   "intel": {
     "topics": {

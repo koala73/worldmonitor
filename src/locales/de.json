@@ -1687,6 +1687,7 @@
       "refugees": "Flüchtlinge",
       "asylumSeekers": "Asylbewerber",
       "idps": "Binnenvertriebene",
+      "stateless": "Staatenlose",
       "total": "Gesamt",
       "origins": "Herkunftsländer",
       "hosts": "Aufnahmeländer",
@@ -1872,7 +1873,7 @@
       "noData": "keine Daten",
       "enable": "Aktivieren",
       "convergenceMetric": "Konvergenz",
-      "ciiDeviation": "Länderinstabilitätsindex-Abweichung",
+      "topCiiScore": "Höchster Länderinstabilitätswert",
       "infraEvents": "Infra-Ereignisse",
       "highAlerts": "Hohe Warnstufen",
       "topRisks": "Top-Risiken",
@@ -4415,7 +4416,13 @@
     "alert": "Warnung: {{location}}",
     "multipleRegions": "Mehrere Regionen",
     "trending": "\"{{term}}\" im Trend — {{count}} Erwähnungen in {{hours}}h",
-    "eventsDetected": "{{count}} Ereignisse in der Region erkannt ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} Ereignisse erkannt: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "Proteste",
+      "military_flight": "Militärflüge",
+      "military_vessel": "Marineschiffe",
+      "earthquake": "seismische Aktivität"
+    }
   },
   "intel": {
     "topics": {

@@ -1813,7 +1813,7 @@
       "noData": "hakuna data",
       "enable": "Wezesha",
       "convergenceMetric": "Muunganiko",
-      "ciiDeviation": "Kupotoka kwa Fahirisi ya Kutokuwa na Uthabiti wa Nchi",
+      "topCiiScore": "Alama ya juu ya kutokuwa na uthabiti wa nchi",
       "infraEvents": "Matukio ya Infra",
       "highAlerts": "Tahadhari za Juu",
       "dataFreshness": "Usafi wa Data",
@@ -1986,6 +1986,7 @@
       "refugees": "Wakimbizi",
       "asylumSeekers": "Watafuta hifadhi",
       "idps": "Wakimbizi wa ndani",
+      "stateless": "Wasio na uraia",
       "total": "Jumla",
       "origins": "Asili",
       "hosts": "Wenyeji",
@@ -4484,7 +4485,13 @@
     "alert": "Tahadhari: {{location}}",
     "multipleRegions": "Mikoa Nyingi",
     "trending": "\"{{term}}\" Inavuma - {{count}} inatajwa baada ya {{hours}}h",
-    "eventsDetected": "Matukio {{count}} yamegunduliwa katika eneo ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "Matukio {{count}} yamegunduliwa: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "maandamano",
+      "military_flight": "safari za ndege za kijeshi",
+      "military_vessel": "meli za kivita",
+      "earthquake": "shughuli za mitetemeko ya ardhi"
+    }
   },
   "intel": {
     "topics": {

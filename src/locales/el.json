@@ -1658,7 +1658,7 @@
       "noData": "χωρίς δεδομένα",
       "enable": "Ενεργοποίηση",
       "convergenceMetric": "Σύγκλιση",
-      "ciiDeviation": "Απόκλιση Country Instability Index",
+      "topCiiScore": "Υψηλότερη βαθμολογία αστάθειας χώρας",
       "infraEvents": "Συμβάντα Υποδομών",
       "highAlerts": "Υψηλοί Συναγερμοί",
       "topRisks": "Κορυφαίοι Κίνδυνοι",
@@ -1836,6 +1836,7 @@
       "refugees": "Πρόσφυγες",
       "asylumSeekers": "Αιτούντες Άσυλο",
       "idps": "Εσωτερικά Εκτοπισμένοι",
+      "stateless": "Απάτριδες",
       "total": "Σύνολο",
       "origins": "Προέλευση",
       "hosts": "Υποδοχή",
@@ -4415,7 +4416,13 @@
     "alert": "Συναγερμός: {{location}}",
     "multipleRegions": "Πολλαπλές Περιοχές",
     "trending": "\"{{term}}\" Τάση - {{count}} αναφορές σε {{hours}}ω",
-    "eventsDetected": "{{count}} συμβάντα ανιχνεύθηκαν στην περιοχή ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} συμβάντα ανιχνεύθηκαν: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "διαδηλώσεις",
+      "military_flight": "στρατιωτικές πτήσεις",
+      "military_vessel": "ναυτικά σκάφη",
+      "earthquake": "σεισμική δραστηριότητα"
+    }
   },
   "intel": {
     "topics": {

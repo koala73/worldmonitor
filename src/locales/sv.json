@@ -1119,6 +1119,7 @@
       "refugees": "Flyktingar",
       "asylumSeekers": "Asylsökande",
       "idps": "internflyktingar",
+      "stateless": "Statslösa",
       "total": "Totalt",
       "origins": "Ursprung",
       "hosts": "Värdar",
@@ -1304,7 +1305,7 @@
       "noData": "inga data",
       "enable": "Aktivera",
       "convergenceMetric": "Konvergens",
-      "ciiDeviation": "Landinstabilitetsindexavvikelse",
+      "topCiiScore": "Högsta landinstabilitetspoäng",
       "infraEvents": "Infrastrukturhändelser",
       "highAlerts": "Höga varningar",
       "topRisks": "Största risker",
@@ -3997,7 +3998,13 @@
     "alert": "Larm: {{location}}",
     "multipleRegions": "Flera regioner",
     "trending": "\"{{term}}\" trending - {{count}} omnamnanden pa {{hours}}h",
-    "eventsDetected": "{{count}} handelser detekterade i regionen ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} händelser upptäckta: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protester",
+      "military_flight": "militära flygningar",
+      "military_vessel": "örlogsfartyg",
+      "earthquake": "seismisk aktivitet"
+    }
   },
   "intel": {
     "topics": {
