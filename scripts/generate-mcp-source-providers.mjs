@@ -11,9 +11,9 @@ const { entries } = JSON.parse(readFileSync(source, 'utf8'));
 const active = entries.filter((entry) => entry.observed === true
   && entry.catalogActive !== false
   && (entry.status === 'reviewed' || entry.status === 'terms-review'));
-const providers = active.map((entry) => Object.fromEntries(
-  fields.filter((field) => Object.hasOwn(entry, field)).map((field) => [field, entry[field]]),
-));
+// Rows are positional arrays in `fields` order: repeating the key names on
+// every row costs about 1 KB gzip in the MCP Edge bundle.
+const providers = active.map((entry) => fields.map((field) => entry[field]));
 const excludedProviderCount = entries.filter((entry) => entry.status === 'excluded').length;
 const expected = `${JSON.stringify({ providers, excludedProviderCount })}\n`;
 if (process.argv.includes('--check')) {
