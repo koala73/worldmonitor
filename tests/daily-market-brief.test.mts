@@ -373,6 +373,8 @@ describe('daily market brief quote-page filtering', () => {
       'NVDA Stock Price Quote - NASDAQ - Bloomberg',
       'DJIA Advanced Charts - MarketWatch',
       'AAPL Historical Prices | Apple Inc. Stock - MarketWatch',
+      'AAPL Historical prices - MarketWatch',
+      'DJIA | Dow Jones Industrial Average Advanced Charts - MarketWatch',
     ]) {
       assert.equal(isQuotePageTitle(title), true, title);
     }
