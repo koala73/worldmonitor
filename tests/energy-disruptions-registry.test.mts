@@ -11,6 +11,7 @@ import {
   ENERGY_DISRUPTIONS_CANONICAL_KEY,
   MAX_STALE_MIN,
 } from '../scripts/_energy-disruption-registry.mjs';
+import { projectDisruption } from '../server/worldmonitor/supply-chain/v1/list-energy-disruptions.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const raw = readFileSync(resolve(__dirname, '../scripts/data/energy-disruptions.json'), 'utf-8');
@@ -154,5 +155,44 @@ describe('energy-disruptions registry — validateRegistry rejects bad input', (
     const firstKey = Object.keys(bad.events)[0]!;
     bad.events[firstKey].eventType = 'telekinesis';
     assert.equal(validateRegistry(bad), false);
+  });
+});
+
+describe('energy-disruptions registry — reader-facing content', () => {
+  test('every event in buildPayload output carries the asset display name', () => {
+    assert.equal(registry.events['keystone-xl-permit-revoked-2021'].assetName, 'Keystone XL (cancelled 2021)');
+    assert.equal(registry.events['spr-drawdown-2022-2023'].assetName, 'Bryan Mound SPR Site');
+    for (const e of Object.values(registry.events)) {
+      assert.ok(typeof e.assetName === 'string' && e.assetName.length > 0, `${e.id}: no assetName for ${e.assetId}`);
+    }
+  });
+
+  test('an event whose only cause is sabotage is typed sabotage', () => {
+    for (const e of Object.values(registry.events)) {
+      if (e.causeChain.length === 1 && e.causeChain[0] === 'sabotage') {
+        assert.equal(e.eventType, 'sabotage', `${e.id}: sabotage-only cause typed ${e.eventType}`);
+      }
+    }
+    assert.equal(registry.events['btc-fire-2008'].eventType, 'sabotage');
+  });
+
+  test('the SPR release adds supply and takes no capacity offline', () => {
+    const spr = registry.events['spr-drawdown-2022-2023'];
+    assert.equal(spr.capacityOfflineMbd, 0);
+    assert.equal(spr.capacityOfflineBcmYr, 0);
+    assert.match(spr.shortDescription, /180 million barrel/);
+  });
+
+  test('the RPC projection keeps the seeded asset name', () => {
+    const projected = projectDisruption(registry.events['keystone-xl-permit-revoked-2021']);
+    assert.equal(projected?.assetName, 'Keystone XL (cancelled 2021)');
+    assert.equal(projectDisruption({ ...registry.events['btc-fire-2008'], assetName: undefined })?.assetName, '');
+  });
+
+  test('no description quotes a schema field name', () => {
+    const fields = /\b(capacityOffline\w*|causeChain|assetId|assetType|eventType|shortDescription)\b/;
+    for (const e of Object.values(registry.events)) {
+      assert.doesNotMatch(e.shortDescription, fields, `${e.id}: description exposes a field name`);
+    }
   });
 });
