@@ -32,6 +32,7 @@ const response = {
   chokepoints: [
     chokepoint('dover_strait', 'Dover Strait', 1), chokepoint('suez', 'Suez Canal', 3),
     chokepoint('panama', 'Panama Canal', 0, '2026-13-22', '2026-02-30'),
+    chokepoint('gibraltar', 'Strait of Gibraltar', 0, '2025-11-22', '2025-11-21'),
   ],
   fetchedAt: '2026-11-25T04:19:10.309Z',
   upstreamUnavailable: false,
@@ -51,6 +52,7 @@ beforeAll(async () => {
 beforeEach(() => {
   document.body.replaceChildren();
   vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-11-25T06:00:00Z'));
 });
 
 afterEach(() => {
@@ -81,5 +83,12 @@ describe('supply-chain chokepoint card metrics', () => {
     expect(card.textContent).toContain('Week-over-week change');
     expect(card.textContent).toContain('mb/d');
     expect(card.textContent).not.toContain('as of');
+  });
+
+  it('includes the year when the observation is from an earlier year', async () => {
+    const card = await renderCard('Strait of Gibraltar');
+    const rows = [...card.querySelectorAll('.sc-metric-row')].map((row) => row.textContent ?? '');
+    expect(rows.find((row) => row.includes('Week-over-week change'))).toContain('as of Nov 22, 2025');
+    expect(rows.find((row) => row.includes('mb/d'))).toContain('as of Nov 21, 2025');
   });
 });

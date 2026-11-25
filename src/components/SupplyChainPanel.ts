@@ -64,7 +64,8 @@ function observedAsOf(isoDate: string | null | undefined): string {
   if (!isoDate) return '';
   const observed = new Date(`${isoDate}T00:00:00Z`);
   if (Number.isNaN(observed.getTime()) || observed.toISOString().slice(0, 10) !== isoDate) return '';
-  const date = observed.toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const year = observed.getUTCFullYear() === new Date().getUTCFullYear() ? undefined : 'numeric';
+  const date = observed.toLocaleDateString(getLocale(), { year, month: 'short', day: 'numeric', timeZone: 'UTC' });
   return ` <span class="sc-observed-date" style="opacity:0.7">${escapeHtml(t('components.supplyChain.asOf', { date }))}</span>`;
 }
 
