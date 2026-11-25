@@ -839,9 +839,7 @@ async function readBody(req, maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES) {
       chunks.length = 0;
       continue;
     }
-    if (!tooLarge) {
-      chunks.push(chunk);
-    }
+    chunks.push(chunk);
   }
   if (tooLarge) {
     const error = new Error(`Request body exceeds ${maxBytes} bytes`);

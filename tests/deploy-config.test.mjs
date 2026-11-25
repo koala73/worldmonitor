@@ -5633,6 +5633,36 @@ describe('docs host scoping — Mintlify proxy is www-only (#5345)', () => {
     assert.ok(middleware.includes("'/docs/:path*'"), 'dotted docs assets must match middleware');
     assert.ok(!vercelConfig.rewrites.some((r) => String(r.destination).includes('mintlify.dev')));
   });
+
+  it('frames docs only same-origin and denies powerful features there', () => {
+    assert.equal(getHeaderValueForSource('/docs/(.*)', 'X-Frame-Options'), 'SAMEORIGIN');
+    const permissions = getHeaderValueForSource('/docs/(.*)', 'Permissions-Policy') ?? '';
+    for (const feature of ['camera', 'microphone', 'geolocation', 'payment', 'usb', 'serial', 'bluetooth']) {
+      assert.match(permissions, new RegExp(`(?:^|, )${feature}=\\(\\)`), `${feature} must be denied on /docs`);
+    }
+  });
+});
+
+describe('OAuth callback and widget sandbox headers', () => {
+  it('Slack and Discord callbacks cannot be framed and allow no base, form or object targets', () => {
+    for (const source of ['/api/slack/oauth/callback', '/api/discord/oauth/callback']) {
+      const csp = getHeaderValueForSource(source, 'Content-Security-Policy') ?? '';
+      for (const directive of ["frame-ancestors 'none'", "base-uri 'none'", "form-action 'none'", "object-src 'none'"]) {
+        assert.ok(csp.includes(directive), `${source} CSP must include ${directive}`);
+      }
+    }
+  });
+
+  it('the widget sandbox sends no referrer and only the app may frame it', () => {
+    const source = '/wm-widget-sandbox.html';
+    assert.equal(getHeaderValueForSource(source, 'Referrer-Policy'), 'no-referrer');
+    assert.equal(getHeaderValueForSource(source, 'X-Content-Type-Options'), 'nosniff');
+    assert.match(getHeaderValueForSource(source, 'Strict-Transport-Security') ?? '', /max-age=\d+/);
+    assert.match(
+      getHeaderValueForSource(source, 'Content-Security-Policy') ?? '',
+      /frame-ancestors 'self' https:\/\/\*\.worldmonitor\.app https:\/\/worldmonitor\.app;/,
+    );
+  });
 });
 
 describe('markdown canonical Link headers (#4999)', () => {

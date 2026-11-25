@@ -410,8 +410,12 @@ const OREF_LOCAL_FILE = (() => {
   if (!OREF_DATA_DIR) return '';
   const fs = require('fs');
   const historyPath = path.join(OREF_DATA_DIR, 'oref-history.json');
+  // A missing path or a non-directory only disables the optional history file,
+  // as before. Permission failures on a configured volume are fatal (below).
+  let stat;
+  try { stat = fs.statSync(OREF_DATA_DIR); } catch { console.warn(`[Relay] OREF_DATA_DIR does not exist: ${OREF_DATA_DIR}`); return ''; }
+  if (!stat.isDirectory()) { console.warn(`[Relay] OREF_DATA_DIR is not a directory: ${OREF_DATA_DIR}`); return ''; }
   try {
-    if (!fs.statSync(OREF_DATA_DIR).isDirectory()) throw new Error('expected a directory');
     fs.accessSync(OREF_DATA_DIR, fs.constants.R_OK | fs.constants.W_OK | fs.constants.X_OK);
     for (const [file, access] of [
       [historyPath, fs.constants.R_OK],

@@ -122,3 +122,23 @@ test('relay identifies an unwritable configured OREF volume at startup', {
     rmdirSync(dir);
   }
 });
+
+test('a missing or non-directory OREF_DATA_DIR only disables OREF persistence', () => {
+  const relay = fileURLToPath(new URL('../scripts/ais-relay.cjs', import.meta.url));
+  const missing = join(tmpdir(), `wm-oref-missing-${process.pid}-${Date.now()}`);
+  for (const [dataDir, warning] of [
+    [missing, /OREF_DATA_DIR does not exist/],
+    [relay, /OREF_DATA_DIR is not a directory/],
+  ]) {
+    // No RELAY_SHARED_SECRET: the relay stops at its auth guard after the
+    // OREF block, so the run ends quickly without opening a port.
+    const result = spawnSync(process.execPath, [relay], {
+      env: { OREF_DATA_DIR: dataDir },
+      encoding: 'utf-8',
+      timeout: 5_000,
+    });
+    assert.ifError(result.error);
+    assert.match(result.stderr, warning);
+    assert.doesNotMatch(result.stderr, /FATAL: cannot use OREF_DATA_DIR/);
+  }
+});
