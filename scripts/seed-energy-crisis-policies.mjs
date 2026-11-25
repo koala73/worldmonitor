@@ -19,11 +19,17 @@ const VALID_SECTORS = new Set([
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const END_DATE_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 
+function isCalendarDate(value, shape) {
+  if (!shape.test(value)) return false;
+  const parsed = new Date(`${value.length === 7 ? `${value}-01` : value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
+}
+
 export function resolveStatus(policy, now = new Date()) {
-  if (policy.endDate !== undefined && !END_DATE_RE.test(policy.endDate)) {
+  if (policy.endDate !== undefined && !isCalendarDate(policy.endDate, END_DATE_RE)) {
     throw new Error(`Invalid endDate for ${policy.country}: ${policy.endDate}`);
   }
-  if (policy.endDate && policy.endDate.localeCompare(now.toISOString().slice(0, policy.endDate.length)) <= 0) return 'ended';
+  if (policy.endDate && policy.endDate.localeCompare(now.toISOString().slice(0, policy.endDate.length)) < 0) return 'ended';
   return policy.status;
 }
 
@@ -64,7 +70,7 @@ export function validateFn(data) {
     if (!VALID_STATUSES.has(p.status)) return false;
     if (!VALID_SECTORS.has(p.sector)) return false;
     if (typeof p.measure !== 'string' || p.measure.length === 0) return false;
-    if (p.dateAnnounced !== '' && !ISO_DATE_RE.test(p.dateAnnounced)) return false;
+    if (p.dateAnnounced !== '' && !isCalendarDate(p.dateAnnounced, ISO_DATE_RE)) return false;
   }
   if (Number.isNaN(Date.parse(data.updatedAt))) return false;
 
