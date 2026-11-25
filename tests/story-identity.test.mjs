@@ -200,6 +200,7 @@ describe('clusterTexts', () => {
     const a = 'Iran and Iranian guards seize oil tanker off Oman Fujairah';
     const b = 'Iran guards seize oil tanker near Hormuz Oman Fujairah amid fresh regional tensions';
     assert.equal(storySimilarity(a, b), storySimilarity(b, a));
+    assert.equal(isSameStory(a, b), false, 'Iran and Iranian are one party, so Hormuz is unmatched');
   });
 
   it('#11274: the same-parties rescue never lowers a containment match', () => {

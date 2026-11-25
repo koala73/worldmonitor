@@ -415,7 +415,7 @@ function lexicalStoryVector(text) {
   // dedup metric (|∩|/min) handled exactly this class; keep that
   // guarantee via token containment.
   return { u: un, b: bn, t: new Set(tokens.map((entry) => entry.tok)),
-    e: new Set(tokens.filter((entry) => entry.entity).map((entry) => entry.tok)),
+    e: foldEntityVariants(tokens.filter((entry) => entry.entity).map((entry) => entry.tok)),
     f: { u: normalizeFeatures(fu), b: normalizeFeatures(fb) } };
 }
 
@@ -488,18 +488,27 @@ const SAME_PARTIES_MIN_ENTITIES = 4;
 const SAME_PARTIES_SCORE_FLOOR = 0.43;
 const SAME_PARTIES_MIN_TOPIC_TOKENS = 2;
 
+/** @param {string} x @param {string} y */
+function isEntityVariant(x, y) {
+  return x === y || (Math.min(x.length, y.length) >= 4 && (x.startsWith(y) || y.startsWith(x)));
+}
+
+/**
+ * One token per party, so "Iran" and "Iranian" in one title count once.
+ * @param {string[]} toks
+ */
+function foldEntityVariants(toks) {
+  const kept = [];
+  for (const tok of [...new Set(toks)].sort((x, y) => x.length - y.length)) {
+    if (!kept.some((other) => isEntityVariant(tok, other))) kept.push(tok);
+  }
+  return new Set(kept);
+}
+
 /** @param {Set<string>} from @param {Set<string>} to */
 function entitiesCovered(from, to) {
   for (const tok of from) {
-    if (to.has(tok)) continue;
-    let matched = false;
-    for (const other of to) {
-      if (Math.min(tok.length, other.length) >= 4 && (tok.startsWith(other) || other.startsWith(tok))) {
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) return false;
+    if (![...to].some((other) => isEntityVariant(tok, other))) return false;
   }
   return true;
 }
