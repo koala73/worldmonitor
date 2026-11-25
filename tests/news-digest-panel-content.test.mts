@@ -62,6 +62,7 @@ describe('keyword classifier: metaphorical coup language', () => {
         'Soldiers stage a socialist coup in Bolivia',
         'Military foils leftist coup attempt in Bolivia',
         'Conservative coup plot uncovered in Bolivia',
+        'Police uncover plot for a leftist coup in Bolivia',
       ]) {
         const result = classify(title);
         assert.equal(result.level, 'critical', title);
@@ -80,6 +81,7 @@ describe('policy digest: AI and digital policy eligibility', () => {
       ['Apple AirPods are $50 off at Amazon - 9to5Toys', '9to5Toys'],
       ['Apple Watch deals: save up to 40% at Amazon - 9to5Toys', '9to5Toys'],
       ['Apple AirPods on sale at Amazon - 9to5Toys', '9to5Toys'],
+      ['Apple iPad hits lowest priced ever at Amazon - 9to5Toys', '9to5Toys'],
     ]) {
       assert.equal(isCategoryEligible('policy', title, publisher), false, title);
     }
