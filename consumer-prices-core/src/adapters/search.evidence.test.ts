@@ -426,13 +426,18 @@ describe('renderWaitMs plumbing', () => {
 // Product identity is (retailer, source URL), so a category page would later
 // price whichever product it lists first under the same identity.
 describe('page identity gate', () => {
-  async function extractWith(pageTitle: string | undefined, overrides: Partial<RetailerConfig['searchConfig']> = {}) {
+  async function extractWith(
+    pageTitle: string | undefined,
+    overrides: Partial<RetailerConfig['searchConfig']> = {},
+    documentTitle?: string,
+  ) {
     const exa = { search: vi.fn().mockResolvedValue([{ url: PRODUCT_URL }]) } as unknown as ExaProvider;
     const firecrawl = {
       extract: vi.fn().mockResolvedValue({
         data: goodExtract,
         pageContent: 'Meadows White Sandwich Bread 400g\n\n$4.60',
         ...(pageTitle ? { pageTitle } : {}),
+        ...(documentTitle ? { documentTitle } : {}),
       }),
     } as unknown as FirecrawlProvider;
     const adapter = new SearchAdapter(exa, firecrawl);
@@ -480,5 +485,43 @@ describe('page identity gate', () => {
   it('leaves retailers that do not opt in unchanged', async () => {
     const { products } = await extractWith(undefined, { requirePageTitleMatch: false });
     expect(products[0]?.price).toBe(4.6);
+  });
+  // Live 2026-11-25: Naivas product pages dropped og:title and now declare the
+  // product only in <title> ("Naivas Online | Kabras Packed Sugar White 1Kg"),
+  // so every Naivas page failed with `page: none`. Category, search and home
+  // pages carry "Naivas Online | Food Cupboard" or a bare "Naivas Online".
+  describe('document title fallback', () => {
+    it('accepts a document title segment that names the product and its size', async () => {
+      const { products } = await extractWith(undefined, {}, 'Naivas Online | Meadows White Sandwich Bread 400G');
+      expect(products[0]?.price).toBe(4.6);
+    });
+
+    it('rejects a category listing whose document title states no quantity', async () => {
+      const { err } = await extractWith(undefined, {}, 'Naivas Online | White Bread');
+      expect(err?.failures).toContainEqual({
+        provider: 'firecrawl',
+        reason: 'title-mismatch',
+        detail: 'page: Naivas Online | White Bread',
+      });
+    });
+
+    it('rejects a bare site-name document title', async () => {
+      const { err } = await extractWith(undefined, {}, 'Naivas Online');
+      expect(err?.failures).toContainEqual({ provider: 'firecrawl', reason: 'title-mismatch', detail: 'page: Naivas Online' });
+    });
+
+    it('rejects a document title for the same product in another size', async () => {
+      const { err } = await extractWith(undefined, {}, 'Naivas Online | Meadows White Sandwich Bread 600G');
+      expect(err).toBeInstanceOf(SearchTargetError);
+    });
+
+    it('keeps the og:title verdict when the page declares one', async () => {
+      const { err } = await extractWith('Cervelas Sausages 75% Less Fat', {}, 'Shop | Meadows White Sandwich Bread 400g');
+      expect(err?.failures).toContainEqual({
+        provider: 'firecrawl',
+        reason: 'title-mismatch',
+        detail: 'page: Cervelas Sausages 75% Less Fat',
+      });
+    });
   });
 });
