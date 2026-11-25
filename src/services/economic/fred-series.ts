@@ -32,7 +32,7 @@ export const FRED_SERIES: FredConfig[] = [
   { id: 'UNRATE', name: 'Unemployment', unit: '%', precision: 1 },
   { id: 'CPIAUCSL', name: 'CPI Index', unit: '', precision: 1 },
   { id: 'DGS10', name: '10Y Treasury', unit: '%', precision: 2 },
-  { id: 'WALCL', name: 'Fed Total Assets', unit: '$T', precision: 3, scaleDivisor: 1_000_000 },
+  { id: 'WALCL', name: 'Fed Total Assets', unit: '$B', precision: 1, scaleDivisor: 1000 },
 ];
 
 function toDisplayValue(value: number, config: FredConfig): number {
