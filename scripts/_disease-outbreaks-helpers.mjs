@@ -104,9 +104,8 @@ export const DISEASE_WARNING_RE = new RegExp(`\\b(?:${DISEASE_WARNING_KEYWORDS.j
 // and its description describes that past outbreak too. "2025 cases in measles
 // outbreak" is a count, not a year.
 const ALERT_WORD = `(?:${DISEASE_ALERT_KEYWORDS.join('|')})s?`;
-// Nor does a year joined to the outbreak by a preposition: "2026 review of the
-// outbreak in 2025" dates the review.
-const NOT_COUNT_WORD = String.raw`(?!(?:cases?|deaths?|infections?|people|patients|children|of|on|into|about|after|since|before|for)\b)[\p{L}\p{N}()'-]+`;
+// An article starts another noun phrase: "2026 review of the outbreak" dates the review.
+const NOT_COUNT_WORD = String.raw`(?!(?:cases?|deaths?|infections?|people|patients|children|the|an?)(?![\p{L}\p{N}'-]))[\p{L}\p{N}()'-]+`;
 // A range ("2023-2025", "2025 to 2026") dates the outbreak by its last year.
 const DATED = String.raw`(?<!\d)((?:19|20)\d{2})(?:\s*(?:[-–—/]|to\s)\s*((?:19|20)\d{2}|\d{2}(?![-/]?\d)))?(?!\d)`;
 const DATED_ALERT_RES = [
