@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   buildDeductionPrompt,
   inferDeductionMode,
+  inferForecastHorizon,
   inferProviderLabel,
   postProcessDeductionOutput,
   splitDeductionContext,
@@ -44,6 +45,19 @@ describe('splitDeductionContext', () => {
   });
 });
 
+describe('inferForecastHorizon', () => {
+  it('uses the horizon the question asks for', () => {
+    assert.equal(inferForecastHorizon('What happens in the next 24 hours in the Strait of Hormuz?'), 'next 24 hours');
+    assert.equal(inferForecastHorizon('Outlook within 48h for Gaza talks'), 'next 48h');
+    assert.equal(inferForecastHorizon('Where is Brent heading over the coming week?'), 'next week');
+    assert.equal(inferForecastHorizon('Escalation risk in the next 2-3 days?'), 'next 2-3 days');
+  });
+
+  it('falls back to 24-72h when the question names no horizon', () => {
+    assert.equal(inferForecastHorizon('What is the strategic outlook for the Gulf theater?'), 'next 24-72h');
+  });
+});
+
 describe('buildDeductionPrompt', () => {
   it('builds a structured forecast prompt for panel usage', () => {
     const { mode, systemPrompt, userPrompt } = buildDeductionPrompt({
@@ -56,6 +70,17 @@ describe('buildDeductionPrompt', () => {
     assert.match(systemPrompt, /\*\*Most likely path \(next 24-72h\)\*\*/);
     assert.match(systemPrompt, /2026-03-15 UTC/);
     assert.match(userPrompt, /Recent News Signals/);
+  });
+
+  it('heads the most likely path with the question horizon, not a fixed 24-72h', () => {
+    const { systemPrompt } = buildDeductionPrompt({
+      query: 'What will happen in the next 24 hours between Israel and Iran?',
+      geoContext: 'Theater: Levant.',
+      now: new Date('2026-03-15T12:00:00Z'),
+    });
+
+    assert.match(systemPrompt, /\*\*Most likely path \(next 24 hours\)\*\*/);
+    assert.doesNotMatch(systemPrompt, /24-72h/);
   });
 
   it('builds a terse brief prompt for correlation-card usage', () => {

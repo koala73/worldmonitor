@@ -34,6 +34,14 @@ export function inferDeductionMode(query: string): DeductionMode {
   return BRIEF_MODE_PATTERNS.some((pattern) => pattern.test(query)) ? 'brief' : 'forecast';
 }
 
+const DEFAULT_FORECAST_HORIZON = 'next 24-72h';
+const QUESTION_HORIZON_RE = /\b(?:next|coming|within)\s+(?:the\s+next\s+)?(\d+(?:\s*[-–]\s*\d+)?\s*(?:h|hrs?|hours?|days?|weeks?|months?|years?)|day|week|month|year)\b/i;
+
+export function inferForecastHorizon(query: string): string {
+  const match = QUESTION_HORIZON_RE.exec(query);
+  return match?.[1] ? `next ${match[1].replace(/\s+/g, ' ').toLowerCase()}` : DEFAULT_FORECAST_HORIZON;
+}
+
 export function splitDeductionContext(geoContext: string): PromptContextParts {
   const normalized = normalizeWhitespace(geoContext);
   if (!normalized) {
@@ -153,7 +161,7 @@ Rules:
 Return Markdown with exactly these sections in this order:
 **Bottom line**
 **What we know**
-**Most likely path (next 24-72h)**
+**Most likely path (${inferForecastHorizon(input.query)})**
 **Alternative paths**
 **Key drivers**
 **Signals to watch**
