@@ -76,8 +76,8 @@ test('topic-gated feeds keep only climate or environment reports', () => {
     'Malawi: Country Brief, November 2026',
     'Inondations : bilan du mois de mars',
     'Sécheresse au Sahel : note de situation - 24 mars 2027',
-    'Cyclone Freddy : rapport de situation du 8 Mars 2027',
     'Inondations au Mozambique : rapport du 01–08 Mars 2027',
+    'Cyclone Freddy : rapport de situation du 8 Mars 2027',
     'Emisiones de carbono en América Latina',
     'Lightning could strike more than twice as often',
   ]);
