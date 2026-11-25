@@ -4,7 +4,12 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
 // Pure contentMeta helper lives in its own module so tests can import the
 // real code (no replicas, no drift). See helpers module header for rationale.
-import { climateNewsContentMeta, CLIMATE_NEWS_MAX_CONTENT_AGE_MIN } from './_climate-news-helpers.mjs';
+import {
+  climateNewsContentMeta,
+  CLIMATE_NEWS_MAX_CONTENT_AGE_MIN,
+  resolveReliefWebUrl,
+  selectClimateNewsItems,
+} from './_climate-news-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -19,7 +24,7 @@ const RSS_MAX_BYTES = 500_000;
 export const CLIMATE_NEWS_FEEDS = [
   { sourceName: 'Carbon Brief', url: 'https://www.carbonbrief.org/feed' },
   { sourceName: 'The Guardian Environment', url: 'https://www.theguardian.com/environment/climate-crisis/rss' },
-  { sourceName: 'ReliefWeb Disasters', isApi: true },
+  { sourceName: 'ReliefWeb Disasters', isApi: true, requireTopicMatch: true },
   { sourceName: 'NASA Earth Observatory', url: 'https://earthobservatory.nasa.gov/feeds/earth-observatory.rss' },
   { sourceName: 'UNEP', url: 'https://www.unep.org/rss.xml' },
   { sourceName: 'Phys.org Earth Science', url: 'https://phys.org/rss-feed/earth-news/earth-sciences/' },
@@ -126,7 +131,7 @@ async function fetchReliefWebApi(feed) {
       const items = [];
       for (const r of data.data || []) {
         const title = r.fields?.title || '';
-        const itemUrl = r.fields?.url_alias ? `https://reliefweb.int${r.fields.url_alias}` : '';
+        const itemUrl = resolveReliefWebUrl(r.fields?.url_alias);
         const publishedAt = r.fields?.date?.created ? new Date(r.fields.date.created).getTime() : 0;
         if (!title || !itemUrl || !publishedAt) continue;
         const id = `${stableHash(itemUrl)}-${publishedAt}`;
@@ -166,25 +171,11 @@ async function fetchFeed(feed) {
 
 async function fetchClimateNews() {
   const settled = await Promise.allSettled(FEEDS.map(fetchFeed));
-  const allItems = [];
-  for (const result of settled) {
-    if (result.status === 'fulfilled') allItems.push(...result.value);
-  }
-
-  allItems.sort((a, b) => b.publishedAt - a.publishedAt);
-
-  // Deduplicate by URL hash, keep newest occurrence.
-  const seenUrlHashes = new Set();
-  const deduped = [];
-  for (const item of allItems) {
-    const urlHash = stableHash(item.url);
-    if (seenUrlHashes.has(urlHash)) continue;
-    seenUrlHashes.add(urlHash);
-    deduped.push(item);
-    if (deduped.length >= MAX_ITEMS) break;
-  }
-
-  return { items: deduped, fetchedAt: Date.now() };
+  const feedResults = settled.map((result, i) => ({
+    feed: FEEDS[i],
+    items: result.status === 'fulfilled' ? result.value : [],
+  }));
+  return { items: selectClimateNewsItems(feedResults, Date.now(), MAX_ITEMS), fetchedAt: Date.now() };
 }
 
 function validate(data) {

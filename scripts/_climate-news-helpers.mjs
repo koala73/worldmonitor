@@ -54,3 +54,58 @@ export function climateNewsContentMeta(data, nowMs = Date.now()) {
  * upstream-aggregator outage where every feed's parse silently breaks.
  */
 export const CLIMATE_NEWS_MAX_CONTENT_AGE_MIN = 7 * 24 * 60;
+
+// Per-item age cap for the latest-news panel. Climate Central's feed still
+// carries 2021-2022 articles that would otherwise fill the 100-item cap.
+export const CLIMATE_NEWS_MAX_ITEM_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+const OFF_EARTH_RE = /\b(mars|martian|rover|exoplanets?|jupiter|saturn|venus)\b/i;
+
+// Applied to feeds whose scope is wider than climate (ReliefWeb's climate
+// theme also tags generic humanitarian bulletins and AI-policy reports).
+const CLIMATE_TOPIC_RE = /\b(climat\w*|clim[aá]tic\w*|weather|floods?|flooding|inondations?|inundaci\w*|droughts?|s[eé]cheresses?|sequ[ií]as?|heat\s*waves?|heatwaves?|extreme heat|canicul\w*|wildfires?|bushfires?|forest fires?|incendi\w*|cyclones?|hurricanes?|typhoons?|storms?|monsoons?|rainfall|el ni[nñ]o|la ni[nñ]a|emissions?|carbon|greenhouse|warming|sea[- ]level|glaciers?|deforestation|biodiversity|environment\w*|environnement\w*|disaster risk|resilience|adaptation)\b/i;
+
+export function resolveReliefWebUrl(urlAlias) {
+  if (typeof urlAlias !== 'string' || !urlAlias.trim()) return '';
+  try {
+    return new URL(urlAlias.trim(), 'https://reliefweb.int').href;
+  } catch {
+    return '';
+  }
+}
+
+export function isClimateNewsItemRelevant(item, { requireTopicMatch = false } = {}) {
+  const text = `${item?.title || ''} ${item?.summary || ''}`;
+  if (OFF_EARTH_RE.test(item?.title || '')) return false;
+  return !requireTopicMatch || CLIMATE_TOPIC_RE.test(text);
+}
+
+/**
+ * Merge per-feed results into the newest-first, URL-deduplicated panel list.
+ *
+ * @param {Array<{feed: {requireTopicMatch?: boolean}, items: Array}>} feedResults
+ * @param {number} nowMs
+ * @param {number} maxItems
+ */
+export function selectClimateNewsItems(feedResults, nowMs = Date.now(), maxItems = 100) {
+  const oldestAllowed = nowMs - CLIMATE_NEWS_MAX_ITEM_AGE_MS;
+  const candidates = [];
+  for (const { feed, items } of feedResults) {
+    for (const item of items) {
+      if (!(item.publishedAt >= oldestAllowed)) continue;
+      if (!isClimateNewsItemRelevant(item, feed)) continue;
+      candidates.push(item);
+    }
+  }
+  candidates.sort((a, b) => b.publishedAt - a.publishedAt);
+
+  const seenUrls = new Set();
+  const selected = [];
+  for (const item of candidates) {
+    if (seenUrls.has(item.url)) continue;
+    seenUrls.add(item.url);
+    selected.push(item);
+    if (selected.length >= maxItems) break;
+  }
+  return selected;
+}
