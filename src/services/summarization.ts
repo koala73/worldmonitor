@@ -204,7 +204,7 @@ async function tryApiProvider(
 // ── Browser T5 provider (different interface -- no API call) ──
 
 // The browser model never reaches server-side output validation.
-const ARTICLE_COMMENTARY_RE = /\bheadlines?\b|^(?:the|this) (?:story|article)\b/i;
+const ARTICLE_COMMENTARY_RE = /\bheadlines?\b|^(?:the|this) (?:story|article)\b|\btitres? (?:le plus|principa)|^(?:cet(?:te)?|ce|l['’]) ?(?:article|histoire|récit|texte)\b/i;
 
 async function tryBrowserT5(
   attemptState: SummarizationAttemptState,

@@ -16,6 +16,8 @@ it('rejects browser-model commentary about the headline in article mode', async 
   summarize.mockResolvedValueOnce(['The most important headline is about an artist reflecting on aging.']);
   expect(await generateSummary(story, undefined, undefined, 'en', options)).toBeNull();
   expect(summarize.mock.calls[0]?.[0]?.[0]).toMatch(/^Summarize this article/);
+  summarize.mockResolvedValueOnce(["Cet article parle d'un peintre qui réfléchit au vieillissement."]);
+  expect(await generateSummary(story, undefined, undefined, 'fr', options)).toBeNull();
 });
 
 it('keeps a browser-model summary of the article itself', async () => {
