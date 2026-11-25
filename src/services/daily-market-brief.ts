@@ -236,11 +236,26 @@ function matchesMarketHeadline(market: Pick<MarketData, 'symbol' | 'display' | '
   });
 }
 
+// Feeds (notably Google News) also return instrument quote/overview pages,
+// e.g. "DJIA | Dow Jones Industrial Average Overview - MarketWatch" or
+// "Apple Inc. (AAPL) Stock Price, News, Quote & History - Yahoo Finance".
+// They name the instrument but report no event, so they are not headlines.
+const QUOTE_PAGE_TITLE_PATTERNS: RegExp[] = [
+  /^\s*\^?[A-Z][A-Z0-9.^=-]{0,9}\s*\|/,
+  /\b(?:overview|quotes?)\s*(?:$|[-|(&,:]|\u2013|\u2014)/i,
+  /\b(?:charts?|data|news|history|prices?)\s*&\s*(?:charts?|data|news|history|quotes?)\b/i,
+  /\bstock price\s*(?:$|[-|(,]|\u2013|\u2014)/i,
+];
+
+export function isQuotePageTitle(title: string): boolean {
+  return QUOTE_PAGE_TITLE_PATTERNS.some((pattern) => pattern.test(title));
+}
+
 function collectHeadlinePool(newsByCategory: Record<string, NewsItem[]>, extraCategories?: string[]): NewsItem[] {
   const cats = extraCategories ?? BRIEF_NEWS_CATEGORIES;
   return cats
     .flatMap((category) => newsByCategory[category] || [])
-    .filter((item) => !!item?.title)
+    .filter((item) => !!item?.title && !isQuotePageTitle(item.title))
     .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a));
 }
 
@@ -310,7 +325,7 @@ function buildItemNote(change: number | null, relatedHeadline?: string): string 
       ? 'Price action is under pressure; protect capital first.'
       : 'Tape is balanced; wait for confirmation before pressing size.';
   return relatedHeadline
-    ? `${moveNote} Headline driver: ${relatedHeadline}`
+    ? `${moveNote} Related headline: ${relatedHeadline}`
     : moveNote;
 }
 

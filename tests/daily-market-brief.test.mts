@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import type { MarketData, NewsItem } from '../src/types/index.ts';
 import {
   buildDailyMarketBrief,
+  isQuotePageTitle,
   shouldRefreshDailyBrief,
 } from '../src/services/daily-market-brief.ts';
 
@@ -212,7 +213,8 @@ describe('buildDailyMarketBrief', () => {
     assert.match(brief.summary, /Apple leading/i);
     assert.match(brief.actionPlan, /selective|Lean|Keep/i);
     assert.match(brief.riskWatch, /headline|Microsoft|Apple/i);
-    assert.match(brief.items[0]?.note || '', /Headline driver/i);
+    assert.match(brief.items[0]?.note || '', /Related headline: Apple extends gains/);
+    assert.doesNotMatch(brief.items[0]?.note || '', /driver/i);
   });
 
   it('falls back to deterministic copy when summarization is unavailable', async () => {
@@ -358,5 +360,69 @@ describe('summarizer geoContext cache identity (#4914)', () => {
     const a = await captureGeoContext(0);
     const c = await captureGeoContext(3);
     assert.notEqual(c, a, 'a real move (VIX +3, HY +300bps) must produce a fresh prompt and key');
+  });
+});
+
+describe('daily market brief quote-page filtering', () => {
+  it('recognizes instrument quote and overview page titles', () => {
+    for (const title of [
+      'DJIA | Dow Jones Industrial Average Overview - MarketWatch',
+      'AAPL Stock Price | Apple Inc. Stock Quote (U.S.: Nasdaq) - MarketWatch',
+      'Apple Inc. (AAPL) Stock Price, News, Quote & History - Yahoo Finance',
+      'S&P 500 (^GSPC) Charts, Data & News - Yahoo Finance',
+      'NVDA Stock Price Quote - NASDAQ - Bloomberg',
+    ]) {
+      assert.equal(isQuotePageTitle(title), true, title);
+    }
+  });
+
+  it('keeps news articles that mention prices or quotes', () => {
+    for (const title of [
+      'Dow Jones falls 400 points as Treasury yields jump - Reuters',
+      'Apple stock price slides after weak iPhone guidance',
+      'Microsoft slides as cloud guidance softens',
+      'Fed officials quote inflation risks in minutes',
+    ]) {
+      assert.equal(isQuotePageTitle(title), false, title);
+    }
+  });
+
+  it('REGRESSION: a quote page is never linked to an item or counted as a headline', async () => {
+    const dow: MarketData = { symbol: '^DJI', name: 'Dow Jones Industrial Average', display: 'DJIA', price: 44000, change: 0.3 };
+    const brief = await buildDailyMarketBrief({
+      markets: [dow],
+      newsByCategory: {
+        markets: [makeNewsItem('DJIA | Dow Jones Industrial Average Overview - MarketWatch', 'MarketWatch')],
+      },
+      timezone: 'UTC',
+      now: new Date('2026-03-08T10:30:00.000Z'),
+      targets: [{ symbol: '^DJI', name: 'Dow Jones Industrial Average', display: 'DJIA' }],
+      summarize: async () => null,
+    });
+
+    assert.equal(brief.items[0]?.relatedHeadline, undefined);
+    assert.doesNotMatch(brief.items[0]?.note || '', /headline/i);
+    assert.equal(brief.headlineCount, 0);
+    assert.doesNotMatch(brief.riskWatch, /Overview/);
+  });
+
+  it('links the article instead of a newer quote page for the same instrument', async () => {
+    const dow: MarketData = { symbol: '^DJI', name: 'Dow Jones Industrial Average', display: 'DJIA', price: 44000, change: -1.2 };
+    const brief = await buildDailyMarketBrief({
+      markets: [dow],
+      newsByCategory: {
+        markets: [
+          makeNewsItem('DJIA | Dow Jones Industrial Average Overview - MarketWatch', 'MarketWatch', '2026-03-08T06:00:00.000Z'),
+          makeNewsItem('Dow Jones slides as bank stocks fall', 'Reuters', '2026-03-08T05:00:00.000Z'),
+        ],
+      },
+      timezone: 'UTC',
+      now: new Date('2026-03-08T10:30:00.000Z'),
+      targets: [{ symbol: '^DJI', name: 'Dow Jones Industrial Average', display: 'DJIA' }],
+      summarize: async () => null,
+    });
+
+    assert.equal(brief.items[0]?.relatedHeadline, 'Dow Jones slides as bank stocks fall');
+    assert.equal(brief.headlineCount, 1);
   });
 });
