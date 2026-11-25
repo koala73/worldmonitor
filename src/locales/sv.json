@@ -1113,7 +1113,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS termiska satellitdetektioner över övervakade konfliktområden. Hög intensitet = ljusstyrka >360K & konfidens >80%.",
       "possibleExplosions": "{{count}} möjlig(a) explosion(er) identifierad(e)",
-      "explosionTooltip": "Värmesignatur förenlig med explosion (brandstrålningseffekt >80 MW, ljusstyrka >380 K)"
+      "explosionTooltip": "Värmesignatur förenlig med explosion (brandstrålningseffekt >80 MW, ljusstyrka >380 K)",
+      "agencyReports": "Bränder rapporterade av myndigheter",
+      "agencyDates": "Myndighetens datum",
+      "shownOfTotal": "Visar {{shown}} av {{total}} brandposter"
     },
     "displacement": {
       "refugees": "Flyktingar",
@@ -1915,6 +1918,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor-kvoten av högavkastningskrediter till långa statsobligationer, justerad för aktievolatilitet och högavkastningsspread: (HYG / TLT) / (VIX × högavkastningsspread / 100). Detta är inte Kansas City Feds Financial Stress Index. En avläsning på 1,5 eller högre är låg stress; under 0,3 är hög stress.",
       "title": "Finansiell stressindikator",
       "usFsiValue": "US Financial Stress Indicator-värde",
+      "asOf": "Per {{date}}",
       "cissTitle": "EU CISS (euroområdets systemriskövervakning)",
       "notAvailable": "N/A",
       "interpretation": {

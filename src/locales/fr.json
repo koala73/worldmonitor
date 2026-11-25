@@ -1692,7 +1692,10 @@
       },
       "infoTooltip": "Détections thermiques par satellite FIRMS VIIRS de la NASA dans les régions de conflit surveillées. Haute intensité = luminosité >360K et confiance >80 %.",
       "possibleExplosions": "{{count}} explosion(s) possible(s) détectée(s)",
-      "explosionTooltip": "Signature thermique compatible avec une explosion (puissance radiative du feu >80 MW, luminosité >380 K)"
+      "explosionTooltip": "Signature thermique compatible avec une explosion (puissance radiative du feu >80 MW, luminosité >380 K)",
+      "agencyReports": "Incendies signalés par les agences",
+      "agencyDates": "Dates de l'agence",
+      "shownOfTotal": "{{shown}} enregistrements d’incendie affichés sur {{total}}"
     },
     "ucdpEvents": {
       "stateBased": "Étatique",
@@ -2344,6 +2347,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> Ratio World Monitor du crédit haut rendement aux obligations du Trésor américain à long terme, ajusté pour la volatilité des actions et le spread haut rendement : (HYG / TLT) / (VIX × Spread haut rendement / 100). Ce n'est pas l'indice de stress financier de la Réserve fédérale de Kansas City. Une lecture de 1,5 ou plus indique un faible stress ; en dessous de 0,3 indique un stress élevé.",
       "title": "Indicateur de stress financier",
       "usFsiValue": "Valeur de l'indicateur de stress financier américain",
+      "asOf": "Au {{date}}",
       "cissTitle": "CISS UE (Stress systémique de la zone euro)",
       "notAvailable": "S.O.",
       "interpretation": {

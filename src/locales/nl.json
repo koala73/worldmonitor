@@ -1113,7 +1113,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS thermische satellietdetectie in bewaakte conflictgebieden. Hoge intensiteit = helderheid >360K en betrouwbaarheid >80%.",
       "possibleExplosions": "{{count}} mogelijke explosie(s) gedetecteerd",
-      "explosionTooltip": "Thermische handtekening consistent met explosie (vuurradiatiefvermogen >80 MW, helderheid >380 K)"
+      "explosionTooltip": "Thermische handtekening consistent met explosie (vuurradiatiefvermogen >80 MW, helderheid >380 K)",
+      "agencyReports": "Door instanties gemelde branden",
+      "agencyDates": "Data van de instantie",
+      "shownOfTotal": "{{shown}} van {{total}} brandrecords weergegeven"
     },
     "displacement": {
       "refugees": "Vluchtelingen",
@@ -1915,6 +1918,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor-verhouding van high-yield-krediet tot lange Treasuries, gecorrigeerd voor aandelenvolatiliteit en de high-yield-spread: (HYG / TLT) / (VIX × High-yield-spread / 100). Dit is niet de Kansas City Fed Financial Stress Index. Een waarde van 1,5 of hoger duidt op lage stress; onder de 0,3 is hoge stress.",
       "title": "Financiële stressindicator",
       "usFsiValue": "Waarde van de US Financial Stress Indicator",
+      "asOf": "Per {{date}}",
       "cissTitle": "EU CISS (systeemstress eurozone)",
       "notAvailable": "N.v.t.",
       "interpretation": {

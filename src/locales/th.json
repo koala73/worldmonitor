@@ -1767,7 +1767,10 @@
       },
       "infoTooltip": "การตรวจจับความร้อนจากดาวเทียม NASA FIRMS VIIRS ในภูมิภาคความขัดแย้งที่เฝ้าระวัง ความเข้มข้นสูง = ความสว่าง >360K และความเชื่อมั่น >80%",
       "possibleExplosions": "ตรวจพบการระเบิด {{count}} ครั้ง",
-      "explosionTooltip": "ลายเซนเชอร์ความร้อนที่สอดคล้องกับการระเบิด (พลังงานรังสีไฟ >80 MW ความสว่าง >380 K)"
+      "explosionTooltip": "ลายเซนเชอร์ความร้อนที่สอดคล้องกับการระเบิด (พลังงานรังสีไฟ >80 MW ความสว่าง >380 K)",
+      "agencyReports": "ไฟที่หน่วยงานรายงาน",
+      "agencyDates": "วันที่ของหน่วยงาน",
+      "shownOfTotal": "แสดง {{shown}} จาก {{total}} รายการไฟ"
     },
     "ucdpEvents": {
       "stateBased": "ระหว่างรัฐ",
@@ -2322,6 +2325,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> อัตราส่วน World Monitor ของสินเชื่อ high-yield ต่อพันธบัตรระยะยาว ปรับสำหรับความผันผวนของ equity และ high-yield spread: (HYG / TLT) / (VIX × High-yield spread / 100) นี่ไม่ใช่ Kansas City Fed Financial Stress Index การอ่าน 1.5 หรือมากกว่าคือความเครียดต่ำ ต่ำกว่า 0.3 คือความเครียดสูง",
       "title": "ตัวชี้วัดความเครียดทางการเงิน",
       "usFsiValue": "ค่า US Financial Stress Indicator",
+      "asOf": "ณ {{date}}",
       "cissTitle": "EU CISS (ความเครียดระบบในพื้นที่ยูโร)",
       "notAvailable": "ไม่มี",
       "interpretation": {

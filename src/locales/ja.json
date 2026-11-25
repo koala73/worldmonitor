@@ -1767,7 +1767,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS衛星による監視対象紛争地域の熱検知。高強度 = 輝度>360K & 信頼度>80%。",
       "possibleExplosions": "{{count}} 件の爆発の可能性を検出",
-      "explosionTooltip": "熱署名が爆発と一致(火放射電力>80 MW、輝度>380 K)"
+      "explosionTooltip": "熱署名が爆発と一致(火放射電力>80 MW、輝度>380 K)",
+      "agencyReports": "機関が報告した火災",
+      "agencyDates": "機関の日付",
+      "shownOfTotal": "火災記録 {{total}} 件中 {{shown}} 件を表示"
     },
     "ucdpEvents": {
       "stateBased": "国家間",
@@ -2322,6 +2325,7 @@
       "infoTooltip": "<strong>金融ストレス指標</strong> World Monitorの高利回り格付債からロング米国債への比率を株式ボラティリティとハイイールドスプレッドで調整：(HYG / TLT) / (VIX × ハイイールドスプレッド / 100)。これはカンザスシティ連邦準備銀行の金融ストレス指数ではありません。1.5以上は低ストレス、0.3未満は高ストレスです。",
       "title": "金融ストレス指数",
       "usFsiValue": "米国金融ストレス指標値",
+      "asOf": "{{date}} 時点",
       "cissTitle": "EU CISS(ユーロ圏システミックストレス)",
       "notAvailable": "N/A",
       "interpretation": {

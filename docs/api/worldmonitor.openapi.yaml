@@ -34813,10 +34813,7 @@ paths:
                                           "classifierVersion": "example"
                                           "commercialState": "example"
                                           "lastEvidenceUpdate": "2026-01-15"
-                                          "operatorStatement":
-                                              "date": "2026-01-15"
-                                              "text": "example"
-                                              "url": "https://example.com/worldmonitor"
+                                          "lifecycleState": "example"
                                 "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_supply_chain_v1_ListPipelinesResponse'
@@ -34947,10 +34944,7 @@ paths:
                                         "classifierVersion": "example"
                                         "commercialState": "example"
                                         "lastEvidenceUpdate": "2026-01-15"
-                                        "operatorStatement":
-                                            "date": "2026-01-15"
-                                            "text": "example"
-                                            "url": "https://example.com/worldmonitor"
+                                        "lifecycleState": "example"
                                 "revisions":
                                     - "classifierVersion": "example"
                                       "date": "2026-01-15"
@@ -35654,11 +35648,10 @@ paths:
                                 "classifierVersion": "example"
                                 "events":
                                     - "assetId": "asset-example-1"
+                                      "assetName": "WorldMonitor Analyst"
                                       "assetType": "pipeline"
                                       "capacityOfflineBcmYr": 1.5
                                       "capacityOfflineMbd": 1.5
-                                      "causeChain":
-                                          - "example"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "upstreamUnavailable": false
                             schema:
@@ -46919,7 +46912,9 @@ components:
                 annualGrowth:
                     type: number
                     format: double
-                    description: Year-over-year debt growth percent (2023->2024).
+                    description: |-
+                        Percent change in debt_to_gdp versus the prior year. A falling ratio can
+                         coexist with rising debt, so this is not debt-stock growth.
                 perSecondRate:
                     type: number
                     format: double
@@ -56089,6 +56084,10 @@ components:
                     items:
                         type: number
                         format: double
+                priceAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix ms of the provider observation behind price; absent when unknown.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: GulfQuote represents a Gulf region market quote (index, currency, or oil).
         worldmonitor_market_v1_AnalyzeStockRequest:
             type: object
@@ -56844,6 +56843,12 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_market_v1_FearGreedSectorPerformance'
+                fsiAsOf:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Unix ms of the oldest HYG, TLT, VIX or HY OAS observation behind
+                         fsi_value; absent when any input lacks an observation time.. Warning: Values > 2^53 may lose precision in JavaScript
         worldmonitor_market_v1_FearGreedCategory:
             type: object
             properties:
@@ -56927,6 +56932,9 @@ components:
                     type: boolean
                 surpriseDirection:
                     type: string
+                revenueCurrency:
+                    type: string
+                    description: ISO 4217 code of the revenue figures. Empty when the provider did not report one.
         worldmonitor_market_v1_GetCotPositioningRequest:
             type: object
         worldmonitor_market_v1_GetCotPositioningResponse:
@@ -64304,7 +64312,7 @@ components:
                     type: string
                     description: |-
                         Server-derived public badge. One of:
-                           "flowing" | "reduced" | "offline" | "disputed"
+                           "flowing" | "reduced" | "offline" | "disputed" | "cancelled" | "closed"
         worldmonitor_supply_chain_v1_LatLon:
             type: object
             properties:
@@ -64339,6 +64347,11 @@ components:
                 classifierConfidence:
                     type: number
                     format: double
+                lifecycleState:
+                    type: string
+                    description: |-
+                        Terminal lifecycle, independent of physical state and evidence age.
+                         One of: "" (in service or planned) | "cancelled" | "closed"
         worldmonitor_supply_chain_v1_OperatorStatement:
             type: object
             properties:
@@ -64816,6 +64829,11 @@ components:
                              time so CountryDeepDivePanel can filter events without a second RPC.
                              Always non-empty in well-formed payloads; empty only if the upstream
                              asset was removed without an event update. Per plan §R/#5 decision B.
+                assetName:
+                    type: string
+                    description: |-
+                        Display name of the referenced asset, joined from the pipeline/storage
+                         registries at seed time. Empty for rows seeded before the join existed.
         worldmonitor_supply_chain_v1_EnergyDisruptionSource:
             type: object
             properties:

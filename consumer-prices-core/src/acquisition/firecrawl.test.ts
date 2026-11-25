@@ -148,7 +148,7 @@ describe('FirecrawlProvider.extract', () => {
     expect(result.pageTitle).toBe(expected);
   });
 
-  it('omits pageTitle when the page declares only a document title', async () => {
+  it('keeps a bare document title apart from the declared product title', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -158,6 +158,7 @@ describe('FirecrawlProvider.extract', () => {
 
     const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/dairy/fresh-milk', schema);
     expect(result.pageTitle).toBeUndefined();
+    expect(result.documentTitle).toBe('Fresh Milk');
   });
 
   // renderWaitMs (#6182): late-hydrating storefronts capture as a breadcrumb

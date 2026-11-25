@@ -1640,7 +1640,10 @@
       },
       "infoTooltip": "Rilevamenti termici satellitari della NASA FIRMS VIIRS nelle regioni di conflitto monitorate. Alta intensità = luminosità >360K e confidenza >80%.",
       "possibleExplosions": "{{count}} possibile/i esplosione/i rilevata/e",
-      "explosionTooltip": "Firma termica coerente con esplosione (potenza radiativa del fuoco >80 MW, luminosità >380 K)"
+      "explosionTooltip": "Firma termica coerente con esplosione (potenza radiativa del fuoco >80 MW, luminosità >380 K)",
+      "agencyReports": "Incendi segnalati dalle agenzie",
+      "agencyDates": "Date dell'agenzia",
+      "shownOfTotal": "Visualizzati {{shown}} di {{total}} record di incendi"
     },
     "giving": {
       "activityIndex": "Indice di attività",
@@ -2344,6 +2347,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> Rapporto World Monitor tra credito ad alto rendimento e Treasury a lungo termine, aggiustato per la volatilità azionaria e lo spread ad alto rendimento: (HYG / TLT) / (VIX × spread ad alto rendimento / 100). Questo non è l'indice di stress finanziario della Federal Reserve di Kansas City. Un valore di 1,5 o superiore indica basso stress; al di sotto di 0,3 indica alto stress.",
       "title": "Indicatore di Stress Finanziario",
       "usFsiValue": "Valore dell'indicatore di stress finanziario statunitense",
+      "asOf": "Al {{date}}",
       "cissTitle": "EU CISS (Stress Sistemico dell'Area Euro)",
       "notAvailable": "N/D",
       "interpretation": {

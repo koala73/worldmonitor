@@ -224,18 +224,20 @@ function adaptPortwatch(
     // upstream `asof`. Ageing that would admit a frozen observation as current
     // for one budget window out of every cache lifetime. `contentAsOfChangedAt`
     // advances only when upstream's own max(date) advances; `fetchedAt` remains
-    // the fallback for payloads written before that field existed.
-    const observedAt = isoTimestamp(payload.contentAsOfChangedAt)
+    // the fallback for payloads written before that field existed. Both are
+    // our own clocks; the observation date is upstream's `asof` day.
+    const contentClock = isoTimestamp(payload.contentAsOfChangedAt)
       ?? isoTimestamp(payload.fetchedAt);
+    const observedAt = dateOnlyTimestamp(payload.asof);
     for (const port of records(payload.ports)) {
       const selectorId = stringValue(port.portId);
       if (!selectorId) continue;
       const portName = stringValue(port.portName) ?? selectorId;
       signals.push(sourceSignal({
-        id: `signal:portwatch:${selectorId}:${observedAt ?? 'timestamp-unknown'}`,
+        id: `signal:portwatch:${selectorId}:${contentClock ?? 'timestamp-unknown'}`,
         family: 'port',
         selectorId,
-        availability: observedAt === null ? 'stale' : 'available',
+        availability: contentClock === null ? 'stale' : 'available',
         publisher: {
           id: 'publisher:imf-portwatch',
           name: 'IMF PortWatch',
@@ -244,11 +246,11 @@ function adaptPortwatch(
         sourceUrl: 'https://portwatch.imf.org/',
         sourceScope: 'node',
         observationTime: observedAt,
-        observationTimePrecision: observedAt ? 'instant' : 'unknown',
+        observationTimePrecision: observedAt ? 'day' : 'unknown',
         retrievalTime,
         retrievalTimePrecision: retrievalTime ? 'instant' : 'unknown',
         transportFreshness: transport,
-        contentFreshness: contentFreshness(observedAt, 10 * 24 * 60, assessedAt),
+        contentFreshness: contentFreshness(contentClock, 10 * 24 * 60, assessedAt),
         summary: `PortWatch activity observation available for ${portName}.`,
         metrics: metrics([
           ['tankerCalls30d', numberValue(port.tankerCalls30d)],

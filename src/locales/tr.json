@@ -1773,7 +1773,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS uydu termal tespit verileri - izlenen catisma bolgeleri. Yuksek yogunluk = parlaklik >360K ve guvenilirlik >%80.",
       "possibleExplosions": "{{count}} olası patlama tespit edildi",
-      "explosionTooltip": "Termal imza patlamaya uygun (ateş radyatif gücü >80 MW, parlaklık >380 K)"
+      "explosionTooltip": "Termal imza patlamaya uygun (ateş radyatif gücü >80 MW, parlaklık >380 K)",
+      "agencyReports": "Kurumlarca bildirilen yangınlar",
+      "agencyDates": "Kurum tarihleri",
+      "shownOfTotal": "{{total}} yangın kaydından {{shown}} tanesi gösteriliyor"
     },
     "ucdpEvents": {
       "stateBased": "Devlet Tabanli",
@@ -2333,6 +2336,7 @@
       "infoTooltip": "<strong>Mali Stres Göstergesi</strong> WorldMonitor yüksek getirili kredi ile uzun dönem hazine bonolarının oranı, hisse senedi oynaklığı ve yüksek getirili spread'e göre ayarlanmış: (HYG / TLT) / (VIX × Yüksek getirili spread / 100). Bu Kansas City Fed Mali Stres Endeksi değildir. 1,5 ve üzeri bir ölçüm düşük strestir; 0,3'ün altı yüksek streştir.",
       "title": "Finansal Stres Göstergesi",
       "usFsiValue": "ABD Mali Stres Göstergesi değeri",
+      "asOf": "{{date}} itibarıyla",
       "cissTitle": "EU CISS (Euro Bölgesi Sistematik Stres)",
       "notAvailable": "Kullanılabilir Değil",
       "interpretation": {

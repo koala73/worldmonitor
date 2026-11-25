@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 const KEY = 'market:earnings-calendar:v1';
 const TTL = 129600; // 36h — 3× a 12h cron interval
 export const EARNINGS_CALENDAR_CAP = 100;
+// Finnhub's free tier allows 60 calls per minute.
+const PROFILE_GAP_MS = 1_100;
+const ISO_CURRENCY = /^[A-Z]{3}$/;
+const ENRICH_STOP_BEFORE_DEADLINE_MS = 30_000;
 
 // Keep aligned with NQ_INFLUENCE_SYMBOLS in src/config/nq-context.ts.
 export const NQ_INFLUENCE_EARNINGS_SYMBOLS = [
@@ -79,14 +83,45 @@ export function boundEarningsCalendar(normalized, {
     .sort(compareEarningsEntries);
 }
 
-async function fetchAll() {
+async function fetchProfile(symbol, apiKey, fetchFn) {
+  try {
+    const resp = await fetchFn(`https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}`, {
+      headers: { 'User-Agent': CHROME_UA, 'X-Finnhub-Token': apiKey },
+      signal: AbortSignal.timeout(10_000),
+    });
+    return resp.ok ? await resp.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+// The calendar carries neither company names nor currency, so revenue is only
+// labelled with the currency Finnhub reports the estimates in.
+async function enrichFromProfiles(earnings, apiKey, { fetchFn, sleepFn, fetchDeadlineAtMs }) {
+  for (const [index, entry] of earnings.entries()) {
+    if (Date.now() >= fetchDeadlineAtMs - ENRICH_STOP_BEFORE_DEADLINE_MS) {
+      console.warn(`  profile enrichment stopped at ${index}/${earnings.length} to meet the fetch deadline`);
+      return;
+    }
+    if (index > 0) await sleepFn(PROFILE_GAP_MS);
+    const profile = await fetchProfile(entry.symbol, apiKey, fetchFn);
+    if (typeof profile?.name === 'string' && profile.name.trim()) entry.company = profile.name.trim();
+    if (ISO_CURRENCY.test(profile?.estimateCurrency ?? '')) entry.revenueCurrency = profile.estimateCurrency;
+  }
+}
+
+export async function fetchAll({
+  fetchFn = globalThis.fetch,
+  sleepFn = sleep,
+  now = new Date(),
+  fetchDeadlineAtMs = Infinity,
+} = {}) {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) {
     console.warn('  FINNHUB_API_KEY not set — skipping');
     return { earnings: [], unavailable: true, asOf: new Date().toISOString() };
   }
 
-  const now = new Date();
   const from = new Date(now);
   // #4922/#4929 review: include the past week so brief consumers can show
   // recent beats/misses — a today-forward window can only ever contain
@@ -97,7 +132,7 @@ async function fetchAll() {
 
   const url = `https://finnhub.io/api/v1/calendar/earnings?from=${toDateStr(from)}&to=${toDateStr(to)}`;
 
-  const resp = await fetch(url, {
+  const resp = await fetchFn(url, {
     headers: { 'User-Agent': CHROME_UA, 'X-Finnhub-Token': apiKey },
     signal: AbortSignal.timeout(15_000),
   });
@@ -133,6 +168,7 @@ async function fetchAll() {
         revenueActual: revAct,
         hasActuals,
         surpriseDirection,
+        revenueCurrency: '',
       };
     })
     // Keep companies with meaningful analyst coverage:
@@ -148,6 +184,7 @@ async function fetchAll() {
     });
 
   const earnings = boundEarningsCalendar(normalized, { today: toDateStr(now) });
+  await enrichFromProfiles(earnings, apiKey, { fetchFn, sleepFn, fetchDeadlineAtMs });
 
   console.log(`  Fetched ${earnings.length} earnings entries (from ${raw.length} total)`);
   return { earnings, unavailable: false, asOf: new Date().toISOString() };

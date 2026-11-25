@@ -207,7 +207,7 @@ export class AAIISentimentPanel extends Panel {
     const fallbackBadge = d.fallback
       ? '<span style="display:inline-block;padding:1px 5px;border-radius:3px;background:rgba(230,126,34,0.15);color:#e67e22;font-size:calc(9px * var(--wm-panel-effective-scale, 1));margin-left:4px">(fallback data)</span>'
       : '';
-    const dateStr = latest.date ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-align:right;margin-top:4px">Survey: ${escapeHtml(latest.date)}${d.source !== 'xls' ? ` (${escapeHtml(d.source)})` : ''}${fallbackBadge}</div>` : '';
+    const dateStr = latest.date ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-align:right;margin-top:4px">Survey: ${escapeHtml(latest.date)}${fallbackBadge}</div>` : '';
 
     const html = `
       <div style="padding:12px 0">

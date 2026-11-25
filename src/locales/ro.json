@@ -1779,7 +1779,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS detectii termice prin satelit în regiunile de conflict monitorizate. Intensitate mare = luminozitate >360K și încredere >80%.",
       "possibleExplosions": "{{count}} posibilă(e) explozie(explozie)",
-      "explosionTooltip": "Semnătură termică în concordanță cu explozie (putere radiantă de incendiu >80 MW, luminozitate >380 K)"
+      "explosionTooltip": "Semnătură termică în concordanță cu explozie (putere radiantă de incendiu >80 MW, luminozitate >380 K)",
+      "agencyReports": "Incendii raportate de agenții",
+      "agencyDates": "Datele agenției",
+      "shownOfTotal": "Se afișează {{shown}} din {{total}} înregistrări de incendii"
     },
     "ucdpEvents": {
       "stateBased": "Bazat pe stat",
@@ -2344,6 +2347,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> Raport World Monitor dintre creditele cu randament ridicat și obligațiuni pe termen lung, ajustat pentru volatilitatea acțiunilor și spread-ul randamentului ridicat: (HYG / TLT) / (VIX × spread randament ridicat / 100). Aceasta nu este Indicele de Stres Financiar al Bancii Federale din Kansas City. O citire de 1,5 sau mai mare indică stres redus; sub 0,3 indică stres ridicat.",
       "title": "Indicatorul de Stres Financiar",
       "usFsiValue": "Valoarea indicatorului de stres financiar al SUA",
+      "asOf": "la {{date}}",
       "cissTitle": "EU CISS (Stres Sistemic Zona Euro)",
       "notAvailable": "N/A",
       "interpretation": {

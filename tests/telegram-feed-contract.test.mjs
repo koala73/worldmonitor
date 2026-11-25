@@ -94,6 +94,20 @@ describe('api/telegram-feed contract normalization', () => {
     assert.deepEqual(data.items[0].mediaUrls, ['https://cdn.example.com/image.jpg']);
   });
 
+  it('passes the relay truncation flag through to the browser contract', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      enabled: true,
+      items: [
+        { id: 'defenderdome:1', channel: 'defenderdome', ts: 1_744_000_000, text: 'The breach f', textTruncated: true },
+        { id: 'defenderdome:2', channel: 'defenderdome', ts: 1_744_000_000, text: 'Complete post' },
+      ],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const data = await (await handler(await makeRequest())).json();
+    assert.deepEqual(data.items.map((item) => item.textTruncated), [true, false]);
+  });
+
   it('synthesises distinct ids for same-second messages sharing a 32-char prefix (#7210)', async () => {
     const sharedPrefix = 'BREAKING: air raid alert issued for';
     globalThis.fetch = async () => new Response(JSON.stringify({

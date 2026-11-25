@@ -6358,7 +6358,9 @@ components:
                 annualGrowth:
                     type: number
                     format: double
-                    description: Year-over-year debt growth percent (2023->2024).
+                    description: |-
+                        Percent change in debt_to_gdp versus the prior year. A falling ratio can
+                         coexist with rising debt, so this is not debt-stock growth.
                 perSecondRate:
                     type: number
                     format: double

@@ -803,6 +803,20 @@
   font-weight: 600;
 }
 
+.fires-agency-table caption {
+  padding: 8px 8px 4px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.fires-shown-of-total {
+  padding: 6px 8px 0;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+}
+
 .fires-footer {
   display: flex;
   justify-content: space-between;
@@ -2423,8 +2437,16 @@
 }
 
 .flight-time {
+  width: min-content;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-dim);
+}
+
+.flight-codeshares {
+  grid-column: 2 / -1;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
 
@@ -3038,6 +3060,11 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.te-coords {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
 }
 
 .te-meta {

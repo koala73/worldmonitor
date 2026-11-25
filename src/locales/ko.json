@@ -1767,7 +1767,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS 위성 열 감지. 감시 대상 분쟁 지역 전체. 고강도 = 밝기 >360K 및 신뢰도 >80%.",
       "possibleExplosions": "{{count}}건의 폭발 가능성 감지됨",
-      "explosionTooltip": "폭발과 일치하는 열 신호(화재 방사 전력 >80 MW, 밝기 >380 K)"
+      "explosionTooltip": "폭발과 일치하는 열 신호(화재 방사 전력 >80 MW, 밝기 >380 K)",
+      "agencyReports": "기관 보고 화재",
+      "agencyDates": "기관 날짜",
+      "shownOfTotal": "화재 기록 {{total}}건 중 {{shown}}건 표시"
     },
     "ucdpEvents": {
       "stateBased": "국가 기반",
@@ -2322,6 +2325,7 @@
       "infoTooltip": "<strong>금융 스트레스 지수</strong> World Monitor의 고수익 채권 대 장기 국고채 비율, 주식 변동성 및 고수익 스프레드로 조정: (HYG / TLT) / (VIX × High-yield spread / 100). 이는 캔자스시티 연방준비은행 금융 스트레스 지수가 아닙니다. 1.5 이상의 수치는 낮은 스트레스이고, 0.3 이하는 높은 스트레스입니다.",
       "title": "금융 스트레스 지표",
       "usFsiValue": "미국 금융 스트레스 지수 값",
+      "asOf": "{{date}} 기준",
       "cissTitle": "EU CISS (유로존 시스템 스트레스)",
       "notAvailable": "해당 없음",
       "interpretation": {

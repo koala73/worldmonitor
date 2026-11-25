@@ -4454,6 +4454,10 @@ components:
                     items:
                         type: number
                         format: double
+                priceAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix ms of the provider observation behind price; absent when unknown.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: GulfQuote represents a Gulf region market quote (index, currency, or oil).
         AnalyzeStockRequest:
             type: object
@@ -5209,6 +5213,12 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/FearGreedSectorPerformance'
+                fsiAsOf:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Unix ms of the oldest HYG, TLT, VIX or HY OAS observation behind
+                         fsi_value; absent when any input lacks an observation time.. Warning: Values > 2^53 may lose precision in JavaScript
         FearGreedCategory:
             type: object
             properties:
@@ -5292,6 +5302,9 @@ components:
                     type: boolean
                 surpriseDirection:
                     type: string
+                revenueCurrency:
+                    type: string
+                    description: ISO 4217 code of the revenue figures. Empty when the provider did not report one.
         GetCotPositioningRequest:
             type: object
         GetCotPositioningResponse:

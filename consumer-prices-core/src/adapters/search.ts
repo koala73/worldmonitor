@@ -92,6 +92,30 @@ export function pageDeclaresProduct(
 }
 
 /**
+ * Fallback for pages without og:title or twitter:title. Storefronts put the
+ * product in <title> beside the site name ("Naivas Online | Kabras Packed Sugar
+ * White 1Kg"), but category, search and home pages carry a <title> too. Only a
+ * segment that states a quantity counts: a listing names a department, not a
+ * pack size.
+ */
+export function documentTitleDeclaresProduct(
+  documentTitle: string | undefined,
+  productName: string | undefined,
+  sizeText?: string,
+): boolean {
+  if (!documentTitle) return false;
+  const productSize = parseSize(sizeText) ?? parseSize(productName);
+  return documentTitle.split(/\s+[|–—]\s+/).some((segment) => {
+    const segmentSize = parseSize(segment);
+    if (!segmentSize) return false;
+    // The quantity is what admits this segment, so it must be in the same unit
+    // as the extracted size: a "Whole Milk 1L" page is not "Whole Milk Powder 1kg".
+    if (productSize && productSize.baseUnit !== segmentSize.baseUnit) return false;
+    return pageDeclaresProduct(segment, productName, sizeText);
+  });
+}
+
+/**
  * Build a size constraint hint from the canonical name for use in the Firecrawl prompt.
  * Returns a human-readable string like "1 gallon (approx. 3785ml)" or null if no size found.
  */
@@ -509,6 +533,7 @@ export class SearchAdapter implements RetailerAdapter {
       let data: ExtractedProduct;
       let pageContent: string | undefined;
       let pageTitle: string | undefined;
+      let documentTitle: string | undefined;
       try {
         // renderWaitMs: late-hydrating storefronts (Carrefour MAF) capture as
         // a breadcrumb shell without a settle delay — Firecrawl only; the Exa
@@ -523,6 +548,7 @@ export class SearchAdapter implements RetailerAdapter {
         data = result.data ?? {};
         pageContent = result.pageContent;
         pageTitle = result.pageTitle;
+        documentTitle = result.documentTitle;
         // The open->closed transition deserves the same log visibility as the
         // opening warn: without it, "did the provider recover" is only
         // answerable by the absence of further warnings (#6182 review).
@@ -621,8 +647,11 @@ export class SearchAdapter implements RetailerAdapter {
         continue;
       }
 
-      if (ctx.config.searchConfig?.requirePageTitleMatch && !pageDeclaresProduct(pageTitle, data.productName, data.sizeText)) {
-        failures.push({ provider, reason: 'title-mismatch', detail: `page: ${pageTitle ?? 'none'}` });
+      const pageIsProduct = pageTitle
+        ? pageDeclaresProduct(pageTitle, data.productName, data.sizeText)
+        : documentTitleDeclaresProduct(documentTitle, data.productName, data.sizeText);
+      if (ctx.config.searchConfig?.requirePageTitleMatch && !pageIsProduct) {
+        failures.push({ provider, reason: 'title-mismatch', detail: `page: ${pageTitle ?? documentTitle ?? 'none'}` });
         // The page itself is not this product; another extractor reads the same page.
         break;
       }

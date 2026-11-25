@@ -241,7 +241,7 @@ const FIXTURES = [
     enveloped: false, // fetch-gpsjam.mjs writes with a raw SET
     // Hex shape: scripts/_gpsjam-parse.mjs:83.
     payload: {
-      hexes: [{ level: 'high', region: 'Eastern Europe', pct: 24.5, npAvg: 0.3 }],
+      hexes: [{ lat: 48.5, lon: 35.1, level: 'high', region: 'ukraine-russia', pct: 24.5, npAvg: 0.3 }],
       fetchedAt: iso(HOUR),
     },
   },
@@ -507,9 +507,7 @@ const FIXTURES = [
   },
   {
     extractor: extractRiskScoreSpike,
-    // 'UA' is an ISO2 code with no theater mapping — pinned so the known
-    // limitation is visible rather than silently drifting.
-    expectTheater: 'UA',
+    expectTheater: 'Eastern Europe',
     key: CII_RISK_SCORE_CACHE_KEYS.stale,
     enveloped: false, // written by get-risk-scores.ts via setCachedJson, not a seeder
     payload: {

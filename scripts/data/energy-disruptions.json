@@ -173,7 +173,7 @@
       "id": "btc-fire-2008",
       "assetId": "btc",
       "assetType": "pipeline",
-      "eventType": "mechanical",
+      "eventType": "sabotage",
       "startAt": "2008-08-05T00:00:00Z",
       "endAt": "2008-08-25T00:00:00Z",
       "capacityOfflineBcmYr": 0,
@@ -237,7 +237,7 @@
       "eventType": "sabotage", "startAt": "2019-09-14T00:00:00Z", "endAt": "2019-09-25T00:00:00Z",
       "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 5.0,
       "causeChain": ["sabotage", "war"],
-      "shortDescription": "Houthi-claimed drone + cruise missile attack on Abqaiq processing and Khurais field temporarily removed ~50% of Saudi crude processing capacity (headline 5.7 mbd figure reflects plant-level loss; capacityOffline capped at linked pipeline 5.0 mbd throughput ceiling).",
+      "shortDescription": "Houthi-claimed drone + cruise missile attack on Abqaiq processing and Khurais field temporarily removed ~50% of Saudi crude processing capacity (5.7 mb/d lost at the plants; the offline figure here is capped at the 5.0 mb/d capacity of the East–West pipeline).",
       "sources": [
         { "authority": "Saudi Aramco", "title": "Abqaiq attack statement", "url": "https://www.aramco.com/en/news-media/news/2019/abqaiq-khurais-update", "date": "2019-09-14", "sourceType": "operator" },
         { "authority": "Reuters", "title": "Saudi Arabia oil attack", "url": "https://www.reuters.com/article/saudi-aramco-attacks/", "date": "2019-09-14", "sourceType": "press" }
@@ -516,10 +516,10 @@
     "spr-drawdown-2022-2023": {
       "id": "spr-drawdown-2022-2023", "assetId": "bryan-mound", "assetType": "storage",
       "eventType": "commercial", "startAt": "2022-03-31T00:00:00Z", "endAt": "2023-07-31T00:00:00Z",
-      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 1.0,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
       "causeChain": ["policy"],
-      "shortDescription": "Biden administration ordered 180 million barrel SPR release — the largest ever; SPR levels fell to ~40-year lows by mid-2023.",
-      "sources": [ { "authority": "US DOE", "title": "SPR release authorization", "url": "https://www.energy.gov/fecm/articles/spr-release", "date": "2022-03-31", "sourceType": "regulator" } ],
+      "shortDescription": "Biden administration ordered 180 million barrel SPR release (about 1 mb/d for six months) — the largest ever; SPR levels fell to ~40-year lows by mid-2023.",
+      "sources": [ { "authority": "US DOE", "title": "SPR release authorization", "url": "https://www.energy.gov/fecm/articles/spr-release", "date": "2022-03-31", "sourceType": "regulator" }, { "authority": "The White House", "title": "Fact sheet: President Biden's plan to respond to Putin's price hike at the pump", "url": "https://bidenwhitehouse.archives.gov/briefing-room/statements-releases/2022/03/31/fact-sheet-president-bidens-plan-to-respond-to-putins-price-hike-at-the-pump/", "date": "2022-03-31", "sourceType": "regulator" } ],
       "classifierVersion": "v1", "classifierConfidence": 0.96, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
     },
     "gladstone-lng-maintenance-2023": {

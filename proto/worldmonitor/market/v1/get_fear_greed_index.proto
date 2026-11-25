@@ -59,4 +59,7 @@ message GetFearGreedIndexResponse {
   // Latest TLT ETF price used in the Fear & Greed header stress ratio.
   double tlt_price = 29;
   repeated FearGreedSectorPerformance sector_performance = 30;
+  // Unix ms of the oldest HYG, TLT, VIX or HY OAS observation behind
+  // fsi_value; absent when any input lacks an observation time.
+  optional int64 fsi_as_of = 31 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }

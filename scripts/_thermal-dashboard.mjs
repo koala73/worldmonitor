@@ -4,9 +4,9 @@
  * The canonical `thermal:escalation:v1` payload carries every cluster the
  * detector produced (~117, and every one of them rides in the bootstrap slow
  * tier that EVERY client downloads on EVERY boot). The dashboard renders 12:
- * `fetchThermalEscalations(maxItems = 12)` slices the array and recomputes its
- * summary from that slice, so clusters past the cap are downloaded and thrown
- * away — ~2.9 GB/day of Redis egress for bytes no UI ever shows.
+ * `fetchThermalEscalations(maxItems = 12)` slices the array, so clusters past
+ * the cap are downloaded and thrown away — ~2.9 GB/day of Redis egress for
+ * bytes no UI ever shows.
  *
  * `computeThermalEscalationWatch` already ranks clusters (strategic relevance →
  * severity → total FRP → observation count), so the client's `slice(0, 12)` is a
@@ -19,9 +19,9 @@
  * truncation.
  *
  * `summary` is deliberately left as computed over the FULL cluster set: it
- * describes the world, not the page, and the hydrated client recomputes its own
- * summary from the slice anyway. `totalClusters` records the pre-cap count so no
- * consumer mistakes a capped array for the whole picture.
+ * describes the world, not the page, and the panel shows it as the totals.
+ * `totalClusters` records the pre-cap count so no consumer mistakes a capped
+ * array for the whole picture.
  *
  * NOTE: this file must not import anything outside `scripts/` — Railway builds
  * the seeders from a scripts-only Nixpacks root, and a `../api/` import crashes

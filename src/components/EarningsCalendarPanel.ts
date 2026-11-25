@@ -18,6 +18,7 @@ interface EarningsEntry {
   revenueActual: number | null;
   hasActuals: boolean;
   surpriseDirection: string;
+  revenueCurrency: string;
 }
 
 function fmtEps(v: number | null): string {
@@ -26,12 +27,14 @@ function fmtEps(v: number | null): string {
   return `${sign}${v.toFixed(2)}`;
 }
 
-function fmtRevenue(v: number | null): string {
+function fmtRevenue(v: number | null, currency: string): string {
   if (v == null || v <= 0) return '';
-  if (v >= 1e12) return `$${(v / 1e12).toFixed(1)}T`;
-  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `$${Math.round(v / 1e6)}M`;
-  return `$${v}`;
+  let amount = String(v);
+  if (v >= 1e12) amount = `${(v / 1e12).toFixed(1)}T`;
+  else if (v >= 1e9) amount = `${(v / 1e9).toFixed(1)}B`;
+  else if (v >= 1e6) amount = `${Math.round(v / 1e6)}M`;
+  if (currency === 'USD') return `$${amount}`;
+  return currency ? `${currency} ${amount}` : amount;
 }
 
 function surprisePct(actual: number | null, estimate: number | null): string {
@@ -61,8 +64,8 @@ function renderEntry(e: EarningsEntry): string {
       ? 'background:rgba(52,152,219,0.15);color:#3498db'
       : 'background:rgba(255,255,255,0.08);color:var(--text-dim)';
 
-  const revEstFmt = fmtRevenue(e.revenueEstimate);
-  const revActFmt = fmtRevenue(e.revenueActual);
+  const revEstFmt = fmtRevenue(e.revenueEstimate, e.revenueCurrency);
+  const revActFmt = fmtRevenue(e.revenueActual, e.revenueCurrency);
   const epsEstFmt = fmtEps(e.epsEstimate);
   const epsActFmt = fmtEps(e.epsActual);
 
@@ -101,8 +104,8 @@ function renderEntry(e: EarningsEntry): string {
         ${hourLabel ? `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 5px;border-radius:3px;${hourStyle};letter-spacing:0.04em">${escapeHtml(hourLabel)}</span>` : ''}
       </div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(e.company)}</div>
-        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);letter-spacing:0.04em">${escapeHtml(e.symbol)}</div>
+        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(e.company)}">${escapeHtml(e.company)}</div>
+        ${e.company === e.symbol ? '' : `<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);letter-spacing:0.04em">${escapeHtml(e.symbol)}</div>`}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">
         ${epsHtml ? `<div style="display:flex;align-items:center;gap:5px">${epsHtml}</div>` : ''}

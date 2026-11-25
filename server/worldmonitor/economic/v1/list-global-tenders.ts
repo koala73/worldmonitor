@@ -15,11 +15,15 @@ import { getCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const SEED_CACHE_KEY = 'economic:global-tenders:v1';
+const FX_RATES_KEY = 'shared:fx-rates:v1';
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 // The seeder runs once a day; health marks the snapshot stale after three missed
 // runs (api/health.js globalTenders), and so does this reader.
 export const STALE_AFTER_MS = 3 * 24 * 60 * 60_000;
+
+// USD per one unit of each currency, as scripts/seed-fx-rates.mjs writes it.
+type UsdPerUnit = Record<string, unknown>;
 
 type SeedSnapshot = {
   fetchedAt?: number | string;
@@ -87,12 +91,36 @@ function matchesText(tender: GlobalTender, query: string): boolean {
     .includes(query);
 }
 
-function compareTenders(sort: string, left: GlobalTender, right: GlobalTender): number {
+function usdValue(tender: GlobalTender, usdPerUnit: UsdPerUnit): number | null {
+  const amount = tender.money?.amount;
+  const rate = usdPerUnit[(tender.money?.currency || '').toUpperCase()];
+  if (typeof amount !== 'number' || !(amount > 0) || typeof rate !== 'number' || !(rate > 0)) return null;
+  return amount * rate;
+}
+
+function valueTier(tender: GlobalTender, usd: number | null): number {
+  if (usd !== null) return 0;
+  return (tender.money?.amount || 0) > 0 ? 1 : 2;
+}
+
+// Amounts without a USD rate cannot be ranked against converted ones, so they
+// follow them, grouped by currency and ranked within it. Tenders with no amount come last.
+function compareEstimatedValue(left: GlobalTender, right: GlobalTender, usdPerUnit: UsdPerUnit): number {
+  const leftUsd = usdValue(left, usdPerUnit);
+  const rightUsd = usdValue(right, usdPerUnit);
+  const byTier = valueTier(left, leftUsd) - valueTier(right, rightUsd);
+  if (byTier) return byTier;
+  if (leftUsd !== null && rightUsd !== null) return rightUsd - leftUsd;
+  return normalized(left.money?.currency).localeCompare(normalized(right.money?.currency))
+    || (right.money?.amount || 0) - (left.money?.amount || 0);
+}
+
+function compareTenders(sort: string, left: GlobalTender, right: GlobalTender, usdPerUnit: UsdPerUnit): number {
   const byId = left.id.localeCompare(right.id);
   if (sort === 'closing_soon') {
     return asTimestamp(left.deadline, Number.MAX_SAFE_INTEGER) - asTimestamp(right.deadline, Number.MAX_SAFE_INTEGER) || byId;
   }
-  if (sort === 'estimated_value') return (right.money?.amount || 0) - (left.money?.amount || 0) || byId;
+  if (sort === 'estimated_value') return compareEstimatedValue(left, right, usdPerUnit) || byId;
   if (sort === 'relevance') return (right.automationFit?.score || 0) - (left.automationFit?.score || 0) || byId;
   return asTimestamp(right.publishedAt || right.updatedAt, 0) - asTimestamp(left.publishedAt || left.updatedAt, 0) || byId;
 }
@@ -119,7 +147,7 @@ function dedupePakistanNotices(tenders: GlobalTender[]): GlobalTender[] {
   return tenders.filter((tender) => !duplicates.has(tender));
 }
 
-export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGlobalTendersRequest): Pick<ListGlobalTendersResponse, 'tenders' | 'nextCursor' | 'total' | 'appliedFilters' | 'countryCoverage'> {
+export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGlobalTendersRequest, usdPerUnit: UsdPerUnit = {}): Pick<ListGlobalTendersResponse, 'tenders' | 'nextCursor' | 'total' | 'appliedFilters' | 'countryCoverage'> {
   const countries = new Set([req.country, ...(req.countries || [])].map((value) => normalized(value)).filter(Boolean));
   const region = normalized(req.region);
   const source = normalized(req.source);
@@ -175,7 +203,7 @@ export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGloba
       && (!category || [...tender.categoryCodes, ...tender.sectors].some((value) => normalized(value).includes(category)))
       && (minAutomationScore === null || (tender.automationFit?.score || 0) >= minAutomationScore)
       && matchesText(tender, query);
-  }).sort((left, right) => compareTenders(sort, left, right)));
+  }).sort((left, right) => compareTenders(sort, left, right, usdPerUnit)));
 
   // A snapshot cannot establish that a country has no opportunities or that no
   // adapter supports it. It can only establish that this request has (or lacks)
@@ -202,7 +230,8 @@ export async function listGlobalTenders(ctx: ServerContext, req: ListGlobalTende
     const snapshot = await getCachedJson(SEED_CACHE_KEY, true) as SeedSnapshot | null;
     if (!snapshot || !Array.isArray(snapshot.tenders) || !Array.isArray(snapshot.sourceStatuses)) return unavailable(ctx);
     const freshSnapshot = applySnapshotFreshness(snapshot);
-    const page = filterAndPaginateTenders(freshSnapshot.tenders || [], req);
+    const usdPerUnit = req.sort === 'estimated_value' ? await getCachedJson(FX_RATES_KEY, true) as UsdPerUnit | null : null;
+    const page = filterAndPaginateTenders(freshSnapshot.tenders || [], req, usdPerUnit || {});
     return {
       ...page,
       fetchedAt: freshSnapshot.fetchedAt ? new Date(freshSnapshot.fetchedAt).toISOString() : '',

@@ -18,9 +18,15 @@
 //
 // See docs/methodology/pipelines.mdx §"How public badges move".
 
-export const PIPELINE_BADGE_DERIVER_VERSION = 'badge-deriver-v1';
+export const PIPELINE_BADGE_DERIVER_VERSION = 'badge-deriver-v2';
 
-export type PipelinePublicBadge = 'flowing' | 'reduced' | 'offline' | 'disputed';
+export type PipelinePublicBadge = 'flowing' | 'reduced' | 'offline' | 'disputed' | 'cancelled' | 'closed';
+
+export type PipelineLifecycleState = 'cancelled' | 'closed';
+
+export function isPipelineLifecycleState(v: unknown): v is PipelineLifecycleState {
+  return v === 'cancelled' || v === 'closed';
+}
 
 export interface PipelineEvidenceInput {
   physicalState?: string;               // 'flowing'|'reduced'|'offline'|'unknown'
@@ -31,6 +37,7 @@ export interface PipelineEvidenceInput {
   lastEvidenceUpdate?: string;
   classifierVersion?: string;
   classifierConfidence?: number;
+  lifecycleState?: string;              // ''|'cancelled'|'closed'
 }
 
 // Days after which evidence is considered stale and confidence decays.
@@ -45,6 +52,9 @@ const EVIDENCE_STALENESS_DAYS = 14;
  * Derive the public badge for a single pipeline from its evidence bundle.
  *
  * Rules (applied in order; first match wins):
+ *   0. lifecycleState ∈ {cancelled, closed}
+ *      → that state, regardless of evidence age (a terminated project or a
+ *      permanently closed line does not drift back into service unnoticed)
  *   1. physical_state = "offline" AND (sanctionRefs.length > 0 OR commercialState ∈ {expired, suspended})
  *      → "offline" (high-confidence offline with paperwork)
  *   2. physical_state = "offline" AND operatorStatement != null
@@ -67,6 +77,7 @@ export function derivePipelinePublicBadge(
   nowMs: number = Date.now(),
 ): PipelinePublicBadge {
   if (!evidence) return 'disputed';
+  if (isPipelineLifecycleState(evidence.lifecycleState)) return evidence.lifecycleState;
 
   const stale = isStale(evidence.lastEvidenceUpdate, nowMs);
   const physical = evidence.physicalState;

@@ -106,13 +106,16 @@ function hs4ToHs2(hs4) {
  * @returns {object[]}
  */
 export function computeFlowWeightedExposures(importerIso2, hs2, products) {
-  const isEnergy = hs2 === '27';
   const normalizedHs2 = String(Number.parseInt(hs2, 10));
   const matchingProducts = products.filter(p => hs4ToHs2(p.hs4) === normalizedHs2);
 
-  if (matchingProducts.length === 0) return [];
+  return computeBilateralExposures(importerIso2, matchingProducts, normalizedHs2 === '27');
+}
 
-  const totalSectorValue = matchingProducts.reduce((s, p) => s + p.totalValue, 0);
+/** @param {string} importerIso2 @param {ComtradeProduct[]} matchingProducts @param {boolean} [boostEnergy] */
+function computeBilateralExposures(importerIso2, matchingProducts, boostEnergy = false) {
+  if (matchingProducts.length === 0) return [];
+  const totalValue = matchingProducts.reduce((sum, product) => sum + product.totalValue, 0);
 
   /** @type {Map<string, number>} */
   const cpScores = new Map();
@@ -120,7 +123,7 @@ export function computeFlowWeightedExposures(importerIso2, hs2, products) {
 
   let modeled = false;
   for (const product of matchingProducts) {
-    const productWeight = totalSectorValue > 0 ? product.totalValue / totalSectorValue : 0;
+    const productWeight = totalValue > 0 ? product.totalValue / totalValue : 0;
 
     for (const exporter of product.topExporters) {
       if (!exporter.partnerIso2) continue;
@@ -136,7 +139,7 @@ export function computeFlowWeightedExposures(importerIso2, hs2, products) {
 
   const entries = CHOKEPOINT_REGISTRY.map(cp => {
     let score = cpScores.get(cp.id) ?? 0;
-    if (isEnergy && cp.shockModelSupported) score = Math.min(score * 1.5, 100);
+    if (boostEnergy && cp.shockModelSupported) score *= 1.5;
     score = Math.min(score, 100);
     return {
       chokepointId: cp.id,
@@ -315,6 +318,7 @@ export async function main() {
     };
 
     for (const hs2 of HS2_CODES) {
+      const mappings = SUPPLY_VULNERABILITY_COMMODITIES.commodities.filter(mapping => mapping.transitHs2 === hs2);
       for (const [iso2, cluster] of countries) {
         const comtradeProducts = comtradeMap.get(iso2);
         let result;
@@ -340,10 +344,28 @@ export async function main() {
           fallbackCount++;
         }
 
+        // Commodity values are trade shares expressed as percentages. The HS2
+        // energy boost applies only to the chapter's vulnerability index inputs.
+        const commodityExposures = {};
+        if (comtradeProducts?.length) {
+          for (const mapping of mappings) {
+            const products = comtradeProducts.filter(product => (
+              product.totalValue > 0 && mapping.hs4.includes(product.hs4)
+            ));
+            const exposures = computeBilateralExposures(iso2, products);
+            if (exposures.length > 0) {
+              commodityExposures[mapping.id] = Object.fromEntries(
+                exposures.map(entry => [entry.chokepointId, entry.exposureScore]),
+              );
+            }
+          }
+        }
+
         const payload = JSON.stringify({
           iso2,
           hs2,
           ...result,
+          ...(Object.keys(commodityExposures).length > 0 ? { commodityExposures } : {}),
           fetchedAt: new Date().toISOString(),
         });
         commands.push(['SET', `${KEY_PREFIX}${iso2}:${hs2}:v1`, payload, 'EX', TTL_SECONDS]);

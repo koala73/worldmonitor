@@ -1923,7 +1923,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS műhold termális detektálása a megfigyelési területeken. Magas intenzitás = fényerő >360K és megbízhatóság >80%.",
       "possibleExplosions": "{{count}} lehetséges robbanás detektálva",
-      "explosionTooltip": "Hőjelenség konzisztens a robbanással (tűz sugárzási teljesítménye >80 MW, fényesség >380 K)"
+      "explosionTooltip": "Hőjelenség konzisztens a robbanással (tűz sugárzási teljesítménye >80 MW, fényesség >380 K)",
+      "agencyReports": "Hatóságok által jelentett tüzek",
+      "agencyDates": "Ügynökségi dátumok",
+      "shownOfTotal": "{{total}} tűzrekordból {{shown}} látható"
     },
     "ucdpEvents": {
       "stateBased": "Állami szintű",
@@ -2619,6 +2622,7 @@
       "infoTooltip": "<strong>Pénzügyi stressz mutató</strong> WorldMonitor magas hozamú hitel-Treasury hosszú arány, tőzsdei volatilitásra és magas hozamú spread-re korrigálva: (HYG / TLT) / (VIX × magas hozamú spread / 100). Ez nem a Kansas City Fed pénzügyi stressz indexe. Az 1,5 vagy magasabb érték alacsony stresszt jelent; 0,3 alatt magas stresszt.",
       "title": "Pénzügyi stresszmutató",
       "usFsiValue": "US pénzügyi stressz mutató érték",
+      "asOf": "{{date}} állapot szerint",
       "cissTitle": "EU CISS (Euró Terület Szisztematikus Stressz)",
       "cissStale": "Az Európai Központi Bank nem tett közzé újabb értéket – ez az érték elavult lehet.",
       "notAvailable": "N/A",

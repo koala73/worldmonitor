@@ -1933,7 +1933,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS satelitske toplinske detekcije na monitoriranim područjima sukoba. Visok intenzitet = sjajnost >360K i pouzdanost >80%.",
       "possibleExplosions": "Detektirano {{count}} mogućih eksplozija",
-      "explosionTooltip": "Termalna signatura skladna s eksplozijom (radijacijska snaga vatra >80 MW, sjaj >380 K)"
+      "explosionTooltip": "Termalna signatura skladna s eksplozijom (radijacijska snaga vatra >80 MW, sjaj >380 K)",
+      "agencyReports": "Požari koje su prijavile agencije",
+      "agencyDates": "Datumi agencije",
+      "shownOfTotal": "Prikazano {{shown}} od {{total}} zapisa o požarima"
     },
     "ucdpEvents": {
       "stateBased": "Državni konflikt",
@@ -2634,6 +2637,7 @@
       "infoTooltip": "<strong>Indikator financijskog stresa</strong> World Monitor omjer visokorentabilnog kredita i dugoročnih trezorskih obveznica, prilagođen za volatilnost dionica i raspon visokorentabilnog kredita: (HYG / TLT) / (VIX × raspon visokorentabilnog kredita / 100). Ovo nije indeks financijskog stresa Kansas City Feda. Vrijednost od 1,5 ili viša označava nizak stress; ispod 0,3 je visok stress.",
       "title": "Indikator financijskog stresa",
       "usFsiValue": "Vrijednost indeksa financijskog stresa SAD-a",
+      "asOf": "na dan {{date}}",
       "cissTitle": "EU CISS (Sustavni stres evrske zone)",
       "cissStale": "Europska centralna banka nije objavila novu vrijednost — ovo čitanje može biti zastarjelo.",
       "notAvailable": "N/D",

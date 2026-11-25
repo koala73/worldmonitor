@@ -17,6 +17,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractWildfireEscalation } from '../scripts/seed-cross-source-signals.mjs';
 import { unwrapEnvelope } from '../scripts/_seed-envelope-source.mjs';
+import { OTHER_FIRE_REGION } from '../scripts/wildfire/fire-country.mjs';
 
 const KEY = 'wildfire:fires:v1';
 const now = Date.now();
@@ -76,6 +77,15 @@ describe('extractWildfireEscalation on a realistic wildfire:fires:v1 payload', (
     const signals = extractWildfireEscalation({ [KEY]: storedAsSeeded(payload) });
     assert.equal(signals.length, 1);
     assert.equal(signals[0].theater, 'Middle East');
+  });
+
+  it('does not pool detections outside the border lookup into one theater', () => {
+    const payload = {
+      fireDetections: Array.from({ length: 6 }, (_, i) =>
+        detection({ index: i, region: OTHER_FIRE_REGION, brightness: 415.8, frp: 124.1 })),
+    };
+
+    assert.deepEqual(extractWildfireEscalation({ [KEY]: storedAsSeeded(payload) }), []);
   });
 
   it('stays silent on ordinary agricultural burns', () => {

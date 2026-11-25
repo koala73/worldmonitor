@@ -2020,7 +2020,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS satellite thermal detections across monitored conflict regions. High-intensity = brightness >360K & confidence >80%.",
       "possibleExplosions": "{{count}} possible explosion(s) detected",
-      "explosionTooltip": "Thermal signature consistent with explosion (fire radiative power >80 MW, brightness >380 K)"
+      "explosionTooltip": "Thermal signature consistent with explosion (fire radiative power >80 MW, brightness >380 K)",
+      "agencyReports": "Agency-reported fires",
+      "agencyDates": "Agency dates",
+      "shownOfTotal": "Showing {{shown}} of {{total}} fire records"
     },
     "ucdpEvents": {
       "stateBased": "State-Based",
@@ -2749,6 +2752,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × High-yield spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US Financial Stress Indicator value",
+      "asOf": "As of {{date}}",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",
       "cissStale": "European Central Bank has not published a newer value — this reading may be out of date.",
       "notAvailable": "N/A",
