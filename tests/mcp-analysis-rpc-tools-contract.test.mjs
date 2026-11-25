@@ -35,7 +35,7 @@ describe('wave-2a analysis tools registry contract', () => {
     },
     get_military_surge: {
       budget: 65536,
-      coverage: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1', 'risk:scores:sebuf:v14'],
+      coverage: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1'],
     },
   };
 

@@ -872,7 +872,7 @@
       },
       "clickToViewMap": "Klik om op de kaart te bekijken",
       "refresh": "Vernieuwen",
-      "infoTooltip": "<strong>Methodologie</strong><p>Aggregeert militaire vliegtuigen en marineschepen per theater.</p><ul><li><strong>Normaal:</strong> Basisactiviteit</li><li><strong>Verhoogd:</strong> Boven drempel (50+ vliegtuigen)</li><li><strong>Kritiek:</strong> Hoge concentratie (100+ vliegtuigen)</li></ul><p><strong>Aanvalscapabel:</strong> Tankers + Vroegtijdige waarschuwing vanuit de lucht + Gevechtsvliegtuigen aanwezig in voldoende aantal voor aanhoudende operaties.</p>",
+      "infoTooltip": "<strong>Methodologie</strong><p>Telt militaire vliegtuigen en gevolgde marineschepen in elk theater.</p><ul><li><strong>Normaal:</strong> Onder de drempel van het theater</li><li><strong>Verhoogd:</strong> Aantal bereikt 3 tot 8, per theater</li><li><strong>Kritiek:</strong> Aantal bereikt 8 tot 20, per theater</li></ul><p>Schepen tellen mee tot de helft van de verhoogde drempel, dus schepen alleen kunnen het niveau nooit verhogen.</p><p><strong>Aanvalscapabel:</strong> Tankschepen + Vroegwaarschuwingsvliegtuigen + Gevechtsvliegtuigen aanwezig in voldoende aantallen voor aanhoudende operaties.</p>",
       "scanningTheaters": "Operatiegebieden scannen",
       "positions": "Vliegtuigposities",
       "navalVesselsLoading": "Marineschepen",
@@ -914,7 +914,9 @@
       },
       "emojiKeyLabel": "Emojicode",
       "emojiKeyAir": "Luchtvaartuigen",
-      "emojiKeyNaval": "Marineeenheden"
+      "emojiKeyNaval": "Marineeenheden",
+      "instabilityChip": "Instabiliteit {{score}}",
+      "instabilityNote": "{{nation}} instabiliteitsscore: {{score}} van de 100. Weergegeven ter context. Dit verandert het niveau niet, dat telt de vliegtuigen en schepen in het theater."
     },
     "techEvents": {
       "loading": "Technische evenementen laden...",
@@ -4470,7 +4472,7 @@
     },
     "intelMemory": {
       "title": "Historisch inlichtingengeheugen",
-      "help": "180-daagse archive van conflicten, militaire en energiegebeurtenissen met semantische precedentmatchings op aanvraag.",
+      "help": "180-daags archief van opvallende conflicten, militaire acties, energie-, onrust-, cyber-, maritieme- en natuurrampengebeurtenissen en vliegtuigincidenten, met on-demand semantische precedentmatching.",
       "loading": "Historisch inlichtingengeheugen laden…",
       "proLocked": "Upgrade naar PRO voor 180-daagse historisch inlichtingengeheugen en precedentzoeking",
       "unavailable": "Historisch inlichtingengeheugen is tijdelijk niet beschikbaar.",
@@ -4482,7 +4484,12 @@
         "all": "Alle",
         "conflict": "Conflict",
         "military": "Militair",
-        "energy": "Energie"
+        "energy": "Energie",
+        "unrest": "Onrust",
+        "cyber": "Cyber",
+        "maritime": "Maritiem",
+        "natural": "Natuurrampen",
+        "aviation": "Luchtvaart"
       },
       "loadMore": "Meer laden",
       "loadingMore": "Meer laden…",

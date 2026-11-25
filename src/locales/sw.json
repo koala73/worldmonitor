@@ -373,7 +373,7 @@
     },
     "intelMemory": {
       "title": "Kumbukumbu la Habari za Mitaala Zilizopita",
-      "help": "Hifadhidata ya siku 180 ya matukio ya mgogoro, kijeshi, na nishati yenye kulinganisha kwa msingi wa maelezo kwa ombi.",
+      "help": "Kumbukumbu ya siku 180 ya matukio muhimu ya migogoro, kijeshi, nishati, machafuko, mtandao, baharini, majanga ya asili na anga, pamoja na utafutaji wa matukio yanayofanana unapohitajika.",
       "loading": "Inapakia kumbukumbu la habari za mitaala zilizopita…",
       "proLocked": "Boresha hadi PRO kwa kumbukumbu la habari za mitaala za siku 180 na utaftaji wa matukio yaliyopita",
       "unavailable": "Kumbukumbu la habari za mitaala zilizopita haipatikani kwa sasa.",
@@ -385,7 +385,12 @@
         "all": "Zote",
         "conflict": "Mgogoro",
         "military": "Kijeshi",
-        "energy": "Nishati"
+        "energy": "Nishati",
+        "unrest": "Machafuko",
+        "cyber": "Cyber",
+        "maritime": "Baharini",
+        "natural": "Majanga ya asili",
+        "aviation": "Anga"
       },
       "loadMore": "Pakia zaidi",
       "loadingMore": "Inapakia zaidi…",
@@ -1345,7 +1350,7 @@
         "auxiliary": "Msaidizi",
         "navalVessels": "Vyombo vya Majini"
       },
-      "infoTooltip": "<strong>Mbinu</strong><p>Huunganisha ndege za kijeshi na meli za kivita kwa eneo la operesheni.</p><ul><li><strong>Kawaida:</strong> Shughuli za msingi</li><li><strong>Iliyoinuliwa:</strong> Juu ya kiwango (ndege 50+)</li><li><strong>Muhimu:</strong> Mkusanyiko mkubwa (ndege 100+)</li></ul><p><strong>Uwezo wa kushambulia:</strong> Ndege za kujaza mafuta + Ndege za tahadhari ya mapema + Ndege za kivita zinapatikana kwa idadi ya kutosha kwa operesheni endelevu.</p>",
+      "infoTooltip": "<strong>Mbinu</strong><p>Huhesabu ndege wa kijeshi na meli zilizosimuliwa katika kila teatro.</p><ul><li><strong>Kawaida:</strong> Chini ya kizingiti cha teatro</li><li><strong>Imeongezwa:</strong> Hesabu inafikia 3 hadi 8, kwa teatro</li><li><strong>Muhimu:</strong> Hesabu inafikia 8 hadi 20, kwa teatro</li></ul><p>Meli zinachangia hesabu hadi nusu ya kizingiti kilichoongezwa, kwa hivyo meli peke yake haziwezi kuinua kiwango.</p><p><strong>Wenye Uwezo wa Shambulio:</strong> Tanki za mafuta + Onyo wa mapema ya angani + Ndege zililizo katika idadi ya kutosha kwa shughuli endelevu.</p>",
       "scanningTheaters": "Kuchanganua Sinema",
       "positions": "Nafasi za ndege",
       "navalVesselsLoading": "Vyombo vya majini",
@@ -1387,7 +1392,9 @@
         "east-med-theater": "Mashariki ya Mediterranean",
         "israel-gaza-theater": "Israel/Gaza",
         "yemen-redsea-theater": "Yemen/Bahari Nyekundu"
-      }
+      },
+      "instabilityChip": "Kutokuwa na Utulivu {{score}}",
+      "instabilityNote": "Alama ya kutokuwa na utulivu ya {{nation}}: {{score}} kati ya 100. Inaonyeshwa kwa muktadha. Haiathiri kiwango, ambacho kinahesabu ndege na meli za harbini katika jukwaa."
     },
     "countryBrief": {
       "moreActions": "Vitendo zaidi",
