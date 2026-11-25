@@ -4724,7 +4724,7 @@ paths:
                   example: "conflict"
                   schema:
                     type: string
-                    pattern: '^(conflict|military|energy)?$'
+                    pattern: '^(conflict|military|energy|unrest|cyber|maritime|natural|aviation)?$'
                 - name: country
                   in: query
                   description: |-
@@ -10867,7 +10867,7 @@ components:
                          stored vectors are comparable.
                 domain:
                     type: string
-                    pattern: ^(conflict|military|energy)?$
+                    pattern: ^(conflict|military|energy|unrest|cyber|maritime|natural|aviation)?$
                     description: Restrict to one producing domain. Empty searches every domain.
                 country:
                     type: string
@@ -10938,8 +10938,9 @@ components:
                 domain:
                     type: string
                     description: |-
-                        Producing domain, e.g. "conflict", "military", "energy". Matches the
-                         domain filter accepted by the three RPCs.
+                        Producing domain: "conflict", "military", "energy", "unrest", "cyber",
+                         "maritime", "natural" or "aviation". Matches the domain filter accepted by
+                         the three RPCs.
                 resource:
                     type: string
                     description: |-
@@ -11002,7 +11003,7 @@ components:
             properties:
                 domain:
                     type: string
-                    pattern: ^(conflict|military|energy)?$
+                    pattern: ^(conflict|military|energy|unrest|cyber|maritime|natural|aviation)?$
                     description: Restrict to one producing domain. Required unless `country` is set.
                 country:
                     type: string
@@ -11085,7 +11086,7 @@ components:
                          Longer than a search query on purpose: more context ranks better.
                 domain:
                     type: string
-                    pattern: ^(conflict|military|energy)?$
+                    pattern: ^(conflict|military|energy|unrest|cyber|maritime|natural|aviation)?$
                     description: Restrict precedents to one producing domain. Empty searches every domain.
                 country:
                     type: string

@@ -308,7 +308,7 @@
     },
     "intelMemory": {
       "title": "Historyczna pamięć wywiadu",
-      "help": "Archiwum 180 dni zdarzeń konfliktowych, militarnych i energetycznych z wyszukiwaniem precedensów na żądanie.",
+      "help": "180-dniowe archiwum znaczących zdarzeń konfliktowych, militarnych, energetycznych, niepokojów społecznych, cyber, morskich, zagrożeń naturalnych i lotniczych, z wyszukiwaniem na żądanie podobnych przypadków w historii.",
       "loading": "Ładowanie historycznej pamięci wywiadu…",
       "proLocked": "Uaktualnij do PRO, aby uzyskać dostęp do 180-dniowej historycznej pamięci wywiadu i wyszukiwania precedensów",
       "unavailable": "Historyczna pamięć wywiadu jest czasowo niedostępna.",
@@ -320,7 +320,12 @@
         "all": "Wszystkie",
         "conflict": "Konflikt",
         "military": "Militarne",
-        "energy": "Energia"
+        "energy": "Energia",
+        "unrest": "Zamieszki",
+        "cyber": "Cyber",
+        "maritime": "Morskie",
+        "natural": "Zagrożenia naturalne",
+        "aviation": "Lotnictwo"
       },
       "loadMore": "Załaduj więcej",
       "loadingMore": "Ładowanie…",
@@ -1425,7 +1430,7 @@
       },
       "clickToViewMap": "Kliknij, żeby zobaczyć na mapie",
       "refresh": "Odświeżać",
-      "infoTooltip": "<strong>Metodologia</strong><p>Agreguje lotnictwo wojskowe i okręty marynarki wojennej podle teatru operacji.</p><ul><li><strong>Normalne:</strong> Aktywność bazowa</li><li><strong>Podwyższone:</strong> Powyżej progu (50+ samolotów)</li><li><strong>Krytyczne:</strong> Wysoka koncentracja (100+ samolotów)</li></ul><p><strong>Zdolność do uderzeń:</strong> Tankowce + Wczesne ostrzeganie lotnicze + Myśliwce w wystarczającej liczbie do operacji trwałych.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Liczy samoloty wojskowe i monitorowane jednostki marynarki wojennej w każdym teatrze operacyjnym.</p><ul><li><strong>Normalny:</strong> Poniżej progu teatru operacyjnego</li><li><strong>Podwyższony:</strong> Liczba osiąga 3 do 8, zależnie od teatru</li><li><strong>Krytyczny:</strong> Liczba osiąga 8 do 20, zależnie od teatru</li></ul><p>Statki liczą się aż do połowy progu podwyższonego, więc same statki nigdy nie podnoszą poziomu.</p><p><strong>Gotowość do przeprowadzenia uderzenia:</strong> Tankowce + Systemy wczesnego ostrzegania + Myśliwce obecne w wystarczającej liczbie do przeprowadzania operacji bojowych.</p>",
       "scanningTheaters": "Skanowanie teatrów",
       "positions": "Pozycje lotnicze",
       "navalVesselsLoading": "Okręty marynarki",
@@ -1467,7 +1472,9 @@
       },
       "emojiKeyLabel": "Legenda emoji",
       "emojiKeyAir": "Zasoby powietrzne",
-      "emojiKeyNaval": "Zasoby morskie"
+      "emojiKeyNaval": "Zasoby morskie",
+      "instabilityChip": "Niestabilność {{score}}",
+      "instabilityNote": "Wskaźnik niestabilności {{nation}}: {{score}} na 100. Pokazane dla kontekstu. Nie wpływa na poziom, który liczy statki powietrzne i okręty w teatrze operacji."
     },
     "techEvents": {
       "loading": "Ładowanie wydarzeń technicznych...",

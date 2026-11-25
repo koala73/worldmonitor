@@ -12,7 +12,7 @@
 // No network: every test stubs globalThis.fetch. Run via `npm run test:data`.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -34,6 +34,7 @@ import {
 } from '../scripts/lib/brief-dedup-consts.mjs';
 import { normalizeQueryText } from '../server/_shared/intel-history-embed';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
+import { HISTORY_DOMAINS } from '../server/_shared/intel-history-contract';
 import { getIntelTimeline } from '../server/worldmonitor/intelligence/v1/get-intel-timeline';
 import { getSimilarEvents } from '../server/worldmonitor/intelligence/v1/get-similar-events';
 import { searchIntelHistory } from '../server/worldmonitor/intelligence/v1/search-intel-history';
@@ -199,7 +200,7 @@ describe('scope normalization', () => {
   it('rejects invalid domains, countries, inverted bounds, and excessive limits', async () => {
     stubFetch({});
     const invalidRequests = [
-      ['domain', { domain: 'cyber', country: '', from: 0, to: 0, limit: 0 }],
+      ['domain', { domain: 'sports', country: '', from: 0, to: 0, limit: 0 }],
       ['country', { domain: 'conflict', country: 'U1', from: 0, to: 0, limit: 0 }],
       ['from', { domain: 'conflict', country: '', from: 2, to: 1, limit: 0 }],
       ['limit', { domain: 'conflict', country: '', from: 0, to: 0, limit: 201 }],
@@ -208,6 +209,66 @@ describe('scope normalization', () => {
       await assert.rejects(getIntelTimeline(ctx, request), validationFailure(field));
     }
     assert.equal(calls.length, 0);
+  });
+});
+
+// ── domain allowlist parity (#11245) ────────────────────────────────────────
+//
+// A collector that writes a domain the read side rejects stores rows no caller
+// can filter to, and nothing fails: the append succeeds and the RPC 400s. The
+// allowlist is spelled out in four places (contract, three protos, the MCP
+// enum), so pin every copy to the set of domains the collectors actually write.
+
+function writtenHistoryDomains(): string[] {
+  const scriptsDir = resolve(root, 'scripts');
+  const domains = new Set<string>();
+  for (const name of readdirSync(scriptsDir)) {
+    if (!name.endsWith('.mjs')) continue;
+    const source = readFileSync(resolve(scriptsDir, name), 'utf8');
+    for (const match of source.matchAll(/makeSeedHistoryAfterPublish\(\{\s*domain:\s*'([a-z-]+)'/g)) {
+      domains.add(match[1]);
+    }
+  }
+  return [...domains].sort();
+}
+
+describe('intel-history domain allowlist', () => {
+  const written = writtenHistoryDomains();
+
+  it('finds the collectors it is meant to guard', () => {
+    // A regex that silently matched nothing would make every check below vacuous.
+    assert.ok(written.includes('conflict') && written.includes('aviation'), `scanned: ${written.join(', ')}`);
+  });
+
+  it('the handler contract accepts exactly the domains collectors write', () => {
+    assert.deepEqual([...HISTORY_DOMAINS].sort(), written);
+  });
+
+  it('each proto domain pattern matches the contract', () => {
+    const expected = `^(${[...HISTORY_DOMAINS].join('|')})?$`;
+    for (const file of ['search_intel_history.proto', 'get_intel_timeline.proto', 'get_similar_events.proto']) {
+      const proto = readFileSync(resolve(root, 'proto/worldmonitor/intelligence/v1', file), 'utf8');
+      const pattern = /string domain = \d+ \[[^\]]*?string\.pattern = "([^"]+)"/s.exec(proto)?.[1];
+      assert.equal(pattern?.replace(/\\\\/g, '\\'), expected, file);
+    }
+  });
+
+  it('the MCP tool enum matches the contract', () => {
+    const source = readFileSync(resolve(root, 'api/mcp/registry/rpc-tools.ts'), 'utf8');
+    const literal = /const INTEL_HISTORY_DOMAINS = \[([^\]]+)\]/.exec(source)?.[1] ?? '';
+    const domains = [...literal.matchAll(/'([a-z-]+)'/g)].map((m) => m[1]);
+    assert.deepEqual(domains, [...HISTORY_DOMAINS]);
+  });
+
+  it('a timeline read accepts every written domain', async () => {
+    stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [], nextCursor: '' }) });
+    for (const domain of written) {
+      await getIntelTimeline(ctx, { domain, country: '', from: 0, to: 0, limit: 0 });
+    }
+    assert.deepEqual(
+      calls.filter((c) => c.url === CONVEX_TIMELINE_URL).map((c) => c.body?.domain),
+      written,
+    );
   });
 });
 
