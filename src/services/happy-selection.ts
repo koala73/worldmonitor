@@ -21,7 +21,7 @@ const NEGATIVE_EVIDENCE_RE = /\b(droughts?|dries up|dried up|threats?|threaten\w
 // "poaching falls") is a positive story, unless it also says the problem is
 // growing ("populations fall as poaching accelerates").
 const RECOVERY_EVIDENCE_RE = /\b(revers\w*|restor\w*|recover\w*|rebound\w*|cure[sd]?|curing|treat\w*|therap(?:y|ies)|vaccines?|saved?|saves|saving|rescu\w*|prevent\w*|protect\w*|halt\w*|tackl\w*|combat\w*|reduc\w*|slash\w*|fights?|fighting|fall(?:s|en)?|fell|drops?|dropped|plummet\w*|plung\w*)\b/i;
-const WORSENING_EVIDENCE_RE = /\b(accelerat\w*|rising|rises|rose|surg\w*|soar\w*|spik\w*|worsen\w*|escalat\w*|spread\w*|record high)\b/i;
+const WORSENING_EVIDENCE_RE = /\b(accelerat\w*|rising|rises|rose|surg(?:e|es|ed|ing)|soar\w*|spik(?:e|es|ed|ing)|worsen\w*|escalat\w*|record high)\b/i;
 
 function hasNegativeEvidence(title: string): boolean {
   return NEGATIVE_EVIDENCE_RE.test(title)
