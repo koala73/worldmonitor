@@ -140,7 +140,7 @@ describe('link aggregators keep the submitted article link', () => {
     });
   }
 
-  it('does not store the unverified link in the shared story row', () => {
+  it('does not store a submitted off-site link in the shared story row', () => {
     const item = { link: 'https://example.org/autograd', source: 'YC Launches', originPublisher: '', originPublisherTrusted: false };
     assert.equal(storyTrackLinkForPersist(item), '');
   });

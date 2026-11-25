@@ -3255,11 +3255,8 @@ function publisherGatedLink(
 ): string {
   const link = typeof item.link === 'string' ? item.link : '';
   if (!link) return '';
-  const registeredHosts = registeredFeedHostsBySource.get(item.source) ?? new Set<string>();
-  // A submitter-chosen aggregator URL must not overwrite a title-keyed story row a publisher may share.
-  if ([...registeredHosts].some(host => LINK_AGGREGATOR_FEED_HOSTS.has(host))) return '';
   const hosts = new Set(expectedPublisherHostsForItem(item, { url: '' }));
-  for (const host of registeredHosts) hosts.add(host);
+  for (const host of registeredFeedHostsBySource.get(item.source) ?? []) hosts.add(host);
   return isPublisherLink(link, hosts) ? link : '';
 }
 
