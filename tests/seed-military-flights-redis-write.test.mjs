@@ -140,7 +140,11 @@ test('publish-failure preservation extends every military publication key at its
   };
 
   assert.equal(await preserveMilitaryPublicationTtls(), true);
-  assert.equal(ttlByKey.size, 16);
+  assert.equal(ttlByKey.size, 12);
+  // Theater posture belongs to the relay now; a seeder publish failure must not keep its keys alive.
+  for (const key of ['theater-posture:sebuf:v1', 'theater_posture:sebuf:stale:v1', 'theater-posture:sebuf:backup:v1', 'seed-meta:theater-posture']) {
+    assert.equal(ttlByKey.has(key), false, key);
+  }
   assert.equal(ttlByKey.get('military:flights:v1'), 600);
   assert.equal(ttlByKey.get('military:flights:stale:v1'), 86400);
   assert.equal(ttlByKey.get('military:surges:v1'), 900);

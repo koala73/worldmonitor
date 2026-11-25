@@ -1681,7 +1681,7 @@ export const GENERATED_MESSAGE_RULES = {
     "fields": {
       "domain": {
         "kind": "string",
-        "stringPattern": "^(conflict|military|energy)?$",
+        "stringPattern": "^(conflict|military|energy|unrest|cyber|maritime|natural|aviation)?$",
         "stringMaxBytes": 65536
       },
       "country": {
@@ -1775,7 +1775,7 @@ export const GENERATED_MESSAGE_RULES = {
       },
       "domain": {
         "kind": "string",
-        "stringPattern": "^(conflict|military|energy)?$",
+        "stringPattern": "^(conflict|military|energy|unrest|cyber|maritime|natural|aviation)?$",
         "stringMaxBytes": 65536
       },
       "country": {
@@ -1904,7 +1904,7 @@ export const GENERATED_MESSAGE_RULES = {
       },
       "domain": {
         "kind": "string",
-        "stringPattern": "^(conflict|military|energy)?$",
+        "stringPattern": "^(conflict|military|energy|unrest|cyber|maritime|natural|aviation)?$",
         "stringMaxBytes": 65536
       },
       "country": {
