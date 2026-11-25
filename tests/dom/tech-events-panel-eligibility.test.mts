@@ -47,6 +47,13 @@ it('keeps events happening today and ongoing events in Upcoming', () => {
   expect(document.querySelector('.tech-events-stats')?.textContent).toContain('components.techEvents.conferencesCount:3');
 });
 
+it('badges ongoing and same-day events as today, and only future events as soon', () => {
+  new TechEventsPanel('events');
+  const badges = [...document.querySelectorAll('.tech-events-list .tech-event')]
+    .map(el => el.querySelector('.today-badge, .soon-badge')?.className ?? '');
+  expect(badges).toEqual(['today-badge', 'today-badge', 'today-badge', 'soon-badge']);
+});
+
 it('keeps earnings happening today in Earnings and drops ones that ended yesterday', () => {
   new TechEventsPanel('events');
   document.querySelector<HTMLButtonElement>('.panel-tab[data-view="earnings"]')!.click();

@@ -157,7 +157,8 @@ export class TechEventsPanel extends Panel {
     const endDate = parseLocalDate(event.endDate || event.startDate);
     const now = new Date();
 
-    const isToday = startDate.toDateString() === now.toDateString();
+    const todayKey = localDateKey(now);
+    const isToday = event.startDate <= todayKey && isNotOver(event, todayKey);
     const isSoon = !isToday && startDate <= new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
     const isThisWeek = startDate <= new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
