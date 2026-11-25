@@ -49,7 +49,8 @@ function legsFor(direction: string): Leg[] {
 }
 
 interface AVSFlight {
-    flight?: { iata?: string; icao?: string; codeshared?: { flight_iata?: string; airline_iata?: string }[] };
+    // A codeshare row names its operating flight here, in lower case.
+    flight?: { iata?: string; icao?: string; codeshared?: { flight_iata?: string; airline_iata?: string; airline_icao?: string; airline_name?: string } | null };
     airline?: { iata?: string; icao?: string; name?: string };
     departure?: { iata?: string; icao?: string; airport?: string; timezone?: string; scheduled?: string; estimated?: string; actual?: string; gate?: string; terminal?: string; delay?: number };
     arrival?: { iata?: string; icao?: string; airport?: string; timezone?: string; scheduled?: string; estimated?: string; actual?: string };
@@ -74,53 +75,114 @@ function parseTs(s?: string): number {
     try { return new Date(s).getTime(); } catch { return 0; }
 }
 
-function normalizeFlights(flights: AVSFlight[], now: number): FlightInstance[] {
-    return flights.map(f => {
-        const carrier: Carrier = {
-            iataCode: f.airline?.iata ?? '',
-            icaoCode: f.airline?.icao ?? '',
-            name: f.airline?.name ?? '',
-        };
-        const origin: AirportRef = {
-            iata: f.departure?.iata ?? '',
-            icao: f.departure?.icao ?? '',
-            name: f.departure?.airport ?? '',
-            timezone: f.departure?.timezone ?? 'UTC',
-        };
-        const destination: AirportRef = {
-            iata: f.arrival?.iata ?? '',
-            icao: f.arrival?.icao ?? '',
-            name: f.arrival?.airport ?? '',
-            timezone: f.arrival?.timezone ?? 'UTC',
-        };
-        const delayMs = (f.departure?.delay ?? 0) * 60 * 1000;
-        const schedDep = parseTs(f.departure?.scheduled);
+const zoneClocks = new Map<string, Intl.DateTimeFormat | null>();
 
-        return {
-            flightNumber: f.flight?.iata ?? '',
-            date: f.departure?.scheduled?.slice(0, 10) ?? '',
-            operatingCarrier: carrier,
-            origin,
-            destination,
-            scheduledDeparture: schedDep,
-            estimatedDeparture: parseTs(f.departure?.estimated) || (schedDep ? schedDep + delayMs : 0),
-            actualDeparture: parseTs(f.departure?.actual),
-            scheduledArrival: parseTs(f.arrival?.scheduled),
-            estimatedArrival: parseTs(f.arrival?.estimated),
-            actualArrival: parseTs(f.arrival?.actual),
-            status: statusToProto(f.flight_status ?? ''),
-            delayMinutes: f.departure?.delay ?? 0,
-            cancelled: f.flight_status === 'cancelled',
-            diverted: f.flight_status === 'diverted',
-            gate: f.departure?.gate ?? '',
-            terminal: f.departure?.terminal ?? '',
-            aircraftIcao24: f.aircraft?.icao24 ?? '',
-            aircraftType: f.aircraft?.iata ?? '',
-            codeshareFlightNumbers: [],
-            source: 'aviationstack',
-            updatedAt: now,
-        };
-    });
+function zoneClock(zone: string): Intl.DateTimeFormat | null {
+    if (!zoneClocks.has(zone)) {
+        try {
+            zoneClocks.set(zone, new Intl.DateTimeFormat('en-US', {
+                timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+                hour: 'numeric', minute: 'numeric', second: 'numeric',
+            }));
+        } catch {
+            zoneClocks.set(zone, null);
+        }
+    }
+    return zoneClocks.get(zone) ?? null;
+}
+
+function airportZone(zone?: string): string {
+    return zone && zoneClock(zone) ? zone : 'UTC';
+}
+
+// AviationStack writes each time as the airport's local wall clock with a
+// "+00:00" suffix, so the wall clock is read in that airport's time zone.
+function airportMs(wall: string | undefined, zone: string): number {
+    const asUtc = parseTs(wall);
+    const clock = zoneClock(zone);
+    if (!asUtc || !clock) return asUtc;
+    const offsetAt = (at: number) => {
+        const parts = clock.formatToParts(at);
+        const n = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find(part => part.type === type)?.value);
+        return Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second')) - at;
+    };
+    // The offset at the wall clock read as UTC can be the other side of a
+    // clock change, so take it again at the first estimate.
+    return asUtc - offsetAt(asUtc - offsetAt(asUtc));
+}
+
+function normalizeFlight(f: AVSFlight, now: number): FlightInstance {
+    const operator = f.flight?.codeshared;
+    const carrier: Carrier = operator
+        ? { iataCode: operator.airline_iata?.toUpperCase() ?? '', icaoCode: operator.airline_icao?.toUpperCase() ?? '', name: operator.airline_name ?? '' }
+        : { iataCode: f.airline?.iata ?? '', icaoCode: f.airline?.icao ?? '', name: f.airline?.name ?? '' };
+    const origin: AirportRef = {
+        iata: f.departure?.iata ?? '',
+        icao: f.departure?.icao ?? '',
+        name: f.departure?.airport ?? '',
+        timezone: airportZone(f.departure?.timezone),
+    };
+    const destination: AirportRef = {
+        iata: f.arrival?.iata ?? '',
+        icao: f.arrival?.icao ?? '',
+        name: f.arrival?.airport ?? '',
+        timezone: airportZone(f.arrival?.timezone),
+    };
+    const delayMs = (f.departure?.delay ?? 0) * 60 * 1000;
+    const schedDep = airportMs(f.departure?.scheduled, origin.timezone);
+
+    return {
+        flightNumber: operatingNumber(f),
+        date: f.departure?.scheduled?.slice(0, 10) ?? '',
+        operatingCarrier: carrier,
+        origin,
+        destination,
+        scheduledDeparture: schedDep,
+        estimatedDeparture: airportMs(f.departure?.estimated, origin.timezone) || (schedDep ? schedDep + delayMs : 0),
+        actualDeparture: airportMs(f.departure?.actual, origin.timezone),
+        scheduledArrival: airportMs(f.arrival?.scheduled, destination.timezone),
+        estimatedArrival: airportMs(f.arrival?.estimated, destination.timezone),
+        actualArrival: airportMs(f.arrival?.actual, destination.timezone),
+        status: statusToProto(f.flight_status ?? ''),
+        delayMinutes: f.departure?.delay ?? 0,
+        cancelled: f.flight_status === 'cancelled',
+        diverted: f.flight_status === 'diverted',
+        gate: f.departure?.gate ?? '',
+        terminal: f.departure?.terminal ?? '',
+        aircraftIcao24: f.aircraft?.icao24 ?? '',
+        aircraftType: f.aircraft?.iata ?? '',
+        codeshareFlightNumbers: [],
+        source: 'aviationstack',
+        updatedAt: now,
+    };
+}
+
+function operatingNumber(f: AVSFlight): string {
+    const operator = f.flight?.codeshared;
+    return (operator ? operator.flight_iata?.toUpperCase() : f.flight?.iata) ?? '';
+}
+
+/**
+ * One instance per physical flight. AviationStack returns a row per marketing
+ * number, and the operating row is often missing from the page, so the first
+ * row of a flight stands in for it until the operating row arrives.
+ */
+function normalizeFlights(rows: AVSFlight[], now: number): FlightInstance[] {
+    const byFlight = new Map<string, FlightInstance>();
+    const flights: FlightInstance[] = [];
+    const operatingFirst = [...rows.filter(f => !f.flight?.codeshared), ...rows.filter(f => f.flight?.codeshared)];
+    for (const f of operatingFirst) {
+        const number = operatingNumber(f);
+        const key = number && `${number}|${f.departure?.scheduled ?? ''}`;
+        let flight = key ? byFlight.get(key) : undefined;
+        if (!flight) {
+            flight = normalizeFlight(f, now);
+            flights.push(flight);
+            if (key) byFlight.set(key, flight);
+        }
+        if (f.flight?.codeshared && f.flight.iata) flight.codeshareFlightNumbers.push(f.flight.iata);
+    }
+    return flights;
 }
 
 
@@ -146,7 +208,7 @@ interface LegResult {
 async function fetchLeg(airport: string, leg: Leg, now: number): Promise<LegResult> {
     // Cache key is limit-independent (see UPSTREAM_PAGE) — one upstream call
     // serves every limit for this airport+leg.
-    const cacheKey = `aviation:flights:${airport}:${leg}:v3:${aviationStackBudgetCycle()}`;
+    const cacheKey = `aviation:flights:${airport}:${leg}:v4:${aviationStackBudgetCycle()}`;
     // Stays 'unavailable' when the fetcher never runs — a negative-cache hit
     // returns null without telling us which failure originally cached it.
     let unavailableSource = 'unavailable';

@@ -2408,6 +2408,12 @@
   color: var(--text-dim);
 }
 
+.flight-codeshares {
+  grid-column: 2 / -1;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
 .flight-delay {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
