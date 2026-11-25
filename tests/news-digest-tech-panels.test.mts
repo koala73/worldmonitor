@@ -70,6 +70,7 @@ describe('funding panel: only headlines about a financing event', () => {
       'Acme closes $20M Series A to build software for veterans - Reuters',
       'Founders raise $2M to expand their payroll platform - Axios',
       'Acme raises $15M Series A to help military families find housing - TechCrunch',
+      'Donation platform Givebutter raises $50M Series A - TechCrunch',
     ], true);
   });
 
