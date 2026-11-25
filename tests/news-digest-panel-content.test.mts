@@ -45,6 +45,7 @@ describe('keyword classifier: metaphorical coup language', () => {
         'Landing the summit is a diplomatic coup for Brazil',
         "The ruling delivered the coup de grâce to the merger",
         'Regulator delivers coup de grâce to merger attempt',
+        'Arsenal plot transfer coup for striker',
       ]) {
         const result = classify(title);
         assert.notEqual(result.category, 'military', title);
@@ -60,6 +61,7 @@ describe('keyword classifier: metaphorical coup language', () => {
         'Bolivia foils conservative coup attempt',
         'Soldiers stage a socialist coup in Bolivia',
         'Military foils leftist coup attempt in Bolivia',
+        'Conservative coup plot uncovered in Bolivia',
       ]) {
         const result = classify(title);
         assert.equal(result.level, 'critical', title);
@@ -77,6 +79,7 @@ describe('policy digest: AI and digital policy eligibility', () => {
       ['European Cinema Night 2026 - Shaping Europe’s digital future', 'Shaping Europe’s digital future'],
       ['Apple AirPods are $50 off at Amazon - 9to5Toys', '9to5Toys'],
       ['Apple Watch deals: save up to 40% at Amazon - 9to5Toys', '9to5Toys'],
+      ['Apple AirPods on sale at Amazon - 9to5Toys', '9to5Toys'],
     ]) {
       assert.equal(isCategoryEligible('policy', title, publisher), false, title);
     }
@@ -90,6 +93,7 @@ describe('policy digest: AI and digital policy eligibility', () => {
       'Google adtech monopoly trial in New York pushed to Oct. 25, 2027 - MLex',
       "Google Antitrust Trial: Apple's $20B Deal, 140 Days Late - shattered.io",
       "Judge rules Google's exclusive search deals violate antitrust law - Reuters",
+      'US announces new rules on sales of AI chips to China - Reuters',
       'Congressional Staffing Is the Biggest Tech Policy Problem No One Talks About - Tech Policy Press',
       'First European standard published to support the Cyber Resilience Act - Shaping Europe’s digital future',
     ]) {
