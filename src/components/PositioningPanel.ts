@@ -116,14 +116,22 @@ function renderArcGauge(score: number, color: string, size = 56): string {
   </svg>`;
 }
 
+// Round at display precision first so tiny negatives render as 0, not -0.
+function displayedPercent(fraction: number, digits: number): number {
+  const rounded = Number((fraction * 100).toFixed(digits));
+  return rounded === 0 ? 0 : rounded;
+}
+
 function renderAssetCard(asset: AssetView, clickTarget: string | null): string {
   const score = Math.round(asset.composite);
   const color = gaugeColor(score, asset.funding);
   const elevated = score >= ELEVATED_THRESHOLD;
-  const fundingStr = asset.funding != null ? `${(asset.funding * 100).toFixed(3)}%` : '--';
-  const fundingColor = asset.funding != null && asset.funding < 0 ? 'change-negative' : 'change-positive';
-  const oiStr = asset.oiDelta1h != null ? `${asset.oiDelta1h >= 0 ? '+' : ''}${(asset.oiDelta1h * 100).toFixed(1)}%` : '--';
-  const oiColor = asset.oiDelta1h != null && asset.oiDelta1h < 0 ? 'change-negative' : 'change-positive';
+  const fundingPct = asset.funding != null ? displayedPercent(asset.funding, 3) : null;
+  const fundingStr = fundingPct != null ? `${fundingPct.toFixed(3)}%` : '--';
+  const fundingColor = fundingPct != null && fundingPct < 0 ? 'change-negative' : 'change-positive';
+  const oiPct = asset.oiDelta1h != null ? displayedPercent(asset.oiDelta1h, 1) : null;
+  const oiStr = oiPct != null ? `${oiPct >= 0 ? '+' : ''}${oiPct.toFixed(1)}%` : '--';
+  const oiColor = oiPct != null && oiPct < 0 ? 'change-negative' : 'change-positive';
   const staleBadge = asset.stale ? ' <span class="pos-badge pos-badge--stale">stale</span>' : '';
   const warmupBadge = asset.warmup ? ' <span class="pos-badge pos-badge--warmup">warm</span>' : '';
   const elevatedClass = elevated ? ' pos-card--elevated' : '';

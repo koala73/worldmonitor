@@ -237,6 +237,7 @@ const PUBLISHER_FAMILY_DATA = {
   'y-combinator': { publisher: "Y Combinator", labels: ["YC Launches", "Y Combinator Blog"] },
   'yahoo-finance': { publisher: "Yahoo Finance", labels: ["Yahoo Finance", "Yahoo Finance Commodities"] },
   'zdf': { publisher: "ZDF", labels: ["ZDFheute"] },
+  'kalkine': { publisher: "Kalkine Media", labels: [] },
 };
 
 export const PUBLISHER_FAMILIES = Object.freeze(PUBLISHER_FAMILY_DATA);
@@ -314,6 +315,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'korea-times': ['koreatimes.co.kr'],
   'deutschlandradio': ['deutschlandfunk.de'],
   'zdf': ['zdfheute.de', 'zdf.de'],
+  'kalkine': ['kalkine.ca'],
   'dw': ['dw.com'],
   'eia': ['eia.gov'],
   'el-mundo': ['elmundo.es'],

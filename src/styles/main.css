@@ -7954,6 +7954,14 @@ body.playback-mode .status-dot {
 }
 
 /* Heatmap */
+.heatmap-period {
+  padding: 4px 4px 0;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .heatmap {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

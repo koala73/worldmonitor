@@ -938,6 +938,30 @@ describe('buildAnalysisResponse risk-analytics surfacing', () => {
   });
 });
 
+describe('buildTechnicalSnapshot factor classification', () => {
+  const downtrend = (amplitude: number, slope: number) => buildTechnicalSnapshot(Array.from({ length: 80 }, (_, i) => {
+    const close = 200 - i * slope + (i % 4 < 2 ? amplitude : -amplitude);
+    return { timestamp: 1_700_000_000_000 + i * 86_400_000, open: close, high: close + 1, low: close - 1, close, volume: 1_000_000 };
+  }));
+
+  it('lists bearish MACD as a risk and keeps neutral RSI out of both lists', () => {
+    const technical = downtrend(5, 0.3);
+    assert.equal(technical.macdStatus, 'Bearish');
+    assert.equal(technical.rsiStatus, 'Neutral');
+    assert.ok(technical.riskFactors.includes(technical.macdSignal));
+    assert.ok(!technical.bullishFactors.includes(technical.macdSignal));
+    assert.ok(!technical.bullishFactors.includes(technical.rsiSignal));
+    assert.ok(!technical.riskFactors.includes(technical.rsiSignal));
+  });
+
+  it('lists weak RSI as a risk', () => {
+    const technical = downtrend(2, 0.5);
+    assert.equal(technical.rsiStatus, 'Weak');
+    assert.ok(technical.riskFactors.includes(technical.rsiSignal));
+    assert.ok(!technical.bullishFactors.includes(technical.rsiSignal));
+  });
+});
+
 describe('deriveSignal', () => {
   it('keeps the technicals-only thresholds and trend gates', () => {
     assert.equal(deriveSignal(80, 'Strong bull'), 'Strong buy');

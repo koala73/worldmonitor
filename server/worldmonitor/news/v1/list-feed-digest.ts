@@ -1459,8 +1459,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // a fresh item cannot sit below the cap in a relevance-ordered Google News
     // search, an editorial-order feed (NYT World) or a sitemap ordered by last
     // modification (#10978). Undated items keep feed order after dated ones.
-    // Excluded paths, suffix-only titles and headlines the feed's category
-    // rejects drop out first so they never take a slot.
+    // Excluded paths, suffix-only titles, quote and section pages and
+    // headlines the feed's category rejects drop out first so they never take a slot.
     const eligibilityCategory = FEED_ELIGIBILITY_CATEGORY.get(feed.url);
     const ranked = matches.flatMap((block, index) => {
       const lower = asciiLower(block);
@@ -1468,6 +1468,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       const title = extractTitleTag(block, sitemap ? 'news:title' : 'title', lower);
       const originPublisher = feedItemOriginPublisher(block, lower, sitemap, isAtom);
       if (!hasHeadlineText(title, originPublisher)) return [];
+      if (isReferencePageTitle(title, originPublisher)) return [];
       if (eligibilityCategory && !isCategoryEligible(eligibilityCategory, title, originPublisher)) return [];
       if (excluded && hasExcludedPathSegment(feedItemLink(block, lower, sitemap, isAtom), excluded)) return [];
       const raw = sitemap ? extractTag(block, 'news:publication_date', lower) : extractFirstDateTag(block, isAtom, lower);
@@ -1751,6 +1752,41 @@ function headlineWithoutAttribution(title: string, originPublisher: string): str
 /** False for a title that is only an attribution suffix, such as Google News' " - Department of Justice (.gov)". */
 function hasHeadlineText(title: string, originPublisher: string): boolean {
   return /[\p{L}\p{N}]/u.test(headlineWithoutAttribution(title, originPublisher));
+}
+
+// Search feeds (Google News site: queries) also return a publisher's quote,
+// chart, tag and section pages under a fresh date. Their titles follow fixed
+// templates, so match those templates and leave articles that merely mention
+// a price or an index alone.
+const REFERENCE_PAGE_TITLE_PATTERNS: readonly RegExp[] = [
+  /\bStock Quote \(/, // AMD Stock Price | Advanced Micro Devices Inc. Stock Quote (U.S.: Nasdaq)
+  /^\S+ \| [^|]+ Overview$/, // DJIA | Dow Jones Industrial Average Overview
+  /^Check out .+ stock price \([^()]+\) in real time$/i,
+  /\([^()]+\) (?:Seasonal returns chart|performance history|options chain|risk|Historical Data|Stock Price, News, Quote & History)(?: -|$)/i,
+  /^TAG: /,
+  /: (?:Fund )?Performance$/, // PitchBook fund profiles
+  /^[A-Z-]+ News$/, // Kitco sections: COMMODITIES News
+  /^CNBC (?:\w+ )?Video News Clips on /, // CNBC Asia Video News Clips on the Stock Market
+  /\bNews, Opinion & Analysis$/i,
+  /^Price of \w+ per (?:Pound|Ounce)$/i,
+  /^(?:Live \w+ Prices|\w+ Spot Prices|\w+ Price Today) \| [^|]+ \| [^|]+$/, // Kitco: Live Gold Prices | Gold News And Analysis | Mining News
+];
+
+const REFERENCE_PAGE_TITLES = new Set([
+  'about dow jones newswires',
+  'my fan picks',
+  'research center',
+  's&p dow jones indices',
+  'videos',
+  'video news',
+]);
+
+/** True for a quote, chart, tag or section page that a search feed lists as an item. */
+function isReferencePageTitle(title: string, originPublisher: string): boolean {
+  // Google News can repeat the source suffix: "Research Center - PitchBook - PitchBook".
+  const headline = headlineWithoutAttribution(headlineWithoutAttribution(title, originPublisher).trimEnd(), originPublisher).trim();
+  if (REFERENCE_PAGE_TITLES.has(headline.toLowerCase())) return true;
+  return REFERENCE_PAGE_TITLE_PATTERNS.some(pattern => pattern.test(headline));
 }
 
 // Headlines are displayed as text, and some publishers (The Korea Herald) put

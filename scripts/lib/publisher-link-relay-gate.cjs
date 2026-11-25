@@ -101,6 +101,7 @@ const PUBLISHER_LINK_DOMAINS = {
   'korea-times': ['koreatimes.co.kr'],
   'deutschlandradio': ['deutschlandfunk.de'],
   'zdf': ['zdfheute.de', 'zdf.de'],
+  'kalkine': ['kalkine.ca'],
   'dw': ['dw.com'],
   'eia': ['eia.gov'],
   'el-mundo': ['elmundo.es'],

@@ -91,6 +91,44 @@ describe('COT small-trader positioning', () => {
   });
 });
 
+describe('COT report categories', () => {
+  const tff = {
+    report_date_as_yyyy_mm_dd: '2026-08-04',
+    asset_mgr_positions_long: '300', asset_mgr_positions_short: '200',
+    lev_money_positions_long: '150', lev_money_positions_short: '100',
+  };
+  const disaggregated = {
+    report_date_as_yyyy_mm_dd: '2026-08-04',
+    m_money_positions_long_all: '123116', m_money_positions_short_all: '18846',
+  };
+
+  it('marks leveraged funds unavailable and labels managed money for Disaggregated rows', () => {
+    const response = mapCotPositioning({ instruments: [
+      buildInstrument(target, tff, null, 'financial'),
+      buildInstrument({ name: 'Gold', code: 'GC' }, disaggregated, null, 'commodity'),
+    ] });
+    const [es, gc] = response.instruments;
+    assert.equal(es.leveragedFundsAvailable, true);
+    assert.equal(es.reportType, 'tff');
+    assert.equal(gc.leveragedFundsAvailable, false);
+    assert.equal(gc.reportType, 'disaggregated');
+    assert.equal(gc.assetManagerLong, '123116');
+  });
+
+  it('infers both fields for rows cached before they existed', () => {
+    const legacy = (code, lev) => ({
+      name: code, code, reportDate: '2026-08-04', assetManagerLong: 1, assetManagerShort: 2,
+      leveragedFundsLong: lev, leveragedFundsShort: lev, smallTraderLong: 0, smallTraderShort: 0,
+      dealerLong: 5, dealerShort: 6, netPct: 0,
+    });
+    const [es, gc] = mapCotPositioning({ instruments: [legacy('ES', 4), legacy('GC', 0)] }).instruments;
+    assert.equal(es.leveragedFundsAvailable, true);
+    assert.equal(es.reportType, 'tff');
+    assert.equal(gc.leveragedFundsAvailable, false);
+    assert.equal(gc.reportType, 'disaggregated');
+  });
+});
+
 describe('COT report dates', () => {
   for (const [input, expected] of [
     ['2026-08-04', '2026-08-04'], ['260804', '2026-08-04'],

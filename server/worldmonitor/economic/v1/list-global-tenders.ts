@@ -23,7 +23,8 @@ const MAX_PAGE_SIZE = 100;
 export const STALE_AFTER_MS = 3 * 24 * 60 * 60_000;
 
 // USD per one unit of each currency, as scripts/seed-fx-rates.mjs writes it.
-type UsdPerUnit = Record<string, unknown>;
+// Currencies without an FX panel row sit under tenderOnlyRates.
+type UsdPerUnit = Record<string, unknown> & { tenderOnlyRates?: Record<string, unknown> };
 
 type SeedSnapshot = {
   fetchedAt?: number | string;
@@ -93,7 +94,8 @@ function matchesText(tender: GlobalTender, query: string): boolean {
 
 function usdValue(tender: GlobalTender, usdPerUnit: UsdPerUnit): number | null {
   const amount = tender.money?.amount;
-  const rate = usdPerUnit[(tender.money?.currency || '').toUpperCase()];
+  const currency = (tender.money?.currency || '').toUpperCase();
+  const rate = usdPerUnit[currency] ?? usdPerUnit.tenderOnlyRates?.[currency];
   if (typeof amount !== 'number' || !(amount > 0) || typeof rate !== 'number' || !(rate > 0)) return null;
   return amount * rate;
 }
