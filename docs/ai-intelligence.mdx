@@ -127,11 +127,11 @@ RSS Feed Parse → isHeadlineMemoryEnabled()? → ML Worker (Web Worker)
 
 ### Durable Server-Side Intelligence Memory
 
-Headline Memory is not the only memory system. World Monitor also keeps a Pro-gated, server-side history of conflict, military, and energy events so agents and API clients can retrieve evidence across sessions and devices.
+Headline Memory is not the only memory system. World Monitor also keeps a Pro-gated, server-side history of conflict, military, energy, unrest, cyber, maritime, natural-hazard and aviation events so agents and API clients can retrieve evidence across sessions and devices.
 
 | Property | Browser Headline Memory | Durable Intelligence History |
 |---|---|---|
-| Scope | Headlines seen by one browser | Events appended by the conflict, military, and energy seeders |
+| Scope | Headlines seen by one browser | Events appended by the history collectors (see [domains](/mcp-tools/historical-intelligence#domains)) |
 | Storage | IndexedDB on the user's device | Convex, with 180-day retention |
 | Search | Local cosine similarity | Server-side semantic search, indexed timelines, and precedent matching |
 | Access | Dashboard setting | REST API and MCP |
