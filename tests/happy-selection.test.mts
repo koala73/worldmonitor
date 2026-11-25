@@ -81,6 +81,7 @@ test('broad-source negative reporting is screened even when the ML gate passes e
     'Nigeria’s ivory and pangolin trade exposes gaps in wildlife crime prosecutions',
     "Study reveals rising 'double threat' of wildfire smoke and heatwaves in Indonesia",
     'Tiger populations fall as poaching accelerates',
+    'Tiger populations fall as habitat loss continues',
   ];
   const kept = story('Mongabay', 'Photos: Elephants maintain an essential role in conservation in Nepal despite shifting norms');
   const science = story('New Scientist', 'An atom-sized black hole could force an entire star to explode');

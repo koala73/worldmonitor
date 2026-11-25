@@ -20,12 +20,15 @@ const NEGATIVE_EVIDENCE_RE = /\b(droughts?|dries up|dried up|threats?|threaten\w
 // A headline that names a problem being solved ("reverses hearing loss",
 // "poaching falls") is a positive story, unless it also says the problem is
 // growing ("populations fall as poaching accelerates").
-const RECOVERY_EVIDENCE_RE = /\b(revers\w*|restor\w*|recover\w*|rebound\w*|cure[sd]?|curing|treat\w*|therap(?:y|ies)|vaccines?|saved?|saves|saving|rescu\w*|prevent\w*|protect\w*|halt\w*|tackl\w*|combat\w*|reduc\w*|slash\w*|fights?|fighting|fall(?:s|en)?|fell|drops?|dropped|plummet\w*|plung\w*)\b/i;
+const RECOVERY_EVIDENCE_RE = /\b(revers\w*|restor\w*|recover\w*|rebound\w*|cure[sd]?|curing|treat\w*|therap(?:y|ies)|vaccines?|saved?|saves|saving|rescu\w*|prevent\w*|protect\w*|halt\w*|tackl\w*|combat\w*|reduc\w*|slash\w*|fights?|fighting)\b/i;
 const WORSENING_EVIDENCE_RE = /\b(accelerat\w*|rising|rises|rose|surg(?:e|es|ed|ing)|soar\w*|spik(?:e|es|ed|ing)|worsen\w*|escalat\w*|record high)\b/i;
+
+// "Poaching falls" is recovery; "populations fall as habitat loss continues" is not.
+const DECLINING_PROBLEM_RE = new RegExp(`${NEGATIVE_EVIDENCE_RE.source}\\s+(?:\\w+\\s+)?(?:fall(?:s|en)?|fell|drops?|dropped|plummet\\w*|plung\\w*)\\b`, 'i');
 
 function hasNegativeEvidence(title: string): boolean {
   return NEGATIVE_EVIDENCE_RE.test(title)
-    && (WORSENING_EVIDENCE_RE.test(title) || !RECOVERY_EVIDENCE_RE.test(title));
+    && (WORSENING_EVIDENCE_RE.test(title) || !(RECOVERY_EVIDENCE_RE.test(title) || DECLINING_PROBLEM_RE.test(title)));
 }
 
 const SCIENCE_SOURCES = new Set([
