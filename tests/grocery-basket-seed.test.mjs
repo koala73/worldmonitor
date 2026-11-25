@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchGroceryBasketPrices, fetchCountryItems, recordBaseline, selectWeekAgo, COUNTRY_CONCURRENCY, COUNTRIES } from '../scripts/seed-grocery-basket.mjs';
+import { fetchGroceryBasketPrices, fetchCountryItems, isListingUrl, recordBaseline, selectWeekAgo, COUNTRY_CONCURRENCY, COUNTRIES } from '../scripts/seed-grocery-basket.mjs';
 
 // The seeder logs one line per country and item. Silence it so the flood can't
 // corrupt node:test's child-process message parser under --test-concurrency.
@@ -374,5 +374,29 @@ describe('grocery basket offer pages', () => {
     assert.ok(!scraped.includes(searchPage), 'the learned search page is not scraped');
     assert.ok(routeDeletes.has('ID:oil'), 'the learned search page is evicted');
     assert.equal(routeUpdates.get('ID:oil')?.url, productPage);
+  });
+
+  it('tells retailer listings from product pages seen in published baskets', () => {
+    for (const url of [
+      searchPage,
+      'https://www.walmart.com/c/kp/table-salt',
+      'https://www.carrefour.fr/r/epicerie-salee/pates',
+      'https://www.loblaws.ca/en/search?search-bar=no+name+spaghetti',
+      'https://www.loblaws.ca/en/food/bakery/bread/c/28251?page=4',
+      'https://mercado.carrefour.com.br/busca/ovos%20galinha%20organicos',
+      'https://www.woolworths.com.au/shop/browse/pantry/baking/flour',
+      'https://www.daraz.pk/tag/flat-pasta/',
+      'https://www.lazada.co.id/catalog/?q=minyak+canola',
+    ]) assert.equal(isListingUrl(url), true, url);
+    for (const url of [
+      productPage,
+      'https://www.walmart.com/ip/Capullo-Canola-Oil-1-l/10294419',
+      'https://www.carrefour.fr/p/gros-sel-de-mer-simpl-3560070441020',
+      'https://www.bigbasket.com/pd/40023114/borges-canola-oil-1-l-bottle/',
+      'https://www.carrefouruae.com/mafuae/en/salt/bayara-iodized-table-salt-1kg/p/1303879',
+      'https://www.coupang.com/vp/products/9498948789',
+      'https://prod.danawa.com/info/?pcode=62397632',
+      'https://www.shoprite.co.za/product/ritebrand-spaghetti-500g-10139337EA',
+    ]) assert.equal(isListingUrl(url), false, url);
   });
 });
