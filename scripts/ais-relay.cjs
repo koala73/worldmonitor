@@ -4346,6 +4346,7 @@ async function seedEtfFlows() {
     await sleep(150);
   }
   if (etfs.length === 0) { console.warn('[ETF] No data fetched — skipping'); return 0; }
+  etfs.sort((a, b) => b.volume - a.volume);
   const totalVolume = etfs.reduce((s, e) => s + e.volume, 0);
   const totalEstFlow = etfs.reduce((s, e) => s + e.estFlow, 0);
   const payload = {
