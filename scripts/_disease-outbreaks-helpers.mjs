@@ -115,10 +115,11 @@ const DATED_ALERT_RES = [
 function isRetrospectiveHeadline(title, publishedMs) {
   if (!Number.isFinite(publishedMs)) return false;
   const year = new Date(publishedMs).getUTCFullYear();
-  return DATED_ALERT_RES.some((re) => [...title.matchAll(re)].some(([, start, end]) => {
-    const last = Math.max(Number(start), Number(end?.length === 2 ? start.slice(0, 2) + end : end ?? start));
-    return last < year;
-  }));
+  // Every dated outbreak must be past: "outbreak in 2026 surpasses the 2025
+  // outbreak" is current.
+  const years = DATED_ALERT_RES.flatMap((re) => [...title.matchAll(re)].map(([, start, end]) =>
+    Math.max(Number(start), Number(end?.length === 2 ? start.slice(0, 2) + end : end ?? start))));
+  return years.length > 0 && years.every((last) => last < year);
 }
 
 export function detectAlertLevel(title, desc, publishedMs) {

@@ -1072,6 +1072,7 @@ test('an outbreak headline dated to an earlier year is not an alert', () => {
   assert.equal(detectAlertLevel('Measles outbreak grows in Ontario', ''), 'alert');
   const nov2026 = Date.parse('2026-11-05T15:00:00Z');
   assert.equal(detectAlertLevel('Measles outbreak in 2025 left lasting gaps', '', nov2026), 'watch');
+  assert.equal(detectAlertLevel('Measles outbreak in 2026 surpasses the 2025 outbreak in Canada', '', nov2026), 'alert');
   assert.equal(detectAlertLevel('Lessons from the 2019 Ebola epidemic', '', nov2026), 'watch');
   assert.equal(detectAlertLevel('Lessons from the 2025 suspected cholera outbreak', '', nov2026), 'watch');
   assert.equal(detectAlertLevel('Measles outbreak in 2025–2026 continues to grow', '', nov2026), 'alert');
