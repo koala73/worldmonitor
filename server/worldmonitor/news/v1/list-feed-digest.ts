@@ -2521,15 +2521,19 @@ async function readAdoptionState(
 }
 
 export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
-  const resolved = item.originPublisherTrusted === true && typeof item.originPublisher === 'string' && item.originPublisher.trim()
-    ? resolveCredibilitySourceName(item).toLowerCase()
+  const publisherName = item.originPublisherTrusted === true && typeof item.originPublisher === 'string'
+    ? item.originPublisher.trim()
     : '';
+  const credibilitySource = resolveCredibilitySourceName(item);
+  const resolved = publisherName ? credibilitySource.toLowerCase() : '';
   // The tier table's spelling: the relay's tier lookup is exact-key.
   const origin = resolved ? Object.keys(SOURCE_TIERS).find((name) => name.toLowerCase() === resolved) ?? '' : '';
   return {
     source: item.source,
     // Only a publisher with a curated tier: the aggregator's text alone is not an identity.
     originPublisher: origin,
+    publisherName,
+    credibilityUnassessed: !hasReviewedPropagandaRisk(credibilitySource) && declaredSourceTier(credibilitySource) === null,
     title: item.title,
     link: item.link,
     publishedAt: item.publishedAt,

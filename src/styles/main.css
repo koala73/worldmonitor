@@ -27306,6 +27306,15 @@ body.map-width-resizing {
   border-color: color-mix(in srgb, var(--yellow, #eab308) 40%, transparent);
   background: color-mix(in srgb, var(--yellow, #eab308) 12%, transparent);
 }
+.credibility-score-badge.band-unknown {
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+.item-feed-label {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-dim);
+}
 .credibility-score-badge.band-low {
   color: var(--red, #f87171);
   border-color: color-mix(in srgb, var(--red, #f87171) 40%, transparent);
