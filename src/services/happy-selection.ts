@@ -17,6 +17,14 @@ const BROAD_HAPPY_SOURCES = new Set([
 // through when unavailable, so broad sources also need a deterministic screen.
 const NEGATIVE_EVIDENCE_RE = /\b(droughts?|dries up|dried up|threats?|threaten\w*|crisis|crises|conflicts?|crimes?|criminal|kill\w*|deaths?|dead|dies|died|harm\w*|damag\w*|declin\w*|loss(?:es)?|losing|illegal\w*|lobby\w*|displac\w*|wildfires?|floods?|flooding|heat ?waves?|smoke|pollut\w*|toxic|disasters?|collaps\w*|extinction|warn\w*|fears?|attacks?|war|violen\w*|poach\w*|traffick\w*|cuts? off|mining waste|deforestation)\b/i;
 
+// A headline that names a problem being solved ("reverses hearing loss") is
+// a positive story, not negative reporting.
+const RECOVERY_EVIDENCE_RE = /\b(revers\w*|restor\w*|recover\w*|cure[sd]?|curing|prevent\w*|protect\w*|rebound\w*|halt\w*|tackl\w*|combat\w*|reduc\w*|slash\w*|treat\w*|therap(?:y|ies)|vaccines?|saved?|saves|saving|rescu\w*|fall(?:s|en)?|fell|drops?|dropped)\b/i;
+
+function hasNegativeEvidence(title: string): boolean {
+  return NEGATIVE_EVIDENCE_RE.test(title) && !RECOVERY_EVIDENCE_RE.test(title);
+}
+
 const SCIENCE_SOURCES = new Set([
   'GNN Science',
   'ScienceDaily',
@@ -51,7 +59,7 @@ export async function selectCuratedHappyItems(
   gate: (items: NewsItem[]) => Promise<NewsItem[]>,
 ): Promise<NewsItem[]> {
   const unique = dedupeHappyItems(items);
-  const broad = unique.filter(item => BROAD_HAPPY_SOURCES.has(item.source) && !NEGATIVE_EVIDENCE_RE.test(item.title));
+  const broad = unique.filter(item => BROAD_HAPPY_SOURCES.has(item.source) && !hasNegativeEvidence(item.title));
   if (broad.length === 0) return unique.filter(item => !BROAD_HAPPY_SOURCES.has(item.source));
   const passed = new Set(await gate(broad));
   return unique.filter(item => !BROAD_HAPPY_SOURCES.has(item.source) || passed.has(item));
