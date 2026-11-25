@@ -350,7 +350,7 @@ interface RadiationMarker extends BaseMarker {
   freshness: RadiationObservation['freshness'];
   baselineValue: number;
   delta: number;
-  zScore: number;
+  zScore: number | null;
   severity: 'normal' | 'elevated' | 'spike';
   confidence: RadiationObservation['confidence'];
   corroborated: boolean;

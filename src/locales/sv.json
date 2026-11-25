@@ -1119,6 +1119,7 @@
       "refugees": "Flyktingar",
       "asylumSeekers": "Asylsökande",
       "idps": "internflyktingar",
+      "stateless": "Statslösa",
       "total": "Totalt",
       "origins": "Ursprung",
       "hosts": "Värdar",
@@ -1304,7 +1305,7 @@
       "noData": "inga data",
       "enable": "Aktivera",
       "convergenceMetric": "Konvergens",
-      "ciiDeviation": "Landinstabilitetsindexavvikelse",
+      "topCiiScore": "Högsta landinstabilitetspoäng",
       "infraEvents": "Infrastrukturhändelser",
       "highAlerts": "Höga varningar",
       "topRisks": "Största risker",
@@ -1703,8 +1704,10 @@
       "topProducers": "Största producenter",
       "upstreamUnavailable": "Försörjningskedjedata tillfälligt otillgänglig — visar cachad data",
       "warnings": "varning(ar)",
-      "aisDisruptions": "Störningar i skeppsspårning",
+      "aisDisruptions_one": "{{count}} störning i fartygsspårning",
+      "aisDisruptions_other": "{{count}} störningar i fartygsspårning",
       "wowChange": "Vecka över vecka-förändring",
+      "asOf": "per {{date}}",
       "riskLevel": "Risknivå",
       "flowUnavailable": "Flödesdata är otillgänglig",
       "containerRates": "Containerpriser",
@@ -2183,7 +2186,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Detaljhandelspriser för bensin och diesel i 30+ länder, normaliserat till USD/liter för jämförelse. Priser kommer från officiella statliga öppna datakällor och uppdateras veckovis. Billigaste och dyraste länder är markerade. Veckovis förändring visas när tidigare veckas data är tillgänglig.",
-      "countries": "länder"
+      "countries": "länder",
+      "observedStale": "{{date}}, {{days}} dagar gammal",
+      "monthlyMean": "snitt {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> FN:s livsmedelsorgan FAO:s livsmedelsindex spårar internationella exportpriser för en korg med livsmedelsvaror (Spannmål, Mejeri, Kött, Oljor, Socker), basindex 2014–2016=100. Uppdateras månatligen första fredagen varje månad.",
@@ -2471,7 +2476,21 @@
       "saved": "Senast kända uppdatering {{time}} · Söker efter uppdateringar",
       "savedOffline": "Senast kända uppdatering {{time}} · Frånkopplad",
       "localSignals": "Baserat på inlästa signaler i instrumentpanelen",
-      "emptySaved": "Ingen konvergens i den senast kända uppdateringen."
+      "emptySaved": "Ingen konvergens i den senast kända uppdateringen.",
+      "signalTypes": {
+        "militaryFlight": "Militär flygning",
+        "militaryVessel": "Militärt fartyg",
+        "aisGap": "AIS-avbrott",
+        "conflictEvent": "Konflikthändelse",
+        "escalationOutage": "Kommunikationsavbrott",
+        "newsSeverity": "Allvarliga nyheter",
+        "sanctionsNews": "Sanktionsnyheter",
+        "marketMove": "Marknadsrörelse",
+        "commoditySpike": "Råvarusprång",
+        "earthquake": "Jordbävning",
+        "infraOutage": "Infrastrukturavbrott",
+        "other": "Signal"
+      }
     },
     "thermalEscalation": {
       "title": "Värmeskalering",
@@ -3997,7 +4016,13 @@
     "alert": "Larm: {{location}}",
     "multipleRegions": "Flera regioner",
     "trending": "\"{{term}}\" trending - {{count}} omnamnanden pa {{hours}}h",
-    "eventsDetected": "{{count}} handelser detekterade i regionen ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} händelser upptäckta: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protester",
+      "military_flight": "militära flygningar",
+      "military_vessel": "örlogsfartyg",
+      "earthquake": "seismisk aktivitet"
+    }
   },
   "intel": {
     "topics": {

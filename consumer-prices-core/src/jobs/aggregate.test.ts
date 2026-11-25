@@ -12,8 +12,8 @@ const { INDEX_METHODOLOGY_VERSION } = await import('../index-methodology.js');
 
 function basketRow(item: string, category: string, retailer: string, price: number) {
   return { basket_item_id: item, category, weight: '1', retailer_product_id: `${retailer}-${item}`,
-    retailer_slug: retailer, price: String(price), unit_price: null, currency_code: 'AED',
-    observed_at: new Date('2026-10-29T02:00:00Z') };
+    retailer_slug: retailer, retailer_name: retailer, price: String(price), unit_price: null, currency_code: 'AED',
+    observed_at: new Date('2026-10-29T02:00:00Z'), last_seen_at: new Date('2026-10-29T02:00:00Z') };
 }
 
 const RUN_DATE = '2026-11-18';

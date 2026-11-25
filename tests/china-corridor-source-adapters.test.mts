@@ -44,6 +44,24 @@ describe('China corridor source adapters (#5578)', () => {
     assert.equal(JSON.stringify(signal).includes('"tankerCalls30d":0'), false);
   });
 
+  it('drops the port trend when the prior 30-day window had no calls', () => {
+    const bundle = buildChinaCorridorSourceBundle({
+      portwatchChina: {
+        fetchedAt: '2026-07-25T11:00:00.000Z',
+        ports: [
+          { portId: 'port1188', portName: 'Shanghai', tankerCalls30d: 423, prevTankerCalls30d: 486, trendDelta: -13 },
+          { portId: 'port1225', portName: 'Ningbo', tankerCalls30d: 5, prevTankerCalls30d: 0, trendDelta: 0 },
+        ],
+      },
+      portwatchMeta: FRESH_META,
+    }, ASSESSED_AT);
+
+    const byPort = new Map(bundle.families.port.signals.map((signal) => [signal.selectorId, signal]));
+    assert.equal(byPort.get('port1188')?.metrics.trendDelta, -13);
+    assert.equal(byPort.get('port1225')?.metrics.tankerCalls30d, 5);
+    assert.equal('trendDelta' in (byPort.get('port1225')?.metrics ?? {}), false);
+  });
+
   // #6060: the gate must age CONTENT, not retrieval. The seeder force-refetches
   // each country once its cache passes MAX_CACHE_AGE_MS (168h); that refetch
   // resets `fetchedAt` while returning an unchanged upstream `asof`. Ageing

@@ -238,10 +238,14 @@ export interface Sector {
   name: string;
 }
 
+/** Yahoo Finance quote currency of a contract that is not quoted in US dollars. USX is US cents. */
+export type CommodityQuoteCurrency = 'USX' | 'EUR';
+
 export interface Commodity {
   symbol: string;
   name: string;
   display: string;
+  currency?: CommodityQuoteCurrency;
 }
 
 export interface MarketSymbol {

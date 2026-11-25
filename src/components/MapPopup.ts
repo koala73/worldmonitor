@@ -1125,7 +1125,7 @@ export class MapPopup {
             <span class="stat-value">${observation.sourceCount}</span>
           </div>
         </div>
-        <p class="popup-description">${escapeHtml(countryLabel(observation.country))} · z-score ${observation.zScore.toFixed(2)} · ${escapeHtml(observation.freshness)}${flags ? ` · ${escapeHtml(flags)}` : ''}</p>
+        <p class="popup-description">${escapeHtml(countryLabel(observation.country))} · z-score ${observation.zScore === null ? '—' : observation.zScore.toFixed(2)} · ${escapeHtml(observation.freshness)}${flags ? ` · ${escapeHtml(flags)}` : ''}</p>
       </div>
     `;
   }

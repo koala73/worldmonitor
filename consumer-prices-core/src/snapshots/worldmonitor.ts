@@ -3,6 +3,7 @@
  * All types are shaped to match the proto-generated TypeScript interfaces so
  * snapshots can be written to Redis and read directly by WorldMonitor handlers.
  */
+import { type BasketRow, computeRetailerSpread, confirmationAgeMin, getBasketRows } from '../basket-observations.js';
 import { query } from '../db/client.js';
 import { INDEX_METHODOLOGY_VERSION } from '../index-methodology.js';
 
@@ -189,17 +190,23 @@ async function buildTopCategories(basketId: string, rangeDays = 7): Promise<WMCa
 // Public builders
 // ---------------------------------------------------------------------------
 
-export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverviewSnapshot> {
+// Publishing passes one memoized loader to both the overview and the retailer
+// comparison so a scrape landing between them cannot split their spreads.
+export type BasketRowLoader = (basketSlug: string, marketCode: string) => Promise<BasketRow[]>;
+
+export async function buildOverviewSnapshot(
+  marketCode: string,
+  loadBasketRows: BasketRowLoader = getBasketRows,
+): Promise<WMOverviewSnapshot> {
   const now = Date.now();
 
-  // Resolve basket id for category queries
-  const basketIdResult = await query<{ id: string }>(
-    `SELECT b.id FROM baskets b WHERE b.market_code = $1 LIMIT 1`,
+  const basketResult = await query<{ id: string; slug: string }>(
+    `SELECT b.id, b.slug FROM baskets b WHERE b.market_code = $1 LIMIT 1`,
     [marketCode],
   );
-  const basketId = basketIdResult.rows[0]?.id ?? null;
+  const basket = basketResult.rows[0] ?? null;
 
-  const [indexResult, prevWeekResult, prevMonthResult, spreadResult, currencyResult, freshnessResult] =
+  const [indexResult, prevWeekResult, prevMonthResult, currencyResult, basketRows] =
     await Promise.all([
       query<{ metric_key: string; metric_value: string }>(
         `SELECT ci.metric_key, ci.metric_value
@@ -242,25 +249,11 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
            )`,
         [marketCode, INDEX_METHODOLOGY_VERSION],
       ),
-      query<{ spread_pct: string }>(
-        `SELECT metric_value AS spread_pct FROM computed_indices ci
-         JOIN baskets b ON b.id = ci.basket_id
-         WHERE b.market_code = $1 AND ci.metric_key = 'retailer_spread_pct'
-           AND ci.metric_date >= CURRENT_DATE - INTERVAL '2 days'
-         ORDER BY ci.metric_date DESC LIMIT 1`,
-        [marketCode],
-      ),
       query<{ currency_code: string }>(
         `SELECT currency_code FROM retailers WHERE market_code = $1 AND active = true LIMIT 1`,
         [marketCode],
       ),
-      query<{ avg_lag_min: string }>(
-        `SELECT AVG(EXTRACT(EPOCH FROM (NOW() - last_successful_run_at)) / 60)::int AS avg_lag_min
-         FROM data_source_health dsh
-         JOIN retailers r ON r.id = dsh.retailer_id
-         WHERE r.market_code = $1 AND r.active = true`,
-        [marketCode],
-      ),
+      basket ? loadBasketRows(basket.slug, marketCode) : Promise.resolve([]),
     ]);
 
   const metrics: Record<string, number> = {};
@@ -272,9 +265,7 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
   const prevMonth: Record<string, number> = {};
   for (const row of prevMonthResult.rows) prevMonth[row.metric_key] = parseFloat(row.metric_value);
 
-  const freshnessLagMin = freshnessResult.rows[0]?.avg_lag_min
-    ? parseInt(freshnessResult.rows[0].avg_lag_min, 10)
-    : 0;
+  const freshnessLagMin = confirmationAgeMin(basketRows, now);
 
   // Aggregate records zero coverage on a day no fresh product priced the
   // basket. Its newest index is then the last covered day's, so publishing it
@@ -305,7 +296,7 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
   const wowPct = prevEss ? Math.round(((ess - prevEss) / prevEss) * 100 * 10) / 10 : 0;
   const momPct = prevMonthEss ? Math.round(((ess - prevMonthEss) / prevMonthEss) * 100 * 10) / 10 : 0;
 
-  const topCategories = basketId ? await buildTopCategories(basketId) : [];
+  const topCategories = basket ? await buildTopCategories(basket.id) : [];
 
   return {
     marketCode,
@@ -315,9 +306,7 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
     valueBasketIndex: Math.round(val * 10) / 10,
     wowPct,
     momPct,
-    retailerSpreadPct: spreadResult.rows[0]?.spread_pct
-      ? Math.round(parseFloat(spreadResult.rows[0].spread_pct) * 10) / 10
-      : 0,
+    retailerSpreadPct: computeRetailerSpread(basketRows).spreadPct,
     coveragePct: Math.round((metrics.coverage_pct ?? 0) * 10) / 10,
     freshnessLagMin,
     topCategories,
@@ -466,99 +455,30 @@ export async function buildMoversSnapshot(
 export async function buildRetailerSpreadSnapshot(
   marketCode: string,
   basketSlug: string,
+  loadBasketRows: BasketRowLoader = getBasketRows,
 ): Promise<WMRetailerSpreadSnapshot> {
   const now = Date.now();
 
-  const result = await query<{
-    retailer_slug: string;
-    retailer_name: string;
-    basket_total: string;
-    item_count: string;
-    currency_code: string;
-    freshness_min: string | null;
-  }>(
-    `WITH retailer_item_best AS (
-       -- For each (retailer, basket_item), pick the cheapest in-stock latest price.
-       -- This deduplicates multiple matched SKUs per basket item per retailer.
-       SELECT r.id AS retailer_id, r.slug AS retailer_slug, r.name AS retailer_name,
-              r.currency_code, bi.id AS basket_item_id,
-              MIN(po.price) AS best_price,
-              MAX(po.observed_at) AS last_observed_at
-       FROM baskets b
-       JOIN basket_items bi ON bi.basket_id = b.id AND bi.active = true
-       JOIN product_matches pm ON pm.basket_item_id = bi.id AND pm.match_status IN ('auto','approved') AND pm.pin_disabled_at IS NULL
-       JOIN retailer_products rp ON rp.id = pm.retailer_product_id AND rp.active = true
-       JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
-       JOIN LATERAL (
-         SELECT price, observed_at
-         FROM price_observations
-         WHERE retailer_product_id = rp.id AND in_stock = true
-         ORDER BY observed_at DESC, id DESC LIMIT 1
-       ) po ON true
-       WHERE b.slug = $1
-       GROUP BY r.id, r.slug, r.name, r.currency_code, bi.id
-     ),
-     retailer_ids AS (
-       SELECT DISTINCT retailer_id FROM retailer_item_best
-     ),
-     -- Only include basket items that every active retailer covers.
-     -- Comparing totals across different item counts is invalid.
-     common_items AS (
-       SELECT basket_item_id
-       FROM retailer_item_best
-       GROUP BY basket_item_id
-       HAVING COUNT(DISTINCT retailer_id) = (SELECT COUNT(*) FROM retailer_ids)
-     )
-     SELECT rib.retailer_slug, rib.retailer_name, rib.currency_code,
-            SUM(rib.best_price) AS basket_total,
-            COUNT(*) AS item_count,
-            EXTRACT(EPOCH FROM (NOW() - MAX(rib.last_observed_at))) / 60 AS freshness_min
-     FROM retailer_item_best rib
-     JOIN common_items ci ON ci.basket_item_id = rib.basket_item_id
-     GROUP BY rib.retailer_slug, rib.retailer_name, rib.currency_code
-     ORDER BY basket_total ASC`,
-    [basketSlug, marketCode],
-  );
-
-  const retailers: WMRetailerSpread[] = result.rows.map((r) => ({
-    slug: r.retailer_slug,
-    name: r.retailer_name,
-    basketTotal: parseFloat(r.basket_total),
-    deltaVsCheapest: 0,
-    deltaVsCheapestPct: 0,
-    itemCount: parseInt(r.item_count, 10),
-    freshnessMin: r.freshness_min ? parseInt(r.freshness_min, 10) : 0,
-    currencyCode: r.currency_code,
+  const spread = computeRetailerSpread(await loadBasketRows(basketSlug, marketCode));
+  const cheapest = spread.retailers[0]?.basketTotal ?? 0;
+  const retailers: WMRetailerSpread[] = spread.retailers.map((r) => ({
+    slug: r.slug,
+    name: r.name,
+    basketTotal: r.basketTotal,
+    deltaVsCheapest: Math.round((r.basketTotal - cheapest) * 100) / 100,
+    deltaVsCheapestPct: cheapest > 0 ? Math.round(((r.basketTotal - cheapest) / cheapest) * 100 * 10) / 10 : 0,
+    itemCount: r.itemCount,
+    freshnessMin: confirmationAgeMin(r.rows, now),
+    currencyCode: r.currencyCode,
   }));
-
-  if (retailers.length > 0) {
-    const cheapest = retailers[0].basketTotal;
-    for (const r of retailers) {
-      r.deltaVsCheapest = Math.round((r.basketTotal - cheapest) * 100) / 100;
-      r.deltaVsCheapestPct =
-        cheapest > 0 ? Math.round(((r.basketTotal - cheapest) / cheapest) * 100 * 10) / 10 : 0;
-    }
-  }
-
-  const MIN_SPREAD_ITEMS = 4;
-  const commonItemCount = retailers.length > 0 ? retailers[0].itemCount : 0;
-  const spreadPct =
-    retailers.length >= 2 && commonItemCount >= MIN_SPREAD_ITEMS
-      ? Math.round(
-          ((retailers[retailers.length - 1].basketTotal - retailers[0].basketTotal) /
-            retailers[0].basketTotal) *
-            100 *
-            10,
-        ) / 10
-      : 0;
 
   return {
     marketCode,
     asOf: String(now),
     basketSlug,
-    currencyCode: result.rows[0]?.currency_code ?? 'USD',
+    currencyCode: retailers[0]?.currencyCode ?? 'USD',
     retailers,
-    spreadPct,
+    spreadPct: spread.spreadPct,
     upstreamUnavailable: false,
   };
 }
