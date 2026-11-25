@@ -202,8 +202,9 @@ describe('bilateral chokepoint transit', () => {
   it('splits a supplier share across alternative corridors instead of crediting each in full', () => {
     const exposures = computeFlowWeightedExposures('US', '85', product('8542', [['CN', 1]]));
     const score = id => exposures.find(e => e.chokepointId === id).exposureScore;
-    assert.ok(score('suez') > 0 && score('suez') < 100, 'Suez carries part of China-US trade');
-    assert.ok(score('panama') > 0 && score('panama') < 100, 'Panama carries part of China-US trade');
+    for (const id of ['suez', 'panama', 'taiwan_strait']) {
+      assert.ok(Math.abs(score(id) - 100 / 3) < 0.1, `${id} carries one of three China-US corridors`);
+    }
   });
 
   it('keeps India-Gulf trade off the Malacca leg of the Gulf-Asia corridor', () => {
