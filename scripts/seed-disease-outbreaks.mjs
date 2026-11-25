@@ -63,6 +63,7 @@ const CIDRAP_TOPIC_IDS = [64, 102, 49, 230556, 58, 78, 61, 90, 66, 88];
 const THINKGLOBALHEALTH_BUNDLE = 'https://raw.githubusercontent.com/thinkglobalhealth/disease_tracker/master/index_bundle.js';
 // Keep alerts within this many days; avoids flooding the map with old events
 const TGH_LOOKBACK_DAYS = 90;
+const TGH_REPEAT_WINDOW_MS = 7 * 86400_000;
 
 const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
 
@@ -218,15 +219,20 @@ export async function fetchDiseaseOutbreaks() {
   // TGH items are already disease-curated with exact lat/lng — skip keyword filter,
   // preserve all geo-located alerts, and don't collapse by disease+country.
   // Outlets repeat one report: rows with the same disease, point and case count
-  // are one event and publish once, newest first. Rows without a count only
-  // collapse when the bundle repeats them verbatim (same id).
-  const seenTgh = new Set();
+  // (more than one case) within a week of a newer row are one event and publish
+  // once, newest first. Rows the bundle repeats verbatim share an id.
+  const seenTghIds = new Set();
+  const newestTghEvent = new Map();
   const tghOutbreaks = tghItems.map(mapItem)
     .sort((a, b) => b.publishedAt - a.publishedAt)
     .filter((o) => {
-      const key = o.cases > 0 ? `${o.disease}|${o.lat}|${o.lng}|${o.cases}` : o.id;
-      if (seenTgh.has(key)) return false;
-      seenTgh.add(key);
+      if (seenTghIds.has(o.id)) return false;
+      seenTghIds.add(o.id);
+      if (!(o.cases > 1)) return true;
+      const key = `${o.disease}|${o.lat}|${o.lng}|${o.cases}`;
+      const newer = newestTghEvent.get(key);
+      if (newer != null && newer - o.publishedAt <= TGH_REPEAT_WINDOW_MS) return false;
+      newestTghEvent.set(key, o.publishedAt);
       return true;
     });
 

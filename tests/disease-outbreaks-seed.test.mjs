@@ -992,6 +992,13 @@ test('WHO reports keep their summary and a comma-titled location', async (t) => 
   }));
   assert.equal(ebola.location, 'Democratic Republic of the Congo, Kenya and Nigeria');
   assert.equal(ebola.countryCode, 'CD');
+
+  const ebolaUpdate = mapItem(whoNormalizeItem({
+    Title: 'Ebola disease caused by Bundibugyo virus- Democratic Republic of the Congo, Kenya and Nigeria',
+    ItemDefaultUrl: '/2026-DON628', PublicationDateAndTime: '2026-11-20T12:00:00Z',
+  }));
+  assert.equal(ebolaUpdate.location, 'Democratic Republic of the Congo, Kenya and Nigeria');
+  assert.equal(ebolaUpdate.countryCode, 'CD');
 });
 
 // #11273: two ThinkGlobalHealth rows from different outlets repeat one count
@@ -1006,6 +1013,11 @@ test('ThinkGlobalHealth rows reporting the same count at the same place publish 
     row('8735090', 2, 'https://fr.apanews.net/news/senegal-57-cas', "Senegal has recorded 57 confirmed cases of diphtheria, including eight deaths, since the country's outbreak began on August 1, 2026."),
     row('8735058', 4, 'https://french.xinhuanet.com/c.html', 'Senegal has recorded 57 confirmed cases of diphtheria, including eight deaths, since August 1.'),
     row('8735479', 1, 'https://aps.sn/diphterie', 'Senegal reported 76 diphtheria cases and nine deaths.', '76'),
+    row('8735480', 1, 'https://aps.sn/diphterie-maj', 'Senegal revised its count to 77 diphtheria cases.', '77'),
+    row('8735481', 1, 'https://aps.sn/diphterie-maj', 'Senegal revised its count to 78 diphtheria cases.', '78'),
+    row('8734001', 40, 'https://aps.sn/diphterie-mai', 'Senegal has recorded 57 cases of diphtheria in an earlier wave.'),
+    row('8735500', 3, 'https://aps.sn/cas-importe', 'Senegal confirmed an imported diphtheria case in Dakar.', '1'),
+    row('8735501', 5, 'https://aps.sn/premier-cas', 'Senegal confirmed its first diphtheria case of the season.', '1'),
   ];
   const bundle = `/* boilerplate */\neval("${JSON.stringify(`var res = ${JSON.stringify(realtime)}`).slice(1, -1)}")\n`;
   t.mock.method(globalThis, 'fetch', async (input) => {
@@ -1019,8 +1031,13 @@ test('ThinkGlobalHealth rows reporting the same count at the same place publish 
   const tgh = outbreaks.filter((o) => o.sourceName === 'ThinkGlobalHealth');
   assert.deepEqual(tgh.map((o) => [o.cases, o.sourceUrl]), [
     [76, 'https://aps.sn/diphterie'],
+    [77, 'https://aps.sn/diphterie-maj'],
     [57, 'https://fr.apanews.net/news/senegal-57-cas'],
+    [1, 'https://aps.sn/cas-importe'],
+    [1, 'https://aps.sn/premier-cas'],
+    [57, 'https://aps.sn/diphterie-mai'],
   ]);
+  assert.equal(new Set(tgh.map((o) => o.id)).size, tgh.length);
 });
 
 // #11273: "Increases in Recent Animal Rabies Activity" is not a place.
