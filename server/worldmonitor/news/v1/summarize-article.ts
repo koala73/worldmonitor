@@ -74,7 +74,7 @@ export function hasReasoningPreamble(text: string): boolean {
 
 // A summary that talks about the headlines instead of the story they report
 // ("The most important headline is about a study...") is task commentary.
-const HEADLINE_COMMENTARY_RE = /\b(?:the|this|these|both|each|other|second|first|numbered) headlines?\b|\bmost (?:important|significant) (?:headline|story)\b/i;
+const HEADLINE_COMMENTARY_RE = /^(?:the|this|these|both|each|all) (?:\w+ ){0,2}headlines?\b|\bmost (?:important|significant) (?:headline|story)\b|\bheadlines? (?:is|are|was|were) (?:about|describing|reporting)\b/i;
 
 export function describesHeadlines(text: string): boolean {
   return HEADLINE_COMMENTARY_RE.test(text);

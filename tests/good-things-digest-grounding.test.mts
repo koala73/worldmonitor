@@ -21,6 +21,7 @@ test('headline commentary is rejected as a summary', () => {
   assert.equal(describesHeadlines('The most important headline is about a study or survey finding that women universally value a specific non-physical trait in men as the most attractive.'), true);
   assert.equal(describesHeadlines('This headline describes an artist reflecting on aging.'), true);
   assert.equal(describesHeadlines('A painter says turning 50 taught him patience and curiosity, and he now slows down to notice small details.'), false);
+  assert.equal(describesHeadlines('The Guardian corrected the headline after readers said it misnamed the town.'), false);
   assert.equal(describesHeadlines('The U.S. and Ukraine announced a partial ceasefire agreement, halting strikes on energy infrastructure.'), false);
 });
 
