@@ -245,7 +245,7 @@ const TITLE_SEGMENT_SEPARATOR = /\s+[-\u2013\u2014|]\s+|\s*\|\s*/;
 const PUBLISHER_SEGMENT = /^(?:[A-Z0-9^&][^\s]*\s*){1,3}$/;
 const QUOTE_PAGE_TAIL = /\b(?:overview|quotes?|stock price|(?:charts?|data|news|history|prices?|quotes?)\s*&\s*(?:charts?|data|news|history|quotes?))$/i;
 // Ticker, optional capitalized instrument name, then a chart/history page type.
-const TICKER_PAGE = /^\^?[A-Z][A-Z0-9.^=-]{0,9}(?: \| (?:[A-Z0-9^&]\S*\s+)+| )(?:[Aa]dvanced [Cc]harts?|[Hh]istorical (?:[Pp]rices|[Qq]uotes|[Dd]ata))$/;
+const TICKER_PAGE = /^\^?[A-Z][A-Z0-9.^=-]{0,9}(?: \| (?:(?:[A-Z0-9^&]\S*|of|and|the|de)\s+)+| )(?:[Aa]dvanced [Cc]harts?|[Hh]istorical (?:[Pp]rices|[Qq]uotes|[Dd]ata))$/;
 const MAX_PUBLISHER_SEGMENTS = 2;
 
 export function isQuotePageTitle(title: string): boolean {

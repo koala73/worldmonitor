@@ -375,6 +375,7 @@ describe('daily market brief quote-page filtering', () => {
       'AAPL Historical Prices | Apple Inc. Stock - MarketWatch',
       'AAPL Historical prices - MarketWatch',
       'DJIA | Dow Jones Industrial Average Advanced Charts - MarketWatch',
+      'BAC | Bank of America Corp. Advanced Charts - MarketWatch',
     ]) {
       assert.equal(isQuotePageTitle(title), true, title);
     }
