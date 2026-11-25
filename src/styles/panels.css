@@ -2403,8 +2403,10 @@
 }
 
 .flight-time {
+  width: min-content;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
+  text-align: right;
   color: var(--text-dim);
 }
 
