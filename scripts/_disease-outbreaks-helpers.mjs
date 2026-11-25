@@ -356,7 +356,7 @@ export function mapItem(item) {
     ? headlineCountry
     : item._country
       ? (extractCountryCodeFull(item._country) || extractCountryCodeFull(location || item.title))
-      : extractCountryCodeFull(location || `${item.title} ${item.desc}`) || (item.sourceName === 'CDC' ? 'US' : '');
+      : extractCountryCodeFull(location || `${item.title} ${item.desc}`);
   return {
     id: `${item.sourceName.toLowerCase()}-${stableHash(item._idSeed || item.link || item.title)}-${item._publishedAtIsSynthetic ? 'undated' : item.publishedMs}`,
     disease,
