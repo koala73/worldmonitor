@@ -153,7 +153,7 @@ export { normalize as normalizePublicTender };
 // SAM search returns a noticedesc API link, which needs an API key, in place of the notice text.
 function samDescription(value) {
   const description = firstString(value);
-  return /^https?:\/\//i.test(description) ? '' : description;
+  return /^https?:\/\/\S+$/i.test(description) ? '' : description;
 }
 
 export function normalizeSamOpportunity(raw) {
