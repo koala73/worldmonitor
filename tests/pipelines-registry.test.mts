@@ -212,7 +212,7 @@ describe('pipeline registries — validateRegistry rejects bad input', () => {
     assert.equal(validateRegistry(bad), false);
   });
 
-  test('rejects a lifecycleState outside the enum or without an operator statement', () => {
+  test('rejects a lifecycleState outside the enum or without a cited statement', () => {
     const withLifecycle = (evidence: Record<string, unknown>) => ({
       pipelines: Object.fromEntries(
         Object.entries(oil.pipelines).map(([id, p]) => [id,
@@ -222,6 +222,10 @@ describe('pipeline registries — validateRegistry rejects bad input', () => {
     assert.equal(validateRegistry(withLifecycle({})), true);
     assert.equal(validateRegistry(withLifecycle({ lifecycleState: 'retired' })), false);
     assert.equal(validateRegistry(withLifecycle({ operatorStatement: null })), false);
+    const statement = oil.pipelines['keystone-xl-cancelled']!.evidence.operatorStatement;
+    for (const patch of [{ text: '   ' }, { text: true }, { url: '' }, { url: 'not a url' }, { date: '' }, { date: '2021-13-45' }]) {
+      assert.equal(validateRegistry(withLifecycle({ operatorStatement: { ...statement, ...patch } })), false, JSON.stringify(patch));
+    }
   });
 
   test('rejects below MIN_PIPELINES_PER_REGISTRY', () => {
