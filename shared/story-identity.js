@@ -520,7 +520,7 @@ function sameParties(a, b) {
   if (!aCovered && !(b.e.size <= a.e.size && entitiesCovered(b.e, a.e))) return false;
   let sharedTopicTokens = 0;
   for (const tok of a.t) {
-    if (!b.t.has(tok) || CANDIDATE_STOPWORDS.has(tok)) continue;
+    if (!b.t.has(tok) || CANDIDATE_STOPWORDS.has(tok) || /\p{N}/u.test(tok)) continue;
     if (![...a.e, ...b.e].some((party) => isEntityVariant(tok, party))) sharedTopicTokens++;
   }
   return sharedTopicTokens >= SAME_PARTIES_MIN_TOPIC_TOKENS;

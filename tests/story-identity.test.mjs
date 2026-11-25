@@ -209,6 +209,13 @@ describe('clusterTexts', () => {
     assert.equal(isSameStory(a, b), false);
   });
 
+  it('#11274: a shared year is not a shared topic word', () => {
+    assert.equal(isSameStory(
+      'Iran, Saudi Arabia, Qatar and China sign 2026 oil supply pact',
+      'Iran warns Saudi Arabia, Qatar, China over 2026 oil price war',
+    ), false);
+  });
+
   it('#11274: the same-parties rescue never lowers a containment match', () => {
     const short = 'Australia Solomon Islands China security pact';
     const texts = [short, `${short} war war war war war`];
