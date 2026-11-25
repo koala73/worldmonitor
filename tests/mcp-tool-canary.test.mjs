@@ -25,6 +25,8 @@ import {
   summarize,
   ISSUE_TITLE,
 } from '../scripts/mcp-tool-canary.mjs';
+import * as canary from '../scripts/mcp-tool-canary.mjs';
+import { CACHED_FETCH_NEGATIVE_TTL_SECONDS } from '../server/_shared/redis.ts';
 
 const OUTPUT_SCHEMA = {
   type: 'object',
@@ -135,6 +137,54 @@ describe('runCanary', () => {
     const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST });
     assert.equal(summarize(report).healthy, true);
     assert.equal(calls.length, 2);
+  });
+
+  it('waits out the server negative cache before retrying, so the retry reaches the upstream again (#11251)', () => {
+    assert.ok(
+      canary.RETRY_DELAY_MS > CACHED_FETCH_NEGATIVE_TTL_SECONDS * 1000,
+      `retry gap ${canary.RETRY_DELAY_MS}ms must exceed the ${CACHED_FETCH_NEGATIVE_TTL_SECONDS}s negative cache that answers a repeated failing call`,
+    );
+  });
+
+  it('retries failures only after every tool had its first call, so one wait covers every failure', async () => {
+    const tools = [tool('get_a'), tool('get_b'), tool('get_c'), tool('get_d')];
+    const { fetchImpl, calls } = fakeFetch(tools, async (name, _a, attempt) => {
+      if (name === 'get_a') return attempt === 1 ? { status: 503, body: '' } : { body: rpcResult(GOOD) };
+      await new Promise((r) => setTimeout(r, 20));
+      return { body: rpcResult(GOOD) };
+    });
+    const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST });
+    const retryAt = calls.findIndex((c) => c.name === 'get_a' && c.attempt === 2);
+    const lastFirstCall = calls.findIndex((c) => c.name === 'get_d' && c.attempt === 1);
+    assert.ok(retryAt > lastFirstCall, `retry ran before get_d's first call: ${JSON.stringify(calls)}`);
+    assert.equal(summarize(report).healthy, true);
+    assert.equal(report.results.find((r) => r.name === 'get_a').attempts, 2);
+  });
+
+  it('chains a dependent from an upstream that recovered on its retry', async () => {
+    const tools = [
+      tool('get_webcam_media', { inputSchema: { type: 'object', properties: {}, required: ['webcam_id'] } }),
+      tool('find_webcams', { inputSchema: { type: 'object', properties: {}, required: ['bound_w'] } }),
+    ];
+    const found = { content: [], structuredContent: { data: { items: [], webcams: [{ webcamId: 'cam-1' }] } } };
+    const { fetchImpl, calls } = fakeFetch(tools, (name, _a, attempt) => {
+      if (name === 'find_webcams') return attempt === 1 ? { status: 503, body: '' } : { body: rpcResult(found) };
+      return { body: rpcResult(GOOD) };
+    });
+    const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST });
+    assert.equal(summarize(report).healthy, true, JSON.stringify(report.results));
+    assert.deepEqual(calls.find((c) => c.name === 'get_webcam_media')?.args, { webcam_id: 'cam-1' });
+  });
+
+  it('keeps the first failure when the run budget is spent before the retry pass', async () => {
+    const { fetchImpl, calls } = fakeFetch([tool('get_a')], async () => {
+      await new Promise((r) => setTimeout(r, 40));
+      return { status: 503, body: '' };
+    });
+    const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST, runBudgetMs: 20 });
+    assert.equal(calls.length, 1);
+    assert.equal(report.results[0].kind, 'http');
+    assert.equal(report.results[0].attempts, 1);
   });
 
   it('never calls a tool without readOnlyHint: true', async () => {
