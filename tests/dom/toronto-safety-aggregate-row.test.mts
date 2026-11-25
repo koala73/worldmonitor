@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const transport = vi.hoisted(() => ({
   fetchTorontoSafetyDataset: vi.fn(),
@@ -24,8 +24,11 @@ const AGGREGATES = [
   aggregate(5214, 'NSA', 15, 'D11', 'D11'),
 ];
 
+const mounted: TorontoSafetyPanel[] = [];
+
 async function aggregateRows(): Promise<Array<{ title: string; meta: string }>> {
   const panel = new TorontoSafetyPanel();
+  mounted.push(panel);
   const root = panel.getElement();
   document.body.appendChild(root);
   panel.notifyConnected();
@@ -39,6 +42,10 @@ async function aggregateRows(): Promise<Array<{ title: string; meta: string }>> 
 
 beforeAll(async () => {
   await initTestI18n();
+});
+
+afterEach(() => {
+  for (const panel of mounted.splice(0)) panel.destroy();
 });
 
 beforeEach(() => {
