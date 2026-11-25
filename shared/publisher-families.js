@@ -87,6 +87,8 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'bloomberg': {
     publisher: "Bloomberg",
+    // Google News names the publisher this way in its <source> element (#11266).
+    aliases: ["Bloomberg.com"],
     labels: [
       "Bloomberg",
       "Bloomberg Commodities",
@@ -436,8 +438,10 @@ for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILY_DATA)) {
 // a curated LABEL always wins over a same-spelling publisher name, so label
 // resolution is unchanged by construction.
 for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILY_DATA)) {
-  const lowerName = entry.publisher.toLowerCase();
-  if (!familyByLowerLabel.has(lowerName)) familyByLowerLabel.set(lowerName, familyId);
+  for (const name of [entry.publisher, ...(entry.aliases ?? [])]) {
+    const lowerName = name.toLowerCase();
+    if (!familyByLowerLabel.has(lowerName)) familyByLowerLabel.set(lowerName, familyId);
+  }
 }
 
 /**

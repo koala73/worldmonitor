@@ -423,3 +423,10 @@ it('counts Matichon and Khaosod English as one publisher', () => {
   assert.equal(publisherFamilyFor('Matichon'), publisherFamilyFor('Khaosod English'));
   assert.equal(countPublisherFamilies(['Matichon', 'Khaosod English']), 1);
 });
+
+describe('publisher name aliases (#11266)', () => {
+  it('resolves the Google News "Bloomberg.com" publisher name to the Bloomberg family', () => {
+    assert.equal(publisherFamilyFor('Bloomberg.com'), 'bloomberg');
+    assert.equal(publisherFamilyFor('Bloomberg.com'), publisherFamilyFor('Bloomberg Markets'));
+  });
+});
