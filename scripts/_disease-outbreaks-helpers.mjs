@@ -61,10 +61,17 @@ export function extractLocationFromTitle(title) {
     const last = segments[segments.length - 1].trim();
     if (/^[A-Z]/.test(last)) return last;
   }
-  // Fallback: "... in <Country/Region>"
+  // Fallback: "... in <Country>". Only a country counts: "Increases in Recent
+  // Animal Rabies Activity" is not a place.
   const inMatch = title.match(/\bin\s+([A-Z][^,.(]+)/);
-  if (inMatch) return inMatch[1].trim();
+  if (inMatch && extractCountryCodeFull(inMatch[1])) return inMatch[1].trim();
   return '';
+}
+
+// WHO DON also titles reports "Disease, Location" ("Hantavirus outbreak linked
+// to cruise ship travel, Multi-locations").
+function whoCommaLocation(title) {
+  return title.match(/^[^,]+,\s*([A-Z].*)$/)?.[1].trim() ?? '';
 }
 
 // Editorial keyword classifier — NOT derived from a published index.
@@ -83,14 +90,26 @@ export function extractLocationFromTitle(title) {
 export const DISEASE_ALERT_KEYWORDS = Object.freeze(['outbreak', 'emergency', 'epidemic', 'pandemic']);
 /** Callers MUST use the exported `DISEASE_WARNING_RE` regex, not substring matching (#3791). */
 export const DISEASE_WARNING_KEYWORDS = Object.freeze(['warning', 'spread', 'cases increasing']);
-export const ALERT_LEVEL_METHODOLOGY_VERSION = 'v1';
+export const ALERT_LEVEL_METHODOLOGY_VERSION = 'v2';
 
 // Precompiled regexes exposed so external callers don't reach for
 // `text.includes(kw)` and silently re-introduce the substring bug.
 export const DISEASE_ALERT_RE = new RegExp(`\\b(?:${DISEASE_ALERT_KEYWORDS.join('|')})\\b`, 'i');
 export const DISEASE_WARNING_RE = new RegExp(`\\b(?:${DISEASE_WARNING_KEYWORDS.join('|')})\\b`, 'i');
 
-export function detectAlertLevel(title, desc) {
+// "Canada's 2025 measles outbreak offers a cautionary tale": a headline that
+// dates its outbreak to an earlier year than its publication is background,
+// and its description describes that past outbreak too.
+const DATED_ALERT_RE = new RegExp(`(?<!\\d)((?:19|20)\\d{2})(?:\\s+[\\p{L}\\p{N}()'-]+){0,3}\\s+(?:${DISEASE_ALERT_KEYWORDS.join('|')})\\b`, 'giu');
+
+function isRetrospectiveHeadline(title, publishedMs) {
+  if (!Number.isFinite(publishedMs)) return false;
+  const year = new Date(publishedMs).getUTCFullYear();
+  return [...title.matchAll(DATED_ALERT_RE)].some(([, eventYear]) => Number(eventYear) < year);
+}
+
+export function detectAlertLevel(title, desc, publishedMs) {
+  if (isRetrospectiveHeadline(title ?? '', publishedMs)) return 'watch';
   const text = `${title ?? ''} ${desc ?? ''}`;
   if (DISEASE_ALERT_RE.test(text)) return 'alert';
   if (DISEASE_WARNING_RE.test(text)) return 'warning';
@@ -140,7 +159,7 @@ export function whoNormalizeItem(item, nowMs = Date.now()) {
   return {
     title: (item.Title || '').trim(),
     link: item.ItemDefaultUrl ? `https://www.who.int${item.ItemDefaultUrl}` : '',
-    desc: '',
+    desc: cleanRssDescription(item.Summary),
     publishedMs: hasOrig ? origMs : nowMs,
     _originalPublishedMs: hasOrig ? origMs : null,
     _publishedAtIsSynthetic: !hasOrig,
@@ -318,7 +337,9 @@ export function mapItem(item) {
   const location = item._location
     || (headline
       ? (place?.name ?? (headlineCountry ? REGION_NAMES.of(headlineCountry) : ''))
-      : extractLocationFromTitle(item.title) || (item.sourceName === 'CDC' ? 'United States' : ''));
+      : extractLocationFromTitle(item.title)
+        || (item.sourceName === 'WHO' ? whoCommaLocation(item.title) : '')
+        || (item.sourceName === 'CDC' ? 'United States' : ''));
   const disease = item._disease || detectDisease(item.title);
   const countryCode = headline
     ? headlineCountry
@@ -330,7 +351,7 @@ export function mapItem(item) {
     disease,
     location,
     countryCode,
-    alertLevel: detectAlertLevel(item.title, item.desc),
+    alertLevel: detectAlertLevel(item.title, item.desc, item.publishedMs),
     summary: headline ? headlineSummary(item.title, item.desc) : item.desc,
     sourceUrl: item.link,
     publishedAt: item.publishedMs,
