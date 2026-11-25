@@ -16,7 +16,7 @@ import "worldmonitor/intelligence/v1/intel_history_record.proto";
 message GetIntelTimelineRequest {
   // Restrict to one producing domain. Required unless `country` is set.
   string domain = 1 [
-    (buf.validate.field).string.pattern = "^(conflict|military|energy)?$",
+    (buf.validate.field).string.pattern = "^(conflict|military|energy|unrest|cyber|maritime|natural|aviation)?$",
     (sebuf.http.query) = {name: "domain"}
   ];
 
