@@ -9,16 +9,14 @@
 //
 // Schema + evidence model documented in docs/methodology/shortages.mdx.
 //
-// Public severity ('confirmed' vs 'watch') is a field on the curated
-// row. The registry reader surfaces it as-is — there's no client-side
-// transform and no promotion/demotion logic in this module.
+// The seeder applies the age thresholds to curated rows before publishing.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const FUEL_SHORTAGES_CANONICAL_KEY = 'energy:fuel-shortages:v1';
-// Registry refreshed daily by the classifier; TTL cushion of 3× cadence.
+// Registry refreshed daily by the seeder; TTL cushion of 3× cadence.
 export const FUEL_SHORTAGES_TTL_SECONDS = 3 * 24 * 3600;
 
 const VALID_PRODUCTS = new Set(['petrol', 'diesel', 'jet', 'heating_oil']);
@@ -50,7 +48,7 @@ function loadRegistry() {
 export function validateRegistry(data) {
   if (!data || typeof data !== 'object') return false;
   const obj = /** @type {Record<string, unknown>} */ (data);
-  if (!obj.shortages || typeof obj.shortages !== 'object') return false;
+  if (!obj.shortages || typeof obj.shortages !== 'object' || Array.isArray(obj.shortages)) return false;
   const shortages = /** @type {Record<string, any>} */ (obj.shortages);
   const entries = Object.entries(shortages);
   if (entries.length < MIN_SHORTAGES) return false;
@@ -59,7 +57,7 @@ export function validateRegistry(data) {
   for (const [key, s] of entries) {
     if (seenIds.has(key)) return false;
     seenIds.add(key);
-    if (s.id !== key) return false;
+    if (!s || typeof s !== 'object' || s.id !== key) return false;
     if (typeof s.country !== 'string' || !/^[A-Z]{2}$/.test(s.country)) return false;
     if (!VALID_PRODUCTS.has(s.product)) return false;
     if (!VALID_SEVERITIES.has(s.severity)) return false;
@@ -109,9 +107,23 @@ function isIsoDate(v) {
   return Number.isFinite(t);
 }
 
-export function buildPayload() {
-  const registry = loadRegistry();
-  return { ...registry, updatedAt: new Date().toISOString() };
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** @param {Date} now */
+export function buildPayload(now = new Date(), registry = loadRegistry()) {
+  if (!validateRegistry(registry)) throw new Error('Invalid curated fuel shortage registry');
+
+  const shortages = {};
+  for (const [id, row] of Object.entries(registry.shortages)) {
+    const shortage = /** @type {any} */ (row);
+    const ageMs = now.getTime() - Date.parse(shortage.lastConfirmed);
+    if (ageMs >= 14 * DAY_MS) continue;
+    shortages[id] = shortage.severity === 'confirmed' && ageMs >= 7 * DAY_MS
+      ? { ...shortage, severity: 'watch' }
+      : shortage;
+  }
+
+  return { ...registry, shortages, updatedAt: now.toISOString() };
 }
 
 /**

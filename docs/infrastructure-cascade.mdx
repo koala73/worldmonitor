@@ -33,6 +33,8 @@ When a user selects an infrastructure asset for analysis, a **breadth-first casc
 4. Recurse to depth 3 (prevent infinite loops)
 ```
 
+The reported affected capacity also scales with `disruption_level`. A half-strength disruption reports half the full-outage capacity loss for each affected path before combining losses across sources.
+
 ## Redundancy Modeling
 
 The system accounts for alternative routes:
@@ -40,6 +42,8 @@ The system accounts for alternative routes:
 - Cables with high redundancy show reduced impact
 - Countries with multiple cable landings show lower vulnerability
 - Alternative routes are displayed with capacity percentages
+
+The Hormuz model assigns Iraq a bypass weight of zero. The [EIA's 2024 Hormuz analysis](https://www.eia.gov/todayinenergy/detail.php?id=65504) estimates available spare capacity for Saudi and Emirati bypass pipelines and provides no comparable estimate for Kirkuk–Ceyhan. The pipeline's nameplate capacity does not establish how much of Iraq's Hormuz export flow could be redirected through it during a disruption. The zero weight represents missing modeled bypass capacity.
 
 ## Example Analysis
 

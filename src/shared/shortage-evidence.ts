@@ -40,9 +40,8 @@ const CONFIDENCE_STRONG = 0.85;
 
 const EVIDENCE_FRESHNESS_DAYS = 30;
 
-// The planned decay policy (docs/methodology/shortages.mdx) removes a row after
-// 14 days without a new signal. Nothing enforces it yet, so readers mark such
-// rows as not reconfirmed rather than presenting them as current.
+// The seeder expires rows after 14 days without a new signal. Readers can
+// still flag older rows from a cached payload.
 export const SHORTAGE_RECONFIRM_DAYS = 14;
 
 /**

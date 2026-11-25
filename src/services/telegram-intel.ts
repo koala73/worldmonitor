@@ -10,6 +10,7 @@ export interface TelegramItem {
   url: string;
   ts: string;
   text: string;
+  textTruncated?: boolean;
   topic: string;
   tags: string[];
   earlySignal: boolean;
@@ -198,6 +199,7 @@ function parseTelegramItem(value: unknown): TelegramItem | null {
     url: parsed.url as string,
     ts: parsed.ts as string,
     text: parsed.text as string,
+    ...(parsed.textTruncated === true ? { textTruncated: true } : {}),
     topic: parsed.topic as string,
     tags: parsed.tags,
     earlySignal: parsed.earlySignal !== false,

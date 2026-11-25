@@ -266,14 +266,12 @@ export const X_ACCOUNT_TRUST: readonly XAccountTrustEntry[] = [
     note: 'Official NATO publisher; treat statements as alliance claims, not independent observation',
   },
   {
-    sourceName: 'NHK World',
+    sourceName: 'NHK News',
     tier: 2,
     type: 'mainstream',
     risk: 'medium',
     stateAffiliated: 'Japan',
-    note: 'Japanese public broadcaster English service',
-    reuseType: true,
-    reuseTier: true,
+    note: 'Japanese public broadcaster domestic news service',
   },
   {
     sourceName: 'New York Times',

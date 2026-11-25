@@ -40,7 +40,7 @@ function clamp(v) { return Math.min(100, Math.max(0, v)); }
 
 const STRESS_COMPONENTS = [
   { id: 'T10Y2Y', label: 'Yield Curve', weight: 0.20, score: (v) => clamp((0.5 - v) / (0.5 - (-1.5)) * 100) },
-  { id: 'T10Y3M', label: 'Bank Spread', weight: 0.15, score: (v) => clamp((0.5 - v) / (0.5 - (-1.0)) * 100) },
+  { id: 'T10Y3M', label: '10Y-3M Treasury Spread', weight: 0.15, score: (v) => clamp((0.5 - v) / (0.5 - (-1.0)) * 100) },
   { id: 'VIXCLS', label: 'Volatility', weight: 0.20, score: (v) => clamp((v - 15) / (80 - 15) * 100) },
   { id: 'STLFSI4', label: 'Financial Stress', weight: 0.20, score: (v) => clamp((v - (-1)) / (5 - (-1)) * 100) },
   { id: 'GSCPI', label: 'Supply Chain', weight: 0.15, score: (v) => clamp((v - (-2)) / (4 - (-2)) * 100) },

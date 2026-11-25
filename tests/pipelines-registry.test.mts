@@ -212,6 +212,23 @@ describe('pipeline registries — validateRegistry rejects bad input', () => {
     assert.equal(validateRegistry(bad), false);
   });
 
+  test('rejects a lifecycleState outside the enum or without a cited statement', () => {
+    const withLifecycle = (evidence: Record<string, unknown>) => ({
+      pipelines: Object.fromEntries(
+        Object.entries(oil.pipelines).map(([id, p]) => [id,
+          id === 'keystone-xl-cancelled' ? { ...p, evidence: { ...p.evidence, ...evidence } } : p]),
+      ),
+    });
+    assert.equal(validateRegistry(withLifecycle({})), true);
+    assert.equal(validateRegistry(withLifecycle({ lifecycleState: 'retired' })), false);
+    assert.equal(validateRegistry(withLifecycle({ operatorStatement: null })), false);
+    const statement = oil.pipelines['keystone-xl-cancelled']!.evidence.operatorStatement;
+    for (const patch of [{ text: '   ' }, { text: true }, { url: '' }, { url: 'not a url' }, { url: 'https://example.com:abc/statement' }, { url: 'ftp://example.com/x' }, { date: '' }, { date: '2021-13-45' }, { date: '2021-02-30' }, { date: '2021-02-29' }]) {
+      assert.equal(validateRegistry(withLifecycle({ operatorStatement: { ...statement, ...patch } })), false, JSON.stringify(patch));
+    }
+    assert.equal(validateRegistry(withLifecycle({ operatorStatement: { ...statement, date: '2020-02-29' } })), true);
+  });
+
   test('rejects below MIN_PIPELINES_PER_REGISTRY', () => {
     const bad = { pipelines: { onlyOne: gas.pipelines[Object.keys(gas.pipelines)[0]!] } };
     assert.equal(validateRegistry(bad), false);

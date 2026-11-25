@@ -2901,6 +2901,8 @@ export class DeckGLMap {
         case 'reduced':  return [243, 156, 18, 220];  // amber
         case 'offline':  return [231, 76, 60, 230];   // red
         case 'disputed': return [155, 89, 182, 220];  // purple
+        case 'cancelled':
+        case 'closed':   return [127, 140, 141, 160]; // grey
       }
     };
 

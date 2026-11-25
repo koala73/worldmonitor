@@ -56,7 +56,7 @@ const WEBCAM_FEEDS: WebcamFeed[] = [
   { id: 'iss-earth', city: 'ISS Earth View', country: 'Space', region: 'space' },
   { id: 'nasa-live', city: 'NASA TV', country: 'Space', region: 'space' },
   { id: 'space-x', city: 'SpaceX', country: 'Space', region: 'space' },
-  { id: 'space-walk', city: 'Space', country: 'Space', region: 'space' },
+  { id: 'space-walk', city: 'Sen 4K Earth View', country: 'Space', region: 'space' },
 ];
 
 const MAX_GRID_CELLS = 4;
@@ -631,7 +631,9 @@ export class LiveWebcamsPanel extends Panel {
 
     const meta = document.createElement('div');
     meta.className = 'webcam-preview-meta';
-    meta.textContent = `${feed.country} · ${feed.region.replace('-', ' ')}`;
+    const metaParts = [feed.country, feed.region.replace('-', ' ')]
+      .filter((part, i, parts) => ![feed.city, ...parts.slice(0, i)].some(seen => seen.toLowerCase() === part.toLowerCase()));
+    meta.textContent = metaParts.join(' · ');
 
     const playBtn = document.createElement('button');
     playBtn.type = 'button';
