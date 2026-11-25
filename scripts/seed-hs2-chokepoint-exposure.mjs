@@ -11,6 +11,7 @@ import {
   logSeedResult,
   releaseLock,
 } from './_seed-utils.mjs';
+import { bilateralTransitChokepointIds } from './shared/bilateral-chokepoint-transit.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -71,6 +72,9 @@ const CHOKEPOINT_REGISTRY = [
 
 /** @type {Record<string, {nearestRouteIds: string[], coastSide: string}>} */
 const COUNTRY_PORT_CLUSTERS = require('./shared/country-port-clusters.json');
+/** @type {Record<string, string>} */
+const COUNTRY_REGIONS = require('./shared/iso2-to-region.json');
+const TRANSIT_CONTEXT = { clusters: COUNTRY_PORT_CLUSTERS, regions: COUNTRY_REGIONS, chokepoints: CHOKEPOINT_REGISTRY };
 
 // The country universe this seeder writes for. Derived from static config, so it is
 // knowable even when a run fails — writeMeta() publishes it on every path so a failed
@@ -95,7 +99,7 @@ function hs4ToHs2(hs4) {
 
 /**
  * Flow-weighted exposure — mirrors chokepoint-exposure-utils.ts:computeFlowWeightedExposures.
- * Uses importerRoutes OR exporterRoutes union for route coverage (same as handler).
+ * A supplier's share counts toward a chokepoint only when the bilateral route crosses it.
  * @param {string} importerIso2
  * @param {string} hs2
  * @param {ComtradeProduct[]} products
@@ -108,8 +112,6 @@ export function computeFlowWeightedExposures(importerIso2, hs2, products) {
 
   if (matchingProducts.length === 0) return [];
 
-  const importerCluster = COUNTRY_PORT_CLUSTERS[importerIso2];
-  const importerRoutes = new Set(importerCluster?.nearestRouteIds ?? []);
   const totalSectorValue = matchingProducts.reduce((s, p) => s + p.totalValue, 0);
 
   /** @type {Map<string, number>} */
@@ -121,17 +123,9 @@ export function computeFlowWeightedExposures(importerIso2, hs2, products) {
 
     for (const exporter of product.topExporters) {
       if (!exporter.partnerIso2) continue;
-      const exporterCluster = COUNTRY_PORT_CLUSTERS[exporter.partnerIso2];
-      const exporterRoutes = new Set(exporterCluster?.nearestRouteIds ?? []);
-
-      for (const cp of CHOKEPOINT_REGISTRY) {
-        let overlap = 0;
-        for (const r of cp.routeIds) {
-          if (importerRoutes.has(r) || exporterRoutes.has(r)) overlap++;
-        }
-        const routeCoverage = overlap / Math.max(cp.routeIds.length, 1);
-        const contribution = routeCoverage * exporter.share * productWeight * 100;
-        cpScores.set(cp.id, (cpScores.get(cp.id) ?? 0) + contribution);
+      const crossed = bilateralTransitChokepointIds(importerIso2, exporter.partnerIso2, TRANSIT_CONTEXT);
+      for (const cpId of crossed) {
+        cpScores.set(cpId, (cpScores.get(cpId) ?? 0) + exporter.share * productWeight * 100);
       }
     }
   }

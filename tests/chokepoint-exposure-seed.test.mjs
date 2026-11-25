@@ -165,16 +165,30 @@ describe('computeCountryLevelExposure (seed fallback)', () => {
   });
 });
 
-describe('algorithm parity with handler', () => {
-  it('seed flow-weighted matches handler algorithm (union-based route coverage)', () => {
-    // The handler (chokepoint-exposure-utils.ts) uses:
-    //   if (importerRoutes.has(r) || exporterRoutes.has(r)) overlap++
-    // Verify the seed produces the same pattern: SA→TR Energy should show
-    // Hormuz (SA exporter route) even though TR importer doesn't have Gulf routes
-    const energy = computeFlowWeightedExposures('TR', '27', TURKEY_COMTRADE);
-    const hormuz = energy.find(e => e.chokepointId === 'hormuz_strait');
-    assert.ok(hormuz && hormuz.exposureScore > 0,
-      'Hormuz should appear from SA exporter routes via union-based coverage');
+describe('bilateral chokepoint transit', () => {
+  const hormuzScore = (importer, hs2, products) =>
+    computeFlowWeightedExposures(importer, hs2, products).find(e => e.chokepointId === 'hormuz_strait').exposureScore;
+  const product = (hs4, exporters) => [{
+    hs4, description: hs4, totalValue: 1_000_000, year: 2024,
+    topExporters: exporters.map(([partnerIso2, share]) => ({ partnerCode: 0, partnerIso2, value: share * 1_000_000, share })),
+  }];
+
+  it('a nearby Gulf corridor alone does not put an importer behind Hormuz', () => {
+    assert.equal(hormuzScore('DJ', '12', product('1201', [['US', 0.6], ['BR', 0.4]])), 0, 'Djibouti soybeans from the Americas');
+    assert.equal(hormuzScore('TR', '26', product('2612', [['KZ', 0.5], ['RU', 0.3], ['CA', 0.2]])), 0, 'Türkiye uranium ore');
+    assert.equal(hormuzScore('MO', '27', product('2711', [['AU', 1]])), 0, 'Macao LNG from Australia');
+  });
+
+  it('counts a supplier share when exactly one partner is inside the Gulf', () => {
+    assert.equal(hormuzScore('MO', '27', product('2711', [['QA', 0.4], ['AU', 0.6]])), 60, 'Qatari LNG share, energy-boosted');
+    assert.equal(hormuzScore('IQ', '81', product('8112', [['CN', 0.7], ['SA', 0.3]])), 70, 'Saudi-Iraqi trade stays inside the Gulf');
+    assert.equal(hormuzScore('US', '27', product('2709', [['SA', 0.3], ['CA', 0.7]])), 45, 'Saudi crude to the US');
+  });
+
+  it('keeps India-Gulf trade off the Malacca leg of the Gulf-Asia corridor', () => {
+    const exposures = computeFlowWeightedExposures('IN', '27', product('2709', [['SA', 1]]));
+    assert.equal(exposures.find(e => e.chokepointId === 'malacca_strait').exposureScore, 0);
+    assert.equal(exposures.find(e => e.chokepointId === 'hormuz_strait').exposureScore, 100);
   });
 });
 

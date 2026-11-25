@@ -1,5 +1,7 @@
 import { CHOKEPOINT_REGISTRY } from '../../../../src/config/chokepoint-registry';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
+import COUNTRY_REGIONS from '../../../../scripts/shared/iso2-to-region.json';
+import { bilateralTransitChokepointIds } from '../../../../scripts/shared/bilateral-chokepoint-transit.mjs';
 
 interface PortClusterEntry {
   nearestRouteIds: string[];
@@ -30,6 +32,11 @@ export interface ExposureEntry {
 }
 
 const clusters = COUNTRY_PORT_CLUSTERS as unknown as Record<string, PortClusterEntry>;
+const transitContext = {
+  clusters,
+  regions: COUNTRY_REGIONS as Record<string, string>,
+  chokepoints: CHOKEPOINT_REGISTRY,
+};
 
 export function getRouteIdsForCountry(iso2: string): string[] {
   return clusters[iso2]?.nearestRouteIds ?? [];
@@ -54,7 +61,6 @@ export function computeFlowWeightedExposures(
 
   if (matchingProducts.length === 0) return [];
 
-  const importerRoutes = new Set(getRouteIdsForCountry(importerIso2));
   const totalSectorValue = matchingProducts.reduce((s, p) => s + p.totalValue, 0);
 
   const cpScores = new Map<string, number>();
@@ -65,17 +71,8 @@ export function computeFlowWeightedExposures(
 
     for (const exporter of product.topExporters) {
       if (!exporter.partnerIso2) continue;
-      const exporterRoutes = new Set(getRouteIdsForCountry(exporter.partnerIso2));
-
-      for (const cp of CHOKEPOINT_REGISTRY) {
-        const cpRoutes = cp.routeIds;
-        let overlap = 0;
-        for (const r of cpRoutes) {
-          if (importerRoutes.has(r) || exporterRoutes.has(r)) overlap++;
-        }
-        const routeCoverage = overlap / Math.max(cpRoutes.length, 1);
-        const contribution = routeCoverage * exporter.share * productWeight * 100;
-        cpScores.set(cp.id, (cpScores.get(cp.id) ?? 0) + contribution);
+      for (const cpId of bilateralTransitChokepointIds(importerIso2, exporter.partnerIso2, transitContext)) {
+        cpScores.set(cpId, (cpScores.get(cpId) ?? 0) + exporter.share * productWeight * 100);
       }
     }
   }
