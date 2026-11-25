@@ -18,7 +18,18 @@ export interface TechHubLocation {
 interface TechHubIndex {
   hubs: Map<string, TechHubLocation>;
   byKeyword: Map<string, string[]>;
+  places: Set<string>;
 }
+
+// Product categories listed beside a company's brand names. As headline words
+// they are ordinary language ("Crews search for 6 aboard..."), so only the
+// company's own name places such a story at its hub.
+const GENERIC_PRODUCT_TERMS = new Set([
+  'search', 'cloud', 'e-commerce', 'gaming', 'command', 'embed', 'rerank', 'inference', 'transformers',
+  'apollo', 'erp', 'mlops', 'lakehouse', 'api platform', 'ai automation', 'ai search', 'ai recommendations',
+  'chip manufacturing', 'data labeling', 'foundation model platforms', 'model hub', 'inference chips',
+  'music streaming', '3nm process', '5nm process', 'european hq', 'european engineering hub', 'apac operations',
+]);
 
 let cachedIndex: TechHubIndex | null = null;
 
@@ -34,6 +45,7 @@ function buildTechHubIndex(): TechHubIndex {
 
   const hubs = new Map<string, TechHubLocation>();
   const byKeyword = new Map<string, string[]>();
+  const places = new Set<string>();
 
   const addKeyword = (keyword: string, hubId: string) => {
     const lower = keyword.toLowerCase();
@@ -41,6 +53,19 @@ function buildTechHubIndex(): TechHubIndex {
     if (!existing.includes(hubId)) {
       existing.push(hubId);
       byKeyword.set(lower, existing);
+    }
+  };
+
+  const addPlace = (place: string, hubId: string) => {
+    places.add(place.toLowerCase());
+    addKeyword(place, hubId);
+  };
+
+  const addProducts = (hub: TechHubLocation, products: string[] | undefined) => {
+    for (const product of products ?? []) {
+      if (GENERIC_PRODUCT_TERMS.has(product.toLowerCase())) continue;
+      hub.keywords.push(product.toLowerCase());
+      addKeyword(product, hub.id);
     }
   };
 
@@ -60,12 +85,12 @@ function buildTechHubIndex(): TechHubIndex {
 
     // Add keywords
     hub.keywords.push(eco.city.toLowerCase());
-    addKeyword(eco.city, eco.id);
+    addPlace(eco.city, eco.id);
 
     // Add name variations
     if (eco.name !== eco.city) {
       hub.keywords.push(eco.name.toLowerCase());
-      addKeyword(eco.name, eco.id);
+      addPlace(eco.name, eco.id);
     }
 
     // Add notable startups as keywords
@@ -104,15 +129,8 @@ function buildTechHubIndex(): TechHubIndex {
     if (existingHub) {
       // Add company name as keyword to existing hub
       existingHub.keywords.push(company.name.toLowerCase());
-      addKeyword(company.name, existingHub.id);
-
-      // Add key products as keywords
-      if (company.keyProducts) {
-        for (const product of company.keyProducts) {
-          existingHub.keywords.push(product.toLowerCase());
-          addKeyword(product, existingHub.id);
-        }
-      }
+      for (const name of company.name.split('/')) addKeyword(name, existingHub.id);
+      addProducts(existingHub, company.keyProducts);
     } else {
       // Create new hub for this company
       const hub: TechHubLocation = {
@@ -127,15 +145,9 @@ function buildTechHubIndex(): TechHubIndex {
         keywords: [company.name.toLowerCase(), company.city.toLowerCase()],
       };
 
-      addKeyword(company.name, company.id);
-      addKeyword(company.city, company.id);
-
-      if (company.keyProducts) {
-        for (const product of company.keyProducts) {
-          hub.keywords.push(product.toLowerCase());
-          addKeyword(product, company.id);
-        }
-      }
+      for (const name of company.name.split('/')) addKeyword(name, company.id);
+      addPlace(company.city, company.id);
+      addProducts(hub, company.keyProducts);
 
       hubs.set(company.id, hub);
     }
@@ -151,7 +163,7 @@ function buildTechHubIndex(): TechHubIndex {
         // Add the hub's nickname as keyword
         if (sh.name !== sh.city) {
           hub.keywords.push(sh.name.toLowerCase());
-          addKeyword(sh.name, hub.id);
+          addPlace(sh.name, hub.id);
         }
         break;
       }
@@ -172,10 +184,10 @@ function buildTechHubIndex(): TechHubIndex {
 
       if (sh.name !== sh.city) {
         hub.keywords.push(sh.name.toLowerCase());
-        addKeyword(sh.name, sh.id);
+        addPlace(sh.name, sh.id);
       }
 
-      addKeyword(sh.city, sh.id);
+      addPlace(sh.city, sh.id);
       hubs.set(sh.id, hub);
     }
   }
@@ -195,10 +207,10 @@ function buildTechHubIndex(): TechHubIndex {
   };
 
   for (const [alias, hubId] of Object.entries(regionAliases)) {
-    addKeyword(alias, hubId);
+    addPlace(alias, hubId);
   }
 
-  cachedIndex = { hubs, byKeyword };
+  cachedIndex = { hubs, byKeyword, places };
   return cachedIndex;
 }
 
@@ -207,21 +219,23 @@ export interface HubMatch {
   hub: TechHubLocation;
   confidence: number;
   matchedKeyword: string;
+  /** 'place' when the hub matched only by its city or region name, which any story can mention. */
+  evidence: 'place' | 'name';
 }
 
 export function inferHubsFromTitle(title: string): HubMatch[] {
   const index = buildTechHubIndex();
-  const matches: HubMatch[] = [];
+  const matchesByHub = new Map<string, HubMatch>();
   const tokens = tokenizeForMatch(title);
-  const seenHubs = new Set<string>();
 
   for (const [keyword, hubIds] of index.byKeyword) {
     if (keyword.length < 3) continue;
 
     if (matchKeyword(tokens, keyword)) {
+      const evidence = index.places.has(keyword) ? 'place' : 'name';
       for (const hubId of hubIds) {
-        if (seenHubs.has(hubId)) continue;
-        seenHubs.add(hubId);
+        const seen = matchesByHub.get(hubId);
+        if (seen && (seen.evidence === 'name' || evidence === 'place')) continue;
 
         const hub = index.hubs.get(hubId);
         if (!hub) continue;
@@ -236,17 +250,13 @@ export function inferHubsFromTitle(title: string): HubMatch[] {
           confidence = Math.min(1, confidence + 0.2);
         }
 
-        matches.push({
-          hubId,
-          hub,
-          confidence,
-          matchedKeyword: keyword,
-        });
+        matchesByHub.set(hubId, { hubId, hub, confidence, matchedKeyword: keyword, evidence });
       }
     }
   }
 
   // Sort by confidence descending
+  const matches = [...matchesByHub.values()];
   matches.sort((a, b) => b.confidence - a.confidence);
 
   return matches;

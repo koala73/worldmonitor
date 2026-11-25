@@ -34,7 +34,8 @@ describe('tech hub evidence', () => {
 
   it('still places a story that names the company', () => {
     const baidu = cluster('Baidu Search adds ERNIE answers', 'Reuters', 'https://www.reuters.com/x', 'tech');
-    assert.deepEqual(hubCities([baidu]), ['Beijing']);
+    const google = cluster('Google denies mass layoffs in India, says only 30 Google Cloud roles affected', 'Exchange4Media', 'https://example.com/g', 'tech');
+    assert.deepEqual(hubCities([baidu, google]), ['Beijing', 'Mountain View']);
   });
 
   it('ignores a city that only appears in the publisher byline', () => {
