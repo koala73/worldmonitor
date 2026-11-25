@@ -506,9 +506,9 @@ function entitiesCovered(from, to) {
 
 /** @param {{ t: Set<string>; e: Set<string> }} a @param {{ t: Set<string>; e: Set<string> }} b */
 function sameParties(a, b) {
-  const [fewer, more] = a.e.size <= b.e.size ? [a.e, b.e] : [b.e, a.e];
-  if (fewer.size < SAME_PARTIES_MIN_ENTITIES || !entitiesCovered(fewer, more)) return false;
-  if (fewer.size === more.size && !entitiesCovered(more, fewer)) return false;
+  if (Math.min(a.e.size, b.e.size) < SAME_PARTIES_MIN_ENTITIES) return false;
+  const aCovered = a.e.size <= b.e.size && entitiesCovered(a.e, b.e);
+  if (!aCovered && !(b.e.size <= a.e.size && entitiesCovered(b.e, a.e))) return false;
   let sharedTopicTokens = 0;
   for (const tok of a.t) {
     if (b.t.has(tok) && !a.e.has(tok) && !b.e.has(tok) && !CANDIDATE_STOPWORDS.has(tok)) sharedTopicTokens++;
