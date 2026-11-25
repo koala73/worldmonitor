@@ -33,6 +33,23 @@ describe('thermal escalation model', () => {
     assert.equal(clusters[1].detections.length, 1);
   });
 
+  it('takes cluster country and context from the detection country label', () => {
+    const nowMs = Date.UTC(2026, 2, 17, 12, 0, 0);
+    const result = computeThermalEscalationWatch([
+      makeDetection('iq', 30.2813, 47.3688, nowMs - 60 * 60 * 1000, { region: 'Iraq' }),
+      makeDetection('ae', 24.45, 54.38, nowMs - 60 * 60 * 1000, { region: 'United Arab Emirates' }),
+      makeDetection('sea', 24.85722, 53.71148, nowMs - 60 * 60 * 1000, { region: 'Other' }),
+    ], emptyThermalEscalationWatch(), { nowMs });
+    const byRegion = Object.fromEntries(result.watch.clusters.map((c) => [c.regionLabel, c]));
+    assert.equal(byRegion.Iraq.countryCode, 'IQ');
+    assert.equal(byRegion.Iraq.countryName, 'Iraq');
+    assert.equal(byRegion.Iraq.context, 'THERMAL_CONTEXT_CONFLICT_ADJACENT');
+    assert.equal(byRegion['United Arab Emirates'].countryCode, 'AE');
+    assert.equal(byRegion['United Arab Emirates'].context, 'THERMAL_CONTEXT_WILDLAND');
+    assert.equal(byRegion.Other.countryCode, 'XX');
+    assert.equal(byRegion.Other.context, 'THERMAL_CONTEXT_WILDLAND');
+  });
+
   it('builds an elevated or stronger conflict-adjacent cluster from raw detections', () => {
     const nowMs = Date.UTC(2026, 2, 17, 12, 0, 0);
     const detections = [

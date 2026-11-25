@@ -1992,6 +1992,7 @@
       "scripts/seed-fire-detections.mjs",
       "scripts/wildfire/bc-fire-points.mjs",
       "scripts/wildfire/cwfis-wfs.mjs",
+      "scripts/wildfire/fire-country.mjs",
       "scripts/wildfire/firms-area.mjs",
       "scripts/wildfire/source-outcome.mjs",
       "scripts/shared/cii-country-borders.data.mjs",

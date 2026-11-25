@@ -1,3 +1,5 @@
+import { fireRegionCountryCode } from '../wildfire/fire-country.mjs';
+
 const CLUSTER_RADIUS_KM = 20;
 const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const RECENT_PERSISTENCE_MS = 18 * 60 * 60 * 1000;
@@ -26,31 +28,6 @@ const CONFLICT_REGIONS = new Set([
   'Iraq',
   'Pakistan',
 ]);
-
-const REGION_TO_COUNTRY = {
-  Ukraine: { code: 'UA', name: 'Ukraine' },
-  Russia: { code: 'RU', name: 'Russia' },
-  Iran: { code: 'IR', name: 'Iran' },
-  'Israel/Gaza': { code: 'IL', name: 'Israel / Gaza' },
-  Syria: { code: 'SY', name: 'Syria' },
-  Taiwan: { code: 'TW', name: 'Taiwan' },
-  'North Korea': { code: 'KP', name: 'North Korea' },
-  'Saudi Arabia': { code: 'SA', name: 'Saudi Arabia' },
-  Turkey: { code: 'TR', name: 'Turkey' },
-  Yemen: { code: 'YE', name: 'Yemen' },
-  Myanmar: { code: 'MM', name: 'Myanmar' },
-  Sudan: { code: 'SD', name: 'Sudan' },
-  'South Sudan': { code: 'SS', name: 'South Sudan' },
-  Ethiopia: { code: 'ET', name: 'Ethiopia' },
-  Somalia: { code: 'SO', name: 'Somalia' },
-  'Democratic Republic of the Congo': { code: 'CD', name: 'DR Congo' },
-  Libya: { code: 'LY', name: 'Libya' },
-  Mali: { code: 'ML', name: 'Mali' },
-  'Burkina Faso': { code: 'BF', name: 'Burkina Faso' },
-  Niger: { code: 'NE', name: 'Niger' },
-  Iraq: { code: 'IQ', name: 'Iraq' },
-  Pakistan: { code: 'PK', name: 'Pakistan' },
-};
 
 export function round(value, digits = 1) {
   const factor = 10 ** digits;
@@ -162,7 +139,7 @@ function deriveContext(regionLabel) {
 }
 
 function deriveCountry(regionLabel) {
-  return REGION_TO_COUNTRY[regionLabel] || { code: 'XX', name: regionLabel || 'Unknown' };
+  return { code: fireRegionCountryCode(regionLabel) ?? 'XX', name: regionLabel || 'Unknown' };
 }
 
 function deriveConfidence(observationCount, uniqueSourceCount, baselineSamples) {
