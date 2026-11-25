@@ -21,11 +21,11 @@ import {
   renderMarkdown,
   requiresInput,
   runCanary,
+  RETRY_DELAY_MS,
   selectCanaryTools,
   summarize,
   ISSUE_TITLE,
 } from '../scripts/mcp-tool-canary.mjs';
-import * as canary from '../scripts/mcp-tool-canary.mjs';
 import { CACHED_FETCH_NEGATIVE_TTL_SECONDS } from '../server/_shared/redis.ts';
 
 const OUTPUT_SCHEMA = {
@@ -141,8 +141,8 @@ describe('runCanary', () => {
 
   it('waits out the server negative cache before retrying, so the retry reaches the upstream again (#11251)', () => {
     assert.ok(
-      canary.RETRY_DELAY_MS > CACHED_FETCH_NEGATIVE_TTL_SECONDS * 1000,
-      `retry gap ${canary.RETRY_DELAY_MS}ms must exceed the ${CACHED_FETCH_NEGATIVE_TTL_SECONDS}s negative cache that answers a repeated failing call`,
+      RETRY_DELAY_MS > CACHED_FETCH_NEGATIVE_TTL_SECONDS * 1000,
+      `retry gap ${RETRY_DELAY_MS}ms must exceed the ${CACHED_FETCH_NEGATIVE_TTL_SECONDS}s negative cache that answers a repeated failing call`,
     );
   });
 
@@ -278,13 +278,13 @@ describe('review regressions (PR #10353)', () => {
   });
 
   it('stops starting calls once the run budget is spent and reports the rest as not run', async () => {
-    const tools = [tool('get_a'), tool('get_b'), tool('get_c'), tool('get_d')];
+    const tools = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((n) => tool(`get_${n}`));
     const { fetchImpl, calls } = fakeFetch(tools, async () => {
       await new Promise((r) => setTimeout(r, 40));
       return { status: 503, body: '' };
     });
     const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST, runBudgetMs: 60 });
-    assert.equal(report.results.length, 4, 'every tool is accounted for');
+    assert.equal(report.results.length, 7, 'every tool is accounted for');
     assert.ok(report.results.some((r) => r.kind === 'budget_exhausted'));
     assert.ok(calls.length < 8, `budget must stop retries and new calls (made ${calls.length})`);
     assert.equal(summarize(report).healthy, false);
