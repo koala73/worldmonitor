@@ -2625,6 +2625,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor uwiano wa mikakati ya juu-ya mavuno kwa Hazina za muda mrefu, iliyosasushwa kwa mabadiliko ya sehemu halisi na sehemu ya juu-ya mavuno: (HYG / TLT) / (VIX × Sehemu ya juu-ya mavuno / 100). Hii sio Kansas City Fed Financial Stress Index. Kusoma kwa 1.5 au zaidi ni mkazo mdogo; chini ya 0.3 ni mkazo mkubwa.",
       "title": "Kiashiria cha Dhiki ya Kifedha",
       "usFsiValue": "Thamani ya US Financial Stress Indicator",
+      "asOf": "kufikia {{date}}",
       "cissTitle": "EU CISS (Mfadhaiko wa Mfumo wa Eneo la Euro)",
       "cissStale": "European Central Bank haikuchapisha thamani mpya — kusoma hiki kinaweza kuwa cha kadimu.",
       "notAvailable": "N/A",

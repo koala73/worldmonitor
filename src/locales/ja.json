@@ -2325,6 +2325,7 @@
       "infoTooltip": "<strong>金融ストレス指標</strong> World Monitorの高利回り格付債からロング米国債への比率を株式ボラティリティとハイイールドスプレッドで調整：(HYG / TLT) / (VIX × ハイイールドスプレッド / 100)。これはカンザスシティ連邦準備銀行の金融ストレス指数ではありません。1.5以上は低ストレス、0.3未満は高ストレスです。",
       "title": "金融ストレス指数",
       "usFsiValue": "米国金融ストレス指標値",
+      "asOf": "{{date}} 時点",
       "cissTitle": "EU CISS(ユーロ圏システミックストレス)",
       "notAvailable": "N/A",
       "interpretation": {

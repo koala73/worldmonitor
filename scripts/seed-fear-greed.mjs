@@ -29,7 +29,8 @@ async function fetchYahooSymbol(symbol) {
     const closes = result.indicators?.quote?.[0]?.close ?? [];
     const validCloses = closes.filter(v => v != null);
     const price = result.meta?.regularMarketPrice ?? validCloses.at(-1) ?? null;
-    return { symbol, price, closes: validCloses };
+    const at = result.meta?.regularMarketTime * 1000;
+    return { symbol, price, closes: validCloses, ...(Number.isFinite(at) && at > 0 && { at }) };
   } catch (e) {
     const cause = e.cause?.message ?? e.cause?.code ?? '';
     console.warn(`  Yahoo ${symbol}: ${e.message}${cause ? ` [${cause}]` : ''}`);
@@ -191,6 +192,10 @@ function fredLatest(obs) {
   if (!obs) return null;
   const v = parseFloat(obs.at(-1)?.value ?? 'NaN');
   return Number.isFinite(v) ? v : null;
+}
+function fredLatestAt(obs) {
+  const at = Date.parse(obs?.at(-1)?.date ?? '');
+  return Number.isFinite(at) ? at : null;
 }
 function fredNMonthsAgo(obs, months) {
   if (!obs) return null;
@@ -434,6 +439,8 @@ async function fetchAll() {
     else if (fsiValue >= 0.3) fsiLabel = 'Elevated Stress';
     else fsiLabel = 'High Stress';
   }
+  const fsiInputTimes = [hyg?.at, tlt?.at, vixData?.price != null ? vixData.at : fredLatestAt(vixObs), fredLatestAt(hyObs)];
+  const fsiAsOf = fsiInputTimes.every(Number.isFinite) ? Math.min(...fsiInputTimes) : null;
 
   const SECTOR_ETF_NAMES = { XLK: 'Technology', XLF: 'Financials', XLE: 'Energy', XLV: 'Health Care', XLY: 'Consumer Discr.', XLP: 'Consumer Staples', XLI: 'Industrials', XLB: 'Materials', XLU: 'Utilities', XLRE: 'Real Estate', XLC: 'Comm. Services' };
   const sectorPerformance = Object.entries(SECTOR_ETF_NAMES).map(([sym, name]) => {
@@ -469,7 +476,7 @@ async function fetchAll() {
       pctAbove200d: pctAbove200d != null ? { value: pctAbove200d } : null,
       yield10y: fredLatest(dgs10Obs) != null ? { value: fredLatest(dgs10Obs) } : null,
       fedRate:  fedRateStr ? { value: fedRateStr } : null,
-      fsi:      fsiValue != null ? { value: fsiValue, label: fsiLabel, hygPrice, tltPrice } : null,
+      fsi:      fsiValue != null ? { value: fsiValue, label: fsiLabel, hygPrice, tltPrice, ...(fsiAsOf != null && { asOf: fsiAsOf }) } : null,
     },
     sectorPerformance,
     unavailable: false,

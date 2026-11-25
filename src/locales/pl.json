@@ -2358,6 +2358,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor stosunek kredytów wysokodochodowych do długoterminowych obligacji skarbowych, skorygowany o zmienność akcji i spread wysokodochodowy: (HYG / TLT) / (VIX × High-yield spread / 100). To nie jest Financial Stress Index Kansas City Fed. Odczyt 1,5 lub wyższy oznacza niski stress; poniżej 0,3 oznacza wysoki stress.",
       "title": "Wskaźnik Stresu Finansowego",
       "usFsiValue": "Wartość Financial Stress Indicator USA",
+      "asOf": "Stan na {{date}}",
       "cissTitle": "EU CISS (Systemowy Stres w Strefie Euro)",
       "notAvailable": "N/D",
       "interpretation": {

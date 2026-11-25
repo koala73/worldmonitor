@@ -26,6 +26,7 @@ function parseYahooChart(data, meta) {
   const closes = result.indicators?.quote?.[0]?.close;
   // Same float64 conversion noise as the shared parseYahooChart — 51% of this key (#5300).
   const sparkline = roundSparkline((closes || []).filter((v) => v != null));
+  const priceAt = chartMeta.regularMarketTime * 1000;
 
   return {
     symbol: meta.symbol,
@@ -36,6 +37,7 @@ function parseYahooChart(data, meta) {
     price,
     change: +change.toFixed(2),
     sparkline,
+    ...(Number.isFinite(priceAt) && priceAt > 0 && { priceAt }),
   };
 }
 
@@ -51,7 +53,7 @@ async function fetchGulfQuotes() {
       if (meta.type === 'oil') {
         const q = await fetchAvPhysicalCommodity(meta.symbol, avKey);
         if (q) {
-          quotes.push({ symbol: meta.symbol, name: meta.name, country: meta.country, flag: meta.flag, type: meta.type, price: q.price, change: +q.change.toFixed(2), sparkline: q.sparkline });
+          quotes.push({ symbol: meta.symbol, name: meta.name, country: meta.country, flag: meta.flag, type: meta.type, price: q.price, change: +q.change.toFixed(2), sparkline: q.sparkline, ...(q.priceAt && { priceAt: q.priceAt }) });
           covered.add(meta.symbol);
           console.log(`  [AV:physical] ${meta.symbol}: $${q.price} (${q.change > 0 ? '+' : ''}${q.change.toFixed(2)}%)`);
         }
@@ -59,7 +61,7 @@ async function fetchGulfQuotes() {
         const fromCurrency = meta.symbol.replace('USD=X', ''); // 'SARUSD=X' → 'SAR'
         const q = await fetchAvFxDaily(fromCurrency, avKey);
         if (q) {
-          quotes.push({ symbol: meta.symbol, name: meta.name, country: meta.country, flag: meta.flag, type: meta.type, price: q.price, change: +q.change.toFixed(2), sparkline: q.sparkline });
+          quotes.push({ symbol: meta.symbol, name: meta.name, country: meta.country, flag: meta.flag, type: meta.type, price: q.price, change: +q.change.toFixed(2), sparkline: q.sparkline, ...(q.priceAt && { priceAt: q.priceAt }) });
           covered.add(meta.symbol);
           console.log(`  [AV:fx] ${meta.symbol}: ${q.price} (${q.change > 0 ? '+' : ''}${q.change.toFixed(2)}%)`);
         }

@@ -2336,6 +2336,7 @@
       "infoTooltip": "<strong>Mali Stres Göstergesi</strong> WorldMonitor yüksek getirili kredi ile uzun dönem hazine bonolarının oranı, hisse senedi oynaklığı ve yüksek getirili spread'e göre ayarlanmış: (HYG / TLT) / (VIX × Yüksek getirili spread / 100). Bu Kansas City Fed Mali Stres Endeksi değildir. 1,5 ve üzeri bir ölçüm düşük strestir; 0,3'ün altı yüksek streştir.",
       "title": "Finansal Stres Göstergesi",
       "usFsiValue": "ABD Mali Stres Göstergesi değeri",
+      "asOf": "{{date}} itibarıyla",
       "cissTitle": "EU CISS (Euro Bölgesi Sistematik Stres)",
       "notAvailable": "Kullanılabilir Değil",
       "interpretation": {

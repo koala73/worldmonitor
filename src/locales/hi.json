@@ -2622,6 +2622,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor high-yield credit से long Treasuries का अनुपात, equity volatility और high-yield spread के लिए समायोजित: (HYG / TLT) / (VIX × High-yield spread / 100)। यह Kansas City Fed Financial Stress Index नहीं है। 1.5 या उससे अधिक का reading कम stress है; 0.3 से नीचे high stress है।",
       "title": "वित्तीय तनाव संकेतक",
       "usFsiValue": "अमेरिकी वित्तीय तनाव संकेतक का मान",
+      "asOf": "{{date}} तक",
       "cissTitle": "EU CISS (यूरो क्षेत्र प्रणालीगत तनाव)",
       "cissStale": "European Central Bank ने नया value प्रकाशित नहीं किया है — यह reading पुरानी हो सकती है।",
       "notAvailable": "उपलब्ध नहीं",

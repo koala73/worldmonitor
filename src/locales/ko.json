@@ -2325,6 +2325,7 @@
       "infoTooltip": "<strong>금융 스트레스 지수</strong> World Monitor의 고수익 채권 대 장기 국고채 비율, 주식 변동성 및 고수익 스프레드로 조정: (HYG / TLT) / (VIX × High-yield spread / 100). 이는 캔자스시티 연방준비은행 금융 스트레스 지수가 아닙니다. 1.5 이상의 수치는 낮은 스트레스이고, 0.3 이하는 높은 스트레스입니다.",
       "title": "금융 스트레스 지표",
       "usFsiValue": "미국 금융 스트레스 지수 값",
+      "asOf": "{{date}} 기준",
       "cissTitle": "EU CISS (유로존 시스템 스트레스)",
       "notAvailable": "해당 없음",
       "interpretation": {

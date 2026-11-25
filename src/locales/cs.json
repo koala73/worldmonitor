@@ -2358,6 +2358,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> World Monitor poměr vysokovýnosových kreditů k dlouhodobým dluhopisům, upraven o volatilitu akcií a vysokovýnosový spread: (HYG / TLT) / (VIX × High-yield spread / 100). Toto není Kansas City Fed Financial Stress Index. Hodnota 1,5 nebo vyšší značí nízkou zátěž; pod 0,3 vysokou zátěž.",
       "title": "Indikátor finanční stability",
       "usFsiValue": "Hodnota US Financial Stress Indicator",
+      "asOf": "k {{date}}",
       "cissTitle": "EU CISS (Systemické napětí eurozóny)",
       "notAvailable": "N/A",
       "interpretation": {

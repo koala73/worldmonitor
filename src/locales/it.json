@@ -2347,6 +2347,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> Rapporto World Monitor tra credito ad alto rendimento e Treasury a lungo termine, aggiustato per la volatilità azionaria e lo spread ad alto rendimento: (HYG / TLT) / (VIX × spread ad alto rendimento / 100). Questo non è l'indice di stress finanziario della Federal Reserve di Kansas City. Un valore di 1,5 o superiore indica basso stress; al di sotto di 0,3 indica alto stress.",
       "title": "Indicatore di Stress Finanziario",
       "usFsiValue": "Valore dell'indicatore di stress finanziario statunitense",
+      "asOf": "Al {{date}}",
       "cissTitle": "EU CISS (Stress Sistemico dell'Area Euro)",
       "notAvailable": "N/D",
       "interpretation": {

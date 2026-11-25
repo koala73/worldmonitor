@@ -2347,6 +2347,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> Raport World Monitor dintre creditele cu randament ridicat și obligațiuni pe termen lung, ajustat pentru volatilitatea acțiunilor și spread-ul randamentului ridicat: (HYG / TLT) / (VIX × spread randament ridicat / 100). Aceasta nu este Indicele de Stres Financiar al Bancii Federale din Kansas City. O citire de 1,5 sau mai mare indică stres redus; sub 0,3 indică stres ridicat.",
       "title": "Indicatorul de Stres Financiar",
       "usFsiValue": "Valoarea indicatorului de stres financiar al SUA",
+      "asOf": "la {{date}}",
       "cissTitle": "EU CISS (Stres Sistemic Zona Euro)",
       "notAvailable": "N/A",
       "interpretation": {
