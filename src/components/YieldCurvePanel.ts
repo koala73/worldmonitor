@@ -210,7 +210,8 @@ function renderRatesTab(rows: RateRow[]): string {
     const latest = row.obs[row.obs.length - 1];
     if (!latest) return '';
     const prev = row.obs[row.obs.length - 2];
-    const changeBps = prev ? Math.round((latest.value - prev.value) * 100) : null;
+    const diff = prev ? latest.value - prev.value : null;
+    const changeBps = diff === null ? null : Math.sign(diff) * Math.round(Math.abs(diff) * 100);
     const changeStr = changeBps === null ? '' : `${changeBps > 0 ? '+' : ''}${changeBps}bps`;
     const changeColor = changeBps === null || changeBps === 0 ? 'var(--text-dim)' : changeBps > 0 ? '#e74c3c' : '#27ae60';
     return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">

@@ -53,11 +53,13 @@ it('shows ECB rate changes in basis points without a negative zero', async () =>
     ESTR: series(['2026-11-20', 2.444], ['2026-11-23', 2.443]),
     EURIBOR6M: series(['2026-09', 2.9215909], ['2026-10', 2.9746818]),
     EURIBOR1Y: series(['2026-09', 2.31], ['2026-10', 2.2]),
+    EURIBOR3M: series(['2026-09', 2.75], ['2026-10', 2.625]),
   }, 'rates');
 
   expect(text).toContain('Euro short-term rate 2.44% 0bps 2026-11-23');
   expect(text).toContain('EURIBOR 6M 2.97% +5bps 2026-10');
   expect(text).toContain('EURIBOR 1Y 2.20% -11bps 2026-10');
+  expect(text).toContain('EURIBOR 3M 2.63% -13bps 2026-10');
   expect(text).not.toContain('-0');
 });
 
