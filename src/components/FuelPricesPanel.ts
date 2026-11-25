@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { getLocale, t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
@@ -8,6 +8,27 @@ import type { ListFuelPricesResponse } from '@/generated/client/worldmonitor/eco
 import { EconomicServiceClient } from '@/services/generated-rpc-clients';
 
 const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
+
+type Fuel = NonNullable<ListFuelPricesResponse['countries'][number]['gasoline']>;
+
+const DAY_MS = 86_400_000;
+const STALE_AFTER_DAYS = 14;
+
+function observedLabel(fuel: Fuel, asOfMs: number): string {
+  const observedMs = Date.parse(`${fuel.observedAt}T00:00:00Z`);
+  if (!Number.isFinite(observedMs)) return '';
+  const date = new Date(observedMs);
+  if (/monthly/i.test(fuel.grade)) {
+    const month = date.toLocaleDateString(getLocale(), { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    return `<span class="gb-observed">${escapeHtml(t('components.fuelPrices.monthlyMean', { month }))}</span>`;
+  }
+  const ageDays = Math.floor((asOfMs - observedMs) / DAY_MS);
+  const stale = ageDays > STALE_AFTER_DAYS;
+  const showYear = stale || date.getUTCFullYear() !== new Date(asOfMs).getUTCFullYear();
+  const day = date.toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', year: showYear ? 'numeric' : undefined, timeZone: 'UTC' });
+  if (!stale) return `<span class="gb-observed">${escapeHtml(day)}</span>`;
+  return `<span class="gb-observed gb-observed-stale">${escapeHtml(t('components.fuelPrices.observedStale', { date: day, days: ageDays }))}</span>`;
+}
 
 export class FuelPricesPanel extends Panel {
   constructor() {
@@ -54,12 +75,14 @@ export class FuelPricesPanel extends Panel {
     const priciestDsl = data.mostExpensiveDiesel ?? '';
 
     const showWow = data.wowAvailable;
+    const fetchedMs = Date.parse(data.fetchedAt);
+    const asOfMs = Number.isFinite(fetchedMs) ? fetchedMs : Date.now();
 
     const rows = sorted.map(c => {
       const gas = c.gasoline;
       const dsl = c.diesel;
 
-      function fuelCell(fuel: typeof gas, cheapCode: string, priceyCode: string, code: string): string {
+      function fuelCell(fuel: Fuel | undefined, cheapCode: string, priceyCode: string, code: string): string {
         if (!fuel?.usdPrice) return `<td class="gb-cell gb-na">N/A</td>`;
         const cls = code === cheapCode ? 'gb-cheapest' : code === priceyCode ? 'gb-priciest' : '';
         let wowStr = '';
@@ -68,7 +91,7 @@ export class FuelPricesPanel extends Panel {
           const wowCls = fuel.wowPct >= 0 ? 'bm-wow-up' : 'bm-wow-down';
           wowStr = ` <span class="${wowCls}">${sign}${Math.abs(fuel.wowPct).toFixed(1)}%</span>`;
         }
-        return `<td class="gb-cell ${cls}">$${fuel.usdPrice.toFixed(3)}${wowStr}</td>`;
+        return `<td class="gb-cell ${cls}">$${fuel.usdPrice.toFixed(3)}${wowStr}${observedLabel(fuel, asOfMs)}</td>`;
       }
 
       return `<tr>

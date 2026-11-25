@@ -2507,7 +2507,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Retail pump prices for gasoline and diesel across 30+ countries, normalized to USD/liter for comparison. Prices are sourced from official government open-data programs and updated weekly. Cheapest and most expensive countries are highlighted. Week-over-week change shown when prior week data is available.",
-      "countries": "countries"
+      "countries": "countries",
+      "observedStale": "{{date}}, {{days}} days old",
+      "monthlyMean": "{{month}} avg"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> The UN Food and Agriculture Organization's Food Price Index tracks international export prices for a basket of food commodities (Cereals, Dairy, Meat, Oils, Sugar), base 2014-2016=100. Updated monthly on the first Friday of each month.",
