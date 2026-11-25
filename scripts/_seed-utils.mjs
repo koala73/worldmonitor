@@ -2288,14 +2288,17 @@ export async function fetchYahooFxRatesWithProvenance(fxSymbols, fallbacks = {})
     if (currency === 'USD') { rates['USD'] = 1.0; continue; }
     let price = null;
     try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`;
       const resp = await fetch(url, {
         headers: { 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(8_000),
       });
       if (resp.ok) {
         const data = await resp.json();
-        price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+        // meta.regularMarketPrice is rounded to priceHint decimals (IDR 0.0001,
+        // VND 0), so convert with the latest close, which keeps full precision.
+        const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+        price = Array.isArray(closes) ? closes.findLast(isFinitePositiveRate) : null;
       }
     } catch {}
     if (isFinitePositiveRate(price)) {
