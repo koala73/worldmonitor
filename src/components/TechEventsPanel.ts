@@ -17,6 +17,11 @@ function localDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function parseLocalDate(dateKey: string): Date {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(year!, month! - 1, day);
+}
+
 function isNotOver(event: TechEvent, todayKey: string): boolean {
   return (event.endDate || event.startDate) >= todayKey;
 }
@@ -152,8 +157,8 @@ export class TechEventsPanel extends Panel {
   }
 
   private buildEvent(event: TechEvent): HTMLElement {
-    const startDate = new Date(event.startDate);
-    const endDate = new Date(event.endDate);
+    const startDate = parseLocalDate(event.startDate);
+    const endDate = parseLocalDate(event.endDate || event.startDate);
     const now = new Date();
 
     const isToday = startDate.toDateString() === now.toDateString();

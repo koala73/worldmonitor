@@ -53,3 +53,15 @@ it('keeps earnings happening today in Earnings and drops ones that ended yesterd
   expect(listedTitles()).toEqual(['Earnings: DELL, HPQ, Xiaomi']);
 });
 
+it('shows date-only events on their calendar day west of UTC', () => {
+  const originalTz = process.env.TZ;
+  process.env.TZ = 'America/Los_Angeles';
+  try {
+    vi.setSystemTime(new Date(2026, 10, 25, 12, 0, 0));
+    new TechEventsPanel('events');
+    const dates = [...document.querySelectorAll('.tech-events-list .event-dates')].map(el => el.textContent);
+    expect(dates).toEqual(['Nov 24 - Nov 26', 'Nov 25', 'Nov 25', 'Nov 27']);
+  } finally {
+    process.env.TZ = originalTz;
+  }
+});
