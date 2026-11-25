@@ -4,7 +4,6 @@ import { describe, it } from 'node:test';
 import {
   buildDeductionPrompt,
   inferDeductionMode,
-  inferForecastHorizon,
   inferProviderLabel,
   postProcessDeductionOutput,
   splitDeductionContext,
@@ -45,23 +44,6 @@ describe('splitDeductionContext', () => {
   });
 });
 
-describe('inferForecastHorizon', () => {
-  it('uses the horizon the question asks for', () => {
-    assert.equal(inferForecastHorizon('What happens in the next 24 hours in the Strait of Hormuz?'), 'next 24 hours');
-    assert.equal(inferForecastHorizon('Outlook within 48h for Gaza talks'), 'next 48h');
-    assert.equal(inferForecastHorizon('Where is Brent heading over the coming week?'), 'next week');
-    assert.equal(inferForecastHorizon('Escalation risk in the next 2-3 days?'), 'next 2-3 days');
-  });
-
-  it('returns null when the question names more than one window', () => {
-    assert.equal(inferForecastHorizon('The election is within 6 weeks. What happens in the next 24 hours?'), null);
-  });
-
-  it('falls back to 24-72h when the question names no horizon', () => {
-    assert.equal(inferForecastHorizon('What is the strategic outlook for the Gulf theater?'), 'next 24-72h');
-  });
-});
-
 describe('buildDeductionPrompt', () => {
   it('builds a structured forecast prompt for panel usage', () => {
     const { mode, systemPrompt, userPrompt } = buildDeductionPrompt({
@@ -71,32 +53,21 @@ describe('buildDeductionPrompt', () => {
     });
 
     assert.equal(mode, 'forecast');
-    assert.match(systemPrompt, /\*\*Most likely path \(next 24-72h\)\*\*/);
+    assert.match(systemPrompt, /\*\*Most likely path \(next <window>\)\*\*/);
     assert.match(systemPrompt, /2026-03-15 UTC/);
     assert.match(userPrompt, /Recent News Signals/);
   });
 
-  it('heads the most likely path with the question horizon, not a fixed 24-72h', () => {
+  it('takes the most likely path window from the question instead of fixing it at 24-72h', () => {
     const { systemPrompt } = buildDeductionPrompt({
-      query: 'What will happen in the next 24 hours between Israel and Iran?',
-      geoContext: 'Theater: Levant.',
-      now: new Date('2026-03-15T12:00:00Z'),
-    });
-
-    assert.match(systemPrompt, /\*\*Most likely path \(next 24 hours\)\*\*/);
-    assert.doesNotMatch(systemPrompt, /24-72h/);
-  });
-
-  it('asks the model for the question window when the question names several', () => {
-    const { systemPrompt } = buildDeductionPrompt({
-      query: 'The election is within 6 weeks. What happens in the next 24 hours?',
+      query: 'The election is within 6 weeks. Will talks resume in 48 hours?',
       geoContext: 'Country: Israel.',
       now: new Date('2026-03-15T12:00:00Z'),
     });
 
-    assert.match(systemPrompt, /\*\*Most likely path \(next <horizon>\)\*\*/);
-    assert.match(systemPrompt, /Replace <horizon> .* the forecast window the question asks about/);
-    assert.doesNotMatch(systemPrompt, /next 6 weeks/);
+    assert.match(systemPrompt, /replace <window> with the time window the question asks about/);
+    assert.match(systemPrompt, /or 24-72h if it names none/);
+    assert.doesNotMatch(systemPrompt, /Most likely path \(next 24-72h\)/);
   });
 
   it('builds a terse brief prompt for correlation-card usage', () => {

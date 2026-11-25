@@ -34,18 +34,6 @@ export function inferDeductionMode(query: string): DeductionMode {
   return BRIEF_MODE_PATTERNS.some((pattern) => pattern.test(query)) ? 'brief' : 'forecast';
 }
 
-const DEFAULT_FORECAST_HORIZON = 'next 24-72h';
-const QUESTION_HORIZON_RE = /\b(?:next|coming|within)\s+(?:the\s+next\s+)?(\d+(?:\s*[-–]\s*\d+)?\s*(?:h|hrs?|hours?|days?|weeks?|months?|years?)|day|week|month|year)\b/gi;
-
-/** The forecast window the question names, the default when it names none, or null when it names several. */
-export function inferForecastHorizon(query: string): string | null {
-  const horizons = new Set(
-    Array.from(query.matchAll(QUESTION_HORIZON_RE), (m) => `next ${(m[1] ?? '').replace(/\s+/g, ' ').toLowerCase()}`),
-  );
-  if (horizons.size > 1) return null;
-  return horizons.values().next().value ?? DEFAULT_FORECAST_HORIZON;
-}
-
 export function splitDeductionContext(geoContext: string): PromptContextParts {
   const normalized = normalizeWhitespace(geoContext);
   if (!normalized) {
@@ -122,7 +110,6 @@ export function buildDeductionPrompt(input: {
   const { primaryContext, recentNews } = splitDeductionContext(input.geoContext);
   const evidence = buildSharedEvidencePrompt(primaryContext, recentNews);
 
-  const horizon = inferForecastHorizon(input.query);
   const predictionBlock = input.predictionContext
     ? `\n\n${input.predictionContext}`
     : '';
@@ -166,13 +153,14 @@ Rules:
 Return Markdown with exactly these sections in this order:
 **Bottom line**
 **What we know**
-**Most likely path (${horizon ?? 'next <horizon>'})**
+**Most likely path (next <window>)**
 **Alternative paths**
 **Key drivers**
 **Signals to watch**
 **Confidence**
 
-Formatting rules:${horizon ? '' : `\n- Replace <horizon> in "Most likely path" with the forecast window the question asks about.`}
+Formatting rules:
+- In the "Most likely path" heading, replace <window> with the time window the question asks about (for example 24 hours or 2 weeks), or 24-72h if it names none.
 - Use short bullets under each section where useful.
 - In "Alternative paths", include 2 alternatives with rough likelihood bands.
 - In "Confidence", state High, Medium, or Low and explain why.
