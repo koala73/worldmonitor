@@ -9154,5 +9154,11 @@
     "audience": "international",
     "language": "fr",
     "ownershipClass": "public-service"
+  },
+  "Українська правда": {
+    "country": "UA",
+    "audience": "domestic",
+    "language": "uk",
+    "ownershipClass": "private"
   }
 }
