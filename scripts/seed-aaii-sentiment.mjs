@@ -440,7 +440,7 @@ async function fetchAaiiSentiment({ fetchDeadlineAtMs }) {
 
   // Compute rolling averages
   const last8 = weeks.slice(0, 8);
-  const avg8w = last8.length > 0 ? {
+  const avg8w = last8.length === 8 ? {
     bullish: +(last8.reduce((s, w) => s + w.bullish, 0) / last8.length).toFixed(1),
     bearish: +(last8.reduce((s, w) => s + w.bearish, 0) / last8.length).toFixed(1),
     neutral: +(last8.reduce((s, w) => s + w.neutral, 0) / last8.length).toFixed(1),

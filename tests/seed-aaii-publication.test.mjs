@@ -282,7 +282,7 @@ test('usable live HTML publishes the existing AAII consumer shape', () => {
   assert.equal(canonical.data.seededAt, '2026-10-15T22:02:40.592Z');
   assert.deepEqual(canonical.data.latest, { date: '2026-10-15', bullish: 40, bearish: 30, neutral: 30, spread: 10 });
   assert.deepEqual(canonical.data.weeks, [canonical.data.latest]);
-  assert.deepEqual(canonical.data.avg8w, { bullish: 40, bearish: 30, neutral: 30, spread: 10 });
+  assert.equal(canonical.data.avg8w, null, 'one survey week is not an eight-week average');
   assert.equal(result.cache[key].expiresAt, now + 21 * 86400_000);
   assert.equal(JSON.parse(result.cache[metaKey].value).fetchedAt, now);
   assert.match(result.log, /"event":"seed_complete"/);
