@@ -83,8 +83,9 @@ const ET_TIME_FMT = new Intl.DateTimeFormat('en-US', {
 
 /** Scheduled release time in US Eastern time, e.g. "8:30 AM ET". */
 export function formatNqReleaseTime(releaseAt: number | undefined): string {
-  if (!releaseAt || !Number.isFinite(releaseAt)) return 'Time unknown';
-  return `${ET_TIME_FMT.format(releaseAt)} ET`;
+  const at = new Date(releaseAt ?? Number.NaN);
+  if (!releaseAt || Number.isNaN(at.getTime())) return 'Time unknown';
+  return `${ET_TIME_FMT.format(at)} ET`;
 }
 
 function formatHour(hour: string | undefined): string {
