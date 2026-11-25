@@ -5785,7 +5785,7 @@
           "ownerDomain": "L'adresse e-mail de votre compte doit être un domaine professionnel pour inviter des collègues.",
           "self": "Vous ne pouvez pas vous inviter vous-même.",
           "inviteeDomain": "L'adresse e-mail de l'invité doit être un domaine professionnel.",
-          "rateLimited": "Vous avez envoyé le maximum d'invitations autorisées par jour. Réessayez demain."
+          "rateLimited": "Vous avez atteint la limite de 20 invitations sur une fenêtre glissante de 24 heures. Veuillez patienter avant d'inviter d'autres collègues."
         }
       },
       "enterpriseSeats": {

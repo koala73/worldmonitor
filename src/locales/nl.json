@@ -5749,7 +5749,7 @@
           "ownerDomain": "Het e-mailadres van uw account moet een zakelijk domein hebben om teamleden uit te nodigen.",
           "self": "U kunt uzelf niet uitnodigen.",
           "inviteeDomain": "Het e-mailadres van de genodigde moet een zakelijk domein zijn.",
-          "rateLimited": "U hebt het maximum aantal uitnodigingen per dag verzonden. Probeer het morgen opnieuw."
+          "rateLimited": "Je hebt het maximum van 20 uitnodigingen binnen een voortschrijdend venster van 24 uur bereikt. Wacht even voordat je meer teamgenoten uitnodigt."
         }
       },
       "enterpriseSeats": {

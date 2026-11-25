@@ -5785,7 +5785,7 @@
           "ownerDomain": "Emailul tău de cont trebuie să fie dintr-un domeniu de companie pentru a invita coechipieri.",
           "self": "Nu te poți invita pe tine însuți.",
           "inviteeDomain": "Emailul persoanei invitate trebuie să fie dintr-un domeniu de companie.",
-          "rateLimited": "Ai atins numărul maxim de invitații permise pe zi. Încearcă din nou mâine."
+          "rateLimited": "Ai atins limita maximă de 20 de invitații într-o fereastră mobilă de 24 de ore. Așteaptă înainte de a invita alți colegi."
         }
       },
       "enterpriseSeats": {

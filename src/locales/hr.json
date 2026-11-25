@@ -5795,7 +5795,7 @@
           "ownerDomain": "Vaša e-mail adresa računa mora biti iz poslovne domene da biste mogli pozivati članove tima.",
           "self": "Ne možete pozvati sami sebe.",
           "inviteeDomain": "E-mail adresa pozvanog mora biti iz poslovne domene.",
-          "rateLimited": "Poslali ste najveći dopušteni broj poziva u jednom danu. Pokušajte ponovno sutra."
+          "rateLimited": "Poslali ste najviše dopuštenih 20 pozivnica unutar kliznog 24-satnog razdoblja. Pričekajte prije nego što pozovete još suradnika."
         }
       },
       "enterpriseSeats": {

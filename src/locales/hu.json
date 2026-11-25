@@ -5749,7 +5749,7 @@
           "ownerDomain": "Munkatársak meghívásához a fiókja e-mail-címének vállalati tartományból kell származnia.",
           "self": "Nem hívhatja meg saját magát.",
           "inviteeDomain": "A meghívott személy e-mail-címének vállalati tartományból kell származnia.",
-          "rateLimited": "Elérte a napi meghívások maximális számát. Próbálja újra holnap."
+          "rateLimited": "Elérte a gördülő 24 órás időablakban küldhető legfeljebb 20 meghívó korlátját. Kérjük, várjon, mielőtt további munkatársakat hívna meg."
         }
       },
       "enterpriseSeats": {

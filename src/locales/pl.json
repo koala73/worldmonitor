@@ -5821,7 +5821,7 @@
           "ownerDomain": "Adres e-mail Twojego konta musi być z domeny firmowej, aby zapraszać kolegów.",
           "self": "Nie możesz zaprosić siebie.",
           "inviteeDomain": "Adres e-mail osoby zaproszonej musi być z domeny firmowej.",
-          "rateLimited": "Osiągnięto dzienny limit wysłanych zaproszeń. Spróbuj ponownie jutro."
+          "rateLimited": "Wysłano maksymalną liczbę 20 zaproszeń w kroczącym oknie 24 godzin. Poczekaj, zanim zaprosisz kolejnych współpracowników."
         }
       },
       "enterpriseSeats": {

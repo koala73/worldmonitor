@@ -5749,7 +5749,7 @@
           "ownerDomain": "Ihre Konto-E-Mail muss eine Unternehmensdomäne sein, um Teamkollegen einzuladen.",
           "self": "Sie können sich nicht selbst einladen.",
           "inviteeDomain": "Die E-Mail des Eingeladenen muss eine Unternehmensdomäne sein.",
-          "rateLimited": "Sie haben die maximale Anzahl von Einladungen pro Tag versendet. Versuchen Sie es morgen erneut."
+          "rateLimited": "Sie haben das Maximum von 20 Einladungen innerhalb eines rollierenden 24-Stunden-Zeitraums erreicht. Bitte warten Sie, bevor Sie weitere Teammitglieder einladen."
         }
       },
       "enterpriseSeats": {

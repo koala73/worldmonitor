@@ -5749,7 +5749,7 @@
           "ownerDomain": "Takım arkadaşlarını davet etmek için hesap e-postanız kurumsal bir alan adında olmalıdır.",
           "self": "Kendinizi davet edemezsiniz.",
           "inviteeDomain": "Davet edilen kişinin e-postası kurumsal bir alan adında olmalıdır.",
-          "rateLimited": "Bir gün içinde izin verilen en fazla daveti gönderdiniz. Yarın tekrar deneyin."
+          "rateLimited": "Kayan 24 saatlik pencere içinde en fazla 20 davet sınırına ulaştınız. Daha fazla ekip arkadaşı davet etmeden önce lütfen bekleyin."
         }
       },
       "enterpriseSeats": {

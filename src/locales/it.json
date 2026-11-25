@@ -5785,7 +5785,7 @@
           "ownerDomain": "L'email del tuo account deve essere un dominio aziendale per invitare i colleghi.",
           "self": "Non puoi invitare te stesso.",
           "inviteeDomain": "L'email dell'invitato deve essere un dominio aziendale.",
-          "rateLimited": "Hai inviato il massimo numero di inviti consentiti in un giorno. Riprova domani."
+          "rateLimited": "Hai raggiunto il limite massimo di 20 inviti in una finestra mobile di 24 ore. Attendi prima di invitare altri colleghi."
         }
       },
       "enterpriseSeats": {

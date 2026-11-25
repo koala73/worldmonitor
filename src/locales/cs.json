@@ -5821,7 +5821,7 @@
           "ownerDomain": "E-mail vašeho účtu musí být z firemní domény, abyste mohli zvát kolegy.",
           "self": "Nemůžete pozvat sami sebe.",
           "inviteeDomain": "E-mail pozvaného musí být z firemní domény.",
-          "rateLimited": "Odeslali jste maximální povolený počet pozvání za den. Zkuste to zítra."
+          "rateLimited": "Odeslali jste maximum 20 pozvánek za klouzavé 24hodinové období. Počkejte prosím, než pozvete další kolegy."
         }
       },
       "enterpriseSeats": {

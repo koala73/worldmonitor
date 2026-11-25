@@ -5713,7 +5713,7 @@
           "ownerDomain": "Email tài khoản của bạn phải là miền công ty để mời đồng nghiệp.",
           "self": "Bạn không thể mời chính mình.",
           "inviteeDomain": "Email của người được mời phải là miền công ty.",
-          "rateLimited": "Bạn đã gửi số lượng lời mời tối đa trong một ngày. Hãy thử lại vào ngày mai."
+          "rateLimited": "Bạn đã gửi tối đa 20 lời mời trong khung 24 giờ trượt. Vui lòng đợi trước khi mời thêm đồng nghiệp."
         }
       },
       "enterpriseSeats": {
