@@ -250,16 +250,16 @@ const TECH_LOW_KEYWORDS: KeywordMap = {
 };
 
 // "Coup" in a non-political domain (a "transfer coup", "boardroom coup",
-// "coup de grâce") is never a seizure of power. An ideological label (a
+// "coup de grâce") is never a seizure of power. A political label (a
 // "progressive coup") is ambiguous, so it keeps its coup match whenever the
 // headline carries seizure-of-power context.
-const NON_POLITICAL_COUP_RE = /\b(?:boardroom|corporate|shareholder|marketing|pr|publicity|media|transfer|signing|recruiting|diplomatic|budget|fiscal|legislative|cultural)\s+coup\b|\bcoup\s+de\s+(?:gr[aâ]ce|th[eé][aâ]tre|ma[iî]tre|foudre)\b/g;
-const IDEOLOGICAL_COUP_RE = /\b(?:progressive|conservative|liberal|leftist|populist|socialist|maga|woke)\s+coup\b/g;
+const NON_POLITICAL_COUP_RE = /\b(?:boardroom|corporate|shareholder|marketing|pr|publicity|media|transfer|signing|recruiting|diplomatic|budget|fiscal|cultural)\s+coup\b|\bcoup\s+de\s+(?:gr[aâ]ce|th[eé][aâ]tre|ma[iî]tre|foudre)\b/g;
+const POLITICAL_COUP_RE = /\b(?:progressive|conservative|liberal|leftist|populist|socialist|maga|woke|legislative|parliamentary)\s+coup\b/g;
 const COUP_SEIZURE_CONTEXT_RE = /\b(?:soldiers?|troops|army|military|junta|armed forces|generals?|officers|putsch\w*|seiz\w*|stag(?:e|es|ed|ing)|foil\w*|attempt\w*|plot\w*|overthrow\w*|ousted|martial law|d['’]?[eé]tat)\b/;
 
 export function withoutMetaphoricalCoup(titleLower: string): string {
   const text = titleLower.replace(NON_POLITICAL_COUP_RE, ' ');
-  return COUP_SEIZURE_CONTEXT_RE.test(text) ? text : text.replace(IDEOLOGICAL_COUP_RE, ' ');
+  return COUP_SEIZURE_CONTEXT_RE.test(text) ? text : text.replace(POLITICAL_COUP_RE, ' ');
 }
 
 const EXCLUSIONS = [
