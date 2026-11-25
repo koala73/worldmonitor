@@ -80,7 +80,7 @@ function deltaClass(delta: number, lowerIsBetter: boolean, neutral: boolean): st
 function formatDelta(delta: number, unit: DeltaUnit): { text: string; rounded: number } {
   const { digits, format } = DELTA_UNITS[unit];
   const scale = 10 ** digits;
-  const rounded = (Math.sign(delta) * Math.round(Math.abs(Number(delta.toPrecision(12))) * scale)) / scale || 0;
+  const rounded = (Math.sign(delta) * Math.round(Number((Math.abs(delta) * scale).toPrecision(12)))) / scale || 0;
   const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : '';
   return { text: `${sign}${format(Math.abs(rounded))}`, rounded };
 }

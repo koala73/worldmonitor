@@ -115,8 +115,12 @@ describe('macro tiles annual CPI, rate deltas and Euro Area labels', () => {
   });
 
   it('rounds a half-hundredth rate move away from zero', async () => {
-    mockFredBatch.mockResolvedValue(fred({ FEDFUNDS: [{ date: '2026-09-01', value: 2.443 }, { date: '2026-10-01', value: 2.448 }] }));
+    mockFredBatch.mockResolvedValue(fred({
+      UNRATE: [{ date: '2026-09-01', value: 0.1 }, { date: '2026-10-01', value: 0.675 }],
+      FEDFUNDS: [{ date: '2026-09-01', value: 2.443 }, { date: '2026-10-01', value: 2.448 }],
+    }));
     const { text } = await render();
+    expect(text()).toContain('Unemployment 0.7% +0.58 pp vs prior');
     expect(text()).toContain('Fed Funds Rate 2.4% +0.01 pp vs prior');
   });
 
