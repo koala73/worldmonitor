@@ -185,6 +185,13 @@ describe('bilateral chokepoint transit', () => {
     assert.equal(hormuzScore('US', '27', product('2709', [['SA', 0.3], ['CA', 0.7]])), 45, 'Saudi crude to the US');
   });
 
+  it('splits a supplier share across alternative corridors instead of crediting each in full', () => {
+    const exposures = computeFlowWeightedExposures('US', '85', product('8542', [['CN', 1]]));
+    const score = id => exposures.find(e => e.chokepointId === id).exposureScore;
+    assert.ok(score('suez') > 0 && score('suez') < 100, 'Suez carries part of China-US trade');
+    assert.ok(score('panama') > 0 && score('panama') < 100, 'Panama carries part of China-US trade');
+  });
+
   it('keeps India-Gulf trade off the Malacca leg of the Gulf-Asia corridor', () => {
     const exposures = computeFlowWeightedExposures('IN', '27', product('2709', [['SA', 1]]));
     assert.equal(exposures.find(e => e.chokepointId === 'malacca_strait').exposureScore, 0);
@@ -223,6 +230,42 @@ describe('seed coverage manifest', () => {
       for (const country of countries) for (const hs2 of HS2_CODES) {
         assert.ok(keys.has(`supply-chain:exposure:${country}:${hs2}:v1`));
       }
+    } finally { globalThis.fetch = originalFetch; process.env = env; }
+  });
+
+  it('keeps a zero-crossing flow-weighted record instead of falling back to nearby routes', async () => {
+    const { main } = await import('../scripts/seed-hs2-chokepoint-exposure.mjs');
+    const originalFetch = globalThis.fetch;
+    const env = { ...process.env };
+    const writes = [];
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fixture.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    const djiboutiCereals = {
+      products: [{
+        hs4: '1001', description: 'Wheat', totalValue: 1_000_000, year: 2024,
+        topExporters: [
+          { partnerCode: 842, partnerIso2: 'US', value: 600_000, share: 0.6 },
+          { partnerCode: 76, partnerIso2: 'BR', value: 400_000, share: 0.4 },
+        ],
+      }],
+    };
+    globalThis.fetch = async (url, init) => {
+      const commands = JSON.parse(init.body);
+      if (!String(url).endsWith('/pipeline')) return Response.json({ result: 'OK' });
+      return Response.json(commands.map(command => {
+        if (command[0] === 'GET') {
+          return { result: command[1] === 'comtrade:bilateral-hs4:DJ:v1' ? JSON.stringify(djiboutiCereals) : null };
+        }
+        writes.push(command);
+        return { result: 'OK' };
+      }));
+    };
+    try {
+      await main();
+      const record = JSON.parse(writes.find(c => c[1] === 'supply-chain:exposure:DJ:10:v1')[2]);
+      assert.equal(record.coverage, 'flow_weighted');
+      assert.equal(record.primaryChokepointId, '');
+      assert.ok(record.exposures.every(e => e.exposureScore === 0), 'no chokepoint between Djibouti and the Americas');
     } finally { globalThis.fetch = originalFetch; process.env = env; }
   });
 

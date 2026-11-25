@@ -3,7 +3,7 @@
 
 export declare const CORRIDOR_REGIONS: Readonly<Record<string, readonly [string, string]>>;
 export declare const ENCLOSED_CHOKEPOINT_SIDES: Readonly<Record<string, ReadonlySet<string>>>;
-export declare function bilateralTransitChokepointIds(
+export declare function bilateralTransitShares(
   importerIso2: string,
   exporterIso2: string,
   context: {
@@ -11,4 +11,4 @@ export declare function bilateralTransitChokepointIds(
     regions: Record<string, string>;
     chokepoints: ReadonlyArray<{ id: string; routeIds: readonly string[] }>;
   },
-): Set<string>;
+): Map<string, number>;

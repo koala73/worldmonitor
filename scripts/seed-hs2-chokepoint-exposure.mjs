@@ -11,7 +11,7 @@ import {
   logSeedResult,
   releaseLock,
 } from './_seed-utils.mjs';
-import { bilateralTransitChokepointIds } from './shared/bilateral-chokepoint-transit.mjs';
+import { bilateralTransitShares } from './shared/bilateral-chokepoint-transit.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -123,9 +123,8 @@ export function computeFlowWeightedExposures(importerIso2, hs2, products) {
 
     for (const exporter of product.topExporters) {
       if (!exporter.partnerIso2) continue;
-      const crossed = bilateralTransitChokepointIds(importerIso2, exporter.partnerIso2, TRANSIT_CONTEXT);
-      for (const cpId of crossed) {
-        cpScores.set(cpId, (cpScores.get(cpId) ?? 0) + exporter.share * productWeight * 100);
+      for (const [cpId, fraction] of bilateralTransitShares(importerIso2, exporter.partnerIso2, TRANSIT_CONTEXT)) {
+        cpScores.set(cpId, (cpScores.get(cpId) ?? 0) + fraction * exporter.share * productWeight * 100);
       }
     }
   }
@@ -317,12 +316,12 @@ export async function main() {
 
         if (comtradeProducts && comtradeProducts.length > 0) {
           const exposures = computeFlowWeightedExposures(iso2, hs2, comtradeProducts);
-          if (exposures.length > 0 && exposures.some(e => e.exposureScore > 0)) {
+          if (exposures.length > 0) {
             const coastSide = cluster.coastSide ?? '';
-            if (exposures[0]) exposures[0] = { ...exposures[0], coastSide };
+            exposures[0] = { ...exposures[0], coastSide };
             result = {
               exposures,
-              primaryChokepointId: exposures[0]?.chokepointId ?? '',
+              primaryChokepointId: exposures[0].exposureScore > 0 ? exposures[0].chokepointId : '',
               vulnerabilityIndex: buildVulnIndex(exposures),
               coverage: 'flow_weighted',
             };

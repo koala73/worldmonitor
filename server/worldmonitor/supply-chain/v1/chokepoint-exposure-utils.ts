@@ -1,7 +1,7 @@
 import { CHOKEPOINT_REGISTRY } from '../../../../src/config/chokepoint-registry';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
 import COUNTRY_REGIONS from '../../../../scripts/shared/iso2-to-region.json';
-import { bilateralTransitChokepointIds } from '../../../../scripts/shared/bilateral-chokepoint-transit.mjs';
+import { bilateralTransitShares } from '../../../../scripts/shared/bilateral-chokepoint-transit.mjs';
 
 interface PortClusterEntry {
   nearestRouteIds: string[];
@@ -71,8 +71,8 @@ export function computeFlowWeightedExposures(
 
     for (const exporter of product.topExporters) {
       if (!exporter.partnerIso2) continue;
-      for (const cpId of bilateralTransitChokepointIds(importerIso2, exporter.partnerIso2, transitContext)) {
-        cpScores.set(cpId, (cpScores.get(cpId) ?? 0) + exporter.share * productWeight * 100);
+      for (const [cpId, fraction] of bilateralTransitShares(importerIso2, exporter.partnerIso2, transitContext)) {
+        cpScores.set(cpId, (cpScores.get(cpId) ?? 0) + fraction * exporter.share * productWeight * 100);
       }
     }
   }

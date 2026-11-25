@@ -58,10 +58,10 @@ function clusterFor(clusters, iso2) {
  *   regions: Record<string, string>,
  *   chokepoints: ReadonlyArray<{ id: string, routeIds: readonly string[] }>,
  * }} context
- * @returns {Set<string>} chokepoint ids the pair's modeled sea route crosses
+ * @returns {Map<string, number>} chokepoint id -> fraction (0, 1] of the pair's sea flow crossing it
  */
-export function bilateralTransitChokepointIds(importerIso2, exporterIso2, { clusters, regions, chokepoints }) {
-  const crossed = new Set();
+export function bilateralTransitShares(importerIso2, exporterIso2, { clusters, regions, chokepoints }) {
+  const crossed = new Map();
   const importer = clusterFor(clusters, importerIso2);
   const exporter = clusterFor(clusters, exporterIso2);
   if (!importer || !exporter || importerIso2 === exporterIso2) return crossed;
@@ -80,13 +80,14 @@ export function bilateralTransitChokepointIds(importerIso2, exporterIso2, { clus
       || (importerRegion === ends[1] && exporterRegion === ends[0]));
   }));
 
+  // Alternative corridors for one pair (Suez vs Panama for China-US East) split the flow evenly.
   const sharedCoast = importer.coastSide === exporter.coastSide ? INTRA_REGIONAL_CHOKEPOINTS[importer.coastSide] : null;
   for (const cp of chokepoints) {
     const inside = ENCLOSED_CHOKEPOINT_SIDES[cp.id];
-    if (inside ? inside.has(importerIso2) !== inside.has(exporterIso2)
-      : (!sharedCoast || sharedCoast.has(cp.id)) && cp.routeIds.some((routeId) => routes.has(routeId))) {
-      crossed.add(cp.id);
-    }
+    const fraction = inside
+      ? Number(inside.has(importerIso2) !== inside.has(exporterIso2))
+      : (!sharedCoast || sharedCoast.has(cp.id)) ? cp.routeIds.filter((routeId) => routes.has(routeId)).length / routes.size : 0;
+    if (fraction > 0) crossed.set(cp.id, fraction);
   }
   return crossed;
 }
