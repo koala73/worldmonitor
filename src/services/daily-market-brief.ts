@@ -242,7 +242,7 @@ function matchesMarketHeadline(market: Pick<MarketData, 'symbol' | 'display' | '
 // They name the instrument but report no event, so they are not headlines.
 const QUOTE_PAGE_TITLE_PATTERNS: RegExp[] = [
   /^\s*\^?[A-Z][A-Z0-9.^=-]{0,9}\s*\|/,
-  /\b(?:overview|quotes?)\s*(?:$|[-|(&,:]|\u2013|\u2014)/i,
+  /\b(?:overview|quotes?)\s*(?:$|[-|(&,]|\u2013|\u2014)/i,
   /\b(?:charts?|data|news|history|prices?)\s*&\s*(?:charts?|data|news|history|quotes?)\b/i,
   /\bstock price\s*(?:$|[-|(,]|\u2013|\u2014)/i,
 ];

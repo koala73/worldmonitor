@@ -382,6 +382,8 @@ describe('daily market brief quote-page filtering', () => {
       'Apple stock price slides after weak iPhone guidance',
       'Microsoft slides as cloud guidance softens',
       'Fed officials quote inflation risks in minutes',
+      'Nymex Overview: crude settles higher on supply worries',
+      'Market Overview: stocks slip as yields climb - Reuters',
     ]) {
       assert.equal(isQuotePageTitle(title), false, title);
     }
