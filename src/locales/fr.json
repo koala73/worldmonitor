@@ -3377,6 +3377,10 @@
       },
       "warningAge": "Depuis la première alerte encore en vigueur",
       "days": "{{amount}} j"
+    },
+    "externalNavigation": {
+      "blocked": "Votre navigateur a bloqué le nouvel onglet.",
+      "openLink": "Ouvrir {{host}}"
     }
   },
   "popups": {

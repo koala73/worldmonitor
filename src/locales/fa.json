@@ -3424,6 +3424,10 @@
       },
       "warningAge": "از نخستین هشدارِ همچنان فعال",
       "days": "{{amount}} روز"
+    },
+    "externalNavigation": {
+      "blocked": "مرورگر شما برگه جدید را مسدود کرد.",
+      "openLink": "باز کردن {{host}}"
     }
   },
   "popups": {

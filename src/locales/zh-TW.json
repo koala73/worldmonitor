@@ -3333,6 +3333,10 @@
       },
       "warningAge": "距首條仍有效的預警",
       "days": "{{amount}} 天"
+    },
+    "externalNavigation": {
+      "blocked": "瀏覽器阻止了新標籤頁的開啟。",
+      "openLink": "開啟 {{host}}"
     }
   },
   "popups": {

@@ -3468,6 +3468,10 @@
       },
       "warningAge": "Час від першого з чинних попереджень",
       "days": "{{amount}} дн."
+    },
+    "externalNavigation": {
+      "blocked": "Ваш браузер заблокував нову вкладку.",
+      "openLink": "Відкрити {{host}}"
     }
   },
   "popups": {

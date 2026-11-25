@@ -3333,6 +3333,10 @@
       },
       "warningAge": "現在有効な最初の警報からの経過時間",
       "days": "{{amount}} 日"
+    },
+    "externalNavigation": {
+      "blocked": "ブラウザが新しいタブをブロックしました。",
+      "openLink": "{{host}}を開く"
     }
   },
   "popups": {
