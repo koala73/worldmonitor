@@ -36,7 +36,7 @@ PR #11252:
 
 - The canary runs every first attempt, then retries the failures in a second pass that starts 130s later (`RETRY_DELAY_MS`). A test pins the gap above `CACHED_FETCH_NEGATIVE_TTL_SECONDS`.
 - The retry pass starts only if it can begin inside the run budget. A retry blocked by the budget keeps the first failure in place of reporting `budget_exhausted`.
-- Real calls are counted per tool. A dependent that could not chain is retried with its upstream, and if its first real call happens in pass 2 it gets pass 3.
+- Real calls are counted per tool. A dependent that could not chain is retried with its upstream, and if its first real call, made in pass 2, fails, it gets pass 3.
 
 ## Why This Works
 
