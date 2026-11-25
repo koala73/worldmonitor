@@ -94,7 +94,9 @@ function renderAggregate(data: GivingSummary, translate: GivingTranslate): strin
     ? data.estimatedDailyFlowUsd
     : 0;
   const annualized = annualizedDaily * 365;
-  const value = annualized > 0 ? formatCurrency(annualized) : translate('components.giving.sourceNotVerified');
+  const value = annualized > 0
+    ? formatCurrency(annualized, atLeast ? 'down' : 'nearest')
+    : translate('components.giving.sourceNotVerified');
   const qualifier = atLeast ? qualifierPrefix('at_least', translate) : '';
   const sources = contributors
     .map((entry) => `${entry.sourceName} · ${entry.referencePeriod}`)

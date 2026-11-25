@@ -52,19 +52,19 @@ export class BreakthroughsTickerPanel extends Panel {
       return;
     }
 
-    // Build HTML for one set of items
-    const itemsHtml = items
+    const renderSet = (cloneAttrs: string) => items
       .map(
         (item) =>
-          `<a class="ticker-item" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">` +
+          `<a class="ticker-item" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener"${cloneAttrs}>` +
           `<span class="ticker-item-source">${escapeHtml(item.source)}</span>` +
           `<span class="ticker-item-title">${escapeHtml(item.title)}</span>` +
           `</a>`,
       )
       .join('');
 
-    // Double the content for seamless infinite scroll
-    setTrustedHtml(this.tickerTrack, trustedHtml(itemsHtml + itemsHtml, "legacy direct innerHTML migration"));
+    // The second copy only exists for the seamless loop; keep it out of the accessibility tree and tab order.
+    const html = renderSet('') + renderSet(' aria-hidden="true" tabindex="-1"');
+    setTrustedHtml(this.tickerTrack, trustedHtml(html, "legacy direct innerHTML migration"));
   }
 
   /**
