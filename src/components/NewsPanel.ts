@@ -846,7 +846,8 @@ export class NewsPanel extends Panel {
       ? `<span class="lang-badge">${cluster.lang.toUpperCase()}</span>`
       : '';
 
-    const primaryItem = cluster.allItems.find(item => item.source === cluster.primarySource && item.link === cluster.primaryLink)
+    const primaryItem = cluster.allItems.find(item =>
+      item.source === cluster.primarySource && item.link === cluster.primaryLink && item.title === cluster.primaryTitle)
       ?? cluster.allItems.find(item => item.source === cluster.primarySource)
       ?? cluster.allItems[0];
     const attribution = itemAttribution(primaryItem ?? { source: cluster.primarySource });

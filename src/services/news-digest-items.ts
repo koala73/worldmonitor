@@ -40,7 +40,7 @@ export function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     ...(p.importanceScore ? { importanceScore: p.importanceScore } : {}),
     ...(Number.isFinite(p.credibilityScore) ? { credibilityScore: p.credibilityScore } : {}),
     ...(p.corroborationCount ? { corroborationCount: p.corroborationCount } : {}),
-    ...(p.originPublisher || p.publisherName ? { publisher: p.originPublisher || p.publisherName } : {}),
+    ...(p.publisherName ? { publisher: p.publisherName } : {}),
     ...(p.credibilityUnassessed ? { credibilityUnassessed: true } : {}),
     // Cleaned RSS description (U3 proto field 12). Only populated when the
     // upstream feed carried a usable <description>/<content:encoded>/<summary>;
