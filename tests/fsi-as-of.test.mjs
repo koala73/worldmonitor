@@ -14,14 +14,14 @@ describe('fsiAsOf (#11270)', () => {
     assert.equal(fsiAsOf({ hyg, tlt, vixData, vixObs, hyObs }), Date.UTC(2026, 10, 21));
   });
 
-  it('uses the FRED VIX date when Yahoo VIX is missing or undated', () => {
+  it('uses the FRED VIX date when Yahoo VIX is missing', () => {
     const hyFresh = [{ date: '2026-11-24', value: '3.08' }];
     assert.equal(fsiAsOf({ hyg, tlt, vixData: null, vixObs, hyObs: hyFresh }), Date.UTC(2026, 10, 21));
-    assert.equal(fsiAsOf({ hyg, tlt, vixData: { price: 16.4 }, vixObs, hyObs: hyFresh }), Date.UTC(2026, 10, 21));
   });
 
   it('returns null when any input lacks an observation time', () => {
     assert.equal(fsiAsOf({ hyg: { price: 80 }, tlt, vixData: null, vixObs, hyObs }), null);
     assert.equal(fsiAsOf({ hyg, tlt, vixData: null, vixObs, hyObs: null }), null);
+    assert.equal(fsiAsOf({ hyg, tlt, vixData: { price: 16.4 }, vixObs, hyObs }), null, 'undated Yahoo VIX is not dated from FRED');
   });
 });
