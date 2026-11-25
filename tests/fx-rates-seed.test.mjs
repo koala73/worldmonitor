@@ -52,6 +52,34 @@ describe('shared FX fallback provenance', () => {
     assert.deepEqual(result.fallbackCurrencies, ['KRW']);
   });
 
+  test('rates come from the latest precise chart close, not the rounded meta price', async () => {
+    const charts = {
+      'IDRUSD=X': { meta: { regularMarketPrice: 0.0001 }, closes: [0.00005499945109477267, 0.00005470459655043669, null] },
+      'VNDUSD=X': { meta: { regularMarketPrice: 0 }, closes: [0.000038797283195890486] },
+      'KRWUSD=X': { meta: { regularMarketPrice: 0.0007 }, closes: [] },
+    };
+    globalThis.fetch = async (url) => {
+      const symbol = decodeURIComponent(new URL(url).pathname.split('/').pop());
+      const { meta, closes } = charts[symbol];
+      return new Response(JSON.stringify({
+        chart: { result: [{ meta, indicators: { quote: [{ close: closes }] } }] },
+      }), { status: 200 });
+    };
+
+    const result = await fetchYahooFxRatesWithProvenance({
+      USD: 'USDUSD=X',
+      IDR: 'IDRUSD=X',
+      VND: 'VNDUSD=X',
+      KRW: 'KRWUSD=X',
+    }, SHARED_FX_FALLBACKS);
+
+    assert.equal(result.rates.IDR, 0.00005470459655043669);
+    assert.equal(Math.round(1 / result.rates.IDR), 18280);
+    assert.equal(result.rates.VND, 0.000038797283195890486);
+    assert.equal(result.rates.KRW, SHARED_FX_FALLBACKS.KRW);
+    assert.deepEqual(result.fallbackCurrencies, ['KRW']);
+  });
+
   test('the canonical payload nulls fallback quotes and rejects an all-fallback run', () => {
     const rates = Object.fromEntries(ALL_CURRENCIES.map((currency) => [currency, 0.5]));
     rates.USD = 1;
