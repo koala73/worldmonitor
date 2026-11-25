@@ -371,6 +371,8 @@ describe('daily market brief quote-page filtering', () => {
       'Apple Inc. (AAPL) Stock Price, News, Quote & History - Yahoo Finance',
       'S&P 500 (^GSPC) Charts, Data & News - Yahoo Finance',
       'NVDA Stock Price Quote - NASDAQ - Bloomberg',
+      'DJIA Advanced Charts - MarketWatch',
+      'AAPL Historical Prices | Apple Inc. Stock - MarketWatch',
     ]) {
       assert.equal(isQuotePageTitle(title), true, title);
     }

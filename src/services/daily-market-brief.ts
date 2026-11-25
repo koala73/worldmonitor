@@ -243,7 +243,7 @@ function matchesMarketHeadline(market: Pick<MarketData, 'symbol' | 'display' | '
 // two short publisher segments; an article ends in an event clause instead.
 const TITLE_SEGMENT_SEPARATOR = /\s+[-\u2013\u2014|]\s+|\s*\|\s*/;
 const PUBLISHER_SEGMENT = /^(?:[A-Z0-9^&][^\s]*\s*){1,3}$/;
-const QUOTE_PAGE_TAIL = /\b(?:overview|quotes?|stock price|(?:charts?|data|news|history|prices?|quotes?)\s*&\s*(?:charts?|data|news|history|quotes?))$/i;
+const QUOTE_PAGE_TAIL = /\b(?:overview|quotes?|stock price|advanced charts?|historical (?:prices|quotes|data)|(?:charts?|data|news|history|prices?|quotes?)\s*&\s*(?:charts?|data|news|history|quotes?))$/i;
 const MAX_PUBLISHER_SEGMENTS = 2;
 
 export function isQuotePageTitle(title: string): boolean {
