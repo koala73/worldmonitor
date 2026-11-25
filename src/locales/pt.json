@@ -4493,7 +4493,7 @@
     },
     "intelMemory": {
       "title": "Memória de Inteligência Histórica",
-      "help": "Arquivo de 180 dias de eventos de conflito, militares e energéticos com correspondência de precedentes semânticos sob demanda.",
+      "help": "Arquivo de 180 dias de eventos notáveis de conflito, militares, energia, distúrbios, cibernéticos, marítimos, riscos naturais e aviação, com busca semântica de precedentes sob demanda.",
       "loading": "Carregando memória de inteligência histórica…",
       "proLocked": "Atualize para PRO para memória de inteligência histórica de 180 dias e busca de precedentes",
       "unavailable": "A memória de inteligência histórica está temporariamente indisponível.",
@@ -4505,7 +4505,12 @@
         "all": "Todos",
         "conflict": "Conflito",
         "military": "Militar",
-        "energy": "Energia"
+        "energy": "Energia",
+        "unrest": "Distúrbios",
+        "cyber": "Cibernética",
+        "maritime": "Marítima",
+        "natural": "Riscos naturais",
+        "aviation": "Aviação"
       },
       "loadMore": "Carregar mais",
       "loadingMore": "Carregando mais…",

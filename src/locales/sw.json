@@ -373,7 +373,7 @@
     },
     "intelMemory": {
       "title": "Kumbukumbu la Habari za Mitaala Zilizopita",
-      "help": "Hifadhidata ya siku 180 ya matukio ya mgogoro, kijeshi, na nishati yenye kulinganisha kwa msingi wa maelezo kwa ombi.",
+      "help": "Kumbukumbu ya siku 180 ya matukio muhimu ya migogoro, kijeshi, nishati, machafuko, mtandao, baharini, majanga ya asili na anga, pamoja na utafutaji wa matukio yanayofanana unapohitajika.",
       "loading": "Inapakia kumbukumbu la habari za mitaala zilizopita…",
       "proLocked": "Boresha hadi PRO kwa kumbukumbu la habari za mitaala za siku 180 na utaftaji wa matukio yaliyopita",
       "unavailable": "Kumbukumbu la habari za mitaala zilizopita haipatikani kwa sasa.",
@@ -385,7 +385,12 @@
         "all": "Zote",
         "conflict": "Mgogoro",
         "military": "Kijeshi",
-        "energy": "Nishati"
+        "energy": "Nishati",
+        "unrest": "Machafuko",
+        "cyber": "Cyber",
+        "maritime": "Baharini",
+        "natural": "Majanga ya asili",
+        "aviation": "Anga"
       },
       "loadMore": "Pakia zaidi",
       "loadingMore": "Inapakia zaidi…",

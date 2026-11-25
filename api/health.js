@@ -864,6 +864,14 @@ const STANDALONE_KEYS = {
   intelHistoryIngestConflictAcled:    'intel-history:ingest-health:conflict:acled-intel:v1',
   intelHistoryIngestMilitaryCrossStrait: 'intel-history:ingest-health:military:cross-strait-activity:v1',
   intelHistoryIngestEnergyIntelligence:  'intel-history:ingest-health:energy:intelligence:v1',
+  // #11245 collectors (scripts/_intel-history-collectors.mjs).
+  intelHistoryIngestConflictUcdp:         'intel-history:ingest-health:conflict:ucdp-events:v1',
+  intelHistoryIngestUnrestEvents:         'intel-history:ingest-health:unrest:events:v1',
+  intelHistoryIngestCyberThreats:         'intel-history:ingest-health:cyber:threats:v1',
+  intelHistoryIngestMaritimePortwatch:    'intel-history:ingest-health:maritime:portwatch-disruptions:v1',
+  intelHistoryIngestNaturalEarthquakes:   'intel-history:ingest-health:natural:earthquakes:v1',
+  intelHistoryIngestNaturalEvents:        'intel-history:ingest-health:natural:events:v1',
+  intelHistoryIngestAviationIntl:         'intel-history:ingest-health:aviation:intl:v1',
   // VIA Rail Tracker unofficial live JSON (#6615). No dashboard consumer.
   viarailLive:           'transit:viarail:live',
   // #7012 TPS Open Data — retrospective MCI + annual Calls Attended. Not live
@@ -2813,6 +2821,43 @@ const SEED_META = {
   intelHistoryIngestConflictAcled:       { key: 'seed-meta:intel-history:conflict:acled-intel',            maxStaleMin: 38 },  // mirrors acledIntel
   intelHistoryIngestMilitaryCrossStrait: { key: 'seed-meta:intel-history:military:cross-strait-activity',  maxStaleMin: 720 }, // mirrors crossStraitActivity
   intelHistoryIngestEnergyIntelligence:  { key: 'seed-meta:intel-history:energy:intelligence',             maxStaleMin: 720 }, // mirrors energyIntelligence
+  // #11245 collectors. New probes, so each binds its activation marker (the
+  // hook writes it on its first report, configured or not) to the owner issue.
+  intelHistoryIngestConflictUcdp: {
+    key: 'seed-meta:intel-history:conflict:ucdp-events', maxStaleMin: 720, // relay appends every 6h; one failed append must not read stale. The backup skips while canonical is fresh, so it does not cover a missed append.
+    activationKey: 'seed-activated:intel-history:conflict:ucdp-events',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:conflict:ucdp-events' },
+  },
+  intelHistoryIngestUnrestEvents: {
+    key: 'seed-meta:intel-history:unrest:events', maxStaleMin: 120, // mirrors unrestEvents
+    activationKey: 'seed-activated:intel-history:unrest:events',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:unrest:events' },
+  },
+  intelHistoryIngestCyberThreats: {
+    key: 'seed-meta:intel-history:cyber:threats', maxStaleMin: 240, // mirrors cyberThreats
+    activationKey: 'seed-activated:intel-history:cyber:threats',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:cyber:threats' },
+  },
+  intelHistoryIngestMaritimePortwatch: {
+    key: 'seed-meta:intel-history:maritime:portwatch-disruptions', maxStaleMin: 150, // mirrors portwatchDisruptions
+    activationKey: 'seed-activated:intel-history:maritime:portwatch-disruptions',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:maritime:portwatch-disruptions' },
+  },
+  intelHistoryIngestNaturalEarthquakes: {
+    key: 'seed-meta:intel-history:natural:earthquakes', maxStaleMin: 30, // mirrors earthquakes
+    activationKey: 'seed-activated:intel-history:natural:earthquakes',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:natural:earthquakes' },
+  },
+  intelHistoryIngestNaturalEvents: {
+    key: 'seed-meta:intel-history:natural:events', maxStaleMin: 120, // mirrors naturalEvents
+    activationKey: 'seed-activated:intel-history:natural:events',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:natural:events' },
+  },
+  intelHistoryIngestAviationIntl: {
+    key: 'seed-meta:intel-history:aviation:intl', maxStaleMin: 90, // mirrors intlDelays
+    activationKey: 'seed-activated:intel-history:aviation:intl',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:aviation:intl' },
+  },
   // Unofficial tsimobile.viarail.ca JSON. The source needs no credentials, so
   // fetch/shape failures write sourceState stale and surface as SEED_ERROR when
   // no last-good value exists. 15min cron; 45 = 3x cadence. EMPTY_DATA_OK makes
@@ -3133,6 +3178,13 @@ const ON_DEMAND_KEYS = new Set([
   'intelHistoryIngestConflictAcled',
   'intelHistoryIngestMilitaryCrossStrait',
   'intelHistoryIngestEnergyIntelligence',
+  'intelHistoryIngestConflictUcdp',
+  'intelHistoryIngestUnrestEvents',
+  'intelHistoryIngestCyberThreats',
+  'intelHistoryIngestMaritimePortwatch',
+  'intelHistoryIngestNaturalEarthquakes',
+  'intelHistoryIngestNaturalEvents',
+  'intelHistoryIngestAviationIntl',
   // #7012 TPS Open Data is on-demand. Absence before the first explicit fetch
   // is pending, not CRIT. GTA Update is not registered: writer disabled.
   'tpsMci',
@@ -3323,6 +3375,13 @@ const ACTIVATION_MARKERS = {
   intelHistoryIngestConflictAcled: 'seed-activated:intel-history:conflict:acled-intel',
   intelHistoryIngestMilitaryCrossStrait: 'seed-activated:intel-history:military:cross-strait-activity',
   intelHistoryIngestEnergyIntelligence: 'seed-activated:intel-history:energy:intelligence',
+  intelHistoryIngestConflictUcdp: 'seed-activated:intel-history:conflict:ucdp-events',
+  intelHistoryIngestUnrestEvents: 'seed-activated:intel-history:unrest:events',
+  intelHistoryIngestCyberThreats: 'seed-activated:intel-history:cyber:threats',
+  intelHistoryIngestMaritimePortwatch: 'seed-activated:intel-history:maritime:portwatch-disruptions',
+  intelHistoryIngestNaturalEarthquakes: 'seed-activated:intel-history:natural:earthquakes',
+  intelHistoryIngestNaturalEvents: 'seed-activated:intel-history:natural:events',
+  intelHistoryIngestAviationIntl: 'seed-activated:intel-history:aviation:intl',
   // #6060 deployment-order softening. This Edge function redeploys within
   // minutes of merge; the producer is a 12h Railway cron. The marker is written
   // on the first run that publishes a contentFreshness block, so "the producer
@@ -3759,6 +3818,13 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   'intelHistoryIngestConflictAcled',
   'intelHistoryIngestMilitaryCrossStrait',
   'intelHistoryIngestEnergyIntelligence',
+  'intelHistoryIngestConflictUcdp',
+  'intelHistoryIngestUnrestEvents',
+  'intelHistoryIngestCyberThreats',
+  'intelHistoryIngestMaritimePortwatch',
+  'intelHistoryIngestNaturalEarthquakes',
+  'intelHistoryIngestNaturalEvents',
+  'intelHistoryIngestAviationIntl',
   // A completed surge calculation can legitimately contain no surge events;
   // the canonical snapshot must still exist and remain fresh.
   'militarySurges',

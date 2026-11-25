@@ -308,7 +308,7 @@
     },
     "intelMemory": {
       "title": "Historická paměť zpravodajských informací",
-      "help": "180denní archiv konfliktů, vojenských a energetických událostí se sémantickým vyhledáváním precedentů na požádání.",
+      "help": "180denní archiv významných událostí: konfliktů, vojenských operací, energetických incidentů, občanských nepokojů, kybernetických hrozeb, námořních incidentů, přírodních katastrof a leteckých incidentů, se sémantickým vyhledáváním historických paralel na vyžádání.",
       "loading": "Načítám historickou paměť zpravodajských informací…",
       "proLocked": "Upgradujte na PRO pro 180denní historickou paměť zpravodajských informací a vyhledávání precedentů",
       "unavailable": "Historická paměť zpravodajských informací je dočasně nedostupná.",
@@ -320,7 +320,12 @@
         "all": "Všechny",
         "conflict": "Konflikt",
         "military": "Vojenské",
-        "energy": "Energie"
+        "energy": "Energie",
+        "unrest": "Nepokoje",
+        "cyber": "Kybernetika",
+        "maritime": "Námořní",
+        "natural": "Přírodní hrozby",
+        "aviation": "Letectví"
       },
       "loadMore": "Načíst více",
       "loadingMore": "Načítám více…",

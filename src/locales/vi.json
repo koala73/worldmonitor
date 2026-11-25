@@ -302,7 +302,7 @@
     },
     "intelMemory": {
       "title": "Bộ Nhớ Tình Báo Lịch Sử",
-      "help": "Kho lưu trữ 180 ngày về các sự kiện xung đột, quân sự và năng lượng với tính năng khớp tiền lệ theo ngữ nghĩa theo yêu cầu.",
+      "help": "Kho lưu trữ 180 ngày các sự kiện đáng chú ý về xung đột, quân sự, năng lượng, bất ổn, an ninh mạng, hàng hải, thảm họa thiên nhiên và hàng không, với tìm kiếm tiền lệ ngữ nghĩa theo yêu cầu.",
       "loading": "Đang tải bộ nhớ tình báo lịch sử…",
       "proLocked": "Nâng cấp lên PRO để có bộ nhớ tình báo lịch sử 180 ngày và tìm kiếm tiền lệ",
       "unavailable": "Bộ nhớ tình báo lịch sử hiện không khả dụng.",
@@ -314,7 +314,12 @@
         "all": "Tất cả",
         "conflict": "Xung đột",
         "military": "Quân sự",
-        "energy": "Năng lượng"
+        "energy": "Năng lượng",
+        "unrest": "Bất ổn",
+        "cyber": "An ninh mạng",
+        "maritime": "Hàng hải",
+        "natural": "Thảm họa thiên nhiên",
+        "aviation": "Hàng không"
       },
       "loadMore": "Tải thêm",
       "loadingMore": "Đang tải thêm…",

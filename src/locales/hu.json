@@ -373,7 +373,7 @@
     },
     "intelMemory": {
       "title": "Történelmi Hírszerzési Memória",
-      "help": "180 napos archívum konfliktus-, katonai és energetikai eseményekről igény szerinti szemantikus precedens keresésével.",
+      "help": "180 napos archívum a figyelemre méltó fegyveres konfliktusokról, katonai eseményekről, energetikai helyzetekről, polgári zavargásokról, kibertámadásokról, tengeri incidensekről, természeti katasztrófákról és repülési eseményekről, igény szerinti szemantikai előzmény-keresésével.",
       "loading": "Történelmi hírszerzési memória betöltése…",
       "proLocked": "Frissítsen PRO verzióra a 180 napos történelmi hírszerzési memória és precedens keresés eléréséhez",
       "unavailable": "A történelmi hírszerzési memória ideiglenesen nem elérhető.",
@@ -385,7 +385,12 @@
         "all": "Összes",
         "conflict": "Konfliktus",
         "military": "Katonai",
-        "energy": "Energia"
+        "energy": "Energia",
+        "unrest": "Zavargások",
+        "cyber": "Kibernetikai",
+        "maritime": "Tengeri",
+        "natural": "Természeti veszélyek",
+        "aviation": "Légiforgalom"
       },
       "loadMore": "Továbbiak betöltése",
       "loadingMore": "Betöltés…",

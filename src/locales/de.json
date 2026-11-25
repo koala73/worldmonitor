@@ -304,7 +304,7 @@
     },
     "intelMemory": {
       "title": "Historisches Geheimdienst-Gedächtnis",
-      "help": "180-Tage-Archiv von Konflikt-, Militär- und Energieereignissen mit bedarfsgerechter semantischer Präzedenzsuche.",
+      "help": "180-Tage-Archiv mit bemerkenswerten Konflikt-, Militär-, Energie-, Unruhe-, Cyber-, See-, Naturkatastrophen- und Luftfahrtereignissen, mit bedarfsgesteuerten semantischen Treffer-Vergleichen.",
       "loading": "Historisches Geheimdienst-Gedächtnis wird geladen…",
       "proLocked": "Upgrade auf PRO für 180-Tage-Geheimdienst-Gedächtnis und Präzedenzsuche",
       "unavailable": "Historisches Geheimdienst-Gedächtnis ist vorübergehend nicht verfügbar.",
@@ -316,7 +316,12 @@
         "all": "Alle",
         "conflict": "Konflikt",
         "military": "Militär",
-        "energy": "Energie"
+        "energy": "Energie",
+        "unrest": "Unruhen",
+        "cyber": "Cyber",
+        "maritime": "Maritim",
+        "natural": "Naturgefahren",
+        "aviation": "Luftfahrt"
       },
       "loadMore": "Mehr laden",
       "loadingMore": "Wird geladen…",

@@ -302,7 +302,7 @@
     },
     "intelMemory": {
       "title": "歷史情報庫",
-      "help": "180天衝突、軍事和能源事件檔案，支援按需語義先例匹配。",
+      "help": "180天重要事件檔案庫，涵蓋衝突、軍事、能源、動盪、網路、海事、自然災害和航空，支援按需語義先例匹配。",
       "loading": "正在載入歷史情報庫…",
       "proLocked": "升級至PRO以獲得180天歷史情報庫和先例搜尋",
       "unavailable": "歷史情報庫暫時不可用。",
@@ -314,7 +314,12 @@
         "all": "全部",
         "conflict": "衝突",
         "military": "軍事",
-        "energy": "能源"
+        "energy": "能源",
+        "unrest": "動盪",
+        "cyber": "網路",
+        "maritime": "海事",
+        "natural": "自然災害",
+        "aviation": "航空"
       },
       "loadMore": "載入更多",
       "loadingMore": "正在載入…",

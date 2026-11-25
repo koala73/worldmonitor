@@ -4471,7 +4471,7 @@
     },
     "intelMemory": {
       "title": "Historiskt underrättelsearkiv",
-      "help": "180-dagars arkiv över konflikt-, militär- och energihändelser med sökbar semantisk jämförelse mot tidigare fall.",
+      "help": "180-dagars arkiv över anmärkningsvärda konflikter, militär verksamhet, energi, oroligheter, cyberattacker, maritima händelser, naturkatastrofer och luftfartshändelser, med på-begäran semantisk sökning efter motsvarigheter.",
       "loading": "Läser in historiskt underrättelsearkiv…",
       "proLocked": "Uppgradera till PRO för 180-dagars historiskt underrättelsearkiv och sökning efter tidigare fall",
       "unavailable": "Historiskt underrättelsearkiv är temporärt otillgängligt.",
@@ -4483,7 +4483,12 @@
         "all": "Alla",
         "conflict": "Konflikt",
         "military": "Militär",
-        "energy": "Energi"
+        "energy": "Energi",
+        "unrest": "Oro",
+        "cyber": "Cyber",
+        "maritime": "Maritim",
+        "natural": "Naturolyckor",
+        "aviation": "Luftfart"
       },
       "loadMore": "Läs in mer",
       "loadingMore": "Läser in mer…",

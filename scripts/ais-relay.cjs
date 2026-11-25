@@ -3513,6 +3513,15 @@ async function seedUcdpEvents() {
       } catch (err) {
         console.warn(`[UCDP] Compact projection write failed: ${err?.message || err}`);
       }
+      // Intel-history (#11245): the same hook the seed-ucdp-events backup runs,
+      // so either writer appends identical rows under one ingest-health record.
+      // The hook is fail-open; the catch only covers a failed module load.
+      try {
+        const { ucdpHistoryAfterPublish } = await import('./_intel-history-collectors.mjs');
+        await ucdpHistoryAfterPublish(payload, { runId: `${Date.now()}-ucdp-relay` });
+      } catch (err) {
+        console.warn(`[UCDP] intel-history hook unavailable: ${err?.message || err}`);
+      }
     }
     const newConflicts = capped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
     for (const e of newConflicts.slice(0, 2)) {

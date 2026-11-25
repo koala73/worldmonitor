@@ -202,6 +202,16 @@ export class CountryIntelMemory {
         return t('countryBrief.intelMemory.domains.military');
       case 'energy':
         return t('countryBrief.intelMemory.domains.energy');
+      case 'unrest':
+        return t('countryBrief.intelMemory.domains.unrest');
+      case 'cyber':
+        return t('countryBrief.intelMemory.domains.cyber');
+      case 'maritime':
+        return t('countryBrief.intelMemory.domains.maritime');
+      case 'natural':
+        return t('countryBrief.intelMemory.domains.natural');
+      case 'aviation':
+        return t('countryBrief.intelMemory.domains.aviation');
       default:
         return domain;
     }

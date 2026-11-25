@@ -306,7 +306,7 @@
     },
     "intelMemory": {
       "title": "Memorie istorică a informațiilor",
-      "help": "Arhivă de 180 de zile cu evenimente de conflict, militar și energie cu potrivire semantică de precedente la cerere.",
+      "help": "Arhivă de 180 de zile a evenimentelor notabile de conflict, militare, energetice, tulburări civile, cibernetice, maritime, catastrofe naturale și aviatice, cu potrivire semantică a precedenților la cerere.",
       "loading": "Se încarcă memorie istorică a informațiilor…",
       "proLocked": "Faceți upgrade la PRO pentru memorie istorică de 180 de zile și căutare de precedente",
       "unavailable": "Memorie istorică a informațiilor nu este disponibilă temporar.",
@@ -318,7 +318,12 @@
         "all": "Toate",
         "conflict": "Conflict",
         "military": "Militar",
-        "energy": "Energie"
+        "energy": "Energie",
+        "unrest": "Tulburări",
+        "cyber": "Cyber",
+        "maritime": "Maritim",
+        "natural": "Pericole naturale",
+        "aviation": "Aviație"
       },
       "loadMore": "Încărcați mai mult",
       "loadingMore": "Se încarcă mai mult…",

@@ -306,7 +306,7 @@
     },
     "intelMemory": {
       "title": "Memoria storica dell'intelligence",
-      "help": "Archivio di 180 giorni di eventi relativi a conflitti, operazioni militari ed energia con corrispondenza semantica su richiesta.",
+      "help": "Archivio di 180 giorni di eventi notevoli relativi a conflitti, operazioni militari, energia, disordini, cyber, marittimi, rischi naturali e aviazione, con ricerca semantica di precedenti su richiesta.",
       "loading": "Caricamento della memoria storica dell'intelligence…",
       "proLocked": "Passa a PRO per la memoria storica dell'intelligence di 180 giorni e la ricerca di precedenti",
       "unavailable": "La memoria storica dell'intelligence non è temporaneamente disponibile.",
@@ -318,7 +318,12 @@
         "all": "Tutti",
         "conflict": "Conflitto",
         "military": "Operazioni militari",
-        "energy": "Energia"
+        "energy": "Energia",
+        "unrest": "Disordini",
+        "cyber": "Cyber",
+        "maritime": "Marittimo",
+        "natural": "Pericoli naturali",
+        "aviation": "Aviazione"
       },
       "loadMore": "Carica altri",
       "loadingMore": "Caricamento in corso…",

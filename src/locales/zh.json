@@ -302,7 +302,7 @@
     },
     "intelMemory": {
       "title": "历史情报库",
-      "help": "180天冲突、军事和能源事件档案，支持按需语义先例匹配。",
+      "help": "180天重要事件档案库，涵盖冲突、军事、能源、动荡、网络、海事、自然灾害和航空，支持按需语义先例匹配。",
       "loading": "正在加载历史情报库…",
       "proLocked": "升级至PRO以获得180天历史情报库和先例搜索",
       "unavailable": "历史情报库暂时不可用。",
@@ -314,7 +314,12 @@
         "all": "全部",
         "conflict": "冲突",
         "military": "军事",
-        "energy": "能源"
+        "energy": "能源",
+        "unrest": "动荡",
+        "cyber": "网络",
+        "maritime": "海事",
+        "natural": "自然灾害",
+        "aviation": "航空"
       },
       "loadMore": "加载更多",
       "loadingMore": "正在加载…",
