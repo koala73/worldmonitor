@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe('Social Velocity footer', () => {
-  it('describes the score the relay computes: log-scaled upvotes × % upvoted × recency', () => {
+  it('describes the score the relay computes: log-scaled net votes × % upvoted × recency', () => {
     vi.useFakeTimers();
     panel = new SocialVelocityPanel();
     document.body.appendChild(panel.getElement());
@@ -35,6 +35,6 @@ describe('Social Velocity footer', () => {
     }]);
     vi.runAllTimers();
 
-    expect(panel.getElement().textContent).toContain('Reddit · velocity = upvotes (log scale) × % upvoted × recency');
+    expect(panel.getElement().textContent).toContain('Reddit · velocity = net votes (log scale) × % upvoted × recency');
   });
 });
