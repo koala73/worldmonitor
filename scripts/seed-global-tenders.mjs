@@ -36,6 +36,7 @@ const GETS_FEED_URL = 'https://www.gets.govt.nz/ExternalRSSFeed.htm';
 const GETS_ORIGIN = 'https://www.gets.govt.nz';
 const GETS_INDEX_BUDGET_MS = 75_000;
 const GETS_DETAIL_CONCURRENCY = 4;
+const GETS_INDEX_MAX_PAGES = 30;
 const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
 
 function fetchResponseTransport(url, { timeoutMs, ...fetchOptions }) {
@@ -369,15 +370,20 @@ async function fetchGetsIndex({ now, fetchTextFn }) {
     if (remaining <= 0) throw new Error('GETS index exceeded its request budget');
     return fetchTextFn(url, { headers: { Accept: 'text/html' }, timeoutMs: Math.min(15_000, remaining), maxRetries: 1 });
   };
+  // The index only sorts by close date, so the first pages hold notices that
+  // expire before the next daily run. RFx IDs rise over time; keeping the
+  // highest ones keeps the newest notices, as the RSS feed did.
   const rows = [];
-  for (let page = 1; rows.length < MAX_PER_SOURCE; page += 1) {
+  for (let page = 1; page <= GETS_INDEX_MAX_PAGES; page += 1) {
     const html = await read(`${GETS_ORIGIN}/ExternalIndex.htm?page=${page}&orderBy=date`);
     const pageRows = getsIndexRows(html);
     if (pageRows.length === 0) throw new Error(`GETS index page ${page} contains no tender rows`);
     rows.push(...pageRows);
     if (!html.includes(`ExternalIndex.htm?page=${page + 1}&`)) break;
   }
-  const open = rows.slice(0, MAX_PER_SOURCE).filter((row) => isOpenOpportunity(row, now));
+  const open = rows.filter((row) => isOpenOpportunity(row, now))
+    .sort((left, right) => Number(right.id) - Number(left.id))
+    .slice(0, MAX_PER_SOURCE);
   const records = [];
   for (let offset = 0; offset < open.length; offset += GETS_DETAIL_CONCURRENCY) {
     records.push(...await Promise.all(open.slice(offset, offset + GETS_DETAIL_CONCURRENCY).map(async (row) => {

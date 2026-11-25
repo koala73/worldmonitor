@@ -124,9 +124,9 @@ test('GETS falls back to the official current-tenders index when the RSS feed is
   assert.equal(requested[0], RSS_URL, 'RSS stays the primary source');
   assert.equal(result.status.state, 'ok');
   assert.equal(result.status.recordCount, 3);
-  assert.deepEqual(result.records.map((record) => record.id), ['gets:35331516', 'gets:35370310', 'gets:35389657']);
+  assert.deepEqual(result.records.map((record) => record.id), ['gets:35389657', 'gets:35370310', 'gets:35331516'], 'newest RFx IDs first');
 
-  const [acc, orion, nzdf] = result.records;
+  const [nzdf, orion, acc] = result.records;
   assert.equal(acc.officialUrl, detailUrl(ACC));
   assert.equal(acc.title, "Future delivery options for ACC's Medical Consumables");
   assert.equal(acc.buyer, 'Accident Compensation Corporation');
@@ -181,4 +181,25 @@ test('GETS index fallback rejects a detail page that belongs to another notice',
   });
 
   await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /GETS/);
+});
+
+test('GETS index fallback reads every page and keeps the newest notices, not the soonest-closing ones', async () => {
+  const row = (n) => ({ ...ORION, id: String(35000000 + n), agency: 'GETS', close: `4:00 PM ${(n % 28) + 1} Dec 2026 (Pacific/Auckland UTC+13:00)` });
+  const pages = {};
+  for (const [page, start, next] of [[1, 1, 2], [2, 61, 3], [3, 121, null]]) {
+    const rows = Array.from({ length: 60 }, (_, index) => row(start + index));
+    pages[`https://www.gets.govt.nz/ExternalIndex.htm?page=${page}&orderBy=date`] = indexPage(rows, next);
+    for (const entry of rows) {
+      pages[detailUrl(entry)] = detailPage({ id: entry.id, open: 'Monday, 9 November 2026 9:00 AM (Pacific/Auckland UTC+13:00)', categories: [], overview: 'Panel.' });
+    }
+  }
+  const { fetchTextFn, requested } = fakeGets(pages);
+
+  const result = await fetchGets({ now: NOW, fetchTextFn });
+
+  assert.ok(requested.includes('https://www.gets.govt.nz/ExternalIndex.htm?page=3&orderBy=date'), 'paging continues past the record cap');
+  assert.equal(result.records.length, 100);
+  assert.equal(result.records[0].id, 'gets:35000180');
+  assert.equal(result.records.at(-1).id, 'gets:35000081');
+  assert.equal(requested.filter((url) => url.includes('ExternalTenderDetails')).length, 100, 'detail pages are read only for kept notices');
 });
