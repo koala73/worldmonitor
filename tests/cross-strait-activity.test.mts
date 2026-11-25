@@ -49,20 +49,11 @@ import {
   buildCrossStraitActivityPanelModel,
   isCrossStraitActivitySnapshot,
 } from '../src/components/cross-strait-activity-summary';
+import { withoutContentFreshness } from './helpers/cross-strait-observations.mjs';
 
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/cross-strait-activity');
 const fixture = (name: string) => readFileSync(resolve(fixtureRoot, name), 'utf8');
 const retrievedAt = '2026-07-25T08:30:00.000Z';
-
-// Each run re-assesses reviewed Japan content freshness, so retention checks
-// compare every other field of the carried-forward observations.
-function withoutContentFreshness(rows: any[]) {
-  return rows.map((row) => {
-    if (row.sourceId !== 'japan-mod') return row;
-    const { content_freshness: _contentFreshness, ...claims } = row.provenance.claims;
-    return { ...row, provenance: { ...row.provenance, claims } };
-  });
-}
 const { proxyFetch } = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
 const usableJapanEnglishIndex = `
   <dl>
