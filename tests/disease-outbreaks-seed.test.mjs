@@ -965,3 +965,85 @@ for (const [input, expected] of [
     assert.equal(typeof published.outbreaks[0].cases, 'number');
   });
 }
+
+// #11273: WHO DON titles some reports "Disease, Location" and its API carries
+// a Summary; both reach the card instead of an empty location and summary.
+test('WHO reports keep their summary and a comma-titled location', async (t) => {
+  const record = {
+    Title: 'Hantavirus outbreak linked to cruise ship travel, Multi-locations',
+    ItemDefaultUrl: '/2026-DON603',
+    PublicationDateAndTime: '2026-07-02T18:00:00Z',
+    Summary: '<p>This is the fifth Disease Outbreak News posting on the Andes hantavirus (ANDV) outbreak linked to the cruise ship M/V Hondius.</p>',
+  };
+  let requested = '';
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    requested = String(input);
+    return jsonResponse({ value: [record] });
+  });
+  const [item] = await fetchWhoDonApi({ timeoutMs: 100, retryDelayMs: 0 });
+  assert.match(new URL(requested).searchParams.get('$select'), /\bSummary\b/);
+  const outbreak = mapItem(item);
+  assert.equal(outbreak.location, 'Multi-locations');
+  assert.equal(outbreak.summary, 'This is the fifth Disease Outbreak News posting on the Andes hantavirus (ANDV) outbreak linked to the cruise ship M/V Hondius.');
+
+  const ebola = mapItem(whoNormalizeItem({
+    Title: 'Ebola disease caused by Bundibugyo virus, Democratic Republic of the Congo, Kenya and Nigeria',
+    ItemDefaultUrl: '/2026-DON626', PublicationDateAndTime: '2026-11-06T20:42:12Z',
+  }));
+  assert.equal(ebola.location, 'Democratic Republic of the Congo, Kenya and Nigeria');
+  assert.equal(ebola.countryCode, 'CD');
+});
+
+// #11273: two ThinkGlobalHealth rows from different outlets repeat one count
+// at one place; their wording gave them different alert levels.
+test('ThinkGlobalHealth rows reporting the same count at the same place publish once', async (t) => {
+  const date = (n) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  const row = (id, n, link, summary, cases = '57') => ({
+    Alert_ID: id, lat: '14.36697006', lng: '-14.46765041', diseases: 'Diphtheria', place_name: 'Senegal',
+    country: 'Senegal', date: date(n), cases, link, Type: 'outbreak', summary,
+  });
+  const realtime = [
+    row('8735090', 2, 'https://fr.apanews.net/news/senegal-57-cas', "Senegal has recorded 57 confirmed cases of diphtheria, including eight deaths, since the country's outbreak began on August 1, 2026."),
+    row('8735058', 4, 'https://french.xinhuanet.com/c.html', 'Senegal has recorded 57 confirmed cases of diphtheria, including eight deaths, since August 1.'),
+    row('8735479', 1, 'https://aps.sn/diphterie', 'Senegal reported 76 diphtheria cases and nine deaths.', '76'),
+  ];
+  const bundle = `/* boilerplate */\neval("${JSON.stringify(`var res = ${JSON.stringify(realtime)}`).slice(1, -1)}")\n`;
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url.endsWith('index_bundle.js')) return new Response(bundle, { status: 200 });
+    return new Response('<rss><channel></channel></rss>', { status: 200 });
+  });
+
+  const { outbreaks } = await fetchDiseaseOutbreaks();
+  const tgh = outbreaks.filter((o) => o.sourceName === 'ThinkGlobalHealth');
+  assert.deepEqual(tgh.map((o) => [o.cases, o.sourceUrl]), [
+    [76, 'https://aps.sn/diphterie'],
+    [57, 'https://fr.apanews.net/news/senegal-57-cas'],
+  ]);
+});
+
+// #11273: "Increases in Recent Animal Rabies Activity" is not a place.
+test('CDC titles keep the United States when the words after "in" are not a place', () => {
+  const cdc = (title) => mapItem(rssNormalizeItem({ title, link: 'https://www.cdc.gov/x', desc: '', pubDate: 'Wed, 10 Sep 2026 12:00:00 GMT', sourceName: 'CDC' }));
+  const rabies = cdc('CDC Statement on Increases in Recent Animal Rabies Activity and Associated Human Exposures');
+  assert.equal(rabies.location, 'United States');
+  assert.equal(rabies.countryCode, 'US');
+  const brazil = cdc('CDC Update on Outbreak of Yellow Fever in Brazil');
+  assert.equal(brazil.location, 'Brazil');
+  assert.equal(brazil.countryCode, 'BR');
+});
+
+// #11273: an outbreak the headline dates to an earlier year is background.
+test('an outbreak headline dated to an earlier year is not an alert', () => {
+  const cidrap = (title, pubDate) => mapItem(rssNormalizeItem({
+    title,
+    link: 'https://www.cidrap.umn.edu/measles/x',
+    desc: 'A multijurisdictional measles outbreak contributed to Canada losing its measles elimination status, which it had held since 1998.',
+    pubDate,
+    sourceName: 'CIDRAP',
+  }));
+  assert.equal(cidrap("Canada's 2025 measles outbreak offers a cautionary tale for the US", 'Thu, 05 Nov 2026 09:00:00 -0600').alertLevel, 'watch');
+  assert.equal(cidrap("Canada's 2026 measles outbreak tops 5,000 cases", 'Thu, 05 Nov 2026 09:00:00 -0600').alertLevel, 'alert');
+  assert.equal(detectAlertLevel('Measles outbreak grows in Ontario', ''), 'alert');
+});
