@@ -2616,7 +2616,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Prezzi al dettaglio della benzina e del diesel in oltre 30 paesi, normalizzati a USD/litro per il confronto. I prezzi provengono da programmi ufficiali di open data governativi e vengono aggiornati settimanalmente. I paesi più economici e più cari sono evidenziati. La variazione settimanale rispetto alla settimana precedente viene mostrata quando i dati della settimana precedente sono disponibili.",
-      "countries": "paesi"
+      "countries": "paesi",
+      "observedStale": "{{date}}, {{days}} giorni fa",
+      "monthlyMean": "media di {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> L'indice dei prezzi alimentari dell'Organizzazione delle Nazioni Unite per l'Alimentazione e l'Agricoltura traccia i prezzi all'esportazione internazionali per un paniere di merci alimentari (Cereali, Latticini, Carne, Oli, Zucchero), base 2014-2016=100. Aggiornato mensilmente il primo venerdì di ogni mese.",

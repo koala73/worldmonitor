@@ -2592,7 +2592,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>燃油价格</strong>30多个国家的汽油和柴油零售泵价，以美元/升为单位进行比较。价格来自官方政府开放数据计划，每周更新。最便宜和最昂贵的国家突出显示。当获得上周数据时显示周环比变化。",
-      "countries": "个国家"
+      "countries": "个国家",
+      "observedStale": "{{date}}，{{days}} 天前",
+      "monthlyMean": "{{month}}均价"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>粮农组织食品价格指数</strong>联合国粮食及农业组织的食品价格指数跟踪食品商品篮（谷物、乳制品、肉类、油类、糖）的国际出口价格，基数2014-2016=100。每月第一个星期五更新。",

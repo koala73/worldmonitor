@@ -2388,7 +2388,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Üzemanyagárak</strong> Benzin és dízel üzemanyag-töltőállomási árai 30+ országban, USD/literben normalizálva az összehasonlíthatóság érdekében. Az árak a kormányzati nyílt adatprogramokból származnak és hetente frissülnek. A legolcsóbb és legdrágább országok kiemelésre kerülnek. Heti változás jelenik meg, ha az előző heti adatok rendelkezésre állnak.",
-      "countries": "országok"
+      "countries": "országok",
+      "observedStale": "{{date}}, {{days}} napos",
+      "monthlyMean": "{{month}} átlag"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Élelmiszerár-index</strong> Az ENSZ Élelmezési és Mezőgazdasági Szervezete Élelmiszerár-indexe az élelmiszeráru-kosár nemzetközi exportárainak nyomon követése (Gabonák, Tejtermékek, Hús, Olajok, Cukor), 2014-2016=100 alap. Havonta, minden hónap első péntekén frissítve.",

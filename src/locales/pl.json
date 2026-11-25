@@ -2628,7 +2628,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Ceny detaliczne benzyny i oleju napędowego w ponad 30 krajach, znormalizowane do USD/litra dla porównywalności. Ceny pochodzą z oficjalnych rządowych programów otwartych danych i są aktualizowane co tydzień. Kraje z najtańszą i najdroższą paliwem są wyróżnione. Zmiana w stosunku do tygodnia poprzedniego jest wyświetlana, gdy dostępne są dane z poprzedniego tygodnia.",
-      "countries": "kraje"
+      "countries": "kraje",
+      "observedStale": "{{date}}, sprzed {{days}} dni",
+      "monthlyMean": "średnia za {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Indeks Cen Żywności Światowej Organizacji ds. Wyżywienia i Rolnictwa śledzi międzynarodowe ceny eksportowe koszyka towarów żywnościowych (Zboża, Nabiał, Mięso, Oleje, Cukier), podstawa 2014–2016=100. Aktualizowany co miesiąc w pierwszy piątek każdego miesiąca.",

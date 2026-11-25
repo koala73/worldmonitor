@@ -2616,7 +2616,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Precios minoristas de gasolina y diésel en más de 30 países, normalizados a USD/litro para comparación. Los precios provienen de programas de datos abiertos de gobiernos oficiales y se actualizan semanalmente. Se destacan los países más baratos y más caros. Se muestra el cambio semana a semana cuando hay datos de la semana anterior disponibles.",
-      "countries": "países"
+      "countries": "países",
+      "observedStale": "{{date}}, hace {{days}} días",
+      "monthlyMean": "promedio de {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> El Índice de Precios de Alimentos de la Organización de las Naciones Unidas para la Alimentación y la Agricultura monitorea los precios de exportación internacionales de una canasta de productos alimentarios (Cereales, Lácteos, Carnes, Aceites, Azúcar), base 2014-2016=100. Se actualiza mensualmente el primer viernes de cada mes.",
