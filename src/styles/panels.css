@@ -3020,6 +3020,11 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   text-overflow: ellipsis;
 }
 
+.te-coords {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 .te-meta {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted);

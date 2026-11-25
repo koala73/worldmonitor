@@ -128,7 +128,7 @@ export class ThermalEscalationPanel extends Panel {
       <div class="te-card te-card-${statusClass}" data-lat="${c.lat}" data-lon="${c.lon}" role="button" tabindex="0">
         <div class="te-card-accent"></div>
         <div class="te-card-body">
-          <div class="te-region">${escapeHtml(c.regionLabel)}</div>
+          <div class="te-region">${escapeHtml(c.regionLabel)} <span class="te-coords">· ${escapeHtml(formatCoords(c.lat, c.lon))}</span></div>
           <div class="te-meta">${escapeHtml(t('components.thermalEscalation.observations', { count: c.observationCount }))} · ${escapeHtml(t('components.thermalEscalation.sources', { count: c.uniqueSourceCount }))}</div>
           <div class="te-badges">${badges}</div>
         </div>
@@ -141,6 +141,10 @@ export class ThermalEscalationPanel extends Panel {
       </div>
     `;
   }
+}
+
+function formatCoords(lat: number, lon: number): string {
+  return `${Math.abs(lat).toFixed(2)}°${lat < 0 ? 'S' : 'N'} ${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
 }
 
 function formatAge(date: Date): string {
