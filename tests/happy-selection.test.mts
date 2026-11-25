@@ -19,14 +19,17 @@ const story = (source: string, title: string, link = `https://example.org/${enco
   happyCategory: classifyNewsItem(source, title),
 });
 
-test('GNN subfeed copies of one article render once', () => {
+test('GNN subfeed copies of one article render once, under the category feed', () => {
   const link = 'https://www.goodnewsnetwork.org/viral-infections-fall-68-in-brazil/';
   const items = dedupeHappyItems([
     story('Good News Network', 'Viral Infections Fall 68% in Brazil', link),
     story('GNN Health', 'Viral Infections Fall 68% in Brazil', `${link}?utm_source=rss`),
     story('GNN Heroes', 'Thanksgiving Heroes'),
   ]);
-  assert.deepEqual(items.map(item => item.source), ['Good News Network', 'GNN Heroes']);
+  assert.deepEqual(items.map(item => [item.source, item.happyCategory]), [
+    ['GNN Health', 'science-health'],
+    ['GNN Heroes', 'humanity-kindness'],
+  ]);
 });
 
 test('broad-source items must pass the sentiment gate; dedicated positive outlets do not', async () => {

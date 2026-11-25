@@ -1,5 +1,6 @@
 import type { NewsItem } from '@/types';
-import { dedupeByArticleUrl } from '../../shared/article-identity.js';
+import { dedupeByArticleUrl, normalizeArticleUrl } from '../../shared/article-identity.js';
+import { hasSourceCategory } from './positive-classifier';
 
 // General science and environment outlets publish negative and neutral reporting
 // alongside good news, so their items must pass the sentiment gate.
@@ -31,8 +32,18 @@ const BREAKTHROUGH_EVIDENCE_RE = /\b(breakthroughs?|discover\w*|first[- ]ever|wo
 
 const HERO_EVIDENCE_RE = /\b(hero(?:es|ic|ine)?|rescu\w*|saved?|saves|saving|lifesav\w*|donat\w*|volunteer\w*|kindness|generous|generosity|selfless\w*|brave(?:ry)?|courage\w*|helped|helps|helping|strangers?|charity)\b/i;
 
+// A story syndicated to a category feed (GNN Health) keeps that copy, whose
+// category comes from the feed, over the general-feed copy.
 export function dedupeHappyItems(items: NewsItem[]): NewsItem[] {
-  return dedupeByArticleUrl(items, item => item.link);
+  const preferred = new Map<string, NewsItem>();
+  for (const item of items) {
+    const key = normalizeArticleUrl(item.link);
+    if (!key) continue;
+    const current = preferred.get(key);
+    if (!current || (!hasSourceCategory(current.source) && hasSourceCategory(item.source))) preferred.set(key, item);
+  }
+  return dedupeByArticleUrl(items, item => item.link)
+    .map(item => preferred.get(normalizeArticleUrl(item.link)) ?? item);
 }
 
 export async function selectCuratedHappyItems(

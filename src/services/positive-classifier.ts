@@ -136,6 +136,10 @@ export function classifyPositiveContent(
  * Classify a news item using source-based pre-mapping (fast path)
  * then falling back to keyword classification (slow path).
  */
+export function hasSourceCategory(source: string): boolean {
+  return source in SOURCE_CATEGORY_MAP;
+}
+
 export function classifyNewsItem(source: string, title: string): HappyContentCategory {
   // Fast path: source name maps directly to a category
   const sourceCategory = SOURCE_CATEGORY_MAP[source];
