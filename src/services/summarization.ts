@@ -203,11 +203,15 @@ async function tryApiProvider(
 
 // ── Browser T5 provider (different interface -- no API call) ──
 
+// The browser model never reaches server-side output validation.
+const ARTICLE_COMMENTARY_RE = /\bheadlines?\b|^(?:the|this) (?:story|article)\b/i;
+
 async function tryBrowserT5(
   attemptState: SummarizationAttemptState,
   headlines: string[],
   modelId?: string,
   bodies?: string[],
+  mode: 'brief' | 'article' = 'brief',
 ): Promise<SummarizationResult | null> {
   try {
     if (!mlWorker.isAvailable) {
@@ -229,13 +233,18 @@ async function tryBrowserT5(
           return b ? `${h.slice(0, 80)} — ${b}` : h.slice(0, 80);
         }).join('. ')
       : topHeadlines.map(h => h.slice(0, 80)).join('. ');
-    const prompt = lang === 'fr'
-      ? `Résumez le titre le plus important en 2 phrases concises (moins de 60 mots) : ${combinedText}`
-      : `Summarize the most important headline in 2 concise sentences (under 60 words): ${combinedText}`;
+    const prompt = mode === 'article'
+      ? (lang === 'fr'
+        ? `Résumez cet article en 2 phrases concises (moins de 60 mots) : ${combinedText}`
+        : `Summarize this article in 2 concise sentences (under 60 words): ${combinedText}`)
+      : (lang === 'fr'
+        ? `Résumez le titre le plus important en 2 phrases concises (moins de 60 mots) : ${combinedText}`
+        : `Summarize the most important headline in 2 concise sentences (under 60 words): ${combinedText}`);
 
     const [summary] = await mlWorker.summarize([prompt], modelId);
 
-    if (!summary || summary.length < 20 || summary.toLowerCase().includes('summarize') || summary.toLowerCase().includes('résumez')) {
+    if (!summary || summary.length < 20 || summary.toLowerCase().includes('summarize') || summary.toLowerCase().includes('résumez')
+      || (mode === 'article' && ARTICLE_COMMENTARY_RE.test(summary))) {
       return null;
     }
 
@@ -350,7 +359,7 @@ async function generateSummaryInternal(
       // Model already loaded -- use browser T5-small first
       if (!options?.skipBrowserFallback) {
         onProgress?.(1, totalSteps, 'Running local AI model (beta)...');
-        const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies);
+        const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies, options?.mode);
         if (browserResult) return browserResult;
       }
 
@@ -376,7 +385,7 @@ async function generateSummaryInternal(
       // Last resort: try browser T5 (may have finished loading by now)
       if (mlWorker.isAvailable && !options?.skipBrowserFallback) {
         onProgress?.(API_PROVIDERS.length + 1, totalSteps, 'Waiting for local AI model...');
-        const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies);
+        const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies, options?.mode);
         if (browserResult) return browserResult;
       }
 
@@ -398,7 +407,7 @@ async function generateSummaryInternal(
 
   if (!options?.skipBrowserFallback) {
     onProgress?.(totalSteps, totalSteps, 'Loading local AI model...');
-    const browserResult = await tryBrowserT5(attemptState, headlines, undefined, bodies);
+    const browserResult = await tryBrowserT5(attemptState, headlines, undefined, bodies, options?.mode);
     if (browserResult) return browserResult;
   }
 

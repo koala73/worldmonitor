@@ -24,6 +24,8 @@ test('headline commentary is rejected as a summary', () => {
   assert.equal(describesHeadlines('The Guardian corrected the headline after readers said it misnamed the town.'), false);
   assert.equal(describesHeadlines('The headline inflation rate fell to 2% as energy costs declined.'), false);
   assert.equal(describesHeadlines('These two headlines report on a new vaccine.'), true);
+  assert.equal(describesHeadlines('This story describes a painter reflecting on aging.'), true);
+  assert.equal(describesHeadlines('The story of the rescue spread quickly after a neighbor filmed it.'), false);
   assert.equal(describesHeadlines('The U.S. and Ukraine announced a partial ceasefire agreement, halting strikes on energy infrastructure.'), false);
 });
 
