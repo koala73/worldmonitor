@@ -175,6 +175,17 @@ describe('seed-gold-cb-reserves: non-country IRFCL areas', () => {
     const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_USD');
     assert.deepEqual(payload.topHolders.map(h => h.iso3), ['DEU', 'FRA']);
   });
+
+  it('does not let a group code with a newer month set the reporting month', () => {
+    const raw = {
+      G163: { name: 'G163', byMonth: { '2026-06': 9_000_000_000_000 } },
+      DEU: { name: 'Germany', byMonth: { '2026-01': 300_000_000_000 } },
+      FRA: { name: 'France', byMonth: { '2026-01': 200_000_000_000 } },
+    };
+    const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_USD');
+    assert.equal(payload.asOfMonth, '2026-01');
+    assert.deepEqual(payload.topHolders.map(h => h.iso3), ['DEU', 'FRA']);
+  });
 });
 
 describe('seed-gold-cb-reserves: pctOfReserves computation', () => {
