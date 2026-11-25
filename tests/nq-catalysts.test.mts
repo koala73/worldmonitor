@@ -163,6 +163,24 @@ describe('NQ Catalysts filters', () => {
     assert.doesNotMatch(html, /08:30|14:00 ET|release at/);
   });
 
+  it('shows the scheduled macro release time in US Eastern time', () => {
+    const html = composeNqCatalystsHtml({
+      macro: [
+        { event: 'GDP', country: 'US', date: '2026-11-25', impact: 'High', releaseAt: Date.parse('2026-11-25T13:30:00Z') },
+        { event: 'FOMC', country: 'US', date: '2026-09-16', impact: 'High', releaseAt: Date.parse('2026-09-16T18:00:00Z') },
+        { event: 'PCE', country: 'US', date: '2026-11-25', impact: 'High', releaseAt: 0 },
+        { event: 'CPI', country: 'US', date: '2026-11-26', impact: 'High', releaseAt: 8.64e15 + 1 },
+      ],
+      earnings: [],
+      macroUnavailable: false,
+      earningsUnavailable: false,
+      nowMs: now.getTime(),
+    });
+    assert.match(html, /nq-catalysts-time">8:30 AM ET</);
+    assert.match(html, /nq-catalysts-time">2:00 PM ET</);
+    assert.equal((html.match(/Time unknown/g) ?? []).length, 2);
+  });
+
   it('labels catalyst freshness at the 12-hour and 24-hour boundaries', () => {
     const nowMs = Date.parse('2026-08-31T18:00:00.000Z');
     const thresholds = {

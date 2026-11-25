@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **1380 active source hosts** representing **1357 active providers** (**399 structured/API**, **964 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **1381 active source hosts** representing **1358 active providers** (**400 structured/API**, **964 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -826,7 +826,7 @@ This generated inventory covers **1380 active source hosts** representing **1357
 | reddit.com (reddit.com) | structured — scripts/ais-relay.cjs, scripts/lib/wsb-tickers.cjs, src/services/story-share.ts |
 | registry.modelcontextprotocol.io (registry.modelcontextprotocol.io) | structured — scripts/publish-mcp-registry.mjs |
 | ReliefWeb (UN OCHA) (api.reliefweb.int) | structured — scripts/seed-climate-disasters.mjs |
-| reliefweb.int (reliefweb.int) | structured — scripts/seed-climate-news.mjs |
+| reliefweb.int (reliefweb.int) | structured — scripts/_climate-news-helpers.mjs |
 | renaissancecapital.com (renaissancecapital.com) | feed — shared/news-catalog.json |
 | Reporters Without Borders (RSF) (rsf.org) | structured — scripts/seed-resilience-static.mjs |
 | Resend email service (api.resend.com) | structured — server/worldmonitor/leads/v1/register-interest.ts, server/worldmonitor/leads/v1/submit-contact.ts |
@@ -1079,6 +1079,7 @@ This generated inventory covers **1380 active source hosts** representing **1357
 | tvn24.pl (tvn24.pl) | feed — shared/news-catalog.json |
 | TVP Info (tvp.info) | feed — shared/news-catalog.json |
 | twitter.com (twitter.com) | structured — src/services/story-share.ts |
+| U.S. Bureau of Economic Analysis (BEA) (apps.bea.gov) | structured — scripts/seed-economic-calendar.mjs |
 | ua.usembassy.gov (ua.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
 | ubpost.mn (ubpost.mn) | feed — shared/news-catalog.json |
 | ucdpapi.pcr.uu.se (ucdpapi.pcr.uu.se) | structured — scripts/ais-relay.cjs, scripts/seed-ucdp-events.mjs |
