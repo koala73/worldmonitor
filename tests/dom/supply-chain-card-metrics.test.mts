@@ -4,7 +4,7 @@ import type { GetChokepointStatusResponse } from '@/generated/client/worldmonito
 import { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { initTestI18n } from './helpers/i18n.mts';
 
-function chokepoint(id: string, name: string, aisDisruptions: number) {
+function chokepoint(id: string, name: string, aisDisruptions: number, transitDate = '2026-11-22', flowDate = '2026-11-21') {
   return {
     id,
     name,
@@ -22,14 +22,17 @@ function chokepoint(id: string, name: string, aisDisruptions: number) {
       todayCountsAvailable: true,
       todayTotal: 41,
       wowChangePct: -3.2,
-      officialLatestDate: '2026-11-22',
+      officialLatestDate: transitDate,
     },
-    flowEstimate: { currentMbd: 4.1, baselineMbd: 4.5, flowRatio: 0.91, disrupted: false, latestDate: '2026-11-21' },
+    flowEstimate: { currentMbd: 4.1, baselineMbd: 4.5, flowRatio: 0.91, disrupted: false, latestDate: flowDate },
   };
 }
 
 const response = {
-  chokepoints: [chokepoint('dover_strait', 'Dover Strait', 1), chokepoint('suez', 'Suez Canal', 3)],
+  chokepoints: [
+    chokepoint('dover_strait', 'Dover Strait', 1), chokepoint('suez', 'Suez Canal', 3),
+    chokepoint('panama', 'Panama Canal', 0, '2026-13-22', '2026-02-30'),
+  ],
   fetchedAt: '2026-11-25T04:19:10.309Z',
   upstreamUnavailable: false,
 } as unknown as GetChokepointStatusResponse;
@@ -71,5 +74,12 @@ describe('supply-chain chokepoint card metrics', () => {
     const rows = [...card.querySelectorAll('.sc-metric-row')].map((row) => row.textContent ?? '');
     expect(rows.find((row) => row.includes('Week-over-week change'))).toContain('as of Nov 22');
     expect(rows.find((row) => row.includes('mb/d'))).toContain('as of Nov 21');
+  });
+
+  it('omits the observation day when the date does not exist on the calendar', async () => {
+    const card = await renderCard('Panama Canal');
+    expect(card.textContent).toContain('Week-over-week change');
+    expect(card.textContent).toContain('mb/d');
+    expect(card.textContent).not.toContain('as of');
   });
 });

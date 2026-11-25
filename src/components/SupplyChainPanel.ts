@@ -61,8 +61,10 @@ function hasPublishedTransitCount(ts?: { todayTotal?: number; todayCountsAvailab
 }
 
 function observedAsOf(isoDate: string | null | undefined): string {
-  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return '';
-  const date = new Date(`${isoDate}T00:00:00Z`).toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  if (!isoDate) return '';
+  const observed = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(observed.getTime()) || observed.toISOString().slice(0, 10) !== isoDate) return '';
+  const date = observed.toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', timeZone: 'UTC' });
   return ` <span class="sc-observed-date" style="opacity:0.7">${escapeHtml(t('components.supplyChain.asOf', { date }))}</span>`;
 }
 
