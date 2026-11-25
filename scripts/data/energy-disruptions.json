@@ -519,7 +519,7 @@
       "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
       "causeChain": ["policy"],
       "shortDescription": "Biden administration ordered 180 million barrel SPR release (about 1 mb/d for six months) — the largest ever; SPR levels fell to ~40-year lows by mid-2023.",
-      "sources": [ { "authority": "US DOE", "title": "SPR release authorization", "url": "https://www.energy.gov/fecm/articles/spr-release", "date": "2022-03-31", "sourceType": "regulator" } ],
+      "sources": [ { "authority": "US DOE", "title": "SPR release authorization", "url": "https://www.energy.gov/fecm/articles/spr-release", "date": "2022-03-31", "sourceType": "regulator" }, { "authority": "The White House", "title": "Fact sheet: President Biden's plan to respond to Putin's price hike at the pump", "url": "https://bidenwhitehouse.archives.gov/briefing-room/statements-releases/2022/03/31/fact-sheet-president-bidens-plan-to-respond-to-putins-price-hike-at-the-pump/", "date": "2022-03-31", "sourceType": "regulator" } ],
       "classifierVersion": "v1", "classifierConfidence": 0.96, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
     },
     "gladstone-lng-maintenance-2023": {
