@@ -1,0 +1,42 @@
+name: Dogfood browser
+description: Install agent-browser (and, for agent jobs, Claude Code and a separate browser user) for the dogfood workflows.
+# Shared by dogfood-weekly.yml and dogfood-content.yml. The runner image's Google Chrome and its libraries are used
+# as they are: `agent-browser install --with-deps` stalled for the whole step on an apt mirror (run 44384562753).
+# npm skips install scripts unless allowed, and both packages fetch their native binary in one.
+#
+# An agent job (agent: 'true') also gets Claude Code and the AGENT_BROWSER_USER account the browser runs as, then
+# checks that account cannot read this job's process environment, which holds ANTHROPIC_API_KEY.
+inputs:
+  agent:
+    description: "'true' for a job that runs the Claude agent; 'false' to install agent-browser alone."
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Install agent-browser and Claude Code
+      shell: bash
+      env:
+        AGENT: ${{ inputs.agent }}
+      run: |
+        set -euo pipefail
+        if [ "$AGENT" = true ]; then
+          timeout 300 npm install -g --allow-scripts=@anthropic-ai/claude-code,agent-browser agent-browser@0.43.0 @anthropic-ai/claude-code@2.1.327
+          claude --version
+        else
+          timeout 300 npm install -g --allow-scripts=agent-browser agent-browser@0.43.0
+        fi
+        "$AGENT_BROWSER_EXECUTABLE_PATH" --version
+        agent-browser --version
+
+    - name: Check the browser user cannot read the runner's environment
+      if: inputs.agent == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo useradd --create-home "$AGENT_BROWSER_USER"
+        if sudo -n -u "$AGENT_BROWSER_USER" cat "/proc/$$/environ" > /dev/null 2>&1; then
+          echo "::error::$AGENT_BROWSER_USER can read /proc/$$/environ, so the agent could reach ANTHROPIC_API_KEY."
+          exit 1
+        fi
+        echo "$AGENT_BROWSER_USER cannot read /proc/$$/environ."
