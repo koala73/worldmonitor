@@ -4526,6 +4526,20 @@
       ]
     },
     {
+      "host": "digital-strategy.ec.europa.eu",
+      "provider": "digital-strategy.ec.europa.eu",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit digital-strategy.ec.europa.eu and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "discord.com",
       "provider": "discord.com",
       "kind": "structured",
@@ -4796,7 +4810,7 @@
     {
       "host": "ec.europa.eu",
       "provider": "ec.europa.eu",
-      "kind": "feed+structured",
+      "kind": "structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit ec.europa.eu and link to the original upstream API/dataset.",
@@ -4816,9 +4830,6 @@
         },
         {
           "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
-        },
-        {
-          "path": "shared/news-catalog.json"
         }
       ]
     },
