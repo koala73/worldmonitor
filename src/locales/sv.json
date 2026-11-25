@@ -872,7 +872,7 @@
       },
       "clickToViewMap": "Klicka för att se på kartan",
       "refresh": "Uppdatera",
-      "infoTooltip": "<strong>Metod</strong><p>Aggregerar militära flygplan och marinefartyg per teaterregion.</p><ul><li><strong>Normal:</strong> Baslinjeaktivitet</li><li><strong>Förhöjd:</strong> Över tröskelvärde (50+ flygplan)</li><li><strong>Kritisk:</strong> Hög koncentration (100+ flygplan)</li></ul><p><strong>Luftstrike-kapabel:</strong> Tankflygplan + Luftburen tidig varning + Jaktplan närvarande i tillräckligt antal för långvarig verksamhet.</p>",
+      "infoTooltip": "<strong>Metodik</strong><p>Räknar militära flygplan och spårade marinefartyg i varje militär teater.</p><ul><li><strong>Normal:</strong> Under teaterns tröskel</li><li><strong>Förhöjd:</strong> Antal når 3 till 8, per teater</li><li><strong>Kritisk:</strong> Antal når 8 till 20, per teater</li></ul><p>Fartyg bidrar till antalet upp till hälften av den förhöjda tröskeln, så fartyg ensamt kan aldrig höja nivån.</p><p><strong>Slagkraftig:</strong> Tankfartyg + Luftövervakning + Jagare närvarande i tillräckligt antal för fortsatta operationer.</p>",
       "scanningTheaters": "Skannar teatrar",
       "positions": "Flygplanspositioner",
       "navalVesselsLoading": "Marinfartyg",
@@ -914,7 +914,9 @@
       },
       "emojiKeyLabel": "Emoji-nyckel",
       "emojiKeyAir": "Luftresurser",
-      "emojiKeyNaval": "Sjöresurser"
+      "emojiKeyNaval": "Sjöresurser",
+      "instabilityChip": "Instabilitet {{score}}",
+      "instabilityNote": "{{nation}} instabilitetsscore: {{score}} av 100. Visas för sammanhang. Det ändrar inte nivån, som räknar flygplan och fartyg i operationsområdet."
     },
     "techEvents": {
       "loading": "Laddar tekniska händelser...",

@@ -1189,7 +1189,7 @@
         "auxiliary": "Pomocná plavidla",
         "navalVessels": "Námořní plavidla"
       },
-      "infoTooltip": "<strong>Metodologie</strong><p>Agreguje vojenská letadla a válečné lodě podle operačního oblasti.</p><ul><li><strong>Normální:</strong> Základní aktivita</li><li><strong>Zvýšená:</strong> Nad prahovou hodnotu (50+ letadel)</li><li><strong>Kritická:</strong> Vysoká koncentrace (100+ letadel)</li></ul><p><strong>Schopné udělat úder:</strong> Tankery + Letecké včasné varování + Stíhače přítomni v dostatečném počtu pro trvalé operace.</p>",
+      "infoTooltip": "<strong>Metodologie</strong><p>Počítá vojenská letadla a sledované námořní jednotky v každém operačním distrikt.</p><ul><li><strong>Normální:</strong> Pod prahovou hodnotou distriktu</li><li><strong>Zvýšená:</strong> Počet dosáhne 3 až 8, podle distriktu</li><li><strong>Kritická:</strong> Počet dosáhne 8 až 20, podle distriktu</li></ul><p>Lodě přispívají k počtu až do poloviny zvýšeného prahu, takže samotné lodě nikdy nezvýší úroveň.</p><p><strong>Schopné útoku:</strong> Tankery + Letadla včasného varování + Stíhačky přítomny v dostatečném počtu pro udržované operace.</p>",
       "scanningTheaters": "Skenování válčišť",
       "positions": "Pozice letadel",
       "navalVesselsLoading": "Námořní plavidla",
@@ -1231,7 +1231,9 @@
       },
       "emojiKeyLabel": "Legenda emojis",
       "emojiKeyAir": "Letecké prostředky",
-      "emojiKeyNaval": "Námořní prostředky"
+      "emojiKeyNaval": "Námořní prostředky",
+      "instabilityChip": "Nestabilita {{score}}",
+      "instabilityNote": "Skóre nestability {{nation}}: {{score}} ze 100. Zobrazeno pro kontext. Nemá vliv na úroveň, kterou určuje počet letadel a lodí v operačním teritoriu."
     },
     "countryBrief": {
       "shareStory": "Sdílet příběh",

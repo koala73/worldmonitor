@@ -101,6 +101,7 @@
       "scripts/shared/other-tokens.json",
       "scripts/shared/pizzint-history.cjs",
       "scripts/shared/story-identity.js",
+      "scripts/shared/theater-posture.js",
       "scripts/shared/air-traffic-aggregate.cjs",
       "scripts/shared/air-traffic-history.cjs",
       "scripts/shared/air-traffic-detector.cjs",

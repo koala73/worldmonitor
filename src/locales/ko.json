@@ -1192,7 +1192,7 @@
         "auxiliary": "보조함",
         "navalVessels": "해군 함정"
       },
-      "infoTooltip": "<strong>방법론</strong><p>군용 항공기 및 해군 함정을 작전 지역별로 집계합니다.</p><ul><li><strong>정상:</strong> 기준 활동</li><li><strong>상향:</strong> 임계값 초과(항공기 50대 이상)</li><li><strong>중대:</strong> 고도 집중(항공기 100대 이상)</li></ul><p><strong>Strike Capable:</strong> 급유기 + 조기경보기 + 전투기가 지속 작전에 충분한 규모로 배치됨.</p>",
+      "infoTooltip": "<strong>방법론</strong><p>각 작전 지역의 군용 항공기와 추적 중인 해군 함정을 집계합니다.</p><ul><li><strong>정상:</strong> 작전 지역의 기준값 이하</li><li><strong>상승:</strong> 작전 지역별로 3~8대에 도달</li><li><strong>심각:</strong> 작전 지역별로 8~20대에 도달</li></ul><p>함정은 상승 기준값의 절반까지 집계에 포함되므로, 함정만으로는 수준이 상향되지 않습니다.</p><p><strong>공격 가능:</strong> 급유기 + 조기경보기 + 전투기가 지속적 작전에 필요한 충분한 수량으로 존재함.</p>",
       "scanningTheaters": "작전지역 스캔 중",
       "positions": "항공기 위치",
       "navalVesselsLoading": "해군 함정",
@@ -1234,7 +1234,9 @@
       },
       "emojiKeyLabel": "이모지 범례",
       "emojiKeyAir": "항공 자산",
-      "emojiKeyNaval": "해상 자산"
+      "emojiKeyNaval": "해상 자산",
+      "instabilityChip": "불안정성 {{score}}",
+      "instabilityNote": "{{nation}} 불안정성 점수: 100점 만점에 {{score}}점입니다. 맥락 제공용으로 표시됩니다. 작전 지역의 항공기와 함선 수를 계산하는 수준에는 영향을 주지 않습니다."
     },
     "countryBrief": {
       "moreActions": "추가 작업",
