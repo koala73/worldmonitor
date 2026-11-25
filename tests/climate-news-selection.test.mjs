@@ -38,7 +38,10 @@ test('Mars imagery from Earth-science feeds is excluded', () => {
       feed: {},
       items: [
         item('A Collage Showing 49 Drill Holes Made by NASA’s Curiosity Mars Rover', 2),
-        item('Curiosity Rover Spots Drifting Twilight Clouds', 3),
+        {
+          ...item('Curiosity Spots Drifting Twilight Clouds', 3),
+          summary: 'NASA’s Curiosity Mars rover captured these drifting clouds on the 5,061st Martian day.',
+        },
         item('El Niño Rains Paint the Atacama', 4),
       ],
     },
@@ -55,6 +58,7 @@ test('topic-gated feeds keep only climate or environment reports', () => {
         item('Mécanisme de réponse humanitaire : République centrafricaine, Bulletin bimestriel', 2),
         item('Bangladesh: Monsoon Floods Flash Update No. 3', 3),
         item('Sécheresse au Sahel : note de situation', 4),
+        { ...item('Malawi: Country Brief, November 2026', 4.5), topics: ['Drought'] },
       ],
     },
     { feed: {}, items: [item('Lightning could strike more than twice as often', 5)] },
@@ -62,6 +66,7 @@ test('topic-gated feeds keep only climate or environment reports', () => {
   assert.deepEqual(selected.map((i) => i.title), [
     'Bangladesh: Monsoon Floods Flash Update No. 3',
     'Sécheresse au Sahel : note de situation',
+    'Malawi: Country Brief, November 2026',
     'Lightning could strike more than twice as often',
   ]);
 });
@@ -73,4 +78,11 @@ test('selection is newest first, URL-deduplicated and capped', () => {
     { feed: {}, items: [item('newer copy', 0.5, shared)] },
   ], NOW, 2);
   assert.deepEqual(selected.map((i) => i.title), ['newer copy', 'b']);
+});
+
+test('source-side topic tags are not published', () => {
+  const [selected] = selectClimateNewsItems([
+    { feed: { requireTopicMatch: true }, items: [{ ...item('Malawi: Country Brief', 1), topics: ['Drought'] }] },
+  ], NOW);
+  assert.equal('topics' in selected, false);
 });

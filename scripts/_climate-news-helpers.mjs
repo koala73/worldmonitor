@@ -74,10 +74,12 @@ export function resolveReliefWebUrl(urlAlias) {
   }
 }
 
+// `topics` carries source-side tags (ReliefWeb disaster types) that count as
+// topic evidence but are not part of the published item.
 export function isClimateNewsItemRelevant(item, { requireTopicMatch = false } = {}) {
   const text = `${item?.title || ''} ${item?.summary || ''}`;
-  if (OFF_EARTH_RE.test(item?.title || '')) return false;
-  return !requireTopicMatch || CLIMATE_TOPIC_RE.test(text);
+  if (OFF_EARTH_RE.test(text)) return false;
+  return !requireTopicMatch || CLIMATE_TOPIC_RE.test(`${text} ${(item?.topics || []).join(' ')}`);
 }
 
 /**
@@ -94,7 +96,8 @@ export function selectClimateNewsItems(feedResults, nowMs = Date.now(), maxItems
     for (const item of items) {
       if (!(item.publishedAt >= oldestAllowed)) continue;
       if (!isClimateNewsItemRelevant(item, feed)) continue;
-      candidates.push(item);
+      const { topics: _topics, ...published } = item;
+      candidates.push(published);
     }
   }
   candidates.sort((a, b) => b.publishedAt - a.publishedAt);

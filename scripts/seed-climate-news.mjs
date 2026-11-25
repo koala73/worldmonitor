@@ -114,7 +114,7 @@ async function fetchReliefWebApi(feed) {
     console.warn(`[ClimateNews] RELIEFWEB_APPNAME not set, skipping ${feed.sourceName}`);
     return [];
   }
-  const qs = `appname=${encodeURIComponent(appname)}&limit=20&preset=latest&filter[field]=theme.id&filter[value]=4590&fields[include][]=title&fields[include][]=url_alias&fields[include][]=date.created&fields[include][]=source`;
+  const qs = `appname=${encodeURIComponent(appname)}&limit=20&preset=latest&filter[field]=theme.id&filter[value]=4590&fields[include][]=title&fields[include][]=url_alias&fields[include][]=date.created&fields[include][]=source&fields[include][]=disaster_type.name`;
   const endpoints = [
     `https://api.reliefweb.int/v1/reports?${qs}`,
     `https://api.reliefweb.int/v2/reports?${qs}`,
@@ -135,7 +135,8 @@ async function fetchReliefWebApi(feed) {
         const publishedAt = r.fields?.date?.created ? new Date(r.fields.date.created).getTime() : 0;
         if (!title || !itemUrl || !publishedAt) continue;
         const id = `${stableHash(itemUrl)}-${publishedAt}`;
-        items.push({ id, title, url: itemUrl, sourceName: feed.sourceName, publishedAt, summary: '' });
+        const topics = (r.fields?.disaster_type || []).map((type) => type?.name).filter(Boolean);
+        items.push({ id, title, url: itemUrl, sourceName: feed.sourceName, publishedAt, summary: '', topics });
       }
       console.log(`[ClimateNews] ${feed.sourceName}: ${items.length} items (API)`);
       return items;
