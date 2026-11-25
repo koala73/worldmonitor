@@ -525,6 +525,7 @@ const HOST_ORIGINS = Object.freeze({
   'api.search.brave.com': 'US',
   'api.spdrgoldshares.com': 'US',
   'api.stlouisfed.org': 'US',
+  'apps.bea.gov': 'US',
   'fred.stlouisfed.org': 'US',
   'api.telegram.org': 'AE',
   'api.travelpayouts.com': 'CY',
