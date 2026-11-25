@@ -109,7 +109,7 @@ export function computeFlowWeightedExposures(importerIso2, hs2, products) {
   const normalizedHs2 = String(Number.parseInt(hs2, 10));
   const matchingProducts = products.filter(p => hs4ToHs2(p.hs4) === normalizedHs2);
 
-  return computeBilateralExposures(importerIso2, matchingProducts, hs2 === '27');
+  return computeBilateralExposures(importerIso2, matchingProducts, normalizedHs2 === '27');
 }
 
 /** @param {string} importerIso2 @param {ComtradeProduct[]} matchingProducts @param {boolean} [boostEnergy] */

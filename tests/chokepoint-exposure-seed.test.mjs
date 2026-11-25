@@ -186,7 +186,10 @@ describe('bilateral chokepoint transit', () => {
   });
 
   it('counts a supplier share when exactly one partner is inside the Gulf', () => {
-    assert.equal(hormuzScore('MO', '27', product('2711', [['QA', 0.4], ['AU', 0.6]])), 60, 'Qatari LNG share, energy-boosted');
+    const lng = product('2711', [['QA', 0.4], ['AU', 0.6]]);
+    for (const hs2 of ['27', '027']) {
+      assert.equal(hormuzScore('MO', hs2, lng), 60, `Qatari LNG share for energy chapter ${hs2}`);
+    }
     assert.equal(hormuzScore('IQ', '81', product('8112', [['CN', 0.7], ['SA', 0.3]])), 70, 'Saudi-Iraqi trade stays inside the Gulf');
     assert.equal(hormuzScore('US', '27', product('2709', [['SA', 0.3], ['CA', 0.7]])), 45, 'Saudi crude to the US');
   });
