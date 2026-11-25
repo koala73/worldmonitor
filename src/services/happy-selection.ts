@@ -29,7 +29,7 @@ const WORSENING_EVIDENCE_RE = /\b(accelerat\w*|rising|rises|rose|surg(?:e|es|ed|
 const DECLINE_VERB = '(?:fall(?:s|en|ing)?|fell|drops?|dropped|dropping|declin(?:es?|ed|ing)|plummet\\w*|plung\\w*)';
 // "Drought is plunging millions into hunger" uses the verb transitively, so the
 // decline must end the headline or lead into a measure ("to a record low", "by half").
-const DECLINE_END = '(?=\\s*$|\\s+(?:to|by|in|across|for|after|since|below|under|\\d)\\b)';
+const DECLINE_END = '(?=\\s*$|\\s+\\d|\\s+(?:to|by|in|across|for|after|since|below|under|sharply|steeply|dramatically)\\b)';
 // An auxiliary ("is falling") only counts when the problem leads the headline, so
 // "water levels in lakes hit by drought are falling" stays rejected.
 const DECLINING_PROBLEM_RE = new RegExp(

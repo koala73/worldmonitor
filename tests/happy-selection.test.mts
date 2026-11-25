@@ -102,6 +102,8 @@ test('broad-source negative reporting is screened even when the ML gate passes e
     story('Mongabay', 'Rhino poaching dropping in South Africa'),
     story('Mongabay', 'Rhino poaching is dropping in South Africa'),
     story('Mongabay', 'Tiger poaching in Kenya is falling'),
+    story('Mongabay', 'Amazon deforestation falls 30%'),
+    story('Mongabay', 'Rhino poaching drops sharply'),
   ];
   const result = await selectCuratedHappyItems([...titles.map(title => story('Mongabay', title)), kept, science, ...recoveries], async items => items);
   assert.deepEqual(result, [kept, science, ...recoveries]);
