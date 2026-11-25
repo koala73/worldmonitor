@@ -137,6 +137,53 @@ describe('Force Posture official-activity supplement (#5575)', () => {
     assert.doesNotMatch(JSON.stringify(model.mnd), /Japan Joint Staff/);
   });
 
+  it('counts a single reported ship in the singular', () => {
+    const snapshot = {
+      schemaVersion: 1,
+      generatedAt: '2026-07-25T09:00:00.000Z',
+      status: 'healthy',
+      sources: [],
+      coverage: {
+        usableMndReportingDays: 91,
+        earliestMndReportingDay: '2026-04-25',
+        latestMndReportingDay: '2026-07-25',
+        backfillComplete: true,
+      },
+      observations: [{
+        id: 'japan-mod:p20260724_05e',
+        sourceId: 'japan-mod',
+        observationKind: 'reviewed_regional_augmentation',
+        reportingDay: '2026-07-21',
+        reportingPeriod: {
+          start: '2026-07-20T21:00:00.000Z',
+          end: '2026-07-20T21:00:00.000Z',
+          timezone: 'Asia/Tokyo',
+          utcOffset: '+09:00',
+          semantics: 'publisher-stated-observation-time',
+        },
+        publicationTime: '2026-07-24',
+        retrievalTime: '2026-07-25T09:00:00.000Z',
+        categories: { plaAircraft: 2, planShips: 1, russianNavyShips: 1 },
+        originalTerminology: {},
+        sourceUrl: 'https://www.mod.go.jp/js/pdf/2026/p20260724_05e.pdf',
+        originalLanguage: 'en',
+        translation: { state: 'not_translated' },
+        revision: { sequence: 1, state: 'original', vintageId: 'fixture' },
+        history: [],
+        provenance: {},
+      }],
+      baselines: {
+        sourceId: 'taiwan-mnd',
+        semantics: 'prior-usable-reporting-days-excluding-current',
+        categories: {},
+      },
+    } satisfies CrossStraitActivitySnapshot;
+    assert.equal(
+      buildCrossStraitActivityPanelModel(snapshot).japan[0].label,
+      'Japan Joint Staff · 2 Chinese military aircraft, 1 Chinese navy ship, 1 Russian Navy ship',
+    );
+  });
+
   it('shows insufficient coverage instead of fabricating a baseline', () => {
     const snapshot = {
       schemaVersion: 1,

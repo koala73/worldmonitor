@@ -1011,7 +1011,7 @@
       "upstreamUnavailable": "サプライチェーンデータが一時的に利用不可 — キャッシュデータを表示中",
       "spikeAlert": "スパイク検出 — 料金が52週平均を大幅に上回っています（週次）",
       "warnings": "件の警告",
-      "aisDisruptions": "船舶追跡の中断",
+      "aisDisruptions_other": "船舶追跡の中断 {{count}}件",
       "disruption": "混乱",
       "vessels": "隻",
       "incidents7d": "件（7 日間）",
@@ -1022,6 +1022,7 @@
       "topProducers": "主要生産国",
       "risk": "リスク",
       "wowChange": "週間変化率",
+      "asOf": "{{date}} 時点",
       "riskLevel": "リスクレベル",
       "flowUnavailable": "フロー数据が利用できません",
       "containerRates": "コンテナ運賃",
@@ -1654,7 +1655,7 @@
       "noData": "データなし",
       "enable": "有効にする",
       "convergenceMetric": "収束",
-      "ciiDeviation": "Country Instability Index 乖離",
+      "topCiiScore": "国別不安定スコアの最高値",
       "infraEvents": "インフラ関連イベント",
       "highAlerts": "高レベル警報",
       "topRisks": "主要リスク",
@@ -1831,6 +1832,7 @@
       "refugees": "難民",
       "asylumSeekers": "庇護申請者",
       "idps": "国内避難民",
+      "stateless": "無国籍者",
       "total": "合計",
       "origins": "出身国",
       "hosts": "受入国",
@@ -2590,7 +2592,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>燃料価格</strong> 30以上の国でのガソリンとディーゼル燃料の小売ポンプ価格（比較のためUSD/リットルに統一）。価格は政府公開データプログラムから取得され、週単位で更新されます。最も安い国と最も高い国がハイライトされています。前週のデータが利用可能な場合、週間変動が表示されます。",
-      "countries": "か国"
+      "countries": "か国",
+      "observedStale": "{{date}}（{{days}}日前）",
+      "monthlyMean": "{{month}}平均"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO食料価格指数</strong> 国連食糧農業機関の食料価格指数は、食料品バスケット（穀類、乳製品、肉、油、砂糖）の国際輸出価格を追跡します。ベース2014-2016=100。毎月第1金曜日に更新。",
@@ -2874,7 +2878,21 @@
       "saved": "最後に確認できた更新 {{time}} · 更新を確認中",
       "savedOffline": "最後に確認できた更新 {{time}} · オフライン",
       "localSignals": "ダッシュボードに読み込まれたシグナルに基づく",
-      "emptySaved": "最後に確認できた更新では収束はありませんでした。"
+      "emptySaved": "最後に確認できた更新では収束はありませんでした。",
+      "signalTypes": {
+        "militaryFlight": "軍用機の飛行",
+        "militaryVessel": "軍用艦船",
+        "aisGap": "AIS途絶",
+        "conflictEvent": "紛争イベント",
+        "escalationOutage": "通信障害",
+        "newsSeverity": "深刻なニュース",
+        "sanctionsNews": "制裁ニュース",
+        "marketMove": "市場変動",
+        "commoditySpike": "商品価格急騰",
+        "earthquake": "地震",
+        "infraOutage": "インフラ障害",
+        "other": "シグナル"
+      }
     },
     "thermalEscalation": {
       "title": "熱的エスカレーション",
@@ -4393,7 +4411,13 @@
     "alert": "アラート: {{location}}",
     "multipleRegions": "複数地域",
     "trending": "\"{{term}}\" トレンド中 — {{hours}}時間で{{count}}件の言及",
-    "eventsDetected": "地域（{{lat}}°, {{lon}}°）で{{count}}件のイベントを検出"
+    "eventsDetected": "{{count}}件のイベントを検出: {{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗議活動",
+      "military_flight": "軍用機の飛行",
+      "military_vessel": "艦艇",
+      "earthquake": "地震活動"
+    }
   },
   "intel": {
     "topics": {

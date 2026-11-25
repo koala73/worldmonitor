@@ -3,12 +3,22 @@ import type { AppContext } from '@/app/app-context';
 import type { DomainAdapter, SignalEvidence } from '../types';
 import { matchCountryNamesInText, getCountryNameByCode } from '@/services/country-geometry';
 import { normalizeToCountryCode } from '../country-normalization';
+import { isVerifiedUnrestEvent } from './unrest-verification';
+import type { ProtestEventType } from '@/types';
 
 // v1 weights: displacement and cii_delta deferred — renormalized to sum to 1.0.
 const WEIGHTS: Record<string, number> = {
   conflict_event: 0.45,
   escalation_outage: 0.25,
   news_severity: 0.30,
+};
+
+const UNREST_EVENT_LABELS: Record<ProtestEventType, string> = {
+  protest: 'Protest',
+  riot: 'Riot',
+  strike: 'Strike',
+  demonstration: 'Demonstration',
+  civil_unrest: 'Civil unrest',
 };
 
 const ESCALATION_KEYWORDS = /\b((?:military|armed|air)\s*(?:strike|attack|offensive)|invasion|bombing|missile|airstrike|shelling|drone\s+strike|war(?:fare)?|ceasefire|martial\s+law|armed\s+clash(?:es)?|gunfire|coup(?:\s+attempt)?|insurgent|rebel|militia|terror(?:ist|ism)|hostage|siege|blockade|mobiliz(?:ation|e)|escalat(?:ion|ing|e)|retaliat|deploy(?:ment|ed)|incursion|annex(?:ation|ed)|occupation|humanitarian\s+crisis|refugee|evacuat|nuclear|chemical\s+weapon|biological\s+weapon)\b/i;
@@ -31,6 +41,7 @@ export const escalationAdapter: DomainAdapter = {
     // Conflict/protest events — ProtestSeverity is 'low' | 'medium' | 'high'
     const protests = cache.protests?.events ?? [];
     for (const p of protests) {
+      if (!isVerifiedUnrestEvent(p)) continue;
       const age = now - (p.time?.getTime?.() ?? now);
       if (age > windowMs) continue;
 
@@ -48,7 +59,7 @@ export const escalationAdapter: DomainAdapter = {
         lon: p.lon,
         country: normalizedCountry,
         timestamp: p.time?.getTime?.() ?? now,
-        label: `${p.eventType}: ${p.title}`,
+        label: `${UNREST_EVENT_LABELS[p.eventType] ?? 'Unrest event'}: ${p.title}`,
         rawData: p,
       });
     }

@@ -180,7 +180,7 @@ describe('infrastructure cascade core — cascade simulation', () => {
 
     assert.deepEqual(
       result.countriesAffected.map(c => c.country),
-      ['SG', 'CN', 'JP', 'KR'],
+      ['CN', 'JP', 'KR', 'SG'],
       'sorted by impact level, then by affected capacity',
     );
 
@@ -195,6 +195,7 @@ describe('infrastructure cascade core — cascade simulation', () => {
     // (0.7 * 0.8) * (0.87 * 0.8)
     const sgImpact = result.countriesAffected.find(c => c.country === 'SG');
     closeTo(sgImpact.affectedCapacity, 0.56 * 0.696, 'chained path capacity');
+    assert.equal(sgImpact.impactLevel, 'medium', 'severity follows the whole path, not only the port edge (0.696 alone is high)');
 
     // Direct chokepoint → country edge: 0.7 * (1 - 0.3)
     const cn = result.countriesAffected.find(c => c.country === 'CN');

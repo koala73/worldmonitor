@@ -1123,8 +1123,10 @@
       "upstreamUnavailable": "Ellátási lánc adatok átmenetileg nem érhetők el – gyorsítótárolt adatok jelenítünk meg",
       "spikeAlert": "Kiugrás észlelve – az arány jelentősen a 52 hetes átlag fölött van (heti)",
       "warnings": "figyelmeztetés(ek)",
-      "aisDisruptions": "Hajókövetési zavarok",
+      "aisDisruptions_one": "{{count}} hajókövetési zavar",
+      "aisDisruptions_other": "{{count}} hajókövetési zavar",
       "wowChange": "Heti változás",
+      "asOf": "{{date}} állapot szerint",
       "riskLevel": "Kockázati szint",
       "disruption": "Zavar",
       "vessels": "hajók",
@@ -1808,7 +1810,7 @@
       "noData": "nincs adat",
       "enable": "Engedélyezés",
       "convergenceMetric": "Konvergencia",
-      "ciiDeviation": "Ország Instabilitási Index Eltérés",
+      "topCiiScore": "Legmagasabb országinstabilitási pontszám",
       "infraEvents": "Infra események",
       "highAlerts": "Magas riasztások",
       "topRisks": "Legfontosabb kockázatok",
@@ -1986,6 +1988,7 @@
       "refugees": "Menekültek",
       "asylumSeekers": "Menedékkérelmezők",
       "idps": "Menekültek",
+      "stateless": "Hontalanok",
       "total": "Összesen",
       "origins": "Származási helyek",
       "hosts": "Befogadó országok",
@@ -2385,7 +2388,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Üzemanyagárak</strong> Benzin és dízel üzemanyag-töltőállomási árai 30+ országban, USD/literben normalizálva az összehasonlíthatóság érdekében. Az árak a kormányzati nyílt adatprogramokból származnak és hetente frissülnek. A legolcsóbb és legdrágább országok kiemelésre kerülnek. Heti változás jelenik meg, ha az előző heti adatok rendelkezésre állnak.",
-      "countries": "országok"
+      "countries": "országok",
+      "observedStale": "{{date}}, {{days}} napos",
+      "monthlyMean": "{{month}} átlag"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Élelmiszerár-index</strong> Az ENSZ Élelmezési és Mezőgazdasági Szervezete Élelmiszerár-indexe az élelmiszeráru-kosár nemzetközi exportárainak nyomon követése (Gabonák, Tejtermékek, Hús, Olajok, Cukor), 2014-2016=100 alap. Havonta, minden hónap első péntekén frissítve.",
@@ -2958,7 +2963,21 @@
       "saved": "Utolsó ismert frissítés {{time}} · Frissítések keresése",
       "savedOffline": "Utolsó ismert frissítés {{time}} · Nincs kapcsolat",
       "localSignals": "A betöltött irányítópult-jelzések alapján",
-      "emptySaved": "Az utolsó ismert frissítésben nem volt konvergencia."
+      "emptySaved": "Az utolsó ismert frissítésben nem volt konvergencia.",
+      "signalTypes": {
+        "militaryFlight": "Katonai repülés",
+        "militaryVessel": "Katonai hajó",
+        "aisGap": "AIS-kiesés",
+        "conflictEvent": "Konfliktusesemény",
+        "escalationOutage": "Kommunikációs kiesés",
+        "newsSeverity": "Súlyos hírek",
+        "sanctionsNews": "Szankciós hírek",
+        "marketMove": "Piaci mozgás",
+        "commoditySpike": "Nyersanyag-ugrás",
+        "earthquake": "Földrengés",
+        "infraOutage": "Infrastruktúra-kiesés",
+        "other": "Jelzés"
+      }
     },
     "thermalEscalation": {
       "title": "Hőmérsékleti Eszkaláció",
@@ -4484,7 +4503,13 @@
     "alert": "Riasztás: {{location}}",
     "multipleRegions": "Több régió",
     "trending": "„{{term}}\" Trending - {{count}} említés {{hours}}h alatt",
-    "eventsDetected": "{{count}} esemény észlelve a régióban ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} esemény észlelve: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "tüntetések",
+      "military_flight": "katonai repülések",
+      "military_vessel": "haditengerészeti hajók",
+      "earthquake": "szeizmikus aktivitás"
+    }
   },
   "intel": {
     "topics": {

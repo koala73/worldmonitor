@@ -374,7 +374,7 @@ describe('StrategicRiskPanel recovery render clears the error chip', () => {
     Object.assign(panel, {
       overview: {
         convergenceAlerts: 0,
-        avgCIIDeviation: 90,
+        topCIIScore: 90,
         infrastructureIncidents: 0,
         compositeScore: 71,
         trend: 'stable',
@@ -406,6 +406,9 @@ describe('StrategicRiskPanel recovery render clears the error chip', () => {
 
     expect(internals(panel).content.querySelector('.strategic-risk-panel')).not.toBeNull();
     expect(hasErrorChip(panel)).toBe(false);
+    const topScore = Array.from(internals(panel).content.querySelectorAll('.risk-metric'))
+      .find(metric => metric.querySelector('.risk-metric-value')?.textContent === '90.0');
+    expect(topScore?.querySelector('.risk-metric-label')?.textContent).toBe('Top Country Instability Score');
     expect(internals(panel).retryCountdownTimer).toBeNull();
     expect(internals(panel).retryAttempt).toBe(0);
   });
