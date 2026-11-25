@@ -5899,7 +5899,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "YC Launches",
-          "url": "https://news.google.com/rss/search?q=(\"Y+Combinator\"+OR+\"YC+launch\"+OR+\"YC+W25\"+OR+\"YC+S25\")+when:7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://hnrss.org/launches"
         },
         {
           "name": "Dev Events",
@@ -5926,12 +5926,12 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
       ],
       "funding": [
         {
-          "name": "SEC Filings",
-          "url": "https://news.google.com/rss/search?q=(S-1+OR+\"IPO+filing\"+OR+\"SEC+filing\")+startup+when:7d&hl=en-US&gl=US&ceid=US:en"
+          "name": "IPO Filing News",
+          "url": "https://news.google.com/rss/search?q=(\"IPO+filing\"+OR+\"files+for+IPO\"+OR+\"filed+for+an+IPO\"+OR+\"S-1+filing\"+OR+\"confidentially+filed\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "VC News",
-          "url": "https://news.google.com/rss/search?q=(\"Series+A\"+OR+\"Series+B\"+OR+\"Series+C\"+OR+\"funding+round\"+OR+\"venture+capital\")+when:7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"Series+A\"+OR+\"Series+B\"+OR+\"Series+C\")+(raises+OR+raised+OR+secures+OR+lands+OR+closes)+-preferred+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Seed & Pre-Seed",
@@ -5939,7 +5939,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Startup Funding",
-          "url": "https://news.google.com/rss/search?q=(\"startup+funding\"+OR+\"raised+funding\"+OR+\"raised+$\"+OR+\"funding+announced\")+when:7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"startup+raises\"+OR+\"startup+raised\"+OR+\"startup+secures\"+OR+\"startup+funding+round\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "producthunt": [
@@ -6167,7 +6167,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
       "accelerators": [
         {
           "name": "YC News",
-          "url": "https://news.ycombinator.com/rss"
+          "url": "https://news.google.com/rss/search?q=(\"Y+Combinator\"+OR+\"YC-backed\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Techstars News",
