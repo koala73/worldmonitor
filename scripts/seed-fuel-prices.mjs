@@ -174,6 +174,8 @@ async function fetchMalaysia() {
   }
 }
 
+const MINETUR_MAX_AGE_DAYS = 7;
+
 async function fetchSpain() {
   try {
     const url = 'https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/';
@@ -186,8 +188,8 @@ async function fetchSpain() {
     const fecha = typeof data?.Fecha === 'string' ? data.Fecha.trim() : '';
     const date = /^(\d{2})\/(\d{2})\/(\d{4})(?:\s|$)/.exec(fecha);
     const observedAt = date && `${date[3]}-${date[2]}-${date[1]}`;
-    if (!fuelDateIsFresh(observedAt, Infinity, Date.now())) {
-      console.warn('  [ES] Missing or invalid Fecha in Minetur response');
+    if (!fuelDateIsFresh(observedAt, MINETUR_MAX_AGE_DAYS, Date.now())) {
+      console.warn('  [ES] Missing, invalid or stale Fecha in Minetur response');
       return [];
     }
     const stations = data?.ListaEESSPrecio;

@@ -105,7 +105,7 @@ function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek =
   return JSON.parse(payload);
 }
 
-test('published Spain prices use the Minetur date and the EU date when Fecha is invalid', async () => {
+test('published Spain prices use the Minetur date and the EU date when Fecha is invalid or old', async () => {
   const bulletin = await fuelDateBulletin();
   const spain = fuelFixture('minetur-stations');
   const first = runFuelDateSeed({ now: '2026-11-26', bulletin, spain });
@@ -115,14 +115,17 @@ test('published Spain prices use the Minetur date and the EU date when Fecha is 
   assert.equal(preferred.gasoline.localPrice, 1.55);
   assert.equal(preferred.diesel.localPrice, 1.45);
 
-  const later = runFuelDateSeed({ now: '2026-12-03', bulletin, previous: first, previousWeek: first,
-    spain: { ...spain, Fecha: '31/11/2026 10:44:05' } });
-  assert.equal(later.data.wowAvailable, true);
-  const fallback = later.data.countries.find(c => c.code === 'ES');
-  assert.equal(fallback.gasoline.observedAt, '2026-11-24');
-  assert.equal(fallback.gasoline.source, 'energy.ec.europa.eu');
-  assert.equal(fallback.gasoline.wowPct, undefined);
-  assert.equal(fallback.diesel.wowPct, undefined);
+  for (const Fecha of ['31/11/2026 10:44:05', '16/11/2026 10:44:05']) {
+    const later = runFuelDateSeed({ now: '2026-12-03', bulletin, previous: first, previousWeek: first,
+      spain: { ...spain, Fecha } });
+    assert.equal(later.data.wowAvailable, true);
+    const fallback = later.data.countries.find(c => c.code === 'ES');
+    for (const fuel of [fallback.gasoline, fallback.diesel]) {
+      assert.equal(fuel.observedAt, '2026-11-24', Fecha);
+      assert.equal(fuel.source, 'energy.ec.europa.eu', Fecha);
+      assert.equal(fuel.wowPct, undefined, Fecha);
+    }
+  }
 });
 
 test('published Mexico dates advance only for the grade whose local average changed', async () => {

@@ -532,8 +532,9 @@ The dashboard recalculates oil-price freshness from the observation time. The RE
 Licensing: USGS MCS data is U.S. public domain. BGS World Mineral Production requires attribution to the British Geological Survey; IEA critical-minerals datasets are not ingested because redistribution terms are stricter than USGS/BGS, so USGS-unpublished REE refining shares are omitted.
 
 The fuel-price seed preserves local prices and uses shared FX rates to produce
-USD/l for the table. Spain uses the publication date in Minetur's station feed,
-with the EU Weekly Oil Bulletin as a fallback. Mexico's CRE feed supplies no date.
+USD/l for the table. Spain uses the publication date in Minetur's station feed
+when the date is within the last seven days. The EU Weekly Oil Bulletin provides
+a fallback. Mexico's CRE feed supplies no date.
 For each grade, WorldMonitor displays the day it first recorded the current
 national average in MXN/l. A change in the exchange rate leaves that date intact.
 
