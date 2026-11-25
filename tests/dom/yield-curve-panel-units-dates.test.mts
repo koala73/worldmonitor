@@ -13,6 +13,8 @@ vi.mock('@/services/generated-rpc-clients', () => ({
 
 import { YieldCurvePanel } from '@/components/YieldCurvePanel';
 
+const panels: YieldCurvePanel[] = [];
+
 const US_SERIES = ['DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS10', 'DGS30'];
 
 function series(...obs: Array<[string, number]>) {
@@ -27,6 +29,7 @@ async function renderPanel(results: Record<string, unknown>, tab?: 'rates'): Pro
   mocks.fredBatch.mockResolvedValue({ results });
   mocks.euCurve.mockResolvedValue({ unavailable: true });
   const panel = new YieldCurvePanel();
+  panels.push(panel);
   document.body.appendChild(panel.getElement());
   await panel.fetchData();
   await vi.advanceTimersByTimeAsync(200);
@@ -42,6 +45,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  panels.splice(0).forEach(panel => panel.destroy());
   document.body.innerHTML = '';
   vi.useRealTimers();
 });
@@ -61,6 +65,13 @@ it('shows ECB rate changes in basis points without a negative zero', async () =>
   expect(text).toContain('EURIBOR 1Y 2.20% -11bps 2026-10');
   expect(text).toContain('EURIBOR 3M 2.63% -13bps 2026-10');
   expect(text).not.toContain('-0');
+});
+
+it('rounds an exact half basis point away from zero', async () => {
+  vi.useFakeTimers();
+  const text = await renderPanel({ ...usCurve(), ESTR: series(['2026-11-20', 2.435], ['2026-11-23', 2.44]) }, 'rates');
+
+  expect(text).toContain('Euro short-term rate 2.44% +1bps 2026-11-23');
 });
 
 it('labels the current and prior US curves with their observation dates', async () => {
