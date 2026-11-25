@@ -135,10 +135,9 @@ function euAvg(
     }
   }
   if (values.length === 0) return { value: null, prior: null, date: '', countries };
-  const avg = values.reduce((s, v) => s + v, 0) / values.length;
-  const priorAvg = priorValues.length === values.length
-    ? priorValues.reduce((s, v) => s + v, 0) / priorValues.length
-    : null;
+  const mean = (xs: number[]) => Number((xs.reduce((s, v) => s + v, 0) / xs.length).toPrecision(12));
+  const avg = mean(values);
+  const priorAvg = priorValues.length === values.length ? mean(priorValues) : null;
   return { value: avg, prior: priorAvg, date: fmtEuDate(latestDate), countries };
 }
 

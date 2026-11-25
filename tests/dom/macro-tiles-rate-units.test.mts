@@ -71,10 +71,10 @@ beforeEach(() => {
   mockEurostat.mockResolvedValue({
     unavailable: false,
     countries: {
-      DE: { cpi: metric(2.3, 2.1, '2026-10'), unemployment: metric(3.9, 3.8, '2026-09') },
-      FR: { cpi: metric(1.1, 1.2, '2026-10'), unemployment: metric(7.6, 7.5, '2026-09') },
-      IT: { cpi: metric(1.4, 1.6, '2026-10'), unemployment: metric(6.0, 6.1, '2026-09') },
-      ES: { cpi: metric(3.1, 3.0, '2026-10') },
+      DE: { cpi: metric(1.4, 2.1, '2026-10'), unemployment: metric(3.9, 3.8, '2026-09') },
+      FR: { cpi: metric(2.8, 1.2, '2026-10'), unemployment: metric(7.6, 7.5, '2026-09') },
+      IT: { cpi: metric(3.1, 1.6, '2026-10'), unemployment: metric(6.0, 6.1, '2026-09') },
+      ES: { cpi: metric(1.7, 3.0, '2026-10') },
     },
   });
 });
@@ -128,7 +128,7 @@ describe('macro tiles annual CPI, rate deltas and Euro Area labels', () => {
     const { panel, text } = await render();
     panel.getElement().querySelector<HTMLElement>('[data-tab="eu"]')!.click();
     await vi.advanceTimersByTimeAsync(151);
-    expect(text()).toContain('Harmonised consumer price inflation (annual), avg of DE, FR, IT, ES 2.0%');
+    expect(text()).toContain('Harmonised consumer price inflation (annual), avg of DE, FR, IT, ES 2.3%');
     expect(text()).toContain('Unemployment, avg of DE, FR, IT 5.8%');
     expect(text()).toContain('not official euro area figures');
   });
