@@ -1801,7 +1801,7 @@
       "noData": "nincs adat",
       "enable": "Engedélyezés",
       "convergenceMetric": "Konvergencia",
-      "ciiDeviation": "Ország Instabilitási Index Eltérés",
+      "topCiiScore": "Legmagasabb országinstabilitási pontszám",
       "infraEvents": "Infra események",
       "highAlerts": "Magas riasztások",
       "topRisks": "Legfontosabb kockázatok",
@@ -4477,7 +4477,13 @@
     "alert": "Riasztás: {{location}}",
     "multipleRegions": "Több régió",
     "trending": "„{{term}}\" Trending - {{count}} említés {{hours}}h alatt",
-    "eventsDetected": "{{count}} esemény észlelve a régióban ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} esemény észlelve: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "tüntetések",
+      "military_flight": "katonai repülések",
+      "military_vessel": "haditengerészeti hajók",
+      "earthquake": "szeizmikus aktivitás"
+    }
   },
   "intel": {
     "topics": {

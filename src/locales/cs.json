@@ -1638,7 +1638,7 @@
       "noData": "žádná data",
       "enable": "Povolit",
       "convergenceMetric": "Konvergence",
-      "ciiDeviation": "Odchylka Country Instability Index",
+      "topCiiScore": "Nejvyšší skóre nestability země",
       "infraEvents": "Události infra",
       "highAlerts": "Vysoké pohotovosti",
       "topRisks": "Hlavní rizika",
@@ -4452,7 +4452,13 @@
     "alert": "Upozornění: {{location}}",
     "multipleRegions": "Více regionů",
     "trending": "„{{term}}“ je trendy - {{count}} zmínek za {{hours}} h",
-    "eventsDetected": "V regionu ({{lat}}°, {{lon}}°) bylo detekováno událostí: {{count}}"
+    "eventsDetected": "Detekované události ({{count}}): {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protesty",
+      "military_flight": "vojenské lety",
+      "military_vessel": "námořní plavidla",
+      "earthquake": "seismická aktivita"
+    }
   },
   "intel": {
     "topics": {

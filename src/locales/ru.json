@@ -1659,7 +1659,7 @@
       "noData": "нет данных",
       "enable": "Включить",
       "convergenceMetric": "Конвергенция",
-      "ciiDeviation": "Отклонение Индекса нестабильности стран",
+      "topCiiScore": "Наивысший балл нестабильности страны",
       "infraEvents": "События инфраструктуры",
       "highAlerts": "Высокие оповещения",
       "topRisks": "Основные риски",
@@ -4452,7 +4452,13 @@
     "alert": "Предупреждение: {{location}}",
     "multipleRegions": "Несколько регионов",
     "trending": "«{{term}}» в тренде — {{count}} упоминаний за {{hours}}ч",
-    "eventsDetected": "{{count}} событий обнаружено в регионе ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} событий обнаружено: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "протесты",
+      "military_flight": "военные полеты",
+      "military_vessel": "военные корабли",
+      "earthquake": "сейсмическая активность"
+    }
   },
   "intel": {
     "topics": {

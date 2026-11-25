@@ -1809,7 +1809,7 @@
       "noData": "nema podataka",
       "enable": "Aktiviraj",
       "convergenceMetric": "Konvergencija",
-      "ciiDeviation": "Odstupanje indeksa nestabilnosti država",
+      "topCiiScore": "Najviši rezultat nestabilnosti države",
       "infraEvents": "Događaji infrastrukture",
       "highAlerts": "Visoki alarmi",
       "topRisks": "Najveći rizici",
@@ -4509,7 +4509,13 @@
     "alert": "Alarm: {{location}}",
     "multipleRegions": "Više regija",
     "trending": "\"{{term}}\" u trendu - {{count}} spominjanja u {{hours}}h",
-    "eventsDetected": "{{count}} događaja detektirano u regiji ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} događaja detektirano: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "prosvjedi",
+      "military_flight": "vojni letovi",
+      "military_vessel": "ratni brodovi",
+      "earthquake": "seizmička aktivnost"
+    }
   },
   "intel": {
     "topics": {

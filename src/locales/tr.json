@@ -1651,7 +1651,7 @@
       "noData": "veri yok",
       "enable": "Etkinleştir",
       "convergenceMetric": "Yakınsama",
-      "ciiDeviation": "Ülke İstikrarsızlık Endeksi Sapması",
+      "topCiiScore": "En yüksek ülke istikrarsızlık puanı",
       "infraEvents": "Altyapı Olayları",
       "highAlerts": "Yüksek Uyarılar",
       "topRisks": "Başlıca Riskler",
@@ -4408,7 +4408,13 @@
     "alert": "Uyari: {{location}}",
     "multipleRegions": "Birden Fazla Bolge",
     "trending": "\"{{term}}\" Gundemde - {{hours}} saatte {{count}} bahis",
-    "eventsDetected": "Bolgede {{count}} olay tespit edildi ({{lat}} derece, {{lon}} derece)"
+    "eventsDetected": "{{count}} olay tespit edildi: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protestolar",
+      "military_flight": "askeri uçuşlar",
+      "military_vessel": "deniz kuvvetleri gemileri",
+      "earthquake": "sismik aktivite"
+    }
   },
   "intel": {
     "topics": {

@@ -1647,7 +1647,7 @@
       "noData": "ไม่มีข้อมูล",
       "enable": "เปิดใช้งาน",
       "convergenceMetric": "การบรรจบกัน",
-      "ciiDeviation": "การเบี่ยงเบนของดัชนีความไม่เสถียรของประเทศ",
+      "topCiiScore": "คะแนนความไม่เสถียรของประเทศสูงสุด",
       "infraEvents": "เหตุการณ์โครงสร้างพื้นฐาน",
       "highAlerts": "การแจ้งเตือนสูง",
       "topRisks": "ความเสี่ยงสูงสุด",
@@ -4386,7 +4386,13 @@
     "alert": "การแจ้งเตือน: {{location}}",
     "multipleRegions": "หลายภูมิภาค",
     "trending": "\"{{term}}\" กำลังเทรนด์ - {{count}} การกล่าวถึงใน {{hours}} ชม.",
-    "eventsDetected": "{{count}} เหตุการณ์ตรวจพบในภูมิภาค ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "ตรวจพบ {{count}} เหตุการณ์: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "การประท้วง",
+      "military_flight": "เที่ยวบินทหาร",
+      "military_vessel": "เรือรบ",
+      "earthquake": "กิจกรรมแผ่นดินไหว"
+    }
   },
   "intel": {
     "topics": {

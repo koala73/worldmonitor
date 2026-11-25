@@ -1801,7 +1801,7 @@
       "noData": "कोई डेटा नहीं",
       "enable": "सक्षम करें",
       "convergenceMetric": "संगम",
-      "ciiDeviation": "देश अस्थिरता सूचकांक विचलन",
+      "topCiiScore": "शीर्ष देश अस्थिरता स्कोर",
       "infraEvents": "इन्फ्रा घटनाएं",
       "highAlerts": "उच्च अलर्ट",
       "dataFreshness": "डेटा ताजगी",
@@ -4477,7 +4477,13 @@
     "alert": "चेतावनी: {{location}}",
     "multipleRegions": "कई क्षेत्र",
     "trending": "\"{{term}}\" ट्रेंड कर रहा है - {{hours}} घंटे में {{count}} बार चर्चा",
-    "eventsDetected": "क्षेत्र में {{count}} घटनाएँ दर्ज ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} घटनाएँ दर्ज: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "विरोध प्रदर्शन",
+      "military_flight": "सैन्य उड़ानें",
+      "military_vessel": "नौसैनिक जहाज़",
+      "earthquake": "भूकंपीय गतिविधि"
+    }
   },
   "intel": {
     "topics": {
