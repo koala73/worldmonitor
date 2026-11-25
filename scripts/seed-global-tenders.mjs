@@ -329,7 +329,7 @@ function getsPageDate(value) {
   const month = MONTHS.indexOf(day?.[2].toLowerCase());
   if (!day || !time || !offset || month < 0) return '';
   const [date, hour12, minute] = [Number(day[1]), Number(time[1]), Number(time[2])];
-  if (hour12 < 1 || hour12 > 12 || minute > 59) return '';
+  if (hour12 < 1 || hour12 > 12 || minute > 59 || Number(offset[2]) > 14 || Number(offset[3]) > 59) return '';
   const local = new Date(Date.UTC(Number(day[3]), month, date, (hour12 % 12) + (time[3].toUpperCase() === 'PM' ? 12 : 0), minute));
   if (local.getUTCDate() !== date || local.getUTCMonth() !== month) return '';
   const offsetMinutes = (offset[1] === '-' ? -1 : 1) * (Number(offset[2]) * 60 + Number(offset[3]));
@@ -368,8 +368,9 @@ function getsIndexRows(html) {
   return rows;
 }
 
-// The pager prints "26 - 50 of 342". Reading to that total, and checking each
-// page continues where the last one stopped, catches a short or shifted read.
+// The pager prints "26 - 50 of 342". Reading to that total, checking each
+// page continues where the last one stopped, and rejecting a repeated RFx ID
+// catches a short read or a list that shifted between pages.
 async function readGetsIndexRows(read) {
   const rows = [];
   for (let page = 1; ; page += 1) {
@@ -381,7 +382,10 @@ async function readGetsIndexRows(read) {
     if (start !== rows.length + 1 || end - start + 1 !== pageRows.length || end > total) {
       throw new Error(`GETS index page ${page} range does not match its ${pageRows.length} rows`);
     }
-    rows.push(...pageRows);
+    for (const row of pageRows) {
+      if (rows.some((seen) => seen.id === row.id)) throw new Error(`GETS index listed ${row.id} twice; the list shifted during the read`);
+      rows.push(row);
+    }
     if (end === total) return rows;
   }
 }

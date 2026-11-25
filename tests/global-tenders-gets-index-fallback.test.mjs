@@ -292,3 +292,20 @@ test('a read past its deadline fails without a request, and each attempt is clam
   assert.equal(calls.length, 1, 'a Retry-After longer than the time left is not slept on');
   assert.ok(calls[0] <= 5_000);
 });
+
+test('GETS index fallback rejects a malformed UTC offset', async () => {
+  const { fetchTextFn } = fakeGets({
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([{ ...ACC, close: '3:00 PM 27 Nov 2026 (Pacific/Auckland UTC+13:99)' }]),
+  });
+
+  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /index row 35331516 drifted/);
+});
+
+test('GETS index fallback rejects a read where a notice shifted onto the next page', async () => {
+  const { fetchTextFn } = fakeGets({
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([ACC, ORION], { total: 4 }),
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=2&orderBy=date': indexPage([ORION, NZDF], { start: 3, total: 4, page: 2 }),
+  });
+
+  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /index listed 35370310 twice/);
+});
