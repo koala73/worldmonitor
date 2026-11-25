@@ -1614,7 +1614,7 @@
       "noData": "لا بيانات",
       "enable": "تفعيل",
       "convergenceMetric": "التقارب",
-      "ciiDeviation": "الانحراف عن مؤشر عدم الاستقرار القطري",
+      "topCiiScore": "أعلى درجة لعدم الاستقرار القطري",
       "infraEvents": "أحداث البنية التحتية",
       "highAlerts": "تنبيهات عالية",
       "topRisks": "أبرز المخاطر",
@@ -4504,7 +4504,13 @@
     "alert": "تنبيه: {{location}}",
     "multipleRegions": "مناطق متعددة",
     "trending": "«{{term}}» رائج — {{count}} إشارة خلال {{hours}} ساعة",
-    "eventsDetected": "{{count}} حدث مرصود في المنطقة ({{lat}}°، {{lon}}°)"
+    "eventsDetected": "{{count}} حدث مرصود: {{types}} ({{lat}}°، {{lon}}°)",
+    "eventTypes": {
+      "protest": "احتجاجات",
+      "military_flight": "رحلات جوية عسكرية",
+      "military_vessel": "سفن بحرية",
+      "earthquake": "نشاط زلزالي"
+    }
   },
   "intel": {
     "topics": {

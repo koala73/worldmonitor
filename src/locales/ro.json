@@ -1662,7 +1662,7 @@
       "noData": "fără date",
       "enable": "Activați",
       "convergenceMetric": "Convergență",
-      "ciiDeviation": "Abatere a indicelui de instabilitate la nivel de țară",
+      "topCiiScore": "Cel mai mare scor de instabilitate al unei țări",
       "infraEvents": "Evenimente Infra",
       "highAlerts": "Alerte mari",
       "topRisks": "Principalele riscuri",
@@ -4438,7 +4438,13 @@
     "alert": "Alertă: {{location}}",
     "multipleRegions": "Regiuni multiple",
     "trending": "Tendințe „{{term}}” - {{count}} mențiuni în {{hours}}h",
-    "eventsDetected": "{{count}} evenimente detectate în regiune ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} evenimente detectate: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "proteste",
+      "military_flight": "zboruri militare",
+      "military_vessel": "nave militare",
+      "earthquake": "activitate seismică"
+    }
   },
   "intel": {
     "topics": {

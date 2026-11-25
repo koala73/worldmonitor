@@ -1654,7 +1654,7 @@
       "noData": "无数据",
       "enable": "启用",
       "convergenceMetric": "汇聚度",
-      "ciiDeviation": "国家不稳定指数偏差",
+      "topCiiScore": "最高国家不稳定得分",
       "infraEvents": "基础设施事件",
       "highAlerts": "高等级警报",
       "topRisks": "主要风险",
@@ -4394,7 +4394,13 @@
     "alert": "警报：{{location}}",
     "multipleRegions": "多个区域",
     "trending": "「{{term}}」趋势上升 — {{hours}}小时内{{count}}次提及",
-    "eventsDetected": "在区域（{{lat}}°, {{lon}}°）检测到{{count}}个事件"
+    "eventsDetected": "检测到{{count}}个事件：{{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗议",
+      "military_flight": "军机飞行",
+      "military_vessel": "海军舰艇",
+      "earthquake": "地震活动"
+    }
   },
   "intel": {
     "topics": {

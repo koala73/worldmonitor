@@ -1305,7 +1305,7 @@
       "noData": "geen gegevens",
       "enable": "Inschakelen",
       "convergenceMetric": "Convergentie",
-      "ciiDeviation": "Country Instability Index Afwijking",
+      "topCiiScore": "Hoogste landinstabiliteitsscore",
       "infraEvents": "Infrastructuurgebeurtenissen",
       "highAlerts": "Hoge waarschuwingen",
       "topRisks": "Grootste risico's",
@@ -3998,7 +3998,13 @@
     "alert": "Alarm: {{location}}",
     "multipleRegions": "Meerdere regio's",
     "trending": "\"{{term}}\" trending - {{count}} vermeldingen in {{hours}}u",
-    "eventsDetected": "{{count}} gebeurtenissen gedetecteerd in regio ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} gebeurtenissen gedetecteerd: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protesten",
+      "military_flight": "militaire vluchten",
+      "military_vessel": "marineschepen",
+      "earthquake": "seismische activiteit"
+    }
   },
   "intel": {
     "topics": {

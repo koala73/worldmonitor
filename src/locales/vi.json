@@ -1654,7 +1654,7 @@
       "noData": "không có dữ liệu",
       "enable": "Bật",
       "convergenceMetric": "Hội tụ",
-      "ciiDeviation": "Độ Lệch Chỉ số Bất ổn định Đất nước",
+      "topCiiScore": "Điểm bất ổn quốc gia cao nhất",
       "infraEvents": "Sự cố Hạ tầng",
       "highAlerts": "Cảnh báo Cao",
       "topRisks": "Rủi ro Hàng đầu",
@@ -4394,7 +4394,13 @@
     "alert": "Cảnh báo: {{location}}",
     "multipleRegions": "Nhiều Khu vực",
     "trending": "\"{{term}}\" Xu hướng - {{count}} lượt nhắc trong {{hours}} giờ",
-    "eventsDetected": "Phát hiện {{count}} sự kiện trong khu vực ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "Phát hiện {{count}} sự kiện: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "biểu tình",
+      "military_flight": "chuyến bay quân sự",
+      "military_vessel": "tàu hải quân",
+      "earthquake": "hoạt động địa chấn"
+    }
   },
   "intel": {
     "topics": {

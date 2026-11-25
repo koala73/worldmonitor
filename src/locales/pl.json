@@ -1787,7 +1787,7 @@
       "noData": "brak danych",
       "enable": "Włącz",
       "convergenceMetric": "Zbieżność",
-      "ciiDeviation": "Odchylenie Country Instability Index",
+      "topCiiScore": "Najwyższy wynik niestabilności kraju",
       "infraEvents": "Zdarzenia infrastrukturalne",
       "highAlerts": "Wysokie alerty",
       "topRisks": "Główne ryzyka",
@@ -4460,7 +4460,13 @@
     "alert": "Alarm: {{location}}",
     "multipleRegions": "Wiele regionów",
     "trending": "\"{{term}}\" w trendach — {{count}} wzmianek w {{hours}}h",
-    "eventsDetected": "{{count}} zdarzeń wykrytych w regionie ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "Wykryte zdarzenia ({{count}}): {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protesty",
+      "military_flight": "loty wojskowe",
+      "military_vessel": "okręty wojenne",
+      "earthquake": "aktywność sejsmiczna"
+    }
   },
   "intel": {
     "topics": {

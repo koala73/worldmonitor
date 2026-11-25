@@ -1813,7 +1813,7 @@
       "noData": "بدون داده",
       "enable": "فعال‌سازی",
       "convergenceMetric": "همگرایی",
-      "ciiDeviation": "انحراف شاخص بی‌ثباتی کشور",
+      "topCiiScore": "بالاترین امتیاز بی‌ثباتی کشور",
       "infraEvents": "رویدادهای زیرساختی",
       "highAlerts": "هشدارهای بالا",
       "dataFreshness": "تازگی داده",
@@ -4485,7 +4485,13 @@
     "alert": "هشدار: {{location}}",
     "multipleRegions": "چند منطقه",
     "trending": "«{{term}}» پرطرفدار - {{count}} اشاره در {{hours}} ساعت",
-    "eventsDetected": "{{count}} رویداد در منطقه شناسایی شد ({{lat}}°، {{lon}}°)"
+    "eventsDetected": "{{count}} رویداد شناسایی شد: {{types}} ({{lat}}°، {{lon}}°)",
+    "eventTypes": {
+      "protest": "اعتراضات",
+      "military_flight": "پروازهای نظامی",
+      "military_vessel": "شناورهای نیروی دریایی",
+      "earthquake": "فعالیت لرزه‌ای"
+    }
   },
   "intel": {
     "topics": {
