@@ -79,10 +79,12 @@ export function parseFomcDates(html) {
 
     // Each meeting row: <div class="fomc-meeting__month"><strong>Apr/May</strong></div>
     // <div class="fomc-meeting__date">30-1*</div>. A range ending in a smaller day crosses into the last month.
-    const rowRe = /fomc-meeting__month[^>]*>\s*(?:<strong>)?([A-Za-z/]+)[\s\S]*?fomc-meeting__date[^>]*>\s*(\d{1,2})\s*[-\u2013]\s*(\d{1,2})/g;
-    for (const [, monthLabel, , day2] of section.matchAll(rowRe)) {
-      const mm = monthByPrefix[monthLabel.split('/').at(-1).slice(0, 3)];
-      if (mm) dates.push(`${year}-${mm}-${day2.padStart(2, '0')}`);
+    // Rows noted as a "Monetary Policy Strategy Meeting" announce no rate decision.
+    for (const row of section.split('fomc-meeting__month').slice(1)) {
+      const cells = row.match(/^[^>]*>\s*(?:<strong>)?([A-Za-z/]+)[\s\S]*?fomc-meeting__date[^>]*>\s*\d{1,2}\s*[-\u2013]\s*(\d{1,2})/);
+      if (!cells || /strategy meeting/i.test(row)) continue;
+      const mm = monthByPrefix[cells[1].split('/').at(-1).slice(0, 3)];
+      if (mm) dates.push(`${year}-${mm}-${cells[2].padStart(2, '0')}`);
     }
   }
 
