@@ -11864,7 +11864,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "scripts/seed-climate-news.mjs"
+          "path": "scripts/_climate-news-helpers.mjs"
         }
       ]
     },
