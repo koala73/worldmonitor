@@ -1771,7 +1771,7 @@
       "possibleExplosions": "{{count}} posibilă(e) explozie(explozie)",
       "explosionTooltip": "Semnătură termică în concordanță cu explozie (putere radiantă de incendiu >80 MW, luminozitate >380 K)",
       "agencyReports": "Incendii raportate de agenții",
-      "reportDates": "Datele rapoartelor",
+      "agencyDates": "Datele agenției",
       "shownOfTotal": "Se afișează {{shown}} din {{total}} înregistrări de incendii"
     },
     "ucdpEvents": {

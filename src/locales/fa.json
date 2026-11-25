@@ -1916,7 +1916,7 @@
       "possibleExplosions": "{{count}} انفجار احتمالی شناسایی شد",
       "explosionTooltip": "امضای حرارتی مطابق با انفجار (قدرت تابشی آتش >۸۰ مگاوات، روشنایی >۳۸۰ کلوین)",
       "agencyReports": "آتش‌سوزی‌های گزارش‌شده توسط سازمان‌ها",
-      "reportDates": "تاریخ گزارش‌ها",
+      "agencyDates": "تاریخ‌های سازمان",
       "shownOfTotal": "نمایش {{shown}} از {{total}} رکورد آتش‌سوزی"
     },
     "ucdpEvents": {

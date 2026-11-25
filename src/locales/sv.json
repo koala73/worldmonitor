@@ -1113,7 +1113,7 @@
       "possibleExplosions": "{{count}} möjlig(a) explosion(er) identifierad(e)",
       "explosionTooltip": "Värmesignatur förenlig med explosion (brandstrålningseffekt >80 MW, ljusstyrka >380 K)",
       "agencyReports": "Bränder rapporterade av myndigheter",
-      "reportDates": "Rapportdatum",
+      "agencyDates": "Myndighetens datum",
       "shownOfTotal": "Visar {{shown}} av {{total}} brandposter"
     },
     "displacement": {

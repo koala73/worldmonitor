@@ -2,7 +2,7 @@
  * #11273: the Satellite Fires panel mixes a capped page of FIRMS detections with
  * CWFIS / BC agency reports. Totals must describe the rows shown, the source line
  * must name the satellites and agencies in the data, and agency reports must show
- * their own report dates instead of passing as 24-hour thermal detections.
+ * the agency's own dates instead of passing as 24-hour thermal detections.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FireDetection } from '@/services/wildfires';
@@ -65,10 +65,17 @@ describe('SatelliteFiresPanel', () => {
     expect(text('.fires-source')).toBe('NASA FIRMS (VIIRS NOAA-20, NOAA-21) · CWFIS');
   });
 
-  it('lists agency reports apart from thermal detections, with their report dates', async () => {
+  it('lists agency reports apart from thermal detections, with their agency dates', async () => {
     await flush();
     const thermalRegions = Array.from(panel.getElement().querySelectorAll('.fires-table:not(.fires-agency-table) .fire-region')).map((cell) => cell.textContent);
     expect(thermalRegions).toEqual(['Ukraine', 'Iran']);
+    expect(text('.fires-agency-table thead')).toBe('Region Fires Agency dates');
     expect(text('.fires-agency-table tbody')).toBe('Quebec 2 Aug 4 – Nov 20');
+  });
+
+  it('keeps the known agency dates when a region also holds an undated report', async () => {
+    panel.update(summarizeFires({ Ontario: [agency('Ontario', 0), agency('Ontario', Date.parse('2026-10-02T12:00:00Z'))] }), 2);
+    await flush();
+    expect(text('.fires-agency-table tbody')).toBe('Ontario 2 Oct 2');
   });
 });

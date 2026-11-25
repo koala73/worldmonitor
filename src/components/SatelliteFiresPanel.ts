@@ -63,7 +63,7 @@ export class SatelliteFiresPanel extends Panel {
     const agencyRows = agencyReports.map(a => `<tr class="fire-row">
         <td class="fire-region">${escapeHtml(a.region)}</td>
         <td class="fire-count">${a.fireCount}</td>
-        <td class="fire-reported">${reportDateRange(a.oldestReportAt, a.newestReportAt)}</td>
+        <td class="fire-reported">${agencyDateRange(a.oldestDatedAt, a.newestDatedAt)}</td>
       </tr>`).join('');
     const ago = this.lastUpdated ? timeSince(this.lastUpdated) : t('components.satelliteFires.never');
 
@@ -97,7 +97,7 @@ export class SatelliteFiresPanel extends Panel {
               <tr>
                 <th scope="col">${t('components.satelliteFires.region')}</th>
                 <th scope="col">${t('components.satelliteFires.fires')}</th>
-                <th scope="col">${t('components.satelliteFires.reportDates')}</th>
+                <th scope="col">${t('components.satelliteFires.agencyDates')}</th>
               </tr>
             </thead>
             <tbody>${agencyRows}</tbody>
@@ -118,7 +118,7 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function reportDateRange(oldest: number, newest: number): string {
+function agencyDateRange(oldest: number, newest: number): string {
   if (!oldest) return '';
   const format = (ms: number) => new Date(ms).toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', timeZone: 'UTC' });
   const from = format(oldest);

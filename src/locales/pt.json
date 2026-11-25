@@ -1114,7 +1114,7 @@
       "possibleExplosions": "{{count}} possível(is) explosão(ões) detectada(s)",
       "explosionTooltip": "Assinatura térmica consistente com explosão (potência radiativa do fogo >80 MW, brilho >380 K)",
       "agencyReports": "Incêndios relatados por agências",
-      "reportDates": "Datas dos relatórios",
+      "agencyDates": "Datas da agência",
       "shownOfTotal": "Mostrando {{shown}} de {{total}} registros de incêndio"
     },
     "displacement": {

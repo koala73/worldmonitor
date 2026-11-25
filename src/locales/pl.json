@@ -1588,7 +1588,7 @@
       "possibleExplosions": "Wykryto {{count}} możliwą(e) eksplozję(e)",
       "explosionTooltip": "Sygnatura termiczna zgodna z wybuchem (moc promieniowania ognia >80 MW, jasność >380 K)",
       "agencyReports": "Pożary zgłoszone przez agencje",
-      "reportDates": "Daty raportów",
+      "agencyDates": "Daty agencji",
       "shownOfTotal": "Wyświetlono {{shown}} z {{total}} rekordów pożarów"
     },
     "displacement": {

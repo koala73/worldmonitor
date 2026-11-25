@@ -1632,7 +1632,7 @@
       "possibleExplosions": "{{count}} posible(s) explosión(es) detectada(s)",
       "explosionTooltip": "Firma térmica consistente con explosión (potencia radiativa de fuego >80 MW, brillo >380 K)",
       "agencyReports": "Incendios notificados por agencias",
-      "reportDates": "Fechas de los informes",
+      "agencyDates": "Fechas de la agencia",
       "shownOfTotal": "Mostrando {{shown}} de {{total}} registros de incendios"
     },
     "giving": {

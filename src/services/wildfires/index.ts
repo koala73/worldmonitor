@@ -95,14 +95,14 @@ export async function fetchAllFires(_days?: number): Promise<FetchResult> {
 export interface AgencyFireReportStats {
   region: string;
   fireCount: number;
-  oldestReportAt: number;
-  newestReportAt: number;
+  oldestDatedAt: number;
+  newestDatedAt: number;
 }
 
 export interface FireSummary {
   /** FIRMS thermal detections from the last 24 hours, by region. */
   regions: FireRegionStats[];
-  /** Agency-reported fires (CWFIS, BC Wildfire Service), dated by their report, not by an observation. */
+  /** Agency-reported fires (CWFIS, BC Wildfire Service), dated by the agency's report or ignition date, not by an observation. */
   agencyReports: AgencyFireReportStats[];
   /** Satellites and agencies that produced the rows, as reported by each detection. */
   sources: string[];
@@ -137,13 +137,13 @@ export function summarizeFires(regions: Record<string, FireDetection[]>): FireSu
         possibleExplosionCount: fires.filter(f => f.possibleExplosion).length,
       });
     }
-    const dates = reports.map(f => f.detectedAt).filter(Number.isFinite);
+    const dates = reports.map(f => f.detectedAt).filter(at => Number.isFinite(at) && at > 0);
     if (reports.length > 0) {
       agencyReports.push({
         region,
         fireCount: reports.length,
-        oldestReportAt: dates.length ? Math.min(...dates) : 0,
-        newestReportAt: dates.length ? Math.max(...dates) : 0,
+        oldestDatedAt: dates.length ? Math.min(...dates) : 0,
+        newestDatedAt: dates.length ? Math.max(...dates) : 0,
       });
     }
   }

@@ -1916,7 +1916,7 @@
       "possibleExplosions": "{{count}} संभावित विस्फोट पाए गए",
       "explosionTooltip": "विस्फोट के अनुरूप तापीय हस्ताक्षर (अग्नि विकिरण शक्ति >80 MW, चमक >380 K)",
       "agencyReports": "एजेंसियों द्वारा रिपोर्ट की गई आग",
-      "reportDates": "रिपोर्ट की तिथियाँ",
+      "agencyDates": "एजेंसी की तिथियाँ",
       "shownOfTotal": "{{total}} में से {{shown}} आग रिकॉर्ड दिखाए जा रहे हैं"
     },
     "ucdpEvents": {

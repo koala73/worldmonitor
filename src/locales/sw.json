@@ -1916,7 +1916,7 @@
       "possibleExplosions": "{{count}} milipuko inayoweza kutokea imetambuliwa",
       "explosionTooltip": "Dalili ya joto inayolingana na mlipuko (nguvu ya radiyesivu ya moto >80 MW, mwangaza >380 K)",
       "agencyReports": "Moto ulioripotiwa na mashirika",
-      "reportDates": "Tarehe za ripoti",
+      "agencyDates": "Tarehe za shirika",
       "shownOfTotal": "Inaonyesha rekodi {{shown}} kati ya {{total}} za moto"
     },
     "ucdpEvents": {

@@ -1761,7 +1761,7 @@
       "possibleExplosions": "{{count}} 件の爆発の可能性を検出",
       "explosionTooltip": "熱署名が爆発と一致(火放射電力>80 MW、輝度>380 K)",
       "agencyReports": "機関が報告した火災",
-      "reportDates": "報告日",
+      "agencyDates": "機関の日付",
       "shownOfTotal": "火災記録 {{total}} 件中 {{shown}} 件を表示"
     },
     "ucdpEvents": {

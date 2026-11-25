@@ -1761,7 +1761,7 @@
       "possibleExplosions": "ตรวจพบการระเบิด {{count}} ครั้ง",
       "explosionTooltip": "ลายเซนเชอร์ความร้อนที่สอดคล้องกับการระเบิด (พลังงานรังสีไฟ >80 MW ความสว่าง >380 K)",
       "agencyReports": "ไฟที่หน่วยงานรายงาน",
-      "reportDates": "วันที่รายงาน",
+      "agencyDates": "วันที่ของหน่วยงาน",
       "shownOfTotal": "แสดง {{shown}} จาก {{total}} รายการไฟ"
     },
     "ucdpEvents": {

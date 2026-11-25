@@ -1766,7 +1766,7 @@
       "possibleExplosions": "{{count}} olası patlama tespit edildi",
       "explosionTooltip": "Termal imza patlamaya uygun (ateş radyatif gücü >80 MW, parlaklık >380 K)",
       "agencyReports": "Kurumlarca bildirilen yangınlar",
-      "reportDates": "Rapor tarihleri",
+      "agencyDates": "Kurum tarihleri",
       "shownOfTotal": "{{total}} yangın kaydından {{shown}} tanesi gösteriliyor"
     },
     "ucdpEvents": {

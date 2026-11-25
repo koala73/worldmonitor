@@ -1761,7 +1761,7 @@
       "possibleExplosions": "{{count}}건의 폭발 가능성 감지됨",
       "explosionTooltip": "폭발과 일치하는 열 신호(화재 방사 전력 >80 MW, 밝기 >380 K)",
       "agencyReports": "기관 보고 화재",
-      "reportDates": "보고 날짜",
+      "agencyDates": "기관 날짜",
       "shownOfTotal": "화재 기록 {{total}}건 중 {{shown}}건 표시"
     },
     "ucdpEvents": {

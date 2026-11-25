@@ -1687,7 +1687,7 @@
       "possibleExplosions": "{{count}} explosion(s) possible(s) détectée(s)",
       "explosionTooltip": "Signature thermique compatible avec une explosion (puissance radiative du feu >80 MW, luminosité >380 K)",
       "agencyReports": "Incendies signalés par les agences",
-      "reportDates": "Dates des rapports",
+      "agencyDates": "Dates de l'agence",
       "shownOfTotal": "{{shown}} enregistrements d’incendie affichés sur {{total}}"
     },
     "ucdpEvents": {

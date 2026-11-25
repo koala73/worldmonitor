@@ -1916,7 +1916,7 @@
       "possibleExplosions": "{{count}} lehetséges robbanás detektálva",
       "explosionTooltip": "Hőjelenség konzisztens a robbanással (tűz sugárzási teljesítménye >80 MW, fényesség >380 K)",
       "agencyReports": "Hatóságok által jelentett tüzek",
-      "reportDates": "Jelentések dátuma",
+      "agencyDates": "Ügynökségi dátumok",
       "shownOfTotal": "{{total}} tűzrekordból {{shown}} látható"
     },
     "ucdpEvents": {

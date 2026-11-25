@@ -1761,7 +1761,7 @@
       "possibleExplosions": "检测到 {{count}} 起可能爆炸",
       "explosionTooltip": "热信号与爆炸一致（火辐射功率 >80 MW，亮度 >380 K）",
       "agencyReports": "机构报告的火灾",
-      "reportDates": "报告日期",
+      "agencyDates": "机构日期",
       "shownOfTotal": "显示 {{total}} 条火灾记录中的 {{shown}} 条"
     },
     "ucdpEvents": {

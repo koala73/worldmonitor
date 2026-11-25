@@ -1761,7 +1761,7 @@
       "possibleExplosions": "Phát hiện {{count}} vụ nổ có thể xảy ra",
       "explosionTooltip": "Chữ ký nhiệt phù hợp với vụ nổ (công suất bức xạ nhiệt >80 MW, độ sáng >380 K)",
       "agencyReports": "Đám cháy do cơ quan báo cáo",
-      "reportDates": "Ngày báo cáo",
+      "agencyDates": "Ngày của cơ quan",
       "shownOfTotal": "Hiển thị {{shown}} trên {{total}} bản ghi cháy"
     },
     "ucdpEvents": {

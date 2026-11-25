@@ -1693,7 +1693,7 @@
       "possibleExplosions": "تم اكتشاف {{count}} انفجار(ات) محتمل(ة)",
       "explosionTooltip": "التوقيع الحراري المتسق مع انفجار (قوة الإشعاع الناري >80 ميجاوات، السطوع >380 كيلفن)",
       "agencyReports": "حرائق أبلغت عنها الوكالات",
-      "reportDates": "تواريخ التقارير",
+      "agencyDates": "تواريخ الوكالة",
       "shownOfTotal": "عرض {{shown}} من {{total}} سجل حرائق"
     },
     "ucdpEvents": {
