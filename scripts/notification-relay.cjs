@@ -2263,6 +2263,9 @@ async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
     judgeModel: decision.judgeModel,
     importanceScore: event.payload?.importanceScore ?? null,
     candidates: decision.candidates,
+    // 'embedding', or 'words' when the embeddings failed (embedError says how).
+    retrieval: decision.retrieval,
+    embedError: decision.embedError,
     best: decision.best,
     judged: decision.judged,
     verdict: decision.verdict,

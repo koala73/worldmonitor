@@ -84,7 +84,7 @@ function alert(title) {
   };
 }
 
-function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStatus = 200, anthropicVerdict = null, anthropicStatus = 200, coverage = {} } = {}) {
+function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStatus = 200, anthropicVerdict = null, anthropicStatus = 200, embedStatus = 200, coverage = {} } = {}) {
   const zsets = new Map();
   // Publisher history per exact headline, as the digest writes it.
   for (const [title, families] of Object.entries(coverage)) {
@@ -92,7 +92,7 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
   }
   const sets = new Map();
   const calls = { sends: [], judge: [], judgeBodies: [], anthropicBodies: [], embed: 0, anchorWrites: [] };
-  const state = { users, verdict, judgeStatus, anthropicVerdict, anthropicStatus };
+  const state = { users, verdict, judgeStatus, anthropicVerdict, anthropicStatus, embedStatus };
   const logs = [];
   const orig = { log: console.log, warn: console.warn, info: console.info, error: console.error };
   console.log = (...a) => logs.push(a.join(' '));
@@ -171,6 +171,7 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
     }
     if (host === 'openrouter.ai' && path.endsWith('/embeddings')) {
       calls.embed++;
+      if (state.embedStatus !== 200) return { ok: false, status: state.embedStatus, json: async () => ({}) };
       const { input } = JSON.parse(opts.body);
       return { ok: true, status: 200, json: async () => ({ data: input.map((t, index) => ({ index, embedding: vectorFor(t) })) }) };
     }
@@ -459,6 +460,53 @@ describe('reworded news alerts (#10916)', () => {
       await relay.processEvent(alert(SUN));
       assert.equal(h.calls.sends.length, 2);
       assert.equal(h.record().error, 'judge returned nothing');
+    } finally { h.restore(); }
+  });
+
+  // 2026-11-24: embeddings failed for two checks 50 minutes apart, so neither
+  // wording of the Gaza security chief's killing was compared with anything
+  // and both reached every subscriber. On 2026-11-23 the same failure sent 42.
+  // Headlines that share words still go to the judge, which has its own
+  // fallback to the Anthropic API.
+  const GAZA = 'Israel kills Hamas internal security chief in Gaza';
+  const BERNAMA = 'Gaza Internal Security Chief Killed In Israeli Air Strike – Interior Ministry - bernama';
+  it('still judges a rewrite when embeddings fail, using shared words', async () => {
+    const h = installHarness({ embedStatus: 502 });
+    try {
+      await relay.processEvent(alert(KYIV));
+      await relay.processEvent(alert(GAZA));
+      await relay.processEvent(alert(BERNAMA));
+      assert.equal(h.calls.sends.length, 2, 'the second Gaza wording must not alert again');
+      assert.match(h.calls.judge.at(-1), /EARLIER:\n1\. \(under an hour earlier\) Israel kills Hamas internal security chief in Gaza/);
+      assert.doesNotMatch(h.calls.judge.at(-1), /Kyiv/, 'a headline that shares no words is not shown');
+      const record = h.record();
+      assert.equal(record.retrieval, 'words');
+      assert.equal(record.embedError, 'EmbeddingProviderError: embedBatch: OpenRouter returned HTTP 502');
+      assert.equal(record.error, null);
+      assert.equal(record.skippedUsers, 1);
+    } finally { h.restore(); }
+  });
+
+  it('reaches the direct judge when OpenRouter refuses both embeddings and the judge', async () => {
+    process.env.ANTHROPIC_API_KEY = 'stub-anthropic';
+    const h = installHarness({ embedStatus: 402, judgeStatus: 402, anthropicVerdict: '{"same": 1}' });
+    try {
+      await relay.processEvent(alert(GAZA));
+      await relay.processEvent(alert(BERNAMA));
+      assert.equal(h.calls.sends.length, 1);
+      assert.equal(h.calls.anthropicBodies.length, 2);
+      assert.equal(h.record().retrieval, 'words');
+    } finally { h.restore(); }
+  });
+
+  it('does not ask the judge when embeddings fail and no earlier headline shares a word', async () => {
+    const h = installHarness({ embedStatus: 502 });
+    try {
+      await relay.processEvent(alert(KYIV));
+      await relay.processEvent(alert(GAZA));
+      assert.equal(h.calls.sends.length, 2);
+      assert.equal(h.calls.judge.length, 0);
+      assert.equal(h.record().judged, false);
     } finally { h.restore(); }
   });
 
