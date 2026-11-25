@@ -169,6 +169,22 @@ describe('clusterTexts', () => {
     assert.equal(clusters.flat().length, texts.length, 'every index appears exactly once');
   });
 
+  it('#11274: merges reworded reports of one event that name the same parties', () => {
+    const texts = [
+      'Solomon Islands names Australia as its primary security partner in a new treaty that excludes China - AP News',
+      'Australia, Solomon Islands sign security pact in blow to China - Reuters',
+      'Australia’s security pact with Solomon Islands a blow to China’s influence in the Pacific - The Guardian',
+      'Solomon Islands ends controversial security pact with China for Australian treaty',
+      'Solomon Islands opposition leader calls for snap election',
+      'Iran and Saudi Arabia restore ties in China-brokered deal',
+      'Iran fires missiles at Saudi Arabia oil site near China-run port',
+    ];
+    const clusters = clusterTexts(texts);
+    assert.ok(clusters.some((c) => [0, 1, 2, 3].every((i) => c.includes(i))), 'the four treaty reports share a cluster');
+    assert.ok(clusters.some((c) => c.length === 1 && c[0] === 4), 'another Solomon Islands story stays apart');
+    assert.ok(!clusters.some((c) => c.includes(5) && c.includes(6)), 'same parties, different events stay apart');
+  });
+
   it('is deterministic and order-stable for a fixed input', () => {
     const texts = [
       'Turkey hikes interest rates to 50% in surprise move',
