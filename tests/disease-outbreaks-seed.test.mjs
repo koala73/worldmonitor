@@ -1051,6 +1051,9 @@ test('CDC titles keep the United States when the words after "in" are not a plac
   const brazil = cdc('CDC Update on Outbreak of Yellow Fever in Brazil');
   assert.equal(brazil.location, 'Brazil');
   assert.equal(brazil.countryCode, 'BR');
+  const aside = cdc('Yellow fever outbreak in Brazil (recommendations for travellers in Canada)');
+  assert.equal(aside.location, 'Brazil');
+  assert.equal(aside.countryCode, 'BR');
   assert.equal(cdc('Measles outbreak in Texas').location, 'Texas');
   assert.equal(cdc('Measles cases in Texas and New Mexico').location, 'Texas and New Mexico');
 });

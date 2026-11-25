@@ -63,7 +63,7 @@ export function extractLocationFromTitle(title) {
   }
   // Fallback: "... in <Place>", the last such phrase first. Only a country or
   // known place counts: "Increases in Recent Animal Rabies Activity" is not a place.
-  const named = [...title.matchAll(/\bin\s+([A-Z][^,.(]+?)(?=\s+in\s+[A-Z]|[,.(]|$)/g)].map((m) => m[1].trim()).reverse()
+  const named = [...title.replace(/\([^)]*\)/g, '').matchAll(/\bin\s+([A-Z][^,.()]+?)(?=\s+in\s+[A-Z]|[,.(]|\s*$)/g)].map((m) => m[1].trim()).reverse()
     .find((p) => extractCountryCodeFull(p) || p.split(/\s+and\s+/).every((n) => KNOWN_PLACE_NAMES.has(n)));
   return named ?? '';
 }
