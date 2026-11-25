@@ -266,9 +266,6 @@ export function countHighSeverityDays(state: ThreatTimelineState): number {
 
 export function describeThreatTimelineTrend(days: ThreatTimelineDay[]): ThreatTimelineTrend {
   const highSeverity = (day: ThreatTimelineDay) => day.counts.critical + day.counts.high;
-  if (days.every(day => highSeverity(day) === 0)) {
-    return { label: 'Quiet', copy: 'No critical/high days', className: 'quiet' };
-  }
   // The current day is still filling, so the trend compares only full days.
   const completeDays = days.filter(day => !day.ongoing);
   // A comparison against days the history never covered would read an empty
@@ -277,6 +274,9 @@ export function describeThreatTimelineTrend(days: ThreatTimelineDay[]): ThreatTi
   if (partialDays > 0) {
     const recorded = completeDays.length - partialDays;
     return { label: 'Building', copy: `${recorded} of ${days.length} days fully recorded`, className: 'noisy' };
+  }
+  if (days.every(day => highSeverity(day) === 0)) {
+    return { label: 'Quiet', copy: 'No critical/high days', className: 'quiet' };
   }
   const windowSize = Math.floor(completeDays.length / 2);
   const earlier = completeDays.slice(0, windowSize).reduce((sum, day) => sum + highSeverity(day), 0);

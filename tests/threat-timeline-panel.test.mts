@@ -558,6 +558,13 @@ describe('ThreatTimelinePanel seeded history', () => {
     );
   });
 
+  it('holds the trend as Building rather than Quiet while a quiet week is still being recorded', () => {
+    const history = seededHistory(NOW_MS, [{}, {}, {}, {}, {}, { low: 2 }, { info: 1 }], 1);
+    const state = buildThreatTimelineStateFromHistory(history, [], { nowMs: NOW_MS });
+    assert.ok(state);
+    assert.equal(describeThreatTimelineTrend(state.days).label, 'Building');
+  });
+
   it('aligns a stale history to the current window and marks unrecorded recent days partial', () => {
     const yesterday = NOW_MS - 24 * 60 * 60 * 1000;
     const history = seededHistory(yesterday, [{}, {}, {}, {}, {}, {}, { high: 3 }]);
