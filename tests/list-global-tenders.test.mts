@@ -201,6 +201,7 @@ test('estimated value sort ranks amounts in USD, after the ones it cannot conver
     tender('brazil', { money: { amount: 707_345_586, currency: 'BRL' } }),
     tender('usd', { money: { amount: 50_000_000, currency: 'USD' } }),
     tender('no-rate', { money: { amount: 9_000_000_000, currency: 'XYZ' } }),
+    tender('a-smaller-no-rate', { money: { amount: 1_000, currency: 'XYZ' } }),
     tender('no-currency', { money: { amount: 8_000_000_000 } }),
   ];
   const request = { country: '', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0, currency: '', category: '', query: '', pageSize: 25, cursor: '', sort: 'estimated_value', buyer: '', publishedFrom: '', publishedTo: '', minAutomationScore: 0 };
@@ -208,5 +209,5 @@ test('estimated value sort ranks amounts in USD, after the ones it cannot conver
 
   const page = filterAndPaginateTenders(source, request, usdPerUnit);
 
-  assert.deepEqual(page.tenders.map((item) => item.id), ['brazil', 'usd', 'albania', 'no-currency', 'no-rate']);
+  assert.deepEqual(page.tenders.map((item) => item.id), ['brazil', 'usd', 'albania', 'no-currency', 'no-rate', 'a-smaller-no-rate']);
 });
