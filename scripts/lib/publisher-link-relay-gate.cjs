@@ -532,6 +532,7 @@ const PUBLISHER_LINK_LABELS = {
   "the new voice of ukraine": "new-voice-of-ukraine",
   "ukrainska pravda": "ukrainska-pravda",
   "ukrainska pravda en": "ukrainska-pravda",
+  "українська правда": "ukrainska-pravda",
   "propublica": "propublica",
   "the atlantic": "the-atlantic",
   "channel 4 news": "channel-4-news",
