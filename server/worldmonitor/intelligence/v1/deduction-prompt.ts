@@ -35,11 +35,15 @@ export function inferDeductionMode(query: string): DeductionMode {
 }
 
 const DEFAULT_FORECAST_HORIZON = 'next 24-72h';
-const QUESTION_HORIZON_RE = /\b(?:next|coming|within)\s+(?:the\s+next\s+)?(\d+(?:\s*[-–]\s*\d+)?\s*(?:h|hrs?|hours?|days?|weeks?|months?|years?)|day|week|month|year)\b/i;
+const QUESTION_HORIZON_RE = /\b(?:next|coming|within)\s+(?:the\s+next\s+)?(\d+(?:\s*[-–]\s*\d+)?\s*(?:h|hrs?|hours?|days?|weeks?|months?|years?)|day|week|month|year)\b/gi;
 
-export function inferForecastHorizon(query: string): string {
-  const match = QUESTION_HORIZON_RE.exec(query);
-  return match?.[1] ? `next ${match[1].replace(/\s+/g, ' ').toLowerCase()}` : DEFAULT_FORECAST_HORIZON;
+/** The forecast window the question names, the default when it names none, or null when it names several. */
+export function inferForecastHorizon(query: string): string | null {
+  const horizons = new Set(
+    Array.from(query.matchAll(QUESTION_HORIZON_RE), (m) => `next ${(m[1] ?? '').replace(/\s+/g, ' ').toLowerCase()}`),
+  );
+  if (horizons.size > 1) return null;
+  return horizons.values().next().value ?? DEFAULT_FORECAST_HORIZON;
 }
 
 export function splitDeductionContext(geoContext: string): PromptContextParts {
@@ -118,6 +122,7 @@ export function buildDeductionPrompt(input: {
   const { primaryContext, recentNews } = splitDeductionContext(input.geoContext);
   const evidence = buildSharedEvidencePrompt(primaryContext, recentNews);
 
+  const horizon = inferForecastHorizon(input.query);
   const predictionBlock = input.predictionContext
     ? `\n\n${input.predictionContext}`
     : '';
@@ -161,13 +166,13 @@ Rules:
 Return Markdown with exactly these sections in this order:
 **Bottom line**
 **What we know**
-**Most likely path (${inferForecastHorizon(input.query)})**
+**Most likely path (${horizon ?? 'next <horizon>'})**
 **Alternative paths**
 **Key drivers**
 **Signals to watch**
 **Confidence**
 
-Formatting rules:
+Formatting rules:${horizon ? '' : `\n- Replace <horizon> in "Most likely path" with the forecast window the question asks about.`}
 - Use short bullets under each section where useful.
 - In "Alternative paths", include 2 alternatives with rough likelihood bands.
 - In "Confidence", state High, Medium, or Low and explain why.
