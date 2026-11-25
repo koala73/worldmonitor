@@ -27,11 +27,18 @@ const CHART_H = SVG_H - MARGIN_T - MARGIN_B;
 interface YieldPoint {
   tenor: string;
   value: number | null;
+  date: string | null;
 }
 
 interface RateObs {
   date: string;
   value: number;
+}
+
+function observationDateLabel(points: YieldPoint[]): string {
+  const dates = [...new Set(points.map(p => p.date).filter((d): d is string => !!d))].sort();
+  if (dates.length === 0) return '';
+  return dates.length === 1 ? dates[0]! : `${dates[0]} to ${dates[dates.length - 1]}`;
 }
 
 function xPos(index: number, count: number): number {
@@ -203,9 +210,9 @@ function renderRatesTab(rows: RateRow[]): string {
     const latest = row.obs[row.obs.length - 1];
     if (!latest) return '';
     const prev = row.obs[row.obs.length - 2];
-    const change = prev ? latest.value - prev.value : null;
-    const changeStr = change !== null ? `${change >= 0 ? '+' : ''}${change.toFixed(2)}%` : '';
-    const changeColor = change === null ? '' : change >= 0 ? '#e74c3c' : '#27ae60';
+    const changeBps = prev ? Math.round((latest.value - prev.value) * 100) : null;
+    const changeStr = changeBps === null ? '' : `${changeBps > 0 ? '+' : ''}${changeBps}bps`;
+    const changeColor = changeBps === null || changeBps === 0 ? 'var(--text-dim)' : changeBps > 0 ? '#e74c3c' : '#27ae60';
     return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
       <div style="width:90px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(row.label)}</div>
       ${miniRateSparkline(row.obs.slice(-24), row.color)}
@@ -253,14 +260,13 @@ export class YieldCurvePanel extends Panel {
 
       const results = fredResp.status === 'fulfilled' ? (fredResp.value.results ?? {}) : {};
 
-      this._current = SERIES_IDS.map((id, i) => {
+      const curvePoints = (offset: number): YieldPoint[] => SERIES_IDS.map((id, i) => {
         const obs = results[id]?.observations ?? [];
-        return { tenor: TENOR_LABELS[i] ?? id, value: obs.length > 0 ? (obs[obs.length - 1]?.value ?? null) : null };
+        const point = obs[obs.length - offset];
+        return { tenor: TENOR_LABELS[i] ?? id, value: point?.value ?? null, date: point?.date ?? null };
       });
-      this._prior = SERIES_IDS.map((id, i) => {
-        const obs = results[id]?.observations ?? [];
-        return { tenor: TENOR_LABELS[i] ?? id, value: obs.length > 1 ? (obs[obs.length - 2]?.value ?? null) : null };
-      });
+      this._current = curvePoints(1);
+      this._prior = curvePoints(2);
 
       this._ecbRates = ecbResp.status === 'fulfilled' && !ecbResp.value.unavailable && ecbResp.value.data?.rates
         ? (ecbResp.value.data.rates as Record<string, number>)
@@ -313,6 +319,11 @@ export class YieldCurvePanel extends Panel {
       ? `<span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-left:10px">2Y-10Y Spread: <span style="color:${isInverted ? '#e74c3c' : '#2ecc71'}">${escapeHtml(spreadSign + spreadBps)}bps</span></span>`
       : '';
 
+    const legendLabel = (series: string, points: YieldPoint[]): string => {
+      const date = observationDateLabel(points);
+      return escapeHtml(date ? `US (${series}, ${date})` : `US (${series})`);
+    };
+
     const ecbLegend = this._ecbRates
       ? `<span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#2ecc71" stroke-width="1.5" stroke-dasharray="5,3"/></svg> EU (ECB AAA)</span>`
       : '';
@@ -326,8 +337,8 @@ export class YieldCurvePanel extends Panel {
         <div style="margin:0 -4px">${renderChart(this._current, this._prior, this._ecbRates)}</div>
         ${renderTable(this._current, `${this.panelId}Title`)}
         <div style="margin-top:8px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#3498db" stroke-width="2"/></svg> US (Current)</span>
-          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-dasharray="4,3"/></svg> US (Prior)</span>
+          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#3498db" stroke-width="2"/></svg> ${legendLabel('Current', this._current)}</span>
+          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-dasharray="4,3"/></svg> ${legendLabel('Prior', this._prior)}</span>
           ${ecbLegend}
           <span style="margin-left:auto">Source: FRED / ECB</span>
         </div>
