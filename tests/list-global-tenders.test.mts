@@ -206,7 +206,7 @@ test('estimated value sort ranks amounts in USD, then unconverted amounts, then 
     tender('no-currency', { money: { amount: 8_000_000_000 } }),
   ];
   const request = { country: '', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0, currency: '', category: '', query: '', pageSize: 25, cursor: '', sort: 'estimated_value', buyer: '', publishedFrom: '', publishedTo: '', minAutomationScore: 0 };
-  const usdPerUnit = { USD: 1, BRL: 0.19, ALL: 0.0122, XYZ: null, fallbackCurrencies: ['XYZ'] };
+  const usdPerUnit = { USD: 1, BRL: 0.19, XYZ: null, fallbackCurrencies: ['XYZ'], tenderOnlyRates: { ALL: 0.0122 } };
 
   const page = filterAndPaginateTenders(source, request, usdPerUnit);
 

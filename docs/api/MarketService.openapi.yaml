@@ -5363,6 +5363,16 @@ components:
                 smallTraderAvailable:
                     type: boolean
                     description: False for cache rows written before the non-reportable fields were added.
+                leveragedFundsAvailable:
+                    type: boolean
+                    description: |-
+                        Leveraged funds exist only in the TFF report. False for Disaggregated
+                         (commodity) rows, where the leveraged_funds_* fields are placeholders.
+                reportType:
+                    type: string
+                    description: |-
+                        Source CFTC report: "tff" (asset_manager_* = asset managers) or
+                         "disaggregated" (asset_manager_* = managed money).
         GetInsiderTransactionsRequest:
             type: object
             properties:

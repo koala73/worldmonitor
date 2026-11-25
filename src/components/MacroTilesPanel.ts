@@ -39,8 +39,13 @@ const DELTA_UNITS: Record<DeltaUnit, { digits: number; format: (magnitude: numbe
   billions: { digits: 0, format: (m) => `${m.toLocaleString(undefined, { maximumFractionDigits: 0 })}B` },
 };
 
+function roundHalfAway(v: number, digits: number): number {
+  const scale = 10 ** digits;
+  return (Math.sign(v) * Math.round(Number((Math.abs(v) * scale).toPrecision(12)))) / scale || 0;
+}
+
 function pctFmt(v: number): string {
-  return `${v.toFixed(1)}%`;
+  return `${roundHalfAway(v, 1).toFixed(1)}%`;
 }
 
 function gdpFmt(v: number): string {
@@ -79,8 +84,7 @@ function deltaClass(delta: number, lowerIsBetter: boolean, neutral: boolean): st
 
 function formatDelta(delta: number, unit: DeltaUnit): { text: string; rounded: number } {
   const { digits, format } = DELTA_UNITS[unit];
-  const scale = 10 ** digits;
-  const rounded = (Math.sign(delta) * Math.round(Number((Math.abs(delta) * scale).toPrecision(12)))) / scale || 0;
+  const rounded = roundHalfAway(delta, digits);
   const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : '';
   return { text: `${sign}${format(Math.abs(rounded))}`, rounded };
 }

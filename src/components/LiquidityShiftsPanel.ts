@@ -79,10 +79,8 @@ export class LiquidityShiftsPanel extends Panel {
         const levShort = toNum(row.leveragedFundsShort ?? 0);
         const smallLong = toNum(row.smallTraderLong ?? 0);
         const smallShort = toNum(row.smallTraderShort ?? 0);
-        // CFTC Disaggregated report (GC/SI/CL) has no Leveraged Funds
-        // category — only TFF report (ES/NQ) does. Skip the sub-line entirely
-        // rather than render a misleading "Lev +0.0%" for commodity rows.
-        const hasLev = levLong > 0 || levShort > 0;
+        // Only the TFF report (ES/NQ) has a Leveraged Funds category.
+        const hasLev = row.leveragedFundsAvailable === true;
         const levNet = hasLev ? pct(levLong, levShort) : null;
         const code = row.code ?? '';
         const label = INSTRUMENT_LABELS[code] ?? row.name ?? code;
