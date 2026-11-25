@@ -399,6 +399,17 @@ describe('list-airport-flights physical flights', () => {
     assert.deepEqual(response.flights[0].codeshareFlightNumbers, ['TG9026', 'FI7018']);
   });
 
+  it('keeps a codeshare under its own number when the provider omits the operating flight', async () => {
+    const row = istanbulToManchester('TG9026', 'TK1971');
+    (row.flight as { codeshared: object }).codeshared = { airline_iata: 'tk' };
+    const response = await departuresBoard([row]);
+
+    assert.equal(response.flights.length, 1);
+    assert.equal(response.flights[0].flightNumber, 'TG9026');
+    assert.equal(response.flights[0].operatingCarrier?.iataCode, 'TG');
+    assert.deepEqual(response.flights[0].codeshareFlightNumbers, []);
+  });
+
   it('reads each time on the clock of the airport it happens at', async () => {
     const [flight] = (await departuresBoard([istanbulToManchester('TK1971')])).flights;
 

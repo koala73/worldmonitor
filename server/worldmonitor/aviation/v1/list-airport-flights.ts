@@ -112,7 +112,7 @@ function airportMs(wall: string | undefined, zone: string): number {
 }
 
 function normalizeFlight(f: AVSFlight, now: number): FlightInstance {
-    const operator = f.flight?.codeshared;
+    const operator = operatorOf(f);
     const carrier: Carrier = operator
         ? { iataCode: operator.airline_iata?.toUpperCase() ?? '', icaoCode: operator.airline_icao?.toUpperCase() ?? '', name: operator.airline_name ?? '' }
         : { iataCode: f.airline?.iata ?? '', icaoCode: f.airline?.icao ?? '', name: f.airline?.name ?? '' };
@@ -157,9 +157,13 @@ function normalizeFlight(f: AVSFlight, now: number): FlightInstance {
     };
 }
 
+// A codeshare row that does not name its operating flight stands for itself.
+function operatorOf(f: AVSFlight) {
+    return f.flight?.codeshared?.flight_iata ? f.flight.codeshared : undefined;
+}
+
 function operatingNumber(f: AVSFlight): string {
-    const operator = f.flight?.codeshared;
-    return (operator ? operator.flight_iata?.toUpperCase() : f.flight?.iata) ?? '';
+    return operatorOf(f)?.flight_iata?.toUpperCase() ?? f.flight?.iata ?? '';
 }
 
 /**
@@ -170,7 +174,7 @@ function operatingNumber(f: AVSFlight): string {
 function normalizeFlights(rows: AVSFlight[], now: number): FlightInstance[] {
     const byFlight = new Map<string, FlightInstance>();
     const flights: FlightInstance[] = [];
-    const operatingFirst = [...rows.filter(f => !f.flight?.codeshared), ...rows.filter(f => f.flight?.codeshared)];
+    const operatingFirst = [...rows.filter(f => !operatorOf(f)), ...rows.filter(f => operatorOf(f))];
     for (const f of operatingFirst) {
         const number = operatingNumber(f);
         const key = number && `${number}|${f.departure?.scheduled ?? ''}`;
@@ -180,7 +184,7 @@ function normalizeFlights(rows: AVSFlight[], now: number): FlightInstance[] {
             flights.push(flight);
             if (key) byFlight.set(key, flight);
         }
-        if (f.flight?.codeshared && f.flight.iata) flight.codeshareFlightNumbers.push(f.flight.iata);
+        if (operatorOf(f) && f.flight?.iata) flight.codeshareFlightNumbers.push(f.flight.iata);
     }
     return flights;
 }
