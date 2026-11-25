@@ -37,4 +37,5 @@ test('a story that names a hotspot place keeps its nearby assets', async () => {
   assert.equal(await originFor('Silicon Valley AI data center expansion approved'), 'Silicon Valley');
   assert.equal(await originFor('Houston pipeline explosion injures workers'), 'Houston');
   assert.equal(await originFor('Congress questions Palo Alto AI data center power use'), 'Silicon Valley', 'topic words still rank hotspots that have place evidence');
+  assert.equal(await originFor('Houston energy firm shields oil pipeline from missile and drone threats'), 'Houston', 'a named place outranks conflict-zone subject words');
 });
