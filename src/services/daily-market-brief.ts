@@ -237,18 +237,23 @@ function matchesMarketHeadline(market: Pick<MarketData, 'symbol' | 'display' | '
 }
 
 // Feeds (notably Google News) also return instrument quote/overview pages,
-// e.g. "DJIA | Dow Jones Industrial Average Overview - MarketWatch" or
-// "Apple Inc. (AAPL) Stock Price, News, Quote & History - Yahoo Finance".
-// They name the instrument but report no event, so they are not headlines.
-const QUOTE_PAGE_TITLE_PATTERNS: RegExp[] = [
-  /^\s*\^?[A-Z][A-Z0-9.^=-]{0,9}\s*\|/,
-  /\b(?:overview|quotes?)\s*(?:$|[-|(&,]|\u2013|\u2014)/i,
-  /\b(?:charts?|data|news|history|prices?)\s*&\s*(?:charts?|data|news|history|quotes?)\b/i,
-  /\bstock price\s*(?:$|[-|(,]|\u2013|\u2014)/i,
-];
+// e.g. "DJIA | Dow Jones Industrial Average Overview - MarketWatch". They name
+// the instrument but report no event, so they are not headlines. Such a title
+// ends in a page-type tail, optionally followed by a parenthetical and up to
+// two short publisher segments; an article ends in an event clause instead.
+const TITLE_SEGMENT_SEPARATOR = /\s+[-\u2013\u2014|]\s+|\s*\|\s*/;
+const PUBLISHER_SEGMENT = /^(?:[A-Z0-9^&][^\s]*\s*){1,3}$/;
+const QUOTE_PAGE_TAIL = /\b(?:overview|quotes?|stock price|(?:charts?|data|news|history|prices?|quotes?)\s*&\s*(?:charts?|data|news|history|quotes?))$/i;
+const MAX_PUBLISHER_SEGMENTS = 2;
 
 export function isQuotePageTitle(title: string): boolean {
-  return QUOTE_PAGE_TITLE_PATTERNS.some((pattern) => pattern.test(title));
+  const segments = title.split(TITLE_SEGMENT_SEPARATOR).map((segment) => segment.trim()).filter(Boolean);
+  for (let end = segments.length; end >= 1 && segments.length - end <= MAX_PUBLISHER_SEGMENTS; end--) {
+    const body = segments.slice(0, end).join(' | ').replace(/\s*\([^)]*\)$/, '');
+    if (QUOTE_PAGE_TAIL.test(body)) return true;
+    if (!PUBLISHER_SEGMENT.test(segments[end - 1] ?? '')) return false;
+  }
+  return false;
 }
 
 function collectHeadlinePool(newsByCategory: Record<string, NewsItem[]>, extraCategories?: string[]): NewsItem[] {

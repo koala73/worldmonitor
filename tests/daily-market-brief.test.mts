@@ -384,6 +384,11 @@ describe('daily market brief quote-page filtering', () => {
       'Fed officials quote inflation risks in minutes',
       'Nymex Overview: crude settles higher on supply worries',
       'Market Overview: stocks slip as yields climb - Reuters',
+      'Apple earnings overview: iPhone sales fall as China demand weakens',
+      'Market overview: Stocks rally after Fed decision',
+      'Apple stock price, lifted by earnings, hits record',
+      'Apple stock price \u2014 shares surge after earnings beat',
+      'Apple earnings overview: Revenue beats estimates',
     ]) {
       assert.equal(isQuotePageTitle(title), false, title);
     }
