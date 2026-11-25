@@ -27,10 +27,13 @@ const WORSENING_EVIDENCE_RE = /\b(accelerat\w*|rising|rises|rose|surg(?:e|es|ed|
 // "Poaching (in Kenya) falls" is recovery; "populations fall as habitat loss continues"
 // and "populations decline in polluted rivers" are not, so the verb must follow the problem.
 const DECLINE_VERB = '(?:fall(?:s|en|ing)?|fell|drops?|dropped|dropping|declin(?:es?|ed|ing)|plummet\\w*|plung\\w*)';
+// "Drought is plunging millions into hunger" uses the verb transitively, so the
+// decline must end the headline or lead into a measure ("to a record low", "by half").
+const DECLINE_END = '(?=\\s*$|\\s+(?:to|by|in|across|for|after|since|below|under|\\d)\\b)';
 // An auxiliary ("is falling") only counts when the problem leads the headline, so
 // "water levels in lakes hit by drought are falling" stays rejected.
 const DECLINING_PROBLEM_RE = new RegExp(
-  `${NEGATIVE_EVIDENCE_RE.source}\\s+(?:in\\s+\\w+\\s+)?${DECLINE_VERB}\\b|^(?:\\w+\\s+)?${NEGATIVE_EVIDENCE_RE.source}\\s+(?:in\\s+\\w+\\s+)?(?:is|are|has been|have been)\\s+${DECLINE_VERB}\\b`,
+  `${NEGATIVE_EVIDENCE_RE.source}\\s+(?:in\\s+\\w+\\s+)?${DECLINE_VERB}${DECLINE_END}|^(?:\\w+\\s+)?${NEGATIVE_EVIDENCE_RE.source}\\s+(?:in\\s+\\w+\\s+)?(?:is|are|has been|have been)\\s+${DECLINE_VERB}${DECLINE_END}`,
   'i',
 );
 

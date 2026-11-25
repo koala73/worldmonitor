@@ -84,6 +84,8 @@ test('broad-source negative reporting is screened even when the ML gate passes e
     'Tiger populations fall as habitat loss continues',
     'Fish populations decline in polluted rivers',
     'Water levels in lakes hit by drought are falling',
+    'Drought in Kenya is plunging millions into hunger',
+    'Drought plunges farmers into debt',
   ];
   const kept = story('Mongabay', 'Photos: Elephants maintain an essential role in conservation in Nepal despite shifting norms');
   const science = story('New Scientist', 'An atom-sized black hole could force an entire star to explode');
