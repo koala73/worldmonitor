@@ -171,7 +171,6 @@ import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import type { DigestCoverageSummary } from '@/components/StatusPanel';
 import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
 import type { PredictionPanel } from '@/components/PredictionPanel';
-import type { InsightsPanel } from '@/components/InsightsPanel';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 
 import type { EconomicPanel } from '@/components/EconomicPanel';
@@ -680,9 +679,11 @@ export class DataLoaderManager implements AppModule {
     if (transition.render === 'cached' && cached) {
       this.callPanel('cii', 'renderFromCached', cached);
       this.applyCiiScoresToMap(cached.cii.map(toCountryScore));
+      this.callPanel('strategic-posture', 'refreshInstabilityNotes');
     } else if (transition.render === 'unavailable') {
       this.callPanel('cii', 'renderUnavailable');
       this.applyCiiScoresToMap([]);
+      this.callPanel('strategic-posture', 'refreshInstabilityNotes');
     }
 
     if (transition.refreshBrief) this.callbacks.refreshOpenCountryBrief();
@@ -4383,8 +4384,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setMilitaryVessels(vessels, vesselClusters);
       this.ctx.map?.updateMilitaryForEscalation(flights, vessels);
       this.loadCachedPosturesForBanner();
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.setMilitaryFlights(flights);
       const hasData = flights.length > 0 || vessels.length > 0;
       this.ctx.map?.setLayerReady('military', hasData);
       const militaryCount = flights.length + vessels.length;
@@ -4434,8 +4433,6 @@ export class DataLoaderManager implements AppModule {
       }
 
       this.loadCachedPosturesForBanner();
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.setMilitaryFlights(flightData.flights);
 
       const hasData = flightData.flights.length > 0 || vesselData.vessels.length > 0;
       this.ctx.map?.setLayerReady('military', hasData);

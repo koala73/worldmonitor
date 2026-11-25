@@ -114,7 +114,7 @@
     },
     "intelMemory": {
       "title": "Historical Intelligence Memory",
-      "help": "180-day archive of conflict, military, and energy events with on-demand semantic precedent matching.",
+      "help": "180-day archive of notable conflict, military, energy, unrest, cyber, maritime, natural hazard and aviation events, with on-demand semantic precedent matching.",
       "loading": "Loading historical intelligence memory…",
       "proLocked": "Upgrade to PRO for 180-day historical intelligence memory and precedent search",
       "unavailable": "Historical intelligence memory is temporarily unavailable.",
@@ -126,7 +126,12 @@
         "all": "All",
         "conflict": "Conflict",
         "military": "Military",
-        "energy": "Energy"
+        "energy": "Energy",
+        "unrest": "Unrest",
+        "cyber": "Cyber",
+        "maritime": "Maritime",
+        "natural": "Natural hazards",
+        "aviation": "Aviation"
       },
       "loadMore": "Load more",
       "loadingMore": "Loading more…",
@@ -1424,6 +1429,8 @@
       "elapsed": "Elapsed: {{elapsed}} s",
       "clickToView": "Click to view {{name}} on map",
       "clickToViewMap": "Click to view on map",
+      "instabilityChip": "Instability {{score}}",
+      "instabilityNote": "{{nation}} instability score: {{score}} out of 100. Shown for context. It does not change the level, which counts the aircraft and ships in the theater.",
       "refresh": "Refresh",
       "units": {
         "fighters": "Fighters",
@@ -1442,7 +1449,7 @@
         "auxiliary": "Auxiliary",
         "navalVessels": "Naval Vessels"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>Aggregates military aircraft and naval vessels by theater.</p><ul><li><strong>Normal:</strong> Baseline activity</li><li><strong>Elevated:</strong> Above threshold (50+ aircraft)</li><li><strong>Critical:</strong> High concentration (100+ aircraft)</li></ul><p><strong>Strike Capable:</strong> Tankers + Airborne early warning + Fighters present in sufficient numbers for sustained operations.</p>",
+      "infoTooltip": "<strong>Methodology</strong><p>Counts military aircraft and tracked naval vessels in each theater.</p><ul><li><strong>Normal:</strong> Below the theater's threshold</li><li><strong>Elevated:</strong> Count reaches 3 to 8, by theater</li><li><strong>Critical:</strong> Count reaches 8 to 20, by theater</li></ul><p>Ships add to the count up to half the elevated threshold, so ships alone never raise a level.</p><p><strong>Strike Capable:</strong> Tankers + Airborne early warning + Fighters present in sufficient numbers for sustained operations.</p>",
       "scanningTheaters": "Scanning Theaters",
       "positions": "Aircraft positions",
       "navalVesselsLoading": "Naval vessels",

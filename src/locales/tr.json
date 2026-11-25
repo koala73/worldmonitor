@@ -304,7 +304,7 @@
     },
     "intelMemory": {
       "title": "Tarihsel İstihbarat Hafızası",
-      "help": "Çatışma, askeri ve enerji olaylarının 180 günlük arşivi ile talep üzerine anlamsal öncül eşleştirmesi.",
+      "help": "Önemli çatışma, askeri, enerji, toplumsal huzursuzluk, siber, denizcilik, doğal afet ve havacılık olaylarının 180 günlük arşivi; isteğe bağlı anlamsal emsal eşleştirmesiyle.",
       "loading": "Tarihsel istihbarat hafızası yükleniyor…",
       "proLocked": "180 günlük tarihsel istihbarat hafızası ve öncül araması için PRO sürümüne yükseltin",
       "unavailable": "Tarihsel istihbarat hafızası geçici olarak kullanılamıyor.",
@@ -316,7 +316,12 @@
         "all": "Tümü",
         "conflict": "Çatışma",
         "military": "Askeri",
-        "energy": "Enerji"
+        "energy": "Enerji",
+        "unrest": "Huzursuzluk",
+        "cyber": "Siber",
+        "maritime": "Denizcilik",
+        "natural": "Doğal afetler",
+        "aviation": "Havacılık"
       },
       "loadMore": "Daha fazla yükle",
       "loadingMore": "Daha fazla yükleniyor…",
@@ -1195,7 +1200,7 @@
         "auxiliary": "Yardimci",
         "navalVessels": "Deniz Gemileri"
       },
-      "infoTooltip": "<strong>Metodoloji</strong><p>Askeri uçaklar ve deniz gemilerini operasyon bölgesine göre toplar.</p><ul><li><strong>Normal:</strong> Temel aktivite</li><li><strong>Yükseltilmiş:</strong> Eşiğin üstü (50+ uçak)</li><li><strong>Kritik:</strong> Yüksek yoğunlaşma (100+ uçak)</li></ul><p><strong>Vuruş Yeteneği:</strong> Tankerler + Hava erken uyarı + Sürdürülebilir operasyonlar için yeterli sayıda savaş uçağı mevcuttur.</p>",
+      "infoTooltip": "<strong>Metodoloji</strong><p>Her tiyatroda yer alan askeri uçak ve izlenen deniz gemilerini sayar.</p><ul><li><strong>Normal:</strong> Tiyatronun eşik değerinin altında</li><li><strong>Yükseltilmiş:</strong> Sayı tiyatroya göre 3 ile 8 arasına ulaşır</li><li><strong>Kritik:</strong> Sayı tiyatroya göre 8 ile 20 arasına ulaşır</li></ul><p>Gemiler sayıya yükseltilmiş eşik değerinin yarısına kadar eklenir, bu nedenle gemiler tek başına bir seviyeyi yükseltmez.</p><p><strong>Vuruş Yeteneğine Sahip:</strong> Yakıt uçağı + Erken uyarı sistemi + Sürdürülen harekatlar için yeterli sayıda avcı uçak bulunmaktadır.</p>",
       "scanningTheaters": "Harekat Alanlari Taraniyor",
       "positions": "Ucak konumlari",
       "navalVesselsLoading": "Deniz gemileri",
@@ -1237,7 +1242,9 @@
       },
       "emojiKeyLabel": "Emoji Anahtarı",
       "emojiKeyAir": "Hava Varlıkları",
-      "emojiKeyNaval": "Deniz Varlıkları"
+      "emojiKeyNaval": "Deniz Varlıkları",
+      "instabilityChip": "İstikrarsızlık {{score}}",
+      "instabilityNote": "{{nation}} istikrarsızlık puanı: {{score}}/100. Bağlam için gösterilmektedir. Tiyatrodaki uçak ve gemileri sayan seviyeyi değiştirmez."
     },
     "countryBrief": {
       "moreActions": "Diğer işlemler",
