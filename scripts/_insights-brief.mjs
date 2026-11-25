@@ -169,7 +169,7 @@ Rules:
 - Use ONLY facts present in the numbered story text. Do not add names, places, dates, numbers, or context that are not explicitly there.
 - Do not invent proper nouns (people, organizations, countries) that are not in the story text.
 - Two numbered stories can describe the SAME event in different words. A lead claim may combine them, but it MUST carry the citation of EVERY story it drew from — write [3][7], not just [3]. Any name, place, or number you take from a story you did not cite counts as invented.
-- A story marked "single low-credibility source" must never be stated as fact. Every sentence or line that uses it must name its outlet as the attribution: "<outlet> reported ..." or "According to <outlet>, ...".
+- A story marked "single low-credibility source" must never be stated as fact. Every clause that uses it must name its outlet as the attribution: "<outlet> reported ..." or "According to <outlet>, ...".
 - If you name an outlet, copy its label exactly (including capitalization) and use it only as an attribution: "<outlet> reported/reports/said/says/wrote/writes ..." or "According to <outlet>, ...".
 - Write acronyms WITHOUT periods: "US", "UN", "EU", "UK" — never "U.S.", "U.N.". A trailing period there reads as the end of a sentence.
 - Refer to an actor by the name the story uses. Do not swap in a capital city, nickname, or synonym for it — write "US", not "Washington"; "Iran", not "Tehran" — unless that word is in the story text.
@@ -225,6 +225,18 @@ function requiresSourceAttribution(story) {
 
 function namesOutlet(text, story) {
   return maskAttributedSourcesResult(text, [story.primarySource]).matches > 0;
+}
+
+// The credit must sit in the clause that carries the claim: text from the
+// previous citation run up to and including the citation of that story.
+function unattributedLowCredibilityStory(sentence, topStories) {
+  for (const clause of sentence.match(/[^[\]]*?(?:\[\d{1,3}\]\s*)+/g) ?? []) {
+    const story = [...clause.matchAll(/\[(\d{1,3})\]/g)]
+      .map((match) => topStories[Number.parseInt(match[1], 10) - 1])
+      .find((cited) => requiresSourceAttribution(cited) && !namesOutlet(clause, cited));
+    if (story) return story;
+  }
+  return null;
 }
 
 export function synthesisUserPrompt(stories, { includeMemberTitles = false } = {}) {
@@ -634,9 +646,7 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
         dropSentence(BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER, qualifierValidation.hallucinated);
         continue;
       }
-      const unattributed = cited
-        .map((n) => topStories[n - 1])
-        .find((story) => requiresSourceAttribution(story) && !namesOutlet(sentence, story));
+      const unattributed = unattributedLowCredibilityStory(sentence, topStories);
       if (unattributed) {
         dropSentence(BRIEF_REJECTIONS.LEAD_UNATTRIBUTED, [unattributed.primarySource.trim()]);
         continue;

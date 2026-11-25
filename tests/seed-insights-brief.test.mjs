@@ -1546,6 +1546,14 @@ describe('low-credibility single-source attribution (#11274)', () => {
     assert.doesNotMatch(out.brief.lead, /Four Palestinians/);
   });
 
+  it('drops a sentence whose outlet credit sits on a different clause than the claim', () => {
+    const out = compose(
+      'Israeli opposition advanced a coalition deal to replace Netanyahu [2]. Four Palestinians were killed in an Israeli airstrike [1], while WAFA English reported the opposition advanced a coalition deal [2].',
+    );
+    assert.ok(out.brief);
+    assert.equal(out.brief.lead, 'Israeli opposition advanced a coalition deal to replace Netanyahu [2].');
+  });
+
   it('publishes the claim when the lead names its outlet', () => {
     const out = compose(
       'WAFA English reported four Palestinians were killed in an Israeli airstrike [1], while Israeli opposition advanced a coalition deal to replace Netanyahu [2].',
