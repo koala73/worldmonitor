@@ -178,7 +178,7 @@ export function computeCountryLevelExposure(nearestRouteIds, coastSide, hs2) {
 
   return {
     exposures: entries,
-    primaryChokepointId: entries[0]?.chokepointId ?? '',
+    primaryChokepointId: entries[0]?.exposureScore > 0 ? entries[0].chokepointId : '',
     vulnerabilityIndex,
     coverage: 'country_route_fallback',
   };

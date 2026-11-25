@@ -145,6 +145,10 @@ describe('computeCountryLevelExposure (seed fallback)', () => {
     assert.ok(result.primaryChokepointId !== '');
   });
 
+  it('names no primary chokepoint when no nearby route crosses one', () => {
+    assert.equal(computeCountryLevelExposure([], 'landlocked', '10').primaryChokepointId, '');
+  });
+
   it('non-energy sectors produce identical scores (the original bug)', () => {
     const trCluster = getCluster('TR');
     const elec = computeCountryLevelExposure(trCluster.nearestRouteIds, trCluster.coastSide, '85');
