@@ -120,7 +120,10 @@ function escapeHtml(s: string): string {
 
 function agencyDateRange(oldest: number, newest: number): string {
   if (!oldest) return '';
-  const format = (ms: number) => new Date(ms).toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const sameYear = new Date(oldest).getUTCFullYear() === new Date(newest).getUTCFullYear();
+  const format = (ms: number) => new Date(ms).toLocaleDateString(getLocale(), {
+    month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }), timeZone: 'UTC',
+  });
   const from = format(oldest);
   const to = format(newest);
   return from === to ? from : `${from} – ${to}`;

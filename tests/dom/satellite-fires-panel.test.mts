@@ -78,4 +78,16 @@ describe('SatelliteFiresPanel', () => {
     await flush();
     expect(text('.fires-agency-table tbody')).toBe('Ontario 2 Oct 2');
   });
+
+  it('keeps the years when agency dates span different years', async () => {
+    panel.update(summarizeFires({ Ontario: [agency('Ontario', Date.parse('2025-10-02T12:00:00Z')), agency('Ontario', Date.parse('2026-10-02T12:00:00Z'))] }), 2);
+    await flush();
+    expect(text('.fires-agency-table tbody')).toBe('Ontario 2 Oct 2, 2025 – Oct 2, 2026');
+  });
+
+  it('credits NASA FIRMS for thermal rows that carry no satellite', async () => {
+    panel.update(summarizeFires({ Iran: [firms('Iran', '')] }), 1);
+    await flush();
+    expect(text('.fires-source')).toBe('NASA FIRMS');
+  });
 });

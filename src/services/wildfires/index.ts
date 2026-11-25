@@ -148,9 +148,9 @@ export function summarizeFires(regions: Record<string, FireDetection[]>): FireSu
     }
   }
 
-  const firmsLabel = satellites.size > 0
-    ? [`NASA FIRMS (VIIRS ${[...new Set([...satellites].map(firmsSatelliteName))].sort().join(', ')})`]
-    : [];
+  const satelliteNames = [...new Set([...satellites].map(firmsSatelliteName))].sort();
+  const firmsLabel = thermal.length === 0 ? []
+    : [satelliteNames.length > 0 ? `NASA FIRMS (VIIRS ${satelliteNames.join(', ')})` : 'NASA FIRMS'];
   return {
     regions: thermal.sort((a, b) => b.fireCount - a.fireCount),
     agencyReports: agencyReports.sort((a, b) => b.fireCount - a.fireCount),
