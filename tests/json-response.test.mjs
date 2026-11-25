@@ -36,4 +36,41 @@ describe('jsonResponse', () => {
 
     assert.throws(() => jsonResponse(value, 200), /circular|cyclic/i);
   });
+
+  it('serializes a value referenced twice without treating it as circular', async () => {
+    const shared = { n: 1 };
+
+    assert.deepEqual(await roundTrip({ a: shared, b: shared }), { a: { n: 1 }, b: { n: 1 } });
+  });
+
+  it('replaces an Error held inside an array', async () => {
+    assert.deepEqual(await roundTrip({ list: [new Error('inside array')] }), { list: [{ error: 'inside array' }] });
+  });
+
+  it('sets Content-Length to the UTF-8 byte length of a multi-byte body', async () => {
+    const res = jsonResponse({ text: 'héllo 世界 🌍' }, 200);
+    const bytes = new Uint8Array(await res.clone().arrayBuffer());
+
+    assert.equal(res.headers.get('Content-Length'), String(bytes.byteLength));
+    assert.deepEqual(await res.json(), { text: 'héllo 世界 🌍' });
+  });
+
+  it('replaces an Error that a toJSON method returns, keeping only its message', async () => {
+    const error = new Error('safe message');
+    error.toJSON = () => ({ message: 'unsafe custom value', stack: 'secret stack' });
+
+    assert.deepEqual(await roundTrip({ toJSON: () => ({ error }) }), { error: { error: 'safe message' } });
+  });
+
+  it('replaces a plain Error that a toJSON method returns', async () => {
+    assert.deepEqual(await roundTrip({ toJSON: () => ({ failure: new Error('boom') }) }), { failure: { error: 'boom' } });
+  });
+
+  it('serializes the value a getter returns on its first read', async () => {
+    let reads = 0;
+    const body = { get value() { reads += 1; return reads; } };
+
+    assert.deepEqual(await roundTrip(body), { value: 1 });
+  });
 });
+

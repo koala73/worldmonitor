@@ -178,3 +178,42 @@ for (const width of [820, 940, 1180, 1439]) {
     await evidenceScreenshot(page, { path: testInfo.outputPath(`plugin-stacked-${width}.png`) });
   });
 }
+
+// The dashboard's phone layout pads the end of #main for its fixed tab bar
+// (#11157). The plugin reuses .main-content > .panels-grid but has no tab bar,
+// so the spacer must not reach it: at phone width it only added empty scroll.
+test('the phone plugin grid ends at its own padding, with no tab-bar spacer', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/tests/runtime-harness.html');
+
+  const result = await page.evaluate(async () => {
+    await import('/src/styles/base-layer.css');
+    await import('/src/styles/plugin.css');
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const { Panel } = await import('/src/components/Panel.ts');
+
+    document.getElementById('runtime-harness')?.remove();
+    document.body.classList.add('plugin-body');
+    const root = document.createElement('main');
+    root.id = 'pluginRoot';
+    root.className = 'main-content';
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    grid.id = 'panelsGrid';
+    root.appendChild(grid);
+    document.body.appendChild(root);
+    const panels = [new Panel({ id: 'plugin-a', title: 'A' }), new Panel({ id: 'plugin-b', title: 'B' })];
+    for (const p of panels) grid.appendChild(p.getElement());
+    for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r));
+
+    return {
+      display: getComputedStyle(grid).display,
+      trailing: grid.getBoundingClientRect().bottom - panels[1]!.getElement().getBoundingClientRect().bottom,
+      paddingBottom: parseFloat(getComputedStyle(grid).paddingBottom),
+    };
+  });
+
+  expect(result.display, 'the phone layout stacks the grid as a flex column').toBe('flex');
+  expect(result.trailing, 'space after the last panel is the grid padding alone').toBeLessThanOrEqual(result.paddingBottom + 1);
+});

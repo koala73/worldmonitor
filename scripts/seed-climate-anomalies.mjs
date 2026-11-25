@@ -10,17 +10,10 @@ import { CLIMATE_ZONE_NORMALS_KEY } from './seed-climate-zone-normals.mjs';
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'climate:anomalies:v2';
-// 9h = 3× the 3h bundle cron cadence (seed-bundle-climate fires every 3h).
-// Co-pinned to api/health.js's `climateAnomalies.maxStaleMin: 540` so the
-// data key survives at least until the alarm fires — no silent-EMPTY window
-// between TTL_DATA expiry and STALE_SEED trigger. The previous 10800 (3h)
-// equalled cron cadence exactly, so any cron jitter (1-3min normal Railway
-// variance) meant the data key expired in Redis before the next cron could
-// refresh it — health emitted status=EMPTY (records=0, display-forced)
-// during routine drift, and UptimeRobot's HEALTHY-substring check stayed
-// green. Production logs 2026-04-27T00:00:59 + 03:03:35 show the 3h+3min
-// drift pattern that produced the 2026-04-27 silent-EMPTY incident.
-const CACHE_TTL = 32400; // 9h
+// Twice the 540-minute health budget, so the data outlives the STALE_SEED alarm.
+// A TTL equal to the cron cadence (3h) caused the 2026-04-27 silent-EMPTY
+// incident: routine 1-3 minute cron jitter let the key expire before the next run.
+const CACHE_TTL = 64800;
 // Content-age budget — each anomaly's `period` ends on the newest daily
 // observation. Open-Meteo's ERA5 archive lags ~5–7 days; 14 days clears that
 // lag plus a buffer, flipping /api/health to STALE_CONTENT if the archive

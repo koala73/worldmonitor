@@ -1,4 +1,12 @@
 const HOLD_MS = 600;
+
+/** Map chrome drawn inside a map container: presses here operate the control, not the map. */
+const MAP_CONTROL_SELECTOR =
+  '.map-controls, .time-slider, .layer-toggles, .map-legend, .layer-help-popup, .layer-explanation-popup, .map-popup, button, select, input, textarea, a';
+
+export function isMapControlTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(MAP_CONTROL_SELECTOR) !== null;
+}
 const SLOP_PX = 10;
 
 /**

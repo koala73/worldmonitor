@@ -89,6 +89,8 @@ import {
 import { captureSilentError } from '../_sentry-edge.js';
 import { mcpGrantName } from '../../shared/agent-client-source';
 // @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../_rate-limit.js';
+// @ts-expect-error — JS module, no declaration file
 import { clientAllowsRedirectUri, describeClientFailure, isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
 // @ts-expect-error — JS module, no declaration file
 import { isAllowedRedirectUri } from './_redirect-uri.js';
@@ -290,6 +292,8 @@ export interface AuthorizeProDeps {
   redisSetEx: (key: string, value: unknown, ttlSeconds: number) => Promise<boolean>;
   /** Verifies the wire-format HMAC grant. */
   verifyGrant: typeof verifyGrant;
+  /** Charges the grant owner's budget; a Response means refused. Runs before any Redis read. */
+  rateLimit: (req: Request, userId: string) => Promise<Response | null>;
   /**
    * Returns Pro entitlement info or null.
    *
@@ -369,6 +373,18 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   // Resolving fetches the vendor's document, which can fail for a moment.
   // Doing it after the GETDELs below would burn this one-shot link on a
   // retryable error. A DCR lookup has no such dependency and stays in step 5.
+  const limited = await deps.rateLimit(req, grantPayload.userId);
+  if (limited) {
+    const forwarded: Record<string, string> = {};
+    for (const name of ['Retry-After', 'X-RateLimit-Mode']) {
+      const value = limited.headers.get(name);
+      if (value) forwarded[name] = value;
+    }
+    return limited.status === 429
+      ? htmlError('Too Many Requests', 'Too many authorization attempts. Please wait a few minutes and start over from your dashboard.', 429, forwarded)
+      : htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.', limited.status, forwarded);
+  }
+
   let preResolved: { clientId: string; result: Awaited<ReturnType<typeof resolveOAuthClient>> } | null = null;
   let peeked: NonceData | null = null;
   try {
@@ -620,6 +636,11 @@ export default async function handler(req: Request): Promise<Response> {
     redisGet: rawRedisGet,
     redisSetEx: rawRedisSetEx,
     verifyGrant,
+    // Keyed by the grant's user, because api/internal/mcp-grant-mint.ts limits
+    // minting per user (20 / 10 min). Fail closed like the mint.
+    rateLimit: (request, userId) => checkRateLimit(request, { 'Cache-Control': 'no-store' }, {
+      scope: 'oauth-authorize-pro', identifier: `user:${userId}`, limit: 30, window: '10 m', failClosed: true,
+    }),
     getEntitlements,
     issueProMcpTokenForUser,
     revokeProMcpToken,

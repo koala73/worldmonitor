@@ -519,7 +519,6 @@ const HOST_ORIGINS = Object.freeze({
   'api.hyperliquid.xyz': 'US',
   'api.openaq.org': 'US',
   'api.opensanctions.org': 'DE',
-  'api.ossinsight.io': 'CN',
   'api.planespotters.net': 'DE',
   'api.rainviewer.com': 'US',
   'api.safecast.org': 'JP',

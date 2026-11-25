@@ -1,6 +1,6 @@
 /**
  * RPC: listTrendingRepos -- reads seeded trending repo data from Railway seed cache.
- * All external OSSInsight/GitHub API calls happen in seed-research.mjs on Railway.
+ * All external GitHub calls (github.com/trending, GitHub search) happen in seed-research.mjs on Railway.
  */
 
 import type {

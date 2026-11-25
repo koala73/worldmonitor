@@ -37,6 +37,7 @@
       "scripts/generate-inventory-facts.mjs",
       "scripts/lib/classify-digest-request.cjs",
       "scripts/lib/digest-stale-gate.cjs",
+      "scripts/lib/headline-language.cjs",
       "scripts/lib/geo-coord.mjs",
       "scripts/lib/jev-classify-relay.cjs",
       "scripts/lib/llm-model-policy.cjs",
@@ -300,6 +301,7 @@
       "scripts/shared/notification-dedup.cjs",
       "scripts/shared/notification-link-suppression.cjs",
       "scripts/shared/notify-fields.cjs",
+      "scripts/shared/publisher-families.js",
       "scripts/shared/story-identity.js"
     ],
     "cronSchedule": null,
@@ -473,49 +475,13 @@
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
       "IRAN_EVENTS_ENABLED",
-      "R2_ACCOUNT_ID",
-      "R2_BOOTSTRAP_BUCKET",
-      "R2_BOOTSTRAP_ACCESS_KEY_ID",
-      "R2_BOOTSTRAP_SECRET_ACCESS_KEY"
+      "KV_BOOTSTRAP_ACCOUNT_ID",
+      "KV_BOOTSTRAP_NAMESPACE_ID",
+      "KV_BOOTSTRAP_WRITE_TOKEN"
     ],
     "watchPatterns": [],
     "cronSchedule": null,
-    "documentedAt": "issue #5300 U3 Railway provisioning contract"
-  },
-  {
-    "entry": "scripts/seed-bundle-portwatch-port-activity.mjs",
-    "deployMode": "dockerfile",
-    "dockerfile": "Dockerfile.seed-bundle-portwatch-port-activity",
-    "service": "seed-bundle-portwatch-port-activity",
-    "requiredEnv": [
-      "UPSTASH_REDIS_REST_URL",
-      "UPSTASH_REDIS_REST_TOKEN",
-      "PROXY_URL"
-    ],
-    "watchPatterns": [
-      ".dockerignore",
-      "Dockerfile.seed-bundle-portwatch-port-activity",
-      "scripts/_bundle-runner.mjs",
-      "scripts/_country-resolver.mjs",
-      "scripts/_env-file.mjs",
-      "scripts/_portwatch-content-freshness.mjs",
-      "scripts/_portwatch-request-diagnostics.mjs",
-      "scripts/_proxy-utils.cjs",
-      "scripts/_seed-contract.mjs",
-      "scripts/_seed-envelope-source.mjs",
-      "scripts/_seed-payload-codec.mjs",
-      "scripts/_seed-utils.mjs",
-      "scripts/lib/llm-telemetry.cjs",
-      "scripts/seed-bundle-portwatch-port-activity.mjs",
-      "scripts/seed-portwatch-port-activity.mjs",
-      "scripts/shared/compare-and-delete-script.cjs",
-      "scripts/shared/country-names.json",
-      "scripts/shared/iso3-to-iso2.json",
-      "shared/country-names.json",
-      "shared/iso3-to-iso2.json"
-    ],
-    "cronSchedule": "0 */12 * * *",
-    "documentedAt": "Dockerfile.seed-bundle-portwatch-port-activity"
+    "documentedAt": "issue #11194 KV bootstrap publisher contract"
   },
   {
     "entry": "scripts/scenario-worker.mjs",
@@ -2280,11 +2246,7 @@
     "startCommand": "node seed-live-video-resolved.mjs",
     "requiredEnv": [
       "UPSTASH_REDIS_REST_URL",
-      "UPSTASH_REDIS_REST_TOKEN",
-      [
-        "LIVE_VIDEO_PROXY_URL",
-        "PROXY_URL"
-      ]
+      "UPSTASH_REDIS_REST_TOKEN"
     ],
     "watchPatterns": [
       "scripts/_env-file.mjs",
@@ -2394,8 +2356,12 @@
       "scripts/package.json",
       "scripts/railpack.json",
       "scripts/seed-country-history.mjs",
+      "scripts/shared/article-url.js",
       "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-mention.js",
       "scripts/shared/country-names.json",
+      "scripts/shared/news-catalog.json",
+      "scripts/shared/publisher-families.js",
       "scripts/shared/rankable-universe.mjs",
       "scripts/shared/sovereign-status.json"
     ],
@@ -2723,6 +2689,7 @@
       "scripts/_seed-utils.mjs",
       "scripts/crawlable-developments.mjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/shared/article-url.js",
       "scripts/shared/brief-llm-core.js",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
@@ -2732,6 +2699,7 @@
       "server/_shared/source-tiers.ts",
       "shared/article-url.js",
       "shared/brief-claim-rules.js",
+      "shared/headline-publisher.js",
       "shared/brief-llm-core.js",
       "shared/brief-sections.js",
       "shared/country-names.json",

@@ -11,8 +11,8 @@
 //             were filed days after their fixes merged). A recurrence after
 //             that change is newer than it, so it is reported.
 //   timeout   a job on a push to main was cancelled after running 10+ minutes
-//             (push runs on main are not superseded, so this is a job timeout;
-//             unit-shard (5) hung silently for 14 minutes on 2098d920ae)
+//             and no newer main push cancelled it, so this is a job timeout
+//             (unit-shard (5) hung silently for 14 minutes on 2098d920ae)
 //   failing   a workflow's two newest decided runs on main both failed
 //   slower    a job's median time on successful main runs rose 20% and 30s+
 //             week over week. Samples are 15 runs spread across each week: the
@@ -245,13 +245,38 @@ export function attributeFlakes(findings, { readLog, changeSince, limit = FLAKE_
   return { findings: kept, skipped, warnings };
 }
 
-// mainAttempts: [{ run, attempt, jobs }] for push runs on main
-export function findTimeouts(mainAttempts) {
+// Test cancels a main push run when a newer main commit lands. That cancel
+// reaches the job seconds after the newer run is created; a job timeout fires
+// on its own clock, so a newer run created this close to the cancel is the cause.
+const SUPERSEDE_CANCEL_SECONDS = 120;
+
+function supersededBy(job, run, attempt, conclusion, mainRuns) {
+  // Only Test shares a concurrency group across main pushes; every other
+  // monitored workflow keeps each main run, so its cancel is a real timeout.
+  // Only a first attempt joins that group, and a superseded attempt ends
+  // cancelled; a job that timed out inside a failed attempt stays reported.
+  if (run.name !== 'Test' || attempt !== 1 || conclusion !== 'cancelled') return false;
+  const cancelledAt = Date.parse(job.completed_at);
+  return mainRuns.some((other) => {
+    if (other.id === run.id || other.name !== run.name) return false;
+    const createdAt = Date.parse(other.created_at);
+    return createdAt > Date.parse(run.created_at)
+      && createdAt <= cancelledAt
+      && cancelledAt - createdAt <= SUPERSEDE_CANCEL_SECONDS * 1000;
+  });
+}
+
+// mainAttempts: [{ run, attempt, jobs, conclusion? }] for push runs on main;
+// conclusion is that attempt's own, defaulting to the run's for its latest
+// attempt (unknown for an earlier one, which then cannot count as superseded)
+// mainRuns: every push run on main in the window, to recognise supersession
+export function findTimeouts(mainAttempts, mainRuns = []) {
   const findings = new Map();
-  for (const { run, attempt, jobs } of mainAttempts) {
+  for (const { run, attempt, jobs, conclusion = attempt === (run.run_attempt ?? 1) ? run.conclusion : undefined } of mainAttempts) {
     for (const job of jobs) {
       const seconds = jobSeconds(job);
       if (job.conclusion !== 'cancelled' || seconds === null || seconds < TIMEOUT_MIN_SECONDS) continue;
+      if (supersededBy(job, run, attempt, conclusion, mainRuns)) continue;
       const workflow = safeLabel(run.name);
       const name = safeLabel(job.name);
       addFinding(findings, {
@@ -419,17 +444,26 @@ export function collect({ gh, repository, now }) {
   const currentStart = now - WINDOW_DAYS * DAY_MS;
   const reruns = [];
   const mainAttempts = [];
+  const mainRuns = [];
   const samples = [];
   const failing = [];
   for (const workflow of MONITORED_WORKFLOWS) {
+    // A run's `name` is its run-name when the workflow sets one: test.yml names
+    // a pull request run `PR #N into <base>: <title>` (#10926). Every run is
+    // labelled by the workflow's own name, read from the default branch, so a
+    // finding keeps one title across pull requests and `Test` checks hold.
+    const workflowName = api(gh, `repos/${repository}/actions/workflows/${workflow}`).name;
+    const named = (run) => ({ ...run, name: workflowName });
     // The runs API stops at 1,000 results per filtered query, and these
     // workflows run ~150 times a day, so the window is read one calendar day
     // at a time, then cut to the exact window.
     const days = new Set();
     for (let ms = eventStart; ms < now + DAY_MS; ms += DAY_MS) days.add(day(Math.min(ms, now)));
-    const window = [...days]
+    const listed = [...days]
       .flatMap((date) => listRuns(gh, repository, workflow, `created=${date}`))
-      .filter((run) => Date.parse(run.created_at) >= eventStart && run.status === 'completed');
+      .map(named)
+      .filter((run) => Date.parse(run.created_at) >= eventStart);
+    const window = listed.filter((run) => run.status === 'completed');
 
     // Days are read oldest first; the cap keeps the newest re-runs.
     const newestReruns = window.filter((item) => item.run_attempt > 1)
@@ -440,15 +474,25 @@ export function collect({ gh, repository, now }) {
     }
     // A timed-out attempt survives a later successful re-run, so every
     // attempt of a re-run or unsuccessful main push is read.
+    // Unfinished runs too: the run that superseded a cancelled one may still be going.
+    mainRuns.push(...listed.filter((item) => item.event === 'push' && item.head_branch === 'main'));
     for (const run of window.filter((item) => item.event === 'push' && item.head_branch === 'main'
       && (item.run_attempt > 1 || item.conclusion === 'cancelled' || item.conclusion === 'failure'))) {
-      allAttempts(run).forEach((jobs, index) => mainAttempts.push({ run, attempt: index + 1, jobs }));
+      // A re-run hides the first attempt's own conclusion behind the run's;
+      // read it where supersession could apply.
+      const firstConclusion = run.name === 'Test' && run.run_attempt > 1
+        ? api(gh, `repos/${repository}/actions/runs/${run.id}/attempts/1`).conclusion
+        : undefined;
+      allAttempts(run).forEach((jobs, index) => mainAttempts.push({
+        run, attempt: index + 1, jobs, ...(index === 0 && firstConclusion !== undefined ? { conclusion: firstConclusion } : {}),
+      }));
     }
 
-    failing.push(...findFailingMain(newestMainRuns(gh, repository, workflow)));
+    failing.push(...findFailingMain(newestMainRuns(gh, repository, workflow).map(named)));
 
     const main = listRuns(gh, repository, workflow, `event=push&branch=main&status=success&created=>=${day(now - 2 * WINDOW_DAYS * DAY_MS)}`)
-      .filter((item) => item.run_attempt === 1 && Date.parse(item.created_at) >= now - 2 * WINDOW_DAYS * DAY_MS);
+      .filter((item) => item.run_attempt === 1 && Date.parse(item.created_at) >= now - 2 * WINDOW_DAYS * DAY_MS)
+      .map(named);
     for (const [period, runs] of [
       ['current', main.filter((item) => Date.parse(item.created_at) >= currentStart)],
       ['previous', main.filter((item) => Date.parse(item.created_at) < currentStart)],
@@ -463,7 +507,7 @@ export function collect({ gh, repository, now }) {
       }
     }
   }
-  const all = [...failing, ...findTimeouts(mainAttempts), ...findFlakyJobs(reruns), ...findSlowdowns(samples)];
+  const all = [...failing, ...findTimeouts(mainAttempts, mainRuns), ...findFlakyJobs(reruns), ...findSlowdowns(samples)];
   return attributeFlakes(all, {
     // The log endpoint answers raw text that may carry colour codes, which gh
     // refuses to print unless told to.

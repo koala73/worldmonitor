@@ -17,6 +17,9 @@ import {
   isPageTwinSibling,
   resolveMarkdownTwinPath,
 } from './_md-url-twin';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from './_rate-limit.js';
+import { getClientRateLimitKey } from '../server/_shared/client-ip';
 
 export const config = { runtime: 'edge' };
 
@@ -33,6 +36,13 @@ export default async function handler(req: Request): Promise<Response> {
       },
     });
   }
+  // Each miss fetches a page from our own origin. Crawlers read these on purpose, so the per-IP budget is wide.
+  // The key is explicit so a request without the Cloudflare edge proof falls back to Vercel's peer IP
+  // instead of a 403. The edge-proof rule covers /{page}.md, so normally this is the real client IP.
+  const limited = await checkRateLimit(req, { 'Access-Control-Allow-Origin': '*', 'X-Robots-Tag': 'noindex', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'Vercel-CDN-Cache-Control': 'no-store' }, {
+    scope: 'md-twin', identifier: getClientRateLimitKey(req), limit: 300, window: '60 s',
+  });
+  if (limited) return limited;
   return buildMarkdownTwinResponse(req, markdownPath, globalThis.fetch, {
     isAllowedSibling: isPageTwinSibling,
   });

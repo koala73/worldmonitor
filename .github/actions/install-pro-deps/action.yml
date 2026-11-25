@@ -1,0 +1,23 @@
+name: Install /pro dependencies
+description: Restore the exact Node 24 pro-test dependency tree or install it with install scripts disabled.
+runs:
+  using: composite
+  steps:
+    - name: Restore /pro dependencies
+      id: pro-deps
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: pro-test/node_modules
+        key: pro-test-deps-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('pro-test/package.json', 'pro-test/package-lock.json', 'pro-test/.npmrc', '.npmrc', 'vendor/**') }}
+    - name: Install /pro dependencies on cache miss
+      if: steps.pro-deps.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        npm_config_allow_scripts: ''
+      run: npm --prefix pro-test ci --prefer-offline
+    - name: Save clean /pro dependencies
+      if: steps.pro-deps.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: pro-test/node_modules
+        key: ${{ steps.pro-deps.outputs.cache-primary-key }}

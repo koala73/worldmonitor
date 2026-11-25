@@ -38,12 +38,14 @@ function laneLeaseMs(intervalMs: number): number {
  *   never the bare callback, which may not settle at all;
  * - the loser of the race is `.catch`-silenced so an abandoned callback's
  *   late rejection cannot surface as an unhandled rejection on the page;
- * - on expiry the lane warns (a wedged lane is otherwise indistinguishable
- *   from one whose data has not changed). A refresh lane is idempotent — it
- *   re-reads current state — so releasing and re-running is safe (no #6288
- *   duplicate-write caveat). Cancellation of a cooperative callback stays
- *   with the poll loop's own controller (stop()/hidden aborts), which this
- *   scheduler now forwards via `fn(signal)` instead of dropping it.
+ * - on expiry the lane aborts the per-run child signal and warns (a wedged lane
+ *   is otherwise indistinguishable from one whose data has not changed). A
+ *   refresh lane is idempotent — it re-reads current state — so releasing and
+ *   re-running is safe (no #6288 duplicate-write caveat). Cancellation from the
+ *   poll loop's own controller (stop()/hidden aborts) is composed into the
+ *   per-run child signal so both parent cancellation and lease expiry abort
+ *   cooperative callbacks via `fn(childController.signal)` without leaking
+ *   listeners on the parent signal.
  */
 export async function runLaneWithLease(
   name: string,
@@ -56,12 +58,27 @@ export async function runLaneWithLease(
   if (inFlight.has(name)) return;
   inFlight.add(name);
   const leaseMs = laneLeaseMs(intervalMs);
+  const childController = new AbortController();
+  let onParentAbort: (() => void) | null = null;
+  if (signal) {
+    if (signal.aborted) {
+      childController.abort(signal.reason);
+    } else {
+      onParentAbort = () => {
+        childController.abort(signal.reason);
+      };
+      signal.addEventListener('abort', onParentAbort, { once: true });
+    }
+  }
   let leaseTimer: ReturnType<typeof setTimeout> | undefined;
   const lease = new Promise<{ expired: true }>((resolve) => {
-    leaseTimer = setTimeout(() => resolve({ expired: true }), leaseMs);
+    leaseTimer = setTimeout(() => {
+      resolve({ expired: true });
+      childController.abort(new DOMException('Refresh lane lease expired', 'AbortError'));
+    }, leaseMs);
   });
   try {
-    const callback = Promise.resolve(fn(signal));
+    const callback = Promise.resolve(fn(childController.signal));
     void callback.catch(() => {});
     const settled = callback.then(
       (value) => ({ expired: false as const, value }),
@@ -70,7 +87,7 @@ export async function runLaneWithLease(
     const raced = await Promise.race([settled, lease]);
     if (raced.expired) {
       warn(
-        `[App] Refresh ${name} lease expired after ${leaseMs}ms without settling — latch released and lane re-runnable; the callback is still parked (unbounded await, or a fetch wrapper that drops the abort signal)`,
+        `[App] Refresh ${name} lease expired after ${leaseMs}ms without settling — latch released, run signal aborted, and lane re-runnable`,
       );
       return;
     }
@@ -78,6 +95,9 @@ export async function runLaneWithLease(
     return raced.value;
   } finally {
     if (leaseTimer !== undefined) clearTimeout(leaseTimer);
+    if (onParentAbort && signal) {
+      signal.removeEventListener('abort', onParentAbort);
+    }
     inFlight.delete(name);
   }
 }

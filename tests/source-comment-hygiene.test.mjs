@@ -23,10 +23,6 @@ test('obsolete ESLint suppressions do not return', () => {
 
 test('source comments do not repeat retired claims or hand-maintained totals', () => {
   assert.doesNotMatch(
-    source('tests/seed-ttl-outlives-staleness-fleet.test.mjs'),
-    /The REAL defect is underneath and is tracked separately/,
-  );
-  assert.doesNotMatch(
     source('scripts/enforce-panel-content-writes.mjs'),
     /\d+ entries \/ \d+ call sites across \d+ files/,
   );

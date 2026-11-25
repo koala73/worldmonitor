@@ -299,6 +299,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "升级至PRO以查看武器供应商依赖关系和军事能力"
+    },
+    "intelMemory": {
+      "title": "历史情报库",
+      "help": "180天冲突、军事和能源事件档案，支持按需语义先例匹配。",
+      "loading": "正在加载历史情报库…",
+      "proLocked": "升级至PRO以获得180天历史情报库和先例搜索",
+      "unavailable": "历史情报库暂时不可用。",
+      "retry": "重试",
+      "empty": "在180天时间窗口内，没有与该国家和领域匹配的归档情报事件。",
+      "partial": "本次查询的档案覆盖不完整；可用的记录仍然可见。",
+      "domainFilterLabel": "按领域筛选历史情报",
+      "domains": {
+        "all": "全部",
+        "conflict": "冲突",
+        "military": "军事",
+        "energy": "能源"
+      },
+      "loadMore": "加载更多",
+      "loadingMore": "正在加载…",
+      "loadMoreError": "无法加载更多事件。请重试。",
+      "sourceLink": "来源 ↗",
+      "similarTitle": "查找相似的历史事件",
+      "useLatestHeadline": "使用最新标题",
+      "similarPlaceholder": "描述一个发展中的局势（至少10个字符）…",
+      "findSimilar": "查找相似事件",
+      "similarMinLength": "输入至少10个字符以搜索历史先例。",
+      "similarLoading": "正在搜索历史先例…",
+      "similarEmpty": "没有历史事件超过相似度阈值。",
+      "similarUnavailable": "先例搜索暂时不可用。请重试。"
     }
   },
   "header": {
@@ -1548,7 +1577,7 @@
       "briefStoryDetails": "报道详情 ({{count}})",
       "streamIdleStopLabel": "空闲时停止实时视频",
       "streamIdleStopNever": "从不",
-      "streamIdleStopDesc": "在此时间内无活动后停止实时新闻和实时网络摄像头，并在面板中显示通知。",
+      "streamIdleStopDesc": "在此时间内无活动后停止实时新闻和实时网络摄像头，并在面板中显示通知。声音开启时，实时新闻会继续播放。",
       "liveNewsAutoplayLabel": "自动播放实时新闻",
       "liveNewsAutoplayDesc": "实时新闻视频出现在屏幕上时自动开始播放，静音状态。关闭此选项可仅在您手动启动时加载视频。"
     },

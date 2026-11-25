@@ -72,15 +72,16 @@ jobs:
           cache-dependency-path: workers/api-cors-preflight/package-lock.json
       - name: Install
         run: npm ci --ignore-scripts --no-audit --no-fund
-      # The KV shadow (BOOTSTRAP_KV_SHADOW=1) emits to Axiom; the Worker reads AXIOM_API_TOKEN
-      # as a secret. Set it before deploy. Absent secret => the shadow no-ops silently
+      # BOOTSTRAP_KV_SERVE emits `bootstrap_kv_serve` events to Axiom using AXIOM_API_TOKEN
+      # (and opt-in BOOTSTRAP_KV_SHADOW emits `bootstrap_kv_shadow` using the same secret).
+      # Set it before deploy. Absent secret => Axiom telemetry no-ops silently
       # (warnDeliveryFailure 'missing_token'), never an error — so a missing secret can't
       # break the CORS deploy.
       - name: Set Axiom secret
         # Must never gate the CORS deploy. A secret-put that fails (token lacks the
         # Workers-secret scope, transient CF error) would otherwise fail the job and skip
         # Deploy below — coupling the fragile CORS deploy to Axiom telemetry, the exact
-        # invariant this path promises not to break. On failure the shadow just no-ops
+        # invariant this path promises not to break. On failure telemetry just no-ops
         # (missing_token); the failure still surfaces in the job log.
         continue-on-error: true
         env:
@@ -91,7 +92,7 @@ jobs:
           if [ -n "$AXIOM_API_TOKEN" ]; then
             printf '%s' "$AXIOM_API_TOKEN" | npx wrangler secret put AXIOM_API_TOKEN
           else
-            echo "AXIOM_API_TOKEN not set — KV shadow telemetry no-ops (measured silently)"
+            echo "AXIOM_API_TOKEN not set — KV serve/shadow telemetry no-ops silently"
           fi
       - name: Deploy
         env:

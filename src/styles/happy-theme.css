@@ -549,7 +549,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 8px;
-  padding: 10px;
+  padding: 10px 0;
 }
 
 /* ---------- Counter card ---------- */
@@ -950,7 +950,7 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
-  padding: 12px;
+  padding: 12px 0;
 }
 
 @media (max-width: 768px) {

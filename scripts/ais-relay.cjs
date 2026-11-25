@@ -155,7 +155,9 @@ const {
 const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
-const { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } = require('./shared/yahoo-closed-session.cjs');
+const {
+  PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose, isYahooEquityIndex, createYahooEquityIndexBasisResolver,
+} = require('./shared/yahoo-closed-session.cjs');
 const { SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline, capQuoteSparklines } = require('./shared/quote-sparkline.cjs');
 const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
@@ -3767,9 +3769,14 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
   });
 }
 
-// A rolled chart's previous close stays the same until the next trade, so one
-// daily-chart request per symbol covers a whole weekend of 5-minute cycles.
+// Rolled non-index charts keep one lookup until the next trade.
 const _previousSessionCloses = new Map();
+const resolveYahooIndexClose = createYahooEquityIndexBasisResolver({
+  scope: 'relay',
+  read: (key) => upstashGet(key, undefined, 1500),
+  write: (key, entry, ttl) => upstashSet(key, entry, ttl),
+  writeIfAbsent: (key, entry, ttl) => upstashSetNx(key, entry, ttl),
+});
 
 async function _withPreviousSessionChange(symbol, quote) {
   let cached = _previousSessionCloses.get(symbol);
@@ -3812,8 +3819,20 @@ async function _commoditySparkline(symbol, quote) {
 }
 
 function fetchYahooChartDirect(symbol, query = '') {
-  return _fetchYahooChartOnce(symbol, query)
-    .then((quote) => (!query && quote?.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote));
+  return _fetchYahooChartOnce(symbol, query).then(async (quote) => {
+    if (query || !quote) return quote;
+    if (!isYahooEquityIndex(symbol)) {
+      return quote.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote;
+    }
+
+    const close = await resolveYahooIndexClose(symbol, quote.lastTradeAt, async () => {
+      await sleep(150);
+      return (await _fetchYahooChartOnce(symbol, PREVIOUS_SESSION_CHART_QUERY))?.chart;
+    });
+    // Only fresh quotes feed the alert emitter. On a missing basis the normal
+    // last-good logic can preserve the quote without sending a new alert.
+    return close == null ? null : { ...quote, change: ((quote.price - close) / close) * 100 };
+  });
 }
 
 function _fetchYahooChartOnce(symbol, query = '') {
@@ -4233,19 +4252,28 @@ const GULF_SYMBOLS = [
 const GULF_SEED_TTL = 5400; // 90min — survives 1 missed cycle
 
 async function seedGulfQuotes() {
+  const previousPayload = await envelopeRead('market:gulf-quotes:v1');
+  const previousBySymbol = new Map((Array.isArray(previousPayload?.quotes) ? previousPayload.quotes : [])
+    .filter((quote) => quote && typeof quote.symbol === 'string')
+    .map((quote) => [quote.symbol, quote]));
   const quotes = [];
+  let freshCount = 0;
   for (const meta of GULF_SYMBOLS) {
     const yahoo = await fetchYahooChartDirect(meta.symbol);
     if (yahoo) {
+      freshCount += 1;
       quotes.push({
         symbol: meta.symbol, name: meta.name, country: meta.country,
         flag: meta.flag, type: meta.type,
         price: yahoo.price, change: +(yahoo.change).toFixed(2), sparkline: yahoo.sparkline,
       });
+    } else if (isYahooEquityIndex(meta.symbol) && previousBySymbol.has(meta.symbol)) {
+      // An index is withheld until its prior close is verified; keep its last row meanwhile.
+      quotes.push(previousBySymbol.get(meta.symbol));
     }
     await sleep(150);
   }
-  if (quotes.length === 0) { console.warn('[Gulf] No quotes fetched — skipping'); return 0; }
+  if (freshCount === 0) { console.warn('[Gulf] No quotes fetched — skipping'); return 0; }
   const payload = { quotes, rateLimited: false };
   const ok1 = await envelopeWrite('market:gulf-quotes:v1', payload, GULF_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-gulf' });
   const ok2 = await upstashSet('seed-meta:market:gulf-quotes', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
@@ -5290,7 +5318,7 @@ Levels: critical, high, medium, low, info
 Categories: conflict, protest, disaster, diplomatic, economic, terrorism, cyber, health, environmental, military, crime, infrastructure, tech, general
 
 Guidelines for LEVEL assignment (geopolitical scope required for critical):
-- critical: Active military strikes with international implications, geopolitical mass-casualty events (10+ killed in conflict/terrorism/state action), ceasefire agreements/collapses, nuclear incidents, pandemic declarations, coups, strait/waterway closures
+- critical: Active military strikes with international implications, geopolitical mass-casualty events (10+ killed in conflict/terrorism/state action), ceasefire agreements/collapses, nuclear incidents, pandemic declarations, coups, strait/waterway closures that have taken effect
 - high: Armed conflict updates, major diplomatic actions, sanctions packages, significant natural disasters, blockades, terrorist attacks, domestic mass-casualty events (mass shootings, industrial disasters)
 - medium: Ongoing conflict analysis, economic impact reports, protest movements, regional policy changes, military exercises
 - low: Diplomatic meetings, trade discussions, humanitarian aid, election updates, peacekeeping deployments
@@ -5301,6 +5329,8 @@ Key distinction: "critical" requires GEOPOLITICAL scope — events that destabil
 - "23 killed in fireworks factory explosion in India" → industrial accident → high
 - "700 killed in Sudan drone strikes" → geopolitical mass-casualty in active civil war → critical
 - "Iran closes Strait of Hormuz" → global trade disruption → critical
+- "Iran sets its terms for reopening Hormuz" → terms or threats, not a closure or an attack → high
+- "Russia says its missiles destroyed a Ukrainian grain port" → an attack, reported by the attacker → critical
 - "Guardian view on ceasefire: need real peace" → editorial → info
 - "Trump's obsession with energy" → opinion/analysis → info
 - "Man killed his estranged wife" → domestic crime → info
@@ -15579,10 +15609,10 @@ async function performWidgetPageRead(url, { signal } = {}) {
 
   if (WIDGET_FIRECRAWL_KEY && !signal?.aborted) {
     try {
-      const res = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      const res = await fetch('https://api.firecrawl.dev/v2/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor-WidgetAgent/1.0', Authorization: `Bearer ${WIDGET_FIRECRAWL_KEY}` },
-        body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true, timeout: 20_000 }),
+        body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true, maxAge: 0, timeout: 20_000 }),
         signal: within(25_000),
       });
       if (res.ok) {

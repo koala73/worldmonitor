@@ -49,7 +49,9 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
-import { resolveSessionUserId } from '../../server/_shared/auth-session';
+import { resolveVerifiedSessionUserId } from '../../server/_shared/auth-session';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../_rate-limit.js';
 import {
   getEntitlements,
   isEntitlementBackendConfigured,
@@ -74,6 +76,8 @@ import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 export interface QuotaDeps {
   /** Resolves the Clerk userId from the request's Bearer header. Null = unauth. */
   resolveUserId: (req: Request) => Promise<string | Response | null>;
+  /** Charges the caller's per-user budget; a Response means refused. Runs before any backend work. */
+  rateLimit: (req: Request, userId: string, headers: Record<string, string>) => Promise<Response | null>;
   /**
    * Reads the daily counter key from Redis. Returns the stringified count
    * (Upstash returns INCR results as strings) or null if the key does not
@@ -134,6 +138,8 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
       headers: jsonHeaders,
     });
   }
+  const limited = await deps.rateLimit(req, userId, jsonHeaders);
+  if (limited) return limited;
 
   const now = deps.now();
 
@@ -233,7 +239,10 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
 
 export default async function handler(req: Request): Promise<Response> {
   return quotaHandler(req, {
-    resolveUserId: resolveSessionUserId,
+    resolveUserId: resolveVerifiedSessionUserId,
+    rateLimit: (request, userId, headers) => checkRateLimit(request, headers, {
+      scope: 'mcp-quota', identifier: `user:${userId}`, limit: 60, window: '60 s',
+    }),
     redisGet: rawRedisGetString,
     getEntitlements,
     now: () => new Date(),

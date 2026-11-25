@@ -23,6 +23,7 @@ import { reservoirCard, reservoirSummaryLine, sortReservoirCards } from './reser
 import type { ReservoirNextPass } from '@/services/orbital/reservoir-next-pass-expiry';
 import { STRATEGIC_RESERVOIR_SITES } from '@/services/climate/reservoir-context';
 import { CountryHistory } from './CountryHistory';
+import { CountryIntelMemory } from './CountryIntelMemory';
 import { getCountryInfrastructure } from '@/services/related-assets';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
@@ -102,6 +103,7 @@ import { toApiUrl } from '@/services/runtime';
 import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ImageryChangeContext, ProductImpact, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { IMAGERY_CONTEXT_EXCLUSION, IMAGERY_CONTEXT_METHODOLOGY_HREF, imageryChangeSummary } from './_risk-imagery-context';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { renderCollapseIconSvg, renderExpandIconSvg } from '@/utils/ui-icons';
 import { confirmShareLinkCopied, createShareLinkButton } from './share-link-button';
 import { copyText } from '@/utils/copy-text';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
@@ -196,6 +198,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private marketsBody: HTMLElement | null = null;
   private briefBody: HTMLElement | null = null;
   private timelineBody: HTMLElement | null = null;
+  private intelMemoryBody: HTMLElement | null = null;
+  private intelMemory: CountryIntelMemory | null = null;
+  private intelMemorySignalCleanup: (() => void) | null = null;
   private scoreCard: HTMLElement | null = null;
   private factsBody: HTMLElement | null = null;
   private resilienceWidget: import('@/components/ResilienceWidget').ResilienceWidget | null = null;
@@ -305,7 +310,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private canRequestPremium(): boolean {
-    return this.source?.canRequestPremium() ?? hasPremiumAccess(getAuthState());
+    return typeof this.source?.canRequestPremium === 'function'
+      ? this.source.canRequestPremium()
+      : hasPremiumAccess(getAuthState());
   }
 
   public selectTopic(topic: BriefTopic): void {
@@ -321,6 +328,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     const section = this.sections.find(section => section.id === id);
     if (!section) return;
+    if (id === 'intelMemory') this.destroyIntelMemory();
     if (state === 'locked') {
       this.setSectionCoverage(id, []);
       this.outputClose?.();
@@ -443,6 +451,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (origin === 'control' && this.historyRegistered) overlayHistory.close('deep-dive');
     this.historyRegistered = false;
     this.destroyResilienceWidget();
+    this.destroyIntelMemory();
     this.foodStocksRequestId += 1;
     this.demographicsCapabilityRequestId += 1;
     this.tearDownFiveFactorScorecard();
@@ -450,7 +459,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (this.isMaximizedState) {
       this.isMaximizedState = false;
       this.panel.classList.remove('maximized');
-      if (this.maximizeButton) this.maximizeButton.textContent = '\u26F6';
+      if (this.maximizeButton) {
+        setTrustedHtml(this.maximizeButton, trustedHtml(renderExpandIconSvg(16), 'country deep dive maximize icon'));
+      }
     }
     this.abortController.abort();
     this.close();
@@ -479,7 +490,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (this.isMaximizedState) return;
     this.isMaximizedState = true;
     this.panel.classList.add('maximized');
-    if (this.maximizeButton) this.maximizeButton.textContent = '\u229F';
+    if (this.maximizeButton) {
+      setTrustedHtml(this.maximizeButton, trustedHtml(renderCollapseIconSvg(16), 'country deep dive minimize icon'));
+    }
     this.onStateChangeCallback?.({ visible: true, maximized: true });
   }
 
@@ -487,7 +500,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.isMaximizedState) return;
     this.isMaximizedState = false;
     this.panel.classList.remove('maximized');
-    if (this.maximizeButton) this.maximizeButton.textContent = '\u26F6';
+    if (this.maximizeButton) {
+      setTrustedHtml(this.maximizeButton, trustedHtml(renderExpandIconSvg(16), 'country deep dive maximize icon'));
+    }
     this.onStateChangeCallback?.({ visible: true, maximized: false });
   }
 
@@ -809,6 +824,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   public syncCountryPremiumSectionsAccess(hasAccess: boolean): void {
     this.outputClose?.();
+    this.destroyIntelMemory();
     this.costShockCalcAbort?.abort();
     if (this.costShockCalcDebounceTimer) clearTimeout(this.costShockCalcDebounceTimer);
     this.foodStocksRequestId++;
@@ -819,6 +835,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       if (section) section.body.replaceChildren(hasAccess
         ? this.makeLoading(`Loading ${section.title.toLowerCase()}…`)
         : this.makeProLocked(`Upgrade to PRO for ${section.title.toLowerCase()}`));
+    }
+    if (this.intelMemoryBody) {
+      this.intelMemoryBody.replaceChildren(hasAccess
+        ? this.makeLoading(t('countryBrief.intelMemory.loading'))
+        : this.makeProLocked(t('countryBrief.intelMemory.proLocked')));
     }
     if (hasAccess && this.currentCode) {
       if (this.foodStocksBody) void this.renderFoodStocks(this.currentCode, this.foodStocksBody);
@@ -835,6 +856,35 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.commodityVulnerabilityBody.replaceChildren(hasAccess
       ? this.makeLoading(t('components.supplyVulnerability.loading'))
       : this.makeProLocked(t('components.supplyVulnerability.proLocked')));
+  }
+
+  public mountIntelMemory(code: string, signal: AbortSignal): void {
+    if (this.source?.mode === 'host' || !this.canRequestPremium() || !this.intelMemoryBody) return;
+    if (this.currentCode?.toUpperCase() !== code.toUpperCase()) return;
+    if (this.signal.aborted || signal.aborted) return;
+    this.destroyIntelMemory();
+    const panelSignal = this.signal;
+    const mountController = new AbortController();
+    const onPanelAbort = (): void => mountController.abort(panelSignal.reason);
+    const onCallerAbort = (): void => mountController.abort(signal.reason);
+    panelSignal.addEventListener('abort', onPanelAbort, { once: true });
+    signal.addEventListener('abort', onCallerAbort, { once: true });
+    this.intelMemorySignalCleanup = () => {
+      panelSignal.removeEventListener('abort', onPanelAbort);
+      signal.removeEventListener('abort', onCallerAbort);
+    };
+    this.intelMemory = new CountryIntelMemory(
+      this.intelMemoryBody,
+      code,
+      mountController.signal,
+    );
+  }
+
+  private destroyIntelMemory(): void {
+    this.intelMemorySignalCleanup?.();
+    this.intelMemorySignalCleanup = null;
+    this.intelMemory?.destroy();
+    this.intelMemory = null;
   }
 
   private renderMilitaryActivity(): void {
@@ -3688,9 +3738,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const right = this.el('div', 'cdp-header-right');
 
-    const maxBtn = this.el('button', 'cdp-maximize-btn', '\u26F6') as HTMLButtonElement;
+    const maxBtn = this.el('button', 'cdp-maximize-btn') as HTMLButtonElement;
     maxBtn.setAttribute('type', 'button');
     maxBtn.setAttribute('aria-label', 'Toggle maximize');
+    setTrustedHtml(
+      maxBtn,
+      trustedHtml(
+        this.isMaximizedState ? renderCollapseIconSvg(16) : renderExpandIconSvg(16),
+        'country deep dive maximize icon',
+      ),
+    );
     maxBtn.addEventListener('click', () => {
       if (this.isMaximizedState) this.minimize();
       else this.maximize();
@@ -3786,13 +3843,26 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     summaryGrid.append(scoreCard, this.renderResilienceWidgetSlot(code));
 
     const bodyGrid = this.el('div', 'cdp-grid');
+    const isPro = this.canRequestPremium();
     const [signalsCard, signalBody] = this.sectionCard('signals', t('countryBrief.activeSignals'));
     const [timelineCard, timelineBody] = this.sectionCard('timeline', t('countryBrief.timeline'));
     let historyCard: HTMLElement | undefined;
+    let intelMemoryCard: HTMLElement | undefined;
     if (this.source?.mode !== 'host') {
       const [card, body] = this.sectionCard('history', t('countryHistory.title'));
       historyCard = card;
       new CountryHistory(body, code, this.signal);
+
+      const [memoryCard, memoryBody] = this.sectionCard(
+        'intelMemory',
+        t('countryBrief.intelMemory.title'),
+        t('countryBrief.intelMemory.help'),
+      );
+      intelMemoryCard = memoryCard;
+      this.intelMemoryBody = memoryBody;
+      memoryBody.append(isPro
+        ? this.makeLoading(t('countryBrief.intelMemory.loading'))
+        : this.makeProLocked(t('countryBrief.intelMemory.proLocked')));
     }
     const [newsCard, newsBody] = this.sectionCard('news', t('countryBrief.topNews'));
     const [militaryCard, militaryBody] = this.sectionCard('military', t('countryBrief.militaryActivity'));
@@ -3831,7 +3901,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // premium RPCs for a free user cost two guaranteed 401s per deep-dive open
     // and painted a dead "unavailable" card where the sibling cards show the
     // upgrade prompt.
-    const isPro = this.canRequestPremium();
     if (isPro) {
       foodStocksBody.append(this.makeLoading(t('countryBrief.loadingFoodStocks')));
       void this.renderFoodStocks(code, foodStocksBody);
@@ -3946,7 +4015,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(fiveFactorScorecardCard, factsCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), signalsCard, timelineCard, ...(historyCard ? [historyCard] : []), newsCard, militaryCard, sanctionsCard, economicCard, no2ActivityCard, housingCard, debtCard, comtradeCard, tariffCard, tradeCard, costShockCalcCard, productImportsCard, marketsCard, energyCard, maritimeCard, commodityVulnerabilityCard, foodStocksCard, infraCard, demographicsCard);
+    bodyGrid.append(fiveFactorScorecardCard, factsCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), signalsCard, timelineCard, ...(historyCard ? [historyCard] : []), ...(intelMemoryCard ? [intelMemoryCard] : []), newsCard, militaryCard, sanctionsCard, economicCard, no2ActivityCard, housingCard, debtCard, comtradeCard, tariffCard, tradeCard, costShockCalcCard, productImportsCard, marketsCard, energyCard, maritimeCard, commodityVulnerabilityCard, foodStocksCard, infraCard, demographicsCard);
     const lead = this.el('div', 'cdp-overview-lead');
     lead.append(briefCard, summaryGrid);
     shell.append(header, lead, bodyGrid);
@@ -4296,6 +4365,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.demographicsBody = null;
     this.tearDownFiveFactorScorecard();
     this.destroyResilienceWidget();
+    this.destroyIntelMemory();
+    this.intelMemoryBody = null;
     this.tearDownFollowButton();
     this.selectedSectorHs2 = null;
     this.sectorBypassAbort?.abort();

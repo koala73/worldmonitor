@@ -1071,9 +1071,6 @@
           "path": "scripts/_dosm-product-demand.mjs"
         },
         {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
-        {
           "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
@@ -1082,15 +1079,10 @@
       "host": "api.datos.gob.mx",
       "provider": "api.datos.gob.mx",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit api.datos.gob.mx and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.e-stat.go.jp",
@@ -1115,9 +1107,6 @@
       "attribution": "Credit api.eia.gov and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
         {
           "path": "scripts/seed-economy.mjs"
         },
@@ -1421,15 +1410,10 @@
       "host": "api.ossinsight.io",
       "provider": "api.ossinsight.io",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit api.ossinsight.io and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-research.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.planespotters.net",
@@ -1931,12 +1915,6 @@
         },
         {
           "path": "scripts/openapi-inject-servers.mjs"
-        },
-        {
-          "path": "scripts/post-pr3427-force-refresh.mjs"
-        },
-        {
-          "path": "scripts/post-pr3487-force-refresh.mjs"
         },
         {
           "path": "scripts/seed-china-decision-signals.mjs"
@@ -5223,9 +5201,6 @@
       "attribution": "Credit energy.ec.europa.eu and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
         {
           "path": "scripts/seed-fuel-prices.mjs"
         }
@@ -12721,9 +12696,6 @@
       "attribution": "Credit sedeaplicaciones.minetur.gob.es and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
         {
           "path": "scripts/seed-fuel-prices.mjs"
         }
@@ -22773,6 +22745,9 @@
         },
         {
           "path": "server/_shared/deprecation-policy.ts"
+        },
+        {
+          "path": "server/_shared/entitlement-coverage.ts"
         },
         {
           "path": "server/worldmonitor/cyber/v1/get-network-info.ts"

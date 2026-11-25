@@ -19,10 +19,10 @@ import {
   earthquakesPublishTransform,
   fetchApprovedAtom,
   fetchMergedEarthquakes,
+  fetchNrcanAtom,
   isIndustryRelated,
   isPublishableEarthquake,
   mergeEarthquakeFeeds,
-  nrcanAtomCacheKey,
   parseNrcanAtom,
   parseUsgsGeojson,
 } from '../scripts/seismology/nrcan-atom.mjs';
@@ -437,26 +437,22 @@ describe('approved NRCan transport', () => {
     );
   });
 
-  it('pins www.earthquakescanada.nrcan.gc.ca, rejects redirects, caps bytes, and keys cache by Atom URL', async () => {
+  it('pins www.earthquakescanada.nrcan.gc.ca, rejects redirects, and caps bytes', async () => {
     assert.ok(MAX_NRCAN_ATOM_BYTES >= 343771);
     assert.equal(NRCAN_ATOM_URL, 'https://www.earthquakescanada.nrcan.gc.ca/cache/earthquakes/canada-en.atom');
-    assert.ok(nrcanAtomCacheKey(NRCAN_ATOM_URL).includes(NRCAN_ATOM_URL));
     assert.ok(EARTHQUAKES_MAX_CONTENT_AGE_MIN > 0);
 
     let init;
-    const cache = new Map();
     const xml = await fetchApprovedAtom(NRCAN_ATOM_URL, {
       allowedHosts: [NRCAN_ATOM_HOST],
       fetchFn: async (_url, options) => {
         init = options;
         return new Response(EMPTY_ATOM, { headers: { 'content-type': 'application/atom+xml' } });
       },
-      cache,
     });
     assert.equal(init.redirect, 'error');
     assert.match(init.headers['User-Agent'], /Chrome/);
     assert.equal(xml, EMPTY_ATOM);
-    assert.ok(cache.has(nrcanAtomCacheKey(NRCAN_ATOM_URL)));
 
     await assert.rejects(
       fetchApprovedAtom(NRCAN_ATOM_URL, {
@@ -475,16 +471,13 @@ describe('approved NRCan transport', () => {
 
   it('retries a direct 403 through the proxy and returns the Atom body', async () => {
     const attempts = [];
-    const cache = new Map();
     const xml = await fetchApprovedAtom(NRCAN_ATOM_URL, {
       fetchFn: forbidden,
       proxyAuth: 'user:pass@gate.example:7000',
       proxyFetchFn: async (url, { attempt }) => { attempts.push({ url, attempt }); return proxyOk(); },
-      cache,
     });
     assert.equal(xml, EMPTY_ATOM);
     assert.deepEqual(attempts, [{ url: NRCAN_ATOM_URL, attempt: 0 }]);
-    assert.ok(cache.has(nrcanAtomCacheKey(NRCAN_ATOM_URL)));
   });
 
   it('rotates to the next proxy exit when an exit is refused or drops', async () => {
@@ -650,6 +643,22 @@ describe('approved NRCan transport', () => {
     }).catch(err => err);
     assert.equal(mixed.status, 403);
     assert.notEqual(mixed.nonRetryable, true, 'exit 0 never answered, so the retry may still reach it');
+  });
+
+  it('spends at most three proxy exits per seeder run when every exit is refused', async () => {
+    const proxyAuth = 'user:pass@gate.decodo.com:10001';
+    let proxyCalls = 0;
+    const data = await fetchMergedEarthquakes({
+      fetchUsgs: async () => ({ earthquakes: [usgsEq()], newestAt: MERGE_NOW, oldestAt: MERGE_NOW }),
+      fetchNrcan: () => fetchNrcanAtom({
+        fetchFn: forbidden,
+        proxyAuth,
+        proxyFetchFn: async () => { proxyCalls++; return { ok: false, status: 403, headers: {}, buffer: Buffer.alloc(0), contentType: '' }; },
+      }),
+      nowMs: MERGE_NOW,
+    });
+    assert.deepEqual(data._failedSources, ['nrcan']);
+    assert.equal(proxyCalls, 3);
   });
 
   it('wires the seeder proxy into the NRCan fetch', () => {

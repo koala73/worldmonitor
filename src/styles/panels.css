@@ -2805,7 +2805,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 /* ── DeductionPanel ─────────────────────────────────────── */
 .deduction-panel-content {
   display: flex; flex-direction: column; gap: 10px;
-  padding: 10px 12px;
+  padding: 10px 0;
   font-family: var(--font-body-base, system-ui, sans-serif);
 }
 

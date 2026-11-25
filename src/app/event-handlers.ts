@@ -127,6 +127,7 @@ import { evaluatePlaybackGate } from '@/services/gates/playback';
 import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
 import { ExportGateControl } from '@/components/ExportGateControl';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { renderCollapseIconSvg, renderExpandIconSvg } from '@/utils/ui-icons';
 import { copyText } from '@/utils/copy-text';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { declareOverlay, isModalOpen } from '@/utils/open-modal';
@@ -461,7 +462,7 @@ export class EventHandlerManager implements AppModule {
     const config = this.ctx.panelSettings[panelId];
     if (!config) return false;
     if (config.enabled) return true;
-    if (!hasPremiumAccess(getAuthState()) && isFreePanelCapCounted(panelId)) {
+    if (!hasPremiumAccess(getAuthState()) && isFreePanelCapCounted(panelId, config)) {
       const enabledCount = countFreePanelCapUsage(this.ctx.panelSettings);
       if (enabledCount >= FREE_MAX_PANELS) {
         // Tell the user why nothing happened instead of failing silently.
@@ -567,6 +568,7 @@ export class EventHandlerManager implements AppModule {
     this.debouncedWebcamReload.cancel();
     if (this.boundFullscreenHandler) {
       document.removeEventListener('fullscreenchange', this.boundFullscreenHandler);
+      document.removeEventListener('webkitfullscreenchange', this.boundFullscreenHandler);
       this.boundFullscreenHandler = null;
     }
     if (this.boundResizeHandler) {
@@ -908,11 +910,20 @@ export class EventHandlerManager implements AppModule {
     if (!this.ctx.isDesktopApp && fullscreenBtn) {
       fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
       this.boundFullscreenHandler = () => {
-        fullscreenBtn.textContent = document.fullscreenElement ? '\u26F6' : '\u26F6';
-        fullscreenBtn.classList.toggle('active', !!document.fullscreenElement);
+        const fullscreenDocument = this.getFullscreenDocument();
+        const activeFullscreen = Boolean(fullscreenDocument.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement);
+        setTrustedHtml(
+          fullscreenBtn,
+          trustedHtml(
+            activeFullscreen ? renderCollapseIconSvg(14) : renderExpandIconSvg(14),
+            'header fullscreen toggle icon',
+          ),
+        );
+        fullscreenBtn.classList.toggle('active', activeFullscreen);
         this.syncMapAfterLayoutChange();
       };
       document.addEventListener('fullscreenchange', this.boundFullscreenHandler);
+      document.addEventListener('webkitfullscreenchange', this.boundFullscreenHandler);
     }
 
     const regionSelect = document.getElementById('regionSelect') as HTMLSelectElement;
@@ -3169,8 +3180,10 @@ export class EventHandlerManager implements AppModule {
       isFullscreen = !isFullscreen;
       mapSection.classList.toggle('live-news-fullscreen', isFullscreen);
       document.body.classList.toggle('live-news-fullscreen-active', isFullscreen);
+      document.body.classList.toggle('map-fullscreen-active', isFullscreen);
       setTrustedHtml(btn, trustedHtml(isFullscreen ? shrinkSvg : expandSvg, "legacy direct innerHTML migration"));
       btn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
+      this.mobilePrimaryNav.syncMapFullscreen(isFullscreen);
       this.syncMapAfterLayoutChange();
     };
 

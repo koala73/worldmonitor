@@ -24,6 +24,7 @@ const testWorkflow = read(resolve(workflowsDir, 'test.yml'));
 const desktopBuildWorkflow = read(resolve(workflowsDir, 'build-desktop.yml'));
 const desktopCanaryWorkflow = read(resolve(workflowsDir, 'test-linux-app.yml'));
 const lintCodeWorkflow = read(resolve(workflowsDir, 'lint-code.yml'));
+const lintCodeClassifier = read(resolve(root, '.github/scripts/lint-code-changes.sh'));
 const protoCheckWorkflow = read(resolve(workflowsDir, 'proto-check.yml'));
 const playwrightConfig = read(resolve(root, 'playwright.config.ts'));
 
@@ -171,11 +172,10 @@ describe('root dependency cache (#8710)', () => {
   // 'unit-built-output nested dependency cache' blocks), so they are in the
   // first group.
   for (const [workflowText, jobIds, setupCache] of [
-    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output'], undefined],
-    [testWorkflow, ['variant-smoke-pro-webmcp'], "${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}"],
+    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output', 'variant-smoke-pro-webmcp'], undefined],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
-    [lintCodeWorkflow, ['biome', 'markdown'], undefined],
-    [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], 'npm'],
+    [lintCodeWorkflow, ['biome', 'docs-lint'], undefined],
+    [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], undefined],
   ] as const) {
     for (const jobId of jobIds) {
       it(`${jobId} uses the shared action after Node 24 setup with npm fallback`, () => {
@@ -543,6 +543,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/news-panel-resize-hit-target.spec.ts',
   'e2e/oil-price-freshness.spec.ts',
   'e2e/panel-font-scaling.spec.ts',
+  'e2e/dev-server-hermetic.spec.ts',
   'e2e/pinned-webcams.spec.ts',
   'e2e/pro-activation.spec.ts',
   'e2e/pro-banner-mobile.spec.ts',
@@ -607,8 +608,7 @@ const REQUIRED_GATE_WORKFLOWS = [
 const REQUIRED_NON_TEST_GATE_CHECKS = [
   'typecheck',
   'biome',
-  'markdown',
-  'public-docs',
+  'docs-lint',
   'security-audit',
   'stacked-merge-guard',
   'proto-freshness',
@@ -707,6 +707,12 @@ function workflowJobBlock(workflow: string, job: string): string {
 const NON_PR_CONCURRENCY_FALLBACK =
   /github\.event\.pull_request\.number\s*\|\|\s*github\.(?:sha|run_id)\b/;
 const PR_ONLY_CANCEL_IN_PROGRESS = "${{ github.event_name == 'pull_request' }}";
+// Test is the one gated workflow whose main pushes deliberately share a group:
+// deploy-gate.sh recognises a cancelled main Test run as superseded (pending,
+// never failure), and only for the workflow named Test. Any other workflow that
+// collapses main pushes still trips the #8445 guard.
+const TEST_SUPERSEDING_GROUP =
+  "test-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && 'main') || github.run_id }}";
 
 function workflowLevelConcurrency(source: string): {
   group?: unknown;
@@ -726,6 +732,7 @@ function cancelsUnconditionallyWithoutNonPrFallback(source: string): boolean {
   const isUnconditionalCancel =
     cancel === true || (typeof cancel === 'string' && cancel !== PR_ONLY_CANCEL_IN_PROGRESS);
   if (!isUnconditionalCancel) return false;
+  if (concurrency.group === TEST_SUPERSEDING_GROUP && (YAML.parse(source) as { name?: string }).name === 'Test') return false;
   return typeof concurrency.group !== 'string' || !NON_PR_CONCURRENCY_FALLBACK.test(concurrency.group);
 }
 
@@ -893,8 +900,23 @@ function parseJsonArrayLiteral(source: string, regex: RegExp, label: string): st
   return parsed;
 }
 
+// The checks the gate requires of a commit built from these workflows. While
+// open PRs still run the old Lint Code and Typecheck layout, deploy-gate.sh
+// keeps the old names in `required` and swaps them for `lint_layout.marker`
+// when a commit publishes it (#11220). These workflows publish the marker, so
+// apply the same swap.
 function deployGateRequiredChecks(): string[] {
-  return parseJsonArrayLiteral(deployGateScript, /\n\s*required='(\[[^\n]+])'/, 'required checks');
+  const required = parseJsonArrayLiteral(deployGateScript, /\n\s*required='(\[[^\n]+])'/, 'required checks');
+  const layoutLiteral = deployGateScript.match(/\n\s*lint_layout='(\{[^\n]+\})'/)?.[1];
+  if (!layoutLiteral) {
+    return required;
+  }
+  const layout = JSON.parse(layoutLiteral) as { marker: string; replaces: string[] };
+  const effective = required.filter((check) => !layout.replaces.includes(check));
+  if (!effective.includes(layout.marker)) {
+    effective.push(layout.marker);
+  }
+  return effective;
 }
 
 function deployGateWorkflowRunNames(): string[] {
@@ -1598,10 +1620,10 @@ describe('CI workflow coverage', () => {
   });
 
   it('runs the public documentation boundary on docs-only pull requests', () => {
-    const publicDocsJob = workflowJobBlock(lintCodeWorkflow, 'public-docs');
-
-    assert.match(publicDocsJob, /npm run lint:public-docs/);
-    assert.doesNotMatch(publicDocsJob, /needs: changes/);
+    const step = (YAML.parse(lintCodeWorkflow) as { jobs: Record<string, { steps: { run?: string; if?: string }[] }> })
+      .jobs['docs-lint'].steps.find((candidate) => candidate.run === 'npm run lint:public-docs');
+    assert.ok(step, 'docs-lint must run the public documentation boundary');
+    assert.equal(step.if, '${{ !cancelled() }}', 'the boundary runs on every PR, docs-only included');
   });
 
   it('keeps required PR smoke scripts defined and wired into workflows', () => {
@@ -2356,20 +2378,26 @@ describe('CI workflow coverage', () => {
   });
 
   it('lints markdown once, in a gate-required job that skips when no markdown changed (#7772)', () => {
-    const markdownJob = workflowJobBlock(lintCodeWorkflow, 'markdown');
-    assert.match(markdownJob, /\n {4}needs: changes\n/);
-    assert.match(
-      markdownJob,
-      /\n {4}if: \$\{\{ \(needs\.changes\.outputs\.markdown == 'true'\) && \(github\.event_name != 'schedule' \|\| github\.repository == 'koala73\/worldmonitor'\) \}\}\n/,
-      'markdown lint must skip on PRs that touch no markdown; the gate counts skipped as passing',
+    const docsLint = (YAML.parse(lintCodeWorkflow) as {
+      jobs: Record<string, { 'timeout-minutes'?: number; steps: { name?: string; run?: string; if?: string; 'timeout-minutes'?: number; 'continue-on-error'?: boolean }[] }>;
+    }).jobs['docs-lint'];
+    assert.ok(
+      Number(docsLint['timeout-minutes']) > 0,
+      'a stalled dependency install or docs export must not hold the required docs-lint check for the 360-minute default; the step timeout covers lint:md only',
     );
-    assert.match(markdownJob, /\n {6}- run: npm run lint:md\n/);
-    assert.doesNotMatch(
-      markdownJob,
-      /continue-on-error/,
-      'a continue-on-error on the lint step would turn the required check green while lint is red',
+    const markdownStep = docsLint.steps.find((step) => step.run === 'npm run lint:md');
+    assert.ok(markdownStep, 'docs-lint must own markdown lint');
+    assert.equal(
+      markdownStep.if,
+      "${{ !cancelled() && steps.diff.outputs.markdown == 'true' }}",
+      'markdown lint must skip on PRs that touch no markdown, and still run after an earlier docs check fails',
     );
-    assert.match(markdownJob, /\n {4}timeout-minutes: \d+\n/, 'a hung npm ci must not hold the deploy gate for the 360-minute default');
+    assert.equal(
+      docsLint.steps.some((step) => step['continue-on-error']),
+      false,
+      'a continue-on-error on a lint step would turn the required check green while lint is red',
+    );
+    assert.ok(Number(markdownStep['timeout-minutes']) > 0, 'a hung lint must not hold the deploy gate for the 360-minute default');
     assert.doesNotMatch(
       workflowJobBlock(lintCodeWorkflow, 'biome'),
       /lint:md/,
@@ -2385,20 +2413,18 @@ describe('CI workflow coverage', () => {
       'lint.yml was the second owner; a path-filtered workflow publishes no check run on code PRs, so it can never be gate-required',
     );
     assert.ok(
-      deployGateRequiredChecks().includes('markdown'),
+      deployGateRequiredChecks().includes('docs-lint'),
       'markdown lint left biome (a branch-protection context), so it must block through the gate instead',
     );
 
-    const parsed = YAML.parse(lintCodeWorkflow) as { jobs: Record<string, { outputs?: Record<string, string> }> };
-    assert.equal(parsed.jobs.changes.outputs?.markdown, '${{ steps.diff.outputs.markdown }}');
-    assert.match(lintCodeWorkflow, /echo "markdown=true" >> "\$GITHUB_OUTPUT"/, 'pushes to main keep markdown coverage');
+    assert.match(lintCodeClassifier, /echo "markdown=true" >> "\$GITHUB_OUTPUT"/, 'pushes to main keep markdown coverage');
 
     // The filter must fire for every lint:md input (the markdown, its config,
     // and package.json, which holds the command and pins markdownlint-cli2:
     // LINT_MD_INPUTS from .husky/pre-push plus the lockfile) and stay quiet
     // for a code-only PR, or the job either never runs or runs on every PR.
-    const filter = lintCodeWorkflow.match(/^ +MARKDOWN=\$\([^\n]*\)\n +echo "markdown=[^\n]*$/m)?.[0];
-    assert.ok(filter, 'lint-code.yml must derive markdown= from the PR file list');
+    const filter = lintCodeClassifier.match(/^ *MARKDOWN=\$\([^\n]*\)\n *echo "markdown=[^\n]*$/m)?.[0];
+    assert.ok(filter, 'the Lint Code classifier must derive markdown= from the PR file list');
     const markdownSays = (files: string[]): string => {
       const fileArgs = files.map((file) => JSON.stringify(file)).join(' ');
       const body = filter.replace(/>> "\$GITHUB_OUTPUT"/, '');
@@ -2982,7 +3008,6 @@ describe('CI workflow coverage', () => {
 // a per-run group that nothing can evict.
 describe('gated workflows evict superseded PR runs (#8443)', () => {
   const prScopedCancellers = [
-    ['test.yml', 'test'],
     ['typecheck.yml', 'typecheck'],
     ['lint-code.yml', 'lint-code'],
     ['security-audit.yml', 'security-audit'],
@@ -3006,6 +3031,28 @@ describe('gated workflows evict superseded PR runs (#8443)', () => {
       );
     });
   }
+
+  it('test.yml also cancels a main push run a newer main push supersedes', () => {
+    const workflow = YAML.parse(read(resolve(workflowsDir, 'test.yml'))) as {
+      name?: string;
+      concurrency?: { group?: string; 'cancel-in-progress'?: unknown };
+    };
+    assert.equal(workflow.name, 'Test', 'deploy-gate.sh matches the superseded run by this name');
+    assert.equal(workflow.concurrency?.group, TEST_SUPERSEDING_GROUP);
+    assert.match(TEST_SUPERSEDING_GROUP, /github\.run_attempt == '1'/, 'a re-run of an old main run must not cancel the newer one');
+    assert.equal(workflow.concurrency?.['cancel-in-progress'], true);
+    assert.match(deployGateScript, /select\(\.name == "Test" and \.head_branch == "main"\)/,
+      'the gate must recognise a superseded main Test run, or cancelling it posts a permanent red gate');
+  });
+
+  it('accepts the superseding group only on the workflow named Test', () => {
+    // The exact Test group, so only the workflow-name check can reject it.
+    const typecheck = read(resolve(workflowsDir, 'typecheck.yml'))
+      .replace(/group:\s*[^\n]+/, `group: ${TEST_SUPERSEDING_GROUP}`)
+      .replace(/cancel-in-progress:\s*[^\n]+/, 'cancel-in-progress: true');
+    assert.equal(workflowLevelConcurrency(typecheck)?.group, TEST_SUPERSEDING_GROUP, 'the mutation must apply');
+    assert.equal(cancelsUnconditionallyWithoutNonPrFallback(typecheck), true);
+  });
 
   // The gate's own trigger list is the definition of "blocks a merge". A new
   // workflow added there without cancellation reintroduces the dead-SHA burn
@@ -3645,8 +3692,12 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
   });
 
   it('builds /pro in the webmcp and pro-gates parts and runs each suite in exactly one', () => {
-    const build = flat.find((step) => step.run === 'npm run build:pro');
+    const installPro = flat.find((step) => (step as { uses?: string }).uses === './.github/actions/install-pro-deps');
+    assert.ok(installPro, 'the job must restore/install /pro dependencies via the shared action');
+    assert.equal(installPro.if, "${{ !startsWith(matrix.part, 'plugin-') }}");
+    const build = flat.find((step) => step.run === 'npm --prefix pro-test run build');
     assert.ok(build, 'the job must build /pro');
+    assert.ok(flat.indexOf(installPro) < flat.indexOf(build), 'install-pro-deps must run before the /pro build');
     // The legacy WebMCP tests load /pro/welcome.html; the MCP Apps view parts never read /pro.
     assert.equal(build.if, "${{ !startsWith(matrix.part, 'plugin-') }}");
     const partOf = (script: string) => {
@@ -3679,16 +3730,25 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     assert.deepEqual([...covered].sort(), [...specs].sort(), 'each e2e/plugin-*.spec.ts must run in exactly one plugin part');
   });
 
-  it('keys setup-node\'s npm cache to the only install that reads it', () => {
-    // node_modules comes from install-root-deps, so ~/.npm serves only
-    // `npm --prefix pro-test ci` inside build:pro. Keyed on the root lockfile
-    // it restored the 583 MB root download cache, and the two parts pulling
-    // that blob at the same moment took 12-62s instead of ~6s (PR #9626).
+  it('restores pro-test/node_modules via install-pro-deps instead of setup-node npm download cache', () => {
     const setup = flat.find((step) => (step as { uses?: string }).uses?.startsWith('actions/setup-node@')) as
       { with: Record<string, string> } | undefined;
-    // The plugin parts never build /pro, so they restore nothing.
-    assert.equal(setup?.with.cache, "${{ !startsWith(matrix.part, 'plugin-') && 'npm' || '' }}");
-    assert.equal(setup?.with['cache-dependency-path'], 'pro-test/package-lock.json');
+    assert.equal(setup?.with.cache, undefined);
+    const proAction = YAML.parse(read(resolve(root, '.github/actions/install-pro-deps/action.yml')));
+    const proSteps = proAction.runs.steps;
+    const restore = proSteps.find((s: { id?: string }) => s.id === 'pro-deps');
+    const install = proSteps.find((s: { run?: string }) => s.run === 'npm --prefix pro-test ci --prefer-offline');
+    const save = proSteps.find((s: { uses?: string }) => s.uses?.startsWith('actions/cache/save@'));
+    assert.ok(restore && install && save, 'install-pro-deps must restore, install on miss, and save pro-test/node_modules');
+    assert.equal(restore.with.path, 'pro-test/node_modules');
+    assert.equal(install.env?.npm_config_allow_scripts, '');
+    assert.equal(install.if, "steps.pro-deps.outputs.cache-hit != 'true'");
+    assert.equal(save.if, "steps.pro-deps.outputs.cache-hit != 'true'");
+    assert.equal(save.with.path, 'pro-test/node_modules');
+    assert.equal(save.with.key, '${{ steps.pro-deps.outputs.cache-primary-key }}');
+    for (const input of ['pro-test/package.json', 'pro-test/package-lock.json', 'pro-test/.npmrc', '.npmrc', 'vendor/**']) {
+      assert.ok(restore.with.key.includes(`'${input}'`), `install-pro-deps key must hash ${input}`);
+    }
   });
 
   it('runs the /pro browser gates in one Playwright run', () => {
