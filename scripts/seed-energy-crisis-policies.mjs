@@ -43,7 +43,7 @@ export function buildPayload(registry = readRegistry(), now = new Date()) {
     sourceUrl: registry.sourceUrl,
     context: registry.context,
     policies,
-    updatedAt: new Date(registry.statusReviewedAt).toISOString(),
+    updatedAt: `${registry.statusReviewedAt}T12:00:00.000Z`,
   };
 }
 

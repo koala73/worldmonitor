@@ -50,5 +50,11 @@ test('tax incentives are classified under the Taxation sector', () => {
 });
 
 test('updatedAt reports when statuses were reviewed, not when the seed ran', () => {
-  assert.equal(payload.updatedAt, '2026-11-18T00:00:00.000Z');
+  assert.equal(payload.updatedAt, '2026-11-18T12:00:00.000Z');
+});
+
+test('the review date renders as the same calendar day across viewer time zones', () => {
+  for (const timeZone of ['Pacific/Honolulu', 'America/Los_Angeles', 'UTC', 'Asia/Kolkata', 'Asia/Tokyo']) {
+    assert.equal(new Date(payload.updatedAt).toLocaleDateString('en-CA', { timeZone }), '2026-11-18', timeZone);
+  }
 });
