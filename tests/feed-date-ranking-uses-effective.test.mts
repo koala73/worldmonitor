@@ -87,17 +87,17 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 134,
+    line: 139,
     reason: 'generateClusterId sort produces a stable identity string from earliest pubDate; not a freshness comparator.',
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 136,
+    line: 141,
     reason: 'generateClusterId uses earliest pubDate.getTime() in the identity string prefix.',
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 240,
+    line: 246,
     reason: 'cluster date aggregation for firstSeen/lastUpdated metadata; not a per-item ranking comparator.',
   },
   {
@@ -107,7 +107,7 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'src/services/trending-keywords.ts',
-    line: 245,
+    line: 246,
     reason: 'headlineKey identity computation — used for dedupe, not freshness ranking.',
   },
 ];

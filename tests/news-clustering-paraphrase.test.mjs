@@ -55,6 +55,11 @@ describe('clusterNewsCore groups reworded reports of one event (#11266)', () => 
       'Sugar Price India, 25 Nov 2026: Output at Decade Low — CMB News - CMB News',
       'Sugar Price India, 25 Nov 2026: Policy Shift Caps Domestic Rally — CMB News - CMB News',
     ], 'CMB News');
+    const bylined = [
+      item('IAMGOLD Corporation (TSX:IMG) Stock Declines 2.07%: Production Costs and Gold Market Volatility Weigh on Investor Sentiment - Kalkine Media', 'Google News'),
+      item('Cameco Corporation (TSX:CCO) Stock Declines 3.52%: Uranium Market Volatility and Valuation Risks Pressure Investor Sentiment', 'Kalkine Media'),
+    ];
+    assert.equal(clusterNewsCore(bylined, () => 3).length, 2, 'a byline and a feed label naming one outlet are one publisher');
   });
 
   it('keeps different events that share an organisation or topic apart', () => {
