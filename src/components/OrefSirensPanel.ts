@@ -6,12 +6,12 @@ import type { OrefAlertsResponse, OrefAlert, OrefHistoryEntry } from '@/services
 
 const MAX_HISTORY_WAVES = 50;
 const ONE_HOUR_MS = 60 * 60 * 1000;
+const HISTORY_WINDOW_MS = 24 * ONE_HOUR_MS;
 const HISTORY_TTL = 3 * 60 * 1000;
 
 export class OrefSirensPanel extends Panel {
   private alerts: OrefAlert[] = [];
   private historyCount24h = 0;
-  private totalHistoryCount = 0;
   private historyWaves: OrefHistoryEntry[] = [];
   private historyFetchInFlight = false;
   private historyLastFetchAt = 0;
@@ -37,8 +37,7 @@ export class OrefSirensPanel extends Panel {
     const prevCount = this.alerts.length;
     this.alerts = data.alerts || [];
     this.historyCount24h = data.historyCount24h || 0;
-    this.totalHistoryCount = data.totalHistoryCount || 0;
-    this.setCount(this.alerts.length || this.historyCount24h || this.totalHistoryCount);
+    this.setCount(this.alerts.length || this.historyCount24h);
 
     if (prevCount === 0 && this.alerts.length > 0) {
       this.setNewBadge(this.alerts.length);
@@ -92,7 +91,14 @@ export class OrefSirensPanel extends Panel {
   }
 
   private renderHistoryWaves(): SafeHtml {
-    if (!this.historyWaves.length) {
+    const now = Date.now();
+    const recent = this.historyWaves
+      .map(w => ({ wave: w, ts: new Date(w.timestamp).getTime() }))
+      .filter(({ ts }) => now - ts < HISTORY_WINDOW_MS)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, MAX_HISTORY_WAVES);
+
+    if (!recent.length) {
       if (this.historyCount24h > 0) {
         return safeHtml`<div class="oref-history-section">
           <div class="oref-history-title">${t('components.orefSirens.historySummary', { count: String(this.historyCount24h), waves: '...' })}</div>
@@ -102,31 +108,25 @@ export class OrefSirensPanel extends Panel {
       return safeHtml``;
     }
 
-    const now = Date.now();
-    const withTs = this.historyWaves.map(w => ({ wave: w, ts: new Date(w.timestamp).getTime() }));
-    withTs.sort((a, b) => b.ts - a.ts);
-    const sorted = withTs.slice(0, MAX_HISTORY_WAVES);
-
-    const rows = joinSafeHtml(sorted.map(({ wave, ts }) => {
+    const rows = joinSafeHtml(recent.map(({ wave, ts }) => {
       const isRecent = now - ts < ONE_HOUR_MS;
       const rowClass = isRecent ? 'oref-wave-row oref-wave-recent' : 'oref-wave-row';
       const badge = isRecent ? safeHtml`<span class="oref-recent-badge">RECENT</span>` : safeHtml``;
-      const types = wave.alerts.map(a => a.title || a.cat);
-      const uniqueTypes = [...new Set(types)];
-      const totalAreas = wave.alerts.reduce((sum, a) => sum + (a.data?.length || 0), 0);
-      const summary = uniqueTypes.join(', ') + (totalAreas > 0 ? ` - ${totalAreas} areas` : '');
+      const types = [...new Set(wave.alerts.map(a => a.title || a.cat))].join(', ');
+      const areas = [...new Set(wave.alerts.flatMap(a => a.data || []))].join(', ');
 
       return safeHtml`<div class="${rowClass}">
         <div class="oref-wave-header">
           <span class="oref-wave-time">${this.formatWaveTime(wave.timestamp)}</span>
           ${badge}
         </div>
-        <div class="oref-wave-summary">${summary}</div>
+        <div class="oref-wave-summary">${types}</div>
+        <div class="oref-alert-areas">${areas}</div>
       </div>`;
     }));
 
     return safeHtml`<div class="oref-history-section">
-      <div class="oref-history-title">${t('components.orefSirens.historySummary', { count: String(this.historyCount24h), waves: String(sorted.length) })}</div>
+      <div class="oref-history-title">${t('components.orefSirens.historySummary', { count: String(this.historyCount24h), waves: String(recent.length) })}</div>
       <div class="oref-wave-list">${rows}</div>
     </div>`;
   }
