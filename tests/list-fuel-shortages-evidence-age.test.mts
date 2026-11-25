@@ -13,12 +13,10 @@ process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-token';
 delete process.env.LOCAL_API_MODE;
 
-let registry: unknown = null;
-
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = String(input instanceof Request ? input.url : input);
   if (url.startsWith('https://upstash.test/get/')) {
-    return Response.json({ result: registry == null ? null : JSON.stringify(registry) });
+    return Response.json({ result: JSON.stringify(registry) });
   }
   throw new Error(`unexpected global fetch: ${url}`);
 }) as typeof fetch;
@@ -38,18 +36,19 @@ const row = (id: string, country: string, lastConfirmed: string) => ({
   lastConfirmed, resolvedAt: null, impactTypes: [], causeChain: [], shortDescription: '',
 });
 
+const registry = {
+  updatedAt: '2026-11-24T07:32:26.870Z',
+  classifierVersion: 'v1',
+  shortages: {
+    pk: row('pk', 'PK', '2026-04-15T00:00:00Z'),
+    cu: row('cu', 'CU', '2026-04-20T00:00:00Z'),
+  },
+};
+
 const ALL = { country: '', product: '', severity: '' };
 
 describe('listFuelShortages dates the response by evidence, not by registry republish', () => {
   it('reports the newest lastConfirmed as fetchedAt, not the fresh registry updatedAt', async () => {
-    registry = {
-      updatedAt: '2026-11-24T07:32:26.870Z',
-      classifierVersion: 'v1',
-      shortages: {
-        pk: row('pk', 'PK', '2026-04-15T00:00:00Z'),
-        cu: row('cu', 'CU', '2026-04-20T00:00:00Z'),
-      },
-    };
     const res = await listFuelShortages(null, ALL);
     assert.equal(res.shortages.length, 2);
     assert.equal(res.fetchedAt, '2026-04-20T00:00:00Z');
