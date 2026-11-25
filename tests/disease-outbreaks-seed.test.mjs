@@ -1015,6 +1015,7 @@ test('ThinkGlobalHealth rows reporting the same count at the same place publish 
     row('8735479', 1, 'https://aps.sn/diphterie', 'Senegal reported 76 diphtheria cases and nine deaths.', '76'),
     row('8735480', 1, 'https://aps.sn/diphterie-maj', 'Senegal revised its count to 77 diphtheria cases.', '77'),
     row('8735481', 1, 'https://aps.sn/diphterie-maj', 'Senegal revised its count to 78 diphtheria cases.', '78'),
+    row('8735010', 10, 'https://www.seneweb.com/diphterie', 'Senegal has recorded 57 confirmed cases of diphtheria.'),
     row('8734001', 40, 'https://aps.sn/diphterie-mai', 'Senegal has recorded 57 cases of diphtheria in an earlier wave.'),
     row('8735500', 3, 'https://aps.sn/cas-importe', 'Senegal confirmed an imported diphtheria case in Dakar.', '1'),
     row('8735501', 5, 'https://aps.sn/premier-cas', 'Senegal confirmed its first diphtheria case of the season.', '1'),

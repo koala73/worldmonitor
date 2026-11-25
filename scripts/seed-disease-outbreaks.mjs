@@ -219,8 +219,9 @@ export async function fetchDiseaseOutbreaks() {
   // TGH items are already disease-curated with exact lat/lng — skip keyword filter,
   // preserve all geo-located alerts, and don't collapse by disease+country.
   // Outlets repeat one report: rows with the same disease, point and case count
-  // (more than one case) within a week of a newer row are one event and publish
-  // once, newest first. Rows the bundle repeats verbatim share an id.
+  // (more than one case) within a week of the next newer such row are one
+  // event and publish once, newest first. Rows the bundle repeats verbatim
+  // share an id.
   const seenTghIds = new Set();
   const newestTghEvent = new Map();
   const tghOutbreaks = tghItems.map(mapItem)
@@ -231,9 +232,8 @@ export async function fetchDiseaseOutbreaks() {
       if (!(o.cases > 1)) return true;
       const key = `${o.disease}|${o.lat}|${o.lng}|${o.cases}`;
       const newer = newestTghEvent.get(key);
-      if (newer != null && newer - o.publishedAt <= TGH_REPEAT_WINDOW_MS) return false;
       newestTghEvent.set(key, o.publishedAt);
-      return true;
+      return newer == null || newer - o.publishedAt > TGH_REPEAT_WINDOW_MS;
     });
 
   const diseaseKeywords = ['outbreak', 'disease', 'virus', 'fever', 'flu', 'ebola', 'mpox',
