@@ -243,8 +243,8 @@ describe('Chokepoint threat level config', () => {
     assert.equal(cpById.bab_el_mandeb.threatLevel, 'critical');
   });
 
-  it('Suez uses high threat level', () => {
-    assert.equal(cpById.suez.threatLevel, 'high');
+  it('Suez uses elevated threat level', () => {
+    assert.equal(cpById.suez.threatLevel, 'elevated');
   });
 
   it('Taiwan uses elevated threat level', () => {
@@ -256,8 +256,8 @@ describe('Chokepoint threat level config', () => {
     assert.equal(cpById.panama.threatLevel, 'normal');
   });
 
-  it('Hormuz threatDescription mentions Iran-Israel war', () => {
-    assert.ok(cpById.hormuz_strait.threatDescription.includes('Iran-Israel'));
+  it('Hormuz threatDescription mentions the Iran war', () => {
+    assert.ok(cpById.hormuz_strait.threatDescription.includes('Iran war'));
   });
 
   it('Bab el-Mandeb threatDescription mentions Houthi', () => {
@@ -283,9 +283,20 @@ describe('Chokepoint threat level config', () => {
     assert.ok(cpById.taiwan_strait.areaKeywords.includes('south china sea'));
   });
 
-  it('descriptions reference JWC for listed areas', () => {
-    const jwcEntries = CHOKEPOINTS.filter(cp => cp.threatDescription.includes('JWC Listed Area'));
-    assert.ok(jwcEntries.length >= 2, 'Expected at least 2 JWC Listed Area entries');
+  it('only chokepoints inside JWLA-035 listed waters claim a JWC listing', () => {
+    const listed = CHOKEPOINTS
+      .filter(cp => cp.threatDescription.startsWith('JWC Listed Area'))
+      .map(cp => cp.id)
+      .sort();
+    assert.deepEqual(listed, ['bab_el_mandeb', 'hormuz_strait', 'kerch_strait']);
+  });
+
+  it('Suez does not claim a JWC listing, because JWLA-035 excludes Egyptian waters', () => {
+    assert.ok(cpById.suez.threatDescription.startsWith('Not a JWC Listed Area'));
+  });
+
+  it('threat baseline was reviewed against the current JWC circular (JWLA-035, 2026-09-16)', () => {
+    assert.ok(Date.parse(THREAT_CONFIG_LAST_REVIEWED) >= Date.parse('2026-09-16'));
   });
 
   it('THREAT_CONFIG_LAST_REVIEWED is a valid ISO date string', () => {

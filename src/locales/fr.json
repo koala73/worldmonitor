@@ -2136,8 +2136,11 @@
       "topProducers": "Principaux producteurs",
       "upstreamUnavailable": "Données de chaîne d'approvisionnement temporairement indisponibles — affichage des données en cache",
       "warnings": "avertissement(s)",
-      "aisDisruptions": "Perturbations du suivi des navires",
+      "aisDisruptions_one": "{{count}} perturbation du suivi des navires",
+      "aisDisruptions_many": "{{count}} perturbations du suivi des navires",
+      "aisDisruptions_other": "{{count}} perturbations du suivi des navires",
       "wowChange": "Variation sur une semaine",
+      "asOf": "au {{date}}",
       "riskLevel": "Niveau de risque",
       "flowUnavailable": "Données de flux indisponibles",
       "containerRates": "Tarifs de conteneurs",
@@ -2613,7 +2616,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Prix de détail à la pompe pour l'essence et le diesel dans 30+ pays, normalisés en USD/litre pour la comparaison. Les prix proviennent de programmes officiels de données ouvertes gouvernementales et sont mis à jour hebdomadairement. Les pays les moins chers et les plus chers sont mis en évidence. La variation semaine après semaine s'affiche lorsque les données de la semaine précédente sont disponibles.",
-      "countries": "pays"
+      "countries": "pays",
+      "observedStale": "{{date}}, il y a {{days}} jours",
+      "monthlyMean": "moyenne {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> L'indice des prix alimentaires de l'Organisation des Nations unies pour l'alimentation et l'agriculture suit les prix d'exportation internationaux d'un panier de produits alimentaires (Céréales, Produits laitiers, Viande, Huiles, Sucre), base 2014-2016=100. Mise à jour mensuelle le premier vendredi de chaque mois.",
@@ -2905,7 +2910,21 @@
       "saved": "Dernière mise à jour connue {{time}} · Recherche de mises à jour",
       "savedOffline": "Dernière mise à jour connue {{time}} · Hors ligne",
       "localSignals": "Selon les signaux chargés dans le tableau de bord",
-      "emptySaved": "Aucune convergence dans la dernière mise à jour connue."
+      "emptySaved": "Aucune convergence dans la dernière mise à jour connue.",
+      "signalTypes": {
+        "militaryFlight": "Vol militaire",
+        "militaryVessel": "Navire militaire",
+        "aisGap": "Interruption AIS",
+        "conflictEvent": "Événement de conflit",
+        "escalationOutage": "Panne de communications",
+        "newsSeverity": "Actualités graves",
+        "sanctionsNews": "Actualités sur les sanctions",
+        "marketMove": "Mouvement de marché",
+        "commoditySpike": "Flambée des matières premières",
+        "earthquake": "Séisme",
+        "infraOutage": "Panne d’infrastructure",
+        "other": "Signal"
+      }
     },
     "thermalEscalation": {
       "title": "Escalade thermique",

@@ -1011,7 +1011,7 @@
       "upstreamUnavailable": "Dữ liệu chuỗi cung ứng tạm thời không khả dụng — hiển thị dữ liệu đã lưu cache",
       "spikeAlert": "Phát hiện đột biến — giá cao hơn đáng kể so với trung bình 52 tuần (hàng tuần)",
       "warnings": "cảnh báo",
-      "aisDisruptions": "Gián đoạn theo dõi tàu",
+      "aisDisruptions_other": "{{count}} gián đoạn theo dõi tàu",
       "disruption": "Gián đoạn",
       "vessels": "tàu",
       "incidents7d": "sự cố (7 ngày)",
@@ -1022,6 +1022,7 @@
       "topProducers": "Nhà sản xuất hàng đầu",
       "risk": "Rủi ro",
       "wowChange": "Thay đổi tuần so với tuần trước",
+      "asOf": "tính đến {{date}}",
       "riskLevel": "Mức rủi ro",
       "flowUnavailable": "Dữ liệu lưu lượng không có sẵn",
       "containerRates": "Giá vận chuyển container",
@@ -2591,7 +2592,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Giá bán lẻ tại cây xăng dầu cho xăng và dầu diesel trên 30+ quốc gia, chuẩn hóa thành USD/lít để so sánh. Giá được lấy từ các chương trình dữ liệu mở chính thức của chính phủ và cập nhật hàng tuần. Các quốc gia có giá rẻ nhất và đắt nhất được làm nổi bật. Thay đổi tuần so với tuần trước được hiển thị khi dữ liệu tuần trước có sẵn.",
-      "countries": "quốc gia"
+      "countries": "quốc gia",
+      "observedStale": "{{date}}, {{days}} ngày trước",
+      "monthlyMean": "trung bình {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Chỉ số Giá Thực phẩm của Tổ chức Lương thực và Nông nghiệp Liên hợp quốc theo dõi giá xuất khẩu quốc tế cho một rổ hàng hóa thực phẩm (Ngũ cốc, Sữa, Thịt, Dầu, Đường), cơ sở 2014-2016=100. Cập nhật hàng tháng vào thứ Sáu đầu tiên của mỗi tháng.",
@@ -2875,7 +2878,21 @@
       "saved": "Lần cập nhật gần nhất đã biết {{time}} · Đang kiểm tra cập nhật",
       "savedOffline": "Lần cập nhật gần nhất đã biết {{time}} · Ngoại tuyến",
       "localSignals": "Dựa trên các tín hiệu đã tải trong bảng điều khiển",
-      "emptySaved": "Không có sự hội tụ trong lần cập nhật gần nhất đã biết."
+      "emptySaved": "Không có sự hội tụ trong lần cập nhật gần nhất đã biết.",
+      "signalTypes": {
+        "militaryFlight": "Chuyến bay quân sự",
+        "militaryVessel": "Tàu quân sự",
+        "aisGap": "Gián đoạn AIS",
+        "conflictEvent": "Sự kiện xung đột",
+        "escalationOutage": "Gián đoạn liên lạc",
+        "newsSeverity": "Tin nghiêm trọng",
+        "sanctionsNews": "Tin trừng phạt",
+        "marketMove": "Biến động thị trường",
+        "commoditySpike": "Hàng hóa tăng vọt",
+        "earthquake": "Động đất",
+        "infraOutage": "Gián đoạn hạ tầng",
+        "other": "Tín hiệu"
+      }
     },
     "thermalEscalation": {
       "title": "Tăng cường nhiệt độ",

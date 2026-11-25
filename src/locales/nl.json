@@ -1704,8 +1704,10 @@
       "topProducers": "Topproducenten",
       "upstreamUnavailable": "Toeleveringsketengegevens tijdelijk niet beschikbaar — gecachete gegevens worden weergegeven",
       "warnings": "waarschuwing(en)",
-      "aisDisruptions": "Storingen scheepsvolgingssysteem",
+      "aisDisruptions_one": "{{count}} storing in scheepsvolging",
+      "aisDisruptions_other": "{{count}} storingen in scheepsvolging",
       "wowChange": "Week-over-week verandering",
+      "asOf": "per {{date}}",
       "riskLevel": "Risiconiveau",
       "flowUnavailable": "Stroomgegevens niet beschikbaar",
       "containerRates": "Containertarieven",
@@ -2184,7 +2186,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Tankstation-verkoopprijzen voor benzine en diesel in meer dan 30 landen, genormaliseerd naar USD/liter. Prijzen zijn afkomstig van officiële overheidsgegevens en worden wekelijks bijgewerkt. Goedkoopste en duurste landen zijn gemarkeerd. Wijziging week-over-week wordt getoond wanneer gegevens uit de vorige week beschikbaar zijn.",
-      "countries": "landen"
+      "countries": "landen",
+      "observedStale": "{{date}}, {{days}} dagen oud",
+      "monthlyMean": "gemiddelde {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> De Food Price Index van de VN-organisatie voor voeding en landbouw volgt internationale exportprijzen voor een mand voedselgrondstoffen (Granen, Zuivel, Vlees, Oliën, Suiker), basis 2014-2016=100. Maandelijks bijgewerkt op de eerste vrijdag van elke maand.",
@@ -2472,7 +2476,21 @@
       "saved": "Laatst bekende update {{time}} · Controleren op updates",
       "savedOffline": "Laatst bekende update {{time}} · Offline",
       "localSignals": "Gebaseerd op geladen dashboardsignalen",
-      "emptySaved": "Geen convergentie in de laatst bekende update."
+      "emptySaved": "Geen convergentie in de laatst bekende update.",
+      "signalTypes": {
+        "militaryFlight": "Militaire vlucht",
+        "militaryVessel": "Militair schip",
+        "aisGap": "AIS-onderbreking",
+        "conflictEvent": "Conflictgebeurtenis",
+        "escalationOutage": "Communicatiestoring",
+        "newsSeverity": "Ernstig nieuws",
+        "sanctionsNews": "Sanctienieuws",
+        "marketMove": "Marktbeweging",
+        "commoditySpike": "Grondstoffenpiek",
+        "earthquake": "Aardbeving",
+        "infraOutage": "Infrastructuurstoring",
+        "other": "Signaal"
+      }
     },
     "thermalEscalation": {
       "title": "Thermische escalatie",

@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchGroceryBasketPrices, fetchCountryItems, recordBaseline, selectWeekAgo, COUNTRY_CONCURRENCY, COUNTRIES } from '../scripts/seed-grocery-basket.mjs';
+import { fetchGroceryBasketPrices, fetchCountryItems, isListingUrl, recordBaseline, selectWeekAgo, COUNTRY_CONCURRENCY, COUNTRIES } from '../scripts/seed-grocery-basket.mjs';
 
 // The seeder logs one line per country and item. Silence it so the flood can't
 // corrupt node:test's child-process message parser under --test-concurrency.
@@ -310,4 +310,154 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
     fxRate: 0.00006, learnedRoutes: new Map(), routeUpdates: new Map(), routeDeletes: new Set(),
   });
   assert.equal(indonesia.find(item => item.itemId === 'rice').usdPrice, 1.44);
+});
+
+describe('grocery basket offer pages', () => {
+  const indonesia = COUNTRIES.find(({ code }) => code === 'ID');
+  const searchPage = 'https://www.tokopedia.com/find/minyak-goreng-canola-1-liter';
+  const productPage = 'https://www.tokopedia.com/aeon-fresh/minyak-canola-tropical-1-liter';
+  const canolaOffer = (price) => ({
+    matchesStaple: true, productName: 'Minyak canola 1 liter', price, currency: 'IDR', quantity: 1, unit: 'l',
+    offerEvidence: 'Canola oil 1 L listed with a price',
+  });
+
+  function mockRetailers(t, exaResults) {
+    const scraped = [];
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+      const request = JSON.parse(options.body);
+      if (url === 'https://api.firecrawl.dev/v2/scrape') {
+        scraped.push(request.url);
+        return Response.json({ success: true, data: { json: canolaOffer(89000) } });
+      }
+      return Response.json({ results: request.query.startsWith('canola') ? exaResults : [] });
+    });
+    const saved = { exa: process.env.EXA_API_KEYS, firecrawl: process.env.FIRECRAWL_API_KEY };
+    process.env.EXA_API_KEYS = 'test';
+    process.env.FIRECRAWL_API_KEY = 'test';
+    t.after(() => {
+      if (saved.exa === undefined) delete process.env.EXA_API_KEYS; else process.env.EXA_API_KEYS = saved.exa;
+      if (saved.firecrawl === undefined) delete process.env.FIRECRAWL_API_KEY; else process.env.FIRECRAWL_API_KEY = saved.firecrawl;
+    });
+    return scraped;
+  }
+
+  it('does not publish a price read from a retailer search page', async (t) => {
+    const scraped = mockRetailers(t, [{ url: searchPage, summary: JSON.stringify(canolaOffer(89000)) }]);
+    const routeUpdates = new Map();
+    const items = await fetchCountryItems(indonesia, {
+      fxRate: 0.00006, learnedRoutes: new Map(), routeUpdates, routeDeletes: new Set(),
+    });
+    const oil = items.find(item => item.itemId === 'oil');
+    assert.equal(oil.available, false);
+    assert.equal(oil.localPrice, null);
+    assert.equal(oil.sourceSite, '');
+    assert.ok(!scraped.includes(searchPage), 'the search page is not scraped as a fallback offer');
+    assert.ok(!routeUpdates.has('ID:oil'), 'the search page is not learned as a route');
+  });
+
+  it('evicts a learned search-page route and prices the product page instead', async (t) => {
+    const scraped = mockRetailers(t, [
+      { url: searchPage, summary: JSON.stringify(canolaOffer(89000)) },
+      { url: productPage, summary: JSON.stringify(canolaOffer(60000)) },
+    ]);
+    const routeUpdates = new Map();
+    const routeDeletes = new Set();
+    const items = await fetchCountryItems(indonesia, {
+      fxRate: 0.00006,
+      learnedRoutes: new Map([['ID:oil', { url: searchPage, hits: 4, failsSinceSuccess: 0 }]]),
+      routeUpdates,
+      routeDeletes,
+    });
+    const oil = items.find(item => item.itemId === 'oil');
+    assert.equal(oil.localPrice, 60000);
+    assert.equal(oil.sourceSite, productPage);
+    assert.ok(!scraped.includes(searchPage), 'the learned search page is not scraped');
+    assert.ok(routeDeletes.has('ID:oil'), 'the learned search page is evicted');
+    assert.equal(routeUpdates.get('ID:oil')?.url, productPage);
+  });
+
+  it('tells retailer listings from product pages on the configured retailers', () => {
+    for (const url of [
+      searchPage,
+      'https://www.walmart.com/c/kp/table-salt',
+      'https://www.carrefour.fr/r/epicerie-salee/pates',
+      'https://www.loblaws.ca/en/search?search-bar=no+name+spaghetti',
+      'https://www.loblaws.ca/en/food/bakery/bread/c/28251?page=4',
+      'https://mercado.carrefour.com.br/busca/ovos%20galinha%20organicos',
+      'https://www.woolworths.com.au/shop/browse/pantry/baking/flour',
+      'https://www.daraz.pk/tag/flat-pasta/',
+      'https://www.lazada.co.id/catalog/?q=minyak+canola',
+      'https://www.coupang.com/np/best100/bestseller/194332',
+      'https://www.amazon.in/gp/bestsellers/grocery/4859478031',
+      'https://www.carrefour.com.ar/almacen/aceites-y-vinagres?map=category-1,category-2',
+      'https://www.target.com/s/carnaroli+rice',
+      'https://blinkit.com/cn/rice/cid/16/1161',
+      'https://www.woolworths.co.za/cat/Food/Pantry/Pasta-Rice-Grains/_/N-j8vv2e',
+      'https://www.carrefoursa.com/uno/paketli-ekmekler/b/1401',
+      'https://www.fairprice.com.sg/category/white-rice',
+      'https://www.bim.com.tr/Categories/665/bakliyat-unlu-mamuller.aspx',
+      'https://listado.mercadolibre.com.mx/arroz-grano-largo',
+      'https://www.soriana.com/buscar?q=Ovarb',
+      'https://www.lazada.com.ph/trending/White-Rice-Best-Price/1929041890',
+    ]) assert.equal(isListingUrl(url), true, url);
+    for (const url of [
+      productPage,
+      'https://www.target.com/p/enriched-long-grain-white-rice-good-gather/-/A-89229583',
+      'https://www.kroger.com/p/organic-yellow-potatoes/0000000094727',
+      'https://www.walmart.com/ip/Capullo-Canola-Oil-1-l/10294419',
+      'https://www.asda.com/groceries/product/granulated-sugar/silver-spoon-granulated-sugar-1kg/8601',
+      'https://www.tesco.com/shop/en-GB/products/255340327',
+      'https://www.sainsburys.co.uk/groceries/product/sainsburys-easy-cook-long-grain-white-rice-1kg',
+      'https://www.rewe.de/shop/p/oryza-spitzen-langkorn-reis-1kg/108820',
+      'https://www.kaufland.de/product/433542827/',
+      'https://www.edeka.de/sortiment/4311501213681/',
+      'https://www.carrefour.fr/p/gros-sel-de-mer-simpl-3560070441020',
+      'https://www.seiyu.co.jp/pb/mo/mo-555/',
+      'https://sun-clay.life.co.jp/products/clay/Flour/8900.html',
+      'https://item.jd.com/10199070569714.html',
+      'https://www.amazon.in/Organic-Tattva-Masuri-White-Polished/dp/B00M57T5CU',
+      'https://www.bigbasket.com/pd/40004538/parrys-sugar-white-label-1-kg-pouch/',
+      'https://www.jiomart.com/p/groceries/maagaani-diabetic-friendly-low-gi-white-rice-1kg/611026576',
+      'https://www.coles.com.au/product/csr-white-sugar-1kg-120104',
+      'https://www.woolworths.com.au/shop/productdetails/306491/saxa-natural-australian-salt-traditional-cooking-seasoning',
+      'https://www.loblaws.ca/en/long-grain-white-rice/p/21689592_EA',
+      'https://www.realcanadiansuperstore.ca/en/rice-long-grain-white/p/21689592_EA?pdp_prior=21415930_EA',
+      'https://www.walmart.ca/en/ip/Long-Grain-White-Rice/58DTZVN8AN08',
+      'https://mercado.carrefour.com.br/produto/acucar-refinado-carrefour-1kg-17755',
+      'https://newsitefood.cloud.carrefour.com.br/sal-refinado-globo-1-kg-280127/p',
+      'https://www.extra.com.br/arroz-tio-joao-branco-1kg/p/1582273846',
+      'https://www.soriana.com/azucar-zulka-morena-1kg/646275.html',
+      'https://www.walmart.com.mx/ip/papa-blanca-alfa-por-kilo/00000000004083',
+      'https://articulo.mercadolibre.com.mx/MLM-1419795074-arroz-minute-white-rice-light-fluffy-204kg-importado-_JM',
+      'https://www.mercadolibre.com.mx/arroz-premium-g2-banquete-1kg/p/MLM19944396',
+      'https://www.chedraui.com.mx/arroz-blanco-morelos-organico-1kg-3005713/p',
+      'https://www.shoprite.co.za/All-Departments/Food/Food-Cupboard/Sugar-and-Sweeteners/White-Sugar/Selati-White-Sugar-1kg/p/10141801EA',
+      'https://www.checkers.co.za/product/sunfoil-canola-oil-750ml-10162387EA',
+      'https://www.woolworths.co.za/prod/_/A-6009189404535',
+      'https://www.migros.com.tr/keskinoglu-dogal-besi-m-orta-boy-yumurta-12li-53-62-g-p-1312d55',
+      'https://www.carrefoursa.com/feast-parmak-patates-1-kg-p-30074790',
+      'https://www.a101.com.tr/kapida/product/14001904',
+      'https://www.supermart.ng/products/golden-penny-white-granulated-sugar-1-kg',
+      'https://www.jumia.com.ng/golden-penny-gp-multipurpose-flour-1kg-419903371.html',
+      'https://www.konga.com/product/golden-grain-1121-white-sella-basmatic-rice-1kg-6913683',
+      'https://www.coupang.com/vp/products/9498948789',
+      'https://prod.danawa.com/info/?pcode=62397632',
+      'https://www.fairprice.com.sg/product/gpa-sugar-100-natural-coarse-cane-sugar-1-kg-90047218',
+      'https://www.daraz.pk/products/premium-white-sugar-1-kg-pure-refined-granulated-sugar-i947990028.html',
+      'https://www.carrefouruae.com/mafuae/en/white-sugar/al-osra-fine-white-sugar-1kg/p/1275791',
+      'https://gcc.luluhypermarket.com/en-sa/potato-saudi-1-kg/p/1793041-ea/',
+      'https://www.noon.com/egypt-en/white-rice-1-kg/Z0DFDA837FB94D4573A88Z/p/',
+      'https://www.carrefouregypt.com/mafegy/en/white-sugar/el-mazag-white-sugar-1k/p/604274',
+      'https://www.carrefour.ke/mafken/en/white-sugar/nutrameal-sugar-1kg/p/22071',
+      'https://www.carrefour.com.ar/azucar-refinada-fronterita-en-bolsa-1-kg-728484/p',
+      'https://www.cotodigital.com.ar/sitios/cdigi/productos/arroz-lf-00000-vanguardia-bol-1-kg/_/R-00114922-00114922-200?Dy=1',
+      'https://www.jumbo.com.ar/huevos-blancos-avicoper-12-u-1-paquete-2/p',
+      'https://www.disco.com.ar/arroz-san-salvador-grano-largo-00000-paquete-1-kg/p',
+      "https://shopee.co.id/Farmer's-Organic-White-Rice-Astro-Goods-1kg-i.881142017.43410756919",
+      'https://www.lazada.co.id/products/beras-organik-c4-kemasan-1-kg-organic-white-rice-sehat-i4363608332.html',
+      'https://www.blibli.com/p/md-organic-white-rice-beras-ciherang-1-kg/ps--UMM-60222-00054',
+      'https://www.lazada.com.ph/products/refined-white-sugar-1kg-i3031058466.html',
+      'https://h5.lazada.com.ph/products/robinsons-fresh-eggs-large-12s-i4436270136.html',
+    ]) assert.equal(isListingUrl(url), false, url);
+  });
 });

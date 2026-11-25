@@ -3786,11 +3786,11 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   'globalTendersBulgariaEop', 'globalTendersLatviaIub', 'globalTendersPolandBzp', 'globalTendersPakistanPpra',
   'globalTendersPakistanEpads', 'globalTendersGeorgiaSpa', 'globalTendersArmeniaArmeps',
   'globalTendersAlbaniaApp', 'globalTendersDominicanRepublicDgcp', 'globalTendersMalaysiaMyprocurement',
-  // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
-  // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
-  // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`
-  // ("prevent stale noisy value persisting") and logs "spread suppressed
-  // (N/4 common items)". That is a valid data-coverage state, not a pipeline
+  // retailer-spread is SUPPRESSED to an explicit 0 when a market's retailers
+  // share < MIN_SPREAD_ITEMS (4) common basket items —
+  // computeRetailerSpread in consumer-prices-core/src/basket-observations.ts
+  // returns spreadPct 0, and with no shared item the snapshot lists no
+  // retailers. That is a valid data-coverage state, not a pipeline
   // outage: the AE basket's cross-retailer overlap shrank 2/4 → 1/4 → 0/4 over
   // late-May 2026 while the seeder kept running fresh (seedAgeMin well inside
   // maxStaleMin) and the sibling keys (overview/categories/movers/basket-series)

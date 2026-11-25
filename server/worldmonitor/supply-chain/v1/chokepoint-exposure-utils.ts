@@ -1,5 +1,7 @@
 import { CHOKEPOINT_REGISTRY } from '../../../../src/config/chokepoint-registry';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
+import COUNTRY_REGIONS from '../../../../scripts/shared/iso2-to-region.json';
+import { bilateralTransitShares, hasModeledSeaRoute } from '../../../../scripts/shared/bilateral-chokepoint-transit.mjs';
 
 interface PortClusterEntry {
   nearestRouteIds: string[];
@@ -30,6 +32,11 @@ export interface ExposureEntry {
 }
 
 const clusters = COUNTRY_PORT_CLUSTERS as unknown as Record<string, PortClusterEntry>;
+const transitContext = {
+  clusters,
+  regions: COUNTRY_REGIONS as Record<string, string>,
+  chokepoints: CHOKEPOINT_REGISTRY,
+};
 
 export function getRouteIdsForCountry(iso2: string): string[] {
   return clusters[iso2]?.nearestRouteIds ?? [];
@@ -54,31 +61,26 @@ export function computeFlowWeightedExposures(
 
   if (matchingProducts.length === 0) return [];
 
-  const importerRoutes = new Set(getRouteIdsForCountry(importerIso2));
   const totalSectorValue = matchingProducts.reduce((s, p) => s + p.totalValue, 0);
 
   const cpScores = new Map<string, number>();
   for (const cp of CHOKEPOINT_REGISTRY) cpScores.set(cp.id, 0);
 
+  let modeled = false;
   for (const product of matchingProducts) {
     const productWeight = totalSectorValue > 0 ? product.totalValue / totalSectorValue : 0;
 
     for (const exporter of product.topExporters) {
       if (!exporter.partnerIso2) continue;
-      const exporterRoutes = new Set(getRouteIdsForCountry(exporter.partnerIso2));
-
-      for (const cp of CHOKEPOINT_REGISTRY) {
-        const cpRoutes = cp.routeIds;
-        let overlap = 0;
-        for (const r of cpRoutes) {
-          if (importerRoutes.has(r) || exporterRoutes.has(r)) overlap++;
-        }
-        const routeCoverage = overlap / Math.max(cpRoutes.length, 1);
-        const contribution = routeCoverage * exporter.share * productWeight * 100;
-        cpScores.set(cp.id, (cpScores.get(cp.id) ?? 0) + contribution);
+      if (hasModeledSeaRoute(importerIso2, exporter.partnerIso2, transitContext.clusters)) modeled = true;
+      for (const [cpId, fraction] of bilateralTransitShares(importerIso2, exporter.partnerIso2, transitContext)) {
+        cpScores.set(cpId, (cpScores.get(cpId) ?? 0) + fraction * exporter.share * productWeight * 100);
       }
     }
   }
+
+  // No supplier pair has a modeled sea route, so zero would be unevaluated rather than measured.
+  if (!modeled) return [];
 
   const entries: ExposureEntry[] = CHOKEPOINT_REGISTRY.map(cp => {
     let score = cpScores.get(cp.id) ?? 0;

@@ -1123,8 +1123,10 @@
       "upstreamUnavailable": "Data ya msururu wa ugavi haipatikani kwa muda - inaonyesha data iliyohifadhiwa",
       "spikeAlert": "Mwiba umegunduliwa - kiwango kikubwa zaidi ya wastani wa wiki 52 (kila wiki)",
       "warnings": "onyo",
-      "aisDisruptions": "Mataio ya ufuatiliaji wa meli",
+      "aisDisruptions_one": "Hitilafu {{count}} ya ufuatiliaji wa meli",
+      "aisDisruptions_other": "Hitilafu {{count}} za ufuatiliaji wa meli",
       "wowChange": "Mabadiliko ya wiki inayolingana na wiki",
+      "asOf": "kufikia {{date}}",
       "riskLevel": "Kiwango cha hatari",
       "disruption": "Usumbufu",
       "vessels": "vyombo",
@@ -2389,7 +2391,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Bei za pump ya rejareja kwa petroli na gesi kote nchi 30+, zilizosawazishwa kuwa USD/lita kwa kulinganisha. Bei zinakuja kutoka programu za data zilizofunguliwa za serikali na kusasishwa kila wiki. Nchi nyingi za bei nafuu zaidi na ghali zaidi zimeangaziwa. Mabadiliko ya juma kwa juma yanaonyeshwa wakati data ya juma iliyopita inapatikana.",
-      "countries": "nchi"
+      "countries": "nchi",
+      "observedStale": "{{date}}, umri wa siku {{days}}",
+      "monthlyMean": "wastani wa {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Fahirisi ya Bei ya Chakula ya Shirika la Umoja kwa Chakula na Ukulima linafuatilia bei za kumhimili kimataifa kwa kikapu cha bidhaa za chakula (Nafaka, Maziwa, Nyama, Mafuta, Sukari), msingi 2014-2016=100. Inasasishwa kila mwezi Ijumaa ya kwanza ya kila mwezi.",
@@ -2855,7 +2859,21 @@
       "saved": "Sasisho la mwisho linalojulikana {{time}} · Inatafuta masasisho",
       "savedOffline": "Sasisho la mwisho linalojulikana {{time}} · Nje ya mtandao",
       "localSignals": "Kulingana na ishara zilizopakiwa kwenye dashibodi",
-      "emptySaved": "Hakukuwa na muunganiko katika sasisho la mwisho linalojulikana."
+      "emptySaved": "Hakukuwa na muunganiko katika sasisho la mwisho linalojulikana.",
+      "signalTypes": {
+        "militaryFlight": "Safari ya kijeshi",
+        "militaryVessel": "Chombo cha kijeshi",
+        "aisGap": "Pengo la AIS",
+        "conflictEvent": "Tukio la mzozo",
+        "escalationOutage": "Kukatika kwa mawasiliano",
+        "newsSeverity": "Habari nzito",
+        "sanctionsNews": "Habari za vikwazo",
+        "marketMove": "Mwenendo wa soko",
+        "commoditySpike": "Kupanda kwa bidhaa",
+        "earthquake": "Tetemeko la ardhi",
+        "infraOutage": "Kukatika kwa miundombinu",
+        "other": "Ishara"
+      }
     },
     "thermalEscalation": {
       "title": "Kuongezeka kwa joto",
