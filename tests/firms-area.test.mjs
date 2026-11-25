@@ -13,6 +13,7 @@ import {
   FIRMS_SOURCES,
   MONITORED_REGIONS,
 } from '../scripts/wildfire/firms-area.mjs';
+import { OTHER_FIRE_REGION } from '../scripts/wildfire/fire-country.mjs';
 
 const EMPTY_CSV = 'latitude,longitude,acq_date,acq_time,bright_ti4,frp,confidence,satellite,daynight\n';
 const DETECTION_CSV = `${EMPTY_CSV}34.1,36.2,2026-09-04,0425,391.2,91.5,h,N,D\n`;
@@ -113,6 +114,19 @@ describe('NASA FIRMS Area API sequence', () => {
     assert.equal(attempts, 2);
     assert.deepEqual(result, []);
     assert.equal(JSON.parse(messages.log[0]).timeout, true);
+  });
+  it('labels each detection with the country at its coordinates, not the query area', async () => {
+    const iranBoxPath = `/${FIRMS_SOURCES[0]}/${MONITORED_REGIONS.Iran}/`;
+    const csv = `${EMPTY_CSV}35.72365,44.04014,2026-09-04,0425,330.1,12.0,n,N,D\n`
+      + `30.2813,47.3688,2026-09-04,0426,340.2,20.0,n,N,D\n`
+      + `32,53,2026-09-04,0427,350.3,25.0,n,N,D\n`
+      + `24.85722,53.71148,2026-09-04,0428,345.0,22.0,n,N,D\n`;
+    const firms = await fetchAllFirmsRegions('key', {
+      fetchFn: async (url) => response(200, new URL(url).pathname.includes(iranBoxPath) ? csv : EMPTY_CSV),
+      sleepFn: async () => {},
+      logger: captureLogger().logger,
+    });
+    assert.deepEqual(firms.fireDetections.map((d) => d.region), ['Iraq', 'Iraq', 'Iran', OTHER_FIRE_REGION]);
   });
   it('recovers complete coverage with one paced retry on the primary host', async () => {
     const urls = [];
@@ -351,7 +365,7 @@ describe('NASA FIRMS Area API sequence', () => {
       confidence: 'FIRE_CONFIDENCE_HIGH',
       satellite: 'N',
       detectedAt: Date.parse('2026-09-04T04:25:00Z'),
-      region: 'Ukraine',
+      region: 'Lebanon',
       dayNight: 'D',
       possibleExplosion: true,
       source: 'firms',
