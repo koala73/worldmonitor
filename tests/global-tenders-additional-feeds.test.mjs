@@ -136,6 +136,18 @@ test('Chile follows only the fixed official detail API and rejects incomplete de
     ? { data: [{ ocid: 'ocds-70d2nz-123-LE26' }] } : { error: 'changed' } }), /releases/);
 });
 
+test('Chile reports the Mercado Público error envelope instead of a missing-data parse failure', async () => {
+  const envelope = { status: 500, detail: 'Unable to connect to the remote server   at ChileCompra.OCDS.Dato.ListadoDescarga.Obtener(String añoMes) in D:\\a\\1\\s\\ListadoDescarga.cs:line 0' };
+  await assert.rejects(fetchChile({ now: NOW, fetchJsonFn: async () => envelope }), (error) => {
+    assert.equal(error.message, 'Mercado Público returned status 500: Unable to connect to the remote server');
+    assert.equal(error.status, 500);
+    return true;
+  });
+  await assert.rejects(fetchChile({ now: NOW, fetchJsonFn: async (url) => String(url).includes('listaOCDS')
+    ? { data: [{ ocid: 'ocds-70d2nz-123-LE26' }] } : { status: 404, detail: 'No se encontraron resultados.' } }),
+  /Mercado Público returned status 404: No se encontraron resultados\./);
+});
+
 test('Brazil reads active proposals across modalities and builds an official PNCP link', async () => {
   let requested;
   const result = await fetchBrazil({ now: NOW, fetchJsonFn: async (url) => {
