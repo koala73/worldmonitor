@@ -254,7 +254,8 @@ describe('seed coverage manifest', () => {
       if (!String(url).endsWith('/pipeline')) return Response.json({ result: 'OK' });
       return Response.json(commands.map(command => {
         if (command[0] === 'GET') {
-          return { result: command[1] === 'comtrade:bilateral-hs4:DJ:v1' ? JSON.stringify(djiboutiCereals) : null };
+          const fixture = ['comtrade:bilateral-hs4:DJ:v1', 'comtrade:bilateral-hs4:ET:v1'].includes(command[1]);
+          return { result: fixture ? JSON.stringify(djiboutiCereals) : null };
         }
         writes.push(command);
         return { result: 'OK' };
@@ -266,6 +267,8 @@ describe('seed coverage manifest', () => {
       assert.equal(record.coverage, 'flow_weighted');
       assert.equal(record.primaryChokepointId, '');
       assert.ok(record.exposures.every(e => e.exposureScore === 0), 'no chokepoint between Djibouti and the Americas');
+      const landlocked = JSON.parse(writes.find(c => c[1] === 'supply-chain:exposure:ET:10:v1')[2]);
+      assert.notEqual(landlocked.coverage, 'flow_weighted', 'landlocked Ethiopia has no modeled sea route to evaluate');
     } finally { globalThis.fetch = originalFetch; process.env = env; }
   });
 

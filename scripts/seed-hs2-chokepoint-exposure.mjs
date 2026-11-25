@@ -316,7 +316,8 @@ export async function main() {
 
         if (comtradeProducts && comtradeProducts.length > 0) {
           const exposures = computeFlowWeightedExposures(iso2, hs2, comtradeProducts);
-          if (exposures.length > 0) {
+          // Landlocked importers have no modeled bilateral sea route; all-zero there means unevaluated.
+          if (exposures.length > 0 && (cluster.coastSide !== 'landlocked' || exposures.some(e => e.exposureScore > 0))) {
             const coastSide = cluster.coastSide ?? '';
             exposures[0] = { ...exposures[0], coastSide };
             result = {
