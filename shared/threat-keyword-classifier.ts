@@ -251,7 +251,7 @@ const TECH_LOW_KEYWORDS: KeywordMap = {
 
 // "Coup" as a political or business metaphor (a "progressive coup", a
 // "transfer coup", "coup de grâce") is not a seizure of power.
-const METAPHORICAL_COUP_RE = /\b(?:progressive|conservative|liberal|leftist|populist|socialist|maga|woke|boardroom|corporate|shareholder|marketing|pr|publicity|media|transfer|signing|recruiting|diplomatic|budget|fiscal|legislative|cultural)\s+coup\b|\bcoup\s+(?:de\s+(?:gr[aâ]ce|th[eé][aâ]tre|ma[iî]tre|foudre))\b/g;
+const METAPHORICAL_COUP_RE = /\b(?:progressive|conservative|liberal|leftist|populist|socialist|maga|woke|boardroom|corporate|shareholder|marketing|pr|publicity|media|transfer|signing|recruiting|diplomatic|budget|fiscal|legislative|cultural)\s+coup\b(?!\s+(?:attempt|plot|bid|d['’]?[eé]tat))|\bcoup\s+(?:de\s+(?:gr[aâ]ce|th[eé][aâ]tre|ma[iî]tre|foudre))\b/g;
 
 export function withoutMetaphoricalCoup(titleLower: string): string {
   return titleLower.replace(METAPHORICAL_COUP_RE, ' ');
