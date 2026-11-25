@@ -3278,6 +3278,13 @@
     "ownershipClass": "unreviewed",
     "note": "Google News topic query aggregating many publishers; no single owner."
   },
+  "NHK News": {
+    "country": "JP",
+    "audience": "domestic",
+    "language": "ja",
+    "ownershipClass": "public-service",
+    "note": "Japanese public broadcaster with statutory independence; domestic news service."
+  },
   "NHK World": {
     "country": "JP",
     "audience": "international",

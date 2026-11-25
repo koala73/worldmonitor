@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  buildPayload,
   validateRegistry,
   recordCount,
   FUEL_SHORTAGES_CANONICAL_KEY,
@@ -155,5 +156,55 @@ describe('fuel-shortages registry — validateRegistry rejects bad input', () =>
     const firstKey = Object.keys(bad.shortages)[0]!;
     bad.shortages[firstKey].product = 'kerosene';
     assert.equal(validateRegistry(bad), false);
+  });
+});
+
+describe('fuel-shortages published lifecycle', () => {
+  const lastConfirmed = '2026-04-15T00:00:00Z';
+  const row = {
+    country: 'GB', product: 'diesel', severity: 'watch', firstSeen: lastConfirmed,
+    lastConfirmed, resolvedAt: null, impactTypes: ['rationing'], causeChain: ['logistics'],
+    shortDescription: 'Test fuel rationing',
+    evidence: {
+      classifierVersion: 'v1', classifierConfidence: 0.9, lastEvidenceUpdate: lastConfirmed,
+      firstRegulatorConfirmation: lastConfirmed, evidenceSources: [],
+    },
+  };
+  const fixture = {
+    shortages: {
+      // Supply the minimum valid number of curated rows.
+      ...Object.fromEntries(Array.from({ length: 6 }, (_, index) => {
+        const id = `older-watch-${index}`;
+        return [id, { ...row, id }];
+      })),
+      'old-confirmed': { ...row, id: 'old-confirmed', severity: 'confirmed' },
+      'old-watch': { ...row, id: 'old-watch' },
+      'recent-confirmed': {
+        ...row, id: 'recent-confirmed', severity: 'confirmed', lastConfirmed: '2026-04-20T00:00:00Z',
+      },
+      'recent-watch': { ...row, id: 'recent-watch', lastConfirmed: '2026-04-16T00:00:00Z' },
+    },
+  };
+
+  test('demotes confirmed rows at 7 days and drops rows at 14 days since confirmation', () => {
+    const before = buildPayload(new Date('2026-04-21T23:59:59.999Z'), fixture);
+    assert.equal(before.shortages['old-confirmed'].severity, 'confirmed');
+    const demoted = buildPayload(new Date('2026-04-22T00:00:00Z'), fixture);
+    assert.equal(demoted.shortages['old-confirmed'].severity, 'watch');
+    assert.equal(demoted.shortages['old-confirmed'].lastConfirmed, lastConfirmed);
+    assert.equal(demoted.shortages['recent-confirmed'].severity, 'confirmed');
+    assert.equal(demoted.shortages['old-watch'].severity, 'watch');
+
+    const expired = buildPayload(new Date('2026-04-29T00:00:00Z'), fixture);
+    assert.equal(expired.shortages['old-confirmed'], undefined);
+    assert.equal(expired.shortages['old-watch'], undefined);
+    assert.equal(expired.shortages['recent-watch'].severity, 'watch');
+  });
+
+  test('publishes an empty registry when every fixture row has expired', () => {
+    const payload = buildPayload(new Date('2026-05-04T00:00:00Z'), fixture);
+    assert.deepEqual(payload.shortages, {});
+    assert.equal(recordCount(payload), 0);
+    assert.equal(payload.updatedAt, '2026-05-04T00:00:00.000Z');
   });
 });

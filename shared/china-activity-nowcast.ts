@@ -272,7 +272,8 @@ function contributionFor(
     return excludedContribution(definition, 'outside_comparison_window_no_fill', latest);
   }
   if (
-    evaluatedAtMs - observedAtMs
+    definition.freshnessClock !== 'source_content'
+    && evaluatedAtMs - observedAtMs
     > definition.freshnessBudgetMinutes * 60_000
   ) {
     return excludedContribution(definition, 'freshness_budget_exceeded', latest);

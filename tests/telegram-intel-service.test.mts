@@ -137,6 +137,28 @@ describe('telegram-intel service', () => {
     assert.equal(feed.items[0]?.text, 'Good post');
   });
 
+  it('keeps the relay truncation flag on parsed items', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      source: 'telegram',
+      enabled: true,
+      items: [{
+        id: 'defenderdome:1',
+        channel: 'defenderdome',
+        channelTitle: 'Defender Dome',
+        url: 'https://t.me/defenderdome/1',
+        ts: '2026-08-30T09:00:00.000Z',
+        text: 'The breach f',
+        textTruncated: true,
+        topic: 'cyber',
+        tags: [],
+      }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+    const feed = await fetchTelegramChannelFeed('defenderdome', 20);
+
+    assert.equal(feed.items[0]?.textTruncated, true);
+  });
+
   it('keeps the last feed while a restarted relay has not polled yet', async () => {
     const realNow = Date.now;
     let now = realNow();

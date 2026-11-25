@@ -36,6 +36,7 @@ const VARY_CREDENTIAL = 'Origin, Cookie, X-WorldMonitor-Key, X-Api-Key, Authoriz
  *   timestampMs?: string | number;
  *   ts?: string | number;
  *   text?: string;
+ *   textTruncated?: boolean;
  *   topic?: string;
  *   tags?: unknown[];
  *   earlySignal?: boolean;
@@ -64,6 +65,7 @@ const VARY_CREDENTIAL = 'Origin, Cookie, X-WorldMonitor-Key, X-Api-Key, Authoriz
  *   url: string;
  *   ts: string;
  *   text: string;
+ *   textTruncated: boolean;
  *   topic: string;
  *   tags: string[];
  *   earlySignal: boolean;
@@ -181,6 +183,7 @@ async function normalizeTelegramMessage(message) {
     url: toHttpUrl(message.sourceUrl ?? message.url),
     ts,
     text,
+    textTruncated: message.textTruncated === true,
     topic: toText(message.topic).trim(),
     tags: toTextArray(message.tags),
     earlySignal: Boolean(message.earlySignal),

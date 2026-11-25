@@ -153,13 +153,14 @@ Rules:
 Return Markdown with exactly these sections in this order:
 **Bottom line**
 **What we know**
-**Most likely path (next 24-72h)**
+**Most likely path (next <window>)**
 **Alternative paths**
 **Key drivers**
 **Signals to watch**
 **Confidence**
 
 Formatting rules:
+- In the "Most likely path" heading, replace <window> with the time window the question asks about (for example 24 hours or 2 weeks), or 24-72h if it names none.
 - Use short bullets under each section where useful.
 - In "Alternative paths", include 2 alternatives with rough likelihood bands.
 - In "Confidence", state High, Medium, or Low and explain why.
