@@ -2,7 +2,7 @@
 
 import ExcelJS from 'exceljs';
 import { unzipSync, strFromU8 } from 'fflate';
-import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, writeExtraKey, getSharedFxRates, SHARED_FX_FALLBACKS, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -229,6 +229,8 @@ async function fetchSpain() {
   }
 }
 
+const CRE_SOURCE = 'cre.gob.mx';
+
 // MX: datos.gob.mx/v2 went unresponsive in 2026 — IPv4 connect hangs forever
 // even from residential IPs. Switched to CRE's publicacionexterna XML feed,
 // which publishes daily station-level prices (regular/premium/diesel in MXN/L).
@@ -251,8 +253,8 @@ async function fetchMexico() {
     console.log(`  [MX] Regular=${avgRegular} MXN/L (${regular.length}), Diesel=${avgDiesel} MXN/L (${diesel.length})`);
     return [{
       code: 'MX', name: 'Mexico', currency: 'MXN', flag: '🇲🇽',
-      gasoline: avgRegular != null ? { localPrice: avgRegular, grade: 'Regular', source: 'cre.gob.mx' } : null,
-      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel', source: 'cre.gob.mx' } : null,
+      gasoline: avgRegular != null ? { localPrice: avgRegular, grade: 'Regular', source: CRE_SOURCE } : null,
+      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel', source: CRE_SOURCE } : null,
     }];
   } catch (err) {
     console.warn(`  [MX] fetchMexico error: ${err.message}`);
@@ -1046,7 +1048,7 @@ export function mergeFuelCountry(countryMap, entry, fxRates) {
   return validEntry;
 }
 
-async function main() {
+async function collectFuelPrices() {
 const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
 
 const fxSymbols = {};
@@ -1193,7 +1195,7 @@ else if (!allSourcesFresh) console.warn(`  [FRESHNESS] Tolerated failures this r
 console.log(`  Cheapest gasoline: ${cheapestGasoline}, Cheapest diesel: ${cheapestDiesel}`);
 console.log(`  Most expensive gasoline: ${mostExpensiveGasoline}, Most expensive diesel: ${mostExpensiveDiesel}`);
 
-const data = {
+return {
   countries,
   fetchedAt: new Date().toISOString(),
   cheapestGasoline,
@@ -1208,56 +1210,58 @@ const data = {
   countryCount: countries.length,
   allSourcesFresh,
 };
+}
 
-// Rotate :prev when no untolerated source failed. Tolerated-only failures
-// (e.g. Brazil ANP unreachable) drop those countries from the published
-// snapshot entirely, so rotating is safe — next week has no prev entry to
-// compare against, so no false ~0% WoW. Blocking failures (untolerated)
-// still freeze :prev to preserve WoW integrity, since the panel would
-// otherwise compare fresh-this-week to stale-carried-last-week = ~0%.
-const rotatePrev = !publishBlocking;
-if (!rotatePrev) console.warn(`  [:prev] Skipping rotation — WoW integrity preserved for next run`);
+async function main() {
+  const declareRecords = data => data.countries.length;
+  const source = { sourceVersion: 'multi-source-fuel-prices-v1', schemaVersion: 1 };
 
-const declareRecords = (d) => d?.countries?.length || 0;
-
-await runSeed('economic', 'fuel-prices', CANONICAL_KEY, async () => data, {
-  ttlSeconds: CACHE_TTL,
-  async beforePublish() {
-    const mexico = countryMap.get('MX');
-    if (!mexico) return;
-    // Read the latest published averages under the seed lock. The WoW key
-    // can lag behind a successful publish and cannot track successive changes.
-    const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true });
-    const previousMexico = previous?.countries?.find(country => country.code === 'MX');
-    const now = Date.parse(data.fetchedAt);
-    if (Date.parse(previous?.fetchedAt) > now) {
-      throw new Error('A newer fuel-price snapshot has already been published');
-    }
-    const today = data.fetchedAt.slice(0, 10);
-    for (const grade of ['gasoline', 'diesel']) {
-      const fuel = mexico[grade];
-      if (!fuel) continue;
-      const prior = previousMexico?.[grade];
-      // CRE supplies no date. Start at first sight and advance only when this
-      // grade's published MXN average changes.
-      fuel.observedAt = prior?.source === fuel.source && prior.localPrice === fuel.localPrice
-        && fuelDateIsFresh(prior.observedAt, Infinity, now) ? prior.observedAt : today;
-    }
-  },
-  validateFn: validateFuel,
-  emptyDataIsFailure: true,
-  recordCount: (d) => d?.countries?.length || 0,
-  declareRecords,
-  sourceVersion: 'multi-source-fuel-prices-v1',
-  schemaVersion: 1,
-  maxStaleMin: 10080,
-  extraKeys: (wowAvailable && rotatePrev) ? [{
-    key: `${CANONICAL_KEY}:prev`,
-    transform: () => data,
-    ttl: CACHE_TTL * 2,
+  await runSeed('economic', 'fuel-prices', CANONICAL_KEY, collectFuelPrices, {
+    ttlSeconds: CACHE_TTL,
+    async beforePublish(data) {
+      const mexico = data.countries.find(country => country.code === 'MX');
+      if (!mexico) return;
+      // The canonical snapshot contains the last published average. The WoW
+      // snapshot can lag it when runs publish less than six days apart.
+      const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true });
+      const previousMexico = previous?.countries?.find(country => country.code === 'MX');
+      const now = Date.parse(data.fetchedAt);
+      if (Date.parse(previous?.fetchedAt) > now) {
+        throw new Error('A newer fuel-price snapshot has already been published');
+      }
+      const today = data.fetchedAt.slice(0, 10);
+      for (const grade of ['gasoline', 'diesel']) {
+        const fuel = mexico[grade];
+        const prior = previousMexico?.[grade] ?? previous?.mexicoMissingGrades?.[grade];
+        const hasBaseline = prior?.source === CRE_SOURCE && Number.isFinite(prior.localPrice)
+          && fuelDateIsFresh(prior.observedAt, Infinity, now);
+        if (fuel) {
+          fuel.observedAt = hasBaseline && prior.localPrice === fuel.localPrice ? prior.observedAt : today;
+        } else if (hasBaseline) {
+          // Keep the baseline in the same atomic snapshot while the public grade is null.
+          data.mexicoMissingGrades ??= {};
+          data.mexicoMissingGrades[grade] = {
+            localPrice: prior.localPrice, observedAt: prior.observedAt, source: prior.source,
+          };
+        }
+      }
+    },
+    validateFn: validateFuel,
+    emptyDataIsFailure: true,
+    recordCount: declareRecords,
     declareRecords,
-  }] : [],
-});
+    ...source,
+    maxStaleMin: 10080,
+    async afterPublish(data, { recordCount, lockFence }) {
+      if (!data.wowAvailable) return;
+      await writeExtraKey(`${CANONICAL_KEY}:prev`, data, CACHE_TTL * 2, {
+        ...source,
+        fetchedAt: Date.parse(data.fetchedAt),
+        recordCount,
+        state: 'OK',
+      }, { lockFence });
+    },
+  });
 }
 
 if (process.argv[1]?.endsWith('seed-fuel-prices.mjs')) {

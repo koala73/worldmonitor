@@ -26,11 +26,11 @@ async function fuelDateBulletin() {
   return Buffer.from(await workbook.xlsx.writeBuffer()).toString('base64');
 }
 
-function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek = null, regular = 24, mxn = 0.05, expectedFailure }) {
+function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek = null, regular = 24, diesel = 26, mxn = 0.05, lockBusy = false, expectedFailure }) {
   const fx = Object.fromEntries(FUEL_FX_CURRENCIES.map(ccy => [ccy, SHARED_FX_FALLBACKS[ccy] ?? 1]));
   const preload = `
     import { mock } from 'node:test';
-    const { now, bulletin, spain, previous, previousWeek, regular, fx, priorReadFails } = JSON.parse(process.env.FUEL_DATE_FIXTURE);
+    const { now, bulletin, spain, previous, previousWeek, regular, diesel, fx, lockBusy, priorReadFails } = JSON.parse(process.env.FUEL_DATE_FIXTURE);
     mock.timers.enable({ apis: ['Date'], now: Date.parse(now) });
     const key = 'economic:fuel-prices:v1';
     globalThis.fetch = async (input, init) => {
@@ -47,10 +47,13 @@ function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek =
           const command = JSON.parse(init.body);
           if (url.pathname === '/pipeline') return Response.json(command.map(() => ({ result: 1 })));
           const [op, script, keys, , target, , , payload] = command;
-          if (op === 'SET') return Response.json({ result: 'OK' });
+          if (op === 'SET') {
+            return Response.json({ result: lockBusy && script === 'seed-lock:economic:fuel-prices' ? null : 'OK' });
+          }
           if (op === 'DEL' || (op === 'EVAL' && script.includes("redis.call('DEL'"))) return Response.json({ result: 1 });
           if (op === 'EVAL' && script.includes('PEXPIRE')) {
             if (keys === 2 && target === key) console.log('FUEL_SNAPSHOT=' + payload);
+            if (keys === 2 && target === key + ':prev') console.log('FUEL_WOW_BASELINE=' + payload);
             return Response.json({ result: [1, ''] });
           }
           throw new Error('Unexpected Redis command ' + op);
@@ -65,10 +68,12 @@ function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek =
         case 'uk-fuel.invalid': return new Response('Date,Petrol,Diesel\\n24/11/2026,140,150');
         case 'energy.ec.europa.eu': return new Response(Buffer.from(bulletin, 'base64'));
         case 'sedeaplicaciones.minetur.gob.es': return Response.json(spain);
-        case 'publicacionexterna.azurewebsites.net': return new Response(
-          '<places><place place_id="1"><gas_price type="regular">' + regular
-          + '</gas_price><gas_price type="diesel">26</gas_price></place></places>',
-        );
+        case 'publicacionexterna.azurewebsites.net': {
+          console.log('CRE_FIXTURE_FETCHED');
+          const dieselRow = diesel == null ? '' : '<gas_price type="diesel">' + diesel + '</gas_price>';
+          return new Response('<places><place place_id="1"><gas_price type="regular">' + regular
+            + '</gas_price>' + dieselRow + '</place></places>');
+        }
         case 'www.gov.br':
         case 'www.comcom.govt.nz': return new Response('');
         case 'data.ssb.no':
@@ -85,7 +90,7 @@ function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek =
       UPSTASH_REDIS_REST_URL: 'https://fuel-redis.invalid',
       UPSTASH_REDIS_REST_TOKEN: 'fixture',
       EIA_API_KEY: 'fixture',
-      FUEL_DATE_FIXTURE: JSON.stringify({ now, bulletin, spain, previous, previousWeek, regular,
+      FUEL_DATE_FIXTURE: JSON.stringify({ now, bulletin, spain, previous, previousWeek, regular, diesel, lockBusy,
         priorReadFails: expectedFailure === 'Redis snapshot read failed: HTTP 403',
         fx: { ...fx, ISK: 0, MXN: mxn, fallbackCurrencies: [] } }),
     },
@@ -101,8 +106,22 @@ function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek =
     return;
   }
   assert.equal(child.status, 0, log);
+  if (lockBusy) {
+    assert.match(log, /another seed run in progress/);
+    assert.doesNotMatch(log, /CRE_FIXTURE_FETCHED/);
+    assert.equal(payload, undefined);
+    return;
+  }
   assert.ok(payload, child.stdout + child.stderr);
-  return JSON.parse(payload);
+  const snapshot = JSON.parse(payload);
+  const wowBaseline = child.stdout.match(/^FUEL_WOW_BASELINE=(.+)$/m)?.[1];
+  if (snapshot.data.wowAvailable) {
+    assert.ok(wowBaseline, log);
+    assert.deepEqual(JSON.parse(wowBaseline).data, snapshot.data);
+  } else {
+    assert.equal(wowBaseline, undefined);
+  }
+  return snapshot;
 }
 
 test('published Spain prices use the Minetur date and the EU date when Fecha is invalid or old', async () => {
@@ -147,6 +166,28 @@ test('published Mexico dates advance only for the grade whose local average chan
     expectedFailure: 'Redis snapshot read failed: HTTP 403' });
   runFuelDateSeed({ now: '2026-12-02', bulletin, spain, previous: later,
     expectedFailure: 'A newer fuel-price snapshot has already been published' });
+});
+
+test('a concurrent fuel seed skips CRE sampling while the publishing lock is held', async () => {
+  const bulletin = await fuelDateBulletin();
+  const spain = fuelFixture('minetur-stations');
+  runFuelDateSeed({ now: '2026-11-26', bulletin, spain, lockBusy: true });
+});
+
+test('Mexico hides a missing grade and recovers its date when the same grade price returns', async () => {
+  const bulletin = await fuelDateBulletin();
+  const spain = fuelFixture('minetur-stations');
+  const first = runFuelDateSeed({ now: '2026-11-26', bulletin, spain });
+  const partial = runFuelDateSeed({ now: '2026-12-03', bulletin, spain, previous: first, diesel: null, regular: 25 });
+  const mexico = partial.data.countries.find(c => c.code === 'MX');
+  assert.equal(mexico.diesel, null);
+  assert.equal(mexico.gasoline.observedAt, '2026-12-03');
+
+  const repeat = runFuelDateSeed({ now: '2026-12-10', bulletin, spain, previous: partial, diesel: null, regular: 25 });
+  const recovered = runFuelDateSeed({ now: '2026-12-17', bulletin, spain, previous: repeat, regular: 25 })
+    .data.countries.find(c => c.code === 'MX');
+  assert.equal(recovered.diesel.observedAt, '2026-11-26');
+  assert.equal(recovered.gasoline.observedAt, '2026-12-03');
 });
 
 test('SSB fixture selects latest monthly petrol/diesel by product and preserves NOK and month', () => {
