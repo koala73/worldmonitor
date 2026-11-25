@@ -104,7 +104,7 @@ function renderEntry(e: EarningsEntry): string {
         ${hourLabel ? `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 5px;border-radius:3px;${hourStyle};letter-spacing:0.04em">${escapeHtml(hourLabel)}</span>` : ''}
       </div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(e.company)}</div>
+        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(e.company)}">${escapeHtml(e.company)}</div>
         ${e.company === e.symbol ? '' : `<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);letter-spacing:0.04em">${escapeHtml(e.symbol)}</div>`}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">
