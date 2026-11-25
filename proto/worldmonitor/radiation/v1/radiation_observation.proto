@@ -45,8 +45,9 @@ message RadiationObservation {
   // Current reading minus rolling baseline in nSv/h.
   double delta = 11;
 
-  // Standard deviation distance from the rolling baseline.
-  double z_score = 12;
+  // Standard deviation distance from the rolling baseline. Absent when the
+  // baseline has too few samples or zero variance to standardize against.
+  optional double z_score = 12;
 
   // Interpreted anomaly severity for the current reading.
   RadiationSeverity severity = 13;

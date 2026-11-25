@@ -60355,7 +60355,9 @@ components:
                 zScore:
                     type: number
                     format: double
-                    description: Standard deviation distance from the rolling baseline.
+                    description: |-
+                        Standard deviation distance from the rolling baseline. Absent when the
+                         baseline has too few samples or zero variance to standardize against.
                 severity:
                     type: string
                     enum:
