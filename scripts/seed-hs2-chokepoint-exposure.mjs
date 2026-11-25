@@ -11,7 +11,7 @@ import {
   logSeedResult,
   releaseLock,
 } from './_seed-utils.mjs';
-import { bilateralTransitShares } from './shared/bilateral-chokepoint-transit.mjs';
+import { bilateralTransitShares, hasModeledSeaRoute } from './shared/bilateral-chokepoint-transit.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -118,16 +118,21 @@ export function computeFlowWeightedExposures(importerIso2, hs2, products) {
   const cpScores = new Map();
   for (const cp of CHOKEPOINT_REGISTRY) cpScores.set(cp.id, 0);
 
+  let modeled = false;
   for (const product of matchingProducts) {
     const productWeight = totalSectorValue > 0 ? product.totalValue / totalSectorValue : 0;
 
     for (const exporter of product.topExporters) {
       if (!exporter.partnerIso2) continue;
+      if (hasModeledSeaRoute(importerIso2, exporter.partnerIso2, TRANSIT_CONTEXT.clusters)) modeled = true;
       for (const [cpId, fraction] of bilateralTransitShares(importerIso2, exporter.partnerIso2, TRANSIT_CONTEXT)) {
         cpScores.set(cpId, (cpScores.get(cpId) ?? 0) + fraction * exporter.share * productWeight * 100);
       }
     }
   }
+
+  // No supplier pair has a modeled sea route, so zero would be unevaluated rather than measured.
+  if (!modeled) return [];
 
   const entries = CHOKEPOINT_REGISTRY.map(cp => {
     let score = cpScores.get(cp.id) ?? 0;
@@ -316,8 +321,7 @@ export async function main() {
 
         if (comtradeProducts && comtradeProducts.length > 0) {
           const exposures = computeFlowWeightedExposures(iso2, hs2, comtradeProducts);
-          // Landlocked importers have no modeled bilateral sea route; all-zero there means unevaluated.
-          if (exposures.length > 0 && (cluster.coastSide !== 'landlocked' || exposures.some(e => e.exposureScore > 0))) {
+          if (exposures.length > 0) {
             const coastSide = cluster.coastSide ?? '';
             exposures[0] = { ...exposures[0], coastSide };
             result = {

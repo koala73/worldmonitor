@@ -1,7 +1,7 @@
 import { CHOKEPOINT_REGISTRY } from '../../../../src/config/chokepoint-registry';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
 import COUNTRY_REGIONS from '../../../../scripts/shared/iso2-to-region.json';
-import { bilateralTransitShares } from '../../../../scripts/shared/bilateral-chokepoint-transit.mjs';
+import { bilateralTransitShares, hasModeledSeaRoute } from '../../../../scripts/shared/bilateral-chokepoint-transit.mjs';
 
 interface PortClusterEntry {
   nearestRouteIds: string[];
@@ -66,16 +66,21 @@ export function computeFlowWeightedExposures(
   const cpScores = new Map<string, number>();
   for (const cp of CHOKEPOINT_REGISTRY) cpScores.set(cp.id, 0);
 
+  let modeled = false;
   for (const product of matchingProducts) {
     const productWeight = totalSectorValue > 0 ? product.totalValue / totalSectorValue : 0;
 
     for (const exporter of product.topExporters) {
       if (!exporter.partnerIso2) continue;
+      if (hasModeledSeaRoute(importerIso2, exporter.partnerIso2, transitContext.clusters)) modeled = true;
       for (const [cpId, fraction] of bilateralTransitShares(importerIso2, exporter.partnerIso2, transitContext)) {
         cpScores.set(cpId, (cpScores.get(cpId) ?? 0) + fraction * exporter.share * productWeight * 100);
       }
     }
   }
+
+  // No supplier pair has a modeled sea route, so zero would be unevaluated rather than measured.
+  if (!modeled) return [];
 
   const entries: ExposureEntry[] = CHOKEPOINT_REGISTRY.map(cp => {
     let score = cpScores.get(cp.id) ?? 0;

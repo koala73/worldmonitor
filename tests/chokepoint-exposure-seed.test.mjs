@@ -189,6 +189,11 @@ describe('bilateral chokepoint transit', () => {
     assert.equal(hormuzScore('US', '27', product('2709', [['SA', 0.3], ['CA', 0.7]])), 45, 'Saudi crude to the US');
   });
 
+  it('leaves trade with only landlocked suppliers unevaluated instead of scoring it zero', () => {
+    assert.deepEqual(computeFlowWeightedExposures('JP', '26', product('2603', [['MN', 1]])), []);
+    assert.ok(computeFlowWeightedExposures('JP', '26', product('2603', [['MN', 0.5], ['AU', 0.5]])).length > 0);
+  });
+
   it('splits a supplier share across alternative corridors instead of crediting each in full', () => {
     const exposures = computeFlowWeightedExposures('US', '85', product('8542', [['CN', 1]]));
     const score = id => exposures.find(e => e.chokepointId === id).exposureScore;

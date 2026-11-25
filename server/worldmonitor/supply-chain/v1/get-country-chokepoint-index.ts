@@ -96,8 +96,7 @@ export async function getCountryChokepointIndex(
       exposures = computeFallbackExposures(getRouteIdsForCountry(iso2), hs2);
     }
 
-    const unevaluated = getCoastSide(iso2) === 'landlocked' && exposures.every((e) => e.exposureScore === 0);
-    if (exposures.length === 0 || unevaluated) {
+    if (exposures.length === 0) {
       exposures = computeFallbackExposures(getRouteIdsForCountry(iso2), hs2);
     }
 

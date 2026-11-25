@@ -50,6 +50,14 @@ function clusterFor(clusters, iso2) {
   return entry && typeof entry === 'object' && Array.isArray(entry.nearestRouteIds) ? entry : null;
 }
 
+/** Whether the pair has a modeled port-to-port sea route; landlocked or unclustered partners do not. */
+export function hasModeledSeaRoute(importerIso2, exporterIso2, clusters) {
+  const importer = clusterFor(clusters, importerIso2);
+  const exporter = clusterFor(clusters, exporterIso2);
+  return Boolean(importer && exporter && importerIso2 !== exporterIso2
+    && importer.coastSide !== 'landlocked' && exporter.coastSide !== 'landlocked');
+}
+
 /**
  * @param {string} importerIso2
  * @param {string} exporterIso2
@@ -62,10 +70,9 @@ function clusterFor(clusters, iso2) {
  */
 export function bilateralTransitShares(importerIso2, exporterIso2, { clusters, regions, chokepoints }) {
   const crossed = new Map();
+  if (!hasModeledSeaRoute(importerIso2, exporterIso2, clusters)) return crossed;
   const importer = clusterFor(clusters, importerIso2);
   const exporter = clusterFor(clusters, exporterIso2);
-  if (!importer || !exporter || importerIso2 === exporterIso2) return crossed;
-  if (importer.coastSide === 'landlocked' || exporter.coastSide === 'landlocked') return crossed;
 
   const importerRegion = regions[importerIso2];
   const exporterRegion = regions[exporterIso2];
