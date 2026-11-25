@@ -96,6 +96,9 @@ describe('macro tiles annual CPI, rate deltas and Euro Area labels', () => {
     // Oct 2026 337.476 vs Oct 2025 324.8 = 3.9%; Sep 2026 336.9 vs Sep 2025 324.245 = 3.9%.
     expect(text()).toContain('Consumer price inflation (annual) 3.9%');
     expect(text()).toContain('3.9% 0.00 pp vs prior 2026-10-01');
+    const change = document.querySelector('.macro-summary-card .macro-summary-change');
+    expect(change?.textContent).toBe('0.00 pp vs prior');
+    expect(change?.classList.contains('neutral')).toBe(true);
   });
 
   it('shows rate changes in percentage points with no signed zero', async () => {
