@@ -343,7 +343,6 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['cp24.com', 'CP24'],
   ['ctvnews.ca', 'CTV News'],
   ['dlnews.com', 'DL News'],
-  ['euromaidanpress.com', 'Euromaidan Press'],
   ['focustaiwan.tw', 'Focus Taiwan'],
   ['gmfus.org', 'German Marshall Fund'],
   ['hiiraan.com', 'Hiiraan Online'],

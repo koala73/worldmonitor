@@ -4895,8 +4895,7 @@
     "country": "UA",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "nonprofit",
-    "note": "Feed actually ingests euromaidanpress.com (Euromaidan Press, NGO-run), not Ukrainska Pravda."
+    "ownershipClass": "private"
   },
   "Ukrinform": {
     "country": "UA",
