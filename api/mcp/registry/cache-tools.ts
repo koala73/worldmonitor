@@ -2407,7 +2407,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           // Up to three ISO country codes per entity (scripts/seed-sanctions-pressure.mjs).
           name: { type: 'string' }, cc: { type: 'array', items: { type: 'string' } }, et: { type: 'string' },
           id: { type: 'string' }, pr: { type: 'array', items: { type: 'string' } },
-          al: { type: 'array', maxItems: 10, items: { type: 'string' } },
+          al: { type: 'array', maxItems: 20, items: { type: 'string' } },
           ids: { type: 'array', items: { type: 'string' } }, sl: { type: 'array', items: { type: 'string' } },
           score: { type: 'number', minimum: 0, maximum: 100 },
           matched_on: { enum: ['name', 'alias', 'identifier'] }, matched_text: { type: 'string' },
