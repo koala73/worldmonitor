@@ -61,23 +61,25 @@ function badgeChip(badge: string | undefined): string {
   return `<span class="sf-badge" style="background:${color}">${escapeHtml(badgeLabel(safe))}</span>`;
 }
 
-interface EvidenceAge { date: string; stale: boolean }
+interface EvidenceAge { date: string; staleNote: string | null }
 
 function evidenceAge(f: StorageFacilityEntry): EvidenceAge {
   const iso = f.evidence?.lastEvidenceUpdate;
   const t = iso ? Date.parse(iso) : Number.NaN;
+  const dated = !Number.isNaN(t);
+  const stale = isStorageEvidenceStale(iso);
   return {
-    date: Number.isNaN(t) ? 'date unknown' : new Date(t).toISOString().slice(0, 10),
-    stale: isStorageEvidenceStale(iso),
+    date: dated ? new Date(t).toISOString().slice(0, 10) : 'date unknown',
+    staleNote: !stale ? null : dated
+      ? `older than ${STORAGE_EVIDENCE_STALENESS_DAYS} days, status may have changed`
+      : 'evidence date unknown, status may have changed',
   };
 }
 
-const STALE_EVIDENCE_NOTE = `older than ${STORAGE_EVIDENCE_STALENESS_DAYS} days, status may have changed`;
-
 function evidenceAgeLine(f: StorageFacilityEntry): string {
-  const { date, stale } = evidenceAge(f);
-  return stale
-    ? `<div class="sf-sub sf-ev-age sf-ev-stale" title="Evidence ${escapeHtml(STALE_EVIDENCE_NOTE)}">Evidence <span class="sf-val">${escapeHtml(date)}</span> · stale</div>`
+  const { date, staleNote } = evidenceAge(f);
+  return staleNote
+    ? `<div class="sf-sub sf-ev-age sf-ev-stale" title="Stale: ${escapeHtml(staleNote)}">Evidence <span class="sf-val">${escapeHtml(date)}</span> · stale</div>`
     : `<div class="sf-sub sf-ev-age">Evidence <span class="sf-val">${escapeHtml(date)}</span></div>`;
 }
 
@@ -555,7 +557,7 @@ export class StorageFacilityMapPanel extends Panel {
             <strong>Physical state:</strong> ${escapeHtml(ev?.physicalState || 'unknown')}
             (source: ${escapeHtml(ev?.physicalStateSource || 'unknown')})
           </div>
-          <div class="sf-ev-item${age.stale ? ' sf-ev-stale' : ''}"><strong>Evidence as of:</strong> ${escapeHtml(age.date)}${age.stale ? ` · stale (${escapeHtml(STALE_EVIDENCE_NOTE)})` : ''}</div>
+          <div class="sf-ev-item${age.staleNote ? ' sf-ev-stale' : ''}"><strong>Evidence as of:</strong> ${escapeHtml(age.date)}${age.staleNote ? ` · stale (${escapeHtml(age.staleNote)})` : ''}</div>
           <div class="sf-ev-item"><strong>Commercial:</strong> ${escapeHtml(ev?.commercialState || 'unknown')}</div>
           ${fillLine}
           ${operatorStatement}

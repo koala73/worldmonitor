@@ -73,4 +73,15 @@ describe('Storage atlas evidence age', () => {
     expect(drawer).toContain('Evidence as of: 2026-11-20');
     expect(drawer).not.toContain('stale');
   });
+
+  it('says the evidence date is unknown instead of claiming an age when the date is missing', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-25T00:00:00Z'));
+    const undated = facility('undated-lng', 'Undated LNG', '');
+
+    const drawer = (await present(undated, [undated])).querySelector('.sf-drawer')?.textContent?.replace(/\s+/g, ' ') ?? '';
+
+    expect(drawer).toContain('Evidence as of: date unknown · stale (evidence date unknown, status may have changed)');
+    expect(drawer).not.toContain('older than');
+  });
 });
