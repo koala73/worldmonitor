@@ -16,8 +16,8 @@ name: Panel Content Review
 # checked-out credentials, agent-browser as its only shell command behind scripts/dogfood/browser-guard.mjs, file
 # access only in its output directory, and the browser as a separate user with an empty environment.
 #
-# With DOGFOOD_PRO_KEY set (an enterprise key from WORLDMONITOR_VALID_KEYS kept for this run, so it can be revoked
-# alone), run-agent.sh gives the browser a Pro session before the agent starts: the key goes in as an HttpOnly
+# With the WORLDMONITOR_API_KEY secret set (the key the pulse and resilience refreshes already use),
+# run-agent.sh gives the browser a Pro session before the agent starts: the key goes in as an HttpOnly
 # cookie on the API host, which page JavaScript cannot read, and is dropped from the environment the agent
 # inherits. The guard then also refuses everything that runs JavaScript the agent chose, network mocking, the
 # debugging-port URL and any URL off worldmonitor.app hosts, because a page on the browser's debugging port could
@@ -42,7 +42,7 @@ on:
         default: '4'
         type: string
       pro_session:
-        description: 'Give the agents a Pro session (needs the DOGFOOD_PRO_KEY secret)'
+        description: 'Give the agents a Pro session (needs the WORLDMONITOR_API_KEY secret)'
         required: false
         default: true
         type: boolean
@@ -167,7 +167,7 @@ jobs:
         continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          DOGFOOD_PRO_KEY: ${{ inputs.pro_session && secrets.DOGFOOD_PRO_KEY || '' }}
+          DOGFOOD_PRO_KEY: ${{ inputs.pro_session && secrets.WORLDMONITOR_API_KEY || '' }}
           PRO_SESSION: ${{ inputs.pro_session }}
           TARGET_URL: ${{ matrix.target }}
           DOGFOOD_PANELS: ${{ matrix.panels }}
@@ -180,7 +180,7 @@ jobs:
             exit 1
           fi
           if [ "$PRO_SESSION" = true ] && [ -z "${DOGFOOD_PRO_KEY:-}" ]; then
-            echo "::warning::DOGFOOD_PRO_KEY is not set, so Pro panels are checked as an anonymous visitor and report as locked."
+            echo "::warning::WORLDMONITOR_API_KEY is not set, so Pro panels are checked as an anonymous visitor and report as locked."
           fi
           bash scripts/dogfood/run-agent.sh
 
