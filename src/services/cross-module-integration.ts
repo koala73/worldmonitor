@@ -5,7 +5,7 @@ import { getLatestRadiationWatch, type RadiationObservation } from './radiation'
 import type { CascadeImpactLevel } from '@/types';
 import { isInLearningMode } from './country-instability';
 import { getCachedCountryScores, isElevatedCiiScore } from './cached-risk-scores';
-import { getCountryNearCoordinates, getCountryNameByCode } from './country-geometry';
+import { getCountryAtCoordinates, getCountryNearCoordinates, getCountryNameByCode } from './country-geometry';
 import { t } from '@/services/i18n';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import { detectCiiScoreChanges } from './cii-score-changes';
@@ -500,6 +500,11 @@ function addAndMergeAlert(alert: UnifiedAlert): UnifiedAlert {
   if (alerts.length > 50) alerts.pop();
   document.dispatchEvent(new CustomEvent('wm:intelligence-updated'));
   return alert;
+}
+
+function getCountriesAtLocation(lat: number, lon: number): string[] {
+  const country = getCountryAtCoordinates(lat, lon);
+  return country ? [country.code] : [];
 }
 
 export function checkCIIChanges(): UnifiedAlert[] {
