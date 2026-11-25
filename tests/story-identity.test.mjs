@@ -175,14 +175,18 @@ describe('clusterTexts', () => {
       'Australia, Solomon Islands sign security pact in blow to China - Reuters',
       'Australia’s security pact with Solomon Islands a blow to China’s influence in the Pacific - The Guardian',
       'Solomon Islands ends controversial security pact with China for Australian treaty',
+      'Australia, Solomon Islands sign sweeping pact stymieing China - Bangkok Post',
       'Solomon Islands opposition leader calls for snap election',
+      'Australia and Solomon Islands hold joint naval security drill as China watches',
       'Iran and Saudi Arabia restore ties in China-brokered deal',
       'Iran fires missiles at Saudi Arabia oil site near China-run port',
     ];
     const clusters = clusterTexts(texts);
-    assert.ok(clusters.some((c) => [0, 1, 2, 3].every((i) => c.includes(i))), 'the four treaty reports share a cluster');
-    assert.ok(clusters.some((c) => c.length === 1 && c[0] === 4), 'another Solomon Islands story stays apart');
-    assert.ok(!clusters.some((c) => c.includes(5) && c.includes(6)), 'same parties, different events stay apart');
+    const treaty = clusters.find((c) => c.includes(0));
+    assert.deepEqual(treaty, [0, 1, 2, 3, 4], 'the five treaty reports share a cluster');
+    assert.ok(clusters.some((c) => c.length === 1 && c[0] === 5), 'another Solomon Islands story stays apart');
+    assert.ok(clusters.some((c) => c.length === 1 && c[0] === 6), 'a drill by the same parties stays apart');
+    assert.ok(!clusters.some((c) => c.includes(7) && c.includes(8)), 'same parties, different events stay apart');
   });
 
   it('is deterministic and order-stable for a fixed input', () => {

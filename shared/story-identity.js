@@ -303,9 +303,8 @@ function contentTokens(text) {
   const clamped = stripAttributionSuffix(text).slice(0, MAX_IDENTITY_CHARS);
   for (const raw of clamped.split(/\s+/)) {
     // Strip everything that is not a Unicode letter/number, keeping the
-    // original case so the entity heuristic can read it. A possessive
-    // suffix goes first so "Australia’s" and "Australia" are one token.
-    const clean = raw.replace(/['\u2018\u2019\u02BC]s(?=[^\p{L}\p{N}]*$)/iu, '').replace(/[^\p{L}\p{N}]/gu, '');
+    // original case so the entity heuristic can read it.
+    const clean = raw.replace(/[^\p{L}\p{N}]/gu, '');
     if (!clean) continue;
     const tok = clean.toLowerCase();
     if (!isNonAscii(tok) && tok.length < 3) continue;
@@ -480,11 +479,14 @@ const CONTAINMENT_RESCUE_SCORE = 0.9;
 // Same-parties rescue: reworded wire reports of one event ("Australia,
 // Solomon Islands sign security pact in blow to China" vs "Solomon
 // Islands ends controversial security pact with China for Australian
-// treaty") share few words but name the same ≥4 entity tokens. When the
-// cosine is already moderate and they also share a non-entity topic word,
-// they are the same story. "Australian" matches "Australia" by prefix.
+// treaty") share few words but name the same parties. When one title's
+// ≥4 entity tokens all appear in the other, they share ≥2 non-entity
+// topic words, and the cosine is already moderate, they are the same
+// story. Entity tokens match by prefix, so "Australian" and "Australia’s"
+// match "Australia".
 const SAME_PARTIES_MIN_ENTITIES = 4;
-const SAME_PARTIES_SCORE_FLOOR = 0.45;
+const SAME_PARTIES_SCORE_FLOOR = 0.43;
+const SAME_PARTIES_MIN_TOPIC_TOKENS = 2;
 
 /** @param {Set<string>} from @param {Set<string>} to */
 function entitiesCovered(from, to) {
@@ -504,12 +506,13 @@ function entitiesCovered(from, to) {
 
 /** @param {{ t: Set<string>; e: Set<string> }} a @param {{ t: Set<string>; e: Set<string> }} b */
 function sameParties(a, b) {
-  if (a.e.size < SAME_PARTIES_MIN_ENTITIES || b.e.size < SAME_PARTIES_MIN_ENTITIES) return false;
-  if (!entitiesCovered(a.e, b.e) || !entitiesCovered(b.e, a.e)) return false;
+  const [fewer, more] = a.e.size <= b.e.size ? [a.e, b.e] : [b.e, a.e];
+  if (fewer.size < SAME_PARTIES_MIN_ENTITIES || !entitiesCovered(fewer, more)) return false;
+  let sharedTopicTokens = 0;
   for (const tok of a.t) {
-    if (b.t.has(tok) && !a.e.has(tok) && !b.e.has(tok) && !CANDIDATE_STOPWORDS.has(tok)) return true;
+    if (b.t.has(tok) && !a.e.has(tok) && !b.e.has(tok) && !CANDIDATE_STOPWORDS.has(tok)) sharedTopicTokens++;
   }
-  return false;
+  return sharedTopicTokens >= SAME_PARTIES_MIN_TOPIC_TOKENS;
 }
 
 export function cosineSimilarity(a, b) {
