@@ -59,8 +59,9 @@ export const CLIMATE_NEWS_MAX_CONTENT_AGE_MIN = 7 * 24 * 60;
 // carries 2021-2022 articles that would otherwise fill the 100-item cap.
 export const CLIMATE_NEWS_MAX_ITEM_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
-// French "mars" is the month ("24 mars 2027", "bilan de mars"), not the planet.
-const OFF_EARTH_RE = /\b(?:(?<!\b(?:\d{1,2}|de|du|en|fin|début|mi)[\s-]?)mars(?!\s+(?:19|20)\d{2})|martian|rover|exoplanets?|jupiter|saturn|venus)\b/i;
+const OFF_EARTH_RE = /\b(martian|rover|exoplanets?|jupiter|saturn|venus)\b/i;
+// Case-sensitive: the planet is "Mars"; French "mars" (March) is lowercase.
+const MARS_RE = /\bMars\b/;
 
 // Applied to feeds whose scope is wider than climate (ReliefWeb's climate
 // theme also tags generic humanitarian bulletins and AI-policy reports).
@@ -79,7 +80,7 @@ export function resolveReliefWebUrl(urlAlias) {
 // topic evidence but are not part of the published item.
 export function isClimateNewsItemRelevant(item, { requireTopicMatch = false } = {}) {
   const text = `${item?.title || ''} ${item?.summary || ''}`;
-  if (OFF_EARTH_RE.test(text)) return false;
+  if (OFF_EARTH_RE.test(text) || MARS_RE.test(text)) return false;
   return !requireTopicMatch || CLIMATE_TOPIC_RE.test(`${text} ${(item?.topics || []).join(' ')}`);
 }
 
