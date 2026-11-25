@@ -61,12 +61,15 @@ export function extractLocationFromTitle(title) {
     const last = segments[segments.length - 1].trim();
     if (/^[A-Z]/.test(last)) return last;
   }
-  // Fallback: "... in <Country>". Only a country counts: "Increases in Recent
-  // Animal Rabies Activity" is not a place.
+  // Fallback: "... in <Place>". Only a country or known place counts:
+  // "Increases in Recent Animal Rabies Activity" is not a place.
   const inMatch = title.match(/\bin\s+([A-Z][^,.(]+)/);
-  if (inMatch && extractCountryCodeFull(inMatch[1])) return inMatch[1].trim();
+  const named = inMatch?.[1].trim() ?? '';
+  if (named && (extractCountryCodeFull(named) || named.split(/\s+and\s+/).every((p) => KNOWN_PLACE_NAMES.has(p)))) return named;
   return '';
 }
+
+const KNOWN_PLACE_NAMES = new Set(Object.values(outbreakPlaces).flat().map(([name]) => name));
 
 // WHO DON also titles reports "Disease, Location" ("Hantavirus outbreak linked
 // to cruise ship travel, Multi-locations") or "Disease- Location".
