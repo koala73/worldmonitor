@@ -158,9 +158,11 @@ export default async function handler(
   }
 
   const MAX_LEN = 2000;
+  const MAX_NAME_LEN = 200;
+  const MAX_DESCRIPTION_LEN = 1000;
   const truncated = instructions.length > MAX_LEN;
-  const name = typeof skillData.name === 'string' ? skillData.name : 'Imported Skill';
-  const description = typeof skillData.description === 'string' ? skillData.description : '';
+  const name = typeof skillData.name === 'string' ? skillData.name.slice(0, MAX_NAME_LEN) : 'Imported Skill';
+  const description = typeof skillData.description === 'string' ? skillData.description.slice(0, MAX_DESCRIPTION_LEN) : '';
 
   const payload: AgentSkillPayload = {
     name,

@@ -73,6 +73,7 @@ const STRIPPED_RESPONSE_HEADERS = new Set([
   'content-length',
   'transfer-encoding',
   'connection',
+  'set-cookie',
   'cache-control',
   'cdn-cache-control',
   'vercel-cdn-cache-control',
