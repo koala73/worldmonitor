@@ -152,6 +152,7 @@ describe('search-fed category digests: topic relevance (#11266)', () => {
         'Oil settles up $2 as traders weigh continued Hormuz ship attacks - Reuters',
         'Longer battery storage durations reshape US power markets - Reuters',
         "Nigeria's SEC approves Dangote refinery's IPO share distribution plan, sources say - Reuters",
+        'Dutch TTF slides as mild weather caps demand - Reuters',
       ],
     },
     {
@@ -178,6 +179,7 @@ describe('search-fed category digests: topic relevance (#11266)', () => {
         'Bitcoin Funds Head for Worst Month as Outflows Near $5 Billion - Bloomberg',
         'Watch Focused on Digital Shares Over Tokens: Cunningham - Bloomberg',
         'Stablecoin issuers race for bank charters - Bloomberg',
+        'Decentralized finance lenders tighten collateral rules - Bloomberg',
       ],
     },
     {
