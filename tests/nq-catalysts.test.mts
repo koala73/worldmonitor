@@ -166,9 +166,9 @@ describe('NQ Catalysts filters', () => {
   it('shows the scheduled macro release time in US Eastern time', () => {
     const html = composeNqCatalystsHtml({
       macro: [
-        { event: 'GDP', country: 'US', date: '2026-11-25', impact: 'High', releaseAt: '2026-11-25T13:30:00.000Z' },
-        { event: 'FOMC', country: 'US', date: '2026-09-16', impact: 'High', releaseAt: '2026-09-16T18:00:00.000Z' },
-        { event: 'PCE', country: 'US', date: '2026-11-25', impact: 'High', releaseAt: '' },
+        { event: 'GDP', country: 'US', date: '2026-11-25', impact: 'High', releaseAt: Date.parse('2026-11-25T13:30:00Z') },
+        { event: 'FOMC', country: 'US', date: '2026-09-16', impact: 'High', releaseAt: Date.parse('2026-09-16T18:00:00Z') },
+        { event: 'PCE', country: 'US', date: '2026-11-25', impact: 'High', releaseAt: 0 },
       ],
       earnings: [],
       macroUnavailable: false,

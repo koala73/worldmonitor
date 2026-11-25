@@ -44,7 +44,7 @@ function etParts(ms) {
   return Object.fromEntries(ET_PARTS_FMT.formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
 }
 
-/** UTC ISO instant for a wall-clock `HH:MM` in US Eastern time on `YYYY-MM-DD` (DST-aware). */
+/** Epoch milliseconds for a wall-clock `HH:MM` in US Eastern time on `YYYY-MM-DD` (DST-aware). */
 export function easternInstant(date, hhmm) {
   const [y, m, d] = date.split('-').map(Number);
   const [hh, mm] = hhmm.split(':').map(Number);
@@ -53,19 +53,18 @@ export function easternInstant(date, hhmm) {
     const p = etParts(ms);
     return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute)) - ms;
   };
-  let utc = wall - offsetAt(wall);
-  utc = wall - offsetAt(utc);
-  return new Date(utc).toISOString();
+  const utc = wall - offsetAt(wall);
+  return wall - offsetAt(utc);
 }
 
-/** Map of Eastern release date (YYYY-MM-DD) to UTC ISO instant for one BEA release. */
+/** Map of Eastern release date (YYYY-MM-DD) to epoch milliseconds for one BEA release. */
 export function parseBeaReleaseTimes(json, releaseName) {
   const byDate = new Map();
   for (const raw of json?.[releaseName]?.release_dates ?? []) {
     const ms = Date.parse(raw);
     if (!Number.isFinite(ms)) continue;
     const p = etParts(ms);
-    byDate.set(`${p.year}-${p.month}-${p.day}`, new Date(ms).toISOString());
+    byDate.set(`${p.year}-${p.month}-${p.day}`, ms);
   }
   return byDate;
 }
@@ -86,8 +85,8 @@ async function fetchBeaReleaseDates() {
 
 export function fredReleaseAt(release, date, beaSchedule) {
   if (release.etTime) return easternInstant(date, release.etTime);
-  if (release.beaRelease && beaSchedule) return parseBeaReleaseTimes(beaSchedule, release.beaRelease).get(date) ?? '';
-  return '';
+  if (release.beaRelease && beaSchedule) return parseBeaReleaseTimes(beaSchedule, release.beaRelease).get(date) ?? 0;
+  return 0;
 }
 
 // Fallback FOMC rate decision dates (day 2 of each 2-day meeting = decision day)
