@@ -198,9 +198,17 @@ function buildTechHubIndex(): TechHubIndex {
 
   // Add common region aliases
   const regionAliases: Record<string, string> = {
-    'silicon valley': 'sf-bay-area',
     'bay area': 'sf-bay-area',
     'san francisco bay': 'sf-bay-area',
+  };
+
+  for (const [alias, hubId] of Object.entries(regionAliases)) {
+    addPlace(alias, hubId);
+  }
+
+  // Tech-scene names are technology evidence on their own, unlike a city or region
+  const techSceneAliases: Record<string, string> = {
+    'silicon valley': 'sf-bay-area',
     'research triangle': 'raleigh-durham',
     'startup nation': 'telaviv',
     'silicon beach': 'la',
@@ -210,8 +218,8 @@ function buildTechHubIndex(): TechHubIndex {
     'tech city': 'london',
   };
 
-  for (const [alias, hubId] of Object.entries(regionAliases)) {
-    addPlace(alias, hubId);
+  for (const [alias, hubId] of Object.entries(techSceneAliases)) {
+    addKeyword(alias, hubId);
   }
 
   cachedIndex = { hubs, byKeyword, places };

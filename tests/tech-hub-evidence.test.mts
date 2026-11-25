@@ -40,7 +40,8 @@ describe('tech hub evidence', () => {
 
   it('places a funding story by its accelerator outside the tech category', () => {
     const funding = cluster('Hub71 startup raises $12 million seed round', 'Wamda', 'https://example.com/hub71', 'economic');
-    assert.deepEqual(hubCities([funding]), ['Abu Dhabi']);
+    const stationF = cluster('Station F startup raises funding for its robotics arm', 'Sifted', 'https://sifted.eu/x', 'economic');
+    assert.deepEqual(hubCities([funding, stationF]), ['Abu Dhabi', 'Paris']);
   });
 
   it('does not read the ordinary word alphabet as the company', () => {
