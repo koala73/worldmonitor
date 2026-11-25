@@ -227,6 +227,12 @@ function namesOutlet(text, story) {
   return maskAttributedSourcesResult(text, [story.primarySource]).matches > 0;
 }
 
+export function attributeLowCredibilityClaim(story, text) {
+  return requiresSourceAttribution(story) && !namesOutlet(text, story)
+    ? `${story.primarySource.trim()} reports: ${text}`
+    : text;
+}
+
 // The credit must sit in the clause that carries the claim: text from the
 // previous citation run up to and including the citation of that story.
 function unattributedLowCredibilityStory(sentence, topStories) {
@@ -706,14 +712,9 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
 
   const lineByIndex = new Map(parsed.lines.map((line) => [line.n, line.text]));
   let hallucinatedLines = 0;
-  const attributeLine = (story, text) => (
-    requiresSourceAttribution(story) && !namesOutlet(text, story)
-      ? `${story.primarySource.trim()} reports: ${text}`
-      : text
-  );
   const lines = topStories.map((story, i) => {
     const n = i + 1;
-    const headline = attributeLine(story, sanitize(story.primaryTitle));
+    const headline = attributeLowCredibilityClaim(story, sanitize(story.primaryTitle));
     // Missing/degraded lines keep their citation so the contract
     // ("every line ends with its own [n]") holds for renderers.
     if (!lineByIndex.has(n)) return { n, text: `${headline} [${n}]` };
@@ -733,7 +734,7 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
       hallucinatedLines++;
       if (validatorMode === 'enforce') return { n, text: `${headline} [${n}]` };
     }
-    return { n, text: `${attributeLine(story, bare)} [${n}]` };
+    return { n, text: `${attributeLowCredibilityClaim(story, bare)} [${n}]` };
   });
 
   // STRICT index lockstep: never filter — substitute.
