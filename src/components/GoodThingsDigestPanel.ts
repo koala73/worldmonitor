@@ -81,13 +81,18 @@ export class GoodThingsDigestPanel extends Panel {
     const signal = this.summaryAbort.signal;
     await Promise.allSettled(top5.map(async (item, idx) => {
       if (signal.aborted || !this.element?.isConnected) return;
+      const context = item.snippet?.trim();
+      if (!context) {
+        this.updateCardSummary(idx, item.title.slice(0, 200));
+        return;
+      }
       try {
-        // Pass [title, source] as two headlines to satisfy generateSummary's
-        // minimum length requirement (headlines.length >= 2).
         const result = await generateSummary(
-          [item.title, item.source],
+          [item.title],
           undefined,
-          item.locationName,
+          undefined,
+          undefined,
+          { mode: 'article', bodies: [context], skipBrowserFallback: true },
         );
         if (signal.aborted || !this.element?.isConnected) return;
         const summary = result?.summary ?? item.title.slice(0, 200);

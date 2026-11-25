@@ -59,6 +59,8 @@ export interface SummarizeOptions {
    * headline-only behavior (R6). Bodies are pre-sanitised server-side.
    */
   bodies?: string[];
+  /** 'article' summarizes the single story in headlines[0], grounded on bodies[0]. */
+  mode?: 'brief' | 'article';
 }
 
 // ── Sebuf client (replaces direct fetch to /api/{provider}-summarize) ──
@@ -125,6 +127,7 @@ async function tryApiProvider(
   geoContext?: string,
   lang?: string,
   bodies?: string[],
+  mode: 'brief' | 'article' = 'brief',
 ): Promise<SummarizationResult | null> {
   if (!isFeatureAvailable(providerDef.featureId)) return null;
   // Entitlement/suppression gate BEFORE any network dispatch (#4913) — a
@@ -149,7 +152,7 @@ async function tryApiProvider(
         return await premiumNewsClient.summarizeArticle({
           provider: providerDef.provider,
           headlines,
-          mode: 'brief',
+          mode,
           geoContext: geoContext || '',
           variant: SITE_VARIANT,
           lang: lang || 'en',
@@ -260,10 +263,11 @@ async function runApiChain(
   stepOffset: number,
   totalSteps: number,
   bodies?: string[],
+  mode: 'brief' | 'article' = 'brief',
 ): Promise<SummarizationResult | null> {
   for (const [i, provider] of providers.entries()) {
     onProgress?.(stepOffset + i, totalSteps, `Connecting to ${provider.label}...`);
-    const result = await tryApiProvider(provider, attemptState, headlines, geoContext, lang, bodies);
+    const result = await tryApiProvider(provider, attemptState, headlines, geoContext, lang, bodies, mode);
     if (result) return result;
   }
   return null;
@@ -285,7 +289,8 @@ export async function generateSummary(
   lang: string = 'en',
   options?: SummarizeOptions,
 ): Promise<SummarizationResult | null> {
-  if (!headlines || headlines.length < 2) {
+  const mode = options?.mode ?? 'brief';
+  if (!headlines || headlines.length < (mode === 'article' ? 1 : 2)) {
     return null;
   }
 
@@ -293,7 +298,7 @@ export async function generateSummary(
   const optionsSuffix = options?.skipCloudProviders || options?.skipBrowserFallback
     ? `:opts${options.skipCloudProviders ? 'C' : ''}${options.skipBrowserFallback ? 'B' : ''}`
     : '';
-  const cacheKey = (await buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang, undefined, bodies)) + optionsSuffix;
+  const cacheKey = (await buildSummaryCacheKey(headlines, mode, geoContext, SITE_VARIANT, lang, undefined, bodies)) + optionsSuffix;
 
   return summaryResultBreaker.execute(
     async () => {
@@ -329,7 +334,7 @@ async function generateSummaryInternal(
   // authoritative cachedFetchJsonWithMeta lookup when bodies are present.
   if (!options?.skipCloudProviders && !bodies?.some((b) => typeof b === 'string' && b.length > 0)) {
     try {
-      const cacheKey = await buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang, undefined, bodies);
+      const cacheKey = await buildSummaryCacheKey(headlines, options?.mode ?? 'brief', geoContext, SITE_VARIANT, lang, undefined, bodies);
       const cached = await newsClient.getSummarizeArticleCache({ cacheKey });
       if (cached.summary) {
         return { summary: cached.summary, provider: 'cache', model: cached.model || '', cached: true };
@@ -351,7 +356,7 @@ async function generateSummaryInternal(
 
       // Warm model failed inference -- fallback through API providers
       if (!options?.skipCloudProviders) {
-        const chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, undefined, onProgress, 2, totalSteps, bodies);
+        const chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, undefined, onProgress, 2, totalSteps, bodies, options?.mode);
         if (chainResult) return chainResult;
       }
     } else {
@@ -362,7 +367,7 @@ async function generateSummaryInternal(
 
       // API providers while model loads
       if (!options?.skipCloudProviders) {
-        const chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, undefined, onProgress, 1, totalSteps, bodies);
+        const chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, undefined, onProgress, 1, totalSteps, bodies, options?.mode);
         if (chainResult) {
           return chainResult;
         }
@@ -387,7 +392,7 @@ async function generateSummaryInternal(
   let chainResult: SummarizationResult | null = null;
 
   if (!options?.skipCloudProviders) {
-    chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, lang, onProgress, 1, totalSteps, bodies);
+    chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, lang, onProgress, 1, totalSteps, bodies, options?.mode);
   }
   if (chainResult) return chainResult;
 
