@@ -1049,7 +1049,10 @@ export function mergeFuelCountry(countryMap, entry, fxRates) {
 }
 
 async function collectFuelPrices() {
-const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
+const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`, { strict: true }).catch(err => {
+  console.warn(`  [WoW] Could not read previous snapshot: ${err.message}`);
+  return undefined;
+});
 
 const fxSymbols = {};
 for (const ccy of FUEL_FX_CURRENCIES) {
@@ -1131,15 +1134,16 @@ if (prevSnapshot?.countries?.length) {
 }
 
 // Compute WoW per fuel entry
-const prevAge = prevSnapshot?.fetchedAt ? Date.now() - new Date(prevSnapshot.fetchedAt).getTime() : 0;
-const hasPrevData = prevSnapshot?.countries?.length > 0;
-const prevTooRecent = prevAge > 0 && prevAge < MIN_WOW_AGE_MS;
+const fetchedAt = Date.now();
+const prevAge = fetchedAt - Date.parse(prevSnapshot?.fetchedAt);
+const hasBaseline = Array.isArray(prevSnapshot?.countries) && prevSnapshot.countries.length > 0 && prevAge >= 0;
+const prevTooRecent = hasBaseline && prevAge < MIN_WOW_AGE_MS;
 
-if (hasPrevData && prevTooRecent) {
+if (prevTooRecent) {
   console.warn(`  [WoW] Skipping WoW — previous snapshot is only ${Math.round(prevAge / 3600000)}h old (need 144h+)`);
 }
 
-const wowAvailable = hasPrevData && !prevTooRecent;
+const wowAvailable = hasBaseline && !prevTooRecent;
 
 if (wowAvailable) {
   const prevMap = new Map(prevSnapshot.countries.map(c => [c.code, c]));
@@ -1191,13 +1195,13 @@ const untoleratedFailures = failedSources.filter(name => !TOLERATED_FAILURES.has
 const publishBlocking = untoleratedFailures.length > 0;
 console.log(`\n  Summary: ${countries.length} countries, ${successfulSources}/${sourceNames.length} sources`);
 if (publishBlocking) console.warn(`  [FRESHNESS] Failed sources this run: ${failedSources.join(', ')} — publish will be rejected, prev snapshot keeps serving`);
-else if (!allSourcesFresh) console.warn(`  [FRESHNESS] Tolerated failures this run: ${failedSources.join(', ')} — publishing without them; :prev will rotate`);
+else if (!allSourcesFresh) console.warn(`  [FRESHNESS] Tolerated failures this run: ${failedSources.join(', ')} — publishing without them`);
 console.log(`  Cheapest gasoline: ${cheapestGasoline}, Cheapest diesel: ${cheapestDiesel}`);
 console.log(`  Most expensive gasoline: ${mostExpensiveGasoline}, Most expensive diesel: ${mostExpensiveDiesel}`);
 
-return {
+const snapshot = {
   countries,
-  fetchedAt: new Date().toISOString(),
+  fetchedAt: new Date(fetchedAt).toISOString(),
   cheapestGasoline,
   cheapestDiesel,
   mostExpensiveGasoline,
@@ -1210,6 +1214,7 @@ return {
   countryCount: countries.length,
   allSourcesFresh,
 };
+return { snapshot, rotatePrev: prevSnapshot !== undefined && !prevTooRecent };
 }
 
 async function main() {
@@ -1218,7 +1223,8 @@ async function main() {
 
   await runSeed('economic', 'fuel-prices', CANONICAL_KEY, collectFuelPrices, {
     ttlSeconds: CACHE_TTL,
-    async beforePublish(data) {
+    publishTransform: ({ snapshot }) => snapshot,
+    async beforePublish({ snapshot: data }) {
       const mexico = data.countries.find(country => country.code === 'MX');
       if (!mexico) return;
       // The canonical snapshot contains the last published average. The WoW
@@ -1252,8 +1258,8 @@ async function main() {
     declareRecords,
     ...source,
     maxStaleMin: 10080,
-    async afterPublish(data, { recordCount, lockFence }) {
-      if (!data.wowAvailable) return;
+    async afterPublish({ snapshot: data, rotatePrev }, { recordCount, lockFence }) {
+      if (!rotatePrev) return;
       await writeExtraKey(`${CANONICAL_KEY}:prev`, data, CACHE_TTL * 2, {
         ...source,
         fetchedAt: Date.parse(data.fetchedAt),

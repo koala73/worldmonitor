@@ -26,11 +26,11 @@ async function fuelDateBulletin() {
   return Buffer.from(await workbook.xlsx.writeBuffer()).toString('base64');
 }
 
-function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek = null, regular = 24, diesel = 26, mxn = 0.05, lockBusy = false, expectedFailure }) {
+function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek = null, regular = 24, diesel = 26, mxn = 0.05, lockBusy = false, previousWeekReadFails = false, expectedFailure }) {
   const fx = Object.fromEntries(FUEL_FX_CURRENCIES.map(ccy => [ccy, SHARED_FX_FALLBACKS[ccy] ?? 1]));
   const preload = `
     import { mock } from 'node:test';
-    const { now, bulletin, spain, previous, previousWeek, regular, diesel, fx, lockBusy, priorReadFails } = JSON.parse(process.env.FUEL_DATE_FIXTURE);
+    const { now, bulletin, spain, previous, previousWeek, regular, diesel, fx, lockBusy, priorReadFails, previousWeekReadFails } = JSON.parse(process.env.FUEL_DATE_FIXTURE);
     mock.timers.enable({ apis: ['Date'], now: Date.parse(now) });
     const key = 'economic:fuel-prices:v1';
     globalThis.fetch = async (input, init) => {
@@ -39,7 +39,9 @@ function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek =
         case 'fuel-redis.invalid': {
           if (url.pathname.startsWith('/get/')) {
             const requested = decodeURIComponent(url.pathname.slice(5));
-            if (requested === key && priorReadFails) return new Response(null, { status: 403 });
+            if ((requested === key && priorReadFails) || (requested === key + ':prev' && previousWeekReadFails)) {
+              return new Response(null, { status: 403 });
+            }
             const inputs = { [key]: previous, [key + ':prev']: previousWeek, 'shared:fx-rates:v1': fx };
             const value = inputs[requested] ?? null;
             return Response.json({ result: value && JSON.stringify(value) });
@@ -90,7 +92,7 @@ function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek =
       UPSTASH_REDIS_REST_URL: 'https://fuel-redis.invalid',
       UPSTASH_REDIS_REST_TOKEN: 'fixture',
       EIA_API_KEY: 'fixture',
-      FUEL_DATE_FIXTURE: JSON.stringify({ now, bulletin, spain, previous, previousWeek, regular, diesel, lockBusy,
+      FUEL_DATE_FIXTURE: JSON.stringify({ now, bulletin, spain, previous, previousWeek, regular, diesel, lockBusy, previousWeekReadFails,
         priorReadFails: expectedFailure === 'Redis snapshot read failed: HTTP 403',
         fx: { ...fx, ISK: 0, MXN: mxn, fallbackCurrencies: [] } }),
     },
@@ -115,7 +117,7 @@ function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek =
   assert.ok(payload, child.stdout + child.stderr);
   const snapshot = JSON.parse(payload);
   const wowBaseline = child.stdout.match(/^FUEL_WOW_BASELINE=(.+)$/m)?.[1];
-  if (snapshot.data.wowAvailable) {
+  if (snapshot.data.wowAvailable || (previousWeek == null && !previousWeekReadFails)) {
     assert.ok(wowBaseline, log);
     assert.deepEqual(JSON.parse(wowBaseline).data, snapshot.data);
   } else {
@@ -188,6 +190,25 @@ test('Mexico hides a missing grade and recovers its date when the same grade pri
     .data.countries.find(c => c.code === 'MX');
   assert.equal(recovered.diesel.observedAt, '2026-11-26');
   assert.equal(recovered.gasoline.observedAt, '2026-12-03');
+});
+
+test('fuel seeding initializes the WoW baseline and keeps it until a comparison is due', async () => {
+  const bulletin = await fuelDateBulletin();
+  const spain = fuelFixture('minetur-stations');
+  const first = runFuelDateSeed({ now: '2026-11-26', bulletin, spain });
+  assert.equal(first.data.wowAvailable, false);
+
+  const early = runFuelDateSeed({ now: '2026-11-27', bulletin, spain, previous: first, previousWeek: first });
+  assert.equal(early.data.wowAvailable, false);
+
+  const due = runFuelDateSeed({ now: '2026-12-02', bulletin, spain, previous: early, previousWeek: first, regular: 25 });
+  assert.equal(due.data.wowAvailable, true);
+  assert.equal(due.data.prevFetchedAt, first.data.fetchedAt);
+  assert.equal(due.data.countries.find(c => c.code === 'MX').gasoline.wowPct, 4.17);
+
+  const unreadable = runFuelDateSeed({ now: '2026-12-03', bulletin, spain, previous: due,
+    previousWeek: due, previousWeekReadFails: true });
+  assert.equal(unreadable.data.wowAvailable, false);
 });
 
 test('SSB fixture selects latest monthly petrol/diesel by product and preserves NOK and month', () => {
