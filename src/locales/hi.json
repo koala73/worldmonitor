@@ -5446,7 +5446,15 @@
       "count_one": "{{family}} फुटप्रिंट के अंदर {{count}} साइट",
       "count_other": "{{family}} फुटप्रिंट के अंदर {{count}} साइटें",
       "passes_one": "{{count}} पास",
-      "passes_other": "{{count}} पास"
+      "passes_other": "{{count}} पास",
+      "maneuver": "संभावित पैंतरेबाज़ी {{date}}: {{change}}",
+      "maneuverRaised": "कक्षा {{km}} किमी ऊपर उठी",
+      "maneuverLowered": "कक्षा {{km}} किमी नीचे आई",
+      "maneuverInclination": "झुकाव {{deg}}° बदला",
+      "maneuverPlane": "आरोही नोड {{deg}}° खिसका",
+      "maneuverHint": "इसके कक्षीय तत्व उपग्रह की अपनी प्रवृत्ति से हट गए। यह संभावित है, पुष्ट पैंतरेबाज़ी नहीं।",
+      "maneuverShort": "संभावित पैंतरेबाज़ी {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · प्रवृत्ति से विचलन {{residual}}, सीमा {{threshold}} · तत्व समुच्चय {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "इस साइट के ऊपर ट्रैक किए गए उपग्रह · अगले {{hours}} घंटे",

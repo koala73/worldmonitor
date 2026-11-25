@@ -19,6 +19,7 @@ import { loadWaterCard } from '@/components/water-card';
 import { reservoirAtPoint } from '@/services/climate/reservoir-context';
 import { markSiteSatelliteSelected, siteSatellitesSection, type SiteSatellitesState } from '@/components/orbital-site-satellites-view';
 import { satellitesCoveringSite, type CoverageSite } from '@/services/orbital/satellite-site-coverage';
+import { loadRecentManeuvers, type ManeuverCandidate } from '@/services/orbital/satellite-maneuvers';
 import { fetchSatelliteTLEs, getTrackedSatelliteTles } from '@/services/satellites';
 import { confirmShareLinkCopied } from '@/components/share-link-button';
 import { afterDebugBearRequestWindow } from '@/bootstrap/debugbear-rum';
@@ -48,6 +49,8 @@ let timelinePasses: Pick<OrbitalTimelineInput, 'lookup' | 'passes' | 'acquisitio
 let pointContext: PointContextState = { kind: 'loading' };
 /** The watched site at the open point and the tracked satellites over it, or null for any other point. */
 let siteSatellites: { site: CoverageSite; state: SiteSatellitesState } | null = null;
+/** Recent candidate manoeuvres for the site's satellite rows (#9110); empty until loaded or when unavailable. */
+let siteManeuvers: ReadonlyMap<string, ManeuverCandidate> = new Map();
 const SITE_SATELLITES_TICK_MS = 30_000;
 let markFrame: number | null = null;
 let centredFor: string | null = null;
@@ -257,6 +260,7 @@ function drawSiteSatellites(): void {
     passKey: lookupPassKey,
     selectedKey: selectedKey(),
     expanded,
+    maneuvers: siteManeuvers,
   }));
   if (refocus) slot.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
 }
@@ -277,6 +281,16 @@ async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): 
     drawSiteSatellites();
   };
   draw({ kind: 'projecting' });
+  // Read with the sheet and again on every clock tick: the shared list renews every 15 minutes,
+  // and a failed read is not cached, so an open sheet gains its markers once the list recovers.
+  const refreshManeuvers = () => {
+    void loadRecentManeuvers().then((maneuvers) => {
+      if (signal.aborted || maneuvers === siteManeuvers) return;
+      siteManeuvers = maneuvers;
+      drawSiteSatellites();
+    });
+  };
+  refreshManeuvers();
   try {
     let tles = getTrackedSatelliteTles();
     if (tles.length === 0) tles = (await fetchSatelliteTLEs()) ?? [];
@@ -300,6 +314,7 @@ async function loadSiteSatellites(found: PointPassLookup, signal: AbortSignal): 
     // The open list moves with the clock: elapsed passes drop out and, once its window has
     // slid far enough, the cached scans renew, so no past pass is labelled upcoming.
     const clock = setInterval(() => {
+      refreshManeuvers();
       const ticket = latest + 1;
       project().catch((error: unknown) => {
         if (!isAbort(error) && !signal.aborted && ticket === latest) draw({ kind: 'failed' });

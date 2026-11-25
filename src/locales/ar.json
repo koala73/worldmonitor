@@ -5574,7 +5574,15 @@
       "passes_two": "{{count}} مرور",
       "passes_few": "{{count}} مرورات",
       "passes_many": "{{count}} مرورًا",
-      "passes_other": "{{count}} مرور"
+      "passes_other": "{{count}} مرور",
+      "maneuver": "مناورة محتملة {{date}}: {{change}}",
+      "maneuverRaised": "رُفع المدار {{km}} كم",
+      "maneuverLowered": "خُفض المدار {{km}} كم",
+      "maneuverInclination": "تغيّر الميل {{deg}}°",
+      "maneuverPlane": "انزاحت العقدة الصاعدة {{deg}}°",
+      "maneuverHint": "خرجت عناصر مداره عن اتجاه القمر الصناعي نفسه. هذه مناورة محتملة وليست مؤكدة.",
+      "maneuverShort": "مناورة محتملة {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · الانحراف عن الاتجاه {{residual}}، العتبة {{threshold}} · مجموعتا العناصر {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "الأقمار الصناعية المتتبَّعة فوق هذا الموقع · الساعات الـ {{hours}} القادمة",

@@ -84,6 +84,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_point_satellite_passes: 'geopolitical-security',
   get_country_imagery_evidence: 'geopolitical-security',
   get_watched_site_imagery: 'geopolitical-security',
+  list_satellite_maneuvers: 'geopolitical-security',
   list_x_feed: 'geopolitical-security',
   get_defense_industrial_base: 'geopolitical-security',
   open_country_brief: 'geopolitical-security',

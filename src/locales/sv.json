@@ -5446,7 +5446,15 @@
       "count_one": "{{count}} plats inom täckningsområdet för {{family}}",
       "count_other": "{{count}} platser inom täckningsområdet för {{family}}",
       "passes_one": "{{count}} passage",
-      "passes_other": "{{count}} passager"
+      "passes_other": "{{count}} passager",
+      "maneuver": "Möjlig manöver {{date}}: {{change}}",
+      "maneuverRaised": "banan höjd {{km}} km",
+      "maneuverLowered": "banan sänkt {{km}} km",
+      "maneuverInclination": "inklinationen ändrad {{deg}}°",
+      "maneuverPlane": "uppstigande nod förskjuten {{deg}}°",
+      "maneuverHint": "Banelementen avvek från satellitens egen trend. Det är en möjlig, inte bekräftad manöver.",
+      "maneuverShort": "möjlig manöver {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · avvikelse från trenden {{residual}}, tröskel {{threshold}} · elementuppsättningar {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Spårade satelliter över platsen · kommande {{hours}} h",

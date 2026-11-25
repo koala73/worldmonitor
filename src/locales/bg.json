@@ -5446,7 +5446,15 @@
       "count_one": "{{count}} обект в зоната на заснемане на {{family}}",
       "count_other": "{{count}} обекта в зоната на заснемане на {{family}}",
       "passes_one": "{{count}} преминаване",
-      "passes_other": "{{count}} преминавания"
+      "passes_other": "{{count}} преминавания",
+      "maneuver": "Възможна маневра {{date}}: {{change}}",
+      "maneuverRaised": "орбитата е повдигната с {{km}} км",
+      "maneuverLowered": "орбитата е понижена с {{km}} км",
+      "maneuverInclination": "наклонът е променен с {{deg}}°",
+      "maneuverPlane": "възходящият възел се измести с {{deg}}°",
+      "maneuverHint": "Орбиталните му елементи се отклониха от собствената тенденция на спътника. Това е възможна, а не потвърдена маневра.",
+      "maneuverShort": "възможна маневра {{date}}",
+      "maneuverReceipt": "{{symbol}} {{before}} → {{after}} · отклонение от тренда {{residual}}, праг {{threshold}} · набори елементи {{from}} → {{to}} UTC"
     },
     "siteSatellites": {
       "heading": "Проследявани спътници над този обект · следващите {{hours}} ч",

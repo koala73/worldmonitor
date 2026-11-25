@@ -202,9 +202,9 @@ describe('analyst watched-site imagery', () => {
 describe('get_watched_site_imagery MCP tool', () => {
   it('is listed under the same constant as the other orbital tools, whatever the runtime env', () => {
     const names = [...ORBITAL_TOOLS.map((tool) => tool.name), WATCHED_SITE_IMAGERY_TOOL.name];
-    assert.equal(names.length, 3);
+    assert.equal(names.length, 4);
     const listed = names.filter((name) => TOOL_REGISTRY.some((tool) => tool.name === name));
-    assert.deepEqual(listed, ORBITAL_MCP_TOOLS_PUBLISHED ? names : [], 'all three orbital tools are listed together or not at all');
+    assert.deepEqual(listed, ORBITAL_MCP_TOOLS_PUBLISHED ? names : [], 'all four orbital tools are listed together or not at all');
     for (const env of [undefined, 'true', 'false']) {
       if (env === undefined) delete process.env.ORBITAL_WATCH_ENABLED; else process.env.ORBITAL_WATCH_ENABLED = env;
       for (const published of [false, true]) {

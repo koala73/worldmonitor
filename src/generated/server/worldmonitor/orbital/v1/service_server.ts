@@ -215,6 +215,53 @@ export interface WaterReading {
   relativeOrbit: number;
 }
 
+export interface ListSatelliteManeuversRequest {
+  noradId: number;
+}
+
+export interface ListSatelliteManeuversResponse {
+  candidates: ManeuverCandidate[];
+  satellites: SatelliteManeuverStatus[];
+  evaluatedSatellites: number;
+  generatedAt: number;
+  detectionVersion: number;
+  methodNote: string;
+  stale: boolean;
+}
+
+export interface ManeuverCandidate {
+  noradId: number;
+  element: string;
+  unit: string;
+  regime: string;
+  fromEpoch: number;
+  toEpoch: number;
+  confirmedByEpoch: number;
+  expected: number;
+  observed: number;
+  residual: number;
+  threshold: number;
+  before?: ManeuverElementSet;
+  after?: ManeuverElementSet;
+}
+
+export interface ManeuverElementSet {
+  epoch: number;
+  meanMotion: number;
+  semiMajorAxisKm: number;
+  eccentricity: number;
+  inclination: number;
+  raan: number;
+  bstar: number;
+}
+
+export interface SatelliteManeuverStatus {
+  noradId: number;
+  status: string;
+  regime: string;
+  candidateCount: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -264,6 +311,7 @@ export interface OrbitalServiceHandler {
   getPointPasses(ctx: ServerContext, req: GetPointPassesRequest): Promise<GetPointPassesResponse>;
   getCountryImageryEvidence(ctx: ServerContext, req: GetCountryImageryEvidenceRequest): Promise<GetCountryImageryEvidenceResponse>;
   getWatchedSiteImagery(ctx: ServerContext, req: GetWatchedSiteImageryRequest): Promise<GetWatchedSiteImageryResponse>;
+  listSatelliteManeuvers(ctx: ServerContext, req: ListSatelliteManeuversRequest): Promise<ListSatelliteManeuversResponse>;
 }
 
 export function createOrbitalServiceRoutes(
@@ -429,6 +477,53 @@ export function createOrbitalServiceRoutes(
 
           const result = await handler.getWatchedSiteImagery(ctx, body);
           return new Response(JSON.stringify(result as GetWatchedSiteImageryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/orbital/v1/list-satellite-maneuvers",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListSatelliteManeuversRequest = {
+            noradId: Number(params.get("norad_id") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listSatelliteManeuvers", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSatelliteManeuvers(ctx, body);
+          return new Response(JSON.stringify(result as ListSatelliteManeuversResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

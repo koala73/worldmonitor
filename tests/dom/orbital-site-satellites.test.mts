@@ -4,6 +4,7 @@ import { initTestI18n, tt } from './helpers/i18n.mts';
 
 const lookupMock = vi.hoisted(() => vi.fn());
 const evidenceMock = vi.hoisted(() => vi.fn());
+const maneuversMock = vi.hoisted(() => vi.fn());
 const coverage = vi.hoisted(() => ({
   sites: vi.fn(),
   covering: vi.fn(),
@@ -32,6 +33,10 @@ vi.mock('@/services/orbital/watched-site-at', () => ({
 vi.mock('@/services/orbital/satellite-site-coverage', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/orbital/satellite-site-coverage')>()),
   satellitesCoveringSite: coverage.covering,
+}));
+vi.mock('@/services/orbital/satellite-maneuvers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/orbital/satellite-maneuvers')>()),
+  loadRecentManeuvers: maneuversMock,
 }));
 vi.mock('@/services/satellites', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/satellites')>()),
@@ -87,6 +92,7 @@ beforeEach(() => {
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   lookupMock.mockResolvedValue(lookup());
   evidenceMock.mockResolvedValue(evidence());
+  maneuversMock.mockResolvedValue(new Map());
   coverage.sites.mockResolvedValue([site]);
   coverage.tracked.mockReturnValue([tle]);
   coverage.fetchTles.mockResolvedValue(null);
@@ -177,6 +183,19 @@ describe('#10713 unit 3: a watched site links back to the satellites covering it
     rows[5]!.focus();
     rows[5]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     expect((document.activeElement as HTMLElement).closest('[hidden]')).toBeNull();
+  });
+
+  it('gains the candidate marker on a later tick when the first candidate read came back empty (#9110)', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const candidate = { noradId: 40697, element: 'inclination', unit: 'deg', regime: 'leo', fromEpoch: NOW - 2 * 86_400_000, toEpoch: NOW - 86_400_000, confirmedByEpoch: NOW, expected: 0, observed: 0, residual: 0.03, threshold: 0.01 };
+    maneuversMock.mockResolvedValueOnce(new Map()).mockResolvedValue(new Map([['40697', candidate]]));
+    openOrbitalWatch(sitePoint, null, surface);
+    await vi.waitFor(() => expect(section()?.dataset.state).toBe('ok'));
+    expect(section()!.querySelector('[data-maneuver]')).toBeNull();
+    vi.advanceTimersByTime(30_000);
+    await vi.waitFor(() => expect(section()!.querySelector('[data-norad-id="40697"]')?.getAttribute('data-maneuver')).toBe('inclination'));
+    expect(section()!.querySelector('[data-norad-id="99001"]')?.hasAttribute('data-maneuver')).toBe(false);
+    vi.useRealTimers();
   });
 
   it('says no tracked satellite covers the site in the window', async () => {
