@@ -421,7 +421,6 @@ const HOST_ORIGINS = Object.freeze({
   'english.alarabiya.net': 'SA',
   'english.enabbaladi.net': 'SY',
   'euractiv.com': 'BE',
-  'euromaidanpress.com': 'UA',
   'fas.org': 'US',
   'fxempire.com': 'IL',
   'geo.tv': 'PK',

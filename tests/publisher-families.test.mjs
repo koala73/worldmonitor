@@ -341,6 +341,11 @@ describe('corroboration threshold is one constant, not three literals', () => {
 });
 
 describe('publisher-families resolution', () => {
+  it('folds the Cyrillic name Google News stamps on Ukrainska Pravda items into its family', () => {
+    assert.equal(publisherFamilyFor('Українська правда'), publisherFamilyFor('Ukrainska Pravda EN'));
+    assert.equal(countPublisherFamilies(['Ukrainska Pravda', 'Ukrainska Pravda EN', 'Українська правда']), 1);
+  });
+
   it('collapses one wire carried under many of its own labels', () => {
     const reutersLabels = [
       'Reuters',

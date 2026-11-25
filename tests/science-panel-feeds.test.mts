@@ -28,7 +28,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tempDir = join(repoRoot, 'tmp-science-panel-feeds-test');
 const gn = (q: string) => `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
 const EXPECTED = [
-  { name: 'Reuters Science', url: gn('site:reuters.com science when:2d') },
+  { name: 'Reuters Science', url: gn('site:reuters.com/science when:7d') },
   { name: 'Nature News', url: 'https://www.nature.com/nature.rss' },
   { name: 'BBC Science', url: 'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml' },
   { name: 'Guardian Science', url: 'https://www.theguardian.com/science/rss' },
