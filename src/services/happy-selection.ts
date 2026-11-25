@@ -1,0 +1,56 @@
+import type { NewsItem } from '@/types';
+import { dedupeByArticleUrl } from '../../shared/article-identity.js';
+
+// General science and environment outlets publish negative and neutral reporting
+// alongside good news, so their items must pass the sentiment gate.
+const BROAD_HAPPY_SOURCES = new Set([
+  'Nature News',
+  'ScienceDaily',
+  'Live Science',
+  'New Scientist',
+  'Singularity Hub',
+  'Mongabay',
+]);
+
+// The ML sentiment gate is opt-in (browser model setting) and passes everything
+// through when unavailable, so broad sources also need a deterministic screen.
+const NEGATIVE_EVIDENCE_RE = /\b(droughts?|dries up|dried up|threats?|threaten\w*|crisis|crises|conflicts?|crimes?|criminal|kill\w*|deaths?|dead|dies|died|harm\w*|damag\w*|declin\w*|loss(?:es)?|losing|illegal\w*|lobby\w*|displac\w*|wildfires?|floods?|flooding|heat ?waves?|smoke|pollut\w*|toxic|disasters?|collaps\w*|extinction|warn\w*|fears?|attacks?|war|violen\w*|poach\w*|traffick\w*|cuts? off|mining waste|deforestation)\b/i;
+
+const SCIENCE_SOURCES = new Set([
+  'GNN Science',
+  'ScienceDaily',
+  'Nature News',
+  'Live Science',
+  'New Scientist',
+  'Singularity Hub',
+  'Human Progress',
+  'Greater Good (Berkeley)',
+]);
+
+const BREAKTHROUGH_EVIDENCE_RE = /\b(breakthroughs?|discover\w*|first[- ]ever|world'?s first|scientists|researchers (?:have )?(?:find|found|discover\w*|develop\w*|create\w*|show\w*)|stud(?:y|ies) (?:finds?|shows?|reveals?|suggests?)|new (?:\w+ ){0,2}(?:treatment|therapy|drug|vaccine|material|method|technique|species|test)s?|cure[sd]?|vaccines?|therap(?:y|ies)|treatments?|clinical trials?|restor\w*|revers\w*|could|reveal\w*|found|finds|detect\w*|develop\w*|invent\w*|engineer\w*|telescopes?|black holes?|mice)\b/i;
+
+const HERO_EVIDENCE_RE = /\b(hero(?:es|ic|ine)?|rescu\w*|saved?|saves|saving|lifesav\w*|donat\w*|volunteer\w*|kindness|generous|generosity|selfless\w*|brave(?:ry)?|courage\w*|helped|helps|helping|strangers?|charity)\b/i;
+
+export function dedupeHappyItems(items: NewsItem[]): NewsItem[] {
+  return dedupeByArticleUrl(items, item => item.link);
+}
+
+export async function selectCuratedHappyItems(
+  items: NewsItem[],
+  gate: (items: NewsItem[]) => Promise<NewsItem[]>,
+): Promise<NewsItem[]> {
+  const unique = dedupeHappyItems(items);
+  const broad = unique.filter(item => BROAD_HAPPY_SOURCES.has(item.source) && !NEGATIVE_EVIDENCE_RE.test(item.title));
+  if (broad.length === 0) return unique.filter(item => !BROAD_HAPPY_SOURCES.has(item.source));
+  const passed = new Set(await gate(broad));
+  return unique.filter(item => !BROAD_HAPPY_SOURCES.has(item.source) || passed.has(item));
+}
+
+export function isBreakthroughStory(item: NewsItem): boolean {
+  const scienceItem = SCIENCE_SOURCES.has(item.source) || item.happyCategory === 'science-health';
+  return scienceItem && BREAKTHROUGH_EVIDENCE_RE.test(item.title);
+}
+
+export function isHeroStory(item: NewsItem): boolean {
+  return HERO_EVIDENCE_RE.test(item.title);
+}
