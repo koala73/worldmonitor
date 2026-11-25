@@ -1065,4 +1065,9 @@ test('an outbreak headline dated to an earlier year is not an alert', () => {
   assert.equal(cidrap("Canada's 2025 measles outbreak offers a cautionary tale for the US", 'Thu, 05 Nov 2026 09:00:00 -0600').alertLevel, 'watch');
   assert.equal(cidrap("Canada's 2026 measles outbreak tops 5,000 cases", 'Thu, 05 Nov 2026 09:00:00 -0600').alertLevel, 'alert');
   assert.equal(detectAlertLevel('Measles outbreak grows in Ontario', ''), 'alert');
+  const nov2026 = Date.parse('2026-11-05T15:00:00Z');
+  assert.equal(detectAlertLevel('Measles outbreak in 2025 left lasting gaps', '', nov2026), 'watch');
+  assert.equal(detectAlertLevel('Lessons from the 2019 Ebola epidemic', '', nov2026), 'watch');
+  assert.equal(detectAlertLevel('DR Congo reports 2025 cases in measles outbreak', '', nov2026), 'alert');
+  assert.equal(detectAlertLevel('Cholera outbreak in 2025 cases reported', '', nov2026), 'alert');
 });
