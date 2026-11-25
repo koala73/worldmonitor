@@ -190,7 +190,8 @@ export function buildReservesPayload(raw, indicator, goldUsdByCountry = {}, tota
 
   const holders = [];
   for (const [iso3, rec] of Object.entries(raw)) {
-    if (AGGREGATE_CODES.has(iso3)) continue;
+    // IRFCL also returns group areas with non-ISO3 ids (e.g. G163).
+    if (!/^[A-Z]{3}$/.test(iso3) || AGGREGATE_CODES.has(iso3)) continue;
     const cur = latestAtOrBefore(rec.byMonth, asOfMonth);
     if (!cur) continue;
     const current = cur.value;

@@ -143,6 +143,15 @@ describe('gold reserve quantities through HTTP and MCP', () => {
     assert.deepEqual(cbReserves.topBuyers12m, []);
   });
 
+  it('drops non-country holders from snapshots cached before the seed filter', async () => {
+    seedQuotes([quote('GC=F', 3200)]);
+    const payload = reservesFixture('IRFCLDT1_IRFCL56_USD');
+    payload.topHolders.unshift({ iso3: 'G163', name: 'G163', tonnes: 0, pctOfReserves: 0 });
+    cacheStore.set(GOLD_CB_RESERVES_KEY, payload);
+    const { cbReserves } = await callTool();
+    assert.deepEqual(cbReserves.topHolders.map(h => h.iso3), ['CHN', 'FRA', 'ITA', 'DEU', 'USA']);
+  });
+
   it('keeps a missing reserves snapshot absent without making valid quotes unavailable', async () => {
     seedQuotes([quote('GC=F', 3200)]);
     const result = await callTool();
@@ -261,6 +270,21 @@ describe('getGoldIntelligence', () => {
     assert.equal(cot.producerSwap.shortPositions, '60000');
     assert.ok(Math.abs(cot.producerSwap.netPct - ((50000 - 60000) / 110000) * 100) < 1e-9, 'dealer net is derived from long and short');
     assert.equal(cot.openInterest, '0', 'legacy payloads carry no open interest');
+  });
+
+  it('never reports a next COT release that is already past', async () => {
+    seedQuotes([quote('GC=F', 3200)]);
+    const today = new Date().toISOString().slice(0, 10);
+    const gc = (nextReleaseDate) => ({ instruments: [{ code: 'GC', name: 'Gold', reportDate: '2026-11-17', nextReleaseDate }] });
+    cacheStore.set(COT_KEY, gc('2026-11-20'));
+    const { cot } = await call();
+    assert.ok(cot.nextReleaseDate >= today, `${cot.nextReleaseDate} is before ${today}`);
+    const days = (Date.parse(cot.nextReleaseDate) - Date.parse('2026-11-20')) / 86_400_000;
+    assert.equal(days % 7, 0, 'stays on the weekly Friday schedule');
+    cacheStore.set(COT_KEY, gc('3026-01-02'));
+    assert.equal((await call()).cot.nextReleaseDate, '3026-01-02');
+    cacheStore.set(COT_KEY, gc(''));
+    assert.equal((await call()).cot.nextReleaseDate, '');
   });
 
   it('partial availability: prices render without COT, and COT renders without the enrichment layer', async () => {

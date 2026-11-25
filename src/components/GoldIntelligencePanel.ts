@@ -332,9 +332,10 @@ export class GoldIntelligencePanel extends Panel {
     const cb = d.cbReserves;
     if (!cb || !cb.topHolders.length) return '';
 
+    const inTonnes = cb.valueIsOunces === true;
     const holderRow = (h: CbHolder, rank: number) => `<div style="display:flex;justify-content:space-between;font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:1px 0">
       <span style="color:var(--text-dim)">${rank}. ${escapeHtml(h.name)}</span>
-      <span style="font-weight:600">${cb.valueIsOunces === true && Number.isFinite(h.tonnes) && h.tonnes >= 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>
+      ${inTonnes ? `<span style="font-weight:600">${Number.isFinite(h.tonnes) && h.tonnes >= 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>` : ''}
     </div>`;
     const moverRow = (m: CbMover) => {
       const color = m.deltaTonnes12m >= 0 ? '#2ecc71' : '#e74c3c';
@@ -346,8 +347,8 @@ export class GoldIntelligencePanel extends Panel {
     };
 
     const holders = cb.topHolders.slice(0, 10).map((h, i) => holderRow(h, i + 1)).join('');
-    const buyers = cb.valueIsOunces === true ? cb.topBuyers12m.slice(0, 5).map(moverRow).join('') : '';
-    const sellers = cb.valueIsOunces === true ? cb.topSellers12m.slice(0, 5).map(moverRow).join('') : '';
+    const buyers = inTonnes ? cb.topBuyers12m.slice(0, 5).map(moverRow).join('') : '';
+    const sellers = inTonnes ? cb.topSellers12m.slice(0, 5).map(moverRow).join('') : '';
 
     const moversHtml = (buyers || sellers)
       ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
@@ -364,7 +365,7 @@ export class GoldIntelligencePanel extends Panel {
 
     return `<div class="energy-tape-section" style="margin-top:10px">
       <div class="energy-section-title">Central-Bank Reserves</div>
-      <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:4px">Top holders (tonnes)</div>
+      <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:4px">${inTonnes ? 'Top holders (tonnes)' : 'Top holders by USD value (tonnes unavailable)'}</div>
       ${holders}
       ${moversHtml}
       <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:6px;text-align:right">IMF IFS • as of ${escapeHtml(cb.asOfMonth)}</div>
