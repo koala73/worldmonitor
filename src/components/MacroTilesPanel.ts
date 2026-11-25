@@ -29,8 +29,15 @@ interface MacroTile {
   lowerIsBetter: boolean;
   neutral?: boolean;
   format: (v: number) => string;
-  deltaFormat?: (v: number) => string;
+  deltaUnit: DeltaUnit;
 }
+
+type DeltaUnit = 'pp' | 'billions';
+
+const DELTA_UNITS: Record<DeltaUnit, { digits: number; format: (magnitude: number) => string }> = {
+  pp: { digits: 2, format: (m) => `${m.toFixed(2)} pp` },
+  billions: { digits: 0, format: (m) => `${m.toLocaleString(undefined, { maximumFractionDigits: 0 })}B` },
+};
 
 function pctFmt(v: number): string {
   return `${v.toFixed(1)}%`;
@@ -40,18 +47,22 @@ function gdpFmt(v: number): string {
   return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}B`;
 }
 
+function yearEarlierMonth(date: string): string {
+  return `${Number(date.slice(0, 4)) - 1}${date.slice(4, 7)}`;
+}
+
+function yoyAt(obs: { date: string; value: number }[], index: number): number | null {
+  const current = obs[index];
+  if (!current) return null;
+  const base = obs.find((o) => o.date.slice(0, 7) === yearEarlierMonth(current.date));
+  return base && base.value > 0 ? ((current.value - base.value) / base.value) * 100 : null;
+}
+
 function cpiYoY(obs: { date: string; value: number }[]): { value: number | null; prior: number | null; date: string } {
-  if (obs.length < 13) return { value: null, prior: null, date: '' };
   const latest = obs[obs.length - 1];
-  const yearAgo = obs[obs.length - 13];
-  const priorMonth = obs[obs.length - 2];
-  const priorYearAgo = obs[obs.length - 14] ?? obs[obs.length - 13];
-  if (!latest || !yearAgo) return { value: null, prior: null, date: '' };
-  const yoy = yearAgo.value > 0 ? ((latest.value - yearAgo.value) / yearAgo.value) * 100 : null;
-  const priorYoy = (priorYearAgo && priorMonth && priorYearAgo.value > 0)
-    ? ((priorMonth.value - priorYearAgo.value) / priorYearAgo.value) * 100
-    : null;
-  return { value: yoy, prior: priorYoy, date: latest.date };
+  if (!latest) return { value: null, prior: null, date: '' };
+  const yoy = yoyAt(obs, obs.length - 1);
+  return { value: yoy, prior: yoy === null ? null : yoyAt(obs, obs.length - 2), date: latest.date };
 }
 
 function lastTwo(obs: { date: string; value: number }[]): { value: number | null; prior: number | null; date: string } {
@@ -66,11 +77,18 @@ function deltaClass(delta: number, lowerIsBetter: boolean, neutral: boolean): st
   return (lowerIsBetter ? delta < 0 : delta > 0) ? 'positive' : 'negative';
 }
 
+function formatDelta(delta: number, unit: DeltaUnit): { text: string; rounded: number } {
+  const { digits, format } = DELTA_UNITS[unit];
+  const rounded = Number(delta.toFixed(digits)) || 0;
+  const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : '';
+  return { text: `${sign}${format(Math.abs(rounded))}`, rounded };
+}
+
 function tileHtml(tile: MacroTile): string {
   const val = tile.value !== null ? escapeHtml(tile.format(tile.value)) : 'N/A';
-  const delta = tile.value !== null && tile.prior !== null ? tile.value - tile.prior : null;
-  const fmt = tile.deltaFormat ?? tile.format;
-  const deltaStr = delta !== null ? `${delta >= 0 ? '+' : ''}${fmt(delta)} vs prior` : '';
+  const change = tile.value !== null && tile.prior !== null ? formatDelta(tile.value - tile.prior, tile.deltaUnit) : null;
+  const delta = change?.rounded ?? null;
+  const deltaStr = change ? `${change.text} vs prior` : '';
   const changeClass = delta !== null ? deltaClass(delta, tile.lowerIsBetter, tile.neutral ?? false) : 'neutral';
   return `<div class="macro-summary-card">
     <div class="macro-summary-head">
@@ -99,26 +117,28 @@ function fmtEuDate(d: string): string {
 function euAvg(
   eurostat: GetEurostatCountryDataResponse,
   key: 'cpi' | 'unemployment' | 'gdpGrowth',
-): { value: number | null; prior: number | null; date: string } {
+): { value: number | null; prior: number | null; date: string; countries: string[] } {
   const values: number[] = [];
+  const countries: string[] = [];
   const priorValues: number[] = [];
   let latestDate = '';
   for (const code of EU_CORE) {
     const m = eurostat.countries[code]?.[key];
     if (m && typeof m.value === 'number' && Number.isFinite(m.value)) {
       values.push(m.value);
+      countries.push(code);
       if (!latestDate || m.date > latestDate) latestDate = m.date;
     }
     if (m?.hasPrior && Number.isFinite(m.priorValue)) {
       priorValues.push(m.priorValue);
     }
   }
-  if (values.length === 0) return { value: null, prior: null, date: '' };
+  if (values.length === 0) return { value: null, prior: null, date: '', countries };
   const avg = Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 100) / 100;
   const priorAvg = priorValues.length === values.length
     ? Math.round((priorValues.reduce((s, v) => s + v, 0) / priorValues.length) * 100) / 100
     : null;
-  return { value: avg, prior: priorAvg, date: fmtEuDate(latestDate) };
+  return { value: avg, prior: priorAvg, date: fmtEuDate(latestDate), countries };
 }
 
 export class MacroTilesPanel extends Panel {
@@ -190,10 +210,10 @@ export class MacroTilesPanel extends Panel {
       const fed = lastTwo(results['FEDFUNDS']?.observations ?? []);
 
       this._usTiles = [
-        { id: 'cpi', label: 'Consumer price inflation (annual)', ...cpi, lowerIsBetter: true, format: pctFmt, deltaFormat: (v) => v.toFixed(2) },
-        { id: 'unrate', label: 'Unemployment', ...unrate, lowerIsBetter: true, format: pctFmt },
-        { id: 'gdp', label: 'Economic output (billions)', ...gdp, lowerIsBetter: false, format: gdpFmt, deltaFormat: (v) => `${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}B` },
-        { id: 'fed', label: 'Fed Funds Rate', ...fed, lowerIsBetter: false, neutral: true, format: pctFmt },
+        { id: 'cpi', label: 'Consumer price inflation (annual)', ...cpi, lowerIsBetter: true, format: pctFmt, deltaUnit: 'pp' },
+        { id: 'unrate', label: 'Unemployment', ...unrate, lowerIsBetter: true, format: pctFmt, deltaUnit: 'pp' },
+        { id: 'gdp', label: 'Economic output (billions)', ...gdp, lowerIsBetter: false, format: gdpFmt, deltaUnit: 'billions' },
+        { id: 'fed', label: 'Fed Funds Rate', ...fed, lowerIsBetter: false, neutral: true, format: pctFmt, deltaUnit: 'pp' },
       ];
 
       const hasUs = this._usTiles.some(t => t.value !== null);
@@ -273,11 +293,14 @@ export class MacroTilesPanel extends Panel {
     const gdpAvg = euAvg(this._eurostat, 'gdpGrowth');
     const estr = lastTwo(this._estrObs);
 
+    const avgLabel = (label: string, countries: string[]) =>
+      countries.length ? `${label}, avg of ${countries.join(', ')}` : label;
+
     const euTiles: MacroTile[] = [
-      { id: 'eu-cpi', label: 'Harmonised consumer price inflation (annual)', value: cpiAvg.value, prior: cpiAvg.prior, date: cpiAvg.date, lowerIsBetter: true, format: pctFmt },
-      { id: 'eu-un', label: 'Unemployment', value: unAvg.value, prior: unAvg.prior, date: unAvg.date, lowerIsBetter: true, format: pctFmt },
-      { id: 'eu-gdp', label: 'Economic growth (quarterly)', value: gdpAvg.value, prior: gdpAvg.prior, date: gdpAvg.date, lowerIsBetter: false, format: pctFmt },
-      { id: 'eu-estr', label: 'Euro short-term rate', ...estr, lowerIsBetter: false, neutral: true, format: pctFmt },
+      { id: 'eu-cpi', label: avgLabel('Harmonised consumer price inflation (annual)', cpiAvg.countries), value: cpiAvg.value, prior: cpiAvg.prior, date: cpiAvg.date, lowerIsBetter: true, format: pctFmt, deltaUnit: 'pp' },
+      { id: 'eu-un', label: avgLabel('Unemployment', unAvg.countries), value: unAvg.value, prior: unAvg.prior, date: unAvg.date, lowerIsBetter: true, format: pctFmt, deltaUnit: 'pp' },
+      { id: 'eu-gdp', label: avgLabel('Economic growth (quarterly)', gdpAvg.countries), value: gdpAvg.value, prior: gdpAvg.prior, date: gdpAvg.date, lowerIsBetter: false, format: pctFmt, deltaUnit: 'pp' },
+      { id: 'eu-estr', label: 'Euro short-term rate', ...estr, lowerIsBetter: false, neutral: true, format: pctFmt, deltaUnit: 'pp' },
     ];
 
     if (!euTiles.some(t => t.value !== null)) {
@@ -285,6 +308,6 @@ export class MacroTilesPanel extends Panel {
     }
 
     return `<div class="macro-summary-grid">${euTiles.map(tileHtml).join('')}</div>
-      <div class="economic-source macro-summary-source">Eurostat · ECB · avg DE, FR, IT, ES</div>`;
+      <div class="economic-source macro-summary-source">Eurostat · ECB · Country averages are unweighted, not official euro area figures</div>`;
   }
 }
