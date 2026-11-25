@@ -2325,6 +2325,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> Tỷ lệ World Monitor của tín dụng cao lợi nhuận so với Kho bạc dài hạn, được điều chỉnh theo biến động vốn chủ sở hữu và mức chênh lệch cao lợi nhuận: (HYG / TLT) / (VIX × Mức chênh lệch cao lợi nhuận / 100). Đây không phải là Chỉ số Căng thẳng Tài chính của Cục Dự trữ Kansas City. Giá trị 1,5 hoặc cao hơn là căng thẳng thấp; dưới 0,3 là căng thẳng cao.",
       "title": "Chỉ Số Áp Lực Tài Chính",
       "usFsiValue": "Giá trị Chỉ số Căng thẳng Tài chính của Mỹ",
+      "asOf": "Tính đến {{date}}",
       "cissTitle": "EU CISS (Áp Lực Hệ Thống Vùng Euro)",
       "notAvailable": "Không có sẵn",
       "interpretation": {

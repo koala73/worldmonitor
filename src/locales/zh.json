@@ -2325,6 +2325,7 @@
       "infoTooltip": "<strong>金融压力指标</strong>World Monitor高收益债券与长期国债比率，根据股票波动率和高收益利差调整：（HYG / TLT）/（VIX × 高收益利差 / 100）。这不是堪萨斯城联储金融压力指数。1.5或更高的读数表示低压力；低于0.3表示高压力。",
       "title": "金融压力指标",
       "usFsiValue": "美国金融压力指标值",
+      "asOf": "截至 {{date}}",
       "cissTitle": "欧盟CISS（欧元区系统性压力）",
       "notAvailable": "不适用",
       "interpretation": {

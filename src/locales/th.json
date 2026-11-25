@@ -2325,6 +2325,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> อัตราส่วน World Monitor ของสินเชื่อ high-yield ต่อพันธบัตรระยะยาว ปรับสำหรับความผันผวนของ equity และ high-yield spread: (HYG / TLT) / (VIX × High-yield spread / 100) นี่ไม่ใช่ Kansas City Fed Financial Stress Index การอ่าน 1.5 หรือมากกว่าคือความเครียดต่ำ ต่ำกว่า 0.3 คือความเครียดสูง",
       "title": "ตัวชี้วัดความเครียดทางการเงิน",
       "usFsiValue": "ค่า US Financial Stress Indicator",
+      "asOf": "ณ {{date}}",
       "cissTitle": "EU CISS (ความเครียดระบบในพื้นที่ยูโร)",
       "notAvailable": "ไม่มี",
       "interpretation": {

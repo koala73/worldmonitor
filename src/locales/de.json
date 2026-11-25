@@ -2336,6 +2336,7 @@
       "infoTooltip": "<strong>Finanzstressindikator</strong> World Monitor-Verhältnis von High-Yield-Kredit zu Long Treasuries, angepasst für Aktienvolatilität und High-Yield-Spread: (HYG / TLT) / (VIX × High-Yield-Spread / 100). Dies ist nicht der Kansas City Fed Financial Stress Index. Ein Wert von 1,5 oder höher ist niedriger Stress; unter 0,3 ist hoher Stress.",
       "title": "Finanzstress-Indikator",
       "usFsiValue": "US Financial Stress Indicator-Wert",
+      "asOf": "Stand: {{date}}",
       "cissTitle": "EU CISS (systemischer Stressindikator Euroraum)",
       "notAvailable": "N/V",
       "interpretation": {

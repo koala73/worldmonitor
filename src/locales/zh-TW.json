@@ -2325,6 +2325,7 @@
       "infoTooltip": "<strong>金融壓力指標</strong>World Monitor高收益債券與長期國債比率，根據股票波動率和高收益利差調整：（HYG / TLT）/（VIX × 高收益利差 / 100）。這不是堪薩斯城聯儲金融壓力指數。1.5或更高的讀數表示低壓力；低於0.3表示高壓力。",
       "title": "金融壓力指標",
       "usFsiValue": "美國金融壓力指標值",
+      "asOf": "截至 {{date}}",
       "cissTitle": "歐盟CISS（歐元區系統性壓力）",
       "notAvailable": "不適用",
       "interpretation": {

@@ -301,6 +301,7 @@ export interface GulfQuote {
   price: number;
   change: number;
   sparkline: number[];
+  priceAt?: number;
 }
 
 export interface AnalyzeStockRequest {
@@ -574,6 +575,7 @@ export interface GetFearGreedIndexResponse {
   hygPrice: number;
   tltPrice: number;
   sectorPerformance: FearGreedSectorPerformance[];
+  fsiAsOf?: number;
 }
 
 export interface FearGreedCategory {

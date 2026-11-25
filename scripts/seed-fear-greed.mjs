@@ -3,6 +3,7 @@
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, sleep, resolveProxyForConnect } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { readPublishedPctAbove200d } from './_sp500-breadth.mjs';
+import { fsiAsOf } from './_fsi-as-of.mjs';
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -29,7 +30,8 @@ async function fetchYahooSymbol(symbol) {
     const closes = result.indicators?.quote?.[0]?.close ?? [];
     const validCloses = closes.filter(v => v != null);
     const price = result.meta?.regularMarketPrice ?? validCloses.at(-1) ?? null;
-    return { symbol, price, closes: validCloses };
+    const at = result.meta?.regularMarketTime * 1000;
+    return { symbol, price, closes: validCloses, ...(Number.isFinite(at) && at > 0 && { at }) };
   } catch (e) {
     const cause = e.cause?.message ?? e.cause?.code ?? '';
     console.warn(`  Yahoo ${symbol}: ${e.message}${cause ? ` [${cause}]` : ''}`);
@@ -434,6 +436,7 @@ async function fetchAll() {
     else if (fsiValue >= 0.3) fsiLabel = 'Elevated Stress';
     else fsiLabel = 'High Stress';
   }
+  const fsiObservedAt = fsiAsOf({ hyg, tlt, vixData, vixObs, hyObs });
 
   const SECTOR_ETF_NAMES = { XLK: 'Technology', XLF: 'Financials', XLE: 'Energy', XLV: 'Health Care', XLY: 'Consumer Discr.', XLP: 'Consumer Staples', XLI: 'Industrials', XLB: 'Materials', XLU: 'Utilities', XLRE: 'Real Estate', XLC: 'Comm. Services' };
   const sectorPerformance = Object.entries(SECTOR_ETF_NAMES).map(([sym, name]) => {
@@ -468,7 +471,7 @@ async function fetchAll() {
       pctAbove200d: pctAbove200d != null ? { value: pctAbove200d } : null,
       yield10y: fredLatest(dgs10Obs) != null ? { value: fredLatest(dgs10Obs) } : null,
       fedRate:  fedRateStr ? { value: fedRateStr } : null,
-      fsi:      fsiValue != null ? { value: fsiValue, label: fsiLabel, hygPrice, tltPrice } : null,
+      fsi:      fsiValue != null ? { value: fsiValue, label: fsiLabel, hygPrice, tltPrice, ...(fsiObservedAt != null && { asOf: fsiObservedAt }) } : null,
     },
     sectorPerformance,
     unavailable: false,

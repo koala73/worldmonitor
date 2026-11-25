@@ -46912,7 +46912,9 @@ components:
                 annualGrowth:
                     type: number
                     format: double
-                    description: Year-over-year debt growth percent (2023->2024).
+                    description: |-
+                        Percent change in debt_to_gdp versus the prior year. A falling ratio can
+                         coexist with rising debt, so this is not debt-stock growth.
                 perSecondRate:
                     type: number
                     format: double
@@ -56082,6 +56084,10 @@ components:
                     items:
                         type: number
                         format: double
+                priceAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix ms of the provider observation behind price; absent when unknown.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: GulfQuote represents a Gulf region market quote (index, currency, or oil).
         worldmonitor_market_v1_AnalyzeStockRequest:
             type: object
@@ -56837,6 +56843,12 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_market_v1_FearGreedSectorPerformance'
+                fsiAsOf:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Unix ms of the oldest HYG, TLT, VIX or HY OAS observation behind
+                         fsi_value; absent when any input lacks an observation time.. Warning: Values > 2^53 may lose precision in JavaScript
         worldmonitor_market_v1_FearGreedCategory:
             type: object
             properties:

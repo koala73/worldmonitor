@@ -4283,6 +4283,7 @@ async function seedGulfQuotes() {
         symbol: meta.symbol, name: meta.name, country: meta.country,
         flag: meta.flag, type: meta.type,
         price: yahoo.price, change: +(yahoo.change).toFixed(2), sparkline: yahoo.sparkline,
+        ...(Number.isFinite(yahoo.lastTradeAt) && yahoo.lastTradeAt > 0 && { priceAt: yahoo.lastTradeAt * 1000 }),
       });
     } else if (isYahooEquityIndex(meta.symbol) && previousBySymbol.has(meta.symbol)) {
       // An index is withheld until its prior close is verified; keep its last row meanwhile.

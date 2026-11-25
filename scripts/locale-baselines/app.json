@@ -864,6 +864,7 @@
   "components.frameworkSelector.label": "Analysis Framework",
   "components.frameworkSelector.titleNone": "Analysis framework",
   "components.frameworkSelector.titlePrefix": "Framework: {{name}}",
+  "components.fsi.asOf": "As of {{date}}",
   "components.fsi.cissLabels.elevated": "Elevated",
   "components.fsi.cissLabels.high": "High",
   "components.fsi.cissLabels.low": "Low",
