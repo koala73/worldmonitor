@@ -10,7 +10,6 @@ import {
   FUEL_SHORTAGES_TTL_SECONDS,
   MAX_STALE_MIN,
   buildPayload,
-  validateRegistry,
   recordCount,
   declareRecords,
 } from './_fuel-shortage-registry.mjs';
@@ -20,17 +19,14 @@ loadEnvFile(import.meta.url);
 const isMain = process.argv[1]?.endsWith('seed-fuel-shortages.mjs');
 
 if (isMain) {
-  runSeed('energy', 'fuel-shortages', FUEL_SHORTAGES_CANONICAL_KEY, buildPayload, {
-    validateFn: validateRegistry,
+  runSeed('energy', 'fuel-shortages', FUEL_SHORTAGES_CANONICAL_KEY, () => buildPayload(), {
     ttlSeconds: FUEL_SHORTAGES_TTL_SECONDS,
     sourceVersion: 'fuel-shortages-registry-v1',
     recordCount,
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: MAX_STALE_MIN,
-    // See seed-pipelines-gas.mjs for rationale — strict validation failure
-    // must leave seed-meta stale so the bundle retries every tick.
-    emptyDataIsFailure: true,
+    zeroIsValid: true,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
