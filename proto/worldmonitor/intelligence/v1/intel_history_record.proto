@@ -23,8 +23,9 @@ message IntelHistoryRecord {
   // Opaque stable handle for the stored event (a Convex document id). Useful
   // for de-duplicating across calls; not resolvable through any public route.
   string id = 1;
-  // Producing domain, e.g. "conflict", "military", "energy". Matches the
-  // domain filter accepted by the three RPCs.
+  // Producing domain: "conflict", "military", "energy", "unrest", "cyber",
+  // "maritime", "natural" or "aviation". Matches the domain filter accepted by
+  // the three RPCs.
   string domain = 2;
   // Seeder-level resource that produced the event, e.g. "acled-events".
   // Finer-grained than domain and not part of any request filter.
