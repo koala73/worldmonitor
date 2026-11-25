@@ -5009,6 +5009,13 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 
 /* A toast that carries a link (blocked new tab): it takes taps only while
    shown, so a fading notice never swallows a click meant for the page. */
+.toast-notification--action {
+  /* Sized to its text, not to the half viewport right of `left: 50%`. */
+  width: max-content;
+  max-width: min(560px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+
 .toast-notification--action.visible {
   pointer-events: auto;
 }
@@ -5018,7 +5025,8 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 2px;
-  white-space: nowrap;
+  /* A long hostname wraps inside the toast instead of running off a phone screen. */
+  overflow-wrap: break-word;
 }
 
 .wm-copy {
