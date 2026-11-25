@@ -57,6 +57,7 @@ export const BRIEF_REJECTIONS = Object.freeze({
   LEAD_PROPER_NOUN: 'lead-proper-noun',
   LEAD_NUMERIC_FACT: 'lead-numeric-fact',
   LEAD_STATUS_QUALIFIER: 'lead-status-qualifier',
+  LEAD_UNATTRIBUTED: 'lead-unattributed-low-credibility',
   LEAD_GROUNDING: 'lead-grounding',
 });
 
@@ -111,6 +112,10 @@ export function synthesisRejectionFeedback(rejection) {
         return `Correction: your previous draft was rejected because "${detail}" calls a person former, acting, interim or late, and no story its sentence cited says so. Use the person's title exactly as the cited story gives it.`;
       }
       return 'Correction: your previous draft was rejected because it called a person former, acting, interim or late without a cited story saying so. Use titles exactly as the cited story gives them.';
+    case BRIEF_REJECTIONS.LEAD_UNATTRIBUTED: {
+      const outlet = detail || '<outlet>';
+      return `Correction: your previous draft was rejected because it stated a claim from a single low-credibility source as fact. Name the outlet in that sentence: "${outlet} reported ..." or "According to ${outlet}, ...".`;
+    }
     case BRIEF_REJECTIONS.LEAD_UNCITED:
       return 'Correction: your previous draft was rejected because a lead sentence carried no citation. End every lead sentence with the bracket number(s) of the stories it draws from.';
     case BRIEF_REJECTIONS.PARSE:
@@ -164,6 +169,7 @@ Rules:
 - Use ONLY facts present in the numbered story text. Do not add names, places, dates, numbers, or context that are not explicitly there.
 - Do not invent proper nouns (people, organizations, countries) that are not in the story text.
 - Two numbered stories can describe the SAME event in different words. A lead claim may combine them, but it MUST carry the citation of EVERY story it drew from — write [3][7], not just [3]. Any name, place, or number you take from a story you did not cite counts as invented.
+- A story marked "single low-credibility source" must never be stated as fact. Every sentence or line that uses it must name its outlet as the attribution: "<outlet> reported ..." or "According to <outlet>, ...".
 - If you name an outlet, copy its label exactly (including capitalization) and use it only as an attribution: "<outlet> reported/reports/said/says/wrote/writes ..." or "According to <outlet>, ...".
 - Write acronyms WITHOUT periods: "US", "UN", "EU", "UK" — never "U.S.", "U.N.". A trailing period there reads as the end of a sentence.
 - Refer to an actor by the name the story uses. Do not swap in a capital city, nickname, or synonym for it — write "US", not "Washington"; "Iran", not "Tehran" — unless that word is in the story text.
@@ -190,19 +196,45 @@ export function promptMemberTitles(story) {
     .slice(0, SYNTHESIS_PROMPT_MAX_MEMBER_TITLES);
 }
 
+// #6428: the model writes the published brief from this count, so it is a
+// corroboration claim reaching a reader. It counted feed LABELS, telling the
+// model that four Reuters desks were four sources. clusterItems resolves the
+// families onto the cluster; fall back to resolving them here, and to 1 — never
+// to sourceCount, which is the ARTICLE count and would overstate in exactly the
+// same direction.
+function storyPublisherCount(story) {
+  const publishers = Number.isFinite(story?.uniquePublisherCount)
+    ? story.uniquePublisherCount
+    : countPublisherFamilies(story?.sources);
+  return publishers > 0 ? publishers : 1;
+}
+
+// The low band of the InsightsPanel CRED badge.
+const LOW_CREDIBILITY_BELOW = 40;
+
+// #11274: a claim only one low-credibility publisher carries may reach the
+// brief only as that outlet's claim. The prompt asks for the attribution and
+// the composer enforces it.
+function requiresSourceAttribution(story) {
+  return Number.isFinite(story?.credibilityScore)
+    && story.credibilityScore < LOW_CREDIBILITY_BELOW
+    && storyPublisherCount(story) === 1
+    && typeof story?.primarySource === 'string'
+    && story.primarySource.trim() !== '';
+}
+
+function namesOutlet(text, story) {
+  return maskAttributedSourcesResult(text, [story.primarySource]).matches > 0;
+}
+
 export function synthesisUserPrompt(stories, { includeMemberTitles = false } = {}) {
   const lines = stories.map((story, i) => {
-    // #6428: the model writes the published brief from these lines, so this
-    // count is a corroboration claim reaching a reader. It counted feed
-    // LABELS, telling the model that four Reuters desks were four sources.
-    // clusterItems resolves the families onto the cluster; fall back to
-    // resolving them here, and to 1 — never to sourceCount, which is the
-    // ARTICLE count and would overstate in exactly the same direction.
-    const publishers = Number.isFinite(story.uniquePublisherCount)
-      ? story.uniquePublisherCount
-      : countPublisherFamilies(story.sources);
-    const sources = publishers > 0 ? publishers : 1;
-    const head = `${i + 1}. ${story.primaryTitle} (${story.primarySource}, ${sources} source${sources === 1 ? '' : 's'})`;
+    const sources = storyPublisherCount(story);
+    const credibility = Number.isFinite(story.credibilityScore)
+      ? `, credibility ${Math.round(story.credibilityScore)}/100`
+      : '';
+    const flag = requiresSourceAttribution(story) ? ', single low-credibility source' : '';
+    const head = `${i + 1}. ${story.primaryTitle} (${story.primarySource}, ${sources} source${sources === 1 ? '' : 's'}${credibility}${flag})`;
     if (!includeMemberTitles) return head;
     // Prompt/gate symmetry (2026-08-28). The gate grounds each cited sentence
     // against primaryTitle + memberTitles (storyGroundText), but the prompt
@@ -602,6 +634,13 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
         dropSentence(BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER, qualifierValidation.hallucinated);
         continue;
       }
+      const unattributed = cited
+        .map((n) => topStories[n - 1])
+        .find((story) => requiresSourceAttribution(story) && !namesOutlet(sentence, story));
+      if (unattributed) {
+        dropSentence(BRIEF_REJECTIONS.LEAD_UNATTRIBUTED, [unattributed.primarySource.trim()]);
+        continue;
+      }
     }
     decision.accepted = true;
     decision.attributionMatches = attribution.matches;
@@ -657,9 +696,14 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
 
   const lineByIndex = new Map(parsed.lines.map((line) => [line.n, line.text]));
   let hallucinatedLines = 0;
+  const attributeLine = (story, text) => (
+    requiresSourceAttribution(story) && !namesOutlet(text, story)
+      ? `${story.primarySource.trim()} reports: ${text}`
+      : text
+  );
   const lines = topStories.map((story, i) => {
     const n = i + 1;
-    const headline = sanitize(story.primaryTitle);
+    const headline = attributeLine(story, sanitize(story.primaryTitle));
     // Missing/degraded lines keep their citation so the contract
     // ("every line ends with its own [n]") holds for renderers.
     if (!lineByIndex.has(n)) return { n, text: `${headline} [${n}]` };
@@ -679,7 +723,7 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
       hallucinatedLines++;
       if (validatorMode === 'enforce') return { n, text: `${headline} [${n}]` };
     }
-    return { n, text: `${bare} [${n}]` };
+    return { n, text: `${attributeLine(story, bare)} [${n}]` };
   });
 
   // STRICT index lockstep: never filter — substitute.
