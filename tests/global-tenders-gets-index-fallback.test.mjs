@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchGets } from '../scripts/seed-global-tenders.mjs';
+import { __testing__, fetchGets } from '../scripts/seed-global-tenders.mjs';
 
 const NOW = Date.parse('2026-11-25T12:00:00Z');
 const RSS_URL = 'https://www.gets.govt.nz/ExternalRSSFeed.htm';
@@ -21,7 +21,8 @@ function indexRow({ id, agency, ref, title, typeTitle, typeAbbr, close, org }) {
                     </tr>`;
 }
 
-function indexPage(rows, nextPage) {
+function indexPage(rows, { start = 1, total = rows.length, page = 1 } = {}) {
+  const end = start + rows.length - 1;
   return `<html><body><h1>Current tenders</h1>
 <table id="treetbl" width="100%" class="treetbl"><tbody>
 <tr class="hdrow"><td><b>RFx ID</b></td></tr>
@@ -29,7 +30,8 @@ function indexPage(rows, nextPage) {
 ${rows.map(indexRow).join('\n')}
 </tbody></table>
 <span class="paging">
-${nextPage ? `<a  href="ExternalIndex.htm?page=${nextPage}&orderBy=date"><img id="next-active" src="/ext/default/img/gets/next_active.png"></a>` : ''}
+${start} - ${end} of ${total}
+${end < total ? `<a  href="ExternalIndex.htm?page=${page + 1}&orderBy=date"><img id="next-active" src="/ext/default/img/gets/next_active.png"></a>` : ''}
 </span></body></html>`;
 }
 
@@ -102,8 +104,8 @@ const detailUrl = (row) => `https://www.gets.govt.nz/${row.agency}/ExternalTende
 
 test('GETS falls back to the official current-tenders index when the RSS feed is blocked', async () => {
   const { fetchTextFn, requested } = fakeGets({
-    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([ACC, ORION], 2),
-    'https://www.gets.govt.nz/ExternalIndex.htm?page=2&orderBy=date': indexPage([NZDF], null),
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([ACC, ORION], { total: 3 }),
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=2&orderBy=date': indexPage([NZDF], { start: 3, total: 3, page: 2 }),
     [detailUrl(ACC)]: detailPage({
       id: ACC.id, open: 'Tuesday, 27 October 2026 2:00 PM (Pacific/Auckland UTC+13:00)',
       categories: ['42000000 - Medical Equipment and Accessories and Supplies', '43230000 - Software'],
@@ -163,32 +165,32 @@ test('GETS index fallback rejects a page with no tender rows instead of reportin
     'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': '<html><body><h1>Maintenance</h1></body></html>',
   });
 
-  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /GETS/);
+  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /index page 1 contains no tender rows/);
 });
 
 test('GETS index fallback rejects a row whose close date drifted out of the known format', async () => {
   const { fetchTextFn } = fakeGets({
-    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([{ ...ACC, close: 'Closing soon' }], null),
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([{ ...ACC, close: 'Closing soon' }]),
   });
 
-  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /GETS/);
+  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /index row 35331516 drifted/);
 });
 
 test('GETS index fallback rejects a detail page that belongs to another notice', async () => {
   const { fetchTextFn } = fakeGets({
-    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([ACC], null),
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([ACC]),
     [detailUrl(ACC)]: detailPage({ id: '1', open: 'Tuesday, 27 October 2026 2:00 PM (Pacific/Auckland UTC+13:00)', categories: [], overview: '' }),
   });
 
-  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /GETS/);
+  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /detail page for 35331516 does not describe that notice/);
 });
 
 test('GETS index fallback reads every page and keeps the newest notices, not the soonest-closing ones', async () => {
   const row = (n) => ({ ...ORION, id: String(35000000 + n), agency: 'GETS', close: `4:00 PM ${(n % 28) + 1} Dec 2026 (Pacific/Auckland UTC+13:00)` });
   const pages = {};
-  for (const [page, start, next] of [[1, 1, 2], [2, 61, 3], [3, 121, null]]) {
+  for (const [page, start] of [[1, 1], [2, 61], [3, 121]]) {
     const rows = Array.from({ length: 60 }, (_, index) => row(start + index));
-    pages[`https://www.gets.govt.nz/ExternalIndex.htm?page=${page}&orderBy=date`] = indexPage(rows, next);
+    pages[`https://www.gets.govt.nz/ExternalIndex.htm?page=${page}&orderBy=date`] = indexPage(rows, { start, total: 180, page });
     for (const entry of rows) {
       pages[detailUrl(entry)] = detailPage({ id: entry.id, open: 'Monday, 9 November 2026 9:00 AM (Pacific/Auckland UTC+13:00)', categories: [], overview: 'Panel.' });
     }
@@ -202,4 +204,91 @@ test('GETS index fallback reads every page and keeps the newest notices, not the
   assert.equal(result.records[0].id, 'gets:35000180');
   assert.equal(result.records.at(-1).id, 'gets:35000081');
   assert.equal(requested.filter((url) => url.includes('ExternalTenderDetails')).length, 100, 'detail pages are read only for kept notices');
+});
+
+const OPEN = 'Tuesday, 27 October 2026 2:00 PM (Pacific/Auckland UTC+13:00)';
+
+test('GETS index fallback rejects an impossible calendar date instead of rolling it into the next month', async () => {
+  const { fetchTextFn } = fakeGets({
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([{ ...ACC, close: '3:00 PM 31 Feb 2027 (Pacific/Auckland UTC+13:00)' }]),
+  });
+
+  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /index row 35331516 drifted/);
+});
+
+test('GETS index fallback rejects a detail page whose open date no longer parses', async () => {
+  const { fetchTextFn } = fakeGets({
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([ACC]),
+    [detailUrl(ACC)]: detailPage({ id: ACC.id, open: 'To be confirmed', categories: [], overview: 'x' }),
+  });
+
+  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /open date for 35331516/);
+});
+
+test('GETS index fallback follows the stated total when a page drops its next link', async () => {
+  const page1 = indexPage([ACC, ORION], { total: 3 }).replace(/<a {2}href="ExternalIndex\.htm\?page=2[^\n]*/, '');
+  const { fetchTextFn } = fakeGets({
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': page1,
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=2&orderBy=date': indexPage([NZDF], { start: 3, total: 3, page: 2 }),
+    [detailUrl(ACC)]: detailPage({ id: ACC.id, open: OPEN, categories: [], overview: 'x' }),
+    [detailUrl(ORION)]: detailPage({ id: ORION.id, open: OPEN, categories: [], overview: 'x' }),
+    [detailUrl(NZDF)]: detailPage({ id: NZDF.id, open: OPEN, categories: [], overview: 'x' }),
+  });
+
+  const result = await fetchGets({ now: NOW, fetchTextFn });
+
+  assert.equal(result.records.length, 3, 'paging follows the stated total, not the next link');
+});
+
+test('GETS index fallback rejects a page whose row count disagrees with its stated range', async () => {
+  const { fetchTextFn } = fakeGets({
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([ACC], { total: 1 }).replace('1 - 1 of 1', '1 - 2 of 2'),
+  });
+
+  await assert.rejects(() => fetchGets({ now: NOW, fetchTextFn }), /index page 1 range/);
+});
+
+test('GETS index fallback still reads a row that gains an attribute before its id', async () => {
+  const page = indexPage([ACC]).replace('<tr id="tender-', '<tr data-row="1" id="tender-');
+  const { fetchTextFn } = fakeGets({
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': page,
+    [detailUrl(ACC)]: detailPage({ id: ACC.id, open: OPEN, categories: [], overview: 'x' }),
+  });
+
+  const result = await fetchGets({ now: NOW, fetchTextFn });
+
+  assert.deepEqual(result.records.map((record) => record.id), ['gets:35331516']);
+});
+
+test('GETS passes one absolute deadline to every read, RSS included', async () => {
+  const deadlines = new Set();
+  const { fetchTextFn: inner } = fakeGets({
+    'https://www.gets.govt.nz/ExternalIndex.htm?page=1&orderBy=date': indexPage([ACC]),
+    [detailUrl(ACC)]: detailPage({ id: ACC.id, open: OPEN, categories: [], overview: 'x' }),
+  });
+  const fetchTextFn = async (url, options = {}) => {
+    deadlines.add(options.deadlineAt);
+    return inner(url, options);
+  };
+
+  await fetchGets({ now: NOW, fetchTextFn });
+
+  assert.equal(deadlines.size, 1);
+  const [deadlineAt] = deadlines;
+  assert.ok(Number.isFinite(deadlineAt) && deadlineAt - Date.now() < 140_000, 'deadline fits inside the 140s seed fetch phase');
+});
+
+test('a read past its deadline fails without a request, and each attempt is clamped to the time left', async () => {
+  const calls = [];
+  const transport = async (_url, options) => {
+    calls.push(options.timeoutMs);
+    return new Response('busy', { status: 503, headers: { 'Retry-After': '30' } });
+  };
+
+  await assert.rejects(() => __testing__.fetchResponse('https://www.gets.govt.nz/x', { deadlineAt: Date.now() - 1 }, transport), /budget/);
+  assert.equal(calls.length, 0);
+
+  await assert.rejects(() => __testing__.fetchResponse('https://www.gets.govt.nz/x', { deadlineAt: Date.now() + 5_000, timeoutMs: 15_000, maxRetries: 2 }, transport), /HTTP 503/);
+  assert.equal(calls.length, 1, 'a Retry-After longer than the time left is not slept on');
+  assert.ok(calls[0] <= 5_000);
 });
