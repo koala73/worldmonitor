@@ -201,15 +201,17 @@ function inferOrigin(titles: string[]): AssetOrigin | null {
     label: hotspot.name,
     lat: hotspot.lat,
     lon: hotspot.lon,
-    score: countPlaceMatches(titles, hotspot.keywords),
-  })).filter(candidate => candidate.score > 0);
+    score: countKeywordMatches(titles, hotspot.keywords),
+    placed: countPlaceMatches(titles, hotspot.keywords) > 0,
+  })).filter(candidate => candidate.placed);
 
   const conflictCandidates = CONFLICT_ZONES.map((conflict) => ({
     label: conflict.name,
     lat: conflict.center[1],
     lon: conflict.center[0],
-    score: countPlaceMatches(titles, conflict.keywords ?? []),
-  })).filter(candidate => candidate.score > 0);
+    score: countKeywordMatches(titles, conflict.keywords ?? []),
+    placed: countPlaceMatches(titles, conflict.keywords ?? []) > 0,
+  })).filter(candidate => candidate.placed);
 
   const allCandidates = [...hotspotCandidates, ...conflictCandidates];
   if (allCandidates.length === 0) return null;
