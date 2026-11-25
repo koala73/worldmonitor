@@ -311,3 +311,68 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
   });
   assert.equal(indonesia.find(item => item.itemId === 'rice').usdPrice, 1.44);
 });
+
+describe('grocery basket offer pages', () => {
+  const indonesia = COUNTRIES.find(({ code }) => code === 'ID');
+  const searchPage = 'https://www.tokopedia.com/find/minyak-goreng-canola-1-liter';
+  const productPage = 'https://www.tokopedia.com/aeon-fresh/minyak-canola-tropical-1-liter';
+  const canolaOffer = (price) => ({
+    matchesStaple: true, productName: 'Minyak canola 1 liter', price, currency: 'IDR', quantity: 1, unit: 'l',
+    offerEvidence: 'Canola oil 1 L listed with a price',
+  });
+
+  function mockRetailers(t, exaResults) {
+    const scraped = [];
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+      const request = JSON.parse(options.body);
+      if (url === 'https://api.firecrawl.dev/v2/scrape') {
+        scraped.push(request.url);
+        return Response.json({ success: true, data: { json: canolaOffer(89000) } });
+      }
+      return Response.json({ results: request.query.startsWith('canola') ? exaResults : [] });
+    });
+    const saved = { exa: process.env.EXA_API_KEYS, firecrawl: process.env.FIRECRAWL_API_KEY };
+    process.env.EXA_API_KEYS = 'test';
+    process.env.FIRECRAWL_API_KEY = 'test';
+    t.after(() => {
+      if (saved.exa === undefined) delete process.env.EXA_API_KEYS; else process.env.EXA_API_KEYS = saved.exa;
+      if (saved.firecrawl === undefined) delete process.env.FIRECRAWL_API_KEY; else process.env.FIRECRAWL_API_KEY = saved.firecrawl;
+    });
+    return scraped;
+  }
+
+  it('does not publish a price read from a retailer search page', async (t) => {
+    const scraped = mockRetailers(t, [{ url: searchPage, summary: JSON.stringify(canolaOffer(89000)) }]);
+    const routeUpdates = new Map();
+    const items = await fetchCountryItems(indonesia, {
+      fxRate: 0.00006, learnedRoutes: new Map(), routeUpdates, routeDeletes: new Set(),
+    });
+    const oil = items.find(item => item.itemId === 'oil');
+    assert.equal(oil.available, false);
+    assert.equal(oil.localPrice, null);
+    assert.equal(oil.sourceSite, '');
+    assert.ok(!scraped.includes(searchPage), 'the search page is not scraped as a fallback offer');
+    assert.ok(!routeUpdates.has('ID:oil'), 'the search page is not learned as a route');
+  });
+
+  it('evicts a learned search-page route and prices the product page instead', async (t) => {
+    const scraped = mockRetailers(t, [
+      { url: searchPage, summary: JSON.stringify(canolaOffer(89000)) },
+      { url: productPage, summary: JSON.stringify(canolaOffer(60000)) },
+    ]);
+    const routeUpdates = new Map();
+    const routeDeletes = new Set();
+    const items = await fetchCountryItems(indonesia, {
+      fxRate: 0.00006,
+      learnedRoutes: new Map([['ID:oil', { url: searchPage, hits: 4, failsSinceSuccess: 0 }]]),
+      routeUpdates,
+      routeDeletes,
+    });
+    const oil = items.find(item => item.itemId === 'oil');
+    assert.equal(oil.localPrice, 60000);
+    assert.equal(oil.sourceSite, productPage);
+    assert.ok(!scraped.includes(searchPage), 'the learned search page is not scraped');
+    assert.ok(routeDeletes.has('ID:oil'), 'the learned search page is evicted');
+    assert.equal(routeUpdates.get('ID:oil')?.url, productPage);
+  });
+});
