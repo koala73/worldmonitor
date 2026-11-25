@@ -81,8 +81,15 @@ const LISTING_SUBDOMAINS = new Set(['listado']);
 export function isListingUrl(url) {
   let parsed;
   try { parsed = new URL(url); } catch { return true; }
-  return LISTING_SUBDOMAINS.has(parsed.hostname.split('.')[0].toLowerCase())
-    || parsed.pathname.toLowerCase().split('/').some(segment => LISTING_PATH_SEGMENTS.has(segment))
+  const { hostname, pathname } = parsed;
+  // Canadian retailer aisles and curated collections can show prices without a
+  // listing marker. Require the retailer's product ID path on these hosts.
+  if (/(?:^|\.)(?:loblaws|realcanadiansuperstore|metro)\.ca$/.test(hostname)
+    && !/\/p\/[\w-]+\/?$/i.test(pathname)) return true;
+  if (/(?:^|\.)walmart\.ca$/.test(hostname)
+    && !/\/ip\/(?:[^/]+\/)?[a-z0-9]+\/?$/i.test(pathname)) return true;
+  return LISTING_SUBDOMAINS.has(hostname.split('.')[0].toLowerCase())
+    || pathname.toLowerCase().split('/').some(segment => LISTING_PATH_SEGMENTS.has(segment))
     || [...parsed.searchParams.keys()].some(key => LISTING_QUERY_KEYS.has(key.toLowerCase()));
 }
 
@@ -117,9 +124,14 @@ async function searchExa(item, country) {
   const apiKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
   if (!apiKey) throw new Error('EXA_API_KEYS or EXA_API_KEY not set');
 
+  const isCanada = country.code === 'CA';
   const body = {
-    query: `${item.query} price`,
-    numResults: 5,
+    // Look for the packs Canadian retailers sell. Normalize the pack size
+    // after verifying the offer, just as for other countries.
+    query: isCanada
+      ? `${item.query.replace(/ \d+(?:kg|g|L| pack)$/, '')} price Canadian grocery single product add to cart`
+      : `${item.query} price`,
+    numResults: isCanada ? 10 : 5,
     type: 'auto',
     // Restrict to known local supermarket/retailer domains per country — prevents EXA
     // neural search from returning USD-priced global comparison pages (Numbeo, Tridge, etc.)

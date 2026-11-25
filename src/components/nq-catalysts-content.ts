@@ -28,6 +28,7 @@ export interface NqMacroEvent {
   estimate?: string;
   previous?: string;
   unit?: string;
+  releaseAt?: number;
 }
 
 export interface NqEarningsEntry {
@@ -72,6 +73,19 @@ export function filterNqEarnings(
   return earnings
     .filter((entry) => INFLUENCE_SET.has(entry.symbol) && inLocalWindow(entry.date, from, to))
     .sort((a, b) => a.date.localeCompare(b.date) || a.symbol.localeCompare(b.symbol));
+}
+
+const ET_TIME_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+/** Scheduled release time in US Eastern time, e.g. "8:30 AM ET". */
+export function formatNqReleaseTime(releaseAt: number | undefined): string {
+  const at = new Date(releaseAt ?? Number.NaN);
+  if (!releaseAt || Number.isNaN(at.getTime())) return 'Time unknown';
+  return `${ET_TIME_FMT.format(at)} ET`;
 }
 
 function formatHour(hour: string | undefined): string {
@@ -128,7 +142,7 @@ function renderMacroBody(events: readonly NqMacroEvent[], unavailable: boolean):
     <div class="nq-catalysts-row">
       <span class="nq-catalysts-date">${escapeHtml(event.date)}</span>
       <span class="nq-catalysts-name">${escapeHtml(event.event)}</span>
-      <span class="nq-catalysts-time">Time unknown</span>
+      <span class="nq-catalysts-time">${escapeHtml(formatNqReleaseTime(event.releaseAt))}</span>
     </div>`).join('');
 }
 

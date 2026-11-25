@@ -2015,6 +2015,20 @@
       ]
     },
     {
+      "host": "apps.bea.gov",
+      "provider": "U.S. Bureau of Economic Analysis (BEA)",
+      "kind": "structured",
+      "observed": true,
+      "license": "U.S. government public-domain release schedule",
+      "attribution": "U.S. Bureau of Economic Analysis news release schedule.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-economic-calendar.mjs"
+        }
+      ]
+    },
+    {
       "host": "apps.fas.usda.gov",
       "provider": "USDA FAS PSD",
       "kind": "structured",
@@ -10106,15 +10120,10 @@
       "host": "news.ycombinator.com",
       "provider": "news.ycombinator.com",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.ycombinator.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "newsbook.com.mt",
@@ -11864,7 +11873,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "scripts/seed-climate-news.mjs"
+          "path": "scripts/_climate-news-helpers.mjs"
         }
       ]
     },
