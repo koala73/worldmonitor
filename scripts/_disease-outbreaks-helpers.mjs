@@ -108,10 +108,11 @@ const ALERT_WORD = `(?:${DISEASE_ALERT_KEYWORDS.join('|')})s?`;
 const NOT_COUNT_WORD = String.raw`(?!(?:cases?|deaths?|infections?|people|patients|children|the)(?![\p{L}\p{N}'-]))[\p{L}\p{N}()'-]+`;
 // A range ("2023-2025", "2025 to 2026") dates the outbreak by its last year.
 const DATED = String.raw`(?<!\d)((?:19|20)\d{2})(?:\s*(?:[-–—/]|to\s)\s*((?:19|20)\d{2}|\d{2}(?![-/]?\d)))?(?!\d)`;
+const TRAILING_DATE = String.raw`\s+(?:of|in|from|during)\s+${DATED}(?!\s+(?:new\s+|confirmed\s+|suspected\s+)?(?:cases?|deaths?|infections?|people|patients|children)\b)`;
 const DATED_ALERT_RES = [
   // A keyword with its own date ("review of measles outbreak in 2025") keeps it.
-  new RegExp(String.raw`${DATED}(?:\s+${NOT_COUNT_WORD}){0,3}\s+${ALERT_WORD}\b(?!\s+(?:of|in|from|during)\s+(?:19|20)\d{2})`, 'giu'),
-  new RegExp(String.raw`\b${ALERT_WORD}\s+(?:of|in|from|during)\s+${DATED}(?!\s+(?:new\s+|confirmed\s+|suspected\s+)?(?:cases?|deaths?|infections?|people|patients|children)\b)`, 'giu'),
+  new RegExp(String.raw`${DATED}(?:\s+${NOT_COUNT_WORD}){0,3}\s+${ALERT_WORD}\b(?!${TRAILING_DATE})`, 'giu'),
+  new RegExp(String.raw`\b${ALERT_WORD}${TRAILING_DATE}`, 'giu'),
 ];
 
 function isRetrospectiveHeadline(title, publishedMs) {
