@@ -830,6 +830,8 @@
       "scripts/seed-market-alert-ledger.mjs",
       "scripts/seed-regional-snapshots.mjs",
       "scripts/seed-tension-evidence.mjs",
+      "scripts/shared/cii-country-borders.data.mjs",
+      "scripts/shared/cii-country-borders.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/correlation-runtime-mode.js",
       "scripts/shared/country-names.json",
@@ -847,6 +849,7 @@
       "scripts/shared/source-tiers.json",
       "scripts/shared/syndication.js",
       "scripts/shared/text-analysis-core.js",
+      "scripts/wildfire/fire-country.mjs",
       "shared/country-names.json",
       "shared/iso3-to-iso2.json"
     ],

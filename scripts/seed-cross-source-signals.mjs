@@ -7,6 +7,7 @@ import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
 import { regionForCountry } from './shared/geography.js';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { physicalDivergenceStaleReason } from './shared/physical-divergence-staleness.js';
+import { OTHER_FIRE_REGION } from './wildfire/fire-country.mjs';
 import { METHODOLOGY_VERSION as PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION } from './lib/physical-divergence.mjs';
 
 loadEnvFile(import.meta.url);
@@ -673,8 +674,9 @@ function extractWildfireEscalation(d) {
   if (extreme.length === 0) return [];
   const regionMap = new Map();
   for (const f of extreme) {
-    // region is the monitored bbox name ('Ukraine', 'Saudi Arabia', ...);
-    // there is no country field on a detection.
+    // region is the country at the detection's coordinates. OTHER_FIRE_REGION
+    // pools unrelated places, so it is not a theater.
+    if (f.region === OTHER_FIRE_REGION) continue;
     const theater = normalizeTheater(f.region || '');
     const group = regionMap.get(theater) || { count: 0, detectedAt: 0 };
     group.count += 1;
