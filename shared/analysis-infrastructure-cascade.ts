@@ -930,7 +930,7 @@ function buildResult(
       const prev = merged.get(nodeId);
       if (node.type === 'country') {
         const code = (node.metadata?.code as string) || nodeId.replace('country:', '');
-        const capacity = getCapacityForCountry(sid, code, graph, hit.dependencyChain);
+        const capacity = disruptionLevel * getCapacityForCountry(sid, code, graph, hit.dependencyChain);
         capacityByCountry.set(nodeId, Math.min(1, (capacityByCountry.get(nodeId) ?? 0) + capacity));
         // Independent cuts on the same country add up (capped at total loss).
         merged.set(nodeId, prev

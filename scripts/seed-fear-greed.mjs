@@ -464,8 +464,7 @@ async function fetchAll() {
     },
     headerMetrics: {
       cnnFearGreed: cnn ? { value: cnn.score, label: cnn.label } : null,
-      aaiBear:  aaii ? { value: Math.round(aaii.bear), context: `${aaii.bear.toFixed(1)}%` } : null,
-      aaiBull:  aaii ? { value: Math.round(aaii.bull), context: `${aaii.bull.toFixed(1)}%` } : null,
+      ...aaiiHeaderMetrics(aaii),
       putCall:  cboe.totalPc != null ? { value: cboe.totalPc } : null,
       vix:      vixLive != null ? { value: vixLive } : null,
       hySpread: hySpreadVal != null ? { value: hySpreadVal } : null,
@@ -481,6 +480,11 @@ async function fetchAll() {
   return payload;
 }
 
+export function aaiiHeaderMetrics(aaii) {
+  const metric = (pct) => ({ value: Math.round(pct * 10) / 10, context: `${pct.toFixed(1)}%` });
+  return { aaiBear: aaii ? metric(aaii.bear) : null, aaiBull: aaii ? metric(aaii.bull) : null };
+}
+
 function validate(data) {
   return data?.composite?.score != null && data.timestamp != null;
 }
@@ -489,7 +493,8 @@ export function declareRecords(data) {
   return data?.composite?.score != null ? 1 : 0;
 }
 
-runSeed('market', 'fear-greed', FEAR_GREED_KEY, fetchAll, {
+const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));
+if (isMain) runSeed('market', 'fear-greed', FEAR_GREED_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: FEAR_GREED_TTL,
   sourceVersion: 'yahoo-cboe-cnn-fred-v1',

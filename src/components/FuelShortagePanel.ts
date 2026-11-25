@@ -154,7 +154,6 @@ function buildBootstrapResponse(
     const projected = projectRawShortage(raw);
     if (projected) shortages.push(projected);
   }
-  if (shortages.length === 0) return null;
   return {
     shortages,
     fetchedAt: newestShortageConfirmation(shortages) || registry.updatedAt || '',
@@ -245,7 +244,7 @@ export class FuelShortagePanel extends Panel {
         this.data = hydrated;
         this.render();
         void getSupplyChainClient().listFuelShortages({ country: '', product: '', severity: '' }).then(live => {
-          if (!this.element?.isConnected || !live?.shortages?.length) return;
+          if (!this.element?.isConnected || live?.upstreamUnavailable || !Array.isArray(live?.shortages)) return;
           this.data = live;
           this.render();
           const shortagesRecord: Record<string, FuelShortageEntry> =
@@ -261,7 +260,7 @@ export class FuelShortagePanel extends Panel {
 
       const live = await getSupplyChainClient().listFuelShortages({ country: '', product: '', severity: '' });
       if (!this.element?.isConnected) return;
-      if (live.upstreamUnavailable || !live.shortages?.length) {
+      if (live.upstreamUnavailable || !Array.isArray(live.shortages)) {
         this.showError('Fuel shortage registry unavailable', () => void this.fetchData());
         return;
       }

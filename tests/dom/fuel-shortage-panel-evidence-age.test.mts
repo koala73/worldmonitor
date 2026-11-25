@@ -88,12 +88,30 @@ describe('FuelShortagePanel evidence age and labels', () => {
         shortages: Object.fromEntries(SHORTAGES.map(s => [s.id, { ...s, resolvedAt: null }])),
       },
     } as never);
-    listFuelShortages.mockResolvedValue({ shortages: [] });
+    listFuelShortages.mockResolvedValue({ shortages: [], upstreamUnavailable: true });
     await panel.fetchData();
 
     const footer = el().querySelector('.panel-attribution-footer')?.textContent ?? '';
     expect(footer).toContain('2 shortages');
     expect(footer).toContain('updated 5d ago');
+  });
+
+  it.each(['rpc', 'bootstrap', 'refresh'])('renders a valid empty registry from %s', async (source) => {
+    if (source !== 'rpc') {
+      vi.mocked(getCachedFuelShortageRegistry).mockReturnValue({
+        registry: {
+          shortages: source === 'bootstrap' ? {} : Object.fromEntries(SHORTAGES.map(s => [s.id, s])),
+        },
+      } as never);
+    }
+    listFuelShortages.mockResolvedValue({
+      shortages: [], fetchedAt: NOW.toISOString(), classifierVersion: 'v1', upstreamUnavailable: false,
+    });
+    if (source === 'bootstrap') listFuelShortages.mockRejectedValue(new Error('offline'));
+    await panel.fetchData();
+
+    expect(el().querySelector('.fs-summary')?.textContent).toBe('0 confirmed · 0 watch');
+    expect(el().querySelectorAll('tr.fs-row')).toHaveLength(0);
   });
 
   it('renders product and cause names instead of enum keys', async () => {

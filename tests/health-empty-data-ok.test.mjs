@@ -216,3 +216,9 @@ test('newsThreatSummary: a vanished summary is critical on the live health path,
   assert.equal(STATUS_COUNTS[entry.status], 'crit');
   assert.equal(entry.onDemand, undefined, 'the gap must not read as on-demand');
 });
+
+test('fuel shortages accept a published zero count and still require the payload', () => {
+  const meta = { fetchedAt: NOW, recordCount: 0 };
+  assert.equal(classifyPresent('fuelShortages', meta).status, 'OK');
+  assert.equal(classifyMissing('fuelShortages', meta).status, 'EMPTY');
+});

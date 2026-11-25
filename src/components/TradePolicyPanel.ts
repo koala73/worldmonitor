@@ -14,6 +14,7 @@ import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
 import { LatestRequestGuard } from '@/utils/latest-request-guard';
+import { formatUsdBillions } from '@/utils/market-format';
 
 type TabId = 'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue' | 'comtrade';
 
@@ -428,10 +429,10 @@ export class TradePolicyPanel extends Panel {
       <div class="trade-revenue-summary">
         <div class="trade-revenue-headline">
           <span class="trade-revenue-label">${t('components.tradePolicy.fytdLabel', { year: String(latestFy) })}</span>
-          <span class="trade-revenue-value">$${currentFytd.toFixed(1)}B</span>
+          <span class="trade-revenue-value">${formatUsdBillions(currentFytd)}</span>
         </div>
         <div class="trade-revenue-compare">
-          ${t('components.tradePolicy.vsPriorFy', { year: String(latestFy - 1) })}: $${priorFytd.toFixed(1)}B
+          ${t('components.tradePolicy.vsPriorFy', { year: String(latestFy - 1) })}: ${formatUsdBillions(priorFytd)}
           <span class="${changeClass}">${arrow} ${Math.abs(yoyChange).toFixed(0)}%</span>
         </div>
       </div>
@@ -445,7 +446,7 @@ export class TradePolicyPanel extends Panel {
       const pct = Math.round((m.monthlyAmountBillions / maxVal) * 100);
       const label = m.recordDate.slice(0, 7);
       const isSpike = m.monthlyAmountBillions > priorAvg * 1.5;
-      return `<div class="trade-chart-col" title="${label}: $${m.monthlyAmountBillions.toFixed(1)}B">
+      return `<div class="trade-chart-col" title="${label}: ${formatUsdBillions(m.monthlyAmountBillions)}">
         <div class="trade-chart-bar${isSpike ? ' trade-chart-spike' : ''}" style="height:${pct}%"></div>
         <div class="trade-chart-label">${m.recordDate.slice(5, 7)}</div>
       </div>`;
@@ -457,8 +458,8 @@ export class TradePolicyPanel extends Panel {
       const highlight = m.monthlyAmountBillions > priorAvg * 2 ? ' class="trade-revenue-spike"' : '';
       return `<tr${highlight}>
         <td>${m.recordDate}</td>
-        <td>$${m.monthlyAmountBillions.toFixed(1)}B</td>
-        <td>$${m.fytdAmountBillions.toFixed(1)}B</td>
+        <td>${formatUsdBillions(m.monthlyAmountBillions)}</td>
+        <td>${formatUsdBillions(m.fytdAmountBillions)}</td>
       </tr>`;
     }).join('');
 
