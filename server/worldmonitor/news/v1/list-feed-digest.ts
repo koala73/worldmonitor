@@ -3200,6 +3200,10 @@ function expectedPublisherHostsForItem(
   return [...hosts];
 }
 
+// Curated link aggregators: each item links to the submitted article on any
+// site, so only the URL shape is checked, never the publisher.
+const LINK_AGGREGATOR_FEED_HOSTS = new Set(['news.ycombinator.com', 'hnrss.org', 'lobste.rs']);
+
 // Persistence no longer has the feed object. Recover its host from the
 // server-owned registry, never from upstream item metadata. Build once so
 // each story lookup stays independent of the number of configured feeds.
@@ -3237,8 +3241,10 @@ function publisherGatedLink(
 ): string {
   const link = typeof item.link === 'string' ? item.link : '';
   if (!link) return '';
+  const registeredHosts = registeredFeedHostsBySource.get(item.source) ?? new Set<string>();
+  if ([...registeredHosts].some(host => LINK_AGGREGATOR_FEED_HOSTS.has(host))) return linkHostname(link) ? link : '';
   const hosts = new Set(expectedPublisherHostsForItem(item, { url: '' }));
-  for (const host of registeredFeedHostsBySource.get(item.source) ?? []) hosts.add(host);
+  for (const host of registeredHosts) hosts.add(host);
   return isPublisherLink(link, hosts) ? link : '';
 }
 
@@ -3255,10 +3261,6 @@ function storyTrackLinkForPersist(
   );
   return '';
 }
-
-// Curated link aggregators: each item links to the submitted article on any
-// site, so only the URL shape is checked, never the publisher.
-const LINK_AGGREGATOR_FEED_HOSTS = new Set(['news.ycombinator.com', 'hnrss.org', 'lobste.rs']);
 
 function isItemLinkAllowed(
   link: string,

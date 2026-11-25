@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
 
-const { parseRssXml } = __testing__;
+const { parseRssXml, storyTrackLinkForPersist } = __testing__;
 
 function techFeed(name: string) {
   const feed = Object.values(VARIANT_FEEDS.tech).flat().find(candidate => candidate.name === name);
@@ -125,6 +125,12 @@ describe('link aggregators keep the submitted article link', () => {
       assert.equal(parseRssXml(xml, techFeed(name), 'tech')?.items[0]?.link, 'https://example.org/autograd');
     });
   }
+
+  it('keeps the article link when the story is stored', () => {
+    const item = { link: 'https://example.org/autograd', source: 'YC News', originPublisher: '', originPublisherTrusted: false };
+    assert.equal(storyTrackLinkForPersist(item), 'https://example.org/autograd');
+    assert.equal(storyTrackLinkForPersist({ ...item, link: 'javascript:alert(1)' }), '');
+  });
 
   it('still rejects non-HTTP links from an aggregator', () => {
     const xml = rss([{ title: 'Bad link', link: 'javascript:alert(1)' }]);
