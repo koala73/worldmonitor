@@ -189,6 +189,11 @@ describe('bilateral chokepoint transit', () => {
     assert.equal(hormuzScore('US', '27', product('2709', [['SA', 0.3], ['CA', 0.7]])), 45, 'Saudi crude to the US');
   });
 
+  it('routes Brazilian bulk into China via the Cape of Good Hope', () => {
+    const exposures = computeFlowWeightedExposures('CN', '26', product('2601', [['BR', 1]]));
+    assert.equal(exposures.find(e => e.chokepointId === 'cape_of_good_hope').exposureScore, 100);
+  });
+
   it('leaves trade with only landlocked suppliers unevaluated instead of scoring it zero', () => {
     assert.deepEqual(computeFlowWeightedExposures('JP', '26', product('2603', [['MN', 1]])), []);
     assert.ok(computeFlowWeightedExposures('JP', '26', product('2603', [['MN', 0.5], ['AU', 0.5]])).length > 0);
