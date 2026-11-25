@@ -203,6 +203,12 @@ describe('clusterTexts', () => {
     assert.equal(isSameStory(a, b), false, 'Iran and Iranian are one party, so Hormuz is unmatched');
   });
 
+  it('#11274: a party name variant is not a shared topic word', () => {
+    const a = 'Iran says Iranian forces seized a tanker off Oman near Fujairah and Dubai';
+    const b = 'Iranian drones strike tanker port used by Iran opposition in Oman, Fujairah, Dubai';
+    assert.equal(isSameStory(a, b), false);
+  });
+
   it('#11274: the same-parties rescue never lowers a containment match', () => {
     const short = 'Australia Solomon Islands China security pact';
     const texts = [short, `${short} war war war war war`];
