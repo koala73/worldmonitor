@@ -48,13 +48,16 @@ describe('DeductionPanel section formatting', () => {
       '',
       '**Most likely path (next 24 hours)** No agreement is signed.',
       '',
-      '**Confidence** Medium: two sources agree, one is unconfirmed.',
+      '**Alternative paths** -5% for Brent if talks resume.',
+      '',
+      '**Confidence** — Medium: two sources agree, one is unconfirmed.',
     ].join('\n'));
 
     expect(sectionBody(result, 'ds-verdict')).toBe('Talks are likely to stall this week.');
     expect(sectionBody(result, 'ds-evidence')).toBe('Delegations left Doha on Monday.');
     expect(result.querySelector('.ds-primary .ds-section-label')?.textContent).toBe('Most Likely Pathnext 24 hours');
     expect(sectionBody(result, 'ds-primary')).toBe('No agreement is signed.');
+    expect(sectionBody(result, 'ds-alt')).toBe('-5% for Brent if talks resume.');
     expect(sectionBody(result, 'ds-confidence')).toBe('Medium: two sources agree, one is unconfirmed.');
   });
 

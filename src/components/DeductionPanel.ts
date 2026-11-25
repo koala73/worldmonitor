@@ -233,7 +233,7 @@ export class DeductionPanel extends Panel {
             if (headingNode && (headingStrong || bodyNodes.length === 0)) {
                 const clone = headingNode.cloneNode(true) as HTMLElement;
                 clone.querySelector('strong')?.remove();
-                const inlineHtml = clone.innerHTML.replace(/^[\s:–—-]+/, '');
+                const inlineHtml = clone.innerHTML.replace(/^\s*(?:[:–—]|-(?=\s))?\s*/, '');
                 if (inlineHtml.trim()) {
                     const bodyDiv = document.createElement('div');
                     bodyDiv.className = group.cls === 'ds-primary' ? 'ds-primary-body' : '';
