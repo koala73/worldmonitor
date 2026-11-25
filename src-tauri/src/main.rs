@@ -2021,6 +2021,7 @@ fn local_api_paths(app: &AppHandle) -> (PathBuf, PathBuf) {
 }
 
 fn resolve_node_binary(app: &AppHandle) -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
     if let Ok(explicit) = env::var("LOCAL_API_NODE_BIN") {
         let explicit_path = PathBuf::from(explicit);
         if explicit_path.is_file() {
@@ -2326,6 +2327,14 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     drop(token_slot);
 
     let mut cmd = Command::new(&node_binary);
+    // Scrub inherited Node loader / override env vars so an unprivileged local
+    // caller cannot inject code into the sidecar and read keychain secrets.
+    cmd.env_remove("NODE_OPTIONS")
+        .env_remove("NODE_PATH")
+        .env_remove("NODE_EXTRA_CA_CERTS")
+        .env_remove("LOCAL_API_NODE_BIN");
+    #[cfg(not(debug_assertions))]
+    cmd.env_remove("LOCAL_API_REMOTE_BASE");
     #[cfg(windows)]
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW — hide the node.exe console
                                     // Sanitize paths for Node.js on Windows: strip \\?\ UNC prefix and set

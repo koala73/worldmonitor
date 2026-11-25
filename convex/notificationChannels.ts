@@ -540,9 +540,22 @@ export const getChannels = query({
       .query("notificationChannels")
       .withIndex("by_user", (q) => q.eq("userId", identity.subject))
       .collect();
-    return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
-      || (channel.channelType === "telegram" && channel.telegramOwnership !== "verified_callback")
-      ? { ...channel, verified: false } : channel);
+    return channels.map((channel) => {
+      const normalized =
+        (channel.channelType === "email" && channel.emailOwnership !== "verified_account") ||
+        (channel.channelType === "telegram" && channel.telegramOwnership !== "verified_callback")
+          ? { ...channel, verified: false }
+          : channel;
+      if (normalized.channelType === "webhook") {
+        const { webhookSecret, webhookEnvelope: _webhookEnvelope, ...safeWebhook } = normalized;
+        return { ...safeWebhook, webhookSigned: Boolean(webhookSecret) };
+      }
+      if ("webhookEnvelope" in normalized) {
+        const { webhookEnvelope: _webhookEnvelope, ...safeChannel } = normalized;
+        return safeChannel;
+      }
+      return normalized;
+    });
   },
 });
 

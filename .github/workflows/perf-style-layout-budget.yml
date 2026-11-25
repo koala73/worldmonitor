@@ -57,15 +57,19 @@ jobs:
         # NOT be swallowed: this job's only channel is pass/fail, so a capture
         # that never happened has to be visible. `set -o pipefail` so a failing
         # node exit is not masked by the redirect.
+        env:
+          TARGET_URL: ${{ github.event.inputs.url || 'https://www.worldmonitor.app/dashboard' }}
         run: |
           set -euo pipefail
           node scripts/measure-desktop-mainthread.mjs \
-            "${{ github.event.inputs.url || 'https://www.worldmonitor.app/dashboard' }}" \
+            "$TARGET_URL" \
             --cpu 1 --settle 15000 --json > style-layout-report.json
 
       - name: Enforce the styleLayout budget
         # The checker exits 3 when the capture contract is unmet (wrong URL,
         # harness warning, implausibly low attribution) — nonzero, never green.
+        env:
+          MAX_PCT: ${{ github.event.inputs.max_pct || '28' }}
         run: |
           set -euo pipefail
           if [ ! -s style-layout-report.json ]; then
@@ -73,7 +77,7 @@ jobs:
             exit 1
           fi
           node scripts/check-style-layout-budget.mjs style-layout-report.json \
-            --max-pct "${{ github.event.inputs.max_pct || '28' }}" \
+            --max-pct "$MAX_PCT" \
             --expect-url /dashboard
 
       - name: Upload decomposition

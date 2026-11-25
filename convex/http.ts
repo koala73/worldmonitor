@@ -57,7 +57,7 @@ function allowedOrigin(origin: string | null): string | null {
     url.hostname = url.hostname.replace(/\.+$/, "");
     const candidate = `${url.protocol}//${url.host}`;
     if (TRUSTED_ORIGINS.some(pattern => pattern.test(candidate))) return origin;
-    if (process.env.NODE_ENV !== "production" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
+    if (process.env.CONVEX_IS_DEV === "true" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
     if (url.protocol === "https:" && !url.port && url.hostname.endsWith(".translate.goog")) {
       const encoded = url.hostname.slice(0, -".translate.goog".length);
       const decoded = encoded.replace(/--/g, "\0").replace(/-/g, ".").replace(/\0/g, "-");

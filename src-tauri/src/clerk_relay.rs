@@ -56,13 +56,12 @@ pub fn is_allowed_fapi_host(host: &str) -> bool {
     if host == PRODUCTION_FAPI_HOST {
         return true;
     }
-    match host.strip_suffix(DEVELOPMENT_FAPI_HOST_SUFFIX) {
-        Some(label) => {
-            !label.is_empty()
-                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-        }
-        None => false,
+    #[cfg(debug_assertions)]
+    if let Some(label) = host.strip_suffix(DEVELOPMENT_FAPI_HOST_SUFFIX) {
+        return !label.is_empty()
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
     }
+    false
 }
 
 pub fn validate_request(request: ClerkFapiRequest) -> Result<ValidatedRequest, String> {

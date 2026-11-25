@@ -897,12 +897,28 @@ describe('userPrefsOptionsHttpHandler CORS', () => {
     for (const origin of [
       'https://worldmonitor.app',
       'https://worldmonitor-git-preview-xyz-eliewm.vercel.app',
-      'http://localhost:3000',
     ]) {
       const response = await invokePreflight(origin);
       assert.equal(response.status, 204);
       assert.equal(response.headers.get('access-control-allow-origin'), origin);
       assert.equal(response.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
+    }
+
+    const prevConvexIsDev = process.env.CONVEX_IS_DEV;
+    try {
+      delete process.env.CONVEX_IS_DEV;
+      const deniedLocal = await invokePreflight('http://localhost:3000');
+      assert.equal(deniedLocal.status, 204);
+      assert.equal(deniedLocal.headers.get('access-control-allow-origin'), null);
+
+      process.env.CONVEX_IS_DEV = 'true';
+      const allowedLocal = await invokePreflight('http://localhost:3000');
+      assert.equal(allowedLocal.status, 204);
+      assert.equal(allowedLocal.headers.get('access-control-allow-origin'), 'http://localhost:3000');
+      assert.equal(allowedLocal.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
+    } finally {
+      if (prevConvexIsDev === undefined) delete process.env.CONVEX_IS_DEV;
+      else process.env.CONVEX_IS_DEV = prevConvexIsDev;
     }
   });
 

@@ -223,6 +223,17 @@ export const inviteSeats = mutation({
       throw new ConvexError({ kind: "SEAT_CAP_REACHED" });
     }
 
+    // Rolling 24-hour invite cap under touchBusinessSeatLock so an owner
+    // cannot alternate inviteSeats + removeSeat to trigger unlimited emails.
+    const INVITE_WINDOW_MS = 24 * 60 * 60 * 1000;
+    const MAX_INVITES_PER_WINDOW = 20;
+    const recentInvites = existingGrants.filter(
+      (g) => g.createdAt > now - INVITE_WINDOW_MS,
+    ).length;
+    if (recentInvites + newEmails.length > MAX_INVITES_PER_WINDOW) {
+      throw new ConvexError({ kind: "INVITE_RATE_LIMITED" });
+    }
+
     for (const email of newEmails) {
       const grantId = await ctx.db.insert("businessProGrants", {
         businessSubscriptionId: businessSub.dodoSubscriptionId,

@@ -806,13 +806,30 @@ const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
 // Leave time for local fallback within the frontend's 5s request budgets.
 const CLOUD_PROXY_TIMEOUT_MS = 3000;
 
-async function readBody(req) {
+const DEFAULT_MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024;
+
+async function readBody(req, maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES) {
   if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
-    return req[REQUEST_BODY_CACHE];
+    const cached = req[REQUEST_BODY_CACHE];
+    if (maxBytes != null && cached && cached.length > maxBytes) {
+      const error = new Error(`Request body exceeds ${maxBytes} bytes`);
+      error.code = 'EBODYTOOLARGE';
+      throw error;
+    }
+    return cached;
   }
 
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let receivedBytes = 0;
+  for await (const chunk of req) {
+    receivedBytes += chunk.length;
+    if (maxBytes != null && receivedBytes > maxBytes) {
+      const error = new Error(`Request body exceeds ${maxBytes} bytes`);
+      error.code = 'EBODYTOOLARGE';
+      throw error;
+    }
+    chunks.push(chunk);
+  }
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
   req[REQUEST_BODY_CACHE] = body;
   return body;
@@ -1014,10 +1031,13 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
   headers.set('Content-Type', 'application/json');
   headers.set('Content-Length', String(Buffer.byteLength(body)));
 
+  const safety = await assertSafeSidecarFetchUrl(new URL(target));
+  const pinned = pickPinnedAddress(safety.resolvedAddresses);
   return fetchWithTimeout(target, {
     method: 'POST',
     headers: Object.fromEntries(headers.entries()),
     body,
+    ...(pinned ? { resolvedAddress: pinned.address, resolvedFamily: pinned.family } : {}),
   }, 15000);
 }
 
@@ -1295,7 +1315,13 @@ async function handleSelfHostKey(req, context, cookieKey) {
   if (!allowed.ok) {
     return selfHostKeyJson({ error: 'Too many key checks' }, 429, { 'Retry-After': String(allowed.retryAfterSeconds) });
   }
-  const raw = await readBody(req);
+  let raw;
+  try {
+    raw = await readBody(req, SELFHOST_MAX_BODY_BYTES);
+  } catch (err) {
+    if (err?.code !== 'EBODYTOOLARGE') throw err;
+    raw = null;
+  }
   let key = null;
   if (raw && raw.length <= SELFHOST_MAX_BODY_BYTES) {
     try {
@@ -2184,7 +2210,15 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'VITE_OPENSKY_RELAY_URL': {
       const probeUrl = relayToHttpUrl(value);
       if (!probeUrl) return fail('Relay URL is invalid');
-      const response = await fetchWithTimeout(probeUrl, { method: 'GET' });
+      const safety = await isSafeUrl(probeUrl);
+      if (!safety.safe) return fail(`Relay URL blocked: ${safety.reason}`);
+      const pinned = pickPinnedAddress(safety.resolvedAddresses);
+      if (!pinned) return fail('Relay URL blocked: Could not resolve hostname');
+      const response = await fetchWithTimeout(probeUrl, {
+        method: 'GET',
+        resolvedAddress: pinned.address,
+        resolvedFamily: pinned.family,
+      });
       if (response.status >= 500) return fail(`Relay probe failed (${response.status})`);
       return ok('Relay URL is reachable');
     }

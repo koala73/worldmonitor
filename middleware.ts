@@ -464,6 +464,8 @@ function route(request: Request) {
 
 function docsResponseHeaders(upstream: Response, host: string): Headers {
   const headers = new Headers(upstream.headers);
+  // Upstream Mintlify responses must never set cookies on the primary app origin.
+  headers.delete('set-cookie');
   if (host !== new URL(DOCS_PUBLIC_ORIGIN).hostname) {
     const robots = headers.get('x-robots-tag');
     headers.set('x-robots-tag', robots ? `noindex, ${robots}` : 'noindex');
@@ -673,7 +675,13 @@ async function proxyDocsLocaleHtml(request: Request, url: URL, host: string): Pr
     if (upstream.status !== 304 && (
       upstream.status !== 200 || !shouldTransformDocsUpstreamHtml(url.pathname, contentType)
     )) {
-      return upstream;
+      const passthroughHeaders = new Headers(upstream.headers);
+      passthroughHeaders.delete('set-cookie');
+      return new Response(upstream.body, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: passthroughHeaders,
+      });
     }
     if (upstream.status === 304 || request.method === 'HEAD') {
       return new Response(null, {
