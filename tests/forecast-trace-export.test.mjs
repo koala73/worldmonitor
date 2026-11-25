@@ -6026,7 +6026,7 @@ describe('simulation package export', () => {
   it('theaters from distinct state units that share a base label get distinguishable labels', () => {
     const freight = makeCandidate({
       candidateStateId: 'state-redsea-freight',
-      candidateStateLabel: 'Red Sea maritime disruption state',
+      candidateStateLabel: 'Red Sea energy disruption state',
       routeFacilityKey: 'Red Sea',
       dominantRegion: 'Red Sea',
       commodityKey: 'shipping_freight',
@@ -6035,7 +6035,7 @@ describe('simulation package export', () => {
     });
     const energy = makeCandidate({
       candidateStateId: 'state-redsea-energy',
-      candidateStateLabel: 'Red Sea maritime disruption state (supply_chain)',
+      candidateStateLabel: 'Red Sea energy disruption state (supply_chain)',
       routeFacilityKey: 'Red Sea',
       dominantRegion: 'Red Sea',
       rankingScore: 0.8,
@@ -6049,8 +6049,8 @@ describe('simulation package export', () => {
     });
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([freight, energy, blackSea]));
     assert.deepStrictEqual(pkg.selectedTheaters.map((t) => t.label), [
-      'Red Sea maritime disruption state · Freight',
-      'Red Sea maritime disruption state · Energy',
+      'Red Sea energy disruption state · Freight',
+      'Red Sea energy disruption state · Energy',
       'Black Sea maritime disruption state',
     ]);
   });

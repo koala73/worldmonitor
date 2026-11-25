@@ -13648,8 +13648,7 @@ function disambiguateTheaterLabels(theaters, candidates) {
     if (indexes.length < 2) continue;
     const contextOf = THEATER_LABEL_CONTEXT.find((pick) => {
       const values = indexes.map((i) => pick(candidates[i]).toLowerCase());
-      return values.every((v) => v && !theaters[indexes[0]].label.toLowerCase().includes(v))
-        && new Set(values).size === values.length;
+      return values.every(Boolean) && new Set(values).size === values.length;
     });
     indexes.forEach((i, n) => {
       theaters[i].label = `${theaters[i].label} · ${contextOf ? contextOf(candidates[i]) : `#${n + 1}`}`;
