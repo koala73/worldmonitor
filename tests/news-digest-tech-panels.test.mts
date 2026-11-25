@@ -90,14 +90,14 @@ describe('funding panel: only headlines about a financing event', () => {
     ], true);
   });
 
-  describe('Seed & Pre-Seed and SEC Filings', () => {
+  describe('Seed & Pre-Seed and IPO Filing News', () => {
     keepsEach('Seed & Pre-Seed', ['Seed Funding Explained: A Guide for Tech Startups - Oracle NetSuite'], false);
     keepsEach('Seed & Pre-Seed', [
       'Dante Security Raises $10M in Seed Funding - FinSMEs',
       'Google\'s first backer, a Champions League winner join RHISE AI angel round - Dealroom',
     ], true);
-    keepsEach('SEC Filings', ['NYC Tech Week in Review: 11/15/26 – 11/21/26 - AlleyWatch'], false);
-    keepsEach('SEC Filings', [
+    keepsEach('IPO Filing News', ['NYC Tech Week in Review: 11/15/26 – 11/21/26 - AlleyWatch'], false);
+    keepsEach('IPO Filing News', [
       'Legal tech startup Finch eyes $85M raise - Axios',
       'Investors scramble for a piece of AI giant Anthropic in blockbuster IPO - NPR',
       'Insurance AI startup Voltaire adds $573K via SAFEs - Dealroom',
@@ -130,7 +130,7 @@ describe('hardware panel: Tom\'s Hardware headlines must be about hardware', () 
 });
 
 describe('link aggregators keep the submitted article link', () => {
-  for (const name of ['YC News', 'Hacker News', 'Show HN', 'Lobsters']) {
+  for (const name of ['YC Launches', 'Hacker News', 'Show HN', 'Lobsters']) {
     it(`${name} items link to the external article`, () => {
       const xml = rss([{ title: 'How PyTorch autograd works', link: 'https://example.org/autograd' }]);
       assert.equal(parseRssXml(xml, techFeed(name), 'tech')?.items[0]?.link, 'https://example.org/autograd');
@@ -138,19 +138,19 @@ describe('link aggregators keep the submitted article link', () => {
   }
 
   it('keeps the article link when the story is stored', () => {
-    const item = { link: 'https://example.org/autograd', source: 'YC News', originPublisher: '', originPublisherTrusted: false };
+    const item = { link: 'https://example.org/autograd', source: 'YC Launches', originPublisher: '', originPublisherTrusted: false };
     assert.equal(storyTrackLinkForPersist(item), 'https://example.org/autograd');
     assert.equal(storyTrackLinkForPersist({ ...item, link: 'javascript:alert(1)' }), '');
   });
 
   it('does not mark aggregator links as publisher-verified for alerts', () => {
     const xml = rss([{ title: 'How PyTorch autograd works', link: 'https://example.org/autograd' }]);
-    assert.notEqual(parseRssXml(xml, techFeed('YC News'), 'tech')?.items[0]?.linkVerified, true);
+    assert.notEqual(parseRssXml(xml, techFeed('YC Launches'), 'tech')?.items[0]?.linkVerified, true);
   });
 
   it('still rejects non-HTTP links from an aggregator', () => {
     const xml = rss([{ title: 'Bad link', link: 'javascript:alert(1)' }]);
-    assert.equal(parseRssXml(xml, techFeed('YC News'), 'tech')?.items[0]?.link, '');
+    assert.equal(parseRssXml(xml, techFeed('YC Launches'), 'tech')?.items[0]?.link, '');
   });
 
   it('still blanks off-publisher links on ordinary publisher feeds', () => {
