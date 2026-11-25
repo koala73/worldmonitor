@@ -53,6 +53,16 @@ import {
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/cross-strait-activity');
 const fixture = (name: string) => readFileSync(resolve(fixtureRoot, name), 'utf8');
 const retrievedAt = '2026-07-25T08:30:00.000Z';
+
+// Each run re-assesses reviewed Japan content freshness, so retention checks
+// compare every other field of the carried-forward observations.
+function withoutContentFreshness(rows: any[]) {
+  return rows.map((row) => {
+    if (row.sourceId !== 'japan-mod') return row;
+    const { content_freshness: _contentFreshness, ...claims } = row.provenance.claims;
+    return { ...row, provenance: { ...row.provenance, claims } };
+  });
+}
 const { proxyFetch } = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
 const usableJapanEnglishIndex = `
   <dl>
@@ -1927,10 +1937,10 @@ describe('quantified cross-Strait activity (#5575)', () => {
         ?.unreviewedCandidateCount,
     );
     assert.deepEqual(
-      snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'japan-mod'),
-      previousSnapshot.observations.filter(
+      withoutContentFreshness(snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'japan-mod')),
+      withoutContentFreshness(previousSnapshot.observations.filter(
         (row: { sourceId: string }) => row.sourceId === 'japan-mod',
-      ),
+      )),
     );
   });
 
@@ -4113,7 +4123,10 @@ describe('quantified cross-Strait activity (#5575)', () => {
     if (failure === 'timeout') assert.equal(detailCalls[0], original.sourceUrl);
     assert.equal(new Set(detailCalls).size, failure === 'timeout' ? MND_REFRESH_DETAIL_REQUESTS_PER_RUN : 0);
     assert.ok(mnd.requestDiagnostics.every((row: { purpose: string }) => row.purpose === 'refresh'));
-    assert.deepEqual(snapshot.observations, previousSnapshot.observations);
+    assert.deepEqual(
+      withoutContentFreshness(snapshot.observations),
+      withoutContentFreshness(previousSnapshot.observations),
+    );
   });
   }
 
