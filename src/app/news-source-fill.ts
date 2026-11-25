@@ -55,7 +55,7 @@ export function fillFreeSlots(base: readonly NewsItem[], extra: readonly NewsIte
   return selected.sort(newestFirst);
 }
 
-type SourceItemsClient = Pick<InstanceType<typeof NewsServiceClient>, 'listSourceItems'>;
+export type SourceItemsClient = Pick<InstanceType<typeof NewsServiceClient>, 'listSourceItems'>;
 
 let client: SourceItemsClient | null = null;
 
