@@ -95,7 +95,15 @@ test('broad-source negative reporting is screened even when the ML gate passes e
     story('Mongabay', 'Tiger poaching in Kenya falls to record low'),
     story('ScienceDaily', 'Vaccine halts spread of a parasite that kills thousands of children'),
     story('Live Science', 'Fetal surgery reverses spinal damage before birth'),
+    story('Mongabay', 'Deforestation is falling across Brazil'),
+    story('Mongabay', 'Rhino poaching dropping in South Africa'),
   ];
   const result = await selectCuratedHappyItems([...titles.map(title => story('Mongabay', title)), kept, science, ...recoveries], async items => items);
   assert.deepEqual(result, [kept, science, ...recoveries]);
+});
+
+test('GDELT copies of broad-source reporting are screened too', async () => {
+  const positive = story('GDELT', 'Volunteers plant a million trees along the river');
+  const negative = story('GDELT', 'Severe drought dries up rivers in the Amazon');
+  assert.deepEqual(await selectCuratedHappyItems([positive, negative], async items => items), [positive]);
 });

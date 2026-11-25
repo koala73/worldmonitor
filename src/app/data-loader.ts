@@ -2593,6 +2593,7 @@ export class DataLoaderManager implements AppModule {
     // Happy variant: run multi-stage positive news pipeline + map layers
     if (SITE_VARIANT === 'happy') {
       await this.loadHappySupplementaryAndRender(generation);
+      if (!this.isCurrentNewsLoad(generation)) return;
       await Promise.allSettled([
         this.ctx.mapLayers.positiveEvents ? this.loadPositiveEvents() : Promise.resolve(),
         this.ctx.mapLayers.kindness ? Promise.resolve(this.loadKindnessData()) : Promise.resolve(),
@@ -5237,7 +5238,7 @@ export class DataLoaderManager implements AppModule {
         }))
       );
 
-      supplementary = await filterBySentiment(gdeltItems);
+      supplementary = await selectCuratedHappyItems(gdeltItems, filterBySentiment);
     } catch (err) {
       console.warn('[App] Happy supplementary pipeline failed, using curated only:', err);
     }

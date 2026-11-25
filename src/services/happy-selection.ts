@@ -11,6 +11,7 @@ const BROAD_HAPPY_SOURCES = new Set([
   'New Scientist',
   'Singularity Hub',
   'Mongabay',
+  'GDELT',
 ]);
 
 // The ML sentiment gate is opt-in (browser model setting) and passes everything
@@ -25,8 +26,8 @@ const WORSENING_EVIDENCE_RE = /\b(accelerat\w*|rising|rises|rose|surg(?:e|es|ed|
 
 // "Poaching (in Kenya) falls" is recovery; "populations fall as habitat loss continues"
 // and "populations decline in polluted rivers" are not, so the verb must follow the problem.
-const DECLINE_VERB = '(?:fall(?:s|en)?|fell|drops?|dropped|declines?|declined|plummet\\w*|plung\\w*)';
-const DECLINING_PROBLEM_RE = new RegExp(`${NEGATIVE_EVIDENCE_RE.source}\\s+(?:in\\s+\\w+\\s+)?${DECLINE_VERB}\\b`, 'i');
+const DECLINE_VERB = '(?:fall(?:s|en|ing)?|fell|drops?|dropped|dropping|declin(?:es?|ed|ing)|plummet\\w*|plung\\w*)';
+const DECLINING_PROBLEM_RE = new RegExp(`${NEGATIVE_EVIDENCE_RE.source}\\s+(?:in\\s+\\w+\\s+)?(?:(?:is|are|has been|have been|keeps?)\\s+)?${DECLINE_VERB}\\b`, 'i');
 
 function hasNegativeEvidence(title: string): boolean {
   return NEGATIVE_EVIDENCE_RE.test(title)
