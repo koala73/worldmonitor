@@ -67,12 +67,12 @@ describe('keyword classifier: metaphorical coup language', () => {
 
 describe('policy digest: AI and digital policy eligibility', () => {
   it('rejects consumer offers and non-digital reports', () => {
-    for (const title of [
-      'Black Friday Deals: AirPods Pro 3 for $149, Apple Watch 12 for $299, & More - OS X Daily',
-      'Clean Energy Technology Observatory: Hydropower and Pumped Storage Hydropower in the European Union - 2026 status report on technology development, trends, value chains and markets - JRC Publications',
-      'European Cinema Night 2026 - Shaping Europe’s digital future',
+    for (const [title, publisher] of [
+      ['Black Friday Deals: AirPods Pro 3 for $149, Apple Watch 12 for $299, & More - OS X Daily', 'OS X Daily'],
+      ['Clean Energy Technology Observatory: Hydropower and Pumped Storage Hydropower in the European Union - 2026 status report on technology development, trends, value chains and markets - JRC Publications', 'JRC Publications'],
+      ['European Cinema Night 2026 - Shaping Europe’s digital future', 'Shaping Europe’s digital future'],
     ]) {
-      assert.equal(isCategoryEligible('policy', title), false, title);
+      assert.equal(isCategoryEligible('policy', title, publisher), false, title);
     }
   });
 
@@ -82,6 +82,7 @@ describe('policy digest: AI and digital policy eligibility', () => {
       'Commission preliminarily finds Temu in breach of the Digital Services Act for failure to tackle the sale of illegal products - Shaping Europe’s digital future',
       'Apple Pay antitrust class action must ‘get moving,’ US judge says - MLex',
       'Google adtech monopoly trial in New York pushed to Oct. 25, 2027 - MLex',
+      "Google Antitrust Trial: Apple's $20B Deal, 140 Days Late - shattered.io",
       'Congressional Staffing Is the Biggest Tech Policy Problem No One Talks About - Tech Policy Press',
       'First European standard published to support the Cyber Resilience Act - Shaping Europe’s digital future',
     ]) {

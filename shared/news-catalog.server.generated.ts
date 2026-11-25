@@ -5864,7 +5864,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Tech Antitrust",
-          "url": "https://news.google.com/rss/search?q=tech%20antitrust%20OR%20FTC%20Google%20OR%20FTC%20Apple%20OR%20FTC%20Amazon%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(antitrust%20OR%20%22competition%20law%22)%20(%22Big%20Tech%22%20OR%20Google%20OR%20Apple%20OR%20Amazon%20OR%20Meta%20OR%20Microsoft%20OR%20Nvidia)%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "China Tech Policy",
@@ -5876,7 +5876,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "EU Commission Digital",
-          "url": "https://news.google.com/rss/search?q=site:ec.europa.eu+digital+OR+technology+when:14d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site:digital-strategy.ec.europa.eu+when:14d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "EU Digital Policy",

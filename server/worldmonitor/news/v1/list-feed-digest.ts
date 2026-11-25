@@ -202,6 +202,22 @@ const ITEMS_PER_FEED = 5;
 // the whole feed grows the pool from about 4,400 to 8,300 headlines.
 const COUNTRY_ITEMS_PER_FEED = 100;
 const MAX_ITEMS_PER_CATEGORY = 20;
+
+// Broad policy searches also return shopping deals and unrelated agency
+// reports. The AI Policy and Regulation panel keeps headlines about a digital
+// subject or a policy action, and never consumer offers.
+const DIGITAL_SUBJECT_RE = /\b(?:ai|artificial intelligence|tech|digital|data|privacy|cyber\w*|online|internet|platforms?|apps?|software|algorithm\w*|chips?|semiconductors?|google|apple|amazon|meta|microsoft|nvidia|openai|anthropic|tiktok|social media|gdpr|telecom\w*|encryption|deepfakes?|chatbots?|bots?|crypto\w*|e-commerce|adtech|robot\w*|drones?)\b/i;
+const POLICY_ACTION_RE = /\b(?:regulat\w*|laws?|acts?|bills?|rules?|ruling|bans?|antitrust|monopoly|competition|courts?|judge|lawsuit|sues?|sued|fines?|fined|probes?|investigat\w*|polic(?:y|ies)|compliance|guidelines?|legislat\w*|congress\w*|parliament|senate|lawmakers?|governance|enforcement|oversight|executive order|white house|government|national security|consultation|copyright|export controls?|sanctions?|watchdog|regulators?)\b/i;
+const CONSUMER_OFFER_RE = /\b(?:deals|discounts?|coupons?|promo codes?|black friday|cyber monday|prime day|on sale|\$\d+ off|lowest price)\b/i;
+
+const CATEGORY_ELIGIBILITY: Readonly<Record<string, (title: string) => boolean>> = {
+  policy: (title) => !CONSUMER_OFFER_RE.test(title) && (DIGITAL_SUBJECT_RE.test(title) || POLICY_ACTION_RE.test(title)),
+};
+
+function isCategoryEligible(category: string, title: string, originPublisher = ''): boolean {
+  return CATEGORY_ELIGIBILITY[category]?.(headlineWithoutAttribution(title, originPublisher)) ?? true;
+}
+
 const FEED_CAP_LEDGER_TOP = 20;
 
 // #10976: the feeds that lost the most items to ITEMS_PER_FEED, so a missed
@@ -1461,7 +1477,14 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     const forDigest = index < ITEMS_PER_FEED;
 
     const title = extractTitleTag(block, sitemap ? 'news:title' : 'title', blockLower);
-    if (!title) continue;
+    // RSS 2.0 <source url="...">Name</source> — the originating publisher,
+    // emitted per item by Google News. Atom's <source> is a metadata
+    // CONTAINER (nested elements, no text of its own), so only the RSS
+    // dialect is read; extractTag's [^<]* body would not match a container
+    // anyway, but skipping Atom keeps that an invariant rather than a
+    // regex accident.
+    const extractedOriginPublisher = isAtom || sitemap ? '' : extractTag(block, 'source', blockLower);
+    if (!hasHeadlineText(title, extractedOriginPublisher)) continue;
 
     if (forDigest) parsedTotal++;
 
@@ -1503,13 +1526,6 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       continue;
     }
 
-    // RSS 2.0 <source url="...">Name</source> — the originating publisher,
-    // emitted per item by Google News. Atom's <source> is a metadata
-    // CONTAINER (nested elements, no text of its own), so only the RSS
-    // dialect is read; extractTag's [^<]* body would not match a container
-    // anyway, but skipping Atom keeps that an invariant rather than a
-    // regex accident.
-    const extractedOriginPublisher = isAtom || sitemap ? '' : extractTag(block, 'source', blockLower);
     // Ordinary feeds cannot vouch for RSS <source>. The country reader already
     // ignores untrusted origin metadata, so keep those late headlines and store
     // an empty publisher. Trusted aggregators still have the 200-character
@@ -1705,6 +1721,18 @@ function extractDescription(
   if (normalizeForDescriptionEquality(best) === normalizeForDescriptionEquality(title)) return '';
 
   return best.slice(0, MAX_DESCRIPTION_LEN);
+}
+
+function headlineWithoutAttribution(title: string, originPublisher: string): string {
+  const text = stripAttributionSuffix(title);
+  if (!originPublisher || !text.endsWith(originPublisher)) return text;
+  const head = text.slice(0, -originPublisher.length).trimEnd();
+  return /[-\u2013\u2014|]$/.test(head) ? head.slice(0, -1) : text;
+}
+
+/** False for a title that is only an attribution suffix, such as Google News' " - Department of Justice (.gov)". */
+function hasHeadlineText(title: string, originPublisher: string): boolean {
+  return /[\p{L}\p{N}]/u.test(headlineWithoutAttribution(title, originPublisher));
 }
 
 // Headlines are displayed as text, and some publishers (The Korea Herald) put
@@ -3901,6 +3929,13 @@ async function buildDigest(
       results.set(category, fresh);
     }
     ledgerDrops.freshnessFloor = droppedStaleTotal;
+    for (const [category, items] of results) {
+      const eligible = items.filter((it) => isCategoryEligible(category, it.title, it.originPublisher));
+      if (eligible.length < items.length) {
+        console.log(`[digest] category eligibility dropped ${items.length - eligible.length} ${category} items`);
+        results.set(category, eligible);
+      }
+    }
     if (droppedStaleTotal > 0) {
       console.warn(
         `[digest] freshness floor dropped ${droppedStaleTotal} stale items ` +
@@ -4350,6 +4385,7 @@ export const __testing__ = {
   expectedPublisherHostsForItem,
   isAnchorEligible,
   isIdentityAnchorEligible,
+  isCategoryEligible,
   computeImportanceScore,
   computeCredibilityScore,
   computeItemCredibilityScore,

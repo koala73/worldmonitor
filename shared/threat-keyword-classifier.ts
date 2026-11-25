@@ -249,6 +249,14 @@ const TECH_LOW_KEYWORDS: KeywordMap = {
   'open source': 'tech',
 };
 
+// "Coup" as a political or business metaphor (a "progressive coup", a
+// "transfer coup", "coup de grâce") is not a seizure of power.
+const METAPHORICAL_COUP_RE = /\b(?:progressive|conservative|liberal|leftist|populist|socialist|maga|woke|boardroom|corporate|shareholder|marketing|pr|publicity|media|transfer|signing|recruiting|diplomatic|budget|fiscal|legislative|cultural)\s+coup\b|\bcoup\s+(?:de\s+(?:gr[aâ]ce|th[eé][aâ]tre|ma[iî]tre|foudre))\b/g;
+
+export function withoutMetaphoricalCoup(titleLower: string): string {
+  return titleLower.replace(METAPHORICAL_COUP_RE, ' ');
+}
+
 const EXCLUSIONS = [
   'protein', 'couples', 'relationship', 'dating', 'diet', 'fitness',
   'recipe', 'cooking', 'shopping', 'fashion', 'celebrity', 'movie',
@@ -311,7 +319,7 @@ function shouldEscalateToCritical(lower: string, matchCat: EventCategory): boole
 }
 
 export function classifyByKeyword(title: string, variant = 'full'): ThreatClassification {
-  const lower = title.toLowerCase();
+  const lower = withoutMetaphoricalCoup(title.toLowerCase());
 
   if (EXCLUSIONS.some(ex => lower.includes(ex))) {
     return { level: 'info', category: 'general', confidence: 0.3, source: 'keyword' };
