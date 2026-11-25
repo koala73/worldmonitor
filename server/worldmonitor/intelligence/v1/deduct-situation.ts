@@ -175,7 +175,7 @@ export async function deductSituation(
         // apart from the shared entry.
         resolveAiRouting(ctx.request),
     ]);
-    const cacheKey = `deduct:situation:v3:${queryHash.slice(0, 16)}${frameworkHash ? ':fw' + frameworkHash : ''}${predictionHash ? ':pm' + predictionHash : ''}${aiRoutingCacheSuffix(aiRouting)}`;
+    const cacheKey = `deduct:situation:v4:${queryHash.slice(0, 16)}${frameworkHash ? ':fw' + frameworkHash : ''}${predictionHash ? ':pm' + predictionHash : ''}${aiRoutingCacheSuffix(aiRouting)}`;
 
     const { mode, systemPrompt, userPrompt } = buildDeductionPrompt({ query, geoContext, predictionContext });
 
