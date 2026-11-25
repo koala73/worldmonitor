@@ -316,6 +316,13 @@ describe('dedup identity is not unique-name', () => {
     assert.equal(row.id, 'SDN:2');
   });
 
+  it('keeps OFAC alias order through the merge so the bounded screening index holds the leading aliases', () => {
+    const ofac = { id: 'SDN:3', name: 'VTB Bank', sourceLists: ['SDN'], programs: ['SDN'], _aliases: ['Банк ВТБ', 'Bank VTB', 'Acme Bank Ltd'], _identifiers: [] };
+    const sema = { id: 'sema-ca:vtb:1', name: 'ACME BANK LTD', sourceLists: [SEMA_SOURCE], programs: ['SEMA'], _aliases: ['Alpha Bank Ltd'], _identifiers: [] };
+    const [row] = mergeSanctionEntries({ ofac: [ofac], sema: [sema] });
+    assert.deepEqual(row._aliases, ['Банк ВТБ', 'Bank VTB', 'Acme Bank Ltd', 'Alpha Bank Ltd', 'ACME BANK LTD']);
+  });
+
   it('does not let a single-token alias absorb a distinct designation', () => {
     // Live shape: OFAC's Iranian entity "ALLIANCE" vs SEMA's "AI Alliance Russia"
     // (alias "Alliance"). A bare one-word alias is not identity — merging here
