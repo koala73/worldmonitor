@@ -8,46 +8,59 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { flightBoardTime } from '../src/services/aviation/board-time.ts';
+import { flightBoardClock, formatFlightBoardTime } from '../src/services/aviation/board-time.ts';
 import type { FlightInstance } from '../src/services/aviation/index.ts';
 
 const DEP = new Date('2026-08-27T10:00:00Z');
 const ARR = new Date('2026-08-27T18:00:00Z');
+const ZONES: Record<string, string> = { IST: 'Europe/Istanbul', LHR: 'Europe/London', JFK: 'America/New_York' };
 
 function flight(from: string, to: string, dep: Date | null = DEP, arr: Date | null = ARR): FlightInstance {
   return {
     flightNumber: 'TK1', date: '2026-08-27',
     carrier: { iata: 'TK', name: 'Turkish' },
-    origin: { iata: from, name: from }, destination: { iata: to, name: to },
+    origin: { iata: from, name: from, timezone: ZONES[from] ?? 'UTC' },
+    destination: { iata: to, name: to, timezone: ZONES[to] ?? 'UTC' },
     scheduledDeparture: dep, scheduledArrival: arr,
     estimatedDeparture: dep, estimatedArrival: arr,
-    status: 'scheduled', delayMinutes: 0, cancelled: false, diverted: false,
+    codeshares: [], status: 'scheduled', delayMinutes: 0, cancelled: false, diverted: false,
     gate: '', terminal: '', aircraftType: '', source: 'aviationstack',
   };
 }
 
 describe('flights board row time', () => {
   it('shows the arrival time for a flight landing at the board airport', () => {
-    assert.equal(flightBoardTime(flight('LHR', 'IST'), 'IST'), ARR);
+    assert.equal(flightBoardClock(flight('LHR', 'IST'), 'IST')?.at ?? null, ARR);
   });
 
   it('shows the departure time for a flight leaving the board airport', () => {
-    assert.equal(flightBoardTime(flight('IST', 'JFK'), 'IST'), DEP);
+    assert.equal(flightBoardClock(flight('IST', 'JFK'), 'IST')?.at ?? null, DEP);
   });
 
   it('falls back to the other end of the leg when the relevant time is missing', () => {
-    assert.equal(flightBoardTime(flight('LHR', 'IST', DEP, null), 'IST'), DEP);
-    assert.equal(flightBoardTime(flight('IST', 'JFK', null, ARR), 'IST'), ARR);
+    assert.equal(flightBoardClock(flight('LHR', 'IST', DEP, null), 'IST')?.at ?? null, DEP);
+    assert.equal(flightBoardClock(flight('IST', 'JFK', null, ARR), 'IST')?.at ?? null, ARR);
   });
 
   it('returns null when neither end is known, so the row renders an em dash', () => {
-    assert.equal(flightBoardTime(flight('LHR', 'IST', null, null), 'IST'), null);
+    assert.equal(flightBoardClock(flight('LHR', 'IST', null, null), 'IST')?.at ?? null, null);
   });
 
   it('treats every row as a departure before the board airport is known', () => {
     // flightsAirport is empty until the first load resolves; without the guard
     // an empty string would match no destination anyway, but pinning it keeps
     // the pre-load render from depending on that coincidence.
-    assert.equal(flightBoardTime(flight('LHR', 'IST'), ''), DEP);
+    assert.equal(flightBoardClock(flight('LHR', 'IST'), '')?.at ?? null, DEP);
+  });
+
+  it('labels the time with the zone of the airport the board is for', () => {
+    // 10:00Z leaves Istanbul at 13:00 local; 18:00Z lands in Istanbul at 21:00 local.
+    assert.match(formatFlightBoardTime(flight('IST', 'JFK'), 'IST'), /^13:00 (GMT|UTC)\+3$/);
+    assert.match(formatFlightBoardTime(flight('LHR', 'IST'), 'IST'), /^21:00 (GMT|UTC)\+3$/);
+  });
+
+  it('labels a fallback time with the zone of the airport it happened at', () => {
+    // An arrival with no arrival time falls back to its departure from London.
+    assert.match(formatFlightBoardTime(flight('LHR', 'IST', DEP, null), 'IST'), /^11:00 (BST|GMT\+1|UTC\+1)$/);
   });
 });
