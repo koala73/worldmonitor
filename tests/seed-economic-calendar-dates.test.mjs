@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { parseEcbCouncilDates, parseFomcDates } from '../scripts/seed-economic-calendar.mjs';
+import {
+  easternInstant,
+  fredReleaseAt,
+  parseBeaReleaseTimes,
+  parseEcbCouncilDates,
+  parseFomcDates,
+} from '../scripts/seed-economic-calendar.mjs';
 
 function fedRow(month, days, note = '') {
   return `
@@ -58,5 +64,29 @@ describe('economic calendar central bank dates', () => {
 
   it('labels only the ECB Day 2 entry of each monetary policy meeting as a rate decision', () => {
     assert.deepEqual(parseEcbCouncilDates(ECB_PAGE), ['2026-12-17', '2027-02-04']);
+  });
+});
+
+describe('economic calendar release times', () => {
+  it('converts US Eastern wall-clock times to UTC across daylight saving', () => {
+    assert.equal(easternInstant('2026-11-25', '08:30'), Date.parse('2026-11-25T13:30:00.000Z'));
+    assert.equal(easternInstant('2026-07-15', '08:30'), Date.parse('2026-07-15T12:30:00.000Z'));
+    assert.equal(easternInstant('2026-03-08', '14:00'), Date.parse('2026-03-08T18:00:00.000Z'));
+    assert.equal(easternInstant('2026-11-01', '08:30'), Date.parse('2026-11-01T13:30:00.000Z'));
+  });
+
+  it('takes GDP and PCE times from the BEA schedule, including off-hour releases', () => {
+    const bea = {
+      'Gross Domestic Product': { release_dates: ['2026-11-25T13:30:00+00:00'] },
+      'Personal Income and Outlays': { release_dates: ['2026-01-22T15:00:00+00:00', 'not-a-date'] },
+    };
+    assert.deepEqual([...parseBeaReleaseTimes(bea, 'Personal Income and Outlays')], [
+      ['2026-01-22', Date.parse('2026-01-22T15:00:00Z')],
+    ]);
+    const gdp = { event: 'GDP', beaRelease: 'Gross Domestic Product' };
+    assert.equal(fredReleaseAt(gdp, '2026-11-25', bea), Date.parse('2026-11-25T13:30:00.000Z'));
+    assert.equal(fredReleaseAt(gdp, '2026-12-23', bea), 0);
+    assert.equal(fredReleaseAt(gdp, '2026-11-25', null), 0);
+    assert.equal(fredReleaseAt({ event: 'CPI', etTime: '08:30' }, '2026-12-10', null), Date.parse('2026-12-10T13:30:00.000Z'));
   });
 });

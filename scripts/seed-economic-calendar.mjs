@@ -12,13 +12,82 @@ const CACHE_TTL = 129600; // 36h — 3× a 12h cron interval
 
 // FRED release IDs for major US macro events
 // https://api.stlouisfed.org/fred/releases
+// FRED carries release dates only. `etTime` is the agency's fixed release time
+// (BLS CPI and Employment Situation, Census retail sales: 8:30 a.m. ET). BEA moves
+// some GDP and PCE releases to 10:00 a.m., so those take the instant BEA publishes
+// in its machine-readable schedule (`beaRelease`) and stay unknown without it.
 const FRED_RELEASES = [
-  { id: 10,  event: 'CPI',              unit: '%' },
-  { id: 50,  event: 'Nonfarm Payrolls', unit: 'K' },
-  { id: 53,  event: 'GDP',              unit: '%' },
-  { id: 54,  event: 'PCE',              unit: '%' },
-  { id: 9,   event: 'Retail Sales',     unit: '%' },
+  { id: 10,  event: 'CPI',              unit: '%', etTime: '08:30' },
+  { id: 50,  event: 'Nonfarm Payrolls', unit: 'K', etTime: '08:30' },
+  { id: 53,  event: 'GDP',              unit: '%', beaRelease: 'Gross Domestic Product' },
+  { id: 54,  event: 'PCE',              unit: '%', beaRelease: 'Personal Income and Outlays' },
+  { id: 9,   event: 'Retail Sales',     unit: '%', etTime: '08:30' },
 ];
+
+// The FOMC statement is released at 2:00 p.m. ET on the decision day.
+const FOMC_STATEMENT_ET = '14:00';
+
+const BEA_RELEASE_DATES_URL = 'https://apps.bea.gov/API/signup/release_dates.json';
+const US_EASTERN = 'America/New_York';
+
+const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: US_EASTERN,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function etParts(ms) {
+  return Object.fromEntries(ET_PARTS_FMT.formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+}
+
+/** Epoch milliseconds for a wall-clock `HH:MM` in US Eastern time on `YYYY-MM-DD` (DST-aware). */
+export function easternInstant(date, hhmm) {
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm] = hhmm.split(':').map(Number);
+  const wall = Date.UTC(y, m - 1, d, hh, mm);
+  const offsetAt = (ms) => {
+    const p = etParts(ms);
+    return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute)) - ms;
+  };
+  const utc = wall - offsetAt(wall);
+  return wall - offsetAt(utc);
+}
+
+/** Map of Eastern release date (YYYY-MM-DD) to epoch milliseconds for one BEA release. */
+export function parseBeaReleaseTimes(json, releaseName) {
+  const byDate = new Map();
+  for (const raw of json?.[releaseName]?.release_dates ?? []) {
+    const ms = Date.parse(raw);
+    if (!Number.isFinite(ms)) continue;
+    const p = etParts(ms);
+    byDate.set(`${p.year}-${p.month}-${p.day}`, ms);
+  }
+  return byDate;
+}
+
+async function fetchBeaReleaseDates() {
+  try {
+    const resp = await fetch(BEA_RELEASE_DATES_URL, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return await resp.json();
+  } catch (err) {
+    console.warn(`  BEA release schedule fetch failed (${err.message}) — GDP/PCE release times unknown`);
+    return null;
+  }
+}
+
+export function fredReleaseAt(release, date, beaSchedule) {
+  if (release.etTime) return easternInstant(date, release.etTime);
+  if (release.beaRelease && beaSchedule) return parseBeaReleaseTimes(beaSchedule, release.beaRelease).get(date) ?? 0;
+  return 0;
+}
 
 // Fallback FOMC rate decision dates (day 2 of each 2-day meeting = decision day)
 // Source: federalreserve.gov/monetarypolicy/fomccalendars.htm
@@ -223,7 +292,7 @@ async function fetchEconomicCalendar() {
 
   const fomcEvents = fomcAllDates
     .filter((d) => d >= fromDate && d <= toDate)
-    .map((date) => ({ event: 'FOMC Rate Decision', country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit: '' }));
+    .map((date) => ({ event: 'FOMC Rate Decision', country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit: '', releaseAt: easternInstant(date, FOMC_STATEMENT_ET) }));
 
   const ecbEvents = ecbAllDates
     .filter((d) => d >= fromDate && d <= toDate)
@@ -261,14 +330,17 @@ async function fetchEconomicCalendar() {
   }
 
   console.log(`  Fetching FRED economic release calendar ${fromDate} → ${toDate}`);
+  const beaSchedule = await fetchBeaReleaseDates();
 
   await Promise.all(
-    FRED_RELEASES.map(async ({ id, event, unit }) => {
+    FRED_RELEASES.map(async (release) => {
+      const { id, event, unit } = release;
       try {
         const dates = await fetchFredReleaseDates(id, apiKey, fromDate, toDate);
         console.log(`  ${event} (release_id=${id}): ${dates.length} upcoming date(s)`);
         for (const date of dates) {
-          events.push({ event, country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit });
+          const releaseAt = fredReleaseAt(release, date, beaSchedule);
+          events.push({ event, country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit, releaseAt });
         }
       } catch (err) {
         console.warn(`  FRED release ${id} (${event}) failed: ${err.message} — skipping`);

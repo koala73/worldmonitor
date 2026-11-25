@@ -621,6 +621,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Hyperliquid; link to the relevant market/API response.',
     status: 'terms-review',
   },
+  'apps.bea.gov': {
+    provider: 'U.S. Bureau of Economic Analysis (BEA)',
+    license: 'U.S. government public-domain release schedule',
+    attribution: 'U.S. Bureau of Economic Analysis news release schedule.',
+    status: 'reviewed',
+  },
   'apps.fas.usda.gov': {
     provider: 'USDA FAS PSD',
     license: 'U.S. government public-domain PSD Open Data',
@@ -1219,7 +1225,9 @@ const PROVIDER_OVERRIDES = {
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // PR #10998: identify the restricted-party feed on its release asset host.
-  sha256: 'b277b8a702e4c60aff18002601ea9ad29369f392460169df4c83cf6b46cd5e5f',
+  sha256: '8a9634dbaace1c6f363ab12af870dd86065ab705eed13b4dd2d7a09137642d8d',
+  // 2026-11-25 (#11271): name BEA on the release-schedule host behind the
+  // economic calendar's GDP and PCE release times.
   // 2026-11-18 (#10937): name The Kyiv Independent and The New Voice of
   // Ukraine on their direct feeds. Group Sky News and The Washington Post with
   // the hosts their Google News claim-depth searches fetch again. Drop the

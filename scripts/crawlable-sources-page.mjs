@@ -260,6 +260,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['api.sam.gov', 'SAM.gov'],
   ['api.spdrgoldshares.com', 'SPDR Gold Shares'],
   ['api.stlouisfed.org', 'Federal Reserve Economic Data (FRED)'],
+  ['apps.bea.gov', 'U.S. Bureau of Economic Analysis (BEA)'],
   ['fred.stlouisfed.org', 'Federal Reserve Economic Data (FRED)'],
   ['api.ted.europa.eu', 'Tenders Electronic Daily (TED)'],
   ['api.tzevaadom.co.il', 'Tzeva Adom'],

@@ -47097,6 +47097,10 @@ components:
                     type: string
                 unit:
                     type: string
+                releaseAt:
+                    type: integer
+                    format: int64
+                    description: 'Scheduled release instant, as Unix epoch milliseconds. 0 when no authoritative release time is known.. Warning: Values > 2^53 may lose precision in JavaScript'
         worldmonitor_economic_v1_GetCrudeInventoriesRequest:
             type: object
             description: GetCrudeInventoriesRequest is the request message for GetCrudeInventories.
