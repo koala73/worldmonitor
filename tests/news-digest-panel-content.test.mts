@@ -56,6 +56,7 @@ describe('keyword classifier: metaphorical coup language', () => {
         'Military coup in Niger as soldiers seize presidential palace',
         'Coup attempt foiled in Bolivia',
         'Boardroom coup at Acme as army stages coup in Gabon',
+        'Bolivia foils conservative coup attempt',
       ]) {
         const result = classify(title);
         assert.equal(result.level, 'critical', title);
@@ -88,6 +89,16 @@ describe('policy digest: AI and digital policy eligibility', () => {
     ]) {
       assert.equal(isCategoryEligible('policy', title), true, title);
     }
+  });
+
+  it('backfills a policy feed from eligible items instead of spending slots on rejected ones', () => {
+    const techAntitrust = { name: 'Tech Antitrust', url: 'https://news.google.com/rss/search?q=(antitrust%20OR%20%22competition%20law%22)%20(%22Big%20Tech%22%20OR%20Google%20OR%20Apple%20OR%20Amazon%20OR%20Meta%20OR%20Microsoft%20OR%20Nvidia)%20when%3A7d&hl=en-US&gl=US&ceid=US:en' };
+    const titles = [
+      'Black Friday Deals: AirPods Pro 3 for $149, Apple Watch 12 for $299, & More - OS X Daily',
+      ...Array.from({ length: 5 }, (_, i) => `Google antitrust ruling ${i + 1} - Reuters`),
+    ];
+    const parsed = parseRssXml(googleNewsXml(titles.map(title => ({ title, source: 'Reuters' }))), techAntitrust, 'tech');
+    assert.deepEqual(parsed?.items.map(item => item.title), titles.slice(1));
   });
 
   it('leaves other categories unconstrained', () => {

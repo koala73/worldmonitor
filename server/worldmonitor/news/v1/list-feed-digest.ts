@@ -218,6 +218,14 @@ function isCategoryEligible(category: string, title: string, originPublisher = '
   return CATEGORY_ELIGIBILITY[category]?.(headlineWithoutAttribution(title, originPublisher)) ?? true;
 }
 
+// Applied while parsing, before the per-feed cap, so a rejected headline
+// neither takes a feed slot nor reaches the cached rows list-source-items reads.
+const FEED_ELIGIBILITY_CATEGORY = new Map(
+  Object.values(VARIANT_FEEDS).flatMap((byCategory) => Object.entries(byCategory)
+    .filter(([category]) => category in CATEGORY_ELIGIBILITY)
+    .flatMap(([category, feeds]) => feeds.map((feed) => [feed.url, category] as const))),
+);
+
 const FEED_CAP_LEDGER_TOP = 20;
 
 // #10976: the feeds that lost the most items to ITEMS_PER_FEED, so a missed
@@ -1451,10 +1459,16 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // a fresh item cannot sit below the cap in a relevance-ordered Google News
     // search, an editorial-order feed (NYT World) or a sitemap ordered by last
     // modification (#10978). Undated items keep feed order after dated ones.
-    // Excluded paths drop out first so they never take a slot.
+    // Excluded paths, suffix-only titles and headlines the feed's category
+    // rejects drop out first so they never take a slot.
+    const eligibilityCategory = FEED_ELIGIBILITY_CATEGORY.get(feed.url);
     const ranked = matches.flatMap((block, index) => {
       const lower = asciiLower(block);
-      if (sitemap && (!extractTag(block, 'news:title', lower) || !extractTag(block, 'loc', lower))) return [];
+      if (sitemap && !extractTag(block, 'loc', lower)) return [];
+      const title = extractTitleTag(block, sitemap ? 'news:title' : 'title', lower);
+      const originPublisher = feedItemOriginPublisher(block, lower, sitemap, isAtom);
+      if (!hasHeadlineText(title, originPublisher)) return [];
+      if (eligibilityCategory && !isCategoryEligible(eligibilityCategory, title, originPublisher)) return [];
       if (excluded && hasExcludedPathSegment(feedItemLink(block, lower, sitemap, isAtom), excluded)) return [];
       const raw = sitemap ? extractTag(block, 'news:publication_date', lower) : extractFirstDateTag(block, isAtom, lower);
       return [{ block, index, publishedAt: usableFeedDateMs(raw) ?? -Infinity }];
@@ -1477,14 +1491,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     const forDigest = index < ITEMS_PER_FEED;
 
     const title = extractTitleTag(block, sitemap ? 'news:title' : 'title', blockLower);
-    // RSS 2.0 <source url="...">Name</source> — the originating publisher,
-    // emitted per item by Google News. Atom's <source> is a metadata
-    // CONTAINER (nested elements, no text of its own), so only the RSS
-    // dialect is read; extractTag's [^<]* body would not match a container
-    // anyway, but skipping Atom keeps that an invariant rather than a
-    // regex accident.
-    const extractedOriginPublisher = isAtom || sitemap ? '' : extractTag(block, 'source', blockLower);
-    if (!hasHeadlineText(title, extractedOriginPublisher)) continue;
+    if (!title) continue;
 
     if (forDigest) parsedTotal++;
 
@@ -1526,6 +1533,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       continue;
     }
 
+    const extractedOriginPublisher = feedItemOriginPublisher(block, blockLower, sitemap, isAtom);
     // Ordinary feeds cannot vouch for RSS <source>. The country reader already
     // ignores untrusted origin metadata, so keep those late headlines and store
     // an empty publisher. Trusted aggregators still have the 200-character
@@ -1721,6 +1729,16 @@ function extractDescription(
   if (normalizeForDescriptionEquality(best) === normalizeForDescriptionEquality(title)) return '';
 
   return best.slice(0, MAX_DESCRIPTION_LEN);
+}
+
+// RSS 2.0 <source url="...">Name</source> — the originating publisher,
+// emitted per item by Google News. Atom's <source> is a metadata
+// CONTAINER (nested elements, no text of its own), so only the RSS
+// dialect is read; extractTag's [^<]* body would not match a container
+// anyway, but skipping Atom keeps that an invariant rather than a
+// regex accident.
+function feedItemOriginPublisher(block: string, lower: string, sitemap: boolean, isAtom: boolean): string {
+  return isAtom || sitemap ? '' : extractTag(block, 'source', lower);
 }
 
 function headlineWithoutAttribution(title: string, originPublisher: string): string {
@@ -3929,13 +3947,6 @@ async function buildDigest(
       results.set(category, fresh);
     }
     ledgerDrops.freshnessFloor = droppedStaleTotal;
-    for (const [category, items] of results) {
-      const eligible = items.filter((it) => isCategoryEligible(category, it.title, it.originPublisher));
-      if (eligible.length < items.length) {
-        console.log(`[digest] category eligibility dropped ${items.length - eligible.length} ${category} items`);
-        results.set(category, eligible);
-      }
-    }
     if (droppedStaleTotal > 0) {
       console.warn(
         `[digest] freshness floor dropped ${droppedStaleTotal} stale items ` +
