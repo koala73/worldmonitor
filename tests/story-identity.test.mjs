@@ -196,6 +196,12 @@ describe('clusterTexts', () => {
     ), false);
   });
 
+  it('#11274: same-parties similarity does not depend on argument order', () => {
+    const a = 'Iran and Iranian guards seize oil tanker off Oman Fujairah';
+    const b = 'Iran guards seize oil tanker near Hormuz Oman Fujairah amid fresh regional tensions';
+    assert.equal(storySimilarity(a, b), storySimilarity(b, a));
+  });
+
   it('#11274: the same-parties rescue never lowers a containment match', () => {
     const short = 'Australia Solomon Islands China security pact';
     const texts = [short, `${short} war war war war war`];
