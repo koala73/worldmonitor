@@ -6,6 +6,7 @@ import { NQ_INFLUENCE_SYMBOLS } from '../src/config/nq-context.ts';
 import {
   boundEarningsCalendar,
   EARNINGS_CALENDAR_CAP,
+  fetchAll,
   NQ_INFLUENCE_EARNINGS_SYMBOLS,
 } from '../scripts/seed-earnings-calendar.mjs';
 import { buildEarningsCalendarResponse } from '../server/worldmonitor/market/v1/list-earnings-calendar.ts';
@@ -112,5 +113,50 @@ describe('earnings calendar bound', () => {
       bounded.filter((entry) => entry.symbol.startsWith('GEN')).length,
       EARNINGS_CALENDAR_CAP - NQ_INFLUENCE_SYMBOLS.length,
     );
+  });
+});
+
+describe('earnings calendar profile enrichment (#11269)', () => {
+  const calendar = {
+    earningsCalendar: [
+      { symbol: 'DIDIY', date: '2026-11-26', hour: 'bmo', epsEstimate: -0.35, revenueEstimate: 66_724_743_120 },
+      { symbol: 'AAPL', date: '2026-11-26', hour: 'amc', epsEstimate: 1.5, revenueEstimate: 124_000_000_000 },
+      { symbol: 'XYZQ', date: '2026-11-26', hour: 'amc', epsEstimate: 0.4, revenueEstimate: 50_000_000 },
+    ],
+  };
+  const profiles: Record<string, unknown> = {
+    DIDIY: { ticker: 'DIDIY', name: 'DiDi Global Inc', currency: 'CNY', estimateCurrency: 'CNY' },
+    AAPL: { ticker: 'AAPL', name: 'Apple Inc', currency: 'USD', estimateCurrency: 'USD' },
+  };
+
+  async function fakeFetch(input: string | URL | Request): Promise<Response> {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/calendar/earnings')) return Response.json(calendar);
+    const profile = profiles[url.searchParams.get('symbol') ?? ''];
+    return profile ? Response.json(profile) : new Response('', { status: 404 });
+  }
+
+  it('stores the Finnhub company name and estimate currency on each row', async () => {
+    const previousKey = process.env.FINNHUB_API_KEY;
+    process.env.FINNHUB_API_KEY = 'test-key';
+    try {
+      const data = await fetchAll({
+        fetchFn: fakeFetch as typeof fetch,
+        sleepFn: async () => {},
+        now: new Date('2026-11-25T00:00:00Z'),
+      });
+      const bySymbol = new Map(data.earnings.map((entry) => [entry.symbol, entry]));
+      assert.equal(bySymbol.get('DIDIY')?.company, 'DiDi Global Inc');
+      assert.equal(bySymbol.get('DIDIY')?.revenueCurrency, 'CNY');
+      assert.equal(bySymbol.get('AAPL')?.revenueCurrency, 'USD');
+      assert.equal(bySymbol.get('XYZQ')?.company, 'XYZQ');
+      assert.equal(bySymbol.get('XYZQ')?.revenueCurrency, '');
+
+      const response = buildEarningsCalendarResponse(data, { fromDate: '2026-11-18', toDate: '2026-12-09' });
+      assert.equal(response.earnings.find((entry) => entry.symbol === 'DIDIY')?.revenueCurrency, 'CNY');
+    } finally {
+      if (previousKey === undefined) delete process.env.FINNHUB_API_KEY;
+      else process.env.FINNHUB_API_KEY = previousKey;
+    }
   });
 });
