@@ -69,6 +69,14 @@ export function formatPrice(price: number | null | undefined): string {
   })}`;
 }
 
+/** "$188.6B", "-$1.2B"; amounts under $0.1B keep two places so -0.04 is not "$-0.0B". */
+export function formatUsdBillions(billions: number): string {
+  const digits = Math.abs(billions) < 0.1 ? 2 : 1;
+  const magnitude = Math.abs(billions).toFixed(digits);
+  const sign = billions < 0 && Number(magnitude) !== 0 ? '-' : '';
+  return `${sign}$${magnitude}B`;
+}
+
 export function formatChange(change: number | null | undefined): string {
   if (!isFiniteNumber(change)) return '--';
   const sign = change >= 0 ? '+' : '';

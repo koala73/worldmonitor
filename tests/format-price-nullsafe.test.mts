@@ -17,6 +17,7 @@ interface LoadedUtils {
   getChangeClass: (p: number | null | undefined) => string;
   getHeatmapClass: (p: number | null | undefined) => string;
   formatQuotePrice: (symbol: string, p: number | null | undefined) => string;
+  formatUsdBillions: (billions: number) => string;
 }
 
 async function loadUtils(): Promise<LoadedUtils> {
@@ -158,5 +159,16 @@ describe('formatQuotePrice', () => {
       assert.match(formatQuotePrice(symbol, price), /\$/, symbol);
     }
     assert.equal(formatQuotePrice('^GSPC', null), '--');
+  });
+});
+
+describe('formatUsdBillions (TradePolicyPanel customs revenue)', () => {
+  it('shows small negative months with a leading sign instead of "$-0.0B"', async () => {
+    const { formatUsdBillions } = await loadUtils();
+    assert.equal(formatUsdBillions(-0.04), '-$0.04B');
+    assert.equal(formatUsdBillions(-0.001), '$0.00B');
+    assert.equal(formatUsdBillions(-1.24), '-$1.2B');
+    assert.equal(formatUsdBillions(188.57), '$188.6B');
+    assert.equal(formatUsdBillions(0), '$0.00B');
   });
 });
