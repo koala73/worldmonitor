@@ -106,7 +106,7 @@ export const DISEASE_WARNING_RE = new RegExp(`\\b(?:${DISEASE_WARNING_KEYWORDS.j
 const ALERT_WORD = `(?:${DISEASE_ALERT_KEYWORDS.join('|')})s?`;
 const NOT_COUNT_WORD = String.raw`(?!(?:cases?|deaths?|infections?|people|patients|children)\b)[\p{L}\p{N}()'-]+`;
 // A range ("2023-2025", "2025 to 2026") dates the outbreak by its last year.
-const DATED = String.raw`(?<!\d)((?:19|20)\d{2})(?:\s*(?:[-–—/]|to\s)\s*((?:19|20)?\d{2}))?(?!\d)`;
+const DATED = String.raw`(?<!\d)((?:19|20)\d{2})(?:\s*(?:[-–—/]|to\s)\s*((?:19|20)?\d{2})(?![-/]?\d))?(?!\d)`;
 const DATED_ALERT_RES = [
   new RegExp(String.raw`${DATED}(?:\s+${NOT_COUNT_WORD}){0,3}\s+${ALERT_WORD}\b`, 'giu'),
   new RegExp(String.raw`\b${ALERT_WORD}\s+(?:of|in|from|during)\s+${DATED}(?!\s+(?:new\s+|confirmed\s+|suspected\s+)?(?:cases?|deaths?|infections?|people|patients|children)\b)`, 'giu'),
@@ -116,8 +116,8 @@ function isRetrospectiveHeadline(title, publishedMs) {
   if (!Number.isFinite(publishedMs)) return false;
   const year = new Date(publishedMs).getUTCFullYear();
   return DATED_ALERT_RES.some((re) => [...title.matchAll(re)].some(([, start, end]) => {
-    const last = end == null ? start : end.length === 2 ? start.slice(0, 2) + end : end;
-    return Number(last) < year;
+    const last = Math.max(Number(start), Number(end?.length === 2 ? start.slice(0, 2) + end : end ?? start));
+    return last < year;
   }));
 }
 
