@@ -14,8 +14,10 @@ it('keeps the looping ticker clone out of the accessibility tree and tab order',
   panel.setItems(items as never);
   const links = [...panel['content'].querySelectorAll<HTMLAnchorElement>('a.ticker-item')];
   expect(links).toHaveLength(4);
-  const exposed = links.filter((a) => a.getAttribute('aria-hidden') !== 'true' && a.tabIndex !== -1);
-  expect(exposed.map((a) => a.textContent)).toEqual(['NatureA', 'NatureB']);
+  const screenReaderLinks = links.filter((a) => a.getAttribute('aria-hidden') !== 'true');
+  const keyboardLinks = links.filter((a) => a.tabIndex !== -1);
+  expect(screenReaderLinks.map((a) => a.textContent)).toEqual(['NatureA', 'NatureB']);
+  expect(keyboardLinks.map((a) => a.textContent)).toEqual(['NatureA', 'NatureB']);
 });
 
 it('shows the real direction of a lower-is-better indicator', () => {
