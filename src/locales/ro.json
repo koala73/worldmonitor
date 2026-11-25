@@ -1017,7 +1017,9 @@
       "upstreamUnavailable": "Datele lanțului de aprovizionare sunt temporar indisponibile — afișează datele din cache",
       "spikeAlert": "Salt detectat — rata semnificativ peste media pe 52 de săptămâni",
       "warnings": "avertisment(e)",
-      "aisDisruptions": "Perturbații în urmărirea navelor",
+      "aisDisruptions_one": "{{count}} perturbare în urmărirea navelor",
+      "aisDisruptions_few": "{{count}} perturbări în urmărirea navelor",
+      "aisDisruptions_other": "{{count}} de perturbări în urmărirea navelor",
       "disruption": "Perturbare",
       "vessels": "nave",
       "incidents7d": "Evenimente (7z)",
@@ -1028,6 +1030,7 @@
       "topProducers": "Producători de top",
       "risk": "Risc",
       "wowChange": "Variație săptămânală",
+      "asOf": "la {{date}}",
       "riskLevel": "Nivel de risc",
       "flowUnavailable": "Date de flux indisponibile",
       "containerRates": "Rate containere",
@@ -2613,7 +2616,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Prețuri retail la benzină și motorină în peste 30 de țări, normalizate la USD/litru pentru comparație. Prețurile provin din programe oficiale de date deschise ale guvernelor și sunt actualizate săptămânal. Țările cu cele mai ieftine și cele mai scumpe prețuri sunt evidențiate. Modificarea de la o săptămână la alta este afișată atunci când sunt disponibile date din săptămâna anterioară.",
-      "countries": "țări"
+      "countries": "țări",
+      "observedStale": "{{date}}, de acum {{days}} zile",
+      "monthlyMean": "media pentru {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Indicele Prețului Alimentelor al Organizației pentru Alimentație și Agricultură a ONU urmărește prețurile de export internaționale pentru un coș de mărfuri alimentare (Cereale, Produse lactate, Carne, Uleiuri, Zahăr), baza 2014-2016=100. Actualizat lunar în prima vineri a fiecărei luni.",

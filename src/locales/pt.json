@@ -1707,8 +1707,11 @@
       "topProducers": "Principais produtores",
       "upstreamUnavailable": "Dados da cadeia de suprimentos temporariamente indisponíveis — exibindo dados em cache",
       "warnings": "aviso(s)",
-      "aisDisruptions": "Interrupções de rastreamento de navios",
+      "aisDisruptions_one": "{{count}} interrupção de rastreamento de navios",
+      "aisDisruptions_many": "{{count}} interrupções de rastreamento de navios",
+      "aisDisruptions_other": "{{count}} interrupções de rastreamento de navios",
       "wowChange": "Mudança semana a semana",
+      "asOf": "em {{date}}",
       "riskLevel": "Nível de risco",
       "flowUnavailable": "Dados de fluxo indisponíveis",
       "containerRates": "Taxas de Contêiner",
@@ -2193,7 +2196,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Preços de varejo na bomba para gasolina e diesel em mais de 30 países, normalizados para USD/litro para comparação. Os preços são provenientes de programas de dados abertos do governo oficial e atualizados semanalmente. Os países mais baratos e mais caros são destacados. A variação semana contra semana é mostrada quando dados da semana anterior estão disponíveis.",
-      "countries": "países"
+      "countries": "países",
+      "observedStale": "{{date}}, há {{days}} dias",
+      "monthlyMean": "média de {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> O Índice de Preços de Alimentos da Organização das Nações Unidas para Alimentação e Agricultura monitora os preços de exportação internacional de uma cesta de commodities alimentares (Cereais, Laticínios, Carnes, Óleos, Açúcar), base 2014-2016=100. Atualizado mensalmente na primeira sexta-feira de cada mês.",

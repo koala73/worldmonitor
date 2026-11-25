@@ -1704,8 +1704,10 @@
       "topProducers": "Största producenter",
       "upstreamUnavailable": "Försörjningskedjedata tillfälligt otillgänglig — visar cachad data",
       "warnings": "varning(ar)",
-      "aisDisruptions": "Störningar i skeppsspårning",
+      "aisDisruptions_one": "{{count}} störning i fartygsspårning",
+      "aisDisruptions_other": "{{count}} störningar i fartygsspårning",
       "wowChange": "Vecka över vecka-förändring",
+      "asOf": "per {{date}}",
       "riskLevel": "Risknivå",
       "flowUnavailable": "Flödesdata är otillgänglig",
       "containerRates": "Containerpriser",
@@ -2184,7 +2186,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Detaljhandelspriser för bensin och diesel i 30+ länder, normaliserat till USD/liter för jämförelse. Priser kommer från officiella statliga öppna datakällor och uppdateras veckovis. Billigaste och dyraste länder är markerade. Veckovis förändring visas när tidigare veckas data är tillgänglig.",
-      "countries": "länder"
+      "countries": "länder",
+      "observedStale": "{{date}}, {{days}} dagar gammal",
+      "monthlyMean": "snitt {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> FN:s livsmedelsorgan FAO:s livsmedelsindex spårar internationella exportpriser för en korg med livsmedelsvaror (Spannmål, Mejeri, Kött, Oljor, Socker), basindex 2014–2016=100. Uppdateras månatligen första fredagen varje månad.",

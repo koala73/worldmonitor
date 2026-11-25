@@ -1,6 +1,8 @@
 // Shared market number formatters. Kept off the `@/utils` barrel so Node tests
 // can import pulse HTML without loading `proxy.ts` → `import.meta.env.DEV`.
 
+import type { CommodityQuoteCurrency } from '@/types';
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
@@ -27,6 +29,17 @@ const NON_DOLLAR_QUOTE = /^\^|\.(?![AB]$)[A-Z]{1,3}$|=X$/i;
 export function formatQuotePrice(symbol: string, price: number | null | undefined): string {
   const formatted = formatPrice(price);
   return NON_DOLLAR_QUOTE.test(symbol) ? formatted.replace('$', '') : formatted;
+}
+
+const COMMODITY_CURRENCY_FORMAT: Record<CommodityQuoteCurrency, (dollars: string) => string> = {
+  USX: (dollars) => `${dollars.replace('$', '')}¢`,
+  EUR: (dollars) => dollars.replace('$', '€'),
+};
+
+/** formatPrice in the contract's quote currency; US dollars when it has none. */
+export function formatCommodityPrice(price: number | null | undefined, currency?: CommodityQuoteCurrency): string {
+  const formatted = formatPrice(price);
+  return currency && formatted.includes('$') ? COMMODITY_CURRENCY_FORMAT[currency](formatted) : formatted;
 }
 
 export function formatPrice(price: number | null | undefined): string {

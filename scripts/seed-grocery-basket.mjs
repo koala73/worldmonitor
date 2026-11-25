@@ -67,6 +67,25 @@ product, or when only a member price, reference price or related product's price
 Only use units in the schema. Never guess a quantity or combine details from different offers.`;
 }
 
+// Search, category and brand listings show many products, so their prices are not an offer for one pack.
+// Each marker below was seen on a listing URL from a configured retailer and on none of their product pages
+// (e.g. tokopedia /find/, target /s/, walmart /c/ and /browse/, carrefour.fr /r/, carrefoursa /b/, coupang /best100/,
+// amazon /gp/bestsellers/, mercadolibre listado., VTEX ?map=).
+const LISTING_PATH_SEGMENTS = new Set([
+  'find', 'search', 's', 'busca', 'buscar', 'c', 'cn', 'cat', 'category', 'categories', 'r', 'b',
+  'browse', 'tag', 'trending', 'best100', 'bestsellers',
+]);
+const LISTING_QUERY_KEYS = new Set(['q', 'map']);
+const LISTING_SUBDOMAINS = new Set(['listado']);
+
+export function isListingUrl(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return true; }
+  return LISTING_SUBDOMAINS.has(parsed.hostname.split('.')[0].toLowerCase())
+    || parsed.pathname.toLowerCase().split('/').some(segment => LISTING_PATH_SEGMENTS.has(segment))
+    || [...parsed.searchParams.keys()].some(key => LISTING_QUERY_KEYS.has(key.toLowerCase()));
+}
+
 function offerNumber(value) {
   if (typeof value === 'number') return value;
   if (typeof value === 'string' && /^(?:\d+\.?\d*|\.\d+)$/.test(value.trim())) return Number(value);
@@ -196,7 +215,9 @@ export async function fetchCountryItems(country, { fxRate, learnedRoutes, routeU
     await sleep(idx * 200); // stagger starts — 200ms prevents EXA rate limit with 10 concurrent
 
     const routeKey = `${country.code}:${item.id}`;
-    const learned = learnedRoutes.get(routeKey);
+    const learnedRoute = learnedRoutes.get(routeKey);
+    const learnedListing = learnedRoute && isListingUrl(learnedRoute.url);
+    const learned = learnedListing ? undefined : learnedRoute;
 
     // --- Learned route fast path + EXA fallback ---
     const { localPrice, sourceSite, routeUpdate, routeDelete } = await processItemRouteFn({
@@ -214,7 +235,7 @@ export async function fetchCountryItems(country, { fxRate, learnedRoutes, routeU
         try {
           const result = await searchExa(item, country);
           for (const entry of result?.results ?? []) {
-            if (!isAllowedRouteHost(entry.url, allowedHosts)) continue;
+            if (!isAllowedRouteHost(entry.url, allowedHosts) || isListingUrl(entry.url)) continue;
             urls.push(entry.url);
             let offer;
             try { offer = JSON.parse(entry.summary); } catch { continue; }
@@ -234,7 +255,7 @@ export async function fetchCountryItems(country, { fxRate, learnedRoutes, routeU
       firecrawlDelayMs: FIRECRAWL_DELAY_MS,
     });
 
-    if (routeDelete) routeDeletes.add(routeKey);
+    if (routeDelete || learnedListing) routeDeletes.add(routeKey);
     if (routeUpdate) routeUpdates.set(routeKey, routeUpdate);
 
     const usdPrice = localPrice !== null && fxRate ? +(localPrice * fxRate).toFixed(4) : null;

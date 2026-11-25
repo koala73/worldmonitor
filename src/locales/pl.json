@@ -2132,8 +2132,12 @@
       "topProducers": "Najwięksi producenci",
       "upstreamUnavailable": "Dane łańcucha dostaw tymczasowo niedostępne — wyświetlanie danych z pamięci podręcznej",
       "warnings": "ostrzeżenie(a)",
-      "aisDisruptions": "Zakłócenia śledzenia statków",
+      "aisDisruptions_one": "{{count}} zakłócenie śledzenia statków",
+      "aisDisruptions_few": "{{count}} zakłócenia śledzenia statków",
+      "aisDisruptions_many": "{{count}} zakłóceń śledzenia statków",
+      "aisDisruptions_other": "{{count}} zakłócenia śledzenia statków",
       "wowChange": "Zmiana tygodniowa",
+      "asOf": "stan na {{date}}",
       "riskLevel": "Poziom ryzyka",
       "flowUnavailable": "Dane przepływu niedostępne",
       "containerRates": "Stawki Kontenerowe",
@@ -2624,7 +2628,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Ceny detaliczne benzyny i oleju napędowego w ponad 30 krajach, znormalizowane do USD/litra dla porównywalności. Ceny pochodzą z oficjalnych rządowych programów otwartych danych i są aktualizowane co tydzień. Kraje z najtańszą i najdroższą paliwem są wyróżnione. Zmiana w stosunku do tygodnia poprzedniego jest wyświetlana, gdy dostępne są dane z poprzedniego tygodnia.",
-      "countries": "kraje"
+      "countries": "kraje",
+      "observedStale": "{{date}}, sprzed {{days}} dni",
+      "monthlyMean": "średnia za {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Indeks Cen Żywności Światowej Organizacji ds. Wyżywienia i Rolnictwa śledzi międzynarodowe ceny eksportowe koszyka towarów żywnościowych (Zboża, Nabiał, Mięso, Oleje, Cukier), podstawa 2014–2016=100. Aktualizowany co miesiąc w pierwszy piątek każdego miesiąca.",
