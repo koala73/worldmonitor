@@ -124,6 +124,32 @@ it('attributes OFAC vessels by flag and aircraft by registry, leaving unknown, f
   assert.ok(entries.every(entry => entry.countryCodes.length === 0), 'a flag or registry is not a country association');
 });
 
+it('names an OFAC party by its Primary Latin form and keeps other scripts as aliases', async () => {
+  const docName = (status, script, value) => `<DocumentedName DocNameStatusID="${status}"><DocumentedNamePart><NamePartValue ScriptID="${script}">${value}</NamePartValue></DocumentedNamePart></DocumentedName>`;
+  const party = (id, ...names) => `<DistinctParty FixedRef="${id}"><Profile ID="${id}" PartySubTypeID="3"><Identity ID="${id}">
+    <Alias AliasTypeID="1403" Primary="true">${names.join('')}</Alias>
+    <Alias AliasTypeID="1400" Primary="false">${docName('1', '215', `${id} Weak Alias`)}</Alias>
+  </Identity></Profile></DistinctParty>`;
+  const xml = `<Sanctions>
+    <DistinctParties>
+      ${party('59184', docName('1', '215', 'Berkeley Trading LLC'), docName('2', '160', 'بیرکلی للتجارة ذ م م'))}
+      ${party('2', docName('2', '160', 'شركة'), docName('1', '215', 'Sharika Company'))}
+      ${party('3', docName('2', '220', 'Компания'))}
+    </DistinctParties>
+    <SanctionsEntries>${['59184', '2', '3'].map(id => `<SanctionsEntry ID="${id}" ProfileID="${id}"/>`).join('')}</SanctionsEntries>
+  </Sanctions>`;
+  const context = vm.createContext({ console: { log() {}, warn() {} }, sax, TextDecoder,
+    ofacRegistrationToIdentifier, aircraftRegistrationCountry, countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID, URP_SOURCES, URP_ROW_ID,
+    fetchOfacSourceResponse: async () => new Response(xml) });
+  vm.runInContext(`${pureSrc}\n${seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc))}`, context);
+  const { entries } = await context.fetchSource({ label: 'SDN' });
+  assert.deepEqual(normalize(entries.map(entry => [entry.name, entry._aliases])), [
+    ['Berkeley Trading LLC', ['59184 Weak Alias', 'بیرکلی للتجارة ذ م م']],
+    ['Sharika Company', ['2 Weak Alias', 'شركة']],
+    ['Компания', ['3 Weak Alias']],
+  ]);
+});
+
 it('keeps linked-parent attribution separate and uses only current directional parent links', async () => {
   const party = (id, country = false, subType = '3') => `<DistinctParty><Profile ID="${id}" PartySubTypeID="${subType}">
     ${country ? '<Feature FeatureTypeID="1"><FeatureVersion><VersionLocation LocationID="1"/></FeatureVersion></Feature>' : ''}
