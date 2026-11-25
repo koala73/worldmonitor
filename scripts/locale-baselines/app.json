@@ -669,6 +669,7 @@
   "components.displacement.reported": "Count",
   "components.displacement.situation": "Situation",
   "components.displacement.staleReport": "Stale report",
+  "components.displacement.stateless": "Stateless",
   "components.displacement.status": "Status",
   "components.displacement.surge": "Surge",
   "components.displacement.total": "Total",
