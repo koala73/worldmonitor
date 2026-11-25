@@ -92,14 +92,13 @@ export class GoodThingsDigestPanel extends Panel {
           undefined,
           undefined,
           undefined,
-          { mode: 'article', bodies: [context], skipBrowserFallback: true },
+          { mode: 'article', bodies: [context] },
         );
         if (signal.aborted || !this.element?.isConnected) return;
-        const summary = result?.summary ?? item.title.slice(0, 200);
-        this.updateCardSummary(idx, summary);
+        this.updateCardSummary(idx, result?.summary ?? context.slice(0, 200));
       } catch {
         if (!signal.aborted && this.element?.isConnected) {
-          this.updateCardSummary(idx, item.title.slice(0, 200));
+          this.updateCardSummary(idx, context.slice(0, 200));
         }
       }
     }));
