@@ -29166,6 +29166,141 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/orbital/v1/list-satellite-maneuvers:
+        get:
+            tags:
+                - OrbitalService
+            summary: ListSatelliteManeuvers
+            description: ListSatelliteManeuvers returns candidate orbit manoeuvres of the profiled imaging satellites, each with both element sets and the threshold applied, and whether each satellite could be judged.
+            operationId: ListSatelliteManeuvers
+            parameters:
+                - name: norad_id
+                  in: query
+                  description: NORAD catalogue number; 0 lists every profiled satellite.
+                  required: false
+                  example: 1
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "candidates":
+                                    - "after":
+                                        "bstar": 1.5
+                                        "eccentricity": 1.5
+                                        "epoch": 1
+                                        "inclination": 1.5
+                                        "meanMotion": 1.5
+                                      "before":
+                                          "bstar": 1.5
+                                          "eccentricity": 1.5
+                                          "epoch": 1
+                                          "inclination": 1.5
+                                          "meanMotion": 1.5
+                                      "confirmedByEpoch": 1
+                                      "element": "example"
+                                      "expected": 1.5
+                                "detectionVersion": 1
+                                "evaluatedSatellites": 1
+                                "generatedAt": 1717200000000
+                                "methodNote": "example"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_orbital_v1_ListSatelliteManeuversResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/positive-events/v1/list-positive-geo-events:
         get:
             tags:
@@ -60084,6 +60219,138 @@ components:
                     format: int32
                     description: Relative orbit of the scene; 0 when the archive gives none.
             description: WaterReading is one Sentinel-1 radar water-extent reading of a reservoir's core box.
+        worldmonitor_orbital_v1_ListSatelliteManeuversRequest:
+            type: object
+            properties:
+                noradId:
+                    type: integer
+                    format: int32
+                    description: NORAD catalogue number; 0 lists every profiled satellite.
+            description: ListSatelliteManeuversRequest optionally narrows the list to one satellite.
+        worldmonitor_orbital_v1_ListSatelliteManeuversResponse:
+            type: object
+            properties:
+                candidates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_orbital_v1_ManeuverCandidate'
+                satellites:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_orbital_v1_SatelliteManeuverStatus'
+                evaluatedSatellites:
+                    type: integer
+                    format: int32
+                    description: Satellites the detector could judge.
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'When the list was computed, as Unix epoch milliseconds; 0 with no list.. Warning: Values > 2^53 may lose precision in JavaScript'
+                detectionVersion:
+                    type: integer
+                    format: int32
+                methodNote:
+                    type: string
+                    description: What the detector cannot see, e.g. that falls in LEO semi-major axis are not flagged while drag is unknown.
+                stale:
+                    type: boolean
+                    description: True when no list is stored or the stored one is older than its freshness limit.
+            description: ListSatelliteManeuversResponse lists candidate manoeuvres, newest first. With no list stored, the lists are empty and stale is true.
+        worldmonitor_orbital_v1_ManeuverCandidate:
+            type: object
+            properties:
+                noradId:
+                    type: integer
+                    format: int32
+                element:
+                    type: string
+                    description: semiMajorAxis, inclination or raan (the node left after J2 regression).
+                unit:
+                    type: string
+                    description: km for semiMajorAxis, deg for the angles.
+                regime:
+                    type: string
+                    description: leo, meo, geo or heo; selects the threshold floor.
+                fromEpoch:
+                    type: integer
+                    format: int64
+                    description: 'Epoch before the step, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                toEpoch:
+                    type: integer
+                    format: int64
+                    description: 'Epoch after the step, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                confirmedByEpoch:
+                    type: integer
+                    format: int64
+                    description: 'Following epoch that kept at least half of the step, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                expected:
+                    type: number
+                    format: double
+                    description: Value the baseline trend predicts at to_epoch.
+                observed:
+                    type: number
+                    format: double
+                    description: Value observed at to_epoch.
+                residual:
+                    type: number
+                    format: double
+                    description: observed minus expected.
+                threshold:
+                    type: number
+                    format: double
+                    description: 'Threshold the residual exceeded: the regime floor or six times the baseline scatter, whichever is larger.'
+                before:
+                    $ref: '#/components/schemas/worldmonitor_orbital_v1_ManeuverElementSet'
+                after:
+                    $ref: '#/components/schemas/worldmonitor_orbital_v1_ManeuverElementSet'
+            description: ManeuverCandidate is a step in one element that left the satellite's own trend and was confirmed by the next epoch. It is a candidate, never a confirmed manoeuvre.
+        worldmonitor_orbital_v1_ManeuverElementSet:
+            type: object
+            properties:
+                epoch:
+                    type: integer
+                    format: int64
+                    description: 'Element epoch, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                meanMotion:
+                    type: number
+                    format: double
+                    description: Revolutions per day.
+                semiMajorAxisKm:
+                    type: number
+                    format: double
+                    description: Semi-major axis derived from the mean motion, km.
+                eccentricity:
+                    type: number
+                    format: double
+                inclination:
+                    type: number
+                    format: double
+                    description: Degrees.
+                raan:
+                    type: number
+                    format: double
+                    description: Right ascension of the ascending node, degrees.
+                bstar:
+                    type: number
+                    format: double
+                    description: Drag term, inverse Earth radii.
+            description: ManeuverElementSet is one epoch's mean elements as the detector compared them.
+        worldmonitor_orbital_v1_SatelliteManeuverStatus:
+            type: object
+            properties:
+                noradId:
+                    type: integer
+                    format: int32
+                status:
+                    type: string
+                    description: evaluated, gap (the newest step could not be compared across a gap), insufficient-baseline, stale, decaying or no-history.
+                regime:
+                    type: string
+                    description: leo, meo, geo or heo; empty when the satellite was not classified.
+                candidateCount:
+                    type: integer
+                    format: int32
+            description: SatelliteManeuverStatus says whether the detector could judge a satellite, so no candidate is never read as no manoeuvre.
         worldmonitor_positive_events_v1_ListPositiveGeoEventsRequest:
             type: object
         worldmonitor_positive_events_v1_ListPositiveGeoEventsResponse:

@@ -89,6 +89,7 @@
   "get_webcam_media",
   "get_world_brief",
   "get_wto_trade_flows",
+  "list_satellite_maneuvers",
   "list_x_feed",
   "open_country_brief",
   "open_news_dashboard",

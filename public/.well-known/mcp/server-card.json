@@ -5,13 +5,13 @@
   "description": "Real-time global intelligence on conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://worldmonitor.app/.well-known/mcp/hotlink-ok/icon-512.png",
-  "version": "1.59.0",
+  "version": "1.60.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
     "title": "WorldMonitor",
-    "version": "1.59.0",
+    "version": "1.60.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app",
@@ -356,6 +356,14 @@
     {
       "name": "get_country_imagery_evidence",
       "description": "Return the watched sites in one country with each site's newest archive scene, next expected imaging pass, the operators whose satellites passed over it, and any confirmed change flag. A confirmed flag means radar backscatter statistics changed at the site and a second comparable scene confirmed it; it says that statistics changed, not what changed. Raised, retracted and unreleased changes are never returned. siteCount 0 with stale false means the country has no watched sites; stale true means the evidence is missing or older than 3 days and sites is empty. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.",
+      "_meta": {
+        "worldmonitor/access": "subscription",
+        "worldmonitor/category": "geopolitical-security"
+      }
+    },
+    {
+      "name": "list_satellite_maneuvers",
+      "description": "Return candidate orbit manoeuvres of the profiled imaging satellites (military, government, commercial and open missions), newest first. A candidate is a step in semi-major axis, inclination or the J2-corrected node that left the satellite's own 10-day trend by more than the threshold shown and that the next element set confirmed; each carries both element sets, expected and observed values, the threshold and the orbit regime. It is never a confirmed manoeuvre. satellites says per satellite whether its newest step was evaluated or why not (gap, insufficient-baseline, stale, decaying, no-history): no candidate for an unevaluated satellite means nothing was judged, not that it did not manoeuvre. Falls in LEO semi-major axis are not flagged while drag is unknown (methodNote). stale true means the list is missing or older than 24 hours. Pass norad_id for one satellite. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"

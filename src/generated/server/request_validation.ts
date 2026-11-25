@@ -162,6 +162,7 @@ export const GENERATED_REQUEST_TYPES = {
   "listRadiationObservations": "worldmonitor.radiation.v1.ListRadiationObservationsRequest",
   "listRetailerPriceSpreads": "worldmonitor.consumer_prices.v1.ListRetailerPriceSpreadsRequest",
   "listSanctionsPressure": "worldmonitor.sanctions.v1.ListSanctionsPressureRequest",
+  "listSatelliteManeuvers": "worldmonitor.orbital.v1.ListSatelliteManeuversRequest",
   "listSatellites": "worldmonitor.intelligence.v1.ListSatellitesRequest",
   "listServiceStatuses": "worldmonitor.infrastructure.v1.ListServiceStatusesRequest",
   "listSourceItems": "worldmonitor.news.v1.ListSourceItemsRequest",
@@ -2605,6 +2606,9 @@ export const GENERATED_MESSAGE_RULES = {
         "stringMaxBytes": 65536
       }
     }
+  },
+  "worldmonitor.orbital.v1.ListSatelliteManeuversRequest": {
+    "fields": {}
   },
   "worldmonitor.prediction.v1.ListPredictionMarketsRequest": {
     "fields": {

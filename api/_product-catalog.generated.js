@@ -193,7 +193,7 @@ export const PUBLIC_PRODUCT_FACTS = {
     "aiDatacenters": 313,
     "hotspots": 29,
     "stockExchanges": 29,
-    "mcpTools": 100,
+    "mcpTools": 101,
     "commands": 626,
     "languages": 28
   },

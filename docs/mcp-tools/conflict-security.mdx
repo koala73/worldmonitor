@@ -280,3 +280,28 @@ curl -s https://worldmonitor.app/mcp \
     "params":{"name":"get_watched_site_imagery","arguments":{"country_code":"IR","site":"Bandar Abbas"}}
   }'
 ```
+
+### `list_satellite_maneuvers`
+
+Returns candidate orbit manoeuvres of the profiled imaging satellites, newest first. A candidate is a step in semi-major axis, inclination or the node left after J2 regression that leaves the satellite's own 10-day trend by more than the threshold shown and that the next element set confirms. Each carries both element sets, the expected and observed values, the threshold and the orbit regime. It is never a confirmed manoeuvre. See [Candidate manoeuvres](/orbital-watch#candidate-manoeuvres) for the method.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `norad_id` | integer | no | NORAD catalogue number of one satellite. Omit for every profiled satellite. |
+
+- **API endpoint:** `GET /api/orbital/v1/list-satellite-maneuvers` (takes the number as `norad_id`)
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Freshness:** `stale: true` when the list is missing or older than 24 hours. `satellites` says for each satellite whether its newest step was `evaluated` or why not (`gap`, `insufficient-baseline`, `stale`, `decaying`, `no-history`); no candidate for a satellite that was not evaluated means nothing was judged. Falls in LEO semi-major axis are not flagged while drag is unknown (`methodNote`).
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_satellite_maneuvers","arguments":{"norad_id":40697}}
+  }'
+```

@@ -94,6 +94,8 @@ export const CLIMATE_OCEAN_ICE_KEY = 'climate:ocean-ice:v1';
 export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
 export const CLIMATE_RESERVOIR_LEVELS_KEY = 'climate:reservoir-levels:v1';
 export const ORBITAL_CATALOG_KEY = 'orbital:catalog:v1';
+// Candidate manoeuvres (scripts/seed-orbital-maneuvers.mjs, #9110).
+export const ORBITAL_MANEUVERS_KEY = 'orbital:maneuvers:v1';
 export const ORBITAL_SITES_KEY = 'orbital:sites:v1';
 export const ORBITAL_SITE_KEY_PREFIX = 'orbital:site:v1:';
 /** Newest radar water-extent reading per reservoir site (scripts/seed-orbital-water-extent.mjs). */
