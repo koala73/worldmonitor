@@ -56,12 +56,14 @@ describe('funding panel: only headlines about a financing event', () => {
       'Reward raised to $250K in 2013 killing of Maryland mail carrier - WTOP News',
       'Dollar Tree stock jumps after Q3 beat and a raised 2026 profit outlook - Startup Fortune',
       'Alonso’s 31 Homers for Heroes raised $77,500 to support Maryland veterans - MASN',
+      'Ingleside Middle School raised over $5,000 for St. Vincent de Paul - Portland Press Herald',
     ], false);
     keepsEach('Startup Funding', [
       'Anthropic valued at $1.5 trillion as IPO raises record $81 billion - Reuters',
       'AI startup Acme raised $10 million - Reuters',
       'Robotics startup Acme raised $30 million to build warehouse robots - TechCrunch',
       'Acme raises $10M to automate payroll - Axios',
+      'Listener.com raises $500,000 pre-seed round for its campaign call reporting platform - GeekWire',
     ], true);
   });
 
