@@ -26,6 +26,8 @@ const clip = (value, max) => {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 };
 
+const isStringList = (value) => Array.isArray(value) && value.every((item) => typeof item === 'string');
+
 function readJson(file) {
   if (!existsSync(file)) return null;
   let text;
@@ -92,8 +94,8 @@ export function mergeShards(plan, shardFiles) {
       panels.push({
         id, name: meta.name, host: meta.host, shard: shard.id, status, checked: row?.checked, note: row?.note,
         viewsSkipped: strings(row?.views_skipped),
-        // null when the agent wrote no row; false when the row lacks either view list.
-        viewsReported: row ? Array.isArray(row.views_checked) && Array.isArray(row.views_skipped) : null,
+        // null when the agent wrote no row; false when either view list is missing or holds a non-string.
+        viewsReported: row ? isStringList(row.views_checked) && isStringList(row.views_skipped) : null,
       });
     }
     for (const finding of Array.isArray(report?.findings) ? report.findings : []) {
@@ -189,7 +191,7 @@ export function renderContentBody(merged, {
   if (partial.length > 0 && showViews) {
     lines.push('', '### Views not checked', '', 'A panel\'s status covers only the views its agent opened. These tabs, sorts, filters and pickers were not checked.', '');
     for (const panel of partial) {
-      lines.push(`- ${code(panel.id)} on ${code(panel.host)} (${panel.status.replace(/_/g, ' ')}): ${panel.viewsSkipped.slice(0, 12).map((view) => code(clip(view, 60))).join(' ')}`);
+      lines.push(`- ${code(panel.id)} on ${code(panel.host)} (${panel.status.replace(/_/g, ' ')}): ${panel.viewsSkipped.map((view) => code(clip(view, 60))).join(' ')}`);
     }
   }
   if (merged.dismissed.length > 0 && showDismissed) {
