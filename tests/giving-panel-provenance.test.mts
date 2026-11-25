@@ -195,7 +195,7 @@ describe('Giving panel provenance rendering', () => {
   it('renders disclosure before the annualized headline and removes unsupported live/index UI', () => {
     const html = renderGivingPanelContent(summary(), 'platforms', tr);
     assert.ok(html.indexOf('role="status"') < html.indexOf('Tracked platform giving'));
-    assert.match(html, /At least[\s\S]*\$2\.7B/);
+    assert.match(html, /giving-stat-value">At least \$2\.6B</);
     assert.match(html, /Annualized daily estimate/);
     assert.match(html, /GoFundMe · Average week across 2023-2024/);
     assert.match(html, /GoFundMe[\s\S]*At least \$2\.6B[\s\S]*Tracked platform giving/);
@@ -243,7 +243,7 @@ describe('Giving panel provenance rendering', () => {
     }), 'platforms', tr);
     assert.match(html, /At least[\s\S]*\$365\.0M/);
     assert.match(html, /\$1\.0M[\s\S]*Annualized daily estimate/);
-    assert.doesNotMatch(html, /At least \$2\.7B/);
+    assert.doesNotMatch(html, /giving-stat-value">At least \$2\.6B/);
   });
 
   it('shows source-not-verified without a numeric category claim', () => {
@@ -279,7 +279,7 @@ describe('Giving panel provenance rendering', () => {
     assert.match(html, /Partially verified estimate/);
     assert.match(html, /The denominator remains under review\./);
     assert.match(html, /At least \$84\.0M/);
-    assert.doesNotMatch(html, /At least \$2\.7B/);
+    assert.doesNotMatch(html, /giving-stat-value">At least \$2\.6B/);
   });
 
   it('keeps the benchmark title and mobile metadata wrapping in the native panel surface', () => {
