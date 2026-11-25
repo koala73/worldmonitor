@@ -69,9 +69,9 @@ export function extractLocationFromTitle(title) {
 }
 
 // WHO DON also titles reports "Disease, Location" ("Hantavirus outbreak linked
-// to cruise ship travel, Multi-locations").
-function whoCommaLocation(title) {
-  return title.match(/^[^,]+,\s*([A-Z].*)$/)?.[1].trim() ?? '';
+// to cruise ship travel, Multi-locations") or "Disease- Location".
+function whoTitleLocation(title) {
+  return title.match(/^.+?(?:,|[–—-]\s)\s*([A-Z].*)$/)?.[1].trim() ?? '';
 }
 
 // Editorial keyword classifier — NOT derived from a published index.
@@ -338,7 +338,7 @@ export function mapItem(item) {
     || (headline
       ? (place?.name ?? (headlineCountry ? REGION_NAMES.of(headlineCountry) : ''))
       : extractLocationFromTitle(item.title)
-        || (item.sourceName === 'WHO' ? whoCommaLocation(item.title) : '')
+        || (item.sourceName === 'WHO' ? whoTitleLocation(item.title) : '')
         || (item.sourceName === 'CDC' ? 'United States' : ''));
   const disease = item._disease || detectDisease(item.title);
   const countryCode = headline
