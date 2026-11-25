@@ -472,11 +472,10 @@ function buildChokepointEdges(
   for (const waterway of waterways) {
     const chokepointId = `chokepoint:${waterway.id}`;
 
-    // Find ports near this chokepoint
-    const nearbyPorts = ports.filter(port => {
-      const dist = haversineKm(waterway.lat, waterway.lon, port.lat, port.lon);
-      return dist < 500; // Within 500km
-    });
+    const accessPorts = CHOKEPOINT_ACCESS_PORTS[waterway.id];
+    const nearbyPorts = ports.filter(port => accessPorts
+      ? accessPorts.includes(port.id)
+      : haversineKm(waterway.lat, waterway.lon, port.lat, port.lon) < 500);
 
     for (const port of nearbyPorts) {
       addEdge(graph, {
@@ -517,6 +516,13 @@ function buildChokepointEdges(
   }
 }
 
+// Ports whose sea access runs through the chokepoint, where distance is the
+// wrong test: Persian Gulf terminals sit 500-700 km behind Hormuz, while
+// Fujairah is near it but loads on the Gulf of Oman (a Hormuz bypass).
+const CHOKEPOINT_ACCESS_PORTS: Record<string, readonly string[]> = {
+  hormuz_strait: ['ras_tanura', 'kharg_island', 'ras_laffan', 'jebel_ali', 'bandar_abbas'],
+};
+
 function getChokepointDependentCountries(chokepointId: string): { code: string; strength: number; redundancy: number; reason: string }[] {
   // Map using actual IDs from STRATEGIC_WATERWAYS
   const dependencies: Record<string, { code: string; strength: number; redundancy: number; reason: string }[]> = {
@@ -531,6 +537,15 @@ function getChokepointDependentCountries(chokepointId: string): { code: string; 
       { code: 'KR', strength: 0.7, redundancy: 0.2, reason: '70% oil imports' },
       { code: 'IN', strength: 0.6, redundancy: 0.3, reason: '60% oil imports' },
       { code: 'CN', strength: 0.5, redundancy: 0.4, reason: '40% oil imports' },
+      // Gulf exporters: 2024 Hormuz flows and bypass capacity from EIA
+      // (eia.gov/todayinenergy/detail.php?id=65504). Saudi and UAE share about
+      // 2.6M b/d of spare bypass pipeline capacity against 7.4M b/d of flows.
+      { code: 'SA', strength: 1, redundancy: 0.35, reason: '5.5M b/d oil via Hormuz; East-West pipeline bypass' },
+      { code: 'IQ', strength: 1, redundancy: 0, reason: '3.2M b/d oil via Hormuz' },
+      { code: 'AE', strength: 1, redundancy: 0.35, reason: '1.9M b/d oil via Hormuz; Fujairah pipeline bypass' },
+      { code: 'IR', strength: 1, redundancy: 0.2, reason: '1.4M b/d oil via Hormuz; Jask pipeline bypass' },
+      { code: 'KW', strength: 1, redundancy: 0, reason: '1.3M b/d oil via Hormuz' },
+      { code: 'QA', strength: 1, redundancy: 0, reason: '0.6M b/d oil and most LNG via Hormuz' },
     ],
     'malacca_strait': [
       { code: 'CN', strength: 0.7, redundancy: 0.3, reason: '80% oil imports transit' },
@@ -858,10 +873,12 @@ interface PropagatedNode {
 function propagate(graph: DependencyGraph, sourceId: string, disruptionLevel: number, countryImpactCutoff: number): Map<string, PropagatedNode> {
   const reached = new Map<string, PropagatedNode>();
   const visited = new Set<string>([sourceId]);
-  const queue: { nodeId: string; depth: number; path: string[] }[] = [{ nodeId: sourceId, depth: 0, path: [sourceId] }];
+  const queue: { nodeId: string; depth: number; path: string[]; strength: number }[] = [
+    { nodeId: sourceId, depth: 0, path: [sourceId], strength: disruptionLevel },
+  ];
 
   while (queue.length > 0) {
-    const { nodeId, depth, path } = queue.shift()!;
+    const { nodeId, depth, path, strength } = queue.shift()!;
     if (depth >= 3) continue;
 
     // Strongest edge per target first, so the reported chain/strength is the best one.
@@ -872,7 +889,7 @@ function propagate(graph: DependencyGraph, sourceId: string, disruptionLevel: nu
     for (const edge of dependents) {
       if (visited.has(edge.to)) continue;
 
-      const impactStrength = edge.strength * disruptionLevel * (1 - (edge.redundancy || 0));
+      const impactStrength = strength * edge.strength * (1 - (edge.redundancy || 0));
       const target = graph.nodes.get(edge.to);
       if (!target || impactStrength < (target.type === 'country' ? countryImpactCutoff : 0.05)) continue;
       visited.add(edge.to);
@@ -885,7 +902,7 @@ function propagate(graph: DependencyGraph, sourceId: string, disruptionLevel: nu
         estimatedRecovery: edge.metadata?.estimatedImpact,
       });
 
-      queue.push({ nodeId: edge.to, depth: depth + 1, path: [...path, edge.to] });
+      queue.push({ nodeId: edge.to, depth: depth + 1, path: [...path, edge.to], strength: impactStrength });
     }
   }
 

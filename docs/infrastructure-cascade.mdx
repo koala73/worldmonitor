@@ -22,8 +22,9 @@ When a user selects an infrastructure asset for analysis, a **breadth-first casc
 
 ```
 1. Start at source node (e.g., "cable:marea")
-2. For each dependent node:
-   impact = edge_strength × disruption_level × (1 - redundancy)
+2. For each dependent node, carry the impact along the path
+   (the source starts at disruption_level):
+   impact = parent_impact × edge_strength × (1 - redundancy)
 3. Categorize impact:
    - Critical: impact > 0.8
    - High: impact > 0.5

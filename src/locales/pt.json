@@ -1120,6 +1120,7 @@
       "refugees": "Refugiados",
       "asylumSeekers": "Solicitantes de asilo",
       "idps": "Deslocados internos",
+      "stateless": "Apátridas",
       "total": "Total",
       "origins": "Origens",
       "hosts": "Anfitriões",
@@ -1306,7 +1307,7 @@
       "noData": "sem dados",
       "enable": "Ativar",
       "convergenceMetric": "Convergência",
-      "ciiDeviation": "Desvio do Índice de Instabilidade do País",
+      "topCiiScore": "Maior pontuação de instabilidade de país",
       "infraEvents": "Eventos de infraestrutura",
       "highAlerts": "Alertas altos",
       "topRisks": "Principais riscos",
@@ -1706,8 +1707,11 @@
       "topProducers": "Principais produtores",
       "upstreamUnavailable": "Dados da cadeia de suprimentos temporariamente indisponíveis — exibindo dados em cache",
       "warnings": "aviso(s)",
-      "aisDisruptions": "Interrupções de rastreamento de navios",
+      "aisDisruptions_one": "{{count}} interrupção de rastreamento de navios",
+      "aisDisruptions_many": "{{count}} interrupções de rastreamento de navios",
+      "aisDisruptions_other": "{{count}} interrupções de rastreamento de navios",
       "wowChange": "Mudança semana a semana",
+      "asOf": "em {{date}}",
       "riskLevel": "Nível de risco",
       "flowUnavailable": "Dados de fluxo indisponíveis",
       "containerRates": "Taxas de Contêiner",
@@ -2192,7 +2196,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Preços de varejo na bomba para gasolina e diesel em mais de 30 países, normalizados para USD/litro para comparação. Os preços são provenientes de programas de dados abertos do governo oficial e atualizados semanalmente. Os países mais baratos e mais caros são destacados. A variação semana contra semana é mostrada quando dados da semana anterior estão disponíveis.",
-      "countries": "países"
+      "countries": "países",
+      "observedStale": "{{date}}, há {{days}} dias",
+      "monthlyMean": "média de {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> O Índice de Preços de Alimentos da Organização das Nações Unidas para Alimentação e Agricultura monitora os preços de exportação internacional de uma cesta de commodities alimentares (Cereais, Laticínios, Carnes, Óleos, Açúcar), base 2014-2016=100. Atualizado mensalmente na primeira sexta-feira de cada mês.",
@@ -2484,7 +2490,21 @@
       "saved": "Última atualização conhecida {{time}} · A procurar atualizações",
       "savedOffline": "Última atualização conhecida {{time}} · Sem ligação",
       "localSignals": "Com base nos sinais carregados no painel",
-      "emptySaved": "Sem convergência na última atualização conhecida."
+      "emptySaved": "Sem convergência na última atualização conhecida.",
+      "signalTypes": {
+        "militaryFlight": "Voo militar",
+        "militaryVessel": "Navio militar",
+        "aisGap": "Lacuna AIS",
+        "conflictEvent": "Evento de conflito",
+        "escalationOutage": "Falha de comunicações",
+        "newsSeverity": "Notícias graves",
+        "sanctionsNews": "Notícias de sanções",
+        "marketMove": "Movimento de mercado",
+        "commoditySpike": "Alta de commodities",
+        "earthquake": "Terremoto",
+        "infraOutage": "Falha de infraestrutura",
+        "other": "Sinal"
+      }
     },
     "thermalEscalation": {
       "title": "Escalação Térmica",
@@ -4017,7 +4037,13 @@
     "alert": "Alerta: {{location}}",
     "multipleRegions": "Múltiplas regiões",
     "trending": "\"{{term}}\" em tendência — {{count}} menções em {{hours}}h",
-    "eventsDetected": "{{count}} eventos detectados na região ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} eventos detectados: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protestos",
+      "military_flight": "voos militares",
+      "military_vessel": "navios de guerra",
+      "earthquake": "atividade sísmica"
+    }
   },
   "intel": {
     "topics": {

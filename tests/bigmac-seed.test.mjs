@@ -2,7 +2,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { fetchBigMacPrices, declareRecords, COUNTRIES } from '../scripts/seed-bigmac.mjs';
-import { allSettledWithConcurrency } from '../scripts/_seed-utils.mjs';
+import { allSettledWithConcurrency, fetchYahooFxRatesWithProvenance } from '../scripts/_seed-utils.mjs';
 
 // The seeder logs one line per country (×50) plus per-failure warnings. Under the
 // full `tsx --test --test-concurrency=16` suite that flood corrupts node:test's
@@ -121,5 +121,31 @@ describe('allSettledWithConcurrency invalid concurrency', () => {
 
   it('empty input returns an empty array regardless of concurrency', async () => {
     assert.deepEqual(await allSettledWithConcurrency([], 6, async (x) => x), []);
+  });
+});
+
+describe('seed-bigmac FX conversion', () => {
+  const realFetch = globalThis.fetch;
+  after(() => { globalThis.fetch = realFetch; });
+
+  it('prices the Indonesian Big Mac with the precise Yahoo chart close', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      chart: { result: [{
+        meta: { regularMarketPrice: 0.0001 },
+        indicators: { quote: [{ close: [0.00005507214518729597] }] },
+      }] },
+    }), { status: 200 });
+    const getFxRatesFn = async (symbols, fallbacks) => (
+      await fetchYahooFxRatesWithProvenance({ USD: symbols.USD, IDR: symbols.IDR }, fallbacks)
+    ).rates;
+    const searchExaFn = async (query) => ({
+      results: [{ summary: `A Big Mac costs 43,500 ${query.trim().split(/\s+/).pop()}`, url: 'https://test.example' }],
+    });
+
+    const data = await fetchBigMacPrices(null, { searchExaFn, getFxRatesFn });
+    const indonesia = data.countries.find((c) => c.code === 'ID');
+
+    assert.equal(indonesia.localPrice, 43500);
+    assert.equal(indonesia.usdPrice, 2.3956);
   });
 });

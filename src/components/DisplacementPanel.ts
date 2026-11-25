@@ -227,6 +227,7 @@ export class DisplacementPanel extends Panel {
       { label: t('components.displacement.refugees'), value: formatPopulation(g.refugees), cls: 'disp-stat-refugees' },
       { label: t('components.displacement.asylumSeekers'), value: formatPopulation(g.asylumSeekers), cls: 'disp-stat-asylum' },
       { label: t('components.displacement.idps'), value: formatPopulation(g.idps), cls: 'disp-stat-idps' },
+      { label: t('components.displacement.stateless'), value: formatPopulation(g.stateless), cls: 'disp-stat-stateless' },
       { label: t('components.displacement.total'), value: formatPopulation(g.total), cls: 'disp-stat-total' },
     ];
     return stats.map(s =>
@@ -278,14 +279,15 @@ export class DisplacementPanel extends Panel {
       const rows = displayed.map(c => {
         const hostTotal = c.hostTotal || 0;
         const count = this.activeTab === 'origins' ? c.refugees + c.asylumSeekers : hostTotal;
-        const total = this.activeTab === 'origins' ? c.totalDisplaced : hostTotal;
-        const badgeCls = total >= 1_000_000 ? 'disp-crisis'
-          : total >= 500_000 ? 'disp-high'
-            : total >= 100_000 ? 'disp-elevated'
+        // UNHCR's unknown-origin bucket (UNK) is not a country, so it gets no status.
+        const graded = toIso2(c.code) ? count : 0;
+        const badgeCls = graded >= 1_000_000 ? 'disp-crisis'
+          : graded >= 500_000 ? 'disp-high'
+            : graded >= 100_000 ? 'disp-elevated'
               : '';
-        const badgeLabel = total >= 1_000_000 ? t('components.displacement.badges.crisis')
-          : total >= 500_000 ? t('components.displacement.badges.high')
-            : total >= 100_000 ? t('components.displacement.badges.elevated')
+        const badgeLabel = graded >= 1_000_000 ? t('components.displacement.badges.crisis')
+          : graded >= 500_000 ? t('components.displacement.badges.high')
+            : graded >= 100_000 ? t('components.displacement.badges.elevated')
               : '';
         const badgeHtml = badgeLabel
           ? `<span class="disp-badge ${badgeCls}">${badgeLabel}</span>`
