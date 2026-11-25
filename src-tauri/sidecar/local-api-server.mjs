@@ -2188,21 +2188,35 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     }
 
     case 'OLLAMA_API_URL': {
-      let probeUrl;
+      let parsed;
       try {
-        const parsed = new URL(value);
+        parsed = new URL(value);
         if (!['http:', 'https:'].includes(parsed.protocol)) return fail('Must be an http(s) URL');
-        // Probe the OpenAI-compatible models endpoint
-        probeUrl = new URL('/v1/models', value).toString();
       } catch {
         return fail('Invalid URL');
       }
-      const response = await fetchWithTimeout(probeUrl, { method: 'GET', allowPrivateNetwork: true }, 8000);
+      // Permit loopback or the already-configured Ollama origin to reach a
+      // private address; require public-host validation and IP pinning for any
+      // other caller-supplied URL so secret validation cannot scan LAN/metadata.
+      const safety = await isSafeUrl(parsed.toString());
+      const isLoopback = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname.toLowerCase());
+      if (!safety.safe && !isLoopback && !isConfiguredOllamaOrigin(parsed)) {
+        return fail(`Ollama URL blocked: ${safety.reason}`);
+      }
+      const pinned = safety.safe ? pickPinnedAddress(safety.resolvedAddresses) : null;
+      if (safety.safe && !pinned) {
+        return fail('Ollama URL blocked: Could not resolve hostname');
+      }
+      const probeOptions = pinned
+        ? { method: 'GET', resolvedAddress: pinned.address, resolvedFamily: pinned.family }
+        : { method: 'GET', allowPrivateNetwork: true };
+      const probeUrl = new URL('/v1/models', parsed).toString();
+      const response = await fetchWithTimeout(probeUrl, probeOptions, 8000);
       if (!response.ok) {
         // Fall back to native Ollama /api/tags endpoint
         try {
-          const tagsUrl = new URL('/api/tags', value).toString();
-          const tagsResponse = await fetchWithTimeout(tagsUrl, { method: 'GET', allowPrivateNetwork: true }, 8000);
+          const tagsUrl = new URL('/api/tags', parsed).toString();
+          const tagsResponse = await fetchWithTimeout(tagsUrl, probeOptions, 8000);
           if (!tagsResponse.ok) return fail(`Ollama probe failed (${tagsResponse.status})`);
           return ok('Ollama endpoint verified (native API)');
         } catch {
