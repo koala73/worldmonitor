@@ -24,7 +24,7 @@ message GetSimilarEventsRequest {
 
   // Restrict precedents to one producing domain. Empty searches every domain.
   string domain = 2 [
-    (buf.validate.field).string.pattern = "^(conflict|military|energy)?$"
+    (buf.validate.field).string.pattern = "^(conflict|military|energy|unrest|cyber|maritime|natural|aviation)?$"
   ];
 
   // Restrict precedents to one ISO 3166-1 alpha-2 country. Empty searches

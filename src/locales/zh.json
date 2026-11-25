@@ -302,7 +302,7 @@
     },
     "intelMemory": {
       "title": "历史情报库",
-      "help": "180天冲突、军事和能源事件档案，支持按需语义先例匹配。",
+      "help": "180天重要事件档案库，涵盖冲突、军事、能源、动荡、网络、海事、自然灾害和航空，支持按需语义先例匹配。",
       "loading": "正在加载历史情报库…",
       "proLocked": "升级至PRO以获得180天历史情报库和先例搜索",
       "unavailable": "历史情报库暂时不可用。",
@@ -314,7 +314,12 @@
         "all": "全部",
         "conflict": "冲突",
         "military": "军事",
-        "energy": "能源"
+        "energy": "能源",
+        "unrest": "动荡",
+        "cyber": "网络",
+        "maritime": "海事",
+        "natural": "自然灾害",
+        "aviation": "航空"
       },
       "loadMore": "加载更多",
       "loadingMore": "正在加载…",
@@ -1192,7 +1197,7 @@
         "auxiliary": "辅助舰",
         "navalVessels": "海军舰艇"
       },
-      "infoTooltip": "<strong>方法论</strong><p>按作战区域聚合军用飞机和海军舰艇。</p><ul><li><strong>正常：</strong> 基准活动</li><li><strong>升高：</strong> 超过阈值（50+ 架飞机）</li><li><strong>严重：</strong> 高度集中（100+ 架飞机）</li></ul><p><strong>具备打击能力：</strong> 加油机 + 预警机 + 战斗机数量充足以维持持续作战。</p>",
+      "infoTooltip": "<strong>方法论</strong><p>统计各军事行动区的军用飞机和被跟踪的海军舰艇数量。</p><ul><li><strong>正常：</strong>低于该行动区的阈值</li><li><strong>升高：</strong>计数达到 3 至 8，因行动区而异</li><li><strong>严重：</strong>计数达到 8 至 20，因行动区而异</li></ul><p>舰艇计入计数，最多可达升高阈值的一半，因此单独的舰艇永远不会引发等级提升。</p><p><strong>具有打击能力：</strong>油料补给机、预警机以及战斗机数量充足，足以维持持续作战。</p>",
       "scanningTheaters": "扫描战区",
       "positions": "飞机位置",
       "navalVesselsLoading": "海军舰艇",
@@ -1234,7 +1239,9 @@
       },
       "emojiKeyLabel": "表情符号图例",
       "emojiKeyAir": "空中资产",
-      "emojiKeyNaval": "海军资产"
+      "emojiKeyNaval": "海军资产",
+      "instabilityChip": "不稳定指数 {{score}}",
+      "instabilityNote": "{{nation}} 不稳定指数：{{score}} 分（满分100分）。仅供参考。该指数不影响威胁等级，威胁等级由该战区内的飞机和舰船数量决定。"
     },
     "countryBrief": {
       "moreActions": "更多操作",
