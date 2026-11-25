@@ -163,16 +163,16 @@
     "askIt": "Ask it",
     "askItDesc": "WM Analyst chat. Live services queryable in plain English.",
     "subscribeIt": "Subscribe to it",
-    "subscribeItDesc": "AI digest on your schedule — daily, twice-daily, or weekly. Slack, Discord, Telegram, Email, webhook.",
+    "subscribeItDesc": "AI digest on your schedule — daily, twice-daily, or weekly. Slack, Teams, Discord, Telegram, Email, webhook.",
     "buildOnIt": "Build on it",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) and MCP for Claude, GPT, custom LLMs."
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
     "title": "What is the personal intelligence desk?",
-    "body": "Up to 30 ranked items per send, deduped across sources, scored against your watchlist. Choose your cadence — daily, twice-daily, or weekly — with an AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, Email, or webhook.",
+    "body": "Up to 30 ranked items per send, deduped across sources, scored against your watchlist. Choose your cadence — daily, twice-daily, or weekly — with an AI Assessment and Signals to watch delivered to Slack, Microsoft Teams, Discord, Telegram, Email, or webhook.",
     "closer": "Not a newsletter. An analyst.",
-    "channels": "Slack · Discord · Telegram · Email · Webhook · AES-256 encrypted · Quiet hours"
+    "channels": "Slack · Teams · Discord · Telegram · Email · Webhook · AES-256 encrypted · Quiet hours"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Live Dashboard",
@@ -184,8 +184,7 @@
   "socialProof": {
     "uniqueVisitors": "Unique visitors",
     "peakDailyUsers": "Peak daily users",
-    "countriesReached": "Countries reached",
-    "liveDataSources": "Live data sources"
+    "countriesReached": "Countries reached"
   },
   "audience": {
     "title": "Who is World Monitor built for?",
@@ -205,34 +204,6 @@
     "aiTeamsDesc": "Feed live world context into your company assistant over MCP, with internal-use rights in writing.",
     "teamsTitle": "Teams & organizations",
     "teamsDesc": "Move from individual use to shared workflows, API access, TV apps, and managed deployments."
-  },
-  "dataCoverage": {
-    "title": "What does World Monitor track?",
-    "subtitle": "Service domains ingested simultaneously. Markets, macro, geopolitics, energy, infrastructure — everything normalized and rendered on a WebGL globe.",
-    "markets": "Financial Markets & Equities",
-    "marketsDesc": "Global stock analysis, commodities, crypto, ETF flows, analyst targets, and FRED macro data",
-    "economy": "Economy & Central Banks",
-    "economyDesc": "GDP, inflation, interest rates, growth cycles, and monetary policy tracking across major economies",
-    "geopolitical": "Geopolitical Analysis",
-    "geopoliticalDesc": "ACLED & UCDP events with escalation scoring, risk frameworks, and trend analysis",
-    "maritime": "Maritime & Trade",
-    "maritimeDesc": "Ship movements, vessel detection, port activity, and cargo inference",
-    "aviation": "Aviation Tracking",
-    "aviationDesc": "ADS-B transponder tracking of global flight patterns",
-    "infra": "Critical Infrastructure",
-    "infraDesc": "Nuclear sites, power grids, pipelines, refineries — mapped assets",
-    "fire": "Satellite Fire Detection",
-    "fireDesc": "NASA FIRMS near-real-time fire and hotspot data",
-    "cables": "Submarine Cables",
-    "cablesDesc": "Undersea cable routes and landing stations",
-    "internet": "Internet & GPS",
-    "internetDesc": "Outage detection, BGP anomalies, GPS jamming zones",
-    "cyber": "Cyber Threats",
-    "cyberDesc": "Ransomware feeds, BGP hijacks, DDoS detection",
-    "gdelt": "GDELT & News",
-    "gdeltDesc": "Curated RSS feeds, AI-scored GDELT events, live broadcasts",
-    "seismology": "Seismology & Natural",
-    "seismologyDesc": "USGS earthquakes, volcanic activity, severe weather"
   },
   "tiers": {
     "free": "Free",
@@ -255,13 +226,12 @@
     "riskMonitoring": "Risk Monitoring & Scenarios",
     "riskMonitoringDesc": "Global risk scoring, scenario analysis, and geopolitical risk assessment. Deep-forecast simulations auto-run on the hourly cron — fresh outcomes appear without manual triggers. Convergence detection across market and political signals.",
     "morningBriefs": "Personal Intelligence Desk",
-    "morningBriefsDesc": "Up to 30 ranked stories per digest, deduped across sources. Pick daily, twice-daily, or weekly cadence — or real-time alerts for critical events. AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, Email, or webhook. Not a newsletter — an analyst.",
+    "morningBriefsDesc": "Up to 30 ranked stories per digest, deduped across sources. Pick daily, twice-daily, or weekly cadence — or real-time alerts for critical events. AI Assessment and Signals to watch delivered to Slack, Microsoft Teams, Discord, Telegram, Email, or webhook. Not a newsletter — an analyst.",
     "oneKey": "Live Services, 1 Key",
-    "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, and more — all active, no separate registrations.",
+    "oneKeyDesc": "Finnhub, FRED, UCDP, NASA FIRMS, AISStream, OpenSky, and more — all active, no separate registrations.",
     "deliveryLabel": "Choose how intelligence finds you",
     "supplyChainLab": "Supply-Chain Stress Lab",
-    "supplyChainLabDesc": "Model a cost shock across countries and sectors. Rank commodity vulnerability by chokepoint dependency. Track mine-to-refinery concentration and the SGE–COMEX physical premium divergence — the series that moves before the headline does.",
-    "roadmapNote": "On the roadmap: longer history, premium map layers."
+    "supplyChainLabDesc": "Model a cost shock across countries and sectors. Rank commodity vulnerability by chokepoint dependency. Track mine-to-refinery concentration and the SGE–COMEX physical premium divergence — the series that moves before the headline does."
   },
   "apiSection": {
     "apiTier": "API TIER",
@@ -573,7 +543,7 @@
       "n5Title": "Submarine cables",
       "n5Desc": "{{submarineCables}} undersea cables that carry the internet, overlaid with outage and threat signals.",
       "n6Title": "Protest tracking",
-      "n6Desc": "Protest detection from ACLED and GDELT; reports from one source in the same 0.1° cell on the same day merge into one event — signal, not rumor.",
+      "n6Desc": "Protest detection from GDELT; reports from one source in the same 0.1° cell on the same day merge into one event — signal, not rumor.",
       "faith": "Don't take the numbers on faith —",
       "faithCta": "open the app and count.",
       "faithNote": "Sources are cited on every panel."
@@ -631,7 +601,7 @@
       "q2": "What is a global intelligence dashboard?",
       "a2": "A single live view that fuses signals most tools keep separate: conflict events, ship and aircraft tracking, shipping chokepoints, satellites, subsea cables, pipelines, markets and cyber threats — on one real-time world map, with AI scoring and briefs on top. World Monitor is a free one.",
       "q3": "Where does the data come from?",
-      "a3": "From {{providers}} attributed providers. Named ones include ACLED and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus curated news feeds. Every panel cites its sources and timestamps inline.",
+      "a3": "From {{providers}} attributed providers. Named ones include GDELT and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus curated news feeds. Every panel cites its sources and timestamps inline.",
       "q4": "Can I watch chokepoints like Hormuz or Bab el-Mandeb in real time?",
       "a4": "Yes. {{chokepoints}} chokepoints, both straits and canals, from Hormuz and Bab el-Mandeb to Suez, are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring — and density anomalies are flagged against each chokepoint's rolling baseline.",
       "q5": "How is this different from a conflict map like Liveuamap?",

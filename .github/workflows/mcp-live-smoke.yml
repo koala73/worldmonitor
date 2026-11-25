@@ -38,7 +38,9 @@ name: MCP Live Smoke
 #   - push to main touching the script/workflow: validates edits on merge.
 #     Kept alongside deployment_status because scripts/vercel-ignore.sh does
 #     NOT list these paths as web-relevant, so a smoke-only merge produces no
-#     Vercel build and therefore no deployment_status event at all.
+#     Vercel build and therefore no deployment_status event at all. A push
+#     whose commit Vercel does deploy leaves the probe to that deploy's
+#     deployment_status run (see the `deploy` step).
 #   - workflow_dispatch: manual re-runs from the Actions UI.
 # NOT pull_request: the target is live production, not PR code — a PR run
 # could neither exercise its own changes nor fail for reasons the PR caused.
@@ -65,6 +67,8 @@ on:
 
 permissions:
   contents: read
+  # The push run's deploy step lists this commit's deployments.
+  deployments: read
 
 jobs:
   smoke:
@@ -95,8 +99,9 @@ jobs:
     runs-on: ubuntu-latest
     # The smoke run itself stops after 10 minutes, reserving two minutes for
     # report persistence and artifact upload. Nominal runs finish in well under
-    # a minute.
-    timeout-minutes: 12
+    # a minute. A push run may first wait up to 20 minutes for its production
+    # deploy (the `deploy` step).
+    timeout-minutes: 34
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -120,12 +125,69 @@ jobs:
       # behind another, or one following a rollback, can measure a build later
       # or earlier than the commit that triggered it, so treat green as "the
       # production surface is healthy now", NOT as "this deployment is good".
+      # A push that also changes web paths starts a Vercel production build,
+      # and probing at once measures the build before it. Each PR that changed
+      # MCP behaviour and its smoke expectation together went red here and
+      # green on its own deployment_status run minutes later (#7572, #10293,
+      # #11012). vercel-ignore.sh against github.event.before only PREDICTS
+      # that build: Vercel diffs against its last SUCCESSFUL deploy, so after a
+      # failed deploy a revert can look web-relevant here while Vercel skips
+      # it. So defer only once a successful vercel[bot] Production deployment
+      # of this SHA exists; its deployment_status run probes it. A failed
+      # deploy, or none within the wait (6-16 minutes is typical), probes now.
+      - name: Defer a deploying push to its production deploy
+        id: deploy
+        if: github.event_name == 'push'
+        timeout-minutes: 22
+        env:
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_WAIT_SECONDS: '1200'
+          DEPLOY_POLL_SECONDS: '30'
+          # Bounds each gh call so a stalled request cannot outrun the
+          # deadline and the step's timeout-minutes, which would skip the
+          # fallback probe.
+          GH_CALL_TIMEOUT_SECONDS: '30'
+        run: |
+          git fetch --no-tags --depth=1 origin "$BEFORE"
+          if VERCEL_GIT_COMMIT_REF=main VERCEL_GIT_PREVIOUS_SHA="$BEFORE" bash scripts/vercel-ignore.sh; then
+            echo "pending=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          deadline=$((SECONDS + DEPLOY_WAIT_SECONDS))
+          while :; do
+            state=""
+            url=$(timeout "$GH_CALL_TIMEOUT_SECONDS" gh api "repos/$REPO/deployments?sha=$SHA&environment=Production&per_page=20" \
+              --jq '[.[] | select(.creator.login == "vercel[bot]")][0].statuses_url // empty' || true)
+            if [ -n "$url" ]; then
+              state=$(timeout "$GH_CALL_TIMEOUT_SECONDS" gh api "$url" --jq '.[0].state // empty' || true)
+            fi
+            case "$state" in
+              success)
+                echo "pending=true" >> "$GITHUB_OUTPUT"
+                echo "::notice::Vercel deployed this commit to production; its deployment_status run probes it."
+                exit 0
+                ;;
+              failure|error)
+                echo "pending=false" >> "$GITHUB_OUTPUT"
+                echo "::warning::The Vercel production deploy of this commit ended in $state; probing the live build now."
+                exit 0
+                ;;
+            esac
+            [ "$SECONDS" -ge "$deadline" ] && break
+            sleep "$DEPLOY_POLL_SECONDS"
+          done
+          echo "pending=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::No successful Vercel production deploy of this commit within ${DEPLOY_WAIT_SECONDS}s; probing the live build now."
       - name: Live MCP production smoke
+        if: steps.deploy.outputs.pending != 'true'
         env:
           MCP_SMOKE_RUN_BUDGET_MS: '600000'
         run: node scripts/mcp-live-smoke.mjs --report "$RUNNER_TEMP/mcp-live-smoke-report.json"
       - name: Upload MCP smoke report
-        if: ${{ always() }}
+        if: ${{ always() && steps.deploy.outputs.pending != 'true' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: mcp-live-smoke-${{ github.run_id }}-${{ github.run_attempt }}

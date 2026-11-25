@@ -9,7 +9,7 @@ import {
   readPublicNoAuthPaths,
   readBillingVerificationStatuses,
   readRetryableBillingCodes,
-  LAPSED_BILLING_STATUS,
+  readTerminalBillingStatuses,
 } from '../scripts/lib/openapi-codegen.mjs';
 
 // Guards scripts/openapi-inject-billing-verification.mjs and the
@@ -28,6 +28,7 @@ const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options'
 
 const PUBLIC_PATHS = readPublicNoAuthPaths();
 const RETRYABLE_CODES = readRetryableBillingCodes();
+const TERMINAL_CODES = readTerminalBillingStatuses();
 
 const serviceJson = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
@@ -69,8 +70,8 @@ function assertForbiddenCode(spec, label) {
   assert.ok(forbidden, `${label}: ForbiddenError schema missing`);
   assert.deepEqual(
     forbidden.properties?.code?.enum,
-    [LAPSED_BILLING_STATUS],
-    `${label}: ForbiddenError.code enum must carry the provider-confirmed lapse code`,
+    TERMINAL_CODES,
+    `${label}: ForbiddenError.code enum must carry the provider-confirmed terminal codes`,
   );
   assert.deepEqual(forbidden.required, ['error'], `${label}: ForbiddenError.code must stay optional (error-only required)`);
 }
@@ -121,13 +122,16 @@ function assertOperationContract({ path, method, op }, label) {
 describe('OpenAPI billing-verification contracts', () => {
   it('derives the code enums from the entitlement gate source (fail-closed)', () => {
     const statuses = readBillingVerificationStatuses();
-    assert.ok(statuses.includes(LAPSED_BILLING_STATUS), 'union must contain the lapse status');
-    assert.ok(statuses.length >= 3, `expected the audited 3 billing statuses, found ${statuses.length}`);
+    assert.deepEqual(TERMINAL_CODES, ['subscription_lapsed', 'payment_failed']);
+    for (const code of TERMINAL_CODES) assert.ok(statuses.includes(code), `union must contain ${code}`);
+    assert.ok(statuses.length >= 4, `expected the audited 4 billing statuses, found ${statuses.length}`);
     assert.ok(
       RETRYABLE_CODES.includes('entitlement_verification_unavailable'),
       'retryable enum must include the transient backend-unreachable code',
     );
-    assert.ok(!RETRYABLE_CODES.includes(LAPSED_BILLING_STATUS), 'the hard-403 lapse must not be in the retryable 503 enum');
+    for (const code of TERMINAL_CODES) {
+      assert.ok(!RETRYABLE_CODES.includes(code), `the hard-403 ${code} must not be in the retryable 503 enum`);
+    }
   });
 
   it('audits the authenticated operation surface', () => {

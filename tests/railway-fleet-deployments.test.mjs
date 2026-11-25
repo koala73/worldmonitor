@@ -74,6 +74,22 @@ describe('Railway CLI child capability boundary', () => {
     assert.deepEqual(timeouts, [RAILWAY_INVENTORY_TIMEOUT_MS, 5_000]);
   });
 
+  it('raises the CLI HTTP timeout to the call bound so the CLI cannot cut it short', () => {
+    // Observed 2026-11-19 (run 44586778383): `service list` failed after 90 s
+    // with "operation timed out" under the 3 min inventory bound, because the
+    // Railway CLI applies its own 90 s per-request HTTP timeout unless
+    // RAILWAY_HTTP_TIMEOUT says otherwise.
+    const httpTimeouts = [];
+    const spawnImpl = (_command, _args, options) => {
+      httpTimeouts.push(options.env.RAILWAY_HTTP_TIMEOUT);
+      return { status: 0, signal: null, error: null, stdout: '[]' };
+    };
+    readServices('production', { projectId: 'project-1', spawnImpl });
+    readServices('production', { projectId: 'project-1', timeoutMs: 4_500, spawnImpl });
+    runRailway(['--version'], { env: { ...sourceEnv, RAILWAY_HTTP_TIMEOUT: '1' } }, spawnImpl);
+    assert.deepEqual(httpTimeouts, ['180', '5', String(RAILWAY_CALL_TIMEOUT_MS / 1000)]);
+  });
+
   it('applies the allowlist to sync and async Railway children', async () => {
     const childEnvironments = [];
     const deploymentArgs = [];
@@ -111,7 +127,7 @@ describe('Railway CLI child capability boundary', () => {
       '--json',
     ]]);
     assert.deepEqual(childEnvironments, [
-      createRailwayCliEnv(sourceEnv),
+      { ...createRailwayCliEnv(sourceEnv), RAILWAY_HTTP_TIMEOUT: '60' },
       createRailwayCliEnv(sourceEnv),
       createRailwayCliEnv(sourceEnv),
     ]);

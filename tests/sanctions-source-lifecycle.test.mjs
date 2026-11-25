@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { mergeSanctionEntries, semaTargetCountry, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
 import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
+import { URP_ROW_ID, URP_SOURCES } from '../scripts/_us-restricted-sanctions.mjs';
 import { projectCountrySanctions } from '../shared/country-sanctions-signals.mjs';
 import { __testing__ as health } from '../api/health.js';
 import { readSeedSnapshot, verifySeedKey, runSeed, writeExtraKeyWithMeta } from '../scripts/_seed-utils.mjs';
@@ -34,8 +35,15 @@ const cslRow = (source, i) => ({
   effectiveAt: '0', _aliases: [], _identifiers: [], _notice: '90 FR 14032', _url: 'https://www.bis.gov/regulations/ear/744',
 });
 const cslLists = Object.fromEntries(CSL_SOURCES.map(source => [source, Array.from({ length: 40 }, (_, i) => cslRow(source, i + 1))]));
+const urpRow = (source, i) => ({
+  id: `${source}:us_list-firm-${i}`, name: `${source} Company ${i}`, sourceLists: [source],
+  countryCodes: [], countryNames: [], programs: [], entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY',
+  effectiveAt: '0', _aliases: [], _identifiers: [], _notice: 'FR Doc 2026-11571',
+  _url: 'https://www.federalregister.gov/documents/2026/06/10/2026-11571/notice',
+});
+const urpLists = Object.fromEntries(URP_SOURCES.map(source => [source, Array.from({ length: 20 }, (_, i) => urpRow(source, i + 1))]));
 
-async function publish({ ofacCountryCodes = ['RU'], successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'CSL'], cslRecords = cslLists, stored = null, preview = [], previousState = null, history = null, activated = false, clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
+async function publish({ ofacCountryCodes = ['RU'], successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'CSL', 'URP'], cslRecords = cslLists, urpRecords = urpLists, stored = null, preview = [], previousState = null, history = null, activated = false, clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
   const writes = [];
   let options;
   const context = vm.createContext({
@@ -62,6 +70,11 @@ async function publish({ ofacCountryCodes = ['RU'], successes = ['SDN', 'CONSOLI
       ? { lists: Object.fromEntries(CSL_SOURCES.map(source => [source,
         { records: cslRecords[source] ?? [], publishedAt: now - 3 * 86400000, error: cslRecords[source]?.length ? null : 'CSL_LIST_MISSING' }])), error: null }
       : { lists: {}, error: 'ECONNRESET' },
+    URP_SOURCES, URP_ROW_ID,
+    ingestUsRestrictedEntries: async () => successes.includes('URP')
+      ? { lists: Object.fromEntries(URP_SOURCES.map(source => [source,
+        { records: urpRecords[source] ?? [], publishedAt: now - 86400000, error: urpRecords[source]?.length ? null : 'URP_LIST_MISSING' }])), error: null }
+      : { lists: {}, error: 'HTTP 503' },
     writeExtraKeyWithMeta: async (...args) => {
       if (writeError) throw new Error('synthetic cache write failure');
       writes.push(normalize(args));
@@ -112,7 +125,7 @@ describe('sanctions source lifecycle', () => {
     const failed = await publish({ stored, history: normalize(first.data._changes), successes: [], clock: now + 6 * 3600000 });
     await save(failed);
     assert.equal(failed.data._changes.events.length, 0);
-    assert.equal(failed.data._changes.gaps.filter(g => g.reason === 'retained').length, 3 + CSL_SOURCES.length);
+    assert.equal(failed.data._changes.gaps.filter(g => g.reason === 'retained').length, 3 + CSL_SOURCES.length + URP_SOURCES.length);
     assert.equal(failed.writes[0][7].sourceState, 'error');
     const invalid = await publish({ stored, history: {} });
     assert.equal(invalid.data._changes, null);
@@ -241,7 +254,7 @@ describe('sanctions source lifecycle', () => {
     assert.equal(fresh.data._semaAttribution.regimes.Iran.unattributedShare, 1,
       'fresh missing target fields must still expose parser failures');
     const stored = await save(fresh);
-    const retained = await publish({ stored, successes: ['SDN', 'CONSOLIDATED', 'CSL'], clock: now + 6 * 3600000 });
+    const retained = await publish({ stored, successes: ['SDN', 'CONSOLIDATED', 'CSL', 'URP'], clock: now + 6 * 3600000 });
     assert.equal(retained.data._sourceHealth[SEMA_SOURCE].status, 'retained');
     assert.equal(retained.data._semaAttribution.regimes.Iran.unattributedShare, 0);
     assert.equal(retained.data._semaAttribution.degraded, false);
@@ -252,7 +265,7 @@ describe('sanctions source lifecycle', () => {
 
     const explicitFailure = await publish({ semaRecords: canadian.map(entry => ({ ...entry, _targetCountryCodes: [] })) });
     const retainedFailure = await publish({ stored: await save(explicitFailure),
-      successes: ['SDN', 'CONSOLIDATED', 'CSL'], clock: now + 6 * 3600000 });
+      successes: ['SDN', 'CONSOLIDATED', 'CSL', 'URP'], clock: now + 6 * 3600000 });
     assert.equal(retainedFailure.data._semaAttribution.degraded, true, 'explicit failure evidence is preserved');
   });
 
@@ -445,8 +458,8 @@ describe('sanctions source lifecycle', () => {
     for (const clock of [now + 3600000, now + RETAIN_MS]) {
       const { data, options, writes } = await publish({ successes: [], stored, clock });
       const count = clock < now + RETAIN_MS ? 82 : 0;
-      // Retained CSL rows are screened but never counted as sanctions pressure.
-      const screened = clock < now + RETAIN_MS ? count + CSL_SOURCES.length * 40 : 0;
+      // Retained CSL and US restricted-party rows are screened but never counted as sanctions pressure.
+      const screened = clock < now + RETAIN_MS ? count + CSL_SOURCES.length * 40 + URP_SOURCES.length * 20 : 0;
       assert.equal(options.publishTransform(data).totalCount, count);
       assert.equal(options.validateFn(options.publishTransform(data)), true);
       assert.equal(options.declareRecords(options.publishTransform(data)), count);
@@ -457,7 +470,7 @@ describe('sanctions source lifecycle', () => {
       assert.equal(index[3], screened);
       assert.equal(index[7].sourceState, 'error', 'every source outage degrades the screening index health');
       assert.equal(index[7].errorCode, 'SEMA_INGEST_FAILED');
-      assert.deepEqual([...index[7].failedSources].sort(), ['CONSOLIDATED', 'SDN', SEMA_SOURCE, ...CSL_SOURCES].sort());
+      assert.deepEqual([...index[7].failedSources].sort(), ['CONSOLIDATED', 'SDN', SEMA_SOURCE, ...CSL_SOURCES, ...URP_SOURCES].sort());
       assert.deepEqual(writes.find(([key]) => key === 'sanctions:country-counts:v1')[1], count ? { RU: 2 } : {});
     }
   });
@@ -490,13 +503,13 @@ describe('US Consolidated Screening List in the sanctions seed (#9352)', () => {
 
   it('reports every source missing from the screening index, not only the CSL lists', async () => {
     const entityMeta = writes => writes.find(([key]) => key === 'sanctions:entities:v1')[7];
-    const ofacDown = await publish({ successes: ['CONSOLIDATED', SEMA_SOURCE, 'CSL'] });
+    const ofacDown = await publish({ successes: ['CONSOLIDATED', SEMA_SOURCE, 'CSL', 'URP'] });
     await ofacDown.options.afterPublish(ofacDown.data, {});
     const meta = entityMeta(ofacDown.writes);
     assert.equal(meta.sourceState, 'error');
     assert.equal(meta.errorCode, 'OFAC_INGEST_FAILED');
     assert.deepEqual([...meta.failedSources], ['SDN']);
-    const cslDown = await publish({ successes: ['SDN', 'CONSOLIDATED', SEMA_SOURCE] });
+    const cslDown = await publish({ successes: ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'URP'] });
     await cslDown.options.afterPublish(cslDown.data, {});
     assert.equal(entityMeta(cslDown.writes).errorCode, 'CSL_INGEST_FAILED');
     assert.equal(entityMeta(cslDown.writes).failedSources.length, CSL_SOURCES.length);
@@ -794,5 +807,48 @@ it('publishes retained success clocks through the last millisecond and unavailab
       assert.equal(projectCountrySanctions(canonical, 'IR', Number(canonical.fetchedAt)).partial, true);
       assert.equal(JSON.stringify(meta).includes('private-id'), false);
     }
+  });
+});
+
+describe('US restricted-party lists (1260H, Section 889, FCC Covered List, UFLPA) in the sanctions seed', () => {
+  it('screens the rows but keeps them out of pressure, country counts and pressure health', async () => {
+    const { data, options, writes } = await publish();
+    const index = data._entityIndex.filter(entry => URP_SOURCES.some(source => entry.id.startsWith(`${source}:`)));
+    assert.equal(index.length, URP_SOURCES.length * 20);
+    assert.deepEqual(index[0].sl, [URP_SOURCES[0]]);
+    assert.equal(index[0].et, 'entity');
+    assert.equal(data.totalCount, 82, 'pressure counts OFAC and SEMA only');
+    assert.deepEqual(Object.keys(data.pressureMetadata.sourceHealth).sort(), ['CONSOLIDATED', 'SDN', SEMA_SOURCE].sort());
+    await options.afterPublish(data, {});
+    assert.equal(writes.find(([key]) => key === 'sanctions:entities:v1')[7].sourceState, 'ok');
+  });
+
+  it('an outage degrades the screening index only and names its own error code', async () => {
+    const down = await publish({ successes: ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'CSL'] });
+    const result = await down.options.afterPublish(down.data, {});
+    assert.equal(result.completionState, 'OK');
+    const meta = down.writes.find(([key]) => key === 'sanctions:entities:v1')[7];
+    assert.equal(meta.errorCode, 'URP_INGEST_FAILED');
+    assert.deepEqual([...meta.failedSources].sort(), [...URP_SOURCES].sort());
+  });
+
+  it('logs a new listing with its Federal Register citation after a baseline run', async () => {
+    const first = await publish();
+    assert.ok(first.data._changes.gaps.filter(g => URP_SOURCES.includes(g.list)).every(g => g.reason === 'baseline-unavailable'));
+    const added = { ...urpLists, 'US-UFLPA': [...urpLists['US-UFLPA'], urpRow('US-UFLPA', 21)] };
+    const next = await publish({ stored: await save(first), history: normalize(first.data._changes),
+      clock: now + 6 * 3600000, urpRecords: added });
+    assert.equal(next.data._changes.events.length, 1);
+    const [event] = next.data._changes.events;
+    assert.equal(event.op, 'added');
+    assert.equal(event.list, 'US-UFLPA');
+    assert.equal(event.notice, 'FR Doc 2026-11571');
+    assert.match(event.url, /^https:\/\/www\.federalregister\.gov\//);
+  });
+
+  it('runs the download alongside SEMA with a deadline that leaves the CSL its budget', async () => {
+    let seen;
+    const { options } = await publish({ io: { ingestUsRestrictedEntries: async args => { seen = args; return { lists: {}, error: 'URP_FETCH_DEADLINE' }; } } });
+    assert.equal(seen.deadlineAt, now + options.fetchPhaseTimeoutMs - 30_000 - CSL_TIMEOUT_MS);
   });
 });

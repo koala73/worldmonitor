@@ -7,7 +7,7 @@ import {
   isEntitlementActive,
 } from '@/services/entitlements';
 import { getSubscription, onSubscriptionChange } from '@/services/billing';
-import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
+import { deriveBillingUxState, getProBannerVariant, getReactivationHref } from '@/services/billing-state';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { getCurrentClerkUser, isClerkAuthEnabled } from '@/services/clerk';
 import { getSecretState } from '@/services/runtime-config';
@@ -269,11 +269,19 @@ export function showProBanner(container: HTMLElement): void {
   // Definitive free (or settled signed-out): drop any leftover stale hint.
   writePremiumHint(false);
 
+  const subscription = getSubscription();
+  const billingState = deriveBillingUxState(subscription, getEntitlementState(), Date.now());
+  // A paused subscriber (failed renewal past its access grace) already sees
+  // the payment-failed banner, and checkout is blocked while Dodo retries the
+  // card, so an Upgrade strip would only lead to a duplicate-subscription 409.
+  if (getProBannerVariant(billingState) === null) {
+    setReservation(false);
+    return;
+  }
+
   trackGateHit('pro-banner');
   setReservation(true);
 
-  const subscription = getSubscription();
-  const billingState = deriveBillingUxState(subscription, getEntitlementState(), Date.now());
   const returning = billingState === 'lapsed';
   const ctaHref = returning ? getReactivationHref(subscription?.planKey) : '/pro#pricing';
   const banner = document.createElement('div');
@@ -379,9 +387,7 @@ function syncProBanner(): void {
   cancelPendingBannerRemoval();
   bannerEl?.classList.remove('pro-banner-out');
   if (bannerEl && bannerContainer) {
-    const nextState = deriveBillingUxState(getSubscription(), getEntitlementState(), Date.now()) === 'lapsed'
-      ? 'lapsed'
-      : 'upgrade';
+    const nextState = getProBannerVariant(deriveBillingUxState(getSubscription(), getEntitlementState(), Date.now()));
     if (bannerEl.dataset.billingState !== nextState) {
       bannerEl.remove();
       bannerEl = null;

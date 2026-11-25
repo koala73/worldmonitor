@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { newsHandler } from '../server/worldmonitor/news/v1/handler';
 import { INTEL_SOURCES, isServerFeedReachableForLanguage, VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
-import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
+import { rssFeedCacheKey, rssFeedCountryCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
 import { REVOKED_URLS_KEY, __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
 import { drainResponseHeaders } from '../server/_shared/response-headers';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
@@ -139,6 +139,20 @@ describe('ListMediaPerspective', () => {
     assert.equal(saudi.framing, '', 'no framing label before the background job computes one');
     assert.equal(group(payload, 'SA', 'international')!.framing!.unlabeled, 1);
     assert.equal(drainResponseHeaders(req)?.['X-No-Cache'], undefined, 'a complete response stays cacheable');
+  });
+
+  it('reads the retained country pool from its own key', async () => {
+    const source = feed('New York Times World');
+    assert.equal(feedVariants.get(source.url), 'full', 'fixture premise');
+    const parsedAt = Date.now() - 600_000;
+    cache.set(feedKey(source), { items: [article(source.name, 'Parliament debates the budget')], parsedAt });
+    cache.set(rssFeedCountryCacheKey('full', source.url), {
+      parsedAt,
+      items: [article(source.name, 'Riyadh airport reopens as Saudi Arabia weighs response')],
+    });
+
+    const { payload } = await request({ subject_country: 'SA' });
+    assert.equal(group(payload, 'US', 'domestic')!.headlines[0]!.title, 'Riyadh airport reopens as Saudi Arabia weighs response');
   });
 
   it('reads feeds the English digest cannot reach', async () => {

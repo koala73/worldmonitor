@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { Window } from 'happy-dom';
 
 import { COMPARISON_MATRIX_COLUMNS, COMPARISON_PAGES, __test } from '../scripts/build-comparison-pages.mjs';
+import { buildLlmsFullText, withComparisonsSection } from '../scripts/build-llms-full.mjs';
 import {
   SHORTLIST_LAYOUT,
   SHORTLIST_PAGE_SEEDS,
@@ -204,6 +205,25 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
       const link = row.querySelector('td a');
       assert.match(link.getAttribute('href'), /^\/blog\/best\/[a-z0-9-]+\/$/);
       assert.equal(row.querySelectorAll('td').length, 4);
+    }
+  });
+
+  it('describes the rendered comparison matrix headers in both llms files', () => {
+    const hub = new Window().document;
+    hub.write(__test.renderCompareHub({ tpl, baseUrl: BASE_URL, lastmod: LASTMOD, snapshotDate: SNAPSHOT_DATE }));
+    const common = [...hub.querySelectorAll('table thead th')].map(text);
+    const shortlist = [...main.querySelectorAll('table[data-shortlist-matrix] thead th')].map(text);
+    const extra = shortlist.slice(common.length);
+    const outputs = {
+      'llms.txt': withComparisonsSection(readFileSync(join(repoRoot, 'public/llms.txt'), 'utf8')),
+      'llms-full.txt': buildLlmsFullText({ rootDir: repoRoot }),
+    };
+
+    for (const [name, output] of Object.entries(outputs)) {
+      const summary = output.match(/^## Comparisons\n\n([^\n]+)$/m)?.[1];
+      assert.ok(summary, `${name} must describe the comparison matrices`);
+      assert.ok(summary.includes(`${common.length} common columns (${common.join(', ')})`), `${name} must describe the ${common.length} common headers`);
+      assert.ok(summary.includes(`The shortlist adds ${extra.length} columns (${extra.join(', ')})`), `${name} must describe the ${extra.length} extra shortlist headers`);
     }
   });
 

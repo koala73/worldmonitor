@@ -70,3 +70,76 @@ describe('brand spelling', () => {
     assert.doesNotMatch(read('pro-test/src/generated/tiers.json'), /WorldMonitor/);
   });
 });
+
+// /pro factual-drift pass (2026-11-19): each claim below was checked against
+// the code or a live probe before the copy changed.
+describe('/pro factual claims', () => {
+  const proHtml = read('pro-test/index.html');
+  const welcomeHtml = read('pro-test/welcome.html');
+  const apiSection = app.slice(app.indexOf('const ApiSection = '), app.indexOf('const EnterpriseShowcase = ') > 0 ? app.indexOf('const EnterpriseShowcase = ') : undefined);
+  const showcase = app.slice(app.indexOf('const ProShowcase = '), app.indexOf('const AudiencePersonas = '));
+  const socialProof = app.slice(app.indexOf('const SocialProof = '), app.indexOf('const SocialProof = ') + 1200);
+
+  it('never names ACLED as a source (no access or licence)', () => {
+    for (const file of locales) {
+      for (const [key, value] of strings(JSON.parse(readFileSync(join(localeDir, file), 'utf8')))) {
+        assert.doesNotMatch(value, /ACLED/, `${file} ${key}`);
+      }
+    }
+    assert.doesNotMatch(proHtml, /ACLED|acleddata/, 'pro-test/index.html');
+    assert.doesNotMatch(welcomeHtml, /ACLED|acleddata/, 'pro-test/welcome.html');
+  });
+
+  it('shows a REST example that exists: /api/<domain>/v1 route, X-WorldMonitor-Key, wm_ key', () => {
+    assert.match(apiSection, /api\.worldmonitor\.app\/api\/intelligence\/v1\/list-cross-source-signals/);
+    assert.match(apiSection, /X-WorldMonitor-Key: wm_/);
+    assert.doesNotMatch(apiSection, /\/v1\/intelligence\/convergence|Authorization: Bearer|wm_live_/);
+    // Field names in the sample body come from ListCrossSourceSignalsResponse.
+    for (const field of ['signals', 'severityScore', 'contributingTypes', 'evaluatedAt']) {
+      assert.ok(apiSection.includes(`"${field}"`), `sample body names ${field}`);
+    }
+  });
+
+  it('takes the source count from the generated depth stats, not a hand-typed number', () => {
+    assert.doesNotMatch(socialProof, /"500\+"/);
+    assert.match(socialProof, /depthProofStats\.providers/);
+  });
+
+  it('does not call shipped features a roadmap', () => {
+    assert.doesNotMatch(showcase, /roadmapNote/);
+    assert.equal(JSON.parse(read('pro-test/src/locales/en.json')).proShowcase.roadmapNote, undefined);
+  });
+
+  it('lists Microsoft Teams wherever delivery channels are listed', () => {
+    const en = JSON.parse(read('pro-test/src/locales/en.json'));
+    const channelLists = strings(en).filter(([, value]) => /Discord/.test(value));
+    assert.ok(channelLists.length >= 4, 'channel lists found');
+    for (const [key, value] of channelLists) {
+      assert.match(value, /Teams/, key);
+    }
+    assert.match(showcase, /label: "Teams"/);
+    for (const [path, html] of [['pro-test/index.html', proHtml], ['pro-test/welcome.html', welcomeHtml]]) {
+      for (const [list] of html.matchAll(/.{0,80}Discord/g)) {
+        assert.match(list, /Teams/, `${path}: ${list}`);
+      }
+    }
+  });
+
+  it('names every live variant in the static fallback, including Energy Monitor', () => {
+    assert.match(proHtml, /href="https:\/\/energy\.worldmonitor\.app\/dashboard"[^>]*>Energy Monitor<\/a>/);
+  });
+
+  it('gives every JSON-LD Offer a description', () => {
+    const blocks = [...proHtml.matchAll(/<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((m) => { try { return JSON.parse(m[1]); } catch { return null; } })
+      .filter((b) => b && Array.isArray(b.offers));
+    assert.ok(blocks.length > 0);
+    for (const offer of blocks.flatMap((b) => b.offers)) {
+      assert.ok(offer.description?.trim(), `${offer.name} has a description`);
+    }
+  });
+
+  it('keeps the ProShowcase items at one heading level', () => {
+    assert.doesNotMatch(showcase, /<h4/);
+  });
+});

@@ -51,6 +51,7 @@ fi
 # push stdin first (the gate consumes it), then strip the list git publishes.
 WM_PUSH_STDIN=$(cat || true)
 printf '%s\n' "$WM_PUSH_STDIN" | bash scripts/prepush-identity-gate.sh || exit 1
+printf '%s\n' "$WM_PUSH_STDIN" | bash scripts/prepush-unrelated-history-gate.sh || exit 1
 for _git_env in $(git rev-parse --local-env-vars 2>/dev/null); do
   unset "$_git_env" 2>/dev/null || true
 done

@@ -1030,8 +1030,6 @@ describe('resilience operator docs', () => {
     const dir = dirname(fileURLToPath(import.meta.url));
     const files = [
       join(dir, '..', 'docs', 'railway-seed-consolidation-runbook.md'),
-      join(dir, '..', 'scripts', 'post-pr3427-force-refresh.mjs'),
-      join(dir, '..', 'scripts', 'post-pr3487-force-refresh.mjs'),
     ];
 
     for (const file of files) {

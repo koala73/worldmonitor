@@ -56,7 +56,8 @@ export function evaluateFreshness(
     // stays served. api/health.js readSeedMeta reads status 'error' as
     // seedStale and classifyKey reports it as SEED_ERROR; MCP follows so the
     // two cannot disagree.
-    stale ||= (meta as { status?: unknown }).status === 'error';
+    const { status, sourceState } = meta as { status?: unknown; sourceState?: unknown };
+    stale ||= status === 'error' || (check.honorSourceError === true && sourceState === 'error');
 
     if (check.minRecordCount != null) {
       const recordCount = meta && typeof meta === 'object' && 'recordCount' in meta

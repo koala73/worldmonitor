@@ -56,10 +56,7 @@ describe('docs-stats api endpoint inventory', () => {
   // dirHasFiles count agree and the test passes against BOTH. Stage the actual
   // condition -- an empty `api/[domain]/v1` leftover -- so reverting
   // dirHasFiles turns this red.
-  it('ignores an empty leftover api/ directory that a readdir-only count would include', async () => {
-    // #6702: stage the probe only inside the throwaway copy. Relative mkdir/rm
-    // would still hit process.cwd() (the real checkout) and race
-    // docs-stats-plan-layer-entitlement, which scans that tree end to end.
+  it('counts a leftover api/ directory only after it contains a file', async () => {
     const probeName = '[__docs_stats_probe__]';
     await withStatsRoot(async (sandbox) => {
       const leftover = resolve(sandbox, 'api', probeName);
@@ -72,51 +69,12 @@ describe('docs-stats api endpoint inventory', () => {
           baseline,
           'an empty leftover directory must not count as an endpoint',
         );
+        writeFileSync(resolve(leftover, 'v1', 'handler.js'), '');
+        assert.equal(computeStats().apiEndpointEntries, baseline + 1, 'a nested file makes this an endpoint');
       } finally {
         rmSync(leftover, { recursive: true, force: true });
       }
       assert.equal(computeStats().apiEndpointEntries, baseline, 'probe directory must be cleaned up');
-    });
-    assertRealTreeUntouched(probeName);
-  });
-
-  // Parallel test:data can run this file next to
-  // tests/docs-stats-plan-layer-entitlement.test.mts, which spawns
-  // `docs-stats --check` and walks api/ via source-attribution. Stage the
-  // leftover only in the sandbox (#6702) so that sibling scan never sees it.
-  it('leaves source-attribution able to walk api/ while the leftover exists', async () => {
-    const probeName = '[__docs_stats_probe__]';
-    await withStatsRoot(async (sandbox) => {
-      const leftover = resolve(sandbox, 'api', probeName);
-      mkdirSync(resolve(leftover, 'v1'), { recursive: true });
-      try {
-        assertRealTreeUntouched(probeName);
-        assert.doesNotThrow(() => computeStats());
-      } finally {
-        rmSync(leftover, { recursive: true, force: true });
-      }
-    });
-    assertRealTreeUntouched(probeName);
-  });
-
-  it('still counts a leftover directory once it contains a real file', async () => {
-    // #6702: same sandbox-absolute staging as the empty-probe test above.
-    const probeName = '[__docs_stats_probe2__]';
-    await withStatsRoot(async (sandbox) => {
-      const populated = resolve(sandbox, 'api', probeName);
-      const baseline = computeStats().apiEndpointEntries;
-      mkdirSync(resolve(populated, 'v1'), { recursive: true });
-      try {
-        writeFileSync(resolve(populated, 'v1', 'handler.js'), '');
-        assertRealTreeUntouched(probeName);
-        assert.equal(
-          computeStats().apiEndpointEntries,
-          baseline + 1,
-          'a directory with a real file nested inside is a genuine endpoint entry',
-        );
-      } finally {
-        rmSync(populated, { recursive: true, force: true });
-      }
     });
     assertRealTreeUntouched(probeName);
   });

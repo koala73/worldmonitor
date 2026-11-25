@@ -303,6 +303,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Actualiza a PRO para ver dependencias de proveedores de armamento y capacidad militar"
+    },
+    "intelMemory": {
+      "title": "Memoria de Inteligencia Histórica",
+      "help": "Archivo de 180 días de eventos de conflicto, militares y energéticos con coincidencia semántica de precedentes bajo demanda.",
+      "loading": "Cargando memoria de inteligencia histórica…",
+      "proLocked": "Actualiza a PRO para acceder a memoria de inteligencia histórica de 180 días y búsqueda de precedentes",
+      "unavailable": "La memoria de inteligencia histórica no está disponible temporalmente.",
+      "retry": "Reintentar",
+      "empty": "No hay eventos de inteligencia archivados que coincidan con este país y dominio en la ventana de 180 días.",
+      "partial": "La cobertura del archivo es parcial para esta consulta; los registros disponibles permanecen visibles.",
+      "domainFilterLabel": "Filtrar inteligencia histórica por dominio",
+      "domains": {
+        "all": "Todos",
+        "conflict": "Conflicto",
+        "military": "Militar",
+        "energy": "Energía"
+      },
+      "loadMore": "Cargar más",
+      "loadingMore": "Cargando más…",
+      "loadMoreError": "No se pudieron cargar eventos adicionales. Intenta de nuevo.",
+      "sourceLink": "Fuente ↗",
+      "similarTitle": "Buscar eventos pasados similares",
+      "useLatestHeadline": "Usar titular más reciente",
+      "similarPlaceholder": "Describe una situación en desarrollo (al menos 10 caracteres)…",
+      "findSimilar": "Buscar eventos similares",
+      "similarMinLength": "Ingresa al menos 10 caracteres para buscar precedentes pasados.",
+      "similarLoading": "Buscando precedentes históricos…",
+      "similarEmpty": "Ningún evento pasado similar superó el umbral de similitud.",
+      "similarUnavailable": "La búsqueda de precedentes no está disponible temporalmente. Intenta de nuevo."
     }
   },
   "header": {
@@ -1939,7 +1968,7 @@
       "briefFreshness": "Generado hace {{minutes}}m · fuente más reciente con {{hours}}h de antigüedad",
       "briefStoryDetails": "Detalles de la noticia ({{count}})",
       "streamIdleStopLabel": "Detener vídeo en directo cuando está inactivo",
-      "streamIdleStopDesc": "Detiene Noticias en Directo y Cámaras Web en Directo después de este tiempo sin actividad y muestra una notificación en el panel.",
+      "streamIdleStopDesc": "Detiene Noticias en Directo y Cámaras Web en Directo después de este tiempo sin actividad y muestra una notificación en el panel. Noticias en Directo sigue reproduciéndose mientras el sonido esté activado.",
       "streamIdleStopNever": "Nunca",
       "liveNewsAutoplayLabel": "Reproducción automática de noticias en directo",
       "liveNewsAutoplayDesc": "Inicia el vídeo de noticias en directo, silenciado, tan pronto como aparece en pantalla. Desactívalo para cargar el vídeo solo cuando lo inicies."

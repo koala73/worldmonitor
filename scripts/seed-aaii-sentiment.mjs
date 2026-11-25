@@ -5,7 +5,9 @@ import { readBoundedResponseBytes } from './_china-exchange-transport.mjs';
 loadEnvFile(import.meta.url);
 
 const AAII_KEY = 'market:aaii-sentiment:v1';
-const AAII_TTL = 604800; // 7 days (weekly data)
+// Weekly survey: 21 days is 3x the cron and outlives health's 14-day stale gate,
+// so one missed run reports STALE_SEED instead of an empty panel.
+const AAII_TTL = 21 * 24 * 3600;
 
 const AAII_HTML_URL = 'https://www.aaii.com/sentimentsurvey';
 

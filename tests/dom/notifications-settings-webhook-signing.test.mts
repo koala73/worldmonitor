@@ -236,6 +236,128 @@ describe('notification settings webhook signing', () => {
     expect(webhookRow(container).querySelector('img')).toBeNull();
   });
 
+  it('removes a revealed signing secret when notification settings unmount', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => { throw new Error('denied'); } },
+    });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+    const container = await mount({ channels: [], alertRules: [] });
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.com/in';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    await vi.waitFor(() => {
+      expect(container.querySelector('#usWebhookSecret')?.textContent).toBe(SECRET);
+    });
+
+    container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-input')?.value).toBe(SECRET);
+    });
+    expect(document.querySelector('.wm-copy')?.hasAttribute('data-copy')).toBe(true);
+
+    cleanups.pop()?.();
+    expect(document.querySelector('.wm-copy')).toBeNull();
+  });
+
+  it('does not leave the signing secret up when copying fails after unmount', async () => {
+    let rejectWrite: (error: Error) => void = () => {};
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => new Promise<void>((_resolve, reject) => { rejectWrite = reject; }) },
+    });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+    const container = await mount({ channels: [], alertRules: [] });
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.com/in';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    await vi.waitFor(() => {
+      expect(container.querySelector('.us-notif-tg-copy-btn')).not.toBeNull();
+    });
+
+    container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
+    cleanups.pop()?.();
+    rejectWrite(new Error('denied'));
+    await vi.waitFor(() => {
+      expect(document.querySelector('.wm-copy')).toBeNull();
+    });
+  });
+
+  it('removes the revealed signing secret when Done is clicked', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => { throw new Error('denied'); } },
+    });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+    const container = await mount({ channels: [], alertRules: [] });
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.com/in';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    await vi.waitFor(() => {
+      expect(container.querySelector('#usWebhookSecret')?.textContent).toBe(SECRET);
+    });
+    container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-input')?.value).toBe(SECRET);
+    });
+
+    channelMocks.getChannelsData.mockResolvedValue(webhookChannel(true));
+    container.querySelector<HTMLButtonElement>('#usWebhookSecretDone')!.click();
+    expect(document.querySelector('.wm-copy')).toBeNull();
+  });
+
+  it('does not reveal the signing secret when copy fails after Done', async () => {
+    let rejectWrite: (error: Error) => void = () => {};
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => new Promise<void>((_resolve, reject) => { rejectWrite = reject; }) },
+    });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+    const container = await mount({ channels: [], alertRules: [] });
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.com/in';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    await vi.waitFor(() => {
+      expect(container.querySelector('.us-notif-tg-copy-btn')).not.toBeNull();
+    });
+
+    container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
+    channelMocks.getChannelsData.mockResolvedValue(webhookChannel(true));
+    container.querySelector<HTMLButtonElement>('#usWebhookSecretDone')!.click();
+    rejectWrite(new Error('denied'));
+    await vi.waitFor(() => {
+      expect(document.querySelector('.wm-copy')).toBeNull();
+    });
+  });
+
+  it('clears a revealed signing secret when notification settings reload', async () => {
+    channelMocks.deleteChannel.mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => { throw new Error('denied'); } },
+    });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+    const container = await mount({
+      channels: [{ channelType: 'email', verified: true, linkedAt: 1, email: 'ops@example.com' }],
+      alertRules: [],
+    });
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.com/in';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    await vi.waitFor(() => {
+      expect(container.querySelector('#usWebhookSecret')?.textContent).toBe(SECRET);
+    });
+    container.querySelector<HTMLButtonElement>('.us-notif-tg-copy-btn')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector<HTMLTextAreaElement>('.wm-copy-input')?.value).toBe(SECRET);
+    });
+
+    container.querySelector<HTMLButtonElement>('.us-notif-disconnect[data-channel="email"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('.wm-copy')).toBeNull();
+    });
+  });
+
   it('tells Telegram users to confirm in the bot', async () => {
     const container = await mount({ channels: [], alertRules: [] });
     container.querySelector<HTMLButtonElement>('#usConnectTelegram')!.click();

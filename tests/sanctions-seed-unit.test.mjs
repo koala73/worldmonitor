@@ -7,6 +7,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import sax from 'sax';
 import { ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, parseSemaXml, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION } from '../scripts/_sema-sanctions.mjs';
 import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
+import { URP_ROW_ID, URP_SOURCES } from '../scripts/_us-restricted-sanctions.mjs';
 import { aircraftRegistrationCountry } from '../scripts/shared/aircraft-registration-country.mjs';
 import { countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken } from '../scripts/shared/country-name-to-iso2.cjs';
 
@@ -31,7 +32,7 @@ const pureSrc = seedSrc
   .replace(/loadEnvFile\([^)]+\);/, '')
   .replace(/async function fetchSource[\s\S]*/, ''); // remove network + runSeed tail
 
-const ctx = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID, COUNTRY_NAME_TO_ISO2, normalizeCountryToken });
+const ctx = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID, URP_SOURCES, URP_ROW_ID, COUNTRY_NAME_TO_ISO2, normalizeCountryToken });
 vm.runInContext(pureSrc, ctx);
 
 const {
@@ -102,7 +103,7 @@ it('attributes OFAC vessels by flag and aircraft by registry, leaving unknown, f
   </Sanctions>`;
   const context = vm.createContext({
     console: { log() {}, warn() {} }, sax, TextDecoder, ofacRegistrationToIdentifier,
-    aircraftRegistrationCountry, countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
+    aircraftRegistrationCountry, countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID, URP_SOURCES, URP_ROW_ID,
     fetchOfacSourceResponse: async () => new Response(xml),
   });
   const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
@@ -138,7 +139,7 @@ it('keeps linked-parent attribution separate and uses only current directional p
     <ProfileRelationships>${link('2', '1')}${link('3', '1', 'owns', 'true')}${link('4', '1')}${link('5', '1')}${link('6', '1', 'associate')}${link('1', '7', 'reverse')}${link('8', 'missing')}${link('9', '10')}${link('10', '9')}${link('11', '1', 'acting')}${link('12', '1', 'property')}${link('13', '1', 'linked')}</ProfileRelationships>
   </Sanctions>`;
   const context = vm.createContext({ console: { log() {}, warn() {} }, sax, TextDecoder,
-    ofacRegistrationToIdentifier, aircraftRegistrationCountry, countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
+    ofacRegistrationToIdentifier, aircraftRegistrationCountry, countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID, URP_SOURCES, URP_ROW_ID,
     fetchOfacSourceResponse: async () => new Response(xml) });
   vm.runInContext(`${pureSrc}\n${seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc))}`, context);
   const { entries } = await context.fetchSource({ label: 'SDN' });
@@ -188,7 +189,7 @@ it('keeps vessel flags out of the country counts that drive risk scores and brie
   </Sanctions>`;
   const context = vm.createContext({
     console: { log() {}, warn() {} }, sax, TextDecoder, ofacRegistrationToIdentifier,
-    aircraftRegistrationCountry, countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
+    aircraftRegistrationCountry, countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID, URP_SOURCES, URP_ROW_ID,
     fetchOfacSourceResponse: async () => new Response(xml),
   });
   const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
@@ -221,6 +222,10 @@ async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], sna
     CSL_SOURCES, CSL_ROW_ID, ingestCslEntries: async ({ deadlineAt }) => {
       deadlines.csl = deadlineAt;
       return { lists: {}, error: 'CSL_FIXTURE_OFF' };
+    },
+    URP_SOURCES, URP_ROW_ID, ingestUsRestrictedEntries: async ({ deadlineAt }) => {
+      deadlines.urp = deadlineAt;
+      return { lists: {}, error: 'URP_FIXTURE_OFF' };
     },
     fetchSource: async ({ label }, { deadlineAt }) => {
       deadlines[label] = deadlineAt;
@@ -330,6 +335,8 @@ describe('partial sanctions publication', () => {
     assert.ok(csl - SDN >= SEMA_TIMEOUT_MS + CSL_TIMEOUT_MS,
       `only ${csl - SDN} ms between the OFAC and CSL deadlines; SEMA and CSL need ${SEMA_TIMEOUT_MS + CSL_TIMEOUT_MS} ms`);
     assert.ok(SDN > before, 'OFAC keeps a positive budget');
+    // The US restricted-party files download alongside SEMA and must leave CSL its full budget.
+    assert.ok(deadlines.urp <= csl - CSL_TIMEOUT_MS, 'the US restricted-party download cannot eat into the CSL budget');
   });
 });
 

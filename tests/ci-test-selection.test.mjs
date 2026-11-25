@@ -18,6 +18,9 @@ test('docs-only PRs and pushes retain the internal-link gate when unit shards sk
   const job = workflow.jobs['docs-stats'];
   assert.equal(job.if, undefined);
   assert.equal(job.needs, undefined);
+  const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
+  assert.equal(checkout?.with?.['fetch-depth'], 0);
+  assert.equal(checkout?.with?.filter, 'blob:none');
   const installIndex = job.steps.findIndex((step) => step.uses === './.github/actions/install-root-deps');
   const linkIndex = job.steps.findIndex((step) => step.run === 'node --import tsx --test tests/internal-link-redirects.test.mjs');
   assert.ok(installIndex >= 0 && linkIndex > installIndex, 'the always-on docs job must run the link suite after installing dependencies');
@@ -26,16 +29,25 @@ test('docs-only PRs and pushes retain the internal-link gate when unit shards sk
   assert.equal(job['continue-on-error'], undefined);
 });
 
-function classify(files, { event = 'pull_request', count = files.length, fail = false, moved = false } = {}) {
+const DECIDED_MAIN_RUNS = [{ id: 98, head_sha: 'before', conclusion: 'success' }];
+
+function classify(files, {
+  event = 'pull_request', count = files.length, fail = false, moved = false,
+  mainRuns = DECIDED_MAIN_RUNS, compareStatus = 'ahead', calls = [],
+} = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'wm-test-selection-'));
   try {
     const entries = files.map((file) => typeof file === 'string' ? { filename: file } : file);
     writeFileSync(join(dir, 'pr.json'), JSON.stringify({ head: { sha: moved ? 'changed' : 'head' }, base: { sha: 'base' }, changed_files: count }));
     writeFileSync(join(dir, 'files.json'), JSON.stringify([entries]));
-    writeFileSync(join(dir, 'compare.json'), JSON.stringify({ files: entries }));
+    writeFileSync(join(dir, 'compare.json'), JSON.stringify({ status: compareStatus, files: entries }));
+    writeFileSync(join(dir, 'runs.json'), JSON.stringify({ workflow_runs: mainRuns }));
+    writeFileSync(join(dir, 'calls'), '');
     writeFileSync(join(dir, 'output'), '');
     writeFileSync(join(dir, 'gh'), fail ? '#!/bin/sh\nexit 1\n' : `#!/bin/sh
+echo "$2" >> "$FIXTURE/calls"
 case "$2" in
+  */actions/workflows/test.yml/runs*) cat "$FIXTURE/runs.json" ;;
   */compare/*) cat "$FIXTURE/compare.json" ;;
   */files) cat "$FIXTURE/files.json" ;;
   *) cat "$FIXTURE/pr.json" ;;
@@ -43,7 +55,7 @@ esac
 `, { mode: 0o755 });
     const values = {
       'github.event_name': event, 'github.event.before': 'before', 'github.repository': 'owner/repo',
-      'github.sha': 'sha', 'github.event.number': '1',
+      'github.sha': 'sha', 'github.event.number': '1', 'github.run_id': '99',
       'github.event.pull_request.head.sha': 'head', 'github.event.pull_request.base.sha': 'base',
     };
     const script = workflow.jobs.changes.steps.find((step) => step.id === 'diff').run.replace(/\$\{\{ ([^}]+) \}\}/g, (_, name) => {
@@ -55,6 +67,7 @@ esac
       env: { ...process.env, FIXTURE: dir, PATH: `${dir}:${process.env.PATH}`, GITHUB_OUTPUT: join(dir, 'output') },
     });
     assert.equal(result.status, 0, result.stderr);
+    calls.push(...readFileSync(join(dir, 'calls'), 'utf8').split('\n').filter(Boolean));
     return Object.fromEntries(readFileSync(join(dir, 'output'), 'utf8').trim().split('\n').map((line) => line.split('=')));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -112,10 +125,56 @@ test('unusable, incomplete and moved diff metadata runs every Test job', () => {
     [['docs/line\nbreak.md'], {}], [[{}], {}],
     [Array.from({ length: 300 }, (_, i) => `docs/${i}.md`), { event: 'push' }],
   ]) {
-    const result = classify(files, options);
+    // push_base names the diffed-from commit, not a path selection.
+    const { push_base: _base, ...result } = classify(files, options);
     assert.ok(Object.values(result).every((value) => value === 'true'), JSON.stringify({ files: files.slice(0, 2), options, result }));
     // durations_key is the unit shards' cache lookup, not a path selection.
-    assert.equal(Object.keys(result).length, Object.keys(workflow.jobs.changes.outputs).filter((key) => key !== 'durations_key').length);
+    assert.equal(Object.keys(result).length, Object.keys(workflow.jobs.changes.outputs).filter((key) => !['durations_key', 'push_base'].includes(key)).length);
+  }
+});
+
+// A newer main push cancels the main run in progress, so `before` may have no
+// verdict. A code commit cancelled by a docs-only one must still be tested.
+test('a main push diffs from the newest successful main Test run, past cancelled and red ones', () => {
+  const calls = [];
+  const mainRuns = [
+    { id: 99, head_sha: 'sha', conclusion: null },
+    { id: 97, head_sha: 'before', conclusion: 'cancelled' },
+    { id: 96, head_sha: 'red', conclusion: 'failure' },
+    { id: 95, head_sha: 'decided', conclusion: 'success' },
+  ];
+  // The fixture's file list stands for decided...sha, which includes the
+  // cancelled and red commits' code changes.
+  const result = classify(['docs/readme.md', 'src/app/App.ts'], { event: 'push', mainRuns, calls });
+  assert.ok(calls.includes('repos/owner/repo/compare/decided...sha'), calls.join('\n'));
+  // Verdict reuse compares this base with the push parent.
+  assert.equal(result.push_base, 'decided');
+  assert.equal(result.code, 'true');
+  assert.equal(result.browser, 'true');
+});
+
+test('verdict reuse gets the decided base; the cutover gate keeps the push parent', () => {
+  // The cutover check validates one transition (cutover.fromKey must equal
+  // the base's key), so an older base would reject a valid cutover that
+  // follows a red commit which already repointed the probe.
+  const step = workflow.jobs['unit-built-output'].steps.find((item) => item.name === 'Enforce health-probe cutovers');
+  assert.equal(step.env.PUSH_BEFORE, '${{ github.event.before }}');
+  const reuse = workflow.jobs.changes.steps.find((item) => item.id === 'reuse');
+  assert.equal(reuse.env.PUSH_BASE, '${{ steps.diff.outputs.push_base }}');
+});
+
+test('a main push with no successful Test run, or one it does not descend from, runs every Test job', () => {
+  for (const options of [
+    { mainRuns: [] },
+    { mainRuns: [{ id: 97, head_sha: 'before', conclusion: 'cancelled' }] },
+    { mainRuns: [{ id: 96, head_sha: 'before', conclusion: 'failure' }] },
+    { mainRuns: [{ id: 99, head_sha: 'sha', conclusion: 'success' }] },
+    { compareStatus: 'diverged' },
+  ]) {
+    const result = classify(['docs/readme.md'], { event: 'push', ...options });
+    assert.ok(Object.values(result).every((value) => value === 'true'), JSON.stringify({ options, result }));
+    // Without a successful base, verdict reuse is refused (see its suite).
+    assert.equal(result.push_base, undefined);
   }
 });
 

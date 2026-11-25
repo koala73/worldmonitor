@@ -35,9 +35,9 @@ export const RAILWAY_VOLUME_READ_POLICY = Object.freeze({
 // CLI prints when backboard answers with a non-JSON body (a gateway page or an
 // empty 200): 3 of the last 3 inspected failures, 2026-11-11/12. A bad token
 // prints "Unauthorized", which stays fatal.
-const TRANSIENT_ERROR = /operation timed out|error sending request|error decoding response body|problem processing request|connection (?:reset|refused|closed)|\b(?:502|503|504)\b/i;
+export const TRANSIENT_ERROR = /operation timed out|error sending request|error decoding response body|problem processing request|connection (?:reset|refused|closed)|\b(?:502|503|504)\b/i;
 
-function runRailway(args, timeoutMs) {
+export function runRailway(args, timeoutMs) {
   return new Promise((resolve) => {
     // @railway/cli's npm wrapper runs the real binary with stdio: 'inherit'.
     // Killing only the wrapper leaves the binary holding both pipes, and
@@ -71,7 +71,7 @@ function setOutput(read) {
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `read=${read}\n`);
 }
 
-function writeAtomically(path, contents) {
+export function writeAtomically(path, contents) {
   mkdirSync(dirname(path), { recursive: true });
   const temporaryPath = `${path}.tmp-${process.pid}`;
   writeFileSync(temporaryPath, contents, 'utf8');

@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { openComponentHarness } from './component-harness';
 import { evidenceScreenshot } from './evidence-screenshot';
 
 test('map tooltip external values remain text', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1100 });
-  await page.goto('/tests/map-harness.html');
-  await page.waitForFunction(() => (window as Window & { __mapHarness?: { ready: boolean } }).__mapHarness?.ready === true);
+  await openComponentHarness(page);
 
   const labels = await page.evaluate(async () => {
     const deckModule = '/src/components/DeckGLMap.ts';

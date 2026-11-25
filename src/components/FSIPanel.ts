@@ -174,7 +174,7 @@ export class FSIPanel extends Panel {
         </div>`
       : '';
 
-    const html = `<div style="padding:12px 14px">
+    const html = `<div style="padding:12px 0">
       <div style="text-align:center;margin-bottom:16px">
         <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:4px">${escapeHtml(t('components.fsi.usFsiValue'))}</div>
         <div style="font-size:calc(36px * var(--wm-panel-effective-scale, 1));font-weight:700;color:${labelColor};line-height:1">${fsiValue.toFixed(4)}</div>

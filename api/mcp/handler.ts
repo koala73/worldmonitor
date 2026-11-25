@@ -26,6 +26,8 @@ import {
   SERVER_INFO,
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
+import { MCP_GUIDE_MARKDOWN, MCP_SERVER_CARD_WITHOUT_TOOLS_JSON, MCP_SETUP_HTML } from './discovery-documents.generated';
+import { serverCardTools } from './server-card-tools';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE, WITHOUT_SUMMARY_TOOLS_PROMPT_LIST_RESPONSE } from './prompts/index';
 import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TRAVEL_RISK_TOOL_NAMES } from './registry/index';
 import { applyChatGptCommercePolicy, applyViewDomainPolicy, CHATGPT_HIDDEN_TOOLS, declaredClientName, isChatGptHost, mintSessionId } from './host-policy';
@@ -751,50 +753,22 @@ function mcpAliasRpcError(id: unknown, corsHeaders: Record<string, string>): Res
 // contract requires 405. Never emit a cacheable discovery 200 on these paths
 // without this Vary.
 const DISCOVERY_VARY = 'Accept, Last-Event-ID, Origin, MCP-Protocol-Version';
-const STATIC_ASSET_FETCH_TIMEOUT_MS = 5_000;
-const STATIC_ASSET_USER_AGENT = 'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)';
+// The discovery documents ship inside this bundle (scripts/generate-mcp-discovery-documents.mjs).
+// Fetching them from the deployment's own public URL made each cold instance
+// depend on Cloudflare and the static origin; when that fetch failed, the
+// discovery URLs answered with a 302 instead of the document. The card's
+// tools list is rebuilt from the registry rather than embedded a second time;
+// tests/mcp-transport-conformance.test.mjs requires the result to equal
+// public/.well-known/mcp/server-card.json byte for byte.
+let serverCardJson: string | null = null;
 
-// Module-scope caches: discovery documents are static assets, immutable per deployment.
-let serverCardCache: string | null = null;
-let mcpGuideCache: string | null = null;
-let mcpSetupCache: string | null = null;
-
-// Self-fetch a static asset off our own deployment. Redirects are followed:
-// `/mcp-server.md` is NOT in the Cloudflare apex→www exemption list
-// (ARCHITECTURE.md:72), so an apex-origin self-fetch 301s to www before it
-// resolves. Returns null on any failure so the caller can fall back rather
-// than cache a failure.
-async function fetchStaticAsset(req: Request, path: string): Promise<string | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), STATIC_ASSET_FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(new URL(path, req.url), {
-      headers: { 'User-Agent': STATIC_ASSET_USER_AGENT },
-      signal: controller.signal,
-    });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
+function renderServerCard(): string {
+  serverCardJson ??= `${JSON.stringify({ ...JSON.parse(MCP_SERVER_CARD_WITHOUT_TOOLS_JSON), tools: serverCardTools() }, null, 2)}\n`;
+  return serverCardJson;
 }
 
-async function serveServerCard(req: Request, corsHeaders: Record<string, string>, headOnly = false): Promise<Response> {
-  if (serverCardCache === null) {
-    const text = await fetchStaticAsset(req, '/.well-known/mcp/server-card.json');
-    if (text === null) {
-      // Self-fetch failed (deploy skew / transient) — point the fetcher at the
-      // canonical static path instead of caching a failure.
-      return new Response(null, {
-        status: 302,
-        headers: { Location: '/.well-known/mcp/server-card.json', Vary: DISCOVERY_VARY, ...corsHeaders },
-      });
-    }
-    serverCardCache = text;
-  }
-  return new Response(headOnly ? null : serverCardCache, {
+function serveServerCard(corsHeaders: Record<string, string>, headOnly = false): Response {
+  return new Response(headOnly ? null : renderServerCard(), {
     status: 200,
     // Cache-Control comes AFTER the ...corsHeaders spread: getMcpCorsHeaders()
     // carries MCP_CACHE_CONTROL (`no-store`) for the live JSON-RPC/SSE endpoint,
@@ -819,7 +793,7 @@ async function serveServerCard(req: Request, corsHeaders: Record<string, string>
 // if every cache in the path honored it; no-store means correctness does not
 // depend on that. The cost is one function invocation per crawler GET — the
 // cacheable copy of this document still lives at `/mcp-server.md`.
-async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, headOnly = false): Promise<Response> {
+function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, headOnly = false): Response {
   // Require an explicit HTML media type: wildcard and machine discovery
   // requests retain their Markdown representation. SSE/replay/auth probes
   // are handled before reaching this helper.
@@ -830,18 +804,7 @@ async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, 
     return !quality || (Number.isFinite(Number(quality.slice(2))) && Number(quality.slice(2)) > 0);
   });
   if (wantsHtml) {
-    if (mcpSetupCache === null) mcpSetupCache = await fetchStaticAsset(req, '/mcp-setup.html');
-    if (mcpSetupCache === null) {
-      return new Response(null, {
-        status: 302,
-        headers: {
-          ...corsHeaders,
-          Location: 'https://www.worldmonitor.app/docs/mcp-quickstart',
-          Vary: DISCOVERY_VARY,
-        },
-      });
-    }
-    return new Response(headOnly ? null : mcpSetupCache, {
+    return new Response(headOnly ? null : MCP_SETUP_HTML, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/html; charset=utf-8',
@@ -850,17 +813,7 @@ async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, 
       },
     });
   }
-  if (mcpGuideCache === null) {
-    const text = await fetchStaticAsset(req, '/mcp-server.md');
-    if (text === null) {
-      return new Response(null, {
-        status: 302,
-        headers: { Location: '/mcp-server.md', Vary: DISCOVERY_VARY, ...corsHeaders },
-      });
-    }
-    mcpGuideCache = text;
-  }
-  return new Response(headOnly ? null : mcpGuideCache, {
+  return new Response(headOnly ? null : MCP_GUIDE_MARKDOWN, {
     status: 200,
     // corsHeaders (getMcpCorsHeaders) already carries `no-store, no-transform`
     // — deliberately NOT overridden here. The canonical link keeps discovery
@@ -1050,10 +1003,10 @@ async function mcpHandlerInner(
 
     usage.skip = true;
     // HEAD is the matching GET with the body suppressed. Reuse the discovery
-    // helpers so cache policy, canonical Link, and static-asset fallback status
-    // cannot drift between the two methods.
+    // helpers so cache policy and canonical Link cannot drift between the two
+    // methods.
     if (WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
-      return serveServerCard(req, corsHeaders, true);
+      return serveServerCard(corsHeaders, true);
     }
     if (requestPathname === MCP_TRANSPORT_PATH) {
       return serveMcpGuide(req, corsHeaders, true);
@@ -1077,7 +1030,7 @@ async function mcpHandlerInner(
   ) {
     if (WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
       usage.skip = true;
-      return serveServerCard(req, corsHeaders);
+      return serveServerCard(corsHeaders);
     }
     if (requestPathname === MCP_TRANSPORT_PATH) {
       usage.skip = true;
@@ -1302,6 +1255,7 @@ async function mcpHandlerInner(
   let budget: McpBudget | undefined;
   let burstPerMinute: number | undefined;
   let freeAccountAllowance = false;
+  let paymentFailed = false;
   let planKey: string | undefined;
   let travelRiskAssessment = false;
   if (isPublicMcpMethod(method, modernEra) || isAnonResourceRead || isFreeTierToolCall) {
@@ -1382,6 +1336,7 @@ async function mcpHandlerInner(
     budget = preCheck.budget;
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
+    paymentFailed = preCheck.paymentFailed === true;
     planKey = preCheck.planKey;
     travelRiskAssessment = preCheck.travelRiskAssessment === true;
     // Only a data-bearing resources/read spends an Enterprise contract
@@ -1502,6 +1457,7 @@ async function mcpHandlerInner(
         // Supported versions are YYYY-MM-DD, so string order is date order.
         protocolVersion !== null && protocolVersion >= '2025-11-25',
         travelRiskAssessment,
+        paymentFailed,
       );
       classifyDispatchedUsage(usage, dispatched);
       return respond(dispatched);
@@ -1624,6 +1580,7 @@ async function mcpHandlerInner(
           resourceMetadataUrl,
           planKey,
           usage,
+          paymentFailed,
         );
         classifyDispatchedUsage(usage, resourceRes);
         return respond(resourceRes);

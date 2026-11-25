@@ -12,6 +12,13 @@ import { parse } from 'yaml';
 
 const root = resolve(import.meta.dirname, '..');
 const workflow = parse(readFileSync(join(root, '.github/workflows/lint-code.yml'), 'utf8'));
+const CLASSIFIER = join(root, '.github/scripts/lint-code-changes.sh');
+
+function diffStep(job) {
+  const step = workflow.jobs[job].steps.find((candidate) => candidate.id === 'diff');
+  assert.ok(step, `${job} must classify the PR in a step with id diff`);
+  return step;
+}
 
 function classify(files, {
   event = 'pull_request',
@@ -53,26 +60,29 @@ case "$2" in
 esac
 `, { mode: 0o755 });
 
+    // The inputs each job's diff step passes, resolved as Actions would.
     const values = {
+      'github.token': 'token',
       'github.event_name': event,
       'github.repository': 'owner/repo',
       'github.event.number': '1',
       'github.event.pull_request.head.sha': eventHead,
       'github.event.pull_request.base.sha': eventBase,
     };
-    const script = workflow.jobs.changes.steps.find((step) => step.id === 'diff').run.replace(
-      /\$\{\{ ([^}]+) \}\}/g,
-      (_, name) => {
+    const stepEnv = Object.fromEntries(Object.entries(diffStep('biome').env).map(([key, value]) => [
+      key,
+      value.replace(/\$\{\{ ([^}]+) \}\}/g, (_, name) => {
         assert.ok(Object.hasOwn(values, name), `unknown workflow expression ${name}`);
         return values[name];
-      },
-    );
-    const result = spawnSync('bash', ['-euo', 'pipefail', '-c', script], {
+      }),
+    ]));
+    const result = spawnSync('bash', [CLASSIFIER], {
       cwd: root,
       encoding: 'utf8',
       timeout: 10_000,
       env: {
         ...process.env,
+        ...stepEnv,
         FIXTURE: dir,
         GH_MODE: ghMode,
         PATH: `${dir}:${process.env.PATH}`,
@@ -169,9 +179,32 @@ test('pushes to main keep every gated lint classifier enabled', () => {
 });
 
 test('doc-anchors is gated by the docs classifier', () => {
-  const diffStep = workflow.jobs.changes.steps.find((step) => step.id === 'diff');
-  assert.equal(diffStep.shell, 'bash');
-  assert.match(diffStep.run, /^\s*set -euo pipefail$/m);
-  assert.equal(workflow.jobs['doc-anchors'].needs, 'changes');
-  assert.equal(workflow.jobs['doc-anchors'].if, "${{ (needs.changes.outputs.docs == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}");
+  assert.match(readFileSync(CLASSIFIER, 'utf8'), /^set -euo pipefail$/m);
+  const steps = workflow.jobs['docs-lint'].steps;
+  const exportStep = steps.find((step) => step.name === 'Export rendered docs');
+  assert.equal(exportStep.if, "${{ !cancelled() && steps.diff.outputs.docs == 'true' }}");
+  for (const name of ['Unpack export', 'Every doc anchor resolves']) {
+    assert.equal(steps.find((step) => step.name === name).if, "${{ !cancelled() && steps.export.outcome == 'success' }}");
+  }
+});
+
+test('both Lint Code jobs run the same classifier before any check', () => {
+  assert.deepEqual(Object.keys(workflow.jobs).sort(), ['biome', 'docs-lint']);
+  for (const job of ['biome', 'docs-lint']) {
+    const steps = workflow.jobs[job].steps;
+    const step = diffStep(job);
+    assert.equal(step.run, 'bash .github/scripts/lint-code-changes.sh');
+    assert.deepEqual(step.env, diffStep('biome').env, `${job} must classify with the same inputs`);
+    assert.equal(workflow.jobs[job].permissions['pull-requests'], 'read');
+    assert.ok(steps[0].uses.startsWith('actions/checkout@'), `${job} checks out the classifier first`);
+    assert.equal(steps.indexOf(step), 1, `${job} classifies before any check`);
+  }
+  const biomeCheck = workflow.jobs.biome.steps.find((step) => step.name === 'Run lint and invariant checks');
+  assert.equal(biomeCheck.if, "steps.diff.outputs.code == 'true'");
+  const markdown = workflow.jobs['docs-lint'].steps.find((step) => step.name === 'Markdown lint');
+  assert.equal(markdown.if, "${{ !cancelled() && steps.diff.outputs.markdown == 'true' }}");
+});
+
+test('a classifier change reruns the docs anchor export', () => {
+  assert.equal(classify(['.github/scripts/lint-code-changes.sh']).docs, 'true');
 });

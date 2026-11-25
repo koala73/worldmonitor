@@ -30,24 +30,53 @@ function compareEarningsEntries(a, b) {
 }
 
 /**
+ * Take up to `count` entries, one per date in turn, largest revenue first
+ * within each date, so a busy day cannot crowd out the rest of the window.
+ */
+function takeAcrossDates(entries, count) {
+  const byDate = new Map();
+  for (const entry of [...entries].sort(compareEarningsEntries)) {
+    if (!byDate.has(entry.date)) byDate.set(entry.date, []);
+    byDate.get(entry.date).push(entry);
+  }
+  const days = [...byDate.values()];
+  const taken = [];
+  for (let round = 0; taken.length < count && days.some(day => round < day.length); round++) {
+    for (const day of days) {
+      if (taken.length >= count) break;
+      if (round < day.length) taken.push(day[round]);
+    }
+  }
+  return taken;
+}
+
+/**
  * Reserve every matching NQ influence report from the normalized window,
- * then fill remaining capacity with general chronological rows.
+ * then budget one quarter of the cap for recent reports and the rest for
+ * upcoming reports. Either window can use space the other does not need.
  */
 export function boundEarningsCalendar(normalized, {
   cap = EARNINGS_CALENDAR_CAP,
   reservedSymbols = NQ_INFLUENCE_EARNINGS_SYMBOLS,
+  today = toDateStr(new Date()),
 } = {}) {
   const reservedSet = new Set(reservedSymbols);
   const reserved = [];
-  const general = [];
+  const past = [];
+  const upcoming = [];
   for (const entry of Array.isArray(normalized) ? normalized : []) {
     if (reservedSet.has(entry.symbol)) reserved.push(entry);
-    else general.push(entry);
+    else if (entry.date < today) past.push(entry);
+    else upcoming.push(entry);
   }
-  reserved.sort(compareEarningsEntries);
-  general.sort(compareEarningsEntries);
   const remaining = Math.max(0, cap - reserved.length);
-  return [...reserved, ...general.slice(0, remaining)].sort(compareEarningsEntries);
+  const reservedPast = reserved.filter(entry => entry.date < today).length;
+  const pastBudget = Math.floor(cap / 4) - reservedPast;
+  const unusedUpcomingSlots = remaining - upcoming.length;
+  const pastSlots = Math.min(remaining, Math.max(0, pastBudget, unusedUpcomingSlots));
+  const selectedPast = takeAcrossDates(past, pastSlots);
+  return [...reserved, ...selectedPast, ...takeAcrossDates(upcoming, remaining - selectedPast.length)]
+    .sort(compareEarningsEntries);
 }
 
 async function fetchAll() {
@@ -57,13 +86,14 @@ async function fetchAll() {
     return { earnings: [], unavailable: true, asOf: new Date().toISOString() };
   }
 
-  const from = new Date();
+  const now = new Date();
+  const from = new Date(now);
   // #4922/#4929 review: include the past week so brief consumers can show
   // recent beats/misses — a today-forward window can only ever contain
   // same-day morning reporters.
-  from.setDate(from.getDate() - 7);
-  const to = new Date();
-  to.setDate(to.getDate() + 14);
+  from.setUTCDate(from.getUTCDate() - 7);
+  const to = new Date(now);
+  to.setUTCDate(to.getUTCDate() + 14);
 
   const url = `https://finnhub.io/api/v1/calendar/earnings?from=${toDateStr(from)}&to=${toDateStr(to)}`;
 
@@ -115,11 +145,9 @@ async function fetchAll() {
       if (e.revenueEstimate != null && e.revenueEstimate > 0) return e.revenueEstimate >= 10_000_000;
       if (e.epsEstimate != null) return Math.abs(e.epsEstimate) >= 0.05;
       return false;
-    })
-    // Within same date, largest companies first; across dates, chronological
-    .sort(compareEarningsEntries);
+    });
 
-  const earnings = boundEarningsCalendar(normalized);
+  const earnings = boundEarningsCalendar(normalized, { today: toDateStr(now) });
 
   console.log(`  Fetched ${earnings.length} earnings entries (from ${raw.length} total)`);
   return { earnings, unavailable: false, asOf: new Date().toISOString() };

@@ -36,6 +36,8 @@ import { readRawJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { validateBearerToken } from '../../server/auth-session';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../_rate-limit.js';
 import { checkProEntitlement } from '../../server/_shared/pro-entitlement';
 import {
   BriefShareUrlError,
@@ -81,6 +83,15 @@ export default async function handler(
   const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
   if (!jwt) return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
 
+  // Verify locally and charge the limit before the plan lookup, which is a Clerk call.
+  const identity = await validateBearerToken(jwt, { resolvePlan: false });
+  if (!identity.valid || !identity.userId) {
+    return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
+  }
+  const limited = await checkRateLimit(req, cors, {
+    scope: 'brief-share-url', identifier: `user:${identity.userId}`, limit: 20, window: '60 s',
+  });
+  if (limited) return limited;
   const session = await validateBearerToken(jwt);
   if (!session.valid || !session.userId) {
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);

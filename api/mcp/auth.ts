@@ -49,6 +49,7 @@ import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
 import {
   API_PLAN_REQUIRED_MESSAGE,
   HANDSHAKE_NO_ACCOUNT_NEXT_STEP,
+  PAYMENT_FAILED_MCP_MESSAGE,
   SUBSCRIPTION_LAPSED_MESSAGE,
   buildMcpStructuredDenial,
   type McpStaticDenialReason,
@@ -401,6 +402,7 @@ export function getMcpBillingVerificationDenial(
   const retryable = denial.status === 503;
   const message = {
     subscription_lapsed: SUBSCRIPTION_LAPSED_MESSAGE,
+    payment_failed: PAYMENT_FAILED_MCP_MESSAGE,
     renewal_verification_pending: 'Renewal verification pending. Retry shortly.',
     renewal_verification_failed: 'Renewal verification failed. Retry shortly.',
   }[billingStatus];
@@ -413,7 +415,9 @@ export function getMcpBillingVerificationDenial(
   // attribution so clients can distinguish it from the free-account path.
   const structured = billingStatus === 'subscription_lapsed'
     ? buildMcpStructuredDenial({ reason: 'lapsed-subscription' })
-    : null;
+    : billingStatus === 'payment_failed'
+      ? buildMcpStructuredDenial({ reason: 'payment-failed' })
+      : null;
 
   return new Response(
     JSON.stringify({
@@ -845,6 +849,7 @@ async function checkMcpEntitlementGate(
       budget: { allowance: 'mcp', limit: FREE_ACCOUNT_CALLS_PER_DAY },
       burstPerMinute,
       freeAccountAllowance: true,
+      ...(gate.paymentFailed ? { paymentFailed: true as const } : {}),
       // A confirmed lapse keeps its old paid plan key on the row, but the
       // caller is on the free allowance now, so it is upgraded as free.
       planKey: 'free',

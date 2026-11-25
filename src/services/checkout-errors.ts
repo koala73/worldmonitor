@@ -82,7 +82,7 @@ export interface CheckoutErrorBody {
    * `PAYMENT_IN_PROGRESS` carries `pendingPayment` (#4438). Both are partial —
    * the body is parsed defensively (`parseCheckoutErrorBody`) and may be absent.
    */
-  subscription?: { planKey?: string };
+  subscription?: { planKey?: string; status?: string };
   pendingPayment?: { planKey?: string };
 }
 

@@ -34,6 +34,8 @@ export interface CatalogFeed {
   name: string;
   url: CatalogUrl;
   lang?: string;
+  /** The language the headlines are written in, when `lang` (routing) does not say. */
+  headlineLang?: string;
   fetchInAllLanguages?: boolean;
   strategicDefault?: boolean;
   type?: string;
@@ -80,6 +82,7 @@ export interface ServerCatalogFeed {
   name: string;
   url: string;
   lang?: string;
+  headlineLang?: string;
   fetchInAllLanguages?: boolean;
   strategicDefault?: boolean;
   deadlinePriority?: number;
@@ -122,6 +125,7 @@ function toServerFeed(feed: CatalogFeed): ServerCatalogFeed {
   }
   const entry: ServerCatalogFeed = { name: feed.name, url: feed.url };
   if (feed.lang !== undefined) entry.lang = feed.lang;
+  if (feed.headlineLang !== undefined) entry.headlineLang = feed.headlineLang;
   if (feed.fetchInAllLanguages !== undefined) entry.fetchInAllLanguages = feed.fetchInAllLanguages;
   if (feed.strategicDefault !== undefined) entry.strategicDefault = feed.strategicDefault;
   if (feed.deadlinePriority !== undefined) entry.deadlinePriority = feed.deadlinePriority;

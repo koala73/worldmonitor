@@ -271,6 +271,8 @@ export interface FreshnessCheck {
   key: string;
   maxStaleMin: number;
   minRecordCount?: number;
+  // A producer can publish a current snapshot with incomplete source coverage.
+  honorSourceError?: boolean;
   // When true, `stale` additionally reflects the seed-meta content-age trio
   // (newestItemAt / oldestItemAt / maxContentAgeMin) via the shared assessor
   // in api/_content-age.js — the same rule api/health.js classifyKey applies,
@@ -608,6 +610,12 @@ export interface McpPreCheckPassed {
    * site only (#6716). Must never be set by relaxing `checkProMcpAccess`.
    */
   freeAccountAllowance?: true;
+  /**
+   * Set beside `freeAccountAllowance` when the owner's subscription is paused
+   * after a failed renewal (#11213). Denials then point at the billing portal,
+   * never at start_upgrade: checkout is blocked while the hold lasts.
+   */
+  paymentFailed?: true;
   /**
    * The entitlement's plan key, from the same read. Lets a denial recommend
    * the plan one step up (#9144). Omitted when the row carries none.

@@ -329,4 +329,66 @@ describe('Telegram cache access generation', () => {
       await rejected;
     } finally { Date.now = originalNow; }
   });
+
+  it('aborts in-flight fetchTelegramFeed when caller signal aborts without serving stale cache', async () => {
+    const originalNow = Date.now;
+    let now = originalNow();
+    Date.now = () => now;
+    try {
+      let fetchCalls = 0;
+      globalThis.fetch = (async () => {
+        fetchCalls++;
+        return Response.json({
+          source: 'telegram',
+          enabled: true,
+          updatedAt: '2026-10-27T16:08:23.000Z',
+          items: [{
+            id: 'cached:1',
+            channel: 'cached',
+            channelTitle: 'Cached',
+            url: 'https://t.me/cached/1',
+            ts: '2026-10-27T16:08:00.000Z',
+            text: 'Cached post',
+            topic: 'osint',
+            tags: [],
+          }],
+        });
+      }) as typeof fetch;
+
+      await fetchTelegramFeed();
+      assert.equal(fetchCalls, 1);
+
+      // Move past fresh cache TTL but stay inside STALE_FALLBACK_TTL.
+      now += 60_000;
+
+      // Already-aborted signal short-circuits without issuing a fetch.
+      const preAborted = new AbortController();
+      preAborted.abort(new DOMException('Already aborted', 'AbortError'));
+      await assert.rejects(fetchTelegramFeed(50, preAborted.signal), { name: 'AbortError' });
+      assert.equal(fetchCalls, 1);
+
+      // Mid-flight abort forwards to fetch and rejects with AbortError rather than falling back to stale.
+      let receivedSignal: AbortSignal | undefined;
+      globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+        fetchCalls++;
+        receivedSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          receivedSignal?.addEventListener('abort', () => {
+            reject(receivedSignal?.reason ?? new DOMException('Aborted', 'AbortError'));
+          }, { once: true });
+        });
+      }) as typeof fetch;
+
+      const controller = new AbortController();
+      const pending = fetchTelegramFeed(50, controller.signal);
+      assert.ok(receivedSignal, 'fetch receives a composed AbortSignal');
+      assert.equal(receivedSignal.aborted, false);
+      controller.abort(new DOMException('Refresh lane lease expired', 'AbortError'));
+      assert.equal(receivedSignal.aborted, true);
+      await assert.rejects(pending, { name: 'AbortError' });
+      assert.equal(fetchCalls, 2);
+    } finally {
+      Date.now = originalNow;
+    }
+  });
 });

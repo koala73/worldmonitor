@@ -544,11 +544,19 @@ export class WatchlistTableView<T> {
       // element before rerender. Detection: state.search is non-empty AND
       // the input has the placeholder/value mismatch handled by setting
       // selectionStart from the current value length.
-      if (this.searchWasFocused) {
-        searchInput.focus();
-        const pos = this.state.search.length;
-        try { searchInput.setSelectionRange(pos, pos); } catch { /* ignore */ }
-        this.searchWasFocused = false;
+      // A same-markup commit rebinds without replacing the input, so it can
+      // still be the active element here.
+      const active = document.activeElement;
+      if (this.searchWasFocused && active !== searchInput) {
+        if (active && active !== document.body) {
+          // The input left the DOM without a table render behind it, and the
+          // user has since focused something else. Do not take focus back.
+          this.searchWasFocused = false;
+        } else {
+          searchInput.focus();
+          const pos = this.state.search.length;
+          try { searchInput.setSelectionRange(pos, pos); } catch { /* ignore */ }
+        }
       }
       searchInput.addEventListener('input', () => {
         this.state.search = searchInput.value;
@@ -557,7 +565,14 @@ export class WatchlistTableView<T> {
         onRerender();
       }, { signal });
       searchInput.addEventListener('focus', () => { this.searchWasFocused = true; }, { signal });
-      searchInput.addEventListener('blur', () => { this.searchWasFocused = false; }, { signal });
+      // Chrome fires blur while a content commit is removing the focused
+      // input, before bind() runs for the new one. Only a blur that leaves the
+      // input in the document means the user moved focus away.
+      searchInput.addEventListener('blur', () => {
+        queueMicrotask(() => {
+          if (searchInput.isConnected) this.searchWasFocused = false;
+        });
+      }, { signal });
     }
   }
 

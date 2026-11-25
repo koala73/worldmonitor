@@ -5,10 +5,11 @@
  * instead of moving the map. Ties fall back to catalogue order, so every query
  * a user is told to type must win on score.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { querySearchIndex } from '@/components/search-engine';
 import { getAllCommands, type Command } from '@/config/commands';
 import { CURATED_COUNTRIES } from '@/config/countries';
+import * as i18n from '@/services/i18n';
 
 function topCommands(rawInput: string, translatedLabel?: (command: Command) => string, commands = getAllCommands()): string[] {
   return querySearchIndex({
@@ -35,6 +36,29 @@ describe('search command ranking', () => {
     expect(topCommands('brief south sudan')[0]).toBe('country:SS');
     expect(topCommands('brief equatorial guinea')[0]).toBe('country:GQ');
     expect(topCommands('brief guinea')[0]).toBe('country:GN');
+  });
+
+  it('does not fill slots 2-5 with unrelated countries for multi-word brief/map queries (#11066)', () => {
+    expect(topCommands('brief china')).toEqual(['country:CN']);
+    expect(topCommands('map france')).toEqual(['country-map:FR']);
+    expect(topCommands('brief south sudan')).toEqual(['country:SS']);
+    // Connective words do not need a matching command term.
+    expect(topCommands('map of france')).toEqual(['country-map:FR']);
+    expect(topCommands('brief on china')).toEqual(['country:CN']);
+    expect(topCommands('brief for the ukraine')[0]).toBe('country:UA');
+    expect(topCommands('brief for the ukraine')).not.toContain('country:AD');
+    // Single-word prefix still lists brief commands so typing "brief" remains discoverable.
+    const brief = topCommands('brief');
+    expect(brief).toHaveLength(5);
+    expect(brief.filter((id) => id.startsWith('country:')).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('keeps the word-coverage order when no command covers every query word', () => {
+    const commands: Command[] = [
+      { id: 'panel:fewer', keywords: ['brief'], label: 'Fewer', icon: '', category: 'panels' },
+      { id: 'panel:more', keywords: ['briefing', 'china'], label: 'More', icon: '', category: 'panels' },
+    ];
+    expect(topCommands('brief china zzzz', undefined, commands)).toEqual(['panel:more', 'panel:fewer']);
   });
 
   it('ranks more matched words above stronger matches on fewer words', () => {
@@ -72,6 +96,21 @@ describe('search command ranking', () => {
     // keyword on its country commands; Oceania must still answer "australia".
     const translatedAustralia = getAllCommands().filter((command) => !command.id.endsWith(':AU'));
     expect(topCommands('australia', undefined, translatedAustralia)).toContain('nav:oceania');
+  });
+
+  it.each(['en', 'zh'])('ranks the United Kingdom and Ukraine above aliases for other countries in %s', (language) => {
+    const mock = vi.spyOn(i18n, 'getCurrentLanguageTag').mockReturnValue(language);
+    try {
+      const catalogue = getAllCommands();
+      const ukraine = catalogue.find(command => command.id === 'country-map:UA');
+      expect(ukraine?.label).toBe(language === 'zh' ? '乌克兰' : 'Ukraine');
+      const commands = topCommands('uk', undefined, catalogue);
+      expect(commands.slice(0, 4)).toEqual(['country-map:GB', 'country:GB', 'country-map:UA', 'country:UA']);
+      expect(commands).not.toContain('country-map:RU');
+      expect(commands).not.toContain('country:RU');
+    } finally {
+      mock.mockRestore();
+    }
   });
 
   it('ranks the map command first when the query is a country name', () => {

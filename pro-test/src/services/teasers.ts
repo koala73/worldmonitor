@@ -336,8 +336,19 @@ interface FeedDigestResponse {
 const DIGEST_FRESH_MS = 30 * 60 * 1000;
 
 async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolean } | null> {
+  // The story matcher is ~10 KB that only this post-hydration fetch needs, so
+  // it loads beside the digest request instead of on the welcome first paint.
+  // A failed or stalled chunk load keeps the published snapshot; the wait is
+  // bounded like the API requests so one slow download cannot hold back the
+  // other cards in fetchLiveTeasers' Promise.all.
+  const storyDedupe = Promise.race([
+    import('../../../shared/story-dedupe.js').catch(() => null),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), FETCH_TIMEOUT_MS)),
+  ]);
   const resp = await fetchJson<FeedDigestResponse>('/api/news/v1/list-feed-digest?variant=full&lang=en');
   if (!resp || !resp.categories) return null;
+  const dedupe = await storyDedupe;
+  if (!dedupe) return null;
   const all = Object.values(resp.categories)
     .flatMap(c => c?.items ?? [])
     .filter(i => typeof i.title === 'string' && i.title.length > 0);
@@ -352,8 +363,9 @@ async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolea
       || (b.publishedAt ?? 0) - (a.publishedAt ?? 0)
       || (a.title ?? '').localeCompare(b.title ?? '')
     ));
-  const items = dedupeByArticleUrl(ranked, i => i.link)
-    .slice(0, 4)
+  // One row per article, then one row per story (#11190), both before the cap,
+  // matching selectFrozenHeadlines so hydration does not change the strip.
+  const items = dedupe.takeDistinctStories(dedupeByArticleUrl(ranked, i => i.link), i => i.title, 4).rows
     .map(i => ({
       title: i.title as string,
       source: i.source ?? '',

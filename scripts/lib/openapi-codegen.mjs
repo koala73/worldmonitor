@@ -463,7 +463,8 @@ export function readPremiumRpcPaths() {
 // billing-verification contract: a retryable 503 (Retry-After 1-60s +
 // X-Billing-Verification header + {error, code} body) while a renewal is being
 // re-confirmed or the entitlement backend is unreachable, and a hard 403 whose
-// body carries code `subscription_lapsed` once the lapse is provider-confirmed.
+// body carries a terminal code (`subscription_lapsed`, `payment_failed`) once
+// the provider has confirmed the state.
 // The status union is parsed from the exported BillingVerificationStatus type
 // so the published enum can never drift from runtime (fail-closed like the
 // parsers above).
@@ -476,9 +477,19 @@ export function readBillingVerificationStatuses() {
   return statuses;
 }
 
-// The provider-confirmed lapse is the one union member answered with a 403
-// instead of the retryable 503 (entitlement-check.ts getBillingVerificationDenial).
-export const LAPSED_BILLING_STATUS = 'subscription_lapsed';
+// The provider-confirmed members answered with a 403 instead of the retryable
+// 503, read from the same array entitlement-check.ts classifies with.
+export function readTerminalBillingStatuses() {
+  const src = readFileSync(resolve(root, 'server/_shared/entitlement-coverage.ts'), 'utf8');
+  const statuses = readConstStringArray(src, 'TERMINAL_BILLING_STATUSES');
+  if (statuses.length === 0) throw new Error('TERMINAL_BILLING_STATUSES parsed as empty — refusing to run');
+  const union = readBillingVerificationStatuses();
+  const unknown = statuses.filter((s) => !union.includes(s));
+  if (unknown.length > 0) {
+    throw new Error(`TERMINAL_BILLING_STATUSES names ${unknown.join(', ')} outside BillingVerificationStatus — the 403/503 split needs review`);
+  }
+  return statuses;
+}
 
 // Transient backend-unreachable denials reuse the same wire shape but their
 // code is not part of the persisted status union — assert it still exists in
@@ -493,13 +504,10 @@ export function readEntitlementUnavailableCode() {
 }
 
 // Retryable-503 code enum, derived: every union status except the hard-403
-// lapse, plus the transient backend-unreachable code.
+// terminal ones, plus the transient backend-unreachable code.
 export function readRetryableBillingCodes() {
-  const statuses = readBillingVerificationStatuses();
-  if (!statuses.includes(LAPSED_BILLING_STATUS)) {
-    throw new Error(`BillingVerificationStatus no longer contains ${LAPSED_BILLING_STATUS} — the 403/503 split needs review`);
-  }
-  return [...statuses.filter((s) => s !== LAPSED_BILLING_STATUS), readEntitlementUnavailableCode()];
+  const terminal = new Set(readTerminalBillingStatuses());
+  return [...readBillingVerificationStatuses().filter((s) => !terminal.has(s)), readEntitlementUnavailableCode()];
 }
 
 /**
