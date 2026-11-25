@@ -1047,6 +1047,7 @@ test('CDC titles keep the United States when the words after "in" are not a plac
   const rabies = cdc('CDC Statement on Increases in Recent Animal Rabies Activity and Associated Human Exposures');
   assert.equal(rabies.location, 'United States');
   assert.equal(rabies.countryCode, 'US');
+  assert.equal(cdc('CDC Statement on Increases in Recent Animal Rabies Activity in New Mexico').location, 'New Mexico');
   const brazil = cdc('CDC Update on Outbreak of Yellow Fever in Brazil');
   assert.equal(brazil.location, 'Brazil');
   assert.equal(brazil.countryCode, 'BR');
@@ -1074,6 +1075,9 @@ test('an outbreak headline dated to an earlier year is not an alert', () => {
   assert.equal(detectAlertLevel('Cholera outbreak from 2025 to 2026 spreads', '', nov2026), 'alert');
   assert.equal(detectAlertLevel('The 2025-2026 measles outbreak continues', '', nov2026), 'alert');
   assert.equal(detectAlertLevel('The 2025 to 2026 measles outbreak continues', '', nov2026), 'alert');
+  assert.equal(detectAlertLevel('Lessons from the measles outbreak of 2023–2025 in Canada', '', nov2026), 'watch');
+  assert.equal(detectAlertLevel('The 2023-25 cholera epidemic in Haiti', '', nov2026), 'watch');
+  assert.equal(detectAlertLevel('The 2025-26 measles outbreak continues', '', nov2026), 'alert');
   assert.equal(detectAlertLevel('DR Congo reports 2025 confirmed cases in measles outbreak', '', nov2026), 'alert');
   assert.equal(detectAlertLevel('DR Congo reports 2025 cases in measles outbreak', '', nov2026), 'alert');
   assert.equal(detectAlertLevel('Cholera outbreak in 2025 cases reported', '', nov2026), 'alert');

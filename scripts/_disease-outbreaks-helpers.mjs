@@ -61,12 +61,11 @@ export function extractLocationFromTitle(title) {
     const last = segments[segments.length - 1].trim();
     if (/^[A-Z]/.test(last)) return last;
   }
-  // Fallback: "... in <Place>". Only a country or known place counts:
-  // "Increases in Recent Animal Rabies Activity" is not a place.
-  const inMatch = title.match(/\bin\s+([A-Z][^,.(]+)/);
-  const named = inMatch?.[1].trim() ?? '';
-  if (named && (extractCountryCodeFull(named) || named.split(/\s+and\s+/).every((p) => KNOWN_PLACE_NAMES.has(p)))) return named;
-  return '';
+  // Fallback: "... in <Place>", the last such phrase first. Only a country or
+  // known place counts: "Increases in Recent Animal Rabies Activity" is not a place.
+  const named = [...title.matchAll(/\bin\s+([A-Z][^,.(]+?)(?=\s+in\s+[A-Z]|[,.(]|$)/g)].map((m) => m[1].trim()).reverse()
+    .find((p) => extractCountryCodeFull(p) || p.split(/\s+and\s+/).every((n) => KNOWN_PLACE_NAMES.has(n)));
+  return named ?? '';
 }
 
 const KNOWN_PLACE_NAMES = new Set(Object.values(outbreakPlaces).flat().map(([name]) => name));
@@ -106,17 +105,20 @@ export const DISEASE_WARNING_RE = new RegExp(`\\b(?:${DISEASE_WARNING_KEYWORDS.j
 // outbreak" is a count, not a year.
 const ALERT_WORD = `(?:${DISEASE_ALERT_KEYWORDS.join('|')})s?`;
 const NOT_COUNT_WORD = String.raw`(?!(?:cases?|deaths?|infections?|people|patients|children)\b)[\p{L}\p{N}()'-]+`;
-// "2025-2026" or "2025 to 2026" runs into the publication year.
-const NOT_A_RANGE = String.raw`(?!\s*(?:[-–—/]|to\s)\s*\d)`;
+// A range ("2023-2025", "2025 to 2026") dates the outbreak by its last year.
+const DATED = String.raw`(?<!\d)((?:19|20)\d{2})(?:\s*(?:[-–—/]|to\s)\s*((?:19|20)?\d{2}))?(?!\d)`;
 const DATED_ALERT_RES = [
-  new RegExp(String.raw`(?<!\d)((?:19|20)\d{2})${NOT_A_RANGE}(?:\s+${NOT_COUNT_WORD}){0,3}\s+${ALERT_WORD}\b`, 'giu'),
-  new RegExp(String.raw`\b${ALERT_WORD}\s+(?:of|in|from|during)\s+((?:19|20)\d{2})(?!\d)${NOT_A_RANGE}(?!\s+(?:new\s+|confirmed\s+|suspected\s+)?(?:cases?|deaths?|infections?|people|patients|children)\b)`, 'giu'),
+  new RegExp(String.raw`${DATED}(?:\s+${NOT_COUNT_WORD}){0,3}\s+${ALERT_WORD}\b`, 'giu'),
+  new RegExp(String.raw`\b${ALERT_WORD}\s+(?:of|in|from|during)\s+${DATED}(?!\s+(?:new\s+|confirmed\s+|suspected\s+)?(?:cases?|deaths?|infections?|people|patients|children)\b)`, 'giu'),
 ];
 
 function isRetrospectiveHeadline(title, publishedMs) {
   if (!Number.isFinite(publishedMs)) return false;
   const year = new Date(publishedMs).getUTCFullYear();
-  return DATED_ALERT_RES.some((re) => [...title.matchAll(re)].some(([, eventYear]) => Number(eventYear) < year));
+  return DATED_ALERT_RES.some((re) => [...title.matchAll(re)].some(([, start, end]) => {
+    const last = end == null ? start : end.length === 2 ? start.slice(0, 2) + end : end;
+    return Number(last) < year;
+  }));
 }
 
 export function detectAlertLevel(title, desc, publishedMs) {
