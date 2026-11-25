@@ -26,7 +26,9 @@ beforeEach(() => {
     conferenceCount: 3,
     events: [
       event('Finished Summit', 'conference', '2026-11-20', '2026-11-21'),
-      event('Earnings: DELL, HPQ, Xiaomi', 'earnings', '2026-11-24', '2026-11-25'),
+      event('Earnings: ENDED', 'earnings', '2026-11-24', '2026-11-24'),
+      event('Ongoing Expo', 'conference', '2026-11-24', '2026-11-26'),
+      event('Earnings: DELL, HPQ, Xiaomi', 'earnings', '2026-11-25', '2026-11-25'),
       event('NET Conf Online 2026', 'conference', '2026-11-25', '2026-11-25'),
       event('Vex House: Muscat Night', 'conference', '2026-11-27', '2026-11-27'),
     ],
@@ -41,12 +43,13 @@ const listedTitles = () =>
 
 it('keeps events happening today and ongoing events in Upcoming', () => {
   new TechEventsPanel('events');
-  expect(listedTitles()).toEqual(['Earnings: DELL, HPQ, Xiaomi', 'NET Conf Online 2026', 'Vex House: Muscat Night']);
-  expect(document.querySelector('.tech-events-stats')?.textContent).toContain('components.techEvents.conferencesCount:2');
+  expect(listedTitles()).toEqual(['Ongoing Expo', 'Earnings: DELL, HPQ, Xiaomi', 'NET Conf Online 2026', 'Vex House: Muscat Night']);
+  expect(document.querySelector('.tech-events-stats')?.textContent).toContain('components.techEvents.conferencesCount:3');
 });
 
-it('keeps an earnings window that ends today in Earnings', () => {
+it('keeps earnings happening today in Earnings and drops ones that ended yesterday', () => {
   new TechEventsPanel('events');
   document.querySelector<HTMLButtonElement>('.panel-tab[data-view="earnings"]')!.click();
   expect(listedTitles()).toEqual(['Earnings: DELL, HPQ, Xiaomi']);
 });
+
