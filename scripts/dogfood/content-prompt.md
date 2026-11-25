@@ -24,7 +24,7 @@ Most panels are filled from the dashboard's startup data (`/api/bootstrap?tier=f
 2. For each panel in your list, in order:
    - Bring it into view with `scrollintoview '[data-panel="<id>"]'`. A panel scrolled off screen can read as empty, so judge it only in view. Wait up to 20 seconds for it to finish loading.
    - Take a screenshot and read the panel's full text with `get text '[data-panel="<id>"]'`.
-   - Run the checks below. If the panel has tabs, a region picker or a "more" control that changes its content, check the default view and one other.
+   - Run the checks below. If the panel has tabs, a region picker or a "more" control that changes its content, check the default view and one other. Note every view the panel offers (each tab, sort, filter, region or time choice that changes its content) so you can report which you checked and which you skipped.
    - Compare what the panel shows with its API data for at least one value. Look first in `{{OUT_DIR}}/api/` (see below); use `network requests --filter <panel-related path>` and `network request <id>` only for data that is not there.
    - Create its report file once (see the output contract), then move on. Do not change or reread it.
 3. Budget about three minutes per panel. Do not spend the run on one panel.
@@ -69,7 +69,9 @@ For each panel, create one file, `{{OUT_DIR}}/panels/<id>.json`, as soon as you 
     "id": "markets",
     "status": "ok | suspect | broken | locked | not_reached",
     "checked": "What you checked, briefly: e.g. 12 quotes, timestamps, API /api/market/... compared",
-    "note": "One line on what is wrong, or empty when ok"
+    "note": "One line on what is wrong, or empty when ok",
+    "views_checked": ["The views you opened, e.g. Default (Closing soon)", "Sort: Estimated value"],
+    "views_skipped": ["Every other view the panel offers that you did not open; [] when it has no other views"]
   },
   "findings": [
     {
