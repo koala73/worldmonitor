@@ -219,6 +219,14 @@ Rules:
     userPrompt = isTechVariant
       ? `Each headline is a separate story. What's the key tech trend?\n${headlineText}${intelSection}`
       : `Each headline is a separate story. What's the key pattern or risk?\n${headlineText}${intelSection}`;
+  } else if (opts.mode === 'article') {
+    systemPrompt = `Summarize the one news story below in 2 concise sentences MAX (under 50 words total).
+Rules:
+- Use ONLY facts stated in the headline and its Context line; never add people, places, numbers or events that are not there
+- Start directly with the subject of the story
+- Never describe the headline, the task or the input (no "The headline...", "This story...", "The most important...")
+- No bullet points, no meta-commentary${langInstruction}`;
+    userPrompt = headlineText;
   } else if (opts.mode === 'translate') {
     const targetLang = translateLanguageName(opts.variant);
     systemPrompt = `You are a professional news translator. Translate news text into ${targetLang}.

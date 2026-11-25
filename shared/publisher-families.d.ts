@@ -1,5 +1,7 @@
 export interface PublisherFamily {
   publisher: string;
+  /** Other names an aggregator writes for the publisher; resolved like `publisher`. */
+  aliases?: string[];
   labels: string[];
 }
 

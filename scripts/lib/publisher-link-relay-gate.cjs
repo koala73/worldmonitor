@@ -442,6 +442,7 @@ const PUBLISHER_LINK_LABELS = {
   "bbc world": "bbc",
   "bbc": "bbc",
   "bloomberg": "bloomberg",
+  "bloomberg.com": "bloomberg",
   "bloomberg commodities": "bloomberg",
   "bloomberg crypto": "bloomberg",
   "bloomberg energy": "bloomberg",
