@@ -18,21 +18,14 @@ const BROAD_HAPPY_SOURCES = new Set([
 const NEGATIVE_EVIDENCE_RE = /\b(droughts?|dries up|dried up|threats?|threaten\w*|crisis|crises|conflicts?|crimes?|criminal|kill\w*|deaths?|dead|dies|died|harm\w*|damag\w*|declin\w*|loss(?:es)?|losing|illegal\w*|lobby\w*|displac\w*|wildfires?|floods?|flooding|heat ?waves?|smoke|pollut\w*|toxic|disasters?|collaps\w*|extinction|warn\w*|fears?|attacks?|war|violen\w*|poach\w*|traffick\w*|cuts? off|mining waste|deforestation)\b/i;
 
 // A headline that names a problem being solved ("reverses hearing loss",
-// "poaching falls") is a positive story, not negative reporting. Verbs that act
-// on a problem must precede it; verbs of a problem shrinking must follow it, so
-// "populations fall as poaching accelerates" stays negative.
-const RECOVERY_EVIDENCE_RE = /\b(revers\w*|restor\w*|recover\w*|rebound\w*|cure[sd]?|curing|treat\w*|therap(?:y|ies)|vaccines?|saved?|saves|saving|rescu\w*)\b/i;
-const ACTS_ON_PROBLEM_RE = /\b(prevent\w*|protect\w*|halt\w*|tackl\w*|combat\w*|reduc\w*|slash\w*|fights?|fighting)\b/i;
-const PROBLEM_SHRINKS_RE = /\b(fall(?:s|en)?|fell|drops?|dropped|plummet\w*|plung\w*)\b/i;
+// "poaching falls") is a positive story, unless it also says the problem is
+// growing ("populations fall as poaching accelerates").
+const RECOVERY_EVIDENCE_RE = /\b(revers\w*|restor\w*|recover\w*|rebound\w*|cure[sd]?|curing|treat\w*|therap(?:y|ies)|vaccines?|saved?|saves|saving|rescu\w*|prevent\w*|protect\w*|halt\w*|tackl\w*|combat\w*|reduc\w*|slash\w*|fights?|fighting|fall(?:s|en)?|fell|drops?|dropped|plummet\w*|plung\w*)\b/i;
+const WORSENING_EVIDENCE_RE = /\b(accelerat\w*|rising|rises|rose|surg\w*|soar\w*|spik\w*|worsen\w*|escalat\w*|spread\w*|record high)\b/i;
 
 function hasNegativeEvidence(title: string): boolean {
-  const negative = NEGATIVE_EVIDENCE_RE.exec(title);
-  if (!negative) return false;
-  if (RECOVERY_EVIDENCE_RE.test(title)) return false;
-  const actsOn = ACTS_ON_PROBLEM_RE.exec(title);
-  if (actsOn && actsOn.index < negative.index) return false;
-  const shrinks = PROBLEM_SHRINKS_RE.exec(title);
-  return !(shrinks && shrinks.index > negative.index);
+  return NEGATIVE_EVIDENCE_RE.test(title)
+    && (WORSENING_EVIDENCE_RE.test(title) || !RECOVERY_EVIDENCE_RE.test(title));
 }
 
 const SCIENCE_SOURCES = new Set([

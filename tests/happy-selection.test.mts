@@ -88,6 +88,8 @@ test('broad-source negative reporting is screened even when the ML gate passes e
     story('ScienceDaily', 'New treatment reverses hearing loss in mice'),
     story('Mongabay', 'Tiger poaching falls to record low as patrols expand'),
     story('Mongabay', 'Rangers halt illegal logging across a third of the reserve'),
+    story('Mongabay', 'Wildlife trafficking reduced by half after joint patrols'),
+    story('Mongabay', 'Fall survey finds tiger poaching drops to a record low'),
   ];
   const result = await selectCuratedHappyItems([...titles.map(title => story('Mongabay', title)), kept, science, ...recoveries], async items => items);
   assert.deepEqual(result, [kept, science, ...recoveries]);
