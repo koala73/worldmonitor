@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  buildPayload,
   validateRegistry,
   recordCount,
   FUEL_SHORTAGES_CANONICAL_KEY,
@@ -155,5 +156,29 @@ describe('fuel-shortages registry — validateRegistry rejects bad input', () =>
     const firstKey = Object.keys(bad.shortages)[0]!;
     bad.shortages[firstKey].product = 'kerosene';
     assert.equal(validateRegistry(bad), false);
+  });
+});
+
+describe('fuel-shortages published lifecycle', () => {
+  test('demotes confirmed rows at 7 days and drops rows at 14 days since confirmation', () => {
+    const before = buildPayload(new Date('2026-04-21T23:59:59.999Z'));
+    assert.equal(before.shortages['pk-petrol-2026-q1'].severity, 'confirmed');
+    const demoted = buildPayload(new Date('2026-04-22T00:00:00Z'));
+    assert.equal(demoted.shortages['pk-petrol-2026-q1'].severity, 'watch');
+    assert.equal(demoted.shortages['pk-petrol-2026-q1'].lastConfirmed, '2026-04-15T00:00:00Z');
+    assert.equal(demoted.shortages['cu-diesel-2026-q1'].severity, 'confirmed');
+    assert.equal(demoted.shortages['ir-petrol-2026-q1'].severity, 'watch');
+
+    const expired = buildPayload(new Date('2026-04-29T00:00:00Z'));
+    assert.equal(expired.shortages['pk-petrol-2026-q1'], undefined);
+    assert.equal(expired.shortages['ir-petrol-2026-q1'], undefined);
+    assert.equal(expired.shortages['ng-diesel-2026-q1'].severity, 'watch');
+  });
+
+  test('publishes an empty registry when every curated row has expired', () => {
+    const payload = buildPayload(new Date('2026-05-04T00:00:00Z'));
+    assert.deepEqual(payload.shortages, {});
+    assert.equal(recordCount(payload), 0);
+    assert.equal(payload.updatedAt, '2026-05-04T00:00:00.000Z');
   });
 });
