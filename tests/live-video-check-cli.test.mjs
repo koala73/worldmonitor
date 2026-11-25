@@ -731,7 +731,8 @@ describe('runCheck', () => {
     assert.match(text, /^2 of 4 entries are not live\.$/m);
   });
 
-  it('calls a live HLS playlist live from Node once it advances', async () => {
+  it('calls a live HLS playlist live from Node once it advances', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
     const advancing = [
       '#EXTM3U\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:6.0,\nseg0.ts\n',
       '#EXTM3U\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:6.0,\nseg0.ts\n#EXTINF:6.0,\nseg1.ts\n',
@@ -747,17 +748,22 @@ describe('runCheck', () => {
         text: async () => body,
       };
     };
-    assert.deepEqual(
-      await probeHlsCandidates([{ kind: 'hls', url: 'https://hls.test/live.m3u8' }], fetchImpl),
-      [{ verdict: { verdict: 'live', video: null } }],
-    );
-    fetches = 0;
     const out = [];
-    const code = await runCheck(['aje=https://hls.test/live.m3u8'], {
+    let probeResult;
+    const check = runCheck(['aje=https://hls.test/live.m3u8'], {
       write: (line) => out.push(line),
       probeYouTube: async () => { throw new Error('no YouTube entries were given'); },
-      probeHls: (candidates) => probeHlsCandidates(candidates, fetchImpl),
+      probeHls: async (candidates) => {
+        probeResult = await probeHlsCandidates(candidates, fetchImpl);
+        return probeResult;
+      },
     });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(fetches, 1, 'the first playlist alone cannot prove liveness');
+    t.mock.timers.tick(6_000);
+    const code = await check;
+    assert.equal(fetches, 2);
+    assert.deepEqual(probeResult, [{ verdict: { verdict: 'live', video: null } }]);
     const text = out.join('\n');
     assert.equal(code, 0, text);
     assert.match(text, /^LIVE\s+aje/m);

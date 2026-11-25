@@ -7,7 +7,7 @@
 #
 # Scoped to source extensions on purpose. A repo-wide `* text=auto` would also
 # renormalize CSV fixtures whose CRLF bytes are part of what they fixture
-# (scripts/need-work.csv, tests/fixtures/mineral-production/mcs-sample.csv).
+# (tests/fixtures/mineral-production/mcs-sample.csv).
 *.ts   text eol=lf
 *.tsx  text eol=lf
 *.mts  text eol=lf
@@ -28,3 +28,5 @@ docker/umami/session-data-upsert.patch -whitespace
 # Font licenses copied byte-for-byte from google/fonts (scripts/brief-fonts checks their sha256),
 # CRLF endings and trailing spaces included.
 public/assets/brief-fonts/*-OFL.txt -text -whitespace
+# Hashed by tests/sanctions-us-restricted.test.mjs: the bytes must match the manifest.
+tests/fixtures/us-restricted-parties/* -text

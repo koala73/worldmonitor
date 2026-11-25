@@ -1282,25 +1282,37 @@ export function isPanelInVariantDefaults(key: string): boolean {
 export const FREE_MAX_PANELS = 40;
 export const FREE_MAX_SOURCES = 80;
 
-export function isFreePanelCapCounted(key: string): boolean {
-  return key !== 'map' && !key.startsWith('cw-');
+export function isFreePanelCapCounted(
+  key: string,
+  config?: Pick<PanelConfig, 'premium'>,
+  variant: string = SITE_VARIANT,
+): boolean {
+  if (key === 'map' || key.startsWith('cw-')) return false;
+  const effectiveConfig = Object.prototype.hasOwnProperty.call(ALL_PANELS, key)
+    ? getEffectivePanelConfig(key, variant)
+    : config;
+  return effectiveConfig?.premium !== 'locked';
 }
 
-export function countFreePanelCapUsage(panelSettings: Record<string, PanelConfig>): number {
+export function countFreePanelCapUsage(
+  panelSettings: Record<string, PanelConfig>,
+  variant: string = SITE_VARIANT,
+): number {
   return Object.entries(panelSettings).filter(([key, panel]) =>
-    panel.enabled && isFreePanelCapCounted(key)
+    panel.enabled && isFreePanelCapCounted(key, panel, variant)
   ).length;
 }
 
 export function restoreFreeMapPanelAccess(
   panelSettings: Record<string, PanelConfig>,
+  variant: string = SITE_VARIANT,
 ): Record<string, PanelConfig> {
   const next: Record<string, PanelConfig> = {};
   for (const [key, config] of Object.entries(panelSettings)) {
     next[key] = { ...config };
   }
 
-  if (next.map?.enabled === false && countFreePanelCapUsage(next) > FREE_MAX_PANELS) {
+  if (next.map?.enabled === false && countFreePanelCapUsage(next, variant) > FREE_MAX_PANELS) {
     next.map = { ...next.map, enabled: true };
   }
 
@@ -1333,7 +1345,10 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
  * Returns a NEW map; the input is never mutated. For free users: cw-*
  * custom-widget panels are a pro
  * feature and are always disabled. The map is free baseline infrastructure
- * and never consumes a capped panel slot. Among the remaining enabled panels
+ * and never consumes a capped panel slot. Locked Pro teaser panels
+ * (`premium: 'locked'`) are also excluded from the count cap and left
+ * untouched so Free users keep 40 usable panels plus locked teasers. Among
+ * the remaining enabled panels
  * the lowest-priority ones past FREE_MAX_PANELS are disabled (priority asc,
  * key tiebreak — identical ordering to App.enforceFreeTierLimits).
  *
@@ -1346,6 +1361,7 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
 export function enforceFreePanelLimit(
   panelSettings: Record<string, PanelConfig>,
   isPro: boolean,
+  variant: string = SITE_VARIANT,
 ): Record<string, PanelConfig> {
   if (isPro) return restoreProGatedPanels(panelSettings);
 
@@ -1364,7 +1380,7 @@ export function enforceFreePanelLimit(
   }
 
   const enabledKeys = Object.entries(next)
-    .filter(([k, v]) => v.enabled && isFreePanelCapCounted(k))
+    .filter(([k, v]) => v.enabled && isFreePanelCapCounted(k, v, variant))
     .sort(([ka, a], [kb, b]) => (a.priority ?? 99) - (b.priority ?? 99) || ka.localeCompare(kb))
     .map(([k]) => k);
 

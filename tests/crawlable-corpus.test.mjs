@@ -265,8 +265,24 @@ function assertPulseCountryRecords(countries) {
   }
 }
 
+// Top-level keys the freeze writes only when it has something to put in them:
+// pizzaIndex needs a current or carried reading (#10925). Either snapshot may
+// lack one, so the fixture cannot track the rolling capture's choice (#11151);
+// whichever side carries one must carry it well-formed.
+const OPTIONAL_LIVE_PULSE_KEYS = new Set(['pizzaIndex']);
+
 function assertPulseFixtureShape(fixture, live) {
-  assert.deepEqual(Object.keys(fixture).sort(), Object.keys(live).sort());
+  const requiredKeys = (snapshot) => Object.keys(snapshot).filter((key) => !OPTIONAL_LIVE_PULSE_KEYS.has(key)).sort();
+  assert.deepEqual(requiredKeys(fixture), requiredKeys(live));
+  for (const snapshot of [fixture, live]) {
+    if (!Object.hasOwn(snapshot, 'pizzaIndex')) continue;
+    assertPulseRecordFields(snapshot.pizzaIndex, {
+      updatedAt: 'string', level: 'string', label: 'string', venues: 'array', retained: 'boolean',
+    }, 'pizzaIndex');
+    for (const [index, venue] of snapshot.pizzaIndex.venues.entries()) {
+      assertPulseRecordFields(venue, { name: 'string', status: 'string' }, `pizzaIndex.venues[${index}]`);
+    }
+  }
   assert.equal(fixture.schemaVersion, live.schemaVersion);
   for (const section of LIVE_PULSE_SECTIONS) {
     if (section === 'countries') {
@@ -1835,16 +1851,16 @@ describe('crawlable corpus generator', () => {
     );
   });
 
-  it('picks the newest live-pulse snapshot among several candidates', () => {
+  it('selects a stale committed pulse for builds but rejects it for publishing', () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), 'wm-pulse-resolve-'));
     try {
       const snapshotDir = join(fixtureRoot, 'docs', 'snapshots');
       mkdirSync(snapshotDir, { recursive: true });
-      const today = new Date().toISOString().slice(0, 10);
+      const latest = '2026-01-12';
       const sections = {
-        countries: [], chokepoints: [], crises: [], signalConvergence: { capturedAt: today },
+        countries: [], chokepoints: [], crises: [], signalConvergence: {},
       };
-      for (const capturedAt of ['2026-01-05', today, '2026-01-09']) {
+      for (const capturedAt of ['2026-01-05', latest, '2026-01-09']) {
         writeFileSync(
           join(snapshotDir, `crawlable-live-pulse-${capturedAt}.json`),
           JSON.stringify({ capturedAt, ...sections }),
@@ -1852,9 +1868,24 @@ describe('crawlable corpus generator', () => {
       }
       assert.equal(
         resolveLatestLivePulseSnapshotPath(fixtureRoot),
-        join('docs', 'snapshots', `crawlable-live-pulse-${today}.json`),
+        join('docs', 'snapshots', `crawlable-live-pulse-${latest}.json`),
         'the resolver must pick the highest-dated snapshot, not the first or last written',
       );
+      const freshnessCheck = join(repoRoot, 'scripts/check-crawlable-live-pulse.mjs');
+      const check = () => execFileSync(process.execPath, [freshnessCheck], {
+        cwd: fixtureRoot, encoding: 'utf8', stdio: 'pipe',
+      });
+      assert.throws(check, {
+        status: 1,
+        stderr: new RegExp(`${latest}\\.json is \\d+ days old \\(max 10\\)`),
+      });
+
+      const today = new Date().toISOString().slice(0, 10);
+      writeFileSync(
+        join(snapshotDir, `crawlable-live-pulse-${today}.json`),
+        JSON.stringify({ capturedAt: today, ...sections }),
+      );
+      assert.match(check(), /Live-pulse snapshot is fresh/);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
@@ -1883,7 +1914,7 @@ describe('crawlable corpus generator', () => {
 
     assert.ok(
       MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS > cadenceDays,
-      `the ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle reds the build`,
+      `the ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle blocks publishing`,
     );
     assert.ok(
       MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS <= cadenceDays * 2,
@@ -3143,8 +3174,17 @@ describe('crawlable corpus generator', () => {
       // Untagged: `ref=` would be captured as an affiliate referral code, and a
       // utm_* tag is a 308 hop through the middleware index-noise strip (#8603).
       assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/dashboard\?country=NO&amp;expanded=1">Open Norway on the live map/);
-      assert.doesNotMatch(norway, /[?&]ref=/, 'corpus CTAs must never use the affiliate ref= param');
-      assert.doesNotMatch(norway, /utm_source=/, 'corpus CTAs must not carry utm_source; middleware 308s it away');
+      // Only World Monitor's own links: a captured article URL keeps its
+      // publisher's utm_* tags, and which articles land on Norway's page moves
+      // with every weekly capture (#11151).
+      const ownHrefs = [...norway.matchAll(/href="([^"]*)"/g)]
+        .map(([, href]) => href.replaceAll('&amp;', '&'))
+        .filter((href) => href.startsWith('/') || href.startsWith('https://www.worldmonitor.app'));
+      assert.ok(ownHrefs.length > 0);
+      for (const href of ownHrefs) {
+        assert.doesNotMatch(href, /[?&]ref=/, `corpus links must never use the affiliate ref= param: ${href}`);
+        assert.doesNotMatch(href, /[?&]utm_[a-z]+=/, `corpus links must not carry utm_*; middleware 308s it away: ${href}`);
+      }
       // Social preview + trust-link contracts.
       assert.match(norway, /<meta property="og:image" content="https:\/\/www\.worldmonitor\.app\/favico\/og-image\.png">/);
       assert.match(norway, /<meta name="twitter:card" content="summary_large_image">/);
@@ -6135,6 +6175,28 @@ describe('live-pulse snapshot injection (#7533)', () => {
     );
   });
 
+  it('accepts a Pizza Index reading on either side but rejects a malformed one or an unknown key (#11151)', () => {
+    const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
+    delete fixture.pizzaIndex;
+    const live = structuredClone(fixture);
+    live.pizzaIndex = {
+      updatedAt: new Date(Date.parse(`${fixture.capturedAt}T00:00:00Z`)).toISOString(),
+      level: '5',
+      label: 'Normal Activity',
+      venues: [{ name: 'Test Pizza', status: 'No data' }],
+      retained: false,
+    };
+    assert.doesNotThrow(() => assertPulseFixtureShape(fixture, live));
+    assert.doesNotThrow(() => assertPulseFixtureShape(live, fixture));
+
+    live.pizzaIndex.venues = [{ name: 'Test Pizza' }];
+    assert.throws(() => assertPulseFixtureShape(fixture, live), /nested shape at pizzaIndex\.venues\[0\]/);
+    live.pizzaIndex = { level: '5' };
+    assert.throws(() => assertPulseFixtureShape(live, fixture), /nested shape at pizzaIndex/);
+
+    assert.throws(() => assertPulseFixtureShape({ ...fixture, unexpected: true }, fixture));
+  });
+
   it('accepts an empty convergence leader list but rejects malformed leaders', () => {
     const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
     const live = structuredClone(fixture);
@@ -6573,6 +6635,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
   // #7533-allowlist: 2026-02-03 x2 2026-02-30 x2 2026-02-31 x1 2001-02-29 x1 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp and crisis-editorial date fixtures
   // #7533-allowlist: 2026-03-04 x6 2026-03-14 x2 2026-04-09 x1 2026-05-01 x2 — laterDate unit pin; resolveChokepointObservation fallback constants
   // #7533-allowlist: 2026-05-28 x2 — datasetTemporalCoverage pure-function fixture
+  // #7533-allowlist: 2026-01-12 x1 — stale synthetic snapshot for the publishing freshness check
   // #7533-allowlist: 2026-06-01 x2 2026-07-28 x3 — synthetic git-commit and sitemap stub dates
   // #7533-allowlist: 2026-08-08 x3 2026-08-09 x4 2026-08-10 x4 2026-08-11 x3 2026-08-12 x3 2026-08-13 x4 — sourcePageLastmod pure-function fixtures
   // #7533-allowlist: 2026-08-29 x5 — STORY_CAPTURED_AT synthetic story clock and static snapshot-path fixtures

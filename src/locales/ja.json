@@ -299,6 +299,35 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "PRO にアップグレードして武器供給業者の依存関係と軍事能力を表示"
+    },
+    "intelMemory": {
+      "title": "過去の情報アーカイブ",
+      "help": "紛争、軍事、エネルギーイベントの180日間アーカイブと、オンデマンド意味論的先例マッチング。",
+      "loading": "過去の情報アーカイブを読み込み中…",
+      "proLocked": "PRO にアップグレードして、180日間の過去情報アーカイブと先例検索を利用可能にする",
+      "unavailable": "過去の情報アーカイブは現在利用できません。",
+      "retry": "再試行",
+      "empty": "この国と領域に一致するアーカイブされた情報イベントは、180日間のウィンドウ内に見つかりません。",
+      "partial": "このクエリのアーカイブカバレッジは部分的です。利用可能なレコードは引き続き表示されます。",
+      "domainFilterLabel": "領域で過去の情報をフィルタリング",
+      "domains": {
+        "all": "すべて",
+        "conflict": "紛争",
+        "military": "軍事",
+        "energy": "エネルギー"
+      },
+      "loadMore": "もっと読み込む",
+      "loadingMore": "読み込み中…",
+      "loadMoreError": "追加のイベントを読み込めませんでした。もう一度試してください。",
+      "sourceLink": "ソース ↗",
+      "similarTitle": "似た過去のイベントを検索",
+      "useLatestHeadline": "最新の見出しを使用",
+      "similarPlaceholder": "進行中の状況を説明してください（最低10文字）…",
+      "findSimilar": "似たイベントを検索",
+      "similarMinLength": "過去の先例を検索するには、少なくとも10文字入力してください。",
+      "similarLoading": "過去の先例を検索中…",
+      "similarEmpty": "類似度の閾値を超えた似た過去のイベントはありません。",
+      "similarUnavailable": "先例検索は現在利用できません。もう一度試してください。"
     }
   },
   "header": {
@@ -1547,7 +1576,7 @@
       "briefFreshness": "{{minutes}}m前に生成 · 最新ソース{{hours}}h前",
       "briefStoryDetails": "記事の詳細 ({{count}})",
       "streamIdleStopLabel": "アイドル時にライブ動画を停止",
-      "streamIdleStopDesc": "設定した時間、操作がない状態が続くと、ライブニュースとライブウェブカメラを停止し、パネルに通知を表示します。",
+      "streamIdleStopDesc": "設定した時間、操作がない状態が続くと、ライブニュースとライブウェブカメラを停止し、パネルに通知を表示します。音声がオンの間、ライブニュースは再生を続けます。",
       "streamIdleStopNever": "なし",
       "liveNewsAutoplayLabel": "ライブニュースの自動再生",
       "liveNewsAutoplayDesc": "ライブニュースビデオが画面に表示されると同時にミュート状態で自動再生されます。これをオフにすると、自分で再生を開始したときだけビデオが読み込まれます。"

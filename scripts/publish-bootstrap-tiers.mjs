@@ -16,10 +16,6 @@ import { evaluatePublishedBootstrapVolume } from './_bootstrap-payload-budget.mj
 import { restoreWildfireBootstrapMetadata, sanitizeBootstrapValue } from './_bootstrap-public-payload.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
-  putR2JsonObject,
-  resolveR2StorageConfig,
-} from './_r2-storage.mjs';
-import {
   putKvJsonValue,
   resolveKvStorageConfig,
 } from './_kv-storage.mjs';
@@ -206,6 +202,10 @@ export async function publishBootstrapTier(tier, options = {}) {
     throw new Error(`Bootstrap registry is unavailable for tier ${tier}`);
   }
 
+  const resolveKvStorage = options.resolveKvStorage ?? resolveKvStorageConfig;
+  const kvConfig = resolveKvStorage(env);
+  if (!kvConfig) throw new Error('Bootstrap publisher KV credentials are missing');
+
   const payload = await assembleBootstrapTierPayload(registry, {
     env,
     fetchFn: options.fetchFn,
@@ -220,24 +220,14 @@ export async function publishBootstrapTier(tier, options = {}) {
     .slice(0, PUBLISHER_LARGEST_KEY_LIMIT)
     .map(({ key, bytes }) => ({ key, bytes }));
   const volume = evaluatePublishedBootstrapVolume(tier, payloadLedger);
-  const resolveStorage = options.resolveStorage
-    ?? (storageEnv => resolveR2StorageConfig(storageEnv, { profile: 'bootstrap' }));
-  const storage = resolveStorage(env);
-  if (!storage) throw new Error('Bootstrap publisher R2 credentials are missing');
 
+  // Write the versioned envelope to Cloudflare Workers KV under the bare tier key
+  // (`fast`/`slow`) so the serving Worker reads `env.KV.get(tier)`. Errors propagate
+  // loudly so credential, network, or 25 MiB cap failures are never swallowed.
   const generatedAt = (options.now ?? Date.now)();
   const envelope = buildBootstrapTierEnvelope({ generatedAt, tier, payload });
-  const putObject = options.putObject ?? putR2JsonObject;
-  const write = await putObject(storage, `${tier}.json`, envelope, {
-    tier,
-    generatedAt: String(generatedAt),
-  });
-
-  // KV parity write (#5300 KV serving plan). The SAME envelope, keyed by bare tier name
-  // (`fast`/`slow`) so the serving Worker reads `env.KV.get(tier)`. Best-effort and gated by
-  // credential presence: a KV failure — including the 25 MiB guard tripping — must never abort
-  // the canonical R2 publish, but it is logged loudly so a chronic failure is visible.
-  const kv = await publishTierToKv(tier, envelope, { ...options, env, logger: options.logger });
+  const putKv = options.putKv ?? putKvJsonValue;
+  const write = await putKv(kvConfig, tier, envelope, { fetchFn: options.kvFetchFn });
 
   return {
     tier,
@@ -248,29 +238,7 @@ export async function publishBootstrapTier(tier, options = {}) {
     keyBytes,
     largestKeys,
     volume,
-    kv,
   };
-}
-
-/**
- * Best-effort KV write of a tier envelope. Skips silently when KV is unconfigured (so R2-only
- * deploys are unaffected); on failure, logs and returns `{ ok: false }` without throwing.
- */
-export async function publishTierToKv(tier, envelope, options = {}) {
-  const env = options.env ?? process.env;
-  const resolveKv = options.resolveKvStorage ?? resolveKvStorageConfig;
-  const config = resolveKv(env);
-  if (!config) return { skipped: true };
-
-  const putKv = options.putKv ?? putKvJsonValue;
-  const logger = options.logger ?? console;
-  try {
-    const result = await putKv(config, tier, envelope, { fetchFn: options.kvFetchFn });
-    return { ok: true, bytes: result?.bytes ?? null };
-  } catch (err) {
-    logger.error?.(`[bootstrap-kv] tier=${tier} KV write failed: ${err?.message ?? err}`);
-    return { ok: false, error: err?.message ?? String(err) };
-  }
 }
 
 function defaultSleep(ms, signal) {
@@ -314,10 +282,7 @@ export async function runPublisherLoop(options = {}) {
     const tier = due[0];
     try {
       const result = await publishTier(tier);
-      const kvStatus = result?.kv?.skipped ? 'skipped'
-        : result?.kv?.ok ? `${result.kv.bytes}b`
-        : `FAILED(${result?.kv?.error ?? 'unknown'})`;
-      logger.info?.('[bootstrap-r2] published', {
+      logger.info?.('[bootstrap-kv] published', {
         tier,
         generatedAt: result?.generatedAt ?? null,
         artifactBytes: result?.bytes ?? null,
@@ -326,7 +291,6 @@ export async function runPublisherLoop(options = {}) {
         keyBytes: result?.keyBytes ?? {},
         largestKeys: result?.largestKeys ?? [],
         volumeAlerts: result?.volume?.alerts ?? [],
-        kv: kvStatus,
       });
       if (result?.volume?.alerts?.length) {
         logger.warn?.('[bootstrap-volume] published payload exceeded frozen budget', {
@@ -337,7 +301,7 @@ export async function runPublisherLoop(options = {}) {
         });
       }
     } catch (error) {
-      logger.warn?.(`[bootstrap-r2] publish failed tier=${tier}: ${error?.message ?? String(error)}`);
+      logger.warn?.(`[bootstrap-kv] publish failed tier=${tier}: ${error?.message ?? String(error)}`);
     } finally {
       publishCount += 1;
       do {
@@ -377,7 +341,7 @@ async function main() {
 
   const controller = new AbortController();
   const stop = signal => {
-    console.info(`[bootstrap-r2] received ${signal}; stopping after the active publish`);
+    console.info(`[bootstrap-kv] received ${signal}; stopping after the active publish`);
     controller.abort();
   };
   process.once('SIGTERM', () => stop('SIGTERM'));
@@ -395,7 +359,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   main()
     .then(() => console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`))
     .catch(error => {
-      console.error(`[bootstrap-r2] fatal: ${error?.message ?? String(error)}`);
+      console.error(`[bootstrap-kv] fatal: ${error?.message ?? String(error)}`);
       process.exitCode = 1;
     });
 }

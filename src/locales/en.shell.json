@@ -392,6 +392,9 @@
       "falling": "Falling",
       "stable": "Stable"
     },
+    "intelMemory": {
+      "title": "Historical Intelligence Memory"
+    },
     "demographicsCapability": {
       "title": "Demographics & Workforce"
     },

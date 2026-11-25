@@ -18,6 +18,7 @@ import { filterRevokedUrls, readRevokedUrlSet } from '../../../_shared/digest-re
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
 import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
+import { headlineWithoutPublisher } from '../../../../shared/headline-publisher.js';
 
 const DIGEST_KEY_EN = 'news:digest:v1:full:en';
 const MAX_GROUNDING_ITEMS = 15;
@@ -66,7 +67,8 @@ export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): stri
   const airportTag = opts.airportTag ? `:a${opts.airportTag}` : '';
   // Likewise a newly confirmed satellite imagery change re-keys the brief.
   const imageryTag = opts.imageryTag ? `:o${opts.imageryTag}` : '';
-  const version = opts.lang === 'en' ? 'v12' : 'v9';
+  // English v13 and non-English v10 (#11217): prompt titles no longer carry the publisher byline.
+  const version = opts.lang === 'en' ? 'v13' : 'v10';
   if (!opts.isPremium) {
     // Anonymous tier: caller inputs must not reach the key, or the shared
     // cache degenerates back into a per-caller one (and one caller's
@@ -74,7 +76,7 @@ export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): stri
     return `ci-sebuf:${version}:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}${airportTag}${imageryTag}`;
   }
   // Retire premium entries whose parsed sources could differ from their hashed context.
-  const premiumVersion = opts.lang === 'en' ? 'v13' : 'v10';
+  const premiumVersion = opts.lang === 'en' ? 'v14' : 'v11';
   const fw = opts.frameworkHash ? `:${opts.frameworkHash}` : '';
   const context = opts.lang === 'en' && !opts.frameworkHash ? `sources:${opts.contextHash}` : opts.contextHash;
   return `ci-sebuf:${premiumVersion}:${opts.countryCode}:${opts.lang}:${context}${fw}${energyTag}${energyImportTag}${airportTag}${imageryTag}`;
@@ -198,7 +200,9 @@ export function buildSharedCountryContext(
   // sibling source lines above are accidentally safe only because
   // JSON.stringify escapes the newline.)
   const headlineLines = groundingItems
-    .map((item) => (typeof item.title === 'string' ? sanitizeForPromptLine(item.title) : ''))
+    .map((item) => (typeof item.title === 'string'
+      ? sanitizeForPromptLine(headlineWithoutPublisher(item.title, String(item.link ?? item.url ?? ''), String(item.source ?? '')))
+      : ''))
     .filter(Boolean);
   const contextSnapshot = [...sourceLines, 'Headlines:', ...headlineLines].join('\n').slice(0, MAX_CONTEXT_CHARS);
   return { contextSnapshot, sources };

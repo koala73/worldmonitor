@@ -295,7 +295,7 @@ export class YieldCurvePanel extends Panel {
     </div>`;
 
     if (this._tab === 'rates') {
-      this.setSafeContent(unsafeRawHtml(`<div style="padding:10px 14px 6px">${tabBar}${renderRatesTab(this._rateRows)}</div>`, 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(`<div style="padding:10px 0 6px">${tabBar}${renderRatesTab(this._rateRows)}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -318,7 +318,7 @@ export class YieldCurvePanel extends Panel {
       : '';
 
     this.setSafeContent(unsafeRawHtml(`
-      <div style="padding:10px 14px 6px">
+      <div style="padding:10px 0 6px">
         ${tabBar}
         <div style="display:flex;align-items:center;margin-bottom:10px;gap:4px">
           ${statusBadge}${spreadHtml}

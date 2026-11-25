@@ -355,6 +355,84 @@ export function toArticle(record) {
   };
 }
 
+// Strip a trailing publisher tag ("Headline - Birmingham Star", "Headline | Irish Sun",
+// "Headline - BBC News") only when the suffix names the article's own source domain,
+// so meaningful trailing clauses ("Military aid package approved today - Ukraine" vs
+// "- Israel") remain distinct stories. Hyphens inside a name ("Al-Jazeera") are part
+// of the suffix; only a spaced separator starts it.
+const TRAILING_PUBLISHER_SUFFIX_RE = /\s+[-|—–]\s+((?:(?!\s[-|—–]\s)[^|—–]){1,60})$/;
+// Labels an outlet appends to its own short name ("BBC News", "CNN Online").
+const PUBLISHER_NAME_LABELS = ['news', 'online', 'world', 'today', 'tv', 'digital'];
+// Second levels under a country TLD that are part of the public suffix (bbc.co.uk,
+// abc.net.au); any other label there is the outlet itself (news.cnn.gr -> cnn).
+// Same list as BARE_HOST_RE in shared/story-identity.js.
+const COUNTRY_SECOND_LEVEL_LABELS = new Set(['co', 'com', 'net', 'org', 'gov', 'ac', 'edu']);
+
+// Fold accents on Latin letters only ("Côte" = "Cote"). Marks in other scripts
+// carry meaning (Cyrillic й vs и, Devanagari vowel signs) and stay in the key.
+function foldLatinMarks(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/(\p{Script=Latin})[\u0300-\u036f]+/gu, '$1');
+}
+
+function compactPublisherToken(value) {
+  return foldLatinMarks(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+// The registrable label of the source host: "news.bbc.co.uk" -> "bbc",
+// "edition.cnn.com" -> "cnn", "birminghamstar.com" -> "birminghamstar".
+function sourceDomainStem(source, url) {
+  let host = String(source || '').trim().toLowerCase();
+  if (!host && url) {
+    try {
+      host = new URL(url).hostname.toLowerCase();
+    } catch {
+      host = '';
+    }
+  }
+  const parts = host.split('.').filter(Boolean);
+  if (parts.length >= 3 && parts.at(-1).length === 2 && COUNTRY_SECOND_LEVEL_LABELS.has(parts.at(-2))) {
+    parts.splice(-2);
+  } else if (parts.length >= 2) {
+    parts.pop();
+  }
+  return compactPublisherToken(parts.at(-1) || '');
+}
+
+function suffixMatchesPublisher(suffix, source, url) {
+  const hostStem = sourceDomainStem(source, url);
+  const suffixToken = compactPublisherToken(suffix);
+  if (hostStem.length < 3 || suffixToken.length < 3) return false;
+  const suffixWithoutThe = suffixToken.startsWith('the') && suffixToken.length > 5
+    ? suffixToken.slice(3)
+    : suffixToken;
+  return hostStem === suffixToken
+    || hostStem === suffixWithoutThe
+    || PUBLISHER_NAME_LABELS.some((label) => suffixToken === `${hostStem}${label}`)
+    // "The Times of Israel" for timesofisrael.com; a short stem could sit inside an
+    // unrelated suffix, so it must reach four characters.
+    || (hostStem.length >= 4 && suffixToken.includes(hostStem));
+}
+
+export function gdeltHeadlineDedupeKey(title, source = '', url = '') {
+  let text = String(title || '').trim();
+  const suffixMatch = text.match(TRAILING_PUBLISHER_SUFFIX_RE);
+  if (suffixMatch) {
+    const prefix = text.slice(0, suffixMatch.index).trim();
+    const prefixWords = prefix.split(/\s+/).filter(Boolean).length;
+    if (prefix.length >= 20 && prefixWords >= 4 && suffixMatchesPublisher(suffixMatch[1], source, url)) {
+      text = prefix;
+    }
+  }
+  return foldLatinMarks(text)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
+    .trim();
+}
+
 function mergeArticles(
   currentRecords,
   previousArticles,
@@ -371,10 +449,21 @@ function mergeArticles(
     if (!article?.url || !Number.isFinite(dateMs) || dateMs < cutoff || byUrl.has(article.url)) continue;
     byUrl.set(article.url, article);
   }
-  return [...byUrl.values()]
+  const sorted = [...byUrl.values()]
     .sort((a, b) => gdeltSeenDateToMs(b.date) - gdeltSeenDateToMs(a.date)
-      || a.url.localeCompare(b.url))
-    .slice(0, limit);
+      || a.url.localeCompare(b.url));
+  const seenHeadlines = new Set();
+  const deduped = [];
+  for (const article of sorted) {
+    const headlineKey = gdeltHeadlineDedupeKey(article.title, article.source, article.url);
+    if (headlineKey) {
+      if (seenHeadlines.has(headlineKey)) continue;
+      seenHeadlines.add(headlineKey);
+    }
+    deduped.push(article);
+    if (deduped.length >= limit) break;
+  }
+  return deduped;
 }
 
 // ASCII-folded, lowercased words: the same token space for a GKG location

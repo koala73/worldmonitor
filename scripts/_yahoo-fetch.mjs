@@ -26,8 +26,10 @@
 // the CONNECT pool), add a second leg following the
 // scripts/_open-meteo-archive.mjs cascade pattern.
 
-import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart, roundSparkline } from './_seed-utils.mjs';
-import { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } from './shared/yahoo-closed-session.cjs';
+import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart, roundSparkline, getRedisCredentials, redisCommand } from './_seed-utils.mjs';
+import {
+  PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose, isYahooEquityIndex, createYahooEquityIndexBasisResolver,
+} from './shared/yahoo-closed-session.cjs';
 import { crudeOilQuoteProvenance } from './shared/oil-quote-provenance.cjs';
 import { SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline } from './shared/quote-sparkline.cjs';
 
@@ -195,6 +197,29 @@ export async function fetchYahooJson(url, opts = {}) {
 }
 
 const SPARKLINE_HISTORY_TTL_SECONDS = 2 * 24 * 60 * 60;
+const resolveIndexCloseInProcess = createYahooEquityIndexBasisResolver();
+
+async function seederRedisCommand(command) {
+  const { url, token } = getRedisCredentials();
+  return (await redisCommand(url, token, command, { timeoutMs: 1500 })).result;
+}
+
+/**
+ * Index basis resolver backed by the Redis cache the relay also reads, so a
+ * cron process that starts fresh each run still reuses a verified close.
+ */
+export function createRedisIndexBasisResolver({ command = seederRedisCommand, scope = 'cron', now } = {}) {
+  return createYahooEquityIndexBasisResolver({
+    scope,
+    now,
+    read: async (key) => {
+      const raw = await command(['GET', key]);
+      return raw ? JSON.parse(raw) : null;
+    },
+    write: (key, entry, ttl) => command(['SET', key, JSON.stringify(entry), 'EX', ttl]),
+    writeIfAbsent: (key, entry, ttl) => command(['SET', key, JSON.stringify(entry), 'NX', 'EX', ttl]),
+  });
+}
 
 /**
  * A cron seeder starts a fresh process every run. This keeps the sparkline
@@ -235,6 +260,7 @@ export function createSparklineHistoryCache(command, keyPrefix) {
  * Fetch and parse one Yahoo quote. A chart rolled to a session that has not
  * traded costs a second, staggered request for the daily chart holding the
  * last completed session's previous close; without it the change reads 0.00%.
+ * Cash equity indexes use the shared exchange-session basis, even when trading.
  * `sparklineWindow` adds the 24-hour sparkline. Its history chart costs one
  * more request unless `historyCache` already holds it for this session.
  */
@@ -242,17 +268,23 @@ export async function fetchYahooQuoteChart(symbol, {
   delayMs = 150,
   sparklineWindow = false,
   historyCache = null,
+  resolveIndexClose = resolveIndexCloseInProcess,
   fetchJson = (url, options) => fetchYahooJson(url, { label: symbol, ...options }),
 } = {}) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
   const chart = await fetchJson(url);
   const lastTradeAt = chart?.chart?.result?.[0]?.meta?.regularMarketTime;
-  let previousClose = null;
-  if (awaitsSessionOpen(chart)) {
+  const loadDaily = async () => {
     await sleep(delayMs);
-    // Optional: a 429 with Retry-After must not hold the sequential basket for minutes.
-    const daily = await fetchJson(`${url}${PREVIOUS_SESSION_CHART_QUERY}`, { maxRetries: 0 }).catch(() => null);
-    previousClose = previousSessionClose(daily, lastTradeAt);
+    // A Retry-After must not hold the sequential basket for minutes.
+    return fetchJson(`${url}${PREVIOUS_SESSION_CHART_QUERY}`, { maxRetries: 0 }).catch(() => null);
+  };
+  let previousClose = null;
+  if (isYahooEquityIndex(symbol)) {
+    previousClose = await resolveIndexClose(symbol, lastTradeAt, loadDaily);
+    if (previousClose == null) return null;
+  } else if (awaitsSessionOpen(chart)) {
+    previousClose = previousSessionClose(await loadDaily(), lastTradeAt);
   }
   const quote = parseYahooChart(chart, symbol, { previousClose });
   if (!quote) return null;

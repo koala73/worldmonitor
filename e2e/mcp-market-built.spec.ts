@@ -19,7 +19,9 @@ const fixture = { cached_at: '2026-10-03T18:30:00Z', data: {
 
 test.beforeAll(async () => {
   test.setTimeout(120_000);
-  execFileSync('npm', ['run', 'build:plugin'], { timeout: 120_000, stdio: 'pipe' });
+  if (process.env.WM_E2E_PLUGIN_BUILT !== '1') {
+    execFileSync('npm', ['run', 'build:plugin'], { timeout: 120_000, stdio: 'pipe' });
+  }
   const entry = readFileSync('dist/plugin/market.html', 'utf8').match(/src="(\/plugin\/assets\/[a-zA-Z0-9_.-]+\.js)"/)![1];
   // Rollup names the shared chunk after one of its modules, so take the entry's first static import instead of a name.
   const firstImport = readFileSync('dist' + entry, 'utf8').match(/from"\.\/([a-zA-Z0-9_.-]+\.js)"/)?.[1];

@@ -35,16 +35,16 @@
     "askIt": "尋ねる",
     "askItDesc": "WM Analyst chat。ライブサービスを平文英語でクエリ可能。",
     "subscribeIt": "購読する",
-    "subscribeItDesc": "AI ダイジェストをご希望のリズムで: 日次、1日2回、または週次。Slack、Discord、Telegram、メール、Webhook。",
+    "subscribeItDesc": "AI ダイジェストをご希望のリズムで: 日次、1日2回、または週次。Slack、Teams、Discord、Telegram、メール、Webhook。",
     "buildOnIt": "その上に構築",
     "buildOnItDesc": "カスタムウィジェットビルダー(HTML/CSS/JS + AI)と、Claude・GPT・独自 LLM 向け MCP。"
   },
   "deliveryDesk": {
     "eyebrow": "デリバリーデスク",
     "title": "パーソナル インテリジェンス デスクとは何ですか?",
-    "body": "送信ごとに最大30件のランク付きアイテム、ソース間での重複排除、ウォッチリストに対するスコアリング。配信頻度を選択 — 日次、2日次、または週次 — AI Assessment と注視すべき Signals が Slack、Discord、Telegram、Email、またはウェブフックに配信されます。",
+    "body": "送信ごとに最大30件のランク付きアイテム、ソース間での重複排除、ウォッチリストに対するスコアリング。配信頻度を選択 — 日次、2日次、または週次 — AI Assessment と注視すべき Signals が Slack、Microsoft Teams、Discord、Telegram、Email、またはウェブフックに配信されます。",
     "closer": "ニュースレターではない。アナリストだ。",
-    "channels": "Slack · Discord · Telegram · メール · Webhook · AES-256 暗号化 · サイレント時間"
+    "channels": "Slack · Teams · Discord · Telegram · メール · Webhook · AES-256 暗号化 · サイレント時間"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — ライブダッシュボード",
@@ -56,8 +56,7 @@
   "socialProof": {
     "uniqueVisitors": "ユニーク訪問者",
     "peakDailyUsers": "日次ユーザー(ピーク)",
-    "countriesReached": "到達国数",
-    "liveDataSources": "ライブデータソース"
+    "countriesReached": "到達国数"
   },
   "audience": {
     "title": "World Monitor は誰向けですか?",
@@ -77,34 +76,6 @@
     "aiTeamsDesc": "MCP経由で社内アシスタントにリアルタイムの世界情勢を供給。社内利用の権利は書面で保証します。",
     "teamsTitle": "チームと組織",
     "teamsDesc": "個人利用から共有ワークフロー、API アクセス、TV アプリ、マネージドデプロイへ。"
-  },
-  "dataCoverage": {
-    "title": "World Monitor は何を監視していますか?",
-    "subtitle": "複数のサービスドメインを同時に取り込み。市場、マクロ、地政学、エネルギー、インフラ — すべて正規化され、WebGL グローブにレンダリング。",
-    "markets": "金融市場と株式",
-    "marketsDesc": "グローバル株式分析、商品、暗号資産、ETF フロー、アナリスト目標、FRED マクロデータ",
-    "economy": "経済と中央銀行",
-    "economyDesc": "主要経済の GDP、インフレ、金利、成長サイクルと金融政策追跡",
-    "geopolitical": "地政学分析",
-    "geopoliticalDesc": "エスカレーションスコアリング、リスクフレームワーク、トレンド分析を備えた ACLED と UCDP のイベント",
-    "maritime": "海事と貿易",
-    "maritimeDesc": "船舶の動き、船体検出、港湾活動、貨物推定",
-    "aviation": "航空追跡",
-    "aviationDesc": "グローバルなフライトパターンの ADS-B 追跡",
-    "infra": "重要インフラ",
-    "infraDesc": "原子力施設、電力網、パイプライン、精油所 — マップされたアセット",
-    "fire": "衛星による火災検出",
-    "fireDesc": "NASA FIRMS によるほぼリアルタイムの火災・ホットスポットデータ",
-    "cables": "海底ケーブル",
-    "cablesDesc": "海底ケーブルルートと陸揚げ局",
-    "internet": "インターネットと GPS",
-    "internetDesc": "停止検出、BGP 異常、GPS 妨害エリア",
-    "cyber": "サイバー脅威",
-    "cyberDesc": "ランサムウェアフィード、BGP ハイジャック、DDoS 検出",
-    "gdelt": "GDELT とニュース",
-    "gdeltDesc": "厳選 RSS フィード、AI スコアリング済み GDELT イベント、ライブ放送",
-    "seismology": "地震と自然",
-    "seismologyDesc": "USGS 地震、火山活動、極端気象"
   },
   "tiers": {
     "free": "無料",
@@ -127,13 +98,12 @@
     "riskMonitoring": "リスク監視とシナリオ",
     "riskMonitoringDesc": "グローバルリスクスコア、シナリオ分析、地政学リスク評価。市場と政治のシグナル間の収束検出。",
     "morningBriefs": "パーソナル・インテリジェンス・デスク",
-    "morningBriefsDesc": "ダイジェストあたり最大30件のランク付きストーリー、ソース間での重複排除。日次、2日次、週次の配信頻度を選択 — または重大イベントの際のリアルタイムアラート。AI Assessment と注視すべき Signals が Slack、Discord、Telegram、Email、またはウェブフックに配信されます。ニュースレターではなく、アナリストです。",
+    "morningBriefsDesc": "ダイジェストあたり最大30件のランク付きストーリー、ソース間での重複排除。日次、2日次、週次の配信頻度を選択 — または重大イベントの際のリアルタイムアラート。AI Assessment と注視すべき Signals が Slack、Microsoft Teams、Discord、Telegram、Email、またはウェブフックに配信されます。ニュースレターではなく、アナリストです。",
     "oneKey": "ライブサービス、1 Key",
-    "oneKeyDesc": "Finnhub、FRED、ACLED、UCDP、NASA FIRMS、AISStream、OpenSky など — すべて有効、個別登録不要。",
+    "oneKeyDesc": "Finnhub、FRED、UCDP、NASA FIRMS、AISStream、OpenSky など — すべて有効、個別登録不要。",
     "deliveryLabel": "インテリジェンスがあなたを見つける方法を選ぶ",
     "supplyChainLab": "サプライチェーン ストレス ラボ",
-    "supplyChainLabDesc": "複数国・セクター間のコスト衝撃をモデル化。ボトルネック依存度別に商品脆弱性をランク付け。採掘から精製までの集中度と SGE–COMEX 物理プレミアム乖離を追跡 — ヘッドラインが出る前に動く系列。",
-    "roadmapNote": "ロードマップ: より長い履歴、プレミアムマップレイヤー。"
+    "supplyChainLabDesc": "複数国・セクター間のコスト衝撃をモデル化。ボトルネック依存度別に商品脆弱性をランク付け。採掘から精製までの集中度と SGE–COMEX 物理プレミアム乖離を追跡 — ヘッドラインが出る前に動く系列。"
   },
   "apiSection": {
     "apiTier": "API ティア",
@@ -560,7 +530,7 @@
       "n5Title": "海底ケーブル",
       "n5Desc": "インターネットを支える{{submarineCables}}本の海底ケーブルに、障害と脅威のシグナルを重ねて表示します。",
       "n6Title": "抗議活動トラッキング",
-      "n6Desc": "ACLED と GDELT から抗議活動を検出します。同じ日に同じ0.1°セル内で1つのソースから届いた報告は1つのイベントに統合されます。噂ではなく、シグナルを。",
+      "n6Desc": "GDELT から抗議活動を検出します。同じ日に同じ0.1°セル内で1つのソースから届いた報告は1つのイベントに統合されます。噂ではなく、シグナルを。",
       "faith": "数字を鵜呑みにしないでください —",
       "faithCta": "アプリを開いて、数えてみてください。",
       "faithNote": "すべてのパネルに出典を明記しています。"
@@ -617,7 +587,7 @@
       "q2": "グローバルインテリジェンスダッシュボードとは何ですか？",
       "a2": "多くのツールが別々に扱っているシグナルを1つにまとめたライブビューです。紛争イベント、船舶と航空機の追跡、海運のチョークポイント、衛星、海底ケーブル、パイプライン、市場、サイバー脅威を1つのリアルタイム世界地図に重ね、その上に AI によるスコアリングとブリーフを加えます。World Monitor は、無料で使えるその一つです。",
       "q3": "データの出どころは？",
-      "a3": "出典を明示した{{providers}}のプロバイダーからです。主なものとして、紛争は ACLED と UCDP、船舶のライブ位置は AISStream、航空機は OpenSky、火災は NASA FIRMS、地震は USGS、市場とマクロは IMF、BIS、FRED、Finnhub があり、さらに厳選したニュースフィードが加わります。すべてのパネルに、出典とタイムスタンプをその場で表示しています。",
+      "a3": "出典を明示した{{providers}}のプロバイダーからです。主なものとして、紛争は GDELT と UCDP、船舶のライブ位置は AISStream、航空機は OpenSky、火災は NASA FIRMS、地震は USGS、市場とマクロは IMF、BIS、FRED、Finnhub があり、さらに厳選したニュースフィードが加わります。すべてのパネルに、出典とタイムスタンプをその場で表示しています。",
       "q4": "ホルムズやバブ・エル・マンデブのようなチョークポイントをリアルタイムで監視できますか？",
       "a4": "はい。ホルムズ、バブ・エル・マンデブからスエズまで、海峡と運河を合わせた{{chokepoints}}か所のチョークポイントを、AIS によるライブの船舶数、通航数の前週比、混乱スコアで追跡しています。密度の異常は、各チョークポイントの移動ベースラインと比較して検出します。",
       "q5": "Liveuamap のような紛争マップとは何が違うのですか？",

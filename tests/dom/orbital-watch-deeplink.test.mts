@@ -262,11 +262,10 @@ describe('satellite pass share link', () => {
     openOrbitalWatch(EXACT, null);
     await vi.waitFor(() => expect(sheet()!.querySelector('.ies-evidence-line')).not.toBeNull());
     button('[data-action="share"]').click();
-    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(text()).toContain('Link copied'));
     const link = new URL(writeText.mock.calls[0]![0]);
     expect(link.search).toBe('');
     expect(link.hash).toBe('#orbital=48.86,2.29');
-    expect(text()).toContain('Link copied');
   });
 
   it('uses the dashboard share-link button and confirms a copy on it', async () => {

@@ -1071,9 +1071,6 @@
           "path": "scripts/_dosm-product-demand.mjs"
         },
         {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
-        {
           "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
@@ -1082,15 +1079,10 @@
       "host": "api.datos.gob.mx",
       "provider": "api.datos.gob.mx",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit api.datos.gob.mx and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.e-stat.go.jp",
@@ -1115,9 +1107,6 @@
       "attribution": "Credit api.eia.gov and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
         {
           "path": "scripts/seed-economy.mjs"
         },
@@ -1421,15 +1410,10 @@
       "host": "api.ossinsight.io",
       "provider": "api.ossinsight.io",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit api.ossinsight.io and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-research.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.planespotters.net",
@@ -1933,12 +1917,6 @@
           "path": "scripts/openapi-inject-servers.mjs"
         },
         {
-          "path": "scripts/post-pr3427-force-refresh.mjs"
-        },
-        {
-          "path": "scripts/post-pr3487-force-refresh.mjs"
-        },
-        {
           "path": "scripts/seed-china-decision-signals.mjs"
         },
         {
@@ -2242,18 +2220,27 @@
       ]
     },
     {
-      "host": "asiaplustj.info",
-      "provider": "asiaplustj.info",
+      "host": "asiaplus.news",
+      "provider": "asiaplus.news",
       "kind": "feed",
       "observed": true,
-      "license": "Publisher terms apply; verify before redistribution.",
-      "attribution": "Asia-Plus — headlines and publisher links.",
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit asiaplus.news and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
           "path": "shared/news-catalog.json"
         }
       ]
+    },
+    {
+      "host": "asiaplustj.info",
+      "provider": "asiaplustj.info",
+      "kind": "feed",
+      "observed": false,
+      "license": "Publisher terms apply; verify before redistribution.",
+      "attribution": "Asia-Plus — headlines and publisher links.",
+      "status": "excluded"
     },
     {
       "host": "astanatimes.com",
@@ -5215,9 +5202,6 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
-        {
           "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
@@ -5794,6 +5778,20 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feed.infoq.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "feed.koreatimes.co.kr",
+      "provider": "feed.koreatimes.co.kr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit feed.koreatimes.co.kr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -6625,6 +6623,9 @@
           "path": "api/health.js"
         },
         {
+          "path": "scripts/_us-restricted-sanctions.mjs"
+        },
+        {
           "path": "scripts/build-accuracy-page.mjs"
         },
         {
@@ -6641,6 +6642,9 @@
         },
         {
           "path": "scripts/seed-research.mjs"
+        },
+        {
+          "path": "scripts/source-attribution.mjs"
         },
         {
           "path": "server/_shared/agent-feedback.ts"
@@ -10960,6 +10964,20 @@
       ]
     },
     {
+      "host": "partner-feeds.publishing.tamedia.ch",
+      "provider": "partner-feeds.publishing.tamedia.ch",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit partner-feeds.publishing.tamedia.ch and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "patents.google.com",
       "provider": "patents.google.com",
       "kind": "structured",
@@ -11817,6 +11835,20 @@
       ]
     },
     {
+      "host": "release-assets.githubusercontent.com",
+      "provider": "US Restricted Parties feed (Tensorust LLC)",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (Creative Commons Attribution 4.0 International)",
+      "attribution": "US Restricted Parties feed by Tensorust LLC (https://github.com/Mattbusel/us-restricted-parties), CC BY 4.0.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_us-restricted-sanctions.mjs"
+        }
+      ]
+    },
+    {
       "host": "reliefweb.int",
       "provider": "reliefweb.int",
       "kind": "structured",
@@ -12664,9 +12696,6 @@
       "attribution": "Credit sedeaplicaciones.minetur.gob.es and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
         {
           "path": "scripts/seed-fuel-prices.mjs"
         }
@@ -19271,15 +19300,10 @@
       "host": "www.koreatimes.co.kr",
       "provider": "www.koreatimes.co.kr",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.koreatimes.co.kr and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.krik.rs",
@@ -21670,15 +21694,10 @@
       "host": "www.tagesanzeiger.ch",
       "provider": "www.tagesanzeiger.ch",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.tagesanzeiger.ch and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.tagesschau.de",
@@ -22593,9 +22612,6 @@
           "path": "api/mcp/auth.ts"
         },
         {
-          "path": "api/mcp/handler.ts"
-        },
-        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
@@ -22729,6 +22745,9 @@
         },
         {
           "path": "server/_shared/deprecation-policy.ts"
+        },
+        {
+          "path": "server/_shared/entitlement-coverage.ts"
         },
         {
           "path": "server/worldmonitor/cyber/v1/get-network-info.ts"

@@ -604,39 +604,38 @@ fail quietly:
 To read what the last tick actually did:
 
 ```
-railway deployment list --project "$RAILWAY_PROJECT_ID" --environment production \
-  --service umami-retention --limit 1000 --json
+RAILWAY_PROJECT_ID=<project id> node scripts/read-umami-retention-deployments.mjs \
+  --output /tmp/retention-deployments.json
 ```
 
 Every push to `main` writes a `SKIPPED` refusal ("No changes to watched files")
-for this service, and those arrive far faster than 4 ticks/hour — so the newest
-record is almost never the tick. Take the newest record whose status is a
-*running* one, then read that deployment's logs. A healthy tick logs `BEGIN`,
+for this service, ~30 a day, so a plain `railway deployment list` is mostly
+refusals and its 1000-record maximum covers only about a month. The script
+above asks Railway's GraphQL API for the history with `SKIPPED` excluded on the
+server. Take the newest record whose status is a *running* one, then read that
+deployment's logs. A healthy tick logs `BEGIN`,
 `DELETE <n>`, `COMMIT` per statement; a locked-out tick logs the skip message
 and exits 0.
 
 ### `HISTORY_WINDOW_SATURATED` — the runner is invisible, not dead
 
 If the alarm reports this verdict, **check the tick logs before touching
-Postgres.** Refusals accrued at ~29.5/day through August, so a window of N
-records only reaches back N/29.5 days. On 2026-08-22 the active deployment was
-5.5 days old and healthy — 71 of 71 scheduled ticks fired, zero errors — but sat
-at index 206 behind 206 refusals, so a 200-record window could not see it and
-the alarm read as if retention had died.
+Postgres.** It means none of the newest 100 non-refusal records reached a
+running state, so the deciding deployment is older than the window.
 
-`--limit 1000` (the CLI maximum) buys ~34 days. When even that saturates, the
-deciding record is *older than the window*, not missing:
+The check used to read the plain history. A 200-record window missed a healthy
+runner on 2026-08-22, and the CLI's 1000-record maximum filled with refusals on
+2026-11-22 above a 24-day-old active deployment that was ticking every 15
+minutes. With refusals filtered out, only deploys and builds count toward the
+window, so saturation now takes a long run of failed or cancelled builds. Look
+for those, then confirm the active deployment is ticking:
 
 ```
-# authoritative pointer to the active deployment, immune to refusal depth
 railway logs --project "$RAILWAY_PROJECT_ID" --environment production \
-  --service umami-retention
+  --service umami-retention --since 1h
 ```
 
-A redeploy also clears it by minting a fresh record at index 0. The Railway
-GraphQL field `serviceInstance.latestDeployment` names the active deployment
-directly and would remove this depth limit permanently; the CLI exposes no
-equivalent (`railway status --json` returns only `{id, name}` per service).
+A redeploy also clears it by minting a fresh record at index 0.
 
 The runtime-image migration and the retention runner are separate gates. Do
 not start retention until the composite-index migration has succeeded and the

@@ -23,6 +23,16 @@ test('UCDA keeps farmgate ranges as low/high rows and FOT prices in USD per lb',
   assert.equal(parseUcda(ordinal, '2026-10-30').length, 17, 'any ordinal suffix item is ignored in the date line');
 });
 
+test('UCDA reads a report whose farmgate title is split across text items', () => {
+  // From 2026-11 the PDF emits "WEEK’S", "FARMGATE" and "PRICE RANGE IN UGX/KILO" as separate items.
+  const split = JSON.parse(readFileSync(new URL('./fixtures/food-prices/ucda-2026-11-23.json', import.meta.url), 'utf8'))[0];
+  const rows = parseUcda(split, '2026-11-23');
+  assert.deepEqual(rows.filter(r => r.item.startsWith('Robusta Kiboko')).map(r => r.price), [5000, 6000]);
+  assert.deepEqual(rows.filter(r => r.item.startsWith('Arabica Drugar (clean)')).map(r => r.price), [15000, 16000]);
+  assert.ok(rows.some(r => r.marketType === 'export'));
+  assert.ok(rows.every(r => r.price > 0 && r.date === '2026-11-23'));
+});
+
 test('UCDA rejects a different date or a changed layout', () => {
   assert.throws(() => parseUcda(page(), '2026-10-23'), /date mismatch/);
   assert.throws(() => parseUcda(page().filter(item => item.text !== 'Kiboko'), '2026-10-30'), /format changed/);

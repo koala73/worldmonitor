@@ -123,6 +123,12 @@ function makeFetchStub(provider, { failAtomicConsume = false, stateRecord = 'use
       throw new Error('Redis unavailable');
     }
 
+    // The per-IP callback limiter (an Upstash sliding window) admits everyone here.
+    if (url.startsWith(REDIS_URL) && String(init?.body ?? '').includes(`${provider}-oauth-callback`)) {
+      const parsed = JSON.parse(init.body);
+      return Array.isArray(parsed[0]) ? jsonResponse(parsed.map(() => ({ result: [29, 30] }))) : jsonResponse({ result: [29, 30] });
+    }
+
     if (url === config.tokenUrl) {
       calls.tokenExchanges += 1;
       return jsonResponse(config.tokenResponse);

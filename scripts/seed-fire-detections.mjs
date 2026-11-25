@@ -7,7 +7,7 @@
 //   - startCommand: node seed-fire-detections.mjs
 //   - Cron schedule: "*/10 * * * *" (every 10min UTC)
 
-import { getRedisCredentials, loadEnvFile, readSeedSnapshot, redisCommand, runSeed, withRetry, writeExtraKey, MAX_PAYLOAD_BYTES } from './_seed-utils.mjs';
+import { getRedisCredentials, loadEnvFile, readExistingSeedMeta, readSeedSnapshot, redisCommand, runSeed, withRetry, writeExtraKey, MAX_PAYLOAD_BYTES } from './_seed-utils.mjs';
 import { buildEnvelope } from './_seed-envelope-source.mjs';
 import { compactWildfireDashboardPayload, WILDFIRE_CANONICAL_DETECTION_LIMIT } from './_wildfire-dashboard.mjs';
 import {
@@ -165,7 +165,7 @@ async function main() {
     // returns false, then afterValidationSkip records the current diagnosis.
     validateFn: hasCompleteWorldwideWildfireCoverage,
     // 2h — deliberately BELOW the 6h health gate (maxStaleMin 360). Do NOT "fix" this
-    // by raising it to satisfy tests/seed-ttl-outlives-staleness-fleet: doing so DOWNGRADES
+    // by raising it (SEED_META.wildfires sets expiryIsTheAlarm for this): doing so DOWNGRADES
     // a safety alarm. Verified against classifyKey with the seeder dead for 3h:
     //
     //   ttl 2h (this):  wildfires -> EMPTY (crit)   — ops is paged, panel blanks honestly
@@ -201,7 +201,11 @@ async function main() {
     schemaVersion: 1,
     maxStaleMin: 360,
     beforePublish: persistSourceSnapshots,
-    afterPublish: canadianWildfireAfterPublish,
+    // afterPublish runs before runSeed rewrites seed-meta, so this reads the
+    // previous run and lets a Canadian subsource failure count its streak.
+    afterPublish: async (data) => canadianWildfireAfterPublish(data, {
+      previousMeta: await readExistingSeedMeta('wildfire', 'fires'),
+    }),
     // Success path only: the marker follows the summary extra key and the
     // canonical seed-meta, never a validation skip or a preserved last-good run.
     afterFreshness: markSummaryActivated,

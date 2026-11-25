@@ -131,7 +131,7 @@ describe('extraction prompt', () => {
     const productName = 'Full Fat Fresh Milk';
     const schema = await captureSchema(productName);
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true, data: { extract: { productName, price: null } } }), {
+      new Response(JSON.stringify({ success: true, data: { json: { productName, price: null } } }), {
         status: 200,
       }),
     );
@@ -141,15 +141,17 @@ describe('extraction prompt', () => {
 
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(request.body)) as {
-      extract: { prompt: string; schema: { properties: Record<string, { description: string }> } };
+      formats: Array<string | { type: string; prompt: string; schema: { properties: Record<string, { description: string }> } }>;
     };
-    const fieldDescriptions = Object.values(body.extract.schema.properties)
+    const jsonFormat = body.formats.find((format) => typeof format !== 'string' && format.type === 'json');
+    if (!jsonFormat || typeof jsonFormat === 'string') throw new Error('Missing Firecrawl JSON format');
+    const fieldDescriptions = Object.values(jsonFormat.schema.properties)
       .map((property) => property.description)
       .join(' ');
-    expect(body.extract.prompt).toBe(schema.prompt);
-    expect(body.extract.prompt).toContain('Extract the retail price');
+    expect(jsonFormat.prompt).toBe(schema.prompt);
+    expect(jsonFormat.prompt).toContain('Extract the retail price');
     expect(fieldDescriptions).toContain('Retail price');
-    expect(`${body.extract.prompt} ${fieldDescriptions}`.match(/\d/g) ?? []).toEqual([]);
+    expect(`${jsonFormat.prompt} ${fieldDescriptions}`.match(/\d/g) ?? []).toEqual([]);
   });
 
   it('still tells the extractor how to handle a split price', async () => {

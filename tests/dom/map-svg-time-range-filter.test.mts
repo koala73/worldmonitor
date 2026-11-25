@@ -103,6 +103,17 @@ it('keeps every record when the window is ALL', async () => {
   expect(slices.militaryVesselClusters).toHaveLength(2);
 });
 
+it('times a fire by its detection instant, as DeckGLMap and the globe do', async () => {
+  // acq_date is a day, so a 1H or 6H window keyed on it hid every fire seen today.
+  const map = await mapWith('6h');
+  map.firmsFireData = [
+    { id: 'seen-recently', acq_date: stale.toISOString(), detected_at: fresh.getTime() },
+    { id: 'seen-days-ago', acq_date: fresh.toISOString(), detected_at: stale.getTime() },
+    { id: 'no-instant', acq_date: fresh.toISOString() },
+  ];
+  expect(ids(map.overlayFeedSlices().fires)).toEqual(['seen-recently', 'no-instant']);
+});
+
 it('keeps records without a parseable date, matching DeckGLMap', async () => {
   const map = await mapWith('1h');
   map.outages = [{ id: 'undated', pubDate: undefined }, { id: 'invalid', pubDate: new Date('nope') }];

@@ -645,6 +645,71 @@ export function clusterTexts(texts, opts = {}) {
 
 // Delivery and cross-build coverage must agree on punctuation and attribution.
 const NORMALIZED_TITLE_SCAN = 2_000;
+// Question marks across scripts, Greek ';' (U+037E) included. A false match
+// only gives a headline its own label; a miss merges a question into the report.
+const CLASSIFY_QUESTION_RE = /[\u003F\u003B\u037E\u055E\u061F\u0705\u1367\u203D\u2047\u2048\u2049\u2753\u2E2E\uA60F\uFE16\uFE56\uFF1F][^\p{L}\p{N}]*(?:[-–—|][^?\u061F\uFF1F]*)?$/u;
+// U.S. and U.K. are one word, as US and UK are.
+const DOTTED_ABBREVIATION_RE = /(?<![\p{L}\p{N}])(?:\p{L}\.){2,}/gu;
+// Anything between letters that is not a letter, number, space or apostrophe
+// is a word break (re-sign, re\u00adsign, re/sign are not resign). Enumerating
+// separators always misses one; an apostrophe stays inside its word (UAE's).
+const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[^\p{L}\p{N}\s'\u2018\u2019\u02BC]+(?=[\p{L}\p{N}])/gu;
+// A credit is a bare outlet host: name.tld, www.name.tld, or name under a
+// country second level (bbc.co.uk). Any other dotted or underscored run
+// (mines.confirmed.com) is headline text.
+const BARE_HOST_RE = /^(?:www\.)?[\p{L}\p{N}-]+\.(?:(?:co|com|net|org|gov|ac|edu)\.[a-z]{2}|[\p{L}\p{N}-]+)$/u;
+
+/**
+ * The title without its outlet credits, or null when a stripped credit is not
+ * a bare host (a clause ending in a domain) or the chain is too long to check.
+ * Credits come off one at a time, as normalizeNewsStoryTitle strips them.
+ * @param {string} lower
+ */
+function stripOutletCredits(lower) {
+  let rest = lower;
+  for (let i = 0; ; i += 1) {
+    const domainless = stripOneAttribution(rest, 'domain', false);
+    const credit = rest.slice(domainless.length).trim().replace(/^[-–—|]\s*/, '');
+    if (credit && !BARE_HOST_RE.test(credit)) return null;
+    const next = stripOneAttribution(domainless, 'publisher', false);
+    if (next === rest) return rest;
+    if (i === 8) return null;
+    rest = next;
+  }
+}
+
+/**
+ * The identity the AI classify cache keys a headline on (#10976): its story,
+ * so outlet suffixes, case and punctuation share one label. The exact title
+ * is kept when sharing could hand one headline's label to different text:
+ * under four words (no story key), or a stripped credit that is not a bare
+ * host (several words, or clause words joined by dots or underscores). A
+ * question in any script keeps its own label, anything but an apostrophe
+ * between letters splits words (re-sign, resign), and a headline that still
+ * carries combining marks keeps its exact title.
+ * @param {string} title
+ */
+export function classifyCacheIdentity(title) {
+  if (typeof title !== 'string') return '';
+  // NFC first: a decomposed accent is the precomposed letter. Marks that
+  // remain are vowels or meaning in Arabic, Hebrew and Indic scripts, which
+  // the story normalizer deletes, so such a headline keeps its exact title.
+  const lower = title.normalize('NFC').toLowerCase();
+  if (/\p{M}/u.test(lower)) return lower;
+  const rest = stripOutletCredits(lower);
+  if (rest === null) return lower;
+  // Past the story scan the key is a prefix and the question test reads the
+  // tail, so a padded question would take the report's label: keep the title.
+  if (rest.length > NORMALIZED_TITLE_SCAN) return lower;
+  // Split in-word dashes after the credits are gone, so "Hormuz—Reuters" still strips.
+  const words = rest.replace(DOTTED_ABBREVIATION_RE, (run) => run.replaceAll('.', ''));
+  const story = normalizeNewsStoryTitle(words.replace(IN_WORD_HYPHEN_RE, ' '));
+  if (story.split(' ').length < 4) return lower;
+  // The question test reads the same credit-stripped text the key does, bounded
+  // above, so stripped whitespace cannot move the '?' out of its window.
+  return story + (CLASSIFY_QUESTION_RE.test(rest) ? ' ?' : '');
+}
+
 export function normalizeNewsStoryTitle(title) {
   if (typeof title !== 'string') return '';
   const stripped = stripAttributionSuffix(title.toLowerCase(), { allowPipe: false });
@@ -666,7 +731,9 @@ export const NEWS_PUBLISHER_COVERAGE_PREFIX = 'news:publisher-coverage:v2:';
 export function newsPublisherCoverageKey(title) {
   if (typeof title !== 'string' || !title) return '';
   const normalized = normalizeNewsStoryTitle(title);
-  // Short or unsegmented headlines use the literal identity, like the relay.
-  const identity = normalized.split(' ').length >= 4 ? normalized : title;
+  // Short or unsegmented headlines use the literal identity, like the relay,
+  // and so does one whose stripped credit is a clause, not an outlet: that
+  // wording must not take another headline's publisher count.
+  const identity = normalized.split(' ').length >= 4 && stripOutletCredits(title.toLowerCase()) !== null ? normalized : title;
   return `${NEWS_PUBLISHER_COVERAGE_PREFIX}${bytesToHex(sha256(encoder.encode(identity)))}`;
 }

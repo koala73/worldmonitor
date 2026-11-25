@@ -94,6 +94,7 @@ jobs:
           # Restate the pair on the hand-written HTML, docs and blog surfaces,
           # or seo-geo-residue fails on any new ranked count.
           npm run resilience:coverage
+          node scripts/check-crawlable-live-pulse.mjs
           npm run build:crawlable-corpus
           npm run build:sitemap
           npm run build:llms-full

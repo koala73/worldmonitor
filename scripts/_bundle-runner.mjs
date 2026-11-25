@@ -74,17 +74,23 @@ const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 export const REDIS_READ_TIMEOUT_MS = 5_000;
 
 async function readRedisKey(key) {
-  if (!REDIS_URL || !REDIS_TOKEN) return null;
+  return (await readRedisKeyOrUndefined(key)) ?? null;
+}
+
+// Like readRedisKey, but a failed read returns undefined so callers that must
+// not mistake an unreadable key for a missing one can tell them apart.
+async function readRedisKeyOrUndefined(key) {
+  if (!REDIS_URL || !REDIS_TOKEN) return undefined;
   try {
     const resp = await fetch(`${REDIS_URL}/get/${encodeURIComponent(key)}`, {
       headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
       signal: AbortSignal.timeout(REDIS_READ_TIMEOUT_MS),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) return undefined;
     const body = await resp.json();
     return body.result ? JSON.parse(body.result) : null;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
@@ -161,6 +167,69 @@ async function writeBundleHeartbeat(label) {
     console.warn(`[Bundle:${label}] tick heartbeat write failed: ${err instanceof Error ? err.message : err}`);
     return false;
   }
+}
+
+export function sectionFailureKey(label, sectionLabel) {
+  return `bundle:section-failure:${label}:${sectionLabel}`;
+}
+
+export function sectionDeferralKey(label, sectionLabel) {
+  return `bundle:section-deferral:${label}:${sectionLabel}`;
+}
+
+/**
+ * TTL for a section's outcome records: outlives the 2x-interval stall
+ * threshold with a full interval to spare.
+ */
+export function sectionOutcomeTtlSeconds(section) {
+  return Math.ceil(Math.max(DAY, section.intervalMs * (STALL_AGE_INTERVAL_MULTIPLE + 1)) / 1000);
+}
+
+/**
+ * Record each section's failed runs and deferrals so a later stall can name
+ * its cause.
+ *
+ * The stall guard below sees only seed-meta age, and the age looks the same
+ * whether the section lost every budget race or was admitted and failed at the
+ * source on every tick. Both produced the same "starvation" line on
+ * seed-bundle-macro: Amman on 2026-11-16 (#10833) and Food-MIT on 2026-11-19,
+ * when viwanda.go.tz returned HTTP 500 site-wide. A failure alone does not
+ * settle it: a section can fail once, its upstream can recover, and it can
+ * then lose every budget race. So deferrals are recorded too, and a stall is
+ * blamed on the source only when nothing deferred the section after its last
+ * failed run. A later success advances seed-meta past both records, which
+ * retires them. All writes go out in one pipeline at the end of the tick.
+ */
+// Returns the keys Redis confirmed, so a caller can depend on a record landing.
+async function writeSectionOutcomes(label, commands) {
+  const written = new Set();
+  if (!commands.length || !REDIS_URL || !REDIS_TOKEN) return written;
+  try {
+    const resp = await fetch(`${REDIS_URL}/pipeline`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${REDIS_TOKEN}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-bundle-runner/1.0',
+      },
+      body: JSON.stringify(commands),
+      signal: AbortSignal.timeout(REDIS_READ_TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      console.warn(`[Bundle:${label}] section outcome records not written: HTTP ${resp.status}`);
+      return written;
+    }
+    const replies = await resp.json().catch(() => null);
+    const rejected = [];
+    for (const [i, command] of commands.entries()) {
+      if (Array.isArray(replies) && replies[i]?.result === 'OK') written.add(command[1]);
+      else rejected.push(command[1]);
+    }
+    if (rejected.length) console.warn(`[Bundle:${label}] section outcome records not written: ${rejected.join(', ')}`);
+  } catch (err) {
+    console.warn(`[Bundle:${label}] section outcome records not written: ${err instanceof Error ? err.message : err}`);
+  }
+  return written;
 }
 
 /**
@@ -637,6 +706,11 @@ export async function runBundle(label, sections, opts = {}) {
   }
 
   const t0 = Date.now();
+  // The deployed commit, stamped on failure records so a stall can tell a
+  // failure on this build from one on the build it replaced. Railway's
+  // variable only: GITHUB_SHA or VERCEL_GIT_COMMIT_SHA on a test or CI host
+  // must not make two runs of one build look different.
+  const currentBuild = String(process.env.RAILWAY_GIT_COMMIT_SHA ?? '').trim();
   const budgetLabel = Number.isFinite(maxBundleMs) ? `, budget ${Math.round(maxBundleMs / 1000)}s` : '';
   console.log(`[Bundle:${label}] Starting (${sections.length} sections${budgetLabel})`);
   if (disabledMembers.size > 0) {
@@ -662,6 +736,12 @@ export async function runBundle(label, sections, opts = {}) {
     : null;
 
   let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0, stalled = 0, publishBlocked = 0;
+  // Sent in one pipeline after the loop, so Redis never eats section budget.
+  const outcomeWrites = [];
+  const recordOutcome = (key, section, record) => {
+    outcomeWrites.push(['SET', key, JSON.stringify(record), 'EX', sectionOutcomeTtlSeconds(section)]);
+  };
+  const stalledSections = [];
 
   let disabled = 0;
   for (const section of sections) {
@@ -724,15 +804,14 @@ export async function runBundle(label, sections, opts = {}) {
       // exceeds STALL_AGE_INTERVAL_MULTIPLE of its own interval, it has been
       // losing the budget race across whole intervals — a stall, and it must
       // be loud regardless of what else ran (see the exit gate below).
+      // The explanation is printed after the loop, once the section's failure
+      // record has been read: a stale section that was admitted and failed at
+      // the source is not starved, and budget or order changes cannot fix it.
       if (freshness?.fetchedAt != null && Date.now() - freshness.fetchedAt > section.intervalMs * STALL_AGE_INTERVAL_MULTIPLE) {
-        const ageMin = Math.round((Date.now() - freshness.fetchedAt) / 60_000);
-        const intervalMin = Math.round(section.intervalMs / 60_000);
-        console.error(
-          `  [${section.label}] Deferred, but its data is ${ageMin}min old — over ${STALL_AGE_INTERVAL_MULTIPLE}x its ${intervalMin}min interval. `
-          + 'This is starvation, not pressure: the section keeps losing the budget race while the bundle stays green.',
-        );
+        stalledSections.push({ section, fetchedAt: freshness.fetchedAt, ageMs: Date.now() - freshness.fetchedAt });
         stalled++;
       }
+      recordOutcome(sectionDeferralKey(label, section.label), section, { at: Date.now() });
       continue;
     }
 
@@ -784,6 +863,83 @@ export async function runBundle(label, sections, opts = {}) {
       if (status === 'GRACEFUL_FAIL') gracefulFailed++;
       else if (status === 'PUBLISH_BLOCKED') publishBlocked++;
       else failed++;
+      recordOutcome(sectionFailureKey(label, section.label), section, {
+        at: Date.now(),
+        status,
+        reason: (result.reason || 'unknown').replace(/\s+/g, ' '),
+        ...(currentBuild ? { build: currentBuild } : {}),
+      });
+    }
+  }
+
+  // Read before this tick's records are written, so the deferral that made
+  // the stall does not count as a deferral after the failure.
+  const stallCauses = await Promise.all(stalledSections.map(async (stall) => {
+    const [failure, deferral] = await Promise.all([
+      readRedisKeyOrUndefined(sectionFailureKey(label, stall.section.label)),
+      readRedisKeyOrUndefined(sectionDeferralKey(label, stall.section.label)),
+    ]);
+    if (failure === undefined) return { historyUnread: true };
+    // Only a failure after the last good fetch explains the age. An older one
+    // was followed by a success, so the section has been starved since.
+    if (!Number.isFinite(failure?.at) || failure.at <= stall.fetchedAt) return null;
+    // An unreadable deferral record is not proof that nothing deferred it.
+    if (deferral === undefined) return { failure, deferredAfter: null, deferralUnknown: true };
+    const deferredAfter = Number.isFinite(deferral?.at) && deferral.at > failure.at ? deferral.at : null;
+    return { failure, deferredAfter, deferralUnknown: false };
+  }));
+  const writtenOutcomes = await writeSectionOutcomes(label, outcomeWrites);
+  let failingAtSource = 0, unknownCause = 0, notYetRunOnBuild = 0, exemptStalls = 0;
+  for (const [i, { section, ageMs }] of stalledSections.entries()) {
+    const ageMin = Math.round(ageMs / 60_000);
+    const intervalMin = Math.round(section.intervalMs / 60_000);
+    const head = `  [${section.label}] Deferred, but its data is ${ageMin}min old — over ${STALL_AGE_INTERVAL_MULTIPLE}x its ${intervalMin}min interval. `;
+    const cause = stallCauses[i];
+    const lastRun = cause?.failure
+      ? `its last admitted run at ${new Date(cause.failure.at).toISOString()} ended ${cause.failure.status} (${cause.failure.reason})`
+      : '';
+    if (cause?.historyUnread) {
+      unknownCause++;
+      console.error(
+        `${head}The cause is unknown: its failure record could not be read, so a failing source cannot be ruled out. `
+        + 'Check both the upstream and the budget.',
+      );
+    } else if (cause?.deferralUnknown) {
+      unknownCause++;
+      console.error(
+        `${head}This may be starvation: ${lastRun}, but its deferral record could not be read, `
+        + 'so a later budget loss cannot be ruled out. Check both the upstream and the budget.',
+      );
+    } else if (cause && cause.deferredAfter == null && currentBuild
+      && typeof cause.failure.build === 'string' && cause.failure.build && cause.failure.build !== currentBuild) {
+      // The failure ran on the build this one replaced, and this build has not
+      // run the section yet, so nothing says its source still fails. Seen on
+      // seed-bundle-macro 2026-11-24: Food-UCDA's parser fix deployed after
+      // its last failed run, and the next tick deferred it. One more deferral
+      // after this tick's makes it starvation, which fails the tick, so the
+      // exemption holds only when that deferral record was saved.
+      notYetRunOnBuild++;
+      const base = `${head}Not yet run on this build: ${lastRun} on build ${cause.failure.build.slice(0, 12)}, `
+        + `and this build (${currentBuild.slice(0, 12)}) has not run it`;
+      if (writtenOutcomes.has(sectionDeferralKey(label, section.label))) {
+        exemptStalls++;
+        console.error(`${base}.`);
+      } else {
+        console.error(`${base}, but this tick's deferral record was not saved, so the next tick could not tell it was deferred. It fails this tick.`);
+      }
+    } else if (cause && cause.deferredAfter == null) {
+      failingAtSource++;
+      console.error(
+        `${head}This is a failing source, not starvation: ${lastRun}, and no deferral has been recorded since. `
+        + 'Check the upstream before changing budget or order.',
+      );
+    } else if (cause) {
+      console.error(
+        `${head}This is starvation, not pressure: ${lastRun}, and a tick deferred it again at `
+        + `${new Date(cause.deferredAfter).toISOString()}. Check both the upstream and the budget.`,
+      );
+    } else {
+      console.error(`${head}This is starvation, not pressure: the section keeps losing the budget race while the bundle stays green.`);
     }
   }
 
@@ -822,7 +978,11 @@ export async function runBundle(label, sections, opts = {}) {
   // with a graceful skip, where real work published and one source blipped. A
   // tick that published NOTHING has no successful work to vouch for it.
   const starvedTick = ran === 0 && deferred > 0;
-  const exitsNonZero = failed > 0 || starvedTick || stalled > 0;
+  // A stall whose only failure ran on an earlier build, and whose deferral was
+  // saved, is reported but does not fail the tick: see notYetRunOnBuild above.
+  // Every other stall does.
+  const stallsFailTick = stalled - exemptStalls > 0;
+  const exitsNonZero = failed > 0 || starvedTick || stallsFailTick;
   if (starvedTick) {
     console.error(
       `[Bundle:${label}] ran:0 while ${deferred} due section(s) were deferred — this tick published nothing and shed work. `
@@ -835,9 +995,17 @@ export async function runBundle(label, sections, opts = {}) {
     // exemption does not soften this: a 2x-interval-old deferral cannot be
     // produced by a single transient blip, so exiting non-zero here pages on
     // a genuinely stalled member, not on alert fatigue.
-    console.error(
-      `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — starvation while the bundle reported progress. Exiting non-zero.`,
-    );
+    // The verdict speaks only for the stalls. When none fails the tick it says
+    // so rather than "Exiting 0": a hard failure or the terminal hook can still
+    // fail the process, and each reports itself.
+    const unknownField = unknownCause > 0 ? `, ${unknownCause} with an unknown cause` : '';
+    const notYetRunField = notYetRunOnBuild > 0 ? `, ${notYetRunOnBuild} not yet run on this build` : '';
+    const verdict = stallsFailTick ? 'Exiting non-zero.' : 'No stall fails this tick.';
+    const starvedByBudget = stalled - failingAtSource - unknownCause - notYetRunOnBuild;
+    console.error(starvedByBudget === stalled
+      ? `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — starvation while the bundle reported progress. ${verdict}`
+      : `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — `
+        + `${failingAtSource} failing at the source, ${starvedByBudget} starved by the budget${unknownField}${notYetRunField}. ${verdict}`);
   } else if (failed === 0 && gracefulFailed > 0) {
     // Graceful-only run (transient skips, no hard failures): exit 0 so Railway
     // does not paint CRASHED and fire a spurious alert. Real staleness is caught

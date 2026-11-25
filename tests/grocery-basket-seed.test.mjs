@@ -236,11 +236,13 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
     'table salt': 'salt', 'potatoes': 'potatoes', 'fresh whole milk': 'milk', 'white granulated': 'sugar',
     'spaghetti pasta': 'pasta', 'white bread': 'bread',
   };
+  const firecrawlRequests = [];
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     const request = JSON.parse(options.body);
-    if (url === 'https://api.firecrawl.dev/v1/scrape') {
+    if (url === 'https://api.firecrawl.dev/v2/scrape') {
+      firecrawlRequests.push(request);
       // A learned route must pass the same checks as fresh search results.
-      return Response.json({ data: { extract: request.url === learnedUrl
+      return Response.json({ success: true, data: { json: request.url === learnedUrl
         ? offer('Whole milk, 2 litres', 6, 2, 'l') : null } });
     }
     assert.equal(url, 'https://api.exa.ai/search');
@@ -286,6 +288,16 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
   assert.equal(prices.eggs, 4);
   assert.equal(prices.oil, 5);
   assert.equal(prices.milk, 3);
+  const learnedRequest = firecrawlRequests.find(({ url }) => url === learnedUrl);
+  assert.ok(learnedRequest, 'the learned item used Firecrawl v2');
+  assert.equal(learnedRequest.maxAge, 0);
+  // v2's server default is 60 s; it must give up before the seeder's 30 s abort.
+  assert.ok(learnedRequest.timeout < 30_000, 'Firecrawl server timeout fits inside the client abort');
+  assert.equal(learnedRequest.formats.length, 1);
+  assert.equal(learnedRequest.formats[0].type, 'json');
+  assert.equal(learnedRequest.formats[0].schema.type, 'object');
+  assert.match(learnedRequest.formats[0].prompt, /offer/i);
+  assert.ok(!('extract' in learnedRequest));
   for (const itemId of ['salt', 'potatoes', 'sugar', 'pasta', 'bread']) assert.equal(prices[itemId], null);
 
   const india = await fetchCountryItems(COUNTRIES.find(({ code }) => code === 'IN'), {

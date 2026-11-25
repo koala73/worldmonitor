@@ -526,13 +526,13 @@ either read-only Railway subprocess can start.
 | `DEFERRED_AMBIGUOUS` | Preserve hold and defer | Any incomplete history, budget exhaustion, timeout, 5xx, 408/409/429, or post-send ambiguity |
 | `MANUAL_REQUIRED_AFTER_MUTATION` | Block automation | Durable mutation marker or barrier; use the protected manual recovery evidence above |
 
-### Bootstrap R2 publisher contract
+### Bootstrap KV publisher contract
 
-The public bootstrap tiers use the dedicated private bucket
-`worldmonitor-bootstrap`. Managed `r2.dev` access stays disabled and the bucket
-has no custom domain; clients continue to enter through `/api/bootstrap` so the
-WAF, origin policy, rate limits, telemetry, and future access controls remain in
-the request path.
+The public bootstrap tiers are published to a dedicated Cloudflare Workers KV
+namespace under the bare tier keys `fast` and `slow` using the shared versioned
+envelope (`shared/bootstrap-tier-envelope.js`). Clients continue to enter
+through `/api/bootstrap` and the edge Worker so the WAF, origin policy, rate
+limits, telemetry, and access controls remain in the request path.
 
 This service is an always-on publisher, not a Railway cron. Configure it with
 `Dockerfile.publish-bootstrap-tiers` (the root application Dockerfile does not
@@ -540,40 +540,40 @@ contain the publisher) and start command
 `node scripts/publish-bootstrap-tiers.mjs --loop`, **no cron schedule**, and
 an empty watch-path list (whole-repository watching). It publishes both tiers
 on startup, then fast every two minutes and slow every ten minutes. Keep Redis
-authoritative: until the publisher and later rollout gates pass,
-`/api/bootstrap` continues to serve its existing Redis assembly.
+authoritative: if KV is unavailable or stale, `/api/bootstrap` falls back to
+its existing Redis assembly.
 
-The environment contract is deliberately split by consumer:
+The environment contract is scoped to the publisher and its KV sink:
 
 | Scope | Variables | Install in | Capability |
 |---|---|---|---|
-| Shared routing and tier shape | `R2_ACCOUNT_ID`, optional `R2_ENDPOINT`, `R2_BOOTSTRAP_BUCKET=worldmonitor-bootstrap`, `IRAN_EVENTS_ENABLED` | Railway production and Vercel production | Names plus the feature flag that controls `iranEvents` tier membership; values must match |
-| Publisher | `R2_BOOTSTRAP_ACCESS_KEY_ID`, `R2_BOOTSTRAP_SECRET_ACCESS_KEY` | Railway production publisher only | Publisher can PUT and GET only in `worldmonitor-bootstrap` |
-| Edge reader | `R2_BOOTSTRAP_READ_KEY_ID`, `R2_BOOTSTRAP_READ_SECRET` | Vercel production only | Edge can GET; it cannot PUT or DELETE, and cannot read `worldmonitor-data` |
+| Shared tier shape | `IRAN_EVENTS_ENABLED` | Railway production and Vercel production | Feature flag that controls `iranEvents` tier membership; values must match |
+| Redis source | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Railway production publisher | Read-only Redis pipeline assembly of the canonical tier keys |
+| KV sink | `KV_BOOTSTRAP_ACCOUNT_ID`, `KV_BOOTSTRAP_NAMESPACE_ID`, `KV_BOOTSTRAP_WRITE_TOKEN` | Railway production publisher only | Publisher PUTs `fast` and `slow` envelopes into the bootstrap KV namespace via Cloudflare REST API |
 
-Preview and development do not receive either credential; missing credentials
-must use the Redis path. The publisher must not fall back to any
-`CLOUDFLARE_R2_*` account, bucket, key, secret, or API token. Never copy the
-publisher credential into Vercel or the edge credential into Railway, and never
-add a `VITE_` alias for any bootstrap R2 credential. Set
-`IRAN_EVENTS_ENABLED` explicitly to the same value in both production services;
-otherwise the publisher and edge handler resolve different tier contents.
+Preview and development do not receive KV write credentials; missing KV
+credentials fail the publisher fast (`Bootstrap publisher KV credentials are missing`).
+The Cloudflare Worker reads the namespace via its KV binding rather than REST
+credentials. Never copy `KV_BOOTSTRAP_WRITE_TOKEN` into Vercel and never add a
+`VITE_` alias for any bootstrap KV credential. Set `IRAN_EVENTS_ENABLED`
+explicitly to the same value in both Railway and Vercel production; otherwise
+the publisher and origin handler resolve different tier contents.
 
 Provision and release in this order:
 
-1. Create the repo-root Railway service, install only the shared and publisher
-   variables above, and confirm the live watch paths and lack of a cron schedule.
-2. Deploy the publisher before enabling shadow measurement or serving from R2.
-3. Parse both `fast.json` and `slow.json`, then verify `generatedAt` advances in
-   two successive publishes for each tier.
-4. Install only the shared and read-only variables in Vercel production. Keep
-   them absent from preview and development.
-5. Run the negative permission probes: publisher cannot access
-   `worldmonitor-data`; edge cannot write/delete in `worldmonitor-bootstrap` and
-   cannot read `worldmonitor-data`.
+1. Create the repo-root Railway service, install the variables above, and
+   confirm the live watch paths and lack of a cron schedule.
+2. Deploy the publisher and verify `[bootstrap-kv] published` logs succeed for
+   both `fast` and `slow`, with `generatedAt` advancing in successive publishes.
+3. Verify the edge Worker reads fresh `fast` and `slow` envelopes from the same
+   KV namespace binding.
 
-Rotate one consumer at a time: create a replacement token, update that consumer,
-verify its publish or read with the replacement, then revoke the old token. On
+Rotate the KV write token by creating a replacement token targeted to the
+Cloudflare account (`KV_BOOTSTRAP_ACCOUNT_ID`) with the account-scoped
+`Workers KV Storage: Edit` permission (note: Cloudflare scopes this permission
+to the account rather than a single namespace, so it grants KV access beyond
+the bootstrap namespace), updating `KV_BOOTSTRAP_WRITE_TOKEN` in Railway
+production, verifying the next publish succeeds, and revoking the old token. On
 suspected compromise, revoke first; Redis fallback preserves availability while
 a replacement is issued. Never log, commit, or copy credential values into an
 incident note.
@@ -1661,7 +1661,7 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 
 | Service | Start command | Inferred cadence | Domain |
 |---|---|---|---|
-| seed-aaii-sentiment | `node scripts/seed-aaii-sentiment.mjs` | weekly (7d TTL) | AAII bull/bear investor sentiment survey |
+| seed-aaii-sentiment | `node scripts/seed-aaii-sentiment.mjs` | weekly (21d TTL) | AAII bull/bear investor sentiment survey |
 | seed-market-quotes | `node scripts/seed-market-quotes.mjs` | **planned — not provisioned** | Equity index / stock bootstrap quotes (Yahoo + Finnhub + Alpha Vantage) |
 | seed-commodity-quotes | `node scripts/seed-commodity-quotes.mjs` | ~30 min (30m TTL) | Commodity + extended-gold bootstrap quotes |
 | seed-crypto-sectors | `node scripts/seed-crypto-sectors.mjs` | **planned — not provisioned** | CoinGecko crypto sector performance |
@@ -1672,7 +1672,7 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-comtrade-bilateral-hs4-ext | `node scripts/seed-comtrade-bilateral-hs4-ext.mjs` | **`0 6 15 * *` (monthly, provisioned 2026-11-18, service `0d46fcc7-19ec-484f-ab8e-506510205704`)** | UN Comtrade bilateral HS4 for 16 extended headings (rubber, cocoa, coconut and palm kernel oil, fruit, fish and seafood, processed food, oleochemicals), one request per reporter (~197 calls) into `comtrade:bilateral-hs4-ext:*`; mid-month so it does not share a day of the 500/day quota with the core run |
 | seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
-| seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
+| seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages direct, and through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` only for a page the direct read could not answer |
 | seed-no2-activity | `node seed-no2-activity.mjs` | **`20 6 * * *` (provisioned 2026-10-27, service `359e5bd7-4160-41d6-8792-f4aff20a3006`)** (health budget 4320 min) | Global Sentinel-5P TROPOMI tropospheric NO2 activity dataset: 199 regions (167 countries from the repository geometry plus 32 industrial clusters), each with a year-over-year direction against the same window in the prior three years; the China activity nowcast reads the four Chinese clusters as its atmosphere family (#9722). 199 CDSE Statistical API refresh requests per run plus up to 90 backfill chunks (about 6,200 requests and 600 PU a month steady state, 1,700 requests and 2,800 PU one-time backfill); needs `CDSE_CLIENT_ID`/`CDSE_CLIENT_SECRET` |
 | seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD sea-area and coastal marine bulletins from public pages; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
 | seed-natural-events | `node seed-natural-events.mjs` | **`*/30 * * * *` (verified 2026-11-07, service `7119c932-05f5-4727-a54f-e4e2de2a907f`)** (health budget 120 min) | EONET, GDACS, NHC, HKO and western-Pacific cyclone events. Sole producer of `natural:events:v1` since 2026-11-07; it also ran as a seed-bundle-climate section until then |
@@ -1692,6 +1692,14 @@ Railway reference variables to `seed-fred-rates`; `LIVE_VIDEO_PROXY_URL` is
 unset, so the seeder uses `PROXY_URL`. The service is enrolled in
 `scripts/railway-native-autodeploy-fleet.json` with `source.checkSuites`
 `false`, like the rest of the fleet.
+
+Since 2026-11-21 the seeder reads each page direct first and uses the proxy
+only for a page the direct read could not answer. The service runs in
+asia-southeast1 with IPv6 egress off. From that region's IPv4 egress, the
+resolver read all 28 channels direct. From us-east4 IPv4 it read 24 of them as
+`bot-wall`, so the proxy stays configured as the fallback. The `stats:` log
+line reports `direct=` (verdicts read direct), `proxy=` (verdicts read through
+the proxy) and `proxied=` (channels that needed the proxy).
 
 `seed-comtrade-bilateral-hs4-ext` was provisioned on 2026-11-18 after #10939
 merged. Its config copies `seed-comtrade-bilateral-hs4`: Railpack, build

@@ -405,7 +405,7 @@ test('built welcome root hides no SSR content and links every primary reference 
     )
     .map(([tag]) => tag);
   assert.deepEqual(hiddenContentNodes, [], 'the welcome root must not hide or translate SSR content before hydration');
-  assert.match(rootContent, /ACLED/);
+  assert.match(rootContent, /GDELT/);
   assert.match(rootContent, /NASA FIRMS/);
   // Exact href of a real anchor: a substring match would accept data-href=,
   // non-anchor elements, or a longer path such as /countries/old.

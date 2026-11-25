@@ -276,15 +276,18 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "NRK",
-          "url": "https://www.nrk.no/nyheter/siste.rss"
+          "url": "https://www.nrk.no/nyheter/siste.rss",
+          "headlineLang": "no"
         },
         {
           "name": "Aftenposten",
-          "url": "https://www.aftenposten.no/rss"
+          "url": "https://www.aftenposten.no/rss",
+          "headlineLang": "no"
         },
         {
           "name": "DR Nyheder",
-          "url": "https://www.dr.dk/nyheder/service/feeds/allenyheder"
+          "url": "https://www.dr.dk/nyheder/service/feeds/allenyheder",
+          "headlineLang": "da"
         },
         {
           "name": "Arctic Today",
@@ -428,11 +431,13 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "TVN24",
-          "url": "https://tvn24.pl/swiat.xml"
+          "url": "https://tvn24.pl/swiat.xml",
+          "headlineLang": "pl"
         },
         {
           "name": "Rzeczpospolita",
-          "url": "https://www.rp.pl/rss_main"
+          "url": "https://www.rp.pl/rss_main",
+          "headlineLang": "pl"
         },
         {
           "name": "Meduza",
@@ -770,7 +775,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Asia-Plus",
-          "url": "https://asiaplustj.info/rss",
+          "url": "https://asiaplus.news/feed/",
           "lang": "ru",
           "fetchInAllLanguages": true
         },
@@ -1418,9 +1423,12 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Tages-Anzeiger",
-          "url": "https://www.tagesanzeiger.ch/rss.html",
+          "url": "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/",
           "lang": "de",
-          "fetchInAllLanguages": true
+          "fetchInAllLanguages": true,
+          "linkHosts": [
+            "tagesanzeiger.ch"
+          ]
         },
         {
           "name": "The Insider",
@@ -1683,7 +1691,8 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Asharq Business",
-          "url": "https://asharqbusiness.com/rss.xml"
+          "url": "https://asharqbusiness.com/rss.xml",
+          "headlineLang": "ar"
         },
         {
           "name": "Rudaw",
@@ -3867,6 +3876,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
           "name": "El País Uruguay",
           "url": "https://news.google.com/rss/search?q=site%3Aelpais.com.uy+when%3A7d&hl=en-US&gl=US&ceid=US%3Aen",
           "lang": "es",
+          "headlineLang": "es",
           "fetchInAllLanguages": true
         },
         {
@@ -4910,7 +4920,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Korea Times",
-          "url": "https://www.koreatimes.co.kr/www/rss/rss.xml",
+          "url": "https://feed.koreatimes.co.kr/k/allnews.xml",
           "lang": "en",
           "fetchInAllLanguages": true
         },
@@ -7095,7 +7105,8 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
     },
     {
       "name": "Correctiv",
-      "url": "https://correctiv.org/feed/"
+      "url": "https://correctiv.org/feed/",
+      "headlineLang": "de"
     },
     {
       "name": "RAND",

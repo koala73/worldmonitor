@@ -236,7 +236,7 @@ describe('Live News idle stop', () => {
     expect(getActiveLiveMedia('live-news')?.streamId).toBe(sky.id);
   });
 
-  it('returns to Ready without a notice when the tab is hidden while playing', () => {
+  it('stops a muted stream when the tab is hidden, with no idle notice, and restarts it on return', () => {
     mount();
     playFromPlaceholder();
     setHidden(true);
@@ -246,6 +246,37 @@ describe('Live News idle stop', () => {
     expect(content().textContent).toContain('Ready when you are');
     vi.advanceTimersByTime(2 * HOUR);
     expect(notice()).toBeNull();
+
+    // The viewer started it, so the return brings it back without a click.
+    setHidden(false);
+    expect(isPlaying()).toBe(true);
+    expect(notice()).toBeNull();
+  });
+
+  it('restarts a stream that was resumed from the idle notice after a hidden tab', () => {
+    mount();
+    playFromPlaceholder();
+    vi.advanceTimersByTime(HOUR);
+    expect(notice()).not.toBeNull();
+
+    button('Resume').click();
+    expect(isPlaying()).toBe(true);
+    setHidden(true);
+    expect(isPlaying()).toBe(false);
+    setHidden(false);
+    expect(isPlaying()).toBe(true);
+  });
+
+  it('leaves an idle-stopped stream stopped across a hidden tab', () => {
+    mount();
+    playFromPlaceholder();
+    vi.advanceTimersByTime(HOUR);
+    expect(notice()).not.toBeNull();
+
+    setHidden(true);
+    setHidden(false);
+    expect(isPlaying()).toBe(false);
+    expect(notice()).not.toBeNull();
   });
 
   it('clears the notice when the panel is closed', () => {

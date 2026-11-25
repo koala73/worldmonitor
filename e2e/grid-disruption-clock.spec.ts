@@ -87,7 +87,11 @@ test('enable grid clock, inspect a California warning and Tennessee coverage', a
   await expect(panel.getByText('321', { exact: true })).toBeVisible();
   await page.clock.fastForward(60_000);
   await expect(panel.getByRole('button', { name: 'Texas', exact: true })).toBeFocused();
-  await panel.getByRole('button', { name: 'Florida', exact: true }).click();
+  await page.keyboard.press('Tab');
+  await expect(panel.getByRole('button', { name: 'Florida', exact: true })).toBeFocused();
+  await page.keyboard.down('Space');
+  await page.clock.fastForward(60_000);
+  await page.keyboard.up('Space');
   await expect(panel.locator('.grid-clock-total')).toHaveText('0');
   await panel.getByRole('button', { name: 'Washington', exact: true }).click();
   await expect(panel.locator('.grid-clock-total')).toHaveText('Unknown');
