@@ -20,6 +20,9 @@ message EconomicEvent {
   string estimate = 6;
   string previous = 7;
   string unit = 8;
+  // Scheduled release instant as an RFC 3339 UTC timestamp (e.g. 2026-11-25T13:30:00.000Z).
+  // Empty when no authoritative release time is known.
+  string release_at = 9;
 }
 
 message GetEconomicCalendarResponse {

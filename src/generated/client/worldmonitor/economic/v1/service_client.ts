@@ -540,6 +540,7 @@ export interface EconomicEvent {
   estimate: string;
   previous: string;
   unit: string;
+  releaseAt: string;
 }
 
 export interface GetCrudeInventoriesRequest {

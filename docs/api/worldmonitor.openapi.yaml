@@ -47097,6 +47097,11 @@ components:
                     type: string
                 unit:
                     type: string
+                releaseAt:
+                    type: string
+                    description: |-
+                        Scheduled release instant as an RFC 3339 UTC timestamp (e.g. 2026-11-25T13:30:00.000Z).
+                         Empty when no authoritative release time is known.
         worldmonitor_economic_v1_GetCrudeInventoriesRequest:
             type: object
             description: GetCrudeInventoriesRequest is the request message for GetCrudeInventories.
