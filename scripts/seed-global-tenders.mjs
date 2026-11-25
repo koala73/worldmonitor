@@ -33,6 +33,9 @@ export const CACHE_TTL_SECONDS = 4 * 24 * 60 * 60;
 export const SOURCE_STATUS_TTL_SECONDS = 5 * 24 * 60 * 60;
 const MAX_PER_SOURCE = 100;
 const GETS_FEED_URL = 'https://www.gets.govt.nz/ExternalRSSFeed.htm';
+const GETS_ORIGIN = 'https://www.gets.govt.nz';
+const GETS_INDEX_BUDGET_MS = 75_000;
+const GETS_DETAIL_CONCURRENCY = 4;
 const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
 
 function fetchResponseTransport(url, { timeoutMs, ...fetchOptions }) {
@@ -308,11 +311,97 @@ function asItems(value) {
   return Array.isArray(value) ? value : [value];
 }
 
-export async function fetchGets({ now = Date.now(), fetchTextFn = fetchText } = {}) {
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+// GETS prints "3:00 PM 27 Nov 2026 (Pacific/Auckland UTC+13:00)" on the index and
+// "Friday, 27 November 2026 3:00 PM (Pacific/Auckland UTC+13:00)" on detail pages.
+// The offset is read from the text because New Zealand switches between +12 and +13.
+function getsPageDate(value) {
+  const raw = decodeHtml(value);
+  const day = raw.match(/\b(\d{1,2}) ([A-Za-z]{3})[A-Za-z]* (\d{4})\b/);
+  const time = raw.match(/\b(\d{1,2}):(\d{2}) ?(AM|PM)\b/i);
+  const offset = raw.match(/UTC([+-])(\d{2}):(\d{2})/);
+  const month = MONTHS.indexOf(day?.[2].toLowerCase());
+  if (!day || !time || !offset || month < 0) return '';
+  const hour = (Number(time[1]) % 12) + (time[3].toUpperCase() === 'PM' ? 12 : 0);
+  const offsetMinutes = (offset[1] === '-' ? -1 : 1) * (Number(offset[2]) * 60 + Number(offset[3]));
+  const utc = Date.UTC(Number(day[3]), month, Number(day[1]), hour, Number(time[2])) - offsetMinutes * 60_000;
+  return Number.isFinite(utc) ? new Date(utc).toISOString() : '';
+}
+
+function htmlCells(row) {
+  return [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => match[1]);
+}
+
+function getsDetailField(html, label) {
+  const pattern = new RegExp(`<td class="label-cell">\\s*${label}[\\s\\S]*?<\\/td>\\s*<td>([\\s\\S]*?)<\\/td>`, 'i');
+  return html.match(pattern)?.[1] || '';
+}
+
+function getsIndexRows(html) {
+  return [...html.matchAll(/<tr id="tender-(\d+)" class="tender[^"]*">([\s\S]*?)<\/tr>/gi)].map(([, id, row]) => {
+    const cells = htmlCells(row);
+    const href = cells[0]?.match(/href="([A-Za-z0-9_-]+\/ExternalTenderDetails\.htm\?id=(\d+))"/i);
+    const deadline = getsPageDate(cells[4]);
+    if (cells.length < 6 || href?.[2] !== id || !decodeHtml(cells[2]) || !deadline) {
+      throw new Error(`GETS index row ${id} drifted from the expected markup`);
+    }
+    return {
+      id,
+      link: `${GETS_ORIGIN}/${href[1]}`,
+      title: decodeHtml(cells[2]),
+      noticeType: decodeHtmlEntities(cells[3].match(/<abbr title="([^"]*)"/i)?.[1] || '') || decodeHtml(cells[3]),
+      deadline,
+      buyer: decodeHtml(cells[5]),
+    };
+  });
+}
+
+// The RSS feed sits behind a WAF rule that answers 403 to automated clients
+// (#11373) while the HTML current-tenders list on the same host stays open.
+// Detail pages carry the open date, categories and overview the list omits.
+// Budget: a timed-out RSS read costs ~62s, this fallback stops starting reads at
+// 75s, and one in-flight read can add 2 x 15s, which stays under the 180s section.
+async function fetchGetsIndex({ now, fetchTextFn }) {
+  const expiresAt = Date.now() + GETS_INDEX_BUDGET_MS;
+  const read = (url) => {
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) throw new Error('GETS index exceeded its request budget');
+    return fetchTextFn(url, { headers: { Accept: 'text/html' }, timeoutMs: Math.min(15_000, remaining), maxRetries: 1 });
+  };
+  const rows = [];
+  for (let page = 1; rows.length < MAX_PER_SOURCE; page += 1) {
+    const html = await read(`${GETS_ORIGIN}/ExternalIndex.htm?page=${page}&orderBy=date`);
+    const pageRows = getsIndexRows(html);
+    if (pageRows.length === 0) throw new Error(`GETS index page ${page} contains no tender rows`);
+    rows.push(...pageRows);
+    if (!html.includes(`ExternalIndex.htm?page=${page + 1}&`)) break;
+  }
+  const open = rows.slice(0, MAX_PER_SOURCE).filter((row) => isOpenOpportunity(row, now));
+  const records = [];
+  for (let offset = 0; offset < open.length; offset += GETS_DETAIL_CONCURRENCY) {
+    records.push(...await Promise.all(open.slice(offset, offset + GETS_DETAIL_CONCURRENCY).map(async (row) => {
+      const detail = await read(row.link);
+      if (decodeHtml(getsDetailField(detail, 'RFx ID')) !== row.id) {
+        throw new Error(`GETS detail page for ${row.id} does not describe that notice`);
+      }
+      const overview = detail.match(/<span class="legend">Overview<\/span>\s*<\/div>([\s\S]*?)(?:<form\b|<div class="detail-divider")/i)?.[1];
+      return normalizeGetsNotice({
+        ...row,
+        publishedAt: getsPageDate(getsDetailField(detail, 'Open Date')),
+        categories: [...getsDetailField(detail, 'Categories').matchAll(/<li>([\s\S]*?)<\/li>/gi)].map((match) => decodeHtml(match[1])).filter(Boolean),
+        description: decodeHtml(overview),
+      });
+    })));
+  }
+  return records.filter((tender) => isOpenOpportunity(tender, now));
+}
+
+async function fetchGetsRss({ now, fetchTextFn }) {
   const xml = await fetchTextFn(GETS_FEED_URL);
   const parsed = new XMLParser({ ignoreAttributes: false, processEntities: true }).parse(xml);
   const items = asItems(parsed?.rss?.channel?.item).slice(0, MAX_PER_SOURCE);
-  const records = items.map((item) => {
+  return items.map((item) => {
     const description = String(item?.description || '');
     const link = typeof item?.link === 'string' ? item.link : item?.guid;
     const id = getsField(description, 'RFx ID') || String(link || '').match(/[?&]id=(\d+)/)?.[1] || '';
@@ -328,6 +417,19 @@ export async function fetchGets({ now = Date.now(), fetchTextFn = fetchText } = 
       description: getsField(description, 'Overview'),
     });
   }).filter((tender) => isOpenOpportunity(tender, now));
+}
+
+export async function fetchGets({ now = Date.now(), fetchTextFn = fetchText } = {}) {
+  let records;
+  try {
+    records = await fetchGetsRss({ now, fetchTextFn });
+  } catch (rssError) {
+    try {
+      records = await fetchGetsIndex({ now, fetchTextFn });
+    } catch (indexError) {
+      throw new Error(`GETS RSS failed (${rssError?.message || rssError}); index fallback failed (${indexError?.message || indexError})`);
+    }
+  }
   return { records, status: sourceStatus('gets', 'ok', records, '', now) };
 }
 
