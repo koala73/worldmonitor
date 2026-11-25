@@ -41,7 +41,7 @@ function parseYahooChart(data, meta) {
   };
 }
 
-async function fetchGulfQuotes() {
+export async function fetchGulfQuotes() {
   const quotes = [];
   let misses = 0;
   const avKey = process.env.ALPHA_VANTAGE_API_KEY;
@@ -116,7 +116,8 @@ export function declareRecords(data) {
   return Array.isArray(data?.quotes) ? data.quotes.length : 0;
 }
 
-runSeed('market', 'gulf-quotes', CANONICAL_KEY, fetchGulfQuotes, {
+const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));
+if (isMain) runSeed('market', 'gulf-quotes', CANONICAL_KEY, fetchGulfQuotes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'alphavantage+yahoo-chart',

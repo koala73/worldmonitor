@@ -78,8 +78,20 @@ export function requireCompleteReadings(readings) {
   }
 }
 
+// Rows written before the weekday guard carried Friday's readings forward
+// onto Saturday and Sunday.
+function isWeekdaySession(date) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const day = new Date(`${date}T12:00:00Z`);
+  if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== date) return false;
+  const weekday = day.getUTCDay();
+  return weekday >= 1 && weekday <= 5;
+}
+
 export function mergeBreadthHistory(history, readings, today, maxLength = HISTORY_LENGTH) {
-  const next = Array.isArray(history) ? history.map((entry) => ({ ...entry })) : [];
+  const next = Array.isArray(history)
+    ? history.filter((entry) => isWeekdaySession(entry?.date)).map((entry) => ({ ...entry }))
+    : [];
   const last = next.at(-1);
   if (last?.date > today) throw scanError(`Breadth session ${today} is older than published ${last.date}`);
   const updatedExisting = last?.date === today;
@@ -235,10 +247,9 @@ export async function fetchSp500Breadth({
   const sessionDate = SESSION_DATE.format(sourceSessionAt);
   const breadth = computeBreadth(sessionRows);
   requireCompleteReadings(breadth.readings);
-  const weekday = new Date(`${sessionDate}T12:00:00Z`).getUTCDay();
   // A daily bar's timestamp is its open. Wait until the regular close even
   // on early-close days; the twice-daily cron runs outside trading hours.
-  if (weekday === 0 || weekday === 6
+  if (!isWeekdaySession(sessionDate)
       || (sessionDate === SESSION_DATE.format(now) && Number(SESSION_HOUR.format(now)) < 16)) {
     throw scanError('Breadth source session has not closed or is not a weekday');
   }

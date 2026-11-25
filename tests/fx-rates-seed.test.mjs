@@ -8,10 +8,12 @@ import {
 } from '../scripts/_seed-utils.mjs';
 import {
   ALL_CURRENCIES,
+  TENDER_ONLY_CURRENCIES,
   buildFxRatesPayload,
   declareRecords,
   validateFxPayload,
 } from '../scripts/seed-fx-rates.mjs';
+import { toUsdSpotRows } from '../src/services/economic/fx-rates.ts';
 
 const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -348,5 +350,23 @@ describe('shared FX fallback provenance', () => {
     assert.deepEqual(result.fallbackCurrencies, ['NZD', 'CNY']);
     assert.equal(result.EUR, 0.5);
     assert.equal(result.NZD, SHARED_FX_FALLBACKS.NZD);
+  });
+});
+
+describe('tender-only currencies', () => {
+  test('rank tenders without adding FX panel rows', () => {
+    const rates = Object.fromEntries(ALL_CURRENCIES.map((currency) => [currency, 0.5]));
+    rates.USD = 1;
+    Object.assign(rates, { ALL: 0.0122, AMD: 0.0026, DOP: 0.0158, GEL: null });
+
+    const payload = buildFxRatesPayload({ rates, fallbackCurrencies: ['KRW', 'GEL'] });
+
+    assert.deepEqual(payload.tenderOnlyRates, { ALL: 0.0122, AMD: 0.0026, DOP: 0.0158 });
+    assert.deepEqual(payload.fallbackCurrencies, ['KRW']);
+    assert.equal(validateFxPayload(payload), true);
+    assert.equal(declareRecords(payload), ALL_CURRENCIES.length - 2);
+    const panelCurrencies = toUsdSpotRows(payload).map((row) => row.currency);
+    assert.deepEqual(panelCurrencies, ALL_CURRENCIES.filter((c) => c !== 'USD' && c !== 'KRW').sort());
+    assert.ok(TENDER_ONLY_CURRENCIES.every((c) => !panelCurrencies.includes(c)));
   });
 });

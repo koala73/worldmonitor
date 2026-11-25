@@ -14,6 +14,8 @@ interface CotInstrumentData {
   assetManagerShort: string;
   leveragedFundsLong: string;
   leveragedFundsShort: string;
+  leveragedFundsAvailable: boolean;
+  reportType: string;
   smallTraderLong: string;
   smallTraderShort: string;
   smallTraderAvailable: boolean;
@@ -60,8 +62,8 @@ function renderInstrument(item: CotInstrumentData): string {
         <span style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600">${escapeHtml(item.name)}</span>
         <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(item.code)}</span>
       </div>
-      ${renderPositionBar(amNetPct, 'Asset Managers')}
-      ${renderPositionBar(levNetPct, 'Leveraged Funds')}
+      ${renderPositionBar(amNetPct, item.reportType === 'disaggregated' ? 'Managed Money' : 'Asset Managers')}
+      ${item.leveragedFundsAvailable ? renderPositionBar(levNetPct, 'Leveraged Funds') : ''}
       ${item.smallTraderAvailable ? renderPositionBar(smallNetPct, 'Small Traders (non-reportable)') : ''}
     </div>`;
 }
