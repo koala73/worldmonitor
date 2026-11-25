@@ -89,7 +89,12 @@ export function mergeShards(plan, shardFiles) {
       if (missing.has(id)) status = 'not_on_host';
       else if (rendered && !rendered.has(id)) status = 'not_rendered';
       else if (locked.has(id) && (status === 'ok' || status === 'not_reported')) status = 'locked';
-      panels.push({ id, name: meta.name, host: meta.host, shard: shard.id, status, checked: row?.checked, note: row?.note });
+      panels.push({
+        id, name: meta.name, host: meta.host, shard: shard.id, status, checked: row?.checked, note: row?.note,
+        viewsSkipped: strings(row?.views_skipped),
+        // null when the agent wrote no row; false when the row lacks either view list.
+        viewsReported: row ? Array.isArray(row.views_checked) && Array.isArray(row.views_skipped) : null,
+      });
     }
     for (const finding of Array.isArray(report?.findings) ? report.findings : []) {
       if (!finding || typeof finding.title !== 'string' || !finding.title.trim()) continue;
@@ -130,17 +135,24 @@ function findingLines(finding, index, openIssues) {
 
 export function renderContentBody(merged, {
   date, runUrl = '', openIssues = new Set(), maxFindings = MAX_FINDINGS, showOk = true, noteChars = ROW_NOTE_CHARS, showDismissed = true,
+  showViews = true,
 }) {
   const count = (status) => merged.panels.filter((panel) => panel.status === status).length;
   const contradicted = merged.findings.filter((finding) => finding.kind === 'contradicted');
   const implausible = merged.findings.filter((finding) => finding.kind === 'implausible');
   const proShards = merged.shards.filter((shard) => shard.pro).length;
   const noReport = merged.shards.filter((shard) => !shard.report).map((shard) => shard.id);
+  // A panel's verdict covers only the views its agent opened; the prompt has it check the default and one other.
+  const partial = merged.panels.filter((panel) => panel.viewsSkipped.length > 0);
+  const skippedViews = partial.reduce((sum, panel) => sum + panel.viewsSkipped.length, 0);
+  const unlisted = merged.panels.filter((panel) => panel.viewsReported === false).length;
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const lines = [
     `Panel content run for ${date}: ${merged.panels.length} panels in ${merged.shards.length} shards.`,
     '',
     `- Panels: ${count('ok')} ok, ${count('suspect')} suspect, ${count('broken')} broken, ${count('locked')} locked, ${count('not_reached') + count('not_reported')} not checked, ${count('not_rendered')} not rendered by setup, ${count('not_on_host')} not on their host.`,
     `- Findings: ${contradicted.length} contradicted by the page or its API, ${implausible.length} implausible and needing a human.`,
+    `- Views: ${plural(partial.length, 'panel')} left ${plural(skippedViews, 'view')} unchecked; ${plural(unlisted, 'panel')} did not report ${unlisted === 1 ? 'its' : 'their'} views.`,
     `- Pro session in ${proShards} of ${merged.shards.length} shards. Agent cost $${merged.cost.toFixed(2)}.`,
     ...(noReport.length > 0 ? [`- Shards that left no findings file: ${noReport.map(code).join(' ')}`] : []),
     ...(runUrl ? [`- [Workflow run](${runUrl}): screenshots are in each shard's \`content-<shard>\` artifact.`] : []),
@@ -174,6 +186,12 @@ export function renderContentBody(merged, {
     lines.push('', '</details>');
   }
   if (ok.length > 0 && !showOk) lines.push('', 'The ok panels are listed in the shard artifacts; this body had no room for them.');
+  if (partial.length > 0 && showViews) {
+    lines.push('', '### Views not checked', '', 'A panel\'s status covers only the views its agent opened. These tabs, sorts, filters and pickers were not checked.', '');
+    for (const panel of partial) {
+      lines.push(`- ${code(panel.id)} on ${code(panel.host)} (${panel.status.replace(/_/g, ' ')}): ${panel.viewsSkipped.slice(0, 12).map((view) => code(clip(view, 60))).join(' ')}`);
+    }
+  }
   if (merged.dismissed.length > 0 && showDismissed) {
     lines.push('', '### Dismissed as runner artifacts', '', 'Check these too: a real bug can hide behind a known artifact.', '');
     for (const item of merged.dismissed.slice(0, maxFindings)) lines.push(`- ${code(item.what)}: ${code(item.why)}`);
@@ -182,9 +200,9 @@ export function renderContentBody(merged, {
 }
 
 /**
- * A body GitHub will accept. Findings are cut first, then the ok list and dismissals, then panel notes; the
- * totals and every non-ok panel row always stay. Nothing rendered is ever sliced, because cutting through a code
- * span would make agent text live.
+ * A body GitHub will accept. Findings are cut first, then the ok list and dismissals, then the skipped views, then
+ * panel notes; the totals and every non-ok panel row always stay. Nothing rendered is ever sliced, because cutting
+ * through a code span would make agent text live.
  */
 export function contentIssueBody(merged, rendering) {
   const attempts = [];
@@ -192,7 +210,8 @@ export function contentIssueBody(merged, rendering) {
   attempts.push(
     { maxFindings: 0 },
     { maxFindings: 0, showOk: false, showDismissed: false },
-    { maxFindings: 0, showOk: false, showDismissed: false, noteChars: 0 },
+    { maxFindings: 0, showOk: false, showDismissed: false, showViews: false },
+    { maxFindings: 0, showOk: false, showDismissed: false, showViews: false, noteChars: 0 },
   );
   for (const attempt of attempts) {
     const body = renderContentBody(merged, { ...rendering, ...attempt });

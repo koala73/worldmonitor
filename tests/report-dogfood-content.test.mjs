@@ -76,6 +76,24 @@ describe('panel content review issue', () => {
     assert.equal(merged.panels.filter((panel) => panel.id === 'insights').length, 1);
   });
 
+  it('lists the views each agent left unchecked, so an ok panel does not read as fully covered', () => {
+    const merged = mergeShards(plan, {
+      'www-1': { findings: { panels: [
+        { id: 'markets', status: 'ok', checked: 'quotes', views_checked: ['Default', 'Crypto tab'], views_skipped: ['Forex tab', 'Sort by change'] },
+        { id: 'cii', status: 'suspect', note: 'x', views_checked: ['Default'], views_skipped: 'not a list' },
+      ] } },
+      'www-2': { findings: { panels: [{ id: 'insights', status: 'ok', views_checked: [], views_skipped: [] }] } },
+    });
+    assert.deepEqual(merged.panels.find((p) => p.id === 'markets').viewsSkipped, ['Forex tab', 'Sort by change']);
+    assert.deepEqual(merged.panels.find((p) => p.id === 'cii').viewsSkipped, []);
+    const body = renderContentBody(merged, { date: '2026-11-25' });
+    assert.match(body, /- Views: 1 panel left 2 views unchecked; 1 panel did not report its views\./);
+    assert.match(body, /### Views not checked/);
+    assert.match(body, /- `markets` on `www` \(ok\): `Forex tab` `Sort by change`/);
+    const lean = contentIssueBody(merged, { date: '2026-11-25' });
+    assert.match(lean, /- Views: 1 panel left 2 views unchecked/);
+  });
+
   it('lists contradicted findings before implausible ones, and treats an unknown kind as needing a human', () => {
     const merged = mergeShards(plan, {
       'www-1': { findings: { panels: [], findings: [finding({ kind: 'implausible', severity: 'high', title: 'A' }), finding({ kind: 'proved', title: 'B' }), finding({ severity: 'low', title: 'C' })] } },
