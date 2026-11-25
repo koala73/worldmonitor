@@ -62,6 +62,7 @@ test('topic-gated feeds keep only climate or environment reports', () => {
         { ...item('Malawi: Country Brief, November 2026', 4.5), topics: ['Drought'] },
         item('Inondations : bilan du mois de mars', 4.6),
         item('Sécheresse au Sahel : note de situation - 24 mars 2027', 4.7),
+        item('Cyclone Freddy : rapport de situation du 8 Mars 2027', 4.8),
         item('Emisiones de carbono en América Latina', 4.8),
       ],
     },
@@ -73,6 +74,7 @@ test('topic-gated feeds keep only climate or environment reports', () => {
     'Malawi: Country Brief, November 2026',
     'Inondations : bilan du mois de mars',
     'Sécheresse au Sahel : note de situation - 24 mars 2027',
+    'Cyclone Freddy : rapport de situation du 8 Mars 2027',
     'Emisiones de carbono en América Latina',
     'Lightning could strike more than twice as often',
   ]);
