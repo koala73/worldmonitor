@@ -133,6 +133,43 @@ describe('CountryIntelMemory', () => {
     component.destroy();
   });
 
+  it('labels records from every history domain on the unfiltered timeline (#11245)', async () => {
+    const mount = document.createElement('div');
+    document.body.append(mount);
+    const parentAbort = new AbortController();
+    const expected: Record<string, string> = {
+      unrest: 'Unrest',
+      cyber: 'Cyber',
+      maritime: 'Maritime',
+      natural: 'Natural hazards',
+      aviation: 'Aviation',
+    };
+
+    const fetchTimeline = vi.fn(async (): Promise<GetIntelTimelineResponse> => ({
+      records: Object.keys(expected).map((domain) => makeRecord({ id: `rec-${domain}`, domain })),
+      partial: false,
+      upstreamUnavailable: false,
+      nextCursor: '',
+    }));
+
+    const component = new CountryIntelMemory(mount, 'ua', parentAbort.signal, {
+      fetchTimeline,
+      fetchSimilar: vi.fn(),
+    });
+    await flushMicrotasks();
+
+    const badges = [...mount.querySelectorAll<HTMLElement>('.country-intel-memory-domain')];
+    expect(badges.map((badge) => [badge.dataset.domain, badge.textContent])).toEqual(
+      Object.entries(expected),
+    );
+    // A missing locale key renders its path; a missing switch case renders the raw id.
+    for (const badge of badges) {
+      expect(badge.textContent).not.toContain('countryBrief.');
+    }
+
+    component.destroy();
+  });
+
   it('aborts in-flight timeline fetch on domain switch and triggers a fresh request', async () => {
     const mount = document.createElement('div');
     document.body.append(mount);
