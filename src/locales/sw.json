@@ -3424,6 +3424,10 @@
       },
       "warningAge": "Muda tangu onyo la kwanza ambalo bado linatumika",
       "days": "Siku {{amount}}"
+    },
+    "externalNavigation": {
+      "blocked": "Kivinjari chako kilizuia kichupo kipya.",
+      "openLink": "Fungua {{host}}"
     }
   },
   "popups": {

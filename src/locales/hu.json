@@ -3424,6 +3424,10 @@
       },
       "warningAge": "Az első, még érvényes figyelmeztetés óta",
       "days": "{{amount}} nap"
+    },
+    "externalNavigation": {
+      "blocked": "A böngésződ letiltotta az új fület.",
+      "openLink": "{{host}} megnyitása"
     }
   },
   "popups": {

@@ -643,6 +643,8 @@ export interface CotInstrument {
   smallTraderLong: string;
   smallTraderShort: string;
   smallTraderAvailable: boolean;
+  leveragedFundsAvailable: boolean;
+  reportType: string;
 }
 
 export interface GetInsiderTransactionsRequest {

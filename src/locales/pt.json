@@ -2957,6 +2957,10 @@
       },
       "warningAge": "Tempo desde o primeiro alerta ainda em vigor",
       "days": "{{amount}} d"
+    },
+    "externalNavigation": {
+      "blocked": "O seu navegador bloqueou o novo separador.",
+      "openLink": "Abrir {{host}}"
     }
   },
   "popups": {

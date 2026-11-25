@@ -16,6 +16,10 @@ function fmtPct(value: number): string {
   return `${sign}${value.toFixed(1)}%`;
 }
 
+function fmtRate(value: number): string {
+  return `${value.toFixed(1)}%`;
+}
+
 function backtestSignalClass(winRate: number): string {
   if (winRate >= 55) return 'badge-bullish';
   if (winRate >= 45) return 'badge-neutral';
@@ -61,11 +65,11 @@ export class StockBacktestPanel extends Panel {
           },
           {
             key: 'winrate', label: 'Win Rate', align: 'right', sortable: true, sortOptionKey: 'winrate-desc',
-            cell: (i) => escapeHtml(fmtPct(i.winRate)),
+            cell: (i) => escapeHtml(fmtRate(i.winRate)),
           },
           {
             key: 'direction', label: 'Direction', align: 'right', sortable: true, sortOptionKey: 'direction-desc',
-            cell: (i) => escapeHtml(fmtPct(i.directionAccuracy)),
+            cell: (i) => escapeHtml(fmtRate(i.directionAccuracy)),
           },
           {
             key: 'avgreturn', label: 'Avg Return', align: 'right', sortable: true, sortOptionKey: 'avgreturn-desc',
@@ -130,8 +134,8 @@ export class StockBacktestPanel extends Panel {
           </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
-          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Win Rate</div><div style="margin-top:4px">${escapeHtml(fmtPct(item.winRate))}</div></div>
-          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Direction Accuracy</div><div style="margin-top:4px">${escapeHtml(fmtPct(item.directionAccuracy))}</div></div>
+          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Win Rate</div><div style="margin-top:4px">${escapeHtml(fmtRate(item.winRate))}</div></div>
+          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Direction Accuracy</div><div style="margin-top:4px">${escapeHtml(fmtRate(item.directionAccuracy))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Cumulative</div><div style="margin-top:4px;color:${tone(item.cumulativeSimulatedReturnPct)}">${escapeHtml(fmtPct(item.cumulativeSimulatedReturnPct))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Signals</div><div style="margin-top:4px">${escapeHtml(String(item.actionableEvaluations))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Rating Basis</div><div style="margin-top:4px">${escapeHtml(item.ratingBasis === 'technical_only' ? 'Technical only' : item.ratingBasis)}</div></div>

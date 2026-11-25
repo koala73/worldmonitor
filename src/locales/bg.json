@@ -3355,6 +3355,10 @@
       },
       "warningAge": "От първото действащо предупреждение",
       "days": "{{amount}} д"
+    },
+    "externalNavigation": {
+      "blocked": "Вашият браузър блокира новия раздел.",
+      "openLink": "Отворете {{host}}"
     }
   },
   "popups": {

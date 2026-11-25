@@ -249,6 +249,19 @@ const TECH_LOW_KEYWORDS: KeywordMap = {
   'open source': 'tech',
 };
 
+// "Coup" in a non-political domain (a "transfer coup", "boardroom coup",
+// "coup de grâce") is never a seizure of power. A political label (a
+// "progressive coup") is ambiguous, so it keeps its coup match whenever the
+// headline carries seizure-of-power context.
+const NON_POLITICAL_COUP_RE = /\b(?:boardroom|corporate|shareholder|marketing|pr|publicity|media|transfer|signing|recruiting|diplomatic|budget|fiscal|cultural)\s+coup\b|\bcoup\s+de\s+(?:gr[aâ]ce|th[eé][aâ]tre|ma[iî]tre|foudre)\b/g;
+const POLITICAL_COUP_RE = /\b(?:progressive|conservative|liberal|leftist|populist|socialist|maga|woke|legislative|parliamentary)\s+coup\b/g;
+const COUP_SEIZURE_CONTEXT_RE = /\b(?:soldiers?|troops|army|military|junta|armed forces|generals?|officers|putsch\w*|seiz\w*|stag(?:e|es|ed|ing)|foil\w*|attempt\w*|plot\w*|overthrow\w*|ousted|martial law|d['’]?[eé]tat)\b/;
+
+export function withoutMetaphoricalCoup(titleLower: string): string {
+  const text = titleLower.replace(NON_POLITICAL_COUP_RE, ' ');
+  return COUP_SEIZURE_CONTEXT_RE.test(text) ? text : text.replace(POLITICAL_COUP_RE, ' ');
+}
+
 const EXCLUSIONS = [
   'protein', 'couples', 'relationship', 'dating', 'diet', 'fitness',
   'recipe', 'cooking', 'shopping', 'fashion', 'celebrity', 'movie',
@@ -311,7 +324,7 @@ function shouldEscalateToCritical(lower: string, matchCat: EventCategory): boole
 }
 
 export function classifyByKeyword(title: string, variant = 'full'): ThreatClassification {
-  const lower = title.toLowerCase();
+  const lower = withoutMetaphoricalCoup(title.toLowerCase());
 
   if (EXCLUSIONS.some(ex => lower.includes(ex))) {
     return { level: 'info', category: 'general', confidence: 0.3, source: 'keyword' };

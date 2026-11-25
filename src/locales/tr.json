@@ -3355,6 +3355,10 @@
       },
       "warningAge": "Hâlen geçerli ilk uyarıdan bu yana",
       "days": "{{amount}} gün"
+    },
+    "externalNavigation": {
+      "blocked": "Tarayıcınız yeni sekmeyi engelledi.",
+      "openLink": "{{host}} sitesini aç"
     }
   },
   "popups": {

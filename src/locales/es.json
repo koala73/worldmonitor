@@ -3377,6 +3377,10 @@
       },
       "warningAge": "Desde el primer aviso aún vigente",
       "days": "{{amount}} d."
+    },
+    "externalNavigation": {
+      "blocked": "Tu navegador bloqueó la pestaña nueva.",
+      "openLink": "Abrir {{host}}"
     }
   },
   "popups": {

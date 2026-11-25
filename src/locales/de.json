@@ -3355,6 +3355,10 @@
       },
       "warningAge": "Seit der ersten noch gültigen Warnung",
       "days": "{{amount}} T."
+    },
+    "externalNavigation": {
+      "blocked": "Ihr Browser hat den neuen Tab blockiert.",
+      "openLink": "{{host}} öffnen"
     }
   },
   "popups": {

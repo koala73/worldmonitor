@@ -3333,6 +3333,10 @@
       },
       "warningAge": "距首条仍有效的预警",
       "days": "{{amount}} 天"
+    },
+    "externalNavigation": {
+      "blocked": "浏览器阻止了新标签页的打开。",
+      "openLink": "打开 {{host}}"
     }
   },
   "popups": {

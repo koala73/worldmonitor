@@ -3377,6 +3377,10 @@
       },
       "warningAge": "Timp de la prima avertizare încă în vigoare",
       "days": "{{amount}} z"
+    },
+    "externalNavigation": {
+      "blocked": "Browserul tău a blocat deschiderea unei noi file.",
+      "openLink": "Deschide {{host}}"
     }
   },
   "popups": {

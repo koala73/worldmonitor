@@ -3325,6 +3325,10 @@
       "star": "Star on GitHub",
       "dismiss": "Dismiss and don't ask again"
     },
+    "externalNavigation": {
+      "blocked": "Your browser blocked the new tab.",
+      "openLink": "Open {{host}}"
+    },
     "passkeyOffer": {
       "title": "Save a passkey?",
       "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",

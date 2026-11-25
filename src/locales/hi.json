@@ -3424,6 +3424,10 @@
       },
       "warningAge": "पहली अब तक प्रभावी चेतावनी के बाद का समय",
       "days": "{{amount}} दिन"
+    },
+    "externalNavigation": {
+      "blocked": "आपके ब्राउज़र ने नए टैब को ब्लॉक कर दिया।",
+      "openLink": "{{host}} खोलें"
     }
   },
   "popups": {

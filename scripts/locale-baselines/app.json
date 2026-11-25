@@ -766,6 +766,8 @@
   "components.exportGate.unlockedAnnouncement": "Data export unlocked.",
   "components.exportGate.upgradeCta": "Upgrade to Pro Business",
   "components.exportGate.upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
+  "components.externalNavigation.blocked": "Your browser blocked the new tab.",
+  "components.externalNavigation.openLink": "Open {{host}}",
   "components.faoFoodPriceIndex.asOf": "As of",
   "components.faoFoodPriceIndex.baseNote": "Base: 2014–2016 = 100 | Source: UN Food and Agriculture Organization",
   "components.faoFoodPriceIndex.cereals": "Cereals",

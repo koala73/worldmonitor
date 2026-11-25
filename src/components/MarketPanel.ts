@@ -874,6 +874,7 @@ export class CryptoHeatmapPanel extends Panel {
     }
 
     const html =
+      `<div class="heatmap-period">${escapeHtml(t('components.stablecoins.chg24h'))}</div>` +
       '<div class="heatmap">' +
       data
         .map((sector) => {

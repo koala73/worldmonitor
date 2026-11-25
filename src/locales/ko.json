@@ -3333,6 +3333,10 @@
       },
       "warningAge": "현재 유효한 첫 경보 이후",
       "days": "{{amount}}일"
+    },
+    "externalNavigation": {
+      "blocked": "브라우저가 새 탭을 차단했습니다.",
+      "openLink": "{{host}} 열기"
     }
   },
   "popups": {

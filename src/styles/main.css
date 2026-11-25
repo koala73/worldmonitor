@@ -5007,6 +5007,28 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   transform: translateX(-50%) translateY(0);
 }
 
+/* A toast that carries a link (blocked new tab): it takes taps only while
+   shown, so a fading notice never swallows a click meant for the page. */
+.toast-notification--action {
+  /* Sized to its text, not to the half viewport right of `left: 50%`. */
+  width: max-content;
+  max-width: min(560px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+
+.toast-notification--action.visible {
+  pointer-events: auto;
+}
+
+.toast-notification-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  /* A long hostname wraps inside the toast instead of running off a phone screen. */
+  overflow-wrap: break-word;
+}
+
 .wm-copy {
   position: fixed;
   /* Above the trip assessment and embed dialogs (10020) and the trip toast
@@ -7932,6 +7954,14 @@ body.playback-mode .status-dot {
 }
 
 /* Heatmap */
+.heatmap-period {
+  padding: 4px 4px 0;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .heatmap {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

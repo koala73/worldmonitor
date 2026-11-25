@@ -3452,7 +3452,11 @@
     },
     "export": {},
     "runtimeConfig": {},
-    "energyCrisis": {}
+    "energyCrisis": {},
+    "externalNavigation": {
+      "blocked": "Vaš preglednik je blokirao novu karticu.",
+      "openLink": "Otvori {{host}}"
+    }
   },
   "popups": {
     "startDate": "POČETNI DATUM",
