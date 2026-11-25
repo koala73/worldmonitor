@@ -50,6 +50,16 @@ describe('thermal escalation model', () => {
     assert.equal(byRegion.Other.context, 'THERMAL_CONTEXT_WILDLAND');
   });
 
+  it('records one history sample per cell when clusters on both sides of a border share it', () => {
+    const nowMs = Date.UTC(2026, 2, 17, 12, 0, 0);
+    const result = computeThermalEscalationWatch([
+      makeDetection('iq', 30.25, 47.4, nowMs - 60 * 60 * 1000, { region: 'Iraq', frp: 20 }),
+      makeDetection('ir', 30.3, 47.6, nowMs - 60 * 60 * 1000, { region: 'Iran', frp: 30 }),
+    ], emptyThermalEscalationWatch(), { nowMs });
+    assert.equal(result.watch.clusters.length, 2);
+    assert.deepEqual(result.history.cells['30.5:47.5'].entries.map((e) => [e.observationCount, e.totalFrp]), [[2, 50]]);
+  });
+
   it('builds an elevated or stronger conflict-adjacent cluster from raw detections', () => {
     const nowMs = Date.UTC(2026, 2, 17, 12, 0, 0);
     const detections = [

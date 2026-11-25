@@ -228,6 +228,7 @@ export function computeThermalEscalationWatch(detections, previousHistory = { ce
     ),
   };
   const output = [];
+  const writtenCells = new Set();
 
   for (const cluster of clusters) {
     const sorted = sortDetections(cluster.detections);
@@ -320,17 +321,21 @@ export function computeThermalEscalationWatch(detections, previousHistory = { ce
       narrativeFlags,
     });
 
-    nextHistory.cells[key] = {
-      entries: [
-        ...prevEntries,
-        {
-          observedAt: new Date(nowMs).toISOString(),
-          observationCount,
-          totalFrp,
-          status,
-        },
-      ].filter((entry) => (nowMs - Date.parse(entry.observedAt || 0)) <= HISTORY_RETENTION_MS),
-    };
+    const observedAt = new Date(nowMs).toISOString();
+    const sameRunEntry = writtenCells.has(key) ? nextHistory.cells[key].entries.at(-1) : null;
+    if (sameRunEntry) {
+      sameRunEntry.observationCount += observationCount;
+      sameRunEntry.totalFrp = round(sameRunEntry.totalFrp + totalFrp, 1);
+      if (severityRank(status) > severityRank(sameRunEntry.status)) sameRunEntry.status = status;
+    } else {
+      writtenCells.add(key);
+      nextHistory.cells[key] = {
+        entries: [
+          ...prevEntries,
+          { observedAt, observationCount, totalFrp, status },
+        ].filter((entry) => (nowMs - Date.parse(entry.observedAt || 0)) <= HISTORY_RETENTION_MS),
+      };
+    }
   }
 
   const sortedClusters = output.sort((a, b) => {
