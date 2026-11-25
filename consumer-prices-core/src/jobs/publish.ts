@@ -202,8 +202,16 @@ export async function publishAll() {
     let pagesSkipped = 0;
     const basketRows = new Map<string, Promise<BasketRow[]>>();
     const loadBasketRows: BasketRowLoader = (slug, market) => {
-      if (!basketRows.has(slug)) basketRows.set(slug, getBasketRows(slug, market));
-      return basketRows.get(slug)!;
+      let rows = basketRows.get(slug);
+      if (!rows) {
+        const pending = getBasketRows(slug, market);
+        pending.catch(() => {
+          if (basketRows.get(slug) === pending) basketRows.delete(slug);
+        });
+        basketRows.set(slug, pending);
+        rows = pending;
+      }
+      return rows;
     };
 
     try {
