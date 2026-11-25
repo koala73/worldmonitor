@@ -83,6 +83,7 @@ test('broad-source negative reporting is screened even when the ML gate passes e
     'Tiger populations fall as poaching accelerates',
     'Tiger populations fall as habitat loss continues',
     'Fish populations decline in polluted rivers',
+    'Water levels in lakes hit by drought are falling',
   ];
   const kept = story('Mongabay', 'Photos: Elephants maintain an essential role in conservation in Nepal despite shifting norms');
   const science = story('New Scientist', 'An atom-sized black hole could force an entire star to explode');
@@ -97,6 +98,7 @@ test('broad-source negative reporting is screened even when the ML gate passes e
     story('Live Science', 'Fetal surgery reverses spinal damage before birth'),
     story('Mongabay', 'Deforestation is falling across Brazil'),
     story('Mongabay', 'Rhino poaching dropping in South Africa'),
+    story('Mongabay', 'Rhino poaching is dropping in South Africa'),
   ];
   const result = await selectCuratedHappyItems([...titles.map(title => story('Mongabay', title)), kept, science, ...recoveries], async items => items);
   assert.deepEqual(result, [kept, science, ...recoveries]);

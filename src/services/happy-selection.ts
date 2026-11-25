@@ -27,7 +27,12 @@ const WORSENING_EVIDENCE_RE = /\b(accelerat\w*|rising|rises|rose|surg(?:e|es|ed|
 // "Poaching (in Kenya) falls" is recovery; "populations fall as habitat loss continues"
 // and "populations decline in polluted rivers" are not, so the verb must follow the problem.
 const DECLINE_VERB = '(?:fall(?:s|en|ing)?|fell|drops?|dropped|dropping|declin(?:es?|ed|ing)|plummet\\w*|plung\\w*)';
-const DECLINING_PROBLEM_RE = new RegExp(`${NEGATIVE_EVIDENCE_RE.source}\\s+(?:in\\s+\\w+\\s+)?(?:(?:is|are|has been|have been|keeps?)\\s+)?${DECLINE_VERB}\\b`, 'i');
+// An auxiliary ("is falling") only counts when the problem leads the headline, so
+// "water levels in lakes hit by drought are falling" stays rejected.
+const DECLINING_PROBLEM_RE = new RegExp(
+  `${NEGATIVE_EVIDENCE_RE.source}\\s+(?:in\\s+\\w+\\s+)?${DECLINE_VERB}\\b|^(?:\\w+\\s+)?${NEGATIVE_EVIDENCE_RE.source}\\s+(?:is|are|has been|have been)\\s+${DECLINE_VERB}\\b`,
+  'i',
+);
 
 function hasNegativeEvidence(title: string): boolean {
   return NEGATIVE_EVIDENCE_RE.test(title)
