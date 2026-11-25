@@ -584,7 +584,7 @@ domain-specific markup.
 | **File** | `src/components/StrategicPosturePanel.ts` |
 | **Panel ID** | `strategic-posture` |
 | **Purpose** | Theater-level military posture assessment. |
-| **Services** | `fetchCachedTheaterPosture`, `fetchMilitaryVessels`, `recalcPostureWithVessels` |
+| **Services** | `fetchCachedTheaterPosture`, `getCachedCountryScoreValue` |
 | **Variant** | `full` only |
 | **Notes** | Multi-stage loading, 5-minute refresh interval. |
 
