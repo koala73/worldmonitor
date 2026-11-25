@@ -69,12 +69,12 @@ Only use units in the schema. Never guess a quantity or combine details from dif
 
 // Search, category and brand listings show many products, so their prices are not an offer for one pack.
 // Path segments and query keys below mark those listings on the configured retailers
-// (tokopedia /find/, carrefour /busca/ and /c/, walmart /browse/, daraz /tag/, lazada /catalog/?q=).
+// (tokopedia /find/, carrefour /busca/ and /c/, walmart /browse/, daraz /tag/, lazada /catalog/?q=, amazon /gp/bestsellers/, vtex stores ?map=).
 const LISTING_PATH_SEGMENTS = new Set([
   'find', 'search', 's', 'busca', 'buscar', 'suche', 'recherche', 'arama', 'cari', 'ps',
-  'c', 'cat', 'category', 'categories', 'cp', 'cn', 'pc', 'pl', 'r', 'b', 'browse', 'tag', 'tags', 'trending', 'best100',
+  'c', 'cat', 'category', 'categories', 'cp', 'cn', 'pc', 'pl', 'r', 'b', 'browse', 'tag', 'tags', 'trending', 'best100', 'bestsellers',
 ]);
-const LISTING_QUERY_KEYS = new Set(['q', 'query', 'k', 'keyword', 'keywords', 'search', 'searchterm', 'text', 'st', 'term', 'ft', '_q']);
+const LISTING_QUERY_KEYS = new Set(['q', 'query', 'k', 'keyword', 'keywords', 'search', 'searchterm', 'text', 'st', 'term', 'ft', '_q', 'map']);
 const LISTING_SUBDOMAINS = new Set(['search', 'list', 'listado']);
 
 export function isListingUrl(url) {

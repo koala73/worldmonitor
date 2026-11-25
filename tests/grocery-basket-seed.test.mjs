@@ -387,6 +387,9 @@ describe('grocery basket offer pages', () => {
       'https://www.woolworths.com.au/shop/browse/pantry/baking/flour',
       'https://www.daraz.pk/tag/flat-pasta/',
       'https://www.lazada.co.id/catalog/?q=minyak+canola',
+      'https://www.coupang.com/np/best100/bestseller/194332',
+      'https://www.amazon.in/gp/bestsellers/grocery/4859478031',
+      'https://www.carrefour.com.ar/almacen/aceites-y-vinagres?map=category-1,category-2',
     ]) assert.equal(isListingUrl(url), true, url);
     for (const url of [
       productPage,
@@ -397,6 +400,8 @@ describe('grocery basket offer pages', () => {
       'https://www.coupang.com/vp/products/9498948789',
       'https://prod.danawa.com/info/?pcode=62397632',
       'https://www.shoprite.co.za/product/ritebrand-spaghetti-500g-10139337EA',
+      'https://www.amazon.in/Fortune-Sunlite-Refined-Sunflower-Pouch/dp/B00MO6ESWO',
+      'https://www.carrefour.com.ar/sal-gruesa-celusal-caja-1-kg/p',
     ]) assert.equal(isListingUrl(url), false, url);
   });
 });
