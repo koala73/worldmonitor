@@ -124,6 +124,17 @@ describe('macro tiles annual CPI, rate deltas and Euro Area labels', () => {
     expect(text()).toContain('Fed Funds Rate 2.4% +0.01 pp vs prior');
   });
 
+  it('rounds a percent value on a .x5 midpoint away from zero', async () => {
+    mockFredBatch.mockResolvedValue(fred({
+      UNRATE: [{ date: '2026-09-01', value: 2.1 }, { date: '2026-10-01', value: 2.15 }],
+      FEDFUNDS: [{ date: '2026-09-01', value: 0 }, { date: '2026-10-01', value: -0.04 }],
+    }));
+    const { text } = await render();
+    expect(text()).toContain('Unemployment 2.2%');
+    expect(text()).toContain('Fed Funds Rate 0.0%');
+    expect(text()).not.toMatch(/-0\.0%/);
+  });
+
   it('names the countries behind each Euro Area average', async () => {
     const { panel, text } = await render();
     panel.getElement().querySelector<HTMLElement>('[data-tab="eu"]')!.click();
