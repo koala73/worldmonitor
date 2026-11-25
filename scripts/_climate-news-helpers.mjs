@@ -62,7 +62,7 @@ export const CLIMATE_NEWS_MAX_ITEM_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const OFF_EARTH_RE = /\b(martian|rover|exoplanets?|jupiter|saturn|venus)\b/i;
 // Case-sensitive: the planet is "Mars". French March is lowercase "mars",
 // or follows a day number ("8 Mars 2027").
-const MARS_RE = /(?<!\b\d{1,2}\s)\bMars\b/;
+const MARS_RE = /(?<!(?:^|[\s(])\d{1,2}\s)\bMars\b/;
 
 // Applied to feeds whose scope is wider than climate (ReliefWeb's climate
 // theme also tags generic humanitarian bulletins and AI-policy reports).

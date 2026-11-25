@@ -43,6 +43,7 @@ test('Mars imagery from Earth-science feeds is excluded', () => {
           summary: 'NASA’s Curiosity Mars rover captured these drifting clouds on the 5,061st Martian day.',
         },
         item('Mars 2020 Mission Collects Its Tenth Sample', 3.5),
+        item('Tianwen-3 Mars Sample Return Mission Launches', 3.6),
         item('El Niño Rains Paint the Atacama', 4),
       ],
     },
