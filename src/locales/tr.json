@@ -2882,7 +2882,21 @@
       "saved": "Bilinen son güncelleme {{time}} · Güncellemeler kontrol ediliyor",
       "savedOffline": "Bilinen son güncelleme {{time}} · Çevrimdışı",
       "localSignals": "Panoya yüklenen sinyallere dayanır",
-      "emptySaved": "Bilinen son güncellemede yakınsama yoktu."
+      "emptySaved": "Bilinen son güncellemede yakınsama yoktu.",
+      "signalTypes": {
+        "militaryFlight": "Askeri uçuş",
+        "militaryVessel": "Askeri gemi",
+        "aisGap": "AIS boşluğu",
+        "conflictEvent": "Çatışma olayı",
+        "escalationOutage": "İletişim kesintisi",
+        "newsSeverity": "Ciddi haberler",
+        "sanctionsNews": "Yaptırım haberleri",
+        "marketMove": "Piyasa hareketi",
+        "commoditySpike": "Emtia sıçraması",
+        "earthquake": "Deprem",
+        "infraOutage": "Altyapı kesintisi",
+        "other": "Sinyal"
+      }
     },
     "thermalEscalation": {
       "title": "Termal Yükseltme",

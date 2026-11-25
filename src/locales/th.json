@@ -2867,7 +2867,21 @@
       "saved": "การอัปเดตล่าสุดที่ทราบ {{time}} · กำลังตรวจสอบการอัปเดต",
       "savedOffline": "การอัปเดตล่าสุดที่ทราบ {{time}} · ออฟไลน์",
       "localSignals": "อ้างอิงจากสัญญาณที่โหลดในแดชบอร์ด",
-      "emptySaved": "ไม่พบการบรรจบกันในการอัปเดตล่าสุดที่ทราบ"
+      "emptySaved": "ไม่พบการบรรจบกันในการอัปเดตล่าสุดที่ทราบ",
+      "signalTypes": {
+        "militaryFlight": "เที่ยวบินทหาร",
+        "militaryVessel": "เรือทหาร",
+        "aisGap": "ช่องว่าง AIS",
+        "conflictEvent": "เหตุการณ์ความขัดแย้ง",
+        "escalationOutage": "การสื่อสารขัดข้อง",
+        "newsSeverity": "ข่าวร้ายแรง",
+        "sanctionsNews": "ข่าวการคว่ำบาตร",
+        "marketMove": "ความเคลื่อนไหวตลาด",
+        "commoditySpike": "สินค้าโภคภัณฑ์พุ่ง",
+        "earthquake": "แผ่นดินไหว",
+        "infraOutage": "โครงสร้างพื้นฐานขัดข้อง",
+        "other": "สัญญาณ"
+      }
     },
     "thermalEscalation": {
       "title": "การยกระดับความร้อน",

@@ -2969,7 +2969,21 @@
       "saved": "Posljednje poznato ažuriranje {{time}} · Provjera ažuriranja",
       "savedOffline": "Posljednje poznato ažuriranje {{time}} · Izvan mreže",
       "localSignals": "Na temelju učitanih signala nadzorne ploče",
-      "emptySaved": "Nema konvergencije u posljednjem poznatom ažuriranju."
+      "emptySaved": "Nema konvergencije u posljednjem poznatom ažuriranju.",
+      "signalTypes": {
+        "militaryFlight": "Vojni let",
+        "militaryVessel": "Vojno plovilo",
+        "aisGap": "Prekid AIS-a",
+        "conflictEvent": "Sukobni događaj",
+        "escalationOutage": "Prekid komunikacija",
+        "newsSeverity": "Ozbiljne vijesti",
+        "sanctionsNews": "Vijesti o sankcijama",
+        "marketMove": "Kretanje tržišta",
+        "commoditySpike": "Skok robe",
+        "earthquake": "Potres",
+        "infraOutage": "Prekid infrastrukture",
+        "other": "Signal"
+      }
     },
     "thermalEscalation": {
       "title": "Toplinska eskalacija",

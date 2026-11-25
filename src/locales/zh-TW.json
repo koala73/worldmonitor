@@ -2867,7 +2867,21 @@
       "saved": "最近一次已知更新 {{time}} · 正在檢查更新",
       "savedOffline": "最近一次已知更新 {{time}} · 離線",
       "localSignals": "基於儀表板中已載入的訊號",
-      "emptySaved": "最近一次已知更新中未發現匯聚。"
+      "emptySaved": "最近一次已知更新中未發現匯聚。",
+      "signalTypes": {
+        "militaryFlight": "軍機飛行",
+        "militaryVessel": "軍艦",
+        "aisGap": "AIS 中斷",
+        "conflictEvent": "衝突事件",
+        "escalationOutage": "通訊中斷",
+        "newsSeverity": "嚴重新聞",
+        "sanctionsNews": "制裁新聞",
+        "marketMove": "市場波動",
+        "commoditySpike": "大宗商品飆升",
+        "earthquake": "地震",
+        "infraOutage": "基礎設施中斷",
+        "other": "訊號"
+      }
     },
     "thermalEscalation": {
       "title": "熱異常升級",

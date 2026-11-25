@@ -2951,7 +2951,21 @@
       "saved": "Utolsó ismert frissítés {{time}} · Frissítések keresése",
       "savedOffline": "Utolsó ismert frissítés {{time}} · Nincs kapcsolat",
       "localSignals": "A betöltött irányítópult-jelzések alapján",
-      "emptySaved": "Az utolsó ismert frissítésben nem volt konvergencia."
+      "emptySaved": "Az utolsó ismert frissítésben nem volt konvergencia.",
+      "signalTypes": {
+        "militaryFlight": "Katonai repülés",
+        "militaryVessel": "Katonai hajó",
+        "aisGap": "AIS-kiesés",
+        "conflictEvent": "Konfliktusesemény",
+        "escalationOutage": "Kommunikációs kiesés",
+        "newsSeverity": "Súlyos hírek",
+        "sanctionsNews": "Szankciós hírek",
+        "marketMove": "Piaci mozgás",
+        "commoditySpike": "Nyersanyag-ugrás",
+        "earthquake": "Földrengés",
+        "infraOutage": "Infrastruktúra-kiesés",
+        "other": "Jelzés"
+      }
     },
     "thermalEscalation": {
       "title": "Hőmérsékleti Eszkaláció",

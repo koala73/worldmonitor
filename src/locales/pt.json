@@ -2482,7 +2482,21 @@
       "saved": "Última atualização conhecida {{time}} · A procurar atualizações",
       "savedOffline": "Última atualização conhecida {{time}} · Sem ligação",
       "localSignals": "Com base nos sinais carregados no painel",
-      "emptySaved": "Sem convergência na última atualização conhecida."
+      "emptySaved": "Sem convergência na última atualização conhecida.",
+      "signalTypes": {
+        "militaryFlight": "Voo militar",
+        "militaryVessel": "Navio militar",
+        "aisGap": "Lacuna AIS",
+        "conflictEvent": "Evento de conflito",
+        "escalationOutage": "Falha de comunicações",
+        "newsSeverity": "Notícias graves",
+        "sanctionsNews": "Notícias de sanções",
+        "marketMove": "Movimento de mercado",
+        "commoditySpike": "Alta de commodities",
+        "earthquake": "Terremoto",
+        "infraOutage": "Falha de infraestrutura",
+        "other": "Sinal"
+      }
     },
     "thermalEscalation": {
       "title": "Escalação Térmica",

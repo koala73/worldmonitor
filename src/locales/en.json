@@ -3157,7 +3157,21 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signals",
       "analyzing": "Analyzing...",
-      "viewOnMap": "View on map"
+      "viewOnMap": "View on map",
+      "signalTypes": {
+        "militaryFlight": "Military flight",
+        "militaryVessel": "Military vessel",
+        "aisGap": "AIS gap",
+        "conflictEvent": "Conflict event",
+        "escalationOutage": "Comms outage",
+        "newsSeverity": "Severe news",
+        "sanctionsNews": "Sanctions news",
+        "marketMove": "Market move",
+        "commoditySpike": "Commodity spike",
+        "earthquake": "Earthquake",
+        "infraOutage": "Infrastructure outage",
+        "other": "Signal"
+      }
     },
     "thermalEscalation": {
       "title": "Thermal Escalation",

@@ -2867,7 +2867,21 @@
       "saved": "最後に確認できた更新 {{time}} · 更新を確認中",
       "savedOffline": "最後に確認できた更新 {{time}} · オフライン",
       "localSignals": "ダッシュボードに読み込まれたシグナルに基づく",
-      "emptySaved": "最後に確認できた更新では収束はありませんでした。"
+      "emptySaved": "最後に確認できた更新では収束はありませんでした。",
+      "signalTypes": {
+        "militaryFlight": "軍用機の飛行",
+        "militaryVessel": "軍用艦船",
+        "aisGap": "AIS途絶",
+        "conflictEvent": "紛争イベント",
+        "escalationOutage": "通信障害",
+        "newsSeverity": "深刻なニュース",
+        "sanctionsNews": "制裁ニュース",
+        "marketMove": "市場変動",
+        "commoditySpike": "商品価格急騰",
+        "earthquake": "地震",
+        "infraOutage": "インフラ障害",
+        "other": "シグナル"
+      }
     },
     "thermalEscalation": {
       "title": "熱的エスカレーション",

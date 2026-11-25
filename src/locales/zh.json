@@ -2867,7 +2867,21 @@
       "saved": "最近一次已知更新 {{time}} · 正在检查更新",
       "savedOffline": "最近一次已知更新 {{time}} · 离线",
       "localSignals": "基于仪表板中已加载的信号",
-      "emptySaved": "最近一次已知更新中未发现汇聚。"
+      "emptySaved": "最近一次已知更新中未发现汇聚。",
+      "signalTypes": {
+        "militaryFlight": "军机飞行",
+        "militaryVessel": "军舰",
+        "aisGap": "AIS 中断",
+        "conflictEvent": "冲突事件",
+        "escalationOutage": "通信中断",
+        "newsSeverity": "严重新闻",
+        "sanctionsNews": "制裁新闻",
+        "marketMove": "市场波动",
+        "commoditySpike": "大宗商品飙升",
+        "earthquake": "地震",
+        "infraOutage": "基础设施中断",
+        "other": "信号"
+      }
     },
     "thermalEscalation": {
       "title": "热异常升级",

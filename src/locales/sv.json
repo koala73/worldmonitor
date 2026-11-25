@@ -2469,7 +2469,21 @@
       "saved": "Senast kända uppdatering {{time}} · Söker efter uppdateringar",
       "savedOffline": "Senast kända uppdatering {{time}} · Frånkopplad",
       "localSignals": "Baserat på inlästa signaler i instrumentpanelen",
-      "emptySaved": "Ingen konvergens i den senast kända uppdateringen."
+      "emptySaved": "Ingen konvergens i den senast kända uppdateringen.",
+      "signalTypes": {
+        "militaryFlight": "Militär flygning",
+        "militaryVessel": "Militärt fartyg",
+        "aisGap": "AIS-avbrott",
+        "conflictEvent": "Konflikthändelse",
+        "escalationOutage": "Kommunikationsavbrott",
+        "newsSeverity": "Allvarliga nyheter",
+        "sanctionsNews": "Sanktionsnyheter",
+        "marketMove": "Marknadsrörelse",
+        "commoditySpike": "Råvarusprång",
+        "earthquake": "Jordbävning",
+        "infraOutage": "Infrastrukturavbrott",
+        "other": "Signal"
+      }
     },
     "thermalEscalation": {
       "title": "Värmeskalering",

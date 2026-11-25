@@ -2912,7 +2912,21 @@
       "saved": "Poslední známá aktualizace {{time}} · Kontrola aktualizací",
       "savedOffline": "Poslední známá aktualizace {{time}} · Bez připojení",
       "localSignals": "Na základě načtených signálů přehledu",
-      "emptySaved": "V poslední známé aktualizaci nebyla zjištěna konvergence."
+      "emptySaved": "V poslední známé aktualizaci nebyla zjištěna konvergence.",
+      "signalTypes": {
+        "militaryFlight": "Vojenský let",
+        "militaryVessel": "Vojenské plavidlo",
+        "aisGap": "Výpadek AIS",
+        "conflictEvent": "Konfliktní událost",
+        "escalationOutage": "Výpadek spojení",
+        "newsSeverity": "Závažné zprávy",
+        "sanctionsNews": "Zprávy o sankcích",
+        "marketMove": "Pohyb trhu",
+        "commoditySpike": "Skok komodit",
+        "earthquake": "Zemětřesení",
+        "infraOutage": "Výpadek infrastruktury",
+        "other": "Signál"
+      }
     },
     "thermalEscalation": {
       "title": "Teplotní eskalace",

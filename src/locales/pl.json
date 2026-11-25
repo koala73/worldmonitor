@@ -2912,7 +2912,21 @@
       "saved": "Ostatnia znana aktualizacja {{time}} · Sprawdzanie aktualizacji",
       "savedOffline": "Ostatnia znana aktualizacja {{time}} · Brak połączenia",
       "localSignals": "Na podstawie sygnałów załadowanych w panelu",
-      "emptySaved": "Brak konwergencji w ostatniej znanej aktualizacji."
+      "emptySaved": "Brak konwergencji w ostatniej znanej aktualizacji.",
+      "signalTypes": {
+        "militaryFlight": "Lot wojskowy",
+        "militaryVessel": "Okręt wojskowy",
+        "aisGap": "Luka AIS",
+        "conflictEvent": "Zdarzenie konfliktowe",
+        "escalationOutage": "Awaria łączności",
+        "newsSeverity": "Poważne wiadomości",
+        "sanctionsNews": "Wiadomości o sankcjach",
+        "marketMove": "Ruch rynku",
+        "commoditySpike": "Skok cen surowców",
+        "earthquake": "Trzęsienie ziemi",
+        "infraOutage": "Awaria infrastruktury",
+        "other": "Sygnał"
+      }
     },
     "thermalEscalation": {
       "title": "Eskalacja termiczna",

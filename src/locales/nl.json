@@ -2469,7 +2469,21 @@
       "saved": "Laatst bekende update {{time}} · Controleren op updates",
       "savedOffline": "Laatst bekende update {{time}} · Offline",
       "localSignals": "Gebaseerd op geladen dashboardsignalen",
-      "emptySaved": "Geen convergentie in de laatst bekende update."
+      "emptySaved": "Geen convergentie in de laatst bekende update.",
+      "signalTypes": {
+        "militaryFlight": "Militaire vlucht",
+        "militaryVessel": "Militair schip",
+        "aisGap": "AIS-onderbreking",
+        "conflictEvent": "Conflictgebeurtenis",
+        "escalationOutage": "Communicatiestoring",
+        "newsSeverity": "Ernstig nieuws",
+        "sanctionsNews": "Sanctienieuws",
+        "marketMove": "Marktbeweging",
+        "commoditySpike": "Grondstoffenpiek",
+        "earthquake": "Aardbeving",
+        "infraOutage": "Infrastructuurstoring",
+        "other": "Signaal"
+      }
     },
     "thermalEscalation": {
       "title": "Thermische escalatie",
