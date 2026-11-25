@@ -223,9 +223,9 @@ const PRECIOUS_METALS_TOPIC_RE = /\b(?:gold|silver|platinum|palladium|rhodium|pr
 // A funding headline names a financing instrument and an event or amount.
 // "Raised" alone also matches dividends, guidance, charity drives and
 // people raised somewhere; "venture capital" alone matches guides.
-const FUNDING_SUBJECT_RE = /\b(?:fund(?:ing|raise)|financing|round|series [a-h]\b|(?:pre-)?seed|angel|venture|vc|backers?|backed|valuation|ipos?|s-1|safes?|raise)\b/i;
+const FUNDING_SUBJECT_RE = /\b(?:fund(?:ing|raise)|financing|round|series [a-h]\b|(?:pre-)?seed|angel|venture|vc|backers?|backed|valuation|ipos?|s-1|safes?|\d[\d,.]*\s*(?:m|mn|mln|million|b|bn|billion)\s+raise)\b/i;
 const FUNDING_EVENT_RE = /\b(?:rais(?:es|ed|ing)|secures?|secured|lands?|landed|closes?|closed|bags?|nabs?|snags?|expands?|extends?|leads?|led|co-leads?|joins?|backs?|adds?|seeks?|eyes|launch(?:es)?|launched|announces?|ipos?|s-1|filings?)\b|(?:[$€£¥₹]|\b(?:us\$|usd|eur|gbp|rs\.?|inr)\s?)\d|\b\d[\d,.]*\s*(?:k|m|mn|mln|million|b|bn|billion|cr|crore)\b/i;
-const FUNDING_RAISE_AMOUNT_RE = /\b(?:rais(?:es|ed|ing)|secures?|secured|closes?|closed|lands?|landed|bags?|nabs?)\s+(?:(?:a|an|over|nearly|about|almost|more than|up to)\s+)?(?:[$€£¥₹]|(?:us\$|usd|eur|gbp|rs\.?|inr)\s?)?\d[\d,.]*\s*(?:m|mn|mln|million|b|bn|billion|cr|crore)\b/i;
+const FUNDING_RAISE_AMOUNT_RE = /\b(?:rais(?:e|es|ed|ing)|secures?|secured|closes?|closed|lands?|landed|bags?|nabs?)\s+(?:(?:a|an|over|nearly|about|almost|more than|up to)\s+)?(?:[$€£¥₹]|(?:us\$|usd|eur|gbp|rs\.?|inr)\s?)?\d[\d,.]*\s*(?:m|mn|mln|million|b|bn|billion|cr|crore)\b/i;
 const FUNDING_CHARITY_RE = /\b(?:donors?|donations?|charit(?:y|ies)|shelter|fundraiser|scholarships?|campaign|reward|bail|gofundme|victims?|families|veterans)\b/i;
 const FUNDING_GUIDE_RE = /\b(?:guides?|explained|explainer|lessons|how to|need to know|tips|to watch|in review|preferreds?)\b/i;
 // Tom's Hardware also publishes crime, policy and software stories, and its
