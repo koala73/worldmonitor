@@ -803,6 +803,20 @@
   font-weight: 600;
 }
 
+.fires-agency-table caption {
+  padding: 8px 8px 4px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.fires-shown-of-total {
+  padding: 6px 8px 0;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+}
+
 .fires-footer {
   display: flex;
   justify-content: space-between;

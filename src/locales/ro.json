@@ -1779,7 +1779,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS detectii termice prin satelit în regiunile de conflict monitorizate. Intensitate mare = luminozitate >360K și încredere >80%.",
       "possibleExplosions": "{{count}} posibilă(e) explozie(explozie)",
-      "explosionTooltip": "Semnătură termică în concordanță cu explozie (putere radiantă de incendiu >80 MW, luminozitate >380 K)"
+      "explosionTooltip": "Semnătură termică în concordanță cu explozie (putere radiantă de incendiu >80 MW, luminozitate >380 K)",
+      "agencyReports": "Incendii raportate de agenții",
+      "agencyDates": "Datele agenției",
+      "shownOfTotal": "Se afișează {{shown}} din {{total}} înregistrări de incendii"
     },
     "ucdpEvents": {
       "stateBased": "Bazat pe stat",

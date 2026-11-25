@@ -1764,7 +1764,10 @@
       },
       "infoTooltip": "Satelitní tepelné detekce NASA FIRMS VIIRS napříč monitorovanými zónami konfliktů. Vysoká intenzita = jas >360K & spolehlivost >80 %.",
       "possibleExplosions": "Detekováno {{count}} možná výbucha",
-      "explosionTooltip": "Tepelný podpis odpovídající výbuchu (radiační výkon ohně >80 MW, jas >380 K)"
+      "explosionTooltip": "Tepelný podpis odpovídající výbuchu (radiační výkon ohně >80 MW, jas >380 K)",
+      "agencyReports": "Požáry hlášené úřady",
+      "agencyDates": "Data agentury",
+      "shownOfTotal": "Zobrazeno {{shown}} z {{total}} záznamů o požárech"
     },
     "ucdpEvents": {
       "stateBased": "Státní",

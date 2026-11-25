@@ -117,7 +117,7 @@ import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid, clusterNewsWithWorkerFallback } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
 import { consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
-import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
+import { fetchAllFires, flattenFires, summarizeFires, toMapFires } from '@/services/wildfires';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
 import { ingestConflictsForCountryData, ingestDisplacementForCountryData, ingestClimateForCountryData, ingestGpsJammingForCountryData, isInLearningMode, type CountryScore } from '@/services/country-instability';
@@ -5097,7 +5097,7 @@ export class DataLoaderManager implements AppModule {
       if (fireResult.skipped) {
         this.ctx.intelligenceCache.satelliteFires = [];
         this.ctx.map?.setFires([]);
-        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
+        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(summarizeFires({}), 0);
         await runSignalAggregator(this.ctx.statusPanel, 'satellite fires', (aggregator) => aggregator.ingestSatelliteFires([]));
         dataFreshness.recordError('firms', fireResult.reason ?? 'no_data');
         // en.json carries panels.satelliteFires as a flat title string, so the
@@ -5109,7 +5109,6 @@ export class DataLoaderManager implements AppModule {
       const { regions, totalCount } = fireResult;
       if (totalCount > 0) {
         const flat = flattenFires(regions);
-        const stats = computeRegionStats(regions);
         const satelliteFires = flat.map(f => ({
           lat: f.location?.latitude ?? 0,
           lon: f.location?.longitude ?? 0,
@@ -5124,12 +5123,12 @@ export class DataLoaderManager implements AppModule {
 
         this.ctx.map?.setFires(toMapFires(flat));
 
-        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(stats, totalCount);
+        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(summarizeFires(regions), totalCount);
 
         dataFreshness.recordUpdate('firms', totalCount);
       } else {
         this.ctx.intelligenceCache.satelliteFires = [];
-        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
+        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(summarizeFires({}), 0);
       }
       this.ctx.statusPanel?.updateApi('FIRMS', { status: 'ok' });
     } catch (e) {

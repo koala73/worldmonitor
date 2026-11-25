@@ -1773,7 +1773,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS uydu termal tespit verileri - izlenen catisma bolgeleri. Yuksek yogunluk = parlaklik >360K ve guvenilirlik >%80.",
       "possibleExplosions": "{{count}} olası patlama tespit edildi",
-      "explosionTooltip": "Termal imza patlamaya uygun (ateş radyatif gücü >80 MW, parlaklık >380 K)"
+      "explosionTooltip": "Termal imza patlamaya uygun (ateş radyatif gücü >80 MW, parlaklık >380 K)",
+      "agencyReports": "Kurumlarca bildirilen yangınlar",
+      "agencyDates": "Kurum tarihleri",
+      "shownOfTotal": "{{total}} yangın kaydından {{shown}} tanesi gösteriliyor"
     },
     "ucdpEvents": {
       "stateBased": "Devlet Tabanli",
