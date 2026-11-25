@@ -45,10 +45,14 @@ test('Mars imagery from Earth-science feeds is excluded', () => {
         item('Mars 2020 Mission Collects Its Tenth Sample', 3.5),
         item('Tianwen-3 Mars Sample Return Mission Launches', 3.6),
         item('El Niño Rains Paint the Atacama', 4),
+        item('UNEP MARS Flags Methane Plumes Over Oil Fields', 4.5),
       ],
     },
   ], NOW);
-  assert.deepEqual(selected.map((i) => i.title), ['El Niño Rains Paint the Atacama']);
+  assert.deepEqual(selected.map((i) => i.title), [
+    'El Niño Rains Paint the Atacama',
+    'UNEP MARS Flags Methane Plumes Over Oil Fields',
+  ]);
 });
 
 test('topic-gated feeds keep only climate or environment reports', () => {

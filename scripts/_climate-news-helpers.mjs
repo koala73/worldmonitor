@@ -62,7 +62,8 @@ export const CLIMATE_NEWS_MAX_ITEM_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const OFF_EARTH_RE = /\b(martian|rover|exoplanets?|jupiter|saturn|venus)\b/i;
 // Checked only on feeds without a topic gate (English Earth-science feeds):
 // in ReliefWeb's French reports "Mars" is March ("01-08 Mars 2027").
-const MARS_RE = /\bmars\b/i;
+// Case-sensitive so UNEP's all-caps MARS (Methane Alert and Response System) passes.
+const MARS_RE = /\bMars\b/;
 
 // Applied to feeds whose scope is wider than climate (ReliefWeb's climate
 // theme also tags generic humanitarian bulletins and AI-policy reports).
