@@ -132,6 +132,23 @@ describe('publisher-link gate: a feed that lists other owners links to the hosts
   });
 });
 
+describe('publisher-link gate: YC Launches keeps its Launch HN thread links', () => {
+  // hnrss.org serves the feed; each Launch HN post is a thread on
+  // news.ycombinator.com, a multi-tenant host that cannot be a family domain.
+  const launches = (Object.values(VARIANT_FEEDS.tech ?? {}).flat() as Array<{ name: string; url: string; linkHosts?: string[] }>)
+    .find((feed) => feed.name === 'YC Launches')!;
+  const thread = 'https://news.ycombinator.com/item?id=46000000';
+
+  it('keeps a thread link at parse and at persist', () => {
+    assert.ok(launches, 'YC Launches has a server placement');
+    assert.equal(__testing__.parseRssXml(rssWithLink(thread), launches, 'tech')!.items[0]!.link, thread);
+    assert.equal(
+      __testing__.storyTrackLinkForPersist({ link: thread, source: launches.name, originPublisher: '', originPublisherTrusted: false }),
+      thread,
+    );
+  });
+});
+
 describe('publisher-link gate: the relay sends the links the digest verified, and no others', () => {
   // The digest knows the feed host; the relay sees only the served item. A
   // publisher outside the relay's family table (Egypt Independent, 2026-11-17)

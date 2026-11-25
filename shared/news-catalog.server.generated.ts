@@ -5914,7 +5914,10 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "YC Launches",
-          "url": "https://hnrss.org/launches"
+          "url": "https://hnrss.org/launches",
+          "linkHosts": [
+            "news.ycombinator.com"
+          ]
         }
       ],
       "funding": [
