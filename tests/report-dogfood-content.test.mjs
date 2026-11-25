@@ -157,6 +157,8 @@ describe('panel content review issue', () => {
     writeFileSync(join(dir, 'panels', 'broken.json'), '{ not json');
     writeFileSync(join(dir, 'panels', 'list.json'), '[]');
     writeFileSync(join(dir, 'panels', 'notes.txt'), 'ignored');
+    mkdirSync(join(dir, 'panels', 'folder.json'));
+    writeFileSync(join(dir, 'panels', 'folder.json', 'child'), '{}');
     const report = readShardReport(dir);
     assert.deepEqual(report.panels.map((p) => p.id).sort(), ['cii', 'markets']);
     assert.equal(report.findings.length, 1);
