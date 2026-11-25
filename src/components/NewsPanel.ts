@@ -650,14 +650,14 @@ export class NewsPanel extends Panel {
     const html = sorted
       .map((item) => {
         const attribution = itemAttribution(item);
-        const provenance = renderPrimarySourceProvenance(attribution.publisher);
+        const provenance = renderPrimarySourceProvenance(attribution.provenanceName);
         const titleLink = sanitizeUrl(item.link);
         return `
       <div class="item ${item.isAlert ? 'alert' : ''}" data-news-id="${escapeHtml(item.link)}" data-news-title="${escapeHtml(item.title)}" data-news-source="${escapeHtml(item.source)}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
         <div class="item-source">
           ${escapeHtml(attribution.publisher)}
           ${renderViaFeedLabel(attribution.viaFeed)}
-          ${renderCredibilityBadge(attribution.publisher, item)}
+          ${renderCredibilityBadge(attribution.provenanceName, item)}
           ${provenance.riskBadge}
           ${provenance.facts}
           ${corroborationFlagHtml(assessCorroboration(evidenceFromItem(item)))}
@@ -856,7 +856,7 @@ export class NewsPanel extends Panel {
       riskBadge: primaryPropBadge,
       tierBadge,
       facts: primaryProvenanceFacts,
-    } = renderPrimarySourceProvenance(attribution.publisher);
+    } = renderPrimarySourceProvenance(attribution.provenanceName);
 
     const rosterView = describePublisherRoster(corroboration, publisherRoster(evidence));
 
@@ -923,7 +923,7 @@ export class NewsPanel extends Panel {
           ${tierBadge}
           ${escapeHtml(attribution.publisher)}
           ${renderViaFeedLabel(attribution.viaFeed)}
-          ${renderCredibilityBadge(attribution.publisher, primaryItem)}
+          ${renderCredibilityBadge(attribution.provenanceName, primaryItem)}
           ${primaryPropBadge}
           ${primaryProvenanceFacts}
           ${langBadge}

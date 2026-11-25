@@ -104,19 +104,22 @@ export function renderCredibilityBadge(
 }
 
 export interface ItemAttribution {
-  /** The outlet to credit and to look up provenance for. */
+  /** The outlet to credit, as the aggregator names it. */
   publisher: string;
+  /** The reviewed name to look up provenance and credibility for. */
+  provenanceName: string;
   /** The search feed that found the item, when it is not the publisher. */
   viaFeed: string | null;
 }
 
 /** Credit the outlet a search feed names, keeping the feed label as a separate "via" note. */
-export function itemAttribution(item: { source: string; publisher?: string }): ItemAttribution {
+export function itemAttribution(item: { source: string; publisher?: string; originPublisher?: string }): ItemAttribution {
   const publisher = item.publisher?.trim();
-  if (!publisher || publisherFamilyFor(publisher) === publisherFamilyFor(item.source)) {
-    return { publisher: item.source, viaFeed: null };
+  const provenanceName = item.originPublisher || publisher;
+  if (!publisher || !provenanceName || publisherFamilyFor(provenanceName) === publisherFamilyFor(item.source)) {
+    return { publisher: item.source, provenanceName: item.source, viaFeed: null };
   }
-  return { publisher, viaFeed: item.source };
+  return { publisher, provenanceName, viaFeed: item.source };
 }
 
 export function renderViaFeedLabel(viaFeed: string | null): string {

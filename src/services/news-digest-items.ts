@@ -41,6 +41,7 @@ export function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     ...(Number.isFinite(p.credibilityScore) ? { credibilityScore: p.credibilityScore } : {}),
     ...(p.corroborationCount ? { corroborationCount: p.corroborationCount } : {}),
     ...(p.publisherName ? { publisher: p.publisherName } : {}),
+    ...(p.originPublisher ? { originPublisher: p.originPublisher } : {}),
     ...(p.credibilityUnassessed ? { credibilityUnassessed: true } : {}),
     // Cleaned RSS description (U3 proto field 12). Only populated when the
     // upstream feed carried a usable <description>/<content:encoded>/<summary>;

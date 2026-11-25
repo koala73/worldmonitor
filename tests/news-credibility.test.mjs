@@ -192,8 +192,8 @@ describe('UI, API, and methodology surfaces', () => {
   const mcpNlpSrc = readSrc('api/mcp/registry/nlp-tools.ts');
 
   it('NewsPanel renders CRED badges and still sorts by importanceScore', () => {
-    assert.match(panelSrc, /renderCredibilityBadge\(attribution\.publisher, item\)/);
-    assert.match(panelSrc, /renderCredibilityBadge\(attribution\.publisher, primaryItem\)/);
+    assert.match(panelSrc, /renderCredibilityBadge\(attribution\.provenanceName, item\)/);
+    assert.match(panelSrc, /renderCredibilityBadge\(attribution\.provenanceName, primaryItem\)/);
     assert.match(panelSrc, /a\.importanceScore \?\? 0/);
     assert.doesNotMatch(panelSrc, /sort\(\s*\(a, b\).*credibilityScore/s);
   });

@@ -165,6 +165,8 @@ export interface NewsItem {
   credibilityUnassessed?: boolean;
   /** Outlet a search feed's aggregator names for this item; `source` is then the search label. */
   publisher?: string;
+  /** Curated tier spelling of `publisher`, for provenance lookups; absent when it has no tier. */
+  originPublisher?: string;
   corroborationCount?: number;
   storyMeta?: StoryMeta;
   /**
