@@ -32,7 +32,7 @@ export interface RadiationObservation {
   freshness: RadiationFreshness;
   baselineValue: number;
   delta: number;
-  zScore?: number;
+  zScore: number;
   severity: RadiationSeverity;
   contributingSources: RadiationSource[];
   confidence: RadiationConfidence;
@@ -40,6 +40,7 @@ export interface RadiationObservation {
   conflictingSources: boolean;
   convertedFromCpm: boolean;
   sourceCount: number;
+  zScoreAvailable: boolean;
 }
 
 export interface GeoCoordinates {

@@ -45,9 +45,9 @@ message RadiationObservation {
   // Current reading minus rolling baseline in nSv/h.
   double delta = 11;
 
-  // Standard deviation distance from the rolling baseline. Absent when the
-  // baseline has too few samples or zero variance to standardize against.
-  optional double z_score = 12;
+  // Standard deviation distance from the rolling baseline. Meaningful only
+  // when z_score_available is true.
+  double z_score = 12;
 
   // Interpreted anomaly severity for the current reading.
   RadiationSeverity severity = 13;
@@ -69,6 +69,10 @@ message RadiationObservation {
 
   // Number of distinct contributing sources.
   int32 source_count = 19;
+
+  // False when the baseline has too few samples or zero variance to
+  // standardize against, so z_score carries no value.
+  bool z_score_available = 20;
 }
 
 // RadiationSource identifies the upstream measurement network.

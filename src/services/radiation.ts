@@ -104,7 +104,7 @@ function toObservation(raw: ProtoRadiationObservation): RadiationObservation {
     freshness: mapFreshness(raw.freshness),
     baselineValue: raw.baselineValue ?? raw.value,
     delta: raw.delta ?? 0,
-    zScore: raw.zScore ?? null,
+    zScore: raw.zScoreAvailable ? raw.zScore : null,
     severity: mapSeverity(raw.severity),
     confidence: mapConfidence(raw.confidence),
     corroborated: raw.corroborated ?? false,

@@ -20,6 +20,8 @@ vi.mock('@/services/bootstrap', () => ({
       freshness: 'RADIATION_FRESHNESS_HISTORICAL',
       baselineValue: 68.6,
       delta: 5.7,
+      zScore: 0,
+      zScoreAvailable: false,
       severity: 'RADIATION_SEVERITY_NORMAL',
       confidence: 'RADIATION_CONFIDENCE_LOW',
       corroborated: false,
