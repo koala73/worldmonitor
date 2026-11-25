@@ -18,6 +18,10 @@ it('rejects browser-model commentary about the headline in article mode', async 
   expect(summarize.mock.calls[0]?.[0]?.[0]).toMatch(/^Summarize this article/);
   summarize.mockResolvedValueOnce(["Cet article parle d'un peintre qui réfléchit au vieillissement."]);
   expect(await generateSummary(story, undefined, undefined, 'fr', options)).toBeNull();
+  for (const commentary of ["Let me explain the painter's reflections on aging.", 'The title describes an artist reflecting on aging.']) {
+    summarize.mockResolvedValueOnce([commentary]);
+    expect(await generateSummary(story, undefined, undefined, 'en', options)).toBeNull();
+  }
 });
 
 it('keeps a browser-model summary of the article itself', async () => {
