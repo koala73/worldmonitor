@@ -330,3 +330,13 @@ test('automation relevance requires source text evidence and never infers eligib
   assert.deepEqual(fit.matchReasons, []);
   assert.deepEqual(fit.evidence, []);
 });
+
+test('SAM descriptions keep notice prose and drop the noticedesc API locator', () => {
+  const base = { noticeId: 'a5ed6a1c385f485792cc56d46933645f', title: '43--PUMP,ROTARY', fullParentPathName: 'DEPT OF DEFENSE.DEFENSE LOGISTICS AGENCY' };
+  const locator = normalizeSamOpportunity({ ...base, description: 'https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=a5ed6a1c385f485792cc56d46933645f' });
+  const prose = normalizeSamOpportunity({ ...base, description: 'Rotary pump for shipboard cooling.' });
+
+  assert.equal(locator.description, '');
+  assert.equal(locator.buyer, 'DEPT OF DEFENSE.DEFENSE LOGISTICS AGENCY');
+  assert.equal(prose.description, 'Rotary pump for shipboard cooling.');
+});
