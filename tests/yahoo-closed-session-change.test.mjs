@@ -587,6 +587,16 @@ describe('relay Gulf quotes (seedGulfQuotes)', () => {
     assert.equal(writes[0].quotes[0], tasiRow);
   });
 
+  it('stamps each fresh quote with its Yahoo observation time', async () => {
+    const lastTradeAt = Date.UTC(2026, 10, 24, 12) / 1000;
+    const { seed, writes } = await loadSeedGulf({
+      fresh: { 'SARUSD=X': { price: 0.2666, change: 0, sparkline: [], lastTradeAt }, QAT: { price: 17, change: 1, sparkline: [] } },
+      previous: null,
+    });
+    assert.equal(await seed(), 2);
+    assert.deepEqual(writes[0].quotes.map((q) => [q.symbol, q.priceAt]), [['QAT', undefined], ['SARUSD=X', lastTradeAt * 1000]]);
+  });
+
   it('does not republish retained rows when nothing was fetched', async () => {
     const { seed, writes } = await loadSeedGulf({
       fresh: {},
