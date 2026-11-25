@@ -251,6 +251,7 @@ describe('publisher-families map data', () => {
       'news24',
       'nos',
       'the-hacker-news',
+      'kalkine',
     ]);
     for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILIES)) {
       assert.equal(typeof entry.publisher, 'string', `${familyId} has no publisher name`);
