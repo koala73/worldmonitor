@@ -64,6 +64,7 @@ test('topic-gated feeds keep only climate or environment reports', () => {
         item('Inondations : bilan du mois de mars', 4.6),
         item('Sécheresse au Sahel : note de situation - 24 mars 2027', 4.7),
         item('Cyclone Freddy : rapport de situation du 8 Mars 2027', 4.8),
+        item('Inondations au Mozambique : rapport du 01–08 Mars 2027', 4.75),
         item('Emisiones de carbono en América Latina', 4.8),
       ],
     },
@@ -76,6 +77,7 @@ test('topic-gated feeds keep only climate or environment reports', () => {
     'Inondations : bilan du mois de mars',
     'Sécheresse au Sahel : note de situation - 24 mars 2027',
     'Cyclone Freddy : rapport de situation du 8 Mars 2027',
+    'Inondations au Mozambique : rapport du 01–08 Mars 2027',
     'Emisiones de carbono en América Latina',
     'Lightning could strike more than twice as often',
   ]);
