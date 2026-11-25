@@ -290,7 +290,7 @@ export async function generateSummary(
   options?: SummarizeOptions,
 ): Promise<SummarizationResult | null> {
   const mode = options?.mode ?? 'brief';
-  if (!headlines || headlines.length < (mode === 'article' ? 1 : 2)) {
+  if (!headlines || (mode === 'article' ? headlines.length !== 1 : headlines.length < 2)) {
     return null;
   }
 
