@@ -183,6 +183,13 @@ async function fetchSpain() {
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    const fecha = typeof data?.Fecha === 'string' ? data.Fecha.trim() : '';
+    const date = /^(\d{2})\/(\d{2})\/(\d{4})(?:\s|$)/.exec(fecha);
+    const observedAt = date && `${date[3]}-${date[2]}-${date[1]}`;
+    if (!fuelDateIsFresh(observedAt, Infinity, Date.now())) {
+      console.warn('  [ES] Missing or invalid Fecha in Minetur response');
+      return [];
+    }
     const stations = data?.ListaEESSPrecio;
     if (!Array.isArray(stations) || stations.length === 0) return [];
 
@@ -211,8 +218,8 @@ async function fetchSpain() {
     console.log(`  [ES] Gasoline=${avgGasoline} EUR/L, Diesel=${avgDiesel} EUR/L (${stations.length} stations)`);
     return [{
       code: 'ES', name: 'Spain', currency: 'EUR', flag: '🇪🇸',
-      gasoline: avgGasoline != null ? { localPrice: avgGasoline, grade: 'E5', source: 'minetur.gob.es', observedAt: new Date().toISOString().slice(0, 10) } : null,
-      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel A', source: 'minetur.gob.es', observedAt: new Date().toISOString().slice(0, 10) } : null,
+      gasoline: avgGasoline != null ? { localPrice: avgGasoline, grade: 'E5', source: 'minetur.gob.es', observedAt } : null,
+      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel A', source: 'minetur.gob.es', observedAt } : null,
     }];
   } catch (err) {
     console.warn(`  [ES] fetchSpain error: ${err.message}`);
@@ -231,11 +238,7 @@ async function fetchMexico() {
       fetchWithProxyPreferred(url, { accept: 'application/xml,text/xml,*/*', timeoutMs: 30000 }),
     );
     const xml = await resp.text();
-    const re = (type) => new RegExp(`<gas_price\\s+type="${type}">([\\d.]+)</gas_price>`, 'g');
-    const collect = (type) => [...xml.matchAll(re(type))].map(m => parseFloat(m[1]))
-      .filter(v => Number.isFinite(v) && v > 5 && v < 100); // MXN/L sanity (5 < v < 100)
-    const regular = collect('regular');
-    const diesel = collect('diesel');
+    const { regular, diesel } = parseCREStationPrices(xml);
     if (!regular.length && !diesel.length) {
       console.warn(`  [MX] CRE returned ${xml.length} bytes but no usable <gas_price> rows`);
       return [];
@@ -243,12 +246,11 @@ async function fetchMexico() {
     const avg = (a) => a.length ? +(a.reduce((s, v) => s + v, 0) / a.length).toFixed(4) : null;
     const avgRegular = avg(regular);
     const avgDiesel = avg(diesel);
-    const observedAt = new Date().toISOString().slice(0, 10);
     console.log(`  [MX] Regular=${avgRegular} MXN/L (${regular.length}), Diesel=${avgDiesel} MXN/L (${diesel.length})`);
     return [{
       code: 'MX', name: 'Mexico', currency: 'MXN', flag: '🇲🇽',
-      gasoline: avgRegular != null ? { localPrice: avgRegular, grade: 'Regular', source: 'cre.gob.mx', observedAt } : null,
-      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel', source: 'cre.gob.mx', observedAt } : null,
+      gasoline: avgRegular != null ? { localPrice: avgRegular, grade: 'Regular', source: 'cre.gob.mx' } : null,
+      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel', source: 'cre.gob.mx' } : null,
     }];
   } catch (err) {
     console.warn(`  [MX] fetchMexico error: ${err.message}`);
@@ -983,7 +985,7 @@ export function parseCREStationPrices(xml) {
 // block the multi-country snapshot.
 // These additions are optional coverage: outages/stale data omit their rows and
 // remain visible in failedSources/allSourcesFresh without blocking core coverage.
-const TOLERATED_FAILURES = new Set(['Brazil', 'New Zealand', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA']);
+const TOLERATED_FAILURES = new Set(['Spain-Minetur', 'Brazil', 'New Zealand', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA']);
 
 // Publish gate. Exported so tests can lock in the contract.
 //
@@ -1057,6 +1059,7 @@ const fetchResults = await Promise.allSettled([
   fetchMalaysia(),
   fetchMexico(),
   fetchUS_EIA(),
+  fetchSpain(), // The EU bulletin can fill gaps in the national feed.
   fetchEU_CSV(),
   fetchBrazil(),
   fetchNewZealand(),
@@ -1067,7 +1070,7 @@ const fetchResults = await Promise.allSettled([
   fetchTaiwan(),
 ]);
 
-const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA'];
+const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'Spain-Minetur', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA'];
 let successfulSources = 0;
 const failedSources = [];
 
@@ -1140,7 +1143,10 @@ if (wowAvailable) {
     const prev = prevMap.get(country.code);
     if (!prev) continue;
 
-    if (country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0) {
+    // Spain's national station mean and EU bulletin use different methods.
+    const compareGasoline = country.code !== 'ES' || country.gasoline?.source === prev.gasoline?.source;
+    const compareDiesel = country.code !== 'ES' || country.diesel?.source === prev.diesel?.source;
+    if (compareGasoline && country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0) {
       const raw = +((country.gasoline.usdPrice - prev.gasoline.usdPrice) / prev.gasoline.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} gasoline: ${raw}% — omitting`);
@@ -1148,7 +1154,7 @@ if (wowAvailable) {
         country.gasoline.wowPct = raw;
       }
     }
-    if (country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0) {
+    if (compareDiesel && country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0) {
       const raw = +((country.diesel.usdPrice - prev.diesel.usdPrice) / prev.diesel.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} diesel: ${raw}% — omitting`);
@@ -1214,6 +1220,28 @@ const declareRecords = (d) => d?.countries?.length || 0;
 
 await runSeed('economic', 'fuel-prices', CANONICAL_KEY, async () => data, {
   ttlSeconds: CACHE_TTL,
+  async beforePublish() {
+    const mexico = countryMap.get('MX');
+    if (!mexico) return;
+    // Read the latest published averages under the seed lock. The WoW key
+    // can lag behind a successful publish and cannot track successive changes.
+    const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true });
+    const previousMexico = previous?.countries?.find(country => country.code === 'MX');
+    const now = Date.parse(data.fetchedAt);
+    if (Date.parse(previous?.fetchedAt) > now) {
+      throw new Error('A newer fuel-price snapshot has already been published');
+    }
+    const today = data.fetchedAt.slice(0, 10);
+    for (const grade of ['gasoline', 'diesel']) {
+      const fuel = mexico[grade];
+      if (!fuel) continue;
+      const prior = previousMexico?.[grade];
+      // CRE supplies no date. Start at first sight and advance only when this
+      // grade's published MXN average changes.
+      fuel.observedAt = prior?.source === fuel.source && prior.localPrice === fuel.localPrice
+        && fuelDateIsFresh(prior.observedAt, Infinity, now) ? prior.observedAt : today;
+    }
+  },
   validateFn: validateFuel,
   emptyDataIsFailure: true,
   recordCount: (d) => d?.countries?.length || 0,

@@ -511,7 +511,7 @@ The dashboard recalculates oil-price freshness from the observation time. The RE
 - Gold — central-bank reserves (IMF), ETF flows (SPDR), and spot trend
 - SGE SHAU/SHAG physical benchmarks compared with seeded COMEX futures
 - CFTC Commitments of Traders positioning (reviewed US government data)
-- Global fuel-price tracking with national statistical sources (for example Malaysia's data.gov.my and Mexico's datos.gob.mx)
+- Global retail fuel prices from national sources and the EU Weekly Oil Bulletin
 - Commodity news network: precious metals, base metals, critical minerals, mining companies, and supply-chain feeds — see the [feed inventory](#server-side-feed-aggregation)
 - Mineral production and processing shares by country and stage (USGS Mineral Commodity Summaries, BGS World Mineral Production fill). Complements the static critical-minerals deposits map layer: deposits are where it *could* come from; these shares are where it *does*, at mine vs refinery.
 - Energy chokepoint and tanker context via [maritime intelligence](/maritime-intelligence) and the [Hormuz tracker](/panels/hormuz-tracker)
@@ -531,8 +531,13 @@ The dashboard recalculates oil-price freshness from the observation time. The RE
 
 Licensing: USGS MCS data is U.S. public domain. BGS World Mineral Production requires attribution to the British Geological Survey; IEA critical-minerals datasets are not ingested because redistribution terms are stricter than USGS/BGS, so USGS-unpublished REE refining shares are omitted.
 
-The fuel-price seed preserves local prices and source observation dates, then
-uses shared FX rates to produce USD/l for the existing table. Norway's date is
+The fuel-price seed preserves local prices and uses shared FX rates to produce
+USD/l for the table. Spain uses the publication date in Minetur's station feed,
+with the EU Weekly Oil Bulletin as a fallback. Mexico's CRE feed supplies no date.
+For each grade, WorldMonitor displays the day it first recorded the current
+national average in MXN/l. A change in the exchange rate leaves that date intact.
+
+Norway's date is
 the first day of the observed month; its monthly data has roughly three weeks
 of publication lag and expires 65 days after month end. Gasvaktin is an MIT-licensed
 community project scraping company websites, not an official national average.

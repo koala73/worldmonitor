@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import ExcelJS from 'exceljs';
 import { zipSync, strToU8 } from 'fflate';
 import { parseCREStationPrices, validateFuel, withFuelRetry, fetchUS_EIA, regionalFuelEntries, FUEL_FX_CURRENCIES, latestComComFuelDataUrl, readXlsxFirstSheet, parseNzComComFuel } from '../scripts/seed-fuel-prices.mjs';
 import { SHARED_FX_FALLBACKS } from '../scripts/_seed-utils.mjs';
@@ -9,6 +12,139 @@ import { parseNorwayFuel, parseIcelandFuel, parseTaiwanFuel, fetchNorway, fetchI
 
 const fuelFixture = name => JSON.parse(readFileSync(new URL(`./fixtures/fuel-prices/${name}.json`, import.meta.url), 'utf8'));
 const FUEL_NOW = Date.parse('2026-11-05T00:00:00Z');
+
+async function fuelDateBulletin() {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('With taxes');
+  sheet.addRow(['in EUR', 'Euro-super 95 (I)', 'Gas oil automobile']);
+  sheet.addRow(['24/11/2026', '1000 l', '1000 l']);
+  const countries = ['Austria', 'Belgium', 'Bulgaria', 'Croatia', 'Cyprus', 'Czechia',
+    'Denmark', 'Estonia', 'Finland', 'France', 'Germany', 'Greece', 'Hungary', 'Ireland',
+    'Italy', 'Latvia', 'Lithuania', 'Luxembourg', 'Malta', 'Netherlands', 'Poland',
+    'Portugal', 'Romania', 'Slovakia', 'Slovenia', 'Spain', 'Sweden'];
+  for (const country of countries) sheet.addRow([country, 1500, 1400]);
+  return Buffer.from(await workbook.xlsx.writeBuffer()).toString('base64');
+}
+
+function runFuelDateSeed({ now, bulletin, spain, previous = null, previousWeek = null, regular = 24, mxn = 0.05, expectedFailure }) {
+  const fx = Object.fromEntries(FUEL_FX_CURRENCIES.map(ccy => [ccy, SHARED_FX_FALLBACKS[ccy] ?? 1]));
+  const preload = `
+    import { mock } from 'node:test';
+    const { now, bulletin, spain, previous, previousWeek, regular, fx, priorReadFails } = JSON.parse(process.env.FUEL_DATE_FIXTURE);
+    mock.timers.enable({ apis: ['Date'], now: Date.parse(now) });
+    const key = 'economic:fuel-prices:v1';
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      switch (url.hostname) {
+        case 'fuel-redis.invalid': {
+          if (url.pathname.startsWith('/get/')) {
+            const requested = decodeURIComponent(url.pathname.slice(5));
+            if (requested === key && priorReadFails) return new Response(null, { status: 403 });
+            const inputs = { [key]: previous, [key + ':prev']: previousWeek, 'shared:fx-rates:v1': fx };
+            const value = inputs[requested] ?? null;
+            return Response.json({ result: value && JSON.stringify(value) });
+          }
+          const command = JSON.parse(init.body);
+          if (url.pathname === '/pipeline') return Response.json(command.map(() => ({ result: 1 })));
+          const [op, script, keys, , target, , , payload] = command;
+          if (op === 'SET') return Response.json({ result: 'OK' });
+          if (op === 'DEL' || (op === 'EVAL' && script.includes("redis.call('DEL'"))) return Response.json({ result: 1 });
+          if (op === 'EVAL' && script.includes('PEXPIRE')) {
+            if (keys === 2 && target === key) console.log('FUEL_SNAPSHOT=' + payload);
+            return Response.json({ result: [1, ''] });
+          }
+          throw new Error('Unexpected Redis command ' + op);
+        }
+        case 'api.data.gov.my': return Response.json([{ ron95: 2, date: '2026-11-24' }]);
+        case 'api.eia.gov': return Response.json({ response: { data: [
+          { series: 'EMM_EPMR_PTE_NUS_DPG', value: 3, period: '2026-11-24' },
+        ] } });
+        case 'www.gov.uk': return Response.json({ details: { attachments: [
+          { title: 'Prices since 2018', content_type: 'text/csv', url: 'https://uk-fuel.invalid/prices.csv' },
+        ] } });
+        case 'uk-fuel.invalid': return new Response('Date,Petrol,Diesel\\n24/11/2026,140,150');
+        case 'energy.ec.europa.eu': return new Response(Buffer.from(bulletin, 'base64'));
+        case 'sedeaplicaciones.minetur.gob.es': return Response.json(spain);
+        case 'publicacionexterna.azurewebsites.net': return new Response(
+          '<places><place place_id="1"><gas_price type="regular">' + regular
+          + '</gas_price><gas_price type="diesel">26</gas_price></place></places>',
+        );
+        case 'www.gov.br':
+        case 'www.comcom.govt.nz': return new Response('');
+        case 'data.ssb.no':
+        case 'www2.moeaea.gov.tw': return Response.json([]);
+        default: throw new Error('Unexpected source ' + url.hostname);
+      }
+    };
+  `;
+  const seeder = fileURLToPath(new URL('../scripts/seed-fuel-prices.mjs', import.meta.url));
+  const child = spawnSync(process.execPath, ['--import', 'data:text/javascript,' + encodeURIComponent(preload), seeder], {
+    env: {
+      PATH: process.env.PATH,
+      NODE_ENV: 'test',
+      UPSTASH_REDIS_REST_URL: 'https://fuel-redis.invalid',
+      UPSTASH_REDIS_REST_TOKEN: 'fixture',
+      EIA_API_KEY: 'fixture',
+      FUEL_DATE_FIXTURE: JSON.stringify({ now, bulletin, spain, previous, previousWeek, regular,
+        priorReadFails: expectedFailure === 'Redis snapshot read failed: HTTP 403',
+        fx: { ...fx, ISK: 0, MXN: mxn, fallbackCurrencies: [] } }),
+    },
+    encoding: 'utf8', timeout: 15_000,
+  });
+  assert.ifError(child.error);
+  const log = child.stdout + child.stderr;
+  const payload = child.stdout.match(/^FUEL_SNAPSHOT=(.+)$/m)?.[1];
+  if (expectedFailure) {
+    assert.notEqual(child.status, 0, log);
+    assert.ok(log.includes(expectedFailure), log);
+    assert.equal(payload, undefined);
+    return;
+  }
+  assert.equal(child.status, 0, log);
+  assert.ok(payload, child.stdout + child.stderr);
+  return JSON.parse(payload);
+}
+
+test('published Spain prices use the Minetur date and the EU date when Fecha is invalid', async () => {
+  const bulletin = await fuelDateBulletin();
+  const spain = fuelFixture('minetur-stations');
+  const first = runFuelDateSeed({ now: '2026-11-26', bulletin, spain });
+  const preferred = first.data.countries.find(c => c.code === 'ES');
+  assert.equal(preferred.gasoline.observedAt, '2026-11-25');
+  assert.equal(preferred.diesel.observedAt, '2026-11-25');
+  assert.equal(preferred.gasoline.localPrice, 1.55);
+  assert.equal(preferred.diesel.localPrice, 1.45);
+
+  const later = runFuelDateSeed({ now: '2026-12-03', bulletin, previous: first, previousWeek: first,
+    spain: { ...spain, Fecha: '31/11/2026 10:44:05' } });
+  assert.equal(later.data.wowAvailable, true);
+  const fallback = later.data.countries.find(c => c.code === 'ES');
+  assert.equal(fallback.gasoline.observedAt, '2026-11-24');
+  assert.equal(fallback.gasoline.source, 'energy.ec.europa.eu');
+  assert.equal(fallback.gasoline.wowPct, undefined);
+  assert.equal(fallback.diesel.wowPct, undefined);
+});
+
+test('published Mexico dates advance only for the grade whose local average changed', async () => {
+  const bulletin = await fuelDateBulletin();
+  const spain = fuelFixture('minetur-stations');
+  const first = runFuelDateSeed({ now: '2026-11-26', bulletin, spain });
+  const later = runFuelDateSeed({ now: '2026-12-03', bulletin, spain, previous: first.data, mxn: 0.06 });
+  const unchanged = later.data.countries.find(c => c.code === 'MX');
+  assert.equal(unchanged.gasoline.observedAt, '2026-11-26');
+  assert.equal(unchanged.diesel.observedAt, '2026-11-26');
+  assert.equal(unchanged.gasoline.usdPrice, 1.44);
+
+  const changed = runFuelDateSeed({ now: '2026-12-10', bulletin, spain, previous: later, regular: 25 })
+    .data.countries.find(c => c.code === 'MX');
+  assert.equal(changed.gasoline.observedAt, '2026-12-10');
+  assert.equal(changed.diesel.observedAt, '2026-11-26');
+
+  runFuelDateSeed({ now: '2026-12-10', bulletin, spain, previous: later,
+    expectedFailure: 'Redis snapshot read failed: HTTP 403' });
+  runFuelDateSeed({ now: '2026-12-02', bulletin, spain, previous: later,
+    expectedFailure: 'A newer fuel-price snapshot has already been published' });
+});
 
 test('SSB fixture selects latest monthly petrol/diesel by product and preserves NOK and month', () => {
   const data = fuelFixture('ssb-09654');
