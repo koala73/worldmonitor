@@ -873,7 +873,7 @@
       },
       "clickToViewMap": "Clique para visualizar no mapa",
       "refresh": "Atualizar",
-      "infoTooltip": "<strong>Metodologia</strong><p>Agrega aeronaves militares e navios da marinha por teatro.</p><ul><li><strong>Normal:</strong> Atividade de linha de base</li><li><strong>Elevado:</strong> Acima do limiar (50+ aeronaves)</li><li><strong>Crítico:</strong> Alta concentração (100+ aeronaves)</li></ul><p><strong>Capaz de Strike:</strong> Aviões-tanque + Alerta aerotransportado + Caças presentes em números suficientes para operações sustentadas.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Conta aeronaves militares e navios rastreados em cada teatro.</p><ul><li><strong>Normal:</strong> Abaixo do limite do teatro</li><li><strong>Elevado:</strong> A contagem atinge 3 a 8, por teatro</li><li><strong>Crítico:</strong> A contagem atinge 8 a 20, por teatro</li></ul><p>Navios somam à contagem até a metade do limite elevado, então navios sozinhos nunca elevam um nível.</p><p><strong>Capaz de Ataque:</strong> Aviões-tanque + Alerta aéreo antecipado + Caças presentes em números suficientes para operações sustentadas.</p>",
       "scanningTheaters": "Rastreando teatros",
       "positions": "Posições de aeronaves",
       "navalVesselsLoading": "Embarcações navais",
@@ -915,7 +915,9 @@
       },
       "emojiKeyLabel": "Legenda de Emoji",
       "emojiKeyAir": "Ativos Aéreos",
-      "emojiKeyNaval": "Ativos Navais"
+      "emojiKeyNaval": "Ativos Navais",
+      "instabilityChip": "Instabilidade {{score}}",
+      "instabilityNote": "Pontuação de instabilidade de {{nation}}: {{score}} em 100. Mostrado para contexto. Não altera o nível, que conta as aeronaves e navios no teatro."
     },
     "techEvents": {
       "loading": "Carregando eventos de tecnologia...",
@@ -4494,7 +4496,7 @@
     },
     "intelMemory": {
       "title": "Memória de Inteligência Histórica",
-      "help": "Arquivo de 180 dias de eventos de conflito, militares e energéticos com correspondência de precedentes semânticos sob demanda.",
+      "help": "Arquivo de 180 dias de eventos notáveis de conflito, militares, energia, distúrbios, cibernéticos, marítimos, riscos naturais e aviação, com busca semântica de precedentes sob demanda.",
       "loading": "Carregando memória de inteligência histórica…",
       "proLocked": "Atualize para PRO para memória de inteligência histórica de 180 dias e busca de precedentes",
       "unavailable": "A memória de inteligência histórica está temporariamente indisponível.",
@@ -4506,7 +4508,12 @@
         "all": "Todos",
         "conflict": "Conflito",
         "military": "Militar",
-        "energy": "Energia"
+        "energy": "Energia",
+        "unrest": "Distúrbios",
+        "cyber": "Cibernética",
+        "maritime": "Marítima",
+        "natural": "Riscos naturais",
+        "aviation": "Aviação"
       },
       "loadMore": "Carregar mais",
       "loadingMore": "Carregando mais…",

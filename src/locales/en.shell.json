@@ -772,7 +772,7 @@
       "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
     },
     "strategicPosture": {
-      "infoTooltip": "<strong>Methodology</strong><p>Aggregates military aircraft and naval vessels by theater.</p><ul><li><strong>Normal:</strong> Baseline activity</li><li><strong>Elevated:</strong> Above threshold (50+ aircraft)</li><li><strong>Critical:</strong> High concentration (100+ aircraft)</li></ul><p><strong>Strike Capable:</strong> Tankers + Airborne early warning + Fighters present in sufficient numbers for sustained operations.</p>"
+      "infoTooltip": "<strong>Methodology</strong><p>Counts military aircraft and tracked naval vessels in each theater.</p><ul><li><strong>Normal:</strong> Below the theater's threshold</li><li><strong>Elevated:</strong> Count reaches 3 to 8, by theater</li><li><strong>Critical:</strong> Count reaches 8 to 20, by theater</li></ul><p>Ships add to the count up to half the elevated threshold, so ships alone never raise a level.</p><p><strong>Strike Capable:</strong> Tankers + Airborne early warning + Fighters present in sufficient numbers for sustained operations.</p>"
     },
     "strategicRisk": {
       "infoTooltip": "<strong>Methodology</strong> Composite score (0-100) blending:<ul><li>50% Country Instability (top 5 weighted)</li><li>30% Geographic convergence zones</li><li>20% Infrastructure incidents</li></ul>Auto-refreshes every 5 minutes."

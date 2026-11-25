@@ -302,7 +302,7 @@
     },
     "intelMemory": {
       "title": "歷史情報庫",
-      "help": "180天衝突、軍事和能源事件檔案，支援按需語義先例匹配。",
+      "help": "180天重要事件檔案庫，涵蓋衝突、軍事、能源、動盪、網路、海事、自然災害和航空，支援按需語義先例匹配。",
       "loading": "正在載入歷史情報庫…",
       "proLocked": "升級至PRO以獲得180天歷史情報庫和先例搜尋",
       "unavailable": "歷史情報庫暫時不可用。",
@@ -314,7 +314,12 @@
         "all": "全部",
         "conflict": "衝突",
         "military": "軍事",
-        "energy": "能源"
+        "energy": "能源",
+        "unrest": "動盪",
+        "cyber": "網路",
+        "maritime": "海事",
+        "natural": "自然災害",
+        "aviation": "航空"
       },
       "loadMore": "載入更多",
       "loadingMore": "正在載入…",
@@ -1192,7 +1197,7 @@
         "auxiliary": "輔助艦",
         "navalVessels": "海軍艦艇"
       },
-      "infoTooltip": "<strong>方法論</strong><p>按作戰區域聚合軍用飛機和海軍艦艇。</p><ul><li><strong>正常：</strong> 基準活動</li><li><strong>升高：</strong> 超過閾值（50+ 架飛機）</li><li><strong>嚴重：</strong> 高度集中（100+ 架飛機）</li></ul><p><strong>具備打擊能力：</strong> 加油機 + 預警機 + 戰鬥機數量充足以維持持續作戰。</p>",
+      "infoTooltip": "<strong>方法論</strong><p>統計各軍事行動區的軍用飛機和被跟蹤的海軍艦艇數量。</p><ul><li><strong>正常：</strong>低於該行動區的閾值</li><li><strong>升高：</strong>計數達到 3 至 8，因行動區而異</li><li><strong>嚴重：</strong>計數達到 8 至 20，因行動區而異</li></ul><p>艦艇計入計數，最多可達升高閾值的一半，因此單獨的艦艇永遠不會引發等級提升。</p><p><strong>具有打擊能力：</strong>油料補給機、預警機以及戰鬥機數量充足，足以維持持續作戰。</p>",
       "scanningTheaters": "掃描戰區",
       "positions": "飛機位置",
       "navalVesselsLoading": "海軍艦艇",
@@ -1234,7 +1239,9 @@
       },
       "emojiKeyLabel": "表情符號圖例",
       "emojiKeyAir": "空中資產",
-      "emojiKeyNaval": "海軍資產"
+      "emojiKeyNaval": "海軍資產",
+      "instabilityChip": "不穩定指數 {{score}}",
+      "instabilityNote": "{{nation}} 不穩定指數：{{score}} 分（滿分100分）。僅供參考。該指數不影響威脅等級，威脅等級由該戰區內的飛機和艦船數量決定。"
     },
     "countryBrief": {
       "moreActions": "更多操作",

@@ -698,7 +698,7 @@ function stringExample(name, schema = {}, context = {}) {
   // ops, so anchor on the exact accepted-values pattern instead of the name.
   // If the contract's pattern ever changes this falls through to the generic
   // heuristic and the schema-validity check reds — the correct failure mode.
-  if (schema.pattern === '^(conflict|military|energy)?$') return 'conflict';
+  if (schema.pattern === '^(conflict|military|energy|unrest|cyber|maritime|natural|aviation)?$') return 'conflict';
   if (schema.pattern === '^(?:|USMCA|EU27|BRICS|GCC|ASEAN|NATO)$') return 'NATO';
   if (key === 'unavailablereason') return '';
   if (key === 'countrycode' && parent === 'inputs') return '';
