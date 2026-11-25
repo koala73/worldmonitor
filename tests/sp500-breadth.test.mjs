@@ -121,11 +121,11 @@ describe('mergeBreadthHistory', () => {
     assert.deepEqual(current, nextReadings);
   });
 
-  it('drops stored weekend and malformed session dates', () => {
-    const prior = ['2026-04-10', '2026-04-11', '2026-04-12', 'bad', '2026-04-13']
+  it('drops stored weekend, malformed and impossible session dates', () => {
+    const prior = ['2026-02-27', '2026-02-30', '2026-04-11', '2026-04-12', 'bad', '2026-04-13']
       .map((date) => ({ date, ...completeReadings() }));
     const { history } = mergeBreadthHistory(prior, completeReadings(), '2026-04-14');
-    assert.deepEqual(history.map((row) => row.date), ['2026-04-10', '2026-04-13', '2026-04-14']);
+    assert.deepEqual(history.map((row) => row.date), ['2026-02-27', '2026-04-13', '2026-04-14']);
   });
 });
 

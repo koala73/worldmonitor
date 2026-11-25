@@ -82,7 +82,9 @@ export function requireCompleteReadings(readings) {
 // onto Saturday and Sunday.
 function isWeekdaySession(date) {
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const day = new Date(`${date}T12:00:00Z`);
+  if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== date) return false;
+  const weekday = day.getUTCDay();
   return weekday >= 1 && weekday <= 5;
 }
 
