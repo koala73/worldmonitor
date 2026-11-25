@@ -46,7 +46,9 @@ message RadiationObservation {
   double delta = 11;
 
   // Standard deviation distance from the rolling baseline. Meaningful only
-  // when z_score_available is true.
+  // when z_score_available is true. Snapshots cached before that flag existed
+  // do not set it; for those, a nonzero z_score is valid and zero means
+  // unavailable.
   double z_score = 12;
 
   // Interpreted anomaly severity for the current reading.

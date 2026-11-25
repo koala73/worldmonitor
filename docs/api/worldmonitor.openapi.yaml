@@ -60358,7 +60358,9 @@ components:
                     format: double
                     description: |-
                         Standard deviation distance from the rolling baseline. Meaningful only
-                         when z_score_available is true.
+                         when z_score_available is true. Snapshots cached before that flag existed
+                         do not set it; for those, a nonzero z_score is valid and zero means
+                         unavailable.
                 severity:
                     type: string
                     enum:
