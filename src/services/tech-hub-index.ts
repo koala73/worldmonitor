@@ -164,7 +164,7 @@ function buildTechHubIndex(): TechHubIndex {
     for (const hub of hubs.values()) {
       if (hub.city.toLowerCase() === sh.city.toLowerCase()) {
         exists = true;
-        // Hub nicknames and accelerators (Silicon Beach, Station F, Hub71) name the tech scene, not just the city
+        // Accelerators and campuses (Station F, Hub71) name the tech scene, not just the city
         if (sh.name !== sh.city) {
           hub.keywords.push(sh.name.toLowerCase());
           addKeyword(sh.name, hub.id);
@@ -196,30 +196,21 @@ function buildTechHubIndex(): TechHubIndex {
     }
   }
 
-  // Add common region aliases
+  // Regional nicknames name an area that any story can mention, so they count as places
   const regionAliases: Record<string, string> = {
+    'silicon valley': 'sf-bay-area',
     'bay area': 'sf-bay-area',
     'san francisco bay': 'sf-bay-area',
-  };
-
-  for (const [alias, hubId] of Object.entries(regionAliases)) {
-    addPlace(alias, hubId);
-  }
-
-  // Tech-scene names are technology evidence on their own, unlike a city or region
-  const techSceneAliases: Record<string, string> = {
-    'silicon valley': 'sf-bay-area',
     'research triangle': 'raleigh-durham',
     'startup nation': 'telaviv',
     'silicon beach': 'la',
     'silicon savannah': 'nairobi',
-    'station f': 'paris',
     'zhongguancun': 'beijing',
     'tech city': 'london',
   };
 
-  for (const [alias, hubId] of Object.entries(techSceneAliases)) {
-    addKeyword(alias, hubId);
+  for (const [alias, hubId] of Object.entries(regionAliases)) {
+    addPlace(alias, hubId);
   }
 
   cachedIndex = { hubs, byKeyword, places };

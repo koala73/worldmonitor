@@ -64,6 +64,7 @@ describe('tech hub evidence', () => {
   it('counts a city mention only for a technology story', () => {
     const shooting = cluster('One man dead after shooting during a home invasion in midtown Toronto', 'CBC', 'https://www.cbc.ca/news/x', 'conflict');
     const startups = cluster('MSS Supports Eight Deep-Tech Startups in Raising Funds in Berlin', 'Startup News', 'https://example.com/berlin', 'tech');
-    assert.deepEqual(hubCities([shooting, startups]), ['Berlin']);
+    const wildfire = cluster('Wildfire forces evacuations near Silicon Valley', 'KTVU', 'https://example.com/fire', 'disaster');
+    assert.deepEqual(hubCities([shooting, wildfire, startups]), ['Berlin']);
   });
 });
