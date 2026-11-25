@@ -220,8 +220,18 @@ const COMMODITY_TOPIC_RE = /\b(?:commodit(?:y|ies)|metals?|mining|miners?|mines?
 const CRYPTO_TOPIC_RE = /\b(?:crypto\w*|bitcoin|btc|ether(?:eum)?|eth|blockchains?|stablecoins?|tokens?|tokeni[sz]\w*|defi|decentrali[sz]ed finance|dex(?:es)?|(?:re)?staking|mainnet|testnet|layer[- ]?2|rollups?|validators?|nfts?|non-fungible|web3|onchain|on-chain|altcoins?|memecoins?|coins?|binance|coinbase|kraken|okx|bybit|tether|usdt|usdc|circle|solana|xrp|ripple|dogecoin|cardano|uniswap|aave|chainlink|grayscale|saylor|satoshi|wallets?|digital assets?|cbdcs?|hashrate|halving|airdrops?|dao|prediction markets?|polymarket|kalshi)\b/i;
 const PRECIOUS_METALS_TOPIC_RE = /\b(?:gold|silver|platinum|palladium|rhodium|precious metals?|bullion|xau\w*|xag\w*|xpt\w*|xpd\w*|lbma|comex|gld|slv|ounces?|oz|jewel(?:le)?ry)\b/i;
 
-type CategoryGate = { eligible: (headline: string) => boolean; searchFeedsOnly?: true };
-const searchTopicGate = (topic: RegExp): CategoryGate => ({ eligible: (headline) => topic.test(headline), searchFeedsOnly: true });
+// A funding headline names a financing instrument and an event or amount.
+// "Raised" alone also matches dividends, guidance, charity drives and
+// people raised somewhere; "venture capital" alone matches guides.
+const FUNDING_SUBJECT_RE = /\b(?:fund(?:ing|raise)|financing|round|series [a-h]\b|(?:pre-)?seed|angel|venture|vc|backers?|backed|valuation|ipos?|s-1|safes?|raise)\b/i;
+const FUNDING_EVENT_RE = /\b(?:rais(?:es|ed|ing)|secures?|secured|lands?|landed|closes?|closed|bags?|nabs?|snags?|expands?|extends?|leads?|led|co-leads?|joins?|backs?|adds?|seeks?|eyes|launch(?:es)?|launched|announces?|ipos?|s-1|filings?)\b|(?:[$€£¥₹]|\b(?:us\$|usd|eur|gbp|rs\.?|inr)\s?)\d|\b\d[\d,.]*\s*(?:k|m|mn|mln|million|b|bn|billion|cr|crore)\b/i;
+const FUNDING_GUIDE_RE = /\b(?:guides?|explained|explainer|lessons|how to|need to know|tips|to watch|in review|preferreds?)\b/i;
+// Tom's Hardware also publishes crime, policy and software stories, and its
+// whole feed lands in the hardware panel.
+const HARDWARE_TOPIC_RE = /\b(?:hardware|cpus?|gpus?|processors?|chips?|chipsets?|chipmakers?|semiconductors?|silicon|wafers?|fabs?|foundry|tsmc|intel|amd|nvidia|qualcomm|micron|sk hynix|samsung|apple silicon|m\d|radeon|geforce|rtx|ryzen|core ultra|xeon|epyc|threadripper|memory|ram|dram|ddr\d|hbm|ssds?|hdds?|nvme|storage|hard drives?|motherboards?|pcs?|desktops?|laptops?|macbooks?|imacs?|mac mini|chromebooks?|tablets?|ipads?|monitors?|displays?|oled|keyboards?|mice|mouse|peripherals?|routers?|wi-fi|ethernet|raspberry pi|arduino|3d print(?:ers?|ing)|tool changers?|coolers?|cooling|psus?|power supply|consoles?|ps5|xbox|switch 2|handhelds?|steam deck|benchmarks?|overclock\w*|servers?|datacenters?|data centers?|supercomputers?|quantum computers?)\b/i;
+
+type CategoryGate = { eligible: (headline: string) => boolean; appliesTo?: (feedUrl: string) => boolean };
+const searchTopicGate = (topic: RegExp): CategoryGate => ({ eligible: (headline) => topic.test(headline), appliesTo: isGoogleNewsSearch });
 
 const CATEGORY_ELIGIBILITY: Readonly<Record<string, CategoryGate>> = {
   policy: { eligible: (title) => POLICY_ACTION_RE.test(title) || (DIGITAL_SUBJECT_RE.test(title) && !CONSUMER_OFFER_RE.test(title)) },
@@ -230,6 +240,14 @@ const CATEGORY_ELIGIBILITY: Readonly<Record<string, CategoryGate>> = {
   'commodity-news': searchTopicGate(COMMODITY_TOPIC_RE),
   crypto: searchTopicGate(CRYPTO_TOPIC_RE),
   'gold-silver': searchTopicGate(PRECIOUS_METALS_TOPIC_RE),
+  funding: {
+    eligible: (headline) => FUNDING_SUBJECT_RE.test(headline) && FUNDING_EVENT_RE.test(headline) && !FUNDING_GUIDE_RE.test(headline),
+    appliesTo: isGoogleNewsSearch,
+  },
+  hardware: {
+    eligible: (headline) => HARDWARE_TOPIC_RE.test(headline),
+    appliesTo: (feedUrl) => feedPublisherHost(feedUrl) === 'tomshardware.com',
+  },
 };
 
 function isCategoryEligible(category: string, title: string, originPublisher = ''): boolean {
@@ -257,7 +275,7 @@ const FEED_ELIGIBILITY_CATEGORIES: ReadonlyMap<string, readonly string[]> = (() 
       const gate = CATEGORY_ELIGIBILITY[category];
       for (const feed of feeds) {
         const prior = byUrl.get(feed.url);
-        if (!gate || (gate.searchFeedsOnly && !isGoogleNewsSearch(feed.url))) byUrl.set(feed.url, null);
+        if (!gate || (gate.appliesTo && !gate.appliesTo(feed.url))) byUrl.set(feed.url, null);
         else if (prior !== null) byUrl.set(feed.url, (prior ?? new Set()).add(category));
       }
     }
@@ -3238,11 +3256,16 @@ function storyTrackLinkForPersist(
   return '';
 }
 
+// Curated link aggregators: each item links to the submitted article on any
+// site, so only the URL shape is checked, never the publisher.
+const LINK_AGGREGATOR_FEED_HOSTS = new Set(['news.ycombinator.com', 'hnrss.org', 'lobste.rs']);
+
 function isItemLinkAllowed(
   link: string,
   item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
   feed: Pick<ServerFeed, 'url' | 'linkHosts'>,
 ): boolean {
+  if (LINK_AGGREGATOR_FEED_HOSTS.has(feedPublisherHost(feed?.url))) return linkHostname(link) !== '';
   return isPublisherLink(link, expectedPublisherHostsForItem(item, feed));
 }
 
