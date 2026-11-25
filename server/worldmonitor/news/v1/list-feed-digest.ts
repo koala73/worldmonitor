@@ -211,7 +211,7 @@ const POLICY_ACTION_RE = /\b(?:regulat\w*|laws?|acts?|bills?|rules?|ruling|bans?
 const CONSUMER_OFFER_RE = /\b(?:(?:best|top|early|holiday|daily|weekend) deals|deals? of the (?:day|week)|discounts?|coupons?|promo codes?|black friday|cyber monday|prime day|on sale\b|lowest[- ]price[sd]?\b|save up to|deals?:)|\$\d[\d,.]*\s+off\b|\b\d+% off\b/i;
 
 const CATEGORY_ELIGIBILITY: Readonly<Record<string, (title: string) => boolean>> = {
-  policy: (title) => !CONSUMER_OFFER_RE.test(title) && (DIGITAL_SUBJECT_RE.test(title) || POLICY_ACTION_RE.test(title)),
+  policy: (title) => POLICY_ACTION_RE.test(title) || (DIGITAL_SUBJECT_RE.test(title) && !CONSUMER_OFFER_RE.test(title)),
 };
 
 function isCategoryEligible(category: string, title: string, originPublisher = ''): boolean {

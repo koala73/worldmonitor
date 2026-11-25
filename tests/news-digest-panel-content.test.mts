@@ -63,6 +63,7 @@ describe('keyword classifier: metaphorical coup language', () => {
         'Military foils leftist coup attempt in Bolivia',
         'Conservative coup plot uncovered in Bolivia',
         'Police uncover plot for a leftist coup in Bolivia',
+        'Army-backed legislative coup ousts president',
       ]) {
         const result = classify(title);
         assert.equal(result.level, 'critical', title);
@@ -96,6 +97,7 @@ describe('policy digest: AI and digital policy eligibility', () => {
       "Google Antitrust Trial: Apple's $20B Deal, 140 Days Late - shattered.io",
       "Judge rules Google's exclusive search deals violate antitrust law - Reuters",
       'US announces new rules on sales of AI chips to China - Reuters',
+      'Amazon sued over lowest-price rules for third-party sellers - Reuters',
       'Congressional Staffing Is the Biggest Tech Policy Problem No One Talks About - Tech Policy Press',
       'First European standard published to support the Cyber Resilience Act - Shaping Europe’s digital future',
     ]) {
