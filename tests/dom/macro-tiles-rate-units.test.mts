@@ -111,6 +111,12 @@ describe('macro tiles annual CPI, rate deltas and Euro Area labels', () => {
     expect(text()).not.toMatch(/\d% vs prior/);
   });
 
+  it('rounds a half-hundredth rate move away from zero', async () => {
+    mockFredBatch.mockResolvedValue(fred({ FEDFUNDS: [{ date: '2026-09-01', value: 2.443 }, { date: '2026-10-01', value: 2.448 }] }));
+    const { text } = await render();
+    expect(text()).toContain('Fed Funds Rate 2.4% +0.01 pp vs prior');
+  });
+
   it('names the countries behind each Euro Area average', async () => {
     const { panel, text } = await render();
     panel.getElement().querySelector<HTMLElement>('[data-tab="eu"]')!.click();
