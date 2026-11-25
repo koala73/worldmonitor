@@ -707,11 +707,16 @@
   animation: happy-ticker-scroll 120s linear infinite;
 }
 
-/* Pause on keyboard focus as well as hover — hover-only pause is unreachable
-   for keyboard and touch users (WCAG 2.2.2). */
-[data-variant="happy"] .breakthroughs-ticker-wrapper:hover .breakthroughs-ticker-track,
-[data-variant="happy"] .breakthroughs-ticker-wrapper:focus-within .breakthroughs-ticker-track {
+/* Pause on hover, and stop on keyboard focus — hover-only pause is unreachable
+   for keyboard and touch users (WCAG 2.2.2). Stopping (not pausing) on focus
+   returns the track to its start, so the focusable first set is in view and the
+   browser can scroll each focused item into the wrapper. */
+[data-variant="happy"] .breakthroughs-ticker-wrapper:hover .breakthroughs-ticker-track {
   animation-play-state: paused;
+}
+
+[data-variant="happy"] .breakthroughs-ticker-wrapper:focus-within .breakthroughs-ticker-track {
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
