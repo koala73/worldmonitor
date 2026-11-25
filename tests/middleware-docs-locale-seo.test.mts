@@ -215,16 +215,53 @@ describe('middleware docs locale SEO proxy', () => {
     }
   });
 
-  it('leaves RSC flight requests on the Mintlify rewrite path', () => {
-    const req = new Request('https://www.worldmonitor.app/docs/zh/about', {
-      headers: {
-        accept: 'text/x-component',
-        rsc: '1',
-        'user-agent': 'Mozilla/5.0',
-      },
-    });
-    const res = middleware(req);
-    assert.equal(res, undefined, 'RSC requests must fall through to vercel.json Mintlify rewrite');
+  it('preserves docs flights, assets, Markdown and POST bodies while stripping upstream cookies', async () => {
+    const originalFetch = globalThis.fetch;
+    const cases = [
+      { path: '/docs/zh/about?_rsc=xyz', header: 'rsc', value: '1', type: 'text/x-component' },
+      { path: '/docs/_next/static/file.js', header: 'range', value: 'bytes=0-6', type: 'text/javascript' },
+      { path: '/docs/auth.md', header: 'accept', value: 'text/markdown', type: 'text/markdown' },
+      { path: '/docs/_mintlify/api/request', header: 'content-type', value: 'application/json', type: 'application/json', body: '{"test":true}' },
+    ];
+    try {
+      for (const { path, header, value, type, body } of cases) {
+        const method = body ? 'POST' : 'GET';
+        mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+          assert.equal(url, `https://worldmonitor.mintlify.dev${path}`);
+          assert.equal(init.method, method);
+          assert.equal(new Headers(init.headers).get(header), value);
+          assert.equal(new Headers(init.headers).has('cookie'), false);
+          assert.equal(new Headers(init.headers).has('authorization'), false);
+          if (body) assert.equal(await new Response(init.body).text(), body);
+          return new Response('docs upstream body', {
+            headers: {
+              'content-type': type,
+              'set-cookie': 'upstream=value; Path=/',
+              'x-middleware-next': '1',
+            },
+          });
+        });
+        const response = await middleware(new Request(`https://www.worldmonitor.app${path}`, {
+          method,
+          body,
+          headers: { [header]: value, cookie: 'app-cookie=value', authorization: 'Bearer app-token' },
+        }));
+        assert.ok(response instanceof Response);
+        assert.equal(response.headers.get('set-cookie'), null);
+        assert.equal(response.headers.get('x-middleware-next'), null);
+        assert.equal(response.headers.get('x-wm-docs-locale-seo'), null);
+        assert.equal(response.headers.get('content-type'), type);
+        assert.equal(await response.text(), 'docs upstream body');
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('leaves the two first-party MCP routes to Vercel', () => {
+    for (const path of ['/docs/mcp', '/docs/mcp/server-card']) {
+      assert.equal(middleware(new Request(`https://www.worldmonitor.app${path}`)), undefined);
+    }
   });
 
   it('supplies AbortSignal.timeout below the routing-middleware deadline', async () => {

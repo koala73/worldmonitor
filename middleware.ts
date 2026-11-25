@@ -361,14 +361,14 @@ function route(request: Request) {
       canonicalUrl.search = url.search;
       return Response.redirect(canonicalUrl.toString(), 308);
     }
+  }
 
-    // Mintlify rewrite cannot set zh-Hans <html lang> or reciprocal hreflang
-    // for /docs/zh/* (issue #7378). Proxy full-document HTML only — leave RSC
-    // flights and static assets on the direct Mintlify rewrite.
-    if (isDocsHtmlDocumentPath(path) && isDocsFullDocumentRequest(request)) {
-      return proxyDocsLocaleHtml(request, url, host);
-    }
+  // Every upstream docs response goes through the cookie filter. The two
+  // first-party MCP routes keep their explicit rewrites in vercel.json.
+  if (path === '/docs/' || path === '/docs/mcp' || path === '/docs/mcp/server-card') return;
+  if (path.startsWith('/docs/')) return proxyDocs(request, url, host);
 
+  if (request.method === 'GET' || request.method === 'HEAD') {
     // Real HTTP 404 for unknown pages. Agents get markdown (orank
     // `agent-friendly-404`); browsers that send Accept: text/html get HTML.
     // A rewrite to a static file would 200. Files with extensions skip this
@@ -464,8 +464,12 @@ function route(request: Request) {
 
 function docsResponseHeaders(upstream: Response, host: string): Headers {
   const headers = new Headers(upstream.headers);
-  // Upstream Mintlify responses must never set cookies on the primary app origin.
-  headers.delete('set-cookie');
+  // Keep vendor cookies and routing directives out of the app response.
+  for (const name of upstream.headers.keys()) {
+    if (name === 'set-cookie' || name.startsWith('x-middleware-') || name.startsWith('x-vercel-')) {
+      headers.delete(name);
+    }
+  }
   if (host !== new URL(DOCS_PUBLIC_ORIGIN).hostname) {
     const robots = headers.get('x-robots-tag');
     headers.set('x-robots-tag', robots ? `noindex, ${robots}` : 'noindex');
@@ -473,7 +477,7 @@ function docsResponseHeaders(upstream: Response, host: string): Headers {
   const varyParts = new Set(
     (headers.get('vary') ?? '').split(',').map((part) => part.trim().toLowerCase()).filter(Boolean),
   );
-  for (const name of ['host', 'accept', 'rsc', 'next-router-state-tree', 'next-router-prefetch']) {
+  for (const name of ['host', 'accept', 'rsc', 'next-router-state-tree', 'next-router-prefetch', 'next-router-segment-prefetch', 'next-url']) {
     varyParts.add(name);
   }
   headers.set('vary', [...varyParts].join(', '));
@@ -650,71 +654,66 @@ function liveSituationPage(url: URL): Promise<Response> {
   });
 }
 
-async function proxyDocsLocaleHtml(request: Request, url: URL, host: string): Promise<Response> {
+async function proxyDocs(request: Request, url: URL, host: string): Promise<Response> {
   const upstreamUrl = `${DOCS_UPSTREAM_ORIGIN}${url.pathname}${url.search}`;
-  const forwardHeaders = new Headers();
-  for (const name of ['accept', 'accept-language', 'user-agent', 'if-none-match', 'if-modified-since']) {
+  const forwardHeaders = new Headers({ 'accept-encoding': 'identity' });
+  for (const name of [
+    'accept', 'accept-language', 'user-agent', 'content-type',
+    'if-none-match', 'if-modified-since', 'range', 'if-range',
+    'rsc', 'next-router-state-tree', 'next-router-prefetch', 'next-router-segment-prefetch',
+    'next-url', 'next-action', 'origin',
+  ]) {
     const value = request.headers.get(name);
     if (value) forwardHeaders.set(name, value);
   }
   if (!forwardHeaders.has('user-agent')) {
-    forwardHeaders.set('user-agent', 'WorldMonitorDocsLocaleProxy/1.0');
+    forwardHeaders.set('user-agent', 'WorldMonitorDocsProxy/1.0');
   }
 
-  let upstream: Response;
-  let html: string;
   try {
-    upstream = await fetch(upstreamUrl, {
+    const options: RequestInit & { duplex?: 'half' } = {
       method: request.method,
       headers: forwardHeaders,
       redirect: 'manual',
       signal: AbortSignal.timeout(DOCS_UPSTREAM_TIMEOUT_MS),
+    };
+    if (request.body) {
+      options.body = request.body;
+      options.duplex = 'half';
+    }
+    const upstream = await fetch(upstreamUrl, options);
+    const headers = docsResponseHeaders(upstream, host);
+    headers.delete('connection');
+    headers.delete('transfer-encoding');
+
+    const rewriteHtml = upstream.status === 200 && request.method === 'GET'
+      && isDocsHtmlDocumentPath(url.pathname) && isDocsFullDocumentRequest(request)
+      && shouldTransformDocsUpstreamHtml(url.pathname, headers.get('content-type'));
+
+    if (rewriteHtml || (upstream.body && headers.has('content-encoding'))) {
+      // Fetch already decoded the body. Do not advertise the upstream framing
+      // after decoding or rewriting the document.
+      headers.delete('content-encoding');
+      headers.delete('content-length');
+    }
+    const body = rewriteHtml ? rewriteDocsLocaleHtml(await upstream.text(), url.pathname) : upstream.body;
+    if (rewriteHtml) headers.set('x-wm-docs-locale-seo', '1');
+
+    return new Response(body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers,
     });
-
-    const contentType = upstream.headers.get('content-type');
-    if (upstream.status !== 304 && (
-      upstream.status !== 200 || !shouldTransformDocsUpstreamHtml(url.pathname, contentType)
-    )) {
-      const passthroughHeaders = new Headers(upstream.headers);
-      passthroughHeaders.delete('set-cookie');
-      return new Response(upstream.body, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: passthroughHeaders,
-      });
-    }
-    if (upstream.status === 304 || request.method === 'HEAD') {
-      return new Response(null, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: docsResponseHeaders(upstream, host),
-      });
-    }
-
-    html = await upstream.text();
   } catch {
     return new Response('Docs upstream unavailable', { status: 502 });
   }
-
-  const rewritten = rewriteDocsLocaleHtml(html, url.pathname);
-  const headers = docsResponseHeaders(upstream, host);
-  // Fetch already decoded the body; hop-by-hop / recomputed framing must not
-  // be forwarded onto the rewritten string response (Mintlify serves br).
-  for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection']) {
-    headers.delete(name);
-  }
-  headers.set('x-wm-docs-locale-seo', '1');
-  return new Response(rewritten, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers,
-  });
 }
 
 export const config = {
   matcher: [
     '/mcp',
     '/api/:path*',
+    '/docs/:path*',
     '/((?!api(?:/|$)|mcp(?:/|$)|.*\\.[^/]+$).*)',
   ],
 };

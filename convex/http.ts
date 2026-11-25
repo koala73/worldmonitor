@@ -4,6 +4,7 @@ import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
 import { isDeliveryError } from "./lib/notificationDelivery";
+import { redactChannelForSettings } from "./notificationChannels";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
@@ -1319,15 +1320,10 @@ http.route({
     try {
       if (action === "get") {
         const [channels, alertRules] = await Promise.all([
-          ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, { userId }),
+          ctx.runQuery(internal.notificationChannels.getChannelsByUserId, { userId }),
           ctx.runQuery((internal as any).alertRules.getAlertRulesByUserId, { userId }),
         ]);
-        // The signing secret is only ever shown once, at registration; the
-        // settings UI needs to know whether a webhook is signed, not the key.
-        const visibleChannels = (channels ?? []).map(
-          ({ webhookSecret, ...channel }: { webhookSecret?: string; [key: string]: unknown }) =>
-            channel.channelType === "webhook" ? { ...channel, webhookSigned: Boolean(webhookSecret) } : channel,
-        );
+        const visibleChannels = channels.map(redactChannelForSettings);
         return new Response(JSON.stringify({ channels: visibleChannels, alertRules: alertRules ?? [] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },

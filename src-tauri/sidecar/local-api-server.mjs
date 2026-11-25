@@ -579,6 +579,11 @@ function isPrivateIP(ip) {
   });
 }
 
+function isOllamaLanAddress(ip) {
+  // The desktop setup exception covers private LAN addresses only.
+  return /^(?:10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|f[cd][0-9a-f]{2}:)/i.test(ip);
+}
+
 async function isSafeUrl(urlString) {
   let parsed;
   try {
@@ -607,7 +612,7 @@ async function isSafeUrl(urlString) {
   // Check if the hostname is already an IP literal
   const ipLiteral = hostname.replace(/^\[|\]$/g, '');
   if (isPrivateIP(ipLiteral)) {
-    return { safe: false, reason: 'Requests to private/reserved IP addresses are not allowed' };
+    return { safe: false, privateLan: isOllamaLanAddress(ipLiteral), reason: 'Requests to private/reserved IP addresses are not allowed' };
   }
   if (isIP(ipLiteral)) {
     return { safe: true, resolvedAddresses: [ipLiteral] };
@@ -631,10 +636,13 @@ async function isSafeUrl(urlString) {
       return { safe: false, reason: 'Could not resolve hostname' };
     }
 
-    for (const addr of addresses) {
-      if (isPrivateIP(addr)) {
-        return { safe: false, reason: 'Hostname resolves to a private/reserved IP address' };
-      }
+    const blockedAddresses = addresses.filter(isPrivateIP);
+    if (blockedAddresses.length > 0) {
+      return {
+        safe: false,
+        privateLan: blockedAddresses.every(isOllamaLanAddress),
+        reason: 'Hostname resolves to a private/reserved IP address',
+      };
     }
   } catch {
     return { safe: false, reason: 'DNS resolution failed' };
@@ -2195,12 +2203,18 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       } catch {
         return fail('Invalid URL');
       }
+      if (parsed.username || parsed.password) return fail('URLs with credentials are not allowed');
       // Permit loopback or the already-configured Ollama origin to reach a
       // private address; require public-host validation and IP pinning for any
       // other caller-supplied URL so secret validation cannot scan LAN/metadata.
       const safety = await isSafeUrl(parsed.toString());
       const isLoopback = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname.toLowerCase());
       if (!safety.safe && !isLoopback && !isConfiguredOllamaOrigin(parsed)) {
+        // Settings saves only after validation. Let it save a LAN URL without
+        // making an outbound request before the user has configured that origin.
+        if (safety.privateLan && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+          return ok('Private Ollama URL accepted for configuration without a connection check');
+        }
         return fail(`Ollama URL blocked: ${safety.reason}`);
       }
       const pinned = safety.safe ? pickPinnedAddress(safety.resolvedAddresses) : null;

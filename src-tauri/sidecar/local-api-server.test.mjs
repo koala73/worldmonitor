@@ -2956,6 +2956,37 @@ test('validates OLLAMA_API_URL via /api/local-validate-secret (reachable endpoin
   }
 });
 
+test('desktop Settings can save a new private Ollama URL without a live probe', async (t) => {
+  const localApi = await setupApiDir({});
+  const previousMode = process.env.LOCAL_API_MODE;
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  const request = http.request;
+  const host = '192.168.1.24';
+  t.mock.method(http, 'request', (options, ...args) => {
+    assert.notEqual(options.hostname, host, 'unconfigured private origins are not probed');
+    return request(options, ...args);
+  });
+  const app = await createLocalApiServer({ port: 0, apiDir: localApi.apiDir });
+  try {
+    const { port } = await app.start();
+    const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'OLLAMA_API_URL', value: `http://${host}:11434` }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      valid: true,
+      message: 'Private Ollama URL accepted for configuration without a connection check',
+    });
+  } finally {
+    if (previousMode === undefined) delete process.env.LOCAL_API_MODE;
+    else process.env.LOCAL_API_MODE = previousMode;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('validates LM Studio style /v1 base URL via /api/local-validate-secret', async () => {
   const mockOpenAiCompatible = createServer((req, res) => {
     if (req.url === '/v1/models') {

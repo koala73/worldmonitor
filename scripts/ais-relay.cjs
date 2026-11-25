@@ -408,12 +408,28 @@ function translateCity(city) {
 const OREF_DATA_DIR = process.env.OREF_DATA_DIR || '';
 const OREF_LOCAL_FILE = (() => {
   if (!OREF_DATA_DIR) return '';
+  const fs = require('fs');
+  const historyPath = path.join(OREF_DATA_DIR, 'oref-history.json');
   try {
-    const stat = require('fs').statSync(OREF_DATA_DIR);
-    if (!stat.isDirectory()) { console.warn(`[Relay] OREF_DATA_DIR is not a directory: ${OREF_DATA_DIR}`); return ''; }
-  } catch { console.warn(`[Relay] OREF_DATA_DIR does not exist: ${OREF_DATA_DIR}`); return ''; }
+    if (!fs.statSync(OREF_DATA_DIR).isDirectory()) throw new Error('expected a directory');
+    fs.accessSync(OREF_DATA_DIR, fs.constants.R_OK | fs.constants.W_OK | fs.constants.X_OK);
+    for (const [file, access] of [
+      [historyPath, fs.constants.R_OK],
+      [historyPath + '.tmp', fs.constants.W_OK],
+    ]) {
+      try {
+        fs.accessSync(file, access);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+  } catch (error) {
+    console.error(`[Relay] FATAL: cannot use OREF_DATA_DIR ${OREF_DATA_DIR}: ${error.message}`);
+    console.error('[Relay] Give the relay runtime user access to the mounted directory and its OREF history files. The container runs as UID 1000 and GID 1000.');
+    process.exit(1);
+  }
   console.log(`[Relay] OREF local persistence: ${OREF_DATA_DIR}`);
-  return path.join(OREF_DATA_DIR, 'oref-history.json');
+  return historyPath;
 })();
 const RELAY_OREF_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_OREF_RATE_LIMIT_MAX))
   ? Number(process.env.RELAY_OREF_RATE_LIMIT_MAX) : 600;

@@ -4,7 +4,11 @@
 // fixed summary and keep the (redacted) detail in its log. The relay has no
 // module exports, so this pins the source and exercises the redactor's regex.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, readFileSync, rmdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 const src = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
@@ -95,4 +99,26 @@ test('OREF_PROXY_CREDENTIAL is the user:pass part of OREF_PROXY_AUTH in either a
   assert.equal(derive('http://user:pass@proxy.example:9000'), 'user:pass');
   assert.equal(derive(''), '');
   assert.equal(derive('proxy.example:9000'), '');
+});
+
+test('relay identifies an unwritable configured OREF volume at startup', {
+  skip: process.platform === 'win32' || process.getuid?.() === 0,
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wm-oref-volume-'));
+  try {
+    chmodSync(dir, 0o500);
+    const relay = fileURLToPath(new URL('../scripts/ais-relay.cjs', import.meta.url));
+    const result = spawnSync(process.execPath, [relay], {
+      env: { OREF_DATA_DIR: dir },
+      encoding: 'utf-8',
+      timeout: 5_000,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /FATAL: cannot use OREF_DATA_DIR .*EACCES/);
+    assert.match(result.stderr, /UID 1000 and GID 1000/);
+  } finally {
+    chmodSync(dir, 0o700);
+    rmdirSync(dir);
+  }
 });
