@@ -18,7 +18,10 @@ beforeAll(async () => {
   await initTestI18n();
 });
 
+const panels: DeductionPanel[] = [];
+
 afterEach(() => {
+  panels.splice(0).forEach((panel) => panel.destroy());
   document.body.innerHTML = '';
   vi.restoreAllMocks();
 });
@@ -26,6 +29,7 @@ afterEach(() => {
 async function renderAnalysis(analysis: string): Promise<HTMLElement> {
   deductSituation.mockResolvedValueOnce({ analysis, provider: 'test' });
   const panel = new DeductionPanel();
+  panels.push(panel);
   document.body.append(panel.getElement());
   panel.getElement().querySelector<HTMLTextAreaElement>('.deduction-input')!.value = 'What happens next?';
   await (panel as unknown as { handleSubmit: (event: Event) => Promise<void> }).handleSubmit(new Event('submit'));
