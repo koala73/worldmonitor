@@ -384,8 +384,10 @@ export function PricingSection({
   return (
     <section id="pricing" className="py-24 px-6 border-t border-wm-border bg-[#060606]">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-16">
+        {/* Header. The promotion strip (md and up) sits under it with a
+            tighter gap, so the checkout buttons stay in a 1440x900 first
+            screen with the site's own fonts loaded (#10843). */}
+        <div className={`text-center mb-16 ${promo && promoStripPricing ? 'md:mb-8' : ''}`}>
           <motion.h2
             className="text-3xl md:text-5xl font-display font-bold mb-4"
             initial={{ opacity: 0, y: 20 }}
