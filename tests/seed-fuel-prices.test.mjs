@@ -782,3 +782,46 @@ test('readXlsxFirstSheet rejects a cell reference past the last Excel column', (
   });
   assert.throws(() => readXlsxFirstSheet(bytes), /column/);
 });
+
+test('StatCan fixture reads the newest Canada self-serve regular month as CAD/l, gasoline only', async () => {
+  const { parseCanadaFuel } = await import('../scripts/seed-fuel-prices.mjs');
+  const doc = fuelFixture('statcan-18100001');
+  doc[0].object.vectorDataPoint.reverse();
+  const row = parseCanadaFuel(doc, Date.parse('2026-11-26T00:00:00Z'));
+  assert.equal(row.code, 'CA');
+  assert.equal(row.currency, 'CAD');
+  assert.deepEqual(row.gasoline, { localPrice: 1.796, grade: 'Regular unleaded (self-serve, monthly mean)', source: 'Statistics Canada, table 18-10-0001-01', observedAt: '2026-10-01' });
+  assert.equal(row.diesel, null, 'StatCan has no Canada-level diesel series');
+  assert.equal(toUsdPerLiter(row.gasoline.localPrice, 'CAD', { CAD: 0.72 }), 1.2931);
+});
+
+test('StatCan rejects stale, suppressed, implausible or foreign-vector months', async () => {
+  const { parseCanadaFuel } = await import('../scripts/seed-fuel-prices.mjs');
+  // October is 65 days past its month end on 4 January.
+  assert.equal(parseCanadaFuel(fuelFixture('statcan-18100001'), Date.parse('2027-01-05T00:00:00Z')), null);
+  const suppressed = fuelFixture('statcan-18100001');
+  suppressed[0].object.vectorDataPoint.at(-1).value = null;
+  assert.equal(parseCanadaFuel(suppressed, Date.parse('2026-11-26T00:00:00Z')).gasoline.observedAt, '2026-09-01', 'falls back to the newest published month');
+  for (const value of [0, 9999]) {
+    const doc = fuelFixture('statcan-18100001');
+    doc[0].object.vectorDataPoint.at(-1).value = value;
+    assert.equal(parseCanadaFuel(doc, Date.parse('2026-11-26T00:00:00Z')), null);
+  }
+  const other = fuelFixture('statcan-18100001');
+  other[0].object.vectorId = 735098;
+  assert.equal(parseCanadaFuel(other, Date.parse('2026-11-26T00:00:00Z')), null);
+});
+
+test('Canada asks the WDS for its vector and needs no credentials', async () => {
+  const { fetchCanada, STATCAN_FUEL_VECTOR_ID } = await import('../scripts/seed-fuel-prices.mjs');
+  const calls = [];
+  const fetchFn = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) });
+    return new Response(JSON.stringify(fuelFixture('statcan-18100001')), { headers: { 'content-type': 'application/json' } });
+  };
+  const rows = await fetchCanada({ fetchFn, proxyAuth: '', nowMs: Date.parse('2026-11-26T00:00:00Z') });
+  assert.equal(calls[0].url, 'https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods');
+  assert.deepEqual(calls[0].body, [{ vectorId: STATCAN_FUEL_VECTOR_ID, latestN: 3 }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].gasoline.localPrice, 1.796);
+});
