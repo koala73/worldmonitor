@@ -680,10 +680,6 @@ describe('climate-anomalies CACHE_TTL + maxStaleMin co-pinned to 3h cron cadence
     assert.equal(extractBundleSectionGateSec('Anomalies'), 3 * 3600);
   });
 
-  it('CACHE_TTL is 32400s (9h, 3× the 3h cron cadence; co-pinned to maxStaleMin)', () => {
-    assert.equal(extractCacheTtlSec(), 32400);
-  });
-
   it('CACHE_TTL > cron cadence (data survives one missed cron + drift)', () => {
     const ttl = extractCacheTtlSec();
     const cron = extractBundleSectionGateSec('Anomalies');

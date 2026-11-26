@@ -104,6 +104,17 @@ describe('crawlable pulse refresh rehearsal', () => {
     }
   });
 
+  it('flips the optional Pizza Index reading, so neither its presence nor its absence can be assumed (#11151)', () => {
+    const added = driftLivePulseCapture(capture(), { targetDate: '2026-10-26' });
+    assert.equal(added.pizzaIndex.updatedAt, '2026-10-26T00:00:00.000Z');
+    assert.equal(added.pizzaIndex.label, 'Normal Activity', 'the label matches its level, as publishedPizzaIndex requires');
+    assert.equal(added.pizzaIndex.retained, false);
+    assert.ok(added.pizzaIndex.venues.every((venue) => venue.name && venue.status));
+
+    const dropped = driftLivePulseCapture(added, { targetDate: '2026-10-26' });
+    assert.equal(Object.hasOwn(dropped, 'pizzaIndex'), false, 'a capture with a reading is rehearsed without one');
+  });
+
   it('drifts values but not dates when the capture is already today', () => {
     const drifted = driftLivePulseCapture(capture(), { targetDate: '2026-10-19' });
     assert.equal(drifted.capturedAt, '2026-10-19');

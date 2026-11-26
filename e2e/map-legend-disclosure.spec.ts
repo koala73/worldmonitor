@@ -84,4 +84,7 @@ test('mobile SVG disclosure buttons remain available except during fullscreen vi
   await page.evaluate(() => document.body.classList.add('live-news-fullscreen-active'));
   await expect(page.locator('.layer-toggles')).toBeHidden();
   await expect(page.locator('.map-legend')).toBeHidden();
+  await page.evaluate(() => document.body.classList.add('map-fullscreen-active'));
+  await expect(page.locator('.layer-toggles')).toBeVisible();
+  await expect(page.locator('.map-legend')).toBeVisible();
 });

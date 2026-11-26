@@ -45,7 +45,7 @@ function ops(iata: string, name: string): AirportOpsSummary {
 function flight(number: string, from: string, to: string): FlightInstance {
   return {
     flightNumber: number, date: '2026-11-11', carrier: { iata: 'XX', name: 'Test Air' },
-    origin: { iata: from, name: from }, destination: { iata: to, name: to },
+    origin: { iata: from, name: from, timezone: 'UTC' }, destination: { iata: to, name: to, timezone: 'UTC' }, codeshares: [],
     scheduledDeparture: null, scheduledArrival: null, estimatedDeparture: null, estimatedArrival: null,
     status: 'scheduled', delayMinutes: 0, cancelled: false, diverted: false, gate: '', terminal: '', aircraftType: '', source: 'test',
   } as FlightInstance;

@@ -74,7 +74,9 @@ export interface TerminalFetchFailureInput {
 
 /**
  * Choose the terminal fetch failure without losing which leg ended last.
- * A global deadline always wins because it invalidates both fetch legs.
+ * A global deadline wins because it invalidates both fetch legs, unless the
+ * direct leg had already used its whole per-feed budget. That feed failed on
+ * its own clock, and the deadline only cut the relay's leftover time.
  */
 export function resolveTerminalFetchFailure({
   directFailure,
@@ -83,6 +85,9 @@ export function resolveTerminalFetchFailure({
   deadlineAborted,
 }: TerminalFetchFailureInput,
 ): FeedFetchFailure {
+  if (directFailure === 'per-feed-timeout') {
+    if (deadlineAborted || relayFailure === 'deadline-abort') return 'per-feed-timeout';
+  }
   if (deadlineAborted || directFailure === 'deadline-abort' || relayFailure === 'deadline-abort') {
     return 'deadline-abort';
   }

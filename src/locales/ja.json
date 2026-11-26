@@ -299,6 +299,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "PRO にアップグレードして武器供給業者の依存関係と軍事能力を表示"
+    },
+    "intelMemory": {
+      "title": "過去の情報アーカイブ",
+      "help": "過去180日間の重要な紛争、軍事、エネルギー、騒乱、サイバー、海事、自然災害、航空の事象のアーカイブ。オンデマンドで意味的な先例照合が可能です。",
+      "loading": "過去の情報アーカイブを読み込み中…",
+      "proLocked": "PRO にアップグレードして、180日間の過去情報アーカイブと先例検索を利用可能にする",
+      "unavailable": "過去の情報アーカイブは現在利用できません。",
+      "retry": "再試行",
+      "empty": "この国と領域に一致するアーカイブされた情報イベントは、180日間のウィンドウ内に見つかりません。",
+      "partial": "このクエリのアーカイブカバレッジは部分的です。利用可能なレコードは引き続き表示されます。",
+      "domainFilterLabel": "領域で過去の情報をフィルタリング",
+      "domains": {
+        "all": "すべて",
+        "conflict": "紛争",
+        "military": "軍事",
+        "energy": "エネルギー",
+        "unrest": "騒乱",
+        "cyber": "サイバー",
+        "maritime": "海事",
+        "natural": "自然災害",
+        "aviation": "航空"
+      },
+      "loadMore": "もっと読み込む",
+      "loadingMore": "読み込み中…",
+      "loadMoreError": "追加のイベントを読み込めませんでした。もう一度試してください。",
+      "sourceLink": "ソース ↗",
+      "similarTitle": "似た過去のイベントを検索",
+      "useLatestHeadline": "最新の見出しを使用",
+      "similarPlaceholder": "進行中の状況を説明してください（最低10文字）…",
+      "findSimilar": "似たイベントを検索",
+      "similarMinLength": "過去の先例を検索するには、少なくとも10文字入力してください。",
+      "similarLoading": "過去の先例を検索中…",
+      "similarEmpty": "類似度の閾値を超えた似た過去のイベントはありません。",
+      "similarUnavailable": "先例検索は現在利用できません。もう一度試してください。"
     }
   },
   "header": {
@@ -977,7 +1011,7 @@
       "upstreamUnavailable": "サプライチェーンデータが一時的に利用不可 — キャッシュデータを表示中",
       "spikeAlert": "スパイク検出 — 料金が52週平均を大幅に上回っています（週次）",
       "warnings": "件の警告",
-      "aisDisruptions": "船舶追跡の中断",
+      "aisDisruptions_other": "船舶追跡の中断 {{count}}件",
       "disruption": "混乱",
       "vessels": "隻",
       "incidents7d": "件（7 日間）",
@@ -988,6 +1022,7 @@
       "topProducers": "主要生産国",
       "risk": "リスク",
       "wowChange": "週間変化率",
+      "asOf": "{{date}} 時点",
       "riskLevel": "リスクレベル",
       "flowUnavailable": "フロー数据が利用できません",
       "containerRates": "コンテナ運賃",
@@ -1163,7 +1198,7 @@
         "auxiliary": "補助艦",
         "navalVessels": "海軍艦艇"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>軍用航空機および海軍艦艇を作戦劇場別に集約します。</p><ul><li><strong>Normal:</strong> ベースラインアクティビティ</li><li><strong>Elevated:</strong> 閾値超過(航空機50機以上)</li><li><strong>Critical:</strong> 高集中(航空機100機以上)</li></ul><p><strong>Strike Capable:</strong> 給油機 + 早期警戒機 + 戦闘機が継続的な作戦に必要な数で存在。</p>",
+      "infoTooltip": "<strong>方法論</strong><p>各軍事作戦地域における軍用機と追跡中の海上艦艇の数をカウントします。</p><ul><li><strong>通常:</strong> 作戦地域の閾値未満</li><li><strong>上昇:</strong> カウントが作戦地域ごとに3～8に達する</li><li><strong>重大:</strong> カウントが作戦地域ごとに8～20に達する</li></ul><p>艦艇は上昇閾値の半分までカウントに含まれるため、艦艇のみではレベルが上昇することはありません。</p><p><strong>ストライク能力あり:</strong> タンカー、早期警戒機、戦闘機が継続作戦に十分な数で存在している。</p>",
       "scanningTheaters": "戦域スキャン中",
       "positions": "航空機の位置",
       "navalVesselsLoading": "海軍艦艇",
@@ -1205,7 +1240,9 @@
       },
       "emojiKeyLabel": "絵文字キー",
       "emojiKeyAir": "空中資産",
-      "emojiKeyNaval": "海上資産"
+      "emojiKeyNaval": "海上資産",
+      "instabilityChip": "不安定性 {{score}}",
+      "instabilityNote": "{{nation}}の不安定性スコア: {{score}}/100。参考情報として表示されます。このスコアはレベルに影響しません。レベルは当該作戦地域の航空機と艦船の数によって決定されます。"
     },
     "countryBrief": {
       "moreActions": "その他の操作",
@@ -1547,7 +1584,7 @@
       "briefFreshness": "{{minutes}}m前に生成 · 最新ソース{{hours}}h前",
       "briefStoryDetails": "記事の詳細 ({{count}})",
       "streamIdleStopLabel": "アイドル時にライブ動画を停止",
-      "streamIdleStopDesc": "設定した時間、操作がない状態が続くと、ライブニュースとライブウェブカメラを停止し、パネルに通知を表示します。",
+      "streamIdleStopDesc": "設定した時間、操作がない状態が続くと、ライブニュースとライブウェブカメラを停止し、パネルに通知を表示します。音声がオンの間、ライブニュースは再生を続けます。",
       "streamIdleStopNever": "なし",
       "liveNewsAutoplayLabel": "ライブニュースの自動再生",
       "liveNewsAutoplayDesc": "ライブニュースビデオが画面に表示されると同時にミュート状態で自動再生されます。これをオフにすると、自分で再生を開始したときだけビデオが読み込まれます。"
@@ -1618,7 +1655,7 @@
       "noData": "データなし",
       "enable": "有効にする",
       "convergenceMetric": "収束",
-      "ciiDeviation": "Country Instability Index 乖離",
+      "topCiiScore": "国別不安定スコアの最高値",
       "infraEvents": "インフラ関連イベント",
       "highAlerts": "高レベル警報",
       "topRisks": "主要リスク",
@@ -1730,7 +1767,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS衛星による監視対象紛争地域の熱検知。高強度 = 輝度>360K & 信頼度>80%。",
       "possibleExplosions": "{{count}} 件の爆発の可能性を検出",
-      "explosionTooltip": "熱署名が爆発と一致(火放射電力>80 MW、輝度>380 K)"
+      "explosionTooltip": "熱署名が爆発と一致(火放射電力>80 MW、輝度>380 K)",
+      "agencyReports": "機関が報告した火災",
+      "agencyDates": "機関の日付",
+      "shownOfTotal": "火災記録 {{total}} 件中 {{shown}} 件を表示"
     },
     "ucdpEvents": {
       "stateBased": "国家間",
@@ -1795,6 +1835,7 @@
       "refugees": "難民",
       "asylumSeekers": "庇護申請者",
       "idps": "国内避難民",
+      "stateless": "無国籍者",
       "total": "合計",
       "origins": "出身国",
       "hosts": "受入国",
@@ -1899,7 +1940,8 @@
         "minutesAgo": "{{count}}分前",
         "hoursAgo": "{{count}}時間前",
         "daysAgo": "{{count}}日前"
-      }
+      },
+      "breakingAlertsNotSaved": "保存できません。このサイトのサイトデータを許可するか、ブラウザストレージを解放してからもう一度お試しください。"
     },
     "countryTimeline": {
       "now": "現在",
@@ -2284,6 +2326,7 @@
       "infoTooltip": "<strong>金融ストレス指標</strong> World Monitorの高利回り格付債からロング米国債への比率を株式ボラティリティとハイイールドスプレッドで調整：(HYG / TLT) / (VIX × ハイイールドスプレッド / 100)。これはカンザスシティ連邦準備銀行の金融ストレス指数ではありません。1.5以上は低ストレス、0.3未満は高ストレスです。",
       "title": "金融ストレス指数",
       "usFsiValue": "米国金融ストレス指標値",
+      "asOf": "{{date}} 時点",
       "cissTitle": "EU CISS(ユーロ圏システミックストレス)",
       "notAvailable": "N/A",
       "interpretation": {
@@ -2554,7 +2597,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>燃料価格</strong> 30以上の国でのガソリンとディーゼル燃料の小売ポンプ価格（比較のためUSD/リットルに統一）。価格は政府公開データプログラムから取得され、週単位で更新されます。最も安い国と最も高い国がハイライトされています。前週のデータが利用可能な場合、週間変動が表示されます。",
-      "countries": "か国"
+      "countries": "か国",
+      "observedStale": "{{date}}（{{days}}日前）",
+      "monthlyMean": "{{month}}平均"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO食料価格指数</strong> 国連食糧農業機関の食料価格指数は、食料品バスケット（穀類、乳製品、肉、油、砂糖）の国際輸出価格を追跡します。ベース2014-2016=100。毎月第1金曜日に更新。",
@@ -2838,7 +2883,21 @@
       "saved": "最後に確認できた更新 {{time}} · 更新を確認中",
       "savedOffline": "最後に確認できた更新 {{time}} · オフライン",
       "localSignals": "ダッシュボードに読み込まれたシグナルに基づく",
-      "emptySaved": "最後に確認できた更新では収束はありませんでした。"
+      "emptySaved": "最後に確認できた更新では収束はありませんでした。",
+      "signalTypes": {
+        "militaryFlight": "軍用機の飛行",
+        "militaryVessel": "軍用艦船",
+        "aisGap": "AIS途絶",
+        "conflictEvent": "紛争イベント",
+        "escalationOutage": "通信障害",
+        "newsSeverity": "深刻なニュース",
+        "sanctionsNews": "制裁ニュース",
+        "marketMove": "市場変動",
+        "commoditySpike": "商品価格急騰",
+        "earthquake": "地震",
+        "infraOutage": "インフラ障害",
+        "other": "シグナル"
+      }
     },
     "thermalEscalation": {
       "title": "熱的エスカレーション",
@@ -3275,6 +3334,10 @@
       },
       "warningAge": "現在有効な最初の警報からの経過時間",
       "days": "{{amount}} 日"
+    },
+    "externalNavigation": {
+      "blocked": "ブラウザが新しいタブをブロックしました。",
+      "openLink": "{{host}}を開く"
     }
   },
   "popups": {
@@ -4357,7 +4420,13 @@
     "alert": "アラート: {{location}}",
     "multipleRegions": "複数地域",
     "trending": "\"{{term}}\" トレンド中 — {{hours}}時間で{{count}}件の言及",
-    "eventsDetected": "地域（{{lat}}°, {{lon}}°）で{{count}}件のイベントを検出"
+    "eventsDetected": "{{count}}件のイベントを検出: {{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗議活動",
+      "military_flight": "軍用機の飛行",
+      "military_vessel": "艦艇",
+      "earthquake": "地震活動"
+    }
   },
   "intel": {
     "topics": {
@@ -5683,7 +5752,8 @@
           "seatCap": "4つのシートがすべて使用されています。まず1つのシートを削除してください。",
           "ownerDomain": "チームメンバーを招待するには、アカウントメールが企業ドメインである必要があります。",
           "self": "自分自身を招待することはできません。",
-          "inviteeDomain": "招待先メールは企業ドメインである必要があります。"
+          "inviteeDomain": "招待先メールは企業ドメインである必要があります。",
+          "rateLimited": "直近24時間の上限である20件の招待を送信しました。さらにチームメンバーを招待する前にお待ちください。"
         }
       },
       "enterpriseSeats": {

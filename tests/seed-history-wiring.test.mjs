@@ -1,6 +1,6 @@
-// Wiring tests for issue #5694: the three intel-history collector seeders
-// (conflict/acled-intel, military/cross-strait-activity, energy/intelligence)
-// must project their published payloads into history records and append them
+// Wiring tests for issues #5694 and #11245: every intel-history collector
+// (conflict/acled-intel, military/cross-strait-activity, energy/intelligence,
+// and the #11245 set in scripts/_intel-history-collectors.mjs) must project their published payloads into history records and append them
 // post-publish, best-effort. The append hook must NEVER throw: the canonical
 // publish already succeeded, and a throw would skip runSeed's freshness write
 // and crash a healthy run (the seed-gdelt-intel.mjs:286 hazard).
@@ -34,6 +34,33 @@ const {
   crossStraitHistoryAfterPublish,
 } = await import('../scripts/seed-cross-strait-activity.mjs');
 const { HISTORY_MAX_RECORDS_PER_RUN } = await import('../scripts/_seed-history.mjs');
+// #11245 collectors. Builders live in one module because seed-earthquakes.mjs
+// runs runSeed on import and UCDP has two writers (relay + backup seeder).
+const {
+  aviationHistoryAfterPublish,
+  buildAviationHistoryRecords,
+  buildCyberHistoryRecords,
+  buildEarthquakeHistoryRecords,
+  buildNaturalEventHistoryRecords,
+  buildPortwatchHistoryRecords,
+  buildUcdpHistoryRecords,
+  buildUnrestHistoryRecords,
+  cyberHistoryAfterPublish,
+  earthquakeHistoryAfterPublish,
+  naturalEventHistoryAfterPublish,
+  portwatchHistoryAfterPublish,
+  ucdpHistoryAfterPublish,
+  unrestHistoryAfterPublish,
+} = await import('../scripts/_intel-history-collectors.mjs');
+const {
+  AVIATION_ALERT,
+  CYBER_C2_THREAT,
+  EARTHQUAKE,
+  NATURAL_EVENT,
+  PORTWATCH_DISRUPTION,
+  UCDP_EVENT,
+  UNREST_GDELT_EVENT,
+} = await import('./helpers/intel-history-collector-fixtures.mjs');
 
 const ACLED_EVENT = {
   id: 'acled-SUD12345',
@@ -327,6 +354,13 @@ const HOOKS = [
   ['energy', 'intelligence', energyIntelAfterPublish, { items: [ENERGY_ITEM] }],
   ['military', 'cross-strait-activity', crossStraitHistoryAfterPublish,
     { observations: [CROSS_STRAIT_OBSERVATION] }],
+  ['conflict', 'ucdp-events', ucdpHistoryAfterPublish, { events: [UCDP_EVENT] }],
+  ['unrest', 'events', unrestHistoryAfterPublish, { events: [UNREST_GDELT_EVENT] }],
+  ['cyber', 'threats', cyberHistoryAfterPublish, { threats: [CYBER_C2_THREAT] }],
+  ['maritime', 'portwatch-disruptions', portwatchHistoryAfterPublish, { events: [PORTWATCH_DISRUPTION] }],
+  ['natural', 'earthquakes', earthquakeHistoryAfterPublish, { earthquakes: [EARTHQUAKE] }],
+  ['natural', 'events', naturalEventHistoryAfterPublish, { events: [NATURAL_EVENT] }],
+  ['aviation', 'intl', aviationHistoryAfterPublish, { alerts: [AVIATION_ALERT] }],
 ];
 
 // The ingest-health recorder (#5736) is the hook's second injectable seam; stub
@@ -474,6 +508,16 @@ const WIRING = [
   ['scripts/seed-conflict-intel.mjs', 'afterPublish: conflictIntelAfterPublish'],
   ['scripts/seed-energy-intelligence.mjs', 'afterPublish: energyIntelAfterPublish'],
   ['scripts/seed-cross-strait-activity.mjs', 'afterPublish: crossStraitHistoryAfterPublish'],
+  ['scripts/seed-unrest-events.mjs', 'afterPublish: unrestHistoryAfterPublish'],
+  ['scripts/seed-cyber-threats.mjs', 'afterPublish: cyberHistoryAfterPublish'],
+  ['scripts/seed-portwatch-disruptions.mjs', 'afterPublish: portwatchHistoryAfterPublish'],
+  ['scripts/seed-earthquakes.mjs', 'afterPublish: withHistoryAfterPublish(earthquakesAfterPublish, earthquakeHistoryAfterPublish)'],
+  ['scripts/seed-natural-events.mjs', 'afterPublish: withHistoryAfterPublish(naturalEventsAfterPublish, naturalEventHistoryAfterPublish)'],
+  ['scripts/seed-aviation.mjs', 'afterPublish: withHistoryAfterPublish(afterPublishIntl, aviationHistoryAfterPublish)'],
+  // UCDP publishes outside runSeed on both writers, so the pin is the call
+  // after the canonical write rather than an opts entry.
+  ['scripts/seed-ucdp-events.mjs', 'await ucdpHistoryAfterPublish(payload,'],
+  ['scripts/ais-relay.cjs', 'await ucdpHistoryAfterPublish(payload,'],
 ];
 
 for (const [file, needle] of WIRING) {
@@ -502,6 +546,13 @@ test('every history dedupeKey is a pure function of the upstream item', () => {
     ['conflict', buildConflictHistoryRecords, { events: [ACLED_EVENT] }],
     ['energy', buildEnergyHistoryRecords, { items: [ENERGY_ITEM] }],
     ['military', buildCrossStraitHistoryRecords, { observations: [CROSS_STRAIT_OBSERVATION] }],
+    ['conflict/ucdp', buildUcdpHistoryRecords, { events: [UCDP_EVENT] }],
+    ['unrest', buildUnrestHistoryRecords, { events: [UNREST_GDELT_EVENT] }],
+    ['cyber', buildCyberHistoryRecords, { threats: [CYBER_C2_THREAT] }],
+    ['maritime', buildPortwatchHistoryRecords, { events: [PORTWATCH_DISRUPTION] }],
+    ['natural/earthquakes', buildEarthquakeHistoryRecords, { earthquakes: [EARTHQUAKE] }],
+    ['natural/events', buildNaturalEventHistoryRecords, { events: [NATURAL_EVENT] }],
+    ['aviation', buildAviationHistoryRecords, { alerts: [AVIATION_ALERT] }],
   ];
 
   for (const [label, build, payload] of CASES) {

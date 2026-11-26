@@ -23,6 +23,12 @@ message CotInstrument {
   int64 small_trader_short = 12;
   // False for cache rows written before the non-reportable fields were added.
   bool small_trader_available = 13;
+  // Leveraged funds exist only in the TFF report. False for Disaggregated
+  // (commodity) rows, where the leveraged_funds_* fields are placeholders.
+  bool leveraged_funds_available = 14;
+  // Source CFTC report: "tff" (asset_manager_* = asset managers) or
+  // "disaggregated" (asset_manager_* = managed money).
+  string report_type = 15;
 }
 
 message GetCotPositioningResponse {

@@ -235,9 +235,12 @@ export class UcdpEventsPanel extends Panel {
         const deathsClass = e.type_of_violence === 'state-based' ? 'ucdp-deaths-state'
           : e.type_of_violence === 'non-state' ? 'ucdp-deaths-nonstate'
             : 'ucdp-deaths-onesided';
-        const deathsHtml = e.deaths_best > 0
-          ? `<span class="${deathsClass}">${e.deaths_best}</span> <small class="ucdp-range">(${e.deaths_low}-${e.deaths_high})</small>`
+        const bestHtml = e.deaths_best > 0
+          ? `<span class="${deathsClass}">${e.deaths_best}</span>`
           : '<span class="ucdp-deaths-zero">0</span>';
+        const deathsHtml = e.deaths_best > 0 || e.deaths_high > 0
+          ? `${bestHtml} <small class="ucdp-range">(${e.deaths_low}-${e.deaths_high})</small>`
+          : bestHtml;
         const actors = `${escapeHtml(e.side_a)} vs ${escapeHtml(e.side_b)}`;
 
         return `<tr class="ucdp-row" data-lat="${e.latitude}" data-lon="${e.longitude}" tabindex="0">

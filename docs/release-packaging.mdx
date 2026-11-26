@@ -91,6 +91,13 @@ on x64, `aarch64-unknown-linux-gnu` on arm64), or `NODE_TARGET` when set. CI
 builds both and `/api/download` serves them as `linux-appimage` and
 `linux-appimage-arm64`.
 
+In CI, `scripts/repack-linux-appimage.sh` strips the bundled GPU libraries and
+rebuilds each AppImage with update information
+(`gh-releases-zsync|<owner>|<repo>|latest|World.Monitor_*_<arch>.AppImage.zsync`,
+where `<arch>` is `amd64` or `aarch64`). It also writes the matching `.zsync`
+file, and the workflow uploads it with the AppImage. The publish gate keeps a
+release in draft until both `.zsync` files are present.
+
 Bundler targets are pinned in the Tauri config and enforced by packaging scripts:
 
 - macOS: `app,dmg`

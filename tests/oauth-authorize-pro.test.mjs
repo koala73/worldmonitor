@@ -96,6 +96,7 @@ async function makeDeps(overrides = {}) {
       grantRedis.set(key, value);
       return true;
     },
+    rateLimit: async () => null,
     verifyGrant: async (token, _secret, now) => {
       // Use the real verifier with our test secret (ignore arg secret).
       const { verifyGrant } = await import('../api/_mcp-grant-hmac.ts');

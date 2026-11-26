@@ -236,11 +236,33 @@ function matchesMarketHeadline(market: Pick<MarketData, 'symbol' | 'display' | '
   });
 }
 
+// Feeds (notably Google News) also return instrument quote/overview pages,
+// e.g. "DJIA | Dow Jones Industrial Average Overview - MarketWatch". They name
+// the instrument but report no event, so they are not headlines. Such a title
+// ends in a page-type tail, optionally followed by a parenthetical and up to
+// two short publisher segments; an article ends in an event clause instead.
+const TITLE_SEGMENT_SEPARATOR = /\s+[-\u2013\u2014|]\s+|\s*\|\s*/;
+const PUBLISHER_SEGMENT = /^(?:[A-Z0-9^&][^\s]*\s*){1,3}$/;
+const QUOTE_PAGE_TAIL = /\b(?:overview|quotes?|stock price|(?:charts?|data|news|history|prices?|quotes?)\s*&\s*(?:charts?|data|news|history|quotes?))$/i;
+// Ticker, optional capitalized instrument name, then a chart/history page type.
+const TICKER_PAGE = /^\^?[A-Z][A-Z0-9.^=-]{0,9}(?: \| (?:(?:[A-Z0-9^&]\S*|of|and|the|de)\s+)+| )(?:[Aa]dvanced [Cc]harts?|[Hh]istorical (?:[Pp]rices|[Qq]uotes|[Dd]ata))$/;
+const MAX_PUBLISHER_SEGMENTS = 2;
+
+export function isQuotePageTitle(title: string): boolean {
+  const segments = title.split(TITLE_SEGMENT_SEPARATOR).map((segment) => segment.trim()).filter(Boolean);
+  for (let end = segments.length; end >= 1 && segments.length - end <= MAX_PUBLISHER_SEGMENTS; end--) {
+    const body = segments.slice(0, end).join(' | ').replace(/\s*\([^)]*\)$/, '');
+    if (QUOTE_PAGE_TAIL.test(body) || TICKER_PAGE.test(body)) return true;
+    if (!PUBLISHER_SEGMENT.test(segments[end - 1] ?? '')) return false;
+  }
+  return false;
+}
+
 function collectHeadlinePool(newsByCategory: Record<string, NewsItem[]>, extraCategories?: string[]): NewsItem[] {
   const cats = extraCategories ?? BRIEF_NEWS_CATEGORIES;
   return cats
     .flatMap((category) => newsByCategory[category] || [])
-    .filter((item) => !!item?.title)
+    .filter((item) => !!item?.title && !isQuotePageTitle(item.title))
     .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a));
 }
 
@@ -310,7 +332,7 @@ function buildItemNote(change: number | null, relatedHeadline?: string): string 
       ? 'Price action is under pressure; protect capital first.'
       : 'Tape is balanced; wait for confirmation before pressing size.';
   return relatedHeadline
-    ? `${moveNote} Headline driver: ${relatedHeadline}`
+    ? `${moveNote} Related headline: ${relatedHeadline}`
     : moveNote;
 }
 

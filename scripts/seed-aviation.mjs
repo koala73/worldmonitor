@@ -46,6 +46,7 @@ import countryNameMap from './shared/country-name-to-iso2.cjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { airportNotifyLocation } from './lib/airport-notify-location.mjs';
 import { NARROW_CLOSURE_TEXT, NMS_ACTIVATION_KEY, NMS_CLOSURES_KEY, isFreshNmsClosures, mergeClosureSources } from './lib/nms-notam.mjs';
+import { aviationHistoryAfterPublish, withHistoryAfterPublish } from './_intel-history-collectors.mjs';
 
 const {
   buildDedupMaterial,
@@ -1831,7 +1832,7 @@ async function main() {
     schemaVersion: 3,
     declareRecords,
     publishTransform,
-    afterPublish: afterPublishIntl,
+    afterPublish: withHistoryAfterPublish(afterPublishIntl, aviationHistoryAfterPublish),
     maxStaleMin: 90,
     zeroIsValid: true,
     allowPreservedFetchFailure: true,

@@ -36,7 +36,9 @@
 
 export const config = { runtime: 'edge' };
 
-import { resolveSessionUserId } from '../../server/_shared/auth-session';
+import { resolveVerifiedSessionUserId } from '../../server/_shared/auth-session';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../_rate-limit.js';
 import {
   getEntitlements,
   isEntitlementBackendConfigured,
@@ -91,6 +93,8 @@ async function rawRedisGet(key: string): Promise<unknown | null> {
 
 export interface ContextDeps {
   resolveUserId: (req: Request) => Promise<string | Response | null>;
+  /** Charges the caller's per-user budget; a Response means refused. Runs before any Redis read. */
+  rateLimit: (req: Request, userId: string) => Promise<Response | null>;
   redisGet: (key: string) => Promise<unknown | null>;
   getEntitlements: (userId: string) => Promise<ProMcpEntitlement | null>;
   now: () => number;
@@ -110,6 +114,8 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
   if (!userId) {
     return jsonError('UNAUTHENTICATED', 'A valid Clerk session is required.', 401);
   }
+  const limited = await deps.rateLimit(req, userId);
+  if (limited) return limited;
 
   const url = new URL(req.url);
   const nonce = url.searchParams.get('nonce') ?? '';
@@ -224,7 +230,11 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
 
 export default async function handler(req: Request): Promise<Response> {
   return grantContextHandler(req, {
-    resolveUserId: resolveSessionUserId,
+    resolveUserId: resolveVerifiedSessionUserId,
+    // Fail closed like api/internal/mcp-grant-mint.ts, the next step of the same consent page.
+    rateLimit: (request, userId) => checkRateLimit(request, NO_STORE_JSON, {
+      scope: 'mcp-grant-context', identifier: `user:${userId}`, limit: 60, window: '10 m', failClosed: true,
+    }),
     redisGet: rawRedisGet,
     getEntitlements: (userId) => getEntitlements(userId),
     now: () => Date.now(),

@@ -1,5 +1,7 @@
 'use strict';
 
+const { publisherFamilyFor } = require('../shared/publisher-families.js');
+
 // Plain-text corroboration for alert and digest messages (#9213).
 //
 // The verdict itself comes from assessCorroboration in
@@ -15,6 +17,17 @@
 // three publisher families carry the story, never that it is confirmed.
 
 const KNOWN_STATES = new Set(['corroborated', 'single-publisher', 'tier4-only']);
+
+function countRecordedPublisherFamilies(ids) {
+  const families = new Set();
+  for (const id of ids) {
+    if (typeof id !== 'string' || !id) continue;
+    // Older records may use a singleton id for a label now in a curated family.
+    const family = id.startsWith('label:') ? publisherFamilyFor(id.slice('label:'.length)) : id;
+    if (family) families.add(family);
+  }
+  return families.size;
+}
 
 function positiveCount(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 1 ? Math.floor(value) : null;
@@ -103,6 +116,7 @@ function mergeCorroboration(values, familyCount) {
 }
 
 module.exports = {
+  countRecordedPublisherFamilies,
   mergeCorroboration,
   corroborationFromItemCount,
   parseCorroboration,

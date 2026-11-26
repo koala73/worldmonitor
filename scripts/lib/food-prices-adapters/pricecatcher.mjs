@@ -1,5 +1,5 @@
 import { brotliDecompressSync } from 'node:zlib';
-import { parquetMetadata, parquetReadObjects } from 'hyparquet';
+import { parquetMetadata, parquetScan } from 'hyparquet';
 import { csvRows, positive, priceReport } from './monthly.mjs';
 
 const BASE = 'https://storage.data.gov.my/pricecatcher/';
@@ -95,25 +95,29 @@ export function priceAccumulator({ before, since, basketSince = since, limit = Q
 /** Fold decoded rows into the accumulator, keeping one quote per premise and rejecting conflicting duplicates. */
 export function addPriceRows(acc, rows) {
   for (const row of rows) {
-    const code = String(row.item_code);
-    if (!ITEMS[code]) continue;
-    const date = row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date);
-    const from = ITEMS[code][3] === 'basket' ? acc.basketSince : acc.since;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date >= acc.before || date < from || !positive(row.price)) continue;
-    const premise = String(row.premise_code);
-    if (!/^\d+$/.test(premise)) throw new Error('PriceCatcher premise code changed');
-    const key = `${date}|${code}`;
-    let shops = acc.groups.get(key);
-    if (!shops) acc.groups.set(key, shops = new Map());
-    const price = Number(row.price);
-    if (shops.has(premise)) {
-      if (shops.get(premise) !== price) throw new Error('PriceCatcher conflicting shop quotes');
-      continue;
-    }
-    shops.set(premise, price);
-    if (++acc.quotes > acc.limit) throw new Error('PriceCatcher selected quotes exceed limit');
+    addPriceQuote(acc, row.item_code, row.date, row.premise_code, row.price);
   }
   return acc;
+}
+
+function addPriceQuote(acc, itemCode, rawDate, premiseCode, rawPrice) {
+  const code = String(itemCode);
+  if (!ITEMS[code]) return;
+  const date = rawDate instanceof Date ? rawDate.toISOString().slice(0, 10) : String(rawDate);
+  const from = ITEMS[code][3] === 'basket' ? acc.basketSince : acc.since;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date >= acc.before || date < from || !positive(rawPrice)) return;
+  const premise = String(premiseCode);
+  if (!/^\d+$/.test(premise)) throw new Error('PriceCatcher premise code changed');
+  const key = `${date}|${code}`;
+  let shops = acc.groups.get(key);
+  if (!shops) acc.groups.set(key, shops = new Map());
+  const price = Number(rawPrice);
+  if (shops.has(premise)) {
+    if (shops.get(premise) !== price) throw new Error('PriceCatcher conflicting shop quotes');
+    return;
+  }
+  shops.set(premise, price);
+  if (++acc.quotes > acc.limit) throw new Error('PriceCatcher selected quotes exceed limit');
 }
 
 /** Compute staple medians for dates with at least ten distinct premises per item. */
@@ -144,15 +148,27 @@ export function aggregatePrices(rows, lookup, window) {
 /** Decode selected Parquet columns one row group at a time into the accumulator, with row, expansion and Brotli limits. */
 export async function readPricecatcher(bytes, acc) {
   const file = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  const meta = parquetMetadata(file);
-  if (Number(meta.num_rows) > 4_000_000 || meta.row_groups.length > 100
-    || meta.row_groups.some(group => Number(group.total_byte_size) > 100_000_000)) throw new Error('PriceCatcher parquet size limit exceeded');
-  let rowStart = 0;
-  for (const group of meta.row_groups) {
-    const rowEnd = rowStart + Number(group.num_rows);
-    addPriceRows(acc, await parquetReadObjects({ file, rowStart, rowEnd, columns: ['date', 'premise_code', 'item_code', 'price'],
-      compressors: { BROTLI: data => brotliDecompressSync(data, { maxOutputLength: 32_000_000 }) } }));
-    rowStart = rowEnd;
+  const metadata = parquetMetadata(file);
+  if (Number(metadata.num_rows) > 4_000_000 || metadata.row_groups.length > 100
+    || metadata.row_groups.some(group => Number(group.total_byte_size) > 100_000_000)) throw new Error('PriceCatcher parquet size limit exceeded');
+  const compressors = { BROTLI: data => brotliDecompressSync(data, { maxOutputLength: 32_000_000 }) };
+  const columns = ['date', 'premise_code', 'item_code', 'price'];
+  const scan = await parquetScan({ file, metadata, columns, compressors });
+  // Publisher row groups can exceed a million rows. Keep the columns
+  // separate so decoding never allocates an object for every quote.
+  for (const { rowStart, rowEnd } of scan.ranges) {
+    const rowCount = rowEnd - rowStart;
+    const readColumn = column => scan.readColumn({ column, rowStart, rowEnd });
+    const dates = await readColumn('date');
+    const premises = await readColumn('premise_code');
+    const items = await readColumn('item_code');
+    const prices = await readColumn('price');
+    if ([dates, premises, items, prices].some(column => column.length !== rowCount)) {
+      throw new Error('PriceCatcher parquet column length does not match row group');
+    }
+    for (let i = 0; i < rowCount; i++) {
+      addPriceQuote(acc, items[i], dates[i], premises[i], prices[i]);
+    }
   }
   return acc;
 }

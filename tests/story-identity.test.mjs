@@ -169,6 +169,59 @@ describe('clusterTexts', () => {
     assert.equal(clusters.flat().length, texts.length, 'every index appears exactly once');
   });
 
+  it('#11274: merges reworded reports of one event that name the same parties', () => {
+    const texts = [
+      'Solomon Islands names Australia as its primary security partner in a new treaty that excludes China - AP News',
+      'Australia, Solomon Islands sign security pact in blow to China - Reuters',
+      'Australia’s security pact with Solomon Islands a blow to China’s influence in the Pacific - The Guardian',
+      'Solomon Islands ends controversial security pact with China for Australian treaty',
+      'Australia, Solomon Islands sign sweeping pact stymieing China - Bangkok Post',
+      'Solomon Islands opposition leader calls for snap election',
+      'Australia and Solomon Islands hold joint naval security drill as China watches',
+      'Iran and Saudi Arabia restore ties in China-brokered deal',
+      'Iran fires missiles at Saudi Arabia oil site near China-run port',
+    ];
+    const clusters = clusterTexts(texts);
+    const treaty = clusters.find((c) => c.includes(0));
+    assert.deepEqual(treaty, [0, 1, 2, 3, 4], 'the five treaty reports share a cluster');
+    assert.ok(clusters.some((c) => c.length === 1 && c[0] === 5), 'another Solomon Islands story stays apart');
+    assert.ok(clusters.some((c) => c.length === 1 && c[0] === 6), 'a drill by the same parties stays apart');
+    assert.ok(!clusters.some((c) => c.includes(7) && c.includes(8)), 'same parties, different events stay apart');
+  });
+
+  it('#11274: same parties sharing one topic word stay separate events', () => {
+    assert.equal(isSameStory(
+      'Iran seizes Saudi Arabia oil tanker near Strait of Hormuz overnight',
+      'Iran threatens to close Strait of Hormuz to Saudi Arabia oil exports',
+    ), false);
+  });
+
+  it('#11274: same-parties similarity does not depend on argument order', () => {
+    const a = 'Iran and Iranian guards seize oil tanker off Oman Fujairah';
+    const b = 'Iran guards seize oil tanker near Hormuz Oman Fujairah amid fresh regional tensions';
+    assert.equal(storySimilarity(a, b), storySimilarity(b, a));
+    assert.equal(isSameStory(a, b), false, 'Iran and Iranian are one party, so Hormuz is unmatched');
+  });
+
+  it('#11274: a party name variant is not a shared topic word', () => {
+    const a = 'Iran says Iranian forces seized a tanker off Oman near Fujairah and Dubai';
+    const b = 'Iranian drones strike tanker port used by Iran opposition in Oman, Fujairah, Dubai';
+    assert.equal(isSameStory(a, b), false);
+  });
+
+  it('#11274: a shared year is not a shared topic word', () => {
+    assert.equal(isSameStory(
+      'Iran, Saudi Arabia, Qatar and China sign 2026 oil supply pact',
+      'Iran warns Saudi Arabia, Qatar, China over 2026 oil price war',
+    ), false);
+  });
+
+  it('#11274: the same-parties rescue never lowers a containment match', () => {
+    const short = 'Australia Solomon Islands China security pact';
+    const texts = [short, `${short} war war war war war`];
+    assert.equal(clusterTexts(texts, { threshold: 0.8 }).length, 1);
+  });
+
   it('is deterministic and order-stable for a fixed input', () => {
     const texts = [
       'Turkey hikes interest rates to 50% in surprise move',

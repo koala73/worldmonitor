@@ -12,7 +12,7 @@ import { chokepointCoverageWarning } from '@/services/supply-chain/chokepoint-co
 import type { ScenarioResult } from '@/config/scenario-templates';
 import { SCENARIO_TEMPLATES } from '@/config/scenario-templates';
 import { TransitChart } from '@/utils/transit-chart';
-import { t } from '@/services/i18n';
+import { getLocale, t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
@@ -58,6 +58,15 @@ const SCENARIO_COUNTRY_OPTIONS: Array<{ iso2: string; label: string; seeded: boo
 function hasPublishedTransitCount(ts?: { todayTotal?: number; todayCountsAvailable?: boolean }): boolean {
   if (!ts) return false;
   return ts.todayCountsAvailable ?? ((ts.todayTotal ?? 0) > 0);
+}
+
+function observedAsOf(isoDate: string | null | undefined): string {
+  if (!isoDate) return '';
+  const observed = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(observed.getTime()) || observed.toISOString().slice(0, 10) !== isoDate) return '';
+  const year = observed.getUTCFullYear() === new Date().getUTCFullYear() ? undefined : 'numeric';
+  const date = observed.toLocaleDateString(getLocale(), { year, month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return ` <span class="sc-observed-date" style="opacity:0.7">${escapeHtml(t('components.supplyChain.asOf', { date }))}</span>`;
 }
 
 export class SupplyChainPanel extends Panel {
@@ -512,7 +521,7 @@ export class SupplyChainPanel extends Panel {
             ? `${cp.activeWarnings} ${t('components.supplyChain.warnings')}`
             : '',
           cp.aisSnapshotAvailable === true
-            ? `${cp.aisDisruptions} ${t('components.supplyChain.aisDisruptions')}`
+            ? t('components.supplyChain.aisDisruptions', { count: cp.aisDisruptions })
             : '',
         ].filter(Boolean)
           // One flex item per metric, so the row wraps between metrics
@@ -651,7 +660,7 @@ export class SupplyChainPanel extends Panel {
             ${ts && ts.dataAvailable === false ? `<div class="sc-metric-row" style="opacity:0.5;font-size:calc(11px * var(--wm-panel-effective-scale, 1))"><span>${t('components.supplyChain.transitDataUnavailable') || 'Transit data unavailable (upstream partial)'}</span></div>` : ''}
             ${ts && ts.dataAvailable !== false && (hasTransitCount || hasWow || disruptPct > 0) ? `<div class="sc-metric-row">
               ${hasTransitCount ? `<span>${ts.todayTotal} ${t('components.supplyChain.vessels')}</span>` : ''}
-              ${hasWow ? `<span>${t('components.supplyChain.wowChange')}: ${wowSpan}</span>` : ''}
+              ${hasWow ? `<span>${t('components.supplyChain.wowChange')}: ${wowSpan}${observedAsOf(ts.officialLatestDate)}</span>` : ''}
               ${disruptPct > 0 ? `<span>${t('components.supplyChain.disruption')}: <span class="${disruptClass}">${disruptPct.toFixed(1)}%</span></span>` : ''}
             </div>` : ''}
             ${ts?.riskLevel ? `<div class="sc-metric-row">
@@ -668,7 +677,7 @@ export class SupplyChainPanel extends Panel {
                 : '';
               // The badge is its own flex item so it wraps below the flow figure.
               return `<div class="sc-metric-row" style="color:${flowColor}">
-                <span>~${fe.currentMbd} mb/d <span style="opacity:0.7">(${pct}% of ${fe.baselineMbd} baseline)</span></span>${hazardBadge}
+                <span>~${fe.currentMbd} mb/d <span style="opacity:0.7">(${pct}% of ${fe.baselineMbd} baseline)</span>${observedAsOf(fe.latestDate)}</span>${hazardBadge}
               </div>`;
             })() : FLOW_SUPPORTED_IDS.has(cp.id) ? `<div class="sc-metric-row" style="color:var(--text-dim,#888);font-size:calc(11px * var(--wm-panel-effective-scale, 1));opacity:0.7">
                 <span>${t('components.supplyChain.flowUnavailable')}</span>

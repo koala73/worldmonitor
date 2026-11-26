@@ -33,6 +33,10 @@ export const CACHE_TTL_SECONDS = 4 * 24 * 60 * 60;
 export const SOURCE_STATUS_TTL_SECONDS = 5 * 24 * 60 * 60;
 const MAX_PER_SOURCE = 100;
 const GETS_FEED_URL = 'https://www.gets.govt.nz/ExternalRSSFeed.htm';
+const GETS_ORIGIN = 'https://www.gets.govt.nz';
+const GETS_BUDGET_MS = 100_000;
+const GETS_DETAIL_CONCURRENCY = 4;
+const GETS_INDEX_MAX_PAGES = 30;
 const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
 
 function fetchResponseTransport(url, { timeoutMs, ...fetchOptions }) {
@@ -91,18 +95,22 @@ function samIpv4ResponseTransport(httpsGetFn = httpsGet) {
 // timeout, so maxRetries 2 would cost 60+1+60+2+60 = 183s and BREACH the section.
 // Callers with a long per-attempt timeout must lower maxRetries accordingly.
 // Sources run in parallel, so the section pays the slowest source, not the sum.
+// A caller that makes many reads passes `deadlineAt` instead: every attempt is
+// clamped to the time left and a Retry-After that cannot fit is not slept on.
 async function fetchResponse(url, options = {}, transport = fetchResponseTransport) {
-  const { timeoutMs = 20_000, maxRetries = 2, retryDelayMs = 1000, retry429 = true, ...fetchOptions } = options;
+  const { timeoutMs = 20_000, maxRetries = 2, retryDelayMs = 1000, retry429 = true, deadlineAt, ...fetchOptions } = options;
+  const timeLeft = () => (Number.isFinite(deadlineAt) ? deadlineAt - Date.now() : Number.POSITIVE_INFINITY);
   return withRetry(async () => {
+    if (timeLeft() <= 0) throw Object.assign(new Error('Request budget exhausted'), { nonRetryable: true });
     const response = await observeTenderRequest(url, {
       ...fetchOptions,
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, ...(fetchOptions.headers || {}) },
-      timeoutMs,
+      timeoutMs: Math.min(timeoutMs, timeLeft()),
     }, transport);
     if (!response.ok && !(fetchOptions.redirect === 'manual' && [301, 302, 303, 307, 308].includes(response.status))) {
       // Reuse the repository retry contract: 408 and 429 remain retryable, permanent
       // 4xx responses fail fast, and Retry-After is capped before it reaches withRetry.
-      const error = httpRetryError(response);
+      const error = httpRetryError(response, Number.isFinite(deadlineAt) ? { remainingBudgetMs: timeLeft() } : undefined);
       // Quota-style rate limits (SAM.gov's small daily budget) do not clear in
       // seconds — in-run retries only burn more of the budget (#5444).
       if (!retry429 && response.status === 429) error.nonRetryable = true;
@@ -308,11 +316,116 @@ function asItems(value) {
   return Array.isArray(value) ? value : [value];
 }
 
-export async function fetchGets({ now = Date.now(), fetchTextFn = fetchText } = {}) {
-  const xml = await fetchTextFn(GETS_FEED_URL);
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+// GETS prints "3:00 PM 27 Nov 2026 (Pacific/Auckland UTC+13:00)" on the index and
+// "Friday, 27 November 2026 3:00 PM (Pacific/Auckland UTC+13:00)" on detail pages.
+// The offset is read from the text because New Zealand switches between +12 and +13.
+function getsPageDate(value) {
+  const raw = decodeHtml(value);
+  const day = raw.match(/\b(\d{1,2}) ([A-Za-z]{3})[A-Za-z]* (\d{4})\b/);
+  const time = raw.match(/\b(\d{1,2}):(\d{2}) ?(AM|PM)\b/i);
+  const offset = raw.match(/UTC([+-])(\d{2}):(\d{2})/);
+  const month = MONTHS.indexOf(day?.[2].toLowerCase());
+  if (!day || !time || !offset || month < 0) return '';
+  const [date, hour12, minute] = [Number(day[1]), Number(time[1]), Number(time[2])];
+  if (hour12 < 1 || hour12 > 12 || minute > 59 || Number(offset[2]) > 14 || Number(offset[3]) > 59) return '';
+  const local = new Date(Date.UTC(Number(day[3]), month, date, (hour12 % 12) + (time[3].toUpperCase() === 'PM' ? 12 : 0), minute));
+  if (local.getUTCDate() !== date || local.getUTCMonth() !== month) return '';
+  const offsetMinutes = (offset[1] === '-' ? -1 : 1) * (Number(offset[2]) * 60 + Number(offset[3]));
+  return new Date(local.getTime() - offsetMinutes * 60_000).toISOString();
+}
+
+function htmlCells(row) {
+  return [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => match[1]);
+}
+
+function getsDetailField(html, label) {
+  const pattern = new RegExp(`<td class="label-cell">\\s*${label}[\\s\\S]*?<\\/td>\\s*<td>([\\s\\S]*?)<\\/td>`, 'i');
+  return html.match(pattern)?.[1] || '';
+}
+
+function getsIndexRows(html) {
+  const rows = [...html.matchAll(/<tr\b[^>]*\bid="tender-(\d+)"[^>]*>([\s\S]*?)<\/tr>/gi)].map(([, id, row]) => {
+    const cells = htmlCells(row);
+    const href = cells[0]?.match(/href="([A-Za-z0-9_-]+\/ExternalTenderDetails\.htm\?id=(\d+))"/i);
+    const deadline = getsPageDate(cells[4]);
+    if (cells.length < 6 || href?.[2] !== id || !decodeHtml(cells[2]) || !deadline) {
+      throw new Error(`GETS index row ${id} drifted from the expected markup`);
+    }
+    return {
+      id,
+      link: `${GETS_ORIGIN}/${href[1]}`,
+      title: decodeHtml(cells[2]),
+      noticeType: decodeHtmlEntities(cells[3].match(/<abbr title="([^"]*)"/i)?.[1] || '') || decodeHtml(cells[3]),
+      deadline,
+      buyer: decodeHtml(cells[5]),
+    };
+  });
+  if (rows.length !== (html.match(/\bid="tender-\d+"/gi) || []).length) {
+    throw new Error('GETS index contains tender rows that did not parse');
+  }
+  return rows;
+}
+
+// The pager prints "26 - 50 of 342". Reading to that total, checking each
+// page continues where the last one stopped, and rejecting a repeated RFx ID
+// catches a short read or a list that shifted between pages.
+async function readGetsIndexRows(read) {
+  const rows = [];
+  for (let page = 1; ; page += 1) {
+    if (page > GETS_INDEX_MAX_PAGES) throw new Error(`GETS index needs more than ${GETS_INDEX_MAX_PAGES} pages`);
+    const html = await read(`${GETS_ORIGIN}/ExternalIndex.htm?page=${page}&orderBy=date`);
+    const pageRows = getsIndexRows(html);
+    if (pageRows.length === 0) throw new Error(`GETS index page ${page} contains no tender rows`);
+    const [, start, end, total] = (html.match(/(\d+)\s*-\s*(\d+)\s+of\s+(\d+)/) || []).map(Number);
+    if (start !== rows.length + 1 || end - start + 1 !== pageRows.length || end > total) {
+      throw new Error(`GETS index page ${page} range does not match its ${pageRows.length} rows`);
+    }
+    for (const row of pageRows) {
+      if (rows.some((seen) => seen.id === row.id)) throw new Error(`GETS index listed ${row.id} twice; the list shifted during the read`);
+      rows.push(row);
+    }
+    if (end === total) return rows;
+  }
+}
+
+// The RSS feed sits behind a WAF rule that answers 403 to automated clients
+// (#11373) while the HTML current-tenders list on the same host stays open.
+// Detail pages carry the open date, categories and overview the list omits.
+async function fetchGetsIndex({ now, read }) {
+  // The index only sorts by close date, so the first pages hold notices that
+  // expire before the next daily run. RFx IDs rise over time; keeping the
+  // highest ones keeps the newest notices, as the RSS feed did.
+  const open = (await readGetsIndexRows(read)).filter((row) => isOpenOpportunity(row, now))
+    .sort((left, right) => Number(right.id) - Number(left.id))
+    .slice(0, MAX_PER_SOURCE);
+  const records = [];
+  for (let offset = 0; offset < open.length; offset += GETS_DETAIL_CONCURRENCY) {
+    records.push(...await Promise.all(open.slice(offset, offset + GETS_DETAIL_CONCURRENCY).map(async (row) => {
+      const detail = await read(row.link);
+      if (decodeHtml(getsDetailField(detail, 'RFx ID')) !== row.id) {
+        throw new Error(`GETS detail page for ${row.id} does not describe that notice`);
+      }
+      const publishedAt = getsPageDate(getsDetailField(detail, 'Open Date'));
+      if (!publishedAt) throw new Error(`GETS open date for ${row.id} does not parse`);
+      const overview = detail.match(/<span class="legend">Overview<\/span>\s*<\/div>([\s\S]*?)(?:<form\b|<div class="detail-divider")/i)?.[1];
+      return normalizeGetsNotice({
+        ...row,
+        publishedAt,
+        categories: [...getsDetailField(detail, 'Categories').matchAll(/<li>([\s\S]*?)<\/li>/gi)].map((match) => decodeHtml(match[1])).filter(Boolean),
+        description: decodeHtml(overview),
+      });
+    })));
+  }
+  return records.filter((tender) => isOpenOpportunity(tender, now));
+}
+
+async function fetchGetsRss({ now, read }) {
+  const xml = await read(GETS_FEED_URL, {});
   const parsed = new XMLParser({ ignoreAttributes: false, processEntities: true }).parse(xml);
   const items = asItems(parsed?.rss?.channel?.item).slice(0, MAX_PER_SOURCE);
-  const records = items.map((item) => {
+  return items.map((item) => {
     const description = String(item?.description || '');
     const link = typeof item?.link === 'string' ? item.link : item?.guid;
     const id = getsField(description, 'RFx ID') || String(link || '').match(/[?&]id=(\d+)/)?.[1] || '';
@@ -328,6 +441,24 @@ export async function fetchGets({ now = Date.now(), fetchTextFn = fetchText } = 
       description: getsField(description, 'Overview'),
     });
   }).filter((tender) => isOpenOpportunity(tender, now));
+}
+
+// runSeed gives the fetch phase the 180s section minus a 40s publish reserve.
+// Every GETS read, RSS included, shares one deadline well inside that, so a
+// slow GETS fails alone and cannot reject the whole tender refresh.
+export async function fetchGets({ now = Date.now(), fetchTextFn = fetchText } = {}) {
+  const deadlineAt = Date.now() + GETS_BUDGET_MS;
+  const read = (url, headers = { Accept: 'text/html' }) => fetchTextFn(url, { headers, deadlineAt, timeoutMs: 15_000, maxRetries: 1 });
+  let records;
+  try {
+    records = await fetchGetsRss({ now, read });
+  } catch (rssError) {
+    try {
+      records = await fetchGetsIndex({ now, read });
+    } catch (indexError) {
+      throw new Error(`GETS RSS failed (${rssError?.message || rssError}); index fallback failed (${indexError?.message || indexError})`);
+    }
+  }
   return { records, status: sourceStatus('gets', 'ok', records, '', now) };
 }
 

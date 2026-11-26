@@ -13,6 +13,9 @@ The "[Disease Outbreaks](/panels/disease-outbreaks)" panel tags each item **ALER
 **It reads the headline.** If the title or summary contains words like
 *outbreak*, *emergency*, *epidemic*, or *pandemic*, the item is tagged ALERT.
 Words like *warning* or *spread* make it WARNING. Everything else is WATCH.
+One exception: a headline that dates its outbreak to an earlier year than its
+publication ("Canada's 2025 measles outbreak offers a cautionary tale") is
+background, so it stays WATCH.
 
 That is the whole mechanism. There is no model, no case-count threshold, and no
 epidemiological assessment behind it.

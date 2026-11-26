@@ -3,6 +3,8 @@ import { test, describe } from 'node:test';
 import {
   deriveShortageEvidenceQuality,
   countEvidenceSources,
+  isShortageReconfirmed,
+  newestShortageConfirmation,
   SHORTAGE_EVIDENCE_VERSION,
   type ShortageEvidenceInput,
 } from '../src/shared/shortage-evidence';
@@ -86,5 +88,27 @@ describe('countEvidenceSources', () => {
       { sourceType: 'satellite' },
     ]);
     assert.deepEqual(result, { authoritative: 2, press: 2, other: 1 });
+  });
+});
+
+describe('isShortageReconfirmed', () => {
+  test('a confirmation within 14 days is current, an older or missing one is not', () => {
+    assert.equal(isShortageReconfirmed('2026-04-10T00:00:00Z', NOW), true);
+    assert.equal(isShortageReconfirmed('2026-04-07T00:00:00Z', NOW), false);
+    assert.equal(isShortageReconfirmed('', NOW), false);
+    assert.equal(isShortageReconfirmed('not a date', NOW), false);
+  });
+});
+
+describe('newestShortageConfirmation', () => {
+  test('returns the latest valid lastConfirmed, or empty when none parse', () => {
+    assert.equal(newestShortageConfirmation([
+      { lastConfirmed: '2026-04-15' },
+      { lastConfirmed: '2026-04-20T00:00:00Z' },
+      { lastConfirmed: 'bad' },
+      {},
+    ]), '2026-04-20T00:00:00Z');
+    assert.equal(newestShortageConfirmation([{ lastConfirmed: '' }]), '');
+    assert.equal(newestShortageConfirmation([]), '');
   });
 });

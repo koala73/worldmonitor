@@ -12,6 +12,7 @@ import {
   briefPipelineErrors,
   sharedTranslateCacheKey,
   briefSlotIndexCommands,
+  storeBrief,
   undoBriefWriteIfErased,
   writeBriefSlotIndex,
   buildTranslatePrompt,
@@ -958,7 +959,7 @@ describe('cron wiring', () => {
   const cron = readFileSync(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url), 'utf8');
   it('the l10n lookup and sibling commands only run with the flag on', () => {
     assert.match(cron, /if \(briefL10nConfig\.enabled\) \{\n\s+if \(briefL10nPassBudgetLeft\(\)\)/);
-    assert.match(cron, /\} else if \(briefL10nConfig\.enabled\) \{\n\s+briefCommands\.push\(\['DEL', briefLocalizedKey\(userId, issueSlot\)\]\);/);
+    assert.match(cron, /clearStaleLocalized: briefL10nConfig\.enabled,/);
   });
 
   it('only the canonical envelope and pointer writes are fatal; index and sibling errors are logged', () => {
@@ -971,8 +972,7 @@ describe('cron wiring', () => {
     // and channels must not go out localized.
     assert.deepEqual(briefPipelineErrors([ok, ok, 1, 0, 1, { error: 'x' }], 2, 5), { fatal: null, other: ['x'], siblingFailed: true });
     assert.equal(briefPipelineErrors([ok, ok, 1, 0, 1, ok], 2, 5).siblingFailed, false);
-    assert.match(cron, /pipelineErrors = briefPipelineErrors\(pipelineResult, 2, siblingIndex\);/);
-    assert.match(cron, /if \(pipelineErrors\.siblingFailed\) \{\n\s+localizedEnvelope = null;\n\s+localizedSynthesis = null;/);
+    assert.match(cron, /if \(stored\.siblingFailed\) \{\n\s+localizedEnvelope = null;\n\s+localizedSynthesis = null;/);
   });
 
   it('the per-user translation cap covers the routing-policy lookup', () => {
@@ -984,14 +984,6 @@ describe('cron wiring', () => {
 
   it('the Convex switch is read only when briefs are composed', () => {
     assert.match(cron, /if \(!BRIEF_COMPOSE_ENABLED\) return \{ briefByUser, composeSuccess: 0, composeFailed: 0 \};\n\s+await loadBriefL10nConfigOnce\(\);/);
-  });
-
-  it('every brief write indexes its slot first, at write time, so account deletion can find it', () => {
-    // Indexed before any envelope is written: a failed index aborts the compose.
-    const indexAt = cron.indexOf('await writeBriefSlotIndex(');
-    assert.ok(indexAt > 0 && indexAt < cron.indexOf('const pipelineResult = await redisPipeline(briefCommands'));
-    assert.match(cron, /briefSlotIndexCommands\(briefSlotsKey\(userId\), issueSlot, Date\.now\(\), BRIEF_TTL_SECONDS\)/);
-    assert.doesNotMatch(cron, /'ZADD', slotsKey/);
   });
 
   it('a slot index entry outlives the keys it points at', () => {
@@ -1060,20 +1052,64 @@ describe('cron wiring', () => {
     await assert.rejects(undoBriefWriteIfErased('u1', 's', async (c) => c.map((cmd) => (cmd[0] === 'GET' ? { result: '1' } : { error: 'down' }))), /cleanup/);
   });
 
-  it('a failed or lost envelope write still runs the erase cleanup before failing', () => {
-    const start = cron.indexOf('const pipelineResult = await redisPipeline(briefCommands');
-    const block = cron.slice(cron.lastIndexOf('try {', start), cron.indexOf('const magazineUrl = await signBriefUrl('));
-    assert.match(block, /catch \(err\) \{[\s\S]*undoBriefWriteIfErased\(userId, issueSlot,[\s\S]*throw err;/);
-  });
-
-  it('the compose re-reads the erase marker after its envelope write and before signing a URL', () => {
-    const pipelineAt = cron.indexOf('const pipelineResult = await redisPipeline(briefCommands');
-    const checkAt = cron.indexOf('await undoBriefWriteIfErased(userId, issueSlot,');
-    assert.ok(pipelineAt > 0 && checkAt > pipelineAt && checkAt < cron.indexOf('const magazineUrl = await signBriefUrl('));
-  });
-
   it('the translation budget never exceeds what is left of the pass budget', () => {
     assert.match(cron, /budgetMs: Math\.max\(1, Math\.min\(userDeadline - Date\.now\(\), passLeftMs\(\)\)\)/);
     assert.match(cron, /Promise\.race\(\[\n\s+resolveAiRoutingPolicy\(userId\)/);
+  });
+});
+
+describe('storeBrief', () => {
+  const brief = (overrides = {}) => ({
+    userId: 'u1', issueSlot: 's', envelope: { v: 4 }, latestPointer: '{"issueSlot":"s"}',
+    localized: null, clearStaleLocalized: false, ttlSeconds: 60, indexedAtMs: 1, ...overrides,
+  });
+  const recorder = (respond = () => undefined) => {
+    const sent = [];
+    const pipeline = async (cmds) => {
+      sent.push(cmds);
+      return cmds.map((cmd) => respond(cmd) ?? { result: cmd[0] === 'GET' ? null : 1 });
+    };
+    return { sent, pipeline };
+  };
+
+  it('indexes the slot before it writes any envelope, so account deletion can find it', async () => {
+    const { sent, pipeline } = recorder();
+    await storeBrief(brief(), pipeline);
+    assert.deepEqual(sent[0][0], ['ZADD', 'brief:slots:u1', '1', 's']);
+    assert.ok(sent.slice(1).some((cmds) => cmds.some((c) => c[0] === 'SETEX' && c[1] === 'brief:u1:s')));
+  });
+
+  it('writes no envelope when the slot index cannot be written', async () => {
+    const { sent, pipeline } = recorder((cmd) => (cmd[0] === 'ZADD' ? { error: 'OOM' } : undefined));
+    await assert.rejects(storeBrief(brief(), pipeline), /OOM/);
+    assert.ok(!sent.flat().some((c) => c[0] === 'SETEX'));
+  });
+
+  it('removes its brief and fails when the account was erased during the compose', async () => {
+    const { sent, pipeline } = recorder((cmd) => (cmd[0] === 'GET' ? { result: '1' } : undefined));
+    await assert.rejects(storeBrief(brief(), pipeline), /account erased during compose/);
+    assert.ok(sent.flat().some((c) => c[0] === 'DEL' && c[1] === 'brief:u1:s'));
+  });
+
+  it('a failed envelope write still removes the brief of an erased account before failing', async () => {
+    const { sent, pipeline } = recorder((cmd) => (cmd[0] === 'SETEX' ? { error: 'READONLY' } : cmd[0] === 'GET' ? { result: '1' } : undefined));
+    await assert.rejects(storeBrief(brief(), pipeline), /READONLY/);
+    assert.ok(sent.flat().some((c) => c[0] === 'DEL' && c[1] === 'brief:u1:s'));
+  });
+
+  it('a failed sibling write is reported, not fatal', async () => {
+    const { pipeline } = recorder((cmd) => (cmd[0] === 'SETEX' && cmd[1].startsWith('brief:l10n:') ? { error: 'x' } : undefined));
+    assert.deepEqual(await storeBrief(brief({ localized: { v: 5 } }), pipeline), { siblingFailed: true, otherErrors: ['x'] });
+  });
+
+  it('touches the localized key only when storing a sibling or clearing a stale one', async () => {
+    const l10nCommands = async (overrides) => {
+      const { sent, pipeline } = recorder();
+      await storeBrief(brief(overrides), pipeline);
+      return sent.flat().filter((c) => String(c[1]).startsWith('brief:l10n:')).map((c) => c[0]);
+    };
+    assert.deepEqual(await l10nCommands({}), []);
+    assert.deepEqual(await l10nCommands({ clearStaleLocalized: true }), ['DEL']);
+    assert.deepEqual(await l10nCommands({ localized: { v: 5 } }), ['SETEX']);
   });
 });

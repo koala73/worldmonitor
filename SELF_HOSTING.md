@@ -220,6 +220,21 @@ services:
 
 Without the X or Telegram credentials those panels load but stay empty. `.env.example` lists every variable the code reads.
 
+### OREF history volumes
+
+If you set `OREF_DATA_DIR` on a relay container, mount a directory that the
+container's `node` user (UID 1000, GID 1000) can write to. Before upgrading an
+existing root-owned volume, stop its relay and change the owner of the mounted
+OREF directory and its existing `oref-history.json` and `oref-history.json.tmp`
+files to `1000:1000`. Give the owner read, write, and search access to the
+directory, and read and write access to the two files if they exist. Apply the
+change on the host for a bind mount, or from a one-off root container with the
+same volume mounted. Restart the relay after the change.
+
+The relay checks these permissions at startup when `OREF_DATA_DIR` is set.
+Check that it logs `OREF local persistence` and that the history file updates
+after the next history save.
+
 ### Docker secrets
 
 To keep keys out of `docker inspect`, mount them as Docker secrets instead. The app's entrypoint reads each file in `/run/secrets/` and exports it under the file's name, taking priority over the same variable from `environment`. Create one file per key and uncomment the `secrets:` blocks at the bottom of `docker-compose.yml` and under the `worldmonitor` service:

@@ -64,6 +64,13 @@ describe('dogfood review issue', () => {
     assert.deepEqual(calls.at(-1).args.slice(0, 4), ['api', '--method', 'PATCH', 'repos/o/r/issues/7']);
   });
 
+  it('does not create a duplicate when the issue search reports incomplete results', () => {
+    const calls = [];
+    const gh = (args) => { calls.push(args); return [{ incomplete_results: true, items: [] }]; };
+    assert.throws(() => publishReview(report([finding()]), { repository: 'o/r', week: '2026-W47', gh }), /incomplete results/);
+    assert.equal(calls.some((args) => args.includes('POST')), false);
+  });
+
   it('names the ISO week across a year boundary', () => {
     assert.equal(isoWeek(new Date('2026-11-18T12:00:00Z')), '2026-W47');
     assert.equal(isoWeek(new Date('2027-01-01T12:00:00Z')), '2026-W53');

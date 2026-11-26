@@ -43,12 +43,27 @@ const OTHER_LANGUAGE_WORDS = new Set([
   'là', 'có', 'được', 'cho', 'với', 'không', 'tại', 'trong', 'ya', 'wa', 'kwa', 'katika',
 ]);
 
+// Hausa function words. None is an English word or name particle ("da", "a"
+// and "ga" are left out). Hausa outlets title-case headlines, so the words
+// that are not also names count capitalized too; "Amma", "Wanda", "Bayan",
+// "Inda", "Wata", "Wani", "Domin" and "Tare" are names in English headlines.
+const HAUSA_TITLE_CASE_WORDS = new Set([
+  'cikin', 'kuma', 'daga', 'saboda', 'yadda', 'zai', 'za', 'ta', 'suka', 'wadda', 'kafin',
+]);
+const HAUSA_WORDS = new Set([
+  ...HAUSA_TITLE_CASE_WORDS, 'amma', 'wani', 'wata', 'bayan', 'domin', 'tare', 'wanda', 'inda',
+]);
+
 const ENGLISH_WORDS = new Set([
   'the', 'of', 'and', 'to', 'in', 'for', 'on', 'with', 'as', 'at', 'by', 'from', 'is', 'are', 'was', 'were', 'after',
   'over', 'says', 'say', 'his', 'her', 'its', 'their', 'has', 'have', 'had', 'will', 'not', 'that', 'this', 'be',
   'an', 'a', 'into', 'amid', 'against', 'who', 'what', 'how', 'why', 'new', 'more', 'than', 'but', 'or', 'it',
   'about', 'out', 'up', 'no', 'can', 'could', 'would', 'may', 'been', 'he', 'she', 'they', 'we', 'you', 'us',
 ]);
+
+// Hausa's hooked letters are Latin script, so the non-Latin share misses them,
+// and English spells the names that carry them without the hook ("Dangote").
+const HAUSA_HOOKED_WORD = /[ɓɗƙƴƁƊƘƳ]/u;
 
 const LETTER = /\p{L}/u;
 const LATIN = /\p{Script=Latin}/u;
@@ -80,12 +95,19 @@ function headlineInOtherLanguage(title) {
 
   const other = new Set();
   let english = 0;
+  // Distinct words, so a name repeated in one headline is one piece of evidence.
+  const hooked = new Set();
   const words = text.split(WHITESPACE).flatMap(token => (DOTTED_NAME.test(token) ? [] : token.split(WORD_BREAK)));
   for (const word of words) {
+    const lower = word.toLowerCase();
+    if (HAUSA_HOOKED_WORD.test(word)) hooked.add(lower);
+    if (HAUSA_WORDS.has(word) || HAUSA_TITLE_CASE_WORDS.has(lower)) other.add(lower);
     // Case matters: "I" is English and "i" is Norwegian or Polish; "De" opens a name.
-    if (OTHER_LANGUAGE_WORDS.has(word)) other.add(word);
+    else if (OTHER_LANGUAGE_WORDS.has(word)) other.add(word);
     else if (ENGLISH_WORDS.has(word.toLowerCase())) english++;
   }
+  // One hooked word can be a name; two are a Hausa sentence.
+  if (hooked.size >= 2) return true;
   return other.size >= 2 && other.size > english;
 }
 

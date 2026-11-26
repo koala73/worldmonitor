@@ -11,6 +11,10 @@ const WEIGHTS: Record<string, number> = {
   military_vessel: 0.30,
 };
 
+function formatLatLon({ lat, lon }: { lat: number; lon: number }): string {
+  return `${Math.abs(lat).toFixed(1)}\u00b0${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}\u00b0${lon >= 0 ? 'E' : 'W'}`;
+}
+
 const STRIKE_TYPES = new Set(['fighter', 'bomber', 'attack']);
 const SUPPORT_TYPES = new Set(['tanker', 'awacs', 'surveillance', 'electronic_warfare']);
 
@@ -97,10 +101,11 @@ export const militaryAdapter: DomainAdapter = {
     return signals;
   },
 
-  generateTitle(cluster: SignalEvidence[]): string {
+  generateTitle(cluster: SignalEvidence[], context): string {
     const types = new Set(cluster.map(s => s.type));
     const countries = [...new Set(cluster.map(s => s.country).filter(Boolean))];
-    const countryLabel = countries.slice(0, 2).join('/') || 'Unknown region';
+    const operators = countries.slice(0, 2).join('/') || 'Unknown region';
+    const countryLabel = context?.location ? `${operators} near ${formatLatLon(context.location)}` : operators;
 
     const hasFlights = types.has('military_flight');
     const hasVessels = types.has('military_vessel');

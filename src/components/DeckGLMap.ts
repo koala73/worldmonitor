@@ -73,6 +73,7 @@ import { isReportableCanadaRoad } from '@/services/canada-road-report';
 import type { CanadaAlert } from '@/services/canada-alerts';
 import { escapeHtml } from '@/utils/sanitize';
 import { installLongPressContextMenu } from '@/utils/long-press';
+import { TIME_RANGE_MS, parseTimestamp, type TimeRange } from '@/utils/time-range';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import {
   derivePipelinePublicBadge,
@@ -232,7 +233,7 @@ import {
 /** deck.gl accessor shape: (datum, objectInfo) => value. */
 type GlyphAccessor<T> = (d: unknown, info: unknown) => T;
 
-export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
+export type { TimeRange } from '@/utils/time-range';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 type MapInteractionMode = 'flat' | '3d';
 
@@ -1665,21 +1666,7 @@ export class DeckGLMap {
   }
 
   private getTimeRangeMs(range: TimeRange = this.state.timeRange): number {
-    const ranges: Record<TimeRange, number> = {
-      '1h': 60 * 60 * 1000,
-      '6h': 6 * 60 * 60 * 1000,
-      '24h': 24 * 60 * 60 * 1000,
-      '48h': 48 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000,
-      'all': Infinity,
-    };
-    return ranges[range];
-  }
-
-  private parseTime(value: Date | string | number | undefined | null): number | null {
-    if (value == null) return null;
-    const ts = value instanceof Date ? value.getTime() : new Date(value).getTime();
-    return Number.isFinite(ts) ? ts : null;
+    return TIME_RANGE_MS[range];
   }
 
   private filterByTime<T>(
@@ -1689,7 +1676,7 @@ export class DeckGLMap {
     if (this.state.timeRange === 'all') return items;
     const cutoff = Date.now() - this.getTimeRangeMs();
     return items.filter((item) => {
-      const ts = this.parseTime(getTime(item));
+      const ts = parseTimestamp(getTime(item));
       return ts == null ? true : ts >= cutoff;
     });
   }
@@ -2145,7 +2132,7 @@ export class DeckGLMap {
     const filteredRadiationObservations = mapLayers.radiationWatch ? this.filterByTimeCached(this.radiationObservations, (obs) => obs.observedAt) : [];
     const filteredPositiveEvents = mapLayers.positiveEvents ? this.filterByTimeCached(this.positiveEvents, (e) => e.timestamp) : [];
     const filteredIranEvents = mapLayers.iranAttacks ? this.filterByTimeCached(this.iranEvents, (e) => e.timestamp) : [];
-    const filteredFirmsFireData = mapLayers.fires ? this.filterByTimeCached(this.firmsFireData, (d) => d.acq_date) : [];
+    const filteredFirmsFireData = mapLayers.fires ? this.filterByTimeCached(this.firmsFireData, (d) => d.detected_at ?? d.acq_date) : [];
     const filteredTrafficAnomalies = mapLayers.outages ? this.filterByTimeCached(this.trafficAnomalies, (a) => a.startDate) : [];
     const filteredKindnessPoints = mapLayers.kindness ? this.filterByTimeCached(this.kindnessPoints, (p) => p.timestamp) : [];
     const filteredImageryScenes = mapLayers.satellites ? this.filterByTimeCached(this.imageryScenes, (s) => s.datetime) : [];
@@ -2914,6 +2901,8 @@ export class DeckGLMap {
         case 'reduced':  return [243, 156, 18, 220];  // amber
         case 'offline':  return [231, 76, 60, 230];   // red
         case 'disputed': return [155, 89, 182, 220];  // purple
+        case 'cancelled':
+        case 'closed':   return [127, 140, 141, 160]; // grey
       }
     };
 

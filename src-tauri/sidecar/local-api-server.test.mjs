@@ -2956,6 +2956,143 @@ test('validates OLLAMA_API_URL via /api/local-validate-secret (reachable endpoin
   }
 });
 
+test('desktop Settings can save a new private Ollama URL without a live probe', async (t) => {
+  const localApi = await setupApiDir({});
+  const previousMode = process.env.LOCAL_API_MODE;
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  const request = http.request;
+  const host = '192.168.1.24';
+  t.mock.method(http, 'request', (options, ...args) => {
+    assert.notEqual(options.hostname, host, 'unconfigured private origins are not probed');
+    return request(options, ...args);
+  });
+  const app = await createLocalApiServer({ port: 0, apiDir: localApi.apiDir });
+  try {
+    const { port } = await app.start();
+    const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'OLLAMA_API_URL', value: `http://${host}:11434` }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      valid: true,
+      message: 'Private Ollama URL accepted for configuration without a connection check',
+    });
+  } finally {
+    if (previousMode === undefined) delete process.env.LOCAL_API_MODE;
+    else process.env.LOCAL_API_MODE = previousMode;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('desktop Settings accepts Tailscale and system-resolved LAN Ollama hosts without a probe', async (t) => {
+  const localApi = await setupApiDir({});
+  const previousMode = process.env.LOCAL_API_MODE;
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  // Public DNS cannot see mDNS or /etc/hosts names; the system resolver can.
+  const systemHosts = new Map([
+    ['ollama-box.local', [{ address: '192.168.1.30', family: 4 }]],
+    ['metadata.local', [{ address: '169.254.169.254', family: 4 }]],
+  ]);
+  const notFound = async (hostname) => {
+    if (systemHosts.has(hostname)) throw Object.assign(new Error(`queryA ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' });
+    return [];
+  };
+  t.mock.method(dns, 'resolve4', notFound);
+  t.mock.method(dns, 'resolve6', notFound);
+  t.mock.method(dns, 'lookup', async (hostname) => {
+    const records = systemHosts.get(hostname);
+    if (!records) throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' });
+    return records;
+  });
+  const request = http.request;
+  t.mock.method(http, 'request', (options, ...args) => {
+    assert.ok(
+      !['100.101.102.103', 'ollama-box.local', 'metadata.local', '192.168.1.30', '169.254.169.254'].includes(options?.hostname),
+      `no request to ${options?.hostname}`,
+    );
+    return request(options, ...args);
+  });
+  const app = await createLocalApiServer({ port: 0, apiDir: localApi.apiDir, logger: { log() { }, warn() { }, error() { } } });
+  try {
+    const { port } = await app.start();
+    const validate = async (value) => {
+      const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'OLLAMA_API_URL', value }),
+      });
+      return response.json();
+    };
+    for (const value of ['http://100.101.102.103:11434', 'http://ollama-box.local:11434']) {
+      assert.deepEqual(await validate(value), {
+        valid: true,
+        message: 'Private Ollama URL accepted for configuration without a connection check',
+      }, value);
+    }
+    const metadata = await validate('http://metadata.local');
+    assert.equal(metadata.valid, false);
+    assert.match(metadata.message, /^Ollama URL blocked: /);
+  } finally {
+    if (previousMode === undefined) delete process.env.LOCAL_API_MODE;
+    else process.env.LOCAL_API_MODE = previousMode;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('secret validation refuses private relay and Ollama targets before any request', async (t) => {
+  const localApi = await setupApiDir({});
+  const previousMode = process.env.LOCAL_API_MODE;
+  delete process.env.LOCAL_API_MODE;
+  const blockedHosts = new Set(['169.254.169.254', '10.0.0.5', '100.64.1.2']);
+  const request = http.request;
+  t.mock.method(http, 'request', (options, ...args) => {
+    assert.ok(!blockedHosts.has(options?.hostname), `no request to ${options?.hostname}`);
+    return request(options, ...args);
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  try {
+    const { port } = await app.start();
+    const validate = async (key, value) => {
+      const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value }),
+      });
+      return response.json();
+    };
+    for (const [key, value] of [
+      ['WS_RELAY_URL', 'ws://169.254.169.254'],
+      ['VITE_WS_RELAY_URL', 'wss://10.0.0.5'],
+      ['VITE_OPENSKY_RELAY_URL', 'http://169.254.169.254/latest/meta-data'],
+    ]) {
+      const body = await validate(key, value);
+      assert.equal(body.valid, false, `${key}=${value}`);
+      assert.match(body.message, /^Relay URL blocked: /);
+    }
+    for (const value of ['http://169.254.169.254', 'http://10.0.0.5:11434', 'http://100.64.1.2:11434']) {
+      const body = await validate('OLLAMA_API_URL', value);
+      assert.equal(body.valid, false, value);
+      assert.match(body.message, /^Ollama URL blocked: /);
+    }
+    const withCredentials = await validate('OLLAMA_API_URL', 'http://user:pass@127.0.0.1:11434');
+    assert.equal(withCredentials.valid, false);
+    assert.equal(withCredentials.message, 'URLs with credentials are not allowed');
+  } finally {
+    if (previousMode === undefined) delete process.env.LOCAL_API_MODE;
+    else process.env.LOCAL_API_MODE = previousMode;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('validates LM Studio style /v1 base URL via /api/local-validate-secret', async () => {
   const mockOpenAiCompatible = createServer((req, res) => {
     if (req.url === '/v1/models') {
@@ -5154,6 +5291,19 @@ test('selfhost-key: a malformed key is refused with no cloud call; a repeated in
     assert.equal((await postSelfHostKey(port, SELFHOST_INVALID_KEY)).json.status, 'invalid');
     assert.equal((await postSelfHostKey(port, SELFHOST_INVALID_KEY)).json.status, 'invalid');
     assert.equal(cloud.statusCalls.length, 1);
+  });
+});
+
+test('selfhost-key: a body over the 4096-byte cap is refused with no cloud call', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const response = await selfHostRequest(port, '/api/selfhost-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+      body: { key: SELFHOST_ACTIVE_KEY, padding: 'x'.repeat(5000) },
+    });
+    assert.equal(response.status, 400);
+    assert.equal(response.json.status, 'invalid');
+    assert.equal(cloud.statusCalls.length, 0);
   });
 });
 

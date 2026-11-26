@@ -17,7 +17,8 @@ import {
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'infra:bc-open511:v1';
-const CACHE_TTL = 5400; // 90 min ≥ 3× the */15 cron (900s)
+// Twice the 90-minute health budget, so a late seeder reads STALE_SEED, not EMPTY.
+const CACHE_TTL = 10800;
 
 async function fetchBcOpen511() {
   const adapter = open511Adapter(BC_OPEN511.baseUrl, {

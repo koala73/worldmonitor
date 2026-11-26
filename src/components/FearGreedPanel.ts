@@ -281,7 +281,7 @@ export class FearGreedPanel extends Panel {
       : '';
 
     const html = `
-      <div style="padding:12px 14px">
+      <div style="padding:12px 0">
         <div style="text-align:center;margin-bottom:12px">
           <div style="text-align:center;font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${regime.color};letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px">${escapeHtml(regime.state)}</div>
           ${renderGauge(score, label, delta, color)}

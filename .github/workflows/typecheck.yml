@@ -15,61 +15,67 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    # Distinct check-run name: test.yml and lint-code.yml each define a job with
-    # the same `changes` id, and the deploy gate matches check runs by name only
-    # — same-named runs collapse to whichever finished last, hiding the others'
-    # failures behind it (#5822). The job id stays `changes` so `needs: changes`
-    # below keeps resolving; only the published check-run name changes.
-    name: typecheck-changes
+  # One job. The classifier used to be its own job (typecheck-changes), which
+  # held a runner and a slot under the account's concurrent-job cap for a few
+  # seconds of `gh api`. It is now this job's first step, and every later step
+  # runs only when code changed. The job keeps the `typecheck` name: branch
+  # protection requires that check-run name. A docs-only PR still reports a
+  # passing `typecheck`, as a skipped job did before.
+  typecheck:
+    # No secrets needed — run for all PRs including forks
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: read
-    outputs:
-      code: ${{ steps.diff.outputs.code }}
     steps:
       - id: diff
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "$EVENT_NAME" = "push" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
+          FILES=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/files" \
             --paginate --jq '.[].filename')
           CODE=$(echo "$FILES" | grep -vcE '\.md$|^docs/|^src-tauri/|^CHANGELOG\.md$|^LICENSE$|\.github/workflows/(build-desktop|docker-publish)\.yml$' || echo 0)
           echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
-
-  typecheck:
-    # No secrets needed — run for all PRs including forks
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+      - if: steps.diff.outputs.code == 'true'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - if: steps.diff.outputs.code == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '24'
-      - uses: ./.github/actions/install-root-deps
-      - uses: ./.github/actions/install-pro-deps
-      - run: npm run typecheck
-      - run: npm run typecheck:api
+      - if: steps.diff.outputs.code == 'true'
+        uses: ./.github/actions/install-root-deps
+      - if: steps.diff.outputs.code == 'true'
+        uses: ./.github/actions/install-pro-deps
+      - if: steps.diff.outputs.code == 'true'
+        run: npm run typecheck
+      - if: steps.diff.outputs.code == 'true'
+        run: npm run typecheck:api
       # `npm run typecheck` covers src/ only, so tests/ and shared modules reached only from tests
       # were never type-checked by any job. Runs inside the existing required `typecheck` context
       # rather than as a new job, so no branch-protection context list has to change.
-      - run: npm run typecheck:contract-tests
+      - if: steps.diff.outputs.code == 'true'
+        run: npm run typecheck:contract-tests
       # Playwright strips types without checking them, so e2e/ had drifted to
       # 616 errors before the TypeScript 7 move. Same required context.
-      - run: npm run typecheck:e2e
+      - if: steps.diff.outputs.code == 'true'
+        run: npm run typecheck:e2e
       # Mirror the pre-push convex typecheck so direct pushes to main
       # and `--no-verify` bypasses can't land stale convex/_generated
       # types. See .husky/pre-push for the rationale.
-      - run: npx tsc --noEmit -p convex/tsconfig.json
+      - if: steps.diff.outputs.code == 'true'
+        run: npx tsc --noEmit -p convex/tsconfig.json
       # Mirror the pre-push Convex probe-filter drift check (#8405). Also
       # covered by `npm run typecheck:api`, but keep it next to the convex
       # tsc step so a convex-only bypass still fails closed.
-      - run: npm run check:sentry-convex-probe-filters
+      - if: steps.diff.outputs.code == 'true'
+        run: npm run check:sentry-convex-probe-filters
       # The marketing bundle has its own tsconfig and node_modules, so nothing
       # above reaches it and no other workflow ran its `lint` — `pro-test` was
       # sitting on six undetected type errors, five of them at the Sentry
@@ -77,4 +83,5 @@ jobs:
       # separately via install-pro-deps (scripts stay blocked, matching
       # `build:pro`). Same required context as the checks above, so no
       # branch-protection list has to change.
-      - run: npm --prefix pro-test run lint
+      - if: steps.diff.outputs.code == 'true'
+        run: npm --prefix pro-test run lint

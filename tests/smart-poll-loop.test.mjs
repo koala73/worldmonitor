@@ -777,17 +777,77 @@ describe('runLaneWithLease (#6683)', () => {
 
     const first = runLane('lane', neverSettles, ac.signal, 1000, inFlight, (m) => warns.push(m));
     assert.ok(inFlight.has('lane'), 'latch held while running');
+    assert.ok(passedSignal instanceof AbortSignal, 'a per-run AbortSignal is passed to the callback');
+    assert.notEqual(passedSignal, ac.signal, 'the callback receives a per-run child signal, not the raw parent signal');
+    assert.equal(passedSignal.aborted, false, 'child signal is not aborted before lease expiry');
     timers.advanceBy(20001);
     await first;
     assert.ok(!inFlight.has('lane'), 'latch released despite the callback never settling');
     assert.equal(started, 1);
     assert.equal(warns.length, 1);
     assert.match(warns[0], /lease expired after 20000ms/);
-    assert.ok(passedSignal === ac.signal, 'the poll signal is forwarded to the callback');
+    assert.equal(passedSignal.aborted, true, 'lease expiry aborts the per-run child signal');
+    assert.equal(passedSignal.reason?.name, 'AbortError');
+    assert.match(String(passedSignal.reason?.message), /Refresh lane lease expired/);
+    assert.equal(ac.signal.aborted, false, 'lease expiry does not abort the parent signal');
 
     const second = runLane('lane', async () => true, undefined, 1000, inFlight, (m) => warns.push(m));
     assert.equal(await second, true);
     assert.equal(warns.length, 1, 'healthy re-run does not warn');
+  });
+
+  it('forwards parent signal aborts (both already-aborted and mid-run) and cleans up listeners', async () => {
+    const timers = createFakeTimers();
+    const runLane = buildRunLaneWithLease(timers);
+    const inFlight = new Set();
+
+    // 1. Already-aborted parent signal produces an already-aborted child signal without leaking listeners.
+    const preAborted = new AbortController();
+    const preReason = new DOMException('Tab hidden', 'AbortError');
+    preAborted.abort(preReason);
+    let preChildSignal;
+    await runLane('pre', async (sig) => { preChildSignal = sig; }, preAborted.signal, 1000, inFlight);
+    assert.equal(preChildSignal.aborted, true);
+    assert.equal(preChildSignal.reason, preReason);
+
+    // 2. Mid-run parent abort propagates to the child signal.
+    const midParent = new AbortController();
+    let midChildSignal;
+    let releaseRun;
+    const midPromise = runLane('mid', (sig) => {
+      midChildSignal = sig;
+      return new Promise((resolve) => { releaseRun = resolve; });
+    }, midParent.signal, 1000, inFlight);
+    assert.equal(midChildSignal.aborted, false);
+    const midReason = new DOMException('Loop stopped', 'AbortError');
+    midParent.abort(midReason);
+    assert.equal(midChildSignal.aborted, true);
+    assert.equal(midChildSignal.reason, midReason);
+    releaseRun();
+    await midPromise;
+
+    // 3. Normal settlement and rejection remove the abort listener from a long-lived parent signal.
+    const longLived = new AbortController();
+    const attached = new Set();
+    const origAdd = longLived.signal.addEventListener.bind(longLived.signal);
+    const origRemove = longLived.signal.removeEventListener.bind(longLived.signal);
+    longLived.signal.addEventListener = (type, listener, opts) => {
+      if (type === 'abort') attached.add(listener);
+      return origAdd(type, listener, opts);
+    };
+    longLived.signal.removeEventListener = (type, listener, opts) => {
+      if (type === 'abort') attached.delete(listener);
+      return origRemove(type, listener, opts);
+    };
+
+    await runLane('ok', async () => true, longLived.signal, 1000, inFlight);
+    assert.equal(attached.size, 0, 'abort listener removed after normal settlement');
+
+    await assert.rejects(
+      () => runLane('err', async () => { throw new Error('fail'); }, longLived.signal, 1000, inFlight),
+      /fail/,
+    );
+    assert.equal(attached.size, 0, 'abort listener removed after rejection');
   });
 
   it('healthy callback: value passes through, no warn, latch released', async () => {

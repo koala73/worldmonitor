@@ -1,5 +1,7 @@
 'use strict';
 
+const ISO3_TO_ISO2 = require('./shared/iso3-to-iso2.json');
+
 const INDICATORS = {
   internet: { indicatorCode: 'IT.NET.USER.ZS', unit: 'percent', max: 100, weight: 30 },
   mobile: { indicatorCode: 'IT.CEL.SETS.P2', unit: 'per 100 people', max: 150, weight: 15 },
@@ -26,7 +28,9 @@ function buildWorldBankTechObservations(valuesByKey) {
 }
 
 function computeWorldBankTechRankings(indicatorData) {
-  const countries = new Set(Object.values(indicatorData).flatMap(Object.keys));
+  // World Bank `country/all` also returns regional and income aggregates (WLD, NAC, EUU).
+  const countries = new Set(Object.values(indicatorData).flatMap(Object.keys)
+    .filter(code => Object.hasOwn(ISO3_TO_ISO2, code)));
   const entries = [];
   for (const country of countries) {
     const valuesByKey = Object.fromEntries(

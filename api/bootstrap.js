@@ -1,10 +1,8 @@
 import { restoreWildfireBootstrapMetadata, sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
 import { validateImfDataset } from './_imf-dataset.js';
 import { stripTrailingSlashes } from './_strip-trailing-slashes.js';
-import { waitUntil as vercelWaitUntil } from '@vercel/functions';
 
 import {
-  PUBLIC_BOOTSTRAP_TIERS,
   classifyPublicBootstrapRequest,
 } from './_bootstrap-public-tier.js';
 export {
@@ -42,11 +40,6 @@ import {
   canadaAlertsCutoverFallbackValue,
   extraCanadaAlertsCutoverReadKeys,
 } from './_canada-alerts-cutover.js';
-import {
-  BOOTSTRAP_R2_PROBE_CEILING_MS,
-  readBootstrapTierObject,
-} from './_bootstrap-r2.js';
-import { deliverBootstrapR2Shadow, deriveExecutionRegion } from './_usage-telemetry.js';
 
 export const config = { runtime: 'edge' };
 
@@ -215,75 +208,6 @@ export function isAnonymousWeatherBootstrapRequest(req) {
   return requested.length === 1 && requested[0] === PUBLIC_WEATHER_BOOTSTRAP_KEY;
 }
 
-let nextBootstrapR2ShadowProbeIsCold = true;
-let scheduleBootstrapR2Shadow = vercelWaitUntil;
-let readBootstrapR2ShadowTier = readBootstrapTierObject;
-
-function shouldMeasureBootstrapR2Shadow(authKind, tier) {
-  return process.env.BOOTSTRAP_R2_SHADOW_MEASURE === '1'
-    && process.env.VERCEL_ENV === 'production'
-    && authKind === 'public-tier'
-    && PUBLIC_BOOTSTRAP_TIERS.has(tier);
-}
-
-function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDurationMs) {
-  const serializedRedisDurationMs = redisDurationMs.toFixed(3);
-  response.headers.set('Server-Timing', `wm_bootstrap_redis;dur=${serializedRedisDurationMs}`);
-  // Vercel strips user-authored Server-Timing from Edge responses. Keep it for
-  // runtimes that preserve the standard header, but expose the same temporary
-  // U3a diagnostic through a platform-safe header so browser RUM can observe it.
-  response.headers.set('X-WorldMonitor-Bootstrap-Redis-Duration', serializedRedisDurationMs);
-  // A browser cache replay preserves the origin-MISS headers and would make a
-  // local response look like a fresh origin sample. Disable only browser
-  // storage during U3a; CDN-Cache-Control continues to shield the Vercel origin.
-  response.headers.set('Cache-Control', 'no-store');
-  const exposedHeaders = response.headers.get('Access-Control-Expose-Headers');
-  response.headers.set(
-    'Access-Control-Expose-Headers',
-    [
-      exposedHeaders,
-      'Server-Timing',
-      'X-WorldMonitor-Bootstrap-Redis-Duration',
-      'Age',
-      'X-Vercel-Cache',
-      'CF-Cache-Status',
-    ]
-      .filter(Boolean)
-      .join(', '),
-  );
-
-  const executionCold = nextBootstrapR2ShadowProbeIsCold;
-  nextBootstrapR2ShadowProbeIsCold = false;
-  const deliverProbeResult = (result) => deliverBootstrapR2Shadow({
-    r2Outcome: result.status === 'ok' ? 'r2' : 'fallback',
-    r2Reason: result.status === 'fallback' ? result.reason : null,
-    bootstrapTier: tier,
-    r2DurationMs: result.durationMs,
-    redisDurationMs,
-    executionRegion: deriveExecutionRegion(req) ?? process.env.VERCEL_REGION ?? 'unknown',
-    executionCold,
-    status: response.status,
-  });
-  const probe = readBootstrapR2ShadowTier(tier, {
-    timeoutMs: BOOTSTRAP_R2_PROBE_CEILING_MS,
-  }).then(deliverProbeResult).catch(() => {
-    // readBootstrapTierObject is fail-soft by contract. Preserve that contract
-    // if a future implementation accidentally throws before producing a result.
-    return deliverProbeResult({
-      status: 'fallback',
-      reason: 'unreadable',
-      durationMs: 0,
-    });
-  });
-  try {
-    if (typeof ctx?.waitUntil === 'function') ctx.waitUntil(probe);
-    else scheduleBootstrapR2Shadow(probe);
-  } catch {
-    // Background measurement must never alter the Redis response path.
-  }
-  return response;
-}
-
 const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', '__Host-wm-pro-key', '__Host-wm-widget-key']);
 
 function hasBootstrapCredentialCookie(req) {
@@ -301,7 +225,7 @@ const NEG_SENTINEL = '__WM_NEG__';
 export const compactWildfireBootstrapPayload = compactWildfireDashboardPayload;
 export { compactNaturalEventsDashboardPayload };
 
-async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
+async function getCachedJsonBatch(keys) {
   const result = new Map();
   if (keys.length === 0) return result;
 
@@ -311,12 +235,6 @@ async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
   // explicitly since #7674 made the shared pipeline helpers prefix
   // app-owned keys by default.
   const pipeline = keys.map((k) => ['GET', k]);
-  if (shadowMarkerTier) {
-    // This intentionally-missing marker makes shadow origin requests uniquely
-    // countable in Redis MONITOR. The publisher reads the same tier registry,
-    // so canonical GET counts alone no longer distinguish it from serving.
-    pipeline.push(['GET', `bootstrap:r2-shadow-origin-marker:${shadowMarkerTier}`]);
-  }
   const data = await redisPipeline(pipeline, 3000, true);
   if (!Array.isArray(data) || data.length !== pipeline.length) {
     throw new Error('Bootstrap Redis pipeline unavailable');
@@ -586,22 +504,17 @@ export default async function handler(req, ctx) {
 
   const keys = Object.values(registry);
   const names = Object.keys(registry);
-  const measureR2Shadow = shouldMeasureBootstrapR2Shadow(auth.kind, tier);
-  const redisStartedAt = measureR2Shadow ? performance.now() : null;
 
   let cached;
   try {
-    cached = await getCachedJsonBatch(
-      bootstrapRedisReadKeys(keys),
-      measureR2Shadow ? tier : null,
-    );
+    cached = await getCachedJsonBatch(bootstrapRedisReadKeys(keys));
   } catch {
     const isPublic = isPublicBootstrapKind(auth.kind);
     if (isPublic) {
       // Infrastructure failure is not an empty registry. Make it retryable and
       // omit every CDN cache header so the outage response cannot replace a
       // healthy public snapshot at the shared cache key.
-      const response = jsonResponse(
+      return jsonResponse(
         { error: 'Bootstrap service temporarily unavailable' },
         503,
         {
@@ -610,15 +523,6 @@ export default async function handler(req, ctx) {
           'Retry-After': '5',
         },
       );
-      return measureR2Shadow
-        ? finishBootstrapR2ShadowResponse(
-            req,
-            ctx,
-            tier,
-            response,
-            Math.max(0, performance.now() - redisStartedAt),
-          )
-        : response;
     }
     return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': 'no-store' });
   }
@@ -638,12 +542,6 @@ export default async function handler(req, ctx) {
     }
   }
 
-  // Stop before jsonResponse serializes the final body. That serialization also
-  // exists on the future R2 serving path, so counting it as Redis-replaceable
-  // work would make C_happy optimistic, especially for the larger slow tier.
-  const redisDurationMs = measureR2Shadow
-    ? Math.max(0, performance.now() - redisStartedAt)
-    : null;
   // The browser runtime sends API requests with credentials so session and
   // entitlement cookies can ride along. Credentialed requests cannot consume
   // ACAO: * responses, even for public bootstrap data.
@@ -657,14 +555,11 @@ export default async function handler(req, ctx) {
   const cacheHeaders = onDemandKey && missing.includes(onDemandKey)
     ? { ...getPublicBootstrapHeaders(), 'Cache-Control': 'no-store' }
     : successCacheHeaders(tier, auth.kind, cors, onDemandKey);
-  const response = jsonResponse(
+  return jsonResponse(
     { data, missing },
     200,
     cacheHeaders,
   );
-  return measureR2Shadow
-    ? finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDurationMs)
-    : response;
 }
 
 export const __testing__ = {
@@ -672,15 +567,4 @@ export const __testing__ = {
   // tests/bootstrap-on-demand-cache-budget.test.mts calls the same code the
   // handler does instead of restating the fallback chain.
   successCacheHeaders,
-  resetBootstrapR2ShadowForTests() {
-    nextBootstrapR2ShadowProbeIsCold = true;
-    scheduleBootstrapR2Shadow = vercelWaitUntil;
-    readBootstrapR2ShadowTier = readBootstrapTierObject;
-  },
-  setWaitUntilForTests(waitUntil) {
-    scheduleBootstrapR2Shadow = waitUntil;
-  },
-  setBootstrapR2ShadowReaderForTests(reader) {
-    readBootstrapR2ShadowTier = reader;
-  },
 };

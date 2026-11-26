@@ -31,7 +31,7 @@ description: "World Monitor MCP 工具参考：180 天历史情报档案。逐�
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
 | `query` | string | **是** | 自由文本搜索短语，2-500 个字符，例如 "artillery strikes near Kharkiv" |
-| `domain` | string | 否 | `conflict`、`military`、`energy` 之一。省略则搜索全部领域 |
+| `domain` | string | 否 | `conflict`、`military`、`energy`、`unrest`、`cyber`、`maritime`、`natural`、`aviation` 之一。省略则搜索全部领域 |
 | `country` | string | 否 | ISO 3166-1 alpha-2 大写代码，例如 "UA"。省略则搜索全部国家 |
 | `from` | number | 否 | 最早的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无下界 |
 | `to` | number | 否 | 最晚的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无上界 |
@@ -66,7 +66,7 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
-| `domain` | string | 二选一 | `conflict`、`military`、`energy` 之一。未设置 `country` 时必填 |
+| `domain` | string | 二选一 | `conflict`、`military`、`energy`、`unrest`、`cyber`、`maritime`、`natural`、`aviation` 之一。未设置 `country` 时必填 |
 | `country` | string | 二选一 | ISO 3166-1 alpha-2 大写代码，例如 "UA"。未设置 `domain` 时必填 |
 | `from` | number | 否 | 最早的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无下界 |
 | `to` | number | 否 | 最晚的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无上界 |
@@ -101,7 +101,7 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
 | `situation` | string | **是** | 情境描述，10-1000 个字符，例如 "a naval blockade closes a major grain export corridor for weeks" |
-| `domain` | string | 否 | `conflict`、`military`、`energy` 之一。省略则搜索全部领域 |
+| `domain` | string | 否 | `conflict`、`military`、`energy`、`unrest`、`cyber`、`maritime`、`natural`、`aviation` 之一。省略则搜索全部领域 |
 | `country` | string | 否 | ISO 3166-1 alpha-2 大写代码，例如 "EG"。省略则搜索全部国家 |
 | `limit` | integer | 否 | 最大先例数。MCP 省略时返回 8 条，上限为 8，以控制输出预算 |
 

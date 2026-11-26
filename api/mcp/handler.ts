@@ -1255,6 +1255,7 @@ async function mcpHandlerInner(
   let budget: McpBudget | undefined;
   let burstPerMinute: number | undefined;
   let freeAccountAllowance = false;
+  let paymentFailed = false;
   let planKey: string | undefined;
   let travelRiskAssessment = false;
   if (isPublicMcpMethod(method, modernEra) || isAnonResourceRead || isFreeTierToolCall) {
@@ -1335,6 +1336,7 @@ async function mcpHandlerInner(
     budget = preCheck.budget;
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
+    paymentFailed = preCheck.paymentFailed === true;
     planKey = preCheck.planKey;
     travelRiskAssessment = preCheck.travelRiskAssessment === true;
     // Only a data-bearing resources/read spends an Enterprise contract
@@ -1455,6 +1457,7 @@ async function mcpHandlerInner(
         // Supported versions are YYYY-MM-DD, so string order is date order.
         protocolVersion !== null && protocolVersion >= '2025-11-25',
         travelRiskAssessment,
+        paymentFailed,
       );
       classifyDispatchedUsage(usage, dispatched);
       return respond(dispatched);
@@ -1577,6 +1580,7 @@ async function mcpHandlerInner(
           resourceMetadataUrl,
           planKey,
           usage,
+          paymentFailed,
         );
         classifyDispatchedUsage(usage, resourceRes);
         return respond(resourceRes);

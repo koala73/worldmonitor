@@ -37,7 +37,7 @@ If the formula identity instead changes between the two dates, do not present th
 
 ## Read the selected reporting
 
-Daily history stores a bounded selection of source-linked headlines, not full article bodies or a complete event census. Selection uses explicit country-name mentions in English digest headlines. A relevant event may not meet that selection rule.
+Daily history stores a bounded selection of source-linked headlines, not full article bodies or a complete event census. Selection matches country names, demonyms and listed aliases in headline titles from the English edition's feeds over the preceding 24 hours. A relevant event may not meet that selection rule.
 
 Open the publisher links. Compare publication and event times with the snapshot date, and identify repeated source chains. No eligible headline does not establish that nothing happened. Preserve partial-news and unavailable states where provided.
 

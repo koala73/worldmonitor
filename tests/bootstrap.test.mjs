@@ -21,7 +21,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 function hasHydrationConsumer(source, key) {
-  if (source.includes(`getHydratedData('${key}')`) || source.includes(`ensureHydrated('${key}')`)) {
+  if (
+    source.includes(`getHydratedData('${key}')`)
+    || source.includes(`ensureHydrated('${key}')`)
+    || source.includes(`ensureHydrated('${key}',`)
+  ) {
     return true;
   }
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -482,7 +486,9 @@ describe('Bootstrap tier definitions', () => {
     const allSrc = srcFiles.map((f) => readFileSync(f, 'utf-8')).join('\n');
 
     const stale = [...PENDING_CONSUMERS].filter((key) =>
-      allSrc.includes(`getHydratedData('${key}')`) || allSrc.includes(`ensureHydrated('${key}')`));
+      allSrc.includes(`getHydratedData('${key}')`)
+      || allSrc.includes(`ensureHydrated('${key}')`)
+      || allSrc.includes(`ensureHydrated('${key}',`));
 
     assert.deepEqual(
       stale,
@@ -523,7 +529,7 @@ describe('Bootstrap tier definitions', () => {
 describe('Adaptive backoff adopters', () => {
   it('ServiceStatusPanel.fetchStatus returns Promise<boolean>', () => {
     const src = readFileSync(join(root, 'src/components/ServiceStatusPanel.ts'), 'utf-8');
-    assert.ok(src.includes('fetchStatus(): Promise<boolean>'), 'fetchStatus should return Promise<boolean> for adaptive backoff');
+    assert.match(src, /fetchStatus\([^)]*\):\s*Promise<boolean>/, 'fetchStatus should return Promise<boolean> for adaptive backoff');
     assert.ok(src.includes('lastServicesJson'), 'Missing lastServicesJson for change detection');
   });
 

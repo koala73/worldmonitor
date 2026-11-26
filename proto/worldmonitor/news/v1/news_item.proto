@@ -75,6 +75,16 @@ message NewsItem {
   // that publisher's tier instead of the feed's. Empty when the feed is not
   // a trusted aggregator, or the publisher it names has no curated tier.
   string origin_publisher = 16;
+  // The publisher a trusted aggregator (Google News) names for this item, as
+  // the aggregator writes it, for display. Unlike origin_publisher it is kept
+  // when that publisher has no curated tier, so a search feed's result is
+  // credited to its real outlet rather than the search label in `source`.
+  // Empty when the feed is not a trusted aggregator or names no publisher.
+  string publisher_name = 17;
+  // True when credibility_score rests on no reviewed tier or propaganda-risk
+  // entry for the item's publisher: the score is a fallback, not an
+  // assessment, and consumers should show credibility as unknown.
+  bool credibility_unassessed = 18;
 }
 
 // StoryMeta carries cross-cycle persistence data attached to each news item.

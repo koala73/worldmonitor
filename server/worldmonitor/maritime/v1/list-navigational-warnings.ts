@@ -28,7 +28,8 @@ function parseNgaDate(dateStr: unknown): number {
   const day = parseInt(match[1]!, 10);
   const hours = parseInt(match[2]!.slice(0, 2), 10);
   const minutes = parseInt(match[2]!.slice(2, 4), 10);
-  const month = months[match[3]!.toUpperCase()] ?? 0;
+  const month = months[match[3]!.toUpperCase()];
+  if (month === undefined) return 0;
   const year = parseInt(match[4]!, 10);
   return Date.UTC(year, month, day, hours, minutes);
 }
