@@ -1,7 +1,7 @@
 import type { PanelConfig } from '@/types';
 import { SITE_VARIANT } from '@/config/variant';
 import { getConvexApi, getConvexClient, waitForConvexAuthForUser } from '@/services/convex-client';
-import type { TabsState } from '@/services/tab-store';
+import { loadTabsState, type TabsState } from '@/services/tab-store';
 import { safeStorageGetChecked, safeStorageSet, safeStorageSetChecked } from '@/utils/safe-storage';
 import {
   MAX_DASHBOARD_TAB_CHANGES_PER_CALL,
@@ -643,7 +643,16 @@ function unpushedOf(host: TabSyncHost | undefined, meta: TabSyncMeta): string[] 
   } catch {
     return null;
   }
-  return local ? unpushedIn(local, meta) : null;
+  if (local) return unpushedIn(local, meta);
+  // Before the layout has its tabs, the stored tabs are still the leaver's;
+  // recording from them now beats recording later from tabs the next account
+  // may have made. The active tab counts as unpushed: its stored copy can
+  // lag the screen, and a synced tab held back is skipped by the merge.
+  const stored = loadTabsState();
+  if (!stored) return null;
+  const ids = unpushedIn(stored, meta);
+  if (stored.tabs.some((t) => t.id === stored.activeTabId) && !ids.includes(stored.activeTabId)) ids.push(stored.activeTabId);
+  return ids;
 }
 
 function unpushedIn(local: TabsState, meta: TabSyncMeta): string[] {

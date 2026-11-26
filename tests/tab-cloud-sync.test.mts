@@ -1206,6 +1206,29 @@ describe('tab sync driver', () => {
     assert.ok(!loadTabSyncMeta()!.tombstones.includes('tab-a-2'));
   });
 
+  it('a departure found before the layout has tabs is recorded from the stored tabs', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    // Next load: user_a's unpushed draft is in the stored tabs.
+    __resetTabSyncForTests();
+    host.state.tabs.push(tab('tab-a-2', 'A draft'));
+    localStorage.setItem(`worldmonitor-tabs-v1:${SITE_VARIANT}`, JSON.stringify(host.state));
+    const serverB = new FakeServer();
+    useServer(serverB);
+    // user_b signs in before the layout has its tabs.
+    assert.equal(prepareTabSyncSignIn('user_b', true, new UnreadyHost(host.state)).willSync, true);
+    assert.equal(localStorage.getItem(DEPARTED_KEY) ?? '', '', 'recorded now, not queued');
+    // user_b makes a tab before the first pass.
+    host.state.tabs.push(tab('tab-b-1', 'B new'));
+    startTabSync('user_b', host);
+    await settle();
+    const held = JSON.parse(localStorage.getItem(HELD_KEY) ?? '{}');
+    assert.deepEqual(held.user_a?.records.map((r: { id: string }) => r.id), ['tab-a-2']);
+    assert.ok(host.state.tabs.some((t) => t.id === 'tab-b-1'));
+    assert.ok(serverB.calls.some((c) => c.changes.some((ch) => ch.record?.name === 'B new')));
+  });
+
   it('a departure another window has recorded is not recorded again from this page', async () => {
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
     signIn('user_a', host);
