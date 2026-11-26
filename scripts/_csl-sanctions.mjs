@@ -160,8 +160,11 @@ async function readCslText(response, maxBytes, transportMaxBytes) {
       if (downloaded > transportMaxBytes) throw new Error('RESPONSE_TOO_LARGE');
       pending = (pending + decoder.decode(value, { stream: true })).replace(EMPTY_ADDRESS, 'null');
       if (pending.length > EMPTY_ADDRESS_CARRY) {
-        keep(pending.slice(0, -EMPTY_ADDRESS_CARRY));
-        pending = pending.slice(-EMPTY_ADDRESS_CARRY);
+        // Never split a surrogate pair: each half alone would count three bytes.
+        let at = pending.length - EMPTY_ADDRESS_CARRY;
+        if (/[\uD800-\uDBFF]/.test(pending[at - 1])) at--;
+        keep(pending.slice(0, at));
+        pending = pending.slice(at);
       }
     }
     keep((pending + decoder.decode()).replace(EMPTY_ADDRESS, 'null'));

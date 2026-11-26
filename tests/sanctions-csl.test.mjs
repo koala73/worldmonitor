@@ -217,6 +217,14 @@ describe('CSL empty address padding', () => {
       [['First', ['IR']], ['Between', ['IR', 'SY']], ['Last', ['KP']], ['Alone', []]]);
   });
 
+  it('counts a character split across the kept text and the carry once', async () => {
+    // The carry boundary falls inside the emoji's surrogate pair.
+    const text = `{"results":[],"x":"${'a'.repeat(100)}😀${'b'.repeat(93)}"}`;
+    const maxBytes = Buffer.byteLength(text, 'utf8');
+    const result = await ingestCslEntries({ now: today, maxBytes, fetchFn: streamed(text, maxBytes) });
+    assert.equal(result.error, null);
+  });
+
   it('still rejects a body that is over the cap once the padding is gone', async () => {
     const text = body([row(1, 'x'.repeat(30_000), [real('CN')])]);
     const result = await ingestCslEntries({ now: today, maxBytes: 20_000, fetchFn: streamed(text, 4096) });
