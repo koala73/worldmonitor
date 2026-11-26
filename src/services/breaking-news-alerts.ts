@@ -17,7 +17,12 @@ import {
   evidenceFromItem,
   type Corroboration,
 } from '@/utils/corroboration-flag';
-import { safeStorageGetChecked, safeStorageSet, safeStorageSetChecked } from '@/utils/safe-storage';
+import {
+  isStorageAvailable,
+  safeStorageGetChecked,
+  safeStorageSet,
+  safeStorageSetChecked,
+} from '@/utils/safe-storage';
 
 export interface BreakingAlert {
   id: string;
@@ -166,9 +171,14 @@ export function getAlertSettings(): AlertSettings {
 export function updateAlertSettings(partial: Partial<AlertSettings>): boolean {
   const current = getAlertSettings();
   const updated = { ...current, ...partial };
-  const persisted = safeStorageSetChecked(SETTINGS_KEY, JSON.stringify(updated));
-  // Do not let the in-memory copy assert a change that storage rejected.
-  cachedSettings = persisted ? updated : current;
+  // `safeStorageSetChecked` reports `true` when there is no store at all
+  // (right for cloud-prefs, where nothing durable disagrees). Here the next
+  // load reads the defaults, so a store-less write did not save the opt-out.
+  const persisted = isStorageAvailable() && safeStorageSetChecked(SETTINGS_KEY, JSON.stringify(updated));
+  // Do not let the in-memory copy assert a change that storage rejected. On
+  // failure leave the cache alone: `current` may be defaults from a failed
+  // read, and caching them would hide a stored opt-out once storage recovers.
+  if (persisted) cachedSettings = updated;
   return persisted;
 }
 

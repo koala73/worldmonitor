@@ -87,6 +87,32 @@ describe('turning breaking alerts off reports whether it was actually saved', ()
     expect(mod.getAlertSettings().enabled).toBe(false);
   });
 
+  it('a failed write after a failed read does not pin the defaults over a stored opt-out', async () => {
+    storage.store.set(SETTINGS_KEY, JSON.stringify({ enabled: false }));
+    const mod = await import('@/services/breaking-news-alerts');
+
+    storage.failReadWith = new DOMException('storage is not readable', 'SecurityError');
+    storage.failWriteWith = new DOMException('storage is not writable', 'SecurityError');
+    expect(mod.updateAlertSettings({ soundEnabled: false })).toBe(false);
+    storage.failReadWith = null;
+    storage.failWriteWith = null;
+
+    // Storage recovered: the stored opt-out applies, not defaults cached by the failed write.
+    expect(mod.getAlertSettings().enabled).toBe(false);
+  });
+
+  it('with no store at all, an opt-out is reported as not saved and not claimed by the cache', async () => {
+    vi.stubGlobal('localStorage', undefined);
+    try {
+      const mod = await import('@/services/breaking-news-alerts');
+      expect(mod.updateAlertSettings({ enabled: false })).toBe(false);
+      // The next page load reads defaults too, so the switch must not show "off".
+      expect(mod.getAlertSettings().enabled).toBe(true);
+    } finally {
+      vi.stubGlobal('localStorage', storage);
+    }
+  });
+
   it('positive control: a store that cannot be reached at all still yields the defaults', async () => {
     vi.stubGlobal('localStorage', undefined);
     try {
