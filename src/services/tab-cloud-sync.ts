@@ -133,12 +133,16 @@ function parseTabSyncMeta(raw: string | null): TabSyncMeta | null {
     if (isRecord(parsed.foreign)) {
       for (const [id, owner] of Object.entries(parsed.foreign)) if (typeof owner === 'string') foreign[id] = owner;
     }
+    const departed = Array.isArray(parsed.departed)
+      ? parsed.departed.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : [];
     return {
       userId, base, tombstones, carried,
       ...(heldBack.length > 0 ? { heldBack } : {}),
       ...(parsed.signedOut === true ? { signedOut: true } : {}),
       ...(Object.keys(sent).length > 0 ? { sent } : {}),
       ...(Object.keys(foreign).length > 0 ? { foreign } : {}),
+      ...(departed.length > 0 ? { departed } : {}),
     };
   } catch {
     return null;
@@ -380,8 +384,10 @@ function recordDepartures(add: readonly string[], host: TabSyncHost | undefined)
   for (const leaver of all) {
     if (left.length > 0 || !recordDeparture(leaver, host)) left.push(leaver);
   }
-  departed = left;
   const saved = safeStorageSetChecked(DEPARTED_KEY, left.length > 0 ? JSON.stringify(left) : '');
+  // The page keeps its own copy only when storage could not: a stored list
+  // another window has since worked through must not come back from here.
+  departed = saved ? [] : left;
   return { left: left.length, saved };
 }
 
@@ -403,16 +409,26 @@ export function prepareTabSyncSignIn(userId: string, enabled: boolean, host?: Ta
   // the departed list for the first pass. The signed-in account moves on
   // only once the departure is recorded or waiting there.
   const gone = recordDepartures(signedIn.value && signedIn.value !== userId ? [signedIn.value] : [], host);
-  if (gone.left === 0 || gone.saved) safeStorageSet(SIGNED_IN_KEY, userId);
+  // A marker that cannot move would record this departure again on the
+  // next load, over work done under this account: no sync until it moves.
+  if ((gone.left === 0 || gone.saved) && signedIn.value !== userId && !safeStorageSetChecked(SIGNED_IN_KEY, userId)) {
+    return { willSync: false };
+  }
   if (readDeparted() === null) return { willSync: false };
   const stored = safeStorageGetChecked(META_KEY);
   if (!stored.ok) return { willSync: false };
   const meta = parseTabSyncMeta(stored.value);
-  if (meta?.userId === userId && (meta.signedOut || meta.heldBack)) {
-    // This account is back: the marks from its last sign-out no longer
+  const own = meta?.userId === userId && (meta.signedOut || meta.heldBack);
+  if (meta && (own || meta.departed?.includes(userId))) {
+    // This account is back: the marks from its last departure no longer
     // describe this device, whether or not sync runs this time.
-    delete meta.signedOut;
-    delete meta.heldBack;
+    if (own) {
+      delete meta.signedOut;
+      delete meta.heldBack;
+    }
+    const departedLeft = (meta.departed ?? []).filter((id) => id !== userId);
+    if (departedLeft.length > 0) meta.departed = departedLeft;
+    else delete meta.departed;
     saveTabSyncMeta(meta);
   }
   if (!enabled || unavailableForPage) return { willSync: false };
@@ -616,14 +632,14 @@ function unpushedIn(local: TabsState, meta: TabSyncMeta): string[] {
 /**
  * `leaver` signed in here and is gone. Its work that never reached its
  * account is marked as its own, so a later sign-in holds it for it:
- * - when the stored state is the leaver's, as `heldBack` (unless it signed
- *   out, which wrote that already);
+ * - when the stored state is the leaver's, as `heldBack`, with `signedOut`
+ *   set (unless an earlier departure set it already);
  * - otherwise (its sync never finished a pass), in `foreign`, leaving the
  *   work the state's own account left behind (`heldBack`) to that account.
  * Returns false when the tabs could not be read or the marks not stored,
  * so the caller tries again.
  */
-function recordDeparture(leaver: string, host: TabSyncHost | undefined, signingOut = false): boolean {
+function recordDeparture(leaver: string, host: TabSyncHost | undefined): boolean {
   const read = safeStorageGetChecked(META_KEY);
   if (!read.ok) return false;
   const meta = parseTabSyncMeta(read.value) ?? emptyTabSyncMeta(null);
@@ -631,21 +647,21 @@ function recordDeparture(leaver: string, host: TabSyncHost | undefined, signingO
   if (!found) return false;
   const foreign = { ...(meta.foreign ?? {}) };
   const unpushed = found.filter((id) => !foreign[id]);
+  // Recorded once: a second recording (a signed-in marker that did not
+  // move) would take work done since under the next account as the leaver's.
   if (meta.userId === leaver) {
     if (meta.signedOut) return true;
     meta.heldBack = unpushed;
-    if (signingOut) meta.signedOut = true;
+    meta.signedOut = true;
     return saveTabSyncMeta(meta);
   }
+  if (meta.departed?.includes(leaver)) return true;
   const theirs = new Set(meta.heldBack ?? []);
-  let marked = false;
   for (const id of unpushed) {
-    if (theirs.has(id)) continue;
-    foreign[id] = leaver;
-    marked = true;
+    if (!theirs.has(id)) foreign[id] = leaver;
   }
-  if (!marked) return true;
-  meta.foreign = foreign;
+  if (Object.keys(foreign).length > 0) meta.foreign = foreign;
+  meta.departed = [...(meta.departed ?? []), leaver];
   return saveTabSyncMeta(meta);
 }
 
@@ -662,7 +678,7 @@ export function signOutTabSync(host: TabSyncHost, userId?: string | null): void 
   if (leaver) {
     // Earlier departures first: their marks decide which tabs are still this account's.
     const earlier = recordDepartures([], host);
-    if (!(earlier.left === 0 && recordDeparture(leaver, host, true))) gone = recordDepartures([leaver], host);
+    if (!(earlier.left === 0 && recordDeparture(leaver, host))) gone = recordDepartures([leaver], host);
   }
   // Signed out now, unless the departure is neither recorded nor waiting.
   if (gone.left === 0 || gone.saved) safeStorageSet(SIGNED_IN_KEY, '');
@@ -704,7 +720,7 @@ export function recordTabDeleted(tabId: string): void {
   const meta = s?.meta ?? loadTabSyncMeta();
   if (!meta) return;
   const signedIn = s ? s.userId : safeStorageGetChecked(SIGNED_IN_KEY).value;
-  if (!signedIn || meta.userId !== signedIn) return;
+  if (!signedIn || meta.userId !== signedIn || meta.signedOut) return;
   // Never written to the server: nothing to delete. A write still
   // unanswered (`sent`) may have landed; the merge deletes it if so.
   if (!meta.base[tabId] && !meta.sent?.[tabId]) return;
@@ -767,17 +783,34 @@ async function runPass(s: Session): Promise<void> {
 async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
   const local = s.host.captureTabs();
   if (!local) return;
+  const signedIn = safeStorageGetChecked(SIGNED_IN_KEY);
+  if (!signedIn.ok) return;
   const waiting = readDeparted();
   if (waiting === null) return;
   if (waiting.length > 0) {
     if (recordDepartures([], s.host).left > 0) return;
-    safeStorageSet(SIGNED_IN_KEY, s.userId);
     // The switch was prepared before the marks existed.
     if (s.pending) {
       const marked = loadTabSyncMeta();
-      s.pending.previousMeta = { ...s.pending.previousMeta, ...(marked?.foreign ? { foreign: marked.foreign } : {}) };
-      if (s.pending.previousMeta.userId === marked?.userId && marked?.heldBack) s.pending.previousMeta.heldBack = marked.heldBack;
+      const previous = { ...s.pending.previousMeta, ...(marked?.foreign ? { foreign: marked.foreign } : {}) };
+      if (previous.userId === marked?.userId) {
+        if (marked?.heldBack) previous.heldBack = marked.heldBack;
+        if (marked?.signedOut) previous.signedOut = true;
+      }
+      s.pending.previousMeta = previous;
     }
+  } else if (signedIn.value !== s.userId) {
+    // Another account signed in on this browser since: this page's account
+    // no longer owns the tabs.
+    return;
+  }
+  // Until the marker names this account, a later load would record the
+  // previous one's departure again, over this account's work.
+  if (signedIn.value !== s.userId && !safeStorageSetChecked(SIGNED_IN_KEY, s.userId)) return;
+  if (s.pending && s.pending.mode !== 'normal' && loadTabSyncMeta()?.userId === s.userId) {
+    // Another window finished this sign-in since it was prepared: the stored
+    // state is this account's, and the prepared switch no longer describes it.
+    s.pending = { ...s.pending, mode: 'normal', previousSyncKnown: true };
   }
   const pending = s.pending;
   const rows = currentRows(s);
@@ -803,6 +836,18 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
     throw new Error("could not keep another account's tabs on this device");
   }
   const meta = { ...result.meta, userId: s.userId };
+  if (pending?.mode === 'account-switch' && result.changed) {
+    // Mark the tabs this switch puts on screen as the new account's in the
+    // previous state first. If the new state then cannot be stored, a reload
+    // is a switch again and keeps them for the new account instead of
+    // holding them for the previous one.
+    const held = new Set(Object.values(result.held ?? {}).flatMap((h) => h.tabs.map((t) => t.id)));
+    const foreign = { ...(pending.previousMeta.foreign ?? {}) };
+    for (const t of result.state.tabs) if (!held.has(t.id)) foreign[t.id] = s.userId;
+    if (!saveTabSyncMeta({ ...pending.previousMeta, foreign })) {
+      throw new Error("could not mark the new account's tabs on this device");
+    }
+  }
   if (result.changed) {
     // Not stored: the device still has its old tabs. This pass's state
     // describes tabs it does not have (another account's, at a switch), so

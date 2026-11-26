@@ -38,6 +38,9 @@ class MemoryStorage {
 const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 
 const META_KEY = `worldmonitor-tabs-sync-v1:${SITE_VARIANT}`;
+const HELD_KEY = `worldmonitor-tabs-held-v1:${SITE_VARIANT}`;
+const SIGNED_IN_KEY = `worldmonitor-tabs-signed-in-v1:${SITE_VARIANT}`;
+const DEPARTED_KEY = `worldmonitor-tabs-departed-v1:${SITE_VARIANT}`;
 const defaults = (): Record<string, PanelConfig> => resetMissionPresetState({}).panelSettings;
 
 function tab(id: string, name = `Tab ${id}`): PanelTab {
@@ -1108,6 +1111,133 @@ describe('tab sync driver', () => {
     await settle();
     assert.ok(!sentNames(serverB).includes('A private'), JSON.stringify(sentNames(serverB)));
     assert.ok(!host.state.tabs.some((t) => t.name === 'A private'));
+  });
+
+  it('a switch whose sync state cannot be stored after the tabs keeps the new account\'s tabs out of the previous one', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    const serverA = server;
+    const serverB = new FakeServer();
+    const record = captureTabRecord(tab('tab-b-1', 'B synced'));
+    serverB.rows.set('tab-b-1', { tabId: 'tab-b-1', version: 1, deleted: false, record, createdAt: 1, updatedAt: 1 });
+    useServer(serverB);
+    assert.equal(prepareTabSyncSignIn('user_b', true, host).willSync, true);
+    // The layout is stored; the new account's sync state is not.
+    const store = localStorage as unknown as MemoryStorage;
+    const setItem = MemoryStorage.prototype.setItem.bind(store);
+    store.setItem = (key, value) => {
+      if (key === META_KEY && JSON.parse(value).userId === 'user_b') throw new Error('QuotaExceededError');
+      setItem(key, value);
+    };
+    startTabSync('user_b', host);
+    await settle();
+    assert.ok(host.state.tabs.some((t) => t.id === 'tab-b-1'));
+    __resetTabSyncForTests(); // the page closes
+    store.setItem = setItem;
+    assert.equal(loadTabSyncMeta()!.userId, 'user_a');
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    __resetTabSyncForTests();
+    useServer(serverA);
+    signIn('user_a', host);
+    await settle();
+    const toA = serverA.calls.flatMap((c) => c.changes.map((ch) => ch.record?.name));
+    assert.ok(!toA.includes('B synced'), `sent to user_a: ${JSON.stringify(toA)}`);
+    assert.ok(host.state.tabs.some((t) => t.name === 'A synced'));
+  });
+
+  it('a signed-in marker that cannot move does not hand the new account\'s work to the previous one', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    __resetTabSyncForTests();
+    const serverB = new FakeServer();
+    useServer(serverB);
+    const restore = failWrites(SIGNED_IN_KEY);
+    const first = prepareTabSyncSignIn('user_b', true, host).willSync;
+    // A run of user_b's sync on this load (old behaviour) stops later.
+    if (first) startTabSync('user_b', host);
+    await settle();
+    stopTabSync();
+    restore();
+    // user_b works with sync off, then the next load can store the marker.
+    host.state.tabs.push(tab('tab-b-9', 'B work'));
+    signIn('user_b', host);
+    await settle();
+    const held = JSON.parse(localStorage.getItem(HELD_KEY) ?? '{}');
+    assert.ok(!(held.user_a?.records ?? []).some((r: { id: string }) => r.id === 'tab-b-9'), 'held for user_a');
+    assert.equal(first, false, 'no sync while the marker is stuck');
+    assert.ok(host.state.tabs.some((t) => t.id === 'tab-b-9'));
+    assert.ok(serverB.calls.some((c) => c.changes.some((ch) => ch.record?.name === 'B work')));
+  });
+
+  it('a departure recorded for an account whose sync never ran is not recorded again', async () => {
+    // user_a signed in before its first pass; its tab is marked as its own at the switch.
+    localStorage.setItem(SIGNED_IN_KEY, 'user_a');
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A draft')] });
+    const restore = failWrites(SIGNED_IN_KEY);
+    assert.equal(prepareTabSyncSignIn('user_b', true, host).willSync, false);
+    restore();
+    host.state.tabs.push(tab('tab-b-9', 'B work'));
+    signIn('user_b', host);
+    await settle();
+    const held = JSON.parse(localStorage.getItem(HELD_KEY) ?? '{}');
+    assert.deepEqual((held.user_a?.records ?? []).map((r: { id: string }) => r.id), ['tab-a-1']);
+    assert.ok(host.state.tabs.some((t) => t.id === 'tab-b-9'));
+  });
+
+  it('a delete made after a recorded departure does not reach the account that left', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'One'), tab('tab-a-2', 'Two')] });
+    signIn('user_a', host);
+    await settle();
+    __resetTabSyncForTests();
+    const restore = failWrites(SIGNED_IN_KEY);
+    prepareTabSyncSignIn('user_b', true, host);
+    restore();
+    assert.equal(localStorage.getItem(SIGNED_IN_KEY), 'user_a');
+    host.state.tabs = host.state.tabs.filter((t) => t.id !== 'tab-a-2');
+    recordTabDeleted('tab-a-2');
+    assert.ok(!loadTabSyncMeta()!.tombstones.includes('tab-a-2'));
+  });
+
+  it('a departure another window has recorded is not recorded again from this page', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    __resetTabSyncForTests();
+    const serverB = new FakeServer();
+    useServer(serverB);
+    // This window prepares user_b before its layout has tabs: user_a waits in the list.
+    assert.equal(prepareTabSyncSignIn('user_b', true, new UnreadyHost(host.state)).willSync, true);
+    // Another window records user_a and finishes user_b's switch.
+    localStorage.setItem(DEPARTED_KEY, '');
+    localStorage.setItem(META_KEY, JSON.stringify({ userId: 'user_b', base: {}, tombstones: [], carried: {} }));
+    host.state.tabs = [tab('tab-b-2', 'B new')];
+    host.state.activeTabId = 'tab-b-2';
+    startTabSync('user_b', host);
+    await settle();
+    const held = JSON.parse(localStorage.getItem(HELD_KEY) ?? '{}');
+    assert.ok(!(held.user_a?.records ?? []).some((r: { id: string }) => r.id === 'tab-b-2'), 'held for user_a');
+    assert.ok(host.state.tabs.some((t) => t.id === 'tab-b-2'));
+    assert.ok(serverB.calls.some((c) => c.changes.some((ch) => ch.record?.name === 'B new')));
+  });
+
+  it('a pass does not run while another account is signed in on this browser', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    const before = server.calls.length;
+    localStorage.setItem(SIGNED_IN_KEY, 'user_c'); // signed in elsewhere since
+    host.state.tabs.push(tab('tab-a-2', 'Later'));
+    notifyTabsChangedLocally();
+    mock.timers.tick(2_000);
+    await settle();
+    assert.equal(server.calls.length, before, 'nothing pushed');
+    assert.equal(localStorage.getItem(SIGNED_IN_KEY), 'user_c');
+    assert.equal(loadTabSyncMeta()!.foreign, undefined, 'no departure recorded');
   });
 
   it('a delete made while signed out does not reach the account', async () => {

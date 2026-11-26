@@ -52,9 +52,10 @@ export interface TabSyncMeta {
    */
   heldBack?: string[];
   /**
-   * Set at sign-out. Tabs edited after it are the device user's and go to
-   * the next account; without it (a direct switch) every unpushed tab is
-   * the previous account's.
+   * Set when this account's departure is recorded (sign-out or a switch).
+   * Tabs edited after it are the device user's and go to the next account;
+   * only `heldBack` stays this account's. Without it every unpushed tab is
+   * this account's.
    */
   signedOut?: boolean;
   /**
@@ -70,6 +71,11 @@ export interface TabSyncMeta {
    * finished a sync pass, by that account. They are its work, not `userId`'s.
    */
   foreign?: Record<string, string>;
+  /**
+   * Accounts whose `foreign` marks are recorded on this state. Recording one
+   * again would mark work done since as theirs.
+   */
+  departed?: string[];
 }
 
 export interface SentWrite {
@@ -584,6 +590,11 @@ export function mergeTabs(input: MergeInput): MergeResult {
           // The row is this device's landed write (or a later edit of it
           // elsewhere), or this device lost its sync state: take the row.
           replaced.set(id, adopt(local, row));
+        } else if (sent && row.version >= sent.version && localHash === sent.hash) {
+          // This device's unanswered write landed and was deleted elsewhere
+          // since, with no edit here after it: the delete wins.
+          removed.add(id);
+          forget(id);
         } else push(local, row.version);
         continue;
       }
