@@ -5862,7 +5862,8 @@
           "seatCap": "Všechna 4 místa jsou obsazená. Nejdřív nějaké místo odeberte.",
           "ownerDomain": "E-mail vašeho účtu musí být z firemní domény, abyste mohli zvát kolegy.",
           "self": "Nemůžete pozvat sami sebe.",
-          "inviteeDomain": "E-mail pozvaného musí být z firemní domény."
+          "inviteeDomain": "E-mail pozvaného musí být z firemní domény.",
+          "rateLimited": "Odeslali jste maximum 20 pozvánek za klouzavé 24hodinové období. Počkejte prosím, než pozvete další kolegy."
         }
       },
       "enterpriseSeats": {

@@ -5788,7 +5788,8 @@
           "seatCap": "4 koltuğun tümü kullanımda. Önce bir koltuğu kaldırın.",
           "ownerDomain": "Takım arkadaşlarını davet etmek için hesap e-postanız kurumsal bir alan adında olmalıdır.",
           "self": "Kendinizi davet edemezsiniz.",
-          "inviteeDomain": "Davet edilen kişinin e-postası kurumsal bir alan adında olmalıdır."
+          "inviteeDomain": "Davet edilen kişinin e-postası kurumsal bir alan adında olmalıdır.",
+          "rateLimited": "Kayan 24 saatlik pencere içinde en fazla 20 davet sınırına ulaştınız. Daha fazla ekip arkadaşı davet etmeden önce lütfen bekleyin."
         }
       },
       "enterpriseSeats": {

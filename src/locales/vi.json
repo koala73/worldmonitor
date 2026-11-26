@@ -5751,7 +5751,8 @@
           "seatCap": "Cả 4 chỗ đã được dùng. Hãy xóa một chỗ trước.",
           "ownerDomain": "Email tài khoản của bạn phải là miền công ty để mời đồng nghiệp.",
           "self": "Bạn không thể mời chính mình.",
-          "inviteeDomain": "Email của người được mời phải là miền công ty."
+          "inviteeDomain": "Email của người được mời phải là miền công ty.",
+          "rateLimited": "Bạn đã gửi tối đa 20 lời mời trong khung 24 giờ trượt. Vui lòng đợi trước khi mời thêm đồng nghiệp."
         }
       },
       "enterpriseSeats": {

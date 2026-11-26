@@ -5862,7 +5862,8 @@
           "seatCap": "Wszystkie 4 miejsca są używane. Najpierw usuń miejsce.",
           "ownerDomain": "Adres e-mail Twojego konta musi być z domeny firmowej, aby zapraszać kolegów.",
           "self": "Nie możesz zaprosić siebie.",
-          "inviteeDomain": "Adres e-mail osoby zaproszonej musi być z domeny firmowej."
+          "inviteeDomain": "Adres e-mail osoby zaproszonej musi być z domeny firmowej.",
+          "rateLimited": "Wysłano maksymalną liczbę 20 zaproszeń w kroczącym oknie 24 godzin. Poczekaj, zanim zaprosisz kolejnych współpracowników."
         }
       },
       "enterpriseSeats": {

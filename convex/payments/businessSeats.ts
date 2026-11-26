@@ -66,6 +66,19 @@ async function touchBusinessSeatLock(
   businessSubscriptionId: string,
   now: number,
 ): Promise<void> {
+  // Always patch the covering subscriptions document first so even a
+  // brand-new subscription's first concurrent invite burst triggers Convex
+  // document-level OCC serialization (a lazily inserted lock row alone cannot
+  // serialize parallel first-ever inserts).
+  const sub = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_dodoSubscriptionId", (q) =>
+      q.eq("dodoSubscriptionId", businessSubscriptionId),
+    )
+    .unique();
+  if (sub) {
+    await ctx.db.patch(sub._id, { seatLockTouchedAt: now });
+  }
   const lock = await ctx.db
     .query("businessSeatLocks")
     .withIndex("by_businessSubscriptionId", (q) =>
@@ -221,6 +234,17 @@ export const inviteSeats = mutation({
     );
     if (currentCount + newEmails.length > MAX_SEATS) {
       throw new ConvexError({ kind: "SEAT_CAP_REACHED" });
+    }
+
+    // Rolling 24-hour invite cap under touchBusinessSeatLock so an owner
+    // cannot alternate inviteSeats + removeSeat to trigger unlimited emails.
+    const INVITE_WINDOW_MS = 24 * 60 * 60 * 1000;
+    const MAX_INVITES_PER_WINDOW = 20;
+    const recentInvites = existingGrants.filter(
+      (g) => g.createdAt > now - INVITE_WINDOW_MS,
+    ).length;
+    if (recentInvites + newEmails.length > MAX_INVITES_PER_WINDOW) {
+      throw new ConvexError({ kind: "INVITE_RATE_LIMITED" });
     }
 
     for (const email of newEmails) {

@@ -5788,7 +5788,8 @@
           "seatCap": "Alle 4 seats zijn in gebruik. Verwijder eerst een seat.",
           "ownerDomain": "Het e-mailadres van uw account moet een zakelijk domein hebben om teamleden uit te nodigen.",
           "self": "U kunt uzelf niet uitnodigen.",
-          "inviteeDomain": "Het e-mailadres van de genodigde moet een zakelijk domein zijn."
+          "inviteeDomain": "Het e-mailadres van de genodigde moet een zakelijk domein zijn.",
+          "rateLimited": "Je hebt het maximum van 20 uitnodigingen binnen een voortschrijdend venster van 24 uur bereikt. Wacht even voordat je meer teamgenoten uitnodigt."
         }
       },
       "enterpriseSeats": {

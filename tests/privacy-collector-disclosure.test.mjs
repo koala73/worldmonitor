@@ -138,8 +138,8 @@ const SERVER_SUBPROCESSORS = [
   },
   {
     name: /Mintlify/,
-    proof: 'vercel.json',
-    pattern: /worldmonitor\.mintlify\.dev/,
+    proof: 'src/config/docs-locale-seo.ts',
+    pattern: /^export const DOCS_UPSTREAM_ORIGIN = ['"]https:\/\/worldmonitor\.mintlify\.dev['"]/m,
     why: 'serves worldmonitor.app/docs, including the privacy policy itself',
   },
 ];

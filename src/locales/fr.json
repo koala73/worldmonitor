@@ -5825,7 +5825,8 @@
           "seatCap": "Les 4 sièges sont utilisés. Supprimez d'abord un siège.",
           "ownerDomain": "L'adresse e-mail de votre compte doit être un domaine professionnel pour inviter des collègues.",
           "self": "Vous ne pouvez pas vous inviter vous-même.",
-          "inviteeDomain": "L'adresse e-mail de l'invité doit être un domaine professionnel."
+          "inviteeDomain": "L'adresse e-mail de l'invité doit être un domaine professionnel.",
+          "rateLimited": "Vous avez atteint la limite de 20 invitations sur une fenêtre glissante de 24 heures. Veuillez patienter avant d'inviter d'autres collègues."
         }
       },
       "enterpriseSeats": {

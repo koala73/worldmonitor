@@ -1,6 +1,6 @@
 // First-party facade for the documentation MCP server at /docs/mcp
-// (vercel.json rewrite → /api/docs-mcp, ahead of the /docs/:match* Mintlify
-// rewrite). The upstream Mintlify server answers protocol-level failures —
+// (vercel.json rewrite → /api/docs-mcp). The upstream Mintlify server answers
+// protocol-level failures —
 // unknown tool, invalid arguments — as tool *results* (`result.isError: true`
 // with the code buried in `structuredContent`) instead of top-level JSON-RPC
 // error objects, which agents (and the orank "MCP error handling" check)
@@ -73,6 +73,7 @@ const STRIPPED_RESPONSE_HEADERS = new Set([
   'content-length',
   'transfer-encoding',
   'connection',
+  'set-cookie',
   'cache-control',
   'cdn-cache-control',
   'vercel-cdn-cache-control',

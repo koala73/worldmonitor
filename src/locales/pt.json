@@ -5825,7 +5825,8 @@
           "seatCap": "Todos os 4 assentos estão em uso. Remova um assento primeiro.",
           "ownerDomain": "O email da sua conta deve ser um domínio corporativo para convidar colegas.",
           "self": "Você não pode convidar a si mesmo.",
-          "inviteeDomain": "O email do convidado deve ser um domínio corporativo."
+          "inviteeDomain": "O email do convidado deve ser um domínio corporativo.",
+          "rateLimited": "Você atingiu o limite máximo de 20 convites em uma janela móvel de 24 horas. Aguarde antes de convidar mais colegas."
         }
       },
       "enterpriseSeats": {

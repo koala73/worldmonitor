@@ -5825,7 +5825,8 @@
           "seatCap": "Los 4 puestos están en uso. Elimina un puesto primero.",
           "ownerDomain": "Tu correo de cuenta debe ser de un dominio corporativo para invitar compañeros de trabajo.",
           "self": "No puedes invitarte a ti mismo.",
-          "inviteeDomain": "El correo del invitado debe ser de un dominio corporativo."
+          "inviteeDomain": "El correo del invitado debe ser de un dominio corporativo.",
+          "rateLimited": "Has enviado el máximo de 20 invitaciones en una ventana móvil de 24 horas. Espera antes de invitar a más compañeros."
         }
       },
       "enterpriseSeats": {
