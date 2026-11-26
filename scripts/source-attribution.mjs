@@ -272,6 +272,21 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  'transparency.ems.rs': {
+    license: "All rights reserved (AD Elektromreža Srbije site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+    attribution: "Credit Elektromreža Srbije (EMS) transparency platform and link to https://transparency.ems.rs/; hour placement in UTC is derived.",
+    status: 'reviewed',
+  },
+  'www.nosbih.ba': {
+    license: "Copyright footer of the Independent System Operator in Bosnia and Herzegovina, no data licence; reuse cleared by the WorldMonitor owner on 2026-11-26",
+    attribution: "Credit NOS BiH (Independent System Operator in Bosnia and Herzegovina) and link to https://www.nosbih.ba/en/ees/graf-potrosnje/; hour placement in UTC is derived.",
+    status: 'reviewed',
+  },
+  'www.mepso.com.mk': {
+    license: "All rights reserved (MEPSO site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+    attribution: "Credit MEPSO, the North Macedonia transmission system operator, daily information report, and link to https://www.mepso.com.mk/; net cross-border flow is derived.",
+    status: 'reviewed',
+  },
   'release-assets.githubusercontent.com': {
     provider: 'US Restricted Parties feed (Tensorust LLC)',
     license: 'CC BY 4.0 (Creative Commons Attribution 4.0 International)',

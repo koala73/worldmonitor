@@ -261,7 +261,7 @@
     "sourceUrl": "https://transparency.ems.rs/balanceareaprofile/dload/dload.php",
     "licence": "All rights reserved (site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
     "intervalMin": 60,
-    "maxContentAgeMin": 2160,
+    "maxContentAgeMin": 4320,
     "script": "seed-regional-energy-ems.mjs"
   },
   {

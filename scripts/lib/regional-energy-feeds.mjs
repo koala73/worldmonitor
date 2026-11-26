@@ -522,9 +522,10 @@ export function parseCoes(payload) {
 // ---- Western Balkans: EMS (Serbia), NOS BiH (Bosnia and Herzegovina), MEPSO (North Macedonia) ----
 
 // The three operators publish local clock hours. Central European Time moves
-// between UTC+1 and UTC+2, so a day's hours are placed through the IANA zone.
-// A 23- or 25-hour day (the DST change) is skipped: the providers' hour
-// numbering on those days is ambiguous, and EMS sums or nets the shifted hour.
+// between UTC+1 and UTC+2, so hours are placed through the IANA zone. On the
+// DST change days a wall-clock hour that does not exist or occurs twice is
+// dropped; whole-day tables that cannot say which hour shifted (EMS realised
+// load sums or nets it into one slot, MEPSO prints 23 or 25 columns) skip the day.
 const BALKAN_ZONE = 'Europe/Belgrade';
 function zoneOffsetMs(ms, zone) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
@@ -545,6 +546,12 @@ export function localDayStart(day, zone = BALKAN_ZONE) {
   return start;
 }
 const hourStart = (start, index) => new Date(start + index * 3600000).toISOString();
+// UTC instant of a local wall-clock time, or null when the zone skips it or repeats it.
+export function wallClockUtc(day, minutes, zone = BALKAN_ZONE) {
+  const wall = Date.parse(`${validDay(day)}T00:00:00Z`) + minutes * 60000;
+  const matches = [60, 120].map(offsetMin => wall - offsetMin * 60000).filter(utc => zoneOffsetMs(utc, zone) === wall - utc);
+  return matches.length === 1 ? matches[0] : null;
+}
 const gridMw = (raw, source) => {
   const value = number(raw);
   if (value < 0 || value > 20000) throw new Error(`Implausible ${source} load`);
@@ -560,17 +567,22 @@ export function emsJson(body) {
   try { return JSON.parse(stripped); } catch { throw new Error('Invalid EMS response'); }
 }
 
-// Today's operational hourly values ("Тренутна потрошња"), hour 1 starting at local midnight.
+// Today's operational hourly values ("Тренутна потрошња"): hour N of the day,
+// stamped with its local start time.
 export function parseEmsLive(payload, day) {
   if (payload === null) return [];
-  if (!Array.isArray(payload)) throw new Error('Invalid EMS live load');
-  const start = localDayStart(day);
-  if (start === null) return [];
+  if (!Array.isArray(payload) || payload.length > 25) throw new Error('Invalid EMS live load');
   const compact = validDay(day).replaceAll('-', '');
-  return payload.map((row, i) => {
-    if (i > 23 || row?.DATUMVREME !== `${compact}_${pad2(i + 1)}` || row.time !== `${day} ${pad2(i)}:00:00`) throw new Error('Changed EMS live load row');
-    return observation('demand', hourStart(start, i), gridMw(row.value, 'EMS'), 'MW', 'provisional');
+  let previous = -1;
+  const points = [];
+  payload.forEach((row, i) => {
+    const time = typeof row?.time === 'string' ? row.time.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}):00:00$/) : null;
+    if (row?.DATUMVREME !== `${compact}_${pad2(i + 1)}` || time?.[1] !== day || Number(time[2]) > 23 || Number(time[2]) < previous) throw new Error('Changed EMS live load row');
+    previous = Number(time[2]);
+    const start = wallClockUtc(day, previous * 60);
+    if (start !== null) points.push(observation('demand', new Date(start).toISOString(), gridMw(row.value, 'EMS'), 'MW', 'provisional'));
   });
+  return points;
 }
 
 // Realised hourly load ("Остварена потрошња"), consolidated about two days
@@ -600,13 +612,21 @@ export function parseNosbih(payload, day) {
   if (!table) throw new Error('Changed NOS BiH production table');
   const [header, ...data] = rows(table);
   if (header?.join('|') !== NOSBIH_HEADER) throw new Error('Changed NOS BiH production columns');
-  const start = localDayStart(day);
-  if (start === null) return [];
-  if (data.length !== 24) throw new Error('Changed NOS BiH hours');
+  // 24 rows, or 23 to 25 on a DST change day.
+  if (data.length < 23 || data.length > 25) throw new Error('Changed NOS BiH hours');
+  const ends = data.map(row => {
+    const label = row.length === 5 ? row[0].match(/^(\d{2}):00$/) : null;
+    if (!label || Number(label[1]) > 23) throw new Error('Changed NOS BiH hour row');
+    return Number(label[1]) === 0 ? 1440 : Number(label[1]) * 60;
+  });
+  if (ends[0] !== 60 || ends.some((end, i) => i && end < ends[i - 1])) throw new Error('Changed NOS BiH hour row');
   const points = [];
   data.forEach((row, i) => {
-    if (row.length !== 5 || row[0] !== `${pad2((i + 1) % 24)}:00`) throw new Error('Changed NOS BiH hour row');
-    const period = hourStart(start, i);
+    // A label repeated by the autumn change cannot say which of its hours it is.
+    if (ends.indexOf(ends[i]) !== ends.lastIndexOf(ends[i])) return;
+    const end = wallClockUtc(day, ends[i]);
+    if (end === null) return;
+    const period = new Date(end - 3600000).toISOString();
     if (row[2]) points.push(observation('generation', period, gridMw(row[2], 'NOS BiH'), 'MW'));
     if (row[4]) points.push(observation('demand', period, gridMw(row[4], 'NOS BiH'), 'MW'));
   });
@@ -619,12 +639,14 @@ export const MEPSO_HOME_URL = `https://${MEPSO_HOST}/`;
 const MEPSO_LINK = /href="(\/files\/mk\/dnevni\/Информација за (\d{2})\.(\d{2})\.(20\d{2}) ?\.pdf)"/g;
 // Newest first.
 export function discoverMepsoPdfs(html) {
+  const links = [...String(html).matchAll(/href="(\/files\/mk\/dnevni\/[^"]*)"/g)].length;
   const found = new Map();
   for (const m of String(html).matchAll(MEPSO_LINK)) {
     const day = ymd(m[4], m[3], m[2]);
     if (!found.has(day)) found.set(day, publicUrl(new URL(m[1], MEPSO_HOME_URL).href, [MEPSO_HOST]));
   }
   if (!found.size) throw new Error('Missing MEPSO daily report');
+  if ([...String(html).matchAll(MEPSO_LINK)].length !== links) throw new Error('Changed MEPSO daily report link');
   return [...found].sort((a, b) => b[0].localeCompare(a[0])).map(([day, url]) => ({ day, url }));
 }
 

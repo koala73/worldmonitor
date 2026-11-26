@@ -2765,7 +2765,7 @@ const SEED_META = {
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-creg' } },
   regionalEnergyUrsea: { key: 'seed-meta:energy:regional-ursea', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-ursea',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-ursea' } },
-  regionalEnergyEms: { key: 'seed-meta:energy:regional-ems', maxStaleMin: 180, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 2160, activationKey: 'seed-activated:energy:regional-ems',
+  regionalEnergyEms: { key: 'seed-meta:energy:regional-ems', maxStaleMin: 180, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 4320, activationKey: 'seed-activated:energy:regional-ems',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-ems' } },
   regionalEnergyNosbih: { key: 'seed-meta:energy:regional-nosbih', maxStaleMin: 180, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 360, activationKey: 'seed-activated:energy:regional-nosbih',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-nosbih' } },

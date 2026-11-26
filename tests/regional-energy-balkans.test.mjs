@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fetchRegionalEnergyFeed } from '../scripts/_regional-energy-source.mjs';
 import feeds from '../scripts/shared/regional-energy-feeds.json' with { type: 'json' };
 import {
-  localDay, localDayStart, emsJson, emsLiveUrl, emsRealisedUrl, parseEmsLive, parseEmsRealised,
+  localDay, localDayStart, wallClockUtc, emsJson, emsLiveUrl, emsRealisedUrl, parseEmsLive, parseEmsRealised,
   NOSBIH_AJAX_URL, nosbihForm, parseNosbih, MEPSO_HOME_URL, discoverMepsoPdfs, parseMepso,
 } from '../scripts/lib/regional-energy-feeds.mjs';
 
@@ -30,6 +30,14 @@ describe('Central European local days', () => {
   it('refuses the 23- and 25-hour days', () => {
     assert.equal(localDayStart('2026-03-29'), null);
     assert.equal(localDayStart('2026-10-25'), null);
+  });
+  it('drops wall-clock times the change skips or repeats', () => {
+    const iso = (day, minutes) => { const t = wallClockUtc(day, minutes); return t === null ? null : new Date(t).toISOString(); };
+    assert.equal(iso('2026-03-29', 120), null, '02:00 does not exist in spring');
+    assert.equal(iso('2026-03-29', 180), '2026-03-29T01:00:00.000Z');
+    assert.equal(iso('2026-10-25', 120), null, '02:00 occurs twice in autumn');
+    assert.equal(iso('2026-10-25', 180), '2026-10-25T02:00:00.000Z');
+    assert.equal(iso('2026-11-25', 1440), '2026-11-25T23:00:00.000Z', 'midnight ending the day');
   });
   it('names the local calendar day', () => {
     assert.equal(localDay(Date.parse('2026-11-25T22:59:59Z')), '2026-11-25');
@@ -71,6 +79,7 @@ describe('EMS Serbia hourly load', () => {
     const live = emsJson(raw('ems-live-2026-11-26.json'));
     assert.throws(() => parseEmsLive(live, '2026-11-25'), /Changed EMS live load row/);
     assert.throws(() => parseEmsLive([live[1], live[0]], '2026-11-26'), /Changed EMS live load row/);
+    assert.throws(() => parseEmsLive([{ ...live[0], time: '2026-11-26 24:00:00' }], '2026-11-26'), /Changed EMS live load row/);
     assert.throws(() => parseEmsLive([{ ...live[0], value: 99999 }], '2026-11-26'), /Implausible EMS load/);
     const realised = emsJson(raw('ems-realised-2026-11-24.json'));
     const { S24, ...short } = realised[1][0];
@@ -94,15 +103,31 @@ describe('NOS BiH hourly production and consumption', () => {
     assert.equal(at(points, 'generation', '2026-11-26T01:00:00.000Z'), 1856.37);
   });
 
-  it('skips the 23-hour DST change day and fails closed on a changed table', () => {
+  it('places DST change days by their wall-clock labels, dropping the repeated hour', () => {
+    // Spring: 23 rows, "02:00" absent; "03:00" ends at 03:00 CEST.
+    const spring = parseNosbih(json('nosbih-2026-03-29.json'), '2026-03-29');
+    assert.equal(spring.length, 46);
+    assert.equal(at(spring, 'generation', '2026-03-28T23:00:00.000Z'), 1671.3);
+    assert.equal(at(spring, 'generation', '2026-03-29T00:00:00.000Z'), 1658.02, 'the "03:00" row follows directly');
+    assert.equal(at(spring, 'generation', '2026-03-29T21:00:00.000Z'), 1647.27, '"00:00" is the last hour');
+    // Autumn: the provider prints 23 rows for a 25-hour day; "02:00" ends twice and is dropped.
+    const autumn = parseNosbih(json('nosbih-2026-10-25.json'), '2026-10-25');
+    assert.equal(autumn.length, 44);
+    assert.equal(at(autumn, 'generation', '2026-10-24T22:00:00.000Z'), 1304.63);
+    assert.ok(!autumn.some(p => p.value === 1162.29), 'the ambiguous 02:00 row');
+    assert.equal(at(autumn, 'generation', '2026-10-25T21:00:00.000Z'), 1409.11);
+  });
+
+  it('fails closed on a changed table', () => {
     const dst = json('nosbih-2026-10-25.json');
-    assert.deepEqual(parseNosbih(dst, '2026-10-25'), []);
     assert.throws(() => parseNosbih({ ...dst, success: false }, '2026-10-25'), /Invalid NOS BiH response/);
     const day = json('nosbih-2026-11-24.json');
     assert.throws(() => parseNosbih({ ...day, data: day.data.replace('Actual consumption', 'Consumption') }, '2026-11-24'), /Changed NOS BiH production columns/);
-    assert.throws(() => parseNosbih({ ...day, data: day.data.replace('>02:00<', '>03:00<') }, '2026-11-24'), /Changed NOS BiH hour row/);
+    assert.throws(() => parseNosbih({ ...day, data: day.data.replace('>05:00<', '>02:00<') }, '2026-11-24'), /Changed NOS BiH hour row/);
     assert.throws(() => parseNosbih({ ...day, data: day.data.replace('1497.87', '99999') }, '2026-11-24'), /Implausible NOS BiH load/);
-    assert.throws(() => parseNosbih({ ...day, data: day.data.replace(/<tr>\s*<td class="production-time">00:00[\s\S]*?<\/tr>/, '') }, '2026-11-24'), /Changed NOS BiH hours/);
+    const without = (data, labels) => labels.reduce((d, l) => d.replace(new RegExp(`<tr>\\s*<td class="production-time">${l}[\\s\\S]*?</tr>`), ''), data);
+    assert.equal(parseNosbih({ ...day, data: without(day.data, ['00:00']) }, '2026-11-24').length, 46, 'a 23-row table is a DST day shape');
+    assert.throws(() => parseNosbih({ ...day, data: without(day.data, ['23:00', '00:00']) }, '2026-11-24'), /Changed NOS BiH hours/);
   });
 });
 
@@ -117,6 +142,7 @@ describe('MEPSO North Macedonia daily energy report', () => {
     assert.ok(reports[0].url.startsWith('https://www.mepso.com.mk/files/mk/dnevni/'));
     assert.ok(reports.some(r => r.day === '2026-11-17'), 'the "17.11.2026 .pdf" link');
     assert.throws(() => discoverMepsoPdfs('<a href="/files/mk/mesecni/x.pdf">'), /Missing MEPSO daily report/);
+    assert.throws(() => discoverMepsoPdfs(`<a href="/files/mk/dnevni/Info 24.11.2026.pdf">\n${raw('mepso-home.html')}`), /Changed MEPSO daily report link/, 'a renamed newest report is not skipped silently');
   });
 
   it('publishes daily output by source, delivered energy and net cross-border flow in MWh', () => {
@@ -169,6 +195,20 @@ describe('Balkan grid feeds through the regional source', () => {
     assert.equal(data.observations.filter(p => p.area === 'provisional').length, 3);
     assert.equal(data.observations.filter(p => p.area === '').length, 8, 'the snapshot keeps each series\' newest eight hours');
     assert.equal(data.observedAt, '2026-11-26T01:00:00.000Z');
+  });
+
+  it('EMS still publishes after local midnight, before today has a metered hour', async () => {
+    // 00:30 local on 26 November: no live hours yet, 25 November not consolidated.
+    const served = {
+      [emsLiveUrl('2026-11-26')]: raw('ems-live-2026-11-25.txt'),
+      [emsRealisedUrl('2026-11-25')]: raw('ems-realised-2026-11-25.json'),
+      [emsRealisedUrl('2026-11-24')]: raw('ems-realised-2026-11-24.json'),
+    };
+    const fetchFn = async url => new Response(served[url] ?? 'unexpected', { status: url in served ? 200 : 500 });
+    const data = await fetchRegionalEnergyFeed('ems', { fetchFn, nowMs: Date.parse('2026-11-25T23:30:00Z') });
+    assert.equal(data.observations.length, 8);
+    assert.ok(data.observations.every(p => p.area === ''));
+    assert.equal(data.observedAt, '2026-11-24T22:00:00.000Z');
   });
 
   it('NOS BiH posts yesterday and today with Connection: close', async () => {

@@ -53,16 +53,22 @@ cards only as images. Kenya still timed out on 2026-11-26.
 The issue's three Western Balkan grid feeds follow the fuel-price batch. All
 three operators publish local clock hours (Central European Time, UTC+1 in
 winter and UTC+2 in summer), so the parsers place hours through the
-`Europe/Belgrade` zone and publish UTC hour starts. A 23- or 25-hour DST change
-day is skipped: the providers' hour numbering on those days is ambiguous, and
-EMS sums or nets the shifted hour (6,429 MW on 25 October 2026).
+`Europe/Belgrade` zone and publish UTC hour starts. On the DST change days a
+wall-clock hour that the change skips or repeats is dropped. NOS BiH labels
+its spring change day by wall clock (23 rows, no `02:00`) and prints only 23
+rows for the 25-hour autumn day; the repeated `02:00` row is dropped there.
+Whole-day tables that cannot say which hour shifted skip the day: EMS's
+realised load sums or nets it into one slot (6,429 MW on 25 October 2026), and
+a MEPSO report then has 23 or 25 hour columns.
 
 - **EMS** (`transparency.ems.rs`) serves today's hourly load as operational
   values a little over an hour behind, and the realised hourly load about two
   days later. Yesterday has neither. The feed publishes today's values as
   `demand` with area `provisional` and the newest consolidated day as plain
-  `demand`, so the hours after local midnight still have a series; its content
-  budget is 36 hours. The responses lead with PHP notices, which are stripped.
+  `demand`, so the hours after local midnight still have a series. The content
+  budget is three days: just after midnight the newest hour is the end of the
+  consolidated day two days back, and three days back when that day was a DST
+  change day. The responses lead with PHP notices, which are stripped.
   The realised endpoint returns the day-ahead forecast, the realised load and an
   unlabelled signed row that the page does not display; only the realised load
   is read.
@@ -74,7 +80,8 @@ EMS sums or nets the shifted hour (6,429 MW on 25 October 2026).
   only by closing the connection, so the seeder sends `Connection: close` to
   that host.
 - **MEPSO** (`www.mepso.com.mk`) links a daily metered report per day from its
-  home page, about three days late. The seeder reads the newest PDF and
+  home page, about three days late. A link under the report folder that does
+  not follow the report name fails the run. The seeder reads the newest PDF and
   publishes each source's daily total, the energy delivered to directly
   connected consumers and distribution systems, and the signed net
   cross-border flow (inflow less outflow, so positive is a net import). The
