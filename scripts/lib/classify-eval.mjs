@@ -137,6 +137,19 @@ export function planBatchBoundaryPass({ boundary, fill }, { seed, pass, chunk })
 export const isClearFalseCritical = (row, level) => level === 'critical' && row.judge !== 'critical' && !row.borderline;
 
 const LEVEL_KEYS = ['critical', 'high', 'medium', 'low', 'info'];
+const unlabelledOf = (c) => c.asked - LEVEL_KEYS.reduce((n, k) => n + (c[k] ?? 0), 0);
+
+// Boundary rows that were not asked once per pass, or went unlabelled more than maxPerRow
+// times. A skipped boundary row cannot be a false critical, so skips would lower the count
+// for free; the capture writer and the gate both refuse a capture that lists any.
+export function incompleteBoundaryRows(boundary, capture, { passes, maxPerRow }) {
+  return boundary.flatMap((r) => {
+    const c = capture.labels[r.title];
+    if (c?.asked !== passes) return [`asked ${c?.asked ?? 0} of ${passes}: ${r.title}`];
+    const n = unlabelledOf(c);
+    return n > maxPerRow ? [`unlabelled ${n} of ${passes}: ${r.title}`] : [];
+  });
+}
 
 // capture.labels: { [title]: { asked, critical?, high?, medium?, low?, info? } }, summed
 // over every pass. A title asked but given no valid label is unlabelled: production skips it.
@@ -147,7 +160,7 @@ export function scoreBatchBoundary(rows, capture) {
     if (!c) continue;
     const critical = c.critical ?? 0;
     s.asked += c.asked;
-    s.unlabelled += c.asked - LEVEL_KEYS.reduce((n, k) => n + (c[k] ?? 0), 0);
+    s.unlabelled += unlabelledOf(c);
     if (isClearFalseCritical(r, 'critical')) {
       s.clearFalseCritical += critical;
       if (critical) s.falseCriticalTitles.push(`${critical}/${c.asked} ${r.title}`);

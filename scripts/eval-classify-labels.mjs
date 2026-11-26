@@ -23,7 +23,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   batchBoundaryRowsSha, buildBatchBoundaryRows, extractRelayOpenRouterModel, extractRelayPrompt,
-  extractRpcOpenRouterModel, extractRpcPrompt, isClearFalseCritical, planBatchBoundaryPass,
+  extractRpcOpenRouterModel, extractRpcPrompt, incompleteBoundaryRows, isClearFalseCritical, planBatchBoundaryPass,
   promptSha, scoreAlertLabels, scoreBatchBoundary,
 } from './lib/classify-eval.mjs';
 import { OPENROUTER_PROVIDER_ROUTING } from './_llm-model-timeouts.mjs';
@@ -223,6 +223,7 @@ const note = arg('note') ? `${arg('note')} (${captured})` : captured;
 let record;
 let unlabelled;
 let asked;
+let incomplete = [];
 if (batchBoundary) {
   const { completions, labels, clearFalseCriticalByPass } = await runBatchBoundary();
   record = {
@@ -232,6 +233,9 @@ if (batchBoundary) {
   };
   reportBatch(capture || 'live run', record);
   ({ unlabelled, asked } = scoreBatchBoundary(batchRows.rows, record));
+  // The same per-row limit tests/classify-batch-boundary.test.mjs holds a capture to
+  // (2 of 40), so a capture the gate would reject never replaces one it accepts.
+  incomplete = incompleteBoundaryRows(batchRows.boundary, record, { passes, maxPerRow: Math.floor(passes * 0.05) });
 } else {
   const labels = path === 'relay' ? await runRelay() : await runRpc();
   record = { path, model, promptSha: promptSha(prompt), note, labels };
@@ -245,8 +249,8 @@ if (capture) {
   // A few unlabelled titles are real behaviour (the model returned an invalid level or
   // category, which production skips) and are scored as `unlabelled`. Many means the run
   // itself broke: a failed chunk, a rate limit, a blocked provider.
-  if (usage.failedRequests > 0 || unlabelled > asked * 0.05) {
-    throw new Error(`refusing to capture: ${unlabelled} unlabelled titles, ${usage.failedRequests} failed requests; re-run`);
+  if (usage.failedRequests > 0 || unlabelled > asked * 0.05 || incomplete.length) {
+    throw new Error(`refusing to capture: ${unlabelled} unlabelled titles, ${usage.failedRequests} failed requests; re-run${incomplete.map((t) => `\n  ${t}`).join('')}`);
   }
   fixture[runsKey][capture] = record;
   writeFileSync(FIXTURE, `${JSON.stringify(fixture, null, 1)}\n`);

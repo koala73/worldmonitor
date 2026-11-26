@@ -52,6 +52,7 @@ import {
   buildBatchBoundaryRows,
   extractRelayOpenRouterModel,
   extractRelayPrompt,
+  incompleteBoundaryRows,
   isClearFalseCritical,
   planBatchBoundaryPass,
   promptSha,
@@ -104,6 +105,17 @@ describe('batch-boundary rule', () => {
     assert.equal(s.borderlineFalseCritical, 20);
     assert.deepEqual([s.clearCriticalKept, s.clearCriticalAsked], [30, 40]);
     assert.deepEqual([s.unlabelled, s.asked], [2, 130]);
+  });
+
+  it('refuses a capture that skipped a boundary row, however few skips there are overall', () => {
+    const boundary = rows.slice(0, 3);
+    const answered = { asked: 40, high: 40 };
+    const ok = capture({ statement: answered, border: answered, event: { asked: 40, critical: 38, high: 0 } });
+    assert.deepEqual(incompleteBoundaryRows(boundary, ok, { passes: 40, maxPerRow: 2 }), []);
+    const skipped = capture({ statement: answered, border: answered, event: { asked: 40, critical: 37 } });
+    assert.deepEqual(incompleteBoundaryRows(boundary, skipped, { passes: 40, maxPerRow: 2 }), ['unlabelled 3 of 40: event']);
+    const short = capture({ statement: answered, border: { asked: 39, high: 39 }, event: { asked: 40, critical: 40 } });
+    assert.deepEqual(incompleteBoundaryRows(boundary, short, { passes: 40, maxPerRow: 2 }), ['asked 39 of 40: border']);
   });
 
   it('allows a fresh draw of the baseline and fails 0.4 more counted criticals per pass', () => {
@@ -162,12 +174,7 @@ describe('batch-boundary captures', () => {
       assert.ok(s.unlabelled <= s.asked * MAX_UNLABELLED_SHARE, `${name}: ${s.unlabelled} unlabelled`);
       assert.equal(c.clearFalseCriticalByPass.length, REGISTERED.passes, name);
       assert.equal(c.clearFalseCriticalByPass.reduce((a, b) => a + b, 0), s.clearFalseCritical, name);
-      for (const r of judged.boundary) {
-        const n = c.labels[r.title];
-        assert.equal(n?.asked, REGISTERED.passes, `${name}: ${r.title}`);
-        const answered = ['critical', 'high', 'medium', 'low', 'info'].reduce((a, k) => a + (n[k] ?? 0), 0);
-        assert.ok(n.asked - answered <= MAX_UNLABELLED_PER_BOUNDARY_ROW, `${name}: ${r.title} unlabelled ${n.asked - answered}`);
-      }
+      assert.deepEqual(incompleteBoundaryRows(judged.boundary, c, { passes: REGISTERED.passes, maxPerRow: MAX_UNLABELLED_PER_BOUNDARY_ROW }), [], name);
     }
   });
 
