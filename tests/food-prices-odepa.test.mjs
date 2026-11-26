@@ -89,6 +89,7 @@ test('ODEPA rejects moved columns, unknown outlets, bad prices, duplicate series
   const base = rows.find(row => row.Producto === 'Marraqueta');
   const reject = (row, pattern) => assert.throws(() => parseOdepaWeek([row], '2026-11-16'), pattern);
   reject({ ...base, 'Precio promedio': '99999' }, /outside its range/);
+  reject({ ...base, 'Precio minimo': '99999' }, /outside its range/);
   reject({ ...base, 'Precio promedio': '2.067,00' }, /price format changed/);
   reject({ ...base, 'Precio promedio': '' }, /price format changed/);
   reject({ ...base, 'Tipo de punto monitoreo': 'Minimarket' }, /outlet type Minimarket format changed/);
@@ -101,7 +102,9 @@ test('ODEPA rejects moved columns, unknown outlets, bad prices, duplicate series
 
 test('ODEPA collect reads the newest week and the week before by Monday date, filtered to the basket', async () => {
   const requests = [];
-  const result = await run(datastore(live(), { requests }));
+  const warnings = [];
+  const result = await run(datastore(live(), { requests }), NOW, warnings);
+  assert.deepEqual(warnings, []);
   assert.ok(requests.every(url => url.origin === 'https://datos.odepa.gob.cl' && url.pathname.startsWith('/api/3/action/')));
   const reads = requests.filter(url => url.searchParams.has('filters')).map(url => JSON.parse(url.searchParams.get('filters')));
   assert.deepEqual(reads.map(filter => filter['Fecha inicio']), ['2026-11-16', '2026-11-09']);
@@ -142,6 +145,39 @@ test('ODEPA collect warns when the prior week is missing and fails closed on par
   const relabelled = week('2026-11-16').map(row => (row.Producto === 'Marraqueta' || row.Producto.startsWith('Cebolla') ? row : { ...row, Producto: `${row.Producto} (nuevo)` }));
   await assert.rejects(run(datastore({ 2026: { id: RESOURCE_2026, weeks: { '2026-11-16': relabelled } } })), /basket labels format changed/);
   await assert.rejects(run(async () => JSON.stringify({ success: false })), /dataset format changed/);
+});
+
+test('ODEPA collect names staples missing from the newest week and flags a week with fewer markets', async () => {
+  // Three of nineteen staples gone stays above the 80% gate; four does not.
+  const without = labels => week('2026-11-16').filter(row => !labels.includes(row.Producto));
+  const three = ['Azúcar', 'Lentejas 6 mm', 'Posta Negra'];
+  const warnings = [];
+  const thin = await run(datastore({ 2026: { id: RESOURCE_2026, weeks: { '2026-11-16': without(three), '2026-11-09': week('2026-11-09') } } }), NOW, warnings);
+  assert.ok(thin.observations.length > 0);
+  assert.deepEqual(warnings, ['odepa week 2026-11-16 has no prices for Sugar, Lentils (6 mm), Beef (posta negra)']);
+  await assert.rejects(run(datastore({ 2026: { id: RESOURCE_2026, weeks: { '2026-11-16': without([...three, 'Spaghetti N°5']) } } })), /basket labels format changed \(15 of 19\)/);
+  // A newest week still being loaded upstream: one sector of three is in.
+  const partial = [];
+  await run(datastore({ 2026: { id: RESOURCE_2026, weeks: { '2026-11-16': week('2026-11-16').filter(row => row.Sector === 'Oriente'), '2026-11-09': week('2026-11-09') } } }), NOW, partial);
+  assert.deepEqual(partial, ['odepa week 2026-11-16 covers 1 markets, 2026-11-09 covered 3']);
+});
+
+test('ODEPA collect ignores inactive, malformed and pre-2008 year resources', async () => {
+  const resources = [
+    { id: RESOURCE_2026, name: 'Detalle de Precios Consumidor año 2026', datastore_active: true },
+    { id: '99999999-9999-9999-9999-999999999999', name: 'Detalle de Precios Consumidor año 2027', datastore_active: false },
+    { id: 'not-a-uuid', name: 'Detalle de Precios Consumidor año 2028', datastore_active: true },
+    { id: '88888888-8888-8888-8888-888888888888', name: 'Detalle de Precios Consumidor año 1999', datastore_active: true },
+    { id: '77777777-7777-7777-7777-777777777777', name: 'Diccionario de datos', datastore_active: true },
+  ];
+  const store = datastore(live());
+  const requests = [];
+  const result = await run(async url => {
+    requests.push(new URL(url));
+    return url.includes('package_show') ? JSON.stringify({ success: true, result: { resources } }) : store(url);
+  });
+  assert.deepEqual(result.refreshedReports, [{ date: '2026-11-16' }, { date: '2026-11-09' }]);
+  assert.deepEqual([...new Set(requests.map(url => url.searchParams.get('resource_id')).filter(Boolean))], [RESOURCE_2026]);
   await assert.rejects(run(async url => (url.includes('package_show') ? JSON.stringify({ success: true, result: { resources: [] } }) : '{}')), /yearly resources missing/);
 });
 

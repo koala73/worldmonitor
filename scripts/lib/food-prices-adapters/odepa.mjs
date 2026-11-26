@@ -139,9 +139,16 @@ export async function collect(ctx) {
   // The server-side product filter returns nothing for a renamed label, so a relabel would quietly shrink the basket.
   const basket = Object.values(BASKET).filter(item => present.has(item)).length;
   if (basket < Math.ceil(Object.keys(BASKET).length * 0.8)) throw new Error(`odepa basket labels format changed (${basket} of ${Object.keys(BASKET).length})`);
+  const missing = Object.values(BASKET).filter(item => !present.has(item));
+  if (missing.length) ctx.warn(`odepa week ${latest} has no prices for ${missing.join(', ')}`);
 
   let previous = await week(years[at], prior);
   if (!previous.length && years[at + 1]) previous = await week(years[at + 1], prior);
+  // A week still being loaded upstream shows fewer markets than the week before it.
+  const markets = rows => new Set(rows.map(row => row.market)).size;
+  if (previous.length && markets(current) < markets(previous)) {
+    ctx.warn(`odepa week ${latest} covers ${markets(current)} markets, ${prior} covered ${markets(previous)}`);
+  }
   const observations = [...current, ...previous];
   const refreshedReports = [latest, prior].filter(date => observations.some(row => row.date === date)).map(date => ({ date }));
   if (refreshedReports.length < 2) ctx.warn(`no week dated ${prior}`);
