@@ -1,3 +1,4 @@
+import { XMLValidator } from 'fast-xml-parser';
 import type {
     ServerContext,
     ListAviationNewsRequest,
@@ -5,8 +6,11 @@ import type {
     AviationNewsItem,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+// @ts-expect-error The shared JavaScript Sentry helper has no declaration file.
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { parseStringArray, xmlParser } from './_shared';
 import { incrementProviderCounter } from './_counters';
 
@@ -32,10 +36,12 @@ interface RssItem {
     _source: string;
 }
 
-function parseRssItems(xml: string, sourceName: string): RssItem[] {
+function parseRssItems(xml: string, sourceName: string): RssItem[] | null {
     try {
+        if (XMLValidator.validate(xml) !== true) return null;
         const parsed = xmlParser.parse(xml);
-        const channel = parsed?.rss?.channel ?? parsed?.feed ?? {};
+        const channel = parsed?.rss?.channel ?? parsed?.feed;
+        if (channel == null) return null;
         const rawItems: unknown[] = Array.isArray(channel.item) ? channel.item
             : channel.item ? [channel.item]
                 : Array.isArray(channel.entry) ? channel.entry
@@ -50,7 +56,7 @@ function parseRssItems(xml: string, sourceName: string): RssItem[] {
             _source: sourceName,
         })).filter(item => item.link.length > 0 && item.link.length <= 2048 && new TextEncoder().encode(JSON.stringify(item)).byteLength <= 3072);
     } catch {
-        return [];
+        return null;
     }
 }
 
@@ -84,9 +90,9 @@ async function fetchFeed(feedUrl: string, sourceName: string): Promise<RssItem[]
             incrementProviderCounter('aviationNewsTerminalFailure');
             return null;
         }
-        const xml = await resp.text();
-        incrementProviderCounter('aviationNewsSuccess');
-        return parseRssItems(xml, sourceName);
+        const items = parseRssItems(await resp.text(), sourceName);
+        incrementProviderCounter(items === null ? 'aviationNewsTerminalFailure' : 'aviationNewsSuccess');
+        return items;
     } catch (err) {
         const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.message.includes('timed out'));
         if (isTimeout) incrementProviderCounter('aviationNewsTimeout');
@@ -96,7 +102,7 @@ async function fetchFeed(feedUrl: string, sourceName: string): Promise<RssItem[]
 }
 
 export async function listAviationNews(
-    _ctx: ServerContext,
+    ctx: ServerContext,
     req: ListAviationNewsRequest,
 ): Promise<ListAviationNewsResponse> {
     const inputEntities = parseStringArray(req.entities);
@@ -132,7 +138,9 @@ export async function listAviationNews(
                 return feedsRead > 0 ? { items: allItems } : null;
             }
         );
-        if (!snapshot) return { items: [], source: 'error', updatedAt: now };
+        if (!snapshot) {
+            return markNoStoreFallbackResponse(ctx.request, { items: [], source: 'error', updatedAt: now });
+        }
         const allItems = snapshot.items;
 
         const cutoff = now - windowMs;
@@ -186,6 +194,7 @@ export async function listAviationNews(
         };
     } catch (err) {
         console.warn(`[Aviation] ListAviationNews failed: ${err instanceof Error ? err.message : err}`);
-        return { items: [], source: 'error', updatedAt: now };
+        void captureSilentError(err, { tags: { route: 'aviation/list-aviation-news' } });
+        return markNoStoreFallbackResponse(ctx.request, { items: [], source: 'error', updatedAt: now });
     }
 }

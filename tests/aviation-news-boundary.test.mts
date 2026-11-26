@@ -12,6 +12,7 @@ import { validationFailure } from './helpers/validation-failure.mts';
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 const PATH = '/api/aviation/v1/list-aviation-news';
+const NEWS_CACHE_KEY = 'aviation:news:feeds:v2';
 const gateway = createDomainGateway(createAviationServiceRoutes(aviationHandler, serverOptions));
 let redis: ReturnType<typeof installRedis>;
 let calls: URL[];
@@ -300,39 +301,60 @@ test('actual native sidecar requires its token before the news gateway', async (
   }
 });
 
-// Nine feeds that all failed is not an empty news snapshot. The fetcher used
-// to return `{items: []}` in that case, which `cachedFetchJsonCore` stores as
-// a success: the empty result went over the prewarmed `aviation:news:feeds:v2`
-// key for CACHE_TTL and every caller got `source: 'rss'`, an assertion that
-// the feeds were read.
-test('a total RSS outage is not cached and does not claim source: rss', async () => {
+test('a total RSS outage uses brief Redis backoff and returns no-store on every request', async () => {
   const transport = globalThis.fetch;
+  let feedRequests = 0;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     if (url.hostname === 'redis.example') return transport(input, init);
+    feedRequests += 1;
     return new Response(null, { status: 503 });
   }) as typeof fetch;
 
-  const result = await read([], 24, 20);
-  assert.deepEqual(result.items, []);
-  assert.notEqual(result.source, 'rss', 'a failed read must not claim the feeds were read');
-  const stored = redis.redis.get('aviation:news:feeds:v2');
-  assert.ok(stored === undefined || !stored.includes('"items"'),
-    `a total outage must not be stored as a snapshot (got ${stored})`);
+  for (let i = 0; i < 2; i++) {
+    const response = await gateway(request());
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(result.items, []);
+    assert.equal(result.source, 'error');
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  }
+  assert.equal(feedRequests, 9);
+  assert.equal(redis.expires.get(NEWS_CACHE_KEY), 120);
 });
 
-// Positive control: feeds that answer with nothing matching are a real empty
-// snapshot, and still cache as one.
-test('feeds that answer with no items are a real empty snapshot', async () => {
-  const transport = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(String(input));
-    if (url.hostname === 'redis.example') return transport(input, init);
-    return new Response('<rss><channel></channel></rss>');
-  }) as typeof fetch;
+for (const [label, body] of [
+  ['HTML error page', '<html><body>Service unavailable</body></html>'],
+  ['truncated RSS', '<rss><channel>'],
+]) {
+  test(`an HTTP 200 ${label} does not mask an outage on the other feeds`, async () => {
+    const transport = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'redis.example') return transport(input, init);
+      return url.hostname === 'www.flightglobal.com' ? new Response(body) : new Response(null, { status: 503 });
+    }) as typeof fetch;
 
-  const result = await read([], 24, 20);
-  assert.deepEqual(result.items, []);
-  assert.equal(result.source, 'rss');
-  assert.match(redis.redis.get('aviation:news:feeds:v2')!, /"items"/);
-});
+    const result = await read([]);
+    assert.equal(result.source, 'error');
+    assert.deepEqual(result.items, []);
+    assert.equal(redis.expires.get(NEWS_CACHE_KEY), 120);
+  });
+}
+
+for (const [label, body] of [['RSS', '<rss><channel/></rss>'], ['Atom', '<feed/>']]) {
+  test(`empty ${label} feeds produce a cacheable empty snapshot`, async () => {
+    const transport = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'redis.example') return transport(input, init);
+      return new Response(body);
+    }) as typeof fetch;
+
+    const result = await read([]);
+    assert.deepEqual(result.items, []);
+    assert.equal(result.source, 'rss');
+    assert.deepEqual(JSON.parse(redis.redis.get(NEWS_CACHE_KEY)!), { items: [] });
+    assert.equal(redis.expires.get(NEWS_CACHE_KEY), 900);
+  });
+}
