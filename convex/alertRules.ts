@@ -541,6 +541,10 @@ export const setDigestSettingsForUser = internalMutation({
       existing: existing ?? undefined,
     });
     assertCompatibleDeliveryMode(pair);
+    // A first save in realtime mode has no channel to deliver to, so it must
+    // not create a rule the relay treats as a subscription (#10976). A digest
+    // cadence is not a realtime subscription, so it is still saved enabled.
+    const ruleEnabled = existing?.enabled ?? pair.digestMode !== "realtime";
 
     const now = Date.now();
     const normalizedCountries = countries !== undefined
@@ -557,7 +561,7 @@ export const setDigestSettingsForUser = internalMutation({
         ...(normalizedCountries !== undefined
           ? {
               countriesCount: normalizedCountries.length,
-              enabled: existing?.enabled ?? true,
+              enabled: ruleEnabled,
               effectiveCountriesCount: normalizedCountries.length,
             }
           : {}),
@@ -572,7 +576,7 @@ export const setDigestSettingsForUser = internalMutation({
     } else {
       await assertRuleSlotAvailable(ctx, userId);
       await ctx.db.insert("alertRules", {
-        userId, variant, enabled: true, eventTypes: [], sensitivity: pair.sensitivity, channels: [],
+        userId, variant, enabled: ruleEnabled, eventTypes: [], sensitivity: pair.sensitivity, channels: [],
         ...digest, countries: normalizedCountries, updatedAt: now,
       });
     }
@@ -615,6 +619,9 @@ export const setQuietHoursForUser = internalMutation({
     // rationale. resolveEffectivePair still supplies sensitivity:'critical' on fresh
     // insert (compatible by construction under the tightened rule).
     const pair = resolveEffectivePair({ existing: existing ?? undefined });
+    // A quiet-hours save chooses no channel, so a first save must not create
+    // a rule the relay treats as a realtime subscription (#10976).
+    const ruleEnabled = existing?.enabled ?? false;
 
     const now = Date.now();
     const normalizedCountries = countries !== undefined
@@ -628,7 +635,7 @@ export const setQuietHoursForUser = internalMutation({
       // (CodeRabbit review, 2026-11-14).
       await assertAlertCapabilitiesFor(ctx, userId, {
         countriesCount: normalizedCountries.length,
-        enabled: existing?.enabled ?? true,
+        enabled: ruleEnabled,
         effectiveCountriesCount: normalizedCountries.length,
       }, { variant: rest.variant, countries: normalizedCountries });
     }
@@ -647,7 +654,7 @@ export const setQuietHoursForUser = internalMutation({
     } else {
       await assertRuleSlotAvailable(ctx, userId);
       await ctx.db.insert("alertRules", {
-        userId, variant: rest.variant, enabled: true,
+        userId, variant: rest.variant, enabled: ruleEnabled,
         eventTypes: [], sensitivity: pair.sensitivity, channels: [],
         ...patch,
       });
