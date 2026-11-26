@@ -27,7 +27,7 @@ describe('alert replay set (#10976)', () => {
       it('has a recorded matcher answer for every question the replay asks', () => {
         assert.deepEqual(missing, [], 'run tests/helpers/record-alert-replay-matches.mts');
       });
-      it('asks every recorded repeat-check question', () => {
+      it('asks every recorded repeat-check question once per recorded vote', () => {
         assert.deepEqual(unusedRewrites, [], 'the repeat check no longer runs where it was recorded');
       });
       it('runs the reworded-repeat check without an error', () => {

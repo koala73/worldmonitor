@@ -346,9 +346,12 @@ export function recordedMatcher(incident: Incident) {
     }
     return JSON.stringify({ same });
   };
-  // A recorded verdict the replay never asks for means the check stopped running
-  // where the record says it ran.
-  const unusedRewrites = () => (incident.rewrites ?? []).filter((r) => !rewriteCalls.has(r)).map((r) => r.candidate);
+  // Each recorded shortlist must be asked once per recorded vote: fewer calls
+  // means the check stopped running there or dropped its second opinion, more
+  // means it asked again.
+  const unusedRewrites = () => (incident.rewrites ?? [])
+    .filter((r) => rewriteCalls.get(r) !== r.votes.length)
+    .map((r) => `${r.candidate} (asked ${rewriteCalls.get(r) ?? 0} times, ${r.votes.length} votes recorded)`);
   return { embed, judge, missing, unusedRewrites };
 }
 

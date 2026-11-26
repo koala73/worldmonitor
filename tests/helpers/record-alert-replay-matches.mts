@@ -76,7 +76,11 @@ for (const incident of fixture.incidents) {
       const slot = row.votes.push(Number.NaN) - 1;
       const text = await defaultRewriteJudge(systemPrompt, userPrompt, opts as { deadlineAt?: number });
       const pick = parseRewriteVerdict(text, earlier.length);
-      if (pick === null && !/^\s*\{\s*"same"\s*:\s*0\s*\}\s*$/.test(String(text))) throw new Error(`unparseable repeat verdict ${JSON.stringify(text)}`);
+      // parseRewriteVerdict returns null for 0 and for an unreadable reply; a
+      // zero is told apart with the same parse, code fence included.
+      if (pick === null && parseRewriteVerdict(String(text).replace(/\{\s*"same"\s*:\s*0\s*\}/, '{"same":1}'), 1) !== 0) {
+        throw new Error(`unparseable repeat verdict ${JSON.stringify(text)}`);
+      }
       row.votes[slot] = pick === null ? 0 : pick + 1;
       return text;
     }
