@@ -357,10 +357,13 @@ const EVENTS = {
   // Demand readout for server-side playback (#11410). Once per page load per
   // action: the metric is the share of sessions that ever take it. Playback
   // `action` is open | step | live (open carries a banded local snapshot
-  // count); country history `action` is window-change (days) | date-select |
-  // upsell-click (allowedDays). Never a country code or a date.
+  // count); country history `action` is window-change (days) | date-select.
+  // The history upsell click is its own event carrying `allowedDays`, so it
+  // can ride the durable pending-conversion replay across the /pro
+  // navigation. Never a country code or a date.
   'playback-action': true,
   'country-history-action': true,
+  'country-history-upsell-click': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;
@@ -442,6 +445,7 @@ function handleCollectorOutcome(outcome: CollectorOutcome): void {
     outcome.eventName === 'checkout-start'
     || outcome.eventName === 'checkout-failed'
     || outcome.eventName === 'pro-banner-click'
+    || outcome.eventName === 'country-history-upsell-click'
   ) {
     forgetPendingConversion(outcome.eventName);
   }
@@ -1115,7 +1119,7 @@ const CONVERSION_PENDING_KEY = 'wm-conversion-pending';
 const CONVERSION_PENDING_LIMIT = 5;
 
 type PendingConversion = {
-  event: 'checkout-start' | 'checkout-failed' | 'pro-banner-click';
+  event: 'checkout-start' | 'checkout-failed' | 'pro-banner-click' | 'country-history-upsell-click';
   data: Record<string, unknown>;
 };
 
@@ -1133,7 +1137,8 @@ function readPendingConversions(): PendingConversion[] {
     return items.filter((item): item is PendingConversion => {
       if (!item || typeof item !== 'object') return false;
       const { event, data } = item as { event?: unknown; data?: unknown };
-      return (event === 'checkout-start' || event === 'checkout-failed' || event === 'pro-banner-click')
+      return (event === 'checkout-start' || event === 'checkout-failed' || event === 'pro-banner-click'
+        || event === 'country-history-upsell-click')
         && Boolean(data) && typeof data === 'object';
     }).slice(0, CONVERSION_PENDING_LIMIT);
   } catch {
@@ -1184,6 +1189,9 @@ function sanitizePendingConversionData(
 ): Record<string, unknown> {
   if (event === 'pro-banner-click') {
     return { state: data.state === 'lapsed' ? 'lapsed' : 'upgrade' };
+  }
+  if (event === 'country-history-upsell-click') {
+    return { allowedDays: data.allowedDays === 90 ? 90 : 7 };
   }
   if (event === 'checkout-failed') {
     const status = data.status;
@@ -1930,7 +1938,7 @@ export function trackLayoutCustomized(kind: LayoutCustomizationKind): void {
 }
 
 export type PlaybackAction = 'open' | 'step' | 'live';
-export type CountryHistoryAction = 'window-change' | 'date-select' | 'upsell-click';
+export type CountryHistoryAction = 'window-change' | 'date-select';
 
 // Once per page load per action (#11410). A slider drag fires `input` per
 // pixel; only the first one says anything about demand.
@@ -1961,12 +1969,25 @@ export function trackPlaybackAction(action: PlaybackAction, snapshots: number | 
 
 export function trackCountryHistoryAction(
   action: CountryHistoryAction,
-  data?: { days?: number; allowedDays?: number },
+  data?: { days?: number },
 ): void {
   const key = `country-history:${action}`;
   if (historyDemandSent.has(key)) return;
   historyDemandSent.add(key);
   track('country-history-action', { action, ...data });
+}
+
+/**
+ * The upsell link navigates to /pro in the same tab, often before the deferred
+ * tracker loads, so the click is kept durable and replayed on the next
+ * dashboard boot, like pro-banner-click.
+ */
+export function trackCountryHistoryUpsellClick(allowedDays: number): void {
+  if (historyDemandSent.has('country-history:upsell-click')) return;
+  historyDemandSent.add('country-history:upsell-click');
+  const data = { allowedDays };
+  rememberPendingConversion('country-history-upsell-click', data);
+  track('country-history-upsell-click', data);
 }
 
 // ---------------------------------------------------------------------------

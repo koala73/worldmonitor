@@ -9,7 +9,8 @@ import { initTestI18n } from './helpers/i18n.mts';
 
 const trackPlaybackAction = vi.fn();
 const trackCountryHistoryAction = vi.fn();
-vi.mock('@/services/analytics', () => ({ trackPlaybackAction, trackCountryHistoryAction }));
+const trackCountryHistoryUpsellClick = vi.fn();
+vi.mock('@/services/analytics', () => ({ trackPlaybackAction, trackCountryHistoryAction, trackCountryHistoryUpsellClick }));
 
 let timestamps: number[] = [];
 let storageAvailable = true;
@@ -40,6 +41,7 @@ beforeAll(async () => { await initTestI18n(); });
 beforeEach(() => {
   trackPlaybackAction.mockClear();
   trackCountryHistoryAction.mockClear();
+  trackCountryHistoryUpsellClick.mockClear();
   vi.mocked(fetchCountryHistory).mockReset();
   timestamps = [];
   storageAvailable = true;
@@ -146,11 +148,11 @@ describe('country history demand events', () => {
     });
     upsell.addEventListener('click', (event) => event.preventDefault());
     upsell.click();
-    expect(trackCountryHistoryAction).toHaveBeenCalledWith('upsell-click', { allowedDays: 7 });
-    trackCountryHistoryAction.mockClear();
+    expect(trackCountryHistoryUpsellClick).toHaveBeenCalledWith(7);
+    trackCountryHistoryUpsellClick.mockClear();
     // Middle-click opens a new tab and fires auxclick, not click.
     upsell.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true }));
-    expect(trackCountryHistoryAction).toHaveBeenCalledWith('upsell-click', { allowedDays: 7 });
+    expect(trackCountryHistoryUpsellClick).toHaveBeenCalledWith(7);
     widget.destroy();
   });
 

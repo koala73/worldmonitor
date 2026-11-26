@@ -83,15 +83,12 @@ describe('history demand analytics', () => {
     analytics.trackCountryHistoryAction('window-change', { days: 365 });
     analytics.trackCountryHistoryAction('date-select');
     analytics.trackCountryHistoryAction('date-select');
-    analytics.trackCountryHistoryAction('upsell-click', { allowedDays: 7 });
-    analytics.trackCountryHistoryAction('upsell-click', { allowedDays: 7 });
 
     assert.deepEqual(
       calls.filter((c) => c.name === 'country-history-action').map((c) => c.data),
       [
         { action: 'window-change', days: 90 },
         { action: 'date-select' },
-        { action: 'upsell-click', allowedDays: 7 },
       ],
     );
   });
