@@ -443,8 +443,10 @@ async function _createCheckoutSession(
   Object.assign(metadata, acquisitionCheckoutMetadata(args.acquisition));
 
   // The running promotion applies its own code to every checkout for its
-  // product, whatever surface started it. A code the caller sent wins.
-  const promo = args.discountCode ? null : activePromoFor(args.productId, Date.now());
+  // product, whatever surface started it. A code the caller sent wins; an
+  // empty one (a bare ?discount= link) counts as none.
+  const callerDiscountCode = args.discountCode || undefined;
+  const promo = callerDiscountCode ? null : activePromoFor(args.productId, Date.now());
 
   // A 429 here is Dodo rate-limiting our shared API key (account-level, not
   // per-user/IP — see #6027), so absorb transient limits with the bounded
@@ -455,7 +457,7 @@ async function _createCheckoutSession(
   // rejected promo code cannot push past the edge relay's 15s abort.
   const deadlineMs = checkoutRetryDeadline();
   const createSession = (applyPromo: boolean) => {
-    const discountCode = args.discountCode ?? (applyPromo && promo ? promo.discountCode : undefined);
+    const discountCode = callerDiscountCode ?? (applyPromo && promo ? promo.discountCode : undefined);
     const sessionMetadata = applyPromo && promo ? { ...metadata, wm_promo: promo.id } : metadata;
     return runCheckoutWithRateLimitRetry(
       () =>

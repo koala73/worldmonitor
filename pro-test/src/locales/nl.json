@@ -360,7 +360,7 @@
     "cancelAnytime": "Annuleer op elk moment vanuit je account. Je behoudt toegang tot het einde van de periode waarvoor je hebt betaald.",
     "promo": {
       "stripHeadline": "Black Friday: {{savings}}% korting op Pro. {{perMonth}} per maand, jaarlijks gefactureerd.",
-      "stripDetail": "{{promoPrice}} voor je eerste jaar in plaats van {{monthlyTotal}} maandelijks. Vernieuwt voor {{listPrice}} per jaar. Annuleer voor die tijd en je betaalt niets meer.",
+      "stripDetail": "{{promoPrice}} voor je eerste jaar in plaats van {{monthlyTotal}} bij maandelijkse betaling. Vernieuwt voor {{listPrice}} per jaar. Annuleer voor die tijd en je betaalt niets meer.",
       "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% korting op Pro Yearly.",
       "stripDetailYearlyOnly": "{{promoPrice}} voor je eerste jaar. Vernieuwt voor {{listPrice}} per jaar. Annuleer voor die tijd en je betaalt niets meer.",
       "suffixFirstYear": "eerste jaar",

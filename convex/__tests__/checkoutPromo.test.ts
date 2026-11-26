@@ -101,6 +101,13 @@ describe("checkout applies the running promotion", () => {
     expect(payloads()[0].metadata?.wm_promo).toBeUndefined();
   });
 
+  test("an empty caller code counts as no code, so the promotion applies", async () => {
+    vi.setSystemTime(DURING);
+    await checkout(PROMO.productId, { discountCode: "" });
+    expect(payloads()[0].discount_code).toBe(PROMO.discountCode);
+    expect(payloads()[0].metadata?.wm_promo).toBe(PROMO.id);
+  });
+
   test("a rejected promo code retries once at list price and the buyer still gets a session", async () => {
     vi.setSystemTime(DURING);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
