@@ -635,12 +635,15 @@ const OIL111_MIN_COUNTIES = 15;
 const OIL111_GROUPS = ['A', 'B', 'C'];
 
 // Mean of the groups with surveyed stations, weighted by their station counts.
-function oil111Mean(row, countKey) {
+// Every count is present; only an explicit zero marks a group without stations.
+function oil111Mean(row, countKey, [min, max]) {
   let total = 0, count = 0;
   for (const g of OIL111_GROUPS) {
     const n = row[`${g}${countKey}`], price = row[`${g}avg`];
-    if (n == null || n === 0) continue;
-    if (!Number.isInteger(n) || n < 0 || !Number.isFinite(price)) throw new Error('Changed oil111 survey groups');
+    if (!Number.isInteger(n) || n < 0) throw new Error('Changed oil111 survey groups');
+    if (n === 0) continue;
+    if (!Number.isFinite(price)) throw new Error('Changed oil111 survey groups');
+    if (price < min || price > max) throw new Error('Implausible oil111 price');
     total += price * n;
     count += n;
   }
@@ -669,15 +672,18 @@ export function parseOil111Survey(payload, request, nowMs = Date.now()) {
   const [unit, min, max] = request.path === 'LPG' ? ['TWD/20kg', 200, 3000] : ['TWD/l', 5, 100];
   const plausible = (point) => positive(point, min, max, 'oil111 price');
   const points = new Map();
-  const national = oil111Mean(data, 'num');
+  const national = oil111Mean(data, 'num', [min, max]);
   if (national == null) throw new Error(`Missing oil111 ${request.product} national mean`);
   addUnique(points, plausible(observation('fuel.retail_price', period, national, unit, request.product)));
   let counties = 0;
+  const seen = new Set();
   for (const row of rows) {
     const county = OIL111_COUNTIES[row?.City];
     if (!county) throw new Error(`Changed oil111 county ${row?.City}`);
+    if (seen.has(county)) throw new Error(`Duplicate oil111 county ${row.City}`);
+    seen.add(county);
     if (row.SurDate !== data.start) throw new Error(`Changed oil111 ${request.product} survey`);
-    const mean = oil111Mean(row, 'snum');
+    const mean = oil111Mean(row, 'snum', [min, max]);
     if (mean == null) continue; // No station in this county sells the grade or reported it.
     counties++;
     addUnique(points, plausible(observation('fuel.retail_price', period, mean, unit, `${request.product}; ${county}`)));

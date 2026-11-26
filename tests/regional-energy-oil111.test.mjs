@@ -55,6 +55,12 @@ describe('Taiwan oil111 county surveys', () => {
     assert.throws(changed(p => { p.data.gasoline[0].SurDate = '2026/11/08 ~ 2026/11/14'; }), /Changed oil111 Unleaded 92 survey/);
     assert.throws(changed(p => { p.data.gasoline[0].Asnum = 1.5; }), /Changed oil111 survey groups/);
     assert.throws(changed(p => { p.data.gasoline[0].Aavg = 310; }), /Implausible oil111 price/);
+    // A dropped count field is a changed response, not an empty group.
+    assert.throws(changed(p => { delete p.data.Bnum; }), /Changed oil111 survey groups/);
+    assert.throws(changed(p => { delete p.data.gasoline[0].Asnum; }), /Changed oil111 survey groups/);
+    // Each counted group is checked before weighting: -10 and 40 would average to a plausible 35.
+    assert.throws(changed(p => { Object.assign(p.data.gasoline[0], { Aavg: -10, Asnum: 1, Bavg: 40, Bsnum: 9, Cavg: null, Csnum: 0 }); }), /Implausible oil111 price/);
+    assert.throws(changed(p => { p.data.gasoline.push({ ...p.data.gasoline[0] }); }), /Duplicate oil111 county/);
     assert.throws(changed(p => { p.data.gasoline.forEach((r, i) => { if (i > 13) for (const g of 'ABC') r[`${g}snum`] = 0; }); }), /Incomplete oil111 Unleaded 92 county survey/);
     assert.throws(() => parseOil111Survey(fixture(U92), U92, Date.parse('2026-11-20T00:00:00Z')), /Future oil111/);
     assert.throws(() => parseOil111Survey(fixture(LPG), LPG, Date.parse('2026-10-31T15:00:00Z')), /Future oil111/);

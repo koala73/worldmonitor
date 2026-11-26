@@ -82,7 +82,8 @@ by surveyed stations, and the national mean weighted the same way, which equals
 the fuel-price panel's Taiwan price. A county with no surveyed station for a
 grade is omitted. Weekly prices are dated to the survey week's last day and LPG
 to the first of its month. A changed title, week, county name or survey group,
-an implausible price, a future survey, or fewer than 15 counties fails the run.
+a missing station count, a repeated county, an implausible group or mean price,
+a future survey, or fewer than 15 counties fails the run.
 The fuel-price panel keeps reading Taiwan's weekly national price directly.
 
 Since 2026-10-31 MEM's pages, sitemaps and REST API answer automated clients
@@ -139,8 +140,10 @@ age checks; daily periods use the source calendar day. Hourly periods use UTC.
 Feed status is `available`, `partial`, `stale`, `unavailable` (no seed) or `error`.
 Fresh fetch time cannot make old observations current. Status uses the latest
 observation in each series; individual observations also carry `stale`.
-ANP weekly prices and Eskom weekly outages have 21-day content budgets. Other
-budgets are in the registry. Optional feed failures do not discard peer feeds or
+ANP weekly prices and Eskom weekly outages have 21-day content budgets. A series
+budget is keyed by metric, or by metric and unit where one metric mixes
+cadences: Taiwan's monthly LPG survey (`fuel.retail_price|TWD/20kg`) has 62 days
+beside the weekly prices' 21. Other budgets are in the registry. Optional feed failures do not discard peer feeds or
 the existing profile. Core profile-cache failures retain their existing HTTP 503.
 
 ## Collection and activation

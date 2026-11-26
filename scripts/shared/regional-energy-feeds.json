@@ -263,6 +263,9 @@
     "intervalMin": 1440,
     "maxContentAgeMin": 30240,
     "script": "seed-regional-energy-oil111.mjs",
-    "utcOffsetMin": 480
+    "utcOffsetMin": 480,
+    "seriesMaxContentAgeMin": {
+      "fuel.retail_price|TWD/20kg": 89280
+    }
   }
 ]
