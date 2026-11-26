@@ -147,6 +147,38 @@ describe('UnifiedSettings panel rows', () => {
     settings.close();
   });
 
+  it('does not let enabled locked Pro teaser panels consume free-tier cap slots', () => {
+    const free = Object.keys(ALL_PANELS).filter((key) => isFreePanelCapCounted(key) && !ALL_PANELS[key]!.premium);
+    const locked = Object.keys(ALL_PANELS).filter((key) => ALL_PANELS[key]!.premium === 'locked');
+    expect(free.length).toBeGreaterThan(FREE_MAX_PANELS);
+    expect(locked.length).toBeGreaterThan(0);
+
+    const saved: Record<string, PanelConfig> = {};
+    for (const key of Object.keys(ALL_PANELS)) saved[key] = { ...ALL_PANELS[key]!, enabled: false };
+    // Turn on FREE_MAX_PANELS - 1 real free panels PLUS all locked Pro teaser panels.
+    for (const key of free.slice(0, FREE_MAX_PANELS - 1)) saved[key]!.enabled = true;
+    for (const key of locked) saved[key]!.enabled = true;
+
+    const slot40 = free[FREE_MAX_PANELS - 1]!;
+    const slot41 = free[FREE_MAX_PANELS]!;
+    const saves: Array<Record<string, PanelConfig>> = [];
+    const settings = createSettings(saved, saves);
+    settings.open('panels');
+
+    // Enabling the 40th real free panel succeeds despite locked teasers being enabled.
+    row(slot40).querySelector<HTMLElement>('.panel-toggle-item')!.click();
+    expect(pressed(slot40)).toBe('true');
+    expect(document.querySelector('.toast-notification')).toBeNull();
+    expect(saveButton().disabled).toBe(false);
+
+    // Enabling a 41st real free panel still hits the 40-panel free cap.
+    row(slot41).querySelector<HTMLElement>('.panel-toggle-item')!.click();
+    expect(pressed(slot41)).toBe('false');
+    expect(document.querySelector('.toast-notification')?.textContent).toContain(String(FREE_MAX_PANELS));
+
+    settings.close();
+  });
+
   it('drops unsaved panels past the cap when paid access ends with Settings open', () => {
     tier.pro = true;
     const { saved, next } = atFreeCap();

@@ -53,9 +53,21 @@ describe('buildDeductionPrompt', () => {
     });
 
     assert.equal(mode, 'forecast');
-    assert.match(systemPrompt, /\*\*Most likely path \(next 24-72h\)\*\*/);
+    assert.match(systemPrompt, /\*\*Most likely path \(next <window>\)\*\*/);
     assert.match(systemPrompt, /2026-03-15 UTC/);
     assert.match(userPrompt, /Recent News Signals/);
+  });
+
+  it('takes the most likely path window from the question instead of fixing it at 24-72h', () => {
+    const { systemPrompt } = buildDeductionPrompt({
+      query: 'The election is within 6 weeks. Will talks resume in 48 hours?',
+      geoContext: 'Country: Israel.',
+      now: new Date('2026-03-15T12:00:00Z'),
+    });
+
+    assert.match(systemPrompt, /replace <window> with the time window the question asks about/);
+    assert.match(systemPrompt, /or 24-72h if it names none/);
+    assert.doesNotMatch(systemPrompt, /Most likely path \(next 24-72h\)/);
   });
 
   it('builds a terse brief prompt for correlation-card usage', () => {

@@ -152,6 +152,14 @@ export class CountryBriefController {
     }
     const code = this.snapshot.countryCode.toUpperCase();
     if (!code) return;
+    if (this.source.mode !== 'host') {
+      const intelMemorySignal = combineAbortSignals([
+        this.request.signal,
+        this.panel.signal ?? new AbortController().signal,
+        this.premiumRequest.signal,
+      ]);
+      this.panel.mountIntelMemory?.(code, intelMemorySignal);
+    }
     void this.read('military', signal => getCountryDefenseIndustrialBase(code, this.source.military, signal), value => this.panel.updateDefenseIndustrialBase?.(value.available ? value : null), true);
     void this.read('commodities', signal => this.source.supply.getCountryVulnerabilities({ iso2: code }, { signal }), value => this.panel.updateCommodityVulnerabilities?.(value), true);
     void this.read('products', signal => this.source.supply.getCountryProducts({ iso2: code }, { signal }), value => this.panel.updateProductImports?.(value), true);

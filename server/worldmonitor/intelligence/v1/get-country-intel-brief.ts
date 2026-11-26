@@ -23,6 +23,7 @@ import { deriveCountryIntelCacheKey, fetchSharedCountryContext } from './_countr
 import { buildCountryBriefEvidence, readCountryAirportNotams, readCountryImageryFlags } from './_country-brief-evidence';
 import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
 import { energyEvidenceGrounded, evidenceNumbersGrounded, imageryEvidenceGrounded, isEvidenceLimitClaim, sanctionsEvidenceGrounded } from '../../../../shared/brief-claim-rules.js';
+import { headlineWithoutPublisher } from '../../../../shared/headline-publisher.js';
 import { confirmedFlagsTag } from '../../../../shared/orbital/country-rollup.js';
 import { briefSectionHeading, type BriefSectionKey } from '../../../../shared/brief-sections.js';
 import {
@@ -234,7 +235,7 @@ export function renderEvidenceGroundedCountryBrief(
       if (sourceIndexes === 'out-of-range' || cited === null || !text || text.length > 500 || /[\r\n\[\]*]/.test(text)
         || accepted.length >= rule.maxClaims
         || !rule.accepts({ sources: sourceIndexes.length, evidence: cited })
-        || !claimIsGrounded(text, sourceIndexes.map((index) => sources[index - 1]!.title), cited)) {
+        || !claimIsGrounded(text, sourceIndexes.map((index) => storyTitle(sources[index - 1]!)), cited)) {
         withheld++;
         continue;
       }
@@ -256,6 +257,69 @@ export function renderEvidenceGroundedCountryBrief(
     evidence: evidence.filter((item) => citedEvidence.has(item)).map((item) => ({ ...item, url: item.url ?? '' })),
     withheld,
   };
+}
+
+// The prompt and the claim checks read the story without its publisher byline;
+// the returned source keeps it as the publisher credit.
+function storyTitle(source: CountryIntelBriefSource): string {
+  return headlineWithoutPublisher(source.title, source.url, source.source);
+}
+
+const CONTEXT_LABEL_LINE_RE = /^[A-Za-z][A-Za-z _-]{0,40}: /;
+const SOURCE_CONTEXT_LINE_RE = /^(Source \[\d{1,2}\]:\s*)(.+)$/gm;
+// The pre-JSON Source format: title | source | url [| published=...].
+const LEGACY_SOURCE_PAYLOAD_RE = /^(.+?)\s*\|\s*(.+?)\s*\|\s*(https?:\/\/\S+)(?:\s*\|\s*published=([^\n|]+))?$/;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Non-English briefs read the raw context, where each source title appears in
+// its Source line and again in the headline lines. Source lines are rewritten
+// from their parsed JSON or legacy fields, so escaped titles match; a headline
+// is rewritten only when the whole headline is a known source title.
+function withoutSourceBylines(context: string, sources: CountryIntelBriefSource[]): string {
+  let out = context.replace(SOURCE_CONTEXT_LINE_RE, (line, prefix: string, body: string) => {
+    if (!body.startsWith('{')) {
+      const legacy = body.match(LEGACY_SOURCE_PAYLOAD_RE);
+      if (!legacy) return line;
+      return `${prefix}${headlineWithoutPublisher(legacy[1]!, legacy[3]!, legacy[2]!)}${body.slice(legacy[1]!.length)}`;
+    }
+    try {
+      const payload = JSON.parse(body) as Record<string, unknown>;
+      if (typeof payload?.title !== 'string') return line;
+      const title = headlineWithoutPublisher(payload.title, String(payload.url ?? ''), String(payload.source ?? ''));
+      // Decoding can turn an escaped line separator into a raw one; keep the line single.
+      return sanitizeForPrompt(`${prefix}${JSON.stringify({ ...payload, title })}`).replace(/[\r\n\u2028\u2029]/g, ' ');
+    } catch {
+      return line;
+    }
+  });
+  const rewrites = sources
+    .filter((source) => storyTitle(source) !== source.title)
+    .map((source) => ({
+      story: storyTitle(source),
+      headline: new RegExp(`(^(?:- |Headlines: )?| \\| )${escapeRegExp(source.title)}(?=$| \\| )`, 'g'),
+    }));
+  if (rewrites.length === 0) return out;
+  const knownTitles = new Set(sources.map((source) => source.title));
+  // Only headline lines: the dashboard's "Headlines: a | b", the "- " lines, and
+  // the lines under a bare "Headlines:" heading up to the next labelled line.
+  // Signal lines also use " | ".
+  let inHeadlineBlock = false;
+  out = out.split('\n').map((line) => {
+    if (line === 'Headlines:') {
+      inHeadlineBlock = true;
+      return line;
+    }
+    // A known headline such as "France: budget approved" is not a label.
+    if (inHeadlineBlock && (line === '' || (CONTEXT_LABEL_LINE_RE.test(line) && !knownTitles.has(line)))) {
+      inHeadlineBlock = false;
+    }
+    if (!inHeadlineBlock && !line.startsWith('Headlines: ') && !line.startsWith('- ')) return line;
+    return rewrites.reduce((text, { story, headline }) => text.replace(headline, (_match, lead: string) => `${lead}${story}`), line);
+  }).join('\n');
+  return out;
 }
 
 function cleanSourceText(value: unknown, maxLen: number): string {
@@ -298,7 +362,7 @@ export function parseCountryBriefSources(contextSnapshot: string): CountryIntelB
     }
 
     if (!candidate) {
-      const legacy = rawPayload.match(/^(.+?)\s*\|\s*(.+?)\s*\|\s*(https?:\/\/\S+)(?:\s*\|\s*published=([^\n|]+))?$/);
+      const legacy = rawPayload.match(LEGACY_SOURCE_PAYLOAD_RE);
       if (legacy) {
         candidate = {
           title: legacy[1],
@@ -556,7 +620,7 @@ Rules:
 
       if (english) {
         userPromptParts.push('Headlines:\n' + entrySources.map((source, index) =>
-          `[${index + 1}] ${sanitizeForPrompt(source.title)}`).join('\n'));
+          `[${index + 1}] ${sanitizeForPrompt(storyTitle(source))}`).join('\n'));
         if (evidence.length > 0) {
           userPromptParts.push('World Monitor data points:\n' + evidence.map((item) =>
             `[${item.id}] (${item.kind}) ${item.factText}`).join('\n'));
@@ -579,7 +643,7 @@ Rules:
         }
 
         if (promptContext) {
-          userPromptParts.push(`Context snapshot:\n${promptContext}`);
+          userPromptParts.push(`Context snapshot:\n${withoutSourceBylines(promptContext, entrySources)}`);
         }
       }
 
@@ -627,7 +691,7 @@ Rules:
       // own false-positive window first; see #4921).
       const grounded = checkLeadGrounding(
         { lead: citationCheck.text.slice(0, 600) },
-        entrySources.map((source) => ({ headline: source.title })),
+        entrySources.map((source) => ({ headline: storyTitle(source) })),
         entrySources.length || 1,
       );
       if (!grounded) {

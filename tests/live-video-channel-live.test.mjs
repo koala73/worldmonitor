@@ -296,6 +296,17 @@ describe('fetchChannelLivePage', () => {
       for (const call of loop.calls) assert.equal(call.init.redirect, 'manual');
     });
 
+    it('gives the whole direct read one deadline, redirects included', async () => {
+      const fetchImpl = (url, init) => new Promise((resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+        if (url === channelLiveUrl(CHANNEL)) setTimeout(() => resolve(response(302, '', { location: 'https://www.youtube.com/stalls' })), 150);
+      });
+      const startedAt = Date.now();
+      const result = await fetchChannelLivePage(CHANNEL, { fetchImpl, timeoutMs: 200 });
+      assert.equal(result.reason, 'timeout');
+      assert.ok(Date.now() - startedAt < 300, `a stalled redirect must not restart the 200 ms deadline (took ${Date.now() - startedAt} ms)`);
+    });
+
     it('refuses a page larger than the byte cap', async () => {
       const result = await fetchChannelLivePage(CHANNEL, { fetchImpl: direct(response(200, livePage())).fetchImpl, maxBytes: 100 });
       assert.deepEqual([result.status, result.reason], ['unreadable', 'fetch-error']);
@@ -402,12 +413,12 @@ describe('proxy session rotation', () => {
 
   it('retries a proxy failure at most twice, then keeps it unreadable', async () => {
     const attempts = [];
-    const fetchPage = async (id, { attempt }) => {
-      attempts.push(attempt);
-      return { status: 'unreadable', reason: 'fetch-error', videoId: null, channelId: id, title: null, proxyFailure: true };
+    const fetchPage = async (id, { attempt, previous }) => {
+      attempts.push([attempt, previous?.attempt ?? null]);
+      return { status: 'unreadable', reason: 'fetch-error', videoId: null, channelId: id, title: null, proxyFailure: true, attempt };
     };
     const results = await resolveChannelsLive([CHANNEL], { fetchPage });
-    assert.deepEqual(attempts, [0, 1, 2]);
+    assert.deepEqual(attempts, [[0, null], [1, 0], [2, 1]], 'each retry gets the result it replaces');
     assert.deepEqual([results.get(CHANNEL).status, results.get(CHANNEL).reason], ['unreadable', 'fetch-error']);
   });
 

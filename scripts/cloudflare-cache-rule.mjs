@@ -126,8 +126,8 @@ export const CORPUS_HOST = 'www.worldmonitor.app';
 /**
  * The document families the rule claims by prefix. The corpus families are the
  * build-time static HTML from scripts/build-crawlable-corpus.mjs; `blog` is the
- * Astro output copied to public/blog; `docs` is the Mintlify proxy behind the
- * `/docs/:match*` rewrite. Each has a vercel.json header rule carrying the same
+ * Astro output copied to public/blog; `docs` is proxied to Mintlify by
+ * middleware. Each has a vercel.json header rule carrying the same
  * CDN-Cache-Control, and tests/cloudflare-cache-rule.test.mjs fails when the two
  * lists disagree.
  */

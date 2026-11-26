@@ -81,7 +81,7 @@ export function initSettingsWindow(): void {
             // not collapse to getEffectivePanelConfig's disabled synthetic fallback.
             const resolvedConfig = ALL_PANELS[panelKey] ? getEffectivePanelConfig(panelKey, SITE_VARIANT) : config;
             if (!config.enabled && !isPanelEntitled(panelKey, resolvedConfig, isProUser())) return;
-            if (!config.enabled && !isProUser() && isFreePanelCapCounted(panelKey)) {
+            if (!config.enabled && !isProUser() && isFreePanelCapCounted(panelKey, resolvedConfig)) {
               const enabledCount = countFreePanelCapUsage(panelSettings);
               if (enabledCount >= FREE_MAX_PANELS) return;
             }

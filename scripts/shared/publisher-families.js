@@ -33,6 +33,8 @@
  * carry no <source> element at all — for those the feed label remains the
  * best available publisher signal.
  */
+import { foldPublisherName } from './publisher-name.js';
+
 /**
  * Curated label -> publisher family. Only families with 2+ labels appear; an
  * unmapped label is its own family by construction (see publisherFamilyFor).
@@ -87,6 +89,8 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'bloomberg': {
     publisher: "Bloomberg",
+    // Google News names the publisher this way in its <source> element (#11266).
+    aliases: ["Bloomberg.com"],
     labels: [
       "Bloomberg",
       "Bloomberg Commodities",
@@ -133,7 +137,7 @@ const PUBLISHER_FAMILY_DATA = {
     publisher: "The Guardian",
     labels: ["Guardian Africa", "Guardian Americas", "Guardian Australia", "Guardian Brazil", "Guardian Caribbean", "Guardian ME", "Guardian Pacific", "Guardian Science", "Guardian World", "Guardian — Angola", "Guardian — Paraguay", "Guardian — Barbados", "Guardian — Bolivia", "Guardian — Kiribati", "Guardian — Laos", "Guardian — Liechtenstein", "Guardian — Marshall Islands", "Guardian — Micronesia", "Guardian — Nauru", "Guardian — Palau", "Guardian — Tuvalu", "Guardian UK"],
   },
-  'hacker-news': { publisher: "Hacker News", labels: ["Hacker News", "Show HN", "YC News"] },
+  'hacker-news': { publisher: "Hacker News", labels: ["Hacker News", "Show HN", "YC Launches"] },
   'hromadske': { publisher: "Hromadske", labels: ["Hromadske", "Hromadske EN"] },
   'infoq': { publisher: "InfoQ", labels: [] },
   'interfax': { publisher: "Interfax", labels: ["Interfax EN", "Interfax RU"] },
@@ -141,6 +145,7 @@ const PUBLISHER_FAMILY_DATA = {
   'kitco': { publisher: "Kitco", labels: ["Kitco Gold", "Kitco News"] },
   'kyiv-independent': { publisher: "The Kyiv Independent", labels: ["Kyiv Independent"] },
   'marketwatch': { publisher: "MarketWatch", labels: ["MarketWatch", "MarketWatch Tech"] },
+  'mehr-news': { publisher: "Mehr News Agency", labels: ["Mehr News"] },
   'mit-technology-review': {
     publisher: "MIT Technology Review",
     labels: [
@@ -154,6 +159,7 @@ const PUBLISHER_FAMILY_DATA = {
   'washington-post': { publisher: "The Washington Post", labels: ["Washington Post World"] },
   'new-york-times': { publisher: "The New York Times", labels: ["Hard Fork (NYT)", "New York Times World"] },
   'new-voice-of-ukraine': { publisher: "The New Voice of Ukraine", labels: ["NV EN"] },
+  'ukrainska-pravda': { publisher: "Ukrainska Pravda", labels: ["Ukrainska Pravda", "Ukrainska Pravda EN", "Українська правда"] },
   'propublica': { publisher: "ProPublica", labels: ["ProPublica"] },
   'the-atlantic': { publisher: "The Atlantic", labels: ["The Atlantic"] },
   'channel-4-news': { publisher: "Channel 4 News", labels: ["Channel 4 News"] },
@@ -230,9 +236,10 @@ const PUBLISHER_FAMILY_DATA = {
   'rfi': { publisher: "RFI", labels: ["RFI", "RFI Afrique", "RFI Brasil"] },
   // Le Monde Libre controls Le Monde, Courrier international and Le Nouvel Obs.
   'groupe-le-monde': { publisher: "Groupe Le Monde", labels: ["Le Monde", "Le Monde à la une", "Le Monde International", "Courrier international", "Le Nouvel Obs"] },
-  'y-combinator': { publisher: "Y Combinator", labels: ["YC Launches", "Y Combinator Blog"] },
+  'y-combinator': { publisher: "Y Combinator", labels: ["YC News", "Y Combinator Blog"] },
   'yahoo-finance': { publisher: "Yahoo Finance", labels: ["Yahoo Finance", "Yahoo Finance Commodities"] },
   'zdf': { publisher: "ZDF", labels: ["ZDFheute"] },
+  'kalkine': { publisher: "Kalkine Media", labels: [] },
 };
 
 export const PUBLISHER_FAMILIES = Object.freeze(PUBLISHER_FAMILY_DATA);
@@ -310,6 +317,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'korea-times': ['koreatimes.co.kr'],
   'deutschlandradio': ['deutschlandfunk.de'],
   'zdf': ['zdfheute.de', 'zdf.de'],
+  'kalkine': ['kalkine.ca'],
   'dw': ['dw.com'],
   'eia': ['eia.gov'],
   'el-mundo': ['elmundo.es'],
@@ -334,6 +342,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'kitco': ['kitco.com'],
   'kyiv-independent': ['kyivindependent.com'],
   'marketwatch': ['marketwatch.com'],
+  'mehr-news': ['mehrnews.com'],
   'mit-technology-review': ['technologyreview.com'],
   'nbc-news': ['nbcnews.com', 'today.com'],
   'ndtv': ['ndtv.com', 'ndtv.in'],
@@ -341,6 +350,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'washington-post': ['washingtonpost.com'],
   'new-york-times': ['nytimes.com'],
   'new-voice-of-ukraine': ['nv.ua'],
+  'ukrainska-pravda': ['pravda.com.ua'],
   'propublica': ['propublica.org'],
   'the-atlantic': ['theatlantic.com'],
   'channel-4-news': ['channel4.com'],
@@ -430,17 +440,27 @@ for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILY_DATA)) {
 // a curated LABEL always wins over a same-spelling publisher name, so label
 // resolution is unchanged by construction.
 for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILY_DATA)) {
-  const lowerName = entry.publisher.toLowerCase();
-  if (!familyByLowerLabel.has(lowerName)) familyByLowerLabel.set(lowerName, familyId);
+  for (const name of [entry.publisher, ...(entry.aliases ?? [])]) {
+    const lowerName = name.toLowerCase();
+    if (!familyByLowerLabel.has(lowerName)) familyByLowerLabel.set(lowerName, familyId);
+  }
+}
+// A folded name two families share names neither of them.
+const familyByFoldedName = new Map();
+for (const [lowerName, familyId] of familyByLowerLabel) {
+  const folded = foldPublisherName(lowerName);
+  const claimed = familyByFoldedName.get(folded);
+  familyByFoldedName.set(folded, claimed === undefined || claimed === familyId ? familyId : null);
 }
 
 /**
  * Family id for one feed label. Returns '' for a blank/non-string label so
  * callers can drop it rather than counting an empty source.
  *
- * The lowercase fallback still resolves to a CURATED label — it absorbs
- * casing drift between the client and server feed configs without ever
- * fuzzy-matching an unknown label into a family.
+ * The case and article fallbacks still resolve to a CURATED name — they absorb
+ * casing drift between the client and server feed configs and a leading "The"
+ * an aggregator adds or drops, without ever fuzzy-matching an unknown label
+ * into a family.
  *
  * @param {unknown} label
  * @returns {string}
@@ -449,15 +469,16 @@ export function publisherFamilyFor(label) {
   if (typeof label !== 'string') return '';
   const trimmed = label.trim();
   if (trimmed.length === 0) return '';
-  const lower = trimmed.toLowerCase();
-  // The singleton id is lowercased too, or "Brand New Feed" and "brand new
-  // feed" would resolve to two families and manufacture a second publisher out
-  // of one feed whose casing drifted between the client and server configs.
-  // Case-only collisions between genuinely different publishers do not occur
-  // in a feed config, and folding them would fail in the safe direction anyway.
+  const folded = foldPublisherName(trimmed);
+  // The singleton id is folded too, or "Brand New Feed", "brand new feed" and
+  // "The Brand New Feed" would resolve to three families and manufacture extra
+  // publishers out of one outlet whose name drifted between configs and
+  // aggregators. Folding two genuinely different uncurated outlets together
+  // fails in the safe direction: it never invents independence.
   return familyByLabel.get(trimmed)
-    ?? familyByLowerLabel.get(lower)
-    ?? `${SINGLETON_PREFIX}${lower}`;
+    ?? familyByLowerLabel.get(trimmed.toLowerCase())
+    ?? familyByFoldedName.get(folded)
+    ?? `${SINGLETON_PREFIX}${folded}`;
 }
 
 /**

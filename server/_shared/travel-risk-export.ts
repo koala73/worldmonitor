@@ -136,7 +136,7 @@ export function createTravelRiskExportHandler(deps: TravelRiskExportDeps): (requ
     // verification, not about the plan. `getEntitlements` returns that as a
     // marker rather than throwing, so it must be told apart before the plan is
     // judged: a paying customer is never shown an upgrade message for an
-    // outage. The one terminal member, a provider-confirmed lapse, stays a 403.
+    // outage. The terminal members, a provider-confirmed lapse or pause, stay a 403.
     const verification = classifyBillingVerification(entitlement as never)
       ?? (entitlement || deps.backendConfigured() ? null : unverifiableEntitlementDenial());
     if (verification) return renderBillingVerificationDenial(verification, cors);

@@ -756,7 +756,7 @@ export class SearchManager implements AppModule {
           return allowPendingPanelTarget || this.hasLivePanelTarget(panelId);
         }
         if (premium) return true;
-        return !isFreePanelCapCounted(panelId)
+        return !isFreePanelCapCounted(panelId, effective)
           || countFreePanelCapUsage(this.ctx.panelSettings) < FREE_MAX_PANELS;
       }
       case 'layer':

@@ -75,3 +75,23 @@ export function generateSnapshotId() {
 export function unwrapEnvelope(parsed) {
   return stripSeedEnvelope(parsed);
 }
+
+const BALANCE_PRESSURE_AXES = ['coercive_pressure', 'domestic_fragility', 'capital_stress', 'energy_vulnerability'];
+const BALANCE_BUFFER_AXES = ['alliance_cohesion', 'maritime_access', 'energy_leverage'];
+
+/**
+ * Render a balance vector for an LLM prompt with each axis's direction, so a
+ * high buffer (for example maritime_access, open sea lanes) is not read as
+ * high tension.
+ *
+ * @param {Record<string, unknown>} balance
+ * @returns {string}
+ */
+export function formatBalanceForPrompt(balance) {
+  const axes = (keys) => keys.map((k) => `${k}=${num(balance?.[k]).toFixed(2)}`).join(' ');
+  return [
+    `PRESSURES (0-1, higher = more risk): ${axes(BALANCE_PRESSURE_AXES)}`,
+    `BUFFERS (0-1, higher = less risk, offsets pressures): ${axes(BALANCE_BUFFER_AXES)}`,
+    `net_balance=${num(balance?.net_balance).toFixed(2)} (buffer mean minus pressure mean, positive = buffers outweigh pressures)`,
+  ].join(' | ');
+}

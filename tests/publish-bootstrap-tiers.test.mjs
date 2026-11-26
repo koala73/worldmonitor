@@ -23,6 +23,11 @@ const TEST_ENV = {
   UPSTASH_REDIS_REST_URL: 'https://redis.example.test',
   UPSTASH_REDIS_REST_TOKEN: 'redis-token',
 };
+const TEST_KV_CONFIG = {
+  accountId: 'acct-test',
+  namespaceId: 'ns-test',
+  token: 'kv-token',
+};
 
 function pipelineResponse(results, status = 200) {
   return new Response(JSON.stringify(results), {
@@ -231,20 +236,22 @@ describe('canadaAlerts cutover fallback in published envelopes', () => {
 });
 
 describe('publishBootstrapTier', () => {
-  it('writes one fresh tier envelope to the exact object key', async () => {
+  it('writes one fresh tier envelope to the exact KV tier key', async () => {
     const writes = [];
     const result = await publishBootstrapTier('fast', {
       env: TEST_ENV,
       now: () => 1_721_000_000_000,
       resolveRegistry: () => ({ fast: { example: 'example:key' } }),
       fetchFn: async () => pipelineResponse([raw({ answer: 42 })]),
-      resolveStorage: () => ({ mode: 's3' }),
-      putObject: async (...args) => { writes.push(args); return { bytes: 10 }; },
+      resolveKvStorage: () => TEST_KV_CONFIG,
+      putKv: async (...args) => { writes.push(args); return { key: 'fast', bytes: 10 }; },
     });
 
     assert.equal(result.tier, 'fast');
+    assert.equal(result.bytes, 10);
+    assert.equal(Object.hasOwn(result, 'kv'), false);
     assert.equal(writes.length, 1);
-    assert.equal(writes[0][1], 'fast.json');
+    assert.equal(writes[0][1], 'fast');
     assert.deepEqual(writes[0][2], {
       schemaVersion: BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION,
       generatedAt: 1_721_000_000_000,
@@ -265,8 +272,8 @@ describe('publishBootstrapTier', () => {
       env: TEST_ENV,
       resolveRegistry: () => ({ fast: { iranEvents: 'conflict:iran-events:v1' } }),
       fetchFn: async () => pipelineResponse([raw({ events: [] })]),
-      resolveStorage: () => ({ mode: 's3' }),
-      putObject: async () => ({ bytes: 10 }),
+      resolveKvStorage: () => TEST_KV_CONFIG,
+      putKv: async () => ({ key: 'fast', bytes: 10 }),
     });
     assert.equal(result.keyBytes.iranEvents, Buffer.byteLength(JSON.stringify({ events: [] }), 'utf8'));
     assert.deepEqual(result.volume.alerts, []);
@@ -281,8 +288,8 @@ describe('publishBootstrapTier', () => {
       env: TEST_ENV,
       resolveRegistry: () => ({ fast: registry }),
       fetchFn: async () => pipelineResponse(values.map(raw)),
-      resolveStorage: () => ({ mode: 's3' }),
-      putObject: async () => ({ bytes: 100 }),
+      resolveKvStorage: () => TEST_KV_CONFIG,
+      putKv: async () => ({ key: 'fast', bytes: 100 }),
     });
 
     assert.equal(result.largestKeys.length, 5);
@@ -307,8 +314,8 @@ describe('publishBootstrapTier', () => {
       fetchFn: async () => pipelineResponse([raw({
         events: [{ id: 'nhc-AL04-3', conePolygon: [{ points }] }],
       })]),
-      resolveStorage: () => ({ mode: 's3' }),
-      putObject: async (...args) => { writes.push(args); return { bytes: 10 }; },
+      resolveKvStorage: () => TEST_KV_CONFIG,
+      putKv: async (...args) => { writes.push(args); return { key: 'slow', bytes: 10 }; },
     });
 
     const published = writes[0][2].payload.data.naturalEvents.events[0];
@@ -324,8 +331,8 @@ describe('publishBootstrapTier', () => {
       env: TEST_ENV,
       resolveRegistry: () => ({ slow: { example: 'example:key' } }),
       fetchFn: async () => pipelineResponse([], 503),
-      resolveStorage: () => ({ mode: 's3' }),
-      putObject: async () => { puts += 1; },
+      resolveKvStorage: () => TEST_KV_CONFIG,
+      putKv: async () => { puts += 1; },
     }), /pipeline/i);
     assert.equal(puts, 0);
   });
@@ -403,7 +410,6 @@ describe('runPublisherLoop', () => {
           ceilingBytes: 1,
           alerts: [{ kind: 'tier-ceiling', tier, bytes: 99, limitBytes: 1 }],
         },
-        kv: { skipped: true },
       }),
       now: () => 0,
       sleep: async () => {},
@@ -415,6 +421,7 @@ describe('runPublisherLoop', () => {
       },
     });
     assert.equal(infos.length, 1);
+    assert.match(String(infos[0][0]), /\[bootstrap-kv\]/);
     assert.equal(warns.length, 1);
     assert.match(String(warns[0][0]), /\[bootstrap-volume\]/);
     assert.equal(warns[0][1].alerts[0].kind, 'tier-ceiling');
@@ -427,6 +434,7 @@ describe('publisher deployment boundaries', () => {
     assert.match(source, /from '\.\.\/shared\/bootstrap-tier-keys\.js'/);
     assert.match(source, /from '\.\.\/shared\/canada-alerts-cutover\.js'/);
     assert.match(source, /from '\.\.\/shared\/bootstrap-tier-envelope\.js'/);
+    assert.doesNotMatch(source, /from '\.\/_r2-storage\.mjs'/);
     assert.doesNotMatch(source, /from ['"]\.\.\/(?:api|src|server|workers)\//);
   });
 

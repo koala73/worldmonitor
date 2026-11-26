@@ -44,7 +44,9 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
-import { resolveSessionUserId } from '../../server/_shared/auth-session';
+import { resolveVerifiedSessionUserId } from '../../server/_shared/auth-session';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../_rate-limit.js';
 import { invalidateProMcpTokenCache } from '../../server/_shared/pro-mcp-token';
 
 /** Convex internal HTTP-action call timeout. Mirrors U2's pro-mcp-token.ts. */
@@ -54,6 +56,8 @@ const CONVEX_TIMEOUT_MS = 3_000;
 export interface RevokeDeps {
   /** Resolves the Clerk userId from the request's Bearer header. Null = unauth. */
   resolveUserId: (req: Request) => Promise<string | Response | null>;
+  /** Charges the caller's per-user budget; a Response means refused. Runs before any backend work. */
+  rateLimit: (req: Request, userId: string, headers: Record<string, string>) => Promise<Response | null>;
   /**
    * Calls Convex `/api/internal-revoke-pro-mcp-token` server-to-server.
    * Returns the discriminated outcome:
@@ -147,6 +151,8 @@ export async function revokeHandler(req: Request, deps: RevokeDeps): Promise<Res
       headers: jsonHeaders,
     });
   }
+  const limited = await deps.rateLimit(req, userId, jsonHeaders);
+  if (limited) return limited;
 
   let body: unknown;
   try {
@@ -214,7 +220,10 @@ export async function revokeHandler(req: Request, deps: RevokeDeps): Promise<Res
 
 export default async function handler(req: Request): Promise<Response> {
   return revokeHandler(req, {
-    resolveUserId: resolveSessionUserId,
+    resolveUserId: resolveVerifiedSessionUserId,
+    rateLimit: (request, userId, headers) => checkRateLimit(request, headers, {
+      scope: 'mcp-revoke', identifier: `user:${userId}`, limit: 20, window: '60 s',
+    }),
     convexRevoke: callConvexRevoke,
     invalidateCache: invalidateProMcpTokenCache,
   });

@@ -35,7 +35,7 @@ const CANONICAL_KEY = 'health:disease-outbreaks:v1';
 const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold standard; survives 2 consecutive missed runs
 
 // WHO Disease Outbreak News JSON API (RSS at /feeds/entity/csr/don/en/rss.xml is dead since 2024)
-const WHO_DON_API = 'https://www.who.int/api/emergencies/diseaseoutbreaknews?sf_provider=dynamicProvider372&sf_culture=en&$orderby=PublicationDateAndTime%20desc&$select=Title,ItemDefaultUrl,PublicationDateAndTime&$top=30';
+const WHO_DON_API = 'https://www.who.int/api/emergencies/diseaseoutbreaknews?sf_provider=dynamicProvider372&sf_culture=en&$orderby=PublicationDateAndTime%20desc&$select=Title,ItemDefaultUrl,PublicationDateAndTime,Summary&$top=30';
 // CDC Health Alert Network RSS (US-centric; supplements WHO for North American events)
 const CDC_FEED = 'https://tools.cdc.gov/api/v2/resources/media/132608.rss';
 // ECDC epidemiological updates: outbreak-only items (Ebola, MERS, hantavirus,
@@ -63,6 +63,7 @@ const CIDRAP_TOPIC_IDS = [64, 102, 49, 230556, 58, 78, 61, 90, 66, 88];
 const THINKGLOBALHEALTH_BUNDLE = 'https://raw.githubusercontent.com/thinkglobalhealth/disease_tracker/master/index_bundle.js';
 // Keep alerts within this many days; avoids flooding the map with old events
 const TGH_LOOKBACK_DAYS = 90;
+const TGH_REPEAT_WINDOW_MS = 7 * 86400_000;
 
 const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
 
@@ -217,8 +218,23 @@ export async function fetchDiseaseOutbreaks() {
 
   // TGH items are already disease-curated with exact lat/lng — skip keyword filter,
   // preserve all geo-located alerts, and don't collapse by disease+country.
-  // The bundle repeats some rows verbatim; those share an id and publish once.
-  const tghOutbreaks = [...new Map(tghItems.map(mapItem).map((o) => [o.id, o])).values()];
+  // Outlets repeat one report: rows with the same disease, point and case count
+  // (more than one case) within a week of the next newer such row are one
+  // event and publish once, newest first. Rows the bundle repeats verbatim
+  // share an id.
+  const seenTghIds = new Set();
+  const newestTghEvent = new Map();
+  const tghOutbreaks = tghItems.map(mapItem)
+    .sort((a, b) => b.publishedAt - a.publishedAt)
+    .filter((o) => {
+      if (seenTghIds.has(o.id)) return false;
+      seenTghIds.add(o.id);
+      if (!(o.cases > 1)) return true;
+      const key = `${o.disease}|${o.lat}|${o.lng}|${o.cases}`;
+      const newer = newestTghEvent.get(key);
+      newestTghEvent.set(key, o.publishedAt);
+      return newer == null || newer - o.publishedAt > TGH_REPEAT_WINDOW_MS;
+    });
 
   const diseaseKeywords = ['outbreak', 'disease', 'virus', 'fever', 'flu', 'ebola', 'mpox',
     'cholera', 'dengue', 'measles', 'polio', 'plague', 'avian', 'h5n1', 'epidemic',
@@ -253,11 +269,9 @@ export async function fetchDiseaseOutbreaks() {
     return true;
   });
 
-  // TGH first (precise geo), then WHO/CDC/ONT (already sorted above before dedup).
-  const tghSorted = tghOutbreaks.sort((a, b) => b.publishedAt - a.publishedAt);
-
+  // TGH first (precise geo), then WHO/CDC/ONT; both are sorted newest first.
   // Up to 150 TGH geo-pinned alerts + up to 50 from other authoritative sources.
-  const outbreaks = [...tghSorted.slice(0, 150), ...dedupedOthers.slice(0, 50)];
+  const outbreaks = [...tghOutbreaks.slice(0, 150), ...dedupedOthers.slice(0, 50)];
 
   // Stamp the editorial-classifier version onto the wire payload so the field
   // bumps observably when ALERT_LEVEL_METHODOLOGY_VERSION moves per the change

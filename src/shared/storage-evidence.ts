@@ -39,7 +39,7 @@ export interface StorageEvidenceInput {
 // Same 14-day staleness window as pipelines — registry fields refreshed
 // weekly by seed-storage-facilities.mjs, anything older means the cron is
 // broken rather than the asset's state has drifted.
-const EVIDENCE_STALENESS_DAYS = 14;
+export const STORAGE_EVIDENCE_STALENESS_DAYS = 14;
 
 /**
  * Derive the public badge for a single storage facility.
@@ -58,7 +58,7 @@ const EVIDENCE_STALENESS_DAYS = 14;
  *   6. physical_state = "under_construction" OR "unknown" OR evidence missing
  *      → "disputed"
  *
- * Freshness guard: if lastEvidenceUpdate is older than EVIDENCE_STALENESS_DAYS,
+ * Freshness guard: if lastEvidenceUpdate is older than STORAGE_EVIDENCE_STALENESS_DAYS,
  * a non-"operational" badge drops to "disputed".
  */
 export function deriveStoragePublicBadge(
@@ -67,7 +67,7 @@ export function deriveStoragePublicBadge(
 ): StoragePublicBadge {
   if (!evidence) return 'disputed';
 
-  const stale = isStale(evidence.lastEvidenceUpdate, nowMs);
+  const stale = isStorageEvidenceStale(evidence.lastEvidenceUpdate, nowMs);
   const physical = evidence.physicalState;
 
   if (physical === 'offline') {
@@ -102,10 +102,10 @@ export function deriveStoragePublicBadge(
   return 'disputed';
 }
 
-function isStale(iso: string | undefined, nowMs: number): boolean {
+export function isStorageEvidenceStale(iso: string | undefined, nowMs: number = Date.now()): boolean {
   if (!iso) return true;
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return true;
   const ageDays = (nowMs - t) / (1000 * 60 * 60 * 24);
-  return ageDays > EVIDENCE_STALENESS_DAYS;
+  return ageDays > STORAGE_EVIDENCE_STALENESS_DAYS;
 }

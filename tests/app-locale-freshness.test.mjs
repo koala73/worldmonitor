@@ -52,7 +52,9 @@ const ENGLISH_CEILING = {
   // de 278 -> 166, ru 377 -> 61, uk 2708 -> 95: copied English prose in those
   // catalogues was translated. What remains is brands, typed command examples,
   // acronyms, and words spelled the same in that language.
-  ar: 359, bg: 250, cs: 292, de: 173, el: 359, es: 433,
+  // de 173 -> 174: the intel-history domain badge "Cyber" (#11245) is the
+  // German term the catalogue already uses for its cyber filter and layer.
+  ar: 359, bg: 250, cs: 292, de: 174, el: 359, es: 433,
   // fr 425 -> 426: "Concentration" (supply vulnerability) and "Normal"
   // (divergence regime) are spelled identically in French. Both are correct
   // translations, not placeholder copies.

@@ -74,6 +74,7 @@ import { raceWebMcpAbort, throwIfWebMcpAborted } from '@/services/webmcp';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
 import {
+  briefContextHeadlines,
   buildBriefSourceContextLines,
   collectBriefSources,
   type BriefSource,
@@ -817,7 +818,7 @@ export class CountryIntelManager implements AppModule {
 
         const groundingNews = filteredNews.slice(0, 15);
         const briefSources = collectBriefSources(groundingNews, 6);
-        const headlines = groundingNews.map((n) => n.title);
+        const headlines = briefContextHeadlines(groundingNews);
         if (headlines.length) context.headlines = headlines;
         if (briefSources.length) context.briefSources = briefSources;
         const briefHeadlines = (context.headlines as string[] | undefined) || [];

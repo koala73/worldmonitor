@@ -235,6 +235,16 @@ same VM and read CPU busy from `/proc/stat`:
   per-spec medians, and repacks with that greedy search. Specs added by hand
   had grown the total to 1607 test-seconds and the split to
   520/231/460/396. The script moved seven specs for 405/398/399/405.
+- **Most of the leftover spread is the runner, so balance on medians only.**
+  On 24 runs in November 2026, a shard's observed test-seconds ran 0.75x
+  (p10) to 1.27x (p90) of its median prediction, and the shard's runner
+  explained 77% of each spec's deviation: specs on one shard slow down
+  together. A packer that lowered the per-run largest shard looked 81
+  test-seconds better when re-scored on old runs, but only 15 better once
+  each old shard's runner ratio was kept. It mostly fitted runner luck and was
+  dropped. Rerun the median repack when a shard drifts: on 21 November 2026
+  it took the largest median shard from 544 to 455 test-seconds, and with
+  runner noise kept it lowered the expected slowest shard from 594 to 564.
 - **Removing sleeps does not free the seconds they held on CI.** Locally the
   flag set 0.3-0.6s after the first digest. On a runner each 8s wait saved only
   1-5s; the flag time there was not logged. The spec's other tests got slower (3.9s to

@@ -316,7 +316,7 @@ export class NationalDebtPanel extends Panel {
           <div class="debt-sort-tabs">
             <button class="debt-tab${this.sortMode === 'total' ? ' active' : ''}" data-sort="total">Total Debt</button>
             <button class="debt-tab${this.sortMode === 'gdp-ratio' ? ' active' : ''}" data-sort="gdp-ratio">Debt/GDP</button>
-            <button class="debt-tab${this.sortMode === 'growth' ? ' active' : ''}" data-sort="growth">1Y Growth</button>
+            <button class="debt-tab${this.sortMode === 'growth' ? ' active' : ''}" data-sort="growth">Ratio 1Y</button>
           </div>
           <input class="debt-search" type="text" placeholder="Search country..." value="${escapeHtml(this.searchQuery)}">
         </div>
@@ -364,7 +364,7 @@ export class NationalDebtPanel extends Panel {
           <div class="debt-name">${name}</div>
           <div class="debt-meta">
             <span class="debt-ratio">${ratioStr} of GDP</span>
-            <span class="debt-growth ${growthClass}">${growthStr} year over year</span>
+            <span class="debt-growth ${growthClass}">${growthStr} debt/GDP YoY</span>
           </div>
         </div>
         <div class="debt-ticker" data-iso3="${escapeHtml(entry.iso3)}">${escapeHtml(debtStr)}</div>

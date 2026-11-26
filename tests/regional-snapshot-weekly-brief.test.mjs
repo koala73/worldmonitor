@@ -63,7 +63,16 @@ describe('buildBriefPrompt', () => {
   it('includes region label and balance axes in the prompt', () => {
     const { userPrompt } = buildBriefPrompt(mena, snapshotFixture, transitionsFixture);
     assert.match(userPrompt, /Middle East/);
-    assert.match(userPrompt, /coercive=0\.72/);
+    assert.match(userPrompt, /coercive_pressure=0\.72/);
+  });
+
+  it('presents maritime access as a buffer where a higher value means lower risk', () => {
+    const { userPrompt } = buildBriefPrompt(mena, snapshotFixture, transitionsFixture);
+    const buffers = userPrompt.match(/BUFFERS \(([^)]*)\): ([^|\n]*)/);
+    assert.ok(buffers, 'balance names its buffer axes');
+    assert.match(buffers[1], /higher.*less risk/i);
+    assert.match(buffers[2], /maritime_access=\d\.\d\d/);
+    assert.doesNotMatch(userPrompt, /\bmaritime=/);
   });
 
   it('includes regime transitions', () => {

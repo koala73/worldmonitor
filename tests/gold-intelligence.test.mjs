@@ -143,6 +143,26 @@ describe('gold reserve quantities through HTTP and MCP', () => {
     assert.deepEqual(cbReserves.topBuyers12m, []);
   });
 
+  it('drops non-country holders from snapshots cached before the seed filter', async () => {
+    seedQuotes([quote('GC=F', 3200)]);
+    const payload = reservesFixture('IRFCLDT1_IRFCL56_USD');
+    payload.topHolders.unshift({ iso3: 'G163', name: 'G163', tonnes: 0, pctOfReserves: 0 });
+    cacheStore.set(GOLD_CB_RESERVES_KEY, payload);
+    const { cbReserves } = await callTool();
+    assert.deepEqual(cbReserves.topHolders.map(h => h.iso3), ['CHN', 'FRA', 'ITA', 'DEU', 'USA']);
+  });
+
+  it('drops non-country movers from ounce snapshots cached before the seed filter', async () => {
+    seedQuotes([quote('GC=F', 3200)]);
+    const payload = reservesFixture('IRFCLDT1_IRFCL56_FTO');
+    payload.topBuyers12m.unshift({ iso3: 'G163', name: 'G163', deltaTonnes12m: 9 });
+    payload.topSellers12m = [{ iso3: 'G163', name: 'G163', deltaTonnes12m: -9 }, { iso3: 'TUR', name: 'Turkey', deltaTonnes12m: -2 }];
+    cacheStore.set(GOLD_CB_RESERVES_KEY, payload);
+    const { cbReserves } = await callTool();
+    assert.ok(!cbReserves.topBuyers12m.some(m => m.iso3 === 'G163'));
+    assert.deepEqual(cbReserves.topSellers12m.map(m => m.iso3), ['TUR']);
+  });
+
   it('keeps a missing reserves snapshot absent without making valid quotes unavailable', async () => {
     seedQuotes([quote('GC=F', 3200)]);
     const result = await callTool();
@@ -261,6 +281,22 @@ describe('getGoldIntelligence', () => {
     assert.equal(cot.producerSwap.shortPositions, '60000');
     assert.ok(Math.abs(cot.producerSwap.netPct - ((50000 - 60000) / 110000) * 100) < 1e-9, 'dealer net is derived from long and short');
     assert.equal(cot.openInterest, '0', 'legacy payloads carry no open interest');
+  });
+
+  it('never reports a next COT release that is already past', async () => {
+    seedQuotes([quote('GC=F', 3200)]);
+    const today = new Date().toISOString().slice(0, 10);
+    const gc = (nextReleaseDate) => ({ instruments: [{ code: 'GC', name: 'Gold', reportDate: '2026-11-17', nextReleaseDate }] });
+    cacheStore.set(COT_KEY, gc('2026-11-20'));
+    const { cot } = await call();
+    assert.ok(cot.nextReleaseDate >= today, `${cot.nextReleaseDate} is before ${today}`);
+    assert.equal(new Date(`${cot.nextReleaseDate}T00:00:00Z`).getUTCDay(), 5, 'stays on Fridays');
+    cacheStore.set(COT_KEY, gc('3026-01-06'));
+    assert.equal((await call()).cot.nextReleaseDate, '3026-01-06', 'a future Friday is kept');
+    cacheStore.set(COT_KEY, gc('3026-01-05'));
+    assert.equal((await call()).cot.nextReleaseDate, '3026-01-06', 'a Thursday stamp moves to Friday');
+    cacheStore.set(COT_KEY, gc(''));
+    assert.equal((await call()).cot.nextReleaseDate, '');
   });
 
   it('partial availability: prices render without COT, and COT renders without the enrichment layer', async () => {

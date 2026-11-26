@@ -2,16 +2,20 @@
 
 const { gateRelayStoryLink } = require('./publisher-link-relay-gate.cjs');
 const NEWS_CATALOG = require('../../shared/news-catalog.json');
+const { headlineInOtherLanguage } = require('./headline-language.cjs');
 
 // The relay classifies the English digest, which also carries local-language
 // outlets (fetchInAllLanguages). Their headlines are labelled for the
 // dashboard but must not alert: subscribers got each story once per language.
 // A Google News query in English returns English headlines whatever `lang`
-// routes the feed to, so those keep alerting.
+// routes the feed to, so those keep alerting. `headlineLang` names the
+// language of an outlet kept untagged so the English dashboard shows it.
 const OTHER_LANGUAGE_FEEDS = (() => {
   const english = new Set();
   const other = new Set();
-  const inEnglish = feed => !feed.lang || feed.lang === 'en' || /^https:\/\/news\.google\.com\/.*[?&]hl=en\b/.test(feed.url);
+  const inEnglish = feed => feed.headlineLang
+    ? feed.headlineLang === 'en'
+    : !feed.lang || feed.lang === 'en' || /^https:\/\/news\.google\.com\/.*[?&]hl=en\b/.test(feed.url);
   for (const feed of NEWS_CATALOG.feeds) (inEnglish(feed) ? english : other).add(feed.name);
   return new Set([...other].filter(name => !english.has(name)));
 })();
@@ -85,12 +89,17 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
       if (item.publishedAt && item.publishedAt < oldestAllowedAt) continue;
       // A copy that can alert replaces one that cannot. A served headline
       // stays served, so it keeps its label key and its place in the summary.
-      const otherLanguage = OTHER_LANGUAGE_FEEDS.has(item.source);
+      // The feed tag can be missing or wrong, and a wire feed mixes languages.
+      const otherLanguage = OTHER_LANGUAGE_FEEDS.has(item.source) || headlineInOtherLanguage(item.title);
       const prior = candidates.get(item.title);
       if (!prior || (prior.otherLanguage && !otherLanguage)) {
         candidates.set(item.title, {
           // #10977: score on the publisher a topic feed carries, not the feed.
           source: item.originPublisher || item.source || variant,
+          // The tier key can name another edition of the publisher ("BBC
+          // Middle East" for a BBC Hausa story). The alert shows the name the
+          // aggregator gave, as the dashboard does.
+          sourceLabel: (item.originPublisher && item.publisherName) || item.originPublisher || item.source || variant,
           publishedAt: item.publishedAt ?? now,
           corroborationCount: item.corroborationCount ?? 1,
           // #8398: relay-emitted rss_alert events must not carry a link

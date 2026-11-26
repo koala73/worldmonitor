@@ -53,7 +53,8 @@ after(() => rmSync(outDir, { recursive: true, force: true }));
 describe('/monitor-the-situation/ build', () => {
   it('publishes the page at its canonical URL with one live section per registry entry', () => {
     assert.match(html, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/monitor-the-situation\/">/);
-    assert.match(html, /<h1>Monitor the situation<\/h1>/);
+    assert.match(html, /<h1>Monitor the situation with World Monitor<\/h1>/);
+    assert.match(html, /<title>Monitor the Situation: World Monitor Live Conflict Board<\/title>/);
     const hubRows = buildChokepointHubRows(data.chokepoints, data.livePulse);
     for (const section of SITUATION_SECTIONS) {
       const rendered = sectionOf(html, section);
@@ -91,6 +92,35 @@ describe('/monitor-the-situation/ build', () => {
     for (const crisis of figures) {
       const pulse = data.livePulse.crises[crisis.slug];
       assert.ok(html.includes(`${pulse.eventsTotal} recorded events and ${pulse.fatalities} fatalities`), `${crisis.slug} figure`);
+    }
+  });
+
+  it('names the publisher and every region and tracker it covers before the first section', () => {
+    // An answer engine that read only the opening credited a product called
+    // "Monitor the Situation" and could not confirm Sudan or Sahel coverage.
+    const coverage = html.match(/<p class="coverage">([\s\S]*?)<\/p>/)?.[1] ?? '';
+    assert.ok(html.indexOf('<p class="coverage">') < html.indexOf('<h2'), 'coverage is stated above the first section');
+    assert.match(coverage, /^World Monitor tracks /);
+    for (const region of CRISIS_REGIONS) {
+      assert.ok(coverage.includes(region.label), `coverage names ${region.label}`);
+    }
+    for (const crisis of data.crises) {
+      assert.ok(coverage.includes(`href="/crises/${crisis.slug}/">${tpl.escapeHtml(crisis.shortTitle)}</a>`), `coverage links ${crisis.slug}`);
+    }
+    const description = html.match(/<meta name="description" content="([^"]*)"/)?.[1] ?? '';
+    assert.match(description, /World Monitor/);
+    assert.doesNotMatch(description, /\bthe the\b/, 'each region name supplies its own article');
+    for (const region of CRISIS_REGIONS) {
+      assert.ok(description.includes(region.label), `description names ${region.label}`);
+    }
+    const faqs = [...html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((match) => JSON.parse(match[1]))
+      .flat()
+      .find((node) => node['@type'] === 'FAQPage');
+    const covered = faqs.mainEntity.find((entry) => entry.name === 'Which conflicts does World Monitor track?');
+    assert.ok(covered, 'the FAQ answers which conflicts are covered');
+    for (const crisis of data.crises) {
+      assert.ok(covered.acceptedAnswer.text.includes(crisis.shortTitle), `FAQ names ${crisis.shortTitle}`);
     }
   });
 

@@ -92,7 +92,7 @@ export async function fetchAvPhysicalCommodity(yahooSymbol, apiKey) {
  *
  * @param {string} fromCurrency  e.g. 'SAR', 'EUR', 'JPY'
  * @param {string} apiKey
- * @returns {Promise<{ price: number; change: number; sparkline: number[] } | null>}
+ * @returns {Promise<{ price: number; change: number; sparkline: number[]; priceAt?: number } | null>}
  */
 export async function fetchAvFxDaily(fromCurrency, apiKey) {
   if (fromCurrency === 'USD') return { price: 1.0, change: 0, sparkline: [] };
@@ -111,7 +111,8 @@ export async function fetchAvFxDaily(fromCurrency, apiKey) {
     if (!Number.isFinite(latest) || latest <= 0) return null;
     const change = (Number.isFinite(prev) && prev > 0) ? ((latest - prev) / prev) * 100 : 0;
     const sparkline = dates.slice(0, 7).map(d => parseFloat(series[d]['4. close'])).filter(Number.isFinite).reverse();
-    return { price: latest, change, sparkline };
+    const priceAt = Date.parse(dates[0]);
+    return { price: latest, change, sparkline, ...(Number.isFinite(priceAt) && { priceAt }) };
   } catch (err) {
     console.warn(`  [AV] FX_DAILY/${fromCurrency} parse error: ${err.message}`);
     return null;

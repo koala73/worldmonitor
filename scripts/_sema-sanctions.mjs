@@ -72,9 +72,12 @@ function xmlText(block, field) {
   return '';
 }
 
+function uniqueOrdered(values) {
+  return [...new Set(values.filter(Boolean).map((v) => String(v).trim()).filter(Boolean))];
+}
+
 function uniqueSorted(values) {
-  return [...new Set(values.filter(Boolean).map((v) => String(v).trim()).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b));
+  return uniqueOrdered(values).sort((a, b) => a.localeCompare(b));
 }
 
 export function englishCountryLabel(raw) {
@@ -413,7 +416,8 @@ export function mergeSanctionEntries(parts = {}) {
       ...entry,
       sourceLists: uniqueSorted(entry.sourceLists || []),
       programs: uniqueSorted(entry.programs || []),
-      _aliases: uniqueSorted(entry._aliases || []),
+      // OFAC lists a primary name's other scripts first; the screening index keeps only the leading aliases.
+      _aliases: uniqueOrdered(entry._aliases || []),
       _identifiers: uniqueSorted(entry._identifiers || []),
     };
   }
@@ -461,7 +465,7 @@ export function mergeSanctionEntries(parts = {}) {
     hit.programs = uniqueSorted([...(hit.programs || []), ...(entry.programs || [])]);
     // Nothing may vanish from a legal list. Carry the absorbed row's own name
     // and id forward so it stays findable and traceable to its schedule item.
-    hit._aliases = uniqueSorted([
+    hit._aliases = uniqueOrdered([
       ...(hit._aliases || []),
       ...(entry._aliases || []),
       ...(entry.name && normalizeName(entry.name) !== normalizeName(hit.name) ? [entry.name] : []),

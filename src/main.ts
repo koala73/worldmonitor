@@ -637,9 +637,10 @@ installFetchFailureAttribution();
 installRuntimeFetchPatch();
 // In web production, route RPC calls through api.worldmonitor.app (Cloudflare edge).
 installWebApiRedirect();
-// Force-reload tabs running a stale bundle (catches the class of bug where
-// users keep a tab open across a wire-shape change). Skips when build-hash
-// is the 'dev' marker.
+// Update tabs running a stale bundle. A deploy that changes CLIENT_COMPAT
+// force-reloads them (the class of bug where users keep a tab open across a
+// wire-shape change); any other deploy waits until the tab is hidden and
+// quiet. Skips when build-hash is the 'dev' marker.
 installStaleBundleCheck();
 loadDesktopSecrets().catch(() => {});
 

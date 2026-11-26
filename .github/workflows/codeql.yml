@@ -44,12 +44,12 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: matrix.language == 'go'
         with:
           go-version-file: sdk/go/go.mod
           cache: false
-      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+      - uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
@@ -60,9 +60,16 @@ jobs:
           # Generated upstream @vercel/og + satori bundle (scripts/vendor-vercel-og.mjs).
           # Its library internals re-raise ~22 alerts on every re-vendor; the generator
           # script and our patched vendor copies (braces, stream-json) stay scanned.
+          # Test code never ships: fetch stubs and assertion regexes raised about half of
+          # all dismissed alerts, every one a false positive. Fixtures read by scripts are
+          # data, not code, so skipping tests/ hides no shipped path.
           config: |
             paths-ignore:
               - vendor/vercel-og/dist
-      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+              - tests
+              - e2e
+              - '**/__tests__'
+              - '**/*.test.*'
+      - uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
         with:
           category: /language:${{ matrix.language }}

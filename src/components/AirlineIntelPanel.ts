@@ -17,7 +17,7 @@ import {
     type DatePrice,
 } from '@/services/aviation';
 import { aviationWatchlist } from '@/services/aviation/watchlist';
-import { flightBoardTime } from '@/services/aviation/board-time';
+import { formatFlightBoardTime } from '@/services/aviation/board-time';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { Panel } from './Panel';
@@ -477,14 +477,14 @@ export class AirlineIntelPanel extends Panel {
         }
         const rows = view.rows.map(({ item: f, ...row }) => {
             const color = STATUS_BADGE[f.status] ?? '#6b7280';
-            const when = flightBoardTime(f, this.flightsAirport);
             return `
         <div class="flight-row">
           <div class="flight-num">${escapeHtml(f.flightNumber)}</div>
           <div class="flight-route">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}${scopeTagHtml(row)}</div>
-          <div class="flight-time">${fmtTime(when)}</div>
+          <div class="flight-time">${escapeHtml(formatFlightBoardTime(f, this.flightsAirport))}</div>
           <div class="flight-delay" style="color:${f.delayMinutes > 0 ? '#f97316' : '#aaa'}">${f.delayMinutes > 0 ? `+${f.delayMinutes}m` : ''}</div>
           <div class="flight-status" style="color:${color}">${escapeHtml(f.status)}</div>
+          ${f.codeshares.length ? `<div class="flight-codeshares">${escapeHtml(f.codeshares.join(' · '))}</div>` : ''}
         </div>`;
         }).join('');
         this.setTrustedContent(trustedHtml(`<div class="flights-list">${rows}</div>`, "legacy direct innerHTML migration"));

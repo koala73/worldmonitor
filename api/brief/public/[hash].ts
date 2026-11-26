@@ -24,6 +24,8 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 import { readRawJsonFromUpstash } from '../../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../../_rate-limit.js';
+// @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
 import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
 import { briefFontPlatform } from '../../../server/_shared/brief-font-platform.js';
@@ -148,6 +150,13 @@ export default async function handler(
   const refCode = refCodeRaw && /^[A-Za-z0-9_-]{1,32}$/.test(refCodeRaw)
     ? refCodeRaw
     : undefined;
+
+  // The hash is the only credential, so bound the pointer reads one IP can try.
+  const limited = await checkRateLimit(req, cors, { scope: 'brief-public', limit: 120, window: '60 s' });
+  if (limited) {
+    const retryAfter = limited.headers.get('Retry-After');
+    return htmlResponse(req, limited.status, UNAVAILABLE_PAGE, retryAfter ? { 'Retry-After': retryAfter } : {});
+  }
 
   // Step 1: resolve pointer → {userId, issueSlot}.
   const pointerKey = `${BRIEF_PUBLIC_POINTER_PREFIX}${rawHash}`;

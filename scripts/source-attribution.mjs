@@ -170,6 +170,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     reason: 'The SONABHY tariff page reads its prices from the Strapi CMS its Nuxt state names; the feed reads the same CMS after confirming the page still points to it.',
     reviewReference: 'Issue #10051 fuel-price batch 3',
   }),
+  ibge: Object.freeze({
+    provider: 'sidra.ibge.gov.br',
+    memberHosts: Object.freeze(['sidra.ibge.gov.br', 'apisidra.ibge.gov.br']),
+    reason: 'The IBGE SIDRA table page links the IPCA table whose values the SIDRA API serves.',
+    reviewReference: 'Issue #10837 food-price batch 6',
+  }),
   jodi: Object.freeze({
     provider: 'www.jodidata.org',
     memberHosts: Object.freeze(['www.jodidata.org', 'api.publisher.jodidata.org']),
@@ -266,6 +272,31 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  'catalogue.data.wa.gov.au': {
+    license: "CC-BY-4.0 (FuelWatch Historic Fuel Prices dataset licence on catalogue.data.wa.gov.au, read 2026-11-26; the monthly CSVs are served from warsydprdstafuelwatch.blob.core.windows.net)",
+    attribution: "Credit FuelWatch, Government of Western Australia, FuelWatch Historic Fuel Prices, and link to https://catalogue.data.wa.gov.au/dataset/fuelwatch-historic-fuel-prices; medians across stations and USD conversions are derived values.",
+    status: 'reviewed',
+  },
+  'datos.energia.gob.ar': {
+    license: "CC-BY-4.0 (dataset licence on datos.gob.ar/dataset/precios-en-surtidor, read 2026-11-26)",
+    attribution: "Credit Secretaría de Energía de la Nación (Argentina), Precios en surtidor - Resolución 314/2016, and link to https://datos.energia.gob.ar/dataset/1c181390-5045-475e-94dc-410429be4b17; medians across stations and USD conversions are derived values.",
+    status: 'reviewed',
+  },
+  'transparency.ems.rs': {
+    license: "All rights reserved (AD Elektromreža Srbije site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+    attribution: "Credit Elektromreža Srbije (EMS) transparency platform and link to https://transparency.ems.rs/; hour placement in UTC is derived.",
+    status: 'reviewed',
+  },
+  'www.nosbih.ba': {
+    license: "Copyright footer of the Independent System Operator in Bosnia and Herzegovina, no data licence; reuse cleared by the WorldMonitor owner on 2026-11-26",
+    attribution: "Credit NOS BiH (Independent System Operator in Bosnia and Herzegovina) and link to https://www.nosbih.ba/en/ees/graf-potrosnje/; hour placement in UTC is derived.",
+    status: 'reviewed',
+  },
+  'www.mepso.com.mk': {
+    license: "All rights reserved (MEPSO site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+    attribution: "Credit MEPSO, the North Macedonia transmission system operator, daily information report, and link to https://www.mepso.com.mk/; net cross-border flow is derived.",
+    status: 'reviewed',
+  },
   'release-assets.githubusercontent.com': {
     provider: 'US Restricted Parties feed (Tensorust LLC)',
     license: 'CC BY 4.0 (Creative Commons Attribution 4.0 International)',
@@ -310,9 +341,9 @@ const PROVIDER_OVERRIDES = {
   },
   'www2.moeaea.gov.tw': {
     provider: 'www2.moeaea.gov.tw',
-    license: 'Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed',
-    attribution: 'Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.',
-    status: 'terms-review',
+    license: 'Taiwan government website open data declaration (www2.moeaea.gov.tw/oil111/opendataannouncement, read 2026-11-26): free, non-exclusive, irrevocable reuse including adaptation and redistribution, with attribution',
+    attribution: 'Credit Taiwan MOEA Energy Administration, oil111 fuel price information system (https://www2.moeaea.gov.tw/oil111/); national and county means are survey averages, and USD conversions are derived values.',
+    status: 'reviewed',
   },
   // Food-price publishers (#9892) whose own terms we recorded at onboarding.
   'stat.uz': {
@@ -354,6 +385,16 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Credit the National Statistics Office of Mongolia (www.1212.mn) and link the weekly price table.',
     status: 'terms-review',
   },
+  // Food-price publisher (#11153).
+  'datos.odepa.gob.cl': {
+    provider: 'datos.odepa.gob.cl',
+    license: 'Creative Commons Attribution (CKAN dataset license_id cc-by, read 2026-11-23)',
+    attribution: 'Credit the Oficina de Estudios y Políticas Agrarias (ODEPA), Ministry of Agriculture of Chile, and link the consumer prices dataset on datos.odepa.gob.cl.',
+    status: 'reviewed',
+  },
+  // IBGE SIDRA table page and its API host are one publisher (#10837); the licence is unverified, so terms-review stays.
+  'sidra.ibge.gov.br': { provider: 'sidra.ibge.gov.br', identityGroup: 'ibge' },
+  'apisidra.ibge.gov.br': { provider: 'sidra.ibge.gov.br', identityGroup: 'ibge' },
   'www.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'api.publisher.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'doe.gov.ph': { provider: 'doe.gov.ph', identityGroup: 'doe-ph' },
@@ -620,6 +661,12 @@ const PROVIDER_OVERRIDES = {
     license: 'Hyperliquid API terms',
     attribution: 'Hyperliquid; link to the relevant market/API response.',
     status: 'terms-review',
+  },
+  'apps.bea.gov': {
+    provider: 'U.S. Bureau of Economic Analysis (BEA)',
+    license: 'U.S. government public-domain release schedule',
+    attribution: 'U.S. Bureau of Economic Analysis news release schedule.',
+    status: 'reviewed',
   },
   'apps.fas.usda.gov': {
     provider: 'USDA FAS PSD',
@@ -1219,7 +1266,13 @@ const PROVIDER_OVERRIDES = {
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // PR #10998: identify the restricted-party feed on its release asset host.
-  sha256: 'b277b8a702e4c60aff18002601ea9ad29369f392460169df4c83cf6b46cd5e5f',
+  sha256: '24fc088cb3e432fbf4036441830a14fee2e1fbe5d9d0a170dd1693ee1a10911f',
+  // 2026-11-26 (#10837): group the IBGE SIDRA table page and its API host as
+  // one Brazil food-price publisher; its licence stays under terms review.
+  // 2026-11-26 (#11153): add the ODEPA open-data portal as the Chile food-price
+  // publisher; the dataset is CC BY.
+  // 2026-11-25 (#11271): name BEA on the release-schedule host behind the
+  // economic calendar's GDP and PCE release times.
   // 2026-11-18 (#10937): name The Kyiv Independent and The New Voice of
   // Ukraine on their direct feeds. Group Sky News and The Washington Post with
   // the hosts their Google News claim-depth searches fetch again. Drop the
@@ -1252,12 +1305,12 @@ export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
   // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
   // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
-  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03). Add NASA Earthdata CMR, SlideRule Earth (API and site hosts as one identity) and nsidc.org under the existing NSIDC identity for the ICESat-2 ATL13 reservoir levels (2026-11-11). Add Microsoft Planetary Computer, NASA GIBS and EUMETSAT EUMETView as the satellite image archives the point lookup calls from the browser (2026-11-13).',
+  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the ODEPA open-data portal of Chile (datos.odepa.gob.cl) as a reviewed CC BY food-price publisher (#11153). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03). Add NASA Earthdata CMR, SlideRule Earth (API and site hosts as one identity) and nsidc.org under the existing NSIDC identity for the ICESat-2 ATL13 reservoir levels (2026-11-11). Add Microsoft Planetary Computer, NASA GIBS and EUMETSAT EUMETView as the satellite image archives the point lookup calls from the browser (2026-11-13). Group the IBGE SIDRA table page and API host of Brazil as one food-price publisher under terms review (#10837).',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups; plus the Strategic Water Levels ICESat-2 ATL13 provider identity review and the direct publisher feeds in issue #10937.',
+  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups; plus the Strategic Water Levels ICESat-2 ATL13 provider identity review and the direct publisher feeds in issue #10937; plus Issue #11153 ODEPA food-price publisher review; plus Issue #10837 IBGE SIDRA publisher grouping.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
@@ -1372,11 +1425,11 @@ const EXCLUDED_HOSTS = new Set([
   'wingbits.com',
   // Vendor pricing, marketplace, and procurement pages cited as price sources
   // in /compare/ copy. Nothing fetches them.
+  'assets.applytosupply.digitalmarketplace.service.gov.uk',
   'aws.amazon.com',
   'liveuamap.com',
   'me.liveuamap.com',
   'offnadir-delta.com',
-  'www.applytosupply.digitalmarketplace.service.gov.uk',
   'www.factal.com',
   'www.vendr.com',
 ]);

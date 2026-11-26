@@ -3953,10 +3953,8 @@ describe('agent readiness: api-catalog + openapi build', () => {
 
     const rewrites = vercelConfig.rewrites;
     const cardIdx = rewrites.findIndex((r) => r.source === '/docs/mcp/server-card');
-    const mintlifyIdx = rewrites.findIndex((r) => r.source === '/docs/:match*');
     assert.ok(cardIdx >= 0, 'missing /docs/mcp/server-card rewrite');
     assert.equal(rewrites[cardIdx].destination, '/.well-known/mcp/docs-server-card.json');
-    assert.ok(cardIdx < mintlifyIdx, '/docs/mcp/server-card must precede the Mintlify /docs proxy');
     assert.equal(getHeaderValueForSource('/docs/mcp/server-card', 'Content-Type'), 'application/json; charset=utf-8');
     assert.equal(getHeaderValueForSource('/docs/mcp/server-card', 'Access-Control-Allow-Origin'), '*');
   });
@@ -4530,8 +4528,7 @@ describe('agent readiness: /api/download.md URL twin', () => {
 
 // orank "Markdown URL fallback" is site-wide (`/docs/auth` → `/docs/auth.md`),
 // not a single sampled URL. Static public/*.md files still win (afterFiles).
-// /docs/:match* stays first so Mintlify keeps /docs/*.md. /index.md stays
-// ahead of the generic fallback. /api/*.md is excluded from this rewrite so
+// Docs Markdown is served by middleware. /index.md stays ahead of the generic fallback. /api/*.md is excluded from this rewrite so
 // the filesystem catch-all (api/[...notfound].ts) can emit markdown without
 // reintroducing a shadowing /api/:path* rewrite (#4724).
 describe('agent readiness: generic markdown URL-fallback rewrite', () => {
@@ -4550,7 +4547,6 @@ describe('agent readiness: generic markdown URL-fallback rewrite', () => {
       'PCRE named groups are not Vercel :params; destination :mdPath would fail deploy (invalid-route-destination-segment)',
     );
     const mdIdx = vercelConfig.rewrites.indexOf(mdTwinRewrite);
-    assert.ok(mdIdx > rewriteIndex('/docs/:match*'), '/docs/:match* must stay ahead of the generic .md fallback');
     assert.ok(mdIdx > rewriteIndex('/index.md'), '/index.md → /pro/home.md must stay ahead of the generic .md fallback');
   });
 
@@ -4564,7 +4560,6 @@ describe('agent readiness: generic markdown URL-fallback rewrite', () => {
   it('sends content-page .md twins to the generator, not the dashboard shell', () => {
     assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/dashboard.md' })?.destination, '/api/md-twin?path=:mdPath');
     assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/stocks/AAPL.md' })?.destination, '/api/md-twin?path=:mdPath');
-    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/docs/auth.md' })?.destination, 'https://worldmonitor.mintlify.dev/docs/:match*');
     assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/index.md' })?.destination, '/pro/home.md');
     assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/api/health.md' }), null);
   });
@@ -5633,10 +5628,40 @@ describe('docs host scoping — Mintlify proxy is www-only (#5345)', () => {
     assert.equal(redirect.has, undefined, 'must apply on every host, www included');
   });
 
-  it('the www docs proxy rewrite itself is untouched', () => {
-    const proxy = vercelConfig.rewrites.find((r) => r.source === '/docs/:match*');
-    assert.ok(proxy, 'expected the /docs/:match* rewrite');
-    assert.equal(proxy.destination, 'https://worldmonitor.mintlify.dev/docs/:match*');
+  it('routes docs assets to middleware with no direct Mintlify rewrite', () => {
+    const middleware = readFileSync(resolve(__dirname, '../middleware.ts'), 'utf-8');
+    assert.ok(middleware.includes("'/docs/:path*'"), 'dotted docs assets must match middleware');
+    assert.ok(!vercelConfig.rewrites.some((r) => String(r.destination).includes('mintlify.dev')));
+  });
+
+  it('frames docs only same-origin and denies powerful features there', () => {
+    assert.equal(getHeaderValueForSource('/docs/(.*)', 'X-Frame-Options'), 'SAMEORIGIN');
+    const permissions = getHeaderValueForSource('/docs/(.*)', 'Permissions-Policy') ?? '';
+    for (const feature of ['camera', 'microphone', 'geolocation', 'payment', 'usb', 'serial', 'bluetooth']) {
+      assert.match(permissions, new RegExp(`(?:^|, )${feature}=\\(\\)`), `${feature} must be denied on /docs`);
+    }
+  });
+});
+
+describe('OAuth callback and widget sandbox headers', () => {
+  it('Slack and Discord callbacks cannot be framed and allow no base, form or object targets', () => {
+    for (const source of ['/api/slack/oauth/callback', '/api/discord/oauth/callback']) {
+      const csp = getHeaderValueForSource(source, 'Content-Security-Policy') ?? '';
+      for (const directive of ["frame-ancestors 'none'", "base-uri 'none'", "form-action 'none'", "object-src 'none'"]) {
+        assert.ok(csp.includes(directive), `${source} CSP must include ${directive}`);
+      }
+    }
+  });
+
+  it('the widget sandbox sends no referrer and only the app may frame it', () => {
+    const source = '/wm-widget-sandbox.html';
+    assert.equal(getHeaderValueForSource(source, 'Referrer-Policy'), 'no-referrer');
+    assert.equal(getHeaderValueForSource(source, 'X-Content-Type-Options'), 'nosniff');
+    assert.match(getHeaderValueForSource(source, 'Strict-Transport-Security') ?? '', /max-age=\d+/);
+    assert.match(
+      getHeaderValueForSource(source, 'Content-Security-Policy') ?? '',
+      /frame-ancestors 'self' https:\/\/\*\.worldmonitor\.app https:\/\/worldmonitor\.app;/,
+    );
   });
 });
 
@@ -5818,21 +5843,14 @@ describe('NLWeb schemamap (/schemamap.xml)', () => {
 });
 
 // Docs MCP facade: /docs/mcp must hit api/docs-mcp.ts (which lifts the
-// upstream's protocol-level tool-call failures into real JSON-RPC errors)
-// BEFORE the catch-all /docs/:match* Mintlify rewrite — rewrites are
-// first-match-wins, so ordering is load-bearing.
+// upstream's protocol-level tool-call failures into real JSON-RPC errors).
 describe('docs MCP facade (/docs/mcp)', () => {
-  it('rewrites /docs/mcp to /api/docs-mcp ahead of the Mintlify catch-all', () => {
+  it('rewrites /docs/mcp to /api/docs-mcp', () => {
     const rewrites = vercelConfig.rewrites;
     const facadeIdx = rewrites.findIndex(
       (r) => r.source === '/docs/mcp' && r.destination === '/api/docs-mcp'
     );
-    const mintlifyIdx = rewrites.findIndex(
-      (r) => r.source === '/docs/:match*' && String(r.destination).includes('mintlify.dev')
-    );
     assert.ok(facadeIdx >= 0, 'missing /docs/mcp → /api/docs-mcp rewrite');
-    assert.ok(mintlifyIdx >= 0, 'Mintlify /docs rewrite missing');
-    assert.ok(facadeIdx < mintlifyIdx, '/docs/mcp rewrite must precede the /docs/:match* Mintlify rewrite');
     assert.ok(existsSync(resolve(__dirname, '../api/docs-mcp.ts')), 'api/docs-mcp.ts must exist');
   });
 

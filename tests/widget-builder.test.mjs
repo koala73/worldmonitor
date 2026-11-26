@@ -1066,6 +1066,28 @@ describe('widget page reader', () => {
     assert.equal(inits[0].signal.aborted, true);
   });
 
+  it('uses Firecrawl v2 markdown when Exa has no page text', async () => {
+    const calls = [];
+    const read = load(async (url, init) => {
+      calls.push([url, init]);
+      return url === 'https://api.exa.ai/contents'
+        ? Response.json({ results: [{ text: '' }] })
+        : Response.json({ success: true, data: { markdown: '[Verified source](https://example.com)' } });
+    });
+
+    const result = await read('https://example.com/t');
+    assert.equal(result?.source, 'firecrawl');
+    assert.equal(result?.text, 'Verified source');
+    assert.deepEqual(calls.map(([url]) => url), [
+      'https://api.exa.ai/contents', 'https://api.firecrawl.dev/v2/scrape',
+    ]);
+    const init = calls[1][1];
+    assert.match(init.headers['User-Agent'], /WorldMonitor/);
+    assert.deepEqual(JSON.parse(init.body), {
+      url: 'https://example.com/t', formats: ['markdown'], onlyMainContent: true, maxAge: 0, timeout: 20_000,
+    });
+  });
+
   it('reads only http and https urls', async () => {
     const urls = [];
     const read = load(async url => { urls.push(url); return { ok: false }; });

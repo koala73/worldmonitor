@@ -776,8 +776,19 @@ export default defineSchema({
     // rows that entered on_hold before this field existed fall back
     // to `updatedAt` in the dunning scan.
     onHoldAt: v.optional(v.number()),
+    // End of paid access for a failed renewal (`accessEndAt` in
+    // payments/subscriptionHelpers.ts). Stamped only on the transition INTO
+    // on_hold, and only when no succeeded charge covers the current period;
+    // cleared on every return to active; kept through cancelled. Unset means
+    // access runs to currentPeriodEnd, which is also how holds that began
+    // before this field existed keep the access they were promised.
+    accessEndsAt: v.optional(v.number()),
     rawPayload: v.any(),
     updatedAt: v.number(),
+    // OCC serialization timestamp patched by Business seat mutations so even
+    // a brand-new subscription's first concurrent invite burst collides on an
+    // always-existing document rather than lazily inserted lock rows.
+    seatLockTouchedAt: v.optional(v.number()),
     // Renewal-reconciliation bookkeeping (see
     // `payments/billing:reconcileMissedDodoRenewals`). Orthogonal to
     // `updatedAt` — these are NEVER bumped on a webhook state change, only
@@ -929,6 +940,9 @@ export default defineSchema({
       v.literal("dunning_day0"),
       v.literal("dunning_day3"),
       v.literal("dunning_day7"),
+      v.literal("dunning_day10"),
+      v.literal("dunning_day18"),
+      v.literal("dunning_day25"),
       v.literal("winback_day30"),
       // Paid-through cancellation confirmation (#7314). Shares this ledger
       // with winback because both are keyed on the same cancellation episode

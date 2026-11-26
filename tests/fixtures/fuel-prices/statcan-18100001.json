@@ -1,0 +1,55 @@
+[
+    {
+        "status": "SUCCESS",
+        "object": {
+            "responseStatusCode": 0,
+            "productId": 18100001,
+            "coordinate": "20.2.0.0.0.0.0.0.0.0",
+            "vectorId": 1352087861,
+            "vectorDataPoint": [
+                {
+                    "refPer": "2026-08-01",
+                    "refPer2": "",
+                    "refPerRaw": "2026-08-01",
+                    "refPerRaw2": "",
+                    "value": 173.8,
+                    "decimals": 1,
+                    "scalarFactorCode": 0,
+                    "symbolCode": 0,
+                    "statusCode": 0,
+                    "securityLevelCode": 0,
+                    "releaseTime": "2026-09-14T08:30",
+                    "frequencyCode": 6
+                },
+                {
+                    "refPer": "2026-09-01",
+                    "refPer2": "",
+                    "refPerRaw": "2026-09-01",
+                    "refPerRaw2": "",
+                    "value": 184.3,
+                    "decimals": 1,
+                    "scalarFactorCode": 0,
+                    "symbolCode": 0,
+                    "statusCode": 0,
+                    "securityLevelCode": 0,
+                    "releaseTime": "2026-10-19T08:30",
+                    "frequencyCode": 6
+                },
+                {
+                    "refPer": "2026-10-01",
+                    "refPer2": "",
+                    "refPerRaw": "2026-10-01",
+                    "refPerRaw2": "",
+                    "value": 179.6,
+                    "decimals": 1,
+                    "scalarFactorCode": 0,
+                    "symbolCode": 0,
+                    "statusCode": 0,
+                    "securityLevelCode": 0,
+                    "releaseTime": "2026-11-16T08:30",
+                    "frequencyCode": 6
+                }
+            ]
+        }
+    }
+]

@@ -253,7 +253,59 @@ describe('assembleCapitalFlows + validate', () => {
     assert.equal(data.units, 'USD billions');
     assert.ok(data.method.caveat.includes('residence'));
     assert.ok(capitalFlowsContentMeta(data).newestItemAt > 0);
+    // The clock is the OLDER of the two quarterly upstreams, so the BIS leg
+    // (2026-Q1) governs here rather than the fresher BOP quarter (2026-Q2).
+    assert.equal(capitalFlowsContentMeta(data).newestItemAt, Date.UTC(2026, 0, 1));
     assert.equal(validate(data), false, 'two countries is below the floor');
+  });
+
+  // This key is assembled from upstreams that freeze independently, so its
+  // clock must reduce with min (docs/solutions/design-patterns/
+  // multi-source-freshness-clock-must-reduce-with-min.md). Reading only the
+  // IMF BOP quarter let a frozen BIS leg — HTTP 200 forever with an unchanging
+  // vintage, which `emptyUpstreams` cannot catch because it only rejects a
+  // zero-row leg — keep the key green while countries[*].bank served a dead
+  // vintage behind it.
+  describe('content-age clock across independent upstreams', () => {
+    const meta = (latest) => capitalFlowsContentMeta({ latest });
+
+    it('a frozen BIS leg governs the clock even as BOP rolls forward', () => {
+      const frozen = meta({ bopNewestQuarter: '2026-Q4', bisQuarter: '2024-Q1' });
+      assert.equal(frozen.newestItemAt, Date.UTC(2024, 0, 1), 'the stalest quarterly source wins');
+
+      const fresh = meta({ bopNewestQuarter: '2026-Q4', bisQuarter: '2026-Q4' });
+      assert.ok(fresh.newestItemAt > frozen.newestItemAt, 'both current reads fresher than one frozen');
+    });
+
+    it('a frozen BOP leg governs it too, in the other direction', () => {
+      const frozen = meta({ bopNewestQuarter: '2024-Q1', bisQuarter: '2026-Q4' });
+      assert.equal(frozen.newestItemAt, Date.UTC(2024, 0, 1));
+    });
+
+    it('fails closed when either quarterly leg carries no datable period', () => {
+      assert.equal(meta({ bopNewestQuarter: '2026-Q4', bisQuarter: null }), null);
+      assert.equal(meta({ bopNewestQuarter: null, bisQuarter: '2026-Q4' }), null);
+      assert.equal(meta({ bopNewestQuarter: '2026-Q4', bisQuarter: 'not-a-period' }), null);
+      assert.equal(meta(undefined), null);
+    });
+
+    it('falls back to bopQuarter when the newest quarter is absent', () => {
+      assert.equal(
+        meta({ bopQuarter: '2025-Q3', bisQuarter: '2026-Q4' }).newestItemAt,
+        Date.UTC(2025, 6, 1),
+      );
+    });
+
+    it('ignores the annual CPIS and CDIS legs, which lag by design', () => {
+      // Both publish 12-24 months late. Folding them into the 12-month budget
+      // would park this key at STALE_CONTENT permanently, so they are out on
+      // purpose and a change to them must not move the clock.
+      const base = { bopNewestQuarter: '2026-Q4', bisQuarter: '2026-Q4' };
+      assert.deepEqual(
+        meta({ ...base, pipYear: 2019, fdiYear: 2018 }),
+        meta({ ...base, pipYear: 2026, fdiYear: 2026 }),
+      );
+    });
   });
 
   it('validate accepts a full-coverage payload', () => {

@@ -1,6 +1,88 @@
 import { expect, test } from '@playwright/test';
 import { evidenceScreenshot } from './evidence-screenshot';
 
+test('expanded Live News keeps dashboard map dividers off the video (#11152)', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.addInitScript(() => {
+    localStorage.setItem('worldmonitor-variant', 'full');
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+    localStorage.setItem('wm-layer-warning-dismissed', 'true');
+    localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+    localStorage.setItem('map-split-height', '615px');
+    localStorage.setItem('wm-live-news-autoplay', 'false');
+  });
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
+
+  const news = page.locator('.panel[data-panel="live-news"]');
+  await news.scrollIntoViewIfNeeded();
+  const expand = news.getByRole('button', { name: 'Fullscreen', exact: true });
+  const heightHandle = page.locator('#mapResizeHandle');
+  const widthHandle = page.locator('#mapWidthResizeHandle');
+
+  // Replace the idle shell with the player markup before any live session starts.
+  const captureEvidence = process.env.WM_E2E_EVIDENCE === '1';
+  await news.locator('.live-news-placeholder').evaluate((placeholder, showClip) => {
+    const player = document.createElement('div');
+    player.className = 'live-news-player';
+    const video = document.createElement('video');
+    video.className = 'live-news-media';
+    video.controls = true;
+    if (showClip) video.src = '/assets/worldmonitor-plugin-walkthrough-2.10.1.mp4';
+    player.appendChild(video);
+    placeholder.replaceWith(player);
+  }, captureEvidence);
+  const video = news.locator('video.live-news-media');
+  if (captureEvidence) {
+    await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).readyState))
+      .toBeGreaterThanOrEqual(2);
+  }
+
+  await expect(heightHandle).toBeVisible();
+  await expect(widthHandle).toBeVisible();
+  const divider = (await heightHandle.boundingBox())!;
+  const dividerPoint = { x: divider.x + divider.width / 2, y: divider.y + divider.height / 2 };
+
+  await expand.click();
+  await evidenceScreenshot(page, { path: testInfo.outputPath('live-news-expanded.png') });
+  await expect.poll(() => video.evaluate((element, { x, y }) =>
+    document.elementFromPoint(x, y) === element, dividerPoint), {
+    message: 'video receives pointer input where the map height divider was',
+  }).toBe(true);
+  await expect(heightHandle).toBeHidden();
+  await expect(widthHandle).toBeHidden();
+
+  await video.evaluate(element => {
+    element.addEventListener('click', () => void element.requestFullscreen(), { once: true });
+  });
+  await video.click({ position: { x: 120, y: 120 } });
+  await expect.poll(() => video.evaluate(element => document.fullscreenElement === element)).toBe(true);
+  await page.evaluate(() => document.exitFullscreen());
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+  await page.keyboard.press('Escape');
+  await expect(heightHandle).toBeVisible();
+  await expect(widthHandle).toBeVisible();
+
+  await expand.click();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(heightHandle).toBeHidden();
+  await evidenceScreenshot(page, { path: testInfo.outputPath('live-news-expanded-stacked.png') });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect(heightHandle).toBeHidden();
+  await expect(widthHandle).toBeHidden();
+  await page.keyboard.press('Escape');
+
+  await expect(heightHandle).toBeVisible();
+  await expect(widthHandle).toBeVisible();
+  await page.mouse.move(dividerPoint.x, dividerPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(dividerPoint.x, dividerPoint.y + 50);
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('map-split-height'))).toBe('665px');
+});
+
 test('wide live video panels do not overlap adjacent dashboard panels (#8276)', async ({
   page,
 }) => {

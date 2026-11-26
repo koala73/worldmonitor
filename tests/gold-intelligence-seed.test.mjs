@@ -4,13 +4,28 @@ import assert from 'node:assert/strict';
 import { buildInstrument, computeNextCotRelease } from '../scripts/seed-cot.mjs';
 
 describe('seed-cot: computeNextCotRelease', () => {
-  it('returns report date + 3 days for a Tuesday report', () => {
-    // 2026-04-07 is a Tuesday; next Friday release is 2026-04-10
-    assert.equal(computeNextCotRelease('2026-04-07'), '2026-04-10');
+  const at = iso => new Date(`${iso}T12:00:00Z`);
+
+  it('returns the Friday publication of the week when it is still ahead', () => {
+    // 2026-04-07 is a Tuesday; its release is Friday 2026-04-10
+    assert.equal(computeNextCotRelease('2026-04-07', at('2026-04-08')), '2026-04-10');
+    assert.equal(computeNextCotRelease('2026-04-07', at('2026-04-10')), '2026-04-10');
+  });
+
+  it('rolls past releases forward to the next weekly Friday', () => {
+    // Issue #11271: report 2026-11-17 viewed on 2026-11-25 showed "next release 2026-11-20".
+    assert.equal(computeNextCotRelease('2026-11-17', at('2026-11-25')), '2026-11-27');
+    assert.equal(computeNextCotRelease('2026-04-07', at('2026-04-11')), '2026-04-17');
+  });
+
+  it('keeps Friday releases for reports dated off-Tuesday', () => {
+    // 2026-11-23 is a Monday; adding 3 days would give Thursday.
+    assert.equal(computeNextCotRelease('2026-11-23', at('2026-11-24')), '2026-11-27');
+    assert.equal(computeNextCotRelease('2026-11-23', at('2026-12-01')), '2026-12-04');
   });
 
   it('handles month rollover', () => {
-    assert.equal(computeNextCotRelease('2026-03-31'), '2026-04-03');
+    assert.equal(computeNextCotRelease('2026-03-31', at('2026-04-01')), '2026-04-03');
   });
 
   it('returns empty for empty input', () => {
@@ -34,7 +49,7 @@ describe('seed-cot: buildInstrument (commodity kind)', () => {
       swap_positions_long_all: '30000',
       swap__positions_short_all: '180000',
     };
-    const inst = buildInstrument(gcTarget, current, null, 'commodity');
+    const inst = buildInstrument(gcTarget, current, null, 'commodity', new Date('2026-04-08T00:00:00Z'));
     assert.equal(inst.code, 'GC');
     assert.equal(inst.openInterest, 600000);
     assert.equal(inst.nextReleaseDate, '2026-04-10');
@@ -102,6 +117,8 @@ describe('seed-cot: buildInstrument (commodity kind)', () => {
     // Regression guard: CotPositioningPanel reads these for the Leveraged Funds bar.
     assert.equal(inst.leveragedFundsLong, 750000);
     assert.equal(inst.leveragedFundsShort, 250000);
+    assert.equal(inst.leveragedFundsAvailable, true);
+    assert.equal(inst.reportType, 'tff');
   });
 
   it('commodity instruments emit leveragedFunds as 0 (no equivalent field in disaggregated report)', () => {
@@ -116,6 +133,11 @@ describe('seed-cot: buildInstrument (commodity kind)', () => {
     const inst = buildInstrument(gcTarget, current, null, 'commodity');
     assert.equal(inst.leveragedFundsLong, 0);
     assert.equal(inst.leveragedFundsShort, 0);
+    // Issue #11271: the 0/0 placeholder rendered as a neutral "Leveraged Funds +0.0%" bar.
+    assert.equal(inst.leveragedFundsAvailable, false);
+    // assetManager* carries managed money for Disaggregated rows.
+    assert.equal(inst.reportType, 'disaggregated');
+    assert.equal(inst.assetManagerLong, 10000);
   });
 
   it('preserves legacy flat fields for backward compat', () => {

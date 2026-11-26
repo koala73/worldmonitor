@@ -66,6 +66,8 @@ describe('scripts/shared/ stays in sync with shared/', () => {
     // edge digest. Must stay byte-identical.
     'publisher-families.js',
     'publisher-families.d.ts',
+    // The name fold publisher-families.js imports; the relay loads this copy.
+    'publisher-name.js',
     // U6/U7: pure URL classifier consumed by the brief filter (edge) AND
     // by the audit script under scripts/. Must stay byte-identical.
     'url-classifier.js',

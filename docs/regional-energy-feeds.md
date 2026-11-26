@@ -30,6 +30,12 @@ is added.
 | ANP | TL | Lowest and highest listed petrol and diesel price per municipality and nationally, from the station listing (USD/l) | 1 day |
 | CREG | CO | Regulated regular gasoline and diesel prices by main city and their published average (COP/gal), newest three price changes | 12 hours |
 | URSEA | UY | Maximum pump prices set by the Executive (UYU/l; LPG UYU/kg), the PMIT maximum wholesale price, and URSEA's reference retail and import parity prices | 12 hours |
+| FuelWatch | AU (Western Australia only) | Median pump price across stations on the newest day for ULP, PULP, 98 RON and diesel (AUD/l) | 12 hours |
+| Secretaría de Energía | AR | Median daytime pump price across stations for super and premium gasoline and grade 2 and grade 3 diesel (ARS/l) | 12 hours |
+| MOEA Energy Administration (oil111) | TW | Weekly national and county survey means for 92, 95 and 98 unleaded and super diesel (TWD/l); monthly 20 kg LPG cylinder means (TWD/20kg) | 1 day |
+| EMS | RS | Hourly system load: today's provisional operational values and the newest consolidated day (MW) | 1 hour |
+| NOS BiH | BA | Hourly actual production and consumption for yesterday and today (MW) | 1 hour |
+| MEPSO | MK | Daily metered output by source (hydro, thermal, gas, wind, solar), energy delivered to consumers and net cross-border flow (MWh) | 6 hours |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
 demand and load-shedding cells are commented out in the source and are omitted.
@@ -45,8 +51,53 @@ CO and UY. Their parsers live in `scripts/lib/regional-fuel-feeds.mjs`. Two
 sources from that issue are not collected: Kenya's EPRA pump-price page timed
 out on every connection on 2026-11-02, directly and through the US relay
 (Cloudflare 522 from the origin), and Honduras's SEN publishes its weekly price
-cards only as images. The three Balkan grid feeds in the issue are outside
-this fuel-price batch.
+cards only as images. Kenya still timed out on 2026-11-26.
+
+The issue's three Western Balkan grid feeds follow the fuel-price batch. All
+three operators publish local clock hours (Central European Time, UTC+1 in
+winter and UTC+2 in summer), so the parsers place hours through the
+`Europe/Belgrade` zone and publish UTC hour starts. On the DST change days a
+wall-clock hour that the change skips or repeats is dropped. NOS BiH labels
+its spring change day by wall clock (23 rows, no `02:00`) and prints only 23
+rows for the 25-hour autumn day; the repeated `02:00` row is dropped there.
+Whole-day tables that cannot say which hour shifted skip the day: EMS's
+realised load sums or nets it into one slot (6,429 MW on 25 October 2026), and
+a MEPSO report then has 23 or 25 hour columns.
+
+- **EMS** (`transparency.ems.rs`) serves today's hourly load as operational
+  values a little over an hour behind, and the realised hourly load about two
+  days later. Yesterday has neither. The feed publishes today's values as
+  `demand` with area `provisional` and the newest consolidated day as plain
+  `demand`, so the hours after local midnight still have a series. The content
+  budget is three days: just after midnight the newest hour is the end of the
+  consolidated day two days back, and three days back when that day was a DST
+  change day. The responses lead with PHP notices, which are stripped.
+  The realised endpoint returns the day-ahead forecast, the realised load and an
+  unlabelled signed row that the page does not display; only the realised load
+  is read.
+- **NOS BiH** (`www.nosbih.ba`) returns the production page's table inside JSON
+  from a WordPress AJAX POST. Hours are labelled by their end (`01:00` is the
+  first hour, `00:00` the last). The feed reads actual production and
+  consumption for yesterday and today; planned values are not read. Its server
+  sends the AJAX response with neither a length nor chunking and ends the body
+  only by closing the connection, so the seeder sends `Connection: close` to
+  that host.
+- **MEPSO** (`www.mepso.com.mk`) links a daily metered report per day from its
+  home page, about three days late. A link under the report folder that does
+  not follow the report name fails the run. The seeder reads the newest PDF and
+  publishes each source's daily total, the energy delivered to directly
+  connected consumers and distribution systems, and the signed net
+  cross-border flow (inflow less outflow, so positive is a net import). The
+  gross inflow and outflow include transit, so they are not published as
+  imports and exports. Each row's total must equal its 24 hourly figures, and
+  delivered energy must equal generation plus net inflow less losses, plus
+  energy taken from distribution-connected plants (within 15% of delivered
+  energy); otherwise the run fails. A report covering a DST change day is
+  skipped for the one before it. The content budget is seven days.
+
+EMS and MEPSO state all rights reserved and NOS BiH shows only a copyright
+footer; reuse of all three was cleared by the WorldMonitor owner on 2026-11-26,
+and the registry records both.
 
 The third batch publishes retail prices rather than grid observations, so most
 of its feeds carry `publishesAhead`: a monthly or weekly price is dated from its first day
@@ -70,6 +121,62 @@ municipality and overall, and Timor-Leste is not a row in the fuel-price panel.
 The fuel-price panel reads QA, ZM, GH, BF, ZW, PH, CO and UY from these feeds
 through `REGIONAL_FUEL_SOURCES` in `scripts/seed-fuel-prices.mjs`, with
 fallback FX rates for ZMW, GHS, XOF and UYU.
+
+Western Australia's pump prices (#10838) come from FuelWatch's "Historic Fuel
+Prices" dataset, which data.wa.gov.au lists under CC BY 4.0. The dataset is one
+CSV per month on FuelWatch's Azure blob store
+(`historical-reports/FuelWatchRetail-MM-YYYY.csv`), rewritten each night with the
+previous day's station prices. The seeder reads this month's file in Perth time
+(UTC+8). It falls back to last month's file when this month's is missing (HTTP
+404), empty or has no complete day yet, which happens before a new month's
+first day is added. Each station appears once per product per day, in cents
+per litre. The feed publishes the median across stations on the newest
+complete day that is not after today in Perth, converted to AUD/l. A day is
+complete when ULP and diesel each have at least 400 stations; a partly written
+newest day therefore falls back to the day before. Changed columns, more than 5%
+unreadable rows (a bad price or date, or a row with the wrong number of cells),
+or no complete day in either file fails the run, and last-good data is kept. PULP and 98 RON are omitted when
+their sample is thinner. Brand diesel, LPG and E85 are not collected. The
+FuelWatch RSS feed is not used: it carries "All Rights Reserved", and no
+FuelWatch page grants its reuse. FuelWatch covers Western Australia only, so the
+fuel-price panel names the row "Australia (Western Australia)" and shows the ULP
+and diesel medians for 5 days after their date. Credit: FuelWatch, Government of
+Western Australia.
+
+Argentina's pump prices (#11154) come from the Secretaría de Energía's
+Resolution 314/2016 dataset (CC-BY-4.0): a CSV of each station's latest declared
+price per product and tariff. A station keeps its row after it stops declaring,
+so the file reaches back to 2017. The feed takes daytime rows, keeps each
+station's newest declaration per product, and publishes the median over
+stations that declared within 30 days of the newest declaration in the file.
+A station whose price has held for more than 30 days drops out of that window,
+so the median leans toward stations that repriced recently. In the 2024-02-06
+file, about 3,490 of the 4,191 stations with a super gasoline row fell inside it. The observation date is that newest declaration's day in Argentina (UTC-3).
+Fewer than 200 stations for super gasoline or grade 2 diesel, a renamed product
+or tariff code, or more than 5% unreadable rows (a bad price or date, or a row
+with the wrong number of cells) fails the run, and last-good data
+is kept. CNG is priced per cubic metre and is not collected. The
+fuel-price panel shows the super and grade 2 medians for 14 days after their
+date, and only with a live ARS quote: the peso moves too fast for the static
+shared fallback rate. The provider host was unreachable from every vantage
+point tested on 2026-11-23 and 2026-11-26, so the parser was built from the
+2024-02-06 Internet Archive capture of the same file. The regional bundle runs
+in us-east4, which reaches CAMMESA; the 12-hour poll retries an outage on the
+next due tick.
+
+Taiwan's county surveys (#10113) come from the MOEA Energy Administration's
+oil111 site, whose open-data declaration licenses its data for free reuse with
+attribution. The seeder posts the site's own form for each survey: the weekly
+county averages for 92, 95 and 98 unleaded and super diesel, and the monthly
+20 kg LPG cylinder averages. Each county row splits its survey into plain,
+offshore and mountain stations. The feed publishes each county's mean weighted
+by surveyed stations, and the national mean weighted the same way, which equals
+the fuel-price panel's Taiwan price. A county with no surveyed station for a
+grade is omitted. Weekly prices are dated to the survey week's last day and LPG
+to the first of its month. A changed title, week, county name or survey group,
+a missing station count, a repeated county, an implausible group or mean price,
+a future survey, or fewer than 15 counties fails the run.
+The fuel-price panel keeps reading Taiwan's weekly national price directly.
 
 Since 2026-10-31 MEM's pages, sitemaps and REST API answer automated clients
 with a Cloudflare challenge. The seeder does not request them. It reads only the
@@ -125,8 +232,10 @@ age checks; daily periods use the source calendar day. Hourly periods use UTC.
 Feed status is `available`, `partial`, `stale`, `unavailable` (no seed) or `error`.
 Fresh fetch time cannot make old observations current. Status uses the latest
 observation in each series; individual observations also carry `stale`.
-ANP weekly prices and Eskom weekly outages have 21-day content budgets. Other
-budgets are in the registry. Optional feed failures do not discard peer feeds or
+ANP weekly prices and Eskom weekly outages have 21-day content budgets. A series
+budget is keyed by metric, or by metric and unit where one metric mixes
+cadences: Taiwan's monthly LPG survey (`fuel.retail_price|TWD/20kg`) has 62 days
+beside the weekly prices' 21. Other budgets are in the registry. Optional feed failures do not discard peer feeds or
 the existing profile. Core profile-cache failures retain their existing HTTP 503.
 
 ## Collection and activation

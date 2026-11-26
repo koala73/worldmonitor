@@ -301,6 +301,7 @@ export interface GulfQuote {
   price: number;
   change: number;
   sparkline: number[];
+  priceAt?: number;
 }
 
 export interface AnalyzeStockRequest {
@@ -574,6 +575,7 @@ export interface GetFearGreedIndexResponse {
   hygPrice: number;
   tltPrice: number;
   sectorPerformance: FearGreedSectorPerformance[];
+  fsiAsOf?: number;
 }
 
 export interface FearGreedCategory {
@@ -615,6 +617,7 @@ export interface EarningsEntry {
   revenueActual: number;
   hasActuals: boolean;
   surpriseDirection: string;
+  revenueCurrency: string;
 }
 
 export interface GetCotPositioningRequest {
@@ -640,6 +643,8 @@ export interface CotInstrument {
   smallTraderLong: string;
   smallTraderShort: string;
   smallTraderAvailable: boolean;
+  leveragedFundsAvailable: boolean;
+  reportType: string;
 }
 
 export interface GetInsiderTransactionsRequest {

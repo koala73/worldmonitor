@@ -209,7 +209,7 @@ export class StrategicRiskPanel extends Panel {
 
     this.overview = {
       ...localOverview,
-      avgCIIDeviation: ciiScores[0]?.score ?? cached.strategicRisk.score,
+      topCIIScore: ciiScores[0]?.score ?? cached.strategicRisk.score,
       compositeScore: Math.max(0, Math.min(100, Math.round(cached.strategicRisk.score))),
       trend: this.cachedTrendToOverviewTrend(cached.strategicRisk.trend),
       topRisks: this.cachedTopRisks(cached, ciiScores),
@@ -377,8 +377,8 @@ export class StrategicRiskPanel extends Panel {
           <span class="risk-metric-label">${t('components.strategicRisk.convergenceMetric')}</span>
         </div>
         <div class="risk-metric">
-          <span class="risk-metric-value">${this.overview.avgCIIDeviation.toFixed(1)}</span>
-          <span class="risk-metric-label">${t('components.strategicRisk.ciiDeviation')}</span>
+          <span class="risk-metric-value">${this.overview.topCIIScore.toFixed(1)}</span>
+          <span class="risk-metric-label">${t('components.strategicRisk.topCiiScore')}</span>
         </div>
         <div class="risk-metric">
           <span class="risk-metric-value">${this.overview.infrastructureIncidents}</span>

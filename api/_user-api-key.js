@@ -420,13 +420,22 @@ function clampRetryAfterSeconds(rawRetryAfter) {
     : VALIDATION_RETRY_AFTER_SECONDS;
 }
 
+// Mirrors PAYMENT_FAILED_MESSAGE in server/_shared/entitlement-check.ts, which
+// this self-contained entry cannot import. Both test suites pin the same text.
+const PAYMENT_FAILED_ERROR =
+  'Payment failed. Update your payment method at https://www.worldmonitor.app/dashboard?billing=portal to restore access.';
+
+function isTerminalBillingStatus(status) {
+  return status === 'subscription_lapsed' || status === 'payment_failed';
+}
+
 function billingVerificationFailure(value, lapsedError = API_ACCESS_POLICY.lapsedError) {
   const status = value?.billingStatus;
-  if (status === 'subscription_lapsed') {
+  if (isTerminalBillingStatus(status)) {
     return {
       ok: false,
       status: 403,
-      error: lapsedError,
+      error: status === 'payment_failed' ? PAYMENT_FAILED_ERROR : lapsedError,
       reason: status,
       headers: noStoreHeaders({ 'X-Billing-Verification': status }),
     };
@@ -468,7 +477,7 @@ function notApplicableVerificationTtlSeconds(value) {
 
 function entitlementCacheTtlSeconds(value) {
   const status = value?.billingStatus;
-  if (status === 'subscription_lapsed') return LAPSED_BILLING_MARKER_TTL_SECONDS;
+  if (isTerminalBillingStatus(status)) return LAPSED_BILLING_MARKER_TTL_SECONDS;
   if (status === 'renewal_verification_pending' || status === 'renewal_verification_failed') {
     return clampRetryAfterSeconds(value?.retryAfterSeconds);
   }

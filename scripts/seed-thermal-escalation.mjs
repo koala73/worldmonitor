@@ -20,7 +20,7 @@ const HISTORY_KEY = 'thermal:escalation:history:v1';
 // It must also OUTLIVE maxStaleMin (360 = 6h) — at the old 6h they were exactly
 // EQUAL, so a late seeder hit the staleness gate at the same instant its data
 // expired, and health reported EMPTY (crit) for what is really STALE_SEED (warn).
-// See tests/seed-ttl-outlives-staleness-fleet (#5309 invariant).
+// tests/seed-ttl-contract.test.mjs enforces this (#5309 invariant).
 const CACHE_TTL = 9 * 60 * 60;
 const SOURCE_VERSION = 'thermal-escalation-v1';
 const MIN_THERMAL_ESCALATION_CLUSTERS = 1;

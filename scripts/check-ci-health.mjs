@@ -448,6 +448,12 @@ export function collect({ gh, repository, now }) {
   const samples = [];
   const failing = [];
   for (const workflow of MONITORED_WORKFLOWS) {
+    // A run's `name` is its run-name when the workflow sets one: test.yml names
+    // a pull request run `PR #N into <base>: <title>` (#10926). Every run is
+    // labelled by the workflow's own name, read from the default branch, so a
+    // finding keeps one title across pull requests and `Test` checks hold.
+    const workflowName = api(gh, `repos/${repository}/actions/workflows/${workflow}`).name;
+    const named = (run) => ({ ...run, name: workflowName });
     // The runs API stops at 1,000 results per filtered query, and these
     // workflows run ~150 times a day, so the window is read one calendar day
     // at a time, then cut to the exact window.
@@ -455,6 +461,7 @@ export function collect({ gh, repository, now }) {
     for (let ms = eventStart; ms < now + DAY_MS; ms += DAY_MS) days.add(day(Math.min(ms, now)));
     const listed = [...days]
       .flatMap((date) => listRuns(gh, repository, workflow, `created=${date}`))
+      .map(named)
       .filter((run) => Date.parse(run.created_at) >= eventStart);
     const window = listed.filter((run) => run.status === 'completed');
 
@@ -481,10 +488,11 @@ export function collect({ gh, repository, now }) {
       }));
     }
 
-    failing.push(...findFailingMain(newestMainRuns(gh, repository, workflow)));
+    failing.push(...findFailingMain(newestMainRuns(gh, repository, workflow).map(named)));
 
     const main = listRuns(gh, repository, workflow, `event=push&branch=main&status=success&created=>=${day(now - 2 * WINDOW_DAYS * DAY_MS)}`)
-      .filter((item) => item.run_attempt === 1 && Date.parse(item.created_at) >= now - 2 * WINDOW_DAYS * DAY_MS);
+      .filter((item) => item.run_attempt === 1 && Date.parse(item.created_at) >= now - 2 * WINDOW_DAYS * DAY_MS)
+      .map(named);
     for (const [period, runs] of [
       ['current', main.filter((item) => Date.parse(item.created_at) >= currentStart)],
       ['previous', main.filter((item) => Date.parse(item.created_at) < currentStart)],

@@ -62,6 +62,19 @@ test('a series budget from the feed registry overrides the feed budget for that 
   assert.equal(anp.status, 'partial');
 });
 
+test('a metric|unit series budget gives the monthly LPG survey its own limit beside the weekly prices', async () => {
+  const lpg = (period: string) => ({ metric: 'fuel.retail_price', period, value: 768, unit: 'TWD/20kg', area: 'LPG 20 kg cylinder' });
+  const weekly = (period: string) => ({ metric: 'fuel.retail_price', period, value: 31.1, unit: 'TWD/l', area: 'Unleaded 92' });
+  const read = (observations: object[]) => readRegionalEnergyFeeds('TW', async () => snapshot('oil111', {
+    dataUrls: ['https://www2.moeaea.gov.tw/oil111/Gasoline/CountyCityAvg/load'], observations,
+  }), now);
+  // 28 days after the first of its month, the current LPG survey is fresh; a weekly price that old is not.
+  const [current] = await read([weekly('2026-10-25'), lpg('2026-10-01')]);
+  assert.equal(current.status, 'available');
+  const [old] = await read([weekly('2026-10-01'), lpg('2026-08-01')]);
+  assert.deepEqual(old.observations.map(p => p.stale), [true, true]);
+});
+
 test('a local-calendar feed serves a date that has started in its own time zone', async () => {
   // 1 November in Fiji (UTC+12) began at 12:00Z on 31 October.
   const feeds = await readRegionalEnergyFeeds('FJ', async () => snapshot('fccc', {

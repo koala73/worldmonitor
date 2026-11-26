@@ -33,12 +33,19 @@ test('scan jobs cover every language with least privilege and stable categories'
   }
 });
 
-test('only the generated @vercel/og bundle is excluded from scanning', () => {
+test('only the generated @vercel/og bundle and test code are excluded from scanning', () => {
   const init = workflow.jobs.analyze.steps.find(step => step.uses?.startsWith('github/codeql-action/init@'));
   const config = YAML.parse(init.with.config ?? '');
   // The bundle is upstream satori/opentype.js output from scripts/vendor-vercel-og.mjs; it
   // re-raised 22 alerts after #9782. Our patched vendor copies and the script stay scanned.
-  assert.deepEqual(config?.['paths-ignore'], ['vendor/vercel-og/dist']);
+  // Test code never ships; it raised 363 of the first 724 dismissed alerts, all false positives.
+  assert.deepEqual(config?.['paths-ignore'], [
+    'vendor/vercel-og/dist',
+    'tests',
+    'e2e',
+    '**/__tests__',
+    '**/*.test.*',
+  ]);
   assert.equal(config.paths, undefined, 'a paths list would narrow every other scan');
 });
 

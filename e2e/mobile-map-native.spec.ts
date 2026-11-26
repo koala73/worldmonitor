@@ -41,6 +41,45 @@ test.describe('Mobile map native experience', () => {
     }
   });
 
+  test.describe('region presets', () => {
+    test.use(mobileContext);
+
+    // #11157: fixed pixel pans tuned for a desktop map put Europe over the
+    // Arctic, the Middle East over Central Asia, America over the Pacific,
+    // and Asia and Oceania off a phone's map.
+    for (const [view, lat, lon] of [
+      ['america', 38, -95],
+      ['eu', 50, 15],
+      ['mena', 28, 45],
+      ['asia', 35, 105],
+      ['oceania', -25, 135],
+    ] as const) {
+      test(`centers the ${view} preset on the phone map`, async ({ page }) => {
+        await page.goto(`/?view=${view}`);
+        await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
+        await expect(page.locator('#mapContainer')).toBeVisible();
+        await expectRenderedCenter(page, lat, lon);
+      });
+    }
+
+    test('centers a preset chosen while the map was collapsed', async ({ page }) => {
+      await page.addInitScript(() => localStorage.setItem('mobile-map-collapsed', 'true'));
+      await page.goto('/?view=asia');
+      await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
+      await page.locator('.map-collapse-btn').click();
+      await expect(page.locator('#mapContainer')).toBeVisible();
+      await expectRenderedCenter(page, 35, 105);
+    });
+
+    test('keeps a preset centered when the map is resized', async ({ page }) => {
+      await page.goto('/?view=oceania');
+      await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
+      await expectRenderedCenter(page, -25, 135);
+      await page.setViewportSize({ width: 320, height: 844 });
+      await expectRenderedCenter(page, -25, 135);
+    });
+  });
+
   test.describe('URL restore', () => {
     test.use(mobileContext);
     // A first visit opens the map expanded (#10220). These cases guard #9620: a deep-link

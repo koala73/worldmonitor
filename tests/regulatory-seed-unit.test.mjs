@@ -341,7 +341,7 @@ describe('fetchRegulatoryActionPayload', () => {
 });
 
 describe('main', () => {
-  it('wires runSeed with the regulatory key, TTL, and validateFn', async () => {
+  it('wires runSeed with the regulatory key and validateFn', async () => {
     const calls = [];
     const runSeedStub = async (domain, resource, canonicalKey, fetchFn, opts) => {
       calls.push({ domain, resource, canonicalKey, opts, payload: await fetchFn() });
@@ -358,7 +358,6 @@ describe('main', () => {
     assert.equal(calls[0].domain, 'regulatory');
     assert.equal(calls[0].resource, 'actions');
     assert.equal(calls[0].canonicalKey, 'regulatory:actions:v1');
-    assert.equal(calls[0].opts.ttlSeconds, 21600);
     assert.equal(calls[0].opts.validateFn({ actions: [] }), false);
     assert.equal(calls[0].opts.validateFn({ actions: [{ id: 'a' }] }), true);
     assert.equal(calls[0].payload.recordCount, 6);
