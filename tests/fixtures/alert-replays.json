@@ -4,7 +4,7 @@
     {
       "id": "adnoc-hormuz-vessel-attack",
       "date": "2026-11-18",
-      "summary": "ADNOC said one of its vessels was attacked in the Strait of Hormuz, 11 crew injured and one missing. No realtime subscriber was alerted. The Gulf News live blog had already alerted at 03:38 under its earlier headline; at about 07:00 it added \"ADNOC vessel hit in Hormuz\" and kept its 03:21 pubDate. Today that copy alerts at 83 because recency runs from when its new headline was first seen (#11001), and the reworded-repeat check (#10916) does not skip it for subscribers who had the 03:38 alert: the judge calls the vessel attack a new development. The OilPrice.com copy (tier 4) alerts at 82 because the cross-wording check counts four publisher families for it, its own included (#10995). The National's ADNOC article was never served or recorded, so it is not in the set.",
+      "summary": "ADNOC said one of its vessels was attacked in the Strait of Hormuz, 11 crew injured and one missing. No realtime subscriber was alerted. The Gulf News live blog had already alerted at 03:38 under its earlier headline; at about 07:00 it added \"ADNOC vessel hit in Hormuz\" and kept its 03:21 pubDate. Today that copy alerts at 83 because recency runs from when its new headline was first seen (#11001), and the reworded-repeat check (#10916) does not skip it for subscribers who had the 03:38 alert: the judge calls the vessel attack a new development. The OilPrice.com copy (tier 4) scores 79 and reaches nobody: the cross-wording check counts three publisher families for it, its own included (#10995). The Rock Hill Herald copy ran the Reuters headline, so it counts with Reuters, not as a fourth publisher. The OilPrice headline names no country, so no country-scoped rule takes it at 79 either. The National's ADNOC article was never served or recorded, so it is not in the set.",
       "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
       "expected": "alert",
       "matchesRecorded": {
@@ -104,13 +104,12 @@
           "seenAt": "2026-11-18T10:02:28.652Z",
           "corroboration": 1,
           "observedScore": 73,
-          "scoreNow": 82,
-          "reaches": "realtime",
+          "scoreNow": 79,
+          "reaches": "none",
           "corroboratedBy": [
             "label:oilprice.com",
             "label:wana news agency",
-            "reuters",
-            "label:rock hill herald"
+            "reuters"
           ]
         }
       ],

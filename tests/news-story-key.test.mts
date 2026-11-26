@@ -265,6 +265,34 @@ test('mastheads running one copy of a headline are written to its coverage as on
   assert.deepEqual(await families([independent, ...copies.reverse()]), ['label:egypt independent', 'label:harbor dispatch']);
 });
 
+test('an outlet running the wire headline is written to its coverage as the wire', async (t) => {
+  const batches: unknown[][][] = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const commands = JSON.parse(init.body);
+    batches.push(commands);
+    return Response.json(commands.map(() => ({ result: 1 })));
+  });
+  const saved = { ...process.env };
+  t.after(() => {
+    for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV']) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  process.env.VERCEL_ENV = 'production';
+  const families = async (items) => {
+    batches.length = 0;
+    await digest.recordPublisherCoverage(items, [items[0]], Date.now(), Infinity);
+    const [, , , ...scored] = batches.flat().find((cmd) => cmd[0] === 'ZADD');
+    return scored.filter((_, i) => i % 2 === 1).sort();
+  };
+  const wire = { title: `${EGYPT_INDEPENDENT} - Reuters`, source: 'Reuters World' };
+  assert.deepEqual(await families([wire, { title: EGYPT_INDEPENDENT, source: 'Arab Times' }]), ['reuters']);
+  assert.deepEqual(await families([{ title: EGYPT_INDEPENDENT, source: 'Arab Times' }, wire]), ['reuters']);
+});
+
 test('the coverage ledger write stops waiting at its deadline when Redis stalls', async (t) => {
   // The ledger runs after the coverage and history writes join, which may hold
   // until the tracking deadline; a 5 s Redis wait past that loses the digest.

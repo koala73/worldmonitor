@@ -85,6 +85,7 @@ COPY scripts/lib/_upstash-pipeline.mjs ./scripts/lib/_upstash-pipeline.mjs
 COPY scripts/lib/llm-chain.cjs ./scripts/lib/llm-chain.cjs
 COPY scripts/shared/publisher-families.js ./scripts/shared/publisher-families.js
 COPY scripts/shared/publisher-name.js ./scripts/shared/publisher-name.js
+COPY scripts/shared/wire-reprints.js ./scripts/shared/wire-reprints.js
 # Publisher-link relay gate required by digest-stale-gate.cjs (#8398):
 # relay-emitted rss_alert events must not carry off-publisher links.
 COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-relay-gate.cjs

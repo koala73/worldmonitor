@@ -21,6 +21,8 @@ import { publisherFamilyForItem } from '../../../../shared/publisher-families.js
 // #9095: families whose items carry the same copy (title + lead) count once,
 // so an unlisted network under several mastheads cannot corroborate itself.
 import { detectSyndication } from '../../../../shared/syndication.js';
+// A copy under a wire's own headline is the wire's.
+import { wireAwareFamilyFor } from '../../../../shared/wire-reprints.js';
 
 /** @param {string[]} headlines */
 export function deduplicateHeadlines(headlines) {
@@ -101,9 +103,10 @@ export async function assignStoryIdentity(items, normalizeTitle, sha256Hex) {
     // carried as originPublisher) may outrank the feed label — one wire under
     // several feeds' labels is one publisher. Ordinary feeds use their
     // server-configured label because RSS <source> is forgeable upstream text.
+    const members = indices.map((i) => items[i]);
     const corroborationCount = Math.max(
       1,
-      detectSyndication(indices.map((i) => items[i]), publisherFamilyForItem).publishers,
+      detectSyndication(members, wireAwareFamilyFor(members, publisherFamilyForItem)).publishers,
     );
 
     if (canonical === null) {

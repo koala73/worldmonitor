@@ -6,6 +6,7 @@ export interface PublisherFamily {
 }
 
 export declare const PUBLISHER_FAMILIES: Readonly<Record<string, PublisherFamily>>;
+export declare const WIRE_FAMILIES: readonly string[];
 export declare const PUBLISHER_FAMILY_DOMAIN_TABLE: Readonly<Record<string, readonly string[]>>;
 export declare const MIN_CORROBORATING_PUBLISHERS: number;
 

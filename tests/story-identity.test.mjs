@@ -355,7 +355,7 @@ describe('assignStoryIdentity (#4919 acceptance)', () => {
     const items = [
       { title: 'Iran threatens to close Strait of Hormuz if US blockade continues', source: 'Reuters' },
       { title: 'Iran threatens to close Strait of Hormuz — live updates', source: 'BBC' },
-      { title: 'Iran threatens to close Strait of Hormuz if US blockade continues', source: 'AP' },
+      { title: 'Iran threatens to close Strait of Hormuz if US blockade continues', source: 'AP News' },
       { title: 'Stock market rallies on tech earnings report', source: 'CNBC' },
     ];
     const assignment = await assignStoryIdentity(items, normalizeTitle, sha256Hex);
@@ -398,10 +398,11 @@ describe('assignStoryIdentity (#4919 acceptance)', () => {
 
     // Premise check: the same three wordings under three real publishers must
     // still corroborate, or the assertion above would pass on a clustering
-    // failure rather than on the family collapse.
+    // failure rather than on the family collapse. The third repeats the first
+    // headline, so it is a second wire: any other outlet would be a reprint.
     const distinct = items.map((item, i) => ({
       ...item,
-      source: ['Reuters World', 'BBC World', 'Al Jazeera'][i],
+      source: ['Reuters World', 'BBC World', 'AP News'][i],
     }));
     const distinctAssignment = await assignStoryIdentity(distinct, normalizeTitle, sha256Hex);
     assert.equal(distinctAssignment.get(distinct[0]).corroborationCount, 3);

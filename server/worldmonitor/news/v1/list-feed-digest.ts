@@ -145,6 +145,7 @@ import {
   publisherFamilyForItem,
 } from '../../../../shared/publisher-families.js';
 import { detectSyndication } from '../../../../shared/syndication.js';
+import { wireAwareFamilyFor } from '../../../../shared/wire-reprints.js';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
@@ -2202,6 +2203,7 @@ function computeEntityCorroborationSignals(
   nowMs = Date.now(),
 ): Map<string, EntityCorroborationSignal> {
   const buckets = new Map<string, { items: ParsedItem[]; sources: Set<string>; tier12Sources: Set<string> }>();
+  const familyFor = wireAwareFamilyFor(items);
   for (const item of items) {
     if (!item.titleHash) continue;
     if (!Number.isFinite(item.publishedAt) || nowMs - item.publishedAt > ENTITY_CORROBORATION_WINDOW_MS) continue;
@@ -2220,8 +2222,9 @@ function computeEntityCorroborationSignals(
       // tier12Sources when any of its labels is tier 1-2.
       // #6430: a trusted aggregator's originating publisher (RSS <source>)
       // outranks the feed label — a wire syndicated through a keyword feed
-      // corroborates as the wire, not as the query it arrived through.
-      const family = publisherFamilyForItem(item);
+      // corroborates as the wire, not as the query it arrived through, and so
+      // does an outlet running the wire's headline.
+      const family = familyFor(item);
       if (family) {
         bucket.sources.add(family);
         if (getSourceTier(item.source) <= 2) bucket.tier12Sources.add(family);
@@ -3016,11 +3019,13 @@ async function recordPublisherCoverage(
   }
   for (const item of items) carriers.get(newsPublisherCoverageKey(item.title))?.push(item);
   // The relay scores on this history (#10977), so families that carried one
-  // copy count once, as in the build's own corroborationCount (#9095). Each
-  // merged group is written under one member that does not depend on item order.
+  // copy count once, as in the build's own corroborationCount (#9095), and a
+  // wire reprint counts as the wire. Each merged group is written under one
+  // member that does not depend on item order.
   const groups = new Map<string, Set<string>>();
   for (const [key, sharing] of carriers) {
-    const { groups: sameCopy } = detectSyndication(sharing);
+    const familyFor = wireAwareFamilyFor(sharing);
+    const { groups: sameCopy } = detectSyndication(sharing, familyFor);
     const memberOf = new Map<string, string>();
     for (const { families } of sameCopy) {
       const member = families.find((family) => !family.startsWith('label:')) ?? families[0]!;
@@ -3028,7 +3033,7 @@ async function recordPublisherCoverage(
     }
     const families = new Set<string>();
     for (const item of sharing) {
-      const family = publisherFamilyForItem(item);
+      const family = familyFor(item);
       if (family) families.add(memberOf.get(family) ?? family);
     }
     groups.set(key, families);
