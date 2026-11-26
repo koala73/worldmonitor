@@ -184,27 +184,37 @@ export function dedupeStrings<T extends string>(values: readonly T[]): T[] {
 }
 
 /**
- * How a rule save resolves `enabled` (#10976). A save that sends `enabled`
- * stores it. A save that omits it leaves the decision to the server: the save
- * that stores a rule's first channel switches alerts on, and any other save
- * keeps the stored value (off on insert).
+ * How a rule save from the settings panel asks the server to decide `enabled`
+ * (#10976), when the user did not set the toggle in the panel. "connect": a
+ * channel is being connected, and a rule with no stored channel switches
+ * alerts on. "keep": the stored value stays. The save still carries a boolean
+ * `enabled`, which a server without this field stores as sent.
  */
-export interface ResolvedRuleEnabled {
-  enabled: boolean;
-  /** True when this save switches alerts on because it adds the first channel. */
+export const RULE_ENABLED_INTENTS = ['keep', 'connect'] as const;
+export type RuleEnabledIntent = (typeof RULE_ENABLED_INTENTS)[number];
+
+export function isRuleEnabledIntent(value: unknown): value is RuleEnabledIntent {
+  return (RULE_ENABLED_INTENTS as readonly unknown[]).includes(value);
+}
+
+export interface ResolvedRuleEnabled<E extends boolean | undefined = boolean> {
+  enabled: E | boolean;
+  /** True when this save switches alerts on because it connects the rule's first channel. */
   firstChannel: boolean;
 }
 
-export function resolveRuleEnabled(
-  requested: boolean | undefined,
+/** Without an intent, `enabled` is stored as sent. */
+export function resolveRuleEnabled<E extends boolean | undefined>(
+  requested: E,
+  intent: RuleEnabledIntent | undefined,
   stored: { enabled: boolean; channels: readonly string[] } | null,
   channels: readonly string[] | undefined,
-): ResolvedRuleEnabled {
-  if (requested !== undefined) return { enabled: requested, firstChannel: false };
-  if ((stored?.channels.length ?? 0) === 0 && (channels?.length ?? 0) > 0) {
+): ResolvedRuleEnabled<E> {
+  if (intent === undefined) return { enabled: requested, firstChannel: false };
+  if (intent === 'connect' && (stored?.channels.length ?? 0) === 0 && (channels?.length ?? 0) > 0) {
     return { enabled: true, firstChannel: true };
   }
-  return { enabled: stored?.enabled ?? false, firstChannel: false };
+  return { enabled: stored?.enabled ?? requested ?? false, firstChannel: false };
 }
 
 /** What a rule save reports back: the stored `enabled`, and the first-channel decision when one was made. */

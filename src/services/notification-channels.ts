@@ -4,7 +4,7 @@ import {
   readBillingVerificationCode,
 } from '@/services/billing-retry';
 import { SITE_VARIANT } from '@/config/variant';
-import type { ReservoirAlertSettings, RuleSaveResult } from '../../shared/alert-rule-shape';
+import type { ReservoirAlertSettings, RuleEnabledIntent, RuleSaveResult } from '../../shared/alert-rule-shape';
 
 export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'teams' | 'webhook' | 'web_push';
 export type Sensitivity = 'all' | 'high' | 'critical';
@@ -357,8 +357,8 @@ export async function deleteChannel(
   if (!res.ok) throw new Error(`delete channel: ${res.status}`);
 }
 
-/** A rule save. Without `enabled` the server decides it: the first channel switches alerts on (#10976). */
-export type AlertRuleSave = Omit<AlertRule, 'enabled'> & { enabled?: boolean };
+/** A rule save. With `enabledIntent` the server decides `enabled` (#10976). */
+export type AlertRuleSave = AlertRule & { enabledIntent?: RuleEnabledIntent };
 
 export async function saveAlertRules(
   rules: AlertRuleSave,
@@ -499,6 +499,7 @@ export class IncompatibleDeliveryError extends Error {
 export async function setNotificationConfig(args: {
   variant: string;
   enabled?: boolean;
+  enabledIntent?: RuleEnabledIntent;
   eventTypes?: string[];
   sensitivity?: Sensitivity;
   channels?: ChannelType[];

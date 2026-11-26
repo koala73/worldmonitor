@@ -1,8 +1,9 @@
 // Connecting the first channel in notification settings switches alerts on
-// (#10976, follow-up to #11412). The server decides: a rule save that sends
-// no `enabled` gets alerts switched on when it stores the rule's first
-// channel, and keeps the stored value otherwise. The panel renders what the
-// server stored and says why when the plan kept alerts off.
+// (#10976, follow-up to #11412). The server decides: a save the user did not
+// set the toggle for carries `enabledIntent`, "connect" while a channel is
+// being connected and "keep" otherwise. "connect" on a rule with no stored
+// channel switches alerts on; "keep" keeps the stored value. The panel
+// renders what the server stored and says why when the plan kept alerts off.
 //
 // The channel mocks share one in-memory store that resolves `enabled` with
 // the same shared rule the Convex writers use, so what the panel re-renders
@@ -98,7 +99,7 @@ function connected(channelType: NotificationChannel['channelType']): Notificatio
 // The server side of set-alert-rules: the shared enabled rule, and the free
 // plan's empty-scope refusal turned into a held switch-on.
 function storeRuleSave(payload: AlertRuleSave): RuleSaveResult {
-  const resolved = resolveRuleEnabled(payload.enabled, store.rule, payload.channels);
+  const resolved = resolveRuleEnabled(payload.enabled, payload.enabledIntent, store.rule, payload.channels);
   const countries = payload.countries ?? store.rule?.countries ?? [];
   const held = resolved.firstChannel && !gate.tier && countries.length === 0;
   const enabled = held ? false : resolved.enabled;
@@ -223,8 +224,7 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
 
     await connectEmail(container);
 
-    expect('enabled' in lastSaved()!, 'the connect save sends no enabled').toBe(false);
-    expect(lastSaved()?.channels).toEqual(['email']);
+    expect(lastSaved()).toMatchObject({ enabled: false, enabledIntent: 'connect', channels: ['email'] });
     expect(store.rule).toMatchObject({ enabled: true, channels: ['email'] });
     expect(toggle(container).checked).toBe(true);
   });
@@ -261,6 +261,7 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     await connectEmail(container);
 
     expect(lastSaved()).toMatchObject({ enabled: false, channels: ['email'] });
+    expect('enabledIntent' in lastSaved()!, 'an opt-out set in this render is sent as is').toBe(false);
     expect(store.rule).toMatchObject({ enabled: false });
     expect(toggle(container).checked).toBe(false);
   });
@@ -278,7 +279,7 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     expect(lastSaved()?.enabled).toBe(false);
   });
 
-  it('a debounced save sent while the connect save is pending carries no stale enabled and keeps the channel', async () => {
+  it('a debounced save sent while the connect save is pending is a connect save and keeps the channel', async () => {
     gate.tier = true;
     store.rule = rule({ enabled: false, channels: [] });
     const release = hold(store.saveGates);
@@ -289,7 +290,7 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     flip(container.querySelector<HTMLInputElement>('#usWatchlistAlerts')!, true);
     await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(2), { timeout: 3000 });
     const watchlistSave = lastSaved()!;
-    expect('enabled' in watchlistSave, 'watchlist save sends no enabled').toBe(false);
+    expect(watchlistSave.enabledIntent, 'watchlist save').toBe('connect');
     expect(watchlistSave.channels, 'watchlist save keeps the connecting channel').toContain('email');
     release();
     await vi.waitFor(() => expect(toggle(container).checked).toBe(true), { timeout: 3000 });
@@ -307,15 +308,16 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     container.querySelector<HTMLButtonElement>('#usConnectEmail')!.click();
     await vi.waitFor(() => expect(store.rule?.enabled, 'switched on').toBe(true));
     expect(toggle(container).checked, 'toggle still shows the old render').toBe(false);
-    await vi.waitFor(() => expect(lastSaved()?.eventTypes).toContain('watchlist_story_alert'), { timeout: 3000 });
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(2), { timeout: 3000 });
 
-    expect('enabled' in lastSaved()!, 'the late save sends no enabled').toBe(false);
+    expect(lastSaved()?.eventTypes).toContain('watchlist_story_alert');
+    expect(lastSaved()?.enabledIntent, 'the late save keeps the stored value').toBe('keep');
     expect(store.rule).toMatchObject({ enabled: true, channels: ['email'] });
     releaseRead();
     await vi.waitFor(() => expect(toggle(container).checked).toBe(true), { timeout: 3000 });
   });
 
-  it('the close-time flush sends no stale enabled after a switch-on', async () => {
+  it('the close-time flush keeps the stored value after a switch-on', async () => {
     gate.tier = true;
     store.rule = rule({ enabled: false, channels: [] });
     const { container, close } = await mount();
@@ -328,19 +330,32 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     close();
     await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(2));
 
-    expect('enabled' in lastSaved()!, 'the flush sends no enabled').toBe(false);
+    expect(lastSaved()?.enabledIntent, 'the flush keeps the stored value').toBe('keep');
     expect(store.rule).toMatchObject({ enabled: true, channels: ['email'] });
   });
 
-  it('shows alerts on when the load-time channel re-sync gives the rule its first channel', async () => {
+  it('the load-time channel re-sync stores the channel and leaves alerts off', async () => {
     gate.tier = true;
     store.channels = [connected('email')];
     store.rule = rule({ enabled: false, channels: [] });
     const { container } = await mount();
 
-    await vi.waitFor(() => expect(toggle(container).checked).toBe(true), { timeout: 3000 });
-    expect('enabled' in lastSaved()!, 'the re-sync sends no enabled').toBe(false);
-    expect(store.rule).toMatchObject({ enabled: true, channels: ['email'] });
+    await vi.waitFor(() => expect(store.rule?.channels).toEqual(['email']), { timeout: 3000 });
+    expect(lastSaved()?.enabledIntent, 'the re-sync keeps the stored value').toBe('keep');
+    expect(store.rule?.enabled).toBe(false);
+    expect(toggle(container).checked).toBe(false);
+  });
+
+  it('a plain edit on a rule with no stored channel leaves alerts off', async () => {
+    store.channels = [connected('email')];
+    store.rule = rule({ enabled: false, channels: [], countries: ['UA'] });
+    const { container } = await mount();
+
+    flip(container.querySelector<HTMLInputElement>('#usWatchlistAlerts')!, true);
+    await vi.waitFor(() => expect(lastSaved()?.eventTypes).toContain('watchlist_story_alert'), { timeout: 3000 });
+
+    expect(lastSaved()).toMatchObject({ enabled: false, enabledIntent: 'keep', channels: ['email'] });
+    expect(store.rule).toMatchObject({ enabled: false, channels: ['email'] });
   });
 
   it('on the free plan with no country, keeps alerts off and says why', async () => {
@@ -392,6 +407,19 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
       expect(container.querySelector('[data-channel-type="email"] [role="alert"]')).toBeNull();
       expect(toggle(container).checked).toBe(true);
     }, { timeout: 3000 });
+  });
+
+  it('an edit saved after a failed connect save still switches alerts on', async () => {
+    store.rule = rule({ enabled: false, channels: [], countries: ['UA'] });
+    store.saveGates.push('reject');
+    const { container } = await mount();
+
+    await connectEmail(container);
+    expect(container.querySelector('[data-channel-type="email"] [role="alert"]'), 'failure shown').not.toBeNull();
+    flip(container.querySelector<HTMLInputElement>('#usWatchlistAlerts')!, true);
+
+    await vi.waitFor(() => expect(store.rule).toMatchObject({ enabled: true, channels: ['email'] }), { timeout: 3000 });
+    expect(lastSaved()?.enabledIntent).toBe('connect');
   });
 
   it('keeps the webhook signing secret on screen when the failed rule save is retried', async () => {
