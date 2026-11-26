@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import i18next from 'i18next';
 
 import { fetchLiveTeasers, getFallbackTeasers } from '../pro-test/src/services/teasers.ts';
+import { AGGREGATOR_LINK_HOSTS } from '../shared/article-url.js';
 import { throwOnMissingStaticTranslation } from '../pro-test/src/static-i18n-guard.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -173,6 +174,56 @@ describe('live welcome headlines link only to verifiable articles', () => {
       const { headlines } = await fetchLiveTeasers();
       assert.equal(headlines.items[0].url, '');
     }
+  });
+
+  it('honours every host on the shared aggregator list, not a private copy (#9480)', async () => {
+    // The live path used to keep its own `AGGREGATOR_LINK_HOSTS` set beside a
+    // comment claiming pro-test could not import from shared/. It can, and
+    // does (dedupeByArticleUrl above). Driving this case from the shared set
+    // means a host added to shared/article-url.js is dropped here too,
+    // instead of silently leaving the live strip laxer than the freeze.
+    assert.ok(AGGREGATOR_LINK_HOSTS.size > 0, 'the shared list must not be empty');
+    for (const host of AGGREGATOR_LINK_HOSTS) {
+      const link = `https://${host}/rss/articles/CBMifzFBVV95cUx`;
+      stubDigest([digestItem({ link })]);
+      const { headlines } = await fetchLiveTeasers();
+      assert.equal(
+        headlines.items[0].url,
+        '',
+        `${host} is on the shared aggregator list and must not become a live href`,
+      );
+    }
+  });
+
+  it('drops a host added to the shared aggregator list later (#9480)', async () => {
+    // The shared list is only news.google.com today, which the old private
+    // copy also carried, so the case above passes against either. Adding a
+    // host that only the shared set knows is what tells the two apart: the
+    // private copy would have kept this link as a live href.
+    const host = 'aggregator.example';
+    assert.ok(!AGGREGATOR_LINK_HOSTS.has(host), 'the probe host must start off the list');
+    AGGREGATOR_LINK_HOSTS.add(host);
+    try {
+      stubDigest([digestItem({ link: `https://${host}/story/1` })]);
+      const { headlines } = await fetchLiveTeasers();
+      assert.equal(headlines.items[0].url, '', `${host} joined the shared list and must not become a live href`);
+    } finally {
+      AGGREGATOR_LINK_HOSTS.delete(host);
+    }
+  });
+
+  it('stays inside the browser baseline the shared validator is bundled into', () => {
+    // shared/article-url.js now ships in the pro-test browser bundle as well
+    // as Node seeders and Edge handlers. Vite 7's default target is Safari 16,
+    // so an API above that baseline (URL.parse arrived in Safari 17.4 and
+    // Chrome 126) would build cleanly and throw TypeError in a browser we
+    // still support.
+    const source = readFileSync(resolve(repoRoot, 'shared/article-url.js'), 'utf-8');
+    assert.doesNotMatch(
+      source,
+      /\bURL\.parse\s*\(/,
+      'URL.parse is above the supported browser baseline — parse with try/catch new URL()',
+    );
   });
 
   it('breaks importance ties the same way the freeze does', async () => {
