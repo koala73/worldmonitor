@@ -11,25 +11,28 @@ import { WIRE_FAMILIES, publisherFamilyFor, publisherFamilyForItem } from './pub
 import { normalizeNewsStoryTitle } from './story-identity.js';
 
 const CREDIT_TAIL_CHARS = 200;
-const CREDIT_RE = /\s[-–—|]\s+([^-–—|]+)$/;
+// Spaced, so a masthead's own hyphen (Herald-Leader) stays inside the credit.
+const CREDIT_SEPARATOR_RE = /\s[-–—|]\s+/g;
 // Shorter headlines are shared by outlets that never copied each other.
 const MIN_HEADLINE_WORDS = 4;
 
+const wireRank = (family) => WIRE_FAMILIES.indexOf(family);
+
 /**
- * The headline without the trailing " - <outlet>" credit naming its own
- * publisher, normalized; '' when it is too short to name one story. Any other
- * tail ("- live updates") is headline text.
+ * The headline without a trailing " - <outlet>" credit that names its own
+ * publisher or a wire, normalized; '' when it is too short to name one story.
+ * Any other tail ("- live updates") is headline text.
  */
 function reprintHeadline(title, family) {
   if (typeof title !== 'string') return '';
   const tailStart = Math.max(0, title.length - CREDIT_TAIL_CHARS);
-  const credit = CREDIT_RE.exec(title.slice(tailStart));
-  const bare = credit && publisherFamilyFor(credit[1]) === family ? title.slice(0, tailStart + credit.index) : title;
+  const tail = title.slice(tailStart);
+  const separator = [...tail.matchAll(CREDIT_SEPARATOR_RE)].at(-1);
+  const credited = separator ? publisherFamilyFor(tail.slice(separator.index + separator[0].length)) : '';
+  const bare = credited && (credited === family || wireRank(credited) >= 0) ? title.slice(0, tailStart + separator.index) : title;
   const headline = normalizeNewsStoryTitle(bare);
   return headline.split(' ').length >= MIN_HEADLINE_WORDS ? headline : '';
 }
-
-const wireRank = (family) => WIRE_FAMILIES.indexOf(family);
 
 /**
  * Each entry's family, with a wire reprint's replaced by its wire's. When two

@@ -223,9 +223,18 @@ describe('news cross-wording corroboration (#10977)', () => {
       ], herald), ['label:oilprice.com', 'reuters']);
     });
 
-    it('an outlet the digest saw carry the wire headline is the wire', async () => {
+    for (const [wire, credit] of [['reuters', 'Reuters'], ['ap-news', 'AP News'], ['afp', 'AFP']]) {
+      it(`an outlet the digest saw carry the ${credit} headline is ${credit}`, async () => {
+        assert.deepEqual(await familiesFor([
+          { title: `${HEADLINE} - ${credit}`, source: 'Tanker & Shipping', level: 'high', families: [wire, 'label:arab times'] },
+        ]), ['label:oilprice.com', wire].sort());
+      });
+    }
+
+    it('a hyphenated masthead running the wire headline is the wire', async () => {
       assert.deepEqual(await familiesFor([
-        { title: `${HEADLINE} - Reuters`, source: 'Tanker & Shipping', level: 'high', families: ['reuters', 'label:arab times'] },
+        { title: `${HEADLINE} - Reuters`, source: 'Tanker & Shipping', level: 'high', families: ['reuters'] },
+        { title: `${HEADLINE} - Lexington Herald-Leader`, source: 'Tanker & Shipping', level: 'high', families: ['label:lexington herald-leader'] },
       ]), ['label:oilprice.com', 'reuters']);
     });
 

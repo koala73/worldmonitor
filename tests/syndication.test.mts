@@ -257,6 +257,7 @@ describe('every surface that counts publishers applies it', () => {
       return items.map((item) => identities.get(item)?.corroborationCount);
     };
     assert.deepEqual(await count([viaGoogleNews('Reuters'), viaGoogleNews('Rock Hill Herald')]), [1, 1]);
+    assert.deepEqual(await count([viaGoogleNews('Reuters'), viaGoogleNews('Lexington Herald-Leader')]), [1, 1]);
     assert.deepEqual(await count([viaGoogleNews('Rock Hill Herald'), viaGoogleNews('Kansas City Star')]), [2, 2]);
   });
 
