@@ -244,7 +244,7 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     expect(store.rule).toMatchObject({ enabled: true });
   });
 
-  it('tells the user when the save fails, keeps the toggle on, and clears the message once a save lands', async () => {
+  it('tells the user when the save fails, keeps the toggle on, and retries from the message', async () => {
     store.rule = rule({ enabled: false, channels: [], countries: ['UA'] });
     store.saveGates.push('reject');
     const container = await mount();
@@ -256,15 +256,65 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
       expect(el, 'failure message on the email row').not.toBeNull();
       return el!;
     });
-    expect(error.textContent).toMatch(/^Try again/);
+    expect(error.textContent).toContain('This channel was not added to your alerts.');
     expect(store.rule).toMatchObject({ enabled: false, channels: [] });
     expect(toggle(container).checked).toBe(true);
 
-    const sensitivity = container.querySelector<HTMLSelectElement>('#usNotifSensitivity')!;
-    sensitivity.dispatchEvent(new Event('change', { bubbles: true }));
+    const retry = error.querySelector<HTMLButtonElement>('button');
+    expect(retry?.textContent).toBe('Try again');
+    retry!.click();
     await vi.waitFor(() => {
       expect(store.rule).toMatchObject({ enabled: true, channels: ['email'] });
       expect(container.querySelector('[data-channel-type="email"] [role="alert"]')).toBeNull();
     }, { timeout: 3000 });
+    expect(toggle(container).checked).toBe(true);
+  });
+
+  it('keeps an opt-out the user makes while the first-channel save is pending', async () => {
+    gate.tier = true;
+    store.rule = rule({ enabled: false, channels: [] });
+    let release!: () => void;
+    store.saveGates.push(new Promise<void>((resolve) => { release = resolve; }));
+    const container = await mount();
+
+    container.querySelector<HTMLButtonElement>('#usConnectEmail')!.click();
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1));
+    expect(toggle(container).checked).toBe(true);
+    toggle(container).checked = false;
+    toggle(container).dispatchEvent(new Event('change', { bubbles: true }));
+    release();
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-channel-type="email"]')?.classList.contains('us-notif-ch-on')).toBe(true);
+    });
+    expect(toggle(container).checked, 'reload keeps the opt-out').toBe(false);
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastSaved()).toMatchObject({ enabled: false, channels: ['email'] });
+    expect(store.rule).toMatchObject({ enabled: false, channels: ['email'] });
+    expect(toggle(container).checked).toBe(false);
+  });
+
+  it('keeps the connecting channel in a rule save made while the connect save is pending', async () => {
+    gate.tier = true;
+    store.rule = rule({ enabled: false, channels: [] });
+    let release!: () => void;
+    store.saveGates.push(new Promise<void>((resolve) => { release = resolve; }));
+    const container = await mount();
+
+    container.querySelector<HTMLButtonElement>('#usConnectEmail')!.click();
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1));
+    const watchlist = container.querySelector<HTMLInputElement>('#usWatchlistAlerts')!;
+    watchlist.checked = true;
+    watchlist.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(2), { timeout: 3000 });
+
+    expect(lastSaved()?.channels).toContain('email');
+    release();
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-channel-type="email"]')?.classList.contains('us-notif-ch-on')).toBe(true);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(store.rule?.channels).toContain('email');
   });
 });
