@@ -89,6 +89,17 @@ describe('Argentina Secretaría de Energía pump prices', () => {
     assert.equal(superMedian(parseSeArgentinaPrices(synthetic(rows), NOW, ONE)).value, 150);
   });
 
+  it('anchors the window on the newest declaration of any product, premium and grade 3 included', () => {
+    const rows = [
+      ...both(1, '100.0', '2024-01-02 10:00:00'), // 34 days before the premium price, outside the window
+      ...both(2, '300.0', '2024-01-31 10:00:00'),
+      row(3, 3, '900.0', '2024-02-05 10:00:00'),
+    ];
+    const points = parseSeArgentinaPrices(synthetic(rows), NOW, ONE);
+    assert.equal(superMedian(points).value, 300);
+    assert.ok(points.every(p => p.period === '2024-02-05'), 'dated by the premium declaration');
+  });
+
   it('omits a thin premium or grade 3 sample but fails on a thin headline product', () => {
     const rows = [1, 2, 3].flatMap(s => both(s, `${s}00.0`, '2024-02-01 10:00:00'));
     const points = parseSeArgentinaPrices(synthetic([...rows, row(1, 3, '400.0', '2024-02-01 10:00:00'), row(1, 21, '500.0', '2024-02-01 10:00:00')]), NOW, { minStations: 3 });

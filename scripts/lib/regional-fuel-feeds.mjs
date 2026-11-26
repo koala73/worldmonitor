@@ -663,7 +663,7 @@ export function parseSeArgentinaPrices(source, nowMs = Date.now(), { minStations
   }
   if (!considered || unreadable / considered > SEARG_MAX_UNREADABLE) throw new Error('Unreadable Secretaría de Energía rows');
   const declarations = [...latest.values()];
-  const newest = Math.max(...declarations.filter(d => SEARG_HEADLINE.includes(d.product)).map(d => d.ms));
+  const newest = Math.max(...declarations.map(d => d.ms));
   if (!Number.isFinite(newest)) throw new Error('Secretaría de Energía station sample is incomplete');
   const period = validDay(new Date(newest - 3 * 3600000).toISOString().slice(0, 10));
   const points = new Map();
