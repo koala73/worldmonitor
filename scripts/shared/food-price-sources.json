@@ -498,5 +498,34 @@
     "maxContentAgeDays": 21,
     "fetchBudgetMs": 45000,
     "attribution": "Oficina de Estudios y Políticas Agrarias (ODEPA), Ministry of Agriculture of Chile, datos.odepa.gob.cl, CC BY. Weekly average consumer prices in nine regions, not all of Chile; dated by the Monday of the collection week."
+  },
+  {
+    "id": "statcan",
+    "name": "Statistics Canada monthly average retail prices",
+    "country": "Canada",
+    "countryCode": "CA",
+    "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810024501",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 110,
+    "fetchBudgetMs": 60000,
+    "attribution": "Statistics Canada. Table 18-10-0245-01 Monthly average retail prices for selected products. Statistics Canada Open Licence; the reference month is the first of the month, published about two months later."
+  },
+  {
+    "id": "ibge",
+    "name": "Brazil IBGE IPCA food and drink",
+    "country": "Brazil",
+    "countryCode": "BR",
+    "url": "https://sidra.ibge.gov.br/tabela/7060",
+    "hosts": [
+      "apisidra.ibge.gov.br"
+    ],
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 30000,
+    "attribution": "Instituto Brasileiro de Geografia e Estatística (IBGE), SIDRA table 7060, IPCA. National monthly and 12-month changes for food and drink, food at home and food away from home. Index changes, not market prices."
   }
 ]

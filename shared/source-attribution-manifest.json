@@ -2001,6 +2001,20 @@
       ]
     },
     {
+      "host": "apisidra.ibge.gov.br",
+      "provider": "sidra.ibge.gov.br",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit apisidra.ibge.gov.br and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/ibge.mjs"
+        }
+      ]
+    },
+    {
       "host": "apnews.com",
       "provider": "apnews.com",
       "kind": "feed",
@@ -12973,6 +12987,20 @@
       ]
     },
     {
+      "host": "sidra.ibge.gov.br",
+      "provider": "sidra.ibge.gov.br",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit sidra.ibge.gov.br and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/ibge.mjs"
+        }
+      ]
+    },
+    {
       "host": "sifted.eu",
       "provider": "sifted.eu",
       "kind": "feed",
@@ -23051,6 +23079,9 @@
       "attribution": "Statistics Canada. Web Data Service. https://www.statcan.gc.ca/en/developers/wds/user-guide",
       "status": "reviewed",
       "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statcan.mjs"
+        },
         {
           "path": "scripts/lib/statcan-wds.mjs"
         },
