@@ -504,6 +504,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
   ['relay:heartbeat:news-digest-warm',
     'operational: relay digest warm-cycle heartbeat — covered by /api/health, not a user-facing data slice for MCP (#9766).'],
+  ['news:cross-wording-health:v1',
+    'operational: the relay cross-wording matcher outcomes over the last hour — covered by /api/health, not a user-facing data slice for MCP (#11426).'],
   ['bundle:heartbeat:static-ref',
     'operational: seed-bundle-static-ref tick-execution heartbeat — covered by /api/health, not a user-facing data slice for MCP (#6691).'],
   ['bundle:heartbeat:static-ref-heavy',
