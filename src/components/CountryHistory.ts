@@ -1,6 +1,7 @@
 import { t } from '@/services/i18n';
 import { fetchCountryHistory, type GetCountryHistoryResponse, type CountryHistoryPoint } from '@/services/country-history';
 import { onEntitlementChange } from '@/services/entitlements';
+import { trackCountryHistoryAction, trackCountryHistoryUpsellClick } from '@/services/analytics';
 
 export class CountryHistory {
   private days = 7;
@@ -66,7 +67,11 @@ export class CountryHistory {
       option.selected = days === this.days;
       select.append(option);
     }
-    select.addEventListener('change', () => { this.days = Number(select.value); void this.load(); });
+    select.addEventListener('change', () => {
+      this.days = Number(select.value);
+      trackCountryHistoryAction('window-change', { days: this.days });
+      void this.load();
+    });
     label.append(select);
     controls.append(label, this.element('span', t('countryHistory.observed', { count: data.returnedDays, days: data.effectiveDays })));
     this.mount.replaceChildren(controls);
@@ -79,23 +84,32 @@ export class CountryHistory {
       const dates = this.element('div', '', 'country-history-dates');
       const detail = this.element('div', '', 'country-history-detail');
       detail.setAttribute('aria-live', 'polite');
+      const selectDate = (button: HTMLButtonElement, point: CountryHistoryPoint): void => {
+        dates.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        this.renderDetail(detail, point);
+      };
       for (const point of data.points) {
         const button = this.element('button', `${point.date.slice(5)}${point.topEvents.length ? ' •' : ''}`);
         button.type = 'button';
         button.dataset.historyDate = point.date;
         button.setAttribute('aria-label', t('countryHistory.selectDate', { date: point.date, count: point.topEvents.length }));
         button.addEventListener('click', () => {
-          dates.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
-          this.renderDetail(detail, point);
+          selectDate(button, point);
+          trackCountryHistoryAction('date-select');
         });
         dates.append(button);
       }
       this.mount.append(dates, detail);
-      (dates.lastElementChild as HTMLButtonElement).click();
+      // The latest day opens by default; that is not the user choosing a date.
+      selectDate(dates.lastElementChild as HTMLButtonElement, data.points[data.points.length - 1]!);
     }
     if (this.days >= data.allowedDays && data.allowedDays < 365) {
       const upsell = this.element('a', t(data.allowedDays <= 7 ? 'countryHistory.unlock90' : 'countryHistory.unlock365'), 'panel-locked-cta');
       upsell.href = '/pro#pricing';
+      const trackUpsell = (): void => trackCountryHistoryUpsellClick(data.allowedDays);
+      upsell.addEventListener('click', trackUpsell);
+      // Middle-click opens a new tab and fires auxclick, not click.
+      upsell.addEventListener('auxclick', (event) => { if (event.button === 1) trackUpsell(); });
       this.mount.append(upsell);
     }
   }
