@@ -189,6 +189,35 @@ describe('score-log row per dequeued rss_alert', () => {
     assert.deepEqual(rows[0].outcome, { matched: 1, sent: 1 });
   });
 
+  // SIGTERM exits the process: the dequeue write must land first, or the
+  // popped event leaves no row at all.
+  it('lets shutdown wait for score-log writes still in flight, up to a bound', async () => {
+    const silence = [console.log, console.warn, console.error];
+    console.log = console.warn = console.error = () => {};
+    let release;
+    const stalled = new Promise((done) => { release = done; });
+    globalThis.fetch = async (url) => {
+      const { pathname } = new URL(String(url));
+      if (pathname === '/pipeline' || pathname === '/multi-exec') {
+        await stalled;
+        return { ok: true, json: async () => [] };
+      }
+      return pathname.includes('/relay/enabled-rules') ? down : ok(null);
+    };
+    try {
+      const processing = relay.processEvent(alert(88));
+      assert.equal(await relay.drainShadowLog(20), false, 'a write still in flight holds shutdown until the bound');
+      const drained = relay.drainShadowLog(5_000);
+      release();
+      assert.equal(await drained, true);
+      await processing;
+      assert.equal(await relay.drainShadowLog(20), true, 'nothing left in flight');
+    } finally {
+      release();
+      [console.log, console.warn, console.error] = silence;
+    }
+  });
+
   // Realtime rules take only critical news alerts, and quiet hours deliver
   // those, so only non-critical event types such as the air-traffic all-clear
   // reach the hold.
