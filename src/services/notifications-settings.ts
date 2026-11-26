@@ -1129,6 +1129,22 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // skips tier 0, so that rule would deliver nothing anywhere. After the
       // first alert-rule save lands (it narrows sensitivity to critical, the
       // realtime precondition), write the realtime mode the panel shows.
+      // Each rule save sends the whole rule and the server keeps the last one
+      // it accepts, so saves go out one at a time: an earlier snapshot that
+      // is slow (a billing-verification retry, a reordered request) cannot
+      // land after a later edit and undo it. With none in flight the save is
+      // sent at once, so a close-time flush still dispatches synchronously.
+      let ruleSaveTail: Promise<unknown> | null = null;
+      function queueRuleSave(rule: Parameters<typeof saveAlertRules>[0], saveSignal?: AbortSignal): Promise<void> {
+        const run = ruleSaveTail
+          ? ruleSaveTail.then(() => saveAlertRules(rule, saveSignal))
+          : saveAlertRules(rule, saveSignal);
+        const tail = run.catch(() => {});
+        ruleSaveTail = tail;
+        void tail.then(() => { if (ruleSaveTail === tail) ruleSaveTail = null; });
+        return run;
+      }
+
       function afterRuleSave<T>(saved: Promise<T>, flush = false): Promise<T> {
         const p = saved.then((result) => {
           container.querySelector(`[${CHANNEL_RULE_SAVE_ERROR_ATTR}]`)?.remove();
@@ -1517,7 +1533,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const state = getCurrentAlertRuleFormState();
         // flush: the panel is closing and `signal` is already aborted —
         // passing it would cancel the very request the flush exists to send.
-        fireForgetSave(afterRuleSave(saveAlertRules({
+        fireForgetSave(afterRuleSave(queueRuleSave({
           variant: SITE_VARIANT,
           ...state,
         }, opts?.flush ? undefined : signal), opts?.flush ?? false), 'save alert rules');
@@ -1582,7 +1598,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const state = getCurrentAlertRuleFormState();
         // Augment channels with the newly connected one (set semantics).
         const channels = [...new Set([...state.channels, newChannel])];
-        const save = afterRuleSave(saveAlertRules({
+        const save = afterRuleSave(queueRuleSave({
           variant: SITE_VARIANT,
           ...state,
           channels,
@@ -1843,7 +1859,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             // reads from the DOM, which has already been updated by the time
             // the debounce fires, but explicit override avoids any race).
             const state = getCurrentAlertRuleFormState();
-            fireForgetSave(afterRuleSave(saveAlertRules({
+            fireForgetSave(afterRuleSave(queueRuleSave({
               variant: SITE_VARIANT,
               ...state,
               aiDigestEnabled: target.checked,
@@ -1881,7 +1897,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             alertRuleDebounceTimer = null;
             // Source from the centralized helper so `countries` flows through.
             const state = getCurrentAlertRuleFormState();
-            fireForgetSave(afterRuleSave(saveAlertRules({
+            fireForgetSave(afterRuleSave(queueRuleSave({
               variant: SITE_VARIANT,
               ...state,
             }, signal)), 'save alert rules');
@@ -1900,7 +1916,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const ruleRetry = target.closest<HTMLButtonElement>('[data-channel-rule-retry]');
         if (ruleRetry?.dataset.channelRuleRetry) {
           ruleRetry.disabled = true;
-          saveRuleWithNewChannel(ruleRetry.dataset.channelRuleRetry as ChannelType);
+          // A reload would wipe a webhook signing secret still on screen.
+          saveRuleWithNewChannel(ruleRetry.dataset.channelRuleRetry as ChannelType, {
+            reload: !container.querySelector('#usWebhookSecret'),
+          });
           return;
         }
 

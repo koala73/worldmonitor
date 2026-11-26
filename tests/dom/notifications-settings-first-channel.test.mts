@@ -312,16 +312,17 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     const watchlist = container.querySelector<HTMLInputElement>('#usWatchlistAlerts')!;
     watchlist.checked = true;
     watchlist.dispatchEvent(new Event('change', { bubbles: true }));
+    // The watchlist save takes its snapshot while the connect save is held.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    release();
     await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(lastSaved()?.channels).toContain('email');
-    release();
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-channel-type="email"]')?.classList.contains('us-notif-ch-on')).toBe(true);
-    });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastSaved()?.eventTypes).toContain('watchlist_story_alert');
     expect(store.rule?.channels).toContain('email');
   });
+
   it('stores a later opt-out even when the earlier connect save lands after it', async () => {
     gate.tier = true;
     store.rule = rule({ enabled: false, channels: [] });
