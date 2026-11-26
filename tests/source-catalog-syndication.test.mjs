@@ -88,6 +88,7 @@ test('feed declaration parsing works in the dependency-free docs-stats checkout'
       'scripts/source-catalog-identity.mjs',
       'scripts/source-origin.mjs',
       'shared/publisher-families.js',
+      'shared/publisher-name.js',
     ]) {
       const destination = join(fixtureRoot, relativePath);
       mkdirSync(dirname(destination), { recursive: true });

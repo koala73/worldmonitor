@@ -112,6 +112,7 @@
       "scripts/shared/rss-allowed-domains.json",
       "scripts/shared/source-tier-policy.cjs",
       "scripts/shared/source-tiers.json",
+      "scripts/shared/telegram-source-tiers.json",
       "scripts/shared/x-account-source-tiers.json",
       "scripts/shared/stablecoin-classifier.cjs",
       "scripts/shared/stablecoins.json",
