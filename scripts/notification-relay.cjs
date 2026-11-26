@@ -2047,15 +2047,22 @@ function trackShadowLog(request) {
   return request;
 }
 
-// True when every score-log write in flight settled within timeoutMs.
+// True when every score-log write in flight, including any started while it
+// waits, settled within timeoutMs.
 async function drainShadowLog(timeoutMs) {
-  let timer;
-  const timedOut = new Promise((done) => { timer = setTimeout(done, timeoutMs, false); });
-  try {
-    return await Promise.race([Promise.allSettled([...shadowLogWrites]).then(() => true), timedOut]);
-  } finally {
-    clearTimeout(timer);
+  const deadline = Date.now() + timeoutMs;
+  while (shadowLogWrites.size > 0) {
+    const left = deadline - Date.now();
+    if (left <= 0) return false;
+    let timer;
+    const timedOut = new Promise((done) => { timer = setTimeout(done, left); });
+    try {
+      await Promise.race([Promise.allSettled([...shadowLogWrites]), timedOut]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  return true;
 }
 
 // One row per dequeued rss_alert. It is written at dequeue with outcome
@@ -2066,7 +2073,7 @@ async function drainShadowLog(timeoutMs) {
 // dequeue time, which the latency report measures publish-to-queue with.
 function startShadowLog(event) {
   const importanceScore = event.payload?.importanceScore ?? 0;
-  if (!UPSTASH_URL || !UPSTASH_TOKEN || importanceScore === 0) return async () => {};
+  if (!UPSTASH_URL || !UPSTASH_TOKEN || importanceScore === 0) return () => {};
   const dequeuedAt = Date.now();
   const member = (outcome) => JSON.stringify({
     ts: dequeuedAt,
@@ -2089,13 +2096,13 @@ function startShadowLog(event) {
     ['EXPIRE', SHADOW_SCORE_LOG_KEY, '2592000'],
   ]));
   // Sent only after the pending write settles, so its ZREM cannot land first
-  // and leave two rows.
-  return async (outcome) => {
-    await written;
-    await trackShadowLog(shadowLogRequest('multi-exec', [
+  // and leave two rows. Not awaited, so a stalled write never holds the queue;
+  // shutdown waits for it through shadowLogWrites.
+  return (outcome) => {
+    trackShadowLog(written.then(() => shadowLogRequest('multi-exec', [
       ['ZREM', SHADOW_SCORE_LOG_KEY, pending],
       ['ZADD', SHADOW_SCORE_LOG_KEY, String(dequeuedAt), member(outcome)],
-    ]));
+    ])));
   };
 }
 
@@ -2367,7 +2374,7 @@ async function processEventDelivery(event) {
     outcome.stopped = 'error';
     throw err;
   } finally {
-    await finishShadowLog(outcome);
+    finishShadowLog(outcome);
   }
 }
 
