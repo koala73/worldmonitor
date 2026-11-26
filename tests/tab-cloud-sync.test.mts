@@ -164,6 +164,41 @@ describe('tab sync driver', () => {
     assert.equal(host.applied.at(-1)!.activeChanged, false);
   });
 
+  it('does not echo a remote edit the layout shows in its own panel order', async () => {
+    // The real layout places some panels itself (the map's neighbours), so the
+    // active tab can read back in a different order than the record it applied.
+    // Pushing that back would bounce between devices that place panels differently.
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    class ReorderingHost extends FakeHost {
+      override applyTabs(next: TabsState, activeChanged: boolean): void {
+        super.applyTabs(next, activeChanged);
+        const active = this.state.tabs.find((t) => t.id === this.state.activeTabId)!;
+        if (activeChanged) active.panelOrder = [...active.panelOrder.slice(-1), ...active.panelOrder.slice(0, -1)];
+      }
+    }
+    const host = new ReorderingHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    const before = server.calls.length;
+    const row = server.rows.get('tab-a-1')!;
+    server.rows.set('tab-a-1', { ...row, version: row.version + 1, record: { ...row.record!, name: 'From phone' } });
+    server.emit();
+    await settle();
+    assert.equal(host.state.tabs[0]!.name, 'From phone');
+    notifyTabsChangedLocally();
+    mock.timers.tick(30_000);
+    await settle();
+    assert.equal(server.calls.length, before, 'the applied edit is not pushed back');
+
+    // A real edit afterwards still goes out.
+    host.state.tabs[0]!.name = 'Edited here';
+    notifyTabsChangedLocally();
+    mock.timers.tick(2_000);
+    await settle();
+    assert.equal(server.calls.length, before + 1);
+    assert.equal(server.calls.at(-1)!.changes[0]!.record!.name, 'Edited here');
+  });
+
   it('pushes a local change once after the debounce', async () => {
     mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });

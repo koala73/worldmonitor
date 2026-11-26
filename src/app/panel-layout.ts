@@ -2029,7 +2029,9 @@ export class PanelLayoutManager implements AppModule {
         { name: tab.name, layout, dashboardId: linkedId, baseVersion },
       );
       if (this.team.userId !== userId || this.ctx.isDestroyed) return;
-      tab.team = link;
+      // Tab sync can replace the tab objects during the round trip.
+      const current = this.tabsState?.tabs.find((candidate) => candidate.id === tab.id);
+      if (current) current.team = link;
       if (this.tabsState) saveTabsState(this.tabsState);
       showToast(t('teamDashboards.shared', { name: tab.name }));
       await this.team.reload({ fresh: true });
@@ -2704,10 +2706,35 @@ export class PanelLayoutManager implements AppModule {
     const active = state.tabs.find((t) => t.id === state.activeTabId);
     if (active) {
       active.panelSettings = JSON.parse(JSON.stringify(this.ctx.panelSettings)) as Record<string, PanelConfig>;
-      active.panelOrder = this.livePanelOrder() ?? [...this.resolvedPanelOrder];
+      active.panelOrder = this.panelOrderForSync();
       active.bottomSet = Array.from(this.bottomSetMemory);
     }
     return state;
+  }
+
+  /**
+   * The live order, with panels not mounted yet placed where insertByOrder
+   * will mount them. Without that, a lazy panel mounting later would read as
+   * an edit to the tab.
+   */
+  private panelOrderForSync(): string[] {
+    const resolved = this.resolvedPanelOrder;
+    const live = this.livePanelOrder();
+    if (!live) return [...resolved];
+    const order = [...live];
+    const placed = new Set(live);
+    resolved.forEach((key, i) => {
+      if (placed.has(key)) return;
+      let at = order.length;
+      for (let j = i + 1; j < resolved.length; j++) {
+        if (!placed.has(resolved[j]!)) continue;
+        at = order.indexOf(resolved[j]!);
+        break;
+      }
+      order.splice(at, 0, key);
+      placed.add(key);
+    });
+    return order;
   }
 
   /** Store and show tabs merged with the account's synced tabs. */

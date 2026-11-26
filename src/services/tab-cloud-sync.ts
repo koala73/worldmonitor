@@ -10,7 +10,9 @@ import {
   type SyncDashboardTabsResult,
 } from '../../shared/dashboard-tab-sync';
 import {
+  captureTabRecord,
   emptyTabSyncMeta,
+  hashTabRecord,
   mergeTabs,
   type MergeMode,
   type PendingTabChange,
@@ -364,7 +366,10 @@ async function passOnce(s: Session, rows: DashboardTabRow[], mayRetry: boolean):
   });
   s.pending = null;
   const meta = { ...result.meta, userId: s.userId };
-  if (result.changed) s.host.applyTabs(result.state, result.activeChanged);
+  if (result.changed) {
+    s.host.applyTabs(result.state, result.activeChanged);
+    if (result.activeChanged) rebaseAppliedActiveTab(s, meta, result.changes);
+  }
   saveTabSyncMeta(meta);
   if (result.changes.length === 0) return;
 
@@ -391,6 +396,23 @@ async function passOnce(s: Session, rows: DashboardTabRow[], mayRetry: boolean):
     s.rows = merged;
     await passOnce(s, merged, false);
   }
+}
+
+/**
+ * The layout places some panels itself, so the active tab can read back in a
+ * different order (or with defaults for panels the record lacks) than the
+ * record it just applied. That reading is this device's view of the same
+ * record: store it as the base, or the next pass pushes it back, and two
+ * devices that place panels differently would bounce it between them.
+ */
+function rebaseAppliedActiveTab(s: Session, meta: TabSyncMeta, changes: readonly PendingTabChange[]): void {
+  const shown = s.host.captureTabs();
+  const active = shown?.tabs.find((t) => t.id === shown.activeTabId);
+  if (!active) return;
+  const base = meta.base[active.id];
+  // A tab with an edit on its way keeps the base the push will settle.
+  if (!base || changes.some((c) => c.change.tabId === active.id)) return;
+  meta.base[active.id] = { version: base.version, hash: hashTabRecord(captureTabRecord(active, meta.carried[active.id])) };
 }
 
 function settle(
