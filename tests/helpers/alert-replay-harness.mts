@@ -334,9 +334,10 @@ export function recordedMatcher(incident: Incident) {
         return null;
       }
       // The check asks twice at once; each call gets the next recorded reply.
+      // A call past the recorded votes gets no reply, and unusedRewrites names it.
       const call = rewriteCalls.get(record) ?? 0;
       rewriteCalls.set(record, call + 1);
-      return JSON.stringify({ same: record.votes[call % record.votes.length] });
+      return call < record.votes.length ? JSON.stringify({ same: record.votes[call] }) : null;
     }
     const pair = /^Headline A: (.*)\nHeadline B, seen \d+h earlier: (.*)$/.exec(userPrompt);
     const same = pair && systemPrompt === corroboration.JUDGE_SYSTEM_PROMPT ? find(pair[1]!, pair[2]!)?.same : undefined;
