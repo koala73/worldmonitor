@@ -449,7 +449,13 @@ jobs:
             gh release upload "$TAG_NAME" "$APPIMAGE" "$ZSYNC" --clobber
             echo "Replaced release asset: $(basename "$APPIMAGE"), uploaded $(basename "$ZSYNC")"
           else
-            echo "::warning::Release $TAG_NAME not found — skipping re-upload"
+            # tauri-action has just created or reused this release, so its
+            # absence is a lookup failure, not a normal state. Skipping would
+            # leave tauri-action's unstripped AppImage, and any .zsync from an
+            # earlier run of this tag, on the release; the gate checks names only,
+            # so it would publish a .zsync that no longer matches the AppImage.
+            echo "::error::Release $TAG_NAME not found — cannot replace the AppImage and its .zsync"
+            exit 1
           fi
 
       - name: Smoke-test AppImage (Linux)
