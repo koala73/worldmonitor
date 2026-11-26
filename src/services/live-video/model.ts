@@ -126,7 +126,9 @@ export type PlayerObservation =
        * unchecked: a caller that cannot play media (the Node checker), so the manifest is the only evidence.
        */
       readonly progress: 'advancing' | 'stalled' | 'unchecked';
-      readonly failure: { readonly kind: 'http'; readonly status: number } | { readonly kind: 'fatal'; readonly detail: string } | null;
+      /** The browser refused play() (NotAllowedError: autoplay blocked) and the video has not started since. */
+      readonly startRefused?: boolean;
+      readonly failure:{ readonly kind: 'http'; readonly status: number } | { readonly kind: 'fatal'; readonly detail: string } | null;
     };
 
 export type FailureOutcome =
@@ -198,6 +200,7 @@ function playedThroughConfirmWindow(durations: readonly DurationSample[]): boole
  *       vod manifest                             → recording
  *       live manifest + playback advancing       → live (a playlist can say live over a frame that never renders)
  *       live manifest + playback unchecked       → live (the Node checker has only the manifest)
+ *       live manifest + start refused at tapToPlayMs → unverifiable(not-started) when holding refusals
  *       deadline: live manifest, playback stalled → failed(not-started)
  *                 otherwise                      → failed(timeout)
  *       no manifest at nothingLoadedDeadlineMs   → failed(timeout)
@@ -209,6 +212,11 @@ export interface ClassifyOptions {
    * themselves, instead of failed(not-started), which moves on. For the last source of a chain only.
    */
   readonly holdUnstarted?: boolean;
+  /**
+   * An HLS stream the browser refused to start becomes unverifiable(not-started) after tapToPlayMs, on any source.
+   * The next source would be refused the same way, so only the viewer can start it.
+   */
+  readonly holdRefused?: boolean;
 }
 
 function unstarted(options: ClassifyOptions): AttemptVerdict {
@@ -222,6 +230,10 @@ export function classifyAttempt(observation: PlayerObservation, options: Classif
     if (failure?.kind === 'fatal') return failed({ kind: 'hls-fatal', detail: failure.detail });
     if (manifest === 'vod') return { verdict: 'recording', video: null };
     if (manifest === 'live' && (progress === 'advancing' || progress === 'unchecked')) return { verdict: 'live', video: null };
+    if (options.holdRefused && observation.startRefused && manifest === 'live' && progress === 'stalled'
+      && elapsedMs >= LIVE_VIDEO_TIMING.tapToPlayMs) {
+      return { verdict: 'unverifiable', reason: 'not-started' };
+    }
     if (manifest === 'unknown' && progress === 'stalled' && elapsedMs >= LIVE_VIDEO_TIMING.nothingLoadedDeadlineMs) {
       return failed({ kind: 'timeout' });
     }
@@ -489,7 +501,7 @@ export function startChain(parsed: ParsedSource, recentFailureKeys: ReadonlySet<
  *  connecting + silent player → built-in: next candidate or offline; user-added: unverified, keep
  *  connecting + blocked API or missing live signal → an untried HLS candidate, else unverified, keep
  *                               (the signal is missing for every YouTube video, so trying the next one cannot help)
- *  connecting + not-started   → unverified, keep (the last source only; the viewer can start it)
+ *  connecting + not-started   → unverified, keep (the viewer can start it; never handed to another source)
  *  unverified(not-started) + resume → connecting, same source (the viewer started it; verify again)
  *  live + live-lost           → re-resolve from the top once; again inside the relock window → offline(stream-ended)
  *  settled + retry            → start over (the caller clears failure memory)
@@ -541,6 +553,7 @@ export function advanceChain(state: ChainState, event: ChainEvent, parsed: Parse
       if (verdict.reason === 'player-api-silent') {
         return parsed.source.origin === 'builtin' ? nextOrOffline(progress) : unverified;
       }
+      if (verdict.reason === 'not-started') return unverified;
       const hls = progress.order.find((candidateIndex) => parsed.candidates[candidateIndex]!.candidate.kind === 'hls' && untried(progress, candidateIndex));
       return hls === undefined ? unverified : connectTo(hls, progress);
     }
