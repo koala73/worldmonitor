@@ -207,10 +207,10 @@ export class AAIISentimentPanel extends Panel {
     const fallbackBadge = d.fallback
       ? '<span style="display:inline-block;padding:1px 5px;border-radius:3px;background:rgba(230,126,34,0.15);color:#e67e22;font-size:calc(9px * var(--wm-panel-effective-scale, 1));margin-left:4px">(fallback data)</span>'
       : '';
-    const dateStr = latest.date ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-align:right;margin-top:4px">Survey: ${escapeHtml(latest.date)}${d.source !== 'xls' ? ` (${escapeHtml(d.source)})` : ''}${fallbackBadge}</div>` : '';
+    const dateStr = latest.date ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-align:right;margin-top:4px">Survey: ${escapeHtml(latest.date)}${fallbackBadge}</div>` : '';
 
     const html = `
-      <div style="padding:12px 14px">
+      <div style="padding:12px 0">
         <div style="text-align:center;margin-bottom:8px">
           <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${color};letter-spacing:0.06em;text-transform:uppercase">${escapeHtml(label)}</div>
           ${deltaStr ? `<div style="margin-top:2px">${deltaStr}</div>` : ''}

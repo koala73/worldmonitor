@@ -305,6 +305,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Upgradujte na PRO pro závislosti dodavatelů zbraní a vojenskou kapacitu"
+    },
+    "intelMemory": {
+      "title": "Historická paměť zpravodajských informací",
+      "help": "180denní archiv významných událostí: konfliktů, vojenských operací, energetických incidentů, občanských nepokojů, kybernetických hrozeb, námořních incidentů, přírodních katastrof a leteckých incidentů, se sémantickým vyhledáváním historických paralel na vyžádání.",
+      "loading": "Načítám historickou paměť zpravodajských informací…",
+      "proLocked": "Upgradujte na PRO pro 180denní historickou paměť zpravodajských informací a vyhledávání precedentů",
+      "unavailable": "Historická paměť zpravodajských informací je dočasně nedostupná.",
+      "retry": "Zkusit znovu",
+      "empty": "V 180denním období nejsou pro tuto zemi a doménu žádné archivované zpravodajské události.",
+      "partial": "Pokrytí archivu je pro tento dotaz částečné; dostupné záznamy zůstávají viditelné.",
+      "domainFilterLabel": "Filtrovat historické zpravodajské informace podle domény",
+      "domains": {
+        "all": "Všechny",
+        "conflict": "Konflikt",
+        "military": "Vojenské",
+        "energy": "Energie",
+        "unrest": "Nepokoje",
+        "cyber": "Kybernetika",
+        "maritime": "Námořní",
+        "natural": "Přírodní hrozby",
+        "aviation": "Letectví"
+      },
+      "loadMore": "Načíst více",
+      "loadingMore": "Načítám více…",
+      "loadMoreError": "Nepovedlo se načíst další události. Zkuste znovu.",
+      "sourceLink": "Zdroj ↗",
+      "similarTitle": "Najít podobné minulé události",
+      "useLatestHeadline": "Použít poslední titulek",
+      "similarPlaceholder": "Popište se vyvíjející situaci (nejméně 10 znaků)…",
+      "findSimilar": "Najít podobné události",
+      "similarMinLength": "Zadejte nejméně 10 znaků pro vyhledávání historických precedentů.",
+      "similarLoading": "Hledám historické precedenty…",
+      "similarEmpty": "Žádné podobné minulé události nepřekročily práh podobnosti.",
+      "similarUnavailable": "Vyhledávání precedentů je dočasně nedostupné. Zkuste znovu."
     }
   },
   "header": {
@@ -983,8 +1017,12 @@
       "mineral": "Minerál",
       "topProducers": "Největší producenti",
       "risk": "Riziko",
-      "aisDisruptions": "Přerušení sledování lodí",
+      "aisDisruptions_one": "{{count}} přerušení sledování lodí",
+      "aisDisruptions_few": "{{count}} přerušení sledování lodí",
+      "aisDisruptions_many": "{{count}} přerušení sledování lodí",
+      "aisDisruptions_other": "{{count}} přerušení sledování lodí",
       "wowChange": "Změna týden na týden",
+      "asOf": "k {{date}}",
       "riskLevel": "Úroveň rizika",
       "flowUnavailable": "Data o tocích nejsou dostupná",
       "containerRates": "Ceny kontejnerů",
@@ -1160,7 +1198,7 @@
         "auxiliary": "Pomocná plavidla",
         "navalVessels": "Námořní plavidla"
       },
-      "infoTooltip": "<strong>Metodologie</strong><p>Agreguje vojenská letadla a válečné lodě podle operačního oblasti.</p><ul><li><strong>Normální:</strong> Základní aktivita</li><li><strong>Zvýšená:</strong> Nad prahovou hodnotu (50+ letadel)</li><li><strong>Kritická:</strong> Vysoká koncentrace (100+ letadel)</li></ul><p><strong>Schopné udělat úder:</strong> Tankery + Letecké včasné varování + Stíhače přítomni v dostatečném počtu pro trvalé operace.</p>",
+      "infoTooltip": "<strong>Metodologie</strong><p>Počítá vojenská letadla a sledované námořní jednotky v každém operačním distrikt.</p><ul><li><strong>Normální:</strong> Pod prahovou hodnotou distriktu</li><li><strong>Zvýšená:</strong> Počet dosáhne 3 až 8, podle distriktu</li><li><strong>Kritická:</strong> Počet dosáhne 8 až 20, podle distriktu</li></ul><p>Lodě přispívají k počtu až do poloviny zvýšeného prahu, takže samotné lodě nikdy nezvýší úroveň.</p><p><strong>Schopné útoku:</strong> Tankery + Letadla včasného varování + Stíhačky přítomny v dostatečném počtu pro udržované operace.</p>",
       "scanningTheaters": "Skenování válčišť",
       "positions": "Pozice letadel",
       "navalVesselsLoading": "Námořní plavidla",
@@ -1202,7 +1240,9 @@
       },
       "emojiKeyLabel": "Legenda emojis",
       "emojiKeyAir": "Letecké prostředky",
-      "emojiKeyNaval": "Námořní prostředky"
+      "emojiKeyNaval": "Námořní prostředky",
+      "instabilityChip": "Nestabilita {{score}}",
+      "instabilityNote": "Skóre nestability {{nation}}: {{score}} ze 100. Zobrazeno pro kontext. Nemá vliv na úroveň, kterou určuje počet letadel a lodí v operačním teritoriu."
     },
     "countryBrief": {
       "shareStory": "Sdílet příběh",
@@ -1547,7 +1587,7 @@
       "briefFreshness": "Vygenerováno před {{minutes}}m · nejnovější zdroj starý {{hours}}h",
       "briefStoryDetails": "Podrobnosti zprávy ({{count}})",
       "streamIdleStopLabel": "Zastavit živé video při nečinnosti",
-      "streamIdleStopDesc": "Zastaví Live News a Live Webcams po této době bez aktivity a zobrazí upozornění na panelu.",
+      "streamIdleStopDesc": "Zastaví Live News a Live Webcams po této době bez aktivity a zobrazí upozornění na panelu. Live News hraje dál, dokud má zapnutý zvuk.",
       "streamIdleStopNever": "Nikdy",
       "liveNewsAutoplayLabel": "Automatické přehrávání živých zpráv",
       "liveNewsAutoplayDesc": "Spustí video živých zpráv ztlumeně, jakmile se zobrazí na obrazovce. Vypněte, chcete-li video načíst pouze sami."
@@ -1609,7 +1649,7 @@
       "noData": "žádná data",
       "enable": "Povolit",
       "convergenceMetric": "Konvergence",
-      "ciiDeviation": "Odchylka Country Instability Index",
+      "topCiiScore": "Nejvyšší skóre nestability země",
       "infraEvents": "Události infra",
       "highAlerts": "Vysoké pohotovosti",
       "topRisks": "Hlavní rizika",
@@ -1724,7 +1764,10 @@
       },
       "infoTooltip": "Satelitní tepelné detekce NASA FIRMS VIIRS napříč monitorovanými zónami konfliktů. Vysoká intenzita = jas >360K & spolehlivost >80 %.",
       "possibleExplosions": "Detekováno {{count}} možná výbucha",
-      "explosionTooltip": "Tepelný podpis odpovídající výbuchu (radiační výkon ohně >80 MW, jas >380 K)"
+      "explosionTooltip": "Tepelný podpis odpovídající výbuchu (radiační výkon ohně >80 MW, jas >380 K)",
+      "agencyReports": "Požáry hlášené úřady",
+      "agencyDates": "Data agentury",
+      "shownOfTotal": "Zobrazeno {{shown}} z {{total}} záznamů o požárech"
     },
     "ucdpEvents": {
       "stateBased": "Státní",
@@ -1789,6 +1832,7 @@
       "refugees": "Uprchlíci",
       "asylumSeekers": "Žadatelé o azyl",
       "idps": "Vnitřně přesídlení",
+      "stateless": "Osoby bez státní příslušnosti",
       "total": "Celkem",
       "origins": "Původy",
       "hosts": "Hostitelé",
@@ -1893,7 +1937,8 @@
         "hoursAgo": "před {{count}} h",
         "daysAgo": "před {{count}} d"
       },
-      "hideFindings": "Skrýt nálezy"
+      "hideFindings": "Skrýt nálezy",
+      "breakingAlertsNotSaved": "Nepodařilo se uložit. Povolte data webu pro tento web nebo uvolněte úložiště prohlížeče a zkuste to znovu."
     },
     "countryTimeline": {
       "now": "nyní",
@@ -2314,6 +2359,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> World Monitor poměr vysokovýnosových kreditů k dlouhodobým dluhopisům, upraven o volatilitu akcií a vysokovýnosový spread: (HYG / TLT) / (VIX × High-yield spread / 100). Toto není Kansas City Fed Financial Stress Index. Hodnota 1,5 nebo vyšší značí nízkou zátěž; pod 0,3 vysokou zátěž.",
       "title": "Indikátor finanční stability",
       "usFsiValue": "Hodnota US Financial Stress Indicator",
+      "asOf": "k {{date}}",
       "cissTitle": "EU CISS (Systemické napětí eurozóny)",
       "notAvailable": "N/A",
       "interpretation": {
@@ -2587,7 +2633,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Maloobchodní ceny benzínu a nafty na čerpacích stanicích v 30+ zemích, normalizované na USD/litr pro srovnání. Ceny pocházejí z oficiálních vládních programů otevřených dat a jsou aktualizovány týdně. Nejlevnější a nejdražší země jsou zvýrazněny. Změna týden na týden je zobrazena, pokud jsou dostupná data z předchozího týdne.",
-      "countries": "zemí"
+      "countries": "zemí",
+      "observedStale": "{{date}}, staré {{days}} dní",
+      "monthlyMean": "průměr {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Index cen potravin Organizace OSN pro potraviny a zemědělství sleduje mezinárodní exportní ceny koše potravinářských komodit (Obiloviny, Mléčné výrobky, Maso, Oleje, Cukr), báze 2014–2016 = 100. Aktualizován měsíčně v první pátek každého měsíce.",
@@ -2883,7 +2931,21 @@
       "saved": "Poslední známá aktualizace {{time}} · Kontrola aktualizací",
       "savedOffline": "Poslední známá aktualizace {{time}} · Bez připojení",
       "localSignals": "Na základě načtených signálů přehledu",
-      "emptySaved": "V poslední známé aktualizaci nebyla zjištěna konvergence."
+      "emptySaved": "V poslední známé aktualizaci nebyla zjištěna konvergence.",
+      "signalTypes": {
+        "militaryFlight": "Vojenský let",
+        "militaryVessel": "Vojenské plavidlo",
+        "aisGap": "Výpadek AIS",
+        "conflictEvent": "Konfliktní událost",
+        "escalationOutage": "Výpadek spojení",
+        "newsSeverity": "Závažné zprávy",
+        "sanctionsNews": "Zprávy o sankcích",
+        "marketMove": "Pohyb trhu",
+        "commoditySpike": "Skok komodit",
+        "earthquake": "Zemětřesení",
+        "infraOutage": "Výpadek infrastruktury",
+        "other": "Signál"
+      }
     },
     "thermalEscalation": {
       "title": "Teplotní eskalace",
@@ -3338,6 +3400,10 @@
       },
       "warningAge": "Od první dosud platné výstrahy",
       "days": "{{amount}} d."
+    },
+    "externalNavigation": {
+      "blocked": "Váš prohlížeč zablokoval novou kartu.",
+      "openLink": "Otevřít {{host}}"
     }
   },
   "popups": {
@@ -4423,7 +4489,13 @@
     "alert": "Upozornění: {{location}}",
     "multipleRegions": "Více regionů",
     "trending": "„{{term}}“ je trendy - {{count}} zmínek za {{hours}} h",
-    "eventsDetected": "V regionu ({{lat}}°, {{lon}}°) bylo detekováno událostí: {{count}}"
+    "eventsDetected": "Detekované události ({{count}}): {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protesty",
+      "military_flight": "vojenské lety",
+      "military_vessel": "námořní plavidla",
+      "earthquake": "seismická aktivita"
+    }
   },
   "intel": {
     "topics": {
@@ -5791,7 +5863,8 @@
           "seatCap": "Všechna 4 místa jsou obsazená. Nejdřív nějaké místo odeberte.",
           "ownerDomain": "E-mail vašeho účtu musí být z firemní domény, abyste mohli zvát kolegy.",
           "self": "Nemůžete pozvat sami sebe.",
-          "inviteeDomain": "E-mail pozvaného musí být z firemní domény."
+          "inviteeDomain": "E-mail pozvaného musí být z firemní domény.",
+          "rateLimited": "Odeslali jste maximum 20 pozvánek za klouzavé 24hodinové období. Počkejte prosím, než pozvete další kolegy."
         }
       },
       "enterpriseSeats": {

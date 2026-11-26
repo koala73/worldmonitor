@@ -31,10 +31,19 @@ const SOURCE_CATEGORY_MAP: Record<string, HappyContentCategory> = {
   'GNN Heroes': 'humanity-kindness',
 };
 
+// Used when no keyword matches, instead of the generic humanity-kindness default.
+const SOURCE_DEFAULT_CATEGORY: Record<string, HappyContentCategory> = {
+  'ScienceDaily': 'science-health',
+  'Nature News': 'science-health',
+  'Live Science': 'science-health',
+  'New Scientist': 'science-health',
+  'Singularity Hub': 'innovation-tech',
+};
+
 // Priority-ordered keyword classification tuples
 // Most specific keywords first to avoid mis-classification
 // (e.g., "endangered species" should match nature before generic "technology")
-const CATEGORY_KEYWORDS: Array<[string, HappyContentCategory]> = [
+const CATEGORY_KEYWORDS: Array<[string | RegExp, HappyContentCategory]> = [
   // Science & Health (most specific first)
   ['clinical trial', 'science-health'],
   ['study finds', 'science-health'],
@@ -64,7 +73,7 @@ const CATEGORY_KEYWORDS: Array<[string, HappyContentCategory]> = [
 
   // Climate Wins (before innovation so "solar" matches climate, not tech)
   ['renewable', 'climate-wins'],
-  ['solar', 'climate-wins'],
+  [/\bsolar\b(?!\s+(?:system|wind|flares?|storms?|eclipses?|maximum|minimum|cycle|corona|physics|orbit))/, 'climate-wins'],
   ['wind energy', 'climate-wins'],
   ['wind farm', 'climate-wins'],
   ['electric vehicle', 'climate-wins'],
@@ -111,23 +120,30 @@ const CATEGORY_KEYWORDS: Array<[string, HappyContentCategory]> = [
  * Returns the first matching category, or 'humanity-kindness' as default
  * (safe default for curated positive sources).
  */
-export function classifyPositiveContent(title: string): HappyContentCategory {
+export function classifyPositiveContent(
+  title: string,
+  fallback: HappyContentCategory = 'humanity-kindness',
+): HappyContentCategory {
   // Pad with spaces so space-delimited keywords (e.g. ' ai ') match at boundaries
   const lower = ` ${title.toLowerCase()} `;
   for (const [keyword, category] of CATEGORY_KEYWORDS) {
-    if (lower.includes(keyword)) return category;
+    if (typeof keyword === 'string' ? lower.includes(keyword) : keyword.test(lower)) return category;
   }
-  return 'humanity-kindness'; // default for curated positive sources
+  return fallback;
 }
 
 /**
  * Classify a news item using source-based pre-mapping (fast path)
  * then falling back to keyword classification (slow path).
  */
+export function hasSourceCategory(source: string): boolean {
+  return source in SOURCE_CATEGORY_MAP;
+}
+
 export function classifyNewsItem(source: string, title: string): HappyContentCategory {
   // Fast path: source name maps directly to a category
   const sourceCategory = SOURCE_CATEGORY_MAP[source];
   if (sourceCategory) return sourceCategory;
   // Slow path: keyword classification from title
-  return classifyPositiveContent(title);
+  return classifyPositiveContent(title, SOURCE_DEFAULT_CATEGORY[source]);
 }

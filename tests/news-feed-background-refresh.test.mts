@@ -7,6 +7,7 @@ import {
   isDueForRefresh,
   refreshFeedCache,
   type ParseResult,
+  __testing__,
 } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
@@ -51,7 +52,6 @@ function cachedEntry(): ParseResult {
 }
 
 async function parsed(titles: string[], extra: Partial<ParseResult> = {}): Promise<ParseResult> {
-  const { __testing__ } = await import('../server/worldmonitor/news/v1/list-feed-digest');
   return { ...__testing__.parseRssXml(rss(titles), FEED, VARIANT)!, ...extra };
 }
 
@@ -64,7 +64,9 @@ beforeEach(() => {
   __resetKeyPrefixCacheForTests();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // A deadline-cut fetch probes its feed after the response; finish it on this test's fetch.
+  await __testing__.settleFeedProbes();
   globalThis.fetch = originalFetch;
   for (const key of envKeys) {
     if (oldEnv[key] === undefined) delete process.env[key];
@@ -328,6 +330,161 @@ describe('deadline-aborted fetches', () => {
     assert.deepEqual(relayCalls, [], 'an expired deadline must not start another request');
     assert.equal(result.items.length, 0);
     assert.equal(result.attempt?.failure, 'deadline-abort');
+  });
+
+  it('caches a feed that timed out on its own clock before the deadline cut its relay', async (t) => {
+    process.env.WS_RELAY_URL = 'https://relay.example';
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const deadline = new AbortController();
+    const hangUntilAborted = (signal: AbortSignal | null | undefined) => new Promise<Response>((_, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true });
+    });
+    let relayStarted!: () => void;
+    const relayStart = new Promise<void>((resolve) => { relayStarted = resolve; });
+    redis = createRedisFetch({});
+    upstreamCalls = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (new URL(href).host === 'redis.example') return redis.fetchImpl(input, init);
+      if (new URL(href).host === 'relay.example') {
+        relayStarted();
+        return hangUntilAborted(init?.signal);
+      }
+      if (href === FEED.url) {
+        upstreamCalls.push(new Headers(init?.headers));
+        return hangUntilAborted(init?.signal);
+      }
+      throw new Error(`unexpected fetch ${href}`);
+    }) as typeof fetch;
+
+    const pending = fetchAndParseRss(FEED, VARIANT, deadline.signal);
+    while (upstreamCalls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(8_000);
+    await relayStart;
+    deadline.abort();
+    const result = await pending;
+
+    assert.equal(result.items.length, 0);
+    assert.equal(result.attempt?.failure, 'per-feed-timeout', 'the feed failed on its own 8 s clock');
+    assert.notEqual(redis.redis.get(KEY), undefined, 'an unresponsive feed must not pin every later build to the deadline');
+
+    const next = await fetchAndParseRss(FEED, VARIANT, new AbortController().signal);
+    assert.equal(next.attempt?.negativeCache, true);
+    assert.equal(upstreamCalls.length, 1, 'the next build serves the cached failure instead of waiting on the feed');
+  });
+
+  it('probes a feed the deadline cut early, so a feed that hangs is cached as failed', async (t) => {
+    process.env.WS_RELAY_URL = 'https://relay.example';
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const deadline = new AbortController();
+    const hangUntilAborted = (signal: AbortSignal | null | undefined) => new Promise<Response>((_, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true });
+    });
+    let relayStarted!: () => void;
+    const relayStart = new Promise<void>((resolve) => { relayStarted = resolve; });
+    redis = createRedisFetch({});
+    upstreamCalls = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (new URL(href).host === 'redis.example') return redis.fetchImpl(input, init);
+      if (new URL(href).host === 'relay.example') {
+        relayStarted();
+        return hangUntilAborted(init?.signal);
+      }
+      if (href === FEED.url) {
+        upstreamCalls.push(new Headers(init?.headers));
+        return hangUntilAborted(init?.signal);
+      }
+      throw new Error(`unexpected fetch ${href}`);
+    }) as typeof fetch;
+
+    // The feed started late in the build: the deadline fires 3 s into its 8 s.
+    const pending = fetchAndParseRss(FEED, VARIANT, deadline.signal);
+    while (upstreamCalls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(3_000);
+    deadline.abort();
+    const result = await pending;
+    assert.equal(result.attempt?.failure, 'deadline-abort', 'the build itself still reports its own deadline');
+
+    // After the response the feed gets its own full budget: 8 s direct, then 8 s relay.
+    for (let i = 0; i < 200 && upstreamCalls.length < 2; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(upstreamCalls.length, 2, 'the cut feed is fetched again after the response');
+    t.mock.timers.tick(8_000);
+    await relayStart;
+    t.mock.timers.tick(8_000);
+    await __testing__.settleFeedProbes();
+
+    const next = await fetchAndParseRss(FEED, VARIANT, new AbortController().signal);
+    assert.equal(next.attempt?.negativeCache, true, 'a feed that hangs must not pin every later build to the deadline');
+    assert.equal(upstreamCalls.length, 2, 'the next build serves the cached failure instead of waiting on the feed');
+  });
+
+  it('keeps a healthy parse another build stored while the probe waited on a hanging feed', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const deadline = new AbortController();
+    redis = createRedisFetch({});
+    upstreamCalls = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (new URL(href).host === 'redis.example') return redis.fetchImpl(input, init);
+      if (href === FEED.url) {
+        upstreamCalls.push(new Headers(init?.headers));
+        return new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true });
+        });
+      }
+      throw new Error(`unexpected fetch ${href}`);
+    }) as typeof fetch;
+
+    const pending = fetchAndParseRss(FEED, VARIANT, deadline.signal);
+    while (upstreamCalls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+    deadline.abort();
+    await pending;
+    for (let i = 0; i < 200 && upstreamCalls.length < 2; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(upstreamCalls.length, 2, 'the probe is waiting on the feed');
+
+    seed(await parsed(['Fetched by another build']));
+    t.mock.timers.tick(8_000);
+    await __testing__.settleFeedProbes();
+    assert.equal(cachedEntry().items[0]?.title, 'Fetched by another build', 'a failed probe must not replace a healthy parse');
+  });
+
+  it('caches a healthy feed the deadline cut early as healthy, not as failed', async () => {
+    const deadline = new AbortController();
+    let cut = true;
+    install(() => {
+      if (cut) {
+        cut = false;
+        deadline.abort();
+        throw new DOMException('The operation was aborted.', 'AbortError');
+      }
+      return new Response(rss(['Late but healthy']), { status: 200 });
+    });
+    const result = await fetchAndParseRss(FEED, VARIANT, deadline.signal);
+    assert.equal(result.attempt?.failure, 'deadline-abort');
+    await __testing__.settleFeedProbes();
+    assert.equal(cachedEntry().items[0]?.title, 'Late but healthy');
+    assert.equal(upstreamCalls.length, 2);
+  });
+
+  it('probes a cut feed once across concurrent builds', async () => {
+    const deadline = new AbortController();
+    let calls = 0;
+    install(() => {
+      calls += 1;
+      if (calls <= 2) {
+        deadline.abort();
+        throw new DOMException('The operation was aborted.', 'AbortError');
+      }
+      return new Response(rss(['Story']), { status: 200 });
+    });
+    await Promise.all([
+      fetchAndParseRss(FEED, VARIANT, deadline.signal),
+      fetchAndParseRss(FEED, VARIANT, deadline.signal),
+    ]);
+    await __testing__.settleFeedProbes();
+    assert.equal(cachedEntry().items[0]?.title, 'Story');
+    assert.equal(upstreamCalls.length, 3, 'two cut attempts, one probe');
   });
 
   it('still caches an empty row for an upstream failure', async () => {

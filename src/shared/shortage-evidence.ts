@@ -40,6 +40,10 @@ const CONFIDENCE_STRONG = 0.85;
 
 const EVIDENCE_FRESHNESS_DAYS = 30;
 
+// The seeder expires rows after 14 days without a new signal. Readers can
+// still flag older rows from a cached payload.
+export const SHORTAGE_RECONFIRM_DAYS = 14;
+
 /**
  * Client-side evidence-quality hint. Used by the panel to sort watch-tier
  * entries (stronger evidence first) and render a dotted indicator next to
@@ -61,19 +65,42 @@ export function deriveShortageEvidenceQuality(
   const authoritativeCount = sources.filter(s =>
     s?.sourceType === 'regulator' || s?.sourceType === 'operator'
   ).length;
-  const fresh = !isStale(ev.lastEvidenceUpdate, nowMs);
+  const fresh = !isOlderThan(ev.lastEvidenceUpdate, EVIDENCE_FRESHNESS_DAYS, nowMs);
 
   if (confidence >= CONFIDENCE_STRONG && authoritativeCount >= 1 && fresh) return 'strong';
   if (confidence >= CONFIDENCE_MODERATE && authoritativeCount >= 1 && fresh) return 'moderate';
   return 'thin';
 }
 
-function isStale(iso: string | undefined, nowMs: number): boolean {
+function isOlderThan(iso: string | undefined, days: number, nowMs: number): boolean {
   if (!iso) return true;
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return true;
   const ageDays = (nowMs - t) / (1000 * 60 * 60 * 24);
-  return ageDays > EVIDENCE_FRESHNESS_DAYS;
+  return ageDays > days;
+}
+
+/** Whether a shortage was confirmed within the decay window, so it can be read as current. */
+export function isShortageReconfirmed(lastConfirmed: string | undefined, nowMs: number = Date.now()): boolean {
+  return !isOlderThan(lastConfirmed, SHORTAGE_RECONFIRM_DAYS, nowMs);
+}
+
+/**
+ * The newest `lastConfirmed` across rows: when the registry's claims were
+ * last checked. The seeder republishes the hand-curated file daily, so the
+ * registry's own `updatedAt` says nothing about how current the rows are.
+ */
+export function newestShortageConfirmation(rows: ReadonlyArray<{ lastConfirmed?: string }>): string {
+  let newest = '';
+  let newestMs = -Infinity;
+  for (const row of rows) {
+    const t = row.lastConfirmed ? Date.parse(row.lastConfirmed) : NaN;
+    if (Number.isFinite(t) && t > newestMs) {
+      newestMs = t;
+      newest = row.lastConfirmed!;
+    }
+  }
+  return newest;
 }
 
 /**

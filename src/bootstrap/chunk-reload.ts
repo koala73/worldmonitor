@@ -32,6 +32,8 @@
 // The reload does not wait for an open modal: see RELOAD_GUARD_EXEMPT in
 // scripts/enforce-overlay-reload-policy.mjs (#8662).
 
+import { markPageUnloading } from '@/bootstrap/page-unload-signal';
+
 interface EventTargetLike {
   addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
 }
@@ -112,6 +114,7 @@ function claimReload(storages: readonly StorageLike[], version: string): boolean
 function reloadForMissingChunkModule(): void {
   if (!installed) return;
   if (!claimReload(installed.storages, installed.version)) return;
+  markPageUnloading();
   installed.reload();
 }
 
@@ -147,6 +150,7 @@ export function installChunkReloadGuard(version: string, options: ChunkReloadGua
       if (event.defaultPrevented) return;
       if (isMarkedSentryChunkClaim(event)) return;
       if (!claimReload(storages, version)) return;
+      markPageUnloading();
       reload();
     });
   });

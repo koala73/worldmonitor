@@ -301,6 +301,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Silah tedarikçisi bağımlılığı ve askeri kapasite için PRO'ya yükseltin"
+    },
+    "intelMemory": {
+      "title": "Tarihsel İstihbarat Hafızası",
+      "help": "Önemli çatışma, askeri, enerji, toplumsal huzursuzluk, siber, denizcilik, doğal afet ve havacılık olaylarının 180 günlük arşivi; isteğe bağlı anlamsal emsal eşleştirmesiyle.",
+      "loading": "Tarihsel istihbarat hafızası yükleniyor…",
+      "proLocked": "180 günlük tarihsel istihbarat hafızası ve öncül araması için PRO sürümüne yükseltin",
+      "unavailable": "Tarihsel istihbarat hafızası geçici olarak kullanılamıyor.",
+      "retry": "Yeniden Dene",
+      "empty": "Bu ülke ve alan için 180 günlük pencerede arşivlenmiş istihbarat olayı yok.",
+      "partial": "Bu sorgu için arşiv kapsamı kısmi; mevcut kayıtlar görünür.",
+      "domainFilterLabel": "Tarihsel istihbaratı alan türüne göre filtrele",
+      "domains": {
+        "all": "Tümü",
+        "conflict": "Çatışma",
+        "military": "Askeri",
+        "energy": "Enerji",
+        "unrest": "Huzursuzluk",
+        "cyber": "Siber",
+        "maritime": "Denizcilik",
+        "natural": "Doğal afetler",
+        "aviation": "Havacılık"
+      },
+      "loadMore": "Daha fazla yükle",
+      "loadingMore": "Daha fazla yükleniyor…",
+      "loadMoreError": "Ek olaylar yüklenemedi. Lütfen tekrar deneyin.",
+      "sourceLink": "Kaynak ↗",
+      "similarTitle": "Benzer geçmiş olayları bul",
+      "useLatestHeadline": "En son başlığı kullan",
+      "similarPlaceholder": "Gelişen bir durumu açıklayın (en az 10 karakter)…",
+      "findSimilar": "Benzer olayları bul",
+      "similarMinLength": "Geçmiş öncülleri aramak için en az 10 karakter girin.",
+      "similarLoading": "Tarihsel öncüller aranıyor…",
+      "similarEmpty": "Benzer geçmiş olaylar benzerlik eşiğini geçmedi.",
+      "similarUnavailable": "Öncül araması geçici olarak kullanılamıyor. Lütfen tekrar deneyin."
     }
   },
   "header": {
@@ -980,7 +1014,8 @@
       "upstreamUnavailable": "Tedarik zinciri verileri geçici olarak kullanılamıyor — önbellek verileri gösteriliyor",
       "spikeAlert": "Ani artış tespit edildi — ücret 52 haftalık ortalamanın önemli ölçüde üzerinde (haftalık)",
       "warnings": "uyarı(lar)",
-      "aisDisruptions": "Gemi izleme kesintileri",
+      "aisDisruptions_one": "{{count}} gemi izleme kesintisi",
+      "aisDisruptions_other": "{{count}} gemi izleme kesintisi",
       "disruption": "Aksama",
       "vessels": "gemi",
       "incidents7d": "olay (7g)",
@@ -991,6 +1026,7 @@
       "topProducers": "En Büyük Üreticiler",
       "risk": "Risk",
       "wowChange": "Haftadan haftaya değişim",
+      "asOf": "{{date}} itibarıyla",
       "riskLevel": "Risk seviyesi",
       "flowUnavailable": "Akış verileri kullanılamıyor",
       "containerRates": "Konteyner Tarifeleri",
@@ -1166,7 +1202,7 @@
         "auxiliary": "Yardimci",
         "navalVessels": "Deniz Gemileri"
       },
-      "infoTooltip": "<strong>Metodoloji</strong><p>Askeri uçaklar ve deniz gemilerini operasyon bölgesine göre toplar.</p><ul><li><strong>Normal:</strong> Temel aktivite</li><li><strong>Yükseltilmiş:</strong> Eşiğin üstü (50+ uçak)</li><li><strong>Kritik:</strong> Yüksek yoğunlaşma (100+ uçak)</li></ul><p><strong>Vuruş Yeteneği:</strong> Tankerler + Hava erken uyarı + Sürdürülebilir operasyonlar için yeterli sayıda savaş uçağı mevcuttur.</p>",
+      "infoTooltip": "<strong>Metodoloji</strong><p>Her tiyatroda yer alan askeri uçak ve izlenen deniz gemilerini sayar.</p><ul><li><strong>Normal:</strong> Tiyatronun eşik değerinin altında</li><li><strong>Yükseltilmiş:</strong> Sayı tiyatroya göre 3 ile 8 arasına ulaşır</li><li><strong>Kritik:</strong> Sayı tiyatroya göre 8 ile 20 arasına ulaşır</li></ul><p>Gemiler sayıya yükseltilmiş eşik değerinin yarısına kadar eklenir, bu nedenle gemiler tek başına bir seviyeyi yükseltmez.</p><p><strong>Vuruş Yeteneğine Sahip:</strong> Yakıt uçağı + Erken uyarı sistemi + Sürdürülen harekatlar için yeterli sayıda avcı uçak bulunmaktadır.</p>",
       "scanningTheaters": "Harekat Alanlari Taraniyor",
       "positions": "Ucak konumlari",
       "navalVesselsLoading": "Deniz gemileri",
@@ -1208,7 +1244,9 @@
       },
       "emojiKeyLabel": "Emoji Anahtarı",
       "emojiKeyAir": "Hava Varlıkları",
-      "emojiKeyNaval": "Deniz Varlıkları"
+      "emojiKeyNaval": "Deniz Varlıkları",
+      "instabilityChip": "İstikrarsızlık {{score}}",
+      "instabilityNote": "{{nation}} istikrarsızlık puanı: {{score}}/100. Bağlam için gösterilmektedir. Tiyatrodaki uçak ve gemileri sayan seviyeyi değiştirmez."
     },
     "countryBrief": {
       "moreActions": "Diğer işlemler",
@@ -1551,7 +1589,7 @@
       "briefFreshness": "{{minutes}}m önce oluşturuldu · en yeni kaynak {{hours}}s eski",
       "briefStoryDetails": "Haber ayrıntıları ({{count}})",
       "streamIdleStopLabel": "Hareketsizlik sırasında canlı videoyu durdur",
-      "streamIdleStopDesc": "Canlı Haber ve Canlı Web Kameralarını bu kadar süre etkinlik olmadan durdurur ve panelde bir bildirim gösterir.",
+      "streamIdleStopDesc": "Canlı Haber ve Canlı Web Kameralarını bu kadar süre etkinlik olmadan durdurur ve panelde bir bildirim gösterir. Sesi açıkken Canlı Haber oynamaya devam eder.",
       "streamIdleStopNever": "Asla",
       "liveNewsAutoplayLabel": "Canlı haberleri otomatik oynat",
       "liveNewsAutoplayDesc": "Canlı haber videosunu, sessiz olarak, ekranda görüntülenir görüntülenmez başlatır. Videoyu yalnızca siz başlattığınızda yüklemek için bunu kapatın."
@@ -1622,7 +1660,7 @@
       "noData": "veri yok",
       "enable": "Etkinleştir",
       "convergenceMetric": "Yakınsama",
-      "ciiDeviation": "Ülke İstikrarsızlık Endeksi Sapması",
+      "topCiiScore": "En yüksek ülke istikrarsızlık puanı",
       "infraEvents": "Altyapı Olayları",
       "highAlerts": "Yüksek Uyarılar",
       "topRisks": "Başlıca Riskler",
@@ -1735,7 +1773,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS uydu termal tespit verileri - izlenen catisma bolgeleri. Yuksek yogunluk = parlaklik >360K ve guvenilirlik >%80.",
       "possibleExplosions": "{{count}} olası patlama tespit edildi",
-      "explosionTooltip": "Termal imza patlamaya uygun (ateş radyatif gücü >80 MW, parlaklık >380 K)"
+      "explosionTooltip": "Termal imza patlamaya uygun (ateş radyatif gücü >80 MW, parlaklık >380 K)",
+      "agencyReports": "Kurumlarca bildirilen yangınlar",
+      "agencyDates": "Kurum tarihleri",
+      "shownOfTotal": "{{total}} yangın kaydından {{shown}} tanesi gösteriliyor"
     },
     "ucdpEvents": {
       "stateBased": "Devlet Tabanli",
@@ -1800,6 +1841,7 @@
       "refugees": "Multeciler",
       "asylumSeekers": "Siginmacilar",
       "idps": "Ulke Ici Yerinden Edilmisler",
+      "stateless": "Vatansızlar",
       "total": "Toplam",
       "origins": "Cikis Ulkeleri",
       "hosts": "Ev Sahibi Ulkeler",
@@ -1904,7 +1946,8 @@
         "minutesAgo": "{{count}}dk once",
         "hoursAgo": "{{count}}sa once",
         "daysAgo": "{{count}}g once"
-      }
+      },
+      "breakingAlertsNotSaved": "Kaydedilemedi. Bu site için site verilerine izin verin veya tarayıcı depolamayı boşaltın, ardından tekrar deneyin."
     },
     "countryTimeline": {
       "now": "simdi",
@@ -2294,6 +2337,7 @@
       "infoTooltip": "<strong>Mali Stres Göstergesi</strong> WorldMonitor yüksek getirili kredi ile uzun dönem hazine bonolarının oranı, hisse senedi oynaklığı ve yüksek getirili spread'e göre ayarlanmış: (HYG / TLT) / (VIX × Yüksek getirili spread / 100). Bu Kansas City Fed Mali Stres Endeksi değildir. 1,5 ve üzeri bir ölçüm düşük strestir; 0,3'ün altı yüksek streştir.",
       "title": "Finansal Stres Göstergesi",
       "usFsiValue": "ABD Mali Stres Göstergesi değeri",
+      "asOf": "{{date}} itibarıyla",
       "cissTitle": "EU CISS (Euro Bölgesi Sistematik Stres)",
       "notAvailable": "Kullanılabilir Değil",
       "interpretation": {
@@ -2565,7 +2609,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Yakıt Fiyatları</strong> 30+ ülkede benzin ve dizel perakende pompa fiyatları, karşılaştırma için USD/litre'ye normalize edilmiş. Fiyatlar resmi hükümet açık veri programlarından kaynaklanır ve haftalık güncellenir. En ucuz ve en pahalı ülkeler vurgulanır. Haftalık değişim, önceki hafta verisi mevcut olduğunda gösterilir.",
-      "countries": "ülke"
+      "countries": "ülke",
+      "observedStale": "{{date}}, {{days}} gün önce",
+      "monthlyMean": "{{month}} ortalaması"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Gıda Fiyat Endeksi</strong> BM Gıda ve Tarım Örgütü'nün Gıda Fiyat Endeksi, gıda emtiası sepeti (Tahıllar, Süt Ürünleri, Et, Yağlar, Şeker) için uluslararası ihracat fiyatlarını izler; taban 2014-2016=100. Her ayın ilk Cuma günü aylık olarak güncellenir.",
@@ -2853,7 +2899,21 @@
       "saved": "Bilinen son güncelleme {{time}} · Güncellemeler kontrol ediliyor",
       "savedOffline": "Bilinen son güncelleme {{time}} · Çevrimdışı",
       "localSignals": "Panoya yüklenen sinyallere dayanır",
-      "emptySaved": "Bilinen son güncellemede yakınsama yoktu."
+      "emptySaved": "Bilinen son güncellemede yakınsama yoktu.",
+      "signalTypes": {
+        "militaryFlight": "Askeri uçuş",
+        "militaryVessel": "Askeri gemi",
+        "aisGap": "AIS boşluğu",
+        "conflictEvent": "Çatışma olayı",
+        "escalationOutage": "İletişim kesintisi",
+        "newsSeverity": "Ciddi haberler",
+        "sanctionsNews": "Yaptırım haberleri",
+        "marketMove": "Piyasa hareketi",
+        "commoditySpike": "Emtia sıçraması",
+        "earthquake": "Deprem",
+        "infraOutage": "Altyapı kesintisi",
+        "other": "Sinyal"
+      }
     },
     "thermalEscalation": {
       "title": "Termal Yükseltme",
@@ -3296,6 +3356,10 @@
       },
       "warningAge": "Hâlen geçerli ilk uyarıdan bu yana",
       "days": "{{amount}} gün"
+    },
+    "externalNavigation": {
+      "blocked": "Tarayıcınız yeni sekmeyi engelledi.",
+      "openLink": "{{host}} sitesini aç"
     }
   },
   "popups": {
@@ -4379,7 +4443,13 @@
     "alert": "Uyari: {{location}}",
     "multipleRegions": "Birden Fazla Bolge",
     "trending": "\"{{term}}\" Gundemde - {{hours}} saatte {{count}} bahis",
-    "eventsDetected": "Bolgede {{count}} olay tespit edildi ({{lat}} derece, {{lon}} derece)"
+    "eventsDetected": "{{count}} olay tespit edildi: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protestolar",
+      "military_flight": "askeri uçuşlar",
+      "military_vessel": "deniz kuvvetleri gemileri",
+      "earthquake": "sismik aktivite"
+    }
   },
   "intel": {
     "topics": {
@@ -5719,7 +5789,8 @@
           "seatCap": "4 koltuğun tümü kullanımda. Önce bir koltuğu kaldırın.",
           "ownerDomain": "Takım arkadaşlarını davet etmek için hesap e-postanız kurumsal bir alan adında olmalıdır.",
           "self": "Kendinizi davet edemezsiniz.",
-          "inviteeDomain": "Davet edilen kişinin e-postası kurumsal bir alan adında olmalıdır."
+          "inviteeDomain": "Davet edilen kişinin e-postası kurumsal bir alan adında olmalıdır.",
+          "rateLimited": "Kayan 24 saatlik pencere içinde en fazla 20 davet sınırına ulaştınız. Daha fazla ekip arkadaşı davet etmeden önce lütfen bekleyin."
         }
       },
       "enterpriseSeats": {

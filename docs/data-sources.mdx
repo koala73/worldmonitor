@@ -27,7 +27,7 @@ The Full edition offers four country-focused source choices for each of 197 revi
 | [Environment & Disasters](#environment-%26-disasters) | Earthquakes, disasters, wildfires, cyclones, climate anomalies | USGS, GDACS, NASA FIRMS/EONET, Open-Meteo |
 | [Aviation & Airspace](#aviation-%26-airspace) | Airport delays, NOTAM closures, flight tracking, prices | FAA, ICAO, AviationStack, adsb.lol |
 | [China Coverage](#china-coverage) | Official macro, policy, disclosures, cross-strait activity | NBS, SAFE, PBoC, Taiwan MND, SSE/SZSE |
-| [Tech Ecosystem](#tech-ecosystem) | Company HQs, startups, cloud regions, research signals | Crunchbase News, GitHub, OSS Insight |
+| [Tech Ecosystem](#tech-ecosystem) | Company HQs, startups, cloud regions, research signals | Crunchbase News, GitHub |
 
 Every feed carries a source tier, propaganda-risk rating, and state-affiliation flag — see [source credibility & feed tiering](#source-credibility-%26-feed-tiering). A singleton freshness tracker reports [intelligence gaps](#data-freshness-%26-intelligence-gaps) instead of hiding them.
 
@@ -292,7 +292,7 @@ The public server digest feed inventory below is source-backed from `shared/news
 | `tech` | `security` | Krebs Security; Dark Reading; Schneier; The Hacker News |
 | `tech` | `policy` | Politico Tech; AI Regulation; Tech Antitrust; China Tech Policy; EFF News; EU Commission Digital; EU Digital Policy; India Tech Policy; UK Tech Policy |
 | `tech` | `github` | GitHub Blog; Dev Events; GitHub Trending; Open Source News; YC Launches |
-| `tech` | `funding` | VC News; SEC Filings; Seed & Pre-Seed; Startup Funding |
+| `tech` | `funding` | VC News; IPO Filing News; Seed & Pre-Seed; Startup Funding |
 | `tech` | `cloud` | InfoQ; The New Stack; DevOps.com |
 | `tech` | `layoffs` | Layoffs.fyi; TechCrunch Layoffs |
 | `tech` | `finance` | CNBC Tech; Yahoo Finance; MarketWatch Tech; Seeking Alpha Tech |
@@ -511,7 +511,7 @@ The dashboard recalculates oil-price freshness from the observation time. The RE
 - Gold — central-bank reserves (IMF), ETF flows (SPDR), and spot trend
 - SGE SHAU/SHAG physical benchmarks compared with seeded COMEX futures
 - CFTC Commitments of Traders positioning (reviewed US government data)
-- Global fuel-price tracking with national statistical sources (for example Malaysia's data.gov.my and Mexico's datos.gob.mx)
+- Global retail fuel prices from national sources and the EU Weekly Oil Bulletin
 - Commodity news network: precious metals, base metals, critical minerals, mining companies, and supply-chain feeds — see the [feed inventory](#server-side-feed-aggregation)
 - Mineral production and processing shares by country and stage (USGS Mineral Commodity Summaries, BGS World Mineral Production fill). Complements the static critical-minerals deposits map layer: deposits are where it *could* come from; these shares are where it *does*, at mine vs refinery.
 - Energy chokepoint and tanker context via [maritime intelligence](/maritime-intelligence) and the [Hormuz tracker](/panels/hormuz-tracker)
@@ -531,8 +531,14 @@ The dashboard recalculates oil-price freshness from the observation time. The RE
 
 Licensing: USGS MCS data is U.S. public domain. BGS World Mineral Production requires attribution to the British Geological Survey; IEA critical-minerals datasets are not ingested because redistribution terms are stricter than USGS/BGS, so USGS-unpublished REE refining shares are omitted.
 
-The fuel-price seed preserves local prices and source observation dates, then
-uses shared FX rates to produce USD/l for the existing table. Norway's date is
+The fuel-price seed preserves local prices and uses shared FX rates to produce
+USD/l for the table. Spain uses the publication date in Minetur's station feed
+when the date is within the last seven days. The EU Weekly Oil Bulletin provides
+a fallback. Mexico's CRE feed supplies no date.
+For each grade, WorldMonitor displays the day it first recorded the current
+national average in MXN/l. A change in the exchange rate leaves that date intact.
+
+Norway's date is
 the first day of the observed month; its monthly data has roughly three weeks
 of publication lag and expires 65 days after month end. Gasvaktin is an MIT-licensed
 community project scraping company websites, not an official national average.
@@ -879,7 +885,7 @@ Technology-sector intelligence for the Tech variant.
 - Cloud regions (AWS, Azure, GCP)
 - Accelerators (YC, Techstars, 500)
 - Upcoming tech conferences
-- Research signals — GitHub trends, OSS Insight repository analytics, and tech-event calendars
+- Research signals — GitHub trending repositories and tech-event calendars
 
 Deep dives: [Tech readiness panel](/panels/tech-readiness) · [Platform overview](/overview)
 

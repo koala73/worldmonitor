@@ -230,7 +230,7 @@ describe('Fix 3: hasReasoningPreamble', () => {
 
   // Mode guard
   it('is gated to brief and analysis modes in source', () => {
-    assert.match(src, /\['brief',\s*'analysis'\]\.includes\(mode\)/,
+    assert.match(src, /\['brief',\s*'analysis',\s*'article'\]\.includes\(mode\)/,
       'Reasoning preamble check must be gated to brief/analysis modes');
   });
 
@@ -241,7 +241,7 @@ describe('Fix 3: hasReasoningPreamble', () => {
 
   // Min-length gate
   it('has mode-scoped min-length gate for brief/analysis', () => {
-    assert.match(src, /\['brief',\s*'analysis'\]\.includes\(mode\)\s*&&\s*rawContent\.length\s*<\s*20/,
+    assert.match(src, /\['brief',\s*'analysis',\s*'article'\]\.includes\(mode\)\s*&&\s*rawContent\.length\s*<\s*20/,
       'Should reject outputs shorter than 20 chars in brief/analysis modes');
   });
 });
@@ -263,8 +263,9 @@ describe('Fix 4: cache version bump', () => {
     // v6 → v7 on 2026-07-05 for pair-dedup, #4914.)
     // v11 → v12 on 2026-10-28: rows written by the pre-delimiter translate
     // prompt may carry an injected answer and are served verbatim on a hit.
-    assert.match(src, /CACHE_VERSION\s*=\s*'v12'/,
-      'CACHE_VERSION must be v12 to retire older poisoned cache rows');
+    // v12 → v13 on 2026-11-25: retires ungrounded Good Things digest rows (#11268).
+    assert.match(src, /CACHE_VERSION\s*=\s*'v13'/,
+      'CACHE_VERSION must be v13 to retire older poisoned cache rows');
   });
 
   it('cache identity does not use the collidable FNV hash', () => {

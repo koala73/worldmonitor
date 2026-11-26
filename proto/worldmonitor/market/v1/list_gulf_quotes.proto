@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package worldmonitor.market.v1;
 
+import "sebuf/http/annotations.proto";
+
 // GulfQuote represents a Gulf region market quote (index, currency, or oil).
 message GulfQuote {
   string symbol = 1;
@@ -12,6 +14,8 @@ message GulfQuote {
   double price = 6;
   double change = 7;
   repeated double sparkline = 8;
+  // Unix ms of the provider observation behind price; absent when unknown.
+  optional int64 price_at = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }
 
 message ListGulfQuotesRequest {}

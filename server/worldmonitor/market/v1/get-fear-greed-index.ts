@@ -39,6 +39,8 @@ export async function getFearGreedIndex(
       };
     });
 
+    const fsiAsOf = Number(hdr?.fsi?.asOf);
+
     return {
       compositeScore: Number(comp.score ?? 0),
       compositeLabel: String(comp.label ?? ''),
@@ -68,6 +70,7 @@ export async function getFearGreedIndex(
       fsiLabel: String(hdr?.fsi?.label ?? ''),
       hygPrice: Number(hdr?.fsi?.hygPrice ?? 0),
       tltPrice: Number(hdr?.fsi?.tltPrice ?? 0),
+      ...(Number.isFinite(fsiAsOf) && fsiAsOf > 0 && { fsiAsOf }),
       sectorPerformance,
       unavailable: false,
     };

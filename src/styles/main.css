@@ -1788,6 +1788,16 @@ canvas,
     border: 0;
   }
 
+  /* The fixed tab bar covers the last 58px of the scrolling dashboard. The grid
+     shrinks in the flex column and its tiles overflow past its bottom padding,
+     so a trailing spacer keeps the final tile (Add Panel) in reach (#11157).
+     Scoped to the dashboard's #main: the plugin page reuses .main-content >
+     .panels-grid but has no tab bar (e2e/panel-grid-column-clamp.spec.ts). */
+  #main > .panels-grid::after {
+    content: '';
+    flex: 0 0 calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+
   .mobile-tab-bar {
     position: fixed;
     left: 0;
@@ -4089,18 +4099,24 @@ body.live-news-fullscreen-active {
   overflow: hidden;
 }
 
-body.live-news-fullscreen-active .time-slider,
-body.live-news-fullscreen-active .deckgl-layer-toggles,
-body.live-news-fullscreen-active .map-legend,
-body.live-news-fullscreen-active .map-controls,
-body.live-news-fullscreen-active .map-timestamp {
+/* A fullscreen Live News/Webcams panel covers the map; a fullscreen map keeps its controls. */
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .time-slider,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .deckgl-layer-toggles,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-legend,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-controls,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-timestamp {
   visibility: hidden !important;
   pointer-events: none !important;
 }
 
-body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-bottom-grid,
-body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-resize-handle {
+body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-bottom-grid {
   display: none !important;
+}
+
+/* The panel grid stacks below the map dividers, even when a panel is expanded. */
+body.live-news-fullscreen-active .map-resize-handle,
+body.live-news-fullscreen-active .map-width-resize-handle {
+  display: none;
 }
 
 body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-container {
@@ -4114,8 +4130,8 @@ body.live-news-fullscreen-active .map-popup {
 }
 
 /* Hide map overlays and sibling panels behind fullscreen panel (#829, #859) */
-body.live-news-fullscreen-active .layer-toggles,
-body.live-news-fullscreen-active .map-legend {
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .layer-toggles,
+body.live-news-fullscreen-active:not(.map-fullscreen-active) .map-legend {
   display: none !important;
 }
 
@@ -4989,6 +5005,28 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 .toast-notification.visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+/* A toast that carries a link (blocked new tab): it takes taps only while
+   shown, so a fading notice never swallows a click meant for the page. */
+.toast-notification--action {
+  /* Sized to its text, not to the half viewport right of `left: 50%`. */
+  width: max-content;
+  max-width: min(560px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+
+.toast-notification--action.visible {
+  pointer-events: auto;
+}
+
+.toast-notification-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  /* A long hostname wraps inside the toast instead of running off a phone screen. */
+  overflow-wrap: break-word;
 }
 
 .wm-copy {
@@ -7916,6 +7954,14 @@ body.playback-mode .status-dot {
 }
 
 /* Heatmap */
+.heatmap-period {
+  padding: 4px 4px 0;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .heatmap {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -8479,7 +8525,7 @@ body.playback-mode .status-dot {
 }
 
 .news-market-correlation {
-  padding: 10px 14px 12px;
+  padding: 10px 0 12px;
 }
 
 .news-market-correlation__controls {
@@ -8649,7 +8695,7 @@ body.playback-mode .status-dot {
 
 /* 24/7 Positioning Panel */
 .pos-panel {
-  padding: 10px 14px;
+  padding: 10px 0;
 }
 
 .pos-section {
@@ -12645,7 +12691,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .energy-tape-section {
@@ -12775,7 +12821,7 @@ button.popup-link {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .radiation-panel-content {
@@ -12788,7 +12834,7 @@ button.popup-link {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .sanctions-summary-card {
@@ -12870,7 +12916,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .sanctions-section {
@@ -13067,7 +13113,7 @@ button.popup-link {
 }
 
 .radiation-footer {
-  padding: 0 8px 8px 8px;
+  padding: 0 0 8px;
   color: var(--text-dim);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   text-align: right;
@@ -13081,7 +13127,7 @@ button.popup-link {
 /* economic-tabs: now uses shared .panel-tabs / .panel-tab */
 
 .economic-content {
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .economic-content-macro {
@@ -16071,8 +16117,12 @@ button.popup-link {
     display: block;
   }
 
+  /* The tab bar stays above the drawer, so reserve its height to keep the
+     footer links reachable (#11157). */
   .mobile-menu {
     display: block;
+    padding-bottom: calc(var(--wm-bottom-base) + 12px);
+    overscroll-behavior: contain;
   }
 
   .region-sheet-backdrop {
@@ -16320,6 +16370,16 @@ button.popup-link {
      (narrow desktop windows use the Deck renderer that mounts it). It stays
      available in the fullscreen Map view. */
   .map-section:not(.live-news-fullscreen) .map-distance-control {
+    display: none;
+  }
+
+  /* The strip has ~220px of map, and the time-range row plus the reset and
+     locate buttons covered about half of it (#11157). Zoom stays (pinch also
+     works); the full set returns in the fullscreen Map view. */
+  .map-section:not(.live-news-fullscreen) .time-slider,
+  .map-section:not(.live-news-fullscreen) .map-controls [data-action="reset"],
+  .map-section:not(.live-news-fullscreen) .map-controls .zoom-reset,
+  .map-section:not(.live-news-fullscreen) .map-controls .map-locate {
     display: none;
   }
 
@@ -16686,11 +16746,11 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .cii-methodology-footer {
-  margin: 0 8px 8px;
+  margin: 0 0 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
@@ -17272,7 +17332,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 8px;
+  padding: 8px 0;
 }
 
 .risk-gauge {
@@ -18496,6 +18556,15 @@ button.popup-link {
   color: var(--text-dim);
 }
 
+.popup-toggle-error {
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  text-align: left;
+  color: var(--semantic-critical-text, var(--semantic-critical));
+}
+
 .popup-toggle-switch {
   position: relative;
   width: 32px;
@@ -19130,7 +19199,7 @@ button.popup-link {
 .id-tabs {
   display: flex;
   gap: 2px;
-  padding: 6px 8px 0;
+  padding: 6px 0 0;
   border-bottom: 1px solid rgba(255,255,255,.08);
 }
 .id-tab-btn {
@@ -19170,7 +19239,7 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 8px;
+  padding: 6px 0;
 }
 .id-row {
   background: rgba(255,255,255,.04);
@@ -19232,7 +19301,7 @@ button.popup-link {
 }
 /* DDoS tab */
 .id-ddos {
-  padding: 6px 8px;
+  padding: 6px 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -22944,7 +23013,7 @@ body.has-breaking-alert .panels-grid {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 0;
 }
 
 /* Emoji Key Legend */
@@ -23112,6 +23181,7 @@ body.has-breaking-alert .panels-grid {
   display: flex;
   gap: 6px;
   flex: 1;
+  min-width: 0;
 }
 
 .posture-chip {
@@ -23122,6 +23192,8 @@ body.has-breaking-alert .panels-grid {
   display: flex;
   align-items: center;
   gap: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .posture-chip.air {
@@ -23132,6 +23204,19 @@ body.has-breaking-alert .panels-grid {
 .posture-chip.naval {
   background: rgba(100, 220, 180, 0.15);
   color: rgba(100, 220, 180, 0.9);
+}
+
+/* Context, not a level: outlined and muted so it never reads as a badge. */
+.posture-chip.instability {
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: help;
+  /* The one chip that gives way in a narrow panel; the full text is in its title. */
+  display: block;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Expanded theater with inline forces */
@@ -27154,6 +27239,16 @@ body.map-width-resizing {
 /* Muted grey drops below 4.5:1 on the green tint in dark; the local price takes the cell's colour. */
 .gb-cheapest .gb-local, .gb-priciest .gb-local { color: inherit; }
 
+.gb-observed {
+  display: block;
+  font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  white-space: normal;
+}
+
+.gb-observed-stale { font-style: italic; }
+.gb-cheapest .gb-observed, .gb-priciest .gb-observed { color: inherit; }
+
 .gb-total-row td { font-weight: 600; background: var(--overlay-subtle); }
 .gb-total { font-size: calc(0.8rem * var(--wm-panel-effective-scale, 1)); }
 
@@ -27227,6 +27322,15 @@ body.map-width-resizing {
   color: var(--yellow, #eab308);
   border-color: color-mix(in srgb, var(--yellow, #eab308) 40%, transparent);
   background: color-mix(in srgb, var(--yellow, #eab308) 12%, transparent);
+}
+.credibility-score-badge.band-unknown {
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+.item-feed-label {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-dim);
 }
 .credibility-score-badge.band-low {
   color: var(--red, #f87171);
@@ -27347,7 +27451,7 @@ body.map-width-resizing {
   height: 100%;
   min-height: 400px;
   gap: 6px;
-  padding: 8px;
+  padding: 8px 0;
   box-sizing: border-box;
 }
 .chat-analyst-chips {
@@ -28110,6 +28214,21 @@ body.map-width-resizing {
 
 .manage-billing-btn:hover { color: var(--text); }
 
+/* Paused plan: updating the card is the only way back, so the button takes
+   the card's attention tone (the same text-on-surface pairing as the plan
+   name, which keeps contrast in every theme). */
+.manage-billing-btn-primary {
+  color: var(--billing-tone-attention);
+  border-color: color-mix(in srgb, var(--billing-tone-attention) 60%, transparent);
+}
+
+/* Hover strengthens the border only: a tone-tinted fill under tone-coloured
+   text drops the light theme below 4.5:1. */
+.manage-billing-btn-primary:hover {
+  color: var(--billing-tone-attention);
+  border-color: var(--billing-tone-attention);
+}
+
 /* ---- API Keys + Embeds Settings Tabs ---- */
 /* Two tabs, two credential classes, one layout. The selectors are aliased
    rather than duplicated so a spacing fix cannot land on one list and miss
@@ -28798,7 +28917,7 @@ body.map-width-resizing {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .ecp-summary-card {
@@ -28837,7 +28956,7 @@ body.map-width-resizing {
 .ecp-filters {
   display: flex;
   gap: 4px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .ecp-filter-btn {
@@ -28868,7 +28987,7 @@ body.map-width-resizing {
 .ecp-policy-list {
   display: flex;
   flex-direction: column;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .ecp-policy-row {
@@ -28951,7 +29070,7 @@ body.map-width-resizing {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 8px;
+  padding: 4px 0;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
@@ -31587,14 +31706,73 @@ body.map-width-resizing {
 .layer-toggles.map-control-collapsed { width: auto; }
 
 @media (max-width: 768px) {
-  body:not(.live-news-fullscreen-active) .layer-toggles.map-control-panel:not(.deckgl-layer-toggles) {
+  body:not(.live-news-fullscreen-active) .layer-toggles.map-control-panel:not(.deckgl-layer-toggles),
+  body.map-fullscreen-active .layer-toggles.map-control-panel:not(.deckgl-layer-toggles) {
     display: flex !important;
   }
-  body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend) {
+  body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend),
+  body.map-fullscreen-active .map-legend.map-control-panel:not(.deckgl-legend) {
     display: flex;
   }
+  /* The open list fills the map strip above the legend and scrolls on its own;
+     capped by height it showed ~5 of 23 layers (#11157). */
   .layer-toggles.map-control-panel:not(.deckgl-layer-toggles):not(.map-control-collapsed) {
+    top: 8px;
     bottom: 58px;
+    right: 60px;
+    max-width: none;
+    max-height: none;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    z-index: 160;
+    padding: 6px;
+    box-sizing: border-box;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+  }
+  .layer-toggles.map-control-panel:not(.deckgl-layer-toggles):not(.map-control-collapsed) > .map-control-disclosure {
+    position: sticky;
+    top: -6px;
+    z-index: 1;
+    background: var(--panel-bg);
+  }
+}
+
+/* The globe's layer list sits top-left, so its time range goes bottom-left. */
+.globe-mode > .globe-time-slider {
+  top: auto;
+  bottom: 10px;
+}
+
+/* The phone rule above only re-shows the SVG map's layer list; the 3D globe
+   needs its own, or it has no Layers control at all (#11157). */
+@media (max-width: 768px) {
+  body:not(.live-news-fullscreen-active) .globe-mode > .layer-toggles.map-control-panel,
+  body.map-fullscreen-active .globe-mode > .layer-toggles.map-control-panel {
+    display: flex !important;
+  }
+
+  /* Fit the list to the map strip and scroll it, instead of its fixed 32vh.
+     Open, it sits above the time range so every row stays tappable. */
+  .globe-mode > .deckgl-layer-toggles {
+    max-height: calc(100% - 20px);
+  }
+
+  .globe-mode > .deckgl-layer-toggles:not(.map-control-collapsed) {
+    z-index: 101;
+  }
+
+  .globe-mode > .deckgl-layer-toggles .toggle-list {
+    max-height: none !important;
+  }
+
+  .globe-mode > .globe-time-slider {
+    right: auto;
+    bottom: 34px;
   }
 }
 

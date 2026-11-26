@@ -8,3 +8,6 @@ Captured from public upstream responses on 2026-11-05, without credentials:
 
 Tests freeze time at 2026-11-05. Prices, observation dates and response fields
 are source values; malformed, stale and missing data cases are created in tests.
+
+`minetur-stations.json` is a synthetic Spain station excerpt with the `Fecha`
+value and timestamp format reported in issue #11313.

@@ -372,6 +372,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Nadogradi na PRO za ovisnost dobavljača oružja i vojnu kapacitetu"
+    },
+    "intelMemory": {
+      "title": "Arhiva povijesne obavještajne analize",
+      "help": "Arhiva od 180 dana značajnih događaja vezanih uz konflikt, vojsku, energiju, nemire, kibernetiku, pomorstvo, prirodne katastrofe i zrakoplovstvo, s odgovarajućom semantičkom pretraživanjem prethodnih slučajeva.",
+      "loading": "Učitavanje arhive povijesne obavještajne analize…",
+      "proLocked": "Nadogradite se na PRO za arhivu od 180 dana i pretragu prethodnih slučajeva",
+      "unavailable": "Arhiva povijesne obavještajne analize nije dostupna.",
+      "retry": "Pokušaj ponovno",
+      "empty": "Nema arhiviranih obavještajnih događaja koji se podudaraju s tom zemljom i domenom u prozoru od 180 dana.",
+      "partial": "Pokrivenost arhive je djelomična za ovaj upit; dostupni zapisi ostaju vidljivi.",
+      "domainFilterLabel": "Filtriraj povijesnu obavještajnu analizu po domeni",
+      "domains": {
+        "all": "Sve",
+        "conflict": "Sukobi",
+        "military": "Vojna",
+        "energy": "Energija",
+        "unrest": "Nemiri",
+        "cyber": "Kibernetika",
+        "maritime": "Pomorstvo",
+        "natural": "Prirodne opasnosti",
+        "aviation": "Zrakoplovstvo"
+      },
+      "loadMore": "Učitaj više",
+      "loadingMore": "Učitavanje…",
+      "loadMoreError": "Nije moguće učitati dodatne događaje. Pokušaj ponovno.",
+      "sourceLink": "Izvor ↗",
+      "similarTitle": "Pronađi slične prethodne događaje",
+      "useLatestHeadline": "Koristi najnoviju vijest",
+      "similarPlaceholder": "Opiši razvijajuću se situaciju (najmanje 10 znakova)…",
+      "findSimilar": "Pronađi slične događaje",
+      "similarMinLength": "Unesi najmanje 10 znakova za pretragu prethodnih slučajeva.",
+      "similarLoading": "Pretraživanje povijesnih prethodnih slučajeva…",
+      "similarEmpty": "Nema sličnih prethodnih događaja koji su prošli prag sličnosti.",
+      "similarUnavailable": "Pretraga prethodnih slučajeva nije dostupna. Pokušaj ponovno."
     }
   },
   "header": {
@@ -1095,8 +1129,11 @@
       "upstreamUnavailable": "Podaci lanaca nabave privremeno nisu dostupni — prikazuju se keširani podaci",
       "spikeAlert": "Detektiran skok — stopa značajno iznad prosjeka od 52 tjedna (tjedno)",
       "warnings": "upozorenje(a)",
-      "aisDisruptions": "Poremećaji praćenja plovila",
+      "aisDisruptions_one": "{{count}} poremećaj praćenja plovila",
+      "aisDisruptions_few": "{{count}} poremećaja praćenja plovila",
+      "aisDisruptions_other": "{{count}} poremećaja praćenja plovila",
       "wowChange": "Promjena od tjedna do tjedna",
+      "asOf": "na dan {{date}}",
       "riskLevel": "Razina rizika",
       "disruption": "Poremećaj",
       "vessels": "brodovi",
@@ -1323,7 +1360,7 @@
         "auxiliary": "Pomoćni",
         "navalVessels": "Brodovi"
       },
-      "infoTooltip": "<strong>Metodologija</strong><p>Agreguira vojnu zrakoplove i ratne brodove po teatru operacija.</p><ul><li><strong>Normalna:</strong> Temeljna aktivnost</li><li><strong>Pojačana:</strong> Iznad praga (50+ zrakoplova)</li><li><strong>Kritična:</strong> Visoka koncentracija (100+ zrakoplova)</li></ul><p><strong>Sposobna za udar:</strong> Tankeri + Radarsko upozorenje iz zraka + Borbeni zrakoplovi prisutni u dovoljan broju za održive operacije.</p>",
+      "infoTooltip": "<strong>Metodologija</strong><p>Broji vojne zrakoplove i praćene mornaričke brodove u svakom području operacija.</p><ul><li><strong>Normalno:</strong> Ispod praga područja</li><li><strong>Povišeno:</strong> Broj doseže 3 do 8, po području</li><li><strong>Kritično:</strong> Broj doseže 8 do 20, po području</li></ul><p>Brodovi se dodaju u broj do polovice povišenog praga, pa brodovi sami nikada ne podižu razinu.</p><p><strong>Sposoban za udarce:</strong> Tankeri + Zrakoplovi ranog upozorenja + Borbeni zrakoplovi prisutni u dovoljnom broju za održane operacije.</p>",
       "scanningTheaters": "Skeniranje teatara",
       "positions": "Pozicije zrakoplova",
       "navalVesselsLoading": "Brojevni brodovi",
@@ -1365,7 +1402,9 @@
         "east-med-theater": "Istočno Sredozemlje",
         "israel-gaza-theater": "Izrael/Gaza",
         "yemen-redsea-theater": "Jemen/Crveno more"
-      }
+      },
+      "instabilityChip": "Nestabilnost {{score}}",
+      "instabilityNote": "Indeks nestabilnosti {{nation}}: {{score}} od 100. Prikazano radi konteksta. Ne mijenja razinu, koja broji zrakoplove i brodove u teatru operacija."
     },
     "countryBrief": {
       "moreActions": "Više radnji",
@@ -1709,7 +1748,7 @@
       "briefFreshness": "Generirano prije {{minutes}}m · najnoviji izvor star {{hours}}h",
       "briefStoryDetails": "Detalji priče ({{count}})",
       "streamIdleStopLabel": "Zaustavi live video kada je korisnik neaktivan",
-      "streamIdleStopDesc": "Zaustavlja Live News i Live Webcams nakon ovog vremena bez aktivnosti i prikazuje obavijest u panelu.",
+      "streamIdleStopDesc": "Zaustavlja Live News i Live Webcams nakon ovog vremena bez aktivnosti i prikazuje obavijest u panelu. Live News nastavlja s reprodukcijom dok mu je zvuk uključen.",
       "streamIdleStopNever": "Nikada",
       "liveNewsAutoplayLabel": "Automatska reprodukcija uživo vijesti",
       "liveNewsAutoplayDesc": "Pokreće video uživo vijesti, utišan, čim se pojavi na zaslonu. Isključite ovo da se video učita samo kada ga sami pokrenete."
@@ -1780,7 +1819,7 @@
       "noData": "nema podataka",
       "enable": "Aktiviraj",
       "convergenceMetric": "Konvergencija",
-      "ciiDeviation": "Odstupanje indeksa nestabilnosti država",
+      "topCiiScore": "Najviši rezultat nestabilnosti države",
       "infraEvents": "Događaji infrastrukture",
       "highAlerts": "Visoki alarmi",
       "topRisks": "Najveći rizici",
@@ -1894,7 +1933,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS satelitske toplinske detekcije na monitoriranim područjima sukoba. Visok intenzitet = sjajnost >360K i pouzdanost >80%.",
       "possibleExplosions": "Detektirano {{count}} mogućih eksplozija",
-      "explosionTooltip": "Termalna signatura skladna s eksplozijom (radijacijska snaga vatra >80 MW, sjaj >380 K)"
+      "explosionTooltip": "Termalna signatura skladna s eksplozijom (radijacijska snaga vatra >80 MW, sjaj >380 K)",
+      "agencyReports": "Požari koje su prijavile agencije",
+      "agencyDates": "Datumi agencije",
+      "shownOfTotal": "Prikazano {{shown}} od {{total}} zapisa o požarima"
     },
     "ucdpEvents": {
       "stateBased": "Državni konflikt",
@@ -1959,6 +2001,7 @@
       "refugees": "Izbjeglice",
       "asylumSeekers": "Tražitelji azila",
       "idps": "Interno raseljene osobe",
+      "stateless": "Osobe bez državljanstva",
       "total": "Ukupno",
       "origins": "Zemlje porijekla",
       "hosts": "Zemlje domaćina",
@@ -2063,7 +2106,8 @@
         "minutesAgo": "{{count}}m prije",
         "hoursAgo": "{{count}}h prije",
         "daysAgo": "{{count}}d prije"
-      }
+      },
+      "breakingAlertsNotSaved": "Nije moguće spremiti. Omogućite pohranu podataka stranice za ovu stranicu ili oslobodite memoriju preglednika, zatim pokušajte ponovno."
     },
     "countryTimeline": {
       "now": "sada",
@@ -2358,7 +2402,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Cijene goriva</strong> Maloprodajne cijene na crpkama za benzin i dizel u 30+ zemalja, normirane na USD/litar za usporedbu. Cijene potječu iz službenih vladinih programa otvorenih podataka i ažuriraju se tjedno. Najjeftinije i najskupnije zemlje su istaknuté. Promjena tjedna kroz tjedan se prikazuje kada su dostupni podaci iz prethodnog tjedna.",
-      "countries": "zemlje"
+      "countries": "zemlje",
+      "observedStale": "{{date}}, staro {{days}} dana",
+      "monthlyMean": "prosjek za {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO indeks cijena hrane</strong> Indeks cijena hrane Svjetske organizacije za hranu i poljoprivredu prati međunarodne izvozne cijene za košaricu hrane (Žitarice, Mliječni proizvodi, Meso, Ulja, Šećer), bazna vrijednost 2014-2016=100. Ažurira se mjesečno prvi petak svakog mjeseca.",
@@ -2592,6 +2638,7 @@
       "infoTooltip": "<strong>Indikator financijskog stresa</strong> World Monitor omjer visokorentabilnog kredita i dugoročnih trezorskih obveznica, prilagođen za volatilnost dionica i raspon visokorentabilnog kredita: (HYG / TLT) / (VIX × raspon visokorentabilnog kredita / 100). Ovo nije indeks financijskog stresa Kansas City Feda. Vrijednost od 1,5 ili viša označava nizak stress; ispod 0,3 je visok stress.",
       "title": "Indikator financijskog stresa",
       "usFsiValue": "Vrijednost indeksa financijskog stresa SAD-a",
+      "asOf": "na dan {{date}}",
       "cissTitle": "EU CISS (Sustavni stres evrske zone)",
       "cissStale": "Europska centralna banka nije objavila novu vrijednost — ovo čitanje može biti zastarjelo.",
       "notAvailable": "N/D",
@@ -2940,7 +2987,21 @@
       "saved": "Posljednje poznato ažuriranje {{time}} · Provjera ažuriranja",
       "savedOffline": "Posljednje poznato ažuriranje {{time}} · Izvan mreže",
       "localSignals": "Na temelju učitanih signala nadzorne ploče",
-      "emptySaved": "Nema konvergencije u posljednjem poznatom ažuriranju."
+      "emptySaved": "Nema konvergencije u posljednjem poznatom ažuriranju.",
+      "signalTypes": {
+        "militaryFlight": "Vojni let",
+        "militaryVessel": "Vojno plovilo",
+        "aisGap": "Prekid AIS-a",
+        "conflictEvent": "Sukobni događaj",
+        "escalationOutage": "Prekid komunikacija",
+        "newsSeverity": "Ozbiljne vijesti",
+        "sanctionsNews": "Vijesti o sankcijama",
+        "marketMove": "Kretanje tržišta",
+        "commoditySpike": "Skok robe",
+        "earthquake": "Potres",
+        "infraOutage": "Prekid infrastrukture",
+        "other": "Signal"
+      }
     },
     "thermalEscalation": {
       "title": "Toplinska eskalacija",
@@ -3392,7 +3453,11 @@
     },
     "export": {},
     "runtimeConfig": {},
-    "energyCrisis": {}
+    "energyCrisis": {},
+    "externalNavigation": {
+      "blocked": "Vaš preglednik je blokirao novu karticu.",
+      "openLink": "Otvori {{host}}"
+    }
   },
   "popups": {
     "startDate": "POČETNI DATUM",
@@ -4480,7 +4545,13 @@
     "alert": "Alarm: {{location}}",
     "multipleRegions": "Više regija",
     "trending": "\"{{term}}\" u trendu - {{count}} spominjanja u {{hours}}h",
-    "eventsDetected": "{{count}} događaja detektirano u regiji ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} događaja detektirano: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "prosvjedi",
+      "military_flight": "vojni letovi",
+      "military_vessel": "ratni brodovi",
+      "earthquake": "seizmička aktivnost"
+    }
   },
   "intel": {
     "topics": {
@@ -5765,7 +5836,8 @@
           "seatCap": "Sva 4 mjesta su iskorištena. Prvo uklonite jedno mjesto.",
           "ownerDomain": "Vaša e-mail adresa računa mora biti iz poslovne domene da biste mogli pozivati članove tima.",
           "self": "Ne možete pozvati sami sebe.",
-          "inviteeDomain": "E-mail adresa pozvanog mora biti iz poslovne domene."
+          "inviteeDomain": "E-mail adresa pozvanog mora biti iz poslovne domene.",
+          "rateLimited": "Poslali ste najviše dopuštenih 20 pozivnica unutar kliznog 24-satnog razdoblja. Pričekajte prije nego što pozovete još suradnika."
         }
       },
       "enterpriseSeats": {

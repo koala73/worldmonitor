@@ -14,7 +14,7 @@ import { test, describe } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseGemPipelines, REQUIRED_COLUMNS } from '../scripts/import-gem-pipelines.mjs';
+import { normalizeOperator, parseGemPipelines, REQUIRED_COLUMNS } from '../scripts/import-gem-pipelines.mjs';
 import { validateRegistry } from '../scripts/_pipeline-registry.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -146,6 +146,21 @@ describe('import-gem-pipelines — capacity-unit conversion', () => {
     const refined = oil.find((p) => p.name.includes('Refined Products'));
     assert.ok(refined);
     assert.equal(refined.capacityMbd, 0.65);
+  });
+});
+
+describe('import-gem-pipelines — operator normalization', () => {
+  test('drops missing-share placeholders and keeps known shares', () => {
+    assert.equal(normalizeOperator('Jadranski Naftovod [100.00%]; Gazprom [unknown %]'), 'Jadranski Naftovod [100.00%]; Gazprom');
+  });
+
+  test('an unknown owner becomes empty, not a label', () => {
+    assert.equal(normalizeOperator('unknown [unknown %]'), '');
+    assert.equal(normalizeOperator('Transneft [unknown %]; unknown [unknown %]'), 'Transneft');
+  });
+
+  test('non-string input becomes empty', () => {
+    assert.equal(normalizeOperator(undefined), '');
   });
 });
 

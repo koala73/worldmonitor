@@ -45,12 +45,14 @@ const fixtures = vi.hoisted(() => ({
         auxiliaryVessels: 0,
         totalVessels: 0,
         byOperator: {},
-        postureLevel: 'normal' as const,
+        // 14 aircraft against Taiwan's elevated threshold of 6, as the relay
+        // publishes it; the panel shows this level as is.
+        postureLevel: 'elevated' as const,
         strikeCapable: false,
         trend: 'stable' as const,
         changePercent: 0,
         summary: '',
-        headline: 'Normal activity - Taiwan Strait',
+        headline: 'Elevated military activity - Taiwan Strait',
         centerLat: 24,
         centerLon: 122.5,
         bounds: { north: 30, south: 18, east: 130, west: 115 },
@@ -72,13 +74,6 @@ vi.mock('@/services/cached-theater-posture', async (importOriginal) => ({
   // Resolves on the microtask queue — the cache-warm shape that loses the race
   // against the grid insert.
   fetchCachedTheaterPosture: vi.fn(async () => fixtures.posture),
-}));
-
-vi.mock('@/services/military-vessels-lazy', () => ({
-  getMilitaryVesselsModule: vi.fn(async () => ({
-    fetchMilitaryVessels: async () => ({ vessels: [] }),
-  })),
-  isVesselRuntimeStoppedError: () => false,
 }));
 
 import { enqueuePanelCall, replayPendingCalls } from '@/app/pending-panel-data';

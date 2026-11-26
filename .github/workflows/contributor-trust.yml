@@ -72,8 +72,9 @@ jobs:
     steps:
       - name: Check contributor trust
         id: brin
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          AUTHOR="${{ github.event.pull_request.user.login }}"
           RESPONSE=$(curl -sf --max-time 10 "https://api.brin.sh/contributor/${AUTHOR}" 2>/dev/null || true)
           if [ -z "$RESPONSE" ]; then
             echo "verdict=unavailable" >> "$GITHUB_OUTPUT"

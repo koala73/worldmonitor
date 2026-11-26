@@ -35,6 +35,21 @@ describe('_clustering.mjs', () => {
       assert.deepEqual(clusterItems([]), []);
     });
 
+    it('#11274: one top-story cluster for reworded reports of the Solomon Islands treaty', () => {
+      const items = [
+        { title: 'Solomon Islands names Australia as its primary security partner in a new treaty that excludes China - AP News', source: 'AP — Tuvalu', link: 'http://ap' },
+        { title: 'Australia, Solomon Islands sign security pact in blow to China - Reuters', source: 'Reuters — Papua New Guinea', link: 'http://reuters' },
+        { title: 'Australia’s security pact with Solomon Islands a blow to China’s influence in the Pacific - The Guardian', source: 'Guardian — Nauru', link: 'http://guardian' },
+        { title: 'Solomon Islands ends controversial security pact with China for Australian treaty', source: 'BBC Asia', link: 'http://bbc' },
+        { title: 'Solomon Islands opposition leader calls for snap election', source: 'Solomon Times', link: 'http://st' },
+      ];
+      const clusters = clusterItems(items);
+      assert.equal(clusters.length, 2);
+      const treaty = clusters.find((c) => c.sourceCount === 4);
+      assert.ok(treaty, 'the four treaty reports form one cluster');
+      assert.ok(!treaty.memberTitles.some((t) => t.includes('snap election')), 'the unrelated story stays out');
+    });
+
     it('preserves primaryTitle from highest-tier source', () => {
       const items = [
         { title: 'Iran strikes Syria overnight', source: 'Blog', link: 'http://b', tier: 5 },

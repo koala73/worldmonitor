@@ -100,6 +100,16 @@ export default defineConfig({
     baseURL: webMcpProduction ? webMcpProductionUrl : 'http://127.0.0.1:4173',
     viewport: { width: 1280, height: 720 },
     colorScheme: 'dark',
+    // Reduced motion trips the global rule in index.html that ends every CSS
+    // animation and transition at once. Headless Chromium paints each frame of
+    // them in software (SwiftShader), and the loading skeletons, spinners and
+    // pulses on a dashboard full of fixtures kept the runner's CPU busy for no
+    // assertion. Probe runs 45554467245 and 45558531419 (smoke shards 2 and 6,
+    // three runs a side): test-seconds fell 25% (3238 -> 2421 over the same 498
+    // tests, all passing) and the GPU process's CPU about 3x. Specs that measure
+    // what a user sees while things move (CLS, LCP, first paint) opt back into
+    // 'no-preference' with test.use.
+    reducedMotion: 'reduce',
     locale: 'en-US',
     timezoneId: 'UTC',
     trace: 'retain-on-failure',
@@ -154,7 +164,9 @@ export default defineConfig({
   webServer: webMcpProduction
     ? undefined
     : {
-        command: 'VITE_E2E=1 npm run dev -- --host 127.0.0.1 --port 4173',
+        // WM_E2E_OFFLINE keeps the dev server's own handlers off the network
+        // (shared/e2e-dev-network-guard.ts); page.route only reaches the browser.
+        command: 'VITE_E2E=1 WM_E2E_OFFLINE=1 npm run dev -- --host 127.0.0.1 --port 4173',
         url: 'http://127.0.0.1:4173/tests/map-harness.html',
         reuseExistingServer: false,
         timeout: 120000,

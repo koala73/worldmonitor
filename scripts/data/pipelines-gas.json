@@ -28,20 +28,20 @@
         "physicalState": "offline",
         "physicalStateSource": "operator",
         "operatorStatement": {
-          "text": "Pipelines damaged by underwater explosions in Swedish/Danish EEZ (Sep 2022); operator filed for insolvency.",
-          "url": "https://www.nordstream.com/press-info/",
-          "date": "2022-09-26"
+          "text": "NEL Gastransport reported provisional physical flow of 0 kWh/d at the Greifswald / NEL entry point for the gas day starting 24 November 2026.",
+          "url": "https://transparency.entsog.eu/api/v1/operationaldatas?operatorKey=DE-TSO-0017&pointKey=ITP-00247&directionKey=entry&from=2026-11-24&to=2026-11-24&periodType=day&indicator=Physical%20Flow",
+          "date": "2026-11-25"
         },
         "commercialState": "suspended",
         "sanctionRefs": [
           {
             "authority": "EU",
-            "listId": "2022/1269 (energy sanctions package 8)",
-            "date": "2022-10-06",
-            "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R1269"
+            "listId": "2025/1494 (Nord Stream transaction ban, Article 5af)",
+            "date": "2025-07-18",
+            "url": "https://eur-lex.europa.eu/eli/reg/2025/1494/oj"
           }
         ],
-        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "lastEvidenceUpdate": "2026-11-25T08:04:49Z",
         "classifierVersion": "v1",
         "classifierConfidence": 0.98
       }

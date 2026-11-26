@@ -155,7 +155,9 @@ const {
 const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
-const { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } = require('./shared/yahoo-closed-session.cjs');
+const {
+  PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose, isYahooEquityIndex, createYahooEquityIndexBasisResolver,
+} = require('./shared/yahoo-closed-session.cjs');
 const { SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline, capQuoteSparklines } = require('./shared/quote-sparkline.cjs');
 const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
@@ -164,6 +166,14 @@ const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs')
 const { detectTrafficAnomaly, summarizePortwatchHistory } = require('../shared/chokepoint-traffic-anomaly.js');
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
+const {
+  POSTURE_THEATERS,
+  calculateTheaterPostures: scoreTheaterPostures,
+  countUsniVesselsInBounds,
+  appendVesselHistory,
+  VESSEL_HISTORY_KEY,
+  VESSEL_HISTORY_TTL_SECONDS,
+} = require('./shared/theater-posture.js');
 const { readTransitWindow } = require('../shared/chokepoint-transit-window.js');
 const { createDurableTransitTracker } = require('../shared/chokepoint-transit-store.js');
 const { CHOKEPOINT_TRANSIT_GATES } = require('../shared/chokepoint-transit-gates.js');
@@ -398,12 +408,32 @@ function translateCity(city) {
 const OREF_DATA_DIR = process.env.OREF_DATA_DIR || '';
 const OREF_LOCAL_FILE = (() => {
   if (!OREF_DATA_DIR) return '';
+  const fs = require('fs');
+  const historyPath = path.join(OREF_DATA_DIR, 'oref-history.json');
+  // A missing path or a non-directory only disables the optional history file,
+  // as before. Permission failures on a configured volume are fatal (below).
+  let stat;
+  try { stat = fs.statSync(OREF_DATA_DIR); } catch { console.warn(`[Relay] OREF_DATA_DIR does not exist: ${OREF_DATA_DIR}`); return ''; }
+  if (!stat.isDirectory()) { console.warn(`[Relay] OREF_DATA_DIR is not a directory: ${OREF_DATA_DIR}`); return ''; }
   try {
-    const stat = require('fs').statSync(OREF_DATA_DIR);
-    if (!stat.isDirectory()) { console.warn(`[Relay] OREF_DATA_DIR is not a directory: ${OREF_DATA_DIR}`); return ''; }
-  } catch { console.warn(`[Relay] OREF_DATA_DIR does not exist: ${OREF_DATA_DIR}`); return ''; }
+    fs.accessSync(OREF_DATA_DIR, fs.constants.R_OK | fs.constants.W_OK | fs.constants.X_OK);
+    for (const [file, access] of [
+      [historyPath, fs.constants.R_OK],
+      [historyPath + '.tmp', fs.constants.W_OK],
+    ]) {
+      try {
+        fs.accessSync(file, access);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+  } catch (error) {
+    console.error(`[Relay] FATAL: cannot use OREF_DATA_DIR ${OREF_DATA_DIR}: ${error.message}`);
+    console.error('[Relay] Give the relay runtime user access to the mounted directory and its OREF history files. The container runs as UID 1000 and GID 1000.');
+    process.exit(1);
+  }
   console.log(`[Relay] OREF local persistence: ${OREF_DATA_DIR}`);
-  return path.join(OREF_DATA_DIR, 'oref-history.json');
+  return historyPath;
 })();
 const RELAY_OREF_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_OREF_RATE_LIMIT_MAX))
   ? Number(process.env.RELAY_OREF_RATE_LIMIT_MAX) : 600;
@@ -3503,6 +3533,15 @@ async function seedUcdpEvents() {
       } catch (err) {
         console.warn(`[UCDP] Compact projection write failed: ${err?.message || err}`);
       }
+      // Intel-history (#11245): the same hook the seed-ucdp-events backup runs,
+      // so either writer appends identical rows under one ingest-health record.
+      // The hook is fail-open; the catch only covers a failed module load.
+      try {
+        const { ucdpHistoryAfterPublish } = await import('./_intel-history-collectors.mjs');
+        await ucdpHistoryAfterPublish(payload, { runId: `${Date.now()}-ucdp-relay` });
+      } catch (err) {
+        console.warn(`[UCDP] intel-history hook unavailable: ${err?.message || err}`);
+      }
     }
     const newConflicts = capped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
     for (const e of newConflicts.slice(0, 2)) {
@@ -3767,9 +3806,14 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
   });
 }
 
-// A rolled chart's previous close stays the same until the next trade, so one
-// daily-chart request per symbol covers a whole weekend of 5-minute cycles.
+// Rolled non-index charts keep one lookup until the next trade.
 const _previousSessionCloses = new Map();
+const resolveYahooIndexClose = createYahooEquityIndexBasisResolver({
+  scope: 'relay',
+  read: (key) => upstashGet(key, undefined, 1500),
+  write: (key, entry, ttl) => upstashSet(key, entry, ttl),
+  writeIfAbsent: (key, entry, ttl) => upstashSetNx(key, entry, ttl),
+});
 
 async function _withPreviousSessionChange(symbol, quote) {
   let cached = _previousSessionCloses.get(symbol);
@@ -3812,8 +3856,20 @@ async function _commoditySparkline(symbol, quote) {
 }
 
 function fetchYahooChartDirect(symbol, query = '') {
-  return _fetchYahooChartOnce(symbol, query)
-    .then((quote) => (!query && quote?.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote));
+  return _fetchYahooChartOnce(symbol, query).then(async (quote) => {
+    if (query || !quote) return quote;
+    if (!isYahooEquityIndex(symbol)) {
+      return quote.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote;
+    }
+
+    const close = await resolveYahooIndexClose(symbol, quote.lastTradeAt, async () => {
+      await sleep(150);
+      return (await _fetchYahooChartOnce(symbol, PREVIOUS_SESSION_CHART_QUERY))?.chart;
+    });
+    // Only fresh quotes feed the alert emitter. On a missing basis the normal
+    // last-good logic can preserve the quote without sending a new alert.
+    return close == null ? null : { ...quote, change: ((quote.price - close) / close) * 100 };
+  });
 }
 
 function _fetchYahooChartOnce(symbol, query = '') {
@@ -4233,19 +4289,29 @@ const GULF_SYMBOLS = [
 const GULF_SEED_TTL = 5400; // 90min — survives 1 missed cycle
 
 async function seedGulfQuotes() {
+  const previousPayload = await envelopeRead('market:gulf-quotes:v1');
+  const previousBySymbol = new Map((Array.isArray(previousPayload?.quotes) ? previousPayload.quotes : [])
+    .filter((quote) => quote && typeof quote.symbol === 'string')
+    .map((quote) => [quote.symbol, quote]));
   const quotes = [];
+  let freshCount = 0;
   for (const meta of GULF_SYMBOLS) {
     const yahoo = await fetchYahooChartDirect(meta.symbol);
     if (yahoo) {
+      freshCount += 1;
       quotes.push({
         symbol: meta.symbol, name: meta.name, country: meta.country,
         flag: meta.flag, type: meta.type,
         price: yahoo.price, change: +(yahoo.change).toFixed(2), sparkline: yahoo.sparkline,
+        ...(Number.isFinite(yahoo.lastTradeAt) && yahoo.lastTradeAt > 0 && { priceAt: yahoo.lastTradeAt * 1000 }),
       });
+    } else if (isYahooEquityIndex(meta.symbol) && previousBySymbol.has(meta.symbol)) {
+      // An index is withheld until its prior close is verified; keep its last row meanwhile.
+      quotes.push(previousBySymbol.get(meta.symbol));
     }
     await sleep(150);
   }
-  if (quotes.length === 0) { console.warn('[Gulf] No quotes fetched — skipping'); return 0; }
+  if (freshCount === 0) { console.warn('[Gulf] No quotes fetched — skipping'); return 0; }
   const payload = { quotes, rateLimited: false };
   const ok1 = await envelopeWrite('market:gulf-quotes:v1', payload, GULF_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-gulf' });
   const ok2 = await upstashSet('seed-meta:market:gulf-quotes', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
@@ -4300,6 +4366,7 @@ async function seedEtfFlows() {
     await sleep(150);
   }
   if (etfs.length === 0) { console.warn('[ETF] No data fetched — skipping'); return 0; }
+  etfs.sort((a, b) => b.volume - a.volume);
   const totalVolume = etfs.reduce((s, e) => s + e.volume, 0);
   const totalEstFlow = etfs.reduce((s, e) => s + e.estFlow, 0);
   const payload = {
@@ -5290,7 +5357,7 @@ Levels: critical, high, medium, low, info
 Categories: conflict, protest, disaster, diplomatic, economic, terrorism, cyber, health, environmental, military, crime, infrastructure, tech, general
 
 Guidelines for LEVEL assignment (geopolitical scope required for critical):
-- critical: Active military strikes with international implications, geopolitical mass-casualty events (10+ killed in conflict/terrorism/state action), ceasefire agreements/collapses, nuclear incidents, pandemic declarations, coups, strait/waterway closures
+- critical: Active military strikes with international implications, geopolitical mass-casualty events (10+ killed in conflict/terrorism/state action), ceasefire agreements/collapses, nuclear incidents, pandemic declarations, coups, strait/waterway closures that have taken effect
 - high: Armed conflict updates, major diplomatic actions, sanctions packages, significant natural disasters, blockades, terrorist attacks, domestic mass-casualty events (mass shootings, industrial disasters)
 - medium: Ongoing conflict analysis, economic impact reports, protest movements, regional policy changes, military exercises
 - low: Diplomatic meetings, trade discussions, humanitarian aid, election updates, peacekeeping deployments
@@ -5301,6 +5368,8 @@ Key distinction: "critical" requires GEOPOLITICAL scope — events that destabil
 - "23 killed in fireworks factory explosion in India" → industrial accident → high
 - "700 killed in Sudan drone strikes" → geopolitical mass-casualty in active civil war → critical
 - "Iran closes Strait of Hormuz" → global trade disruption → critical
+- "Iran sets its terms for reopening Hormuz" → terms or threats, not a closure or an attack → high
+- "Russia says its missiles destroyed a Ukrainian grain port" → an attack, reported by the attacker → critical
 - "Guardian view on ceasefire: need real peace" → editorial → info
 - "Trump's obsession with energy" → opinion/analysis → info
 - "Man killed his estranged wife" → domestic crime → info
@@ -6751,17 +6820,7 @@ function theaterDetectAircraftType(callsign) {
 }
 
 
-const POSTURE_THEATERS = [
-  { id: 'iran-theater', bounds: { north: 42, south: 20, east: 65, west: 30 }, thresholds: { elevated: 8, critical: 20 }, strikeIndicators: { minTankers: 2, minAwacs: 1, minFighters: 5 } },
-  { id: 'taiwan-theater', bounds: { north: 30, south: 18, east: 130, west: 115 }, thresholds: { elevated: 6, critical: 15 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 4 } },
-  { id: 'baltic-theater', bounds: { north: 65, south: 52, east: 32, west: 10 }, thresholds: { elevated: 5, critical: 12 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
-  { id: 'blacksea-theater', bounds: { north: 48, south: 40, east: 42, west: 26 }, thresholds: { elevated: 4, critical: 10 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
-  { id: 'korea-theater', bounds: { north: 43, south: 33, east: 132, west: 124 }, thresholds: { elevated: 5, critical: 12 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
-  { id: 'south-china-sea', bounds: { north: 25, south: 5, east: 121, west: 105 }, thresholds: { elevated: 6, critical: 15 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 4 } },
-  { id: 'east-med-theater', bounds: { north: 37, south: 33, east: 37, west: 25 }, thresholds: { elevated: 4, critical: 10 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
-  { id: 'israel-gaza-theater', bounds: { north: 33, south: 29, east: 36, west: 33 }, thresholds: { elevated: 3, critical: 8 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
-  { id: 'yemen-redsea-theater', bounds: { north: 22, south: 11, east: 54, west: 32 }, thresholds: { elevated: 4, critical: 10 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
-];
+// POSTURE_THEATERS and the posture rule live in scripts/shared/theater-posture.js.
 
 // In-memory index of recently-seen Wingbits positions, keyed by ICAO24.
 // Populated on every successful bbox response; served for callsign-only lookups.
@@ -7161,7 +7220,8 @@ function isStrictMilitaryVessel(v) {
   return false;
 }
 
-function countMilitaryVesselsInBounds(bounds) {
+/** Strict-military AIS contacts seen in the last 6 hours inside the bounds. */
+function militaryVesselsInBounds(bounds) {
   let count = 0;
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
   for (const v of candidateReports.values()) {
@@ -7171,39 +7231,40 @@ function countMilitaryVesselsInBounds(bounds) {
       count++;
     }
   }
-  return count;
+  return { count };
 }
 
-function calculateTheaterPostures(flights) {
-  return POSTURE_THEATERS.map((theater) => {
-    const tf = flights.filter(
-      (f) => f.lat >= theater.bounds.south && f.lat <= theater.bounds.north &&
-        f.lon >= theater.bounds.west && f.lon <= theater.bounds.east,
-    );
-    const total = tf.length;
-    const tankers = tf.filter((f) => f.aircraftType === 'tanker').length;
-    const awacs = tf.filter((f) => f.aircraftType === 'awacs').length;
-    const fighters = tf.filter((f) => f.aircraftType === 'fighter').length;
-    const vesselCount = countMilitaryVesselsInBounds(theater.bounds);
-    // Thresholds were calibrated for flight counts; cap vessel contribution at half the
-    // elevated threshold to avoid naval traffic dominating posture in maritime theaters.
-    const vesselContribution = Math.min(vesselCount, Math.floor(theater.thresholds.elevated / 2));
-    const combinedActivity = total + vesselContribution;
-    const postureLevel = combinedActivity >= theater.thresholds.critical ? 'critical'
-      : combinedActivity >= theater.thresholds.elevated ? 'elevated' : 'normal';
-    const strikeCapable = tankers >= theater.strikeIndicators.minTankers &&
-      awacs >= theater.strikeIndicators.minAwacs && fighters >= theater.strikeIndicators.minFighters;
-    const ops = [];
-    if (strikeCapable) ops.push('strike_capable');
-    if (tankers > 0) ops.push('aerial_refueling');
-    if (awacs > 0) ops.push('airborne_early_warning');
-    if (vesselCount > 0) ops.push('naval_presence');
-    return {
-      theater: theater.id, postureLevel, activeFlights: total,
-      trackedVessels: vesselCount, activeOperations: ops, assessedAt: Date.now(),
-    };
-  });
+/** Names of every strict-military AIS contact seen in the last 6 hours, wherever it is. */
+function recentMilitaryVesselNames() {
+  const names = [];
+  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+  for (const v of candidateReports.values()) {
+    if ((v.timestamp || 0) < cutoff) continue;
+    if (v.name && isStrictMilitaryVessel(v)) names.push(v.name);
+  }
+  return names;
 }
+
+/**
+ * Vessels per theater: strict-military AIS contacts plus deployed USNI-roster
+ * ships the AIS stream has not reported anywhere. A USNI position is weekly, so
+ * a ship AIS now places in another theater counts there, not at its stale USNI
+ * position. The level comes from the shared rule
+ * (scripts/shared/theater-posture.js), which caps the vessel contribution.
+ */
+function theaterVesselCounts(usniVessels) {
+  const byTheater = {};
+  const totals = new Map();
+  const aisNames = recentMilitaryVesselNames();
+  for (const theater of POSTURE_THEATERS) {
+    const ais = militaryVesselsInBounds(theater.bounds);
+    const usni = countUsniVesselsInBounds(usniVessels, theater.bounds, aisNames);
+    byTheater[theater.id] = { ais: ais.count, usni };
+    totals.set(theater.id, ais.count + usni);
+  }
+  return { byTheater, totals };
+}
+
 // Which upstream actually produced the published theater flights. OpenSky is
 // heavily 429-throttled in production (#5945): a healthy publication served by
 // adsb.lol/Wingbits must stay attributable so fallback operation is never
@@ -7217,6 +7278,34 @@ const THEATER_POSTURE_SOURCE_COUNT_KEYS = Object.freeze({
 const theaterPostureSourceCounts = { opensky: 0, adsbLol: 0, wingbits: 0, vesselOnly: 0 };
 let theaterPostureEmptyRejections = 0;
 let theaterPostureLastRun = null;
+
+/**
+ * One entry an hour of per-theater AIS and USNI counts, kept 31 days, so ship
+ * thresholds can be calibrated on real traffic (scripts/shared/theater-posture.js). A
+ * failed read or write only costs that hour's entry; it never fails the publish.
+ * A failed read skips the write, because writing then would replace the stored
+ * history with a single entry.
+ */
+async function recordTheaterVesselHistory(at, byTheater) {
+  try {
+    let readFailure = null;
+    const stored = await upstashGet(VESSEL_HISTORY_KEY, (reason) => { readFailure = reason; });
+    if (readFailure) {
+      console.warn('[TheaterPosture] Vessel history not recorded: redis read failed:', readFailure);
+      return;
+    }
+    const prior = Array.isArray(stored?.history) ? stored.history : [];
+    const history = appendVesselHistory(prior, { at, theaters: byTheater });
+    if (history[history.length - 1]?.at !== at) return; // under an hour since the last entry
+    // Logged either way: nothing else watches this series, and the ship-threshold
+    // calibration needs about 30 days of it.
+    const ok = await upstashSet(VESSEL_HISTORY_KEY, { history }, VESSEL_HISTORY_TTL_SECONDS);
+    if (ok) console.log(`[TheaterPosture] Vessel history: ${history.length} hourly entries`);
+    else console.warn('[TheaterPosture] Vessel history not recorded: redis write failed');
+  } catch (e) {
+    console.warn('[TheaterPosture] Vessel history not recorded:', e?.message || e);
+  }
+}
 
 async function seedTheaterPosture() {
   const t0 = Date.now();
@@ -7246,7 +7335,11 @@ async function seedTheaterPosture() {
   if (flights.length === 0) {
     console.warn('[TheaterPosture] No military flights from adsb.lol, OpenSky, or Wingbits — continuing with vessel-only posture');
   }
-  const theaters = calculateTheaterPostures(flights);
+  // The relay seeds the USNI roster itself (seedUsniFleet); a missing or stale
+  // roster only means the AIS count stands alone.
+  const usniReport = await envelopeRead(USNI_REDIS_KEY);
+  const vesselCounts = theaterVesselCounts(Array.isArray(usniReport?.vessels) ? usniReport.vessels : []);
+  const theaters = scoreTheaterPostures(flights, vesselCounts.totals);
   const totalVessels = theaters.reduce((sum, t) => sum + t.trackedVessels, 0);
   const inputRecordCount = flights.length + totalVessels;
   if (inputRecordCount === 0) {
@@ -7292,6 +7385,7 @@ async function seedTheaterPosture() {
     const seedMetaOk = ok1 && await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: inputRecordCount, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
     const redisOk = ok1 && ok2 && ok3;
     const published = ok1 && seedMetaOk;
+    if (published) await recordTheaterVesselHistory(publishedAt, vesselCounts.byTheater);
     if (published) theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
     const completedAt = new Date().toISOString();
     theaterPostureLastRun = {
@@ -8321,6 +8415,13 @@ const TECH_EVENTS_BOOTSTRAP_KEY = 'research:tech-events-bootstrap:v1';
 const TECH_EVENTS_ICS_URL = 'https://www.techmeme.com/newsy_events.ics';
 const TECH_EVENTS_RSS_URL = 'https://dev.events/rss.xml';
 
+// All-day DTEND is exclusive (RFC 5545), so the event's last day is the day before it.
+function inclusiveIcsEndDate(startDate, dtend) {
+  if (!dtend || dtend <= startDate) return startDate;
+  const lastDay = new Date(Date.UTC(Number(dtend.slice(0, 4)), Number(dtend.slice(4, 6)) - 1, Number(dtend.slice(6, 8)) - 1));
+  return lastDay.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
 function techEventsParseICS(icsText) {
   const events = [];
   const blocks = icsText.split('BEGIN:VEVENT').slice(1);
@@ -8335,7 +8436,7 @@ function techEventsParseICS(icsText) {
     const summary = summaryMatch[1].trim();
     const location = locationMatch ? locationMatch[1].trim() : '';
     const startDate = dtstartMatch[1];
-    const endDate = dtendMatch ? dtendMatch[1] : startDate;
+    const endDate = inclusiveIcsEndDate(startDate, dtendMatch?.[1]);
     let type = 'other';
     if (summary.startsWith('Earnings:')) type = 'earnings';
     else if (summary.startsWith('IPO')) type = 'ipo';
@@ -15579,10 +15680,10 @@ async function performWidgetPageRead(url, { signal } = {}) {
 
   if (WIDGET_FIRECRAWL_KEY && !signal?.aborted) {
     try {
-      const res = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      const res = await fetch('https://api.firecrawl.dev/v2/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor-WidgetAgent/1.0', Authorization: `Bearer ${WIDGET_FIRECRAWL_KEY}` },
-        body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true, timeout: 20_000 }),
+        body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true, maxAge: 0, timeout: 20_000 }),
         signal: within(25_000),
       });
       if (res.ok) {

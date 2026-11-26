@@ -592,8 +592,12 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // the allowlist itself is the load-bearing safety (#6746).
       const isHostScopedFetchFailure = excType === 'TypeError'
         && /^(?:TypeError: )?(?:Failed to fetch|NetworkError when attempting to fetch resource\.?) \([^)]+\)$/.test(msg);
+      // `Uncaught TypeError: ...` typed as a plain `Error` is how WebKit forwards an
+      // uncaught throw from a Worker to the page's onerror. WORLDMONITOR-19D: a
+      // NetCast TV browser without `String.prototype.replaceAll` crashing inside
+      // the maplibre-gl worker chunk. The vendor-frame gate below still decides.
       if (!isHostScopedFetchFailure
-          && (excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg))
+          && (excType === 'TypeError' || excType === 'RangeError' || /^(?:Uncaught )?(?:TypeError|RangeError):/.test(msg))
           && frames.length > 0) {
         if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
       }

@@ -36,8 +36,7 @@ test('caps the published cluster array while preserving rank order', () => {
 test('records the pre-cap total so a capped array is never mistaken for the whole picture', () => {
   const compact = compactThermalDashboardPayload(makeWatch(117));
   assert.equal(compact.totalClusters, 117);
-  // summary describes the world, not the page — the hydrated client recomputes
-  // its own summary from the slice it renders.
+  // summary describes the world, not the page — the panel shows these totals.
   assert.equal(compact.summary.clusterCount, 117);
 });
 

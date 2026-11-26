@@ -33,7 +33,7 @@ import {
   signBusinessInviteToken,
   verifyBusinessInviteToken,
 } from "../lib/identitySigning";
-import { isBusinessPlan, isCoveringAt } from "./subscriptionHelpers";
+import { hasAccessAt, isBusinessPlan, isCoveringAt } from "./subscriptionHelpers";
 
 const MAX_SEATS = 4;
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -66,6 +66,19 @@ async function touchBusinessSeatLock(
   businessSubscriptionId: string,
   now: number,
 ): Promise<void> {
+  // Always patch the covering subscriptions document first so even a
+  // brand-new subscription's first concurrent invite burst triggers Convex
+  // document-level OCC serialization (a lazily inserted lock row alone cannot
+  // serialize parallel first-ever inserts).
+  const sub = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_dodoSubscriptionId", (q) =>
+      q.eq("dodoSubscriptionId", businessSubscriptionId),
+    )
+    .unique();
+  if (sub) {
+    await ctx.db.patch(sub._id, { seatLockTouchedAt: now });
+  }
   const lock = await ctx.db
     .query("businessSeatLocks")
     .withIndex("by_businessSubscriptionId", (q) =>
@@ -94,9 +107,10 @@ async function getCoveringBusinessSubscription(
     .query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .collect();
-  return subs.find(
-    (s) => isBusinessPlan(s.planKey) && isCoveringAt(s, at),
-  ) ?? null;
+  // Prefer a row that grants access: a failed renewal past its access grace
+  // still covers for billing and must not hide another, live Business row.
+  const business = subs.filter((s) => isBusinessPlan(s.planKey) && isCoveringAt(s, at));
+  return business.find((s) => hasAccessAt(s, at)) ?? business[0] ?? null;
 }
 
 /**
@@ -139,7 +153,10 @@ export const inviteSeats = mutation({
 
     const now = Date.now();
     const businessSub = await getCoveringBusinessSubscription(ctx, userId, now);
-    if (!businessSub) {
+    // A failed renewal past its access grace still covers for billing, but
+    // its seats would grant nothing (pickBestAcceptedBusinessGrant reads
+    // hasAccessAt), so new invites wait until the owner fixes payment.
+    if (!businessSub || !hasAccessAt(businessSub, now)) {
       throw new ConvexError({ kind: "OWNER_NOT_BUSINESS" });
     }
 
@@ -217,6 +234,17 @@ export const inviteSeats = mutation({
     );
     if (currentCount + newEmails.length > MAX_SEATS) {
       throw new ConvexError({ kind: "SEAT_CAP_REACHED" });
+    }
+
+    // Rolling 24-hour invite cap under touchBusinessSeatLock so an owner
+    // cannot alternate inviteSeats + removeSeat to trigger unlimited emails.
+    const INVITE_WINDOW_MS = 24 * 60 * 60 * 1000;
+    const MAX_INVITES_PER_WINDOW = 20;
+    const recentInvites = existingGrants.filter(
+      (g) => g.createdAt > now - INVITE_WINDOW_MS,
+    ).length;
+    if (recentInvites + newEmails.length > MAX_INVITES_PER_WINDOW) {
+      throw new ConvexError({ kind: "INVITE_RATE_LIMITED" });
     }
 
     for (const email of newEmails) {
@@ -509,7 +537,7 @@ export const acceptBusinessInvite = mutation({
         q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
       )
       .unique();
-    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !isCoveringAt(businessSub, now)) {
+    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !hasAccessAt(businessSub, now)) {
       throw new ConvexError({ kind: "BUSINESS_NOT_ACTIVE" });
     }
 
@@ -569,7 +597,7 @@ export const extendBusinessInvite = internalMutation({
         q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
       )
       .unique();
-    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !isCoveringAt(businessSub, now)) {
+    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !hasAccessAt(businessSub, now)) {
       throw new ConvexError({ kind: "BUSINESS_NOT_ACTIVE" });
     }
     // The owner may have re-invited the same address after this invite lapsed.

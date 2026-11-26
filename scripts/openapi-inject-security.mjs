@@ -47,8 +47,12 @@ import {
   readPremiumRpcPaths,
   PUBLIC_FORBIDDEN_GATES,
   TRUST_REVIEW_KEY_PATHS,
-  LAPSED_BILLING_STATUS,
+  readTerminalBillingStatuses,
 } from './lib/openapi-codegen.mjs';
+
+const TERMINAL_BILLING_STATUSES = readTerminalBillingStatuses();
+const TERMINAL_403_HEADER_DESCRIPTION = 'Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.';
+const FORBIDDEN_CODE_DESCRIPTION = 'Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse or payment failure (mirrored in the X-Billing-Verification response header).';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -203,8 +207,8 @@ const FORBIDDEN_SCHEMA = {
     error: { type: 'string', description: 'Human-readable entitlement failure reason.' },
     code: {
       type: 'string',
-      enum: [LAPSED_BILLING_STATUS],
-      description: 'Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).',
+      enum: TERMINAL_BILLING_STATUSES,
+      description: FORBIDDEN_CODE_DESCRIPTION,
     },
     requiredTier: {
       type: 'integer',
@@ -221,14 +225,15 @@ const FORBIDDEN_SCHEMA = {
   required: ['error'],
 };
 
-// Provider-confirmed subscription lapses answer any authenticated route with a
-// 403 whose X-Billing-Verification header mirrors the body `code`
-// (entitlement-check.ts getBillingVerificationDenial / gateway wm_-key branch),
+// Provider-confirmed terminal billing states (a lapse, a payment-failed pause)
+// answer any authenticated route with a 403 whose X-Billing-Verification
+// header mirrors the body `code` (entitlement-check.ts
+// getBillingVerificationDenial / gateway wm_-key branch),
 // so every ForbiddenError-backed 403 on an authed op declares the header as
 // optional. The public Turnstile 403 gates never carry it.
 const LAPSE_403_HEADERS = {
   'X-Billing-Verification': {
-    description: `Present when the 403 is a billing-provider-confirmed subscription lapse (value ${LAPSED_BILLING_STATUS}, matching the body \`code\`).`,
+    description: TERMINAL_403_HEADER_DESCRIPTION,
     schema: { type: 'string' },
   },
 };
@@ -553,7 +558,7 @@ const YAML_METHOD_LINE_RE = /^ {8}(get|post|put|delete|patch|options|head):$/;
 const YAML_LAPSE_403_HEADERS = [
   '                    headers:',
   '                        X-Billing-Verification:',
-  `                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value ${LAPSED_BILLING_STATUS}, matching the body \`code\`).`,
+  `                            description: ${TERMINAL_403_HEADER_DESCRIPTION}`,
   '                            schema:',
   '                                type: string',
 ];
@@ -611,8 +616,8 @@ const YAML_FORBIDDEN_SCHEMA = [
   '                code:',
   '                    type: string',
   '                    enum:',
-  `                        - ${LAPSED_BILLING_STATUS}`,
-  '                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).',
+  ...TERMINAL_BILLING_STATUSES.map((status) => `                        - ${status}`),
+  `                    description: ${FORBIDDEN_CODE_DESCRIPTION}`,
   '                requiredTier:',
   '                    type: integer',
   '                    format: int32',

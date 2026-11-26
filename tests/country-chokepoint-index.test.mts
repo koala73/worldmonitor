@@ -134,7 +134,7 @@ describe('Flow-weighted chokepoint exposure (#2968)', () => {
     it('Unknown exporter country falls back gracefully (no routes)', () => {
       const products = [makeProduct('2709', 'ZZ', 1.0)];
       const result = computeFlowWeightedExposures('TR', '27', products);
-      assert.ok(result.length > 0, 'should still return entries even for unknown exporter');
+      assert.deepEqual(result, [], 'unmodeled supplier leaves the record to the route fallback');
     });
 
     it('Scores are capped at 100', () => {

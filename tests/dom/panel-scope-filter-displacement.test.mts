@@ -129,7 +129,7 @@ describe('DisplacementPanel under a focus', () => {
   it('hides worldwide totals while focused and restores them on Show all and clearing', async () => {
     panel.setData(UNHCR);
     await settle();
-    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(4);
+    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(5);
     panel.applyScope(SUDAN);
     await settle();
     expect(el().querySelector('.disp-stats-grid')).toBeNull();
@@ -137,10 +137,10 @@ describe('DisplacementPanel under a focus', () => {
     expect(el().querySelector('.disp-stats-grid')).toBeNull();
     stripButton('show-all')!.click();
     await settle();
-    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(4);
+    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(5);
     panel.applyScope(null);
     await settle();
-    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(4);
+    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(5);
   });
 
   it('origins: chosen country, then neighbours marked; counts hidden and unresolvable codes', async () => {
@@ -175,7 +175,7 @@ describe('DisplacementPanel under a focus', () => {
     panel.applyScope(null);
     await settle();
     expect(strip()?.hidden).toBe(true);
-    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(4);
+    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(5);
   });
 
   it('hosts: host countries count too', async () => {

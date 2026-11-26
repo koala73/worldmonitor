@@ -50,8 +50,8 @@ function loadRegistry() {
  * defeat envelope diffing.
  *
  * @returns {{
- *   pipelines: Record<string, { fromCountry?: string; toCountry?: string; transitCountries?: string[] }>,
- *   storage:   Record<string, { country?: string }>,
+ *   pipelines: Record<string, { name?: string; fromCountry?: string; toCountry?: string; transitCountries?: string[] }>,
+ *   storage:   Record<string, { name?: string; country?: string }>,
  * }}
  */
 function loadAssetRegistries() {
@@ -179,6 +179,18 @@ function isIsoDate(v) {
   return Number.isFinite(Date.parse(v));
 }
 
+/**
+ * @param {{ assetType: string, assetId: string }} event
+ * @param {ReturnType<typeof loadAssetRegistries>} registries
+ * @returns {string}
+ */
+function assetNameForEvent(event, registries) {
+  const asset = event.assetType === 'pipeline'
+    ? registries.pipelines[event.assetId]
+    : registries.storage[event.assetId];
+  return typeof asset?.name === 'string' ? asset.name : '';
+}
+
 export function buildPayload() {
   const registry = loadRegistry();
   const assets = loadAssetRegistries();
@@ -192,7 +204,11 @@ export function buildPayload() {
   const events = Object.fromEntries(
     Object.entries(rawEvents).map(([id, event]) => [
       id,
-      { ...event, countries: deriveCountriesForEvent(event, assets) },
+      {
+        ...event,
+        countries: deriveCountriesForEvent(event, assets),
+        assetName: assetNameForEvent(event, assets),
+      },
     ]),
   );
 

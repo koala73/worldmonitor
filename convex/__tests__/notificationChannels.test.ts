@@ -546,9 +546,15 @@ describe("notificationChannels — live delete/deactivate (ungated)", () => {
     const webhook = settings.channels.find((c) => c.channelType === "webhook")!;
     expect(webhook.webhookSigned).toBe(true);
     expect(webhook).not.toHaveProperty("webhookSecret");
+    expect(webhook).not.toHaveProperty("webhookEnvelope");
+    const direct = await t.withIdentity(USER).query(api.notificationChannels.getChannels, {});
+    expect(direct).toEqual(settings.channels);
 
     const delivery = await (await post("/relay/channels", "delivery-secret", { userId: USER.subject })).json() as Array<Record<string, unknown>>;
-    expect(delivery.find((c) => c.channelType === "webhook")?.webhookSecret).toBe("v1:secret-envelope");
+    expect(delivery.find((c) => c.channelType === "webhook")).toMatchObject({
+      webhookSecret: "v1:secret-envelope",
+      webhookEnvelope: "v1:url-envelope",
+    });
   });
 
   test("a non-webhook set-channel cannot smuggle a signing secret", async () => {

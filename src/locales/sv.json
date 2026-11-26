@@ -872,7 +872,7 @@
       },
       "clickToViewMap": "Klicka för att se på kartan",
       "refresh": "Uppdatera",
-      "infoTooltip": "<strong>Metod</strong><p>Aggregerar militära flygplan och marinefartyg per teaterregion.</p><ul><li><strong>Normal:</strong> Baslinjeaktivitet</li><li><strong>Förhöjd:</strong> Över tröskelvärde (50+ flygplan)</li><li><strong>Kritisk:</strong> Hög koncentration (100+ flygplan)</li></ul><p><strong>Luftstrike-kapabel:</strong> Tankflygplan + Luftburen tidig varning + Jaktplan närvarande i tillräckligt antal för långvarig verksamhet.</p>",
+      "infoTooltip": "<strong>Metodik</strong><p>Räknar militära flygplan och spårade marinefartyg i varje militär teater.</p><ul><li><strong>Normal:</strong> Under teaterns tröskel</li><li><strong>Förhöjd:</strong> Antal når 3 till 8, per teater</li><li><strong>Kritisk:</strong> Antal når 8 till 20, per teater</li></ul><p>Fartyg bidrar till antalet upp till hälften av den förhöjda tröskeln, så fartyg ensamt kan aldrig höja nivån.</p><p><strong>Slagkraftig:</strong> Tankfartyg + Luftövervakning + Jagare närvarande i tillräckligt antal för fortsatta operationer.</p>",
       "scanningTheaters": "Skannar teatrar",
       "positions": "Flygplanspositioner",
       "navalVesselsLoading": "Marinfartyg",
@@ -914,7 +914,9 @@
       },
       "emojiKeyLabel": "Emoji-nyckel",
       "emojiKeyAir": "Luftresurser",
-      "emojiKeyNaval": "Sjöresurser"
+      "emojiKeyNaval": "Sjöresurser",
+      "instabilityChip": "Instabilitet {{score}}",
+      "instabilityNote": "{{nation}} instabilitetsscore: {{score}} av 100. Visas för sammanhang. Det ändrar inte nivån, som räknar flygplan och fartyg i operationsområdet."
     },
     "techEvents": {
       "loading": "Laddar tekniska händelser...",
@@ -1018,7 +1020,8 @@
       },
       "breakingAlerts": "Akuta larm",
       "popupAlerts": "Visa nya larm i popup",
-      "hideFindings": "Dölj fynd"
+      "hideFindings": "Dölj fynd",
+      "breakingAlertsNotSaved": "Det gick inte att spara. Tillåt webbplatsdata för denna webbplats eller frigör lagringsutrymme i webbläsaren och försök igen."
     },
     "economic": {
       "noIndicatorData": "Ingen indikatördata ännu - Federal Reserve Economic Data kan laddas",
@@ -1111,12 +1114,16 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS termiska satellitdetektioner över övervakade konfliktområden. Hög intensitet = ljusstyrka >360K & konfidens >80%.",
       "possibleExplosions": "{{count}} möjlig(a) explosion(er) identifierad(e)",
-      "explosionTooltip": "Värmesignatur förenlig med explosion (brandstrålningseffekt >80 MW, ljusstyrka >380 K)"
+      "explosionTooltip": "Värmesignatur förenlig med explosion (brandstrålningseffekt >80 MW, ljusstyrka >380 K)",
+      "agencyReports": "Bränder rapporterade av myndigheter",
+      "agencyDates": "Myndighetens datum",
+      "shownOfTotal": "Visar {{shown}} av {{total}} brandposter"
     },
     "displacement": {
       "refugees": "Flyktingar",
       "asylumSeekers": "Asylsökande",
       "idps": "internflyktingar",
+      "stateless": "Statslösa",
       "total": "Totalt",
       "origins": "Ursprung",
       "hosts": "Värdar",
@@ -1302,7 +1309,7 @@
       "noData": "inga data",
       "enable": "Aktivera",
       "convergenceMetric": "Konvergens",
-      "ciiDeviation": "Landinstabilitetsindexavvikelse",
+      "topCiiScore": "Högsta landinstabilitetspoäng",
       "infraEvents": "Infrastrukturhändelser",
       "highAlerts": "Höga varningar",
       "topRisks": "Största risker",
@@ -1400,7 +1407,7 @@
       "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal",
       "briefStoryDetails": "Detaljer om nyheten ({{count}})",
       "streamIdleStopLabel": "Stoppa livevideo när inaktiv",
-      "streamIdleStopDesc": "Stoppar Live News och Live Webcams efter denna tid utan aktivitet och visar ett meddelande i panelen.",
+      "streamIdleStopDesc": "Stoppar Live News och Live Webcams efter denna tid utan aktivitet och visar ett meddelande i panelen. Live News fortsätter spelas så länge ljudet är på.",
       "streamIdleStopNever": "Aldrig",
       "liveNewsAutoplayLabel": "Automatisk uppspelning av direktnyheter",
       "liveNewsAutoplayDesc": "Startar direktnyhetsvideon, avstängd, så snart den visas på skärmen. Stäng av detta för att endast ladda videon när du startar den själv."
@@ -1701,8 +1708,10 @@
       "topProducers": "Största producenter",
       "upstreamUnavailable": "Försörjningskedjedata tillfälligt otillgänglig — visar cachad data",
       "warnings": "varning(ar)",
-      "aisDisruptions": "Störningar i skeppsspårning",
+      "aisDisruptions_one": "{{count}} störning i fartygsspårning",
+      "aisDisruptions_other": "{{count}} störningar i fartygsspårning",
       "wowChange": "Vecka över vecka-förändring",
+      "asOf": "per {{date}}",
       "riskLevel": "Risknivå",
       "flowUnavailable": "Flödesdata är otillgänglig",
       "containerRates": "Containerpriser",
@@ -1910,6 +1919,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor-kvoten av högavkastningskrediter till långa statsobligationer, justerad för aktievolatilitet och högavkastningsspread: (HYG / TLT) / (VIX × högavkastningsspread / 100). Detta är inte Kansas City Feds Financial Stress Index. En avläsning på 1,5 eller högre är låg stress; under 0,3 är hög stress.",
       "title": "Finansiell stressindikator",
       "usFsiValue": "US Financial Stress Indicator-värde",
+      "asOf": "Per {{date}}",
       "cissTitle": "EU CISS (euroområdets systemriskövervakning)",
       "notAvailable": "N/A",
       "interpretation": {
@@ -2181,7 +2191,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Detaljhandelspriser för bensin och diesel i 30+ länder, normaliserat till USD/liter för jämförelse. Priser kommer från officiella statliga öppna datakällor och uppdateras veckovis. Billigaste och dyraste länder är markerade. Veckovis förändring visas när tidigare veckas data är tillgänglig.",
-      "countries": "länder"
+      "countries": "länder",
+      "observedStale": "{{date}}, {{days}} dagar gammal",
+      "monthlyMean": "snitt {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> FN:s livsmedelsorgan FAO:s livsmedelsindex spårar internationella exportpriser för en korg med livsmedelsvaror (Spannmål, Mejeri, Kött, Oljor, Socker), basindex 2014–2016=100. Uppdateras månatligen första fredagen varje månad.",
@@ -2469,7 +2481,21 @@
       "saved": "Senast kända uppdatering {{time}} · Söker efter uppdateringar",
       "savedOffline": "Senast kända uppdatering {{time}} · Frånkopplad",
       "localSignals": "Baserat på inlästa signaler i instrumentpanelen",
-      "emptySaved": "Ingen konvergens i den senast kända uppdateringen."
+      "emptySaved": "Ingen konvergens i den senast kända uppdateringen.",
+      "signalTypes": {
+        "militaryFlight": "Militär flygning",
+        "militaryVessel": "Militärt fartyg",
+        "aisGap": "AIS-avbrott",
+        "conflictEvent": "Konflikthändelse",
+        "escalationOutage": "Kommunikationsavbrott",
+        "newsSeverity": "Allvarliga nyheter",
+        "sanctionsNews": "Sanktionsnyheter",
+        "marketMove": "Marknadsrörelse",
+        "commoditySpike": "Råvarusprång",
+        "earthquake": "Jordbävning",
+        "infraOutage": "Infrastrukturavbrott",
+        "other": "Signal"
+      }
     },
     "thermalEscalation": {
       "title": "Värmeskalering",
@@ -2912,6 +2938,10 @@
       },
       "warningAge": "Tid sedan den första varning som ännu gäller",
       "days": "{{amount}} d"
+    },
+    "externalNavigation": {
+      "blocked": "Din webbläsare blockerade den nya fliken.",
+      "openLink": "Öppna {{host}}"
     }
   },
   "popups": {
@@ -3995,7 +4025,13 @@
     "alert": "Larm: {{location}}",
     "multipleRegions": "Flera regioner",
     "trending": "\"{{term}}\" trending - {{count}} omnamnanden pa {{hours}}h",
-    "eventsDetected": "{{count}} handelser detekterade i regionen ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} händelser upptäckta: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protester",
+      "military_flight": "militära flygningar",
+      "military_vessel": "örlogsfartyg",
+      "earthquake": "seismisk aktivitet"
+    }
   },
   "intel": {
     "topics": {
@@ -4466,6 +4502,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Uppgradera till PRO för vapenleverantörsberoende och militär kapacitet"
+    },
+    "intelMemory": {
+      "title": "Historiskt underrättelsearkiv",
+      "help": "180-dagars arkiv över anmärkningsvärda konflikter, militär verksamhet, energi, oroligheter, cyberattacker, maritima händelser, naturkatastrofer och luftfartshändelser, med på-begäran semantisk sökning efter motsvarigheter.",
+      "loading": "Läser in historiskt underrättelsearkiv…",
+      "proLocked": "Uppgradera till PRO för 180-dagars historiskt underrättelsearkiv och sökning efter tidigare fall",
+      "unavailable": "Historiskt underrättelsearkiv är temporärt otillgängligt.",
+      "retry": "Försök igen",
+      "empty": "Inga arkiverade underrättelsehändelser matchar detta land och denna domän inom 180-dagarsfönstret.",
+      "partial": "Arkivtäckningen är ofullständig för denna sökning; tillgängliga poster visas fortfarande.",
+      "domainFilterLabel": "Filtrera historiskt underrättelsearkiv efter domän",
+      "domains": {
+        "all": "Alla",
+        "conflict": "Konflikt",
+        "military": "Militär",
+        "energy": "Energi",
+        "unrest": "Oro",
+        "cyber": "Cyber",
+        "maritime": "Maritim",
+        "natural": "Naturolyckor",
+        "aviation": "Luftfart"
+      },
+      "loadMore": "Läs in mer",
+      "loadingMore": "Läser in mer…",
+      "loadMoreError": "Kunde inte läsa in fler händelser. Försök igen.",
+      "sourceLink": "Källa ↗",
+      "similarTitle": "Hitta liknande tidigare händelser",
+      "useLatestHeadline": "Använd senaste rubriken",
+      "similarPlaceholder": "Beskriv en utveckling (minst 10 tecken)…",
+      "findSimilar": "Hitta liknande händelser",
+      "similarMinLength": "Ange minst 10 tecken för att söka tidigare fall.",
+      "similarLoading": "Söker historiska fall…",
+      "similarEmpty": "Inga liknande tidigare händelser passerade likhetströskeln.",
+      "similarUnavailable": "Sökning efter tidigare fall är temporärt otillgänglig. Försök igen."
     }
   },
   "preferences": {
@@ -5719,7 +5789,8 @@
           "seatCap": "Alla 4 platser är använda. Ta bort en plats först.",
           "ownerDomain": "Ditt kontos e-postadress måste ha en företagsdomän för att du ska kunna bjuda in kollegor.",
           "self": "Du kan inte bjuda in dig själv.",
-          "inviteeDomain": "Den inbjudnas e-postadress måste ha en företagsdomän."
+          "inviteeDomain": "Den inbjudnas e-postadress måste ha en företagsdomän.",
+          "rateLimited": "Du har skickat maximalt 20 inbjudningar inom ett rullande 24-timmarsfönster. Vänta innan du bjuder in fler kollegor."
         }
       },
       "enterpriseSeats": {

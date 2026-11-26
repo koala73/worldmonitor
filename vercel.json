@@ -155,7 +155,6 @@
     { "source": "/data/v1/chokepoints/:file([0-9a-z-]+\\.(?:json|csv))", "destination": "/api/open-data-chokepoints?file=:file" },
     { "source": "/docs/mcp", "destination": "/api/docs-mcp" },
     { "source": "/docs/mcp/server-card", "destination": "/.well-known/mcp/docs-server-card.json" },
-    { "source": "/docs/:match*", "destination": "https://worldmonitor.mintlify.dev/docs/:match*" },
     { "source": "/", "has": [{ "type": "query", "key": "mode", "value": "agent" }], "destination": "/agent-view.json" },
     { "source": "/", "has": [{ "type": "host", "value": "^(?:www\\.)?worldmonitor\\.app$" }], "destination": "/pro/welcome.html" },
     { "source": "/index.md", "destination": "/pro/home.md" },
@@ -614,6 +613,13 @@
       ]
     },
     {
+      "source": "/docs/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=()" }
+      ]
+    },
+    {
       "source": "/embed",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
@@ -650,13 +656,13 @@
     {
       "source": "/api/slack/oauth/callback",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';" }
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none';" }
       ]
     },
     {
       "source": "/api/discord/oauth/callback",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';" }
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none';" }
       ]
     },
     {
@@ -1067,7 +1073,10 @@
     {
       "source": "/wm-widget-sandbox.html",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net; frame-ancestors 'self' https://*.worldmonitor.app https://worldmonitor.app;" },
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
       ]
     }

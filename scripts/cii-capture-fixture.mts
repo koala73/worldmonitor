@@ -74,7 +74,7 @@ const year = new Date(capturedAt).getUTCFullYear();
 const [
   ucdp, outages, climate, firesSummary, gpsjam, iranEvents, oref, advisories, displacementCurrent, newsInsights,
   threatSummary, aviation, earthquakes, sanctionsPressure, sanctionsCounts, temporalAnomalies, militaryCii,
-  gdeltCountryEvents, strikePressure, structuralPrior, economicStress,
+  gdeltCountryEvents, strikePressure, structuralPrior, economicStress, strikePressureV2, iranEventsV2,
 ] = await Promise.all([
   'conflict:ucdp-events:v1', 'infra:outages:v1', 'climate:anomalies:v2', 'wildfire:fires-summary:v1',
   'intelligence:gpsjam:v2', 'conflict:iran-events:v1', 'relay:oref:history:v1', 'intelligence:advisories:v1',
@@ -82,7 +82,7 @@ const [
   'seismology:earthquakes:v1', 'sanctions:pressure:v1', 'sanctions:country-counts:v1', 'temporal:anomalies:v1',
   'intelligence:military-cii:v1', 'gdelt:bulk:country-events:v1', 'conflict:strike-pressure:v1',
   'intelligence:cii-structural-prior:v1',
-  'intelligence:cii-economic-stress:v1',
+  'intelligence:cii-economic-stress:v1', 'conflict:strike-pressure:v2', 'conflict:iran-events:v2',
 ].map((key) => get(key)));
 const targetCodes = values['target-set'] === 'published'
   ? publishedCiiCaptureTargets({ structuralPrior, economicStress, gdeltCountryEvents, ucdp })
@@ -117,7 +117,7 @@ const label = `${new Date(nowMs).toISOString().slice(0, 16).replace(':', '')}Z`;
 const fixture = buildCiiFixture({
   ucdp, outages, climate, fires, gpsjam, iranEvents, oref, advisories, displacement, newsInsights, threatSummary,
   aviation, earthquakes, sanctionsPressure, sanctionsCounts, temporalAnomalies, militaryCii, gdeltCountryEvents,
-  strikePressure, crossBorder, ...(structuralPrior != null ? { structuralPrior } : {}),
+  strikePressure, strikePressureV2, iranEventsV2, crossBorder, ...(structuralPrior != null ? { structuralPrior } : {}),
   ...(economicStress != null ? { economicStress } : {}),
 }, {
   targetCodes,

@@ -457,8 +457,10 @@ describe('daily recorder', () => {
 describe('pair registry', () => {
   const pairs = JSON.parse(readFileSync(new URL('../shared/gdelt-tension-pairs.json', import.meta.url), 'utf8'));
   const flights = readFileSync(new URL('../scripts/seed-military-flights.mjs', import.meta.url), 'utf8');
-  const theaterBlock = flights.slice(flights.indexOf('const POSTURE_THEATERS = ['));
-  const theaterIds = new Set([...theaterBlock.slice(0, theaterBlock.indexOf('];')).matchAll(/id: '([^']+)'/g)].map(m => m[1]));
+  // The theater table moved into the shared posture rule both writers import.
+  const rule = readFileSync(new URL('../scripts/shared/theater-posture.js', import.meta.url), 'utf8');
+  const theaterBlock = rule.slice(rule.indexOf('export const POSTURE_THEATERS = Object.freeze(['));
+  const theaterIds = new Set([...theaterBlock.slice(0, theaterBlock.indexOf(']'+'.map(')).matchAll(/id: '([^']+)'/g)].map(m => m[1]));
   const operatorSpellings = new Set([...flights.matchAll(/operatorCountry: '([^']+)'/g)].map(m => m[1]));
 
   it('names only pairs on the board and channels in the registry', () => {

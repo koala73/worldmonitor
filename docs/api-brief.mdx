@@ -30,7 +30,7 @@ brief yet.
 | 200 OK | `{ status: "ready", issueDate, issueSlot, dateLong, greeting, threadCount, magazineUrl }` |
 | 200 OK | `{ status: "composing", issueDate, issueSlot? }` — no brief for the current/requested slot yet |
 | 401 | Missing / invalid Clerk JWT |
-| 403 | `pro_required` (entitlement confirmed non-Pro) / `subscription_lapsed` (lapse confirmed with the provider, `X-Billing-Verification` set) |
+| 403 | `pro_required` (entitlement confirmed non-Pro) / `subscription_lapsed` (lapse confirmed with the provider, `X-Billing-Verification` set) / `payment_failed` (renewal charge failed and access is paused while the provider retries it; update the payment method in the billing portal) |
 | 503 | `BRIEF_URL_SIGNING_SECRET` not configured — **or** entitlement verification in doubt: `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, with `Retry-After` and `X-Billing-Verification`. Distinguish on the `code` field. See [Error handling](/usage-errors) |
 
 `issueDate` remains the display/date field (`YYYY-MM-DD`). `issueSlot` is the
@@ -58,7 +58,7 @@ is a pure function of `{userId, issueSlot, BRIEF_SHARE_SECRET}`.
 | 200 | `{ shareUrl, hash, issueSlot }` |
 | 400 | `invalid_slot_shape` / `invalid_payload` |
 | 401 | `UNAUTHENTICATED` |
-| 403 | `pro_required` (entitlement confirmed non-Pro) / `subscription_lapsed` (lapse confirmed with the provider, `X-Billing-Verification` set) |
+| 403 | `pro_required` (entitlement confirmed non-Pro) / `subscription_lapsed` (lapse confirmed with the provider, `X-Billing-Verification` set) / `payment_failed` (renewal charge failed and access is paused while the provider retries it; update the payment method in the billing portal) |
 | 404 | `brief_not_found` — reader can't share what doesn't exist |
 | 503 | `service_unavailable` — **or** entitlement verification in doubt: `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, with `Retry-After` and `X-Billing-Verification`. Distinguish on the `code` field. See [Error handling](/usage-errors) |
 
@@ -101,7 +101,7 @@ client can tell a plan verdict from a session problem from an outage:
 | Status | Response |
 |--------|----------|
 | 401 | `UNAUTHENTICATED` — no credential, or one that did not validate. Sign in; retrying is futile |
-| 403 | `Pro subscription required` (entitlement confirmed non-Pro) / `Subscription lapsed` (lapse confirmed with the provider, `X-Billing-Verification` set) |
+| 403 | `Pro subscription required` (entitlement confirmed non-Pro) / `Subscription lapsed` (lapse confirmed with the provider, `X-Billing-Verification` set) / `Payment failed. Update your payment method at …` (renewal charge failed and access is paused, `X-Billing-Verification: payment_failed`) |
 | 503 | Entitlement verification in doubt: `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, with `Retry-After` and `X-Billing-Verification`. See [Error handling](/usage-errors) |
 
 ### `POST /api/widget-agent`

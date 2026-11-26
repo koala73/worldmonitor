@@ -668,6 +668,9 @@ const STANDALONE_KEYS = {
   foodPricesFoagmilk: 'economic:food-prices:foagmilk:v1',
   foodPricesCsblv: 'economic:food-prices:csblv:v1',
   foodPricesMakstat: 'economic:food-prices:makstat:v1',
+  foodPricesOdepa: 'economic:food-prices:odepa:v1',
+  foodPricesStatcan: 'economic:food-prices:statcan:v1',
+  foodPricesIbge: 'economic:food-prices:ibge:v1',
 
   worldCpiImf:           'seed-meta:economic:world-cpi-imf',
   worldCpiEurostat:      'seed-meta:economic:world-cpi-eurostat',
@@ -864,6 +867,14 @@ const STANDALONE_KEYS = {
   intelHistoryIngestConflictAcled:    'intel-history:ingest-health:conflict:acled-intel:v1',
   intelHistoryIngestMilitaryCrossStrait: 'intel-history:ingest-health:military:cross-strait-activity:v1',
   intelHistoryIngestEnergyIntelligence:  'intel-history:ingest-health:energy:intelligence:v1',
+  // #11245 collectors (scripts/_intel-history-collectors.mjs).
+  intelHistoryIngestConflictUcdp:         'intel-history:ingest-health:conflict:ucdp-events:v1',
+  intelHistoryIngestUnrestEvents:         'intel-history:ingest-health:unrest:events:v1',
+  intelHistoryIngestCyberThreats:         'intel-history:ingest-health:cyber:threats:v1',
+  intelHistoryIngestMaritimePortwatch:    'intel-history:ingest-health:maritime:portwatch-disruptions:v1',
+  intelHistoryIngestNaturalEarthquakes:   'intel-history:ingest-health:natural:earthquakes:v1',
+  intelHistoryIngestNaturalEvents:        'intel-history:ingest-health:natural:events:v1',
+  intelHistoryIngestAviationIntl:         'intel-history:ingest-health:aviation:intl:v1',
   // VIA Rail Tracker unofficial live JSON (#6615). No dashboard consumer.
   viarailLive:           'transit:viarail:live',
   // #7012 TPS Open Data — retrospective MCI + annual Calls Attended. Not live
@@ -888,7 +899,8 @@ const SEED_META = {
   gridDisruptionClock: {
     key: 'seed-meta:infra:grid-disruption-clock',
     maxStaleMin: 30,
-    // The seeder lists the regions with missing, stale or unavailable inputs.
+    // The seeder lists regions whose inputs were missing, stale or unavailable
+    // on two consecutive runs; a one-run upstream blip is not listed.
     projectFailedDatasets: true,
     activationKey: 'seed-activated:infra:grid-disruption-clock',
     cutover: {
@@ -938,6 +950,12 @@ const SEED_META = {
   wildfires:        {
     key: 'seed-meta:wildfire:fires',
     maxStaleMin: 360,
+    // Read by tests/seed-ttl-contract.test.mjs. The 360-minute gate is sized to FIRMS
+    // NRT, whose new-day data takes 3-6h, so it cannot catch a stopped seeder in time.
+    // The 2h data TTL does: the panel blanks and health reports EMPTY (crit). Raising
+    // the TTL above the gate would serve 3h-old fire data silently. A seeder that runs
+    // but fails renews the TTL on each run; sourceFailure covers that case.
+    expiryIsTheAlarm: 'a stopped fire seeder must page within 2h, sooner than the FIRMS-sized gate',
     sourceFailure: [
       { warnAfterConsecutive: 2, failureCodePattern: /^FIRMS_PARTIAL_COVERAGE$/ },
       {
@@ -946,9 +964,12 @@ const SEED_META = {
         sources: ['cwfis', 'firms', 'bc'],
         failureCodePattern: /^CWFIS_SOURCE_FAILED$/,
       },
+      // One Canadian subsource failing while the rest of the payload, or a
+      // retained BC snapshot, keeps serving is transient until it repeats.
+      { warnAfterConsecutive: 3, failureCodePattern: /^(BC_WILDFIRE_SOURCE_FAILED|CWFIS_PRESCRIBED_FAILED)$/ },
     ],
   }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
-  wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360 }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
+  wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360, expiryIsTheAlarm: 'same as wildfires; it is in MISSING_DATA_IS_FAILURE_KEYS, so its expiry reports EMPTY' }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
   // Derived summary the CII and temporal-anomaly rebuilds read (#9509). Same
   // seeder run and 2h TTL as the canonical key; monitored on its own so the
   // readers' canonical fallback cannot hide a broken summary write. Softened
@@ -1125,7 +1146,7 @@ const SEED_META = {
       // without widening this makes them invisible in health. A test asserts
       // every INSIGHTS_SYNTHESIS_FAILURE_CODES value matches this pattern.
       failureCodePattern:
-        /^INSIGHTS_SYNTHESIS_(PARSE|GATE|MISSING_CLUSTER|PROVIDER|COMPOSER_ERROR|LEAD_(EMPTY|UNCITED|PROPER_NOUN|NUMERIC_FACT|STATUS_QUALIFIER|GROUNDING))$/,
+        /^INSIGHTS_SYNTHESIS_(PARSE|GATE|MISSING_CLUSTER|PROVIDER|COMPOSER_ERROR|LEAD_(EMPTY|UNCITED|PROPER_NOUN|NUMERIC_FACT|STATUS_QUALIFIER|UNATTRIBUTED|GROUNDING))$/,
     },
   },
   // #4920: daily GH Actions cadence; 2880 = 2x — one fully missed day alarms
@@ -1426,7 +1447,7 @@ const SEED_META = {
   },
   bcOpen511:        {
     key: 'seed-meta:infra:bc-open511',
-    maxStaleMin: 90, // seed-bundle-canada member interval 30min; 90 = 3× interval, and matches this seeder's own 5400s TTL. At the old 45 a single missed tick tripped STALE_SEED.
+    maxStaleMin: 90, // seed-bundle-canada member interval 30min; 90 = 3× interval. At the old 45 a single missed tick tripped STALE_SEED.
     cutover: {
       mode: 'expiring-ack',
       fromKey: null,
@@ -2304,6 +2325,24 @@ const SEED_META = {
     activationKey: 'seed-activated:economic:food-prices-makstat',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10146, activationKey: 'seed-activated:economic:food-prices-makstat' },
   },
+  foodPricesOdepa: {
+    key: 'seed-meta:economic:food-prices-odepa',
+    maxStaleMin: 14400,
+    activationKey: 'seed-activated:economic:food-prices-odepa',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11153, activationKey: 'seed-activated:economic:food-prices-odepa' },
+  },
+  foodPricesStatcan: {
+    key: 'seed-meta:economic:food-prices-statcan',
+    maxStaleMin: 64800,
+    activationKey: 'seed-activated:economic:food-prices-statcan',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10837, activationKey: 'seed-activated:economic:food-prices-statcan' },
+  },
+  foodPricesIbge: {
+    key: 'seed-meta:economic:food-prices-ibge',
+    maxStaleMin: 64800,
+    activationKey: 'seed-activated:economic:food-prices-ibge',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10837, activationKey: 'seed-activated:economic:food-prices-ibge' },
+  },
   worldCpiImf: {
     key: 'seed-meta:economic:world-cpi-imf',
     maxStaleMin: 4320,
@@ -2613,10 +2652,6 @@ const SEED_META = {
   // previous 400-day budget (6.7x cadence) would have let a dead seeder read OK
   // until ~2027-09; the 540-day content-age gate would not have covered it
   // either. Sized to the publisher, not the source.
-  // Keep `key` and `maxStaleMin` adjacent: the coverage guard in
-  // tests/seed-ttl-outlives-staleness-fleet.test.mjs matches them with a single
-  // regex that only tolerates whitespace between the two, so a comment placed
-  // between them drops this gate from the parsed set.
   mineralProduction:    {
     key: 'seed-meta:supply-chain:mineral-production',
     maxStaleMin: 60 * 24 * 120,
@@ -2631,7 +2666,7 @@ const SEED_META = {
   pipelinesGas:         { key: 'seed-meta:energy:pipelines-gas',        maxStaleMin: 20_160 }, // 14d — weekly cron (7d) × 2 headroom
   pipelinesOil:         { key: 'seed-meta:energy:pipelines-oil',        maxStaleMin: 20_160 }, // 14d — same seed-pipelines.mjs publishes both keys
   storageFacilities:    { key: 'seed-meta:energy:storage-facilities',   maxStaleMin: 20_160 }, // 14d — weekly cron (7d) × 2 headroom
-  fuelShortages:        { key: 'seed-meta:energy:fuel-shortages',       maxStaleMin: 2880 },   // 2d — daily cron × 2 headroom (classifier-driven post-launch)
+  fuelShortages:        { key: 'seed-meta:energy:fuel-shortages',       maxStaleMin: 2880 },   // 2d — daily cron × 2 headroom
   energyDisruptions:    { key: 'seed-meta:energy:disruptions',          maxStaleMin: 20_160 }, // 14d — weekly cron × 2 headroom
   energyCrisisPolicies: { key: 'seed-meta:energy:crisis-policies',      maxStaleMin: 60 * 24 * 400 }, // static data, ~400d TTL matches seeder
   aaiiSentiment:        { key: 'seed-meta:market:aaii-sentiment',       maxStaleMin: 20160 }, // weekly cron; 20160min = 14 days = 2x weekly cadence
@@ -2807,6 +2842,43 @@ const SEED_META = {
   intelHistoryIngestConflictAcled:       { key: 'seed-meta:intel-history:conflict:acled-intel',            maxStaleMin: 38 },  // mirrors acledIntel
   intelHistoryIngestMilitaryCrossStrait: { key: 'seed-meta:intel-history:military:cross-strait-activity',  maxStaleMin: 720 }, // mirrors crossStraitActivity
   intelHistoryIngestEnergyIntelligence:  { key: 'seed-meta:intel-history:energy:intelligence',             maxStaleMin: 720 }, // mirrors energyIntelligence
+  // #11245 collectors. New probes, so each binds its activation marker (the
+  // hook writes it on its first report, configured or not) to the owner issue.
+  intelHistoryIngestConflictUcdp: {
+    key: 'seed-meta:intel-history:conflict:ucdp-events', maxStaleMin: 720, // relay appends every 6h; one failed append must not read stale. The backup skips while canonical is fresh, so it does not cover a missed append.
+    activationKey: 'seed-activated:intel-history:conflict:ucdp-events',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:conflict:ucdp-events' },
+  },
+  intelHistoryIngestUnrestEvents: {
+    key: 'seed-meta:intel-history:unrest:events', maxStaleMin: 120, // mirrors unrestEvents
+    activationKey: 'seed-activated:intel-history:unrest:events',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:unrest:events' },
+  },
+  intelHistoryIngestCyberThreats: {
+    key: 'seed-meta:intel-history:cyber:threats', maxStaleMin: 240, // mirrors cyberThreats
+    activationKey: 'seed-activated:intel-history:cyber:threats',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:cyber:threats' },
+  },
+  intelHistoryIngestMaritimePortwatch: {
+    key: 'seed-meta:intel-history:maritime:portwatch-disruptions', maxStaleMin: 150, // mirrors portwatchDisruptions
+    activationKey: 'seed-activated:intel-history:maritime:portwatch-disruptions',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:maritime:portwatch-disruptions' },
+  },
+  intelHistoryIngestNaturalEarthquakes: {
+    key: 'seed-meta:intel-history:natural:earthquakes', maxStaleMin: 30, // mirrors earthquakes
+    activationKey: 'seed-activated:intel-history:natural:earthquakes',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:natural:earthquakes' },
+  },
+  intelHistoryIngestNaturalEvents: {
+    key: 'seed-meta:intel-history:natural:events', maxStaleMin: 120, // mirrors naturalEvents
+    activationKey: 'seed-activated:intel-history:natural:events',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:natural:events' },
+  },
+  intelHistoryIngestAviationIntl: {
+    key: 'seed-meta:intel-history:aviation:intl', maxStaleMin: 90, // mirrors intlDelays
+    activationKey: 'seed-activated:intel-history:aviation:intl',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11245, activationKey: 'seed-activated:intel-history:aviation:intl' },
+  },
   // Unofficial tsimobile.viarail.ca JSON. The source needs no credentials, so
   // fetch/shape failures write sourceState stale and surface as SEED_ERROR when
   // no last-good value exists. 15min cron; 45 = 3x cadence. EMPTY_DATA_OK makes
@@ -2907,7 +2979,7 @@ const ON_DEMAND_KEYS = new Set([
   'foodPricesFewssd', 'foodPricesFewsss', 'foodPricesFewsye', 'foodPricesFewsht',
   'foodPricesTwmoa', 'foodPricesGeostat', 'foodPricesPricecatcher', 'foodPricesMcba',
   'foodPricesCso', 'foodPricesStatec', 'foodPricesFoagfruit', 'foodPricesFoagegg', 'foodPricesFoagmilk',
-  'foodPricesCsblv', 'foodPricesMakstat',
+  'foodPricesCsblv', 'foodPricesMakstat', 'foodPricesOdepa', 'foodPricesStatcan', 'foodPricesIbge',
   'regionalEnergyPgcb',
   'regionalEnergyPetrobangla',
   'regionalEnergyNiso',
@@ -3127,6 +3199,13 @@ const ON_DEMAND_KEYS = new Set([
   'intelHistoryIngestConflictAcled',
   'intelHistoryIngestMilitaryCrossStrait',
   'intelHistoryIngestEnergyIntelligence',
+  'intelHistoryIngestConflictUcdp',
+  'intelHistoryIngestUnrestEvents',
+  'intelHistoryIngestCyberThreats',
+  'intelHistoryIngestMaritimePortwatch',
+  'intelHistoryIngestNaturalEarthquakes',
+  'intelHistoryIngestNaturalEvents',
+  'intelHistoryIngestAviationIntl',
   // #7012 TPS Open Data is on-demand. Absence before the first explicit fetch
   // is pending, not CRIT. GTA Update is not registered: writer disabled.
   'tpsMci',
@@ -3277,6 +3356,9 @@ const ACTIVATION_MARKERS = {
   foodPricesFoagmilk: SEED_META.foodPricesFoagmilk.activationKey,
   foodPricesCsblv: SEED_META.foodPricesCsblv.activationKey,
   foodPricesMakstat: SEED_META.foodPricesMakstat.activationKey,
+  foodPricesOdepa: SEED_META.foodPricesOdepa.activationKey,
+  foodPricesStatcan: SEED_META.foodPricesStatcan.activationKey,
+  foodPricesIbge: SEED_META.foodPricesIbge.activationKey,
 
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
@@ -3317,6 +3399,13 @@ const ACTIVATION_MARKERS = {
   intelHistoryIngestConflictAcled: 'seed-activated:intel-history:conflict:acled-intel',
   intelHistoryIngestMilitaryCrossStrait: 'seed-activated:intel-history:military:cross-strait-activity',
   intelHistoryIngestEnergyIntelligence: 'seed-activated:intel-history:energy:intelligence',
+  intelHistoryIngestConflictUcdp: 'seed-activated:intel-history:conflict:ucdp-events',
+  intelHistoryIngestUnrestEvents: 'seed-activated:intel-history:unrest:events',
+  intelHistoryIngestCyberThreats: 'seed-activated:intel-history:cyber:threats',
+  intelHistoryIngestMaritimePortwatch: 'seed-activated:intel-history:maritime:portwatch-disruptions',
+  intelHistoryIngestNaturalEarthquakes: 'seed-activated:intel-history:natural:earthquakes',
+  intelHistoryIngestNaturalEvents: 'seed-activated:intel-history:natural:events',
+  intelHistoryIngestAviationIntl: 'seed-activated:intel-history:aviation:intl',
   // #6060 deployment-order softening. This Edge function redeploys within
   // minutes of merge; the producer is a 12h Railway cron. The marker is written
   // on the first run that publishes a contentFreshness block, so "the producer
@@ -3688,6 +3777,7 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
 // Keys where a present payload with meta recordCount=0 is valid, but the data
 // key itself must still exist. Do not use this set in the missing-key branch.
 const ZERO_RECORD_DATA_OK_KEYS = new Set([
+  'fuelShortages',
   'ukmtoIncidents',
   ...EMPTY_DATA_OK_KEYS,
   'sanctionsChanges',
@@ -3721,11 +3811,11 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   'globalTendersBulgariaEop', 'globalTendersLatviaIub', 'globalTendersPolandBzp', 'globalTendersPakistanPpra',
   'globalTendersPakistanEpads', 'globalTendersGeorgiaSpa', 'globalTendersArmeniaArmeps',
   'globalTendersAlbaniaApp', 'globalTendersDominicanRepublicDgcp', 'globalTendersMalaysiaMyprocurement',
-  // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
-  // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
-  // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`
-  // ("prevent stale noisy value persisting") and logs "spread suppressed
-  // (N/4 common items)". That is a valid data-coverage state, not a pipeline
+  // retailer-spread is SUPPRESSED to an explicit 0 when a market's retailers
+  // share < MIN_SPREAD_ITEMS (4) common basket items —
+  // computeRetailerSpread in consumer-prices-core/src/basket-observations.ts
+  // returns spreadPct 0, and with no shared item the snapshot lists no
+  // retailers. That is a valid data-coverage state, not a pipeline
   // outage: the AE basket's cross-retailer overlap shrank 2/4 → 1/4 → 0/4 over
   // late-May 2026 while the seeder kept running fresh (seedAgeMin well inside
   // maxStaleMin) and the sibling keys (overview/categories/movers/basket-series)
@@ -3753,6 +3843,13 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   'intelHistoryIngestConflictAcled',
   'intelHistoryIngestMilitaryCrossStrait',
   'intelHistoryIngestEnergyIntelligence',
+  'intelHistoryIngestConflictUcdp',
+  'intelHistoryIngestUnrestEvents',
+  'intelHistoryIngestCyberThreats',
+  'intelHistoryIngestMaritimePortwatch',
+  'intelHistoryIngestNaturalEarthquakes',
+  'intelHistoryIngestNaturalEvents',
+  'intelHistoryIngestAviationIntl',
   // A completed surge calculation can legitimately contain no surge events;
   // the canonical snapshot must still exist and remain fresh.
   'militarySurges',

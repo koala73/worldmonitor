@@ -21,6 +21,7 @@ const COT_KEY = 'market:cot:v1';
 const GOLD_EXTENDED_KEY = 'market:gold-extended:v1';
 const GOLD_ETF_FLOWS_KEY = 'market:gold-etf-flows:v1';
 const GOLD_CB_RESERVES_KEY = 'market:gold-cb-reserves:v1';
+const IRFCL_COUNTRY_CODE = /^[A-Z]{3}$/;
 
 interface RawQuote {
   symbol: string;
@@ -144,7 +145,19 @@ function mapCategory(c: RawCotCategory | undefined): GoldCotCategory | undefined
   };
 }
 
-function mapCot(raw: RawCotInstrument | undefined): GoldCotPositioning | undefined {
+// The seed stamps the release due when it wrote the row; move it to the first
+// Friday not before today so a cached report never advertises a past release.
+function upcomingCotRelease(stored: string, now: Date): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(stored)) return '';
+  const d = new Date(`${stored}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  if (d < today) d.setTime(today.getTime());
+  while (d.getUTCDay() !== 5) d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function mapCot(raw: RawCotInstrument | undefined, now = new Date()): GoldCotPositioning | undefined {
   if (!raw) return undefined;
   // Legacy fallback: derive v2 category fields from flat long/short so a
   // pre-migration seed payload still renders the new panel correctly. OI share
@@ -178,7 +191,7 @@ function mapCot(raw: RawCotInstrument | undefined): GoldCotPositioning | undefin
     });
   return {
     reportDate: String(raw.reportDate ?? ''),
-    nextReleaseDate: String(raw.nextReleaseDate ?? ''),
+    nextReleaseDate: upcomingCotRelease(String(raw.nextReleaseDate ?? ''), now),
     openInterest: String(Math.round(raw.openInterest ?? 0)),
     managedMoney,
     producerSwap,
@@ -246,21 +259,25 @@ export async function getGoldIntelligence(
       correlation30d: d.correlation30d,
     }));
 
-    const cbReserves: GoldCbReserves | undefined = rawCbReserves && Array.isArray(rawCbReserves.topHolders) && rawCbReserves.topHolders.length >= 5
+    // Snapshots seeded before the country filter can hold IMF group codes (G163).
+    const countriesOnly = <T extends { iso3: string }>(rows: T[] | undefined): T[] =>
+      Array.isArray(rows) ? rows.filter(r => IRFCL_COUNTRY_CODE.test(String(r?.iso3 ?? ''))) : [];
+    const cbHolders = countriesOnly(rawCbReserves?.topHolders);
+    const cbReserves: GoldCbReserves | undefined = rawCbReserves && cbHolders.length >= 5
       ? {
         asOfMonth: rawCbReserves.asOfMonth,
         indicator: rawCbReserves.indicator ?? '',
         valueIsOunces: rawCbReserves.valueIsOunces,
         totalTonnes: rawCbReserves.valueIsOunces === true ? rawCbReserves.totalTonnes : 0,
-        topHolders: rawCbReserves.topHolders.map<GoldCbHolder>(h => ({
+        topHolders: cbHolders.map<GoldCbHolder>(h => ({
           iso3: h.iso3, name: h.name,
           tonnes: rawCbReserves.valueIsOunces === true ? h.tonnes : 0,
           pctOfReserves: h.pctOfReserves,
         })),
-        topBuyers12m: (rawCbReserves.valueIsOunces === true ? rawCbReserves.topBuyers12m ?? [] : []).map<GoldCbMover>(m => ({
+        topBuyers12m: (rawCbReserves.valueIsOunces === true ? countriesOnly(rawCbReserves.topBuyers12m) : []).map<GoldCbMover>(m => ({
           iso3: m.iso3, name: m.name, deltaTonnes12m: m.deltaTonnes12m,
         })),
-        topSellers12m: (rawCbReserves.valueIsOunces === true ? rawCbReserves.topSellers12m ?? [] : []).map<GoldCbMover>(m => ({
+        topSellers12m: (rawCbReserves.valueIsOunces === true ? countriesOnly(rawCbReserves.topSellers12m) : []).map<GoldCbMover>(m => ({
           iso3: m.iso3, name: m.name, deltaTonnes12m: m.deltaTonnes12m,
         })),
       }

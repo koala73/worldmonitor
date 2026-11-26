@@ -208,6 +208,25 @@ describe('marketing ignoreErrors', () => {
     assert.deepEqual(hits, [], 'the marketing surface now touches ethereum.selectedAddress — re-derive the WORLDMONITOR-16Z rule');
   });
 
+  it("drops Meta's in-app browser _META namespace read (WORLDMONITOR-1G0)", () => {
+    // Synthetic value in WebKit's shape: Instagram / iOS on `/`, frames on the
+    // welcome document only.
+    assert.equal(isIgnored('TypeError', "undefined is not an object (evaluating 'window._META.SomeFlag')"), true);
+    // A first-party message that merely names the word survives, as does a
+    // different global read in the same envelope.
+    assert.equal(isIgnored('Error', 'Pricing load failed: window._META missing'), false);
+    assert.equal(isIgnored('TypeError', "undefined is not an object (evaluating 'window.META.SomeFlag')"), false);
+    assert.equal(isIgnored('TypeError', "undefined is not an object (evaluating 'window.wmPricing.plans')"), false);
+  });
+
+  it('pins the marketing surface as _META-free, which is what licenses the rule', () => {
+    const hits = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /\b_META\b/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(hits, [], 'the marketing surface now names _META — re-derive the WORLDMONITOR-1G0 rule');
+  });
+
   // Positive control for the `\b` bounds on the Zalo entry: the pattern must
   // key on the identifier, not on a substring that a longer word contains.
   it('keeps an error that merely mentions a similar word', () => {
@@ -1066,11 +1085,12 @@ describe('policy wiring', () => {
     // moves by one, in the same commit as the entry that needs the slot, and
     // only once that entry carries its own licence scan and suppression tests
     // (WORLDMONITOR-127 took it from 19 to 20, WORLDMONITOR-11B from 20 to 21,
-    // WORLDMONITOR-185 from 21 to 22, WORLDMONITOR-10B from 22 to 23).
+    // WORLDMONITOR-185 from 21 to 22, WORLDMONITOR-10B from 22 to 23,
+    // WORLDMONITOR-1G0 from 26 to 27).
     // Raising it by more than one per entry, or ahead of an entry, defeats
     // the deliberation this red is here to force.
     assert.ok(
-      MARKETING_IGNORE_ERRORS.length < 26,
+      MARKETING_IGNORE_ERRORS.length < 27,
       `marketing array must stay a vetted subset, got ${MARKETING_IGNORE_ERRORS.length}`,
     );
   });

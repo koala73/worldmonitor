@@ -367,6 +367,42 @@ const SEED_DOMAINS = {
     intervalMin: 360,
     activationKey: 'seed-activated:intel-history:energy:intelligence',
   },
+  // #11245 collectors (scripts/_intel-history-collectors.mjs).
+  'intel-history:conflict:ucdp-events': {
+    key: 'seed-meta:intel-history:conflict:ucdp-events',
+    intervalMin: 360,
+    activationKey: 'seed-activated:intel-history:conflict:ucdp-events',
+  },
+  'intel-history:unrest:events': {
+    key: 'seed-meta:intel-history:unrest:events',
+    intervalMin: 60,
+    activationKey: 'seed-activated:intel-history:unrest:events',
+  },
+  'intel-history:cyber:threats': {
+    key: 'seed-meta:intel-history:cyber:threats',
+    intervalMin: 120,
+    activationKey: 'seed-activated:intel-history:cyber:threats',
+  },
+  'intel-history:maritime:portwatch-disruptions': {
+    key: 'seed-meta:intel-history:maritime:portwatch-disruptions',
+    intervalMin: 75,
+    activationKey: 'seed-activated:intel-history:maritime:portwatch-disruptions',
+  },
+  'intel-history:natural:earthquakes': {
+    key: 'seed-meta:intel-history:natural:earthquakes',
+    intervalMin: 15,
+    activationKey: 'seed-activated:intel-history:natural:earthquakes',
+  },
+  'intel-history:natural:events': {
+    key: 'seed-meta:intel-history:natural:events',
+    intervalMin: 60,
+    activationKey: 'seed-activated:intel-history:natural:events',
+  },
+  'intel-history:aviation:intl': {
+    key: 'seed-meta:intel-history:aviation:intl',
+    intervalMin: 45,
+    activationKey: 'seed-activated:intel-history:aviation:intl',
+  },
   'transit:viarail-live': { key: 'seed-meta:transit:viarail-live', intervalMin: 15 }, // 15min cron; intervalMin*3 = health.js maxStaleMin 45
 };
 

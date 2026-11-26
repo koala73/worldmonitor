@@ -64,3 +64,33 @@ describe('extractDescription: escaped markup survives the tag strip', () => {
     assert.match(description, /tags in user-supplied profile bios/);
   });
 });
+
+describe('parseRssXml: CDATA titles are entity-decoded', () => {
+  const feedXml = (titleTag: string) => `<?xml version="1.0"?><rss><channel><item>
+  ${titleTag}<link>https://www.koreaherald.com/article/10620001</link>
+  <pubDate>${new Date(Date.now() - 3_600_000).toUTCString()}</pubDate></item></channel></rss>`;
+  const titleOf = (titleTag: string) =>
+    __testing__.parseRssXml(feedXml(titleTag), { name: 'The Korea Herald', url: 'https://www.koreaherald.com/rss/newsAll' }, 'full')?.items[0]?.title;
+
+  // The Korea Herald writes HTML-escaped text inside CDATA. On 2026-11-23 its
+  // "Sudan&apos;s capital" took a different story key from "Sudan's capital",
+  // so an alert already sent went out again as a new story.
+  it('decodes the escapes a publisher puts inside CDATA', () => {
+    assert.equal(
+      titleOf("<title><![CDATA[Drone strikes hit homes, UN building in Sudan&apos;s capital]]></title>"),
+      "Drone strikes hit homes, UN building in Sudan's capital",
+    );
+    assert.equal(titleOf('<title><![CDATA[AT&amp;T &quot;merger&quot; &#8212; done]]></title>'), 'AT&T "merger" — done');
+  });
+
+  it('gives a CDATA title and a plain title the same text', () => {
+    assert.equal(
+      titleOf("<title><![CDATA[Korea&apos;s exports rise]]></title>"),
+      titleOf('<title>Korea&apos;s exports rise</title>'),
+    );
+  });
+
+  it('keeps a bare ampersand inside CDATA', () => {
+    assert.equal(titleOf('<title><![CDATA[M&A activity picks up & rates fall]]></title>'), 'M&A activity picks up & rates fall');
+  });
+});

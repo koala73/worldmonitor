@@ -34,6 +34,10 @@ export interface ChinaActivityProxyDefinition {
     description: string;
   }>;
   freshnessBudgetMinutes: number;
+  // 'source_content': the source adapter ages its own content clock against
+  // this budget and marks the observation stale. observedAt is the upstream
+  // data date, which trails publication by a varying lag, so it is not aged.
+  freshnessClock?: 'observed_at' | 'source_content';
   source: Readonly<{
     publisherId: string;
     publisherName: string;
@@ -109,6 +113,7 @@ export const CHINA_ACTIVITY_PROXY_REGISTRY: readonly Readonly<ChinaActivityProxy
         description: 'Use the latest reviewed aggregate inside the window and expose missing nodes separately.',
       },
       freshnessBudgetMinutes: 10 * 24 * 60,
+      freshnessClock: 'source_content',
       source: {
         publisherId: 'publisher:imf-portwatch',
         publisherName: 'IMF PortWatch',

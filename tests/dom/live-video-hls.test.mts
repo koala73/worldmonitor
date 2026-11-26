@@ -9,7 +9,7 @@ const hlsjs = vi.hoisted(() => {
 
   /** Stands in for hls.js: the test plays the part of the playlist loader. */
   class FakeHls {
-    static readonly Events = { LEVEL_LOADED: 'hlsLevelLoaded', ERROR: 'hlsError', BUFFER_CREATED: 'hlsBufferCreated' } as const;
+    static readonly Events = { MANIFEST_LOADED: 'hlsManifestLoaded', LEVEL_LOADED: 'hlsLevelLoaded', ERROR: 'hlsError', BUFFER_CREATED: 'hlsBufferCreated' } as const;
     static isSupported(): boolean {
       return true;
     }
@@ -254,6 +254,52 @@ describe('live video HLS transport', () => {
     Object.defineProperty(frozen.video, 'readyState', { configurable: true, value: 4 /* HAVE_ENOUGH_DATA */ });
     await vi.advanceTimersByTimeAsync(LIVE_VIDEO_TIMING.verdictDeadlineMs);
     expect(analytics.track).toHaveBeenLastCalledWith('live-video-attempt-failed', { slot: 'webcams/hls-test', kind: 'hls', outcome: 'not-started', detail: 'frozen' });
+  });
+
+  it('reports how far a stream got when it timed out: player still loading, playlist requested, or variant list only', async () => {
+    const early = LIVE_VIDEO_TIMING.nothingLoadedDeadlineMs;
+    const timeout = (detail: string) => ['live-video-attempt-failed', { slot: 'webcams/hls-test', kind: 'hls', outcome: 'timeout', detail }];
+
+    // hls.js has loaded and requested the playlist, but nothing came back.
+    openHlsTile();
+    await vi.advanceTimersByTimeAsync(early);
+    expect(analytics.track).toHaveBeenLastCalledWith(...timeout('playlist-loading'));
+    session?.destroy();
+
+    // The multivariant playlist arrived, but no media playlist followed.
+    openHlsTile();
+    await vi.advanceTimersByTimeAsync(0);
+    const hls = hlsjs.instances[hlsjs.instances.length - 1]!;
+    hls.listeners.get(hlsjs.FakeHls.Events.MANIFEST_LOADED)?.(hlsjs.FakeHls.Events.MANIFEST_LOADED, {});
+    await vi.advanceTimersByTimeAsync(early);
+    expect(analytics.track).toHaveBeenLastCalledWith(...timeout('level-loading'));
+    session?.destroy();
+
+    // The browser refused to start it and the playlist never came back.
+    const refusal = Object.assign(new Error('play() can only be initiated by a user gesture'), { name: 'NotAllowedError' });
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(refusal);
+    try {
+      openHlsTile();
+      await vi.advanceTimersByTimeAsync(early);
+      expect(analytics.track).toHaveBeenLastCalledWith(...timeout('playlist-loading-refused'));
+    } finally {
+      playSpy.mockRestore();
+    }
+    session?.destroy();
+
+    // Native HLS whose metadata never loaded, in a tab the viewer had hidden.
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('maybe');
+    const tracks = Object.assign(new EventTarget(), { length: 0 });
+    Object.defineProperty(HTMLVideoElement.prototype, 'audioTracks', { configurable: true, get: () => tracks });
+    const hidden = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    try {
+      openHlsTile();
+      await vi.advanceTimersByTimeAsync(early);
+      expect(analytics.track).toHaveBeenLastCalledWith(...timeout('native-loading-hidden'));
+    } finally {
+      hidden.mockRestore();
+      delete (HTMLVideoElement.prototype as HTMLVideoElement & { audioTracks?: unknown }).audioTracks;
+    }
   });
 
   it('reports the hls.js error detail with a fatal failure', async () => {

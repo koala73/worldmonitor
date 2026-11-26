@@ -73,13 +73,47 @@ describe("customer emails use the WorldMonitor frame", () => {
       error: "<invalid_token>",
       firstFailedAt: Date.UTC(2026, 10, 1, 12),
     });
-    expect(text).toContain("Your slack notification channel was disabled after delivery failures.");
+    expect(text).toContain("Your Slack notification channel was disabled after delivery failures.");
+    expect(text).toContain("Update and save your channel to resume notifications");
     expect(text).toContain("https://www.worldmonitor.app/dashboard?settings=notifications");
     expectWorldMonitorFrame(html, "Alert settings");
     expect(html).toContain("&lt;invalid_token&gt;");
     expect(html).not.toContain("<invalid_token>");
     expect(html).toContain("2026-11-01T12:00:00.000Z");
     expect(html).toContain('href="https://www.worldmonitor.app/dashboard?settings=notifications"');
+  });
+});
+
+describe("expired browser push subscription notice", () => {
+  // An HTTP 410 from a push service means the browser ended the
+  // subscription. Nothing on the settings page can repair that row; the user
+  // has to turn push on again from the browser itself.
+  test("names the channel in plain words and says how to turn it back on", () => {
+    const { subject, text, html } = disabledChannelNotice({
+      channelType: "web_push",
+      error: "HTTP 410",
+      firstFailedAt: Date.UTC(2026, 10, 22, 15, 24),
+    });
+    expect(subject).toBe("WorldMonitor browser notifications turned off");
+    for (const body of [text, html]) {
+      expect(body).not.toContain("web_push");
+      expect(body).toContain("browser ended its notification subscription");
+      expect(body).toContain("turn on Browser Push again");
+      expect(body).not.toContain("Update and save your channel");
+    }
+    expectWorldMonitorFrame(html, "Alert settings");
+    expect(html).toContain("Browser Push");
+    expect(html).toContain(">Turn notifications back on</a>");
+  });
+
+  test("other browser push failures keep the generic repair copy", () => {
+    const { subject, text } = disabledChannelNotice({
+      channelType: "web_push",
+      error: "HTTP 403",
+      firstFailedAt: Date.UTC(2026, 10, 22),
+    });
+    expect(subject).toBe("WorldMonitor notification channel disabled");
+    expect(text).toContain("Your Browser Push notification channel was disabled after delivery failures.");
   });
 });
 

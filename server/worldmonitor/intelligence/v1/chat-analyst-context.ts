@@ -43,6 +43,19 @@ import {
 import { isOrbitalWatchEnabled } from '../../orbital/v1/dark-launch';
 import { buildWatchedSiteImagery } from './chat-analyst-site-imagery';
 import { hasGeoScope, matchPlaces, resolveGeoScope } from './chat-analyst-geo-scope';
+import type { AiRoutingDecision } from '../../../_shared/ai-routing-policy';
+import {
+  intelHistorySearch,
+  intelHistoryTimeline,
+  type IntelHistoryRecordView,
+} from '../../../_shared/intel-history-client';
+import {
+  embedQueryText,
+  normalizeQueryText,
+  queryEmbeddingDenial,
+} from '../../../_shared/intel-history-embed';
+import { cacheSuccessfulHistoryRead } from '../../../_shared/intel-history-contract';
+import { PRECEDENT_MIN_SCORE } from './get-similar-events';
 
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
 // When multi-language digests are available, fan out to news:digest:v1:full:<lang>
@@ -75,6 +88,7 @@ export interface AnalystContext {
   oilStocksCover?: string;
   electricityMix?: string;
   watchedSiteImagery?: string;
+  intelHistory?: string;
 }
 
 function safeStr(v: unknown): string {
@@ -1161,6 +1175,196 @@ async function searchDigest(query: string, currentTurn?: string): Promise<string
   return selectRelevantArticles(items, query, currentTurn);
 }
 
+// ── Historical Intelligence Memory ───────────────────────────────────────────
+
+const INTEL_HISTORY_LIMIT = 5;
+const INTEL_HISTORY_MAX_SUMMARY_CHARS = 220;
+const INTEL_HISTORY_MAX_QUERY_LEN = 500;
+
+export interface IntelHistoryFetcher {
+  embedQueryText?: (text: string) => Promise<number[] | null>;
+  search?: (params: {
+    embedding: number[];
+    domain?: string;
+    country?: string;
+    limit: number;
+    minScore: number;
+  }) => Promise<{ records: IntelHistoryRecordView[]; partial: boolean } | null>;
+  timeline?: (params: {
+    domain?: string;
+    country?: string;
+    limit: number;
+  }) => Promise<{ records: IntelHistoryRecordView[]; partial: boolean; nextCursor?: string } | null>;
+}
+
+export interface AssembleAnalystContextOptions {
+  routingDecisionPromise?: Promise<AiRoutingDecision>;
+  /** Injectable test hook to bypass live OpenRouter/Convex/Redis calls. */
+  intelHistoryFetcher?: IntelHistoryFetcher;
+}
+
+function mapDomainFocusToHistoryDomain(domainFocus: string): 'conflict' | 'military' | 'energy' | undefined {
+  if (domainFocus === 'military') return 'military';
+  return undefined;
+}
+
+function formatUtcDate(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return 'undated';
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return 'undated';
+  return d.toISOString().slice(0, 10);
+}
+
+function truncateHistorySummary(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
+/**
+ * Pure formatter for Historical Intelligence Memory records.
+ * Every untrusted field passes through `sanitizeForPromptLine` so embedded
+ * newlines, control characters, or delimiter lines cannot forge prompt structure.
+ */
+export function buildIntelHistory(records: readonly IntelHistoryRecordView[]): string {
+  if (!Array.isArray(records) || records.length === 0) return '';
+  const lines: string[] = [];
+  for (const rec of records.slice(0, INTEL_HISTORY_LIMIT)) {
+    if (!rec || typeof rec !== 'object') continue;
+    const title = sanitizeForPromptLine(safeStr(rec.title));
+    const rawSummary = sanitizeForPromptLine(safeStr(rec.summary));
+    const summary = rawSummary ? truncateHistorySummary(rawSummary, INTEL_HISTORY_MAX_SUMMARY_CHARS) : '';
+    if (!title && !summary) continue;
+
+    const date = formatUtcDate(safeNum(rec.occurredAt));
+    const domain = sanitizeForPromptLine(safeStr(rec.domain));
+    const country = sanitizeForPromptLine(safeStr(rec.country));
+    const category = sanitizeForPromptLine(safeStr(rec.category));
+    const metaParts = [date, domain, country, category && category !== domain ? category : ''].filter(Boolean);
+    const meta = `[${metaParts.join(' | ')}]`;
+    const body = title && summary && summary !== title
+      ? `${title} — ${summary}`
+      : (title || summary);
+    lines.push(`- ${meta} ${body}`);
+  }
+  return lines.join('\n');
+}
+
+async function retrieveIntelHistory(
+  iso2: string | null,
+  domainFocus: string,
+  userQuery: string | undefined,
+  currentTurn: string | undefined,
+  options?: AssembleAnalystContextOptions,
+): Promise<string | undefined> {
+  // Omitted options (legacy callers and unit tests without OpenRouter/Convex
+  // credentials) skip gracefully without touching Redis or logging missing env.
+  if (!options?.routingDecisionPromise && !options?.intelHistoryFetcher) {
+    return undefined;
+  }
+
+  try {
+    let routingDecision: AiRoutingDecision | null = null;
+    if (options.routingDecisionPromise) {
+      try {
+        routingDecision = await options.routingDecisionPromise;
+      } catch {
+        routingDecision = null;
+      }
+    }
+
+    const historyDomain = mapDomainFocusToHistoryDomain(domainFocus);
+    const rawQuery = (currentTurn || userQuery || '').trim().slice(0, INTEL_HISTORY_MAX_QUERY_LEN);
+    const normalizedQuery = normalizeQueryText(rawQuery);
+    const canEmbed = routingDecision !== null && queryEmbeddingDenial(routingDecision) === null;
+    const fetcher = options.intelHistoryFetcher;
+
+    if (canEmbed && normalizedQuery.length >= 2) {
+      const searchResult = fetcher
+        ? await (async () => {
+            const embed = fetcher.embedQueryText ?? embedQueryText;
+            const search = fetcher.search ?? intelHistorySearch;
+            const embedding = await embed(rawQuery);
+            if (!embedding) return null;
+            return search({
+              embedding,
+              ...(historyDomain ? { domain: historyDomain } : {}),
+              ...(iso2 ? { country: iso2 } : {}),
+              limit: INTEL_HISTORY_LIMIT,
+              minScore: PRECEDENT_MIN_SCORE,
+            });
+          })()
+        : await cacheSuccessfulHistoryRead(
+            'analyst-search',
+            {
+              query: normalizedQuery,
+              domain: historyDomain ?? '',
+              country: iso2 ?? '',
+              limit: INTEL_HISTORY_LIMIT,
+              minScore: PRECEDENT_MIN_SCORE,
+            },
+            async () => {
+              const embedding = await embedQueryText(rawQuery);
+              if (!embedding) return null;
+              return intelHistorySearch({
+                embedding,
+                ...(historyDomain ? { domain: historyDomain } : {}),
+                ...(iso2 ? { country: iso2 } : {}),
+                limit: INTEL_HISTORY_LIMIT,
+                minScore: PRECEDENT_MIN_SCORE,
+              });
+            },
+          );
+
+      if (!searchResult || searchResult.records.length === 0) return undefined;
+      const filtered = searchResult.records.filter((r) => safeNum(r.score) >= PRECEDENT_MIN_SCORE);
+      const block = buildIntelHistory(filtered);
+      return block || undefined;
+    }
+
+    // OpenRouter embeddings disallowed (e.g. restricted AI routing policy) or
+    // query too short: fall back to chronological country timeline (zero OpenRouter call).
+    if (!iso2) return undefined;
+
+    const timelineResult = fetcher
+      ? await (fetcher.timeline ?? intelHistoryTimeline)({
+          ...(historyDomain ? { domain: historyDomain } : {}),
+          country: iso2,
+          limit: INTEL_HISTORY_LIMIT,
+        })
+      : await cacheSuccessfulHistoryRead(
+          'timeline-page',
+          {
+            domain: historyDomain ?? '',
+            country: iso2,
+            from: 0,
+            to: 0,
+            limit: INTEL_HISTORY_LIMIT,
+            cursor: '',
+          },
+          () => intelHistoryTimeline({
+            ...(historyDomain ? { domain: historyDomain } : {}),
+            country: iso2,
+            limit: INTEL_HISTORY_LIMIT,
+            cursor: '',
+          }),
+        );
+
+    if (!timelineResult || timelineResult.records.length === 0) return undefined;
+    const block = buildIntelHistory(timelineResult.records);
+    return block || undefined;
+  } catch (err) {
+    console.warn(
+      '[chat-analyst] intelHistory retrieval failed, continuing without history:',
+      err instanceof Error ? err.message : String(err),
+    );
+    void captureSilentError(err, {
+      tags: { route: 'api/chat-analyst', step: 'intel-history' },
+      fingerprint: ['chat-analyst', 'intel-history'],
+    });
+    return undefined;
+  }
+}
+
 // ── Source labels ─────────────────────────────────────────────────────────────
 
 const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' | 'activeSources'>, string]> = [
@@ -1187,6 +1391,7 @@ const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' 
   ['oilStocksCover', 'IEAStocks'],
   ['electricityMix', 'ElecMix'],
   ['watchedSiteImagery', 'Imagery'],
+  ['intelHistory', 'History'],
 ];
 
 export async function assembleAnalystContext(
@@ -1195,6 +1400,7 @@ export async function assembleAnalystContext(
   userQuery?: string,
   /** The current turn alone; `userQuery` also carries the prior user turn. */
   currentTurn?: string,
+  options?: AssembleAnalystContextOptions,
 ): Promise<AnalystContext> {
   const keys = {
     insights: 'news:insights:v1',
@@ -1260,6 +1466,7 @@ export async function assembleAnalystContext(
     oilStocksCoverResult,
     electricityMixResult,
     siteImageryResult,
+    intelHistoryResult,
   ] = await Promise.allSettled([
     getCachedJson(keys.insights, true),
     getCachedJson(keys.riskScores, true),
@@ -1283,6 +1490,7 @@ export async function assembleAnalystContext(
     needsOilStocksCover ? buildOilStocksCover(iso2!) : Promise.resolve(undefined),
     needsElectricityMix ? buildElectricityMix(iso2!) : Promise.resolve(undefined),
     needsSiteImagery ? buildWatchedSiteImagery(iso2, userQuery ?? '', instrumentTerms) : Promise.resolve(undefined),
+    retrieveIntelHistory(iso2, resolvedDomain, userQuery, currentTurn, options),
   ]);
 
   const get = (r: PromiseSettledResult<unknown>) =>
@@ -1332,6 +1540,7 @@ export async function assembleAnalystContext(
     oilStocksCover: getOptStr(oilStocksCoverResult),
     electricityMix: getOptStr(electricityMixResult),
     watchedSiteImagery: getOptStr(siteImageryResult),
+    intelHistory: getOptStr(intelHistoryResult),
   };
 
   ctx.activeSources = SOURCE_LABELS
