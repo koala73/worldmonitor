@@ -2271,6 +2271,20 @@
       "status": "excluded"
     },
     {
+      "host": "assets.applytosupply.digitalmarketplace.service.gov.uk",
+      "provider": "assets.applytosupply.digitalmarketplace.service.gov.uk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
+        }
+      ]
+    },
+    {
       "host": "astanatimes.com",
       "provider": "astanatimes.com",
       "kind": "feed",
@@ -16550,15 +16564,10 @@
       "host": "www.applytosupply.digitalmarketplace.service.gov.uk",
       "provider": "www.applytosupply.digitalmarketplace.service.gov.uk",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/comparison-shortlist.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.aripaev.ee",

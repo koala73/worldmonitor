@@ -341,7 +341,7 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
     // #11144: one unrelated source must not cover every amount an entry prints.
     assert.throws(
       () => shortlistPage(seedWith((seed) => { recordedFuture(seed).pricing.sources = [{ label: 'Unrelated', url: 'https://example.com/' }]; })),
-      /Recorded Future quotes \$72,703, £40,500 with no source that cites them/,
+      /Recorded Future quotes \$72,703, £135,000, £21,600 with no source that cites them/,
     );
     assert.throws(
       () => shortlistPage(seedWith((seed) => { recordedFuture(seed).paragraphs[1] += ' Another listing charges £7,650 a user.'; })),
@@ -354,6 +354,16 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
     assert.throws(
       () => shortlistPage(seedWith((seed) => { recordedFuture(seed).pricing.sources[0].amounts.push('$1,234'); })),
       /Recorded Future source "Vendr Recorded Future benchmark" lists \$1,234, which the entry does not print/,
+    );
+    // A World Monitor catalog price is USD; the same digits in pounds are not a catalog price.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { recordedFuture(seed).paragraphs[1] += ' A reseller adds a £39.99 fee.'; })),
+      /Recorded Future quotes £39.99 with no source that cites them/,
+    );
+    // Amounts outside the ranked entries must still trace to an entry's source or the catalog.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { seed.faqs[0][1] += ' One rival charges $12,345 a year.'; })),
+      /page prose quotes \$12,345, which no entry source or catalog price covers/,
     );
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.useCases[0].href = '/blog/vs/dataminr/'; })), /\/blog\/best\//);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.faqs = seed.faqs.slice(0, 5); })), /6-8 FAQs/);

@@ -85,6 +85,8 @@ function catalogLimit(tier, field) {
 const CATALOG_PRICES = new Set(PRODUCT_FACTS.plans.map((plan) => plan.price).filter(Number.isFinite));
 // A currency amount in entry prose: $65,000, £40,500, $9.54. A trailing comma is punctuation.
 const PROSE_AMOUNT_RE = /[$£€]\d+(?:,\d{3})*(?:\.\d+)?/g;
+// Catalog prices are USD, so only a dollar amount can be one.
+const isCatalogAmount = (amount) => amount.startsWith('$') && CATALOG_PRICES.has(Number(amount.slice(1).replaceAll(',', '')));
 
 const monthly = (planKey) =>`$${catalogPlan(planKey).price.toFixed(2)}/mo`;
 
@@ -191,18 +193,18 @@ const ENTRIES = [
     bestFor: 'threat intelligence at enterprise scale',
     paragraphs: [
       'Recorded Future is a threat intelligence platform. It covers cyber threats, physical threats, geopolitical risk, country risk and travel safety, and it collects intelligence continuously. The breadth is the reason to buy it, because one vendor can serve the security operations team and the geopolitical desk. Enterprise customers get a REST API documented in the [Recorded Future API reference](https://docs.recordedfuture.com/reference/get-started).',
-      'There is no public list price. Vendr reports a median buyer price of $72,703 a year, based on 48 purchases. A UK G-Cloud 14 listing from the reseller ITogether prices the Recorded Future platform at £40,500 a licence a year. Other G-Cloud 14 reseller listings price per user or per instance and at different amounts, so that figure describes one listing and is not the price. Treat both numbers as context for a budget conversation, not as an offer.',
-      "Recorded Future made a hosted MCP server generally available in September 2026, documented on its [support site](https://support.recordedfuture.com/hc/en-us/articles/55744099282963-Recorded-Future-MCP-Overview). It is included at no extra cost on packages with unlimited integration users, and each tool call is limited to the caller's entitlements. A [free browser extension](https://go.recordedfuture.com/browser-extension) is available, and the G-Cloud listing offers a 30-day sandbox trial on request. Seat terms are not published, so ask for them in the written quote. The contract size makes Recorded Future a hard first purchase for a small team. It fits an organization that already runs a threat intelligence program.",
+      'Recorded Future does not publish a list price on its own site. Vendr reports a median buyer price of $72,703 a year, based on 48 purchases. UK G-Cloud 15 reseller listings attach the Recorded Future price guide, which lists the Geopolitical Intelligence module at £135,000 a year for five users before discounts, and users six to ten at £21,600 each. The guide says bundles and multi-year terms can lower that price, and Recorded Future sales confirm the final figure. Treat both numbers as context for a budget conversation, not as an offer.',
+      "Recorded Future made a hosted MCP server generally available in September 2026, documented on its [support site](https://support.recordedfuture.com/hc/en-us/articles/55744099282963-Recorded-Future-MCP-Overview). It is included at no extra cost on packages with unlimited integration users, and each tool call is limited to the caller's entitlements. A [free browser extension](https://go.recordedfuture.com/browser-extension) is available, and G-Cloud reseller listings offer a free sandbox. The price guide sells seats in a five-user base with extra users priced one by one, so confirm the seat count in the written quote. The contract size makes Recorded Future a hard first purchase for a small team. It fits an organization that already runs a threat intelligence program.",
     ],
     bestSuitedFor: 'enterprise security teams that want cyber and geopolitical threat intelligence from one vendor and can run a procurement cycle.',
     pricing: {
       cell: ENTERPRISE_UNDISCLOSED,
       model: 'Sales-led',
-      freeTier: 'Free browser extension; sandbox trial on request',
+      freeTier: 'Free browser extension; free sandbox (G-Cloud listings)',
       published: false,
       sources: [
         { label: 'Vendr Recorded Future benchmark', url: 'https://www.vendr.com/marketplace/recorded-future', amounts: ['$72,703'] },
-        { label: 'UK G-Cloud 14 listing (ITogether)', url: 'https://www.applytosupply.digitalmarketplace.service.gov.uk/g-cloud/services/609101270005042', amounts: ['£40,500'] },
+        { label: 'UK G-Cloud 15 Recorded Future price guide (Bright Cyber)', url: 'https://assets.applytosupply.digitalmarketplace.service.gov.uk/g-cloud-15/documents/720178/163313286294700-pricing-document-2026-01-27-1524.pdf', amounts: ['£135,000', '£21,600'] },
       ],
     },
     latency: 'Continuous intelligence platform',
@@ -210,7 +212,7 @@ const ENTRIES = [
     signup: 'Yes (enterprise)',
     restApi: 'Yes (enterprise)',
     mcp: 'Yes (hosted, customers only)',
-    seats: 'Not published; reseller listings price per user or per licence',
+    seats: 'Five-user base, extra users priced per user (G-Cloud price guide)',
     openSource: 'Proprietary',
     sourceCount: 'Proprietary collection (sources not itemized)',
     archive: 'Enterprise intelligence archive',
@@ -582,7 +584,7 @@ export function shortlistPage(seed) {
     const { pricing } = entry;
     const proseAmounts = [...entry.paragraphs, entry.bestSuitedFor].flatMap((value) => String(value).match(PROSE_AMOUNT_RE) ?? []);
     if (entry.name === WORLD_MONITOR) {
-      const stray = proseAmounts.filter((amount) => !CATALOG_PRICES.has(Number(amount.slice(1).replaceAll(',', ''))));
+      const stray = proseAmounts.filter((amount) => !isCatalogAmount(amount));
       if (stray.length) fail(`World Monitor prose prices must come from the product catalog, got ${stray.join(', ')}`);
     } else if (proseAmounts.length && !pricing.sources?.length) {
       fail(`${entry.name} quotes ${proseAmounts.join(', ')} in prose without a cited price source`);
@@ -591,7 +593,7 @@ export function shortlistPage(seed) {
       // catalog prices may appear in a comparison sentence; the catalog is their source.
       const printed = [...proseAmounts, ...(pricing.cell.match(PROSE_AMOUNT_RE) ?? [])];
       const cited = new Set((pricing.sources ?? []).flatMap((source) => source.amounts ?? []));
-      const uncited = [...new Set(printed)].filter((amount) => !cited.has(amount) && !CATALOG_PRICES.has(Number(amount.slice(1).replaceAll(',', ''))));
+      const uncited = [...new Set(printed)].filter((amount) => !cited.has(amount) && !isCatalogAmount(amount));
       if (uncited.length) fail(`${entry.name} quotes ${uncited.join(', ')} with no source that cites them`);
       for (const source of pricing.sources ?? []) {
         const stale = (source.amounts ?? []).filter((amount) => !printed.includes(amount));
@@ -610,6 +612,12 @@ export function shortlistPage(seed) {
       if (!source.url.startsWith('https://')) fail(`${entry.name} price source must be an https URL`);
     }
   }
+
+  // The intro, takeaways, use cases and FAQs repeat entry prices; each must trace to a cited entry source.
+  const citedAnywhere = new Set(seed.entries.flatMap((entry) => (entry.pricing.sources ?? []).flatMap((source) => source.amounts ?? [])));
+  const untraced = [...new Set(pageProse(seed).flatMap((value) => String(value).match(PROSE_AMOUNT_RE) ?? []))]
+    .filter((amount) => !citedAnywhere.has(amount) && !isCatalogAmount(amount));
+  if (untraced.length) fail(`page prose quotes ${untraced.join(', ')}, which no entry source or catalog price covers`);
 
   if (seed.useCases.length !== 6) fail(`needs 6 use cases, got ${seed.useCases.length}`);
   for (const row of seed.useCases) {
