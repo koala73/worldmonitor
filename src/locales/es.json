@@ -1626,7 +1626,7 @@
         "daysAgo": "Hace {{count}}d"
       },
       "hideFindings": "Ocultar hallazgos",
-      "breakingAlertsNotSaved": "No se pudo guardar este cambio. Tu navegador no permite que este sitio almacene configuración."
+      "breakingAlertsNotSaved": "No se pudo guardar. Permite datos del sitio para este sitio o libera espacio de almacenamiento del navegador e intenta de nuevo."
     },
     "satelliteFires": {
       "region": "Región",

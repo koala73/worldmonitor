@@ -1626,7 +1626,7 @@
         "daysAgo": "{{count}} g fa"
       },
       "hideFindings": "Nascondi risultati",
-      "breakingAlertsNotSaved": "Impossibile salvare questa modifica. Il tuo browser non consente a questo sito di memorizzare le impostazioni."
+      "breakingAlertsNotSaved": "Impossibile salvare. Consenti i dati del sito per questo sito o libera spazio di archiviazione del browser, quindi riprova."
     },
     "satelliteFires": {
       "region": "Regione",

@@ -1947,7 +1947,7 @@
         "hoursAgo": "{{count}}sa once",
         "daysAgo": "{{count}}g once"
       },
-      "breakingAlertsNotSaved": "Bu değişiklik kaydedilemedi. Tarayıcınız bu siteye ayarları depolamasına izin vermiyor."
+      "breakingAlertsNotSaved": "Kaydedilemedi. Bu site için site verilerine izin verin veya tarayıcı depolamayı boşaltın, ardından tekrar deneyin."
     },
     "countryTimeline": {
       "now": "simdi",

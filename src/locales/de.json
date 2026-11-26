@@ -1622,7 +1622,7 @@
         "daysAgo": "Vor {{count}}d"
       },
       "hideFindings": "Erkenntnisse ausblenden",
-      "breakingAlertsNotSaved": "Diese Änderung konnte nicht gespeichert werden. Ihr Browser erlaubt dieser Website nicht, Einstellungen zu speichern."
+      "breakingAlertsNotSaved": "Speichern fehlgeschlagen. Erlauben Sie Websitedaten für diese Website oder geben Sie Browserspeicher frei und versuchen Sie es dann erneut."
     },
     "satelliteFires": {
       "region": "Region",

@@ -1941,7 +1941,7 @@
         "hoursAgo": "{{count}}時間前",
         "daysAgo": "{{count}}日前"
       },
-      "breakingAlertsNotSaved": "この変更を保存できませんでした。ブラウザがこのサイトの設定保存を許可していません。"
+      "breakingAlertsNotSaved": "保存できません。このサイトのサイトデータを許可するか、ブラウザストレージを解放してからもう一度お試しください。"
     },
     "countryTimeline": {
       "now": "現在",

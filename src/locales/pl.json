@@ -1579,7 +1579,7 @@
       "breakingAlerts": "Pilne alerty",
       "popupAlerts": "Wyświetlaj nowe alerty w okienku",
       "hideFindings": "Ukryj wyniki",
-      "breakingAlertsNotSaved": "Nie można zapisać tej zmiany. Twoja przeglądarka nie pozwala tej stronie na przechowywanie ustawień."
+      "breakingAlertsNotSaved": "Nie można zapisać. Zezwól na przechowywanie danych witryny dla tej strony lub zwolnij pamięć przeglądarki, a następnie spróbuj ponownie."
     },
     "satelliteFires": {
       "region": "Region",

@@ -1120,7 +1120,7 @@
   "components.intelligenceFindings.all": "All Intelligence Findings ({{count}})",
   "components.intelligenceFindings.badgeTitle": "Intelligence findings",
   "components.intelligenceFindings.breakingAlerts": "Breaking Alerts",
-  "components.intelligenceFindings.breakingAlertsNotSaved": "Couldn't save this change. Your browser isn't letting this site store settings.",
+  "components.intelligenceFindings.breakingAlertsNotSaved": "Couldn't save. Allow site data for this site or free up browser storage, then try again.",
   "components.intelligenceFindings.count": "{{count}} intelligence finding",
   "components.intelligenceFindings.critical": "{{count}} CRITICAL",
   "components.intelligenceFindings.detected": "{{count}} DETECTED",

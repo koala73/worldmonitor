@@ -1851,7 +1851,7 @@
       "breakingAlerts": "Alertes urgentes",
       "popupAlerts": "Afficher les nouvelles alertes",
       "hideFindings": "Masquer les résultats",
-      "breakingAlertsNotSaved": "Impossible d'enregistrer cette modification. Votre navigateur n'autorise pas ce site à stocker les paramètres."
+      "breakingAlertsNotSaved": "Impossible d'enregistrer. Autorisez les données du site pour ce site ou libérez de l'espace de stockage du navigateur, puis réessayez."
     },
     "countryTimeline": {
       "now": "maintenant",

@@ -1021,7 +1021,7 @@
       "breakingAlerts": "Akuta larm",
       "popupAlerts": "Visa nya larm i popup",
       "hideFindings": "Dölj fynd",
-      "breakingAlertsNotSaved": "Det gick inte att spara den här ändringen. Din webbläsare tillåter inte att den här webbplatsen lagrar inställningar."
+      "breakingAlertsNotSaved": "Det gick inte att spara. Tillåt webbplatsdata för denna webbplats eller frigör lagringsutrymme i webbläsaren och försök igen."
     },
     "economic": {
       "noIndicatorData": "Ingen indikatördata ännu - Federal Reserve Economic Data kan laddas",

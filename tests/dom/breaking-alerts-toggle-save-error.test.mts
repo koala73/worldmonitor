@@ -12,7 +12,11 @@ const SETTINGS_KEY = 'wm-breaking-alerts-v1';
 class MemoryStorage {
   readonly store = new Map<string, string>();
   failWritesFor: string | null = null;
-  getItem(key: string): string | null { return this.store.get(key) ?? null; }
+  failReads = false;
+  getItem(key: string): string | null {
+    if (this.failReads && key === SETTINGS_KEY) throw new DOMException('storage is not readable', 'SecurityError');
+    return this.store.get(key) ?? null;
+  }
   setItem(key: string, value: string): void {
     if (key === this.failWritesFor) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
     this.store.set(key, String(value));
@@ -30,6 +34,7 @@ beforeAll(initTestI18n);
 beforeEach(() => {
   storage.store.clear();
   storage.failWritesFor = null;
+  storage.failReads = false;
   vi.stubGlobal('localStorage', storage);
   vi.resetModules();
 });
@@ -73,7 +78,7 @@ it('says the change was not saved when storage rejects it, and keeps the switch 
   const error = saveError(dropdown);
   expect(error).not.toBeNull();
   expect(error!.getAttribute('role')).toBe('alert');
-  expect(error!.textContent).toContain("Couldn't save this change");
+  expect(error!.textContent).toContain('Allow site data for this site');
 });
 
 it('clears the message once a later change is saved', async () => {
@@ -88,6 +93,22 @@ it('clears the message once a later change is saved', async () => {
   expect(breakingSwitchOn(dropdown)).toBe(false);
   expect(saveError(dropdown)).toBeNull();
   expect(JSON.parse(storage.store.get(SETTINGS_KEY)!).enabled).toBe(false);
+});
+
+it('flips the state the switch shows, even if storage recovered after it rendered', async () => {
+  // Stored opt-out, but storage cannot be read when the dropdown renders, so
+  // the switch shows the enabled default. The reader clicks to turn it off.
+  storage.store.set(SETTINGS_KEY, JSON.stringify({ enabled: false }));
+  storage.failReads = true;
+  const dropdown = await openFindings();
+  expect(breakingSwitchOn(dropdown)).toBe(true);
+  storage.failReads = false;
+
+  breakingRow(dropdown).click();
+
+  // Re-reading storage at click time would flip false -> true and turn alerts ON.
+  expect(JSON.parse(storage.store.get(SETTINGS_KEY)!).enabled).toBe(false);
+  expect(breakingSwitchOn(dropdown)).toBe(false);
 });
 
 it('shows no message when the change is saved', async () => {

@@ -1938,7 +1938,7 @@
         "daysAgo": "před {{count}} d"
       },
       "hideFindings": "Skrýt nálezy",
-      "breakingAlertsNotSaved": "Změnu se nepodařilo uložit. Váš prohlížeč neumožňuje tomuto webu ukládat nastavení."
+      "breakingAlertsNotSaved": "Nepodařilo se uložit. Povolte data webu pro tento web nebo uvolněte úložiště prohlížeče a zkuste to znovu."
     },
     "countryTimeline": {
       "now": "nyní",

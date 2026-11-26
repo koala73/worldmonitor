@@ -1953,7 +1953,7 @@
         "hoursAgo": "{{count}}h în urmă",
         "daysAgo": "{{count}}d acum"
       },
-      "breakingAlertsNotSaved": "Nu s-a putut salva această modificare. Browserul tău nu permite acestui site să stocheze setări."
+      "breakingAlertsNotSaved": "Nu s-a putut salva. Permiteți datele site-ului pentru acest site sau eliberați spațiul de stocare al browserului, apoi încercați din nou."
     },
     "countryTimeline": {
       "now": "acum",
