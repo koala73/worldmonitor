@@ -157,6 +157,10 @@ function submitChannelOAuthForm(popup: Window, launch: ChannelOAuthLaunch): void
   form.submit();
 }
 
+// Marks the failed channel-connect rule save message; the next rule save that
+// lands removes it.
+const CHANNEL_RULE_SAVE_ERROR_ATTR = 'data-channel-rule-save-error';
+
 function appendNotificationError(rowEl: HTMLElement, message: string): void {
   rowEl.querySelector('.us-notif-error')?.remove();
   const errorEl = document.createElement('span');
@@ -359,6 +363,16 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       let secretCopyGeneration = 0;
       let legacyDigestPending = false;
       let legacyDigestConversionInFlight = false;
+      // Connecting the first channel to a rule that has none switches alerts
+      // on (#10976). `storedRuleChannelCount` is the stored rule's channel
+      // count, not the connected rows: channels are per account, rules per
+      // variant. A user who set the toggle in this panel keeps that choice.
+      let storedRuleChannelCount = 0;
+      let enabledToggleTouched = false;
+      // That switch-on is not stored yet: the free plan paused it for an
+      // empty country scope, or the save failed. The toggle keeps showing it
+      // across reloads, so the next save (picking a country) stores it.
+      let firstChannelEnablePending = false;
 
       if (!signedIn) {
         const upgradeBtn = container.querySelector<HTMLButtonElement>('#usNotifUpgradeBtn');
@@ -714,6 +728,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const channelTypes: ChannelType[] = ['telegram', 'email', 'slack', 'discord', 'teams', 'webhook', 'web_push'];
         const alertRule = data.alertRules?.[0] ?? null;
         const sensitivity = alertRule?.sensitivity ?? 'all';
+        storedRuleChannelCount = alertRule?.channels?.length ?? 0;
         legacyDigestPending = DIGEST_CRON_ENABLED && !caps.digestModes.has('daily')
           && alertRule !== null && (alertRule.digestMode ?? 'realtime') !== 'realtime';
 
@@ -823,7 +838,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <div class="ai-flow-toggle-desc">Receive alerts for events matching your filters</div>
               </div>
               <label class="ai-flow-switch">
-                <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled ? ' checked' : ''}>
+                <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled || firstChannelEnablePending ? ' checked' : ''}>
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
@@ -1111,7 +1126,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // skips tier 0, so that rule would deliver nothing anywhere. After the
       // first alert-rule save lands (it narrows sensitivity to critical, the
       // realtime precondition), write the realtime mode the panel shows.
-      function afterRuleSave<T>(p: Promise<T>, flush = false): Promise<T> {
+      function afterRuleSave<T>(saved: Promise<T>, flush = false): Promise<T> {
+        const p = saved.then((result) => {
+          container.querySelector(`[${CHANNEL_RULE_SAVE_ERROR_ATTR}]`)?.remove();
+          return result;
+        });
         if (!legacyDigestPending || legacyDigestConversionInFlight) return p;
         legacyDigestConversionInFlight = true;
         return p.then(
@@ -1155,17 +1174,18 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         });
       }
 
-      function reloadNotifSection(): void {
+      // Resolves once the reload rendered, failed, or was superseded.
+      function reloadNotifSection(): Promise<void> {
         const generation = ++notifReloadGeneration;
         secretCopyGeneration += 1;
         dismissSecretCopyFallback(NOTIFICATION_SECRET_COPY_OWNER);
         const loadingEl = container.querySelector<HTMLElement>('#usNotifLoading');
         const contentEl = container.querySelector<HTMLElement>('#usNotifContent');
-        if (!loadingEl || !contentEl) return;
+        if (!loadingEl || !contentEl) return Promise.resolve();
         loadingEl.style.display = 'block';
         contentEl.style.display = 'none';
-        if (signal.aborted) return;
-        Promise.all([
+        if (signal.aborted) return Promise.resolve();
+        return Promise.all([
           getChannelsData(undefined, signal),
           readWebPushSettingsState(),
         ]).then(([data, webPushState]) => {
@@ -1541,15 +1561,42 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // settings there takes focus away and returns it.
       window.addEventListener('focus', resyncWebPushState, { signal });
 
-      function saveRuleWithNewChannel(newChannel: ChannelType): void {
+      // Adds the connected channel to the rule, then reloads the section. The
+      // reload waits for the save: a read that lands first renders the old
+      // rule, and the Pro channel re-sync would then store that stale toggle.
+      function saveRuleWithNewChannel(newChannel: ChannelType, opts: { reload: boolean } = { reload: true }): void {
+        if (storedRuleChannelCount === 0 && !enabledToggleTouched) {
+          const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
+          if (enabledEl) enabledEl.checked = true;
+          firstChannelEnablePending = true;
+        }
+        // Read after the switch-on, so the free plan's empty-scope pause in
+        // getCurrentAlertRuleFormState still applies to it.
         const state = getCurrentAlertRuleFormState();
         // Augment channels with the newly connected one (set semantics).
         const channels = [...new Set([...state.channels, newChannel])];
-        fireForgetSave(afterRuleSave(saveAlertRules({
+        const save = afterRuleSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
           channels,
-        }, signal)), 'save alert rules');
+        }, signal));
+        fireForgetSave(save, 'save alert rules');
+        void save.then(
+          () => {
+            storedRuleChannelCount = channels.length;
+            if (state.enabled) firstChannelEnablePending = false;
+            return true;
+          },
+          () => false,
+        ).then(async (saved) => {
+          if (signal.aborted) return;
+          if (opts.reload) await reloadNotifSection();
+          if (saved || signal.aborted) return;
+          const row = container.querySelector<HTMLElement>(`[data-channel-type="${newChannel}"]`);
+          if (!row) return;
+          appendNotificationError(row, 'Try again by changing any alert setting below. This channel was not added to your alerts.');
+          row.querySelector('.us-notif-error')?.setAttribute(CHANNEL_RULE_SAVE_ERROR_ATTR, '');
+        });
       }
 
       const sendQuietHoursNow = (flush = false): void => {
@@ -1799,6 +1846,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             .some((sel) => container.querySelector<HTMLInputElement>(sel)?.checked);
           container.querySelector<HTMLElement>('#usOrbitalScope')?.toggleAttribute('hidden', !anyOn);
         }
+        if (target.id === 'usNotifEnabled') {
+          enabledToggleTouched = true;
+          firstChannelEnablePending = false;
+        }
         if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts' || target.id === 'usOrbitalWindowAlerts' || target.id === 'usOrbitalChangeAlerts' || target.id === 'usReservoirAlerts' || target.id === 'usReservoirBelowPercent' || target.id === 'usReservoirSeasonal') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
@@ -1928,7 +1979,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 if (tg?.verified) {
                   clearNotifPoll();
                   saveRuleWithNewChannel('telegram');
-                  reloadNotifSection();
                 }
               }).catch(() => {});
             }, 3000);
@@ -1955,7 +2005,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             return;
           }
           setEmailChannel(email, undefined, signal).then(() => {
-            if (!signal.aborted) { saveRuleWithNewChannel('email'); reloadNotifSection(); }
+            if (!signal.aborted) saveRuleWithNewChannel('email');
           }).catch((error: unknown) => {
             if (signal.aborted) return;
             const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
@@ -2050,7 +2100,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           setTeamsChannel(url, signal).then(() => {
             if (signal.aborted) return;
             saveRuleWithNewChannel('teams');
-            reloadNotifSection();
           }).catch((err: unknown) => {
             if (signal.aborted) return;
             urlInput?.classList.add('us-notif-input-error');
@@ -2119,9 +2168,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           }
           setWebhookChannel(url, labelInput?.value?.trim() || undefined, signal).then(({ signingSecret }) => {
             if (signal.aborted) return;
-            saveRuleWithNewChannel('webhook');
             const rowEl = container.querySelector<HTMLElement>('[data-channel-type="webhook"]');
-            if (!signingSecret || !rowEl) { reloadNotifSection(); return; }
+            // A shown secret must not be wiped by the reload.
+            saveRuleWithNewChannel('webhook', { reload: !signingSecret || !rowEl });
+            if (!signingSecret || !rowEl) return;
             // Mark the row connected so a rule save made while the secret is
             // on screen (getCurrentAlertRuleFormState) keeps the webhook.
             rowEl.classList.add('us-notif-ch-on');
@@ -2192,7 +2242,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 return;
               }
               await pushRuntime.subscribeToPush();
-              if (!signal.aborted) { saveRuleWithNewChannel('web_push'); reloadNotifSection(); }
+              if (!signal.aborted) saveRuleWithNewChannel('web_push');
             } catch (err) {
               console.warn('[notif] web_push subscribe failed:', err);
               if (signal.aborted) return;
@@ -2256,7 +2306,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const fromDiscord = discordOAuthPopup !== null && e.source === discordOAuthPopup;
         if (!trustedOrigin || (!fromSlack && !fromDiscord)) return;
         if (e.data?.type === 'wm:slack_connected') {
-          if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
+          if (!signal.aborted) saveRuleWithNewChannel('slack');
         } else if (e.data?.type === 'wm:slack_error') {
           const rowEl = container.querySelector<HTMLElement>('[data-channel-type="slack"]');
           if (rowEl) {
@@ -2265,7 +2315,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             if (btn) btn.textContent = 'Add to Slack';
           }
         } else if (e.data?.type === 'wm:discord_connected') {
-          if (!signal.aborted) { saveRuleWithNewChannel('discord'); reloadNotifSection(); }
+          if (!signal.aborted) saveRuleWithNewChannel('discord');
         } else if (e.data?.type === 'wm:discord_error') {
           const rowEl = container.querySelector<HTMLElement>('[data-channel-type="discord"]');
           if (rowEl) {
