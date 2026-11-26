@@ -2751,22 +2751,21 @@ export class PanelLayoutManager implements AppModule {
     if (!this.tabsState || this.ctx.isDestroyed) return false;
     if (!storeTabsState(next).persisted) return false;
     this.tabsState = next;
+    let panelsStored = true;
     if (activeChanged) {
       const active = next.tabs.find((t) => t.id === next.activeTabId);
       if (active) {
         restoreActiveScope(active.scope ?? null);
         this.applyTabPanelFilters(active.panelFilters);
-        if (!this.applyTabPanelState(active.panelSettings, active.panelOrder, active.bottomSet)) {
-          this.panelTabBar?.refresh();
-          return false;
-        }
+        panelsStored = this.applyTabPanelState(active.panelSettings, active.panelOrder, active.bottomSet);
       }
     }
-    // Tabs from another device can hold a layout over this account's cap.
+    // The tabs are stored and shown either way. Tabs from another device can
+    // hold a layout over this account's cap.
     this.healStoredTabSnapshots();
     this.panelTabBar?.refresh();
     this.updateTabCapLock();
-    return true;
+    return panelsStored;
   }
 
   /**

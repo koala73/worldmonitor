@@ -1152,6 +1152,52 @@ describe('tab sync driver', () => {
     assert.ok(host.state.tabs.some((t) => t.name === 'A synced'));
   });
 
+  it("a switch whose panel layout cannot be stored keeps the new account's tabs out of the previous one on the retry", async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    // The tabs are stored and shown, but the active tab's panel writes fail once.
+    class PanelFailHost extends FakeHost {
+      failNext = false;
+      override applyTabs(next: TabsState, activeChanged: boolean): boolean {
+        super.applyTabs(next, activeChanged);
+        if (!this.failNext) return true;
+        this.failNext = false;
+        return false;
+      }
+    }
+    const host = new PanelFailHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    const serverB = new FakeServer();
+    serverB.rows.set('tab-b-1', { tabId: 'tab-b-1', version: 1, deleted: false, record: captureTabRecord(tab('tab-b-1', 'B synced')), createdAt: 1, updatedAt: 1 });
+    useServer(serverB);
+    host.failNext = true;
+    signIn('user_b', host);
+    await settle();
+    assert.ok(host.state.tabs.some((t) => t.id === 'tab-b-1'), 'the failed pass left B on screen');
+    // The same page reconnects and runs the switch again.
+    mock.timers.tick(15_000);
+    await settle();
+    const held = JSON.parse(localStorage.getItem(HELD_KEY) ?? '{}');
+    const heldForA = (held.user_a?.records ?? []).map((r: { id: string }) => r.id);
+    assert.ok(!heldForA.includes('tab-b-1'), `held for user_a: ${JSON.stringify(heldForA)}`);
+    assert.ok(host.state.tabs.some((t) => t.id === 'tab-b-1'));
+  });
+
+  it('a record the server refuses for its scope or filters stops sync without reconnecting', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const stopped: string[] = [];
+    let connects = 0;
+    __setTabSyncTransportForTests(async (userId) => { connects += 1; return server.transport(userId); });
+    server.throwOnSync = Object.assign(new Error('[CONVEX M] Uncaught ConvexError'), { data: { kind: 'INVALID_LAYOUT', field: 'scope' } });
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host, (r) => stopped.push(r));
+    await settle();
+    mock.timers.tick(120_000);
+    await settle();
+    assert.deepEqual(stopped, ['invalid']);
+    assert.equal(connects, 1);
+  });
+
   it('a signed-in marker that cannot move does not hand the new account\'s work to the previous one', async () => {
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
     signIn('user_a', host);

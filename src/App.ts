@@ -236,6 +236,7 @@ import {
   onSignIn as cloudPrefsSignIn,
   onSignOut as cloudPrefsSignOut,
   setCloudBlobApplyExclusions,
+  dropSkippedCloudBlobValues,
   type CloudPrefsAppliedDetail,
   type CloudPrefsSignInTerminalDetail,
 } from '@/utils/cloud-prefs-sync';
@@ -2609,6 +2610,9 @@ export class App {
 
   /** Sync dashboard tabs with the signed-in account (#11141). */
   private startDashboardTabSync(userId: string): void {
+    // Runs on a sign-in, before cloud-prefs records it: panel values skipped
+    // for the previous account must not be applied when the exclusions lift.
+    dropSkippedCloudBlobValues();
     const { willSync } = prepareTabSyncSignIn(userId, isCloudSyncEnabled(), this.panelLayout.getTabSyncHost());
     if (!willSync) {
       stopTabSync();

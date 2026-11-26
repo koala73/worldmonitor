@@ -605,6 +605,16 @@ describe('mergeTabs account switch', () => {
     assert.equal(out2.changes[0]!.change.baseVersion, 2);
   });
 
+  it('leaves out a team link the server would refuse', () => {
+    const t = tab('tab-a-1');
+    t.team = { id: 'x'.repeat(65), version: 1 };
+    assert.equal(captureTabRecord(t).team, undefined);
+    t.team = { id: '', version: 1 };
+    assert.equal(captureTabRecord(t).team, undefined);
+    t.team = { id: 'team_1', version: 1 };
+    assert.deepEqual(captureTabRecord(t).team, { id: 'team_1', version: 1 });
+  });
+
   it("keeps a tab with an unanswered write when its row is a tombstone", () => {
     // A tombstone has no content: nothing shows it is this device's write
     // deleted elsewhere rather than another writer's row, so the tab stays.

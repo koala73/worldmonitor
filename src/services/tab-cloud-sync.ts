@@ -532,10 +532,14 @@ function isMissingFunction(err: unknown): boolean {
   return err instanceof Error && /Could not find public function/i.test(err.message);
 }
 
-/** The server refused a record as malformed: resending the same tabs cannot help. */
+/**
+ * The server refused a record as malformed: resending the same tabs cannot
+ * help. A scope or panel filter is checked by the team-layout rules, which
+ * name the refusal INVALID_LAYOUT.
+ */
 function isInvalidTab(err: unknown): boolean {
   const data = (err as { data?: unknown } | null)?.data;
-  return isRecord(data) && data.kind === 'INVALID_TAB';
+  return isRecord(data) && (data.kind === 'INVALID_TAB' || data.kind === 'INVALID_LAYOUT');
 }
 
 function fail(s: Session, reason: TabSyncStopReason, err?: unknown): void {
@@ -915,6 +919,8 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
     if (!saveTabSyncMeta({ ...pending.previousMeta, foreign })) {
       throw new Error("could not mark the new account's tabs on this device");
     }
+    // A retry of this switch on the same page reads the marks from here.
+    pending.previousMeta = { ...pending.previousMeta, foreign };
   }
   if (result.changed) {
     // Not stored: the device still has its old tabs. This pass's state

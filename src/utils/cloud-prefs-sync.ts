@@ -633,6 +633,15 @@ export function setCloudBlobApplyExclusions(keys: readonly CloudSyncKey[]): void
   dispatchCloudPrefsApplied(changedKeys, _skippedCloudSyncVersion);
 }
 
+/**
+ * Forget the cloud values the last apply skipped. They belong to the account
+ * that was signed in then; call this when another account signs in, before
+ * anything lifts the exclusions.
+ */
+export function dropSkippedCloudBlobValues(): void {
+  _skippedCloudKeys.clear();
+}
+
 /** Write one key's cloud value. The caller holds `_suppressPatch`. */
 function writeCloudKey(key: CloudSyncKey, action: CloudBlobKeyAction): 'changed' | 'same' | 'failed' {
   // The pre-read decides whether to ANNOUNCE the key, and a failed read

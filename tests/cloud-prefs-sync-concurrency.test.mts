@@ -1544,6 +1544,18 @@ describe('cloud blob apply exclusions (#11141)', () => {
     assert.equal(seen.order, '["cloud"]');
   });
 
+  it('drops the skipped values when another account signs in', async () => {
+    // A direct switch: tab sync for the new account can lift the exclusion
+    // before cloud-prefs signs it in, and must not apply the old account's values.
+    const seen = await signedInWithExclusions(PANEL_KEYS, (cloudPrefs) => {
+      cloudPrefs.dropSkippedCloudBlobValues();
+      cloudPrefs.setCloudBlobApplyExclusions([]);
+    });
+    assert.equal(seen.panels, LOCAL_PANELS);
+    assert.equal(seen.order, '["local"]');
+    assert.equal(seen.announced, '[]');
+  });
+
   it('drops the skipped values at sign-out', async () => {
     const seen = await signedInWithExclusions(PANEL_KEYS, (cloudPrefs) => {
       cloudPrefs.onSignOut();

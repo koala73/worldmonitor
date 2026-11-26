@@ -146,6 +146,9 @@ describe('PanelLayoutManager tab sync host', () => {
     // The next load would build the old layout: the pass must not take this one as applied.
     expect(method<(n: TabsState, a: boolean) => boolean>('applySyncedTabs').call(self, next, true)).toBe(false);
     expect(self.applyTabPanelState).toHaveBeenCalled();
+    // The tabs themselves are stored and shown: the cap lock and snapshots follow them.
+    expect(self.healStoredTabSnapshots).toHaveBeenCalled();
+    expect(self.updateTabCapLock).toHaveBeenCalled();
   });
 
   it('reports whether the panel layout writes were stored', () => {

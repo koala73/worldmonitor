@@ -166,7 +166,11 @@ export function captureTabRecord(tab: PanelTab, carried: readonly CarriedPanel[]
   if (scope) record.scope = scope;
   const filters = filtersToEntries(tab.panelFilters);
   if (filters.length > 0) record.panelFilters = filters;
-  if (tab.team && typeof tab.team.id === 'string' && Number.isInteger(tab.team.version) && tab.team.version >= 1) {
+  // The server refuses a team id outside 1..64 characters.
+  if (
+    tab.team && typeof tab.team.id === 'string' && tab.team.id.length > 0 && tab.team.id.length <= 64 &&
+    Number.isInteger(tab.team.version) && tab.team.version >= 1
+  ) {
     record.team = { id: tab.team.id, version: tab.team.version };
   }
   return record;
