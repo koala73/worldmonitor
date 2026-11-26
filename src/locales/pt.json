@@ -1021,7 +1021,8 @@
       },
       "breakingAlerts": "Alertas urgentes",
       "popupAlerts": "Exibir novos alertas",
-      "hideFindings": "Ocultar descobertas"
+      "hideFindings": "Ocultar descobertas",
+      "breakingAlertsNotSaved": "Não foi possível salvar. Permita dados do site para este site ou libere espaço de armazenamento do navegador e tente novamente."
     },
     "economic": {
       "noIndicatorData": "Sem dados de indicadores ainda - Dados Econômicos do Federal Reserve podem estar carregando",

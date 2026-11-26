@@ -1621,7 +1621,8 @@
         "hoursAgo": "Vor {{count}}h",
         "daysAgo": "Vor {{count}}d"
       },
-      "hideFindings": "Erkenntnisse ausblenden"
+      "hideFindings": "Erkenntnisse ausblenden",
+      "breakingAlertsNotSaved": "Speichern fehlgeschlagen. Erlauben Sie Websitedaten für diese Website oder geben Sie Browserspeicher frei und versuchen Sie es dann erneut."
     },
     "satelliteFires": {
       "region": "Region",

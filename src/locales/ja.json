@@ -1940,7 +1940,8 @@
         "minutesAgo": "{{count}}分前",
         "hoursAgo": "{{count}}時間前",
         "daysAgo": "{{count}}日前"
-      }
+      },
+      "breakingAlertsNotSaved": "保存できません。このサイトのサイトデータを許可するか、ブラウザストレージを解放してからもう一度お試しください。"
     },
     "countryTimeline": {
       "now": "現在",
