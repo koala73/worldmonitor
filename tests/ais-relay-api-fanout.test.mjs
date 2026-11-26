@@ -45,7 +45,7 @@ describe('ais-relay API fan-out tee', () => {
 
   it('the rss_alert publish site carries category and countryCodes (plural) beside the existing fields', () => {
     const site = blockAfter("eventType: 'rss_alert',", 900);
-    for (const field of ['title,', 'source: meta.source', 'link: meta.link', 'publishedAt: meta.publishedAt', 'importanceScore', 'corroborationCount', 'category,', 'countryCodes: titleCountryCodes']) {
+    for (const field of ['title,', 'source: meta.sourceLabel || meta.source', 'link: meta.link', 'publishedAt: meta.publishedAt', 'importanceScore', 'corroborationCount', 'category,', 'countryCodes: titleCountryCodes']) {
       assert.ok(site.includes(field), `rss_alert payload must carry ${field}`);
     }
     assert.ok(!/payload:\s*\{[^}]*\bcountryCode:/s.test(site), 'rss_alert stays permissive-unattributed for relay country scopes: no singular countryCode');

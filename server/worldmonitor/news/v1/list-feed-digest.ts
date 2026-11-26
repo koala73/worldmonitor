@@ -3086,16 +3086,20 @@ export function alertPoolItems(servable: readonly ParsedItem[], served: readonly
     .sort((a, b) => b.publishedAt - a.publishedAt)
     .filter(item => !taken.has(item.title) && taken.add(item.title))
     .slice(0, ALERT_POOL_MAX_ITEMS)
-    .map(item => ({
-      title: item.title,
-      source: item.source,
-      // The relay scores a topic feed's item on this publisher, as for served items (#10977).
-      ...(toProtoItem(item).originPublisher ? { originPublisher: toProtoItem(item).originPublisher } : {}),
-      link: item.link,
-      ...(item.linkVerified === true ? { linkVerified: true } : {}),
-      publishedAt: item.publishedAt,
-      corroborationCount: item.corroborationCount,
-    }));
+    .map(item => {
+      const { originPublisher, publisherName } = toProtoItem(item);
+      return {
+        title: item.title,
+        source: item.source,
+        // The relay scores a topic feed's item on this publisher, as for served items (#10977),
+        // and labels the alert with the name the aggregator gave it.
+        ...(originPublisher ? { originPublisher, publisherName } : {}),
+        link: item.link,
+        ...(item.linkVerified === true ? { linkVerified: true } : {}),
+        publishedAt: item.publishedAt,
+        corroborationCount: item.corroborationCount,
+      };
+    });
 }
 
 async function recordAlertPool(
