@@ -384,6 +384,10 @@ const HOST_ORIGINS = Object.freeze({
   'www.anp.tl': 'TL',
   'creg.gov.co': 'CO',
   'www.gub.uy': 'UY',
+  // Western Balkan grid operators (#10051).
+  'transparency.ems.rs': 'RS',
+  'www.nosbih.ba': 'BA',
+  'www.mepso.com.mk': 'MK',
   'd24qbtp4vooyzi.cloudfront.net': 'PH',
   'king-prawn-app-6bsvl.ondigitalocean.app': 'BF',
   // Editorial hosts used by site-scoped news searches. These are catalogued

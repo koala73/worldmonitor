@@ -5,6 +5,7 @@
  * Supports an optional 3D globe mode (globe.gl) selectable from Settings.
  */
 import { isMobileDevice } from '@/utils';
+import { capEarthquakesForMobile, capIranEventsForMobile } from '@/config/map-density-caps';
 import type { UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import type { ListUkmtoIncidentsResponse } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import './ukmto-incidents.css';
@@ -1238,7 +1239,14 @@ export class MapContainer {
 
   public setEarthquakes(earthquakes: Earthquake[], options: { replaceEmpty?: boolean } = {}): void {
     this.cachedEarthquakes = earthquakes;
-    if (this.useGlobe) { this.globeMap?.setEarthquakes(earthquakes); return; }
+    // The globe is reachable on a phone through a saved renderer preference,
+    // independently of isMobile, so it has to apply the same density cap the
+    // SVG renderer applies internally (#4545). The cache above keeps the full
+    // set, so switching to a desktop renderer restores every marker.
+    if (this.useGlobe) {
+      this.globeMap?.setEarthquakes(this.isMobile ? capEarthquakesForMobile(earthquakes) : earthquakes);
+      return;
+    }
     if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes, options); }
   }
 
@@ -1529,7 +1537,12 @@ export class MapContainer {
 
   public setIranEvents(events: IranEvent[]): void {
     this.cachedIranEvents = events;
-    if (this.useGlobe) { this.globeMap?.setIranEvents(events); return; }
+    // Same reason as setEarthquakes: the globe path is not covered by the SVG
+    // renderer's internal cap (#4545).
+    if (this.useGlobe) {
+      this.globeMap?.setIranEvents(this.isMobile ? capIranEventsForMobile(events) : events);
+      return;
+    }
     if (this.useDeckGL) {
       this.deckGLMap?.setIranEvents(events);
     } else {

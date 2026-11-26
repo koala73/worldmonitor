@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const mapSrc = readFileSync(resolve(root, 'src/components/Map.ts'), 'utf-8');
+// The caps moved out of MapComponent's private statics into shared config so
+// the globe renderer applies them too (#4545). They are still named constants
+// with the signed-off values; they just are not this file's constants any
+// more, so the declaration check reads their new home.
+const capsSrc = readFileSync(resolve(root, 'src/config/map-density-caps.ts'), 'utf-8');
 const cssSrc = readFileSync(resolve(root, 'src/styles/main.css'), 'utf-8');
 
 function sliceBetween(start, end) {
@@ -19,8 +24,11 @@ function sliceBetween(start, end) {
 
 describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () => {
   it('declares the signed-off mobile caps as named constants', () => {
-    assert.match(mapSrc, /private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5/);
-    assert.match(mapSrc, /private static readonly MOBILE_MAX_IRAN_EVENTS = 50/);
+    assert.match(capsSrc, /export const MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;/);
+    assert.match(capsSrc, /export const MOBILE_MAX_IRAN_EVENTS = 50;/);
+    // The SVG renderer must consume them rather than re-declare its own.
+    assert.doesNotMatch(mapSrc, /MOBILE_MIN_EARTHQUAKE_MAGNITUDE\s*=|MOBILE_MAX_IRAN_EVENTS\s*=/);
+    assert.match(mapSrc, /import \{[^}]*capEarthquakesForMobile[^}]*\} from '@\/config\/map-density-caps'/);
   });
 
   it('applies the mobile M5.0 earthquake cutoff after the time-range filter and before marker DOM creation', () => {
@@ -41,8 +49,8 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     assert.ok(mobileFilterIdx > timeFilterIdx, 'mobile cutoff should run after the time-range filter');
     assert.match(
       slices,
-      /filteredQuakes\.filter\(\(eq\) => eq\.magnitude >= MapComponent\.MOBILE_MIN_EARTHQUAKE_MAGNITUDE\)/,
-      'mobile path must filter earthquakes at the named M5.0 threshold',
+      /capEarthquakesForMobile\(filteredQuakes\)/,
+      'mobile path must filter earthquakes through the shared M5.0 cap',
     );
     assert.match(slices, /: filteredQuakes,/, 'desktop path must keep the full time-range-filtered list');
 
@@ -79,8 +87,8 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     const slices = sliceBetween('private overlayFeedSlices(): {', 'private planOverlayMarkerBudget(');
     assert.match(
       slices,
-      /iranEvents: this\.isMobile\s*\?\s*activeIranEvents\.slice\(0, MapComponent\.MOBILE_MAX_IRAN_EVENTS\)\s*:\s*activeIranEvents,/,
-      'mobile path must cap Iran events at the named 50-event threshold and desktop must keep the full list',
+      /iranEvents: this\.isMobile \? capIranEventsForMobile\(activeIranEvents\) : activeIranEvents,/,
+      'mobile path must cap Iran events through the shared 50-event cap and desktop must keep the full list',
     );
 
     const block = sliceBetween('// Iran events (severity-colored circles matching DeckGL layer)', '// Hotspots');
