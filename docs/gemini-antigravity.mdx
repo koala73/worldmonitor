@@ -9,16 +9,16 @@ WorldMonitor exposes its hosted MCP server at `https://worldmonitor.app/mcp` ove
 
 ### Install the plugin
 
-The repository ships an Antigravity plugin manifest at `.antigravity-plugin/plugin.json`. It bundles the two MCP servers in `mcp_config.json` and the agent skills in `skills/`.
+The repository ships a standalone Antigravity plugin in `antigravity-plugin/`. It bundles the two MCP servers in `mcp_config.json` and skills that call the WorldMonitor MCP tools: `world-brief`, `country-briefing`, `conflict-pulse`, `chokepoint-check`, `hazard-watch` and `market-snapshot`.
 
 ```bash
-git clone https://github.com/koala73/worldmonitor
-agy plugin validate ./worldmonitor
-agy plugin install ./worldmonitor
+agy plugin install https://github.com/koala73/worldmonitor/tree/main/antigravity-plugin
 agy plugin list
 ```
 
-Validation of the repository reports compatibility warnings for `AGENTS.md`, `mcp.json`, and the root `plugin.json`. Antigravity uses `.antigravity-plugin/plugin.json`, `mcp_config.json`, and `skills/`; the other files support repository development and other clients. Before Marketplace submission, prepare a standalone bundle with the Antigravity manifest, README, logo, MCP configuration, and skills, then run `agy plugin validate --strict <bundle-directory>` and require zero errors and warnings.
+After installing, open `/plugin`, expand worldmonitor under Installed, and choose Sign in to run WorldMonitor's OAuth flow. Install from the `antigravity-plugin` folder, not the repository root: the root is the development repository and other clients' package.
+
+To check the bundle from a checkout, run `agy plugin validate --strict antigravity-plugin`. It must report zero errors and warnings.
 
 When the Marketplace listing is live, install it with `agy plugin install worldmonitor@antigravity-plugins-official`.
 
@@ -34,7 +34,7 @@ In the Antigravity IDE, open **... > MCP Servers** in the agent side panel and e
 }
 ```
 
-Antigravity's [MCP docs](https://antigravity.google/docs/mcp) use `serverUrl` for remote servers and also accept `url`, which the plugin's bundled `mcp_config.json` uses.
+Antigravity's [MCP docs](https://antigravity.google/docs/mcp) use `serverUrl` for remote servers, which the plugin's bundled `mcp_config.json` uses. They also accept `url`.
 
 Antigravity's OAuth callback, `https://antigravity.google/oauth-callback`, is already on the [redirect URI allowlist](/mcp-overview#redirect-uri-allowlist).
 

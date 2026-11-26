@@ -150,10 +150,10 @@ describe('agent readiness: Agent Plugins manifest', () => {
       worldmonitor: serverCard.url ?? serverCard.serverUrl,
       'worldmonitor-docs': docsServerCard.url ?? docsServerCard.serverUrl,
     };
-    // Each client spells the Streamable HTTP URL key differently: Antigravity reads `url`
-    // (or `serverUrl`) in mcp_config.json; Gemini CLI reads `httpUrl`, where `url` means SSE.
+    // Each client spells the Streamable HTTP URL key differently: Antigravity reads
+    // `serverUrl` in mcp_config.json; Gemini CLI reads `httpUrl`, where `url` means SSE.
     const clients = [
-      ['mcp_config.json', 'url'],
+      ['antigravity-plugin/mcp_config.json', 'serverUrl'],
       ['gemini-extension.json', 'httpUrl'],
     ];
     for (const [file, urlKey] of clients) {
@@ -165,8 +165,8 @@ describe('agent readiness: Agent Plugins manifest', () => {
       }
     }
     const gemini = JSON.parse(readFileSync(join(ROOT, 'gemini-extension.json'), 'utf-8'));
-    const antigravity = JSON.parse(readFileSync(join(ROOT, '.antigravity-plugin/plugin.json'), 'utf-8'));
-    for (const [file, manifest] of [['gemini-extension.json', gemini], ['.antigravity-plugin/plugin.json', antigravity]]) {
+    const antigravity = JSON.parse(readFileSync(join(ROOT, 'antigravity-plugin/plugin.json'), 'utf-8'));
+    for (const [file, manifest] of [['gemini-extension.json', gemini], ['antigravity-plugin/plugin.json', antigravity]]) {
       assert.equal(manifest.name, plugin.name, `${file} name`);
       assert.equal(manifest.version, pkg.version, `${file} version must match package.json`);
     }

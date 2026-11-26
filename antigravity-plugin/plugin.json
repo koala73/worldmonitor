@@ -1,0 +1,22 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "worldmonitor",
+  "displayName": "WorldMonitor",
+  "version": "2.11.8",
+  "description": "Live global intelligence for your agent: source-attributed news, country risk, armed conflict, natural hazards, markets and maritime chokepoints.",
+  "logo": "assets/logo.png",
+  "suggestedPrompts": [
+    "Is shipping through the Strait of Hormuz disrupted right now?",
+    "What is the latest fighting in Sudan, with sources?",
+    "Any major earthquakes or storms in the last week?"
+  ],
+  "author": {
+    "name": "WorldMonitor",
+    "email": "support@worldmonitor.app",
+    "url": "https://www.worldmonitor.app"
+  },
+  "homepage": "https://www.worldmonitor.app/docs/gemini-antigravity",
+  "repository": "https://github.com/koala73/worldmonitor",
+  "license": "AGPL-3.0-only",
+  "keywords": ["geopolitics", "news", "country-risk", "conflict", "natural-disasters", "markets", "shipping", "mcp"]
+}
