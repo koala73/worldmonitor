@@ -73,7 +73,7 @@ describe('cross-wording matcher outcomes (#11426)', () => {
     assert.deepEqual(await run({ judge: async () => 'yes' }), [{ result: 'failed', error: 'JUDGE_UNREADABLE' }]);
     const slow = () => new Promise(done => setTimeout(() => done('{"same":true}'), 200));
     assert.deepEqual(await run({ judge: slow, deadlineMs: 20 }), [{ result: 'failed', error: 'DEADLINE' }]);
-    assert.deepEqual(await run({ pipeline: async () => null }), [{ result: 'failed', error: 'SIGHTINGS_READ' }]);
+    assert.deepEqual(await run({ pipeline: async () => null }), [{ result: 'unread', error: 'SIGHTINGS_READ' }]);
   });
 
   it('counts the deadline against the check in flight, not the candidates it never started', async () => {
@@ -90,6 +90,13 @@ describe('cross-wording matcher outcomes (#11426)', () => {
     const outcomes = [];
     await crossWordingFamilies([candidate], { now: NOW, pipeline: () => new Promise(() => {}), embed, judge: async () => '{"same":true}', deadlineMs: 20, outcomes, log: () => {} });
     assert.deepEqual(outcomes, []);
+  });
+
+  it('records one failed sightings read for the whole call, not one per candidate', async () => {
+    const outcomes = [];
+    const second = { title: 'Drone hits tanker near Fujairah', source: 'The National' };
+    await crossWordingFamilies([candidate, second], { now: NOW, pipeline: async () => null, embed, judge: async () => '{"same":true}', outcomes, log: () => {} });
+    assert.deepEqual(outcomes, [{ result: 'unread', error: 'SIGHTINGS_READ' }]);
   });
 
   it('records nothing for a candidate with nothing to compare against', async () => {
@@ -205,6 +212,18 @@ describe('cross-wording matcher window (#11426)', () => {
     assert.equal(payload.checked, 0);
   });
 
+  it('counts a failed sightings read once per cycle, apart from the provider checks', () => {
+    const unread = { result: 'unread', error: 'SIGHTINGS_READ' };
+    const { payload, meta } = cycles([[unread, unread], [unread], [unread], [unread, matched]]);
+    assert.equal(meta.sourceState, 'ok', 'no provider was asked, so the provider rule does not fire');
+    assert.equal(meta.errorCode, undefined);
+    assert.equal(payload.checked, 1);
+    assert.equal(payload.failed, 0);
+    assert.deepEqual(payload.errors, {});
+    assert.deepEqual(payload.readErrors, { SIGHTINGS_READ: 4 });
+    assert.deepEqual(payload.cycles[0].readErrors, { SIGHTINGS_READ: 1 });
+  });
+
   it('fires on two failed checks in a sparse hour, never on one', () => {
     assert.equal(cycles([[], [failed402], [], []]).meta.sourceState, 'ok');
     assert.equal(cycles([[], [failed402, failed402], [], []]).meta.sourceState, 'degraded');
@@ -261,6 +280,9 @@ describe('/api/health newsCrossWordingMatcher (#11426)', () => {
     assert.equal(degraded.errorCode, 'EMBED_HTTP_402');
     assert.ok(collectFailureLogProblems({ [name]: degraded }, HEALTH_NOW).sigKeys.length > 0, 'a degraded matcher is an operational problem');
     assert.equal(classify({ meta: cycles([[failed402, failed402]], { configured: false }).meta }).status, 'NOT_CONFIGURED');
+    const keyless = cycles([[]], { configured: false }).meta;
+    assert.equal(classify({ meta: { ...keyless, fetchedAt: HEALTH_NOW - 59 * MIN } }).status, 'NOT_CONFIGURED');
+    assert.equal(classify({ meta: { ...keyless, fetchedAt: HEALTH_NOW - 61 * MIN } }).status, 'STALE_SEED', 'a keyless relay that stopped reads stopped');
     assert.equal(classify({ meta: { ...cycles([[]]).meta, fetchedAt: HEALTH_NOW - 61 * MIN } }).status, 'STALE_SEED');
   });
 

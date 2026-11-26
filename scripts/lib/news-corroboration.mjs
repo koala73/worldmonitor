@@ -203,7 +203,8 @@ export async function crossWordingFamilies(candidates, {
       log(`[news-corroboration] ${JSON.stringify({ error: err?.message || 'error' })}`);
       if (expired) return;
       for (const candidate of candidates) checked.add(candidate.title);
-      outcomes.push(...candidates.map(() => ({ result: 'failed', error: 'SIGHTINGS_READ' })));
+      // No provider was asked, so this is not a failed check.
+      outcomes.push({ result: 'unread', error: 'SIGHTINGS_READ' });
       return;
     }
     for (const candidate of candidates) {
@@ -253,19 +254,20 @@ const MATCHER_WINDOW_MS = 3_600_000;
 const MATCHER_MIN_FAILURES = 2;
 
 function tally(cycles) {
-  const sum = { checked: 0, matched: 0, failed: 0, errors: {} };
+  const sum = { checked: 0, matched: 0, failed: 0, errors: {}, readErrors: {} };
   for (const c of cycles) {
     sum.checked += c.checked;
     sum.matched += c.matched;
     sum.failed += c.failed;
     for (const [code, n] of Object.entries(c.errors)) sum.errors[code] = (sum.errors[code] || 0) + n;
+    for (const [code, n] of Object.entries(c.readErrors || {})) sum.readErrors[code] = (sum.readErrors[code] || 0) + n;
   }
   return sum;
 }
 
+const isCounts = v => !!v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).every(Number.isInteger);
 const isCycle = c => !!c && Number.isFinite(c.at) && [c.checked, c.matched, c.failed].every(Number.isInteger)
-  && !!c.errors && typeof c.errors === 'object' && !Array.isArray(c.errors)
-  && Object.values(c.errors).every(Number.isInteger);
+  && isCounts(c.errors) && (c.readErrors === undefined || isCounts(c.readErrors));
 
 /**
  * The matcher's health after one classify cycle, over the last hour of cycles
@@ -274,8 +276,11 @@ const isCycle = c => !!c && Number.isFinite(c.at) && [c.checked, c.matched, c.fa
  * is healthy.
  */
 export function matcherHealth(previous, outcomes, { now = Date.now(), configured = true } = {}) {
-  const cycle = { at: now, checked: 0, matched: 0, failed: 0, errors: {} };
+  const cycle = { at: now, checked: 0, matched: 0, failed: 0, errors: {}, readErrors: {} };
   for (const o of outcomes) {
+    // A failed sightings read asked no provider: counted once per cycle under
+    // its own code, and never toward the provider-failure rule.
+    if (o.result === 'unread') { cycle.readErrors[o.error] = 1; continue; }
     cycle.checked += 1;
     if (o.result === 'matched') cycle.matched += 1;
     if (o.result === 'failed') {

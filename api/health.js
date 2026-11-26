@@ -2695,7 +2695,7 @@ const SEED_META = {
   // Its records are matcher cycles, not data any reader is served, so a
   // degraded matcher is never contained; and once the meta is past
   // maxStaleMin its sourceState describes a relay that stopped, so the probe
-  // reads STALE_SEED rather than a current failure.
+  // reads STALE_SEED rather than a current failure or NOT_CONFIGURED.
   newsCrossWordingMatcher: {
     key: 'seed-meta:news:cross-wording-health',
     maxStaleMin: 60,
@@ -4289,7 +4289,8 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // "the adapter was tried and is broken" (`stale`/`error`). Grading the two the
   // same makes an optional, deliberately-unconfigured source an eternal warn that
   // no amount of operator work can clear — so it is classified separately below.
-  const sourceUnavailable = meta?.sourceState === 'unavailable';
+  const sourceUnavailable = meta?.sourceState === 'unavailable'
+    && !(seedCfg.sourceStateExpires === true && seedStale === true);
   // A current, bounded upstream classification can prove that every admitted
   // transport path is externally blocked. Keep that state visible without
   // treating it as a broken producer that can be repaired by another retry.
