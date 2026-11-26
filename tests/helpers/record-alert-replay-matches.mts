@@ -54,7 +54,7 @@ for (const incident of fixture.incidents) {
   const embed = recording(`${incident.id} embed`, async (texts: string[]) => {
     const vectors = await embedBatch(texts, { wallClockMs: 30_000, redisPipeline: async (commands: unknown[]) => commands.map(() => ({ result: null })) });
     const candidate = titleOf(texts[0]!);
-    texts.slice(1).forEach((text, i) => { entry(candidate, titleOf(text)).similarity = Number(cosineSimilarity(vectors[0], vectors[i + 1]).toFixed(4)); });
+    texts.slice(1).forEach((text, i) => { entry(candidate, titleOf(text)).similarity = cosineSimilarity(vectors[0], vectors[i + 1]); });
     return vectors;
   });
   const judge = recording(`${incident.id} judge`, async (systemPrompt: string, userPrompt: string) => {
