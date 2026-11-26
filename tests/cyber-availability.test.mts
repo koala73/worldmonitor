@@ -151,3 +151,28 @@ test('malformed entries cannot become cached successes through RPC or hydration'
     await h.settle();
   }
 });
+
+// An out-of-range cursor used to answer `totalCount: 0` from a const `empty`,
+// so one query reported two different totals depending only on which page the
+// caller asked for. A client that pages until `nextCursor === ''` and then
+// reads the total saw 0, indistinguishable from "nothing matched".
+test('an out-of-range cursor reports the total the handler already counted', async t => {
+  const h = await createHarness(t);
+  h.state.payload = { threats: [
+    good.threats[0],
+    { ...good.threats[0], id: 'fixture-2', indicator: '192.0.2.2' },
+  ] };
+  const inRange = await (await h.request('?cursor=0')).json() as {
+    threats: unknown[]; pagination: { nextCursor: string; totalCount: number };
+  };
+  assert.equal(inRange.threats.length, 2);
+  assert.equal(inRange.pagination.totalCount, 2);
+  assert.equal(inRange.pagination.nextCursor, '');
+
+  const pastEnd = await (await h.request('?cursor=5')).json() as {
+    threats: unknown[]; pagination: { nextCursor: string; totalCount: number };
+  };
+  assert.deepEqual(pastEnd.threats, []);
+  assert.equal(pastEnd.pagination.nextCursor, '');
+  assert.equal(pastEnd.pagination.totalCount, 2, 'the total does not depend on the cursor');
+});

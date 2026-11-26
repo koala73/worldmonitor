@@ -49,15 +49,18 @@ export async function listCyberThreats(
   _ctx: ServerContext,
   req: ListCyberThreatsRequest,
 ): Promise<ListCyberThreatsResponse> {
-  const empty: ListCyberThreatsResponse = { threats: [], pagination: { nextCursor: '', totalCount: 0 } };
-
   const pageSize = req.pageSize <= 0 ? DEFAULT_LIMIT : clampInt(req.pageSize, DEFAULT_LIMIT, 1, MAX_LIMIT);
   const offset = parseCursor(req.cursor);
 
   const seedData = await readRequiredSeed(SEED_CACHE_KEY, value => isCyberThreatSnapshot(value) ? value : undefined);
 
   const allThreats = filterSeededThreats(seedData.threats, req);
-  if (offset >= allThreats.length) return empty;
+  // Past the last page there is still a total, and the handler has just
+  // counted it. Reporting 0 here would contradict every in-range page of the
+  // same query and read as "nothing matched".
+  if (offset >= allThreats.length) {
+    return { threats: [], pagination: { nextCursor: '', totalCount: allThreats.length } };
+  }
   const page = allThreats.slice(offset, offset + pageSize);
   const hasMore = offset + pageSize < allThreats.length;
   return {
