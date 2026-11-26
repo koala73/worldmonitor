@@ -45,6 +45,21 @@ describe('history demand analytics', () => {
     );
   });
 
+  it('keeps a blocked open separate, so a later working open still reports', async () => {
+    const analytics = await import('../src/services/analytics.ts');
+    analytics.resetAnalyticsForTesting();
+    const calls = installWindow();
+
+    analytics.trackPlaybackAction('open', null);
+    analytics.trackPlaybackAction('open', null);
+    analytics.trackPlaybackAction('open', 10);
+
+    assert.deepEqual(
+      calls.filter((c) => c.name === 'playback-action').map((c) => c.data),
+      [{ action: 'open', snapshots: 'blocked' }, { action: 'open', snapshots: '1-95' }],
+    );
+  });
+
   it('bands the local snapshot count instead of sending the raw number', async () => {
     const analytics = await import('../src/services/analytics.ts');
     const bands: unknown[] = [];

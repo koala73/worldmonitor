@@ -67,8 +67,8 @@ export class PlaybackControl {
 
     slider.addEventListener('input', () => {
       const idx = parseInt(slider.value, 10);
+      if (idx !== this.currentIndex && this.timestamps.length > 0) trackPlaybackAction('step');
       this.currentIndex = idx;
-      trackPlaybackAction('step');
       this.loadSnapshot(idx);
     });
 
@@ -88,7 +88,7 @@ export class PlaybackControl {
     const timestamps = available ? await getSnapshotTimestamps() : [];
     if (!this.timestampGuard.isCurrent(requestId) || !this.element?.isConnected) return;
     this.setStorageUnavailable(!available);
-    trackPlaybackAction('open', timestamps.length);
+    trackPlaybackAction('open', available ? timestamps.length : null);
     this.timestamps = timestamps;
     this.timestamps.sort((a, b) => a - b);
 
@@ -158,6 +158,7 @@ export class PlaybackControl {
   }
 
   private handleAction(action: string): void {
+    const previousIndex = this.currentIndex;
     switch (action) {
       case 'start':
         this.currentIndex = 0;
@@ -172,11 +173,11 @@ export class PlaybackControl {
         this.currentIndex = this.timestamps.length - 1;
         break;
       case 'live':
-        trackPlaybackAction('live');
+        if (this.isPlaybackMode) trackPlaybackAction('live');
         this.goLive();
         return;
     }
-    trackPlaybackAction('step');
+    if (this.currentIndex !== previousIndex && this.timestamps.length > 0) trackPlaybackAction('step');
 
     const slider = this.element.querySelector('.playback-slider') as HTMLInputElement;
     slider.value = String(this.currentIndex);

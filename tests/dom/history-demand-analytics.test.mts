@@ -12,9 +12,10 @@ const trackCountryHistoryAction = vi.fn();
 vi.mock('@/services/analytics', () => ({ trackPlaybackAction, trackCountryHistoryAction }));
 
 let timestamps: number[] = [];
+let storageAvailable = true;
 vi.mock('@/services/storage', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/storage')>()),
-  isStorageAvailable: vi.fn(async () => true),
+  isStorageAvailable: vi.fn(async () => storageAvailable),
   getSnapshotTimestamps: vi.fn(async () => timestamps),
   getSnapshotAt: vi.fn(async () => null),
 }));
@@ -41,6 +42,7 @@ beforeEach(() => {
   trackCountryHistoryAction.mockClear();
   vi.mocked(fetchCountryHistory).mockReset();
   timestamps = [];
+  storageAvailable = true;
   document.body.replaceChildren();
 });
 
@@ -68,15 +70,52 @@ describe('playback demand events', () => {
     expect(trackPlaybackAction).toHaveBeenLastCalledWith('live');
   });
 
-  it('does not report closing the panel as an open', async () => {
+  function mountControl() {
     const control = new PlaybackControl();
-    const toggle = control.getElement().querySelector<HTMLButtonElement>('.playback-toggle')!;
-    document.body.append(control.getElement());
-    toggle.click();
+    const root = control.getElement();
+    document.body.append(root);
+    return {
+      root,
+      toggle: root.querySelector<HTMLButtonElement>('.playback-toggle')!,
+      button: (action: string) => root.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!,
+    };
+  }
+
+  it('reports a blocked database as blocked, not as an empty history', async () => {
+    storageAvailable = false;
+    timestamps = [1_000];
+    const ui = mountControl();
+    await new Promise((resolve) => { ui.toggle.click(); setTimeout(resolve, 0); });
+    expect(trackPlaybackAction).toHaveBeenCalledWith('open', null);
+    expect(trackPlaybackAction).not.toHaveBeenCalledWith('open', 0);
+  });
+
+  it('does not count a step or a return to live that changes nothing', async () => {
+    timestamps = [1_000, 2_000];
+    const ui = mountControl();
+    ui.toggle.click();
     await settle();
-    toggle.click();
+    trackPlaybackAction.mockClear();
+
+    // Opens live on the newest snapshot: Live is a no-op, and end and next do
+    // not move the index. (End does replay that newest snapshot, so a Live
+    // click after it is a real return and is not asserted here.)
+    ui.root.querySelector<HTMLButtonElement>('.playback-live')!.click();
+    ui.button('end').click();
+    ui.button('next').click();
+    expect(trackPlaybackAction).not.toHaveBeenCalled();
+
+    ui.button('prev').click();
+    expect(trackPlaybackAction).toHaveBeenLastCalledWith('step');
+  });
+
+  it('does not count stepping through an empty history', async () => {
+    const ui = mountControl();
+    ui.toggle.click();
     await settle();
-    expect(trackPlaybackAction.mock.calls.filter(([action]) => action === 'open')).toHaveLength(1);
+    trackPlaybackAction.mockClear();
+    for (const action of ['start', 'prev', 'next', 'end']) ui.button(action).click();
+    expect(trackPlaybackAction).not.toHaveBeenCalled();
   });
 });
 
@@ -107,6 +146,10 @@ describe('country history demand events', () => {
     });
     upsell.addEventListener('click', (event) => event.preventDefault());
     upsell.click();
+    expect(trackCountryHistoryAction).toHaveBeenCalledWith('upsell-click', { allowedDays: 7 });
+    trackCountryHistoryAction.mockClear();
+    // Middle-click opens a new tab and fires auxclick, not click.
+    upsell.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true }));
     expect(trackCountryHistoryAction).toHaveBeenCalledWith('upsell-click', { allowedDays: 7 });
     widget.destroy();
   });

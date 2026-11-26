@@ -1936,7 +1936,9 @@ export type CountryHistoryAction = 'window-change' | 'date-select' | 'upsell-cli
 // pixel; only the first one says anything about demand.
 const historyDemandSent = new Set<string>();
 
-function playbackSnapshotBand(count: number): string {
+function playbackSnapshotBand(count: number | null): string {
+  // null: the browser blocked site storage, so the count is unknown.
+  if (count === null) return 'blocked';
   // The dashboard saves one snapshot per 15 minutes it is open: 96 is a day of
   // open time, 672 the full 7-day retention.
   if (count <= 0) return '0';
@@ -1945,12 +1947,15 @@ function playbackSnapshotBand(count: number): string {
   return '672+';
 }
 
-export function trackPlaybackAction(action: PlaybackAction, snapshots?: number): void {
-  const key = `playback:${action}`;
+/** `snapshots` is the local snapshot count on open, or null when storage is blocked. */
+export function trackPlaybackAction(action: PlaybackAction, snapshots: number | null = 0): void {
+  // A blocked open is kept apart so a later open with storage allowed (the
+  // control rechecks on every open) still reports its real count.
+  const key = action === 'open' && snapshots === null ? 'playback:open:blocked' : `playback:${action}`;
   if (historyDemandSent.has(key)) return;
   historyDemandSent.add(key);
   track('playback-action', action === 'open'
-    ? { action, snapshots: playbackSnapshotBand(snapshots ?? 0) }
+    ? { action, snapshots: playbackSnapshotBand(snapshots) }
     : { action });
 }
 

@@ -106,7 +106,10 @@ export class CountryHistory {
     if (this.days >= data.allowedDays && data.allowedDays < 365) {
       const upsell = this.element('a', t(data.allowedDays <= 7 ? 'countryHistory.unlock90' : 'countryHistory.unlock365'), 'panel-locked-cta');
       upsell.href = '/pro#pricing';
-      upsell.addEventListener('click', () => trackCountryHistoryAction('upsell-click', { allowedDays: data.allowedDays }));
+      const trackUpsell = (): void => trackCountryHistoryAction('upsell-click', { allowedDays: data.allowedDays });
+      upsell.addEventListener('click', trackUpsell);
+      // Middle-click opens a new tab and fires auxclick, not click.
+      upsell.addEventListener('auxclick', (event) => { if (event.button === 1) trackUpsell(); });
       this.mount.append(upsell);
     }
   }
