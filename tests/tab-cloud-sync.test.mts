@@ -1246,6 +1246,36 @@ describe('tab sync driver', () => {
     assert.equal(foreign['tab-b-1'], 'user_b');
   });
 
+  it("a stale window does not take the signed-in marker back from a newer sign-in", async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    const before = server.calls.length;
+    // Another window: user_b signed in, with a departure still waiting.
+    localStorage.setItem(SIGNED_IN_KEY, 'user_b#w2');
+    localStorage.setItem(DEPARTED_KEY, JSON.stringify(['user_c#w1']));
+    host.state.tabs.push(tab('tab-a-2', 'Later'));
+    notifyTabsChangedLocally();
+    mock.timers.tick(2_000);
+    await settle();
+    assert.equal(localStorage.getItem(SIGNED_IN_KEY), 'user_b#w2');
+    assert.equal(server.calls.length, before, 'nothing pushed');
+  });
+
+  it("tabs made after sign-in stay with the new account when the previous account's sync is unknown", async () => {
+    localStorage.setItem('wm-last-signed-in-as', 'user_a');
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A layout')] });
+    assert.equal(prepareTabSyncSignIn('user_b', true, host).willSync, true);
+    // user_b makes a tab before its first pass runs.
+    host.state.tabs.push(tab('tab-b-1', 'B new'));
+    startTabSync('user_b', host);
+    await settle();
+    const held = JSON.parse(localStorage.getItem(HELD_KEY) ?? '{}');
+    assert.deepEqual(held.user_a?.records.map((r: { id: string }) => r.id), ['tab-a-1']);
+    assert.ok(server.calls.some((c) => c.changes.some((ch) => ch.record?.name === 'B new')));
+  });
+
   it('a departure another window has recorded is not recorded again from this page', async () => {
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
     signIn('user_a', host);

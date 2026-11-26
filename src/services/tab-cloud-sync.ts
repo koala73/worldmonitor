@@ -311,6 +311,8 @@ interface Pending {
   userId: string;
   mode: MergeMode;
   previousSyncKnown: boolean;
+  /** With previousSyncKnown false: the tab ids on the device at sign-in (null: unread). */
+  previousTabIds: string[] | null;
   /** For an account switch: the previous account's sync state. */
   previousMeta: TabSyncMeta;
   /** This account's tabs an earlier switch held, to put back. */
@@ -477,6 +479,7 @@ export function prepareTabSyncSignIn(userId: string, enabled: boolean, host?: Ta
     userId,
     mode,
     previousSyncKnown,
+    previousTabIds: previousSyncKnown ? null : tabIdsNow(host),
     previousMeta: meta?.userId ? meta : { ...emptyTabSyncMeta(previous), ...(meta?.foreign ? { foreign: meta.foreign } : {}) },
     restore: loadHeld()?.[userId] ?? null,
   };
@@ -658,6 +661,18 @@ function unpushedOf(host: TabSyncHost | undefined, meta: TabSyncMeta, leaverOwns
   return ids;
 }
 
+/** The tab ids on the device: the layout's, else the stored ones; null when neither reads. */
+function tabIdsNow(host: TabSyncHost | undefined): string[] | null {
+  let local: TabsState | null = null;
+  try {
+    local = host?.captureTabs() ?? null;
+  } catch {
+    local = null;
+  }
+  const state = local ?? loadTabsState();
+  return state ? state.tabs.map((t) => t.id) : null;
+}
+
 function unpushedIn(local: TabsState, meta: TabSyncMeta): string[] {
   return local.tabs
     .filter((t) => {
@@ -835,6 +850,11 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
   const waiting = readDeparted();
   if (waiting === null) return;
   if (waiting.length > 0) {
+    // The marker moves to this account only from an account this pass
+    // records as gone; any other (a newer sign-in elsewhere, or a sign-out)
+    // means this page's account no longer owns the tabs.
+    const signedInAs = markerAccount(signedIn.value);
+    if (signedInAs !== s.userId && !waiting.some((m) => markerAccount(m) === signedInAs && signedInAs !== '')) return;
     if (recordDepartures([], s.host).left > 0) return;
     // The switch was prepared before the marks existed.
     if (s.pending) {
@@ -874,6 +894,7 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
     newTabId: () => s.host.newTabId(),
     userId: s.userId,
     previousSyncKnown: pending?.previousSyncKnown ?? true,
+    previousTabIds: pending?.previousTabIds ?? null,
     localOnly: s.localOnly,
     restore: pending?.restore ? heldForMerge(pending.restore, s.host.currentPanelSettings()) : null,
   });

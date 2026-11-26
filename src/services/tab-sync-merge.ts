@@ -277,9 +277,16 @@ export interface MergeInput {
   /**
    * Account switch only: false when the previous account's sync bases are
    * unknown (it signed in on a build without tab sync). Every local tab is
-   * then treated as the previous account's.
+   * then treated as the previous account's, except tabs missing from
+   * `previousTabIds`.
    */
   previousSyncKnown?: boolean;
+  /**
+   * With `previousSyncKnown` false: the tabs on the device when the new
+   * account signed in. Tabs made after are the new account's. Null when
+   * they could not be read (every tab is then the previous account's).
+   */
+  previousTabIds?: readonly string[] | null;
   /** Tabs the server refused for the tab cap this session; never pushed. */
   localOnly?: ReadonlySet<string>;
   /** Tabs an account switch kept for this account, put back now. */
@@ -435,7 +442,8 @@ export function mergeTabs(input: MergeInput): MergeResult {
     if (input.previousSyncKnown === false) {
       // The previous account signed in before tab sync: nothing says which
       // tabs it synced, so all of them are kept for it.
-      for (const t of tabs) (ownForeign.has(t.id) ? kept : hold).push(t);
+      const before = input.previousTabIds ? new Set(input.previousTabIds) : null;
+      for (const t of tabs) (ownForeign.has(t.id) || (before && !before.has(t.id)) ? kept : hold).push(t);
     } else {
       for (const t of tabs) {
         if (ownForeign.has(t.id)) {
