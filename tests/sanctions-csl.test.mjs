@@ -3,7 +3,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CSL_SOURCES, CSL_TIMEOUT_MS, CSL_URL, cslFetchBudget, ingestCslEntries, parseCslPayload } from '../scripts/_csl-sanctions.mjs';
+import { CSL_SOURCES, CSL_TIMEOUT_MS, CSL_TRANSPORT_MAX_BYTES, CSL_URL, cslFetchBudget, ingestCslEntries, parseCslPayload } from '../scripts/_csl-sanctions.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/csl-consolidated-sample.json', import.meta.url), 'utf8'));
 const today = Date.UTC(2026, 9, 18);
@@ -168,6 +168,75 @@ describe('CSL ingest', () => {
     const down = await ingestCslEntries({ now: today, fetchFn: async () => { throw new Error('ECONNRESET'); } });
     assert.equal(down.error, 'ECONNRESET');
     assert.deepEqual(down.lists, {});
+  });
+});
+
+// The 2026-11-24 file carried one nameless Entity List row with about a million
+// empty address objects: 79 of its 113 MB. They carry no data and are dropped
+// while the body streams, so the size cap still bounds what is parsed.
+describe('CSL empty address padding', () => {
+  const EMPTY = '{"address": "", "city": "", "state": "", "postal_code": "", "country": ""}';
+  const row = (n, name, addresses) => `{"source": "Entity List (EL) - Bureau of Industry and Security", "name": ${JSON.stringify(name)}, "id": "${String(n).repeat(56)}", "addresses": [${addresses.join(', ')}]}`;
+  const real = country => `{"address": "1 Road", "city": "Town", "state": "", "postal_code": "", "country": "${country}"}`;
+  const body = rows => `{"results": [${rows.join(', ')}], "sources_used": [], "total": ${rows.length}}`;
+  const streamed = (text, chunkSize) => {
+    const bytes = new TextEncoder().encode(text);
+    return async () => new Response(new ReadableStream({
+      start(controller) {
+        for (let i = 0; i < bytes.length; i += chunkSize) controller.enqueue(bytes.slice(i, i + chunkSize));
+        controller.close();
+      },
+    }), { headers: { 'content-length': String(bytes.length) } });
+  };
+
+  for (const chunkSize of [1, 7, 4096]) {
+    it(`drops a padded nameless row that alone exceeds the parse cap (chunks of ${chunkSize})`, async () => {
+      const text = body([
+        row(1, 'Kept Entity', [real('CN')]),
+        row(2, '', Array(2_000).fill(EMPTY)),
+        row(3, 'Second Entity', [EMPTY, real('RU')]),
+      ]);
+      assert.ok(text.length > 100_000);
+      const result = await ingestCslEntries({ now: today, maxBytes: 20_000, fetchFn: streamed(text, chunkSize) });
+      assert.equal(result.error, null);
+      assert.deepEqual(result.lists['CSL-EL'].records.map(r => [r.name, r.countryCodes]),
+        [['Kept Entity', ['CN']], ['Second Entity', ['RU']]]);
+    });
+  }
+
+  it('keeps the JSON valid with an empty address first, between, last or alone', async () => {
+    const text = body([
+      row(1, 'First', [EMPTY, real('IR')]),
+      row(2, 'Between', [real('IR'), EMPTY, real('SY')]),
+      row(3, 'Last', [real('KP'), EMPTY]),
+      row(4, 'Alone', [EMPTY]),
+    ]);
+    const result = await ingestCslEntries({ now: today, fetchFn: streamed(text, 5) });
+    assert.equal(result.error, null);
+    assert.deepEqual(result.lists['CSL-EL'].records.map(r => [r.name, r.countryCodes]),
+      [['First', ['IR']], ['Between', ['IR', 'SY']], ['Last', ['KP']], ['Alone', []]]);
+  });
+
+  it('still rejects a body that is over the cap once the padding is gone', async () => {
+    const text = body([row(1, 'x'.repeat(30_000), [real('CN')])]);
+    const result = await ingestCslEntries({ now: today, maxBytes: 20_000, fetchFn: streamed(text, 4096) });
+    assert.equal(result.error, 'RESPONSE_TOO_LARGE');
+  });
+
+  it('rejects a download over the transport cap before reading it', async () => {
+    let read = false;
+    const fetchFn = async () => new Response(new ReadableStream({ pull() { read = true; } }, { highWaterMark: 0 }),
+      { headers: { 'content-length': String(CSL_TRANSPORT_MAX_BYTES + 1) } });
+    const result = await ingestCslEntries({ now: today, fetchFn });
+    assert.equal(result.error, 'RESPONSE_TOO_LARGE');
+    assert.equal(read, false);
+  });
+
+  it('stops a streamed download at the transport cap even when it is all padding', async () => {
+    const text = body([row(2, '', Array(2_000).fill(EMPTY))]);
+    const fetchFn = async () => new Response(new TextEncoder().encode(text));
+    const result = await ingestCslEntries({ now: today, transportMaxBytes: 50_000, fetchFn });
+    assert.equal(result.error, 'RESPONSE_TOO_LARGE');
   });
 });
 

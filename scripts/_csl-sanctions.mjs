@@ -7,17 +7,26 @@
 import { createRequire } from 'node:module';
 import { withSourceRequestDiagnostics } from './lib/source-request-diagnostics.mjs';
 import { CHROME_UA } from './_seed-utils.mjs';
-import { normalizeName, readResponseLimited } from './_sema-sanctions.mjs';
+import { normalizeName } from './_sema-sanctions.mjs';
 
 const require = createRequire(import.meta.url);
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 
 export const CSL_HOST = 'data.trade.gov';
 export const CSL_URL = 'https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json';
-// The live file is about 34 MB; about 5,000 rows survive the filter.
+// The live file is about 34 MB once empty address objects are dropped; about
+// 5,000 rows survive the filter. The cap applies to that text. The transport cap
+// bounds the download itself: since 2026-11-24 one nameless Entity List row has
+// carried about a million empty addresses, 79 MB of a 113 MB file.
 export const CSL_MAX_BYTES = 64 * 1024 * 1024;
+export const CSL_TRANSPORT_MAX_BYTES = 256 * 1024 * 1024;
+// An address with every field empty carries nothing. Each one becomes `null`,
+// which keeps the JSON valid wherever it sits in the array.
+const EMPTY_ADDRESS = /\{"address": ?"", ?"city": ?"", ?"state": ?"", ?"postal_code": ?"", ?"country": ?""\}/g;
+// Longer than any match, so a match split across two chunks is still found.
+const EMPTY_ADDRESS_CARRY = 96;
 export const CSL_TIMEOUT_MS = 90_000;
-// Below this, a download of ~34 MB would only time out; skip it and retain the lists.
+// Below this, the download (113 MB since 2026-11-24) would only time out; skip it and retain the lists.
 const CSL_MIN_BUDGET_MS = 10_000;
 const NOTICE_MAX = 200;
 const ALIAS_MAX = 10;
@@ -121,6 +130,50 @@ export function parseCslPayload(payload, nowMs) {
   return { lists, error: null };
 }
 
+/**
+ * Read the body, dropping empty addresses as it streams. `maxBytes` bounds the
+ * text that is kept and parsed; `transportMaxBytes` bounds what is downloaded.
+ */
+async function readCslText(response, maxBytes, transportMaxBytes) {
+  const advertised = Number(response.headers?.get?.('content-length'));
+  if (Number.isFinite(advertised) && advertised > transportMaxBytes) {
+    try { await response.body?.cancel?.(); } catch { /* still reject */ }
+    throw new Error('RESPONSE_TOO_LARGE');
+  }
+  const reader = response.body?.getReader?.();
+  if (!reader) throw new Error('CSL_INVALID_PAYLOAD');
+  const decoder = new TextDecoder();
+  const parts = [];
+  let pending = '';
+  let downloaded = 0;
+  let kept = 0;
+  const keep = text => {
+    kept += Buffer.byteLength(text, 'utf8');
+    if (kept > maxBytes) throw new Error('RESPONSE_TOO_LARGE');
+    parts.push(text);
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      downloaded += value.byteLength;
+      if (downloaded > transportMaxBytes) throw new Error('RESPONSE_TOO_LARGE');
+      pending = (pending + decoder.decode(value, { stream: true })).replace(EMPTY_ADDRESS, 'null');
+      if (pending.length > EMPTY_ADDRESS_CARRY) {
+        keep(pending.slice(0, -EMPTY_ADDRESS_CARRY));
+        pending = pending.slice(-EMPTY_ADDRESS_CARRY);
+      }
+    }
+    keep((pending + decoder.decode()).replace(EMPTY_ADDRESS, 'null'));
+  } catch (err) {
+    await reader.cancel().catch(() => {});
+    throw err;
+  } finally {
+    reader.releaseLock?.();
+  }
+  return parts.join('');
+}
+
 /** Milliseconds the download may take before `deadlineAt`, or 0 when too little is left. */
 export function cslFetchBudget(deadlineAt, nowMs, timeoutMs = CSL_TIMEOUT_MS) {
   const budget = Math.min(timeoutMs, deadlineAt - nowMs);
@@ -135,6 +188,7 @@ export async function ingestCslEntries({
   fetchFn = globalThis.fetch,
   now = Date.now(),
   maxBytes = CSL_MAX_BYTES,
+  transportMaxBytes = CSL_TRANSPORT_MAX_BYTES,
   timeoutMs = CSL_TIMEOUT_MS,
   deadlineAt = Infinity,
 } = {}) {
@@ -149,8 +203,7 @@ export async function ingestCslEntries({
       });
       observe(response);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const { text } = await readResponseLimited(response, maxBytes);
-      return parseCslPayload(JSON.parse(text), now);
+      return parseCslPayload(JSON.parse(await readCslText(response, maxBytes, transportMaxBytes)), now);
     });
   } catch (err) {
     const code = err?.cause?.code;
