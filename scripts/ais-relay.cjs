@@ -6018,7 +6018,8 @@ async function seedClassifyForVariant(variant, seenTitles) {
       eventType: 'rss_alert',
       payload: {
         title,
-        source: meta.source,
+        // The publisher's name, not the tier key it was scored on.
+        source: meta.sourceLabel || meta.source,
         link: meta.link,
         publishedAt: meta.publishedAt,
         importanceScore,
