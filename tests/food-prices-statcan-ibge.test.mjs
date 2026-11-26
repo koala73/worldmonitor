@@ -59,6 +59,14 @@ test('StatCan metadata keeps the 13 geographies and food products, without perso
   weekly[0].object.frequencyCode = 12;
   assert.throws(() => parseStatcanMetadata(weekly), /metadata format changed/);
   assert.throws(() => parseStatcanMetadata([{ status: 'FAILED', object: 'no cube' }]), /metadata format changed/);
+  // A terminated product is dropped; a new household product with an unfamiliar pack is skipped by name, not a failure.
+  const changed = structuredClone(json('statcan').metadata);
+  const products = changed[0].object.dimension[1].member;
+  products.find(member => member.memberNameEn === 'Bacon, 500 grams').terminated = 1;
+  products.push({ memberId: 999, memberNameEn: 'Shampoo, 1 bottle', terminated: 0 });
+  const { foods: kept } = parseStatcanMetadata(changed);
+  assert.equal(kept.length, 105);
+  assert.ok(!kept.some(food => food.item === 'Bacon'));
 });
 
 test('StatCan prices are the newest month in CAD per geography; missing and suppressed series are left out', () => {
@@ -82,6 +90,9 @@ test('StatCan prices are the newest month in CAD per geography; missing and supp
   const ontarioBacon = '6.10.0.0.0.0.0.0.0.0';
   const suppressed = series.map(row => (row.object.coordinate === ontarioBacon ? point(row, { value: null, statusCode: 1 }) : row));
   assert.ok(!parseStatcanPrices(suppressed, members).some(row => row.market === 'Ontario' && row.item === 'Bacon'));
+  // A value carried in thousands (scalar factor 3) is not a shelf price.
+  const scaled = series.map(row => (row.object.coordinate === ontarioBacon ? point(row, { scalarFactorCode: 3 }) : row));
+  assert.ok(!parseStatcanPrices(scaled, members).some(row => row.market === 'Ontario' && row.item === 'Bacon'));
   // A discontinued series whose latest point is an older month stays out of the newest month.
   const older = series.map(row => (row.object.coordinate === ontarioBacon ? point(row, { refPer: '2025-03-01' }) : row));
   const olderRows = parseStatcanPrices(older, members);
@@ -98,13 +109,29 @@ test('StatCan prices fail closed on moved coordinates, bad points and a thin nat
   assert.throws(() => parseStatcanPrices(swap(bacon, row => ({ ...row, object: { ...row.object, coordinate: '99.10.0.0.0.0.0.0.0.0' } })), members), /coordinate format changed/);
   assert.throws(() => parseStatcanPrices(swap(bacon, row => point(row, { refPer: '2026-09' })), members), /data point format changed/);
   assert.throws(() => parseStatcanPrices(swap(bacon, row => point(row, { value: -1 })), members), /data point format changed/);
+  // Only the no-series answer is skipped; any other failed series is an outage, not a missing product.
+  const outage = row => ({ status: 'FAILED', object: { ...row.object, responseStatusCode: 7, vectorDataPoint: [] } });
+  assert.throws(() => parseStatcanPrices(swap('6.10.0.0.0.0.0.0.0.0', outage), members), /series 6\.10\.0\.0\.0\.0\.0\.0\.0\.0 failed \(7\)/);
+  assert.throws(() => parseStatcanPrices(swap(bacon, row => ({ ...row, status: 'FAILED' })), members), /failed/);
+  assert.throws(() => parseStatcanPrices(swap(bacon, row => ({ ...row, object: { ...row.object, responseStatusCode: 3 } })), members), /failed \(3\)/);
   const thin = series.filter(row => !row.object.coordinate.startsWith('11.') || Number(row.object.coordinate.split('.')[1]) < 20);
   assert.throws(() => parseStatcanPrices(thin, members), /national prices missing/);
 });
 
 test('StatCan collect batches coordinates under the WDS limit and rejects a short batch', async () => {
   const requests = [];
-  const report = await collectStatcan(ctx(wds({ requests })));
+  const warnings = [];
+  const report = await collectStatcan(ctx(wds({ requests }), warnings));
+  // The fixture holds three geographies; the other ten answer with no series and are named, not hidden.
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /^StatCan 2026-09-01 has no prices for Newfoundland and Labrador; .*Whitehorse, Yukon$/);
+  assert.ok(!/Ontario|Yellowknife|Canada;/.test(warnings[0]));
+  // A geography still on the previous release drops out of the newest month and is named too.
+  const lagging = json('statcan').series.map(row => (row.object.coordinate.startsWith('6.') ? point(row, { refPer: '2026-08-01' }) : row));
+  const late = [];
+  const partial = await collectStatcan(ctx(wds({ series: lagging }), late));
+  assert.ok(!partial.observations.some(row => row.market === 'Ontario'));
+  assert.match(late[0], /no prices for .*Ontario/);
   const batches = requests.filter(request => request.url.pathname.endsWith('/getDataFromCubePidCoordAndLatestNPeriods'));
   assert.equal(batches.length, 5);
   assert.ok(batches.every(batch => batch.body.length <= 300 && batch.body.every(entry => entry.productId === PRODUCT_ID && entry.latestN === 1)));
@@ -121,6 +148,29 @@ test('StatCan collect batches coordinates under the WDS limit and rejects a shor
   // A month after the run date is a publisher error, not data.
   const future = json('statcan').series.map(row => point(row, { refPer: '2026-12-01' }));
   await assert.rejects(collectStatcan(ctx(wds({ series: future }))), /future date/);
+});
+
+test('StatCan repeats a request after its edge answers 406 or the HTML outage page, up to three times', async () => {
+  const fake = wds();
+  const flaky = failures => {
+    let calls = 0;
+    return async (url, options) => {
+      calls++;
+      const failure = failures[calls - 1];
+      if (failure === 406) throw new Error('statcan HTTP 406');
+      if (failure === 'html') return '<!DOCTYPE html><html><body>The website is currently unavailable</body></html>';
+      if (failure === 500) throw new Error('statcan HTTP 500');
+      return fake(url, options);
+    };
+  };
+  const warnings = [];
+  const report = await collectStatcan(ctx(flaky([406, 'html']), warnings));
+  assert.ok(report.observations.length > 200);
+  assert.deepEqual(warnings.slice(0, 2), ['StatCan getCubeMetadata attempt 1: statcan HTTP 406; retrying', 'StatCan getCubeMetadata attempt 2: not JSON; retrying']);
+  await assert.rejects(collectStatcan(ctx(flaky([406, 406, 406]))), /HTTP 406/);
+  await assert.rejects(collectStatcan(ctx(flaky(['html', 'html', 'html']))), SyntaxError);
+  // Other failures are not retried.
+  await assert.rejects(collectStatcan(ctx(flaky([500]))), /HTTP 500/);
 });
 
 test('StatCan goes through the proxy with its POST bodies, and merges as a monthly report', async () => {

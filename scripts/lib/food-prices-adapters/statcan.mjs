@@ -8,6 +8,7 @@ export const PRODUCT_ID = 18100245;
 export const TABLE_URL = 'https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810024501';
 // The WDS refuses more than 300 coordinates in one request.
 const BATCH = 300;
+const ATTEMPTS = 3;
 // Personal-care and household products share the table with food.
 const NON_FOOD = new Set(['Deodorant', 'Toothpaste', 'Shampoo', 'Laundry detergent']);
 
@@ -45,7 +46,8 @@ export function parseStatcanMetadata(payload) {
   const members = list => list.filter(member => Number.isInteger(member.memberId) && member.memberId > 0 && !member.terminated)
     .map(member => ({ id: member.memberId, name: text(member.memberNameEn) }));
   const geographies = members(geography.member);
-  const foods = members(products.member).filter(product => !NON_FOOD.has(splitProduct(product.name).item))
+  // Non-food products are dropped by name before their unit is read, so a new household pack size cannot fail the run.
+  const foods = members(products.member).filter(product => !NON_FOOD.has(product.name.split(/,| \(/)[0]))
     .map(product => ({ ...product, ...splitProduct(product.name) }));
   if (!geographies.some(geo => geo.name === 'Canada') || geographies.length < 10 || foods.length < 50) throw new Error('StatCan table members format changed');
   return { geographies, foods };
@@ -57,9 +59,11 @@ export function parseStatcanPrices(responses, { geographies, foods }) {
   const food = new Map(foods.map(member => [member.id, member]));
   const points = [];
   for (const response of responses) {
-    // A geography that does not collect a product has no series: FAILED with an empty vector.
-    if (response?.status !== 'SUCCESS') continue;
-    const object = response.object;
+    const object = response?.object;
+    // A geography that does not collect a product has no series: FAILED, response code 2, vector 0, no points.
+    // Any other failure is an outage and must not publish a report with that geography's prices missing.
+    if (response?.status === 'FAILED' && Number(object?.responseStatusCode) === 2 && Number(object.vectorId) === 0 && !object.vectorDataPoint?.length) continue;
+    if (response?.status !== 'SUCCESS' || Number(object?.responseStatusCode) !== 0) throw new Error(`StatCan series ${text(object?.coordinate) || 'unknown'} failed (${text(object?.responseStatusCode) || response?.status})`);
     const [geoId, productId, ...rest] = text(object?.coordinate).split('.').map(Number);
     if (Number(object?.productId) !== PRODUCT_ID || !geo.has(geoId) || !food.has(productId) || rest.some(Boolean)) throw new Error('StatCan coordinate format changed');
     const [point] = object.vectorDataPoint ?? [];
@@ -77,7 +81,18 @@ export function parseStatcanPrices(responses, { geographies, foods }) {
 
 /** Collect the newest month of Canadian retail food prices for every geography in the table. */
 export async function collect(ctx) {
-  const post = async (method, body) => JSON.parse(await ctx.get(`${WDS}${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+  // StatCan's edge intermittently answers 406 or a 200 "website is currently unavailable" HTML page
+  // (scripts/lib/statcan-wds.mjs); a repeat request usually gets JSON. Other failures end the run.
+  const post = async (method, body) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return JSON.parse(await ctx.get(`${WDS}${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+      } catch (error) {
+        if (attempt >= ATTEMPTS || !(error instanceof SyntaxError || /\bHTTP 406$/.test(error?.message))) throw error;
+        ctx.warn(`StatCan ${method} attempt ${attempt}: ${error instanceof SyntaxError ? 'not JSON' : error.message}; retrying`);
+      }
+    }
+  };
   const members = parseStatcanMetadata(await post('getCubeMetadata', [{ productId: PRODUCT_ID }]));
   const coordinates = members.geographies.flatMap(geo => members.foods.map(food => ({ productId: PRODUCT_ID, coordinate: `${geo.id}.${food.id}.0.0.0.0.0.0.0.0`, latestN: 1 })));
   const responses = [];
@@ -87,5 +102,8 @@ export async function collect(ctx) {
     if (!Array.isArray(page) || page.length !== batch.length) throw new Error(`StatCan returned ${Array.isArray(page) ? page.length : 0} of ${batch.length} series`);
     responses.push(...page);
   }
-  return priceReport(parseStatcanPrices(responses, members), TABLE_URL, ctx.now);
+  const rows = parseStatcanPrices(responses, members);
+  const missing = members.geographies.filter(geo => !rows.some(row => row.market === geo.name)).map(geo => geo.name);
+  if (missing.length) ctx.warn(`StatCan ${rows[0].date} has no prices for ${missing.join('; ')}`);
+  return priceReport(rows, TABLE_URL, ctx.now);
 }
