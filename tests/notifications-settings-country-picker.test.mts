@@ -181,7 +181,7 @@ describe('notifications-settings.ts — centralized save state (countries thread
   it('saveCurrentAlertRule uses getCurrentAlertRuleFormState (debounced picker save)', () => {
     assert.match(
       settingsSrc,
-      /function\s+saveCurrentAlertRule\s*\([^)]*\)[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?saveAlertRules\(/,
+      /function\s+saveCurrentAlertRule\s*\([^)]*\)[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?(?:saveAlertRules|queueRuleSave)\(/,
       'saveCurrentAlertRule must source payload from getCurrentAlertRuleFormState',
     );
   });
@@ -191,7 +191,7 @@ describe('notifications-settings.ts — centralized save state (countries thread
     // debounced picker save and dropped countries.
     assert.match(
       settingsSrc,
-      /function\s+saveRuleWithNewChannel[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?saveAlertRules\(/,
+      /function\s+saveRuleWithNewChannel[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?(?:saveAlertRules|queueRuleSave)\(/,
       'saveRuleWithNewChannel must source payload from getCurrentAlertRuleFormState',
     );
   });
@@ -201,7 +201,7 @@ describe('notifications-settings.ts — centralized save state (countries thread
     // and silently dropped countries. Centralized via the helper.
     assert.match(
       settingsSrc,
-      /target\.id\s*===\s*'usAiDigestEnabled'[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?saveAlertRules\(/,
+      /target\.id\s*===\s*'usAiDigestEnabled'[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?(?:saveAlertRules|queueRuleSave)\(/,
       'AI digest toggle save must source payload from getCurrentAlertRuleFormState',
     );
   });
@@ -211,7 +211,7 @@ describe('notifications-settings.ts — centralized save state (countries thread
     // to hand-roll its own payload and silently dropped countries.
     assert.match(
       settingsSrc,
-      /target\.id\s*===\s*'usNotifEnabled'\s*\|\|\s*target\.id\s*===\s*'usNotifSensitivity'[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?saveAlertRules\(/,
+      /target\.id\s*===\s*'usNotifEnabled'\s*\|\|\s*target\.id\s*===\s*'usNotifSensitivity'[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?(?:saveAlertRules|queueRuleSave)\(/,
       'enable/sensitivity save must source payload from getCurrentAlertRuleFormState',
     );
   });
@@ -239,13 +239,14 @@ describe('notifications-settings.ts — centralized save state (countries thread
     // `enabled, eventTypes, sensitivity, channels, aiDigestEnabled` without
     // `...state` is a regression of the centralization fix.
     //
-    // Match every settings-scoped saveAlertRules invocation; each must contain
+    // Match every settings-scoped rule save (saveAlertRules, or the panel's
+    // ordered queueRuleSave wrapper around it); each must contain
     // `...state` and the settings lifecycle signal so a Retry-After wait cannot
     // outlive the panel that initiated it. The one sanctioned exception is the
     // close-time flush (#4273): a pending debounced save dispatched from the
     // abort handler must NOT ride the already-aborting signal, so that call
     // site carries the explicit `opts?.flush ? undefined : signal` tail.
-    const calls = settingsSrc.match(/saveAlertRules\(\{[\s\S]*?\},\s*(?:signal|opts\?\.flush \? undefined : signal)\)/g) ?? [];
+    const calls = settingsSrc.match(/(?:saveAlertRules|queueRuleSave)\(\{[\s\S]*?\},\s*(?:signal|opts\?\.flush \? undefined : signal)\)/g) ?? [];
     assert.ok(calls.length >= 4, `expected ≥4 saveAlertRules call sites, found ${calls.length}`);
     for (const call of calls) {
       assert.match(
