@@ -235,6 +235,9 @@ test('a headline republished from the classify cache keeps the publishers other 
 
   await cycle(items);
   assert.equal(openRouter.state.judged, judged, 'the cached republish asks the judge nothing');
+  // The webhook copy goes out on a request the classify seam does not wait for.
+  const deadline = Date.now() + 5_000;
+  while (upstash.apiEvents().length < 2 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(upstash.apiEvents().length, 2, `webhook subscribers get the fresh alert and the cached republish\n${output()}`);
   assert.deepEqual(
     upstash.alerts().map((e) => e.payload.importanceScore),
