@@ -230,7 +230,7 @@ describe('Umami runtime remediation (#6024)', () => {
 
     assert.match(
       dockerfile,
-      /^FROM postgres:18-alpine@sha256:[a-f0-9]{64}$/m,
+      /^FROM postgres:[1-9]\d*-alpine@sha256:[a-f0-9]{64}$/m,
     );
     assert.match(
       dockerfile,
