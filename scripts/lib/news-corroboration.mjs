@@ -192,6 +192,11 @@ export async function crossWordingFamilies(candidates, {
   let finished = false;
   const checked = new Set();
   const deadlineAt = Date.now() + deadlineMs;
+  // Set once the current candidate's check asks a provider, so a deadline is
+  // charged to that check alone, never to candidates it left unstarted.
+  let inFlight = false;
+  const asked = (call) => (...args) => { inFlight = true; return call(...args); };
+  const providers = { embed: asked(embed), judge: asked(judge) };
   const work = (async () => {
     let sightings;
     try { sightings = await readSightings(now, pipeline); } catch (err) {
@@ -203,9 +208,11 @@ export async function crossWordingFamilies(candidates, {
     }
     for (const candidate of candidates) {
       if (expired) return;
+      inFlight = false;
       try {
-        const found = await match(candidate, sightings, { now, embed, judge, deadlineAt });
+        const found = await match(candidate, sightings, { now, ...providers, deadlineAt });
         if (expired) return;
+        inFlight = false;
         checked.add(candidate.title);
         if (!found) continue;
         const corroborated = found.families.length >= 2;
@@ -215,6 +222,7 @@ export async function crossWordingFamilies(candidates, {
         log(`[news-corroboration] ${JSON.stringify({ title: candidate.title, families: found.families, matched: found.matched })}`);
       } catch (err) {
         if (expired) return;
+        inFlight = false;
         checked.add(candidate.title);
         outcomes.push({ result: 'failed', error: err?.code || 'ERROR' });
         log(`[news-corroboration] ${JSON.stringify({ title: candidate.title, error: err?.message || err?.name || 'error' })}`);
@@ -227,7 +235,7 @@ export async function crossWordingFamilies(candidates, {
   expired = true;
   if (!finished) {
     const unchecked = candidates.map(c => c.title).filter(title => !checked.has(title));
-    outcomes.push(...unchecked.map(() => ({ result: 'failed', error: 'DEADLINE' })));
+    if (inFlight) outcomes.push({ result: 'failed', error: 'DEADLINE' });
     log(`[news-corroboration] ${JSON.stringify({ error: 'deadline', unchecked })}`);
   }
   return new Map(results);

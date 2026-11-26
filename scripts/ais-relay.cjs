@@ -5739,6 +5739,8 @@ const CROSS_WORDING_MAX_CHECKS = 8;
 let crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
 // Check outcomes since the classify cycle last wrote the matcher's health (#11426).
 const crossWordingOutcomes = [];
+// While Redis refuses the health write, keep only the newest outcomes.
+const CROSS_WORDING_OUTCOMES_MAX = 64;
 
 // Publisher families of the other wordings of each critical copy under the
 // realtime bar (#10977). High copies only corroborate; they are never boosted.
@@ -6181,10 +6183,12 @@ async function seedClassifyForVariant(variant, seenTitles) {
 
 // One classify cycle of matcher outcomes, build passes included, joined to the
 // last hour (#11426). A failed read skips the write rather than restart the
-// hour, and seed-meta advances only after the payload lands. Either way this
-// cycle's outcomes are dropped and health sees the seed-meta age.
+// hour, and seed-meta advances only after the payload lands. Outcomes leave the
+// queue only once the payload holds them, so a failed write carries them to the
+// next cycle; a build pass that adds some meanwhile keeps its own.
 async function writeCrossWordingHealth() {
-  const outcomes = crossWordingOutcomes.splice(0);
+  crossWordingOutcomes.splice(0, Math.max(0, crossWordingOutcomes.length - CROSS_WORDING_OUTCOMES_MAX));
+  const outcomes = crossWordingOutcomes.slice();
   const corroboration = await newsCorroborationPromise;
   if (!corroboration) return;
   let readFailed = false;
@@ -6197,6 +6201,7 @@ async function writeCrossWordingHealth() {
     console.warn('[news-corroboration] health write failed');
     return;
   }
+  crossWordingOutcomes.splice(0, outcomes.length);
   await upstashSet(corroboration.MATCHER_HEALTH_META_KEY, meta, 604800);
   await upstashPipeline([['SET', corroboration.MATCHER_ACTIVATION_KEY, '1']]).catch(() => {});
   if (meta.sourceState === 'degraded') {
@@ -6213,6 +6218,7 @@ async function seedClassify() {
     const hasAnyProvider = CLASSIFY_LLM_PROVIDERS.some((p) => !!process.env[p.envKey]);
     if (!hasAnyProvider) {
       console.log('[Classify] Skipped — no LLM provider keys configured');
+      await writeCrossWordingHealth();
       return;
     }
 

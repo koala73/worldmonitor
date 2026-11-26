@@ -76,6 +76,22 @@ describe('cross-wording matcher outcomes (#11426)', () => {
     assert.deepEqual(await run({ pipeline: async () => null }), [{ result: 'failed', error: 'SIGHTINGS_READ' }]);
   });
 
+  it('counts the deadline against the check in flight, not the candidates it never started', async () => {
+    const outcomes = [];
+    const lines = [];
+    const slow = () => new Promise(done => setTimeout(() => done('{"same":true}'), 200));
+    const second = { title: 'Drone hits tanker near Fujairah', source: 'The National' };
+    await crossWordingFamilies([candidate, second], { now: NOW, pipeline: await seeded(), embed, judge: slow, deadlineMs: 20, outcomes, log: (line) => lines.push(line) });
+    assert.deepEqual(outcomes, [{ result: 'failed', error: 'DEADLINE' }]);
+    assert.ok(lines.some(line => line.includes(second.title)), 'the unstarted candidate is still logged as unchecked');
+  });
+
+  it('counts no deadline when the expired step never reached a provider', async () => {
+    const outcomes = [];
+    await crossWordingFamilies([candidate], { now: NOW, pipeline: () => new Promise(() => {}), embed, judge: async () => '{"same":true}', deadlineMs: 20, outcomes, log: () => {} });
+    assert.deepEqual(outcomes, []);
+  });
+
   it('records nothing for a candidate with nothing to compare against', async () => {
     const outcomes = [];
     const { pipeline } = memoryPipeline();
@@ -246,6 +262,62 @@ describe('/api/health newsCrossWordingMatcher (#11426)', () => {
     assert.ok(collectFailureLogProblems({ [name]: degraded }, HEALTH_NOW).sigKeys.length > 0, 'a degraded matcher is an operational problem');
     assert.equal(classify({ meta: cycles([[failed402, failed402]], { configured: false }).meta }).status, 'NOT_CONFIGURED');
     assert.equal(classify({ meta: { ...cycles([[]]).meta, fetchedAt: HEALTH_NOW - 61 * MIN } }).status, 'STALE_SEED');
+  });
+
+  it('reads a relay that stopped while degraded as stale, not as a current failure', () => {
+    const degraded = cycles([[failed402, failed402]]).meta;
+    assert.equal(classify({ meta: { ...degraded, fetchedAt: HEALTH_NOW - 59 * MIN } }).status, 'SEED_ERROR');
+    assert.equal(classify({ meta: { ...degraded, fetchedAt: HEALTH_NOW - 61 * MIN } }).status, 'STALE_SEED');
+  });
+
+  it('never contains a degraded matcher behind its own diagnostics', () => {
+    const evidence = new Map();
+    const entry = classifyKey(name, STANDALONE_KEYS[name], { allowOnDemand: true }, {
+      containmentEvidenceByName: evidence,
+      keyStrens: new Map([[STANDALONE_KEYS[name], 512]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[SEED_META[name].key, JSON.stringify(cycles([[failed402, failed402]]).meta)]]),
+      keyMetaErrors: new Map(),
+      activationStates: new Map([[name, true]]),
+      now: HEALTH_NOW,
+    });
+    assert.equal(entry.status, 'SEED_ERROR');
+    assert.equal(__testing__.isContainedHealthWarning(entry, evidence.get(name), HEALTH_NOW), false);
+  });
+
+  it('moves the overall /api/health verdict when the matcher degrades', async (t) => {
+    const { default: handler } = await import('../api/health.js');
+    const realEnv = { ...process.env };
+    Object.assign(process.env, { UPSTASH_REDIS_REST_URL: 'https://mock-upstash.test', UPSTASH_REDIS_REST_TOKEN: 'mock-token' });
+    t.after(() => {
+      for (const key of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']) {
+        if (realEnv[key] === undefined) delete process.env[key]; else process.env[key] = realEnv[key];
+      }
+    });
+    t.mock.method(Date, 'now', () => HEALTH_NOW);
+    let matcherMeta = null;
+    t.mock.method(globalThis, 'fetch', async (_url, init) => new Response(JSON.stringify(JSON.parse(init.body).map(([op, key]) => {
+      if (op === 'STRLEN') return { result: 256 };
+      if (op === 'GET' && key === MATCHER_HEALTH_META_KEY) return { result: JSON.stringify(matcherMeta) };
+      if (op === 'GET' && key.startsWith('seed-meta:')) return { result: JSON.stringify({ fetchedAt: HEALTH_NOW, recordCount: 1 }) };
+      if (op === 'GET') return { result: null };
+      if (op === 'LLEN') return { result: 1 };
+      return { result: 'OK' };
+    }))));
+    const read = async () => (await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'))).json();
+    matcherMeta = cycles([[matched], [matched]]).meta;
+    const healthy = await read();
+    assert.equal(healthy.problems?.[name], undefined);
+    matcherMeta = cycles([[failed402, failed402]]).meta;
+    const degraded = await read();
+    assert.equal(degraded.problems[name].status, 'SEED_ERROR');
+    assert.equal(degraded.summary.warn, healthy.summary.warn + 1);
+    assert.equal(degraded.summary.containedWarn, healthy.summary.containedWarn, 'the warning counts against availability');
+    const { computeOverallStatus } = __testing__;
+    const zero = { warn: 0, containedWarn: 0, onDemandWarn: 0, crit: 0 };
+    assert.equal(computeOverallStatus(zero, degraded.summary.total).overall, 'HEALTHY');
+    assert.equal(computeOverallStatus({ ...zero, warn: 1 }, degraded.summary.total).overall, 'WARNING',
+      'alone, an uncontained matcher warning turns a healthy platform WARNING');
   });
 
   it('keeps a relay stopped for hours a warning, not a critical', () => {

@@ -2692,9 +2692,15 @@ const SEED_META = {
   // and they were more than half of the checks made (an OpenRouter 402 fails
   // every one), naming the commonest failure in errorCode; an hour without
   // candidates is `ok`. A relay without OPENROUTER_API_KEY writes `unavailable`.
+  // Its records are matcher cycles, not data any reader is served, so a
+  // degraded matcher is never contained; and once the meta is past
+  // maxStaleMin its sourceState describes a relay that stopped, so the probe
+  // reads STALE_SEED rather than a current failure.
   newsCrossWordingMatcher: {
     key: 'seed-meta:news:cross-wording-health',
     maxStaleMin: 60,
+    recordsAreDiagnostics: true,
+    sourceStateExpires: true,
     activationKey: 'seed-activated:news:cross-wording-health',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 11426, activationKey: 'seed-activated:news:cross-wording-health' },
   },
@@ -4298,6 +4304,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     && (!Number.isFinite(inputFreshUntil) || inputFreshUntil <= now);
   const sourceDegraded = inputFreshnessExpired || (typeof meta?.sourceState === 'string'
     && meta.sourceState !== 'ok'
+    && !(seedCfg.sourceStateExpires === true && seedStale === true)
     && !sourceUnavailable
     && !sourceBlocked
     && sourceFailure?.pending !== true
@@ -5024,7 +5031,9 @@ function classifyKey(name, redisKey, opts, ctx) {
         && ctx.humanitarianRetention.records === metaCount))
       // These records include missing/stale input placeholders. A positive
       // count alone cannot prove that the reader serves a usable index.
-      && !seedCfg?.enforceInputFreshUntil,
+      && !seedCfg?.enforceInputFreshUntil
+      // These records count the producer's own checks; no reader is served them.
+      && !seedCfg?.recordsAreDiagnostics,
   });
   return entry;
 }
