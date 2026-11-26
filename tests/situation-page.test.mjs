@@ -109,6 +109,7 @@ describe('/monitor-the-situation/ build', () => {
     }
     const description = html.match(/<meta name="description" content="([^"]*)"/)?.[1] ?? '';
     assert.match(description, /World Monitor/);
+    assert.doesNotMatch(description, /\bthe the\b/, 'each region name supplies its own article');
     for (const region of CRISIS_REGIONS) {
       assert.ok(description.includes(region.label), `description names ${region.label}`);
     }

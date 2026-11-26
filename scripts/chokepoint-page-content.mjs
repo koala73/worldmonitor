@@ -174,7 +174,7 @@ export const CHOKEPOINT_CONTENT = {
       },
       {
         question: 'How many ships pass through the Strait of Hormuz each day?',
-        answer: 'The live reading at the top of this page gives the latest IMF PortWatch daily transit count, the seven-day average, and that average as a percentage of the same period a year earlier, which is the normal it is compared with. PortWatch publishes several days behind, so the reading states the date of the latest count.',
+        answer: 'The live reading at the top of this page gives the latest IMF PortWatch daily transit count, the seven-day average, and that average as a percentage of the daily average over the twelve months that ended a year earlier. The reading names that baseline period. PortWatch publishes several days behind, so the reading also states the date of the latest count.',
       },
     ],
   },
@@ -184,10 +184,11 @@ export const CHOKEPOINT_CONTENT = {
     crisisSlugs: ['red-sea-security'],
     region: 'Red Sea ↔ Gulf of Aden',
     // "bab el mandeb transit" is this page's largest search query, so the
-    // title keeps the word while it adds the comparison with normal.
-    metaTitle: 'Bab el-Mandeb Ship Transits Today vs Normal | World Monitor',
+    // title keeps the word. The comparison is called a year ago, never normal:
+    // the year-earlier baseline here was already depressed by Red Sea attacks.
+    metaTitle: 'Bab el-Mandeb Ship Transits vs a Year Ago | World Monitor',
     metaDescription:
-      'How many ships cross Bab el-Mandeb today? IMF PortWatch daily transits against the year-earlier normal, plus live disruption risk and Red Sea security signals.',
+      'How many ships cross Bab el-Mandeb today? IMF PortWatch daily transits against the year-earlier average, plus live disruption risk and Red Sea security signals.',
     whyHeading: 'Why do Suez sailings also have to clear Bab el-Mandeb?',
     blurb:
       'Bab el-Mandeb is the strait between the Horn of Africa and the Arabian Peninsula that connects the Red Sea to the Gulf of Aden and the Indian Ocean. Every ship using the Suez Canal route also transits Bab el-Mandeb, so attacks or instability here push traffic onto the far longer Cape of Good Hope route.',
@@ -204,7 +205,7 @@ export const CHOKEPOINT_CONTENT = {
       },
       {
         question: 'How many ships pass through Bab el-Mandeb each day?',
-        answer: 'The live reading at the top of this page gives the latest IMF PortWatch daily transit count, the seven-day average, and that average as a percentage of the same period a year earlier, which is the normal it is compared with. PortWatch publishes several days behind, so the reading states the date of the latest count.',
+        answer: 'The live reading at the top of this page gives the latest IMF PortWatch daily transit count, the seven-day average, and that average as a percentage of the daily average over the twelve months that ended a year earlier. The reading names that baseline period. Traffic here was already below its pre-crisis level in that baseline, so a reading near 100% means steady, not back to normal. PortWatch publishes several days behind, so the reading also states the date of the latest count.',
       },
     ],
   },

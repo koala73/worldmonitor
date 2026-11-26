@@ -20,7 +20,7 @@ This guide is published by World Monitor. We compare public product documentatio
 
 | Alternative | How it removes the noise | Links to the original report | Access |
 | --- | --- | --- | --- |
-| World Monitor | Groups headlines from different outlets into one story and counts independent publishers | Yes, on news items, clusters and history records | [Free map](https://www.worldmonitor.app/dashboard); [published paid prices](https://www.worldmonitor.app/pro#pricing) |
+| World Monitor | Groups headlines from different outlets into one story and counts independent publishers | Yes, on news items and clusters; on history records only where the source supplied one | [Free map](https://www.worldmonitor.app/dashboard); [published paid prices](https://www.worldmonitor.app/pro#pricing) |
 | GDELT Cloud | Recodes the GDELT article stream into events and clustered stories | Yes, events carry the linked story and its source articles | API key and plan |
 | Event Registry | Organizes news articles into events | Check the result fields for your plan | Free registration with test tokens, then a paid plan |
 | UCDP | Researchers code each conflict event | A source field names the original report | Free API with an access token |
@@ -36,11 +36,11 @@ There are three ways out. You can keep GDELT and buy a cleaning layer on top of 
 
 **Best when you want current stories grouped across outlets, with the original links.**
 
-World Monitor groups headlines from different outlets that report the same story into one cluster. Each cluster carries the primary headline and its link, up to eight outlets with each outlet's declared editorial tier, and a corroboration state that says whether one publisher or several independent publishers carry the story. That count describes coverage, not accuracy. Clusters are available through the `get_news_clusters` MCP tool; the REST digest returns the underlying headlines, each with its link and a corroboration count. Stored history records for conflict, unrest, maritime, cyber and four other domains have a stable `id` to de-duplicate on and a `sourceUrl` to the original report, and are kept for 180 days. The [incident feed page](https://www.worldmonitor.app/docs/incident-feed) lists every field, filter and retention window.
+World Monitor groups headlines from different outlets that report the same story into one cluster. Each cluster carries the primary headline and its link, up to eight outlets with each outlet's declared editorial tier, and a corroboration state that says whether one publisher or several independent publishers carry the story. That count describes coverage, not accuracy. Clusters are available through the `get_news_clusters` MCP tool; the REST digest returns the underlying headlines, each with its link and a corroboration count. Stored history records for conflict, unrest, maritime, cyber and four other domains are kept for 180 days and have a stable `id`. What one record stands for depends on the feed: conflict and natural-hazard records are one per upstream event, while a GDELT unrest record is one per location per UTC day, not one per incident. A history record has a `sourceUrl` only when its source supplied a report link; GDELT unrest, UCDP conflict, cyber and maritime records carry none. The [incident feed page](https://www.worldmonitor.app/docs/incident-feed) lists every field, filter and retention window.
 
 The [map](https://www.worldmonitor.app/dashboard) is free with no account and shows the same stories beside shipping, aviation, outages, hazards and markets. On a paid plan, alert rules filter by country, event type and severity and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or a signed webhook ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)).
 
-The limits: World Monitor aggregates published reports and does not verify events on the ground. Its own unrest rows on worldmonitor.app are derived from GDELT, cover about the last two hours and are served as low-confidence media signals, so they are not the deduplicated product. The clusters and history records are. There is no news archive, and a cluster's id can change when an earlier headline joins it.
+The limits: World Monitor aggregates published reports and does not verify events on the ground. Its own unrest rows on worldmonitor.app are derived from GDELT, cover about the last two hours and are served as low-confidence media signals, so they are not the deduplicated product. The news clusters are. There is no news archive, and a cluster's id can change when an earlier headline joins it.
 
 ## 2. GDELT Cloud
 
@@ -67,7 +67,7 @@ Both remove duplicates by design, because a person decides what counts as one ev
 ## Pick World Monitor when
 
 - **You want one row per story, not one per article.** Clusters group outlets and state how many independent publishers carry the story.
-- **You need the link back.** News items, clusters and history records carry the original report's URL.
+- **You need the link back.** News items and clusters carry the original report's URL.
 - **You want to judge the source.** Each outlet has an editorial tier and a propaganda-risk band, and the free `get_sources` MCP tool returns them for any outlet.
 - **You want to see it before you build.** The map is free with no account, and API and MCP prices are published.
 - **Events are one part of the picture.** Ship transits, flights, outages, hazards and markets sit on the same map.
@@ -78,7 +78,7 @@ If raw GDELT is too noisy and you want current, source-linked stories you can al
 
 ## What to do before switching
 
-Take one week of the GDELT rows you actually use and write down what a correct answer looks like: how many distinct events, with which source for each. Run the same week through the alternative. Check three things: whether duplicates are merged, whether each record links to a report you can open, and how far back the product goes. Then check the reuse terms for the data you plan to redistribute.
+Take a sample of the GDELT rows you actually use and write down what a correct answer looks like: how many distinct events, with which source for each. Run the same period through the alternative. Pick a period the alternative can still serve: World Monitor's news window is 96 hours with no archive, so collect its clusters as the days pass instead of asking for last week afterwards. Check three things: whether duplicates are merged, whether each record links to a report you can open, and how far back the product goes. Then check the reuse terms for the data you plan to redistribute.
 
 ## Frequently Asked Questions
 
@@ -88,7 +88,7 @@ World Monitor's map and its news panels are free with no account, and its free `
 
 **Does World Monitor use GDELT?**
 
-Yes, as one input among many. GDELT-derived unrest rows are labelled as unverified media signals. The deduplicated outputs are the news clusters and the stored history records, which link to original reports.
+Yes, as one input among many. GDELT-derived unrest rows are labelled as unverified media signals. The deduplicated output is the news clusters, which link to original reports.
 
 **Can any alternative replace GDELT's archive?**
 

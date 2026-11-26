@@ -46,7 +46,7 @@ export const CRISIS_REGION_IDS = Object.freeze(CRISIS_REGIONS.map((region) => re
 // Situation" and never said World Monitor.
 const H1 = 'Monitor the situation with World Monitor';
 export const TITLE = 'Monitor the Situation: World Monitor Live Conflict Board';
-export const DESCRIPTION = `World Monitor's free live board: conflict trackers for the ${listPhrase(CRISIS_REGIONS.map((region) => regionName(region)))}, with headlines, chokepoints and outages.`;
+export const DESCRIPTION = `World Monitor's free live board: conflict trackers for ${listPhrase(CRISIS_REGIONS.map((region) => regionName(region)))}, with headlines, chokepoints and outages.`;
 
 function regionName(region) {
   return region.id === 'europe' || region.id === 'asia' || region.id === 'africa' ? region.label : `the ${region.label}`;

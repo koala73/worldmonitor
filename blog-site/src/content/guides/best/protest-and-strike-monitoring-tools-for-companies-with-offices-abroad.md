@@ -83,7 +83,7 @@ If you need to know about a strike or demonstration before it starts, pick Facta
 ## What to do today
 
 1. List the countries where you have offices and decide whether country scope is enough or you need a radius around each site.
-2. Open the free World Monitor map, turn on the protest layer and check the last day for those countries.
+2. Open the free World Monitor map, turn on the protest layer and check those countries. The layer shows about the last two hours and keeps no history, so look again through the day and save what you find.
 3. If you need planned-event notice, ask Factal and Crisis24 to show last month's forward-looking notes for one of your countries.
 
 ## Frequently Asked Questions
