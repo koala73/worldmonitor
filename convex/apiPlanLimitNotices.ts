@@ -603,7 +603,16 @@ export const pruneApiPlanLimitData = internalMutation({
   handler: async (ctx, args) => {
     const now = args.now ?? Date.now();
     const cutoff = now - (args.retentionMs ?? RETENTION_MS);
-    const batch = args.limit ?? PRUNE_BATCH;
+    // Floor of 1, and a non-finite value falls back to the default rather than
+    // propagating: `take(0)` returns [], and the `>= batch` check below would
+    // read 0 >= 0 as "a full batch" and reschedule forever, deleting nothing.
+    // The two prunes modelled on this one (convex/userPreferences.ts,
+    // convex/intelHistory.ts) already carry this guard; it was never applied
+    // to the original they copied.
+    const requestedBatch = args.limit;
+    const batch = Number.isFinite(requestedBatch)
+      ? Math.max(1, Math.floor(requestedBatch as number))
+      : PRUNE_BATCH;
 
     // Superseded notices older than the retention window. The by_current index
     // scopes the scan to current:false, so an active notice is never read or

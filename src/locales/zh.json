@@ -1940,7 +1940,8 @@
         "minutesAgo": "{{count}}分钟前",
         "hoursAgo": "{{count}}小时前",
         "daysAgo": "{{count}}天前"
-      }
+      },
+      "breakingAlertsNotSaved": "无法保存。请允许此网站保存数据或清理浏览器存储空间，然后重试。"
     },
     "countryTimeline": {
       "now": "现在",

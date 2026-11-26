@@ -96,6 +96,10 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs,
         candidates.set(item.title, {
           // #10977: score on the publisher a topic feed carries, not the feed.
           source: item.originPublisher || item.source || variant,
+          // The tier key can name another edition of the publisher ("BBC
+          // Middle East" for a BBC Hausa story). The alert shows the name the
+          // aggregator gave, as the dashboard does.
+          sourceLabel: (item.originPublisher && item.publisherName) || item.originPublisher || item.source || variant,
           publishedAt: item.publishedAt ?? now,
           corroborationCount: item.corroborationCount ?? 1,
           // #8398: relay-emitted rss_alert events must not carry a link

@@ -2099,7 +2099,8 @@
         "minutesAgo": "Dakika {{count}} zilizopita",
         "hoursAgo": "Saa {{count}} zilizopita",
         "daysAgo": "Siku {{count}} zilizopita"
-      }
+      },
+      "breakingAlertsNotSaved": "Haikuweza kuhifadhi. Ruhusu data ya tovuti kwa tovuti hii au futa baadhi ya data ili kupata nafasi kwenye kivinjari, kisha jaribu tena."
     },
     "countryTimeline": {
       "now": "sasa",

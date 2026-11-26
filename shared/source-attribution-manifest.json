@@ -2271,6 +2271,20 @@
       "status": "excluded"
     },
     {
+      "host": "assets.applytosupply.digitalmarketplace.service.gov.uk",
+      "provider": "assets.applytosupply.digitalmarketplace.service.gov.uk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
+        }
+      ]
+    },
+    {
       "host": "astanatimes.com",
       "provider": "astanatimes.com",
       "kind": "feed",
@@ -2915,6 +2929,20 @@
       "references": [
         {
           "path": "scripts/lib/bc-emergency-info.mjs"
+        }
+      ]
+    },
+    {
+      "host": "catalogue.data.wa.gov.au",
+      "provider": "catalogue.data.wa.gov.au",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC-BY-4.0 (FuelWatch Historic Fuel Prices dataset licence on catalogue.data.wa.gov.au, read 2026-11-26; the monthly CSVs are served from warsydprdstafuelwatch.blob.core.windows.net)",
+      "attribution": "Credit FuelWatch, Government of Western Australia, FuelWatch Historic Fuel Prices, and link to https://catalogue.data.wa.gov.au/dataset/fuelwatch-historic-fuel-prices; medians across stations and USD conversions are derived values.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -4269,6 +4297,20 @@
         },
         {
           "path": "scripts/seed-aviation.mjs"
+        }
+      ]
+    },
+    {
+      "host": "datos.energia.gob.ar",
+      "provider": "datos.energia.gob.ar",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC-BY-4.0 (dataset licence on datos.gob.ar/dataset/precios-en-surtidor, read 2026-11-26)",
+      "attribution": "Credit Secretaría de Energía de la Nación (Argentina), Precios en surtidor - Resolución 314/2016, and link to https://datos.energia.gob.ar/dataset/1c181390-5045-475e-94dc-410429be4b17; medians across stations and USD conversions are derived values.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -16539,15 +16581,10 @@
       "host": "www.applytosupply.digitalmarketplace.service.gov.uk",
       "provider": "www.applytosupply.digitalmarketplace.service.gov.uk",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/comparison-shortlist.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.aripaev.ee",
@@ -23146,12 +23183,15 @@
       "provider": "www2.moeaea.gov.tw",
       "kind": "structured",
       "observed": true,
-      "license": "Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed",
-      "attribution": "Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.",
-      "status": "terms-review",
+      "license": "Taiwan government website open data declaration (www2.moeaea.gov.tw/oil111/opendataannouncement, read 2026-11-26): free, non-exclusive, irrevocable reuse including adaptation and redistribution, with attribution",
+      "attribution": "Credit Taiwan MOEA Energy Administration, oil111 fuel price information system (https://www2.moeaea.gov.tw/oil111/); national and county means are survey averages, and USD conversions are derived values.",
+      "status": "reviewed",
       "references": [
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },

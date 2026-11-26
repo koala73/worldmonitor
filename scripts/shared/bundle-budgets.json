@@ -101,7 +101,7 @@
   },
   "deferred": {
     "total": {
-      "raw": 1860730
+      "raw": 1863741
     },
     "chunks": {
       "App": {
@@ -141,7 +141,7 @@
         "files": 1
       },
       "corroboration": {
-        "raw": 22202,
+        "raw": 45827,
         "files": 1
       },
       "country-names": {
@@ -225,7 +225,7 @@
         "files": 1
       },
       "source-provenance": {
-        "raw": 211264,
+        "raw": 190650,
         "files": 1
       },
       "storage-facility-registry-store": {

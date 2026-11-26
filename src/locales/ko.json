@@ -1940,7 +1940,8 @@
         "minutesAgo": "{{count}}m 전",
         "hoursAgo": "{{count}}h 전",
         "daysAgo": "{{count}}d 전"
-      }
+      },
+      "breakingAlertsNotSaved": "저장할 수 없습니다. 이 사이트의 사이트 데이터를 허용하거나 브라우저 저장소를 확보한 후 다시 시도하세요."
     },
     "countryTimeline": {
       "now": "현재",

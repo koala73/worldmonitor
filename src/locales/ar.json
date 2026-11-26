@@ -1817,7 +1817,8 @@
       },
       "breakingAlerts": "تنبيهات عاجلة",
       "popupAlerts": "إظهار التنبيهات الجديدة",
-      "hideFindings": "إخفاء النتائج"
+      "hideFindings": "إخفاء النتائج",
+      "breakingAlertsNotSaved": "تعذر الحفظ. اسمح ببيانات الموقع لهذا الموقع أو أفرغ مساحة تخزين في المتصفح، ثم حاول مرة أخرى."
     },
     "countryTimeline": {
       "now": "الآن",

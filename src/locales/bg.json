@@ -1946,7 +1946,8 @@
         "minutesAgo": "{{count}}m преди",
         "hoursAgo": "{{count}}h преди",
         "daysAgo": "{{count}}d преди"
-      }
+      },
+      "breakingAlertsNotSaved": "Не можа да се запази. Разрешете данните на сайта за този сайт или освободете място в браузъра, след което опитайте отново."
     },
     "countryTimeline": {
       "now": "сега",

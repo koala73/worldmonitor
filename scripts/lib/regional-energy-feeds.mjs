@@ -78,16 +78,22 @@ export const required = points => {
   return points;
 };
 
-function csv(source, delimiter = ',') {
+// A row with the wrong number of cells fails the file, unless skipRagged is set:
+// then it is dropped and counted in `ragged` so the caller can bound the loss.
+export function csv(source, delimiter = ',', { skipRagged = false } = {}) {
   const parsed = Papa.parse(source.replace(/^\ufeff/, '').replace(/\r\n?/g, '\n'), { delimiter, newline: '\n', skipEmptyLines: 'greedy' });
   if (parsed.errors.length || !parsed.data.length) throw new Error('Invalid energy CSV');
   const records = parsed.data.map(row => row.map(cell => cell.trim()));
   const header = records.shift();
   if (new Set(header).size !== header.length) throw new Error('Duplicate energy CSV columns');
-  return { header, records: records.map(row => {
-    if (row.length !== header.length) throw new Error('Changed energy CSV columns');
-    return Object.fromEntries(header.map((key, i) => [key, row[i]]));
-  }) };
+  let ragged = 0;
+  const rows = records.filter(row => {
+    if (row.length === header.length) return true;
+    if (!skipRagged) throw new Error('Changed energy CSV columns');
+    ragged++;
+    return false;
+  });
+  return { header, ragged, records: rows.map(row => Object.fromEntries(header.map((key, i) => [key, row[i]]))) };
 }
 
 function columns(header, names) {
@@ -97,22 +103,26 @@ function columns(header, names) {
 export function parsePgcb(html) {
   const table = blocks(cleanHtml(html), 'table').find(table => /Generation\(MW\)/.test(table.inner))?.inner;
   if (!table) throw new Error('Changed PGCB fuel table');
+  // A Nuclear column between Wind and India appeared on 2026-11-23.
+  const nuclear = /<th[^>]*>\s*Wind\s*<\/th>\s*<th[^>]*>\s*Nuclear\s*<\/th>/.test(table);
   let headerAt = 0;
-  for (const heading of ['Gas', 'Liquid Fuel', 'Coal', 'Hydro', 'Solar', 'Wind', 'India', 'Nepal']) {
+  for (const heading of ['Gas', 'Liquid Fuel', 'Coal', 'Hydro', 'Solar', 'Wind', ...(nuclear ? ['Nuclear'] : []), 'India', 'Nepal']) {
     const at = table.indexOf(heading, headerAt);
     if (at < 0) throw new Error('Changed PGCB fuel table');
     headerAt = at + heading.length;
   }
+  const metrics = ['generation', 'generation.gas', 'generation.liquid_fuel', 'generation.coal', 'generation.hydro', 'generation.solar', 'generation.wind',
+    ...(nuclear ? ['generation.nuclear'] : [])];
+  const india = metrics.length + 2;
   const points = [];
   for (const row of rows(table)) {
     if (!/^\d{2}-\d{2}-\d{4}$/.test(row[0] ?? '')) continue;
-    if (row.length !== 14) throw new Error('Changed PGCB row');
+    if (row.length !== india + 5) throw new Error('Changed PGCB row');
     const [d, m, y] = row[0].split('-');
     const period = iso(`${y}-${m}-${d}T${row[1]}`, '+06:00');
-    const metrics = ['generation', 'generation.gas', 'generation.liquid_fuel', 'generation.coal', 'generation.hydro', 'generation.solar', 'generation.wind'];
     metrics.forEach((metric, i) => points.push(observation(metric, period, row[i + 2], 'MW')));
-    points.push(observation('imports.india', period, number(row[9]) + number(row[10]) + number(row[11]), 'MW'));
-    points.push(observation('imports.nepal', period, row[12], 'MW'));
+    points.push(observation('imports.india', period, number(row[india]) + number(row[india + 1]) + number(row[india + 2]), 'MW'));
+    points.push(observation('imports.nepal', period, row[india + 3], 'MW'));
   }
   return required(points);
 }

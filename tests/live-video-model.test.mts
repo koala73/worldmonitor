@@ -317,6 +317,21 @@ describe('tap to play (a ready, live stream that never starts)', () => {
     assert.deepEqual(classifyAttempt(youtube({ video: upcoming, elapsedMs: deadline })), { verdict: 'failed', outcome: { kind: 'not-started' } });
   });
 
+  // The browser refused to start the video. Every other source would be refused the same way, so a caller that holds
+  // refused starts keeps this one for the viewer instead of spending the full deadline and falling through.
+  it('holds a live HLS playlist the browser refused to start once tapToPlayMs has passed, on any source', () => {
+    const wait = LIVE_VIDEO_TIMING.tapToPlayMs;
+    const refused = { manifest: 'live', progress: 'stalled', startRefused: true } as const;
+    assert.deepEqual(classifyAttempt(hls({ ...refused, elapsedMs: wait - 1 }), { holdRefused: true }), { verdict: 'pending' });
+    assert.deepEqual(classifyAttempt(hls({ ...refused, elapsedMs: wait }), { holdRefused: true }), { verdict: 'unverifiable', reason: 'not-started' });
+  });
+
+  it('waits the full deadline for a refused start when not asked to hold refusals, or when the playlist is not known live', () => {
+    const wait = LIVE_VIDEO_TIMING.tapToPlayMs;
+    assert.deepEqual(classifyAttempt(hls({ manifest: 'live', progress: 'stalled', startRefused: true, elapsedMs: wait })), { verdict: 'pending' });
+    assert.deepEqual(classifyAttempt(hls({ manifest: 'unknown', progress: 'stalled', startRefused: true, elapsedMs: wait }), { holdRefused: true }), { verdict: 'pending' });
+  });
+
   it('shows no player controls hint until the player is ready', () => {
     assert.deepEqual(connectingHint(youtube({ readyAtMs: null, elapsedMs: 5_000 })), { ready: false, tapToPlay: false });
     assert.deepEqual(connectingHint(hls({ manifest: 'unknown', elapsedMs: 5_000 })), { ready: false, tapToPlay: false });
@@ -372,5 +387,13 @@ describe('advanceChain: resume', () => {
     assert.equal(resumed.effect.type, 'keep');
     assert.equal(resumed.state.attempts.length, 0);
     assert.equal(advanceChain(start.state, { type: 'resume' }, parsed, 0).state, start.state);
+  });
+
+  it('holds a not-started stream on its own source even when an untried HLS source follows', () => {
+    const parsed = parseSource({ slot: 't', entries: ['https://a.example/live.m3u8', 'https://b.example/live.m3u8'], origin: 'builtin' });
+    const start = startChain(parsed, new Set());
+    const held = advanceChain(start.state, { type: 'verdict', verdict: { verdict: 'unverifiable', reason: 'not-started' } }, parsed, 0);
+    assert.equal(held.state.phase, 'unverified');
+    assert.equal(held.effect.type, 'keep');
   });
 });

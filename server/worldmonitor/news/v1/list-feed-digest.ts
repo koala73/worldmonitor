@@ -100,7 +100,7 @@ import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
 import { buildClassifyCacheKey, isValidClassifyHit } from '../../intelligence/v1/_shared';
-import { SOURCE_TIERS, declaredSourceTier, getSourceTier } from '../../../_shared/source-tiers';
+import { declaredSourceTier, declaredSourceTierKey, getSourceTier } from '../../../_shared/source-tiers';
 import {
   getSourcePropagandaRisk,
   hasReviewedPropagandaRisk,
@@ -716,12 +716,15 @@ function resolveCredibilitySourceName(item: CredibilitySourceItem): string {
   const rawName = originPublisher || source;
   const family = publisherFamilyFor(rawName);
   const familyEntry = PUBLISHER_FAMILIES[family];
+  // A name with a tier is read in the tier table's spelling, so tier and risk
+  // lookups by exact key see "Times of India" for "The Times of India".
   const candidates = [
     rawName,
     familyEntry?.publisher,
     ...(familyEntry?.labels ?? []),
   ].filter((candidate): candidate is string =>
-    typeof candidate === 'string' && candidate.length > 0);
+    typeof candidate === 'string' && candidate.length > 0)
+    .map(candidate => declaredSourceTierKey(candidate) ?? candidate);
 
   // Prefer one identity reviewed by both registries so tier and risk describe
   // the same publisher; then degrade toward whichever curated signal exists.
@@ -2624,9 +2627,8 @@ export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): Proto
     ? item.originPublisher.trim()
     : '';
   const credibilitySource = resolveCredibilitySourceName(item);
-  const resolved = publisherName ? credibilitySource.toLowerCase() : '';
   // The tier table's spelling: the relay's tier lookup is exact-key.
-  const origin = resolved ? Object.keys(SOURCE_TIERS).find((name) => name.toLowerCase() === resolved) ?? '' : '';
+  const origin = publisherName ? declaredSourceTierKey(credibilitySource) ?? '' : '';
   return {
     source: item.source,
     // Only a publisher with a curated tier: the aggregator's text alone is not an identity.
@@ -3084,16 +3086,20 @@ export function alertPoolItems(servable: readonly ParsedItem[], served: readonly
     .sort((a, b) => b.publishedAt - a.publishedAt)
     .filter(item => !taken.has(item.title) && taken.add(item.title))
     .slice(0, ALERT_POOL_MAX_ITEMS)
-    .map(item => ({
-      title: item.title,
-      source: item.source,
-      // The relay scores a topic feed's item on this publisher, as for served items (#10977).
-      ...(toProtoItem(item).originPublisher ? { originPublisher: toProtoItem(item).originPublisher } : {}),
-      link: item.link,
-      ...(item.linkVerified === true ? { linkVerified: true } : {}),
-      publishedAt: item.publishedAt,
-      corroborationCount: item.corroborationCount,
-    }));
+    .map(item => {
+      const { originPublisher, publisherName } = toProtoItem(item);
+      return {
+        title: item.title,
+        source: item.source,
+        // The relay scores a topic feed's item on this publisher, as for served items (#10977),
+        // and labels the alert with the name the aggregator gave it.
+        ...(originPublisher ? { originPublisher, publisherName } : {}),
+        link: item.link,
+        ...(item.linkVerified === true ? { linkVerified: true } : {}),
+        publishedAt: item.publishedAt,
+        corroborationCount: item.corroborationCount,
+      };
+    });
 }
 
 async function recordAlertPool(

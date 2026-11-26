@@ -272,6 +272,16 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  'catalogue.data.wa.gov.au': {
+    license: "CC-BY-4.0 (FuelWatch Historic Fuel Prices dataset licence on catalogue.data.wa.gov.au, read 2026-11-26; the monthly CSVs are served from warsydprdstafuelwatch.blob.core.windows.net)",
+    attribution: "Credit FuelWatch, Government of Western Australia, FuelWatch Historic Fuel Prices, and link to https://catalogue.data.wa.gov.au/dataset/fuelwatch-historic-fuel-prices; medians across stations and USD conversions are derived values.",
+    status: 'reviewed',
+  },
+  'datos.energia.gob.ar': {
+    license: "CC-BY-4.0 (dataset licence on datos.gob.ar/dataset/precios-en-surtidor, read 2026-11-26)",
+    attribution: "Credit Secretaría de Energía de la Nación (Argentina), Precios en surtidor - Resolución 314/2016, and link to https://datos.energia.gob.ar/dataset/1c181390-5045-475e-94dc-410429be4b17; medians across stations and USD conversions are derived values.",
+    status: 'reviewed',
+  },
   'transparency.ems.rs': {
     license: "All rights reserved (AD Elektromreža Srbije site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
     attribution: "Credit Elektromreža Srbije (EMS) transparency platform and link to https://transparency.ems.rs/; hour placement in UTC is derived.",
@@ -331,9 +341,9 @@ const PROVIDER_OVERRIDES = {
   },
   'www2.moeaea.gov.tw': {
     provider: 'www2.moeaea.gov.tw',
-    license: 'Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed',
-    attribution: 'Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.',
-    status: 'terms-review',
+    license: 'Taiwan government website open data declaration (www2.moeaea.gov.tw/oil111/opendataannouncement, read 2026-11-26): free, non-exclusive, irrevocable reuse including adaptation and redistribution, with attribution',
+    attribution: 'Credit Taiwan MOEA Energy Administration, oil111 fuel price information system (https://www2.moeaea.gov.tw/oil111/); national and county means are survey averages, and USD conversions are derived values.',
+    status: 'reviewed',
   },
   // Food-price publishers (#9892) whose own terms we recorded at onboarding.
   'stat.uz': {
@@ -1415,11 +1425,11 @@ const EXCLUDED_HOSTS = new Set([
   'wingbits.com',
   // Vendor pricing, marketplace, and procurement pages cited as price sources
   // in /compare/ copy. Nothing fetches them.
+  'assets.applytosupply.digitalmarketplace.service.gov.uk',
   'aws.amazon.com',
   'liveuamap.com',
   'me.liveuamap.com',
   'offnadir-delta.com',
-  'www.applytosupply.digitalmarketplace.service.gov.uk',
   'www.factal.com',
   'www.vendr.com',
 ]);

@@ -18556,6 +18556,15 @@ button.popup-link {
   color: var(--text-dim);
 }
 
+.popup-toggle-error {
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  text-align: left;
+  color: var(--semantic-critical-text, var(--semantic-critical));
+}
+
 .popup-toggle-switch {
   position: relative;
   width: 32px;

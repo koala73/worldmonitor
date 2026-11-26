@@ -57,3 +57,27 @@ widget, `creg-page.html` to the three newest price tables, `doe-ncr-page.html`
 to the payload fragments that link each weekly PDF, and the three `ursea-*.html`
 pages to their `<main>` element. Each HTML fixture starts with a comment naming
 its source URL.
+
+`fuelwatch-retail-2026-11-excerpt.csv` is a verbatim excerpt of
+`https://warsydprdstafuelwatch.blob.core.windows.net/historical-reports/FuelWatchRetail-11-2026.csv`
+as read on 2026-11-26 (FuelWatch Historic Fuel Prices, CC BY 4.0): every 30th
+station by trading name, 24 and 25 November, all products. Its expected medians
+for 25 November (ULP 2.099, PULP 2.229, 98 RON 2.319, diesel 2.569 AUD/l) and
+the 24 November ULP median (1.947) were computed from the CSV independently
+with Python's `statistics.median`.
+
+`searg-surtidor-2024-02-06.csv` (#11154) is an unmodified excerpt of the
+Secretaría de Energía "Precios vigentes en surtidor - Resolución 314/2016" CSV
+(CC-BY-4.0): the header and every row of the first 40 stations, in file order,
+from the Internet Archive capture of 2024-02-06 08:41:39 UTC
+(`web.archive.org/web/20240206084139id_/http://datos.energia.gob.ar/...`). The
+live host refused connections when the feed was written. The tests freeze time
+at 2024-02-06 12:00 UTC.
+
+`oil111-92.json`, `oil111-95.json`, `oil111-98.json`, `oil111-diesel.json` and
+`oil111-lpg.json` are the unmodified (re-indented) responses of
+`https://www2.moeaea.gov.tw/oil111/{Gasoline,LPG}/CountyCityAvg/load` posted with
+`unit=week|month`, `oil=01..05` and `start=lastone` on 2026-11-26. Their expected
+national and county means (92: 31.11 national, 31.2 Taipei; 95: 32.54; diesel:
+29.74; LPG: 768.01 national, 844 Taipei, 1000 Lienchiang) were computed from the
+JSON independently with Python, weighting groups by surveyed stations.

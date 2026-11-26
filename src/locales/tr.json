@@ -1946,7 +1946,8 @@
         "minutesAgo": "{{count}}dk once",
         "hoursAgo": "{{count}}sa once",
         "daysAgo": "{{count}}g once"
-      }
+      },
+      "breakingAlertsNotSaved": "Kaydedilemedi. Bu site için site verilerine izin verin veya tarayıcı depolamayı boşaltın, ardından tekrar deneyin."
     },
     "countryTimeline": {
       "now": "simdi",
