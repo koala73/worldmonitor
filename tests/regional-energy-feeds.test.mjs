@@ -110,6 +110,27 @@ describe('regional energy source observations', () => {
     assert.equal(point(rows, 'load_shedding'), undefined);
   });
 
+  // PGCB added a Nuclear column after Wind on 2026-11-23 (Rooppur).
+  it('reads the PGCB table with its Nuclear column', () => {
+    const rows = parsePgcb(fixture('pgcb-nuclear.html'));
+    const at = period => metric => rows.find(r => r.metric === metric && r.period === period)?.value;
+    const six = at('2026-11-26T00:00:00.000Z');
+    assert.equal(six('generation'), 8846);
+    assert.equal(six('generation.gas'), 3811);
+    assert.equal(six('generation.coal'), 3132);
+    assert.equal(six('generation.wind'), 26);
+    assert.equal(six('generation.nuclear'), 0);
+    assert.equal(six('imports.india'), 916 + 66 + 849);
+    assert.equal(six('imports.nepal'), 0);
+    assert.equal(at('2026-11-25T23:00:00.000Z')('generation.wind'), 16);
+    assert.equal(point(parsePgcb(fixture('pgcb.html')), 'generation.nuclear'), undefined, 'the older table has no Nuclear column');
+  });
+
+  it('rejects a PGCB row whose width does not match its header', () => {
+    const html = fixture('pgcb-nuclear.html').replace('<td>26</td>', '');
+    assert.throws(() => parsePgcb(html), /Changed PGCB row/);
+  });
+
   it('reads dated NISO daily energy separately from peak power', () => {
     const rows = parseNiso(fixture('niso.html'));
     assert.equal(point(rows, 'generation.peak').value, 4365.2);
