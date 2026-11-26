@@ -577,6 +577,29 @@ describe('tab sync driver', () => {
     assert.ok(serverB.calls.every((c) => c.changes.every((ch) => ch.record?.name !== 'A secret edit')));
   });
 
+  it('signing back in clears the last sign-out when sync is off for the page', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    signOutTabSync(host);
+    assert.equal(prepareTabSyncSignIn('user_a', false).willSync, false);
+    assert.equal(loadTabSyncMeta()!.signedOut, undefined);
+  });
+
+  it('does not overwrite a held store it cannot parse', async () => {
+    const key = `worldmonitor-tabs-held-v1:${SITE_VARIANT}`;
+    localStorage.setItem(key, '{not json');
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs.push(tab('tab-a-2', 'Unpushed'));
+    useServer(new FakeServer());
+    signIn('user_b', host);
+    await settle();
+    assert.equal(localStorage.getItem(key), '{not json');
+    assert.ok(host.state.tabs.some((t) => t.name === 'Unpushed'), 'kept on the device');
+  });
+
   it("keeps a pre-sync account's tabs for it instead of dropping them", async () => {
     localStorage.setItem('wm-last-signed-in-as', 'user_a');
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A work')] });

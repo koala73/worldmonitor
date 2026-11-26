@@ -139,12 +139,15 @@ interface StoredHeld {
   base: TabSyncMeta['base'];
 }
 
-function loadHeld(): Record<string, StoredHeld> {
-  const raw = safeStorageGetChecked(HELD_KEY).value;
+/** The held store; null when it exists but cannot be read, so no write replaces it. */
+function loadHeld(): Record<string, StoredHeld> | null {
+  const read = safeStorageGetChecked(HELD_KEY);
+  if (!read.ok) return null;
+  const raw = read.value;
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed)) return {};
+    if (!isRecord(parsed)) return null;
     const out: Record<string, StoredHeld> = {};
     for (const [userId, entry] of Object.entries(parsed)) {
       if (!isRecord(entry) || !Array.isArray(entry.records)) continue;
@@ -157,7 +160,7 @@ function loadHeld(): Record<string, StoredHeld> {
     }
     return out;
   } catch {
-    return {};
+    return null;
   }
 }
 
@@ -171,6 +174,7 @@ function saveHeld(held: Record<string, StoredHeld>): boolean {
  */
 function holdTabs(userId: string, add: HeldTabs): boolean {
   const all = loadHeld();
+  if (!all) return false;
   const prev = all[userId] ?? { records: [], base: {} };
   const records = add.tabs.map((t) => ({ id: t.id, record: captureTabRecord(t, add.carried[t.id]) }));
   const ids = new Set(records.map((r) => r.id));
@@ -187,8 +191,8 @@ function holdTabs(userId: string, add: HeldTabs): boolean {
 /** Forget held tabs that are back on the device. */
 function releaseHeld(userId: string, ids: readonly string[]): void {
   const all = loadHeld();
-  const entry = all[userId];
-  if (!entry || ids.length === 0) return;
+  const entry = all?.[userId];
+  if (!all || !entry || ids.length === 0) return;
   const gone = new Set(ids);
   const records = entry.records.filter((r) => !gone.has(r.id));
   if (records.length === 0) delete all[userId];
@@ -300,7 +304,6 @@ export function prepareTabSyncSignIn(userId: string, enabled: boolean): { willSy
   // A direct switch: stop the previous account's session first, so the
   // state it stores (and the tabs it held back) is what this sign-in reads.
   if (session && session.userId !== userId) stopTabSync();
-  if (!enabled || unavailableForPage) return { willSync: false };
   // An unreadable key would look like "no previous account" and pick the
   // wrong merge mode; tabs stay local instead.
   const stored = safeStorageGetChecked(META_KEY);
@@ -308,11 +311,12 @@ export function prepareTabSyncSignIn(userId: string, enabled: boolean): { willSy
   const meta = parseTabSyncMeta(stored.value);
   if (meta?.userId === userId && (meta.signedOut || meta.heldBack)) {
     // This account is back: the marks from its last sign-out no longer
-    // describe this device, even if sync never completes a pass this time.
+    // describe this device, whether or not sync runs this time.
     delete meta.signedOut;
     delete meta.heldBack;
     saveTabSyncMeta(meta);
   }
+  if (!enabled || unavailableForPage) return { willSync: false };
   let previous: string | null;
   let previousSyncKnown: boolean;
   if (meta?.userId) {
@@ -333,7 +337,7 @@ export function prepareTabSyncSignIn(userId: string, enabled: boolean): { willSy
     mode,
     previousSyncKnown,
     previousMeta: meta ?? emptyTabSyncMeta(previous),
-    restore: loadHeld()[userId] ?? null,
+    restore: loadHeld()?.[userId] ?? null,
   };
   return { willSync: true };
 }
