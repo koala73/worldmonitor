@@ -2192,6 +2192,7 @@ describe('crawlable corpus generator', () => {
       'scripts/source-catalog-identity.mjs',
       'shared/source-geography.json',
       'shared/publisher-families.js',
+      'shared/publisher-name.js',
       'shared/crawlable-crises.json',
       'shared/news-catalog.json',
     ]);

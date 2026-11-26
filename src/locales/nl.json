@@ -1020,7 +1020,8 @@
       },
       "breakingAlerts": "Urgente meldingen",
       "popupAlerts": "Nieuwe meldingen weergeven",
-      "hideFindings": "Bevindingen verbergen"
+      "hideFindings": "Bevindingen verbergen",
+      "breakingAlertsNotSaved": "Opslaan is mislukt. Sta sitegegevens voor deze site toe of maak opslagruimte in je browser vrij en probeer het opnieuw."
     },
     "economic": {
       "noIndicatorData": "Nog geen indicatorgegevens — Federal Reserve Economic Data wordt mogelijk geladen",

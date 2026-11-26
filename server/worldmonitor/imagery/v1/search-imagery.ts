@@ -167,7 +167,11 @@ export async function searchImagery(
 
         if (!resp.ok) {
           console.warn(`[Imagery] STAC search failed: ${resp.status}`);
-          return { scenes: [], totalResults: 0 };
+          // Null, not an empty result: a non-null payload is cached as a
+          // success for CACHE_TTL, so a transient 429/5xx would be served as
+          // "no scenes over this box" for the next hour and reported as an
+          // upstream 200. Null takes the negative-sentinel path instead.
+          return null;
         }
 
         const data = (await resp.json()) as StacSearchResponse;

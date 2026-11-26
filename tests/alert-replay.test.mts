@@ -1,73 +1,53 @@
-import { describe, it, mock } from 'node:test';
+import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import Module, { createRequire } from 'node:module';
 
-import { computeImportanceScore } from '../server/worldmonitor/news/v1/list-feed-digest.ts';
+import { recordedMatcher, replayIncident, type Incident, type Replayed } from './helpers/alert-replay-harness.mts';
 
-const require = createRequire(import.meta.url);
-
-process.env.UPSTASH_REDIS_REST_URL ??= 'https://stub.upstash.io';
-process.env.UPSTASH_REDIS_REST_TOKEN ??= 'stub-token';
-process.env.CONVEX_URL ??= 'https://stub.convex.cloud';
-process.env.CONVEX_NOTIFICATION_RELAY_SECRET ??= 'stub-secret';
-const ModuleWithLoad = Module as unknown as { _load: (request: string, ...rest: unknown[]) => unknown };
-const originalLoad = ModuleWithLoad._load;
-ModuleWithLoad._load = function patchedLoad(this: unknown, request: string, ...rest: unknown[]) {
-  if (request === 'resend') return { Resend: class {} };
-  if (request === 'convex/browser') return { ConvexHttpClient: class { async query() {} } };
-  return originalLoad.call(this, request, ...rest);
-};
-const { shouldNotify } = require('../scripts/notification-relay.cjs');
-
-interface Wording {
-  source: string;
-  title: string;
-  label: 'critical' | 'high' | 'medium' | 'low' | 'info';
-  variant: string;
-  publishedAt: string;
-  seenAt: string;
-  corroboration: number;
-  observedScore: number;
-  scoreNow?: number;
-}
-interface Incident { id: string; expected: 'alert' | 'none'; knownMiss?: string; wordings: Wording[] }
+// Nothing in a replay may reach the network: the matcher answers from the
+// fixture and every store is in memory.
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (url: unknown) => { throw new Error(`alert replay made a network call: ${String(url)}`); };
+after(() => { globalThis.fetch = originalFetch; });
 
 const { incidents } = JSON.parse(
   readFileSync(new URL('./fixtures/alert-replays.json', import.meta.url), 'utf8'),
 ) as { incidents: Incident[] };
 
-const CRITICAL_REALTIME_RULE = { sensitivity: 'critical', digestMode: 'realtime', eventTypes: [] };
-
-function replay(wording: Wording) {
-  const now = mock.method(Date, 'now', () => Date.parse(wording.seenAt));
-  try {
-    const score = computeImportanceScore(wording.label, wording.source, wording.corroboration, Date.parse(wording.publishedAt), { title: wording.title });
-    const event = { eventType: 'rss_alert', severity: wording.label, variant: wording.variant, payload: { title: wording.title, source: wording.source, importanceScore: score } };
-    return { score, alerts: shouldNotify(CRITICAL_REALTIME_RULE, event) as boolean };
-  } finally {
-    now.mock.restore();
-  }
+const replays: Array<{ incident: Incident; missing: string[]; rows: Replayed[] }> = [];
+for (const incident of incidents) {
+  const matcher = recordedMatcher(incident);
+  replays.push({ incident, missing: matcher.missing, rows: await replayIncident(incident, matcher) });
 }
 
 describe('alert replay set (#10976)', () => {
-  const previous = process.env.IMPORTANCE_SCORE_LIVE;
-  process.env.IMPORTANCE_SCORE_LIVE = '1';
-
-  for (const incident of incidents) {
+  for (const { incident, missing, rows } of replays) {
     describe(incident.id, () => {
-      const results = incident.wordings.map((w) => ({ wording: w, ...replay(w) }));
+      it('has a recorded matcher answer for every question the replay asks', () => {
+        assert.deepEqual(missing, [], 'run tests/helpers/record-alert-replay-matches.mts');
+      });
 
-      for (const { wording, score } of results) {
-        it(`scores the ${wording.source} copy queued at ${wording.seenAt} as production did`, () => {
-          assert.equal(score, wording.scoreNow ?? wording.observedScore);
+      for (const { wording, loggedInputsScore, score, reaches, corroboratedBy } of rows) {
+        describe(`${wording.originPublisher ?? wording.source} copy queued at ${wording.seenAt}`, () => {
+          it('scores the logged inputs as production logged them', () => {
+            // A tier-table fix changes what the logged inputs score today; the
+            // wording then records the new score and why it moved.
+            assert.equal(loggedInputsScore, wording.loggedInputsScoreNow ?? wording.observedScore);
+            if (wording.loggedInputsScoreNow !== undefined) assert.ok(wording.loggedInputsScoreNowBecause, 'loggedInputsScoreNow needs loggedInputsScoreNowBecause');
+          });
+          it('scores and routes as today\'s code does', () => {
+            assert.deepEqual(
+              { score, reaches, corroboratedBy: [...corroboratedBy].sort() },
+              { score: wording.scoreNow, reaches: wording.reaches, corroboratedBy: [...(wording.corroboratedBy ?? [])].sort() },
+            );
+          });
         });
       }
 
-      const alerted = results.some((r) => r.alerts);
+      const alerted = rows.some((r) => r.reaches === 'realtime');
       if (incident.knownMiss) {
-        it(`still misses until ${incident.knownMiss} lands (update expected/knownMiss when this fails)`, () => {
-          assert.equal(alerted, incident.expected !== 'alert');
+        it(`still misses: ${incident.knownMiss}`, () => {
+          assert.equal(alerted, false, 'the miss is fixed: drop knownMiss');
         });
       } else {
         it(`outcome is ${incident.expected}`, () => {
@@ -76,7 +56,4 @@ describe('alert replay set (#10976)', () => {
       }
     });
   }
-
-  if (previous === undefined) delete process.env.IMPORTANCE_SCORE_LIVE;
-  else process.env.IMPORTANCE_SCORE_LIVE = previous;
 });

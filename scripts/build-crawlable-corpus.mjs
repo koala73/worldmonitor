@@ -195,6 +195,7 @@ export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
   'scripts/source-catalog-identity.mjs',
   'shared/source-geography.json',
   'shared/publisher-families.js',
+  'shared/publisher-name.js',
   CRISIS_REGISTRY_PATH,
   ...FEED_DECLARATION_FILES,
 ]);

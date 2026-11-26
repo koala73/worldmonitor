@@ -68,11 +68,19 @@ export async function refreshPublisherCounts(events, now = Date.now(), pipeline 
 // still a new development.
 export const REWRITE_WINDOW_MS = 48 * 3_600_000;
 const ANCHOR_LIMIT = 128;
-// Below this cosine score a pair is not put to the model. On seven days of
-// deliverable alerts (2026-11-11 to 11-18) the rewrites the model confirmed
-// scored 0.63 and up, and below 0.60 the nearest earlier alert was always
-// another story. Above it, scores alone do not separate the two; the model does.
+// The earlier alerts put to the model score at least this cosine. Above it,
+// scores alone do not separate rewrites from other stories; the model does.
 export const REWRITE_RETRIEVAL_MIN = 0.6;
+// When none does, those scoring at least this are shown instead. The Dymer
+// strike near Kyiv on 2026-11-22 reached every subscriber six times: each later
+// wording's nearest earlier alert scored 0.53 to 0.58, and later wordings of
+// the Zaporizhzhia toll, the Shenzhen summit and the Myanmar genocide ruling
+// scored 0.50 to 0.59.
+// The lower floor is kept to that case because a longer list of weaker
+// wordings makes the model readier to merge: at a flat 0.45 it hid Putin's
+// "painful response" threat and the EU-UK deal, both above 0.60
+// (docs/research/alert-event-identity/README.md).
+export const REWRITE_RETRIEVAL_FALLBACK_MIN = 0.45;
 // Three was too few: wordings of one story fill the top places. On 2026-11-21
 // "Bahrain says Iran struck industrial site as tankers hit in Hormuz" ranked
 // five tanker alerts above the Bahrain one it repeats, so the judge never saw
@@ -168,6 +176,7 @@ It is the same incident when the core event matches: the same kind of event, by 
 
 It is a new development when any part of the NEW headline reports one of these, even if the rest repeats an earlier headline:
 - a separate event: another attack or strike (also on the same place or by the same side), or events of a later day
+- the incident reaching another country: a strike, missile, drone or attack in, on or crossing into a country that no earlier headline about it named
 - confirmation that something the earlier headline only called possible, likely, suspected or unconfirmed did happen, or a denial or reversal of it
 - a consequential response: a counter-attack or retaliation, a leader's new threat or vow of retaliation (one already reported, or given only as background, is not new), a formal alliance step such as invoking a treaty article, sanctions, an evacuation, a new deployment of forces, a declared emergency
 - an outcome: a deal, an end of talks, a resignation, an arrest, the death of a named person
@@ -279,6 +288,7 @@ async function decide(event, decision, { now, pipeline, embed, judge, deadlineAt
       decision.retrieval = 'embedding';
       decision.best = { id: scored[0].id, score: scored[0].score };
       ranked = scored.filter(anchor => anchor.score >= REWRITE_RETRIEVAL_MIN);
+      if (!ranked.length) ranked = scored.filter(anchor => anchor.score >= REWRITE_RETRIEVAL_FALLBACK_MIN);
     } catch (err) {
       // The scores are then word overlaps, not cosines.
       decision.embedError = describeError(err);

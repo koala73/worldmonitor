@@ -78,16 +78,22 @@ export const required = points => {
   return points;
 };
 
-function csv(source, delimiter = ',') {
+// A row with the wrong number of cells fails the file, unless skipRagged is set:
+// then it is dropped and counted in `ragged` so the caller can bound the loss.
+export function csv(source, delimiter = ',', { skipRagged = false } = {}) {
   const parsed = Papa.parse(source.replace(/^\ufeff/, '').replace(/\r\n?/g, '\n'), { delimiter, newline: '\n', skipEmptyLines: 'greedy' });
   if (parsed.errors.length || !parsed.data.length) throw new Error('Invalid energy CSV');
   const records = parsed.data.map(row => row.map(cell => cell.trim()));
   const header = records.shift();
   if (new Set(header).size !== header.length) throw new Error('Duplicate energy CSV columns');
-  return { header, records: records.map(row => {
-    if (row.length !== header.length) throw new Error('Changed energy CSV columns');
-    return Object.fromEntries(header.map((key, i) => [key, row[i]]));
-  }) };
+  let ragged = 0;
+  const rows = records.filter(row => {
+    if (row.length === header.length) return true;
+    if (!skipRagged) throw new Error('Changed energy CSV columns');
+    ragged++;
+    return false;
+  });
+  return { header, ragged, records: rows.map(row => Object.fromEntries(header.map((key, i) => [key, row[i]]))) };
 }
 
 function columns(header, names) {

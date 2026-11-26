@@ -3,6 +3,7 @@
 import ExcelJS from 'exceljs';
 import { unzipSync, strFromU8 } from 'fflate';
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, writeExtraKey, getSharedFxRates, SHARED_FX_FALLBACKS, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { WDS_VECTORS_URL, fetchApprovedWdsJson, parseVectorSeries } from './lib/statcan-wds.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -788,6 +789,13 @@ const REGIONAL_FUEL_SOURCES = [
     gasoline: { area: 'Gasolina Súper 95', unit: 'UYU/l', grade: 'Super 95' },
     diesel: { area: 'Gas Oil 50S', unit: 'UYU/l', grade: 'Diesel 50S' },
   },
+  {
+    // Western Australia only (#10838): FuelWatch covers no other state, so the
+    // row is named for it rather than for Australia.
+    id: 'fuelwatch', code: 'AU', name: 'Australia (Western Australia)', currency: 'AUD', flag: '🇦🇺', source: 'FuelWatch (WA)', maxAgeDays: 5,
+    gasoline: { area: 'ULP; median of stations', unit: 'AUD/l', grade: 'ULP 91 (WA station median)' },
+    diesel: { area: 'Diesel; median of stations', unit: 'AUD/l', grade: 'Diesel (WA station median)' },
+  },
 ];
 export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s => s.currency))];
 
@@ -796,7 +804,7 @@ export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s 
 // first so their countries are not dropped for want of a rate, then EUR, which prices
 // every EU row. (EU rows are all published as EUR, so no BGN quote is needed.)
 export const FUEL_FX_CURRENCIES = (() => {
-  const all = [...new Set(['EUR', 'MYR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BRL', 'NZD', 'GBP', 'NOK', 'ISK', 'TWD', ...REGIONAL_FUEL_CURRENCIES])];
+  const all = [...new Set(['EUR', 'MYR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BRL', 'NZD', 'GBP', 'NOK', 'ISK', 'TWD', 'CAD', ...REGIONAL_FUEL_CURRENCIES])];
   return [...all.filter(c => SHARED_FX_FALLBACKS[c] == null), ...all.filter(c => SHARED_FX_FALLBACKS[c] != null)];
 })();
 
@@ -847,6 +855,41 @@ export async function fetchNorway() {
   });
   if (!response.ok) throw new Error(`SSB HTTP ${response.status}`);
   const entry = parseNorwayFuel(await response.json());
+  return entry ? [entry] : [];
+}
+
+// Statistics Canada table 18-10-0001-01, Canada, regular unleaded at self-service
+// stations (#10838). StatCan publishes diesel for 18 cities but not for Canada, so
+// the row carries gasoline only rather than a city's diesel price.
+export const STATCAN_FUEL_VECTOR_ID = 1352087861;
+
+/** Read the newest monthly Canada average in cents/l as CAD/l, dated to its month start. */
+export function parseCanadaFuel(doc, nowMs = Date.now()) {
+  const latest = parseVectorSeries(doc, STATCAN_FUEL_VECTOR_ID).points.at(-1);
+  if (!latest || !/^\d{4}-\d{2}-01$/.test(latest.refPer)) return null;
+  const [year, month] = latest.refPer.split('-').map(Number);
+  // Age from month end: StatCan releases a month about six weeks after it starts.
+  const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  if (!fuelDateIsFresh(monthEnd, 65, nowMs)) return null;
+  const price = latest.value / 100;
+  if (!(price >= 0.5 && price <= 5)) return null;
+  return {
+    code: 'CA', name: 'Canada', currency: 'CAD', flag: '🇨🇦',
+    gasoline: { localPrice: +price.toFixed(4), grade: 'Regular unleaded (self-serve, monthly mean)', source: 'Statistics Canada, table 18-10-0001-01', observedAt: latest.refPer },
+    diesel: null,
+  };
+}
+
+/** Query the WDS for the last three months; StatCan refuses Railway egress, so proxy exits back up the direct request. */
+export async function fetchCanada({ fetchFn, proxyAuth = resolveProxyForConnect(), nowMs = Date.now() } = {}) {
+  const doc = await fetchApprovedWdsJson(WDS_VECTORS_URL, {
+    method: 'POST',
+    body: JSON.stringify([{ vectorId: STATCAN_FUEL_VECTOR_ID, latestN: 3 }]),
+    cacheKey: `statcan-wds:fuel:${STATCAN_FUEL_VECTOR_ID}`,
+    proxyAuth,
+    ...(fetchFn ? { fetchFn } : {}),
+  });
+  const entry = parseCanadaFuel(doc, nowMs);
   return entry ? [entry] : [];
 }
 
@@ -989,7 +1032,7 @@ export function parseCREStationPrices(xml) {
 // block the multi-country snapshot.
 // These additions are optional coverage: outages/stale data omit their rows and
 // remain visible in failedSources/allSourcesFresh without blocking core coverage.
-const TOLERATED_FAILURES = new Set(['Spain-Minetur', 'Brazil', 'New Zealand', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA']);
+const TOLERATED_FAILURES = new Set(['Spain-Minetur', 'Brazil', 'New Zealand', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA', 'Canada-StatCan']);
 
 // Publish gate. Exported so tests can lock in the contract.
 //
@@ -1075,9 +1118,10 @@ const fetchResults = await Promise.allSettled([
   withFuelRetry('NO', fetchNorway),
   withFuelRetry('IS', () => fetchIceland(fxRates)),
   fetchTaiwan(),
+  fetchCanada().catch(err => { console.warn(`  [CA] fetchCanada error: ${err.message}`); return []; }),
 ]);
 
-const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'Spain-Minetur', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA'];
+const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'Spain-Minetur', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA', 'Canada-StatCan'];
 let successfulSources = 0;
 const failedSources = [];
 

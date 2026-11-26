@@ -15,6 +15,7 @@
 import sourceTiersData from '../../shared/source-tiers.json';
 import { TELEGRAM_SOURCE_TIERS } from '../../shared/telegram-channel-trust';
 import { X_ACCOUNT_SOURCE_TIERS } from '../../shared/x-account-trust';
+import { foldPublisherName } from '../../shared/publisher-name.js';
 
 export const SOURCE_TIERS: Record<string, number> = {
   ...(sourceTiersData as Record<string, number>),
@@ -46,23 +47,33 @@ export const TIER_DOCS_PATH = '/docs/data-sources#source-credibility-%26-feed-ti
  * source that no table says.
  */
 export function declaredSourceTier(sourceName: string): DeclaredTier | null {
-  const tier = Object.prototype.hasOwnProperty.call(SOURCE_TIERS, sourceName)
-    ? SOURCE_TIERS[sourceName]
-    : declaredTierByNormalizedName().get(normalizeSourceName(sourceName));
+  const key = declaredSourceTierKey(sourceName);
+  const tier = key === null ? undefined : SOURCE_TIERS[key];
   return tier === 1 || tier === 2 || tier === 3 || tier === 4 ? tier : null;
 }
 
-// Publisher families fold case and trim, so a label that differs from its table
-// key only in case must resolve to the same declared tier. Exact keys still win.
-const normalizeSourceName = (name: string) => name.trim().toLowerCase();
-let normalizedTiers: Map<string, number> | null = null;
-function declaredTierByNormalizedName(): Map<string, number> {
-  if (!normalizedTiers) {
-    normalizedTiers = new Map();
-    for (const [name, tier] of Object.entries(SOURCE_TIERS)) {
-      const key = normalizeSourceName(name);
-      if (!normalizedTiers.has(key)) normalizedTiers.set(key, tier);
+/**
+ * The tier-table key a label names, or null. An exact key wins, then a key
+ * that differs only in case, then one that differs only in case and a leading
+ * "The" (the fold publisher families use). A fold two keys share resolves to
+ * neither: "The Hacker News" and "Hacker News" are different outlets.
+ */
+export function declaredSourceTierKey(sourceName: string): string | null {
+  if (Object.prototype.hasOwnProperty.call(SOURCE_TIERS, sourceName)) return sourceName;
+  const { byLowerName, byFoldedName } = tierKeyIndex();
+  return byLowerName.get(sourceName.trim().toLowerCase()) ?? byFoldedName.get(foldPublisherName(sourceName)) ?? null;
+}
+
+let tierKeys: { byLowerName: Map<string, string>; byFoldedName: Map<string, string | null> } | null = null;
+function tierKeyIndex() {
+  if (!tierKeys) {
+    tierKeys = { byLowerName: new Map(), byFoldedName: new Map() };
+    for (const name of Object.keys(SOURCE_TIERS)) {
+      const lower = name.trim().toLowerCase();
+      if (!tierKeys.byLowerName.has(lower)) tierKeys.byLowerName.set(lower, name);
+      const folded = foldPublisherName(name);
+      tierKeys.byFoldedName.set(folded, tierKeys.byFoldedName.has(folded) ? null : name);
     }
   }
-  return normalizedTiers;
+  return tierKeys;
 }

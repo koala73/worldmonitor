@@ -380,7 +380,7 @@ The enabled channels in the default `full` Telegram channel set provide a raw, l
 | **Tier 2** | Established sources |
 | **Tier 3** | Specialist sources |
 
-The channel set intentionally includes official, state-affiliated, partisan, and belligerent-party channels — for example military, ministry, state-media, and faction-aligned sources alongside independent OSINT accounts. Telegram posts are ingested as raw OSINT leads, not endorsed truth. Each enabled channel is registered under its display label in the additive `TELEGRAM_SOURCE_TIERS` overlay and `shared/source-provenance.ts`, with an honest mapping from the private operational `tier` (poll priority in `data/telegram-channels.json`) onto the public editorial scale. The server and browser merge that overlay with the canonical RSS tier JSON, so Telegram identity changes cannot leave stale tier keys in the RSS registry. Official military publishers are government sources with high state-affiliated risk; anonymous OSINT aggregators stay specialty or aggregator tier and do not inherit a wire-service rating. Trust badges on Telegram Intel items reuse the same propaganda/tier CSS as news clusters.
+The channel set intentionally includes official, state-affiliated, partisan, and belligerent-party channels — for example military, ministry, state-media, and faction-aligned sources alongside independent OSINT accounts. Telegram posts are ingested as raw OSINT leads, not endorsed truth. Each enabled channel is registered under its display label in the additive `TELEGRAM_SOURCE_TIERS` overlay and `shared/source-provenance.ts`, with an honest mapping from the private operational `tier` (poll priority in `data/telegram-channels.json`) onto the public editorial scale. The server, the browser and the alert relay merge that overlay (kept in `shared/telegram-source-tiers.json`) with the canonical RSS tier JSON, so Telegram identity changes cannot leave stale tier keys in the RSS registry and an alert scores on the tier the news digest shows. Official military publishers are government sources with high state-affiliated risk; anonymous OSINT aggregators stay specialty or aggregator tier and do not inherit a wire-service rating. Trust badges on Telegram Intel items reuse the same propaganda/tier CSS as news clusters.
 
 **Architecture**: A GramJS MTProto client running on the Railway relay polls all channels sequentially on a 60-second cycle. Each channel has a 15-second timeout (GramJS `getEntity`/`getMessages` can hang indefinitely on FLOOD_WAIT or MTProto stalls), and the entire cycle has a 3-minute hard timeout. A stuck-poll guard force-clears the mutex after 3.5 minutes, and FLOOD_WAIT errors from Telegram's API stop the cycle early rather than propagating to every remaining channel.
 
@@ -523,6 +523,8 @@ The dashboard recalculates oil-price freshness from the observation time. The RE
 | GIE AGSI+ | EU natural gas storage levels | [agsi.gie.eu](https://agsi.gie.eu) |
 | U.S. EIA | Crude oil inventories, fuel prices, energy data | [eia.gov/opendata](https://www.eia.gov/opendata) |
 | Statistics Norway (SSB) | Monthly national petrol 95 and dutiable diesel averages, NOK/l | [SSB table 09654](https://data.ssb.no/api/v0/en/table/09654) |
+| Statistics Canada | Monthly Canada average regular unleaded price at self-service stations, CAD/l | [table 18-10-0001-01](https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810000101) |
+| FuelWatch (Western Australia) | Daily median of station ULP and diesel prices, Western Australia only, AUD/l | [FuelWatch Historic Fuel Prices](https://catalogue.data.wa.gov.au/dataset/fuelwatch-historic-fuel-prices) |
 | Gasvaktin (community project) | Unweighted mean of ordinary station petrol 95 and diesel prices, ISK/l | [Gasvaktin data and attribution](https://github.com/gasvaktin/gasvaktin) |
 | Taiwan MOEA Energy Administration | Weekly 92 unleaded and diesel pump surveys, TWD/l | [oil111 county survey](https://www2.moeaea.gov.tw/oil111/Gasoline/CountyCityAvg) |
 | USGS Mineral Commodity Summaries | Annual mine and refinery production by country (public domain) | [sciencebase.gov MCS 2026](https://doi.org/10.5066/P1WKQ63T) |
@@ -546,6 +548,15 @@ Its ordinary pump prices exclude discounts; the observation date is the last
 Git revision changing the station file (content is fetched at that exact revision),
 with a 14-day freshness limit. This date records a file change, not verification
 of every station. Credit: Gasvaktin and its contributors.
+
+Canada's row comes from Statistics Canada table 18-10-0001-01 (Statistics
+Canada Open Licence): the monthly Canada average for regular unleaded at
+self-service stations, dated to the first of the month and expired 65 days
+after month end. StatCan publishes diesel for 18 cities but not for Canada, so
+the row has no diesel price. StatCan refuses Railway's egress, so the request
+falls back to proxy exits, as the StatCan economic seeder does. Western
+Australia's row is the median of FuelWatch station prices (CC BY 4.0) on the
+newest day, labelled for that state only, with a 5-day freshness limit.
 
 Taiwan's derived national survey mean weights the published, rounded mainland,
 offshore and mountain group averages by their report counts. Missing groups with zero reports

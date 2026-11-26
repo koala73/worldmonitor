@@ -272,6 +272,11 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  'catalogue.data.wa.gov.au': {
+    license: "CC-BY-4.0 (FuelWatch Historic Fuel Prices dataset licence on catalogue.data.wa.gov.au, read 2026-11-26; the monthly CSVs are served from warsydprdstafuelwatch.blob.core.windows.net)",
+    attribution: "Credit FuelWatch, Government of Western Australia, FuelWatch Historic Fuel Prices, and link to https://catalogue.data.wa.gov.au/dataset/fuelwatch-historic-fuel-prices; medians across stations and USD conversions are derived values.",
+    status: 'reviewed',
+  },
   'release-assets.githubusercontent.com': {
     provider: 'US Restricted Parties feed (Tensorust LLC)',
     license: 'CC BY 4.0 (Creative Commons Attribution 4.0 International)',
