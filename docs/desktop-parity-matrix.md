@@ -168,8 +168,9 @@ release-candidate checklist:
    assets are tauri-action's archive of the built `.app`, not updater
    bundles. They are kept as a portable alternative to the `.dmg`, because
    they draw real downloads (v2.11.8: 1,195 against 2,543 for the dmgs).
-   Linux AppImages carry zsync update information for AppImageUpdate-style
-   tools (#5757). Documented in `docs/desktop-app.mdx` § Auto-Update.
+   Linux AppImage update information for AppImageUpdate-style tools is
+   separate work, still open under #5757 (see the blocker table). The update
+   model is documented in `docs/desktop-app.mdx` § Auto-Update.
 
 ## Drift prevention (current state)
 
