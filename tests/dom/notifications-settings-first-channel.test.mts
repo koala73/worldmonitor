@@ -223,10 +223,15 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     const warn = container.querySelector<HTMLElement>('#usCountryScopeWarn')!;
     expect(warn.hidden).toBe(false);
     expect(warn.textContent).toContain('Alerts are paused until you pick at least one country');
+    const note = container.querySelector<HTMLElement>('[data-channel-type="email"] [role="status"]');
+    expect(note, 'paused note on the connected row').not.toBeNull();
+    expect(note!.hidden).toBe(false);
+    expect(note!.textContent).toMatch(/^Pick a country/);
 
     container.querySelector<HTMLButtonElement>(
       '#usNotifCountryPicker .us-notif-country-chip:not(.us-notif-country-chip-on)',
     )!.click();
+    expect(note!.hidden, 'note hides once a country is picked').toBe(true);
     await vi.waitFor(() => {
       expect(savedRules().at(-1)?.countries?.length).toBe(1);
     }, { timeout: 3000 });

@@ -160,6 +160,8 @@ function submitChannelOAuthForm(popup: Window, launch: ChannelOAuthLaunch): void
 // Marks the failed channel-connect rule save message; the next rule save that
 // lands removes it.
 const CHANNEL_RULE_SAVE_ERROR_ATTR = 'data-channel-rule-save-error';
+// Marks the note that a connected channel waits for a free-plan country pick.
+const SCOPE_PAUSED_NOTE_ATTR = 'data-scope-paused-note';
 
 function appendNotificationError(rowEl: HTMLElement, message: string): void {
   rowEl.querySelector('.us-notif-error')?.remove();
@@ -1243,6 +1245,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             const empty = (countryPicker?.getValue().length ?? 0) === 0;
             const warn = contentEl.querySelector<HTMLElement>(caps.requireCountryScope ? '#usCountryScopeWarn' : '#usCountryScopeHint');
             if (warn) warn.hidden = !empty;
+            for (const note of contentEl.querySelectorAll<HTMLElement>(`[${SCOPE_PAUSED_NOTE_ATTR}]`)) note.hidden = !empty;
           };
           countryPicker = mountCountryChipPicker(pickerRoot, {
             initial,
@@ -1591,11 +1594,22 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         ).then(async (saved) => {
           if (signal.aborted) return;
           if (opts.reload) await reloadNotifSection();
-          if (saved || signal.aborted) return;
+          if (signal.aborted) return;
           const row = container.querySelector<HTMLElement>(`[data-channel-type="${newChannel}"]`);
           if (!row) return;
-          appendNotificationError(row, 'Try again by changing any alert setting below. This channel was not added to your alerts.');
-          row.querySelector('.us-notif-error')?.setAttribute(CHANNEL_RULE_SAVE_ERROR_ATTR, '');
+          if (!saved) {
+            appendNotificationError(row, 'Try again by changing any alert setting below. This channel was not added to your alerts.');
+            row.querySelector('.us-notif-error')?.setAttribute(CHANNEL_RULE_SAVE_ERROR_ATTR, '');
+          } else if (firstChannelEnablePending && caps.requireCountryScope && countryPicker?.getValue().length === 0) {
+            // The free plan's pause: the scope warning sits far below, so
+            // say it where the user just acted.
+            const note = document.createElement('div');
+            note.className = 'us-notif-ch-sub us-notif-ch-sub-wrap us-notif-ch-sub-warn';
+            note.setAttribute('role', 'status');
+            note.setAttribute(SCOPE_PAUSED_NOTE_ATTR, '');
+            note.textContent = 'Pick a country under Country scope to start alerts.';
+            (row.querySelector('.us-notif-ch-body') ?? row).appendChild(note);
+          }
         });
       }
 
