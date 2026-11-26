@@ -23,7 +23,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   batchBoundaryRowsSha, buildBatchBoundaryRows, extractRelayOpenRouterModel, extractRelayPrompt,
-  extractRpcOpenRouterModel, extractRpcPrompt, incompleteBoundaryRows, isClearFalseCritical, planBatchBoundaryPass,
+  extractRpcOpenRouterModel, extractRpcPrompt, incompleteBoundaryRows, isFalseCritical, planBatchBoundaryPass,
   promptSha, scoreAlertLabels, scoreBatchBoundary,
 } from './lib/classify-eval.mjs';
 import { OPENROUTER_PROVIDER_ROUTING } from './_llm-model-timeouts.mjs';
@@ -104,8 +104,10 @@ function report(name, run) {
 function reportBatch(name, c) {
   const s = scoreBatchBoundary(batchRows.rows, c);
   console.log(`\n${name}  (${c.model}, prompt ${c.promptSha}, ${c.chunk}-title completions, ${c.passes} passes, seed ${c.seed}, rows ${c.rowsSha})${c.note ? `  ${c.note}` : ''}`);
-  console.log(`  clear false critical ${s.clearFalseCritical}  (per pass ${c.clearFalseCriticalByPass.join(' ')})`);
-  console.log(`  borderline rows labelled critical ${s.borderlineFalseCritical}, clear-critical boundary labels kept ${s.clearCriticalKept}/${s.clearCriticalAsked}, unlabelled ${s.unlabelled}/${s.asked}`);
+  // Captures before the 2026-11-26 re-registration kept per-pass counts of non-borderline rows only.
+  const perPass = c.falseCriticalByPass ? `  (per pass ${c.falseCriticalByPass.join(' ')})` : '';
+  console.log(`  false critical ${s.falseCritical}${perPass}, of which on borderline rows ${s.borderlineFalseCritical}`);
+  console.log(`  clear-critical boundary labels kept ${s.clearCriticalKept}/${s.clearCriticalAsked}, unlabelled ${s.unlabelled}/${s.asked}`);
   for (const t of s.falseCriticalTitles) console.log(`    ${t}`);
 }
 
@@ -199,7 +201,7 @@ async function runBatchBoundary() {
   const jobs = Array.from({ length: passes }, (_, pass) => planBatchBoundaryPass(batchRows, { seed, pass, chunk: BATCH.chunk })
     .map((batch) => ({ pass, batch }))).flat();
   const labels = {};
-  const clearFalseCriticalByPass = new Array(passes).fill(0);
+  const falseCriticalByPass = new Array(passes).fill(0);
   let next = 0;
   await Promise.all(Array.from({ length: BATCH.concurrency }, async () => {
     while (next < jobs.length) {
@@ -209,12 +211,12 @@ async function runBatchBoundary() {
         const c = (labels[r.title] ??= { asked: 0 });
         c.asked++;
         if (levels[i]) c[levels[i]] = (c[levels[i]] ?? 0) + 1;
-        if (isClearFalseCritical(r, levels[i])) clearFalseCriticalByPass[pass]++;
+        if (isFalseCritical(r, levels[i])) falseCriticalByPass[pass]++;
       });
     }
   }));
   const ordered = Object.fromEntries(batchRows.rows.filter((r) => labels[r.title]).map((r) => [r.title, labels[r.title]]));
-  return { completions: jobs.length, labels: ordered, clearFalseCriticalByPass };
+  return { completions: jobs.length, labels: ordered, falseCriticalByPass };
 }
 
 const startedAt = Date.now();
@@ -225,11 +227,11 @@ let unlabelled;
 let asked;
 let incomplete = [];
 if (batchBoundary) {
-  const { completions, labels, clearFalseCriticalByPass } = await runBatchBoundary();
+  const { completions, labels, falseCriticalByPass } = await runBatchBoundary();
   record = {
     path, model, promptSha: promptSha(prompt), chunk: BATCH.chunk, passes, seed,
     rowsSha: batchBoundaryRowsSha(batchRows.rows), completions, usd: +usage.usd.toFixed(4), note,
-    capturedAt: new Date().toISOString(), clearFalseCriticalByPass, labels,
+    capturedAt: new Date().toISOString(), falseCriticalByPass, labels,
   };
   reportBatch(capture || 'live run', record);
   ({ unlabelled, asked } = scoreBatchBoundary(batchRows.rows, record));

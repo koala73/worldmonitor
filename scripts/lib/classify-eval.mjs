@@ -132,9 +132,9 @@ export function planBatchBoundaryPass({ boundary, fill }, { seed, pass, chunk })
   });
 }
 
-// The gate's count: `critical` on a row judged below critical and not marked borderline. A
-// borderline row's judge would accept the adjacent level, so it is reported, not counted.
-export const isClearFalseCritical = (row, level) => level === 'critical' && row.judge !== 'critical' && !row.borderline;
+// The gate's count: `critical` on any row judged below critical, borderline rows included.
+// A borderline high labelled critical still pages users on a story the judge called high.
+export const isFalseCritical = (row, level) => level === 'critical' && row.judge !== 'critical';
 
 const LEVEL_KEYS = ['critical', 'high', 'medium', 'low', 'info'];
 const unlabelledOf = (c) => c.asked - LEVEL_KEYS.reduce((n, k) => n + (c[k] ?? 0), 0);
@@ -153,19 +153,19 @@ export function incompleteBoundaryRows(boundary, capture, { passes, maxPerRow })
 
 // capture.labels: { [title]: { asked, critical?, high?, medium?, low?, info? } }, summed
 // over every pass. A title asked but given no valid label is unlabelled: production skips it.
+// falseCritical is the gate's count; the borderline split is reported beside it.
 export function scoreBatchBoundary(rows, capture) {
-  const s = { asked: 0, unlabelled: 0, clearFalseCritical: 0, borderlineFalseCritical: 0, clearCriticalAsked: 0, clearCriticalKept: 0, falseCriticalTitles: [] };
+  const s = { asked: 0, unlabelled: 0, falseCritical: 0, borderlineFalseCritical: 0, clearCriticalAsked: 0, clearCriticalKept: 0, falseCriticalTitles: [] };
   for (const r of rows) {
     const c = capture.labels[r.title];
     if (!c) continue;
     const critical = c.critical ?? 0;
     s.asked += c.asked;
     s.unlabelled += unlabelledOf(c);
-    if (isClearFalseCritical(r, 'critical')) {
-      s.clearFalseCritical += critical;
-      if (critical) s.falseCriticalTitles.push(`${critical}/${c.asked} ${r.title}`);
-    } else if (r.judge !== 'critical') {
-      s.borderlineFalseCritical += critical;
+    if (isFalseCritical(r, 'critical')) {
+      s.falseCritical += critical;
+      if (r.borderline) s.borderlineFalseCritical += critical;
+      if (critical) s.falseCriticalTitles.push(`${critical}/${c.asked}${r.borderline ? ' (borderline)' : ''} ${r.title}`);
     } else if (!r.borderline) {
       s.clearCriticalAsked += c.asked;
       s.clearCriticalKept += critical;

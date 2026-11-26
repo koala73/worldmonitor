@@ -15,30 +15,35 @@
 // Registered before any capture at this design:
 // - Design: REGISTERED below. A capture with other values, or with many skipped titles,
 //   does not count.
-// - Count: `critical` on rows judged below critical and not borderline
-//   (isClearFalseCritical), summed over every pass. Borderline rows are reported, not counted.
+// - Count, as first registered (e0e31e1692): `critical` on rows judged below critical and
+//   not borderline. Re-registered 2026-11-26 by the maintainer, after the first result and
+//   with every capture's score under both wordings in hand: `critical` on every row judged
+//   below critical, borderline rows included (isFalseCritical), summed over every pass. A
+//   borderline high labelled critical still pages users on a story the judge called high.
+//   The design, baseline capture and margin method did not change.
 // - Baseline: `relay-baseline`, the first capture of the production prompt at the
 //   registered design, kept whatever it shows and never re-captured.
 // - Gate: `relay-current`, the prompt production sends, may carry at most the baseline's
 //   count plus gateMargin, a one-sided 95% bound on the difference between two independent
 //   draws at the baseline's per-row rates. "No more than the baseline" with no margin would
 //   fail about 45% of re-captures of an equally good prompt (Monte Carlo at the pilot's rates).
-// - Sizing: three incumbent pilots at unregistered seeds put every counted critical on one
-//   row, at 6 to 8 of 10 passes. At that rate, 40 passes catch a prompt that adds 0.4 counted
-//   criticals per pass (4 of 110, the candidate's rate on the statement set) about 96% of the
-//   time, and pass an equally good prompt about 98% of the time.
+//   The re-registration keeps this margin and the frozen baseline capture.
+// - Sizing: 40 passes. Under the first count, the pilots' one counted row (6 to 8 of 10)
+//   gave about 96% detection of 0.4 more counted criticals per pass. Under the re-registered
+//   count, at relay-baseline's own per-row rates (six rows between 0.53 and 1.0), 40 passes
+//   detect 0.4 more per pass about 53% of the time, 0.8 more about 97%, and pass an equally
+//   good prompt about 96% of the time (Monte Carlo).
 // - Teeth: the dcc144836c example must fail this gate. If it passes, that is the result;
 //   the second positive control is the production prompt without its terms-versus-attack
 //   example line ("Iran sets its terms for reopening Hormuz" -> high).
 //
-// Result, 2026-11-26, seed 1. The registration above is unchanged.
+// Result under the first count, 2026-11-26, seed 1.
 // - The production prompt labels the ceasefire statement critical in 23 of 40 passes
-//   (relay-baseline), against 0 of 10 with the probe's fixed neighbours. It is the only
-//   counted critical.
-// - The dcc144836c example passes, at 24 against a threshold of 31. Its extra criticals are
-//   on two borderline shipping-attack rows, which the gate reports and does not count:
-//   borderline criticals rose from 138 to 171.
-// - The second positive control fails, at 211.
+//   (relay-baseline), against 0 of 10 with the probe's fixed neighbours. It was the only
+//   non-borderline critical.
+// - The dcc144836c example passed, at 24 against a threshold of 31. Its extra criticals were
+//   on two borderline shipping-attack rows: borderline criticals rose from 138 to 171.
+// - The second positive control failed, at 211.
 //
 // A new prompt is accepted by re-capturing `relay-current` (command below). The baseline
 // moves only with a new registration: a different model or changed judged sets.
@@ -53,7 +58,7 @@ import {
   extractRelayOpenRouterModel,
   extractRelayPrompt,
   incompleteBoundaryRows,
-  isClearFalseCritical,
+  isFalseCritical,
   planBatchBoundaryPass,
   promptSha,
   scoreBatchBoundary,
@@ -72,13 +77,13 @@ function gateMargin(rows, baseline) {
   let variance = 0;
   for (const r of rows) {
     const c = baseline.labels[r.title];
-    if (!c || !isClearFalseCritical(r, 'critical')) continue;
+    if (!c || !isFalseCritical(r, 'critical')) continue;
     const k = c.critical ?? 0;
     variance += k * (1 - k / c.asked);
   }
   return Math.ceil(1.645 * Math.sqrt(2 * variance));
 }
-const gateThreshold = (rows, baseline) => scoreBatchBoundary(rows, baseline).clearFalseCritical + gateMargin(rows, baseline);
+const gateThreshold = (rows, baseline) => scoreBatchBoundary(rows, baseline).falseCritical + gateMargin(rows, baseline);
 
 describe('batch-boundary rule', () => {
   const rows = [
@@ -89,20 +94,21 @@ describe('batch-boundary rule', () => {
   ];
   const capture = (labels) => ({ labels });
 
-  it('counts critical only on rows judged below critical and not borderline', () => {
-    assert.equal(isClearFalseCritical(rows[0], 'critical'), true);
-    assert.equal(isClearFalseCritical(rows[0], 'high'), false);
-    assert.equal(isClearFalseCritical(rows[1], 'critical'), false);
-    assert.equal(isClearFalseCritical(rows[2], 'critical'), false);
-    assert.equal(isClearFalseCritical(rows[3], 'critical'), true);
+  it('counts critical on every row judged below critical, borderline rows included', () => {
+    assert.equal(isFalseCritical(rows[0], 'critical'), true);
+    assert.equal(isFalseCritical(rows[0], 'high'), false);
+    assert.equal(isFalseCritical(rows[1], 'critical'), true);
+    assert.equal(isFalseCritical(rows[2], 'critical'), false);
+    assert.equal(isFalseCritical(rows[3], 'critical'), true);
     const s = scoreBatchBoundary(rows, capture({
       statement: { asked: 40, critical: 3, high: 37 },
       border: { asked: 40, critical: 20, high: 20 },
       event: { asked: 40, critical: 30, high: 9 },
       news: { asked: 10, critical: 1, info: 8 },
     }));
-    assert.equal(s.clearFalseCritical, 4);
+    assert.equal(s.falseCritical, 24);
     assert.equal(s.borderlineFalseCritical, 20);
+    assert.deepEqual(s.falseCriticalTitles, ['3/40 statement', '20/40 (borderline) border', '1/10 news']);
     assert.deepEqual([s.clearCriticalKept, s.clearCriticalAsked], [30, 40]);
     assert.deepEqual([s.unlabelled, s.asked], [2, 130]);
   });
@@ -118,16 +124,16 @@ describe('batch-boundary rule', () => {
     assert.deepEqual(incompleteBoundaryRows(boundary, short, { passes: 40, maxPerRow: 2 }), ['asked 39 of 40: border']);
   });
 
-  it('allows a fresh draw of the baseline and fails 0.4 more counted criticals per pass', () => {
-    const baseline = capture({ statement: { asked: 40, critical: 28, high: 12 }, news: { asked: 40, info: 40 } });
-    assert.equal(gateMargin(rows, baseline), 7);
-    assert.equal(gateThreshold(rows, baseline), 35);
-    const clean = capture({ statement: { asked: 40, high: 40 }, news: { asked: 40, info: 40 } });
+  it('allows a fresh draw of the baseline and fails a borderline row pushed to critical', () => {
+    const baseline = capture({ statement: { asked: 40, critical: 28, high: 12 }, border: { asked: 40, critical: 20, high: 20 }, news: { asked: 40, info: 40 } });
+    assert.equal(gateMargin(rows, baseline), 10, 'ceil(1.645 * sqrt(2 * (8.4 + 10)))');
+    assert.equal(gateThreshold(rows, baseline), 58);
+    const clean = capture({ statement: { asked: 40, high: 40 }, border: { asked: 40, high: 40 }, news: { asked: 40, info: 40 } });
     assert.equal(gateMargin(rows, clean), 0, 'a clean baseline allows no counted critical');
-    const redrawn = capture({ statement: { asked: 40, critical: 33, high: 7 }, news: { asked: 40, info: 40 } });
-    const worse = capture({ statement: { asked: 40, critical: 28, high: 12 }, news: { asked: 40, critical: 16, info: 24 } });
-    assert.ok(scoreBatchBoundary(rows, redrawn).clearFalseCritical <= gateThreshold(rows, baseline));
-    assert.ok(scoreBatchBoundary(rows, worse).clearFalseCritical > gateThreshold(rows, baseline));
+    const redrawn = capture({ statement: { asked: 40, critical: 31, high: 9 }, border: { asked: 40, critical: 24, high: 16 }, news: { asked: 40, info: 40 } });
+    const worse = capture({ statement: { asked: 40, critical: 28, high: 12 }, border: { asked: 40, critical: 40 }, news: { asked: 40, info: 40 } });
+    assert.ok(scoreBatchBoundary(rows, redrawn).falseCritical <= gateThreshold(rows, baseline));
+    assert.ok(scoreBatchBoundary(rows, worse).falseCritical > gateThreshold(rows, baseline));
   });
 
   it('asks every boundary row once a pass, beside fill rows no other batch in the pass gets', () => {
@@ -159,8 +165,6 @@ describe('batch-boundary rule', () => {
 
 const { captures } = readJudged('tests/fixtures/classify-batch-boundary.json');
 const relaySrc = readFileSync(resolve(root, 'scripts/ais-relay.cjs'), 'utf8');
-// Written from relay-baseline after its capture; the test below holds them to it.
-const BASELINE = { clearFalseCritical: 23, threshold: 31 };
 
 describe('batch-boundary captures', () => {
   it('are the registered design, with every boundary row answered', () => {
@@ -172,24 +176,12 @@ describe('batch-boundary captures', () => {
       const s = scoreBatchBoundary(judged.rows, c);
       assert.equal(s.asked, c.completions * REGISTERED.chunk, name);
       assert.ok(s.unlabelled <= s.asked * MAX_UNLABELLED_SHARE, `${name}: ${s.unlabelled} unlabelled`);
-      assert.equal(c.clearFalseCriticalByPass.length, REGISTERED.passes, name);
-      assert.equal(c.clearFalseCriticalByPass.reduce((a, b) => a + b, 0), s.clearFalseCritical, name);
       assert.deepEqual(incompleteBoundaryRows(judged.boundary, c, { passes: REGISTERED.passes, maxPerRow: MAX_UNLABELLED_PER_BOUNDARY_ROW }), [], name);
     }
   });
 
-  it('relay-baseline is the prompt the gate was registered on, and sets the threshold', () => {
-    const b = captures['relay-baseline'];
-    assert.equal(b.promptSha, BASELINE_PROMPT_SHA);
-    assert.equal(scoreBatchBoundary(judged.rows, b).clearFalseCritical, BASELINE.clearFalseCritical);
-    assert.equal(gateThreshold(judged.rows, b), BASELINE.threshold);
-  });
-
-  it('records the false critical the baseline already carries', () => {
-    // At 50 titles per completion the production prompt labels this statement high
-    // (classify-judged-statements.json). In 5-title completions it is critical in 23 of 40.
-    const s = scoreBatchBoundary(judged.rows, captures['relay-baseline']);
-    assert.deepEqual(s.falseCriticalTitles, ['23/40 Israel says ceasefire with Hezbollah could collapse within days']);
+  it('relay-baseline is the prompt the gate was registered on', () => {
+    assert.equal(captures['relay-baseline'].promptSha, BASELINE_PROMPT_SHA);
   });
 
   it('relay-current is the prompt and model production sends today', () => {
@@ -201,9 +193,10 @@ describe('batch-boundary captures', () => {
     assert.equal(captures['relay-current'].model, captures['relay-baseline'].model, 'a model change is a new registration');
   });
 
-  it('relay-current carries no more clear false criticals than the baseline allows', () => {
+  it('relay-current carries no more false criticals than the baseline allows', () => {
+    const threshold = gateThreshold(judged.rows, captures['relay-baseline']);
     const s = scoreBatchBoundary(judged.rows, captures['relay-current']);
-    assert.ok(s.clearFalseCritical <= BASELINE.threshold,
-      `${s.clearFalseCritical} clear false criticals over ${REGISTERED.passes} passes, threshold ${BASELINE.threshold}:\n${s.falseCriticalTitles.join('\n')}`);
+    assert.ok(s.falseCritical <= threshold,
+      `${s.falseCritical} false criticals over ${REGISTERED.passes} passes, threshold ${threshold}:\n${s.falseCriticalTitles.join('\n')}`);
   });
 });
