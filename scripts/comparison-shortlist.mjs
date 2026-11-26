@@ -86,21 +86,30 @@ const CATALOG_PRICES = new Set(PRODUCT_FACTS.plans.map((plan) => plan.price).fil
 // A currency amount in entry prose: $65,000, £135,000, $9.54. A trailing comma is punctuation.
 const PROSE_AMOUNT_RE = /[$£€]\d+(?:,\d{3})*(?:\.\d+)?/g;
 // Amount spellings PROSE_AMOUNT_RE cannot read, so the source check would never see them:
-// USD 5,000, US$5,000, $ 5,000, 5,000 dollars, 40 €, $40k, $1.2 million.
-const UNSUPPORTED_AMOUNT_RE = /\b(?:USD|GBP|EUR)\s*\d|US\$|[$£€]\s+\d|\d\s*(?:dollars|pounds|euros|€)|[$£€]\d[\d,.]*\s*(?:k|m|bn|thousand|million|billion)\b/i;
+// USD 5,000, 5,000 USD, US$5,000, $ 5,000, 5,000 dollars, 40 €, $40k, $1.2 million.
+const UNSUPPORTED_AMOUNT_RE = /\b(?:USD|GBP|EUR)\s*\d|\d\s*(?:USD|GBP|EUR)\b|US\$|[$£€]\s+\d|\d\s*(?:dollars|pounds|euros|€)|[$£€]\d[\d,.]*\s*(?:k|m|bn|thousand|million|billion)\b/i;
 // Catalog prices are USD, so only a dollar amount can be one.
 const isCatalogAmount = (amount) => amount.startsWith('$') && CATALOG_PRICES.has(Number(amount.slice(1).replaceAll(',', '')));
 
 /**
- * Currency amounts in `values`, each flagged `exempt` when it is a World Monitor catalog
- * price quoted in a sentence that names World Monitor, or in copy that is about World Monitor
- * as a whole. A competitor price that happens to equal a catalog price still needs a cited source.
+ * Currency amounts in `values`, each flagged `exempt` when it is a World Monitor catalog price
+ * and World Monitor is the product it belongs to: the nearest product named before it in its
+ * sentence, or, when the sentence names none before it, copy that is about World Monitor as a
+ * whole. A competitor price that happens to equal a catalog price still needs a cited source.
  */
-function amountsIn(values, { aboutWorldMonitor = false } = {}) {
-  return values.flatMap((value) => String(value).split(/(?<=[.!?])\s+/).flatMap((sentence) => {
-    const namesWorldMonitor = aboutWorldMonitor || sentence.includes(WORLD_MONITOR);
-    return (sentence.match(PROSE_AMOUNT_RE) ?? []).map((amount) => ({ amount, exempt: namesWorldMonitor && isCatalogAmount(amount) }));
-  }));
+function amountsIn(values, productNames, { aboutWorldMonitor = false } = {}) {
+  return values.flatMap((value) => String(value).split(/(?<=[.!?])\s+/).flatMap((sentence) =>
+    [...sentence.matchAll(PROSE_AMOUNT_RE)].map(({ 0: amount, index }) => {
+      const before = sentence.slice(0, index);
+      let nearest;
+      let nearestAt = -1;
+      for (const name of productNames) {
+        const at = before.lastIndexOf(name);
+        if (at > nearestAt) [nearest, nearestAt] = [name, at];
+      }
+      const ownedByWorldMonitor = nearest === WORLD_MONITOR || (nearest === undefined && aboutWorldMonitor);
+      return { amount, exempt: ownedByWorldMonitor && isCatalogAmount(amount) };
+    })));
 }
 
 const monthly = (planKey) =>`$${catalogPlan(planKey).price.toFixed(2)}/mo`;
@@ -596,6 +605,7 @@ export function shortlistPage(seed) {
   const unreadable = [...pageProse(seed), ...allCells].find((value) => UNSUPPORTED_AMOUNT_RE.test(String(value)));
   if (unreadable !== undefined) fail(`write amounts as $65,000, £135,000 or €9.54 so the source check can read them: "${String(unreadable).slice(0, 80)}"`);
   if (seed.entries[0].name !== WORLD_MONITOR) fail(`World Monitor must be the first entry, got ${seed.entries[0].name}`);
+  const productNames = seed.entries.map((entry) => entry.name);
   for (const entry of seed.entries) {
     const words = wordCount([...entry.paragraphs, entry.bestSuitedFor].join(' '));
     if (words < 200 || words > 300) fail(`${entry.name} entry must be 200-300 words, got ${words}`);
@@ -613,7 +623,7 @@ export function shortlistPage(seed) {
     } else {
       // Every competitor amount needs a source that cites it. World Monitor's own
       // catalog prices may appear in a comparison sentence; the catalog is their source.
-      const found = amountsIn([...entry.paragraphs, entry.bestSuitedFor, ...SHORTLIST_MATRIX_COLUMNS.slice(1).map(([, cell]) => cell(entry))]);
+      const found = amountsIn([...entry.paragraphs, entry.bestSuitedFor, ...SHORTLIST_MATRIX_COLUMNS.slice(1).map(([, cell]) => cell(entry))], productNames);
       const printed = found.map(({ amount }) => amount);
       const cited = new Set((pricing.sources ?? []).flatMap((source) => source.amounts ?? []));
       const uncited = [...new Set(found.filter(({ amount, exempt }) => !exempt && !cited.has(amount)).map(({ amount }) => amount))];
@@ -638,12 +648,13 @@ export function shortlistPage(seed) {
 
   // The intro, takeaways, use cases and FAQs repeat entry prices; each must trace to a cited entry source.
   const citedAnywhere = new Set(seed.entries.flatMap((entry) => (entry.pricing.sources ?? []).flatMap((source) => source.amounts ?? [])));
-  // World Monitor's own entry, its CTA and the use-case rows it wins are about World Monitor.
-  const worldMonitorRows = seed.useCases.filter((row) => row.recommended.startsWith(WORLD_MONITOR)).flatMap((row) => [row.recommended, row.why, row.runnerUp]);
+  // World Monitor's own entry, its CTA and the use-case rows it wins are about World Monitor;
+  // a row's runner-up names a rival, so it stays outside.
+  const worldMonitorRows = seed.useCases.filter((row) => row.recommended.startsWith(WORLD_MONITOR)).flatMap((row) => [row.recommended, row.why]);
   const worldMonitorText = new Set([seed.entries[0].bestFor, ...seed.entries[0].paragraphs, seed.entries[0].bestSuitedFor, ...seed.cta.paragraphs, ...worldMonitorRows]);
   const pageAmounts = [
-    ...amountsIn(pageProse(seed).filter((value) => !worldMonitorText.has(value))),
-    ...amountsIn([...worldMonitorText], { aboutWorldMonitor: true }),
+    ...amountsIn(pageProse(seed).filter((value) => !worldMonitorText.has(value)), productNames),
+    ...amountsIn([...worldMonitorText], productNames, { aboutWorldMonitor: true }),
   ];
   const untraced = [...new Set(pageAmounts.filter(({ amount, exempt }) => !exempt && !citedAnywhere.has(amount)).map(({ amount }) => amount))];
   if (untraced.length) fail(`page prose quotes ${untraced.join(', ')}, which no entry source or catalog price covers`);

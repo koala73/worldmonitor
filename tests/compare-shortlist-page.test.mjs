@@ -390,7 +390,7 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
       /Dataminr quotes \$99.99 with no source that cites them/,
     );
     // Spellings the amount pattern cannot read are rejected instead of skipped.
-    for (const spelling of ['USD 30,000', 'US$30,000', '$ 30,000', '30,000 dollars', '40 €', '$40k', '$1.2 million']) {
+    for (const spelling of ['USD 30,000', '30,000 USD', 'US$30,000', '$ 30,000', '30,000 dollars', '40 €', '$40k', '$1.2 million']) {
       assert.throws(
         () => shortlistPage(seedWith((seed) => { seed.faqs[0][1] += ` One rival charges ${spelling} a year.`; })),
         /write amounts as/,
@@ -398,6 +398,23 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
       );
     }
     assert.throws(() => shortlistPage(seedWith((seed) => { delete seed.pricesCheckedOn; })), /pricesCheckedOn/);
+    // Naming World Monitor earlier in the sentence does not exempt a rival's price.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { dataminr(seed).paragraphs[1] += ' Unlike World Monitor, Dataminr sells a $99.99 add-on.'; })),
+      /Dataminr quotes \$99.99 with no source that cites them/,
+    );
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { seed.faqs[0][1] += ' Unlike World Monitor, Crisis24 charges $39.99 per alert.'; })),
+      /page prose quotes \$39.99, which no entry source or catalog price covers/,
+    );
+    // A use-case row World Monitor wins still holds its runner-up to a cited source.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => {
+        const row = seed.useCases.find((candidate) => candidate.recommended.startsWith('World Monitor'));
+        row.runnerUp = 'Liveuamap PRO at $49.99';
+      })),
+      /page prose quotes \$49.99, which no entry source or catalog price covers/,
+    );
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.useCases[0].href = '/blog/vs/dataminr/'; })), /\/blog\/best\//);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.faqs = seed.faqs.slice(0, 5); })), /6-8 FAQs/);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.keyTakeaways[0] += ' See [the plans](http://example.com).'; })), /site path or https URL/);
