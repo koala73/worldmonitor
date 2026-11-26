@@ -112,6 +112,21 @@ describe('Western Australia FuelWatch pump prices', () => {
     const renamed = async (url, options) => url === current ? new Response(big.replace('PRODUCT_PRICE', 'PRICE')) : serve(200)(url, options);
     await assert.rejects(fetchRegionalEnergyFeed('fuelwatch', { fetchFn: renamed, nowMs: NOW }), /Changed FuelWatch price columns/, 'a layout change is not masked by last month');
     await assert.rejects(fetchRegionalEnergyFeed('fuelwatch', { fetchFn: serve(503), nowMs: NOW }), /HTTP 503/);
+    // A started file that turns corrupt fails the run, so the last good snapshot stays.
+    const corrupt = body => async (url, options) => url === current ? new Response(body) : serve(200)(url, options);
+    const unreadable = withRows(big.split('\n').slice(1).map(l => l.replace(/^((?:[^,]*,){4})[^,]*/, '$1n/a')));
+    await assert.rejects(fetchRegionalEnergyFeed('fuelwatch', { fetchFn: corrupt(unreadable), nowMs: NOW }), /Unreadable FuelWatch rows/);
+    await assert.rejects(fetchRegionalEnergyFeed('fuelwatch', { fetchFn: corrupt(`${big}\n"25/11/2026,unterminated`), nowMs: NOW }), /Invalid energy CSV/);
+  });
+
+  it('falls back to last month while the new file has no complete day', async () => {
+    const [current, previous] = fuelWatchCsvUrls(NOW);
+    const big = withRows(Array.from({ length: 25 }, (_, copy) => lines.map(l => l.replace(/^([^,]*),([^,]*),/, (_, d, n) => `${d},${n} #${copy},`))).flat());
+    const partial = withRows(both(1, '199.9', '26/11/2026'));
+    const fetchFn = async url => new Response(url === current ? partial : big);
+    const data = await fetchRegionalEnergyFeed('fuelwatch', { fetchFn, nowMs: NOW });
+    assert.deepEqual(data.dataUrls, [current, previous]);
+    assert.equal(data.observations[0].period, '2026-11-25');
   });
 });
 

@@ -321,14 +321,17 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
   }
   if (id === 'fuelwatch') {
     // About 10 MB per month. This month's file is missing (HTTP 404), empty or
-    // without a complete day until its first day is written; then last month's is read.
+    // without a complete day until its first day is written; then last month's is
+    // read. A started file that is corrupt fails the run instead, so the last
+    // good snapshot stays.
     const [current, previous] = fuelWatchCsvUrls(nowMs);
-    try {
-      points = parseFuelWatchPrices(await read(current, 'text', undefined, 60000), nowMs);
-    } catch (err) {
-      if (![`${id} provider HTTP 404`, 'Invalid energy CSV', 'Unreadable FuelWatch rows', 'FuelWatch station sample is incomplete'].includes(err.message)) throw err;
-      points = parseFuelWatchPrices(await read(previous, 'text', undefined, 60000), nowMs);
+    const readMonth = url => read(url, 'text', undefined, 60000);
+    let body = '';
+    try { body = await readMonth(current); } catch (err) { if (err.message !== `${id} provider HTTP 404`) throw err; }
+    if (String(body).trim().split(/\r?\n/).length > 1) {
+      try { points = parseFuelWatchPrices(body, nowMs); } catch (err) { if (err.message !== 'FuelWatch station sample is incomplete') throw err; }
     }
+    if (!points?.length) points = parseFuelWatchPrices(await readMonth(previous), nowMs);
   }
   if (feed.publishesAhead) points = inEffect(points, nowMs, feed.utcOffsetMin);
   const snapshot = buildFeedSnapshot(id, points, downloaded.at(-1), nowMs);
