@@ -4273,6 +4273,20 @@
       ]
     },
     {
+      "host": "datos.energia.gob.ar",
+      "provider": "datos.energia.gob.ar",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit datos.energia.gob.ar and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "datos.odepa.gob.cl",
       "provider": "datos.odepa.gob.cl",
       "kind": "structured",

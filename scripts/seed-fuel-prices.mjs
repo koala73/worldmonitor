@@ -788,6 +788,13 @@ const REGIONAL_FUEL_SOURCES = [
     gasoline: { area: 'Gasolina Súper 95', unit: 'UYU/l', grade: 'Super 95' },
     diesel: { area: 'Gas Oil 50S', unit: 'UYU/l', grade: 'Diesel 50S' },
   },
+  {
+    // Median of station declarations (#11154). The peso moves too fast for the
+    // static shared fallback rate, so the row needs a live ARS quote.
+    id: 'searg', code: 'AR', name: 'Argentina', currency: 'ARS', flag: '🇦🇷', source: 'datos.energia.gob.ar', maxAgeDays: 14, liveFxOnly: true,
+    gasoline: { area: 'Nafta (súper) entre 92 y 95 Ron; median of stations', unit: 'ARS/l', grade: 'Súper (92–95 RON)' },
+    diesel: { area: 'Gas Oil Grado 2; median of stations', unit: 'ARS/l', grade: 'Grado 2' },
+  },
 ];
 export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s => s.currency))];
 
@@ -948,13 +955,20 @@ export function regionalFuelEntries(snapshots, nowMs = Date.now()) {
 }
 
 // GTQ, FJD and PGK have no shared fallback rate. Without a live quote a row
-// would publish with no USD price, so it is left out.
+// would publish with no USD price, so it is left out. A liveFxOnly source also
+// refuses the static fallback, which getSharedFxRates lists in fallbackCurrencies.
+export function regionalFuelHasUsableFx(entry, fxRates) {
+  const src = REGIONAL_FUEL_SOURCES.find(s => s.code === entry.code);
+  if (src?.liveFxOnly) return fxRates[entry.currency] > 0 && !fxRates.fallbackCurrencies?.includes(entry.currency);
+  return Boolean(fxRates[entry.currency] ?? SHARED_FX_FALLBACKS[entry.currency]);
+}
+
 async function fetchRegionalFuel(fxRates) {
   const snapshots = {};
   for (const { id } of REGIONAL_FUEL_SOURCES) snapshots[id] = await readSeedSnapshot(`energy:regional:${id}:v1`);
   const entries = regionalFuelEntries(snapshots).filter(e => {
-    if (fxRates[e.currency] ?? SHARED_FX_FALLBACKS[e.currency]) return true;
-    console.warn(`  [${e.code}] no ${e.currency}/USD rate — skipping`);
+    if (regionalFuelHasUsableFx(e, fxRates)) return true;
+    console.warn(`  [${e.code}] no live ${e.currency}/USD rate — skipping`);
     return false;
   });
   for (const e of entries) console.log(`  [${e.code}] Gasoline=${e.gasoline?.localPrice} ${e.currency}/L (${e.gasoline?.observedAt}), Diesel=${e.diesel?.localPrice} ${e.currency}/L (${e.diesel?.observedAt}) via ${e.gasoline?.source ?? e.diesel?.source}`);

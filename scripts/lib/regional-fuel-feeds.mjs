@@ -5,7 +5,7 @@
 // turn an index page into the document URLs to read, newest first.
 import {
   cleanHtml, text, blocks, rows, number, observation, publicUrl,
-  validDay, ymd, EN_MONTHS, EN_MONTH_RE, addUnique, decodeTitle,
+  validDay, ymd, EN_MONTHS, EN_MONTH_RE, addUnique, decodeTitle, csv,
 } from './regional-energy-feeds.mjs';
 
 const monthIndex = name => {
@@ -608,3 +608,70 @@ export function parseUrseaReferencePrices(html) {
   return [...points.values()];
 }
 
+
+// ---- Argentina Secretaría de Energía: declared pump prices per station (CSV, #11154) ----
+
+const SEARG_HOST = 'datos.energia.gob.ar';
+export const SEARG_CSV_URL = `https://${SEARG_HOST}/dataset/1c181390-5045-475e-94dc-410429be4b17/resource/80ac25de-a44a-4445-9215-090cf55cfda5/download/precios-en-surtidor-resolucin-3142016.csv`;
+// CNG (idproducto 6) is priced per cubic metre and is left out.
+const SEARG_PRODUCTS = new Map([
+  ['2', 'Nafta (súper) entre 92 y 95 Ron'],
+  ['3', 'Nafta (premium) de más de 95 Ron'],
+  ['19', 'Gas Oil Grado 2'],
+  ['21', 'Gas Oil Grado 3'],
+]);
+const SEARG_HEADLINE = ['2', '19'];
+const SEARG_COLUMNS = ['idempresa', 'idproducto', 'producto', 'idtipohorario', 'tipohorario', 'precio', 'fecha_vigencia'];
+const SEARG_DAYTIME = ['2', 'Diurno'];
+const SEARG_WINDOW_MS = 30 * 86400000;
+const SEARG_MAX_UNREADABLE = 0.05;
+// Argentina has no daylight saving time.
+const SEARG_OFFSET = '-03:00';
+
+const median = values => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return +(sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2).toFixed(2);
+};
+
+// Each row is a station's latest declaration for one product and tariff, so
+// abandoned stations keep rows from years back. The national figure is the
+// median daytime price over stations that declared within 30 days of the
+// newest declaration, dated by that declaration's day in Argentina.
+export function parseSeArgentinaPrices(source, nowMs = Date.now(), { minStations = 200 } = {}) {
+  const { header, records } = csv(String(source));
+  if (SEARG_COLUMNS.some(c => !header.includes(c))) throw new Error('Changed Secretaría de Energía price columns');
+  const latest = new Map();
+  let considered = 0, unreadable = 0;
+  for (const r of records) {
+    const product = SEARG_PRODUCTS.get(r.idproducto);
+    if (!product) continue;
+    if (r.producto !== product) throw new Error(`Changed Secretaría de Energía product ${r.idproducto}`);
+    const daytime = r.idtipohorario === SEARG_DAYTIME[0];
+    if (daytime !== (r.tipohorario === SEARG_DAYTIME[1])) throw new Error('Changed Secretaría de Energía tariff codes');
+    if (!daytime) continue;
+    considered++;
+    const when = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}(?::\d{2})?)$/.exec(r.fecha_vigencia);
+    const ms = when ? Date.parse(`${when[1]}T${when[2]}${SEARG_OFFSET}`) : NaN;
+    const price = r.precio === '' ? NaN : Number(r.precio);
+    if (!Number.isFinite(ms) || !(price > 0)) { unreadable++; continue; }
+    if (ms > nowMs) continue;
+    const key = `${r.idproducto}|${r.idempresa}`;
+    if (!latest.has(key) || latest.get(key).ms < ms) latest.set(key, { product: r.idproducto, ms, price });
+  }
+  if (!considered || unreadable / considered > SEARG_MAX_UNREADABLE) throw new Error('Unreadable Secretaría de Energía rows');
+  const declarations = [...latest.values()];
+  const newest = Math.max(...declarations.filter(d => SEARG_HEADLINE.includes(d.product)).map(d => d.ms));
+  if (!Number.isFinite(newest)) throw new Error('Secretaría de Energía station sample is incomplete');
+  const period = validDay(new Date(newest - 3 * 3600000).toISOString().slice(0, 10));
+  const points = new Map();
+  for (const [id, product] of SEARG_PRODUCTS) {
+    const prices = declarations.filter(d => d.product === id && d.ms >= newest - SEARG_WINDOW_MS).map(d => d.price);
+    if (prices.length < minStations) {
+      if (SEARG_HEADLINE.includes(id)) throw new Error('Secretaría de Energía station sample is incomplete');
+      continue;
+    }
+    addUnique(points, positive(observation('fuel.retail_price', period, median(prices), 'ARS/l', `${product}; median of stations`), 1, 1e7, 'Secretaría de Energía price'));
+  }
+  return [...points.values()];
+}

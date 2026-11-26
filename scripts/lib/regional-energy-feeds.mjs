@@ -78,7 +78,7 @@ export const required = points => {
   return points;
 };
 
-function csv(source, delimiter = ',') {
+export function csv(source, delimiter = ',') {
   const parsed = Papa.parse(source.replace(/^\ufeff/, '').replace(/\r\n?/g, '\n'), { delimiter, newline: '\n', skipEmptyLines: 'greedy' });
   if (parsed.errors.length || !parsed.data.length) throw new Error('Invalid energy CSV');
   const records = parsed.data.map(row => row.map(cell => cell.trim()));

@@ -30,6 +30,7 @@ is added.
 | ANP | TL | Lowest and highest listed petrol and diesel price per municipality and nationally, from the station listing (USD/l) | 1 day |
 | CREG | CO | Regulated regular gasoline and diesel prices by main city and their published average (COP/gal), newest three price changes | 12 hours |
 | URSEA | UY | Maximum pump prices set by the Executive (UYU/l; LPG UYU/kg), the PMIT maximum wholesale price, and URSEA's reference retail and import parity prices | 12 hours |
+| Secretaría de Energía | AR | Median daytime pump price across stations for super and premium gasoline and grade 2 and grade 3 diesel (ARS/l) | 12 hours |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
 demand and load-shedding cells are commented out in the source and are omitted.
@@ -70,6 +71,24 @@ municipality and overall, and Timor-Leste is not a row in the fuel-price panel.
 The fuel-price panel reads QA, ZM, GH, BF, ZW, PH, CO and UY from these feeds
 through `REGIONAL_FUEL_SOURCES` in `scripts/seed-fuel-prices.mjs`, with
 fallback FX rates for ZMW, GHS, XOF and UYU.
+
+Argentina's pump prices (#11154) come from the Secretaría de Energía's
+Resolution 314/2016 dataset (CC-BY-4.0): a CSV of each station's latest declared
+price per product and tariff. A station keeps its row after it stops declaring,
+so the file reaches back to 2017. The feed takes daytime rows, keeps each
+station's newest declaration per product, and publishes the median over
+stations that declared within 30 days of the newest declaration in the file.
+The observation date is that newest declaration's day in Argentina (UTC-3).
+Fewer than 200 stations for super gasoline or grade 2 diesel, a renamed product
+or tariff code, or more than 5% unreadable rows fails the run, and last-good data
+is kept. CNG is priced per cubic metre and is not collected. The
+fuel-price panel shows the super and grade 2 medians for 14 days after their
+date, and only with a live ARS quote: the peso moves too fast for the static
+shared fallback rate. The provider host was unreachable from every vantage
+point tested on 2026-11-23 and 2026-11-26, so the parser was built from the
+2024-02-06 Internet Archive capture of the same file. The regional bundle runs
+in us-east4, which reaches CAMMESA; the 12-hour poll retries an outage on the
+next due tick.
 
 Since 2026-10-31 MEM's pages, sitemaps and REST API answer automated clients
 with a Cloudflare challenge. The seeder does not request them. It reads only the

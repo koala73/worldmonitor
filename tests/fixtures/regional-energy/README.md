@@ -45,3 +45,11 @@ widget, `creg-page.html` to the three newest price tables, `doe-ncr-page.html`
 to the payload fragments that link each weekly PDF, and the three `ursea-*.html`
 pages to their `<main>` element. Each HTML fixture starts with a comment naming
 its source URL.
+
+`searg-surtidor-2024-02-06.csv` (#11154) is an unmodified excerpt of the
+Secretaría de Energía "Precios vigentes en surtidor - Resolución 314/2016" CSV
+(CC-BY-4.0): the header and every row of the first 40 stations, in file order,
+from the Internet Archive capture of 2024-02-06 08:41:39 UTC
+(`web.archive.org/web/20240206084139id_/http://datos.energia.gob.ar/...`). The
+live host refused connections when the feed was written. The tests freeze time
+at 2024-02-06 12:00 UTC.
