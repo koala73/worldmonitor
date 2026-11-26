@@ -503,6 +503,7 @@ export async function fetchAviationNews(entities: string[], windowHours = 24, ma
   const cacheKey = `${entities.join(',')}:${windowHours}:${maxItems}`;
   return breakerNews.execute(async () => {
     const r = await client.listAviationNews({ entities, windowHours, maxItems });
+    if (r.source === 'error') throw new Error('Aviation news feeds unavailable');
     return r.items.map(toDisplayNewsItem);
   }, [], { cacheKey });
 }

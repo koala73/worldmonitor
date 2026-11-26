@@ -1,3 +1,4 @@
+import { XMLValidator } from 'fast-xml-parser';
 import type {
     ServerContext,
     ListAviationNewsRequest,
@@ -5,8 +6,11 @@ import type {
     AviationNewsItem,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+// @ts-expect-error The shared JavaScript Sentry helper has no declaration file.
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { parseStringArray, xmlParser } from './_shared';
 import { incrementProviderCounter } from './_counters';
 
@@ -32,10 +36,12 @@ interface RssItem {
     _source: string;
 }
 
-function parseRssItems(xml: string, sourceName: string): RssItem[] {
+function parseRssItems(xml: string, sourceName: string): RssItem[] | null {
     try {
+        if (XMLValidator.validate(xml) !== true) return null;
         const parsed = xmlParser.parse(xml);
-        const channel = parsed?.rss?.channel ?? parsed?.feed ?? {};
+        const channel = parsed?.rss?.channel ?? parsed?.feed;
+        if (channel == null) return null;
         const rawItems: unknown[] = Array.isArray(channel.item) ? channel.item
             : channel.item ? [channel.item]
                 : Array.isArray(channel.entry) ? channel.entry
@@ -50,7 +56,7 @@ function parseRssItems(xml: string, sourceName: string): RssItem[] {
             _source: sourceName,
         })).filter(item => item.link.length > 0 && item.link.length <= 2048 && new TextEncoder().encode(JSON.stringify(item)).byteLength <= 3072);
     } catch {
-        return [];
+        return null;
     }
 }
 
@@ -60,7 +66,14 @@ function matchesEntities(text: string, entities: string[]): string[] {
     return entities.filter(e => lower.includes(e.toLowerCase()));
 }
 
-async function fetchFeed(feedUrl: string, sourceName: string): Promise<RssItem[]> {
+/**
+ * One feed's items, or null when the feed could not be read at all.
+ *
+ * The caller distinguishes the two: nine feeds that all answered with no
+ * matching items is a real empty snapshot worth caching, while nine feeds that
+ * all failed is not, and must not be stored as one.
+ */
+async function fetchFeed(feedUrl: string, sourceName: string): Promise<RssItem[] | null> {
     try {
         const resp = await fetch(feedUrl, {
             headers: {
@@ -71,25 +84,25 @@ async function fetchFeed(feedUrl: string, sourceName: string): Promise<RssItem[]
         });
         if (resp.status === 401 || resp.status === 403) {
             incrementProviderCounter('aviationNewsAuthRejection');
-            return [];
+            return null;
         }
         if (!resp.ok) {
             incrementProviderCounter('aviationNewsTerminalFailure');
-            return [];
+            return null;
         }
-        const xml = await resp.text();
-        incrementProviderCounter('aviationNewsSuccess');
-        return parseRssItems(xml, sourceName);
+        const items = parseRssItems(await resp.text(), sourceName);
+        incrementProviderCounter(items === null ? 'aviationNewsTerminalFailure' : 'aviationNewsSuccess');
+        return items;
     } catch (err) {
         const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.message.includes('timed out'));
         if (isTimeout) incrementProviderCounter('aviationNewsTimeout');
         else incrementProviderCounter('aviationNewsTerminalFailure');
-        return [];
+        return null;
     }
 }
 
 export async function listAviationNews(
-    _ctx: ServerContext,
+    ctx: ServerContext,
     req: ListAviationNewsRequest,
 ): Promise<ListAviationNewsResponse> {
     const inputEntities = parseStringArray(req.entities);
@@ -110,13 +123,25 @@ export async function listAviationNews(
         const snapshot = await cachedFetchJson<{ items: RssItem[] }>(
             'aviation:news:feeds:v2', CACHE_TTL, async () => {
                 const allItems: RssItem[] = [];
+                let feedsRead = 0;
                 await Promise.allSettled(
-                    AVIATION_RSS_FEEDS.map(feed => fetchFeed(feed.url, feed.name).then(items => allItems.push(...items)))
+                    AVIATION_RSS_FEEDS.map(feed => fetchFeed(feed.url, feed.name).then(items => {
+                        if (items === null) return;
+                        feedsRead += 1;
+                        allItems.push(...items);
+                    }))
                 );
-                return { items: allItems };
+                // Null, not `{items: []}`: a non-null payload is cached as a
+                // success, so a total RSS outage would otherwise be stored over
+                // the prewarmed snapshot for CACHE_TTL and served as `source:
+                // 'rss'` — an assertion that the feeds were read.
+                return feedsRead > 0 ? { items: allItems } : null;
             }
         );
-        const allItems = snapshot?.items ?? [];
+        if (!snapshot) {
+            return markNoStoreFallbackResponse(ctx.request, { items: [], source: 'error', updatedAt: now });
+        }
+        const allItems = snapshot.items;
 
         const cutoff = now - windowMs;
         const filtered: AviationNewsItem[] = [];
@@ -169,6 +194,7 @@ export async function listAviationNews(
         };
     } catch (err) {
         console.warn(`[Aviation] ListAviationNews failed: ${err instanceof Error ? err.message : err}`);
-        return { items: [], source: 'error', updatedAt: now };
+        void captureSilentError(err, { tags: { route: 'aviation/list-aviation-news' } });
+        return markNoStoreFallbackResponse(ctx.request, { items: [], source: 'error', updatedAt: now });
     }
 }
