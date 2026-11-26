@@ -373,7 +373,9 @@
       "srReferencePrice": "Jämfört med:",
       "srOfferPrice": "Erbjudandepris:",
       "stripEnds": "Slutar {{date}}.",
-      "cancelNote": "Avbryt när som helst. Avbryt innan ditt första år är slut så debiteras du inte igen."
+      "cancelNote": "Avbryt när som helst. Avbryt innan ditt första år är slut så debiteras du inte igen.",
+      "annualNoteShort": "{{perMonth}}/mån, faktureras årligen. Därefter {{listPrice}}/år.",
+      "annualNoteShortYearlyOnly": "Därefter {{listPrice}}/år."
     }
   },
   "welcome": {

@@ -30,6 +30,7 @@ import {
   CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS,
   isCheckoutTimedOutOutcome,
   isCheckoutRateLimitedOutcome,
+  checkoutRetryDeadline,
   runCheckoutWithRateLimitRetry,
   type CheckoutRateLimitedOutcome,
   type CheckoutTimedOutOutcome,
@@ -450,6 +451,9 @@ async function _createCheckoutSession(
   // server-side ladder before falling back to the typed rate_limited outcome.
   // The seam pins the SDK to maxRetries: 0 (lib/dodo.ts), so the ladder is
   // the only retry layer — one attempt is exactly one provider request.
+  // One time budget for the whole checkout, so a list-price retry after a
+  // rejected promo code cannot push past the edge relay's 15s abort.
+  const deadlineMs = checkoutRetryDeadline();
   const createSession = (applyPromo: boolean) => {
     const discountCode = args.discountCode ?? (applyPromo && promo ? promo.discountCode : undefined);
     const sessionMetadata = applyPromo && promo ? { ...metadata, wm_promo: promo.id } : metadata;
@@ -481,6 +485,7 @@ async function _createCheckoutSession(
         }),
       {
         attemptTimeoutMs: CHECKOUT_PROVIDER_ATTEMPT_TIMEOUT_MS,
+        deadlineMs,
         onRetry: (delayMs) =>
           console.warn(
             `[checkout] Dodo checkout failed for user=${user.userId} product=${args.productId}; retrying in ${delayMs}ms`,
@@ -496,8 +501,8 @@ async function _createCheckoutSession(
     } catch (err) {
       // Dodo refused our own promo code (expired early, exhausted, edited in
       // the dashboard). Sell at the list price rather than fail the checkout:
-      // one retry without the code, outside the rate-limit ladder so its
-      // budget is not doubled. A caller-supplied code keeps the old behavior.
+      // one more ladder without the code, inside the same time budget. A
+      // caller-supplied code keeps the old behavior.
       if (!promo || !isDiscountRejection(err)) throw err;
       console.warn(
         `[checkout] promo_code_rejected promo=${promo.id} user=${user.userId} product=${args.productId}: ${err instanceof Error ? err.message : String(err)}`,

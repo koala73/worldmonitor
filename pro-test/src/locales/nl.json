@@ -373,7 +373,9 @@
       "srReferencePrice": "Vergeleken met:",
       "srOfferPrice": "Aanbiedingsprijs:",
       "stripEnds": "Eindigt {{date}}.",
-      "cancelNote": "Annuleer op elk moment. Annuleer voor het einde van je eerste jaar en je wordt niet opnieuw gefactureerd."
+      "cancelNote": "Annuleer op elk moment. Annuleer voor het einde van je eerste jaar en je wordt niet opnieuw gefactureerd.",
+      "annualNoteShort": "{{perMonth}}/maand, jaarlijks gefactureerd. Daarna {{listPrice}}/jaar.",
+      "annualNoteShortYearlyOnly": "Daarna {{listPrice}}/jaar."
     }
   },
   "welcome": {

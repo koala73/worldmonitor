@@ -119,6 +119,22 @@ describe("checkout applies the running promotion", () => {
     expect(warn.mock.calls.some((args) => String(args[0]).includes("promo_code_rejected"))).toBe(true);
   });
 
+  test("the list-price retry shares the first attempt's time budget", async () => {
+    // The edge relay aborts at 15s; the ladder's budget is 8s. A discount
+    // rejection that arrives late must not open a second 8s budget.
+    vi.setSystemTime(DURING);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(createDodoCheckoutSession).mockImplementationOnce(async () => {
+      vi.setSystemTime(Date.now() + 6_000);
+      throw discountRejection();
+    });
+
+    const result = await checkout(PROMO.productId);
+
+    expect(payloads()).toHaveLength(1);
+    expect(result).toMatchObject({ checkoutFailed: true, code: "CHECKOUT_TIMED_OUT" });
+  });
+
   test("a rejected caller-supplied code is not retried", async () => {
     vi.setSystemTime(DURING);
     vi.spyOn(console, "error").mockImplementation(() => {});

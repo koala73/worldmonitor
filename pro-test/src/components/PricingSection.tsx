@@ -92,18 +92,27 @@ function PromoStrip({ pricing, endLabel }: { pricing: PromoPricing; endLabel: st
     });
   // Headline and detail are one block: the detail carries the monthly
   // reference, the first-year qualifier and the renewal price, so it is never
-  // hidden. The offer end sits apart so it never reads as the date by which
-  // to cancel.
+  // hidden. The offer end is a label on the headline row, away from the
+  // cancel sentence, so it never reads as the date by which to cancel.
+  //
+  // Phones skip the strip, and on laptops it stays two rows: any taller and
+  // the checkout buttons drop below the first screen (#10843). The Pro card
+  // carries the same figures, renewal price, end and cancel terms.
   return (
     <div
       data-promo-strip=""
-      className="mb-8 mx-auto max-w-3xl text-center border border-wm-green/40 bg-wm-green/5 rounded-sm px-4 py-3"
+      className="hidden md:block mb-5 mx-auto max-w-6xl text-center border border-wm-green/40 bg-wm-green/5 rounded-sm px-4 py-2"
     >
-      <p className="font-display text-base md:text-lg font-bold text-wm-green">{headline}</p>
-      <p className="mt-1 text-xs md:text-sm text-wm-text">{detail}</p>
-      <p data-promo-ends="" className="mt-1 text-xs font-mono uppercase tracking-wider text-wm-muted">
-        {t('pricing.promo.stripEnds', { date: endLabel })}
+      <p className="font-display text-lg font-bold text-wm-green">
+        {headline}
+        <span
+          data-promo-ends=""
+          className="ml-3 align-middle whitespace-nowrap border border-wm-green/40 rounded-sm px-1.5 py-0.5 text-xs font-mono font-normal uppercase tracking-wider text-wm-muted"
+        >
+          {t('pricing.promo.stripEnds', { date: endLabel })}
+        </span>
       </p>
+      <p className="mt-1 text-sm text-wm-text">{detail}</p>
     </div>
   );
 }
@@ -558,7 +567,11 @@ export function PricingSection({
                         <span className="sr-only">{t('pricing.promo.srOfferPrice')} </span>
                         <span className="text-4xl font-display font-bold break-words hyphens-auto">{tierPromo.promoLabel}</span>
                         <span className="text-sm text-wm-muted ml-1">{t('pricing.promo.suffixFirstYear')}</span>
-                        <p className="mt-1 text-xs text-wm-green">
+                        {/* Phones carry the offer end here because they skip
+                            the strip; wider screens show it in the strip and
+                            keep this line short so the checkout buttons stay
+                            on the first screen (#10843). */}
+                        <p className="mt-1 text-xs text-wm-green md:hidden">
                           {tierPromo.savingsVsMonthlyPct !== null
                             ? t('pricing.promo.annualNote', {
                               perMonth: tierPromo.perMonthLabel,
@@ -568,6 +581,16 @@ export function PricingSection({
                             : t('pricing.promo.annualNoteYearlyOnly', {
                               listPrice: tierPromo.listLabel,
                               date: promoEnd,
+                            })}
+                        </p>
+                        <p className="mt-1 text-xs text-wm-green hidden md:block">
+                          {tierPromo.savingsVsMonthlyPct !== null
+                            ? t('pricing.promo.annualNoteShort', {
+                              perMonth: tierPromo.perMonthLabel,
+                              listPrice: tierPromo.listLabel,
+                            })
+                            : t('pricing.promo.annualNoteShortYearlyOnly', {
+                              listPrice: tierPromo.listLabel,
                             })}
                         </p>
                         <p data-promo-cancel="" className="mt-1 text-xs text-wm-text">

@@ -148,6 +148,8 @@
   "pricing.mostPopular": "Most Popular",
   "pricing.opening": "Opening…",
   "pricing.promo.annualNote": "{{perMonth}}/mo, billed yearly. Then {{listPrice}}/yr. Offer ends {{date}}.",
+  "pricing.promo.annualNoteShort": "{{perMonth}}/mo, billed yearly. Then {{listPrice}}/yr.",
+  "pricing.promo.annualNoteShortYearlyOnly": "Then {{listPrice}}/yr.",
   "pricing.promo.annualNoteYearlyOnly": "Then {{listPrice}}/yr. Offer ends {{date}}.",
   "pricing.promo.badge": "{{percent}}% off",
   "pricing.promo.cancelNote": "Cancel anytime. Cancel before your first year ends and you won't be charged again.",

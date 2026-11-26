@@ -373,7 +373,9 @@
       "srReferencePrice": "Сравнение с:",
       "srOfferPrice": "Цена предложения:",
       "stripEnds": "Завершается {{date}}.",
-      "cancelNote": "Отмена в любой момент. Отмените до конца первого года, и повторного списания не будет."
+      "cancelNote": "Отмена в любой момент. Отмените до конца первого года, и повторного списания не будет.",
+      "annualNoteShort": "{{perMonth}}/мес., счёт ежегодно. Затем {{listPrice}}/год.",
+      "annualNoteShortYearlyOnly": "Затем {{listPrice}}/год."
     }
   },
   "welcome": {

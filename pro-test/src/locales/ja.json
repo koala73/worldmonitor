@@ -373,7 +373,9 @@
       "srReferencePrice": "比較対象:",
       "srOfferPrice": "オファー価格:",
       "stripEnds": "{{date}}に終了します。",
-      "cancelNote": "いつでもキャンセルできます。初年度終了前にキャンセルすると、再度の請求は発生しません。"
+      "cancelNote": "いつでもキャンセルできます。初年度終了前にキャンセルすると、再度の請求は発生しません。",
+      "annualNoteShort": "{{perMonth}}/月、年間請求。その後 {{listPrice}}/年。",
+      "annualNoteShortYearlyOnly": "その後 {{listPrice}}/年。"
     }
   },
   "welcome": {

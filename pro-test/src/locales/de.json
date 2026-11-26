@@ -373,7 +373,9 @@
       "srReferencePrice": "Verglichen mit:",
       "srOfferPrice": "Angebotspreis:",
       "stripEnds": "Endet am {{date}}.",
-      "cancelNote": "Jederzeit kündbar. Kündigen Sie vor Ablauf des ersten Jahres, wird Ihnen nichts mehr berechnet."
+      "cancelNote": "Jederzeit kündbar. Kündigen Sie vor Ablauf des ersten Jahres, wird Ihnen nichts mehr berechnet.",
+      "annualNoteShort": "{{perMonth}}/Monat, jährliche Abrechnung. Dann {{listPrice}}/Jahr.",
+      "annualNoteShortYearlyOnly": "Dann {{listPrice}}/Jahr."
     }
   },
   "welcome": {

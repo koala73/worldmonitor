@@ -135,7 +135,9 @@
       "srReferencePrice": "در مقایسه با:",
       "srOfferPrice": "قیمت پیشنهادی:",
       "stripEnds": "پایان: {{date}}.",
-      "cancelNote": "می‌توانید هر زمان لغو کنید. اگر قبل از پایان سال اول لغو کنید، دوباره شارژ نخواهید شد."
+      "cancelNote": "می‌توانید هر زمان لغو کنید. اگر قبل از پایان سال اول لغو کنید، دوباره شارژ نخواهید شد.",
+      "annualNoteShort": "{{perMonth}}/ماه، پرداخت سالانه. سپس {{listPrice}}/سال.",
+      "annualNoteShortYearlyOnly": "سپس {{listPrice}}/سال."
     }
   },
   "meta": {

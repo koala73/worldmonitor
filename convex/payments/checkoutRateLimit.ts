@@ -187,6 +187,18 @@ export interface CheckoutRateLimitRetryOptions {
   /** Maximum wall-clock duration of the provider attempt admitted after a wait. */
   attemptTimeoutMs: number;
   onRetry?: (delayMs: number) => void;
+  /**
+   * Absolute deadline shared with an earlier ladder for the same checkout
+   * (checkoutRetryClock epoch ms). With it, even the first attempt is skipped
+   * when it no longer fits, and the ladder returns the typed timeout outcome.
+   * Without it the ladder starts its own CHECKOUT_RATE_LIMIT_RETRY_BUDGET_MS.
+   */
+  deadlineMs?: number;
+}
+
+/** The budget deadline a ladder entered now would use. */
+export function checkoutRetryDeadline(): number {
+  return checkoutRetryClock.now() + CHECKOUT_RATE_LIMIT_RETRY_BUDGET_MS;
 }
 
 type CheckoutAttemptResult<T> =
@@ -228,7 +240,13 @@ export async function runCheckoutWithRateLimitRetry<T>(
   attempt: () => Promise<T>,
   options: CheckoutRateLimitRetryOptions,
 ): Promise<T | CheckoutRateLimitedOutcome | CheckoutTimedOutOutcome> {
-  const deadline = checkoutRetryClock.now() + CHECKOUT_RATE_LIMIT_RETRY_BUDGET_MS;
+  const deadline = options.deadlineMs ?? checkoutRetryDeadline();
+  if (
+    options.deadlineMs !== undefined &&
+    checkoutRetryClock.now() + options.attemptTimeoutMs > deadline
+  ) {
+    return { checkoutFailed: true, code: CHECKOUT_TIMED_OUT };
+  }
   let timeoutRetried = false;
   let result = await attemptCheckoutOnce(attempt);
   for (const delayMs of CHECKOUT_RATE_LIMIT_RETRY_DELAYS_MS) {

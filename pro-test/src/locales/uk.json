@@ -135,7 +135,9 @@
       "srReferencePrice": "Порівняно з:",
       "srOfferPrice": "Ціна пропозиції:",
       "stripEnds": "Закінчується {{date}}.",
-      "cancelNote": "Скасуйте будь-коли. Скасуйте до кінця першого року, і повторного списання не буде."
+      "cancelNote": "Скасуйте будь-коли. Скасуйте до кінця першого року, і повторного списання не буде.",
+      "annualNoteShort": "{{perMonth}}/міс., оплата щороку. Потім {{listPrice}}/рік.",
+      "annualNoteShortYearlyOnly": "Потім {{listPrice}}/рік."
     }
   },
   "meta": {

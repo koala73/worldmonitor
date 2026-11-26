@@ -135,7 +135,9 @@
       "srReferencePrice": "Linganisha na:",
       "srOfferPrice": "Bei ya ofa:",
       "stripEnds": "Inaishia {{date}}.",
-      "cancelNote": "Ghairi wakati wowote. Ukighairi kabla mwaka wako wa kwanza kuisha, hutatozwa tena."
+      "cancelNote": "Ghairi wakati wowote. Ukighairi kabla mwaka wako wa kwanza kuisha, hutatozwa tena.",
+      "annualNoteShort": "{{perMonth}}/mwezi, bilashaji kila mwaka. Kisha {{listPrice}}/mwaka.",
+      "annualNoteShortYearlyOnly": "Kisha {{listPrice}}/mwaka."
     }
   },
   "meta": {

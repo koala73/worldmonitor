@@ -373,7 +373,9 @@
       "srReferencePrice": "Karşılaştırma:",
       "srOfferPrice": "Teklif fiyatı:",
       "stripEnds": "{{date}} tarihinde sona eriyor.",
-      "cancelNote": "İstediğiniz zaman iptal edebilirsiniz. İlk yılınız bitmeden iptal ederseniz, tekrar ücretlendirilmeyeceksiniz."
+      "cancelNote": "İstediğiniz zaman iptal edebilirsiniz. İlk yılınız bitmeden iptal ederseniz, tekrar ücretlendirilmeyeceksiniz.",
+      "annualNoteShort": "{{perMonth}}/ay, yıllık olarak faturalandırılır. Daha sonra {{listPrice}}/yıl.",
+      "annualNoteShortYearlyOnly": "Daha sonra {{listPrice}}/yıl."
     }
   },
   "welcome": {

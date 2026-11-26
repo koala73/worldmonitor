@@ -373,7 +373,9 @@
       "srReferencePrice": "Összehasonlítva:",
       "srOfferPrice": "Ajánlati ár:",
       "stripEnds": "Lejár: {{date}}.",
-      "cancelNote": "Bármikor lemondhatod. Ha az első év vége előtt lemondod, nem terhelünk meg újra."
+      "cancelNote": "Bármikor lemondhatod. Ha az első év vége előtt lemondod, nem terhelünk meg újra.",
+      "annualNoteShort": "{{perMonth}}/hó, éves számlázással. Utána {{listPrice}}/év.",
+      "annualNoteShortYearlyOnly": "Utána {{listPrice}}/év."
     }
   },
   "welcome": {

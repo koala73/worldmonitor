@@ -373,7 +373,9 @@
       "srReferencePrice": "Uspoređeno s:",
       "srOfferPrice": "Cijena ponude:",
       "stripEnds": "Završava {{date}}.",
-      "cancelNote": "Otkaži bilo kada. Ako otkažeš prije nego što se tvoja prva godina završi, neće te se više naplaćivati."
+      "cancelNote": "Otkaži bilo kada. Ako otkažeš prije nego što se tvoja prva godina završi, neće te se više naplaćivati.",
+      "annualNoteShort": "{{perMonth}}/mj, naplaćeno godišnje. Zatim {{listPrice}}/god.",
+      "annualNoteShortYearlyOnly": "Zatim {{listPrice}}/god."
     }
   },
   "welcome": {

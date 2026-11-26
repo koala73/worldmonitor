@@ -373,7 +373,9 @@
       "srReferencePrice": "Comparado con:",
       "srOfferPrice": "Precio de oferta:",
       "stripEnds": "Finaliza {{date}}.",
-      "cancelNote": "Cancela en cualquier momento. Cancela antes de que finalice tu primer año y no te volveremos a cobrar."
+      "cancelNote": "Cancela en cualquier momento. Cancela antes de que finalice tu primer año y no te volveremos a cobrar.",
+      "annualNoteShort": "{{perMonth}}/mes, facturado anualmente. Luego {{listPrice}}/año.",
+      "annualNoteShortYearlyOnly": "Luego {{listPrice}}/año."
     }
   },
   "welcome": {

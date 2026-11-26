@@ -122,6 +122,19 @@ describe('dashboard Pro strip during the promotion', () => {
     expect(container.querySelector('.pro-banner')).toBeNull();
   });
 
+  it('replaces an open offer with the regular strip at the end instant', async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    const container = await showAt(PROMO.endsAtMs - 5_000);
+    expect(container.querySelector<HTMLElement>('.pro-banner')?.dataset.promo).toBe(PROMO.id);
+
+    vi.advanceTimersByTime(5_000);
+
+    const banner = container.querySelector<HTMLElement>('.pro-banner');
+    expect(banner?.dataset.promo).toBeUndefined();
+    expect(banner?.textContent).toContain('components.proBanner.headline');
+  });
+
   it('shows the regular strip once the offer has ended', async () => {
     storage.setItem(PROMO_DISMISSED_UNTIL_KEY, String(PROMO.endsAtMs));
     const container = await showAt(PROMO.endsAtMs);

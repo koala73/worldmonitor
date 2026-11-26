@@ -131,6 +131,8 @@
       "badge": "{{percent}}% off",
       "annualNote": "{{perMonth}}/mo, billed yearly. Then {{listPrice}}/yr. Offer ends {{date}}.",
       "annualNoteYearlyOnly": "Then {{listPrice}}/yr. Offer ends {{date}}.",
+      "annualNoteShort": "{{perMonth}}/mo, billed yearly. Then {{listPrice}}/yr.",
+      "annualNoteShortYearlyOnly": "Then {{listPrice}}/yr.",
       "cancelNote": "Cancel anytime. Cancel before your first year ends and you won't be charged again.",
       "monthlyNote": "Black Friday: {{savings}}% off with yearly",
       "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% off Pro Yearly",

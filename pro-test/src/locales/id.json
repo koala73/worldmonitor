@@ -135,7 +135,9 @@
       "srReferencePrice": "Dibandingkan dengan:",
       "srOfferPrice": "Harga penawaran:",
       "stripEnds": "Berakhir {{date}}.",
-      "cancelNote": "Batalkan kapan saja. Batalkan sebelum tahun pertama Anda berakhir dan Anda tidak akan dikenakan biaya lagi."
+      "cancelNote": "Batalkan kapan saja. Batalkan sebelum tahun pertama Anda berakhir dan Anda tidak akan dikenakan biaya lagi.",
+      "annualNoteShort": "{{perMonth}}/bln, ditagih per tahun. Kemudian {{listPrice}}/thn.",
+      "annualNoteShortYearlyOnly": "Kemudian {{listPrice}}/thn."
     }
   },
   "meta": {

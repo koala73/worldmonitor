@@ -373,7 +373,9 @@
       "srReferencePrice": "對比：",
       "srOfferPrice": "優惠價：",
       "stripEnds": "截至 {{date}}。",
-      "cancelNote": "隨時可取消。在首年結束前取消，不會再次收費。"
+      "cancelNote": "隨時可取消。在首年結束前取消，不會再次收費。",
+      "annualNoteShort": "{{perMonth}}/月，按年計費。之後 {{listPrice}}/年。",
+      "annualNoteShortYearlyOnly": "之後 {{listPrice}}/年。"
     }
   },
   "welcome": {

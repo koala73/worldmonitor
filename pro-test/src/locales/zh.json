@@ -373,7 +373,9 @@
       "srReferencePrice": "对比：",
       "srOfferPrice": "优惠价：",
       "stripEnds": "截至 {{date}}。",
-      "cancelNote": "随时可取消。在首年结束前取消，不会再次收费。"
+      "cancelNote": "随时可取消。在首年结束前取消，不会再次收费。",
+      "annualNoteShort": "{{perMonth}}/月，按年计费。之后 {{listPrice}}/年。",
+      "annualNoteShortYearlyOnly": "之后 {{listPrice}}/年。"
     }
   },
   "welcome": {

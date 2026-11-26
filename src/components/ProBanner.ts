@@ -122,6 +122,30 @@ function promoBannerCopy(promo: PromoCampaign): { headline: string; tagline: str
   };
 }
 
+// Checkout stops applying the code at the end instant, so an open promotion
+// banner is swapped for the regular strip then instead of selling an offer
+// that no longer exists.
+let promoExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+const MAX_TIMER_MS = 2_147_483_647;
+
+function schedulePromoExpiry(promo: PromoCampaign, banner: HTMLElement): void {
+  if (promoExpiryTimer !== null) clearTimeout(promoExpiryTimer);
+  const delay = Math.min(Math.max(0, promo.endsAtMs - Date.now()), MAX_TIMER_MS);
+  promoExpiryTimer = setTimeout(() => {
+    promoExpiryTimer = null;
+    if (bannerEl !== banner) return;
+    if (Date.now() < promo.endsAtMs) {
+      schedulePromoExpiry(promo, banner);
+      return;
+    }
+    cancelPendingBannerRemoval();
+    banner.remove();
+    bannerEl = null;
+    if (bannerContainer && !dismissedThisSession) showProBanner(bannerContainer);
+    else setReservation(false);
+  }, delay);
+}
+
 function setReservation(active: boolean): void {
   document.documentElement.classList.toggle(RESERVATION_CLASS, active);
 }
@@ -429,6 +453,7 @@ export function showProBanner(container: HTMLElement): void {
   }
 
   bannerEl = banner;
+  if (promo) schedulePromoExpiry(promo, banner);
   requestAnimationFrame(() => banner.classList.add('pro-banner-in'));
 }
 

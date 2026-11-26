@@ -373,7 +373,9 @@
       "srReferencePrice": "Comparat cu:",
       "srOfferPrice": "Preț ofertă:",
       "stripEnds": "Se termină {{date}}.",
-      "cancelNote": "Anulează oricând. Anulează înainte ca primul an să se încheie și nu vei mai fi taxat."
+      "cancelNote": "Anulează oricând. Anulează înainte ca primul an să se încheie și nu vei mai fi taxat.",
+      "annualNoteShort": "{{perMonth}}/lună, facturare anuală. Apoi {{listPrice}}/an.",
+      "annualNoteShortYearlyOnly": "Apoi {{listPrice}}/an."
     }
   },
   "welcome": {

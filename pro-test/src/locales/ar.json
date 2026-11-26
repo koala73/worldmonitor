@@ -373,7 +373,9 @@
       "srReferencePrice": "بالمقارنة مع:",
       "srOfferPrice": "سعر العرض:",
       "stripEnds": "ينتهي {{date}}.",
-      "cancelNote": "يمكنك الإلغاء في أي وقت. إذا ألغيت قبل انتهاء السنة الأولى، لن يتم فرض رسوم عليك مجددًا."
+      "cancelNote": "يمكنك الإلغاء في أي وقت. إذا ألغيت قبل انتهاء السنة الأولى، لن يتم فرض رسوم عليك مجددًا.",
+      "annualNoteShort": "{{perMonth}}/شهر، تُدفع سنويًا. ثم {{listPrice}}/سنة.",
+      "annualNoteShortYearlyOnly": "ثم {{listPrice}}/سنة."
     }
   },
   "welcome": {
