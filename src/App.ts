@@ -232,11 +232,21 @@ import {
   getSyncVersion,
   hasPendingCloudPrefsRetry,
   install as installCloudPrefsSync,
+  isCloudSyncEnabled,
   onSignIn as cloudPrefsSignIn,
   onSignOut as cloudPrefsSignOut,
+  setCloudBlobApplyExclusions,
   type CloudPrefsAppliedDetail,
   type CloudPrefsSignInTerminalDetail,
 } from '@/utils/cloud-prefs-sync';
+import { prepareTabSyncSignIn, startTabSync, stopTabSync } from '@/services/tab-cloud-sync';
+
+/**
+ * Preference-blob keys that hold the active tab's panels. While tab records
+ * sync (#11141) they own that state, so a blob from another device must not
+ * overwrite the tab on screen. Uploads are unchanged.
+ */
+const TAB_SYNCED_BLOB_KEYS = ['worldmonitor-panels', 'panel-order', 'panel-order-bottom-set'] as const;
 import {
   migrateFrontlineEuropeDefaultsV3,
   migrateStrategicDefaultsV4,
@@ -2597,6 +2607,20 @@ export class App {
     };
   }
 
+  /** Sync dashboard tabs with the signed-in account (#11141). */
+  private startDashboardTabSync(userId: string): void {
+    const { willSync } = prepareTabSyncSignIn(userId, isCloudSyncEnabled());
+    if (!willSync) {
+      stopTabSync();
+      setCloudBlobApplyExclusions([]);
+      return;
+    }
+    setCloudBlobApplyExclusions(TAB_SYNCED_BLOB_KEYS);
+    // When tab sync stops for good (no deployment, an error), the blob's
+    // panel keys go back to cloud-prefs so panel sync keeps working.
+    startTabSync(userId, this.panelLayout.getTabSyncHost(), () => setCloudBlobApplyExclusions([]));
+  }
+
   public async init(webMcpController: AbortController | null): Promise<void> {
     const initStart = performance.now();
     markLcpDebug('wm:boot:app-init-start');
@@ -2925,6 +2949,10 @@ export class App {
         );
         this.pendingPreferenceHandoffGeneration = preferenceHandoffGeneration;
 
+        // Before cloud-prefs records this sign-in: tab sync reads which
+        // account this browser's tabs came from.
+        this.startDashboardTabSync(userId);
+
         // Rebind Convex watches to the real Clerk userId (was bound to anon UUID at init)
         // destroyEntitlementSubscription deliberately PRESERVES the last
         // snapshot so a WebSocket reconnect doesn't flash paying users back to
@@ -3094,6 +3122,8 @@ export class App {
         _convexWatchHandoffGeneration++;
         destroyEntitlementSubscription();
         destroySubscriptionWatch();
+        stopTabSync();
+        setCloudBlobApplyExclusions([]);
         cloudPrefsSignOut();
         resetEntitlementState();
         resetEntitlementVerification();
@@ -3847,6 +3877,7 @@ export class App {
     this.webMcpController = null;
     this.tierPreferenceHandoff.clear();
     this.pendingPreferenceHandoffGeneration = undefined;
+    stopTabSync();
     this.viewportHydrationReady = false;
     this.viewportHydrationReadyAt = 0;
     this.viewportTriggersArmed = false;

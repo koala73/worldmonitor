@@ -1466,3 +1466,46 @@ describe('settings import cloud transaction', () => {
     assert.equal(result.acceptedDataByToken['test-token']?.['worldmonitor-theme'], 'light');
   });
 });
+
+describe('cloud blob apply exclusions (#11141)', () => {
+  // While dashboard tabs sync as their own records, the blob's panel keys
+  // describe whichever tab another device had open. Applying them would
+  // overwrite the tab on screen, so App excludes them for the session.
+  const PANEL_KEYS = ['worldmonitor-panels', 'panel-order', 'panel-order-bottom-set'] as const;
+
+  async function signInWithCloudPanels(exclude: readonly string[]) {
+    const seen: Record<string, string | null> = {};
+    await runHarness(async (cloudPrefs, controls) => {
+      localStorage.setItem('wm-cloud-sync-version', '1');
+      localStorage.setItem('worldmonitor-panels', '{"local":{"enabled":true}}');
+      localStorage.setItem('panel-order', '["local"]');
+      controls.seedRow('test-token', {
+        'worldmonitor-panels': '{"cloud":{"enabled":true}}',
+        'panel-order': '["cloud"]',
+        'worldmonitor-theme': 'light',
+      }, 2);
+      cloudPrefs.setCloudBlobApplyExclusions(exclude);
+      try {
+        await cloudPrefs.onSignIn('user-1', 'full');
+        for (const key of [...PANEL_KEYS, 'worldmonitor-theme']) seen[key] = localStorage.getItem(key);
+      } finally {
+        cloudPrefs.setCloudBlobApplyExclusions([]);
+        await cloudPrefs.syncNow();
+      }
+    });
+    return seen;
+  }
+
+  it('keeps the local panel keys and still applies every other key', async () => {
+    const seen = await signInWithCloudPanels(PANEL_KEYS);
+    assert.equal(seen['worldmonitor-panels'], '{"local":{"enabled":true}}');
+    assert.equal(seen['panel-order'], '["local"]');
+    assert.equal(seen['worldmonitor-theme'], 'light');
+  });
+
+  it('applies the panel keys again once the exclusion is cleared', async () => {
+    const seen = await signInWithCloudPanels([]);
+    assert.equal(seen['worldmonitor-panels'], '{"cloud":{"enabled":true}}');
+    assert.equal(seen['panel-order'], '["cloud"]');
+  });
+});

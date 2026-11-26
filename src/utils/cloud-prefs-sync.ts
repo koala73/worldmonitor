@@ -608,12 +608,31 @@ function clearForeignAccountState(userId: string): boolean {
  * `changedKeys` now records only writes that actually landed, so a consumer of
  * CLOUD_PREFS_APPLIED cannot re-read storage for a key that never changed.
  */
-function applyCloudBlob(data: Record<string, unknown>, syncVersion?: number): boolean {
+// Keys another subsystem owns for now. Synced dashboard tabs (#11141) carry
+// the panel layout per tab, so while tab sync runs the blob's panel keys,
+// which hold whichever tab another device last had open, must not land here.
+let _cloudApplyExclusions: ReadonlySet<string> = new Set();
+
+/**
+ * Stop (or, with an empty list, resume) applying these keys from the cloud
+ * blob. Uploads are unchanged, and the local schema migration still applies
+ * them: only cloud-derived values are skipped.
+ */
+export function setCloudBlobApplyExclusions(keys: readonly CloudSyncKey[]): void {
+  _cloudApplyExclusions = new Set(keys);
+}
+
+function applyCloudBlob(
+  data: Record<string, unknown>,
+  syncVersion?: number,
+  source: 'cloud' | 'local-migration' = 'cloud',
+): boolean {
   const changedKeys: CloudSyncKey[] = [];
   let allWritesLanded = true;
   _suppressPatch = true;
   try {
     for (const key of CLOUD_SYNC_KEYS) {
+      if (source === 'cloud' && _cloudApplyExclusions.has(key)) continue;
       // An omitted key normally means the user cleared it. A small set of keys
       // instead uses explicit reset values and preserves omission from an old
       // client during rolling deployments. See resolveCloudBlobKeyAction.
@@ -773,7 +792,7 @@ function migrateLocalBlobIfNeeded(): PreparedCloudBlob | null {
     publisherDirectMarker.value === 'done',
   );
   const migratedData = migrated.data as Record<string, string>;
-  if (migratedData !== blob && !applyCloudBlob(migratedData)) {
+  if (migratedData !== blob && !applyCloudBlob(migratedData, undefined, 'local-migration')) {
     // The migrated blob did not land, so the local state is neither the old
     // snapshot nor the new one. Returning `blob` here — as an earlier round of
     // this fix did — hands callers a VALID PreparedCloudBlob, which they then

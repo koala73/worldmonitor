@@ -105,7 +105,7 @@ import {
 import { planPanelFilterApply, setPanelFilter, type PanelFilters } from '@/services/panel-filters';
 import {
   loadTabsState,
-  saveTabsState,
+  saveTabsState as storeTabsState,
   generateTabId,
   buildNewTabPanels,
   clearNewTabPanels,
@@ -193,6 +193,14 @@ import {
   settleCheckoutReturnFocus,
 } from '@/services/checkout-return-state';
 import { resolveCheckoutContext, type CheckoutContext } from '../../shared/checkout-attribution';
+import { notifyTabsChangedLocally, recordTabDeleted, type TabSyncHost } from '@/services/tab-cloud-sync';
+
+/** Every tab save is a possible edit to push to the account's synced tabs (#11141). */
+function saveTabsState(state: TabsState): TabsPersistReceipt {
+  const receipt = storeTabsState(state);
+  notifyTabsChangedLocally();
+  return receipt;
+}
 
 function readSessionStorageValue(key: string): string | null {
   try {
@@ -2685,6 +2693,53 @@ export class PanelLayoutManager implements AppModule {
     };
   }
 
+  /**
+   * The tabs with the active tab read from live state, for tab sync. Unlike
+   * captureCurrentTabState it writes nothing: the panel order keys are
+   * cloud-synced preferences, and a background read must not edit them.
+   */
+  private captureTabsForSync(): TabsState | null {
+    if (!this.tabsState) return null;
+    const state = JSON.parse(JSON.stringify(this.tabsState)) as TabsState;
+    const active = state.tabs.find((t) => t.id === state.activeTabId);
+    if (active) {
+      active.panelSettings = JSON.parse(JSON.stringify(this.ctx.panelSettings)) as Record<string, PanelConfig>;
+      active.panelOrder = this.livePanelOrder() ?? [...this.resolvedPanelOrder];
+      active.bottomSet = Array.from(this.bottomSetMemory);
+    }
+    return state;
+  }
+
+  /** Store and show tabs merged with the account's synced tabs. */
+  private applySyncedTabs(next: TabsState, activeChanged: boolean): void {
+    if (!this.tabsState || this.ctx.isDestroyed) return;
+    this.tabsState = next;
+    storeTabsState(next);
+    if (activeChanged) {
+      const active = next.tabs.find((t) => t.id === next.activeTabId);
+      if (active) {
+        restoreActiveScope(active.scope ?? null);
+        this.applyTabPanelFilters(active.panelFilters);
+        this.applyTabPanelState(active.panelSettings, active.panelOrder, active.bottomSet);
+      }
+    }
+    // Tabs from another device can hold a layout over this account's cap.
+    this.healStoredTabSnapshots();
+    this.panelTabBar?.refresh();
+    this.updateTabCapLock();
+  }
+
+  /** The layout side of tab sync, for App to hand to startTabSync. */
+  public getTabSyncHost(): TabSyncHost {
+    return {
+      captureTabs: () => this.captureTabsForSync(),
+      applyTabs: (next, activeChanged) => this.applySyncedTabs(next, activeChanged),
+      currentPanelSettings: () => this.ctx.panelSettings,
+      defaultTabName: () => t('dashboardTabs.defaultName'),
+      newTabId: () => generateTabId(),
+    };
+  }
+
   /** Refresh the active tab's snapshot from live state (called on switch-away). */
   private snapshotActiveTab(): TabsPersistReceipt {
     if (!this.tabsState) return { persisted: false };
@@ -2772,6 +2827,9 @@ export class PanelLayoutManager implements AppModule {
     if (!this.tabsState || this.tabsState.tabs.length <= 1) return { persisted: true };
     const idx = this.tabsState.tabs.findIndex((t) => t.id === tabId);
     if (idx === -1) return { persisted: true };
+    // Before the save below: the sync pass it triggers must see the delete
+    // as intended, or it would restore the tab from the account.
+    recordTabDeleted(tabId);
     const wasActive = this.tabsState.activeTabId === tabId;
     const [removed] = this.tabsState.tabs.splice(idx, 1);
 
@@ -4546,10 +4604,11 @@ export class PanelLayoutManager implements AppModule {
     });
   }
 
-  savePanelOrder(): { persisted: boolean } {
+  /** The panel order the grids show now, or null before they exist. Reads only. */
+  private livePanelOrder(): string[] | null {
     const grid = document.getElementById('panelsGrid');
     const bottomGrid = document.getElementById('mapBottomGrid');
-    if (!grid || !bottomGrid) return { persisted: false };
+    if (!grid || !bottomGrid) return null;
 
     const sidebarIds = Array.from(grid.children)
       .map((el) => (el as HTMLElement).dataset.panel)
@@ -4559,7 +4618,12 @@ export class PanelLayoutManager implements AppModule {
       .map((el) => (el as HTMLElement).dataset.panel)
       .filter((key): key is string => !!key);
 
-    const allOrder = this.buildUnifiedOrder(sidebarIds, bottomIds);
+    return this.buildUnifiedOrder(sidebarIds, bottomIds);
+  }
+
+  savePanelOrder(): { persisted: boolean } {
+    const allOrder = this.livePanelOrder();
+    if (!allOrder) return { persisted: false };
     this.resolvedPanelOrder = allOrder;
     const orderPersisted = saveToStorage(this.ctx.PANEL_ORDER_KEY, allOrder);
     const bottomPersisted = saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', Array.from(this.bottomSetMemory));
