@@ -5737,6 +5737,8 @@ function recordAlertLatency(latency, { severity, importanceScore, variant, sourc
 // feed cannot add minutes. A copy left unchecked gets no boost.
 const CROSS_WORDING_MAX_CHECKS = 8;
 let crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
+// Check outcomes since the classify cycle last wrote the matcher's health (#11426).
+const crossWordingOutcomes = [];
 
 // Publisher families of the other wordings of each critical copy under the
 // realtime bar (#10977). High copies only corroborate; they are never boosted.
@@ -5768,7 +5770,7 @@ async function crossWordingFamilies(chunk, acceptedLevels, allTitles, observedPu
   if (checked.length < candidates.length) {
     console.log(`[news-corroboration] ${JSON.stringify({ unchecked: candidates.length - checked.length, reason: 'budget' })}`);
   }
-  return corroboration.crossWordingFamilies(checked);
+  return corroboration.crossWordingFamilies(checked, { outcomes: crossWordingOutcomes });
 }
 
 async function seedClassifyForVariant(variant, seenTitles) {
@@ -6177,6 +6179,31 @@ async function seedClassifyForVariant(variant, seenTitles) {
   return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled, digestBuildAt };
 }
 
+// One classify cycle of matcher outcomes, build passes included, joined to the
+// last hour (#11426). A failed read skips the write rather than restart the
+// hour, and seed-meta advances only after the payload lands. Either way this
+// cycle's outcomes are dropped and health sees the seed-meta age.
+async function writeCrossWordingHealth() {
+  const outcomes = crossWordingOutcomes.splice(0);
+  const corroboration = await newsCorroborationPromise;
+  if (!corroboration) return;
+  let readFailed = false;
+  const previous = await upstashGet(corroboration.MATCHER_HEALTH_KEY, () => { readFailed = true; });
+  if (readFailed) return;
+  const { payload, meta } = corroboration.matcherHealth(previous, outcomes, {
+    now: Date.now(), configured: !!process.env.OPENROUTER_API_KEY,
+  });
+  if (!(await upstashSet(corroboration.MATCHER_HEALTH_KEY, payload, corroboration.MATCHER_HEALTH_TTL_SECONDS))) {
+    console.warn('[news-corroboration] health write failed');
+    return;
+  }
+  await upstashSet(corroboration.MATCHER_HEALTH_META_KEY, meta, 604800);
+  await upstashPipeline([['SET', corroboration.MATCHER_ACTIVATION_KEY, '1']]).catch(() => {});
+  if (meta.sourceState === 'degraded') {
+    console.warn(`[news-corroboration] ${JSON.stringify({ degraded: true, checked: payload.checked, failed: payload.failed, errors: payload.errors })}`);
+  }
+}
+
 async function seedClassify() {
   if (classifyInFlight) return;
   classifyInFlight = true;
@@ -6244,6 +6271,8 @@ async function seedClassify() {
         console.warn(`[Classify] ${CLASSIFY_VARIANTS[v]} error:`, e?.message || e);
       }
     }
+
+    await writeCrossWordingHealth();
 
     if (!shouldWriteClassifySeedMeta({ fetchOk, fetchFailed })) {
       console.warn('[Classify] Digest fetch failed for every variant — not writing seed-meta:classify');

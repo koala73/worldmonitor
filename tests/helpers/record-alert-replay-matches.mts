@@ -24,7 +24,8 @@ import {
 } from '../../scripts/lib/news-alert-coverage.mjs';
 
 const { callLLM } = createRequire(import.meta.url)('../../scripts/lib/llm-chain.cjs');
-// The options the matcher's default judge passes (scripts/lib/news-corroboration.mjs).
+// The matcher's default judge on its OpenRouter route (scripts/lib/news-corroboration.mjs).
+// Its Anthropic fallback is left out, so every recorded reply comes from the production model.
 const JUDGE_OPTIONS = { maxTokens: 20, temperature: 0, timeoutMs: 6_000, allowedProviders: ['openrouter'], stage: 'news-cross-wording' };
 const JUDGE_MODEL = 'google/gemini-2.5-flash';
 

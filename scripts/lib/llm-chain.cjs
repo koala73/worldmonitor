@@ -147,6 +147,8 @@ const LLM_PROVIDERS = [
  * @param {Record<string, unknown>} [opts.jsonSchema] - JSON schema for the reply, sent to `invoke`
  *   providers (anthropic) as structured output. OpenAI-compatible attempts take theirs from `extraBody`.
  * @param {string} [opts.stage] - llm_call telemetry surface tag (#4944 U5)
+ * @param {(attempt: { provider: string, ok: boolean, reason?: string }) => void} [opts.onAttempt] - Called
+ *   after each provider attempt; a failed one carries the telemetry reason (`http_402`, `timeout`, ...).
  * @returns {Promise<string|null>} Generated text, or null if all providers fail
  */
 async function callLLM(systemPrompt, userPrompt, opts = {}) {
@@ -161,6 +163,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     extraBody,
     jsonSchema,
     stage = 'llm-chain',
+    onAttempt,
   } = opts;
   const allowedSet = allowedProviders ? new Set(allowedProviders) : null;
   const skipSet = skipProviders ? new Set(skipProviders) : null;
@@ -198,6 +201,8 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
         fallbackIndex: attemptIndex++,
         ...extra,
       }));
+      // Inside the attempt's try: a throwing hook must not record it twice.
+      try { onAttempt?.({ provider: provider.name, ok, reason: extra.reason }); } catch { /* the caller's hook */ }
     };
 
     try {

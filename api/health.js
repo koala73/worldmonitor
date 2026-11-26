@@ -843,6 +843,8 @@ const STANDALONE_KEYS = {
   // News digest warm cycle (scripts/lib/news-digest-warm.cjs): written only
   // when at least half the (edition, language) digests served news (#9766).
   newsDigestWarmRelayHeartbeat: 'relay:heartbeat:news-digest-warm',
+  // The relay's cross-wording matcher over the last hour (#11426).
+  newsCrossWordingMatcher: 'news:cross-wording-health:v1',
   // Bundle tick heartbeat written by `_bundle-runner.mjs` on every container
   // start, including skip-all ticks. Detects Railway cron-scheduler freeze
   // (#6691) that member seed-meta budgets (17.5d+) cannot see.
@@ -2684,6 +2686,18 @@ const SEED_META = {
   // than the 720min seed-meta threshold above. TTL is 18h on the writer.
   chokepointFlowsRelayHeartbeat: { key: 'relay:heartbeat:chokepoint-flows', maxStaleMin: 480 }, // 6h loop; 8h alarm
   climateNewsRelayHeartbeat:     { key: 'relay:heartbeat:climate-news',     maxStaleMin: 60 },  // 30m loop; 60m alarm
+  // Written by every 15-minute relay classify cycle (#11426), so 60 minutes is
+  // the classify threat summary's budget. The relay writes sourceState
+  // `degraded` when at least two of the last hour's cross-wording checks failed
+  // and they were more than half of the checks made (an OpenRouter 402 fails
+  // every one), naming the commonest failure in errorCode; an hour without
+  // candidates is `ok`. A relay without OPENROUTER_API_KEY writes `unavailable`.
+  newsCrossWordingMatcher: {
+    key: 'seed-meta:news:cross-wording-health',
+    maxStaleMin: 60,
+    activationKey: 'seed-activated:news:cross-wording-health',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11426, activationKey: 'seed-activated:news:cross-wording-health' },
+  },
   // 17m loop; 51m = 3 missed cycles. Soft until the first healthy cycle.
   newsDigestWarmRelayHeartbeat: {
     key: 'relay:heartbeat:news-digest-warm',
@@ -2978,6 +2992,7 @@ const GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN = 30 * 24 * 60;
 // "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
   'gridDisruptionClock',
+  'newsCrossWordingMatcher',
   'comtradeBilateralHs4Ext',
   'foodPricesPihps', 'foodPricesPbs', 'foodPricesDa', 'foodPricesCbsl',
   'foodPricesSniim', 'foodPricesGiews', 'foodPricesOnagri',
@@ -3251,6 +3266,7 @@ const ON_DEMAND_KEYS = new Set([
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
   gridDisruptionClock: SEED_META.gridDisruptionClock.activationKey,
+  newsCrossWordingMatcher: SEED_META.newsCrossWordingMatcher.activationKey,
   comtradeBilateralHs4Ext: SEED_META.comtradeBilateralHs4Ext.activationKey,
   regionalEnergyPgcb: SEED_META.regionalEnergyPgcb.activationKey,
   regionalEnergyPetrobangla: SEED_META.regionalEnergyPetrobangla.activationKey,

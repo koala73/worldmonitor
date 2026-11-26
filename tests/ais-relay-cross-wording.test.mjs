@@ -109,6 +109,39 @@ describe('relay cross-wording corroboration (#10977)', () => {
     assert.equal(h.outcomes().length, 3);
   });
 
+  it('writes the cycle health payload, then its seed-meta, then the activation marker (#11426)', async () => {
+    const corroboration = await import('../scripts/lib/news-corroboration.mjs');
+    const writeStart = relay.indexOf('async function writeCrossWordingHealth()');
+    const writeEnd = relay.indexOf('\nasync function seedClassify()', writeStart);
+    assert.ok(writeStart > 0 && writeEnd > writeStart);
+    const writes = [];
+    const load = ({ setOk = true, readFails = false, previous = null } = {}) => {
+      const context = {
+        newsCorroborationPromise: Promise.resolve(corroboration),
+        crossWordingOutcomes: [{ result: 'failed', error: 'EMBED_HTTP_402' }, { result: 'failed', error: 'EMBED_HTTP_402' }],
+        upstashGet: async (_key, onFailure) => { if (readFails) { onFailure('timeout'); return null; } return previous; },
+        upstashSet: async (key, value, ttl) => { writes.push(['SET', key, value, ttl]); return setOk; },
+        upstashPipeline: async (commands) => { writes.push(...commands); return commands.map(() => ({ result: 'OK' })); },
+        process: { env: { OPENROUTER_API_KEY: 'stub' } }, console: { warn: () => {} }, Date, JSON,
+      };
+      vm.createContext(context);
+      vm.runInContext(relay.slice(writeStart, writeEnd), context);
+      return context;
+    };
+    const ctx = load();
+    await vm.runInContext('writeCrossWordingHealth()', ctx);
+    assert.deepEqual(writes.map((w) => w[1]), [corroboration.MATCHER_HEALTH_KEY, corroboration.MATCHER_HEALTH_META_KEY, corroboration.MATCHER_ACTIVATION_KEY]);
+    assert.equal(writes[0][3], corroboration.MATCHER_HEALTH_TTL_SECONDS);
+    assert.equal(writes[1][2].sourceState, 'degraded');
+    assert.equal(writes[1][2].errorCode, 'EMBED_HTTP_402');
+    assert.equal(ctx.crossWordingOutcomes.length, 0, 'each outcome counts in one cycle');
+    for (const opts of [{ setOk: false }, { readFails: true }]) {
+      writes.length = 0;
+      await vm.runInContext('writeCrossWordingHealth()', load(opts));
+      assert.ok(!writes.some((w) => w[1] === corroboration.MATCHER_HEALTH_META_KEY), `no seed-meta without its payload: ${JSON.stringify(opts)}`);
+    }
+  });
+
   it('adds nothing when the module failed to load', async () => {
     const h = harness({ module: false });
     assert.equal((await h.run([{ title: 'critical under the bar', level: 'critical' }])).size, 0);

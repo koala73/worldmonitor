@@ -85,12 +85,38 @@ export function parseJudgeVerdict(text) {
   return typeof reply.same === 'boolean' ? reply.same : null;
 }
 
-async function defaultJudge(systemPrompt, userPrompt) {
+// REWRITE_JUDGE_DIRECT_MODEL in news-alert-coverage.mjs, which the relay image
+// does not ship; tests/news-cross-wording-health.test.mjs keeps the two equal.
+export const JUDGE_DIRECT_MODEL = 'claude-sonnet-5-5';
+const VERDICT_SCHEMA = { type: 'object', properties: { same: { type: 'boolean' } }, required: ['same'], additionalProperties: false };
+
+// A failed check's code, as /api/health relays it: EMBED_HTTP_402, JUDGE_TIMEOUT.
+const failureCode = (stage, err) => {
+  if (Number.isInteger(err?.status)) return `${stage}_HTTP_${err.status}`;
+  return /timeout|abort/i.test(err?.name || '') ? `${stage}_TIMEOUT` : `${stage}_ERROR`;
+};
+const tagged = (err, code) => Object.assign(err instanceof Error ? err : new Error(String(err)), { code });
+
+// Asked on the Anthropic API when OpenRouter refuses, as the rewrite judge is:
+// on 2026-11-23 the OpenRouter account ran out of credit and its judge calls
+// returned 402. The schema holds the direct reply to bare JSON.
+async function defaultJudge(systemPrompt, userPrompt, { deadlineAt } = {}) {
   const { default: chain } = await import('./llm-chain.cjs');
-  return chain.callLLM(systemPrompt, userPrompt, {
-    maxTokens: 20, temperature: 0, timeoutMs: JUDGE_TIMEOUT_MS,
-    allowedProviders: ['openrouter'], stage: 'news-cross-wording',
+  const failures = [];
+  const text = await chain.callLLM(systemPrompt, userPrompt, {
+    maxTokens: 20, temperature: 0, timeoutMs: JUDGE_TIMEOUT_MS, deadlineAt,
+    allowedProviders: ['openrouter', 'anthropic'],
+    modelOverrides: { anthropic: JUDGE_DIRECT_MODEL },
+    jsonSchema: VERDICT_SCHEMA, stage: 'news-cross-wording',
+    onAttempt: ({ ok, reason }) => { if (!ok) failures.push(reason); },
   });
+  if (text != null) return text;
+  // The first attempt is OpenRouter's, the route that refused.
+  const status = /^http_(\d+)$/.exec(failures[0] || '')?.[1];
+  const err = new Error(`judge returned nothing (${failures.join(', ') || 'no provider'})`);
+  if (status) err.status = Number(status);
+  else if (failures[0] === 'timeout') err.name = 'TimeoutError';
+  throw err;
 }
 
 const defaultEmbed = (titles) => embedBatch(titles, { wallClockMs: 4_000 });
@@ -113,7 +139,9 @@ async function readSightings(now, pipeline) {
   return sightings;
 }
 
-async function match(candidate, sightings, { now, embed, judge }) {
+// null when no provider was asked: the title does not fit, or no other
+// publisher's wording is there to compare.
+async function match(candidate, sightings, { now, embed, judge, deadlineAt }) {
   if (!fits(candidate.title)) return null;
   const own = new Set(familiesOf(candidate));
   const key = normalizeForEmbedding(candidate.title);
@@ -129,15 +157,18 @@ async function match(candidate, sightings, { now, embed, judge }) {
   }
   const pool = [...wordings.values()].filter(w => [...w.families].some(f => !own.has(f)));
   if (!pool.length) return null;
-  const vectors = await embed([key, ...pool.map(w => normalizeForEmbedding(w.title))]);
+  let vectors;
+  try { vectors = await embed([key, ...pool.map(w => normalizeForEmbedding(w.title))]); } catch (err) { throw tagged(err, failureCode('EMBED', err)); }
   const shortlist = pool
     .map((w, i) => ({ ...w, score: cosineSimilarity(vectors[0], vectors[i + 1]) }))
     .filter(w => w.score >= RETRIEVAL_MIN)
     .sort((a, b) => b.score - a.score)
     .slice(0, JUDGE_CANDIDATES);
-  if (!shortlist.length) return null;
-  const verdicts = await Promise.all(shortlist.map(w => judge(JUDGE_SYSTEM_PROMPT, judgePrompt(candidate.title, w, now)).then(parseJudgeVerdict)));
-  if (verdicts.includes(null)) throw new Error('unreadable verdict');
+  if (!shortlist.length) return { families: [], matched: [] };
+  const verdicts = await Promise.all(shortlist.map(w => judge(JUDGE_SYSTEM_PROMPT, judgePrompt(candidate.title, w, now), { deadlineAt })
+    .catch((err) => { throw tagged(err, failureCode('JUDGE', err)); })
+    .then(parseJudgeVerdict)));
+  if (verdicts.includes(null)) throw tagged(new Error('unreadable verdict'), 'JUDGE_UNREADABLE');
   const matched = shortlist.filter((_, i) => verdicts[i]);
   const families = new Set([...own, ...matched.flatMap(w => [...w.families])]);
   return { families: [...families], matched: matched.map(w => ({ title: w.title, families: [...w.families], score: Number(w.score.toFixed(3)) })) };
@@ -147,35 +178,45 @@ async function match(candidate, sightings, { now, embed, judge }) {
  * For each critical candidate ({ title, source, families? }), the publisher families of
  * every wording that reports the same incident, its own included. A title is
  * missing from the result when it was not checked, matched nothing, or failed.
+ * Each check that asked a provider, or that the sightings read or the
+ * deadline failed, adds one `{ result, error? }` to `outcomes`.
  * Never throws; the whole call ends by `deadlineMs`.
  */
 export async function crossWordingFamilies(candidates, {
   now = Date.now(), pipeline = defaultRedisPipeline, embed = defaultEmbed, judge = defaultJudge,
-  deadlineMs = CHECK_DEADLINE_MS, log = console.log,
+  deadlineMs = CHECK_DEADLINE_MS, log = console.log, outcomes = [],
 } = {}) {
   const results = new Map();
   if (!candidates.length) return results;
   let expired = false;
   let finished = false;
   const checked = new Set();
+  const deadlineAt = Date.now() + deadlineMs;
   const work = (async () => {
     let sightings;
     try { sightings = await readSightings(now, pipeline); } catch (err) {
       log(`[news-corroboration] ${JSON.stringify({ error: err?.message || 'error' })}`);
+      if (expired) return;
+      for (const candidate of candidates) checked.add(candidate.title);
+      outcomes.push(...candidates.map(() => ({ result: 'failed', error: 'SIGHTINGS_READ' })));
       return;
     }
     for (const candidate of candidates) {
       if (expired) return;
       try {
-        const found = await match(candidate, sightings, { now, embed, judge });
+        const found = await match(candidate, sightings, { now, embed, judge, deadlineAt });
         if (expired) return;
         checked.add(candidate.title);
-        if (!found || found.families.length < 2) continue;
+        if (!found) continue;
+        const corroborated = found.families.length >= 2;
+        outcomes.push({ result: corroborated ? 'matched' : 'unmatched' });
+        if (!corroborated) continue;
         results.set(candidate.title, found);
         log(`[news-corroboration] ${JSON.stringify({ title: candidate.title, families: found.families, matched: found.matched })}`);
       } catch (err) {
         if (expired) return;
         checked.add(candidate.title);
+        outcomes.push({ result: 'failed', error: err?.code || 'ERROR' });
         log(`[news-corroboration] ${JSON.stringify({ title: candidate.title, error: err?.message || err?.name || 'error' })}`);
       }
     }
@@ -185,7 +226,63 @@ export async function crossWordingFamilies(candidates, {
   clearTimeout(timer);
   expired = true;
   if (!finished) {
-    log(`[news-corroboration] ${JSON.stringify({ error: 'deadline', unchecked: candidates.map(c => c.title).filter(title => !checked.has(title)) })}`);
+    const unchecked = candidates.map(c => c.title).filter(title => !checked.has(title));
+    outcomes.push(...unchecked.map(() => ({ result: 'failed', error: 'DEADLINE' })));
+    log(`[news-corroboration] ${JSON.stringify({ error: 'deadline', unchecked })}`);
   }
   return new Map(results);
+}
+
+export const MATCHER_HEALTH_KEY = 'news:cross-wording-health:v1';
+export const MATCHER_HEALTH_META_KEY = 'seed-meta:news:cross-wording-health';
+export const MATCHER_ACTIVATION_KEY = 'seed-activated:news:cross-wording-health';
+// As long as its seed-meta, so a relay stopped for days reads stale, not empty.
+// The payload only ever holds the last hour.
+export const MATCHER_HEALTH_TTL_SECONDS = 604_800;
+const MATCHER_WINDOW_MS = 3_600_000;
+// A lone failure in a quiet hour is not an outage. A refused provider fails
+// every check, so a busy cycle shows it at once.
+const MATCHER_MIN_FAILURES = 2;
+
+function tally(cycles) {
+  const sum = { checked: 0, matched: 0, failed: 0, errors: {} };
+  for (const c of cycles) {
+    sum.checked += c.checked;
+    sum.matched += c.matched;
+    sum.failed += c.failed;
+    for (const [code, n] of Object.entries(c.errors)) sum.errors[code] = (sum.errors[code] || 0) + n;
+  }
+  return sum;
+}
+
+const isCycle = c => !!c && Number.isFinite(c.at) && [c.checked, c.matched, c.failed].every(Number.isInteger)
+  && !!c.errors && typeof c.errors === 'object' && !Array.isArray(c.errors)
+  && Object.values(c.errors).every(Number.isInteger);
+
+/**
+ * The matcher's health after one classify cycle, over the last hour of cycles
+ * with this one included. Degraded when at least two checks in the hour failed
+ * and they are more than half of the checks made. An hour without candidates
+ * is healthy.
+ */
+export function matcherHealth(previous, outcomes, { now = Date.now(), configured = true } = {}) {
+  const cycle = { at: now, checked: 0, matched: 0, failed: 0, errors: {} };
+  for (const o of outcomes) {
+    cycle.checked += 1;
+    if (o.result === 'matched') cycle.matched += 1;
+    if (o.result === 'failed') {
+      cycle.failed += 1;
+      cycle.errors[o.error] = (cycle.errors[o.error] || 0) + 1;
+    }
+  }
+  const earlier = Array.isArray(previous?.cycles) ? previous.cycles.filter(isCycle) : [];
+  const cycles = [...earlier.filter(c => c.at > now - MATCHER_WINDOW_MS && c.at < now), cycle];
+  const sum = tally(cycles);
+  const degraded = sum.failed >= MATCHER_MIN_FAILURES && sum.failed * 2 > sum.checked;
+  const errorCode = Object.entries(sum.errors).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const sourceState = !configured ? 'unavailable' : degraded ? 'degraded' : 'ok';
+  return {
+    payload: { generatedAt: now, windowMinutes: MATCHER_WINDOW_MS / 60_000, ...sum, degraded, cycles },
+    meta: { fetchedAt: now, recordCount: cycles.length, sourceState, ...(degraded && errorCode ? { errorCode } : {}) },
+  };
 }

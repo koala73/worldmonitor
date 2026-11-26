@@ -1,6 +1,7 @@
 // The cross-wording matcher's health (#11426). On 2026-11-23 the OpenRouter
-// account ran out of credit, every embedding and judge call returned 402, and
-// the matcher added nothing without leaving a trace. Each check that reaches a
+// account ran out of credit; a cross-wording check failed on an embedding 402
+// (tests/fixtures/alert-replays.json) and the matcher added nothing without
+// leaving a trace. Each check that reaches a
 // provider now records its outcome, the relay keeps the last hour of classify
 // cycles, and /api/health warns when most of those checks failed.
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -8,9 +9,11 @@ import assert from 'node:assert/strict';
 
 import { EmbeddingProviderError, EmbeddingTimeoutError } from '../scripts/lib/brief-embedding.mjs';
 import {
+  JUDGE_DIRECT_MODEL,
   MATCHER_ACTIVATION_KEY,
   MATCHER_HEALTH_KEY,
   MATCHER_HEALTH_META_KEY,
+  MATCHER_HEALTH_TTL_SECONDS,
   SIGHTINGS_KEY,
   crossWordingFamilies,
   matcherHealth,
@@ -120,6 +123,10 @@ describe('cross-wording judge falls back to the Anthropic API (#11426)', () => {
       return { ok: false, status: 404, json: async () => ({}) };
     };
   };
+
+  it('asks the rewrite judge\'s direct model', () => {
+    assert.equal(JUDGE_DIRECT_MODEL, REWRITE_JUDGE_DIRECT_MODEL);
+  });
 
   it('matches through the Anthropic API when OpenRouter answers 402', async () => {
     stubFetch();
@@ -239,6 +246,12 @@ describe('/api/health newsCrossWordingMatcher (#11426)', () => {
     assert.ok(collectFailureLogProblems({ [name]: degraded }, HEALTH_NOW).sigKeys.length > 0, 'a degraded matcher is an operational problem');
     assert.equal(classify({ meta: cycles([[failed402, failed402]], { configured: false }).meta }).status, 'NOT_CONFIGURED');
     assert.equal(classify({ meta: { ...cycles([[]]).meta, fetchedAt: HEALTH_NOW - 61 * MIN } }).status, 'STALE_SEED');
+  });
+
+  it('keeps a relay stopped for hours a warning, not a critical', () => {
+    const stoppedAt = HEALTH_NOW - 6 * 60 * MIN;
+    const payloadAlive = MATCHER_HEALTH_TTL_SECONDS * 1_000 > HEALTH_NOW - stoppedAt;
+    assert.equal(classify({ data: payloadAlive, meta: { ...cycles([[]]).meta, fetchedAt: stoppedAt } }).status, 'STALE_SEED');
   });
 
   it('waits for the first write before alarming on absence', () => {
