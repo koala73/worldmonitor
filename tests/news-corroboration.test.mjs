@@ -68,6 +68,18 @@ describe('news cross-wording corroboration (#10977)', () => {
     assert.deepEqual(found.get('Drone hits tanker near Strait of Hormuz').families.sort(), [familyOf('Gulf News'), familyOf('The Hindu')].sort());
   });
 
+  it('does not count a candidate under its pre-fold family id again through its own current-id sighting', async () => {
+    const { pipeline } = memoryPipeline();
+    await recordSightings([
+      { title: 'Tanker struck by drone off Hormuz, crew evacuated', source: 'The Hindu', level: 'critical' },
+    ], { now: NOW - 30_000, pipeline });
+    const found = await crossWordingFamilies(
+      [{ title: 'Drone hits tanker near Strait of Hormuz', source: 'Shipping & Freight', families: ['label:the hindu'] }],
+      { now: NOW, pipeline, embed, judge: async () => '{"same":true}', log: () => {} },
+    );
+    assert.equal(found.get('Drone hits tanker near Strait of Hormuz'), undefined, 'the only other sighting is the same outlet');
+  });
+
   it('counts the publishers the digest saw carry each headline, not the topic feed that served it', async () => {
     const { pipeline } = memoryPipeline();
     const yes = async () => '{"same":true}';
