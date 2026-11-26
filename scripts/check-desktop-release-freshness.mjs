@@ -51,6 +51,8 @@ export const SHIPPED_PATHS = [
   'scripts/source-origin.mjs',
   'scripts/seed-trade-flows.mjs',
   'scripts/build-sidecar-handlers.mjs',
+  // Writes the gitignored src-tauri/notices/ bundle resource during build:desktop.
+  'scripts/generate-third-party-notices.mjs',
   'scripts/download-node.sh',
 ];
 

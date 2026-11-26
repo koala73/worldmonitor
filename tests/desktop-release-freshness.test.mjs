@@ -209,6 +209,25 @@ describe('SHIPPED_PATHS covers what the binary bundles', () => {
       assert.ok(candidates.some(covered), `${target} is imported by shipped code but outside SHIPPED_PATHS`);
     }
   });
+  it('includes every script the Tauri build command runs, except pure checks', () => {
+    // Gates that only fail the build and write nothing that ships.
+    const CHECK_ONLY = new Set(['scripts/check-vite-env-secrets.mjs']);
+    const scripts = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts;
+    const files = new Set();
+    const seen = new Set();
+    const walk = (command) => {
+      for (const m of command.matchAll(/npm run (?:--silent )?([\w:.-]+)/g)) {
+        if (!seen.has(m[1]) && scripts[m[1]]) { seen.add(m[1]); walk(scripts[m[1]]); }
+      }
+      for (const m of command.matchAll(/(scripts\/[\w./-]+\.(?:mjs|cjs|js|sh|ts))/g)) files.add(m[1]);
+    };
+    walk(conf.build.beforeBuildCommand);
+    assert.ok(files.has('scripts/build-sidecar-handlers.mjs'), `build chain not followed: ${[...files]}`);
+    for (const file of files) {
+      if (CHECK_ONLY.has(file)) continue;
+      assert.ok(covered(file), `${file} runs in the desktop build but is outside SHIPPED_PATHS`);
+    }
+  });
   it('includes the sidecar handler sources and the frontend build inputs', () => {
     for (const path of ['server/worldmonitor/economic/v1/handler.ts', 'src/main.ts', 'index.html', 'vite.config.ts', 'tsconfig.json', 'src-tauri/src/main.rs']) {
       assert.ok(covered(path), `${path} is outside SHIPPED_PATHS`);
