@@ -257,6 +257,40 @@ describe('score-log row per dequeued rss_alert', () => {
     }
   });
 
+  it('keeps shutdown waiting for a swap that delivery starts after the drain began', async () => {
+    const silence = [console.log, console.warn, console.error];
+    console.log = console.warn = console.error = () => {};
+    const gates = {};
+    const stall = (route) => new Promise((done) => { gates[route] = done; });
+    const stalls = { rules: stall('rules'), '/pipeline': stall('/pipeline'), '/multi-exec': stall('/multi-exec') };
+    globalThis.fetch = async (url) => {
+      const { pathname } = new URL(String(url));
+      if (stalls[pathname]) {
+        await stalls[pathname];
+        return { ok: true, json: async () => [] };
+      }
+      if (pathname.includes('/relay/enabled-rules')) { await stalls.rules; return down; }
+      return ok(null);
+    };
+    const tick = (ms) => new Promise((done) => setTimeout(done, ms));
+    try {
+      const processing = relay.processEvent(alert(88));
+      let drained = null;
+      const draining = relay.drainShadowLog(5_000).then((v) => { drained = v; });
+      gates.rules();
+      await processing;
+      gates['/pipeline']();
+      await tick(20);
+      assert.equal(drained, null, 'the swap delivery started mid-drain still holds shutdown');
+      gates['/multi-exec']();
+      await draining;
+      assert.equal(drained, true);
+    } finally {
+      Object.values(gates).forEach((open) => open());
+      [console.log, console.warn, console.error] = silence;
+    }
+  });
+
   // Realtime rules take only critical news alerts, and quiet hours deliver
   // those, so only non-critical event types such as the air-traffic all-clear
   // reach the hold.
