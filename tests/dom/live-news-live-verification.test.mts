@@ -799,7 +799,7 @@ describe('Live News live verification', () => {
       expect(content().querySelector('.live-offline')).toBeNull();
       expect(mediaVideo()).toBeTruthy();
       expect(channelButton('custom-hls-1').classList.contains('offline')).toBe(false);
-      expect(analytics.track).toHaveBeenCalledWith('live-video-tap-to-play', { slot: 'live-news/custom-hls-1', kind: 'hls' });
+      expect(analytics.track).toHaveBeenCalledWith('live-video-tap-to-play', { slot: 'live-news/custom-hls-1', kind: 'hls', detail: 'buffering' });
       expect(analytics.track).not.toHaveBeenCalledWith('live-video-attempt-failed', expect.anything());
     });
 
@@ -856,6 +856,57 @@ describe('Live News live verification', () => {
       await flush(TAP_MS + POLL);
       expect(status()?.textContent).toBe('Connecting to Bloomberg…');
       expect(status()?.querySelector('button')).toBeNull();
+    });
+
+    describe('when the browser refuses to start the video (autoplay blocked)', () => {
+      const refusal = Object.assign(new Error('play() can only be initiated by a user gesture'), { name: 'NotAllowedError' });
+
+      /** Bloomberg HLS with a YouTube fallback; every play() the page makes without a gesture is refused. */
+      async function mountRefusedBloomberg(): Promise<ReturnType<typeof vi.spyOn>> {
+        const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(refusal);
+        mount(['bloomberg']);
+        await playFromPlaceholder();
+        latestHls().emit('hlsLevelLoaded', { details: { live: true } });
+        return play;
+      }
+
+      it('offers Tap to play on the first source within 3 s instead of falling through to YouTube', async () => {
+        await mountRefusedBloomberg();
+        await flush(TAP_MS + POLL);
+        expect(status()?.textContent).toBe('Tap to play');
+
+        // Past the full deadline: still the same HLS stream, no YouTube fallback, not offline.
+        await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+        expect(status()?.textContent).toBe('Tap to play');
+        expect(mediaVideo()).toBeTruthy();
+        expect(() => api().playerFor('Bloomberg live feed')).toThrow();
+        expect(channelButton('bloomberg').classList.contains('offline')).toBe(false);
+        expect(analytics.track).toHaveBeenCalledWith('live-video-tap-to-play', { slot: 'live-news/bloomberg', kind: 'hls', detail: 'refused-NotAllowedError' });
+        expect(analytics.track).not.toHaveBeenCalledWith('live-video-attempt-failed', expect.anything());
+      });
+
+      it('plays the stream once the viewer taps, and keeps holding it while it buffers instead of moving on', async () => {
+        const play = await mountRefusedBloomberg();
+        await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+        expect(status()?.textContent).toBe('Tap to play');
+
+        play.mockResolvedValue(undefined);
+        status()!.querySelector('button')!.click();
+        expect(play).toHaveBeenCalledTimes(2);
+        Object.defineProperty(mediaVideo(), 'paused', { configurable: true, value: false });
+        mediaVideo().dispatchEvent(new Event('play'));
+        // The tap started it, but nothing has played yet: no fall-through to YouTube on the next poll.
+        await flush(POLL);
+        expect(() => api().playerFor('Bloomberg live feed')).toThrow();
+        expect(mediaVideo()).toBeTruthy();
+
+        mediaVideo().currentTime += 1;
+        await flush(POLL);
+        mediaVideo().currentTime += 1;
+        await flush(POLL);
+        expect(status()).toBeNull();
+        expect(analytics.track).not.toHaveBeenCalledWith('live-video-attempt-failed', expect.anything());
+      });
     });
   });
 
