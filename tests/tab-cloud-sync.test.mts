@@ -1378,6 +1378,30 @@ describe('tab sync driver', () => {
     assert.ok(!toB.includes('A synced') && !toB.includes('A other'), `sent to user_b: ${JSON.stringify(toB)}`);
   });
 
+  it('a stored-tabs read that fails once is not taken as no tabs', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    // Next load: user_a's draft is stored, and the first read of it throws.
+    __resetTabSyncForTests();
+    host.state.tabs.push(tab('tab-a-2', 'A draft'));
+    localStorage.setItem(TABS_KEY, JSON.stringify(host.state));
+    const store = localStorage as unknown as MemoryStorage;
+    const getItem = MemoryStorage.prototype.getItem.bind(store);
+    let failed = false;
+    store.getItem = (k) => {
+      if (k === TABS_KEY && !failed) {
+        failed = true;
+        throw new Error('SecurityError');
+      }
+      return getItem(k);
+    };
+    signOutTabSync(new UnreadyHost(host.state));
+    store.getItem = getItem;
+    const meta = loadTabSyncMeta()!;
+    assert.ok(!(meta.signedOut && (meta.heldBack ?? []).length === 0), `recorded with nothing held: ${JSON.stringify(meta.heldBack)}`);
+  });
+
   it("a stale window that stops does not overwrite the signed-in account's sync state", async () => {
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
     signIn('user_a', host);

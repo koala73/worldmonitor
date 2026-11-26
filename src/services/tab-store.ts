@@ -2,7 +2,7 @@ import type { PanelConfig } from '@/types';
 import { SITE_VARIANT } from '@/config/variant';
 import { ALL_PANELS } from '@/config/panels';
 import { isDynamicPanel, resetMissionPresetState } from '@/services/mission-presets';
-import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
+import { safeStorageGet, safeStorageGetChecked, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import { normalizeScope, type TabScope } from '../../shared/tab-scope';
 import { normalizePanelFilters, type PanelFilters } from './panel-filters';
 import { DASHBOARD_TAB_ID_PATTERN, DASHBOARD_TAB_NAME_MAX_LENGTH } from '../../shared/dashboard-tab-sync';
@@ -59,7 +59,7 @@ export const DASHBOARD_TAB_ID_RE = new RegExp(DASHBOARD_TAB_ID_PATTERN);
 
 // Per-variant key: each variant has its own default panel set, so tabs
 // built on one variant must not leak into another.
-export const TABS_STORAGE_KEY = `worldmonitor-tabs-v1:${SITE_VARIANT}`;
+const TABS_STORAGE_KEY = `worldmonitor-tabs-v1:${SITE_VARIANT}`;
 
 export function generateTabId(): string {
   return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -117,6 +117,22 @@ export function loadTabsState(): TabsState | null {
     return normalizeTabsState(JSON.parse(raw));
   } catch {
     return null;
+  }
+}
+
+/**
+ * One read of the stored tabs: `ok` false when storage could not be read,
+ * else the tabs the layout would load (null for none or an unloadable value).
+ */
+export function readStoredTabs(): { ok: false } | { ok: true; state: TabsState | null } {
+  const read = safeStorageGetChecked(TABS_STORAGE_KEY);
+  if (!read.ok) return { ok: false };
+  const raw = read.value;
+  if (!raw) return { ok: true, state: null };
+  try {
+    return { ok: true, state: normalizeTabsState(JSON.parse(raw)) };
+  } catch {
+    return { ok: true, state: null };
   }
 }
 

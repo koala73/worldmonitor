@@ -473,6 +473,14 @@ function setState(s: SyncState): void {
 function buildCloudBlob(): Record<string, string> | null {
   const blob: Record<string, string> = {};
   for (const key of CLOUD_SYNC_KEYS) {
+    if (_cloudApplyExclusions.has(key)) {
+      // Another subsystem owns this key, and the local copy may not be this
+      // account's (another account's layout until tab sync applies this
+      // one's): the row keeps its own value, or stays without one.
+      const skipped = _skippedCloudKeys.get(key);
+      if (skipped?.action.kind === 'set') blob[key] = skipped.action.value;
+      continue;
+    }
     const read = safeStorageGetChecked(key);
     if (!read.ok) return null;
     if (read.value !== null) blob[key] = key === PINNED_WEBCAMS_KEY
@@ -608,9 +616,10 @@ let _skippedCloudSyncVersion: number | undefined;
 
 /**
  * Stop (or, with an empty list, resume) applying these keys from the cloud
- * blob. Uploads are unchanged, and the local schema migration still applies
- * them: only cloud-derived values are skipped. A key taken out of the list
- * gets the value the last cloud apply skipped for it.
+ * blob. Uploads send the row's own value for them (the one the last cloud
+ * apply skipped), never the device's copy. The local schema migration still
+ * applies them: only cloud-derived values are skipped. A key taken out of
+ * the list gets the value the last cloud apply skipped for it.
  */
 export function setCloudBlobApplyExclusions(keys: readonly CloudSyncKey[]): void {
   const next = new Set<string>(keys);

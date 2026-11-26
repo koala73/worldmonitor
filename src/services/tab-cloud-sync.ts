@@ -1,7 +1,7 @@
 import type { PanelConfig } from '@/types';
 import { SITE_VARIANT } from '@/config/variant';
 import { getConvexApi, getConvexClient, waitForConvexAuthForUser } from '@/services/convex-client';
-import { loadTabsState, TABS_STORAGE_KEY, type TabsState } from '@/services/tab-store';
+import { loadTabsState, readStoredTabs, type TabsState } from '@/services/tab-store';
 import { safeStorageGetChecked, safeStorageSet, safeStorageSetChecked } from '@/utils/safe-storage';
 import {
   MAX_DASHBOARD_TAB_CHANGES_PER_CALL,
@@ -678,13 +678,13 @@ function unpushedOf(host: TabSyncHost | undefined, meta: TabSyncMeta, leaverOwns
   // unpushed: its stored copy can lag the screen, and a synced tab held back
   // is skipped by the merge. On another account's state that tab may be
   // that account's synced tab, so only tabs that differ from it count.
-  const stored = loadTabsState();
-  if (!stored) {
-    // No tabs stored, or none the layout can load: it starts with fresh tabs,
-    // made after the departure, so none are the leaver's work. Only storage
-    // that cannot be read at all leaves the answer unknown.
-    return safeStorageGetChecked(TABS_STORAGE_KEY).ok ? [] : null;
-  }
+  const read = readStoredTabs();
+  // Storage that cannot be read leaves the answer unknown.
+  if (!read.ok) return null;
+  const stored = read.state;
+  // No tabs stored, or none the layout can load: it starts with fresh tabs,
+  // made after the departure, so none are the leaver's work.
+  if (!stored) return [];
   const ids = unpushedIn(stored, meta);
   const active = stored.activeTabId;
   if (leaverOwnsState && stored.tabs.some((t) => t.id === active) && !ids.includes(active)) ids.push(active);

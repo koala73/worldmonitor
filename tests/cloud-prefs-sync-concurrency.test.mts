@@ -1544,6 +1544,33 @@ describe('cloud blob apply exclusions (#11141)', () => {
     assert.equal(seen.order, '["cloud"]');
   });
 
+  it('uploads the row\'s own values for excluded keys, not this device\'s copy', async () => {
+    // Until tab sync applies the signed-in account's tabs, the local panel keys
+    // can be another account's: an upload must not file them into this row.
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      cloudPrefs.install('full');
+      localStorage.setItem('wm-cloud-sync-version', '1');
+      localStorage.setItem('worldmonitor-panels', LOCAL_PANELS);
+      localStorage.setItem('panel-order', '["local"]');
+      controls.seedRow('test-token', {
+        'worldmonitor-panels': CLOUD_PANELS,
+        'worldmonitor-theme': 'light',
+      }, 2);
+      cloudPrefs.setCloudBlobApplyExclusions(PANEL_KEYS);
+      try {
+        await cloudPrefs.onSignIn('user-1', 'full');
+        cloudPrefs.applyLocalPreferenceImport([['worldmonitor-theme', 'dark']]);
+        await cloudPrefs.syncNow();
+      } finally {
+        cloudPrefs.setCloudBlobApplyExclusions([]);
+      }
+    });
+    const posted = result.acceptedDataByToken['test-token']!;
+    assert.equal(posted['worldmonitor-theme'], 'dark');
+    assert.equal(posted['worldmonitor-panels'], CLOUD_PANELS);
+    assert.equal(posted['panel-order'], undefined, 'the row had none');
+  });
+
   it('drops the skipped values when another account signs in', async () => {
     // A direct switch: tab sync for the new account can lift the exclusion
     // before cloud-prefs signs it in, and must not apply the old account's values.
