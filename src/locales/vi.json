@@ -1940,7 +1940,8 @@
         "minutesAgo": "{{count}}ph trước",
         "hoursAgo": "{{count}}g trước",
         "daysAgo": "{{count}}ng trước"
-      }
+      },
+      "breakingAlertsNotSaved": "Không thể lưu. Cho phép dữ liệu trang web cho trang này hoặc giải phóng bộ nhớ trình duyệt, rồi thử lại."
     },
     "countryTimeline": {
       "now": "hiện tại",

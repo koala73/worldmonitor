@@ -119,6 +119,8 @@ const MACRO_SECTIONS = [
   { label: 'Food-MAKSTAT', script: 'seed-food-prices-makstat.mjs', seedMetaKey: 'economic:food-prices-makstat', canonicalKey: 'economic:food-prices:makstat:v1', completionMetaKey: 'seed-completion:economic:food-prices-makstat', intervalMs: DAY, timeoutMs: 115_000 },
   { label: 'Food-NSOMN', script: 'seed-food-prices-nsomn.mjs', seedMetaKey: 'economic:food-prices-nsomn', canonicalKey: 'economic:food-prices:nsomn:v1', completionMetaKey: 'seed-completion:economic:food-prices-nsomn', intervalMs: DAY, timeoutMs: 85_000 },
   { label: 'Food-ODEPA', script: 'seed-food-prices-odepa.mjs', seedMetaKey: 'economic:food-prices-odepa', canonicalKey: 'economic:food-prices:odepa:v1', completionMetaKey: 'seed-completion:economic:food-prices-odepa', intervalMs: DAY, timeoutMs: 100_000 },
+  { label: 'Food-STATCAN', script: 'seed-food-prices-statcan.mjs', seedMetaKey: 'economic:food-prices-statcan', canonicalKey: 'economic:food-prices:statcan:v1', completionMetaKey: 'seed-completion:economic:food-prices-statcan', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-IBGE', script: 'seed-food-prices-ibge.mjs', seedMetaKey: 'economic:food-prices-ibge', canonicalKey: 'economic:food-prices:ibge:v1', completionMetaKey: 'seed-completion:economic:food-prices-ibge', intervalMs: DAY, timeoutMs: 85_000 },
   // Malaysia DOSM monthly trade by SITC section: two small CSV documents (<0.3 MB),
   // read by GetMonthlySitcTrade. Tail placement for the same admission reason as US-CPI.
   { label: 'SITC-Trade-MY', script: 'seed-trade-sitc-my.mjs', seedMetaKey: 'trade:monthly-sitc-my', canonicalKey: 'trade:monthly-sitc:my:v1', completionMetaKey: 'seed-completion:trade:monthly-sitc-my', intervalMs: DAY, timeoutMs: 120_000 },
