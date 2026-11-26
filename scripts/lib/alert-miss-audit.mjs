@@ -2,7 +2,7 @@
 // shadow:score-log:v5 into stories and reads, from each row's `outcome`, what
 // the relay decided for it: how many realtime rules matched and the branch
 // that ended each one (scripts/notification-relay.cjs deliverToRules). Names
-// the critical stories that reached nobody, apart from the ones the relay
+// the critical stories an edition missed, apart from the ones the relay
 // skipped on purpose. Pure: scripts/audit-alert-misses.mjs does the Redis reads.
 import { extractTitleWords, jaccardSimilarity } from './brief-dedup-jaccard.mjs';
 
@@ -31,11 +31,16 @@ export function groupStories(rows) {
 
 // The relay's per-rule counts (notification-relay.cjs deliverToRules), in its
 // evaluation order. `matched` is the total the others share.
-const BUCKETS = ['matched', 'freeSeverity', 'freeEventType', 'freeScope', 'repeat', 'quietHours', 'dedup', 'held', 'channelsFailed', 'noChannelListed', 'noChannelVerified', 'sendFailed', 'sent'];
+const BUCKETS = ['matched', 'freeSeverity', 'freeEventType', 'freeScope', 'repeat', 'quietHours', 'dedup', 'held', 'holdFailed', 'channelsRequeued', 'channelsFailed', 'noChannelListed', 'noChannelVerified', 'sendFailed', 'sent'];
 // Rules that should have delivered and did not, and stops that lost the event.
-const FAILED_BUCKETS = ['channelsFailed', 'sendFailed'];
-const FAILED_STOPS = new Set(['error', 'rules_unavailable', 'rules_requeued']);
-const MISS_BUCKETS = ['freeSeverity', 'freeEventType', 'freeScope', 'dedup', ...FAILED_BUCKETS];
+// A failure the relay put back on the queue (channelsRequeued,
+// stopped=rules_requeued) is neither: the retried copy logs its own row.
+// `pending` is the row the relay writes at dequeue; one still pending never got
+// its outcome, because the relay stopped mid-delivery or the final write failed.
+const FAILED_BUCKETS = ['channelsFailed', 'sendFailed', 'holdFailed'];
+const FAILED_STOPS = new Set(['error', 'rules_unavailable', 'pending']);
+const STOP_LABELS = { pending: 'interrupted (no outcome recorded)' };
+const MISS_BUCKETS = ['freeSeverity', 'freeEventType', 'freeScope', 'dedup', 'channelsRequeued', ...FAILED_BUCKETS];
 
 /** One edition's recorded outcomes summed. */
 function tallyOutcomes(rows) {
@@ -58,7 +63,7 @@ function missGate(rows, tally) {
   const best = Math.max(...rows.filter((r) => r.severity === 'critical').map((r) => Number(r.importanceScore) || 0));
   if (best < REALTIME_CRITICAL_SCORE && !failed(tally)) return `score_bar (best ${best} < ${REALTIME_CRITICAL_SCORE})`;
   const parts = [
-    ...[...tally.stopped].map((stop) => `stopped=${stop}`),
+    ...[...tally.stopped].map((stop) => `stopped=${STOP_LABELS[stop] ?? stop}`),
     ...(Object.keys(tally.noRule).length ? [`no rule matched (${Object.entries(tally.noRule).map(([gate, n]) => `${gate}=${n}`).join(', ')})`] : []),
     ...MISS_BUCKETS.filter((bucket) => count(tally, bucket) > 0).map((bucket) => `${bucket}=${count(tally, bucket)}`),
   ];
@@ -66,16 +71,17 @@ function missGate(rows, tally) {
 }
 
 // Where one edition's copies of a critical story stopped. First match wins:
-// any rule that should have delivered and did not makes it a miss; otherwise
-// users who had the story already or are in quiet hours were not missed, and
-// rules with no usable channel are a config gap.
+// any rule that should have delivered and did not makes it a miss, even when
+// other rules delivered; otherwise users who had the story already or are in
+// quiet hours were not missed, and rules with no usable channel are a config
+// gap. With no match it is a miss, or unknown while the edition has rows from
+// before the relay recorded outcomes, since one of those may have delivered.
 const VERDICTS = [
-  ['delivered', (tally) => count(tally, 'sent') + count(tally, 'held') > 0],
   ['missed', failed],
+  ['delivered', (tally) => count(tally, 'sent') + count(tally, 'held') > 0],
   ['repeat', (tally) => count(tally, 'repeat') > 0],
   ['noChannel', (tally) => noChannel(tally) > 0],
   ['quietHours', (tally) => count(tally, 'quietHours') > 0],
-  ['missed', () => true],
 ];
 const DETAILS = {
   missed: (tally, rows) => ({ gate: missGate(rows, tally) }),
@@ -88,10 +94,14 @@ const DETAILS = {
  * @param {{ queued: Array<{ts:number,title:string,source:string,severity:string,importanceScore:number,variant?:string,publishedAt?:number|null,outcome?:object}>,
  *           sent: Array<{title:string,sentAt:number}> }} input
  *   `sent` (delivery receipts) only times stories against the wires.
- * @returns Each critical story that reached nobody, once per edition, under
- *   `missed`, `repeat`, `quietHours`, or `notRecorded` (rows logged before
- *   the relay recorded outcomes). Every edition that reached nobody and has
- *   rules with no usable channel is also under `noChannel`, even when another
+ * @returns Critical stories, once per edition that did not deliver them:
+ *   `missed` lists every edition where a rule failed to deliver or the event
+ *   was lost or interrupted, whatever the other editions did. The other
+ *   verdicts are listed only when no edition delivered the story: `missed`
+ *   for an edition with nothing to explain it, `repeat`, `quietHours`, and
+ *   `notRecorded` (the edition has rows logged before the relay recorded
+ *   outcomes and the recorded rows explain nothing). An edition whose rules
+ *   have no usable channel is also under `noChannel`, even when another
  *   edition delivered the story.
  */
 export function auditMisses({ queued, sent }) {
@@ -124,16 +134,12 @@ export function auditMisses({ queued, sent }) {
         bestScore: Math.max(...editionRows.map((r) => Number(r.importanceScore) || 0)),
       };
       const recorded = editionRows.filter((r) => r.outcome && typeof r.outcome === 'object');
-      if (recorded.length === 0) {
-        if (!delivered) result.notRecorded.push(entry);
-        continue;
-      }
       const tally = tallyOutcomes(recorded);
-      const [verdict] = VERDICTS.find(([, applies]) => applies(tally));
+      const verdict = VERDICTS.find(([, applies]) => applies(tally))?.[0] ?? (recorded.length < editionRows.length ? 'notRecorded' : 'missed');
       if (verdict === 'delivered') continue;
-      const lists = new Set(delivered ? [] : [verdict]);
+      const lists = new Set(delivered && !failed(tally) ? [] : [verdict]);
       if (noChannel(tally) > 0) lists.add('noChannel');
-      for (const list of lists) result[list].push({ ...entry, counts: formatCounts(tally), ...DETAILS[list](tally, editionRows) });
+      for (const list of lists) result[list].push({ ...entry, counts: formatCounts(tally), ...DETAILS[list]?.(tally, editionRows) });
     }
   }
   return { ...result, wireStories, deliveredBeforeWire: beforeWire };

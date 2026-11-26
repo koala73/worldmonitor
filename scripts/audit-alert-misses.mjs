@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * Critical news stories that reached no realtime subscriber. Read-only.
+ * Critical news stories an edition's realtime subscribers did not get. Read-only.
  *
  *   node scripts/audit-alert-misses.mjs                    # last 24 hours
  *   node scripts/audit-alert-misses.mjs --date 2026-11-18  # one UTC day (score log keeps 7 days)
  *
  * Reads shadow:score-log:v5 (every rss_alert the relay dequeued, with the
  * outcome the relay recorded for it), groups headlines into stories, and
- * prints each critical story nobody received with its edition and the gate
- * that stopped it. Reworded repeats the relay skipped, editions with no usable
+ * prints each critical story an edition missed with the gate that stopped it:
+ * a failed send, hold or channel read, or an event the relay never finished,
+ * even when another edition delivered the story. Reworded repeats the relay skipped, editions with no usable
  * channel and quiet-hours holds are listed apart from misses. The
  * wm:notif:sent:v1:<userId> receipts only time stories against the wires.
  * See scripts/lib/alert-miss-audit.mjs.
@@ -23,11 +24,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const SETTLE_MS = 15 * 60 * 1000;
 
 const SECTIONS = [
-  ['missed', 'Critical stories that reached nobody', (s) => `gate=${s.gate}`],
+  ['missed', 'Critical stories an edition failed to deliver', (s) => `gate=${s.gate}`],
   ['noChannel', 'Config gap: no usable channel on the edition\'s matching rules', (s) => `rules=${s.rules} (${s.listedNone} list no channel)`],
   ['repeat', 'Not misses: reworded repeats of an alert subscribers already had', (s) => `skipped=${s.skippedUsers} repeat_of="${s.repeatOf?.title ?? 'unknown'}"`],
   ['quietHours', 'Not misses: silenced by quiet hours', (s) => `users=${s.users}`],
-  ['notRecorded', 'Unknown: queued before the relay recorded outcomes', null],
+  ['notRecorded', 'Unknown: delivery may sit on rows queued before the relay recorded outcomes', null],
 ];
 
 // The score log keeps 7 days; an older day would print an empty report.

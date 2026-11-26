@@ -466,11 +466,13 @@ const QUIET_HELD_TTL = 86400; // 24h — held events expire if never drained
 // The newest events win; a batch message never lists more than this anyway.
 const QUIET_HELD_MAX = 100;
 
+// False when Upstash refused the push, so nothing was held.
 async function holdEvent(userId, variant, eventJson) {
   const key = `digest:quiet-held:${userId}:${variant}`;
-  await upstashRest('RPUSH', key, eventJson);
+  if ((await upstashRest('RPUSH', key, eventJson)) === null) return false;
   await upstashRest('LTRIM', key, String(-QUIET_HELD_MAX), '-1');
   await upstashRest('EXPIRE', key, String(QUIET_HELD_TTL));
+  return true;
 }
 
 /**
@@ -2006,14 +2008,48 @@ const IMPORTANCE_SCORE_MIN = Number(process.env.IMPORTANCE_SCORE_MIN ?? 40);
 const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v5';
 const SHADOW_LOG_TTL = 7 * 24 * 3600; // 7 days
 
-// One row per dequeued rss_alert. `ts` is when the relay took the event (the
-// latency report measures publish-to-queue with it); `outcome` is what the
-// relay then decided, which the daily miss audit (#10976) reads instead of
-// guessing delivery from headline overlap.
-async function shadowLogScore(event, dequeuedAt, outcome) {
+// Score-log write; reports failures and never throws. Activation depends on
+// v5 filling with clean data, so a silent write failure would leave operators
+// staring at an empty ZSET with no signal.
+async function shadowLogRequest(route, commands) {
+  try {
+    const res = await fetch(`${UPSTASH_URL}/${route}`, {
+      signal: AbortSignal.timeout(30_000),
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_TOKEN}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-relay/1.0',
+      },
+      body: JSON.stringify(commands),
+    });
+    if (!res.ok) {
+      console.warn(`[relay] shadow-log ${route} HTTP ${res.status}`);
+      return;
+    }
+    const body = await res.json().catch(() => null);
+    if (Array.isArray(body)) {
+      const failures = body.map((cmd, i) => (cmd?.error ? `cmd[${i}] ${cmd.error}` : null)).filter(Boolean);
+      if (failures.length > 0) console.warn(`[relay] shadow-log ${route} partial failure: ${failures.join('; ')}`);
+    } else if (body?.error) {
+      console.warn(`[relay] shadow-log ${route} failed: ${body.error}`);
+    }
+  } catch (err) {
+    console.warn(`[relay] shadow-log ${route} threw: ${err?.message ?? err}`);
+  }
+}
+
+// One row per dequeued rss_alert. It is written at dequeue with outcome
+// { stopped: 'pending' }, because the queue pop already removed the event and
+// a relay killed mid-delivery must still leave it for the daily miss audit
+// (#10976). The returned function swaps it, in one transaction, for the row
+// carrying the outcome the relay reached. `ts` and the zset score stay the
+// dequeue time, which the latency report measures publish-to-queue with.
+function startShadowLog(event) {
   const importanceScore = event.payload?.importanceScore ?? 0;
-  if (!UPSTASH_URL || !UPSTASH_TOKEN || importanceScore === 0) return;
-  const record = {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN || importanceScore === 0) return async () => {};
+  const dequeuedAt = Date.now();
+  const member = (outcome) => JSON.stringify({
     ts: dequeuedAt,
     importanceScore,
     severity: event.severity ?? 'high',
@@ -2025,42 +2061,23 @@ async function shadowLogScore(event, dequeuedAt, outcome) {
     ...(Array.isArray(event.payload?.corroboratedBy) ? { corroboratedBy: event.payload.corroboratedBy.slice(0, 10) } : {}),
     variant: event.variant ?? '',
     outcome,
+  });
+  const pending = member({ stopped: 'pending' });
+  // The prune and the 30-day EXPIRE bound growth even if the rolling prune stalls.
+  const written = shadowLogRequest('pipeline', [
+    ['ZADD', SHADOW_SCORE_LOG_KEY, String(dequeuedAt), pending],
+    ['ZREMRANGEBYSCORE', SHADOW_SCORE_LOG_KEY, '-inf', String(dequeuedAt - SHADOW_LOG_TTL * 1000)],
+    ['EXPIRE', SHADOW_SCORE_LOG_KEY, '2592000'],
+  ]);
+  // Sent only after the pending write settles, so its ZREM cannot land first
+  // and leave two rows.
+  return async (outcome) => {
+    await written;
+    await shadowLogRequest('multi-exec', [
+      ['ZREM', SHADOW_SCORE_LOG_KEY, pending],
+      ['ZADD', SHADOW_SCORE_LOG_KEY, String(dequeuedAt), member(outcome)],
+    ]);
   };
-  const member = JSON.stringify(record);
-  const cutoff = String(Date.now() - SHADOW_LOG_TTL * 1000); // prune entries older than 7 days
-  // One pipelined HTTP request: ZADD + ZREMRANGEBYSCORE prune + 30-day
-  // belt-and-suspenders EXPIRE. Saves ~50% round-trips vs sequential calls
-  // and bounds growth even if writes stop and the rolling prune stalls.
-  try {
-    const res = await fetch(`${UPSTASH_URL}/pipeline`, {
-      signal: AbortSignal.timeout(30_000),
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${UPSTASH_TOKEN}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'worldmonitor-relay/1.0',
-      },
-      body: JSON.stringify([
-        ['ZADD', SHADOW_SCORE_LOG_KEY, String(dequeuedAt), member],
-        ['ZREMRANGEBYSCORE', SHADOW_SCORE_LOG_KEY, '-inf', cutoff],
-        ['EXPIRE', SHADOW_SCORE_LOG_KEY, '2592000'],
-      ]),
-    });
-    // Surface HTTP failures and per-command errors. Activation depends on v2
-    // filling with clean data; a silent write-failure would leave operators
-    // staring at an empty ZSET with no signal.
-    if (!res.ok) {
-      console.warn(`[relay] shadow-log pipeline HTTP ${res.status}`);
-      return;
-    }
-    const body = await res.json().catch(() => null);
-    if (Array.isArray(body)) {
-      const failures = body.map((cmd, i) => (cmd?.error ? `cmd[${i}] ${cmd.error}` : null)).filter(Boolean);
-      if (failures.length > 0) console.warn(`[relay] shadow-log pipeline partial failure: ${failures.join('; ')}`);
-    }
-  } catch (err) {
-    console.warn(`[relay] shadow-log pipeline threw: ${err?.message ?? err}`);
-  }
 }
 
 // ── AI impact analysis ───────────────────────────────────────────────────────
@@ -2321,9 +2338,9 @@ async function processEventDelivery(event) {
   console.log('[relay] Processing event:', eventLog);
 
   // Only rss_alert events carry importanceScore, so only they get a score-log
-  // row. It is written once the outcome is known, on every exit.
+  // row. Its outcome is filled in on every exit.
   if (event.eventType !== 'rss_alert') return deliverToRules(event, {});
-  const dequeuedAt = Date.now();
+  const finishShadowLog = startShadowLog(event);
   const outcome = {};
   try {
     await deliverToRules(event, outcome);
@@ -2331,16 +2348,17 @@ async function processEventDelivery(event) {
     outcome.stopped = 'error';
     throw err;
   } finally {
-    shadowLogScore(event, dequeuedAt, outcome).catch(() => {});
+    await finishShadowLog(outcome);
   }
 }
 
 /**
  * Deliver one event to every matching realtime rule. `outcome` gets where the
  * event stopped (`stopped`), or `matched` and one count per rule under the
- * branch that ended it: sent, held, repeat, quietHours, dedup, channelsFailed,
- * noChannelListed, noChannelVerified, sendFailed, freeSeverity, freeEventType,
- * freeScope. Zero counts are left out.
+ * branch that ended it: sent, held, holdFailed, repeat, quietHours, dedup,
+ * channelsRequeued (the channel read failed and the event went back on the
+ * queue for that user), channelsFailed, noChannelListed, noChannelVerified,
+ * sendFailed, freeSeverity, freeEventType, freeScope. Zero counts are left out.
  */
 async function deliverToRules(event, outcome) {
   const bump = (bucket) => { outcome[bucket] = (outcome[bucket] ?? 0) + 1; };
@@ -2486,7 +2504,11 @@ async function deliverToRules(event, outcome) {
         continue;
       }
       console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
-      await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
+      if (!(await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event)))) {
+        console.warn(`[relay] Quiet hours hold failed for ${rule.userId}: the held queue refused the event`);
+        bump('holdFailed');
+        continue;
+      }
       reachedUsers.add(rule.userId);
       bump('held');
       continue;
@@ -2536,8 +2558,8 @@ async function deliverToRules(event, outcome) {
         channelsFetchError = err;
       } else {
         console.warn(`[relay] Could not release the dedup claim for ${rule.userId}; this event stays suppressed for them until it expires`);
+        bump('channelsFailed');
       }
-      bump('channelsFailed');
       continue;
     }
 
@@ -2620,7 +2642,10 @@ async function deliverToRules(event, outcome) {
   if (outcome.freeScope) console.log(`[relay] Free-ladder country-scope clamp: dropped ${outcome.freeScope} rule(s) without a matching explicit country scope`);
   const noChannel = (outcome.noChannelListed ?? 0) + (outcome.noChannelVerified ?? 0);
   if (noChannel > 0) console.log(`[relay] No usable channel: dropped ${noChannel} rule(s) for edition=${JSON.stringify(event.variant || 'any')} (${outcome.noChannelListed ?? 0} list no channel, ${outcome.noChannelVerified ?? 0} list no verified channel)`);
-  if (channelsFailedUsers > 0) await requeueAfterChannelsFailure(event, channelsFetchError, channelsFailedUsers);
+  if (channelsFailedUsers > 0) {
+    const bucket = (await requeueAfterChannelsFailure(event, channelsFetchError, channelsFailedUsers)) ? 'channelsRequeued' : 'channelsFailed';
+    outcome[bucket] = (outcome[bucket] ?? 0) + channelsFailedUsers;
+  }
 }
 
 async function popNextEvent(pollNumber) {

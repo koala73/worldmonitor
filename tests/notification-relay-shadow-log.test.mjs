@@ -141,10 +141,11 @@ describe('score-log row per dequeued rss_alert', () => {
     assert.deepEqual(rows[0].outcome, { stopped: 'score_gate' });
   });
 
-  it('records that the rules read failed and the event could not go back on the queue', async () => {
+  it('records whether a failed rules read went back on the queue', async () => {
     const { rows } = await drive(null, alert(88), { lpush: false });
     assert.equal(rows.length, 1);
     assert.deepEqual(rows[0].outcome, { stopped: 'rules_unavailable' });
+    assert.deepEqual((await drive(null, alert(88))).rows[0].outcome, { stopped: 'rules_requeued' });
   });
 
   it('records the gates that dropped every rule when none matched', async () => {

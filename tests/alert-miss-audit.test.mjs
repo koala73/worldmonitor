@@ -184,6 +184,8 @@ describe('daily miss audit', () => {
       });
       assert.deepEqual(result.missed, [], JSON.stringify(first));
     }
+    const { missed } = auditMisses({ queued: [queued('11:00', 'Reuters', title, 88, { outcome: { matched: 1, channelsRequeued: 1 } })], sent: [] });
+    assert.equal(missed[0]?.gate, 'channelsRequeued=1', 'a retry the day never saw is still named');
   });
 
   // A story queued across the deploy: the earlier copy has no outcome and may
