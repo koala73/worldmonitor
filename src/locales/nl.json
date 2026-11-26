@@ -2249,7 +2249,7 @@
       "dismiss": "Verwijderen",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% korting op Pro voor je eerste jaar",
-      "promoTagline": "{{perMonth}} per maand, jaarlijks gefactureerd. Je kunt altijd annuleren. Eindigt {{date}}.",
+      "promoTagline": "{{perMonth}} per maand in plaats van {{monthly}}, jaarlijks gefactureerd. Opzeggen op elk moment. Eindigt {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% korting op Pro Jaarlijks voor je eerste jaar",
       "promoTaglineYearlyOnly": "Je kunt altijd annuleren. Eindigt {{date}}.",
       "promoCta": "Pak de aanbieding"

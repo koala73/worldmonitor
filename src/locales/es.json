@@ -2679,7 +2679,7 @@
       "dismiss": "Descartar",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% de descuento en Pro durante tu primer año",
-      "promoTagline": "{{perMonth}} al mes, facturación anual. Cancela en cualquier momento. Finaliza {{date}}.",
+      "promoTagline": "{{perMonth}} al mes en lugar de {{monthly}}, facturado anualmente. Cancela en cualquier momento. Finaliza {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% de descuento en Pro Anual durante tu primer año",
       "promoTaglineYearlyOnly": "Cancela en cualquier momento. Finaliza {{date}}.",
       "promoCta": "Obtener la oferta"

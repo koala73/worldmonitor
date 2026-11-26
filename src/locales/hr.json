@@ -2751,7 +2751,7 @@
       "dismiss": "Odbaci",
       "promoBadge": "Črni petak",
       "promoHeadline": "{{savings}}% popusta na Pro za prvu godinu",
-      "promoTagline": "{{perMonth}} mjesečno, godišnje plaćanje. Otkaži bilo kada. Završava {{date}}.",
+      "promoTagline": "{{perMonth}} mjesečno umjesto {{monthly}}, naplaćeno godišnje. Otkazivanje bilo kada. Završava {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% popusta na Pro Godišnje za prvu godinu",
       "promoTaglineYearlyOnly": "Otkaži bilo kada. Završava {{date}}.",
       "promoCta": "Preuzmi ponudu"

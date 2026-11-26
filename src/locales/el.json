@@ -2667,7 +2667,7 @@
       "dismiss": "Απόρριψη",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% έκπτωση στο Pro για το πρώτο σας χρόνο",
-      "promoTagline": "{{perMonth}} ανά μήνα, χρέωση ετησίως. Ακύρωση οποτεδήποτε. Λήγει {{date}}.",
+      "promoTagline": "{{perMonth}} το μήνα αντί {{monthly}}, χρέωση ανά έτος. Ακύρωση οποτεδήποτε. Λήγει {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% έκπτωση στο Pro Yearly για το πρώτο σας χρόνο",
       "promoTaglineYearlyOnly": "Ακύρωση οποτεδήποτε. Λήγει {{date}}.",
       "promoCta": "Λάβετε την προσφορά"

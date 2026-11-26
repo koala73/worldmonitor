@@ -2667,7 +2667,7 @@
       "dismiss": "Отхвърляне",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% намаление на Pro за първата година",
-      "promoTagline": "{{perMonth}} на месец при годишно плащане. Отмяна по всяко време. Изтича {{date}}.",
+      "promoTagline": "{{perMonth}} на месец вместо {{monthly}}, при годишно плащане. Отмяна по всяко време. Изтича {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% намаление на Pro Yearly за първата година",
       "promoTaglineYearlyOnly": "Отмяна по всяко време. Изтича {{date}}.",
       "promoCta": "Вземете офертата"

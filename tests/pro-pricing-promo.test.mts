@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { promoPricingForTier } from '../pro-test/src/components/pricing-promo.ts';
@@ -95,6 +95,17 @@ describe('promo copy', () => {
     assert.match(promo.stripDetail, /\{\{monthlyTotal\}\} paying monthly/);
     assert.match(promo.monthlyNote, /with yearly/);
     assert.match(app.components.proBanner.promoHeadline, /first year/);
+    // The dashboard strip's monthly-comparison variant names the monthly price
+    // its saving is measured against, in every locale and in the shell copy.
+    const appLocales = readdirSync(new URL('../src/locales/', import.meta.url))
+      .filter((file) => file.endsWith('.json'));
+    for (const file of appLocales) {
+      const locale = JSON.parse(readFileSync(new URL(`../src/locales/${file}`, import.meta.url), 'utf8'));
+      const tagline = locale.components?.proBanner?.promoTagline;
+      if (typeof tagline !== 'string') continue;
+      assert.match(tagline, /\{\{monthly\}\}/, `${file} promoTagline`);
+      assert.match(tagline, /\{\{perMonth\}\}/, `${file} promoTagline`);
+    }
   });
 
   it('states the renewal price and the cancel terms, with the offer end kept apart', () => {

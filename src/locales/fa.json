@@ -2739,7 +2739,7 @@
       "dismiss": "نادیده گرفتن",
       "promoBadge": "جمعه سیاه",
       "promoHeadline": "{{savings}}% تخفیف Pro برای سال اول",
-      "promoTagline": "{{perMonth}} در ماه، با صورتحساب سالانه. لغو در هر زمان. تاریخ پایان {{date}}.",
+      "promoTagline": "{{perMonth}} در ماه به جای {{monthly}}، با صورتحساب سالانه. لغو در هر زمان. تا {{date}} پایان می‌یابد.",
       "promoHeadlineYearlyOnly": "{{percent}}% تخفیف Pro سالانه برای سال اول",
       "promoTaglineYearlyOnly": "لغو در هر زمان. تاریخ پایان {{date}}.",
       "promoCta": "دریافت پیشنهاد"

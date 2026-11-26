@@ -107,11 +107,14 @@ function loadPromoPrices(promo: PromoCampaign): Promise<void> {
 
 function promoBannerCopy(promo: PromoCampaign): { headline: string; tagline: string } {
   const date = formatPromoEnd(promo.endsAtMs, getLocale());
-  if (promoPrices && promoPrices.savingsVsMonthlyPct !== null) {
+  if (promoPrices && promoPrices.savingsVsMonthlyPct !== null && promoPrices.monthlyTotalCents !== null) {
     return {
       headline: t('components.proBanner.promoHeadline', { savings: promoPrices.savingsVsMonthlyPct }),
+      // The saving is measured against paying monthly, so the tagline names
+      // that monthly price beside the discounted one.
       tagline: t('components.proBanner.promoTagline', {
         perMonth: formatUsdCentsExact(promoPrices.perMonthCents),
+        monthly: formatUsdCentsExact(Math.round(promoPrices.monthlyTotalCents / 12)),
         date,
       }),
     };

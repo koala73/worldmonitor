@@ -2655,7 +2655,7 @@
       "dismiss": "닫기",
       "promoBadge": "블랙 프라이데이",
       "promoHeadline": "첫 해 Pro {{savings}}% 할인",
-      "promoTagline": "월 {{perMonth}}, 연간 청구. 언제든지 취소할 수 있습니다. {{date}}에 종료됩니다.",
+      "promoTagline": "월 {{monthly}} 대신 월 {{perMonth}}, 연간 청구. 언제든지 취소할 수 있습니다. {{date}}에 종료됩니다.",
       "promoHeadlineYearlyOnly": "첫 해 Pro 연간 {{percent}}% 할인",
       "promoTaglineYearlyOnly": "언제든지 취소할 수 있습니다. {{date}}에 종료됩니다.",
       "promoCta": "오퍼 받기"

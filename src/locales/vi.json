@@ -2655,7 +2655,7 @@
       "dismiss": "Bỏ qua",
       "promoBadge": "Black Friday",
       "promoHeadline": "Giảm {{savings}}% cho Pro năm đầu tiên",
-      "promoTagline": "{{perMonth}}/tháng, tính phí hàng năm. Hủy bất cứ lúc nào. Kết thúc {{date}}.",
+      "promoTagline": "{{perMonth}}/tháng thay vì {{monthly}}, tính phí hàng năm. Hủy bất kỳ lúc nào. Kết thúc {{date}}.",
       "promoHeadlineYearlyOnly": "Giảm {{percent}}% cho Pro Yearly năm đầu tiên",
       "promoTaglineYearlyOnly": "Hủy bất cứ lúc nào. Kết thúc {{date}}.",
       "promoCta": "Nhận ưu đãi"

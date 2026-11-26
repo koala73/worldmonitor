@@ -2691,7 +2691,7 @@
       "dismiss": "Odrzuć",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% taniej Pro przez pierwszy rok",
-      "promoTagline": "{{perMonth}} miesięcznie, rozliczane rocznie. Anuluj w dowolnym momencie. Wygasa {{date}}.",
+      "promoTagline": "{{perMonth}} miesięcznie zamiast {{monthly}}, rozliczane rocznie. Możesz anulować w każdej chwili. Oferta kończy się {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% taniej Pro Yearly przez pierwszy rok",
       "promoTaglineYearlyOnly": "Anuluj w dowolnym momencie. Wygasa {{date}}.",
       "promoCta": "Skorzystaj z oferty"

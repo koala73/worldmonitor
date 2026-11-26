@@ -2667,7 +2667,7 @@
       "dismiss": "Ausblenden",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% Rabatt auf Pro im ersten Jahr",
-      "promoTagline": "{{perMonth}} pro Monat, jährlich abgerechnet. Jederzeit kündbar. Endet {{date}}.",
+      "promoTagline": "{{perMonth}} pro Monat statt {{monthly}}, jährliche Abrechnung. Jederzeit kündbar. Endet {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% Rabatt auf Pro Yearly im ersten Jahr",
       "promoTaglineYearlyOnly": "Jederzeit kündbar. Endet {{date}}.",
       "promoCta": "Angebot sichern"

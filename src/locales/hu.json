@@ -2736,7 +2736,7 @@
       "dismiss": "Eltüntetés",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% kedvezmény a Pro verzióra első évben",
-      "promoTagline": "{{perMonth}}/hónap, éves számlázás. Bármikor lemondható. Lejár: {{date}}.",
+      "promoTagline": "{{perMonth}} havonként {{monthly}} helyett, éves számlázással. Bármikor lemondható. Lejár: {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% kedvezmény a Pro Éves verzióra első évben",
       "promoTaglineYearlyOnly": "Bármikor lemondható. Lejár: {{date}}.",
       "promoCta": "Ajánlat aktiválása"

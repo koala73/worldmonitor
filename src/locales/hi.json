@@ -2736,7 +2736,7 @@
       "dismiss": "बंद करें",
       "promoBadge": "ब्लैक फ्राइडे",
       "promoHeadline": "अपने पहले वर्ष के लिए Pro पर {{savings}}% छूट",
-      "promoTagline": "{{perMonth}} प्रति माह, वार्षिक बिलिंग। कभी भी रद्द करें। {{date}} को समाप्त होता है।",
+      "promoTagline": "{{monthly}} के बजाय {{perMonth}} प्रति माह, वार्षिक बिलिंग। कभी भी रद्द करें। {{date}} को समाप्त होता है।",
       "promoHeadlineYearlyOnly": "अपने पहले वर्ष के लिए Pro Yearly पर {{percent}}% छूट",
       "promoTaglineYearlyOnly": "कभी भी रद्द करें। {{date}} को समाप्त होता है।",
       "promoCta": "ऑफर प्राप्त करें"

@@ -2655,7 +2655,7 @@
       "dismiss": "關閉",
       "promoBadge": "黑色星期五",
       "promoHeadline": "Pro 首年立省 {{savings}}%",
-      "promoTagline": "每月 {{perMonth}}，按年計費。隨時取消。優惠截止 {{date}}。",
+      "promoTagline": "每月{{perMonth}}，而非{{monthly}}，按年計費。隨時取消。優惠截止於{{date}}。",
       "promoHeadlineYearlyOnly": "Pro 年度版首年立省 {{percent}}%",
       "promoTaglineYearlyOnly": "隨時取消。優惠截止 {{date}}。",
       "promoCta": "獲取優惠"

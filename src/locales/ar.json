@@ -2715,7 +2715,7 @@
       "dismiss": "رفض",
       "promoBadge": "البيع الأسود",
       "promoHeadline": "خصم {{savings}}% على Pro للسنة الأولى",
-      "promoTagline": "{{perMonth}} شهريًا، تُدفع سنويًا. إلغاء في أي وقت. ينتهي {{date}}.",
+      "promoTagline": "{{perMonth}} في الشهر بدلاً من {{monthly}}، محاسبة سنوية. الإلغاء ممكن في أي وقت. ينتهي {{date}}.",
       "promoHeadlineYearlyOnly": "خصم {{percent}}% على Pro السنوي للسنة الأولى",
       "promoTaglineYearlyOnly": "إلغاء في أي وقت. ينتهي {{date}}.",
       "promoCta": "احصل على العرض"

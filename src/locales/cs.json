@@ -2691,7 +2691,7 @@
       "dismiss": "Zavřít",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% sleva na Pro na první rok",
-      "promoTagline": "{{perMonth}} měsíčně, fakturováno ročně. Zrušit lze kdykoli. Skončí {{date}}.",
+      "promoTagline": "{{perMonth}} měsíčně místo {{monthly}}, fakturováno ročně. Zrušit lze kdykoliv. Končí {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% sleva na Pro Yearly na první rok",
       "promoTaglineYearlyOnly": "Zrušit lze kdykoli. Skončí {{date}}.",
       "promoCta": "Získat nabídku"

@@ -2691,7 +2691,7 @@
       "dismiss": "Отклонить",
       "promoBadge": "Черная пятница",
       "promoHeadline": "{{savings}}% скидка на Pro в первый год",
-      "promoTagline": "{{perMonth}} в месяц при оплате за год. Отмена в любой момент. Завершается {{date}}.",
+      "promoTagline": "{{perMonth}} в месяц вместо {{monthly}}, выставляется счет ежегодно. Отмена в любой момент. Завершается {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% скидка на Pro Yearly в первый год",
       "promoTaglineYearlyOnly": "Отмена в любой момент. Завершается {{date}}.",
       "promoCta": "Получить предложение"

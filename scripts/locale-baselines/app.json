@@ -1516,7 +1516,7 @@
   "components.proBanner.promoCta": "Get the offer",
   "components.proBanner.promoHeadline": "{{savings}}% off Pro for your first year",
   "components.proBanner.promoHeadlineYearlyOnly": "{{percent}}% off Pro Yearly for your first year",
-  "components.proBanner.promoTagline": "{{perMonth}} a month, billed yearly. Cancel anytime. Ends {{date}}.",
+  "components.proBanner.promoTagline": "{{perMonth}} a month instead of {{monthly}}, billed yearly. Cancel anytime. Ends {{date}}.",
   "components.proBanner.promoTaglineYearlyOnly": "Cancel anytime. Ends {{date}}.",
   "components.proBanner.tagline": "plus WM Analyst, alert rules and MCP for Claude",
   "components.progressCharts.fallbackBadge": "Showing static fallback data — live series unavailable",

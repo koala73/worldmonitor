@@ -2655,7 +2655,7 @@
       "dismiss": "閉じる",
       "promoBadge": "ブラックフライデー",
       "promoHeadline": "初年度Pro料金が{{savings}}%オフ",
-      "promoTagline": "月額{{perMonth}}、年間請求。いつでもキャンセル可能。{{date}}に終了。",
+      "promoTagline": "{{perMonth}}/月（年間課金）- 通常{{monthly}}/月。いつでもキャンセル可能。{{date}}まで。",
       "promoHeadlineYearlyOnly": "初年度Pro年間プランが{{percent}}%オフ",
       "promoTaglineYearlyOnly": "いつでもキャンセル可能。{{date}}に終了。",
       "promoCta": "オファーを受け取る"

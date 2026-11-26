@@ -2249,7 +2249,7 @@
       "dismiss": "Stäng",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% rabatt på Pro första året",
-      "promoTagline": "{{perMonth}}/månad, faktureras årligen. Avbryt när som helst. Upphör {{date}}.",
+      "promoTagline": "{{perMonth}} per månad istället för {{monthly}}, faktureras årligen. Avbryt när som helst. Slutar {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% rabatt på Pro Yearly första året",
       "promoTaglineYearlyOnly": "Avbryt när som helst. Upphör {{date}}.",
       "promoCta": "Hämta erbjudandet"

@@ -2679,7 +2679,7 @@
       "dismiss": "Închide",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% reducere la Pro pentru primul an",
-      "promoTagline": "{{perMonth}} pe lună, facturată anual. Anulează oricând. Se încheie {{date}}.",
+      "promoTagline": "{{perMonth}} pe lună în loc de {{monthly}}, facturare anuală. Anulați oricând. Se încheie {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% reducere la Pro Yearly pentru primul an",
       "promoTaglineYearlyOnly": "Anulează oricând. Se încheie {{date}}.",
       "promoCta": "Obține oferta"

@@ -2655,7 +2655,7 @@
       "dismiss": "ปิด",
       "promoBadge": "Black Friday",
       "promoHeadline": "ลด {{savings}}% สำหรับ Pro ในปีแรก",
-      "promoTagline": "{{perMonth}} ต่อเดือน คิดค่าบริการรายปี ยกเลิกได้ตลอดเวลา สิ้นสุดเมื่อ {{date}}",
+      "promoTagline": "{{perMonth}} ต่อเดือน แทนที่จะเป็น {{monthly}} คิดค่าบริการรายปี ยกเลิกได้ตลอดเวลา สิ้นสุด {{date}}",
       "promoHeadlineYearlyOnly": "ลด {{percent}}% สำหรับ Pro Yearly ในปีแรก",
       "promoTaglineYearlyOnly": "ยกเลิกได้ตลอดเวลา สิ้นสุดเมื่อ {{date}}",
       "promoCta": "รับโปรโมชัน"

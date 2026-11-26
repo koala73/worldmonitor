@@ -2679,7 +2679,7 @@
       "dismiss": "Rejeter",
       "promoBadge": "Black Friday",
       "promoHeadline": "{{savings}}% de réduction sur Pro la première année",
-      "promoTagline": "{{perMonth}} par mois, facturé annuellement. Annulation possible à tout moment. Expire le {{date}}.",
+      "promoTagline": "{{perMonth}} par mois au lieu de {{monthly}}, facturé annuellement. Résiliable à tout moment. Expire {{date}}.",
       "promoHeadlineYearlyOnly": "{{percent}}% de réduction sur Pro Annuel la première année",
       "promoTaglineYearlyOnly": "Annulation possible à tout moment. Expire le {{date}}.",
       "promoCta": "Profiter de l'offre"

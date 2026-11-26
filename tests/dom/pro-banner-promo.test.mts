@@ -93,7 +93,8 @@ describe('dashboard Pro strip during the promotion', () => {
     expect(banner.dataset.promo).toBe(PROMO.id);
     const text = banner.textContent ?? '';
     expect(text).toContain('components.proBanner.promoHeadline {"savings":70}');
-    expect(text).toContain('"perMonth":"$12.00"');
+    // The 70% is against paying monthly: the tagline names that price.
+    expect(text).toContain('"perMonth":"$12.00","monthly":"$39.99"');
     expect(text).toContain('components.proBanner.promoTagline');
     expect(banner.querySelector('.pro-banner-cta')?.getAttribute('href')).toBe('/pro#pricing');
   });
