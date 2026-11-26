@@ -59,10 +59,14 @@ const hash = (value) => createHash('sha256').update(JSON.stringify(value)).diges
 /** The archive refused service: the run stops and every record is kept. */
 export class ArchiveRefusal extends Error {}
 
-export function stacSearchBody(site, nowMs) {
+// Planetary Computer serves Sentinel-2 from another backend than Sentinel-1 and Landsat, and
+// since 2026-11-24 answers a search across both with HTTP 400. One search per backend.
+export const ARCHIVE_SEARCH_GROUPS = Object.freeze([['sentinel-2-l2a'], ['sentinel-1-grd', 'landsat-c2-l2']]);
+
+export function stacSearchBody(site, nowMs, collections = Object.keys(ARCHIVE_COLLECTION_PROFILE)) {
   const start = new Date(nowMs - ARCHIVE_LOOKBACK_DAYS * DAY_MS).toISOString();
   return {
-    collections: Object.keys(ARCHIVE_COLLECTION_PROFILE),
+    collections: [...collections],
     intersects: { type: 'Point', coordinates: [site.lon, site.lat] },
     datetime: `${start}/${new Date(nowMs).toISOString()}`,
     sortby: [{ field: 'properties.datetime', direction: 'desc' }],
