@@ -45,6 +45,14 @@
 //   on two borderline shipping-attack rows: borderline criticals rose from 138 to 171.
 // - The second positive control failed, at 211.
 //
+// Result under the re-registered count, from the same captures, seed 1. Threshold 175: the
+// baseline's 161 plus a margin of 14.
+// - The production prompt counts 161 (relay-baseline) and 167 on re-capture (relay-current).
+//   An off-design capture of it at seed 2 counts 165. 138 of the baseline's 161 are on five
+//   borderline rows, four of them shipping attacks and closures around Hormuz.
+// - The dcc144836c example fails, at 195.
+// - The second positive control fails, at 457.
+//
 // A new prompt is accepted by re-capturing `relay-current` (command below). The baseline
 // moves only with a new registration: a different model or changed judged sets.
 import { describe, it } from 'node:test';
@@ -164,6 +172,8 @@ describe('batch-boundary rule', () => {
 });
 
 const { captures } = readJudged('tests/fixtures/classify-batch-boundary.json');
+// Written from relay-baseline under the re-registered count; the test below holds them to it.
+const BASELINE = { falseCritical: 161, threshold: 175 };
 const relaySrc = readFileSync(resolve(root, 'scripts/ais-relay.cjs'), 'utf8');
 
 describe('batch-boundary captures', () => {
@@ -180,8 +190,25 @@ describe('batch-boundary captures', () => {
     }
   });
 
-  it('relay-baseline is the prompt the gate was registered on', () => {
-    assert.equal(captures['relay-baseline'].promptSha, BASELINE_PROMPT_SHA);
+  it('relay-baseline is the prompt the gate was registered on, and sets the threshold', () => {
+    const b = captures['relay-baseline'];
+    assert.equal(b.promptSha, BASELINE_PROMPT_SHA);
+    assert.equal(scoreBatchBoundary(judged.rows, b).falseCritical, BASELINE.falseCritical);
+    assert.equal(gateThreshold(judged.rows, b), BASELINE.threshold);
+  });
+
+  it('records the false criticals the baseline already carries', () => {
+    // At 50 titles per completion the production prompt labels the ceasefire statement high
+    // (classify-judged-statements.json). In 5-title completions it is critical in 23 of 40.
+    const s = scoreBatchBoundary(judged.rows, captures['relay-baseline']);
+    assert.deepEqual(s.falseCriticalTitles, [
+      '23/40 Israel says ceasefire with Hezbollah could collapse within days',
+      '26/40 (borderline) UN says 25 seafarers killed in, around Hormuz since US-Israel war on Iran',
+      '40/40 (borderline) Three Tankers Attacked in Two Days in Strait of Hormuz Crisis - The Maritime Executive',
+      '40/40 (borderline) Trump faces escalating oil crisis over Iran blocking Strait of Hormuz - ABC News - Breaking News, Latest News and Videos',
+      "21/40 (borderline) IAEA raises alarm over Iran's nuclear program as tanker hits mine in Strait of Hormuz - Ynetnews",
+      '11/17 (borderline) \u2018Run! Get away!\u2019: witnesses recount Israeli \u2018double tap\u2019 strike that killed child and medic in Gaza',
+    ]);
   });
 
   it('relay-current is the prompt and model production sends today', () => {
@@ -194,9 +221,8 @@ describe('batch-boundary captures', () => {
   });
 
   it('relay-current carries no more false criticals than the baseline allows', () => {
-    const threshold = gateThreshold(judged.rows, captures['relay-baseline']);
     const s = scoreBatchBoundary(judged.rows, captures['relay-current']);
-    assert.ok(s.falseCritical <= threshold,
-      `${s.falseCritical} false criticals over ${REGISTERED.passes} passes, threshold ${threshold}:\n${s.falseCriticalTitles.join('\n')}`);
+    assert.ok(s.falseCritical <= BASELINE.threshold,
+      `${s.falseCritical} false criticals over ${REGISTERED.passes} passes, threshold ${BASELINE.threshold}:\n${s.falseCriticalTitles.join('\n')}`);
   });
 });
