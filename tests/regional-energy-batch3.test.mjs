@@ -285,6 +285,12 @@ describe('Zimbabwe ZERA energy prices', () => {
     const minified = quoted.replace(/class="([^"\s]+)"/g, 'class=$1');
     assert.match(minified, /class=bdt-price-table-heading>/);
     assert.deepEqual(parseZeraPrices(minified), parseZeraPrices(quoted));
+    const tokenClass = /class=("?)(bdt-price-table-(?:heading|integer-part|period)[^"<>]*)\1(?=[\s>])/g;
+    for (const html of [quoted, minified]) {
+      const withAttribute = html.replace(tokenClass, 'class=$1$2$1 data-x="1"');
+      assert.notEqual(withAttribute, html);
+      assert.deepEqual(parseZeraPrices(withAttribute), parseZeraPrices(quoted), 'an attribute after the class');
+    }
   });
 
   it('reads the USD and ZWG price of each product from the homepage widget', async () => {
