@@ -30,7 +30,10 @@ describe('alert replay set (#10976)', () => {
       for (const { wording, loggedInputsScore, score, reaches, corroboratedBy } of rows) {
         describe(`${wording.originPublisher ?? wording.source} copy queued at ${wording.seenAt}`, () => {
           it('scores the logged inputs as production logged them', () => {
-            assert.equal(loggedInputsScore, wording.observedScore);
+            // A tier-table fix changes what the logged inputs score today; the
+            // wording then records the new score and why it moved.
+            assert.equal(loggedInputsScore, wording.loggedInputsScoreNow ?? wording.observedScore);
+            if (wording.loggedInputsScoreNow !== undefined) assert.ok(wording.loggedInputsScoreNowBecause, 'loggedInputsScoreNow needs loggedInputsScoreNowBecause');
           });
           it('scores and routes as today\'s code does', () => {
             assert.deepEqual(

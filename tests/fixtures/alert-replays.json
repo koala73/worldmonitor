@@ -350,7 +350,7 @@
           "reaches": "none",
           "corroboratedBy": [
             "ndtv",
-            "label:the hindu"
+            "label:hindu"
           ]
         }
       ],
@@ -436,8 +436,10 @@
           "seenAt": "2026-11-14T05:01:22.231Z",
           "corroboration": 1,
           "observedScore": 73,
-          "scoreNow": 73,
-          "reaches": "none"
+          "scoreNow": 83,
+          "reaches": "realtime",
+          "loggedInputsScoreNow": 83,
+          "loggedInputsScoreNowBecause": "CNA was tier 4 in the relay on 2026-11-14 because the relay tier map left out the Telegram table, where CNA is tier 2; the relay now loads that table"
         },
         {
           "source": "The National",
@@ -462,8 +464,8 @@
           "seenAt": "2026-11-14T12:45:32.504Z",
           "corroboration": 1,
           "observedScore": 73,
-          "scoreNow": 73,
-          "reaches": "none"
+          "scoreNow": 83,
+          "reaches": "realtime"
         },
         {
           "source": "Strategic Chokepoints",

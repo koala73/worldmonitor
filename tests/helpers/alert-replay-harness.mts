@@ -65,6 +65,9 @@ export interface Wording {
   seenAt: string;
   corroboration: number;
   observedScore: number;
+  /** What the logged inputs score today when a tier-table fix moved it, with the reason. */
+  loggedInputsScoreNow?: number;
+  loggedInputsScoreNowBecause?: string;
   scoreNow: number;
   reaches: Reach;
   corroboratedBy?: string[];
@@ -98,7 +101,7 @@ export type Embed = (texts: string[]) => Promise<number[][]>;
 export type Judge = (systemPrompt: string, userPrompt: string) => Promise<string>;
 
 // Upstash's sorted-set commands as the replayed code uses them.
-class SortedSets {
+export class SortedSets {
   private sets = new Map<string, Map<string, number>>();
 
   private range(key: string, min: string, max: string) {
@@ -148,8 +151,12 @@ class SortedSets {
       }
       case 'ZREMRANGEBYRANK': {
         const rows = this.range(key, '-inf', '+inf');
+        // Redis ranks: a negative index counts from the end, and a stop that
+        // lands before the start (e.g. 0 -1001 on 501 members) removes nothing.
         const at = (i: number) => (i < 0 ? rows.length + i : i);
-        const doomed = rows.slice(at(Number(args[0])), at(Number(args[1])) + 1);
+        const start = Math.max(0, at(Number(args[0])));
+        const stop = Math.min(rows.length - 1, at(Number(args[1])));
+        const doomed = stop < start ? [] : rows.slice(start, stop + 1);
         for (const [m] of doomed) this.sets.get(key)!.delete(m);
         return doomed.length;
       }
