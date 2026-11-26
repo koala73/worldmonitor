@@ -14,6 +14,7 @@ import type {
   DashboardTabRow,
   SyncDashboardTabsResult,
 } from '../shared/dashboard-tab-sync.ts';
+import { captureTabRecord } from '../src/services/tab-sync-merge.ts';
 import {
   __resetTabSyncForTests,
   __setTabSyncTransportForTests,
@@ -273,7 +274,16 @@ describe('tab sync driver', () => {
     assert.equal(server.rows.size, 1, 'the next pass resends');
   });
 
-  it('does not retry a tab the server refused for the cap', async () => {
+  /** The account already holds 50 tabs from other devices. */
+  function fillToCap(s: FakeServer) {
+    for (let i = 0; i < 50; i += 1) {
+      const id = `tab-r${i}-zz`;
+      s.rows.set(id, { tabId: id, version: 1, deleted: false, record: { name: `Remote ${i}`, panels: [] }, createdAt: i, updatedAt: i });
+    }
+  }
+
+  it('does not retry a tab the server refused for the cap while the account is full', async () => {
+    fillToCap(server);
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
     server.nextResult = { ok: true, results: [{ tabId: 'tab-a-1', ok: false, reason: 'TAB_LIMIT', limit: 50 }] };
     signIn('user_a', host);
@@ -282,6 +292,21 @@ describe('tab sync driver', () => {
     server.emit();
     await settle();
     assert.equal(server.calls.length, before);
+  });
+
+  it('retries a tab refused for the cap once a delete makes room', async () => {
+    fillToCap(server);
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    server.nextResult = { ok: true, results: [{ tabId: 'tab-a-1', ok: false, reason: 'TAB_LIMIT', limit: 50 }] };
+    signIn('user_a', host);
+    await settle();
+    assert.equal(server.rows.has('tab-a-1'), false);
+    // Another device deletes a tab.
+    const freed = server.rows.get('tab-r0-zz')!;
+    server.rows.set('tab-r0-zz', { tabId: 'tab-r0-zz', version: freed.version + 1, deleted: true, createdAt: freed.createdAt, updatedAt: 99 });
+    server.emit();
+    await settle();
+    assert.equal(server.rows.get('tab-a-1')?.deleted, false, 'uploaded once there was room');
   });
 
   it('a deployment without the functions stops sync for the page', async () => {
@@ -961,6 +986,206 @@ describe('tab sync driver', () => {
     mock.timers.tick(30_000); // a periodic pass, still on the stale rows
     await settle();
     assert.ok(host.state.tabs.some((t) => t.id === 'tab-a-1' && t.name === 'Mine'));
+  });
+
+  /** Make writes of keys starting with `prefix` throw, `times` times (default: always). */
+  function failWrites(prefix: string, times = Infinity) {
+    const store = localStorage as unknown as MemoryStorage;
+    const setItem = MemoryStorage.prototype.setItem.bind(store);
+    let left = times;
+    store.setItem = (key, value) => {
+      if (key.startsWith(prefix) && left > 0) {
+        left -= 1;
+        throw new Error('QuotaExceededError');
+      }
+      setItem(key, value);
+    };
+    return () => { store.setItem = setItem; };
+  }
+
+  /** A layout that has not loaded its tabs: nothing to read. */
+  class UnreadyHost extends FakeHost {
+    override captureTabs(): TabsState { return null as unknown as TabsState; }
+  }
+
+  const sentNames = (s: FakeServer) => s.calls.flatMap((c) => c.changes.map((ch) => ch.record?.name));
+
+  it("a sign-out that cannot read the tabs keeps the account's unpushed work out of the next account", async () => {
+    class ToggleHost extends FakeHost {
+      ready = true;
+      override captureTabs(): TabsState { return this.ready ? super.captureTabs() : (null as unknown as TabsState); }
+    }
+    const host = new ToggleHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs.push(tab('tab-a-9', 'A unpushed')); // never pushed: the sign-out comes first
+    host.ready = false;
+    signOutTabSync(host, 'user_a');
+    host.ready = true;
+
+    __resetTabSyncForTests();
+    const serverB = new FakeServer();
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    assert.ok(!sentNames(serverB).includes('A unpushed'), JSON.stringify(sentNames(serverB)));
+    assert.ok(!host.state.tabs.some((t) => t.name === 'A unpushed'), 'held, not shown to user_b');
+  });
+
+  it('a sign-out that cannot read the tabs records the departure at the next pass', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    signOutTabSync(host, 'user_a');
+    // Next load: user_b signs in, but its sync never runs a pass.
+    __resetTabSyncForTests();
+    __setTabSyncTransportForTests(async () => null);
+    signIn('user_b', host);
+    await settle();
+    host.state.tabs.push(tab('tab-b-1', 'B private'));
+    signOutTabSync(new UnreadyHost(host.state), 'user_b');
+
+    __resetTabSyncForTests();
+    const serverC = new FakeServer();
+    useServer(serverC);
+    signIn('user_c', host);
+    await settle();
+    assert.ok(!sentNames(serverC).includes('B private'), JSON.stringify(sentNames(serverC)));
+    const held = JSON.parse(localStorage.getItem(`worldmonitor-tabs-held-v1:${SITE_VARIANT}`) ?? '{}');
+    assert.deepEqual(held.user_b?.records.map((r: { id: string }) => r.id), ['tab-b-1']);
+  });
+
+  it('a departure whose marks cannot be stored waits instead of handing the tabs on', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    signOutTabSync(host, 'user_a');
+    __resetTabSyncForTests();
+    __setTabSyncTransportForTests(async () => null);
+    signIn('user_b', host);
+    await settle();
+    host.state.tabs.push(tab('tab-b-1', 'B private'));
+
+    // Next load: user_c signs in directly; the marks for user_b fail to save once.
+    __resetTabSyncForTests();
+    const serverC = new FakeServer();
+    useServer(serverC);
+    const restore = failWrites(META_KEY, 1);
+    signIn('user_c', host);
+    await settle();
+    restore();
+    assert.ok(!sentNames(serverC).includes('B private'), JSON.stringify(sentNames(serverC)));
+    assert.ok(!host.state.tabs.some((t) => t.name === 'B private'), 'held for user_b');
+  });
+
+  it("an account switch whose tabs cannot be stored commits none of the new account's state", async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs[0]!.name = 'A private';
+    notifyTabsChangedLocally(); // still inside the debounce at the switch
+
+    class NoStoreHost extends FakeHost {
+      override applyTabs(): boolean { return false; }
+    }
+    const serverB = new FakeServer();
+    useServer(serverB);
+    const stopped: string[] = [];
+    signIn('user_b', new NoStoreHost(host.state), (r) => stopped.push(r));
+    for (let i = 0; i < 3; i += 1) {
+      await settle();
+      mock.timers.tick(60_000);
+    }
+    await settle();
+    assert.deepEqual(stopped, ['error'], 'stops after the reconnects');
+    assert.equal(loadTabSyncMeta()!.userId, 'user_a', "the device still holds user_a's tabs");
+
+    // Next load, storage works again: still a switch from user_a.
+    __resetTabSyncForTests();
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    assert.ok(!sentNames(serverB).includes('A private'), JSON.stringify(sentNames(serverB)));
+    assert.ok(!host.state.tabs.some((t) => t.name === 'A private'));
+  });
+
+  it('a delete made while signed out does not reach the account', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2')] });
+    signIn('user_a', host);
+    await settle();
+    signOutTabSync(host, 'user_a');
+    host.state.tabs = host.state.tabs.filter((t) => t.id !== 'tab-a-2');
+    recordTabDeleted('tab-a-2');
+
+    __resetTabSyncForTests();
+    useServer(server);
+    signIn('user_a', host);
+    await settle();
+    assert.equal(server.rows.get('tab-a-2')!.deleted, false);
+    assert.ok(host.state.tabs.some((t) => t.id === 'tab-a-2'), 'restored from the account');
+  });
+
+  it("a delete made under another account does not reach the stored account", async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2')] });
+    signIn('user_a', host);
+    await settle();
+    // Next load: user_b signs in with sync off and deletes the tab.
+    __resetTabSyncForTests();
+    assert.equal(prepareTabSyncSignIn('user_b', false, host).willSync, false);
+    host.state.tabs = host.state.tabs.filter((t) => t.id !== 'tab-a-2');
+    recordTabDeleted('tab-a-2');
+    assert.deepEqual(loadTabSyncMeta()!.tombstones, []);
+  });
+
+  it('a delete made with sync off still reaches the account signed in', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2')] });
+    signIn('user_a', host);
+    await settle();
+    stopTabSync(); // sync gave up; user_a is still signed in
+    host.state.tabs = host.state.tabs.filter((t) => t.id !== 'tab-a-2');
+    recordTabDeleted('tab-a-2');
+    __resetTabSyncForTests();
+    useServer(server);
+    signIn('user_a', host);
+    await settle();
+    assert.equal(server.rows.get('tab-a-2')!.deleted, true);
+  });
+
+  it('releases only the held copy that was put back', async () => {
+    const heldKey = `worldmonitor-tabs-held-v1:${SITE_VARIANT}`;
+    const draft = tab('tab-a-2', 'Draft');
+    localStorage.setItem(META_KEY, JSON.stringify({ userId: 'user_a', base: {}, tombstones: [], carried: {} }));
+    localStorage.setItem(heldKey, JSON.stringify({
+      user_a: { records: [{ id: 'tab-a-2', record: captureTabRecord(draft) }], base: {}, tombstones: [], sent: {} },
+    }));
+    const release = gated(server);
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), draft] });
+    signIn('user_a', host);
+    await settle();
+    // Another window holds a newer copy for user_a while this upload is on the way.
+    const held = JSON.parse(localStorage.getItem(heldKey)!);
+    held.user_a.records[0].record = captureTabRecord(tab('tab-a-2', 'Final'));
+    localStorage.setItem(heldKey, JSON.stringify(held));
+    release();
+    await settle();
+    assert.equal(server.rows.get('tab-a-2')!.record!.name, 'Draft');
+    assert.match(localStorage.getItem(heldKey) ?? '', /Final/, 'the newer copy stays held');
+  });
+
+  it('a record the server refuses as invalid stops sync without reconnecting', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const stopped: string[] = [];
+    let connects = 0;
+    __setTabSyncTransportForTests(async (userId) => { connects += 1; return server.transport(userId); });
+    server.throwOnSync = Object.assign(new Error('[CONVEX M] Uncaught ConvexError'), { data: { kind: 'INVALID_TAB', field: 'record.name' } });
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host, (r) => stopped.push(r));
+    await settle();
+    mock.timers.tick(120_000);
+    await settle();
+    assert.deepEqual(stopped, ['invalid']);
+    assert.equal(connects, 1);
   });
 
   it('stays local when the sync state cannot be read', () => {

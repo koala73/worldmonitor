@@ -146,6 +146,17 @@ export default defineSchema({
     .index("by_user_variant", ["userId", "variant"])
     .index("by_user_variant_tab", ["userId", "variant", "tabId"]),
 
+  // Per account and variant: the highest version of any tombstone pruned from
+  // userDashboardTabs. A tab recreated after its tombstone went starts above
+  // it, so a device still holding the old row's version cannot write over
+  // (or delete) the new one with it.
+  userDashboardTabVersionFloors: defineTable({
+    userId: v.string(),
+    variant: v.string(),
+    version: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_variant", ["userId", "variant"]),
+
   userPreferenceWriteRateLimits: defineTable({
     userId: v.string(),
     windowStart: v.number(),

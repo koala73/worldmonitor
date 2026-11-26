@@ -122,6 +122,13 @@ describe('captureTabRecord', () => {
     assert.equal(record.panels.length, 400);
     assert.ok(record.panels.some((p) => p.key === 'zz-other-device'));
   });
+
+  it('hashes a record the same whatever its field order', () => {
+    const t = tab('tab-a-1', { name: 'Energy' });
+    const record = captureTabRecord(t);
+    const reordered = JSON.parse(JSON.stringify({ panels: record.panels.map((p) => ({ on: p.on, key: p.key })), name: record.name }));
+    assert.equal(hashTabRecord(reordered), hashTabRecord(record));
+  });
 });
 
 describe('applyTabRecord', () => {
@@ -149,6 +156,21 @@ describe('applyTabRecord', () => {
     // Carried entries ride along on the next push.
     const pushed = captureTabRecord(next, carried);
     assert.ok(pushed.panels.some((p) => p.key === 'future-panel'));
+  });
+
+  it('puts a carried entry back where the record had it, after a rename', () => {
+    const [a, b] = realKeys(2) as [string, string];
+    const record: DashboardTabRecord = {
+      name: 'Remote',
+      panels: [{ key: a, on: true }, { key: 'cw-theirs', on: true }, { key: 'future-panel', on: false }, { key: b, on: true }],
+    };
+    const { tab: next, carried } = applyTabRecord(tab('tab-a-1', { on: [a, b], order: [a, b] }), record, defaults());
+    const renamed = { ...next, name: 'Renamed here' };
+    const keys = captureTabRecord(renamed, carried).panels.map((p) => p.key);
+    assert.deepEqual(keys.slice(keys.indexOf(a), keys.indexOf(a) + 4), [a, 'cw-theirs', 'future-panel', b]);
+    // A carried entry that led the record still leads it.
+    const first = applyTabRecord(undefined, { name: 'R', panels: [{ key: 'cw-theirs', on: true }, { key: a, on: true }] }, defaults(), 'tab-a-2');
+    assert.equal(captureTabRecord(first.tab, first.carried).panels[0]!.key, 'cw-theirs');
   });
 
   it('builds a new tab from the variant defaults', () => {
@@ -276,6 +298,24 @@ describe('mergeTabs decision table', () => {
     }));
     assert.deepEqual(out.changes.map((c) => c.change), [{ tabId: t2.id, baseVersion: 2, record: null }]);
     assert.deepEqual(ids(out.state), [t1.id]);
+  });
+
+  it("a delete during an unanswered first write does not remove another device's row at that version", () => {
+    const t1 = tab('tab-a-1');
+    const mine = tab('tab-a-2', { name: 'Mine' });
+    const theirs = tab('tab-a-2', { name: 'Theirs' });
+    const meta: TabSyncMeta = {
+      ...syncedMeta([t1]),
+      tombstones: [mine.id],
+      sent: { [mine.id]: { version: 1, hash: hashTabRecord(captureTabRecord(mine)) } },
+    };
+    const rows = [row(t1.id, 1, captureTabRecord(t1)), row(mine.id, 1, captureTabRecord(theirs))];
+    const out = mergeTabs(input({ local: { activeTabId: t1.id, tabs: [t1] }, meta, rows }));
+    assert.deepEqual(out.changes, [], 'no delete sent');
+    assert.ok(out.state.tabs.some((t) => t.id === mine.id && t.name === 'Theirs'));
+    // The row this device wrote is still deleted.
+    const own = mergeTabs(input({ local: { activeTabId: t1.id, tabs: [t1] }, meta, rows: [rows[0]!, row(mine.id, 1, captureTabRecord(mine))] }));
+    assert.deepEqual(own.changes.map((c) => c.change), [{ tabId: mine.id, baseVersion: 1, record: null }]);
   });
 
   it('local delete, remote edited: the edit wins and the tab comes back', () => {
@@ -432,6 +472,26 @@ describe('mergeTabs first sync', () => {
     lone.panelSettings[key] = { ...lone.panelSettings[key]!, fontScale: 1.25 };
     const out = mergeTabs(input({ local: { activeTabId: lone.id, tabs: [lone] }, rows: [row(cloud.id, 1, captureTabRecord(cloud))], mode: 'first-sync' }));
     assert.deepEqual(ids(out.state), [lone.id, cloud.id]);
+  });
+
+  it('keeps a lone default tab whose map was hidden', () => {
+    const cloud = tab('tab-c-1', { name: 'Markets' });
+    const lone = tab('tab-l-1', { name: DEFAULT_NAME, on: defaultOn() });
+    lone.panelSettings.map = { ...lone.panelSettings.map!, enabled: false };
+    const out = mergeTabs(input({ local: { activeTabId: lone.id, tabs: [lone] }, rows: [row(cloud.id, 1, captureTabRecord(cloud))], mode: 'first-sync' }));
+    assert.deepEqual(ids(out.state), [lone.id, cloud.id]);
+  });
+
+  it('keeps a lone default tab with a field the untouched check does not know', () => {
+    const cloud = tab('tab-c-1', { name: 'Markets' });
+    const panelField = tab('tab-l-1', { name: DEFAULT_NAME, on: defaultOn() });
+    const key = defaultOn()[0]!;
+    panelField.panelSettings[key] = { ...panelField.panelSettings[key]!, collapsed: true } as PanelConfig;
+    const tabField = { ...tab('tab-l-2', { name: DEFAULT_NAME, on: defaultOn() }), pinned: true } as PanelTab;
+    for (const lone of [panelField, tabField]) {
+      const out = mergeTabs(input({ local: { activeTabId: lone.id, tabs: [lone] }, rows: [row(cloud.id, 1, captureTabRecord(cloud))], mode: 'first-sync' }));
+      assert.deepEqual(ids(out.state), [lone.id, cloud.id]);
+    }
   });
 
   it('uploads the lone default when the account has no cloud tabs', () => {

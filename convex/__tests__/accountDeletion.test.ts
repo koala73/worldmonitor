@@ -204,6 +204,7 @@ async function seedPersonalRow(
       createdAt: now,
       updatedAt: now,
     });
+    await ctx.db.insert("userDashboardTabVersionFloors", { userId, variant: "full", version: 3, updatedAt: now });
     await ctx.db.insert("notificationChannels", {
       userId,
       channelType: "email",
@@ -315,6 +316,7 @@ async function rowsForUser(
     | "users"
     | "userPreferences"
     | "userDashboardTabs"
+    | "userDashboardTabVersionFloors"
     | "notificationChannels"
     | "userApiKeys"
     | "entitlements"
@@ -337,6 +339,11 @@ async function rowsForUser(
       case "userDashboardTabs":
         return ctx.db
           .query("userDashboardTabs")
+          .withIndex("by_user_variant", (q) => q.eq("userId", userId))
+          .collect();
+      case "userDashboardTabVersionFloors":
+        return ctx.db
+          .query("userDashboardTabVersionFloors")
           .withIndex("by_user_variant", (q) => q.eq("userId", userId))
           .collect();
       case "notificationChannels":
@@ -455,6 +462,7 @@ describe("account deletion — Convex cascade", () => {
     expect(await rowsForUser(t, "users", USER_A.subject)).toHaveLength(0);
     expect(await rowsForUser(t, "userPreferences", USER_A.subject)).toHaveLength(0);
     expect(await rowsForUser(t, "userDashboardTabs", USER_A.subject)).toHaveLength(0);
+    expect(await rowsForUser(t, "userDashboardTabVersionFloors", USER_A.subject)).toHaveLength(0);
     expect(await rowsForUser(t, "notificationChannels", USER_A.subject)).toHaveLength(0);
     expect(await rowsForUser(t, "userApiKeys", USER_A.subject)).toHaveLength(0);
     expect(await rowsForUser(t, "entitlements", USER_A.subject)).toHaveLength(0);
@@ -467,6 +475,7 @@ describe("account deletion — Convex cascade", () => {
     expect(await rowsForUser(t, "users", USER_B.subject)).toHaveLength(1);
     expect(await rowsForUser(t, "userPreferences", USER_B.subject)).toHaveLength(1);
     expect(await rowsForUser(t, "userDashboardTabs", USER_B.subject)).toHaveLength(1);
+    expect(await rowsForUser(t, "userDashboardTabVersionFloors", USER_B.subject)).toHaveLength(1);
     expect(await rowsForUser(t, "followedCountries", USER_B.subject)).toHaveLength(1);
     expect(await rawCountryCount(t, "US")).toBe(1);
 

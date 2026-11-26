@@ -2739,11 +2739,15 @@ export class PanelLayoutManager implements AppModule {
     return order;
   }
 
-  /** Store and show tabs merged with the account's synced tabs; false when they could not be stored. */
+  /**
+   * Store and show tabs merged with the account's synced tabs. False when
+   * they could not be stored; nothing is shown then either, so the tabs on
+   * screen and the tabs kept for the next load never disagree.
+   */
   private applySyncedTabs(next: TabsState, activeChanged: boolean): boolean {
     if (!this.tabsState || this.ctx.isDestroyed) return false;
+    if (!storeTabsState(next).persisted) return false;
     this.tabsState = next;
-    const { persisted } = storeTabsState(next);
     if (activeChanged) {
       const active = next.tabs.find((t) => t.id === next.activeTabId);
       if (active) {
@@ -2756,7 +2760,7 @@ export class PanelLayoutManager implements AppModule {
     this.healStoredTabSnapshots();
     this.panelTabBar?.refresh();
     this.updateTabCapLock();
-    return persisted;
+    return true;
   }
 
   /**
@@ -2969,7 +2973,8 @@ export class PanelLayoutManager implements AppModule {
     saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', bottomSet);
 
     this.applyPanelSettings();
-    this.applySavedPanelOrder();
+    // The tab's own order, not a read-back: a failed write must not leave the old order on screen.
+    this.applySavedPanelOrder(panelOrder, bottomSet);
     this.ctx.unifiedSettings?.refreshPanelToggles();
     this.mountLiveNewsIfReady();
     this.scheduleLoadAllData();
@@ -4599,7 +4604,7 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
-  public applySavedPanelOrder(panelOrder?: string[]): void {
+  public applySavedPanelOrder(panelOrder?: string[], bottomSet?: readonly string[]): void {
     const grid = document.getElementById('panelsGrid');
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (!grid || !bottomGrid) return;
@@ -4619,7 +4624,7 @@ export class PanelLayoutManager implements AppModule {
     this.resolvedPanelOrder.forEach(appendUnique);
     activePanelKeys.forEach(appendUnique);
 
-    this.bottomSetMemory = panelOrder ? new Set<string>() : this.getSavedBottomSet();
+    this.bottomSetMemory = bottomSet ? new Set(bottomSet) : panelOrder ? new Set<string>() : this.getSavedBottomSet();
     this.resolvedPanelOrder = allOrder;
 
     const effectiveUltraWide = this.getEffectiveUltraWide();

@@ -5,6 +5,7 @@ import type { TabsState } from '@/services/tab-store';
 import { safeStorageGetChecked, safeStorageSet, safeStorageSetChecked } from '@/utils/safe-storage';
 import {
   MAX_DASHBOARD_TAB_CHANGES_PER_CALL,
+  MAX_SYNCED_DASHBOARD_TABS,
   type DashboardTabChange,
   type DashboardTabRecord,
   type DashboardTabRow,
@@ -65,7 +66,7 @@ export interface TabSyncTransport {
   sync(args: { variant: string; expectedUserId: string; changes: DashboardTabChange[] }): Promise<SyncDashboardTabsResult>;
 }
 
-export type TabSyncStopReason = 'error' | 'unavailable' | 'wrong-account';
+export type TabSyncStopReason = 'error' | 'unavailable' | 'wrong-account' | 'invalid';
 
 const META_KEY = `worldmonitor-tabs-sync-v1:${SITE_VARIANT}`;
 // Per account: tabs an account switch took off this device before they
@@ -77,6 +78,9 @@ const MAX_HELD_ACCOUNTS = 5;
 // sign-out. When the next sign-in finds another account here, that account
 // left without tab sync seeing it go.
 const SIGNED_IN_KEY = `worldmonitor-tabs-signed-in-v1:${SITE_VARIANT}`;
+// Accounts that left while the layout had no tabs to read, oldest first.
+// The next pass that can read the tabs marks each one's work as its own.
+const DEPARTED_KEY = `worldmonitor-tabs-departed-v1:${SITE_VARIANT}`;
 // cloud-prefs-sync.ts records the account at every sign-in. It is read
 // before that sign-in overwrites it, as the previous account when this
 // browser has no tab-sync state yet.
@@ -234,14 +238,17 @@ function holdTabs(add: Record<string, HeldTabs>): boolean {
   return saveHeld(all);
 }
 
-/** Forget held tabs and deletes the device now holds itself. */
-function releaseHeld(userId: string, ids: Iterable<string>): void {
-  const gone = new Set(ids);
+/**
+ * Forget held tabs and deletes the device now holds itself: by id, the hash
+ * of the held record that was put back (null for a delete). Another window
+ * may have held a newer copy since; that one stays.
+ */
+function releaseHeld(userId: string, released: ReadonlyMap<string, string | null>): void {
   const all = loadHeld();
   const entry = all?.[userId];
-  if (!all || !entry || gone.size === 0) return;
-  const records = entry.records.filter((r) => !gone.has(r.id));
-  const tombstones = entry.tombstones.filter((id) => !gone.has(id));
+  if (!all || !entry || released.size === 0) return;
+  const records = entry.records.filter((r) => !released.has(r.id) || released.get(r.id) !== hashTabRecord(r.record));
+  const tombstones = entry.tombstones.filter((id) => !released.has(id) || released.get(id) !== null);
   if (records.length === 0 && tombstones.length === 0) delete all[userId];
   else {
     const keep = new Set([...records.map((r) => r.id), ...tombstones]);
@@ -326,8 +333,8 @@ interface Session {
    * the subscription shows a different one (a recreation gets a new time).
    */
   absent: Map<string, number>;
-  /** Held tabs put back this session whose held copy is not yet released. */
-  unreleased: Set<string>;
+  /** Held tabs put back this session whose held copy is not yet released, with that copy's hash (null: a delete). */
+  unreleased: Map<string, string | null>;
   reconnects: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   unsubscribe: (() => void) | null;
@@ -345,8 +352,38 @@ let session: Session | null = null;
 let prepared: Pending | null = null;
 /** Set when the deployment lacks the functions; sync stays off for the page. */
 let unavailableForPage = false;
-/** An account that left before its tabs could be read; recorded at the first pass. */
-let departure: string | null = null;
+/** This page's copy of the departed list, for when storage cannot keep it. */
+let departed: string[] = [];
+
+/** Accounts whose departure is not recorded yet; null when the list cannot be read. */
+function readDeparted(): string[] | null {
+  const read = safeStorageGetChecked(DEPARTED_KEY);
+  if (!read.ok) return null;
+  let stored: string[] = [];
+  try {
+    const parsed: unknown = read.value ? JSON.parse(read.value) : [];
+    if (Array.isArray(parsed)) stored = parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  } catch { /* unparseable: only this page's copy */ }
+  return [...new Set([...stored, ...departed])];
+}
+
+/**
+ * Record `add` (and the accounts already waiting) as gone, oldest first; one
+ * that cannot be recorded yet keeps its place, and so do those after it.
+ * `left` counts the waiting ones; `saved` is whether the list was stored.
+ */
+function recordDepartures(add: readonly string[], host: TabSyncHost | undefined): { left: number; saved: boolean } {
+  const waiting = readDeparted();
+  if (waiting === null) return { left: add.length || 1, saved: false };
+  const all = [...new Set([...waiting, ...add])];
+  const left: string[] = [];
+  for (const leaver of all) {
+    if (left.length > 0 || !recordDeparture(leaver, host)) left.push(leaver);
+  }
+  departed = left;
+  const saved = safeStorageSetChecked(DEPARTED_KEY, left.length > 0 ? JSON.stringify(left) : '');
+  return { left: left.length, saved };
+}
 
 /**
  * Read which account this browser's tabs belong to, before cloud-prefs
@@ -362,11 +399,12 @@ export function prepareTabSyncSignIn(userId: string, enabled: boolean, host?: Ta
   // wrong merge mode; tabs stay local instead.
   const signedIn = safeStorageGetChecked(SIGNED_IN_KEY);
   if (!signedIn.ok) return { willSync: false };
-  // Before the layout has its tabs the departure cannot be read; the first
-  // pass records it, and the stored account changes only once it is.
-  departure = null;
-  if (signedIn.value && signedIn.value !== userId && !recordDeparture(signedIn.value, host)) departure = signedIn.value;
-  else safeStorageSet(SIGNED_IN_KEY, userId);
+  // Before the layout has its tabs a departure cannot be read: it waits in
+  // the departed list for the first pass. The signed-in account moves on
+  // only once the departure is recorded or waiting there.
+  const gone = recordDepartures(signedIn.value && signedIn.value !== userId ? [signedIn.value] : [], host);
+  if (gone.left === 0 || gone.saved) safeStorageSet(SIGNED_IN_KEY, userId);
+  if (readDeparted() === null) return { willSync: false };
   const stored = safeStorageGetChecked(META_KEY);
   if (!stored.ok) return { willSync: false };
   const meta = parseTabSyncMeta(stored.value);
@@ -424,7 +462,7 @@ export function startTabSync(
     rows: null,
     learned: new Map(),
     absent: new Map(),
-    unreleased: new Set(),
+    unreleased: new Map(),
     reconnects: 0,
     reconnectTimer: null,
     unsubscribe: null,
@@ -449,9 +487,16 @@ function isMissingFunction(err: unknown): boolean {
   return err instanceof Error && /Could not find public function/i.test(err.message);
 }
 
+/** The server refused a record as malformed: resending the same tabs cannot help. */
+function isInvalidTab(err: unknown): boolean {
+  const data = (err as { data?: unknown } | null)?.data;
+  return isRecord(data) && data.kind === 'INVALID_TAB';
+}
+
 function fail(s: Session, reason: TabSyncStopReason, err?: unknown): void {
   if (!isCurrent(s)) return;
   if (reason === 'error' && isMissingFunction(err)) reason = 'unavailable';
+  if (reason === 'error' && isInvalidTab(err)) reason = 'invalid';
   if (reason === 'error' && s.reconnects < RECONNECT_DELAYS_MS.length) {
     if (err) console.warn('[tab-sync] reconnecting:', err instanceof Error ? err.message : err);
     disconnect(s);
@@ -534,26 +579,29 @@ export function stopTabSync(): void {
   if (!s) return;
   disconnect(s);
   if (s.reconnectTimer) clearTimeout(s.reconnectTimer);
-  if (s.meta) saveTabSyncMeta({ ...s.meta, heldBack: unpushedTabs(s, s.meta) });
+  if (!s.meta) return;
+  const heldBack = unpushedOf(s.host, s.meta);
+  const meta = { ...s.meta };
+  // Unreadable tabs: no list, so a later switch holds every unpushed tab.
+  if (heldBack) meta.heldBack = heldBack;
+  else delete meta.heldBack;
+  saveTabSyncMeta(meta);
 }
 
 /**
  * Tabs holding this account's work that never reached it: new since the
- * last push, or edited. An account switch leaves them out of the next
- * account, where tabs made later (while signed out) still go.
+ * last push, or edited; null when the tabs cannot be read. An account
+ * switch leaves them out of the next account, where tabs made later
+ * (while signed out) still go.
  */
-function unpushedTabs(s: Session, meta: TabSyncMeta): string[] {
-  return unpushedOf(s.host, meta);
-}
-
-function unpushedOf(host: TabSyncHost, meta: TabSyncMeta): string[] {
+function unpushedOf(host: TabSyncHost | undefined, meta: TabSyncMeta): string[] | null {
   let local: TabsState | null;
   try {
-    local = host.captureTabs();
+    local = host?.captureTabs() ?? null;
   } catch {
-    return [];
+    return null;
   }
-  return local ? unpushedIn(local, meta) : [];
+  return local ? unpushedIn(local, meta) : null;
 }
 
 function unpushedIn(local: TabsState, meta: TabSyncMeta): string[] {
@@ -572,27 +620,22 @@ function unpushedIn(local: TabsState, meta: TabSyncMeta): string[] {
  *   out, which wrote that already);
  * - otherwise (its sync never finished a pass), in `foreign`, leaving the
  *   work the state's own account left behind (`heldBack`) to that account.
- * Returns false when the tabs could not be read, so the caller tries again.
+ * Returns false when the tabs could not be read or the marks not stored,
+ * so the caller tries again.
  */
-function recordDeparture(leaver: string, host: TabSyncHost | undefined): boolean {
-  if (!host) return false;
+function recordDeparture(leaver: string, host: TabSyncHost | undefined, signingOut = false): boolean {
   const read = safeStorageGetChecked(META_KEY);
   if (!read.ok) return false;
-  let local: TabsState | null;
-  try {
-    local = host.captureTabs();
-  } catch {
-    local = null;
-  }
-  if (!local) return false;
   const meta = parseTabSyncMeta(read.value) ?? emptyTabSyncMeta(null);
+  const found = unpushedOf(host, meta);
+  if (!found) return false;
   const foreign = { ...(meta.foreign ?? {}) };
-  const unpushed = unpushedIn(local, meta).filter((id) => !foreign[id]);
+  const unpushed = found.filter((id) => !foreign[id]);
   if (meta.userId === leaver) {
     if (meta.signedOut) return true;
     meta.heldBack = unpushed;
-    saveTabSyncMeta(meta);
-    return true;
+    if (signingOut) meta.signedOut = true;
+    return saveTabSyncMeta(meta);
   }
   const theirs = new Set(meta.heldBack ?? []);
   let marked = false;
@@ -603,8 +646,7 @@ function recordDeparture(leaver: string, host: TabSyncHost | undefined): boolean
   }
   if (!marked) return true;
   meta.foreign = foreign;
-  saveTabSyncMeta(meta);
-  return true;
+  return saveTabSyncMeta(meta);
 }
 
 /**
@@ -613,22 +655,17 @@ function recordDeparture(leaver: string, host: TabSyncHost | undefined): boolean
  * this account's unpushed work stays held for it.
  */
 export function signOutTabSync(host: TabSyncHost, userId?: string | null): void {
-  const running = session !== null && session.meta !== null;
   stopTabSync();
-  // An earlier account's departure still waiting for the tabs: record it now.
-  if (departure && departure !== userId && recordDeparture(departure, host)) departure = null;
   const signedIn = safeStorageGetChecked(SIGNED_IN_KEY);
-  const leaver = userId ?? (signedIn.ok ? signedIn.value : null);
-  if (signedIn.ok && signedIn.value) safeStorageSet(SIGNED_IN_KEY, '');
-  const meta = loadTabSyncMeta();
-  if (leaver && meta?.userId !== leaver) {
-    recordDeparture(leaver, host);
-    return;
+  const leaver = userId || (signedIn.ok ? signedIn.value : null);
+  let gone = { left: 0, saved: true };
+  if (leaver) {
+    // Earlier departures first: their marks decide which tabs are still this account's.
+    const earlier = recordDepartures([], host);
+    if (!(earlier.left === 0 && recordDeparture(leaver, host, true))) gone = recordDepartures([leaver], host);
   }
-  if (!meta?.userId) return;
-  if (!running) meta.heldBack = unpushedOf(host, meta);
-  meta.signedOut = true;
-  saveTabSyncMeta(meta);
+  // Signed out now, unless the departure is neither recorded nor waiting.
+  if (gone.left === 0 || gone.saved) safeStorageSet(SIGNED_IN_KEY, '');
 }
 
 /** Test seam: forget page-level state between cases. */
@@ -636,7 +673,7 @@ export function __resetTabSyncForTests(): void {
   stopTabSync();
   prepared = null;
   unavailableForPage = false;
-  departure = null;
+  departed = [];
 }
 
 export function isTabSyncActive(): boolean {
@@ -659,11 +696,15 @@ export function notifyTabsChangedLocally(): void {
  * other devices; a tab that just goes missing from storage is restored.
  */
 export function recordTabDeleted(tabId: string): void {
-  // Recorded even while signed out: the delete reaches the account that
-  // synced the tab at its next sign-in. A tab never synced has nothing to delete.
+  // Only the account signed in now deletes its tabs, even with sync off; it
+  // reaches the server at the next pass. A delete made signed out or under
+  // another account is not recorded, and the tab comes back from the
+  // account at its next sign-in. A tab never synced has nothing to delete.
   const s = session;
   const meta = s?.meta ?? loadTabSyncMeta();
   if (!meta) return;
+  const signedIn = s ? s.userId : safeStorageGetChecked(SIGNED_IN_KEY).value;
+  if (!signedIn || meta.userId !== signedIn) return;
   // Never written to the server: nothing to delete. A write still
   // unanswered (`sent`) may have landed; the merge deletes it if so.
   if (!meta.base[tabId] && !meta.sent?.[tabId]) return;
@@ -726,9 +767,10 @@ async function runPass(s: Session): Promise<void> {
 async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
   const local = s.host.captureTabs();
   if (!local) return;
-  if (departure && departure !== s.userId) {
-    if (!recordDeparture(departure, s.host)) return;
-    departure = null;
+  const waiting = readDeparted();
+  if (waiting === null) return;
+  if (waiting.length > 0) {
+    if (recordDepartures([], s.host).left > 0) return;
     safeStorageSet(SIGNED_IN_KEY, s.userId);
     // The switch was prepared before the marks existed.
     if (s.pending) {
@@ -738,10 +780,13 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
     }
   }
   const pending = s.pending;
+  const rows = currentRows(s);
+  // A tab the server refused for the cap is tried again once the rows show room.
+  if (s.localOnly.size > 0 && rows.filter((r) => !r.deleted).length < MAX_SYNCED_DASHBOARD_TABS) s.localOnly.clear();
   const result = mergeTabs({
     local,
     meta: metaForPass(s),
-    rows: currentRows(s),
+    rows,
     currentPanelSettings: s.host.currentPanelSettings(),
     defaultName: s.host.defaultTabName(),
     defaultPanelOrder: s.host.defaultPanelOrder(),
@@ -757,17 +802,22 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
   if (result.held && !holdTabs(result.held)) {
     throw new Error("could not keep another account's tabs on this device");
   }
-  s.pending = null;
-  for (const id of [...result.restored, ...result.heldPresent]) s.unreleased.add(id);
   const meta = { ...result.meta, userId: s.userId };
-  s.meta = meta;
-  let stored = true;
   if (result.changed) {
-    stored = s.host.applyTabs(result.state, result.activeChanged) !== false;
+    // Not stored: the device still has its old tabs. This pass's state
+    // describes tabs it does not have (another account's, at a switch), so
+    // none of it is kept and nothing is pushed; the pass runs again.
+    if (s.host.applyTabs(result.state, result.activeChanged) === false) {
+      throw new Error('could not store the merged tabs on this device');
+    }
     if (result.activeChanged) rebaseAppliedActiveTab(s, meta, result.changes);
   }
+  s.pending = null;
+  s.meta = meta;
+  const restoredCopies = new Map((pending?.restore?.records ?? []).map((r) => [r.id, hashTabRecord(r.record)]));
+  for (const id of [...result.restored, ...result.heldPresent]) s.unreleased.set(id, restoredCopies.get(id) ?? null);
   // A write can land with its answer lost (the session stops first); note
-  // the version it would give each tab that has no base yet.
+  // the lowest version it can give each tab that has no base yet, and its content.
   for (const { change, hash } of result.changes) {
     if (change.record && hash && !meta.base[change.tabId]) {
       (meta.sent ??= {})[change.tabId] = { version: (change.baseVersion ?? 0) + 1, hash };
@@ -775,7 +825,7 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
   }
   // Put-back tabs leave the held store once this pass stored them here;
   // otherwise once the server holds them.
-  if (saveTabSyncMeta(meta) && stored && result.changed) releaseRestored(s, null, result.restored);
+  if (saveTabSyncMeta(meta) && result.changed) releaseRestored(s, null, result.restored);
   if (result.changes.length === 0) {
     releaseRestored(s, meta);
     return;
@@ -809,7 +859,7 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
  */
 function releaseRestored(s: Session, synced: TabSyncMeta | null, only?: readonly string[]): void {
   if (s.unreleased.size === 0) return;
-  let ids = only ? only.filter((id) => s.unreleased.has(id)) : [...s.unreleased];
+  let ids = only ? only.filter((id) => s.unreleased.has(id)) : [...s.unreleased.keys()];
   if (synced) {
     const local = s.host.captureTabs();
     const byId = new Map((local?.tabs ?? []).map((t) => [t.id, t]));
@@ -821,7 +871,7 @@ function releaseRestored(s: Session, synced: TabSyncMeta | null, only?: readonly
     });
   }
   if (ids.length === 0) return;
-  releaseHeld(s.userId, ids);
+  releaseHeld(s.userId, new Map(ids.map((id) => [id, s.unreleased.get(id) ?? null])));
   for (const id of ids) s.unreleased.delete(id);
 }
 

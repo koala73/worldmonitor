@@ -102,6 +102,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
   { target: "apiPlanLimitNotices", action: "delete", notes: "Plan-limit notices" },
   { target: "userDashboardTabs", action: "delete", notes: "Synced dashboard tabs and their delete markers (#11141)" },
+  { target: "userDashboardTabVersionFloors", action: "delete", notes: "Highest pruned tab version per variant (#11141)" },
   { target: "alertScopeNotices", action: "delete", notes: "Alert scope migration markers and notice outbox (#10873)" },
   { target: "checkoutAdmissions", action: "delete", notes: "Checkout admission counters" },
   { target: "proBusinessUpgradeAdmissions", action: "delete", notes: "Pro Business upgrade admission counters" },

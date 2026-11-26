@@ -4,7 +4,7 @@
  */
 
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { api } from "../_generated/api";
 import { USER_PREFS_WRITE_RATE_LIMIT } from "../constants";
@@ -226,11 +226,55 @@ describe("listDashboardTabs / syncDashboardTabs", () => {
   });
 
   test("shares the preference write rate limit", async () => {
-    const { sync } = setup();
-    for (let i = 0; i < USER_PREFS_WRITE_RATE_LIMIT; i += 1) {
-      expect(await sync(USER_A, [])).toMatchObject({ ok: true });
+    // One clock reading for the whole test: every attempt lands in one window.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-26T10:00:30.000Z"));
+    try {
+      const { t, sync } = setup();
+      // A preference save and tab writes spend the same budget.
+      await t.withIdentity(USER_A).mutation(api.userPreferences.setPreferences, {
+        variant: "full", data: { theme: "dark" }, expectedSyncVersion: 0,
+      });
+      for (let i = 1; i < USER_PREFS_WRITE_RATE_LIMIT; i += 1) {
+        expect(await sync(USER_A, [])).toMatchObject({ ok: true });
+      }
+      expect(await sync(USER_A, [{ tabId: tabId(1), record: RECORD }])).toMatchObject({ ok: false, reason: "RATE_LIMITED" });
+    } finally {
+      vi.useRealTimers();
     }
-    expect(await sync(USER_A, [{ tabId: tabId(1), record: RECORD }])).toMatchObject({ ok: false, reason: "RATE_LIMITED" });
+  });
+
+  test("a tab recreated after its tombstone was pruned cannot be deleted with the old version", async () => {
+    const { t, sync } = setup();
+    const now = Date.now();
+    const recreated = tabId(700);
+    await t.run(async (ctx) => {
+      // The oldest tombstone, next to go; a device still holds version 1 of it.
+      await ctx.db.insert("userDashboardTabs", {
+        userId: USER_A.subject, variant: "full", tabId: recreated, version: 5, deleted: true,
+        createdAt: now - 20_000, updatedAt: now - 20_000,
+      });
+      for (let i = 1; i < MAX_DASHBOARD_TAB_TOMBSTONES; i += 1) {
+        await ctx.db.insert("userDashboardTabs", {
+          userId: USER_A.subject, variant: "full", tabId: tabId(i), version: 2, deleted: true,
+          createdAt: now - 10_000, updatedAt: now - 10_000 + i,
+        });
+      }
+      await ctx.db.insert("userDashboardTabs", {
+        userId: USER_A.subject, variant: "full", tabId: tabId(500), version: 1, deleted: false,
+        record: RECORD, createdAt: now, updatedAt: now,
+      });
+    });
+    // One more delete prunes the oldest tombstone.
+    expect(await sync(USER_A, [{ tabId: tabId(500), baseVersion: 1, record: null }])).toMatchObject({ ok: true });
+    const created = await sync(USER_A, [{ tabId: recreated, record: RECORD }]);
+    expect(created).toMatchObject({ ok: true, results: [{ tabId: recreated, ok: true, version: 6 }] });
+    expect(await sync(USER_A, [{ tabId: recreated, baseVersion: 1, record: null }])).toMatchObject({
+      ok: true, results: [{ tabId: recreated, ok: false, reason: "CONFLICT" }],
+    });
+    expect(await sync(USER_A, [{ tabId: recreated, baseVersion: 6, record: { ...RECORD, name: "Edited" } }])).toMatchObject({
+      ok: true, results: [{ tabId: recreated, ok: true, version: 7 }],
+    });
   });
 
   test("an account being deleted cannot write tabs", async () => {

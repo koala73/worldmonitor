@@ -415,6 +415,16 @@ export const syncDashboardTabs = mutation({
     const tombstones = rows.filter((row) => row.deleted);
     const now = Date.now();
     const results: DashboardTabChangeResult[] = [];
+    let floor: Doc<"userDashboardTabVersionFloors"> | null | undefined;
+    const readFloor = async () => {
+      if (floor === undefined) {
+        floor = await ctx.db
+          .query("userDashboardTabVersionFloors")
+          .withIndex("by_user_variant", (q) => q.eq("userId", userId).eq("variant", args.variant))
+          .unique();
+      }
+      return floor;
+    };
 
     for (const change of args.changes) {
       const row = byTabId.get(change.tabId);
@@ -459,11 +469,13 @@ export const syncDashboardTabs = mutation({
         }
         results.push({ tabId: change.tabId, ok: true, version });
       } else {
+        // Above every pruned tombstone: this id may have been a tab before.
+        const version = ((await readFloor())?.version ?? 0) + 1;
         await ctx.db.insert("userDashboardTabs", {
-          userId, variant: args.variant, tabId: change.tabId, version: 1, deleted: false,
+          userId, variant: args.variant, tabId: change.tabId, version, deleted: false,
           record: change.record, createdAt: now, updatedAt: now,
         });
-        results.push({ tabId: change.tabId, ok: true, version: 1 });
+        results.push({ tabId: change.tabId, ok: true, version });
       }
       if (becomesLive) liveCount += 1;
     }
@@ -472,8 +484,16 @@ export const syncDashboardTabs = mutation({
     // evicted one reads the absent row as a delete.
     if (tombstones.length > MAX_DASHBOARD_TAB_TOMBSTONES) {
       tombstones.sort((a, b) => a.updatedAt - b.updatedAt);
+      let highest = 0;
       for (const stale of tombstones.slice(0, tombstones.length - MAX_DASHBOARD_TAB_TOMBSTONES)) {
+        highest = Math.max(highest, stale.version);
         await ctx.db.delete(stale._id);
+      }
+      const current = await readFloor();
+      if (!current) {
+        await ctx.db.insert("userDashboardTabVersionFloors", { userId, variant: args.variant, version: highest, updatedAt: now });
+      } else if (highest > current.version) {
+        await ctx.db.patch(current._id, { version: highest, updatedAt: now });
       }
     }
 

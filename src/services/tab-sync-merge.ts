@@ -45,7 +45,7 @@ export interface TabSyncMeta {
   /** Tabs deleted on this device whose delete has not reached the server. */
   tombstones: string[];
   /** Per tab: record entries this device cannot render, carried on every push. */
-  carried: Record<string, DashboardTabRecordPanel[]>;
+  carried: Record<string, CarriedPanel[]>;
   /**
    * Written when sync stops: tabs with this account's work that never
    * reached it. An account switch keeps them for this account.
@@ -58,10 +58,11 @@ export interface TabSyncMeta {
    */
   signedOut?: boolean;
   /**
-   * Per tab with no base: its last write, by the version it would get (1
-   * for a new tab) and the record's hash. A write whose answer never arrived
-   * (the session stopped) may still have landed; a row at or past that
-   * version is this device's write or a later edit of it.
+   * Per tab with no base: its last write, by the lowest version it can get
+   * (1 for a new tab) and the record's hash. A write whose answer never
+   * arrived (the session stopped) may still have landed; a row at or past
+   * that version is this device's write or a later edit of it, and only a
+   * row with the same hash is that write.
    */
   sent?: Record<string, SentWrite>;
   /**
@@ -76,11 +77,17 @@ export interface SentWrite {
   hash: string;
 }
 
+/**
+ * A record entry this device cannot render. `after` is the record key it
+ * followed (null: first), so a push puts it back where the record had it.
+ */
+export type CarriedPanel = DashboardTabRecordPanel & { after?: string | null };
+
 /** Tabs kept for an account that is not signed in, with their sync bases. */
 export interface HeldTabs {
   tabs: PanelTab[];
   base: Record<string, TabSyncBase>;
-  carried: Record<string, DashboardTabRecordPanel[]>;
+  carried: Record<string, CarriedPanel[]>;
   /** Deletes that never reached the account. */
   tombstones: string[];
   sent: Record<string, SentWrite>;
@@ -110,7 +117,7 @@ function recordName(name: string): string {
  * (`proGated`) is recorded as on: the gate is this device's tier, not the
  * user's choice, and the receiving device applies its own gate.
  */
-export function captureTabRecord(tab: PanelTab, carried: readonly DashboardTabRecordPanel[] = []): DashboardTabRecord {
+export function captureTabRecord(tab: PanelTab, carried: readonly CarriedPanel[] = []): DashboardTabRecord {
   const bottom = new Set(tab.bottomSet);
   const keys = new Set([...tab.panelOrder, ...Object.keys(tab.panelSettings)]);
   const panels: DashboardTabRecordPanel[] = [];
@@ -124,17 +131,29 @@ export function captureTabRecord(tab: PanelTab, carried: readonly DashboardTabRe
 
   // At the cap, a local addition gives way before an entry another device
   // put in the record: dropping that entry would delete it everywhere.
-  const carriedEntries: DashboardTabRecordPanel[] = [];
+  const carriedEntries: CarriedPanel[] = [];
   const present = new Set(panels.map((p) => p.key));
   for (const entry of carried) {
     if (present.has(entry.key) || !KEY_RE.test(entry.key)) continue;
     present.add(entry.key);
-    carriedEntries.push(entry.bottom ? { key: entry.key, on: entry.on, bottom: true } : { key: entry.key, on: entry.on });
+    carriedEntries.push(entry);
   }
   const room = Math.max(0, MAX_DASHBOARD_PANELS - carriedEntries.length);
+  const out = panels.slice(0, room);
+  // Each carried entry goes back after the key it followed in the record
+  // (entries are in record order, so one carried entry can follow another);
+  // a rename or a move elsewhere in the tab does not shift it.
+  let head = 0;
+  for (const entry of carriedEntries.slice(0, MAX_DASHBOARD_PANELS)) {
+    const plain: DashboardTabRecordPanel = entry.bottom ? { key: entry.key, on: entry.on, bottom: true } : { key: entry.key, on: entry.on };
+    const at = entry.after === null ? head : entry.after === undefined ? -1 : out.findIndex((p) => p.key === entry.after) + 1;
+    if (at <= 0 && entry.after !== null) out.push(plain);
+    else out.splice(at, 0, plain);
+    if (entry.after === null) head += 1;
+  }
   const record: DashboardTabRecord = {
     name: recordName(tab.name),
-    panels: [...panels.slice(0, room), ...carriedEntries].slice(0, MAX_DASHBOARD_PANELS),
+    panels: out.slice(0, MAX_DASHBOARD_PANELS),
   };
   const scope = captureScope(tab.scope);
   if (scope) record.scope = scope;
@@ -146,9 +165,20 @@ export function captureTabRecord(tab: PanelTab, carried: readonly DashboardTabRe
   return record;
 }
 
-/** Stable: records are built with a fixed field order. */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (!value || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    const field = (value as Record<string, unknown>)[key];
+    if (field !== undefined) out[key] = canonical(field);
+  }
+  return out;
+}
+
+/** Field order does not count: a record read back from the server hashes as the one sent. */
 export function hashTabRecord(record: DashboardTabRecord): string {
-  return JSON.stringify(record);
+  return JSON.stringify(canonical(record));
 }
 
 function defaultTabPanels(currentPanelSettings: Record<string, PanelConfig>) {
@@ -168,7 +198,7 @@ export function applyTabRecord(
   record: DashboardTabRecord,
   currentPanelSettings: Record<string, PanelConfig>,
   newId?: string,
-): { tab: PanelTab; carried: DashboardTabRecordPanel[] } {
+): { tab: PanelTab; carried: CarriedPanel[] } {
   const defaults = defaultTabPanels(currentPanelSettings);
   const panelSettings: Record<string, PanelConfig> = local
     ? structuredClone(local.panelSettings)
@@ -176,19 +206,22 @@ export function applyTabRecord(
   const localOrder = local ? local.panelOrder : defaults.panelOrder;
   const localBottom = local ? local.bottomSet : [];
 
-  const carried: DashboardTabRecordPanel[] = [];
+  const carried: CarriedPanel[] = [];
   const recordKeys = new Set<string>();
   const order: string[] = [];
   const bottomSet: string[] = [];
+  let previous: string | null = null;
   for (const entry of record.panels) {
     const { key } = entry;
     if (recordKeys.has(key)) continue;
     recordKeys.add(key);
+    const after = previous;
+    previous = key;
     const known = hasOwn(ALL_PANELS, key) || isDynamicPanel(key);
     const config = hasOwn(panelSettings, key) ? panelSettings[key]
       : hasOwn(defaults.panelSettings, key) ? defaults.panelSettings[key] : undefined;
     if (!known || !config) {
-      carried.push(entry.bottom ? { key, on: entry.on, bottom: true } : { key, on: entry.on });
+      carried.push(entry.bottom ? { key, on: entry.on, bottom: true, after } : { key, on: entry.on, after });
       continue;
     }
     const next: PanelConfig = { ...config, enabled: entry.on };
@@ -279,26 +312,58 @@ function freshDefaultTab(input: MergeInput): PanelTab {
   return { id: input.newTabId(), name: input.defaultName, panelSettings, panelOrder, bottomSet: [] };
 }
 
-function onKeys(record: DashboardTabRecord): Set<string> {
-  return new Set(record.panels.filter((p) => p.on && p.key !== 'map').map((p) => p.key));
+/** The tab fields a first-run tab has; any other field set means the user set it. */
+const FIRST_RUN_TAB_FIELDS = new Set(['id', 'name', 'panelSettings', 'panelOrder', 'bottomSet']);
+
+const isEmptyField = (value: unknown): boolean =>
+  value === undefined || value === null || (isPlainObject(value) && Object.keys(value).length === 0);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * PanelConfig fields by who sets them. The build sets name, priority and
+ * premium, and the tier gate sets proGated; the user sets visibility and
+ * text size. A field in neither list counts as a user's choice.
+ */
+const BUILD_PANEL_FIELDS = new Set(['name', 'priority', 'premium', 'proGated']);
+const USER_PANEL_FIELDS = new Set(['enabled', 'fontScale']);
+
+/** Whether a panel's user-set fields match the first-run config. */
+function sameChoices(mine: PanelConfig | undefined, expected: PanelConfig | undefined): boolean {
+  const on = (c: PanelConfig | undefined) => !!c && (c.enabled || c.proGated === true);
+  if (on(mine) !== on(expected)) return false;
+  if (mine?.fontScale !== expected?.fontScale) return false;
+  for (const [field, value] of Object.entries(mine ?? {})) {
+    if (!BUILD_PANEL_FIELDS.has(field) && !USER_PANEL_FIELDS.has(field) && value !== undefined) return false;
+  }
+  return true;
 }
 
 /**
  * The tab this device made on its first run and nobody changed: the default
- * name, no focus, filters or team link, exactly the default panels on, none
- * docked, and the visible panels in this device's first-run order. Decided
- * from content, so a device that predates tab sync qualifies too.
+ * name, no other tab field set, no panel the user made, every panel's
+ * user-set fields (visibility, the map's included, and text size) as the
+ * defaults have them, none docked, and the visible panels in this device's
+ * first-run order. Decided from content, so a device that predates tab sync
+ * qualifies too.
  */
 function isUntouchedDefault(tab: PanelTab, input: MergeInput): boolean {
-  if (tab.name.trim() !== input.defaultName || tab.scope || tab.team) return false;
-  if (tab.panelFilters && Object.keys(tab.panelFilters).length > 0) return false;
+  if (tab.name.trim() !== input.defaultName) return false;
+  for (const [field, value] of Object.entries(tab)) {
+    if (!FIRST_RUN_TAB_FIELDS.has(field) && !isEmptyField(value)) return false;
+  }
   if (tab.bottomSet.length > 0) return false;
-  // A per-panel text size is a customization (no default sets one).
-  if (Object.values(tab.panelSettings).some((c) => c.fontScale !== undefined)) return false;
-  const defaults = defaultTabPanels(input.currentPanelSettings);
-  const mine = onKeys(captureTabRecord(tab));
-  const expected = onKeys(captureTabRecord({ id: tab.id, name: tab.name, ...defaults, bottomSet: [] }));
-  if (mine.size !== expected.size || [...mine].some((key) => !expected.has(key))) return false;
+  const defaults = defaultTabPanels(input.currentPanelSettings).panelSettings;
+  const keys = new Set([...Object.keys(tab.panelSettings), ...Object.keys(defaults)]);
+  for (const key of keys) {
+    // Custom widgets and MCP panels are made by the user.
+    if (key.startsWith('cw-') || key.startsWith('mcp-')) return false;
+    const mine = hasOwn(tab.panelSettings, key) ? tab.panelSettings[key] : undefined;
+    const expected = hasOwn(defaults, key) ? defaults[key] : undefined;
+    if (!sameChoices(mine, expected)) return false;
+  }
   if (!input.defaultPanelOrder) return true;
   // Panels the free tier hides are placed by the layout, not the user, so
   // only the panels on screen are compared.
@@ -480,8 +545,9 @@ export function mergeTabs(input: MergeInput): MergeResult {
     if (tombstones.has(id) && !local) {
       if (remoteLive && base && row!.version === base.version) {
         changes.push({ change: { tabId: id, baseVersion: base.version, record: null }, hash: null });
-      } else if (remoteLive && !base && sent && row!.version === sent.version) {
-        // Deleted while its first write was unanswered, and that write landed.
+      } else if (remoteLive && !base && sent && row!.version >= sent.version && hashTabRecord(row!.record!) === sent.hash) {
+        // Deleted while its first write was unanswered, and the row is that
+        // write: same content. Another device's row at that version is not.
         changes.push({ change: { tabId: id, baseVersion: row!.version, record: null }, hash: null });
       } else if (remoteLive) {
         // Edited elsewhere after this device deleted it: the edit wins.

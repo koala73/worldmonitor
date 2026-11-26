@@ -124,6 +124,9 @@ describe('PanelLayoutManager tab sync host', () => {
     } finally {
       spy.mockRestore();
     }
+    // Not stored, not shown: the tabs on screen stay the ones kept for the next load.
+    expect(self.tabsState).toBe(next);
+    expect(self.panelTabBar.refresh).toHaveBeenCalledTimes(1);
     expect(apply.call({ ...self, ctx: { isDestroyed: true } }, next, false)).toBe(false);
   });
 
@@ -140,6 +143,7 @@ describe('PanelLayoutManager tab sync host', () => {
   });
 
   it('records a deleted synced tab for the account before saving', () => {
+    localStorage.setItem('worldmonitor-tabs-signed-in-v1:full', 'user_1');
     localStorage.setItem(META_KEY, JSON.stringify({
       userId: 'user_1',
       base: { 'tab-a2-b2': { version: 3, hash: 'h' } },
@@ -156,6 +160,45 @@ describe('PanelLayoutManager tab sync host', () => {
 
     expect(JSON.parse(localStorage.getItem(META_KEY)!).tombstones).toEqual(['tab-a2-b2']);
     expect(JSON.parse(localStorage.getItem(TABS_KEY)!).tabs.map((t: PanelTab) => t.id)).toEqual(['tab-a1-b1']);
+  });
+
+  it('does not record a delete made while signed out', () => {
+    localStorage.setItem(META_KEY, JSON.stringify({
+      userId: 'user_1',
+      base: { 'tab-a2-b2': { version: 3, hash: 'h' } },
+      tombstones: [],
+      carried: {},
+    }));
+    const self = {
+      tabsState: { activeTabId: 'tab-a1-b1', tabs: [tab('tab-a1-b1', 'Main', false), tab('tab-a2-b2', 'Energy', true)] } as TabsState,
+      panelTabBar: { refresh: vi.fn() },
+      updateTabCapLock: vi.fn(),
+    };
+
+    method<(id: string) => unknown>('deleteTab').call(self, 'tab-a2-b2');
+
+    expect(JSON.parse(localStorage.getItem(META_KEY)!).tombstones).toEqual([]);
+  });
+
+  it("shows a tab's own panel order even when the order cannot be saved", () => {
+    const self = {
+      ctx: { panelSettings: {}, PANEL_ORDER_KEY: 'panel-order', unifiedSettings: null },
+      isProTierResolvedOrFallback: () => false,
+      applyPanelSettings: vi.fn(),
+      applySavedPanelOrder: vi.fn(),
+      mountLiveNewsIfReady: vi.fn(),
+      scheduleLoadAllData: vi.fn(),
+    };
+    localStorage.setItem('panel-order', JSON.stringify(['markets', 'live-news']));
+    const spy = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError'); });
+    try {
+      method<(s: Record<string, unknown>, o: string[], b: string[]) => void>('applyTabPanelState').call(
+        self, { markets: { name: 'Markets', enabled: true } }, ['live-news', 'markets'], ['markets'],
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    expect(self.applySavedPanelOrder).toHaveBeenCalledWith(['live-news', 'markets'], ['markets']);
   });
 
   it('exposes the host App hands to the sync driver', () => {

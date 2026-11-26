@@ -51,6 +51,7 @@ export const PERSONAL_DELETE_TABLES = [
   "proBusinessUpgradeAdmissions",
   "alertScopeNotices",
   "userDashboardTabs",
+  "userDashboardTabVersionFloors",
   "users",
 ] as const;
 
@@ -105,6 +106,11 @@ async function takePersonalRows(
     case "userDashboardTabs":
       return ctx.db
         .query("userDashboardTabs")
+        .withIndex("by_user_variant", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "userDashboardTabVersionFloors":
+      return ctx.db
+        .query("userDashboardTabVersionFloors")
         .withIndex("by_user_variant", (q) => q.eq("userId", userId))
         .take(limit);
     case "alertScopeNotices":
