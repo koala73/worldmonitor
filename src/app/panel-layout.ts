@@ -2739,11 +2739,11 @@ export class PanelLayoutManager implements AppModule {
     return order;
   }
 
-  /** Store and show tabs merged with the account's synced tabs. */
-  private applySyncedTabs(next: TabsState, activeChanged: boolean): void {
-    if (!this.tabsState || this.ctx.isDestroyed) return;
+  /** Store and show tabs merged with the account's synced tabs; false when they could not be stored. */
+  private applySyncedTabs(next: TabsState, activeChanged: boolean): boolean {
+    if (!this.tabsState || this.ctx.isDestroyed) return false;
     this.tabsState = next;
-    storeTabsState(next);
+    const { persisted } = storeTabsState(next);
     if (activeChanged) {
       const active = next.tabs.find((t) => t.id === next.activeTabId);
       if (active) {
@@ -2756,9 +2756,9 @@ export class PanelLayoutManager implements AppModule {
     this.healStoredTabSnapshots();
     this.panelTabBar?.refresh();
     this.updateTabCapLock();
+    return persisted;
   }
 
-  /** The layout side of tab sync, for App to hand to startTabSync. */
   /**
    * The panel order a device shows before anyone moves a panel. Tab sync
    * compares a lone tab against it to tell a first-run tab from a customized one.
@@ -2793,6 +2793,7 @@ export class PanelLayoutManager implements AppModule {
     return allOrder;
   }
 
+  /** The layout side of tab sync, for App to hand to startTabSync. */
   public getTabSyncHost(): TabSyncHost {
     return {
       captureTabs: () => this.captureTabsForSync(),

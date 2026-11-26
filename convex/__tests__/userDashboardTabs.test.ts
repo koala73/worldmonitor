@@ -197,6 +197,34 @@ describe("listDashboardTabs / syncDashboardTabs", () => {
     expect(tombstones.some((r) => r.tabId === tabId(500))).toBe(true);
   });
 
+  test("prunes tombstones by the time they were last written", async () => {
+    const { t, list } = setup();
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      for (let i = 0; i < MAX_DASHBOARD_TAB_TOMBSTONES; i += 1) {
+        await ctx.db.insert("userDashboardTabs", {
+          userId: USER_A.subject, variant: "full", tabId: tabId(i + 1), version: 2, deleted: true,
+          createdAt: now - 10_000, updatedAt: now - 10_000 + i,
+        });
+      }
+      await ctx.db.insert("userDashboardTabs", {
+        userId: USER_A.subject, variant: "full", tabId: tabId(500), version: 1, deleted: false,
+        record: RECORD, createdAt: now, updatedAt: now,
+      });
+    });
+    // Delete the oldest marker again (refreshing it), then a live tab.
+    await t.withIdentity(USER_A).mutation(api.userPreferences.syncDashboardTabs, {
+      variant: "full", expectedUserId: USER_A.subject, changes: [
+        { tabId: tabId(1), baseVersion: 2, record: null },
+        { tabId: tabId(500), baseVersion: 1, record: null },
+      ],
+    });
+    const tombstones = (await list(USER_A)).filter((r) => r.deleted);
+    expect(tombstones).toHaveLength(MAX_DASHBOARD_TAB_TOMBSTONES);
+    expect(tombstones.some((r) => r.tabId === tabId(1))).toBe(true);
+    expect(tombstones.some((r) => r.tabId === tabId(2))).toBe(false);
+  });
+
   test("shares the preference write rate limit", async () => {
     const { sync } = setup();
     for (let i = 0; i < USER_PREFS_WRITE_RATE_LIMIT; i += 1) {

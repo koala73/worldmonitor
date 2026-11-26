@@ -2609,7 +2609,7 @@ export class App {
 
   /** Sync dashboard tabs with the signed-in account (#11141). */
   private startDashboardTabSync(userId: string): void {
-    const { willSync } = prepareTabSyncSignIn(userId, isCloudSyncEnabled());
+    const { willSync } = prepareTabSyncSignIn(userId, isCloudSyncEnabled(), this.panelLayout.getTabSyncHost());
     if (!willSync) {
       stopTabSync();
       setCloudBlobApplyExclusions([]);
@@ -3122,7 +3122,7 @@ export class App {
         _convexWatchHandoffGeneration++;
         destroyEntitlementSubscription();
         destroySubscriptionWatch();
-        signOutTabSync(this.panelLayout.getTabSyncHost());
+        signOutTabSync(this.panelLayout.getTabSyncHost(), _prevUserId);
         // After sign-out drops the panel values tab sync skipped, so lifting
         // the exclusion does not apply the departing account's layout.
         cloudPrefsSignOut();

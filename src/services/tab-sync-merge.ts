@@ -57,6 +57,17 @@ export interface TabSyncMeta {
    * the previous account's.
    */
   signedOut?: boolean;
+  /**
+   * Per tab with no base: the version its last write would get (1 for a
+   * new tab). A write whose answer never arrived (the session stopped) may
+   * still have landed; a row at or past this version is this device's write.
+   */
+  sent?: Record<string, number>;
+  /**
+   * Tabs made or edited under another account that signed in here but never
+   * finished a sync pass, by that account. They are its work, not `userId`'s.
+   */
+  foreign?: Record<string, string>;
 }
 
 /** Tabs kept for an account that is not signed in, with their sync bases. */
@@ -64,10 +75,17 @@ export interface HeldTabs {
   tabs: PanelTab[];
   base: Record<string, TabSyncBase>;
   carried: Record<string, DashboardTabRecordPanel[]>;
+  /** Deletes that never reached the account. */
+  tombstones: string[];
+  sent: Record<string, number>;
 }
 
 export function emptyTabSyncMeta(userId: string | null): TabSyncMeta {
   return { userId, base: {}, tombstones: [], carried: {} };
+}
+
+export function emptyHeldTabs(): HeldTabs {
+  return { tabs: [], base: {}, carried: {}, tombstones: [], sent: {} };
 }
 
 // The server's key rule, so a capture never sends something the mutation refuses.
@@ -97,14 +115,21 @@ export function captureTabRecord(tab: PanelTab, carried: readonly DashboardTabRe
     if (bottom.has(key)) entry.bottom = true;
     panels.push(entry);
   }
+
+  // At the cap, a local addition gives way before an entry another device
+  // put in the record: dropping that entry would delete it everywhere.
+  const carriedEntries: DashboardTabRecordPanel[] = [];
   const present = new Set(panels.map((p) => p.key));
   for (const entry of carried) {
     if (present.has(entry.key) || !KEY_RE.test(entry.key)) continue;
     present.add(entry.key);
-    panels.push(entry.bottom ? { key: entry.key, on: entry.on, bottom: true } : { key: entry.key, on: entry.on });
+    carriedEntries.push(entry.bottom ? { key: entry.key, on: entry.on, bottom: true } : { key: entry.key, on: entry.on });
   }
-
-  const record: DashboardTabRecord = { name: recordName(tab.name), panels: panels.slice(0, MAX_DASHBOARD_PANELS) };
+  const room = Math.max(0, MAX_DASHBOARD_PANELS - carriedEntries.length);
+  const record: DashboardTabRecord = {
+    name: recordName(tab.name),
+    panels: [...panels.slice(0, room), ...carriedEntries].slice(0, MAX_DASHBOARD_PANELS),
+  };
   const scope = captureScope(tab.scope);
   if (scope) record.scope = scope;
   const filters = filtersToEntries(tab.panelFilters);
@@ -229,10 +254,18 @@ export interface MergeResult {
   activeChanged: boolean;
   /** Anything in `state` differs from the input. */
   changed: boolean;
-  /** Account switch: the previous account's unpushed tabs, taken out of `state`. */
-  held: HeldTabs | null;
-  /** Ids from `restore` now in `state`. */
+  /**
+   * By account: work that never reached it (the previous account's at a
+   * switch, or `meta.foreign` tabs), taken out of `state`.
+   */
+  held: Record<string, HeldTabs> | null;
+  /** Ids from `restore` put back into `state` or `meta`. */
   restored: string[];
+  /**
+   * Ids from `restore` the device already had, or deleted here since. Their
+   * held copy can go once the device's own state has reached the server.
+   */
+  heldPresent: string[];
 }
 
 function freshDefaultTab(input: MergeInput): PanelTab {
@@ -254,6 +287,8 @@ function isUntouchedDefault(tab: PanelTab, input: MergeInput): boolean {
   if (tab.name.trim() !== input.defaultName || tab.scope || tab.team) return false;
   if (tab.panelFilters && Object.keys(tab.panelFilters).length > 0) return false;
   if (tab.bottomSet.length > 0) return false;
+  // A per-panel text size is a customization (no default sets one).
+  if (Object.values(tab.panelSettings).some((c) => c.fontScale !== undefined)) return false;
   const defaults = defaultTabPanels(input.currentPanelSettings);
   const mine = onKeys(captureTabRecord(tab));
   const expected = onKeys(captureTabRecord({ id: tab.id, name: tab.name, ...defaults, bottomSet: [] }));
@@ -275,12 +310,40 @@ export function mergeTabs(input: MergeInput): MergeResult {
     base: { ...input.meta.base },
     tombstones: [...input.meta.tombstones],
     carried: { ...input.meta.carried },
+    ...(input.meta.sent ? { sent: { ...input.meta.sent } } : {}),
   };
   let changed = false;
   let activeContentChanged = false;
   const liveRows = input.rows.filter((r) => !r.deleted && r.record);
 
-  let held: HeldTabs | null = null;
+  const heldBy: Record<string, HeldTabs> = {};
+  const holdFor = (owner: string, t: PanelTab, from: TabSyncMeta | null) => {
+    const held = (heldBy[owner] ??= emptyHeldTabs());
+    held.tabs.push(t);
+    if (input.meta.carried[t.id]) held.carried[t.id] = input.meta.carried[t.id]!;
+    if (!from) return;
+    if (from.base[t.id]) held.base[t.id] = from.base[t.id]!;
+    if (from.sent?.[t.id] !== undefined) held.sent[t.id] = from.sent[t.id]!;
+  };
+
+  // Work done under an account whose sync never ran is that account's. Its
+  // bases (if any) are another account's versions, so none go with it.
+  const foreign = input.meta.foreign ?? {};
+  const ownForeign = new Set<string>();
+  if (Object.keys(foreign).length > 0) {
+    tabs = tabs.filter((t) => {
+      const owner = foreign[t.id];
+      if (!owner) return true;
+      if (owner === input.userId) {
+        ownForeign.add(t.id);
+        return true;
+      }
+      holdFor(owner, t, null);
+      return false;
+    });
+    if (tabs.length !== input.local.tabs.length) changed = true;
+  }
+
   if (input.mode === 'account-switch') {
     // The previous account's synced tabs are its own and stay in its cloud.
     // Its work that never reached it (unpushed edits, new tabs, tabs over the
@@ -294,9 +357,13 @@ export function mergeTabs(input: MergeInput): MergeResult {
     if (input.previousSyncKnown === false) {
       // The previous account signed in before tab sync: nothing says which
       // tabs it synced, so all of them are kept for it.
-      hold.push(...tabs);
+      for (const t of tabs) (ownForeign.has(t.id) ? kept : hold).push(t);
     } else {
       for (const t of tabs) {
+        if (ownForeign.has(t.id)) {
+          kept.push(t);
+          continue;
+        }
         const base = prev.base[t.id];
         const synced = !!base && base.hash === hashTabRecord(captureTabRecord(t, prev.carried[t.id]));
         if (synced) continue;
@@ -304,11 +371,15 @@ export function mergeTabs(input: MergeInput): MergeResult {
         else kept.push(t);
       }
     }
-    if (hold.length > 0 && prev.userId) {
-      held = { tabs: hold, base: {}, carried: {} };
-      for (const t of hold) {
-        if (prev.base[t.id]) held.base[t.id] = prev.base[t.id]!;
-        if (prev.carried[t.id]) held.carried[t.id] = prev.carried[t.id]!;
+    if (prev.userId) {
+      for (const t of hold) holdFor(prev.userId, t, prev);
+      // Its deletes that never reached it go with it too.
+      for (const id of prev.tombstones) {
+        if (!prev.base[id] && prev.sent?.[id] === undefined) continue;
+        const held = (heldBy[prev.userId] ??= emptyHeldTabs());
+        held.tombstones.push(id);
+        if (prev.base[id]) held.base[id] = prev.base[id]!;
+        if (prev.sent?.[id] !== undefined) held.sent[id] = prev.sent[id]!;
       }
     }
     tabs = kept.map((t) => {
@@ -317,7 +388,7 @@ export function mergeTabs(input: MergeInput): MergeResult {
       delete copy.team;
       return copy;
     });
-    changed = tabs.length !== input.local.tabs.length || kept.some((t) => t.team);
+    if (tabs.length !== input.local.tabs.length || kept.some((t) => t.team)) changed = true;
     meta = emptyTabSyncMeta(input.userId ?? null);
   } else if (input.mode === 'first-sync') {
     const only = tabs.length === 1 ? tabs[0]! : null;
@@ -328,18 +399,37 @@ export function mergeTabs(input: MergeInput): MergeResult {
   }
 
   const restored: string[] = [];
+  const heldPresent: string[] = [];
   if (input.restore) {
+    const restore = input.restore;
     const present = new Set(tabs.map((t) => t.id));
-    for (const t of input.restore.tabs) {
-      if (present.has(t.id)) continue;
-      present.add(t.id);
+    const sync = (id: string) => {
+      const base = restore.base[id];
+      if (base && !meta.base[id]) meta.base[id] = base;
+      const sent = restore.sent[id];
+      if (sent !== undefined && meta.sent?.[id] === undefined) (meta.sent ??= {})[id] = sent;
+    };
+    for (const t of restore.tabs) {
+      if (present.has(t.id) || meta.tombstones.includes(t.id)) {
+        heldPresent.push(t.id);
+        continue;
+      }
       restored.push(t.id);
+      present.add(t.id);
       tabs.push(t);
       changed = true;
-      const base = input.restore.base[t.id];
-      if (base && !meta.base[t.id]) meta.base[t.id] = base;
-      const carried = input.restore.carried[t.id];
+      sync(t.id);
+      const carried = restore.carried[t.id];
       if (carried && !meta.carried[t.id]) meta.carried[t.id] = carried;
+    }
+    for (const id of restore.tombstones) {
+      if (present.has(id) || meta.tombstones.includes(id)) {
+        heldPresent.push(id);
+        continue;
+      }
+      restored.push(id);
+      meta.tombstones.push(id);
+      sync(id);
     }
   }
 
@@ -364,11 +454,13 @@ export function mergeTabs(input: MergeInput): MergeResult {
     if (carried.length > 0) meta.carried[row.tabId] = carried;
     else delete meta.carried[row.tabId];
     meta.base[row.tabId] = { version: row.version, hash: hashTabRecord(captureTabRecord(tab, carried)) };
+    if (meta.sent) delete meta.sent[row.tabId];
     return tab;
   };
   const forget = (id: string) => {
     delete meta.base[id];
     delete meta.carried[id];
+    if (meta.sent) delete meta.sent[id];
   };
 
   const allIds = new Set<string>([...localById.keys(), ...Object.keys(meta.base), ...tombstones, ...rowById.keys()]);
@@ -378,12 +470,17 @@ export function mergeTabs(input: MergeInput): MergeResult {
     const base = meta.base[id];
     const remoteLive = !!row && !row.deleted && !!row.record;
 
+    const sent = meta.sent?.[id];
     if (tombstones.has(id) && !local) {
       if (remoteLive && base && row!.version === base.version) {
         changes.push({ change: { tabId: id, baseVersion: base.version, record: null }, hash: null });
+      } else if (remoteLive && !base && sent !== undefined && row!.version === sent) {
+        // Deleted while its first write was unanswered, and that write landed.
+        changes.push({ change: { tabId: id, baseVersion: row!.version, record: null }, hash: null });
       } else if (remoteLive) {
         // Edited elsewhere after this device deleted it: the edit wins.
         tombstones.delete(id);
+        if (meta.sent) delete meta.sent[id];
         added.push(row!);
       } else {
         tombstones.delete(id);
@@ -407,7 +504,12 @@ export function mergeTabs(input: MergeInput): MergeResult {
       }
       if (!base) {
         if (!row) push(local, undefined);
-        else if (remoteLive) {
+        else if (remoteLive && sent !== undefined && row.version >= sent) {
+          // This device's unanswered write landed (and maybe was edited
+          // since). The local copy holds this device's later work.
+          if (localHash === hashTabRecord(row.record!)) replaced.set(id, adopt(local, row));
+          else push(local, row.version);
+        } else if (remoteLive) {
           // The server holds this tab but this device has no base for it (lost
           // sync state): the server's copy is the known-good one.
           replaced.set(id, adopt(local, row));
@@ -425,6 +527,7 @@ export function mergeTabs(input: MergeInput): MergeResult {
     else forget(id);
   }
   meta.tombstones = [...tombstones];
+  if (meta.sent && Object.keys(meta.sent).length === 0) delete meta.sent;
 
   if (removed.size > 0 || replaced.size > 0 || added.length > 0) changed = true;
   tabs = tabs.filter((t) => !removed.has(t.id)).map((t) => replaced.get(t.id) ?? t);
@@ -454,7 +557,8 @@ export function mergeTabs(input: MergeInput): MergeResult {
     changes,
     activeChanged: activeTabId !== originalActive || activeContentChanged,
     changed,
-    held,
+    held: Object.keys(heldBy).length > 0 ? heldBy : null,
     restored,
+    heldPresent,
   };
 }

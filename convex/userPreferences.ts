@@ -436,6 +436,11 @@ export const syncDashboardTabs = mutation({
           createdAt: row.createdAt, updatedAt: now,
         });
         if (!row.deleted) tombstones.push({ ...row, deleted: true, updatedAt: now, version });
+        else {
+          // Deleted again: prune by the time just written, not the old one.
+          const index = tombstones.findIndex((t) => t._id === row._id);
+          if (index !== -1) tombstones[index] = { ...tombstones[index]!, updatedAt: now, version };
+        }
         results.push({ tabId: change.tabId, ok: true, version });
         continue;
       }

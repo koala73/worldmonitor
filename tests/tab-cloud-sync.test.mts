@@ -120,7 +120,7 @@ function useServer(s: FakeServer) {
 }
 
 function signIn(userId: string, host: FakeHost, onStopped: (reason: string) => void = () => {}) {
-  const { willSync } = prepareTabSyncSignIn(userId, true);
+  const { willSync } = prepareTabSyncSignIn(userId, true, host);
   assert.equal(willSync, true);
   startTabSync(userId, host, onStopped);
 }
@@ -680,6 +680,216 @@ describe('tab sync driver', () => {
     await settle();
     assert.equal(server.rows.get('tab-a-2')!.deleted, true);
     assert.deepEqual(host.state.tabs.map((t) => t.id), ['tab-a-1']);
+  });
+
+  it('a delete the previous account never received reaches it at its next sign-in', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const serverA = server;
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs = host.state.tabs.filter((t) => t.id !== 'tab-a-2');
+    recordTabDeleted('tab-a-2'); // inside the debounce: not pushed yet
+
+    useServer(new FakeServer());
+    signIn('user_b', host);
+    await settle();
+    signOutTabSync(host);
+
+    useServer(serverA);
+    signIn('user_a', host);
+    await settle();
+    assert.equal(serverA.rows.get('tab-a-2')!.deleted, true);
+    assert.ok(!host.state.tabs.some((t) => t.id === 'tab-a-2'));
+  });
+
+  /** A transport for `s` whose writes wait until `release` is called. */
+  function gated(s: FakeServer) {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    __setTabSyncTransportForTests(async (userId) => {
+      const t = s.transport(userId);
+      return { ...t, sync: async (args) => { await gate; return t.sync(args); } };
+    });
+    return () => release();
+  }
+
+  it('an edit made during the first upload is not lost to that upload across a switch', async () => {
+    const serverA = server;
+    const release = gated(serverA);
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'Draft')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs[0]!.name = 'Final';
+
+    useServer(new FakeServer());
+    signIn('user_b', host);
+    release(); // A's first upload lands after A's session is gone
+    await settle();
+    assert.equal(serverA.rows.get('tab-a-1')!.record!.name, 'Draft');
+    signOutTabSync(host);
+
+    useServer(serverA);
+    signIn('user_a', host);
+    await settle();
+    assert.equal(host.state.tabs.find((t) => t.id === 'tab-a-1')!.name, 'Final');
+    assert.equal(serverA.rows.get('tab-a-1')!.record!.name, 'Final');
+  });
+
+  it('a tab deleted during its first upload stays deleted after a sign-out', async () => {
+    const release = gated(server);
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs = host.state.tabs.filter((t) => t.id !== 'tab-a-2');
+    recordTabDeleted('tab-a-2');
+    signOutTabSync(host);
+    release();
+    await settle();
+    assert.equal(server.rows.get('tab-a-2')!.deleted, false, 'the insert landed');
+
+    useServer(server);
+    signIn('user_a', host);
+    await settle();
+    assert.equal(server.rows.get('tab-a-2')!.deleted, true);
+    assert.ok(!host.state.tabs.some((t) => t.id === 'tab-a-2'));
+  });
+
+  it("tabs made under an account whose sync never ran stay that account's", async () => {
+    const serverA = server;
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    signOutTabSync(host, 'user_a');
+
+    // Next load: user_b signs in, but tab sync cannot reach the deployment.
+    __resetTabSyncForTests();
+    __setTabSyncTransportForTests(async () => null);
+    signIn('user_b', host);
+    await settle();
+    host.state.tabs.push(tab('tab-b-1', 'B private'));
+    host.state.tabs[0]!.name = 'B renamed A';
+    signOutTabSync(host, 'user_b');
+
+    __resetTabSyncForTests();
+    useServer(serverA);
+    signIn('user_a', host);
+    await settle();
+    const sentToA = serverA.calls.flatMap((c) => c.changes.map((ch) => ch.record?.name));
+    assert.ok(!sentToA.includes('B private') && !sentToA.includes('B renamed A'), JSON.stringify(sentToA));
+    assert.ok(!host.state.tabs.some((t) => t.name === 'B private' || t.name === 'B renamed A'), 'not shown to user_a');
+    assert.equal(host.state.tabs.find((t) => t.id === 'tab-a-1')!.name, 'Tab tab-a-1');
+    signOutTabSync(host, 'user_a');
+
+    const serverB = new FakeServer();
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    assert.ok(host.state.tabs.some((t) => t.name === 'B private'), "back for user_b");
+    assert.ok(serverB.calls.some((c) => c.changes.some((ch) => ch.record?.name === 'B private')));
+  });
+
+  it("a direct switch back keeps out tabs made under an account whose sync never ran", async () => {
+    const serverA = server;
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    __resetTabSyncForTests();
+    __setTabSyncTransportForTests(async () => null);
+    signIn('user_b', host);
+    await settle();
+    host.state.tabs.push(tab('tab-b-1', 'B private'));
+    __resetTabSyncForTests();
+    useServer(serverA);
+    signIn('user_a', host);
+    await settle();
+    assert.ok(serverA.calls.every((c) => c.changes.every((ch) => ch.record?.name !== 'B private')));
+    assert.ok(!host.state.tabs.some((t) => t.name === 'B private'));
+  });
+
+  it('keeps every tab on the device when they do not all fit in the held store', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    stopTabSync();
+    for (let i = 0; i < 51; i += 1) host.state.tabs.push(tab(`tab-u${i}-qq`, `Unpushed ${i}`));
+    const serverB = new FakeServer();
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    assert.equal(host.state.tabs.filter((t) => t.name.startsWith('Unpushed')).length, 51);
+    assert.ok(serverB.calls.every((c) => c.changes.every((ch) => !ch.record?.name.startsWith('Unpushed'))));
+  });
+
+  it('two failures before a reconnect leave one subscription', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    let onError!: (err: Error) => void;
+    let subscribes = 0;
+    __setTabSyncTransportForTests(async (userId) => {
+      const t = server.transport(userId);
+      return {
+        ...t,
+        subscribe: (variant, onRows, err) => { subscribes += 1; onError = err; return t.subscribe(variant, onRows, err); },
+      };
+    });
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    server.throwOnSync = new Error('network');
+    signIn('user_a', host);
+    await settle();
+    onError(new Error('socket closed')); // a second failure before the first reconnect
+    server.throwOnSync = null;
+    mock.timers.tick(60_000);
+    await settle();
+    mock.timers.tick(60_000);
+    await settle();
+    assert.equal(subscribes, 2, 'one reconnect');
+    assert.equal(server.listeners.size, 1);
+  });
+
+  it('keeps the held copy until the restored tab is stored or synced', async () => {
+    const heldKey = `worldmonitor-tabs-held-v1:${SITE_VARIANT}`;
+    const serverA = server;
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs.push(tab('tab-a-2', 'A unpushed'));
+    useServer(new FakeServer());
+    signIn('user_b', host);
+    await settle();
+    signOutTabSync(host);
+    assert.match(localStorage.getItem(heldKey) ?? '', /A unpushed/);
+
+    // user_a returns, but the layout cannot store the tabs and the push is refused.
+    class NoStoreHost extends FakeHost {
+      override applyTabs(next: TabsState, activeChanged: boolean): boolean {
+        super.applyTabs(next, activeChanged);
+        return false;
+      }
+    }
+    const noStore = new NoStoreHost(host.state);
+    useServer(serverA);
+    serverA.nextResult = { ok: false, reason: 'RATE_LIMITED', retryAfterMs: 1000 } as SyncDashboardTabsResult;
+    signIn('user_a', noStore);
+    await settle();
+    assert.match(localStorage.getItem(heldKey) ?? '', /A unpushed/, 'still held');
+  });
+
+  it('a recreated tab survives a pass that runs before the subscription shows it', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2')] });
+    signIn('user_a', host);
+    await settle();
+    const r = server.rows.get('tab-a-1')!;
+    const staleTombstone = [{ tabId: 'tab-a-1', version: r.version + 1, deleted: true, createdAt: r.createdAt, updatedAt: r.updatedAt + 1 }, server.rows.get('tab-a-2')!];
+    server.rows.delete('tab-a-1'); // the marker was evicted on the server
+    server.emit = () => {}; // the subscription lags behind the writes below
+    host.state.tabs[0]!.name = 'Mine';
+    server.listeners.forEach((l) => l(structuredClone(staleTombstone)));
+    await settle();
+    assert.equal(server.rows.get('tab-a-1')!.record!.name, 'Mine', 'recreated');
+    mock.timers.tick(30_000); // a periodic pass, still on the stale rows
+    await settle();
+    assert.ok(host.state.tabs.some((t) => t.id === 'tab-a-1' && t.name === 'Mine'));
   });
 
   it('stays local when the sync state cannot be read', () => {

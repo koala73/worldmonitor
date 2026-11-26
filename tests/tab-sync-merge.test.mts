@@ -113,6 +113,15 @@ describe('captureTabRecord', () => {
     assert.deepEqual(record.panelFilters, [{ key: 'forecast', value: 'mena' }]);
     assert.deepEqual(record.team, { id: 'dash1', version: 3 });
   });
+
+  it('at the panel cap, drops a local addition before an entry carried from another device', () => {
+    const panelSettings: Record<string, PanelConfig> = {};
+    for (let i = 0; i < 400; i += 1) panelSettings[`p-${i}`] = { name: `P${i}`, enabled: true };
+    const t: PanelTab = { id: 'tab-a-1', name: 'Full', panelSettings, panelOrder: Object.keys(panelSettings), bottomSet: [] };
+    const record = captureTabRecord(t, [{ key: 'zz-other-device', on: true }]);
+    assert.equal(record.panels.length, 400);
+    assert.ok(record.panels.some((p) => p.key === 'zz-other-device'));
+  });
 });
 
 describe('applyTabRecord', () => {
@@ -416,6 +425,15 @@ describe('mergeTabs first sync', () => {
     assert.deepEqual(ids(out.state), [cloud.id]);
   });
 
+  it('keeps a lone default tab whose panel text size was changed', () => {
+    const cloud = tab('tab-c-1', { name: 'Markets' });
+    const lone = tab('tab-l-1', { name: DEFAULT_NAME, on: defaultOn() });
+    const key = defaultOn()[0]!;
+    lone.panelSettings[key] = { ...lone.panelSettings[key]!, fontScale: 1.25 };
+    const out = mergeTabs(input({ local: { activeTabId: lone.id, tabs: [lone] }, rows: [row(cloud.id, 1, captureTabRecord(cloud))], mode: 'first-sync' }));
+    assert.deepEqual(ids(out.state), [lone.id, cloud.id]);
+  });
+
   it('uploads the lone default when the account has no cloud tabs', () => {
     const lone = tab('tab-l-1', { name: DEFAULT_NAME, on: defaultOn() });
     const out = mergeTabs(input({ local: { activeTabId: lone.id, tabs: [lone] }, rows: [], mode: 'first-sync' }));
@@ -493,15 +511,15 @@ describe('mergeTabs account switch', () => {
     const direct = mergeTabs(input({
       local: { activeTabId: edited.id, tabs: [edited, fresh] }, meta, rows: [], mode: 'account-switch', userId: 'user_b',
     }));
-    assert.deepEqual(direct.held!.tabs.map((t) => t.id), [edited.id, fresh.id]);
-    assert.deepEqual(direct.held!.base, { [a1.id]: meta.base[a1.id] });
+    assert.deepEqual(direct.held!.user_a!.tabs.map((t) => t.id), [edited.id, fresh.id]);
+    assert.deepEqual(direct.held!.user_a!.base, { [a1.id]: meta.base[a1.id] });
     assert.ok(direct.changes.every((c) => c.change.tabId !== edited.id && c.change.tabId !== fresh.id));
     // After a sign-out, only the tabs unpushed at sign-out are held.
     const after = mergeTabs(input({
       local: { activeTabId: edited.id, tabs: [edited, signedOut] },
       meta: { ...meta, signedOut: true, heldBack: [edited.id] }, rows: [], mode: 'account-switch', userId: 'user_b',
     }));
-    assert.deepEqual(after.held!.tabs.map((t) => t.id), [edited.id]);
+    assert.deepEqual(after.held!.user_a!.tabs.map((t) => t.id), [edited.id]);
     assert.deepEqual(ids(after.state), [signedOut.id]);
   });
 
@@ -509,7 +527,7 @@ describe('mergeTabs account switch', () => {
     const here = tab('tab-a-1', { name: 'On the device' });
     const out = mergeTabs(input({
       local: { activeTabId: here.id, tabs: [here] }, rows: [],
-      restore: { tabs: [tab('tab-a-1', { name: 'Held' }), tab('tab-a-2')], base: {}, carried: {} },
+      restore: { tabs: [tab('tab-a-1', { name: 'Held' }), tab('tab-a-2')], base: {}, carried: {}, tombstones: [], sent: {} },
     }));
     assert.deepEqual(out.restored, ['tab-a-2']);
     assert.equal(out.state.tabs.find((t) => t.id === 'tab-a-1')!.name, 'On the device');
@@ -524,7 +542,7 @@ describe('mergeTabs account switch', () => {
       meta: emptyTabSyncMeta('user_a'),
       rows: [row(a1.id, 3, captureTabRecord(a1))],
       mode: 'normal',
-      restore: { tabs: [edited], base: { [a1.id]: meta.base[a1.id]! }, carried: {} },
+      restore: { tabs: [edited], base: { [a1.id]: meta.base[a1.id]! }, carried: {}, tombstones: [], sent: {} },
     }));
     assert.ok(ids(out.state).includes(a1.id));
     const push = out.changes.find((c) => c.change.tabId === a1.id)!;
