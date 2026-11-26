@@ -576,6 +576,14 @@ describe('retrieval floor (#11156)', () => {
     assert.match(prompts[0], /EARLIER:\n1\. .*Two killed/);
   });
 
+  it('includes both floors themselves', async () => {
+    const low = await check(DYMER, { [RESCUERS]: 0.45 });
+    assert.equal(low.decision.judged, true, 'a score of exactly 0.45 is judged');
+    const high = await check(DYMER, { 'Two killed as Russian attack destroys apartment building near Kyiv': 0.6, [RESCUERS]: 0.55 });
+    assert.match(high.prompts[0], /Two killed/, 'a score of exactly 0.60 is shown');
+    assert.doesNotMatch(high.prompts[0], /Rescuers Race/, 'a 0.60 candidate keeps the fallback off');
+  });
+
   it('does not ask the judge when the nearest earlier alert scores under 0.45', async () => {
     const { decision, prompts } = await check(DYMER, { 'Israel steps up strikes across Middle East': 0.44 });
     assert.equal(decision.judged, false);
