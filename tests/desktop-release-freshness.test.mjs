@@ -116,65 +116,101 @@ describe('publishReleaseFreshness', () => {
 });
 
 describe('readReleaseBacklog against a real git history', () => {
-  const git = (cwd, ...args) => {
-    const r = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  // An inherited GIT_DIR or GIT_WORK_TREE (set inside hooks, for example)
+  // would point these commands at the caller's repository instead of the
+  // fixture, so every spawn gets an environment without them.
+  const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+  const repo = mkdtempSync(join(tmpdir(), 'wm-release-freshness-'));
+  const run = (args, date) => {
+    const env = date ? { ...baseEnv, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } : baseEnv;
+    const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repo, encoding: 'utf8', env });
     if (r.status !== 0) throw new Error(r.stderr);
     return r.stdout;
   };
-  const repo = mkdtempSync(join(tmpdir(), 'wm-release-freshness-'));
-  const env = (date) => ({ ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date });
   const commitFile = (file, date) => {
     mkdirSync(dirname(join(repo, file)), { recursive: true });
     writeFileSync(join(repo, file), date);
-    git(repo, 'add', file);
-    const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', file], { cwd: repo, env: env(date) });
-    if (r.status !== 0) throw new Error(r.stderr.toString());
+    run(['add', file]);
+    run(['commit', '-qm', file], date);
   };
-  git(repo, 'init', '-q');
+  run(['init', '-q', '-b', 'main']);
   commitFile('src/a.ts', '2026-09-01T00:00:00Z');
-  git(repo, 'tag', 'v1.0.0');
+  run(['tag', 'v1.0.0']);
   commitFile('docs/notes.md', '2026-09-20T00:00:00Z');
-  commitFile('server/handler.ts', '2026-10-05T00:00:00Z');
+  commitFile('settings.html', '2026-10-05T00:00:00Z');
   commitFile('tests/x.test.mjs', '2026-10-06T00:00:00Z');
-  commitFile('src-tauri/tauri.conf.json', '2026-11-20T00:00:00Z');
-  const run = (args) => {
-    const r = spawnSync('git', args, { cwd: repo, encoding: 'utf8' });
-    if (r.status !== 0) throw new Error(r.stderr);
-    return r.stdout;
-  };
+  // A branch commit made long ago that only reaches main with a late merge.
+  run(['checkout', '-q', '-b', 'feature']);
+  commitFile('server/handler.ts', '2026-09-10T00:00:00Z');
+  run(['checkout', '-q', 'main']);
+  commitFile('docs/more.md', '2026-11-01T00:00:00Z');
+  run(['merge', '-q', '--no-ff', '-m', 'merge feature', 'feature'], '2026-11-20T00:00:00Z');
+  const backlog = () => readReleaseBacklog({
+    repository: 'o/r',
+    gh: () => ({ tag_name: 'v1.0.0', published_at: '2026-09-01T01:00:00Z' }),
+    git: (args) => run(args),
+  });
 
   it('counts only shipped paths after the tag', () => {
-    const backlog = readReleaseBacklog({
-      repository: 'o/r',
-      gh: () => ({ tag_name: 'v1.0.0', published_at: '2026-09-01T01:00:00Z' }),
-      git: run,
-    });
-    assert.equal(backlog.commits.length, 2, 'docs and tests changes are not shipped');
-    assert.equal(backlog.commits[0].committedAt.slice(0, 10), '2026-10-05');
-    const verdict = evaluateReleaseFreshness(backlog, { now: NOW });
-    assert.equal(verdict.alert, true, 'the server/ change is 52 days old');
+    const { commits } = backlog();
+    assert.deepEqual(commits.map((c) => c.committedAt.slice(0, 10)), ['2026-10-05', '2026-11-20'],
+      'the root HTML page and the merge count; docs and tests do not');
+    assert.equal(evaluateReleaseFreshness(backlog(), { now: NOW }).alert, true, 'the settings.html change is 52 days old');
+  });
+  it('dates a merged branch by when it reached main', () => {
+    const { commits } = backlog();
+    assert.ok(!commits.some((c) => c.committedAt.startsWith('2026-09-10')),
+      'the branch commit dated 2026-09-10 must not start the clock');
   });
   it('fails when the release tag is not in HEAD history', () => {
-    git(repo, 'checkout', '-q', '--orphan', 'other');
-    git(repo, 'rm', '-rqf', '.');
+    run(['checkout', '-q', '--orphan', 'other']);
+    run(['rm', '-rqf', '.']);
     commitFile('src/b.ts', '2026-11-01T00:00:00Z');
     assert.throws(() => readReleaseBacklog({
-      repository: 'o/r', gh: () => ({ tag_name: 'v1.0.0' }), git: run,
+      repository: 'o/r', gh: () => ({ tag_name: 'v1.0.0' }), git: (args) => run(args),
     }));
   });
 });
 
 describe('SHIPPED_PATHS covers what the binary bundles', () => {
   const conf = JSON.parse(readFileSync(join(root, 'src-tauri/tauri.conf.json'), 'utf8'));
-  const covered = (path) => SHIPPED_PATHS.some((p) => (p.endsWith('/') ? path.startsWith(p) : path === p));
-  it('includes every bundle resource outside src-tauri', () => {
+  // Mirrors git pathspec semantics for the entry shapes the list uses: a
+  // trailing slash is a directory, `:(glob)` uses `*` that stops at `/`.
+  const matchers = SHIPPED_PATHS.map((p) => {
+    if (p.startsWith(':(glob)')) {
+      const re = p.slice(7).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*');
+      return (path) => new RegExp(`^${re}$`).test(path);
+    }
+    return p.endsWith('/') ? (path) => path.startsWith(p) : (path) => path === p;
+  });
+  const covered = (path) => matchers.some((m) => m(path));
+
+  it('includes every bundle resource', () => {
     for (const resource of conf.bundle.resources) {
       const repoPath = resource.startsWith('../') ? resource.slice(3) : `src-tauri/${resource}`;
       assert.ok(covered(repoPath) || covered(`${repoPath}/`), `bundle resource ${resource} is outside SHIPPED_PATHS`);
     }
   });
+  it('includes every HTML entry page the Vite build ships', () => {
+    const vite = readFileSync(join(root, 'vite.config.ts'), 'utf8');
+    const pages = [...vite.matchAll(/resolve\(__dirname, '([\w-]+\.html)'\)/g)].map((m) => m[1]);
+    assert.ok(pages.includes('settings.html') && pages.length >= 5, `parsed too few entry pages: ${pages}`);
+    for (const page of pages) assert.ok(covered(page), `${page} is outside SHIPPED_PATHS`);
+    assert.ok(!covered('docs/page.html'), 'the root-page glob must not reach into subdirectories');
+  });
+  it('includes every scripts/ and convex/ module that shipped code imports', () => {
+    const r = spawnSync('git', ['grep', '-h', '-o', '-E', String.raw`from ['"](\.\./)+(scripts|convex)/[^'"]+['"]`, '--', 'src', 'server', 'api', 'shared'], { cwd: root, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const targets = new Set(r.stdout.split('\n').filter(Boolean)
+      .map((line) => line.replace(/^from ['"](\.\.\/)+/, '').replace(/['"]$/, '')));
+    assert.ok(targets.size > 10, `parsed too few imports: ${[...targets]}`);
+    for (const target of targets) {
+      const candidates = [target, `${target}.ts`, `${target}.mjs`, `${target}.js`, `${target}/`];
+      assert.ok(candidates.some(covered), `${target} is imported by shipped code but outside SHIPPED_PATHS`);
+    }
+  });
   it('includes the sidecar handler sources and the frontend build inputs', () => {
-    for (const path of ['server/worldmonitor/economic/v1/handler.ts', 'src/main.ts', 'index.html', 'vite.config.ts', 'src-tauri/src/main.rs']) {
+    for (const path of ['server/worldmonitor/economic/v1/handler.ts', 'src/main.ts', 'index.html', 'vite.config.ts', 'tsconfig.json', 'src-tauri/src/main.rs']) {
       assert.ok(covered(path), `${path} is outside SHIPPED_PATHS`);
     }
   });
@@ -187,6 +223,7 @@ describe('desktop-release-train.yml runs the monitor', () => {
     assert.ok(job.length > 1 && workflow.includes('\n  freshness:'), 'no freshness job');
     assert.match(job, /issues: write/);
     assert.match(job, /fetch-depth: 0/);
+    assert.match(job, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/, 'a dispatch from another branch must still measure main');
     assert.match(job, /node scripts\/check-desktop-release-freshness\.mjs/);
   });
 });

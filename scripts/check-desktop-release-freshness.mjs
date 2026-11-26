@@ -22,23 +22,34 @@ export const MAX_UNRELEASED_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Everything that ends up inside the desktop binary: the frontend build
-// (`npm run build:desktop` → dist/), the Tauri shell, and the bundle resources
-// in src-tauri/tauri.conf.json (api/, shared/, data/, src/config) plus the
-// server/ handlers that scripts/build-sidecar-handlers.mjs compiles into api/.
+// (`npm run build:desktop` → dist/, including every root HTML entry page), the
+// Tauri shell, the bundle resources in src-tauri/tauri.conf.json (api/,
+// shared/, data/, src/config), the server/ handlers that
+// scripts/build-sidecar-handlers.mjs compiles into api/, and the scripts/ and
+// convex/ modules that code imports. Entries are git pathspecs.
 // tests/desktop-release-freshness.test.mjs checks this list against the
-// config, so a new bundled resource cannot fall outside the clock.
+// bundle resources, the Vite entry pages and the real imports, so a new
+// shipped input cannot fall outside the clock.
 export const SHIPPED_PATHS = [
   'src/',
   'src-tauri/',
   'public/',
-  'index.html',
+  ':(glob)*.html',
   'vite.config.ts',
+  'tsconfig.json',
   'package.json',
   'package-lock.json',
   'api/',
   'server/',
   'shared/',
   'data/',
+  'convex/',
+  'scripts/shared/',
+  'scripts/lib/',
+  'scripts/data/',
+  ':(glob)scripts/_*.mjs',
+  'scripts/source-origin.mjs',
+  'scripts/seed-trade-flows.mjs',
   'scripts/build-sidecar-handlers.mjs',
   'scripts/download-node.sh',
 ];
@@ -138,7 +149,9 @@ export function publishReleaseFreshness(verdict, {
   ghPost = ghWrite,
 } = {}) {
   const body = renderBody(verdict, { runUrl });
-  if (summaryPath) appendFileSync(summaryPath, `${verdict.alert ? body : renderRecovery(verdict)}\n`);
+  if (summaryPath) {
+    appendFileSync(summaryPath, `${verdict.alert ? body : ['Desktop release is within the freshness budget.', '', ...statusLines(verdict)].join('\n')}\n`);
+  }
   if (!repository) {
     if (!verdict.alert) return { alert: false };
     throw new Error('GITHUB_REPOSITORY is required to publish release freshness findings');
@@ -173,7 +186,10 @@ export function readReleaseBacklog({ repository = process.env.GITHUB_REPOSITORY,
   // The tag must be in HEAD's history; otherwise the range below would count
   // commits from an unrelated line and report a false age.
   git(['merge-base', '--is-ancestor', `refs/tags/${release.tag}`, 'HEAD']);
-  const log = git(['log', '--reverse', '--format=%H%x09%cI', `refs/tags/${release.tag}..HEAD`, '--', ...SHIPPED_PATHS]);
+  // --first-parent: count what landed on main, dated when it landed. A merged
+  // branch's own commits keep their earlier committer dates, which would both
+  // inflate the count and start the clock before the change reached main.
+  const log = git(['log', '--first-parent', '--reverse', '--format=%H%x09%cI', `refs/tags/${release.tag}..HEAD`, '--', ...SHIPPED_PATHS]);
   return { release, commits: parseCommits(log) };
 }
 
