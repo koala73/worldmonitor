@@ -1,7 +1,7 @@
 import type { PanelConfig } from '@/types';
 import { SITE_VARIANT } from '@/config/variant';
 import { getConvexApi, getConvexClient, waitForConvexAuthForUser } from '@/services/convex-client';
-import { loadTabsState, type TabsState } from '@/services/tab-store';
+import { loadTabsState, TABS_STORAGE_KEY, type TabsState } from '@/services/tab-store';
 import { safeStorageGetChecked, safeStorageSet, safeStorageSetChecked } from '@/utils/safe-storage';
 import {
   MAX_DASHBOARD_TAB_CHANGES_PER_CALL,
@@ -629,6 +629,11 @@ export function stopTabSync(): void {
   disconnect(s);
   if (s.reconnectTimer) clearTimeout(s.reconnectTimer);
   if (!s.meta) return;
+  // Only while the marker names this account: otherwise another window has
+  // signed in or out since, and the stored state (another account's, or this
+  // one's recorded departure) is newer than this page's copy.
+  const signedIn = safeStorageGetChecked(SIGNED_IN_KEY);
+  if (!signedIn.ok || markerAccount(signedIn.value) !== s.userId) return;
   const heldBack = unpushedOf(s.host, s.meta);
   const meta = { ...s.meta };
   // Unreadable tabs: no list, so a later switch holds every unpushed tab.
@@ -658,7 +663,12 @@ function unpushedOf(host: TabSyncHost | undefined, meta: TabSyncMeta, leaverOwns
   // is skipped by the merge. On another account's state that tab may be
   // that account's synced tab, so only tabs that differ from it count.
   const stored = loadTabsState();
-  if (!stored) return null;
+  if (!stored) {
+    // No tabs stored on this device: none of them can be the leaver's work.
+    // Tabs the layout makes later are made after the departure.
+    const raw = safeStorageGetChecked(TABS_STORAGE_KEY);
+    return raw.ok && !raw.value ? [] : null;
+  }
   const ids = unpushedIn(stored, meta);
   const active = stored.activeTabId;
   if (leaverOwnsState && stored.tabs.some((t) => t.id === active) && !ids.includes(active)) ids.push(active);
