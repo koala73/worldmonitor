@@ -367,6 +367,18 @@ let unavailableForPage = false;
 let settledAccount: string | null | undefined;
 /** This page's copy of the departed list, for when storage cannot keep it. */
 let departed: string[] = [];
+/**
+ * The account whose tabs this page holds: the stored state's account when
+ * the layout loaded its tabs, then each account a pass applies. Another
+ * window can move the stored state on; this page's tabs stay where they
+ * were. Null until the layout loads (whatever it loads then is current).
+ */
+let pageTabsAccount: string | null = null;
+
+/** The layout has loaded its tabs from storage: they are the stored state's account's. */
+export function notePageTabsLoaded(): void {
+  pageTabsAccount = loadTabSyncMeta()?.userId ?? null;
+}
 
 /** The account a signed-in marker names. */
 function markerAccount(marker: string | null): string {
@@ -471,6 +483,10 @@ export function prepareTabSyncSignIn(userId: string, enabled: boolean, host?: Ta
     previous = last.value;
     previousSyncKnown = false;
   }
+  // Another window already finished this sign-in: the stored state is this
+  // account's, but this page still shows another account's tabs, and nothing
+  // left can tell them from this account's work. They stay on the device.
+  if (pageTabsAccount && pageTabsAccount !== userId && meta?.userId === userId) return { willSync: false };
   let mode: MergeMode;
   if (previous && previous !== userId) mode = 'account-switch';
   else if (meta?.userId === userId) mode = 'normal';
@@ -664,10 +680,10 @@ function unpushedOf(host: TabSyncHost | undefined, meta: TabSyncMeta, leaverOwns
   // that account's synced tab, so only tabs that differ from it count.
   const stored = loadTabsState();
   if (!stored) {
-    // No tabs stored on this device: none of them can be the leaver's work.
-    // Tabs the layout makes later are made after the departure.
-    const raw = safeStorageGetChecked(TABS_STORAGE_KEY);
-    return raw.ok && !raw.value ? [] : null;
+    // No tabs stored, or none the layout can load: it starts with fresh tabs,
+    // made after the departure, so none are the leaver's work. Only storage
+    // that cannot be read at all leaves the answer unknown.
+    return safeStorageGetChecked(TABS_STORAGE_KEY).ok ? [] : null;
   }
   const ids = unpushedIn(stored, meta);
   const active = stored.activeTabId;
@@ -761,6 +777,7 @@ export function __resetTabSyncForTests(): void {
   unavailableForPage = false;
   departed = [];
   settledAccount = undefined;
+  pageTabsAccount = null;
 }
 
 export function isTabSyncActive(): boolean {
@@ -891,6 +908,9 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
   if (s.pending && s.pending.mode !== 'normal' && loadTabSyncMeta()?.userId === s.userId) {
     // Another window finished this sign-in since it was prepared: the stored
     // state is this account's, and the prepared switch no longer describes it.
+    // If this page still shows another account's tabs, they cannot be told
+    // from this account's work: nothing here is merged or pushed.
+    if (pageTabsAccount && pageTabsAccount !== s.userId) return;
     s.pending = { ...s.pending, mode: 'normal', previousSyncKnown: true };
   }
   const pending = s.pending;
@@ -941,6 +961,7 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
     }
     if (result.activeChanged) rebaseAppliedActiveTab(s, meta, result.changes);
   }
+  pageTabsAccount = s.userId;
   s.pending = null;
   s.meta = meta;
   const restoredCopies = new Map((pending?.restore?.records ?? []).map((r) => [r.id, hashTabRecord(r.record)]));

@@ -193,7 +193,7 @@ import {
   settleCheckoutReturnFocus,
 } from '@/services/checkout-return-state';
 import { resolveCheckoutContext, type CheckoutContext } from '../../shared/checkout-attribution';
-import { notifyTabsChangedLocally, recordTabDeleted, type TabSyncHost } from '@/services/tab-cloud-sync';
+import { notePageTabsLoaded, notifyTabsChangedLocally, recordTabDeleted, type TabSyncHost } from '@/services/tab-cloud-sync';
 
 /** Every tab save is a possible edit to push to the account's synced tabs (#11141). */
 function saveTabsState(state: TabsState): TabsPersistReceipt {
@@ -1611,6 +1611,9 @@ export class PanelLayoutManager implements AppModule {
     if (!mount) return;
 
     let state = loadTabsState();
+    // Tab sync tells this page's tabs from another account's work by the
+    // account they were loaded under; a first-run tab is no account's.
+    if (state) notePageTabsLoaded();
     if (!state) {
       // First run — wrap the user's current layout in an initial tab so
       // nothing changes visually until they create a second tab.

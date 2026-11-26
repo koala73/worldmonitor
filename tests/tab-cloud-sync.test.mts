@@ -14,11 +14,12 @@ import type {
   DashboardTabRow,
   SyncDashboardTabsResult,
 } from '../shared/dashboard-tab-sync.ts';
-import { captureTabRecord } from '../src/services/tab-sync-merge.ts';
+import { captureTabRecord, hashTabRecord } from '../src/services/tab-sync-merge.ts';
 import {
   __resetTabSyncForTests,
   __setTabSyncTransportForTests,
   loadTabSyncMeta,
+  notePageTabsLoaded,
   notifyTabsChangedLocally,
   prepareTabSyncSignIn,
   recordTabDeleted,
@@ -36,6 +37,16 @@ class MemoryStorage {
   removeItem(key: string): void { this.store.delete(key); }
 }
 const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+
+/** Reads of `key` throw from now on (the storage itself fails). */
+function failReads(key: string) {
+  const store = localStorage as unknown as MemoryStorage;
+  const getItem = MemoryStorage.prototype.getItem.bind(store);
+  store.getItem = (k) => {
+    if (k === key) throw new Error('SecurityError');
+    return getItem(k);
+  };
+}
 
 const META_KEY = `worldmonitor-tabs-sync-v1:${SITE_VARIANT}`;
 const HELD_KEY = `worldmonitor-tabs-held-v1:${SITE_VARIANT}`;
@@ -894,7 +905,7 @@ describe('tab sync driver', () => {
     // Next load: user_a signs in before the layout has its tabs, and the
     // stored tabs cannot be read.
     __resetTabSyncForTests();
-    localStorage.setItem(TABS_KEY, '{');
+    failReads(TABS_KEY);
     useServer(serverA);
     class LateHost extends FakeHost {
       ready = false;
@@ -1026,7 +1037,7 @@ describe('tab sync driver', () => {
     await settle();
     host.state.tabs.push(tab('tab-a-9', 'A unpushed')); // never pushed: the sign-out comes first
     host.ready = false;
-    localStorage.setItem(TABS_KEY, '{'); // the stored tabs cannot be read either
+    failReads(TABS_KEY); // the stored tabs cannot be read either
     signOutTabSync(host, 'user_a');
     host.ready = true;
 
@@ -1050,7 +1061,7 @@ describe('tab sync driver', () => {
     signIn('user_b', host);
     await settle();
     host.state.tabs.push(tab('tab-b-1', 'B private'));
-    localStorage.setItem(TABS_KEY, '{'); // the stored tabs cannot be read either
+    failReads(TABS_KEY); // the stored tabs cannot be read either
     signOutTabSync(new UnreadyHost(host.state), 'user_b');
 
     __resetTabSyncForTests();
@@ -1298,6 +1309,73 @@ describe('tab sync driver', () => {
     const held = JSON.parse(localStorage.getItem(HELD_KEY) ?? '{}');
     assert.ok(!(held.user_a?.records ?? []).some((r: { id: string }) => r.id === 'tab-x-1'), 'not held for user_a');
     assert.ok(serverB.calls.some((c) => c.changes.some((ch) => ch.record?.name === 'Made signed out')));
+  });
+
+  it('a sign-out found at load with unparseable stored tabs is recorded at once', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    // Next load: the stored tabs are garbage, so the layout starts with fresh tabs.
+    __resetTabSyncForTests();
+    localStorage.setItem(TABS_KEY, '{');
+    signOutTabSync(new UnreadyHost(host.state));
+    assert.equal(localStorage.getItem(DEPARTED_KEY) ?? '', '', 'recorded now, not queued');
+    host.state.tabs = [tab('tab-x-1', 'Made signed out')];
+    const serverB = new FakeServer();
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    const held = JSON.parse(localStorage.getItem(HELD_KEY) ?? '{}');
+    assert.ok(!(held.user_a?.records ?? []).some((r: { id: string }) => r.id === 'tab-x-1'), 'not held for user_a');
+    assert.ok(serverB.calls.some((c) => c.changes.some((ch) => ch.record?.name === 'Made signed out')));
+  });
+
+  it("a window still showing the previous account's tabs does not push them after another window finished the switch", async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced'), tab('tab-a-2', 'A other')] });
+    signIn('user_a', host);
+    await settle();
+    // Another window signs in user_b and finishes its switch.
+    const serverB = new FakeServer();
+    serverB.rows.set('tab-b-1', { tabId: 'tab-b-1', version: 1, deleted: false, record: captureTabRecord(tab('tab-b-1', 'B synced')), createdAt: 1, updatedAt: 1 });
+    localStorage.setItem(SIGNED_IN_KEY, 'user_b#w2');
+    localStorage.setItem(META_KEY, JSON.stringify({ userId: 'user_b', base: { 'tab-b-1': { version: 1, hash: hashTabRecord(captureTabRecord(tab('tab-b-1', 'B synced'))) } }, tombstones: [], carried: {} }));
+    // This window then sees the same sign-in.
+    useServer(serverB);
+    if (prepareTabSyncSignIn('user_b', true, host).willSync) startTabSync('user_b', host);
+    await settle();
+    const toB = serverB.calls.flatMap((c) => c.changes.map((ch) => ch.record?.name));
+    assert.ok(!toB.includes('A synced') && !toB.includes('A other'), `sent to user_b: ${JSON.stringify(toB)}`);
+  });
+
+  it("a page that loaded the previous account's tabs signed out does not push them after another window's switch", async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    signOutTabSync(host, 'user_a');
+    // Next load, signed out: the layout loads user_a's tabs.
+    __resetTabSyncForTests();
+    notePageTabsLoaded();
+    // Another window signs in user_b and finishes its switch.
+    localStorage.setItem(SIGNED_IN_KEY, 'user_b#w2');
+    localStorage.setItem(META_KEY, JSON.stringify({ userId: 'user_b', base: {}, tombstones: [], carried: {} }));
+    const serverB = new FakeServer();
+    useServer(serverB);
+    assert.equal(prepareTabSyncSignIn('user_b', true, host).willSync, false);
+  });
+
+  it("a switch prepared here and finished by another window does not push this window's tabs", async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced'), tab('tab-a-2', 'A other')] });
+    signIn('user_a', host);
+    await settle();
+    const serverB = new FakeServer();
+    useServer(serverB);
+    assert.equal(prepareTabSyncSignIn('user_b', true, host).willSync, true);
+    // Another window finishes user_b's switch before this one's first pass.
+    localStorage.setItem(META_KEY, JSON.stringify({ userId: 'user_b', base: {}, tombstones: [], carried: {} }));
+    startTabSync('user_b', host);
+    await settle();
+    const toB = serverB.calls.flatMap((c) => c.changes.map((ch) => ch.record?.name));
+    assert.ok(!toB.includes('A synced') && !toB.includes('A other'), `sent to user_b: ${JSON.stringify(toB)}`);
   });
 
   it("a stale window that stops does not overwrite the signed-in account's sync state", async () => {
