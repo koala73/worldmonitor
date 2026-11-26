@@ -30,6 +30,9 @@ const FEED_TITLES: Record<string, string> = {
   fuelwatch: 'FuelWatch, Western Australia pump prices',
   searg: 'Secretaría de Energía, Argentina pump prices',
   oil111: 'MOEA Energy Administration, Taiwan county fuel surveys',
+  ems: 'EMS, Serbia transmission system operator',
+  nosbih: 'NOS BiH, Bosnia and Herzegovina system operator',
+  mepso: 'MEPSO, North Macedonia transmission system operator',
 };
 
 const METRIC_LABELS: Record<string, string> = {

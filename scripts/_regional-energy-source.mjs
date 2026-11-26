@@ -14,6 +14,8 @@ import {
   ICCC_INDEX_URL, discoverPngFuelPosts, parsePngFuelPost,
   FCCC_INDEX_URL, discoverFijiFuelPdfs, parseFijiFuel,
   MEM_MAX_UPLOADS_PER_MONTH, memUploadFolders, memWorkbookUrl, parseMemPriceRows,
+  localDay, previousDay, emsLiveUrl, emsRealisedUrl, emsJson, parseEmsLive, parseEmsRealised,
+  NOSBIH_AJAX_URL, nosbihForm, parseNosbih, MEPSO_HOME_URL, discoverMepsoPdfs, parseMepso,
 } from './lib/regional-energy-feeds.mjs';
 import {
   QATARENERGY_PDF_URL, parseQatarFuel,
@@ -45,7 +47,13 @@ const DOWNLOAD_HOSTS = new Set([
   FUELWATCH_HOST,
   'datos.energia.gob.ar',
   OIL111_HOST,
+  'transparency.ems.rs', 'www.nosbih.ba', 'www.mepso.com.mk',
 ]);
+// NOS BiH answers its AJAX POST over HTTP/1.1 with neither a length nor
+// chunking, so the body ends only when the connection closes. On a kept-alive
+// connection it never does (measured 2026-11-26: curl --http1.1 hangs, the same
+// request with Connection: close returns in 0.5 s).
+const CLOSE_AFTER_RESPONSE = new Set(['www.nosbih.ba']);
 export const regionalEnergyKey = id => `energy:regional:${id}:v1`;
 export const regionalEnergyMetaKey = id => `seed-meta:energy:regional-${id}`;
 const issuerAgents = new Map();
@@ -144,9 +152,10 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
     let url = new URL(input);
     for (let hop = 0; hop < 4; hop++) {
       approved(url);
+      const base = { 'User-Agent': USER_AGENT, ...(CLOSE_AFTER_RESPONSE.has(url.hostname) ? { Connection: 'close' } : {}) };
       const request = form === undefined
-        ? { headers: { 'User-Agent': USER_AGENT } }
-        : { method: 'POST', body: form, headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } };
+        ? { headers: base }
+        : { method: 'POST', body: form, headers: { ...base, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } };
       const response = await fetchFn(url.href, { ...request, signal: AbortSignal.timeout(timeoutMs), redirect: 'manual' });
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         if (form !== undefined) throw new Error('Unexpected regional energy POST redirect');
@@ -346,6 +355,34 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
     // Five small POST responses: four weekly pump surveys and the monthly LPG survey.
     points = [];
     for (const request of OIL111_REQUESTS) points.push(...parseOil111Survey(await read(request.url, 'json', request.form), request, nowMs));
+  }
+  if (id === 'ems') {
+    // Today's operational hours, plus the newest consolidated day (about two
+    // days later) so the hours after local midnight still have a series.
+    const today = localDay(nowMs);
+    const live = parseEmsLive(emsJson(await read(emsLiveUrl(today))), today);
+    let realised = [];
+    for (let back = 1; back <= 3 && !realised.length; back++) {
+      const day = previousDay(today, back);
+      realised = parseEmsRealised(emsJson(await read(emsRealisedUrl(day))), day);
+    }
+    points = [...live, ...realised];
+  }
+  if (id === 'nosbih') {
+    const today = localDay(nowMs);
+    points = [];
+    for (const day of [previousDay(today), today]) points.push(...parseNosbih(await read(NOSBIH_AJAX_URL, 'json', nosbihForm(day)), day));
+  }
+  if (id === 'mepso') {
+    // A report covering a DST change day is skipped for the one before it.
+    for (const report of discoverMepsoPdfs(await read(MEPSO_HOME_URL)).slice(0, 3)) {
+      try {
+        points = parseMepso(await readPdf(report.url), report.day);
+        break;
+      } catch (err) {
+        if (!/covers a DST change day/.test(err.message)) throw err;
+      }
+    }
   }
   if (feed.publishesAhead) points = inEffect(points, nowMs, feed.utcOffsetMin);
   const snapshot = buildFeedSnapshot(id, points, downloaded.at(-1), nowMs);

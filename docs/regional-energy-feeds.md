@@ -33,6 +33,9 @@ is added.
 | FuelWatch | AU (Western Australia only) | Median pump price across stations on the newest day for ULP, PULP, 98 RON and diesel (AUD/l) | 12 hours |
 | Secretaría de Energía | AR | Median daytime pump price across stations for super and premium gasoline and grade 2 and grade 3 diesel (ARS/l) | 12 hours |
 | MOEA Energy Administration (oil111) | TW | Weekly national and county survey means for 92, 95 and 98 unleaded and super diesel (TWD/l); monthly 20 kg LPG cylinder means (TWD/20kg) | 1 day |
+| EMS | RS | Hourly system load: today's provisional operational values and the newest consolidated day (MW) | 1 hour |
+| NOS BiH | BA | Hourly actual production and consumption for yesterday and today (MW) | 1 hour |
+| MEPSO | MK | Daily metered output by source (hydro, thermal, gas, wind, solar), energy delivered to consumers and net cross-border flow (MWh) | 6 hours |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
 demand and load-shedding cells are commented out in the source and are omitted.
@@ -48,8 +51,53 @@ CO and UY. Their parsers live in `scripts/lib/regional-fuel-feeds.mjs`. Two
 sources from that issue are not collected: Kenya's EPRA pump-price page timed
 out on every connection on 2026-11-02, directly and through the US relay
 (Cloudflare 522 from the origin), and Honduras's SEN publishes its weekly price
-cards only as images. The three Balkan grid feeds in the issue are outside
-this fuel-price batch.
+cards only as images. Kenya still timed out on 2026-11-26.
+
+The issue's three Western Balkan grid feeds follow the fuel-price batch. All
+three operators publish local clock hours (Central European Time, UTC+1 in
+winter and UTC+2 in summer), so the parsers place hours through the
+`Europe/Belgrade` zone and publish UTC hour starts. On the DST change days a
+wall-clock hour that the change skips or repeats is dropped. NOS BiH labels
+its spring change day by wall clock (23 rows, no `02:00`) and prints only 23
+rows for the 25-hour autumn day; the repeated `02:00` row is dropped there.
+Whole-day tables that cannot say which hour shifted skip the day: EMS's
+realised load sums or nets it into one slot (6,429 MW on 25 October 2026), and
+a MEPSO report then has 23 or 25 hour columns.
+
+- **EMS** (`transparency.ems.rs`) serves today's hourly load as operational
+  values a little over an hour behind, and the realised hourly load about two
+  days later. Yesterday has neither. The feed publishes today's values as
+  `demand` with area `provisional` and the newest consolidated day as plain
+  `demand`, so the hours after local midnight still have a series. The content
+  budget is three days: just after midnight the newest hour is the end of the
+  consolidated day two days back, and three days back when that day was a DST
+  change day. The responses lead with PHP notices, which are stripped.
+  The realised endpoint returns the day-ahead forecast, the realised load and an
+  unlabelled signed row that the page does not display; only the realised load
+  is read.
+- **NOS BiH** (`www.nosbih.ba`) returns the production page's table inside JSON
+  from a WordPress AJAX POST. Hours are labelled by their end (`01:00` is the
+  first hour, `00:00` the last). The feed reads actual production and
+  consumption for yesterday and today; planned values are not read. Its server
+  sends the AJAX response with neither a length nor chunking and ends the body
+  only by closing the connection, so the seeder sends `Connection: close` to
+  that host.
+- **MEPSO** (`www.mepso.com.mk`) links a daily metered report per day from its
+  home page, about three days late. A link under the report folder that does
+  not follow the report name fails the run. The seeder reads the newest PDF and
+  publishes each source's daily total, the energy delivered to directly
+  connected consumers and distribution systems, and the signed net
+  cross-border flow (inflow less outflow, so positive is a net import). The
+  gross inflow and outflow include transit, so they are not published as
+  imports and exports. Each row's total must equal its 24 hourly figures, and
+  delivered energy must equal generation plus net inflow less losses, plus
+  energy taken from distribution-connected plants (within 15% of delivered
+  energy); otherwise the run fails. A report covering a DST change day is
+  skipped for the one before it. The content budget is seven days.
+
+EMS and MEPSO state all rights reserved and NOS BiH shows only a copyright
+footer; reuse of all three was cleared by the WorldMonitor owner on 2026-11-26,
+and the registry records both.
 
 The third batch publishes retail prices rather than grid observations, so most
 of its feeds carry `publishesAhead`: a monthly or weekly price is dated from its first day

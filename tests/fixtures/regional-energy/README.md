@@ -30,6 +30,18 @@ User-Agent. It holds the worksheet's cell values: the title and header rows,
 the newest 40 dated rows and the source and note rows. Dates are stored as
 `{ "date": ISO }`; the tests rebuild a workbook from these rows.
 
+The Western Balkan grid fixtures (#10051) were captured on 2026-11-26 with the
+WorldMonitor User-Agent and are unmodified responses: `ems-live-2026-11-26.json`
+and `ems-live-2026-11-25.txt` (a PHP notice and `null`) from EMS's
+`aload/get_results.php`, `ems-realised-2026-11-2{4,5}.json` and
+`ems-realised-2026-10-25.json` (a DST change day) from `dload/get_results.php`,
+and `nosbih-2026-*.json` from the NOS BiH AJAX POST for 24 November (complete),
+26 November (partly metered) and 25 October (23 rows). `mepso-items-2026-11-23.json`
+holds the text items of MEPSO's report for 23 November 2026, and
+`mepso-home.html` is the home page trimmed to its daily report links. Expected
+values are read directly from these responses; MEPSO's totals were checked
+against the sum of their hourly figures and the report's energy balance.
+
 Batch 3 fixtures (#10051) were captured on 2026-11-02 with the WorldMonitor
 User-Agent. `qatarenergy-items.json`, `erb-items-2026-11.json`,
 `anptl-items-2026-10-20.json` and `doe-ncr-items-2026-10-27.json` hold the text

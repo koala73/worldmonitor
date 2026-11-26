@@ -790,6 +790,9 @@ const STANDALONE_KEYS = {
   regionalEnergyFuelwatch: 'energy:regional:fuelwatch:v1',
   regionalEnergySearg:    'energy:regional:searg:v1',
   regionalEnergyOil111:   'energy:regional:oil111:v1',
+  regionalEnergyEms:     'energy:regional:ems:v1',
+  regionalEnergyNosbih:  'energy:regional:nosbih:v1',
+  regionalEnergyMepso:   'energy:regional:mepso:v1',
   resilienceIntervals:      'resilience:intervals:v12:US',
   sprPolicies:              'energy:spr-policies:v1',
   pipelinesGas:             'energy:pipelines:gas:v1',
@@ -2771,6 +2774,12 @@ const SEED_META = {
     cutover: { mode: 'activation-marker', fromKey: null, issue: 11154, activationKey: 'seed-activated:energy:regional-searg' } },
   regionalEnergyOil111: { key: 'seed-meta:energy:regional-oil111', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 30240, activationKey: 'seed-activated:energy:regional-oil111',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10113, activationKey: 'seed-activated:energy:regional-oil111' } },
+  regionalEnergyEms: { key: 'seed-meta:energy:regional-ems', maxStaleMin: 180, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 4320, activationKey: 'seed-activated:energy:regional-ems',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-ems' } },
+  regionalEnergyNosbih: { key: 'seed-meta:energy:regional-nosbih', maxStaleMin: 180, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 360, activationKey: 'seed-activated:energy:regional-nosbih',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-nosbih' } },
+  regionalEnergyMepso: { key: 'seed-meta:energy:regional-mepso', maxStaleMin: 1080, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 10080, activationKey: 'seed-activated:energy:regional-mepso',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-mepso' } },
   cryptoSectors:        { key: 'seed-meta:market:crypto-sectors',             maxStaleMin: 120 }, // relay loop every ~30min; 120min = 2h = 4x interval
   ddosAttacks:          { key: 'seed-meta:cf:radar:ddos',                    maxStaleMin: 60 }, // seed-internet-outages publishes the payload before advancing this clock; outages cron ~15min; 60 = 4x interval
   economicStress:       { key: 'seed-meta:economic:stress-index',            maxStaleMin: 180 }, // computed in seed-economy afterPublish; cron ~1h; 180min = 3x interval
@@ -3015,6 +3024,9 @@ const ON_DEMAND_KEYS = new Set([
   'regionalEnergyFuelwatch',
   'regionalEnergySearg',
   'regionalEnergyOil111',
+  'regionalEnergyEms',
+  'regionalEnergyNosbih',
+  'regionalEnergyMepso',
   // New ICESat-2 probe: absent before the first daily climate bundle run. firstPublicationMaxWaitMin
   // bounds the grace to one day; seed-activated:climate:reservoir-levels revokes it.
   'reservoirLevels',
@@ -3266,6 +3278,9 @@ const ACTIVATION_MARKERS = {
   regionalEnergyFuelwatch: SEED_META.regionalEnergyFuelwatch.activationKey,
   regionalEnergySearg: SEED_META.regionalEnergySearg.activationKey,
   regionalEnergyOil111: SEED_META.regionalEnergyOil111.activationKey,
+  regionalEnergyEms: SEED_META.regionalEnergyEms.activationKey,
+  regionalEnergyNosbih: SEED_META.regionalEnergyNosbih.activationKey,
+  regionalEnergyMepso: SEED_META.regionalEnergyMepso.activationKey,
   reservoirLevels: SEED_META.reservoirLevels.activationKey,
   orbitalCatalog: SEED_META.orbitalCatalog.activationKey,
   orbitalSites: SEED_META.orbitalSites.activationKey,
