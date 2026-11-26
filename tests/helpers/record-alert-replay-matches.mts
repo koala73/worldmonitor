@@ -15,6 +15,7 @@ import { createRequire } from 'node:module';
 import { replayIncident, sameTitle, type Incident, type Match } from './alert-replay-harness.mts';
 import { cosineSimilarity, embedBatch } from '../../scripts/lib/brief-embedding.mjs';
 import { EMBED_MODEL } from '../../scripts/lib/brief-dedup-consts.mjs';
+import { parseJudgeVerdict } from '../../scripts/lib/news-corroboration.mjs';
 
 const { callLLM } = createRequire(import.meta.url)('../../scripts/lib/llm-chain.cjs');
 // The options the matcher's default judge passes (scripts/lib/news-corroboration.mjs).
@@ -25,6 +26,18 @@ if (!process.env.OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY is not 
 
 const fixtureUrl = new URL('../fixtures/alert-replays.json', import.meta.url);
 const fixture = JSON.parse(readFileSync(fixtureUrl, 'utf8')) as { incidents: Incident[] };
+
+// The matcher swallows embed and judge errors, so a failed call would otherwise
+// record a partial answer set and overwrite the fixture.
+const failures: string[] = [];
+const recording = <A extends unknown[], R>(what: string, call: (...args: A) => Promise<R>) => async (...args: A) => {
+  try {
+    return await call(...args);
+  } catch (err) {
+    failures.push(`${what}: ${(err as Error).message}`);
+    throw err;
+  }
+};
 
 for (const incident of fixture.incidents) {
   const titleOf = (text: string) => {
@@ -38,21 +51,27 @@ for (const incident of fixture.incidents) {
     if (!row) matches.push(row = { candidate, earlier, similarity: Number.NaN });
     return row;
   };
-  const embed = async (texts: string[]) => {
+  const embed = recording(`${incident.id} embed`, async (texts: string[]) => {
     const vectors = await embedBatch(texts, { wallClockMs: 30_000, redisPipeline: async (commands: unknown[]) => commands.map(() => ({ result: null })) });
     const candidate = titleOf(texts[0]!);
     texts.slice(1).forEach((text, i) => { entry(candidate, titleOf(text)).similarity = Number(cosineSimilarity(vectors[0], vectors[i + 1]).toFixed(4)); });
     return vectors;
-  };
-  const judge = async (systemPrompt: string, userPrompt: string) => {
+  });
+  const judge = recording(`${incident.id} judge`, async (systemPrompt: string, userPrompt: string) => {
     const pair = /^Headline A: (.*)\nHeadline B, seen \d+h earlier: (.*)$/.exec(userPrompt);
     if (!pair) throw new Error(`unexpected judge prompt: ${userPrompt}`);
     const reply = await callLLM(systemPrompt, userPrompt, JUDGE_OPTIONS);
     const text = typeof reply === 'string' ? reply : reply?.content;
-    entry(titleOf(pair[1]!), titleOf(pair[2]!)).same = JSON.parse(text).same;
+    const same = parseJudgeVerdict(text);
+    if (same === null) throw new Error(`unparseable verdict ${JSON.stringify(text)}`);
+    entry(titleOf(pair[1]!), titleOf(pair[2]!)).same = same;
     return text;
+  });
+  const log = (line: string) => {
+    console.log(`  ${line}`);
+    if (line.includes('"error"')) failures.push(`${incident.id}: ${line}`);
   };
-  await replayIncident(incident, { embed, judge, deadlineMs: 120_000, log: (line) => console.log(`  ${line}`) });
+  await replayIncident(incident, { embed, judge, deadlineMs: 120_000, log });
   const unjudged = matches.filter((m) => !Number.isFinite(m.similarity));
   if (unjudged.length) throw new Error(`${incident.id}: judged a pair that was never embedded`);
   if (matches.length) {
@@ -64,4 +83,5 @@ for (const incident of fixture.incidents) {
   console.log(`${incident.id}: ${matches.length} pairs, ${matches.filter((m) => m.same).length} same`);
 }
 
+if (failures.length) throw new Error(`fixture left unchanged; matcher calls failed:\n${failures.join('\n')}`);
 writeFileSync(fixtureUrl, `${JSON.stringify(fixture, null, 2)}\n`);
