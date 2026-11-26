@@ -83,10 +83,25 @@ function catalogLimit(tier, field) {
 }
 
 const CATALOG_PRICES = new Set(PRODUCT_FACTS.plans.map((plan) => plan.price).filter(Number.isFinite));
-// A currency amount in entry prose: $65,000, £40,500, $9.54. A trailing comma is punctuation.
+// A currency amount in entry prose: $65,000, £135,000, $9.54. A trailing comma is punctuation.
 const PROSE_AMOUNT_RE = /[$£€]\d+(?:,\d{3})*(?:\.\d+)?/g;
+// Amount spellings PROSE_AMOUNT_RE cannot read, so the source check would never see them:
+// USD 5,000, US$5,000, $ 5,000, 5,000 dollars, 40 €, $40k, $1.2 million.
+const UNSUPPORTED_AMOUNT_RE = /\b(?:USD|GBP|EUR)\s*\d|US\$|[$£€]\s+\d|\d\s*(?:dollars|pounds|euros|€)|[$£€]\d[\d,.]*\s*(?:k|m|bn|thousand|million|billion)\b/i;
 // Catalog prices are USD, so only a dollar amount can be one.
 const isCatalogAmount = (amount) => amount.startsWith('$') && CATALOG_PRICES.has(Number(amount.slice(1).replaceAll(',', '')));
+
+/**
+ * Currency amounts in `values`, each flagged `exempt` when it is a World Monitor catalog
+ * price quoted in a sentence that names World Monitor, or in copy that is about World Monitor
+ * as a whole. A competitor price that happens to equal a catalog price still needs a cited source.
+ */
+function amountsIn(values, { aboutWorldMonitor = false } = {}) {
+  return values.flatMap((value) => String(value).split(/(?<=[.!?])\s+/).flatMap((sentence) => {
+    const namesWorldMonitor = aboutWorldMonitor || sentence.includes(WORLD_MONITOR);
+    return (sentence.match(PROSE_AMOUNT_RE) ?? []).map((amount) => ({ amount, exempt: namesWorldMonitor && isCatalogAmount(amount) }));
+  }));
+}
 
 const monthly = (planKey) =>`$${catalogPlan(planKey).price.toFixed(2)}/mo`;
 
@@ -576,6 +591,10 @@ export function shortlistPage(seed) {
   if (seed.ranking.criteria.length < 4) fail(`needs at least 4 ranking criteria, got ${seed.ranking.criteria.length}`);
 
   if (seed.entries.length < 2) fail('needs at least 2 ranked entries');
+  // Before any amount check: an unreadable spelling would otherwise be skipped or half-read.
+  const allCells = seed.entries.flatMap((entry) => SHORTLIST_MATRIX_COLUMNS.map(([, cell]) => cell(entry)));
+  const unreadable = [...pageProse(seed), ...allCells].find((value) => UNSUPPORTED_AMOUNT_RE.test(String(value)));
+  if (unreadable !== undefined) fail(`write amounts as $65,000, £135,000 or €9.54 so the source check can read them: "${String(unreadable).slice(0, 80)}"`);
   if (seed.entries[0].name !== WORLD_MONITOR) fail(`World Monitor must be the first entry, got ${seed.entries[0].name}`);
   for (const entry of seed.entries) {
     const words = wordCount([...entry.paragraphs, entry.bestSuitedFor].join(' '));
@@ -594,9 +613,10 @@ export function shortlistPage(seed) {
     } else {
       // Every competitor amount needs a source that cites it. World Monitor's own
       // catalog prices may appear in a comparison sentence; the catalog is their source.
-      const printed = [...proseAmounts, ...(pricing.cell.match(PROSE_AMOUNT_RE) ?? [])];
+      const found = amountsIn([...entry.paragraphs, entry.bestSuitedFor, ...SHORTLIST_MATRIX_COLUMNS.slice(1).map(([, cell]) => cell(entry))]);
+      const printed = found.map(({ amount }) => amount);
       const cited = new Set((pricing.sources ?? []).flatMap((source) => source.amounts ?? []));
-      const uncited = [...new Set(printed)].filter((amount) => !cited.has(amount) && !isCatalogAmount(amount));
+      const uncited = [...new Set(found.filter(({ amount, exempt }) => !exempt && !cited.has(amount)).map(({ amount }) => amount))];
       if (uncited.length) fail(`${entry.name} quotes ${uncited.join(', ')} with no source that cites them`);
       for (const source of pricing.sources ?? []) {
         const stale = (source.amounts ?? []).filter((amount) => !printed.includes(amount));
@@ -618,9 +638,16 @@ export function shortlistPage(seed) {
 
   // The intro, takeaways, use cases and FAQs repeat entry prices; each must trace to a cited entry source.
   const citedAnywhere = new Set(seed.entries.flatMap((entry) => (entry.pricing.sources ?? []).flatMap((source) => source.amounts ?? [])));
-  const untraced = [...new Set(pageProse(seed).flatMap((value) => String(value).match(PROSE_AMOUNT_RE) ?? []))]
-    .filter((amount) => !citedAnywhere.has(amount) && !isCatalogAmount(amount));
+  // World Monitor's own entry, its CTA and the use-case rows it wins are about World Monitor.
+  const worldMonitorRows = seed.useCases.filter((row) => row.recommended.startsWith(WORLD_MONITOR)).flatMap((row) => [row.recommended, row.why, row.runnerUp]);
+  const worldMonitorText = new Set([seed.entries[0].bestFor, ...seed.entries[0].paragraphs, seed.entries[0].bestSuitedFor, ...seed.cta.paragraphs, ...worldMonitorRows]);
+  const pageAmounts = [
+    ...amountsIn(pageProse(seed).filter((value) => !worldMonitorText.has(value))),
+    ...amountsIn([...worldMonitorText], { aboutWorldMonitor: true }),
+  ];
+  const untraced = [...new Set(pageAmounts.filter(({ amount, exempt }) => !exempt && !citedAnywhere.has(amount)).map(({ amount }) => amount))];
   if (untraced.length) fail(`page prose quotes ${untraced.join(', ')}, which no entry source or catalog price covers`);
+  if (!seed.pricesCheckedOn?.trim() || !seed.checkedOn?.trim()) fail('needs pricesCheckedOn and checkedOn dates');
 
   if (seed.useCases.length !== 6) fail(`needs 6 use cases, got ${seed.useCases.length}`);
   for (const row of seed.useCases) {

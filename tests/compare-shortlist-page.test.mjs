@@ -318,6 +318,14 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
     }
   });
 
+  it('dates price sources by the last price check and capabilities separately', () => {
+    const priceLines = [...document.querySelectorAll('[data-price-source]')].map((node) => text(node));
+    assert.ok(priceLines.length >= 1);
+    for (const line of priceLines) assert.ok(line.endsWith(`Checked ${page.pricesCheckedOn}.`), line);
+    assert.ok(text(document.body).includes(`Prices were checked on ${page.pricesCheckedOn} and capabilities on ${page.checkedOn}`));
+    assert.notEqual(page.pricesCheckedOn, page.checkedOn);
+  });
+
   it('rejects seeds that break the brief', () => {
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.keyTakeaways.pop(); })), /5 key takeaways/);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.title = 'Best Geopolitical Risk Intelligence Platforms in 2026 | World Monitor'; })), /under 60/);
@@ -365,6 +373,31 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
       () => shortlistPage(seedWith((seed) => { seed.faqs[0][1] += ' One rival charges $12,345 a year.'; })),
       /page prose quotes \$12,345, which no entry source or catalog price covers/,
     );
+    const dataminr = (seed) => seed.entries.find((entry) => entry.name === 'Dataminr');
+    // Every matrix cell is scanned, not only the price cell.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { dataminr(seed).pricing.freeTier = 'Pilot from $5,000'; })),
+      /Dataminr quotes \$5,000 with no source that cites them/,
+    );
+    // A trailing comma is punctuation, not part of the amount.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { dataminr(seed).paragraphs[1] += ' One reseller quoted $1,234, then withdrew it.'; })),
+      /Dataminr quotes \$1,234 with no source that cites them/,
+    );
+    // A competitor price equal to a World Monitor catalog price still needs a source.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { dataminr(seed).paragraphs[1] += ' A starter alert pack costs $99.99 a month.'; })),
+      /Dataminr quotes \$99.99 with no source that cites them/,
+    );
+    // Spellings the amount pattern cannot read are rejected instead of skipped.
+    for (const spelling of ['USD 30,000', 'US$30,000', '$ 30,000', '30,000 dollars', '40 €', '$40k', '$1.2 million']) {
+      assert.throws(
+        () => shortlistPage(seedWith((seed) => { seed.faqs[0][1] += ` One rival charges ${spelling} a year.`; })),
+        /write amounts as/,
+        spelling,
+      );
+    }
+    assert.throws(() => shortlistPage(seedWith((seed) => { delete seed.pricesCheckedOn; })), /pricesCheckedOn/);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.useCases[0].href = '/blog/vs/dataminr/'; })), /\/blog\/best\//);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.faqs = seed.faqs.slice(0, 5); })), /6-8 FAQs/);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.keyTakeaways[0] += ' See [the plans](http://example.com).'; })), /site path or https URL/);
