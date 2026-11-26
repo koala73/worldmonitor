@@ -668,6 +668,7 @@ const STANDALONE_KEYS = {
   foodPricesFoagmilk: 'economic:food-prices:foagmilk:v1',
   foodPricesCsblv: 'economic:food-prices:csblv:v1',
   foodPricesMakstat: 'economic:food-prices:makstat:v1',
+  foodPricesOdepa: 'economic:food-prices:odepa:v1',
 
   worldCpiImf:           'seed-meta:economic:world-cpi-imf',
   worldCpiEurostat:      'seed-meta:economic:world-cpi-eurostat',
@@ -2322,6 +2323,12 @@ const SEED_META = {
     activationKey: 'seed-activated:economic:food-prices-makstat',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10146, activationKey: 'seed-activated:economic:food-prices-makstat' },
   },
+  foodPricesOdepa: {
+    key: 'seed-meta:economic:food-prices-odepa',
+    maxStaleMin: 14400,
+    activationKey: 'seed-activated:economic:food-prices-odepa',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11153, activationKey: 'seed-activated:economic:food-prices-odepa' },
+  },
   worldCpiImf: {
     key: 'seed-meta:economic:world-cpi-imf',
     maxStaleMin: 4320,
@@ -2958,7 +2965,7 @@ const ON_DEMAND_KEYS = new Set([
   'foodPricesFewssd', 'foodPricesFewsss', 'foodPricesFewsye', 'foodPricesFewsht',
   'foodPricesTwmoa', 'foodPricesGeostat', 'foodPricesPricecatcher', 'foodPricesMcba',
   'foodPricesCso', 'foodPricesStatec', 'foodPricesFoagfruit', 'foodPricesFoagegg', 'foodPricesFoagmilk',
-  'foodPricesCsblv', 'foodPricesMakstat',
+  'foodPricesCsblv', 'foodPricesMakstat', 'foodPricesOdepa',
   'regionalEnergyPgcb',
   'regionalEnergyPetrobangla',
   'regionalEnergyNiso',
@@ -3335,6 +3342,7 @@ const ACTIVATION_MARKERS = {
   foodPricesFoagmilk: SEED_META.foodPricesFoagmilk.activationKey,
   foodPricesCsblv: SEED_META.foodPricesCsblv.activationKey,
   foodPricesMakstat: SEED_META.foodPricesMakstat.activationKey,
+  foodPricesOdepa: SEED_META.foodPricesOdepa.activationKey,
 
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,

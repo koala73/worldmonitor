@@ -485,5 +485,18 @@
     "maxContentAgeDays": 100,
     "fetchBudgetMs": 60000,
     "attribution": "State Statistical Office of North Macedonia, detailed ECOICOP CPI, food and non-alcoholic beverages. Monthly and annual index changes, not market prices."
+  },
+  {
+    "id": "odepa",
+    "name": "Chile ODEPA weekly consumer prices",
+    "country": "Chile",
+    "countryCode": "CL",
+    "url": "https://datos.odepa.gob.cl/dataset/d4646b7f-0d2e-4567-b6fa-932b1a6bb3f3",
+    "cadence": "weekly",
+    "contextOnly": false,
+    "maxFetchAgeDays": 10,
+    "maxContentAgeDays": 21,
+    "fetchBudgetMs": 45000,
+    "attribution": "Oficina de Estudios y Políticas Agrarias (ODEPA), Ministry of Agriculture of Chile, datos.odepa.gob.cl, CC BY. Weekly average consumer prices in nine regions, not all of Chile; dated by the Monday of the collection week."
   }
 ]

@@ -291,6 +291,7 @@ const EXCLUDED_FROM_MCP = new Map([
   ['economic:food-prices:foagmilk:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
   ['economic:food-prices:csblv:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
   ['economic:food-prices:makstat:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
+  ['economic:food-prices:odepa:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#11153).'],
   ['seed-meta:trade:monthly-sitc-my',
     'operational: meta-only health probe for the DOSM Malaysia monthly SITC trade history (~0.5 MB since 1990). GetMonthlySitcTrade serves the data; no MCP tool reads it yet.'],
   ['seed-meta:economic:world-cpi-imf',

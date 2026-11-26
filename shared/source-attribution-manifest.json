@@ -4259,6 +4259,20 @@
       ]
     },
     {
+      "host": "datos.odepa.gob.cl",
+      "provider": "datos.odepa.gob.cl",
+      "kind": "structured",
+      "observed": true,
+      "license": "Creative Commons Attribution (CKAN dataset license_id cc-by, read 2026-11-23)",
+      "attribution": "Credit the Oficina de Estudios y Políticas Agrarias (ODEPA), Ministry of Agriculture of Chile, and link the consumer prices dataset on datos.odepa.gob.cl.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/odepa.mjs"
+        }
+      ]
+    },
+    {
       "host": "datosabiertos.dgcp.gob.do",
       "provider": "datosabiertos.dgcp.gob.do",
       "kind": "structured",
