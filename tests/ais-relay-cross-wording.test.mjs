@@ -198,9 +198,10 @@ describe('relay cross-wording health write (#11426)', () => {
     const h = writerHarness({ stored, failReads: 1 });
     await h.write();
     assert.equal(h.reports.length, 0);
-    stored.set('news:cross-wording-health:v1', { reports: [{ at: Date.now() - 30 * 60_000, checks: 2, matches: 0, failures: { JUDGE_HTTP_402: 2 }, unchecked: 0 }] });
+    assert.deepEqual(h.writes, [], 'nothing overwrites the hour it could not read');
     await h.write();
     assert.equal(h.reports.length, 1, 'the second cycle resumes the stored hour');
+    assert.equal(h.writes[1].value.sourceState, 'degraded', 'the saved failures still count');
   });
 
   it('is written from every exit of the classify cycle', () => {

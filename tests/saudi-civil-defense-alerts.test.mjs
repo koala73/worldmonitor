@@ -167,6 +167,7 @@ describe('Saudi Civil Defense notification producer', () => {
       seedClassifyForVariant: async () => ({ fetchFailed: true, total: 0, classified: 0, skipped: 0 }),
       shouldWriteClassifySeedMeta: () => false,
       CROSS_WORDING_MAX_CHECKS: 8,
+      writeCrossWordingHealth: async () => {},
     };
     vm.createContext(context);
     await vm.runInContext(`${relay.slice(start, end)}\nseedClassify()`, context);

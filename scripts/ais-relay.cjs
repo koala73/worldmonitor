@@ -6201,8 +6201,14 @@ async function writeCrossWordingHealth() {
     if (!crossWordingHealthResumed) {
       let readFailed = false;
       const previous = await upstashGet(key, () => { readFailed = true; });
-      // A failed read is retried next cycle; a missing key means there is nothing to resume.
-      crossWordingHealthResumed = !readFailed;
+      // A failed read is retried next cycle, and nothing is written until it
+      // succeeds: a write now would replace the hour it has yet to resume.
+      // A missing key means there is nothing to resume.
+      if (readFailed) {
+        console.warn('[news-corroboration] health resume read failed; retrying next cycle');
+        return;
+      }
+      crossWordingHealthResumed = true;
       const before = crossWordingReports[0]?.at ?? Date.now();
       const resumed = (Array.isArray(previous?.reports) ? previous.reports : [])
         .filter((r) => r && typeof r === 'object' && Number.isFinite(r.at) && r.at < before);
