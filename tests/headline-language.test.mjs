@@ -14,6 +14,9 @@ describe('headlineInOtherLanguage', () => {
       'هجمات إيران على السفن.. وقائع بحرية تناقض روايات "الحرس الثوري"',
       'Rimini Street將於2027年1月14日在紐約市舉辦「投資者日」活動',
       'Атака на Київ: що відомо',
+      // A Google News query in English returned BBC Hausa; it alerted as critical on 2026-11-26.
+      'Mai haƙa ƙabarin da ya binne gawarwaki 18,000 a Gaza cikin shekaru uku - BBC',
+      'Gwamnatin Najeriya za ta kara farashin man fetur daga watan gobe',
     ]) assert.equal(headlineInOtherLanguage(title), true, title);
   });
 
@@ -32,6 +35,8 @@ describe('headlineInOtherLanguage', () => {
       'I was there when the dam broke, says survivor',
       "Trump: 'I've got 'em'",
       'We’ve seen it; they’re done',
+      'Kano emir backs Ɗan Fodio university plan',
+      'Gunmen kill 12 in Zamfara as governor flies to Abuja',
       '',
     ]) assert.equal(headlineInOtherLanguage(title), false, title);
     assert.equal(headlineInOtherLanguage(undefined), false);

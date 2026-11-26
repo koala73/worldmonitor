@@ -41,6 +41,9 @@ const OTHER_LANGUAGE_WORDS = new Set([
   've', 'bir', 'için', 'ile', 'bu', 'olarak', 'daha', 'çok', 'gibi', 'sonra', 'kadar', 'ancak', 'yang', 'dan',
   'dari', 'untuk', 'dengan', 'pada', 'dalam', 'ini', 'itu', 'tidak', 'akan', 'oleh', 'juga', 'telah', 'của', 'và',
   'là', 'có', 'được', 'cho', 'với', 'không', 'tại', 'trong', 'ya', 'wa', 'kwa', 'katika',
+  // Hausa ("da", "a" and "ga" are left out: they occur in English names and text)
+  'cikin', 'kuma', 'amma', 'wani', 'wata', 'daga', 'bayan', 'domin', 'saboda', 'yadda', 'tare', 'zai', 'za', 'ta',
+  'suka', 'wanda', 'wadda', 'inda', 'kafin',
 ]);
 
 const ENGLISH_WORDS = new Set([
@@ -49,6 +52,10 @@ const ENGLISH_WORDS = new Set([
   'an', 'a', 'into', 'amid', 'against', 'who', 'what', 'how', 'why', 'new', 'more', 'than', 'but', 'or', 'it',
   'about', 'out', 'up', 'no', 'can', 'could', 'would', 'may', 'been', 'he', 'she', 'they', 'we', 'you', 'us',
 ]);
+
+// Hausa's hooked letters are Latin script, so the non-Latin share misses them,
+// and English spells the names that carry them without the hook ("Dangote").
+const HAUSA_HOOKED_WORD = /[ɓɗƙƴƁƊƘƳ]/u;
 
 const LETTER = /\p{L}/u;
 const LATIN = /\p{Script=Latin}/u;
@@ -80,12 +87,16 @@ function headlineInOtherLanguage(title) {
 
   const other = new Set();
   let english = 0;
+  let hooked = 0;
   const words = text.split(WHITESPACE).flatMap(token => (DOTTED_NAME.test(token) ? [] : token.split(WORD_BREAK)));
   for (const word of words) {
+    if (HAUSA_HOOKED_WORD.test(word)) hooked++;
     // Case matters: "I" is English and "i" is Norwegian or Polish; "De" opens a name.
     if (OTHER_LANGUAGE_WORDS.has(word)) other.add(word);
     else if (ENGLISH_WORDS.has(word.toLowerCase())) english++;
   }
+  // One hooked word can be a name; two are a Hausa sentence.
+  if (hooked >= 2) return true;
   return other.size >= 2 && other.size > english;
 }
 
