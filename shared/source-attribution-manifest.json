@@ -2919,6 +2919,20 @@
       ]
     },
     {
+      "host": "catalogue.data.wa.gov.au",
+      "provider": "catalogue.data.wa.gov.au",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC-BY-4.0 (FuelWatch Historic Fuel Prices dataset licence on catalogue.data.wa.gov.au, read 2026-11-26; the monthly CSVs are served from warsydprdstafuelwatch.blob.core.windows.net)",
+      "attribution": "Credit FuelWatch, Government of Western Australia, FuelWatch Historic Fuel Prices, and link to https://catalogue.data.wa.gov.au/dataset/fuelwatch-historic-fuel-prices; medians across stations and USD conversions are derived values.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "catholicradionetwork.org",
       "provider": "catholicradionetwork.org",
       "kind": "feed",

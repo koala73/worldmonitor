@@ -993,6 +993,7 @@
       "scripts/seed-regional-energy-eskom.mjs",
       "scripts/seed-regional-energy-evn.mjs",
       "scripts/seed-regional-energy-fccc.mjs",
+      "scripts/seed-regional-energy-fuelwatch.mjs",
       "scripts/seed-regional-energy-gse.mjs",
       "scripts/seed-regional-energy-iccc.mjs",
       "scripts/seed-regional-energy-korem.mjs",

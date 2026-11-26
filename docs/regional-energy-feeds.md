@@ -30,6 +30,7 @@ is added.
 | ANP | TL | Lowest and highest listed petrol and diesel price per municipality and nationally, from the station listing (USD/l) | 1 day |
 | CREG | CO | Regulated regular gasoline and diesel prices by main city and their published average (COP/gal), newest three price changes | 12 hours |
 | URSEA | UY | Maximum pump prices set by the Executive (UYU/l; LPG UYU/kg), the PMIT maximum wholesale price, and URSEA's reference retail and import parity prices | 12 hours |
+| FuelWatch | AU (Western Australia only) | Median pump price across stations on the newest day for ULP, PULP, 98 RON and diesel (AUD/l) | 12 hours |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
 demand and load-shedding cells are commented out in the source and are omitted.
@@ -70,6 +71,27 @@ municipality and overall, and Timor-Leste is not a row in the fuel-price panel.
 The fuel-price panel reads QA, ZM, GH, BF, ZW, PH, CO and UY from these feeds
 through `REGIONAL_FUEL_SOURCES` in `scripts/seed-fuel-prices.mjs`, with
 fallback FX rates for ZMW, GHS, XOF and UYU.
+
+Western Australia's pump prices (#10838) come from FuelWatch's "Historic Fuel
+Prices" dataset, which data.wa.gov.au lists under CC BY 4.0. The dataset is one
+CSV per month on FuelWatch's Azure blob store
+(`historical-reports/FuelWatchRetail-MM-YYYY.csv`), rewritten each night with the
+previous day's station prices. The seeder reads this month's file in Perth time
+(UTC+8). It falls back to last month's file when this month's is missing (HTTP
+404), empty or has no complete day yet, which happens before a new month's
+first day is added. Each station appears once per product per day, in cents
+per litre. The feed publishes the median across stations on the newest
+complete day that is not after today in Perth, converted to AUD/l. A day is
+complete when ULP and diesel each have at least 400 stations; a partly written
+newest day therefore falls back to the day before. Changed columns, more than 5%
+unreadable rows (a bad price or date, or a row with the wrong number of cells),
+or no complete day in either file fails the run, and last-good data is kept. PULP and 98 RON are omitted when
+their sample is thinner. Brand diesel, LPG and E85 are not collected. The
+FuelWatch RSS feed is not used: it carries "All Rights Reserved", and no
+FuelWatch page grants its reuse. FuelWatch covers Western Australia only, so the
+fuel-price panel names the row "Australia (Western Australia)" and shows the ULP
+and diesel medians for 5 days after their date. Credit: FuelWatch, Government of
+Western Australia.
 
 Since 2026-10-31 MEM's pages, sitemaps and REST API answer automated clients
 with a Cloudflare challenge. The seeder does not request them. It reads only the

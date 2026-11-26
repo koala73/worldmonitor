@@ -27,6 +27,7 @@ const FEED_TITLES: Record<string, string> = {
   anptl: 'ANP, Timor-Leste fuel prices',
   creg: 'CREG, Colombia fuel prices',
   ursea: 'URSEA, Uruguay fuel prices',
+  fuelwatch: 'FuelWatch, Western Australia pump prices',
 };
 
 const METRIC_LABELS: Record<string, string> = {
@@ -137,6 +138,10 @@ const AREA_LABELS: Record<string, string> = {
   'GLP Envasado': 'Bottled LPG',
   Queroseno: 'Kerosene',
   'PPI, before taxes': 'import parity, before taxes',
+  // Western Australia FuelWatch product codes
+  ULP: 'Unleaded 91 (ULP)',
+  PULP: 'Premium unleaded 95 (PULP)',
+  '98 RON': 'Premium unleaded 98',
   'in ZWG': 'in Zimbabwe gold',
   // KOREM (Russian zone names)
   'Запад': 'West zone',
