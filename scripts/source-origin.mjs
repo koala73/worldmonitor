@@ -359,6 +359,7 @@ const HOST_ORIGINS = Object.freeze({
   'iss.moex.com': 'RU',
   'simaniger.net': 'NE',
   'data.1212.mn': 'MN',
+  'datos.odepa.gob.cl': 'CL',
   'theatlantic.com': 'US',
   'www.ocpv-ci.com': 'CI',
   'api.cammesa.com': 'AR',

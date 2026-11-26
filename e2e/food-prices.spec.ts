@@ -4,6 +4,7 @@ import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 import { evidenceScreenshot } from './evidence-screenshot';
 const fixture = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/card.json', import.meta.url), 'utf8'));
 const additions = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/batches-4-5-card.json', import.meta.url), 'utf8'));
+const chile = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/odepa-card.json', import.meta.url), 'utf8'));
 
 // Runs in the page before boot. Every case needs the same seed, so it lives in one place.
 function seedFoodPricesDashboard() {
@@ -68,6 +69,34 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await panel.getByLabel('Country', { exact: true }).selectOption('da');
     await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
     await expect(panel.getByLabel('Country', { exact: true })).toBeVisible();
+    const overflow = await panel.evaluate(element => ({ panel: element.scrollWidth - element.clientWidth, document: document.documentElement.scrollWidth - innerWidth }));
+    expect(overflow).toEqual({ panel: 0, document: 0 });
+  });
+}
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`food prices: Chile weekly prices by sector and outlet at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await acceptTesterKeySession(page);
+    await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: { sources: [...fixture.sources, ...chile.sources] } }));
+    await page.addInitScript(seedFoodPricesDashboard);
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
+    const panel = page.locator('[data-panel="fao-food-price-index"]');
+    await panel.scrollIntoViewIfNeeded();
+    await panel.getByLabel('Country', { exact: true }).selectOption('odepa');
+    const market = panel.getByLabel('Market', { exact: true });
+    await expect(market.locator('option')).toHaveText(['Metropolitana · Internet · Retail', 'Metropolitana · Oriente · Retail', 'Ñuble · Punilla · Retail']);
+    await market.selectOption({ label: 'Metropolitana · Oriente · Retail' });
+    const table = panel.locator('.food-prices-table').first();
+    await expect(table).toContainText('CLP');
+    await expect(table).toContainText('Marraqueta bread · bakery');
+    await expect(table).toContainText('Marraqueta bread · supermarket');
+    await expect(table).toContainText('vs 2026-11-09');
+    await expect(panel.locator('.food-prices-source').first()).toContainText('Report date: 2026-11-16');
+    await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-chile.png`) });
     const overflow = await panel.evaluate(element => ({ panel: element.scrollWidth - element.clientWidth, document: document.documentElement.scrollWidth - innerWidth }));
     expect(overflow).toEqual({ panel: 0, document: 0 });
   });
