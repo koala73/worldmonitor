@@ -5,6 +5,7 @@ import { isDynamicPanel, resetMissionPresetState } from '@/services/mission-pres
 import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import { normalizeScope, type TabScope } from '../../shared/tab-scope';
 import { normalizePanelFilters, type PanelFilters } from './panel-filters';
+import { DASHBOARD_TAB_ID_PATTERN, DASHBOARD_TAB_NAME_MAX_LENGTH } from '../../shared/dashboard-tab-sync';
 
 /**
  * Dashboard tabs — named, persistent panel workspaces.
@@ -47,14 +48,9 @@ export interface TabsState {
   tabs: PanelTab[];
 }
 
-/** Matches the dashboard tab rename input (`maxLength` on the visible control). */
-export const DASHBOARD_TAB_NAME_MAX_LENGTH = 40;
-
-/**
- * Stable tab IDs from `generateTabId()`. Agents must use these, never display names.
- * `Date.now().toString(36)` and the random suffix are lowercase base36.
- */
-export const DASHBOARD_TAB_ID_PATTERN = '^tab-[a-z0-9]+-[a-z0-9]+$';
+// Shared with the server's tab-sync validator (#11141). Agents must use tab
+// IDs, never display names.
+export { DASHBOARD_TAB_NAME_MAX_LENGTH, DASHBOARD_TAB_ID_PATTERN };
 export const DASHBOARD_TAB_ID_RE = new RegExp(DASHBOARD_TAB_ID_PATTERN);
 
 // Per-variant key: each variant has its own default panel set, so tabs

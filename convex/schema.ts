@@ -34,6 +34,7 @@ import {
 } from "./companyMonitoring/validators";
 import { entitlementFeaturesValidator } from "./lib/entitlementFeaturesValidator";
 import { teamDashboardLayoutValidator } from "./lib/teamDashboardLayout";
+import { dashboardTabRecordValidator } from "./lib/dashboardTabRecord";
 
 // Subscription status enum — maps Dodo statuses to our internal set
 const subscriptionStatus = v.union(
@@ -126,6 +127,24 @@ export default defineSchema({
     updatedAt: v.number(),
     syncVersion: v.number(),
   }).index("by_user_variant", ["userId", "variant"]),
+
+  // One row per synced dashboard tab (#11141; convex/userPreferences.ts
+  // `syncDashboardTabs`). `version` is server-assigned and bumps on every
+  // write; a deleted tab stays as a tombstone (`deleted`, no record) so other
+  // devices learn about the delete. Tabs never ride in the userPreferences
+  // blob, which caps at MAX_PREFS_BLOB_SIZE.
+  userDashboardTabs: defineTable({
+    userId: v.string(),
+    variant: v.string(),
+    tabId: v.string(),
+    version: v.number(),
+    deleted: v.boolean(),
+    record: v.optional(dashboardTabRecordValidator),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_variant", ["userId", "variant"])
+    .index("by_user_variant_tab", ["userId", "variant", "tabId"]),
 
   userPreferenceWriteRateLimits: defineTable({
     userId: v.string(),

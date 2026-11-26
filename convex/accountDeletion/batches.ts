@@ -50,6 +50,7 @@ export const PERSONAL_DELETE_TABLES = [
   "enterpriseMembers",
   "proBusinessUpgradeAdmissions",
   "alertScopeNotices",
+  "userDashboardTabs",
   "users",
 ] as const;
 
@@ -100,6 +101,11 @@ async function takePersonalRows(
       return ctx.db
         .query("alertRules")
         .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "userDashboardTabs":
+      return ctx.db
+        .query("userDashboardTabs")
+        .withIndex("by_user_variant", (q) => q.eq("userId", userId))
         .take(limit);
     case "alertScopeNotices":
       return ctx.db

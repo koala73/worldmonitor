@@ -16,6 +16,20 @@ import {
 } from "./constants";
 import { PREFERENCE_VARIANTS, ROLLING_DEPLOYMENT_PREFERENCE_KEYS } from "../shared/cloud-preferences-contract";
 import { normalizeWebcamPreferences } from "../shared/pinned-webcams";
+import {
+  MAX_DASHBOARD_TAB_CHANGES_PER_CALL,
+  MAX_DASHBOARD_TAB_TOMBSTONES,
+  MAX_SYNCED_DASHBOARD_TABS,
+  type DashboardTabChangeResult,
+  type DashboardTabRow,
+  type SyncDashboardTabsResult,
+} from "../shared/dashboard-tab-sync";
+import {
+  checkDashboardTabId,
+  checkDashboardTabRecord,
+  dashboardTabRecordValidator,
+} from "./lib/dashboardTabRecord";
+import type { Doc } from "./_generated/dataModel";
 
 const preferenceVariant = v.union(...PREFERENCE_VARIANTS.map(variant => v.literal(variant)));
 
@@ -305,5 +319,159 @@ export const setPreferences = mutation({
     }
 
     return { ok: true, syncVersion: nextSyncVersion };
+  },
+});
+
+// ── Dashboard tabs (#11141) ─────────────────────────────────────────────────
+//
+// Each tab is its own row in `userDashboardTabs`, never part of the blob
+// above: a full tab snapshot is ~15 KB and the blob caps at
+// MAX_PREFS_BLOB_SIZE. Rows are compared and set per tab with a
+// server-assigned `version`, so two devices editing different tabs never
+// collide, and a delete stays as a tombstone so other devices learn of it.
+
+const dashboardTabChange = v.object({
+  tabId: v.string(),
+  baseVersion: v.optional(v.number()),
+  record: v.union(dashboardTabRecordValidator, v.null()),
+});
+
+// Every row one account can hold for a variant, plus one call's inserts.
+const DASHBOARD_TAB_ROW_SCAN_LIMIT =
+  MAX_SYNCED_DASHBOARD_TABS + MAX_DASHBOARD_TAB_TOMBSTONES + MAX_DASHBOARD_TAB_CHANGES_PER_CALL + 1;
+
+function toDashboardTabRow(row: Doc<"userDashboardTabs">): DashboardTabRow {
+  return {
+    tabId: row.tabId,
+    version: row.version,
+    deleted: row.deleted,
+    ...(row.record ? { record: row.record } : {}),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/**
+ * Every stored tab row, live and deleted, for the caller and one variant. A
+ * signed-out caller gets an empty list rather than an error, so the client can
+ * subscribe on every load.
+ */
+export const listDashboardTabs = query({
+  args: { variant: preferenceVariant },
+  handler: async (ctx, args): Promise<DashboardTabRow[]> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return [];
+    const rows = await ctx.db
+      .query("userDashboardTabs")
+      .withIndex("by_user_variant", (q) => q.eq("userId", identity.subject).eq("variant", args.variant))
+      .take(DASHBOARD_TAB_ROW_SCAN_LIMIT);
+    return rows.map(toDashboardTabRow);
+  },
+});
+
+/**
+ * Apply a batch of tab changes. Each change is compared and set on its own:
+ * `baseVersion` must equal the stored version (and be absent for a tab the
+ * server has never seen), or that change returns CONFLICT with the current
+ * row and writes nothing. `record: null` turns the row into a tombstone.
+ *
+ * `expectedUserId` is the account the client's sync state belongs to. Clerk
+ * can switch the active account without a sign-out, so a batch built from one
+ * account's tabs can arrive with another account's token; that batch is
+ * refused whole (WRONG_ACCOUNT) before it spends rate limit.
+ */
+export const syncDashboardTabs = mutation({
+  args: {
+    variant: preferenceVariant,
+    expectedUserId: v.string(),
+    changes: v.array(dashboardTabChange),
+  },
+  handler: async (ctx, args): Promise<SyncDashboardTabsResult> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError({ kind: "UNAUTHENTICATED" });
+    const userId = identity.subject;
+    if (args.expectedUserId !== userId) return { ok: false, reason: "WRONG_ACCOUNT" };
+    await assertAccountWritable(ctx, userId);
+    if (args.changes.length > MAX_DASHBOARD_TAB_CHANGES_PER_CALL) {
+      throw new ConvexError({ kind: "INVALID_TAB", field: "changes" });
+    }
+    const seenTabIds = new Set<string>();
+    for (const change of args.changes) {
+      checkDashboardTabId(change.tabId);
+      if (seenTabIds.has(change.tabId)) throw new ConvexError({ kind: "INVALID_TAB", field: "changes.tabId" });
+      seenTabIds.add(change.tabId);
+      if (change.record) checkDashboardTabRecord(change.record);
+    }
+
+    const rateLimit = await checkUserPrefsWriteRateLimit(ctx, userId);
+    if (!rateLimit.ok) return rateLimit;
+
+    const rows = await ctx.db
+      .query("userDashboardTabs")
+      .withIndex("by_user_variant", (q) => q.eq("userId", userId).eq("variant", args.variant))
+      .take(DASHBOARD_TAB_ROW_SCAN_LIMIT);
+    const byTabId = new Map(rows.map((row) => [row.tabId, row]));
+    let liveCount = rows.filter((row) => !row.deleted).length;
+    const tombstones = rows.filter((row) => row.deleted);
+    const now = Date.now();
+    const results: DashboardTabChangeResult[] = [];
+
+    for (const change of args.changes) {
+      const row = byTabId.get(change.tabId);
+      if ((row?.version ?? undefined) !== change.baseVersion) {
+        results.push({ tabId: change.tabId, ok: false, reason: "CONFLICT", row: row ? toDashboardTabRow(row) : null });
+        continue;
+      }
+
+      if (change.record === null) {
+        if (!row) {
+          // Nothing stored and nothing to delete.
+          results.push({ tabId: change.tabId, ok: true, version: 0 });
+          continue;
+        }
+        const version = row.version + 1;
+        if (!row.deleted) liveCount -= 1;
+        await ctx.db.replace(row._id, {
+          userId, variant: args.variant, tabId: row.tabId, version, deleted: true,
+          createdAt: row.createdAt, updatedAt: now,
+        });
+        if (!row.deleted) tombstones.push({ ...row, deleted: true, updatedAt: now, version });
+        results.push({ tabId: change.tabId, ok: true, version });
+        continue;
+      }
+
+      const becomesLive = !row || row.deleted;
+      if (becomesLive && liveCount >= MAX_SYNCED_DASHBOARD_TABS) {
+        results.push({ tabId: change.tabId, ok: false, reason: "TAB_LIMIT", limit: MAX_SYNCED_DASHBOARD_TABS });
+        continue;
+      }
+      if (row) {
+        const version = row.version + 1;
+        await ctx.db.patch(row._id, { record: change.record, deleted: false, version, updatedAt: now });
+        if (row.deleted) {
+          const index = tombstones.findIndex((t) => t._id === row._id);
+          if (index !== -1) tombstones.splice(index, 1);
+        }
+        results.push({ tabId: change.tabId, ok: true, version });
+      } else {
+        await ctx.db.insert("userDashboardTabs", {
+          userId, variant: args.variant, tabId: change.tabId, version: 1, deleted: false,
+          record: change.record, createdAt: now, updatedAt: now,
+        });
+        results.push({ tabId: change.tabId, ok: true, version: 1 });
+      }
+      if (becomesLive) liveCount += 1;
+    }
+
+    // Keep the newest tombstones. A device that still holds a base for an
+    // evicted one reads the absent row as a delete.
+    if (tombstones.length > MAX_DASHBOARD_TAB_TOMBSTONES) {
+      tombstones.sort((a, b) => a.updatedAt - b.updatedAt);
+      for (const stale of tombstones.slice(0, tombstones.length - MAX_DASHBOARD_TAB_TOMBSTONES)) {
+        await ctx.db.delete(stale._id);
+      }
+    }
+
+    return { ok: true, results };
   },
 });
