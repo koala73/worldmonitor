@@ -212,7 +212,8 @@ export function parseRewriteVerdict(text, candidateCount) {
   return Number.isInteger(n) && n >= 1 && n <= candidateCount ? n - 1 : null;
 }
 
-async function defaultJudge(systemPrompt, userPrompt, { deadlineAt } = {}) {
+/** The production judge call; tests/helpers/record-alert-replay-matches.mts records its replies. */
+export async function defaultRewriteJudge(systemPrompt, userPrompt, { deadlineAt } = {}) {
   const { default: chain } = await import('./llm-chain.cjs');
   return chain.callLLM(systemPrompt, userPrompt, {
     maxTokens: JUDGE_MAX_TOKENS, temperature: 0, timeoutMs: JUDGE_TIMEOUT_MS,
@@ -231,7 +232,7 @@ async function defaultJudge(systemPrompt, userPrompt, { deadlineAt } = {}) {
  * reported in `error` and leaves `anchor` null, which keeps the alert.
  */
 export async function findRewriteAnchor(event, {
-  now = Date.now(), pipeline = defaultRedisPipeline, embed = defaultEmbed, judge = defaultJudge,
+  now = Date.now(), pipeline = defaultRedisPipeline, embed = defaultEmbed, judge = defaultRewriteJudge,
   deadlineMs = REWRITE_CHECK_DEADLINE_MS,
 } = {}) {
   const startedAt = Date.now();

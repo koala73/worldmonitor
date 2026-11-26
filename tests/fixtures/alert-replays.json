@@ -1,18 +1,35 @@
 {
-  "_doc": "Recorded alert incidents replayed by tests/alert-replay.test.mts (#10976) through the code production runs (tests/helpers/alert-replay-harness.mts): the digest's publisher coverage and served item, the relay's candidate map, cross-wording check, alert publish and score, and the notification relay's rule gates, wording by wording in seenAt order. Each wording is one row of shadow:score-log:v5 as production queued it: feed name (source), classifier label, edition (variant), publisher timestamp, queue time (seenAt), the digest build's corroboration count and the logged score (observedScore, the production record). originPublisher is the Google News <source> element: originPublisherFrom google-news-rss means a Google News search on the exact headline returned that element on 2026-11-26; title-suffix means the item is no longer listed and the value is the ' - <publisher>' suffix Google News appends from that element. firstSeen is when digest story tracking first saw the headline: from the story:track:v1 row, or derived from the relay's '[Classify] alert latency' log line as publishedAt + publish_to_queue_s - seen_to_queue_s (to the second). An absent firstSeen or originPublisher could not be sourced. matches are the cross-wording matcher's answers for every pair the replay asks about, recorded from the production embedder and judge by tests/helpers/record-alert-replay-matches.mts. scoreNow, reaches (realtime: a realtime rule of the event's edition with no country scope accepts it; local: only such a rule scoped to its primary country does; none) and corroboratedBy (the publisher families the cross-wording check counted, the wording's own included) are what today's code gives. expected is the outcome for a realtime subscriber of any edition; knownMiss names why an expected alert still does not happen.",
+  "_doc": "Recorded alert incidents replayed by tests/alert-replay.test.mts (#10976) through the code production runs (tests/helpers/alert-replay-harness.mts): the digest's publisher coverage and served item, the relay's candidate map, cross-wording check, alert publish and score, and the notification relay's rule gates and reworded-repeat check (#10916), wording by wording in seenAt order. Each edition has one realtime subscriber: an alert that reaches it becomes a repeat-check anchor for it, and a later wording the judge calls a repeat of one is skipped for it (repeatOf). Each wording is one row of shadow:score-log:v5 as production queued it, or, where the score log no longer holds it, the relay's '[Classify] alert latency' line, with each value it does not give named in a *From field: feed name (source), classifier label, edition (variant), publisher timestamp, queue time (seenAt), the digest build's corroboration count and the logged score (observedScore, the production record). originPublisher is the Google News <source> element: originPublisherFrom google-news-rss means a Google News search on the exact headline returned that element on 2026-11-26; title-suffix means the item is no longer listed and the value is the ' - <publisher>' suffix Google News appends from that element. firstSeen is when digest story tracking first saw the headline: from the story:track:v1 row, or derived from the relay's '[Classify] alert latency' log line as publishedAt + publish_to_queue_s - seen_to_queue_s (to the second). An absent firstSeen or originPublisher could not be sourced. matches are the cross-wording matcher's answers for every pair the replay asks about, and the similarity of every earlier alert the repeat check compares; rewrites are the repeat judge's two replies (0, or the 1-based earlier headline) for each shortlist it is shown. Both are recorded from the production models by tests/helpers/record-alert-replay-matches.mts. A wording with context is an earlier alert kept so the repeat check has the anchor production had; it is not a wording of the incident and does not count toward the outcome. scoreNow, reaches (realtime: a realtime rule of the event's edition with no country scope accepts it; local: only such a rule scoped to its primary country does; none) and corroboratedBy (the publisher families the cross-wording check counted, the wording's own included) are what today's code gives. expected is the outcome for a realtime subscriber of any edition (an alert that reaches it and is not a repeat); knownMiss names why an expected alert still does not happen.",
   "incidents": [
     {
       "id": "adnoc-hormuz-vessel-attack",
       "date": "2026-11-18",
-      "summary": "ADNOC said one of its vessels was attacked in the Strait of Hormuz, 11 crew injured and one missing. No realtime subscriber was alerted. Today the Gulf News live blog alerts at 83 because recency runs from when its new headline was first seen (#11001), and the OilPrice.com copy (tier 4) alerts at 82 because the cross-wording check counts four publisher families for it, its own included (#10995). The National's ADNOC article was never served or recorded, so it is not in the set.",
+      "summary": "ADNOC said one of its vessels was attacked in the Strait of Hormuz, 11 crew injured and one missing. No realtime subscriber was alerted. The Gulf News live blog had already alerted at 03:38 under its earlier headline; at about 07:00 it added \"ADNOC vessel hit in Hormuz\" and kept its 03:21 pubDate. Today that copy alerts at 83 because recency runs from when its new headline was first seen (#11001), and the reworded-repeat check (#10916) does not skip it for subscribers who had the 03:38 alert: the judge calls the vessel attack a new development. The OilPrice.com copy (tier 4) alerts at 82 because the cross-wording check counts four publisher families for it, its own included (#10995). The National's ADNOC article was never served or recorded, so it is not in the set.",
       "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
       "expected": "alert",
       "matchesRecorded": {
         "embedModel": "openai/text-embedding-3-small",
         "judgeModel": "google/gemini-2.5-flash",
+        "repeatJudgeModel": "anthropic/claude-sonnet-5.5",
         "on": "2026-11-26"
       },
       "wordings": [
+        {
+          "source": "Gulf News",
+          "title": "Middle East War: Iran attacks Bahrain, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
+          "label": "critical",
+          "variant": "full",
+          "publishedAt": "2026-11-18T03:21:05.000Z",
+          "firstSeen": "2026-11-18T03:28:19.000Z",
+          "firstSeenFrom": "relay alert latency log: publish_to_queue_s=1029 seen_to_queue_s=595",
+          "seenAt": "2026-11-18T03:38:14.453Z",
+          "corroboration": 1,
+          "corroborationFrom": "inferred: the score log no longer holds this row and the relay latency log gives only score=83; a tier-2 critical copy scores 83 with a corroboration of 1",
+          "observedScore": 83,
+          "scoreNow": 83,
+          "reaches": "realtime",
+          "context": "The same live blog's earlier headline, queued at 03:38 (relay alert latency log: score=83 severity=critical variant=full). It is the alert the 07:00 headline is checked against as a possible reworded repeat; it is not about ADNOC and does not count toward the outcome."
+        },
         {
           "source": "Gulf News",
           "title": "Middle East War: Iran attacks Bahrain, ADNOC vessel hit in Hormuz, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
@@ -99,46 +116,74 @@
       ],
       "matches": [
         {
+          "candidate": "Middle East War: Iran attacks Bahrain, ADNOC vessel hit in Hormuz, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
+          "earlier": "Middle East War: Iran attacks Bahrain, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
+          "similarity": 0.942265778756834
+        },
+        {
+          "candidate": "ADNOC Says One of Its Vessels Attacked in Strait of Hormuz - - WANA News Agency",
+          "earlier": "Middle East War: Iran attacks Bahrain, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
+          "similarity": 0.5186146952100663
+        },
+        {
           "candidate": "ADNOC Says One of Its Vessels Attacked in Strait of Hormuz - - WANA News Agency",
           "earlier": "Middle East War: Iran attacks Bahrain, ADNOC vessel hit in Hormuz, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
-          "similarity": 0.6366,
+          "similarity": 0.6365537547709855,
           "same": false
         },
         {
           "candidate": "ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise",
+          "earlier": "Middle East War: Iran attacks Bahrain, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
+          "similarity": 0.5496391325090396
+        },
+        {
+          "candidate": "ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise",
           "earlier": "Middle East War: Iran attacks Bahrain, ADNOC vessel hit in Hormuz, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
-          "similarity": 0.6649,
+          "similarity": 0.664898511140437,
           "same": false
         },
         {
           "candidate": "ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise",
           "earlier": "ADNOC Says One of Its Vessels Attacked in Strait of Hormuz - - WANA News Agency",
-          "similarity": 0.8023,
+          "similarity": 0.8023362888061083,
           "same": true
         },
         {
           "candidate": "ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise",
           "earlier": "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz - Reuters",
-          "similarity": 0.7084,
+          "similarity": 0.7083640366569639,
           "same": true
         },
         {
           "candidate": "ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise",
           "earlier": "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz - Rock Hill Herald",
-          "similarity": 0.7072,
+          "similarity": 0.7072339038382854,
           "same": true
+        }
+      ],
+      "rewrites": [
+        {
+          "candidate": "Middle East War: Iran attacks Bahrain, ADNOC vessel hit in Hormuz, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm",
+          "earlier": [
+            "Middle East War: Iran attacks Bahrain, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm"
+          ],
+          "votes": [
+            0,
+            0
+          ]
         }
       ]
     },
     {
       "id": "hormuz-lpg-tanker-strike",
       "date": "2026-11-17",
-      "summary": "An LPG tanker was struck in the Strait of Hormuz and its crew abandoned ship. Every critical label came from an energy or commodity topic feed (tier 4, 72 to 73); the full-edition copies were labelled high. No realtime subscriber was alerted. Today the topic-feed copies score on their original publisher's tier (#10993), so The Guardian, NBC News and The Independent copies alert at 83. They reach energy and commodity edition subscribers only; the full-edition copies were labelled high, so a full-edition subscriber still gets no alert.",
+      "summary": "An LPG tanker was struck in the Strait of Hormuz and its crew abandoned ship. Every critical label came from an energy or commodity topic feed (tier 4, 72 to 73); the full-edition copies were labelled high. No realtime subscriber was alerted. Today the topic-feed copies score on their original publisher's tier (#10993), so The Guardian, NBC News and The Independent copies alert at 83. They reach energy and commodity edition subscribers only; the full-edition copies were labelled high, so a full-edition subscriber still gets no alert. The commodity copy from The Independent is a reworded repeat of The Guardian's, so a commodity subscriber gets one alert (#10916).",
       "evidence": "https://github.com/koala73/worldmonitor/issues/10976",
       "expected": "alert",
       "matchesRecorded": {
         "embedModel": "openai/text-embedding-3-small",
         "judgeModel": "google/gemini-2.5-flash",
+        "repeatJudgeModel": "anthropic/claude-sonnet-5.5",
         "on": "2026-11-26"
       },
       "wordings": [
@@ -263,33 +308,52 @@
           "corroboration": 1,
           "observedScore": 73,
           "scoreNow": 83,
-          "reaches": "realtime"
+          "reaches": "realtime",
+          "repeatOf": "Inferno engulfs gas tanker in strait of Hormuz after reported strike – video - The Guardian"
         }
       ],
       "matches": [
         {
           "candidate": "Second Strike on LPG Tanker in Strait of Hormuz Leaves One Missing, Two Injured - gCaptain",
           "earlier": "Missile attack targets LPG tanker with 24 Indians in Strait of Hormuz; all crew safe",
-          "similarity": 0.7807,
+          "similarity": 0.78072594453865,
           "same": false
         },
         {
           "candidate": "Second Strike on LPG Tanker in Strait of Hormuz Leaves One Missing, Two Injured - gCaptain",
           "earlier": "Crew abandon gas tanker off Hormuz after being hit by projectile, sources say - Reuters",
-          "similarity": 0.7376,
+          "similarity": 0.737583131457484,
           "same": false
+        },
+        {
+          "candidate": "Dramatic moment oil tanker erupts into huge inferno in Strait of Hormuz - The Independent",
+          "earlier": "Inferno engulfs gas tanker in strait of Hormuz after reported strike – video - The Guardian",
+          "similarity": 0.7821194848194228
+        }
+      ],
+      "rewrites": [
+        {
+          "candidate": "Dramatic moment oil tanker erupts into huge inferno in Strait of Hormuz - The Independent",
+          "earlier": [
+            "Inferno engulfs gas tanker in strait of Hormuz after reported strike – video - The Guardian"
+          ],
+          "votes": [
+            1,
+            1
+          ]
         }
       ]
     },
     {
       "id": "crimean-bridge-collapse",
       "date": "2026-11-18",
-      "summary": "A section of the Crimean Bridge collapsed after Ukrainian strikes. The BBC copy scored 83 on 2026-11-17 and reached 13 realtime subscribers. The 2026-11-18 copies scored under the bar, but they repeat a story that had already alerted.",
+      "summary": "A section of the Crimean Bridge collapsed after Ukrainian strikes. The BBC copy scored 83 on 2026-11-17 and reached 13 realtime subscribers. The 2026-11-18 copies scored under the bar, but they repeat a story that had already alerted. Kyiv Independent's copy now scores 83 (#11001), and the reworded-repeat check skips it for full-edition subscribers who had the BBC alert (#10916).",
       "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
       "expected": "alert",
       "matchesRecorded": {
         "embedModel": "openai/text-embedding-3-small",
         "judgeModel": "google/gemini-2.5-flash",
+        "repeatJudgeModel": "anthropic/claude-sonnet-5.5",
         "on": "2026-11-26"
       },
       "wordings": [
@@ -319,7 +383,8 @@
           "corroboration": 1,
           "observedScore": 81,
           "scoreNow": 83,
-          "reaches": "realtime"
+          "reaches": "realtime",
+          "repeatOf": "Putin's Crimean Bridge partly collapses as Zelensky hails 'unprecedented' attack by Ukraine"
         },
         {
           "source": "The Hindu",
@@ -358,36 +423,48 @@
         {
           "candidate": "Ukraine war latest: Entire section of Crimean Bridge collapses after 'seven-phase operation,' Zelensky reveals - The Kyiv Independent",
           "earlier": "Putin's Crimean Bridge partly collapses as Zelensky hails 'unprecedented' attack by Ukraine",
-          "similarity": 0.7511,
+          "similarity": 0.7511142902010762,
           "same": false
         },
         {
           "candidate": "Ukraine strikes Russia’s Crimean bridge with drones and missiles as aerial attacks escalate",
           "earlier": "Putin's Crimean Bridge partly collapses as Zelensky hails 'unprecedented' attack by Ukraine",
-          "similarity": 0.6507,
+          "similarity": 0.6506645949397529,
           "same": false
         },
         {
           "candidate": "Ukraine strikes Russia’s Crimean bridge with drones and missiles as aerial attacks escalate",
           "earlier": "Ukraine war latest: Entire section of Crimean Bridge collapses after 'seven-phase operation,' Zelensky reveals - The Kyiv Independent",
-          "similarity": 0.5793
+          "similarity": 0.5793279146067505
         },
         {
           "candidate": "Ukrainian Drones, Missiles Strike Kerch Bridge That Links Russia With Crimea",
           "earlier": "Putin's Crimean Bridge partly collapses as Zelensky hails 'unprecedented' attack by Ukraine",
-          "similarity": 0.6585,
+          "similarity": 0.6584686202435784,
           "same": false
         },
         {
           "candidate": "Ukrainian Drones, Missiles Strike Kerch Bridge That Links Russia With Crimea",
           "earlier": "Ukraine war latest: Entire section of Crimean Bridge collapses after 'seven-phase operation,' Zelensky reveals - The Kyiv Independent",
-          "similarity": 0.5964
+          "similarity": 0.5963530287170872
         },
         {
           "candidate": "Ukrainian Drones, Missiles Strike Kerch Bridge That Links Russia With Crimea",
           "earlier": "Ukraine strikes Russia’s Crimean bridge with drones and missiles as aerial attacks escalate",
-          "similarity": 0.8364,
+          "similarity": 0.8364369611999856,
           "same": true
+        }
+      ],
+      "rewrites": [
+        {
+          "candidate": "Ukraine war latest: Entire section of Crimean Bridge collapses after 'seven-phase operation,' Zelensky reveals - The Kyiv Independent",
+          "earlier": [
+            "Putin's Crimean Bridge partly collapses as Zelensky hails 'unprecedented' attack by Ukraine"
+          ],
+          "votes": [
+            1,
+            1
+          ]
         }
       ]
     },
@@ -418,12 +495,13 @@
     {
       "id": "hormuz-mine-strikes",
       "date": "2026-11-14",
-      "summary": "Two oil tankers hit mines and caught fire in the Strait of Hormuz. The National's copy scored 83 twelve minutes after CNA's 73, so the story cleared the bar at the time; delivery is unverified because the sent-alert history starts on 2026-11-17. CNA stays tier 4 in the relay: its tier 2 comes from the Telegram channel registry, which only the digest's tier map includes.",
+      "summary": "Two oil tankers hit mines and caught fire in the Strait of Hormuz. The National's copy scored 83 twelve minutes after CNA's 73, so the story cleared the bar at the time; delivery is unverified because the sent-alert history starts on 2026-11-17. CNA stays tier 4 in the relay: its tier 2 comes from the Telegram channel registry, which only the digest's tier map includes. The National's copy is a reworded repeat of CNA's for full-edition subscribers (#10916); the energy and commodity copies reach other editions' subscribers.",
       "evidence": "https://github.com/koala73/worldmonitor/issues/10975",
       "expected": "alert",
       "matchesRecorded": {
         "embedModel": "openai/text-embedding-3-small",
         "judgeModel": "google/gemini-2.5-flash",
+        "repeatJudgeModel": "anthropic/claude-sonnet-5.5",
         "on": "2026-11-26"
       },
       "wordings": [
@@ -451,7 +529,8 @@
           "corroboration": 1,
           "observedScore": 83,
           "scoreNow": 83,
-          "reaches": "realtime"
+          "reaches": "realtime",
+          "repeatOf": "Iran says two oil tankers hit by mines in Strait of Hormuz"
         },
         {
           "source": "Shipping & Freight",
@@ -484,16 +563,21 @@
       ],
       "matches": [
         {
-          "candidate": "Iran says oil tanker on fire after naval mine strike in eastern Strait of Hormuz - The Jerusalem Post",
+          "candidate": "Middle East latest: IRGC says two oil tankers caught fire after hitting sea mines in Hormuz",
           "earlier": "Iran says two oil tankers hit by mines in Strait of Hormuz",
-          "similarity": 0.8387,
-          "same": false
-        },
+          "similarity": 0.8170750220468702
+        }
+      ],
+      "rewrites": [
         {
-          "candidate": "Iran says oil tanker on fire after naval mine strike in eastern Strait of Hormuz - The Jerusalem Post",
-          "earlier": "Middle East latest: IRGC says two oil tankers caught fire after hitting sea mines in Hormuz",
-          "similarity": 0.784,
-          "same": false
+          "candidate": "Middle East latest: IRGC says two oil tankers caught fire after hitting sea mines in Hormuz",
+          "earlier": [
+            "Iran says two oil tankers hit by mines in Strait of Hormuz"
+          ],
+          "votes": [
+            1,
+            1
+          ]
         }
       ]
     },

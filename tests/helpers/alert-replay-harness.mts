@@ -8,13 +8,20 @@
 //           the source of scripts/ais-relay.cjs, readObservedPublishers,
 //           crossWordingFamilies, publishAlert and relayComputeImportanceScore
 //   corroboration: recordSightings and crossWordingFamilies (news-corroboration.mjs)
-//   notification relay: ruleDropReason (notification-relay.cjs)
+//   notification relay: ruleDropReason (notification-relay.cjs), then the
+//           reworded-repeat check (#10916) as checkAlertRewrite and
+//           finishAlertRewrite run it: findRewriteAnchor, usersAlertedFor,
+//           mergeStoryCoverage and recordAlertAnchor (news-alert-coverage.mjs)
 //
 // Seams: one in-memory sorted-set store stands in for Upstash (the digest's
 // coverage write through fetch, the relay's upstashPipeline, the corroboration
-// module's pipeline), Date.now is the wording's queue time, and the caller
-// supplies the embedder and the "same incident?" judge. publishNotificationEvent
-// captures the event instead of queueing it.
+// module's pipeline, the repeat check's anchors), Date.now is the wording's
+// queue time, and the caller supplies the embedder and both judges (the
+// cross-wording "same incident?" one and the repeat check's).
+// publishNotificationEvent captures the event instead of queueing it. Each
+// edition has one realtime subscriber: an alert that reaches it becomes an
+// anchor for that subscriber, and a later wording the judge calls a repeat of
+// one is not delivered to it.
 import { readFileSync } from 'node:fs';
 import Module, { createRequire } from 'node:module';
 import { mock } from 'node:test';
@@ -31,6 +38,7 @@ process.env.IMPORTANCE_SCORE_LIVE = '1';
 
 const { toProtoItem, __testing__: digest } = await import('../../server/worldmonitor/news/v1/list-feed-digest.ts');
 const corroboration = await import('../../scripts/lib/news-corroboration.mjs');
+const rewrite = await import('../../scripts/lib/news-alert-coverage.mjs');
 const { normalizeForEmbedding } = await import('../../scripts/lib/brief-embedding.mjs');
 
 const relayPath = fileURLToPath(new URL('../../scripts/ais-relay.cjs', import.meta.url));
@@ -71,9 +79,16 @@ export interface Wording {
   scoreNow: number;
   reaches: Reach;
   corroboratedBy?: string[];
+  /** The earlier alert the repeat check skips this copy for, when it does. */
+  repeatOf?: string;
+  /** Why an earlier alert that is not a wording of the incident is in the set. It never counts toward the outcome. */
+  context?: string;
 }
 
 export interface Match { candidate: string; earlier: string; similarity: number; same?: boolean }
+
+/** The repeat check's two production replies for one shortlist: 0, or the 1-based earlier headline. */
+export interface RewriteVerdict { candidate: string; earlier: string[]; votes: number[] }
 
 export interface Incident {
   id: string;
@@ -81,6 +96,7 @@ export interface Incident {
   knownMiss?: string;
   wordings: Wording[];
   matches?: Match[];
+  rewrites?: RewriteVerdict[];
 }
 
 export interface Replayed {
@@ -95,10 +111,14 @@ export interface Replayed {
   corroboratedBy: string[];
   reaches: Reach;
   dropReason: string | null;
+  /** The earlier alert the edition's subscriber already had, when the repeat check skips it. */
+  repeatOf: string | null;
+  /** The repeat check's own error. Production keeps the alert on one, so a replay must have none. */
+  repeatCheckError: string | null;
 }
 
 export type Embed = (texts: string[]) => Promise<number[][]>;
-export type Judge = (systemPrompt: string, userPrompt: string) => Promise<string>;
+export type Judge = (systemPrompt: string, userPrompt: string, opts?: unknown) => Promise<string | null>;
 
 // Upstash's sorted-set commands as the replayed code uses them.
 export class SortedSets {
@@ -126,8 +146,9 @@ export class SortedSets {
       case 'MULTI': case 'EXEC': return 'OK';
       case 'EXPIRE': return 1;
       case 'ZADD': {
-        const gt = args[0] === 'GT';
-        const pairs = gt ? args.slice(1) : args;
+        const flag = args[0] === 'GT' || args[0] === 'NX' ? args[0] : null;
+        const gt = flag === 'GT';
+        const pairs = flag ? args.slice(1) : args;
         const set = this.sets.get(key) ?? new Map<string, number>();
         this.sets.set(key, set);
         let added = 0;
@@ -136,9 +157,30 @@ export class SortedSets {
           const member = pairs[i + 1]!;
           const prior = set.get(member);
           if (prior === undefined) added++;
-          if (prior === undefined || !gt || score > prior) set.set(member, score);
+          if (prior === undefined || (flag !== 'NX' && (!gt || score > prior))) set.set(member, score);
         }
         return added;
+      }
+      case 'ZMSCORE': {
+        const set = this.sets.get(key);
+        return args.map((member) => (set?.has(member) ? String(set.get(member)) : null));
+      }
+      case 'ZUNIONSTORE': {
+        // ZUNIONSTORE dest numkeys key... AGGREGATE MAX, the only form the repeat check uses.
+        const count = Number(args[0]);
+        const union = new Map<string, number>();
+        for (const source of args.slice(1, 1 + count)) {
+          for (const [member, score] of this.sets.get(source) ?? []) union.set(member, Math.max(score, union.get(member) ?? -Infinity));
+        }
+        this.sets.set(key, union);
+        return union.size;
+      }
+      case 'ZREVRANGEBYSCORE': {
+        // ZREVRANGEBYSCORE key max min WITHSCORES LIMIT offset count
+        const limit = args.indexOf('LIMIT');
+        const rows = this.range(key, args[1]!, args[0]!).reverse()
+          .slice(limit < 0 ? 0 : Number(args[limit + 1]), limit < 0 ? undefined : Number(args[limit + 1]) + Number(args[limit + 2]));
+        return args.includes('WITHSCORES') ? rows.flatMap(([m, s]) => [m, String(s)]) : rows.map(([m]) => m);
       }
       case 'ZRANGEBYSCORE': {
         const rows = this.range(key, args[0]!, args[1]!);
@@ -248,6 +290,14 @@ function parsedItem(w: Wording) {
   };
 }
 
+/** The new headline and the earlier ones, in order, from the repeat check's prompt (rewriteJudgePrompt). */
+export function parseRewritePrompt(userPrompt: string): { candidate: string; earlier: string[] } {
+  const parsed = /^EARLIER:\n([\s\S]*)\n\nNEW:\n(.*)$/.exec(userPrompt);
+  if (!parsed) throw new Error(`unexpected repeat-check prompt: ${userPrompt}`);
+  const earlier = parsed[1]!.split('\n').map((line) => line.replace(/^\d+\. (\((?:under an hour|\d+ hours?) earlier\) )?/, ''));
+  return { candidate: parsed[2]!, earlier };
+}
+
 /** Titles are compared as the embedder sees them, so a prompt or embed input maps back to its wording. */
 export const sameTitle = (a: string, b: string) => normalizeForEmbedding(a) === normalizeForEmbedding(b);
 
@@ -273,7 +323,22 @@ export function recordedMatcher(incident: Incident) {
     });
     return vectors;
   };
+  const rewriteCalls = new Map<RewriteVerdict, number>();
   const judge: Judge = async (systemPrompt, userPrompt) => {
+    if (systemPrompt === rewrite.REWRITE_JUDGE_SYSTEM_PROMPT) {
+      const asked = parseRewritePrompt(userPrompt);
+      const record = incident.rewrites?.find((r) => sameTitle(r.candidate, asked.candidate)
+        && r.earlier.length === asked.earlier.length && r.earlier.every((t, i) => sameTitle(t, asked.earlier[i]!)));
+      if (!record) {
+        missing.push(`repeat verdict for ${JSON.stringify(userPrompt)}`);
+        return null;
+      }
+      // The check asks twice at once; each call gets the next recorded reply.
+      // A call past the recorded votes gets no reply, and unusedRewrites names it.
+      const call = rewriteCalls.get(record) ?? 0;
+      rewriteCalls.set(record, call + 1);
+      return call < record.votes.length ? JSON.stringify({ same: record.votes[call] }) : null;
+    }
     const pair = /^Headline A: (.*)\nHeadline B, seen \d+h earlier: (.*)$/.exec(userPrompt);
     const same = pair && systemPrompt === corroboration.JUDGE_SYSTEM_PROMPT ? find(pair[1]!, pair[2]!)?.same : undefined;
     if (typeof same !== 'boolean') {
@@ -282,7 +347,13 @@ export function recordedMatcher(incident: Incident) {
     }
     return JSON.stringify({ same });
   };
-  return { embed, judge, missing };
+  // Each recorded shortlist must be asked once per recorded vote: fewer calls
+  // means the check stopped running there or dropped its second opinion, more
+  // means it asked again.
+  const unusedRewrites = () => (incident.rewrites ?? [])
+    .filter((r) => rewriteCalls.get(r) !== r.votes.length)
+    .map((r) => `${r.candidate} (asked ${rewriteCalls.get(r) ?? 0} times, ${r.votes.length} votes recorded)`);
+  return { embed, judge, missing, unusedRewrites };
 }
 
 // Every alert rule belongs to one edition (alertRules.variant), so the replay
@@ -294,6 +365,31 @@ function reachOf(event: Record<string, any>): { reaches: Reach; dropReason: stri
   const country = event.payload?.primaryCountryCode;
   if (country && ruleDropReason({ ...rule, countries: [country] }, event) === null) return { reaches: 'local', dropReason };
   return { reaches: 'none', dropReason };
+}
+
+/**
+ * The notification relay's repeat check (checkAlertRewrite, then
+ * finishAlertRewrite) for the edition's one realtime subscriber. Returns the
+ * earlier alert it already had, or null when the alert is delivered, in which
+ * case the alert becomes an anchor for it.
+ */
+async function checkRepeat(
+  event: Record<string, any>,
+  now: number,
+  { pipeline, embed, judge, deadlineMs }: { pipeline: SortedSets['pipeline']; embed: Embed; judge: Judge; deadlineMs?: number },
+): Promise<{ repeatOf: string | null; repeatCheckError: string | null }> {
+  if (!rewrite.rewriteCheckApplies(event)) return { repeatOf: null, repeatCheckError: null };
+  const subscriber = `replay-subscriber:${event.variant}`;
+  const decision = await rewrite.findRewriteAnchor(event, { now, pipeline, embed, judge, ...(deadlineMs ? { deadlineMs } : {}) });
+  const matched = decision.anchor && decision.anchorIds?.length === 1 ? decision.anchor.id : null;
+  const alreadyAlerted = decision.anchor
+    ? await rewrite.usersAlertedFor(decision.anchorIds ?? decision.anchor.id, [subscriber], { now, pipeline })
+    : new Set<string>();
+  if (matched) await rewrite.mergeStoryCoverage(event, matched, pipeline);
+  const repeatCheckError = decision.error ?? null;
+  if (alreadyAlerted.has(subscriber)) return { repeatOf: decision.anchor!.title, repeatCheckError };
+  await rewrite.recordAlertAnchor(event, [subscriber], { now, pipeline, matchedAnchorId: matched });
+  return { repeatOf: null, repeatCheckError };
 }
 
 /**
@@ -312,6 +408,7 @@ export async function replayIncident(
     }),
   };
   const relay = loadRelay(store, bound);
+  const rewriteOpts = { pipeline: store.pipeline, embed, judge, ...(deadlineMs ? { deadlineMs } : {}) };
   const ordered = [...incident.wordings].sort((a, b) => Date.parse(a.seenAt) - Date.parse(b.seenAt));
   const built: ReturnType<typeof parsedItem>[] = [];
   const results: Replayed[] = [];
@@ -342,6 +439,13 @@ export async function replayIncident(
         observed: observed.get(wording.title), crossWording: crossWording.get(wording.title),
       });
       const event = relay.published[0];
+      const reach = event ? reachOf(event) : { reaches: 'none' as const, dropReason: 'unpublished' };
+      // Production also checks a copy that reaches only country-scoped rules,
+      // and that check adds anchors and merges coverage. The replay has no such
+      // subscriber, so a local copy fails here until one is modelled.
+      const repeat = reach.reaches === 'realtime'
+        ? await checkRepeat(event!, at, rewriteOpts)
+        : { repeatOf: null, repeatCheckError: reach.reaches === 'local' ? 'local reach: the replay does not model the repeat check for country-scoped rules' : null };
       results.push({
         wording,
         loggedInputsScore,
@@ -349,7 +453,8 @@ export async function replayIncident(
         score: event?.payload.importanceScore ?? null,
         observedFamilies: [...(observed.get(wording.title) ?? [])],
         corroboratedBy: [...(event?.payload.corroboratedBy ?? [])],
-        ...(event ? reachOf(event) : { reaches: 'none' as const, dropReason: 'unpublished' }),
+        ...reach,
+        ...repeat,
       });
     } finally {
       fetchMock.mock.restore();
