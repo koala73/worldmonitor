@@ -157,13 +157,17 @@ function checkoutCustomerPrefill(
 
 /**
  * Did Dodo refuse the session because of its discount code? The SDK's
- * APIError carries the response body on `.error`; Dodo names discount
- * failures `DISCOUNT_CODE_EXPIRED`, `DISCOUNT_CODE_USAGE_LIMIT_EXCEEDED` and
- * similar. The live rejection shape was not probed (no test-mode key), so the
- * match also accepts `INVALID_DISCOUNT*` and a 4xx message naming a discount.
+ * APIError carries the response body on `.error`. Probed live on 2026-11-26
+ * with a code that does not exist, on both checkoutSessions.create and
+ * subscriptions.previewChangePlan: the SDK throws NotFoundError, status 404,
+ * `.error` = { code: "NOT_FOUND", message: "Discount code '<code>' doesn't
+ * exist" }, `.message` "404 Discount code '<code>' doesn't exist". NOT_FOUND
+ * is not discount-specific, so the 4xx message naming a discount is what
+ * matches it. The expired and exhausted shapes were not probed; the
+ * `DISCOUNT_*` / `INVALID_DISCOUNT*` code match is kept for them.
  * Rate limits and server errors are never discount rejections.
  */
-function isDiscountRejection(err: unknown): boolean {
+export function isDiscountRejection(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   const status = (err as { status?: unknown }).status;
   if (typeof status !== "number" || status < 400 || status >= 500 || status === 429) return false;

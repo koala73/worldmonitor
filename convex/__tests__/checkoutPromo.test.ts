@@ -10,7 +10,10 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { APIError, NotFoundError } from "dodopayments";
+
 import { internal } from "../_generated/api";
+import { isDiscountRejection } from "../payments/checkout";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { createDodoCheckoutSession } from "../lib/dodo";
 import schema from "../schema";
@@ -33,11 +36,12 @@ function payloads(): Payload[] {
   return vi.mocked(createDodoCheckoutSession).mock.calls.map((call) => call[0] as Payload);
 }
 
+// The error Dodo's SDK threw live (2026-11-26) for a discount code that does
+// not exist, on checkoutSessions.create and on previewChangePlan alike: a
+// NotFoundError, built here the way the SDK builds it from the response.
+const MISSING_CODE_BODY = { code: "NOT_FOUND", message: "Discount code 'BLACKFRIDAY50' doesn't exist" };
 function discountRejection(): Error {
-  return Object.assign(new Error("422 Discount code has expired"), {
-    status: 422,
-    error: { code: "DISCOUNT_CODE_EXPIRED", message: "Discount code has expired" },
-  });
+  return APIError.generate(404, { ...MISSING_CODE_BODY }, undefined, new Headers());
 }
 
 async function checkout(productId: string, extra: { discountCode?: string } = {}) {
@@ -160,5 +164,36 @@ describe("checkout applies the running promotion", () => {
 
     await expect(checkout(PROMO.productId)).rejects.toThrow();
     expect(payloads()).toHaveLength(1);
+  });
+});
+
+// Recorded live on 2026-11-26 with BLACKFRIDAY50, a code that does not exist.
+// Both calls threw a NotFoundError (APIError, DodoPaymentsError, Error) whose
+// own keys are status, headers and error; `err.code` and `err.error.error`
+// are absent.
+describe("isDiscountRejection on the shapes Dodo returned live", () => {
+  test("probe A: checkoutSessions.create with an unknown code", () => {
+    const err = APIError.generate(404, { ...MISSING_CODE_BODY }, undefined, new Headers());
+    expect(err).toBeInstanceOf(NotFoundError);
+    expect(err.message).toBe("404 Discount code 'BLACKFRIDAY50' doesn't exist");
+    expect((err as { error?: unknown }).error).toEqual(MISSING_CODE_BODY);
+    expect(isDiscountRejection(err)).toBe(true);
+  });
+
+  test("probe B: previewChangePlan with an unknown code", () => {
+    const err = APIError.generate(404, { ...MISSING_CODE_BODY }, undefined, new Headers());
+    expect(err.status).toBe(404);
+    expect(isDiscountRejection(err)).toBe(true);
+  });
+
+  // NOT_FOUND is Dodo's generic code, so only the message ties it to a discount.
+  test("a 404 for something other than the code is not a discount rejection", () => {
+    const err = APIError.generate(
+      404,
+      { code: "NOT_FOUND", message: "Subscription 'sub_x' doesn't exist" },
+      undefined,
+      new Headers(),
+    );
+    expect(isDiscountRejection(err)).toBe(false);
   });
 });
