@@ -264,18 +264,10 @@ describe('middleware docs locale SEO proxy', () => {
     }
   });
 
-  it('supplies AbortSignal.timeout below the routing-middleware deadline', async () => {
-    const originalTimeout = AbortSignal.timeout;
+  it('arms the upstream deadline below the routing-middleware deadline', async () => {
     const originalFetch = globalThis.fetch;
-    const seenMs: number[] = [];
-    let timeoutSignal: AbortSignal | undefined;
+    const armed = mock.method(globalThis, 'setTimeout');
     let fetchSignal: AbortSignal | undefined;
-
-    AbortSignal.timeout = (ms) => {
-      seenMs.push(ms);
-      timeoutSignal = originalTimeout.call(AbortSignal, ms);
-      return timeoutSignal;
-    };
     mock.method(globalThis, 'fetch', async (_url: string, init?: RequestInit) => {
       fetchSignal = init?.signal ?? undefined;
       return new Response('<!DOCTYPE html><html lang="en"><head></head><body>ok</body></html>', {
@@ -287,15 +279,18 @@ describe('middleware docs locale SEO proxy', () => {
     try {
       const res = await middleware(docsHtmlRequest());
       assert.ok(res instanceof Response);
-      assert.deepEqual(seenMs, [DOCS_UPSTREAM_TIMEOUT_MS]);
+      assert.ok(
+        armed.mock.calls.some((call) => call.arguments[1] === DOCS_UPSTREAM_TIMEOUT_MS),
+        'the docs fetch must arm its upstream deadline',
+      );
       assert.ok(
         DOCS_UPSTREAM_TIMEOUT_MS < ROUTING_MIDDLEWARE_RESPONSE_DEADLINE_MS,
         'docs upstream timeout must stay below the routing-middleware response deadline',
       );
-      assert.equal(fetchSignal, timeoutSignal, 'fetch must receive the timeout signal');
-      assert.equal(fetchSignal?.aborted, false);
+      assert.ok(fetchSignal, 'fetch must receive the deadline signal');
+      assert.equal(fetchSignal.aborted, false);
     } finally {
-      AbortSignal.timeout = originalTimeout;
+      armed.mock.restore();
       globalThis.fetch = originalFetch;
     }
   });
@@ -322,5 +317,81 @@ describe('middleware docs locale SEO proxy', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  describe('upstream deadline', () => {
+    // Drive both AbortSignal.timeout and setTimeout from mock time, so the test
+    // judges when the fetch is aborted rather than which timer API aborts it.
+    async function withMockDeadline(run: (tick: (ms: number) => Promise<void>) => Promise<void>) {
+      const originalTimeout = AbortSignal.timeout;
+      const originalFetch = globalThis.fetch;
+      mock.timers.enable({ apis: ['setTimeout'] });
+      AbortSignal.timeout = (ms: number) => {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(new DOMException('timed out', 'TimeoutError')), ms);
+        return controller.signal;
+      };
+      const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+      try {
+        await run(async (ms) => {
+          await settle();
+          mock.timers.tick(ms);
+          await settle();
+        });
+      } finally {
+        mock.timers.reset();
+        AbortSignal.timeout = originalTimeout;
+        globalThis.fetch = originalFetch;
+      }
+    }
+
+    // A body that fetch() would error when its signal aborts.
+    function signalBoundStream(signal: AbortSignal | undefined) {
+      let push!: ReadableStreamDefaultController<Uint8Array>;
+      const stream = new ReadableStream<Uint8Array>({ start(c) { push = c; } });
+      signal?.addEventListener('abort', () => push.error(signal.reason));
+      return { stream, push };
+    }
+
+    it('keeps streaming a pass-through asset after the header deadline', async () => {
+      await withMockDeadline(async (tick) => {
+        let fetchSignal: AbortSignal | undefined;
+        let push!: ReadableStreamDefaultController<Uint8Array>;
+        mock.method(globalThis, 'fetch', async (_url: string, init?: RequestInit) => {
+          fetchSignal = init?.signal ?? undefined;
+          const bound = signalBoundStream(fetchSignal);
+          push = bound.push;
+          return new Response(bound.stream, { headers: { 'content-type': 'application/javascript' } });
+        });
+        const res = await middleware(new Request('https://www.worldmonitor.app/docs/_mintlify/assets/app.js'));
+        assert.ok(res instanceof Response);
+        assert.equal(res.status, 200);
+        await tick(DOCS_UPSTREAM_TIMEOUT_MS + 1);
+        assert.equal(fetchSignal?.aborted, false, 'a slow asset body must not be cut off at the header deadline');
+        push.enqueue(new TextEncoder().encode('console.log(1)'));
+        push.close();
+        assert.equal(await res.text(), 'console.log(1)');
+      });
+    });
+
+    it('still aborts a hung upstream and a stalled rewritten HTML body', async () => {
+      await withMockDeadline(async (tick) => {
+        mock.method(globalThis, 'fetch', (_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+        }));
+        const hung = middleware(docsHtmlRequest());
+        await tick(DOCS_UPSTREAM_TIMEOUT_MS + 1);
+        assert.equal((await hung as Response).status, 502);
+      });
+      await withMockDeadline(async (tick) => {
+        mock.method(globalThis, 'fetch', async (_url: string, init?: RequestInit) => new Response(
+          signalBoundStream(init?.signal ?? undefined).stream,
+          { headers: { 'content-type': 'text/html; charset=utf-8' } },
+        ));
+        const stalled = middleware(docsHtmlRequest());
+        await tick(DOCS_UPSTREAM_TIMEOUT_MS + 1);
+        assert.equal((await stalled as Response).status, 502);
+      });
+    });
   });
 });

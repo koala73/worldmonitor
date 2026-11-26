@@ -1771,9 +1771,10 @@ mod secret_vault_tests {
 mod sanitize_path_tests {
     use super::{
         build_time_sidecar_env_value, can_manage_renderer_secrets, configured_renderer_secret_keys,
-        is_renderer_managed_secret_key, local_api_proxy_path_is_allowed, sanitize_path_for_node,
-        read_port_file, watch_for_late_sidecar_port, LocalApiState, SidecarReadinessOutcome,
-        BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT, SUPPORTED_SECRET_KEYS,
+        is_renderer_managed_secret_key, local_api_proxy_path_is_allowed, node_not_found_message,
+        read_port_file, sanitize_path_for_node, watch_for_late_sidecar_port, LocalApiState,
+        SidecarReadinessOutcome, BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT,
+        SUPPORTED_SECRET_KEYS,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -1801,6 +1802,16 @@ mod sanitize_path_tests {
                 .expect("system time after epoch")
                 .as_nanos()
         ))
+    }
+
+    #[test]
+    fn node_not_found_message_names_the_override_only_where_it_works() {
+        // Release builds ignore LOCAL_API_NODE_BIN (resolve_node_binary).
+        assert_eq!(
+            node_not_found_message().contains("LOCAL_API_NODE_BIN"),
+            cfg!(debug_assertions)
+        );
+        assert!(node_not_found_message().contains("Node 18+"));
     }
 
     #[test]
@@ -2018,6 +2029,16 @@ fn local_api_paths(app: &AppHandle) -> (PathBuf, PathBuf) {
     };
 
     (sidecar_script, api_dir_root)
+}
+
+/// Release builds ignore LOCAL_API_NODE_BIN and ship their own runtime, so
+/// only development builds may point the user at that override.
+fn node_not_found_message() -> &'static str {
+    if cfg!(debug_assertions) {
+        "Node.js executable not found. Install Node 18+ or set LOCAL_API_NODE_BIN"
+    } else {
+        "Node.js executable not found. The bundled runtime is missing: reinstall World Monitor or install Node 18+"
+    }
 }
 
 fn resolve_node_binary(app: &AppHandle) -> Option<PathBuf> {
@@ -2273,9 +2294,8 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
             script.display()
         ));
     }
-    let node_binary = resolve_node_binary(app).ok_or_else(|| {
-        "Node.js executable not found. Install Node 18+ or set LOCAL_API_NODE_BIN".to_string()
-    })?;
+    let node_binary =
+        resolve_node_binary(app).ok_or_else(|| node_not_found_message().to_string())?;
 
     let port_file = logs_dir_path(app)?.join("sidecar.port");
     let _ = fs::remove_file(&port_file);

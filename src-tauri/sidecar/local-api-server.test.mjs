@@ -2987,6 +2987,62 @@ test('desktop Settings can save a new private Ollama URL without a live probe', 
   }
 });
 
+test('desktop Settings accepts Tailscale and system-resolved LAN Ollama hosts without a probe', async (t) => {
+  const localApi = await setupApiDir({});
+  const previousMode = process.env.LOCAL_API_MODE;
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  // Public DNS cannot see mDNS or /etc/hosts names; the system resolver can.
+  const systemHosts = new Map([
+    ['ollama-box.local', [{ address: '192.168.1.30', family: 4 }]],
+    ['metadata.local', [{ address: '169.254.169.254', family: 4 }]],
+  ]);
+  const notFound = async (hostname) => {
+    if (systemHosts.has(hostname)) throw Object.assign(new Error(`queryA ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' });
+    return [];
+  };
+  t.mock.method(dns, 'resolve4', notFound);
+  t.mock.method(dns, 'resolve6', notFound);
+  t.mock.method(dns, 'lookup', async (hostname) => {
+    const records = systemHosts.get(hostname);
+    if (!records) throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' });
+    return records;
+  });
+  const request = http.request;
+  t.mock.method(http, 'request', (options, ...args) => {
+    assert.ok(
+      !['100.101.102.103', 'ollama-box.local', 'metadata.local', '192.168.1.30', '169.254.169.254'].includes(options?.hostname),
+      `no request to ${options?.hostname}`,
+    );
+    return request(options, ...args);
+  });
+  const app = await createLocalApiServer({ port: 0, apiDir: localApi.apiDir, logger: { log() { }, warn() { }, error() { } } });
+  try {
+    const { port } = await app.start();
+    const validate = async (value) => {
+      const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'OLLAMA_API_URL', value }),
+      });
+      return response.json();
+    };
+    for (const value of ['http://100.101.102.103:11434', 'http://ollama-box.local:11434']) {
+      assert.deepEqual(await validate(value), {
+        valid: true,
+        message: 'Private Ollama URL accepted for configuration without a connection check',
+      }, value);
+    }
+    const metadata = await validate('http://metadata.local');
+    assert.equal(metadata.valid, false);
+    assert.match(metadata.message, /^Ollama URL blocked: /);
+  } finally {
+    if (previousMode === undefined) delete process.env.LOCAL_API_MODE;
+    else process.env.LOCAL_API_MODE = previousMode;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('secret validation refuses private relay and Ollama targets before any request', async (t) => {
   const localApi = await setupApiDir({});
   const previousMode = process.env.LOCAL_API_MODE;

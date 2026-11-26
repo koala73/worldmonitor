@@ -1082,6 +1082,17 @@ jobs:
             echo '::error::desktop Rust tests failed — repro locally with: mkdir -p dist && cd src-tauri && cargo test --locked (the mkdir is required: tauri-build embeds ../dist at compile time).'
             exit 1
           }
+      - name: cargo test (release cfg)
+        working-directory: src-tauri
+        # Release-only branches sit behind cfg(debug_assertions): no dev Clerk
+        # hosts, LOCAL_API_NODE_BIN ignored. Turning debug assertions off for
+        # this crate alone compiles them under test and reuses the dependency
+        # build from the step above.
+        run: |
+          cargo test --locked --config 'profile.test.package.world-monitor.debug-assertions=false' || {
+            echo "::error::desktop Rust tests failed with release cfg — repro locally with: mkdir -p dist && cd src-tauri && cargo test --locked --config 'profile.test.package.world-monitor.debug-assertions=false'"
+            exit 1
+          }
 
   convex-tests:
     needs: changes

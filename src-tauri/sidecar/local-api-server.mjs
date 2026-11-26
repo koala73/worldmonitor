@@ -580,8 +580,35 @@ function isPrivateIP(ip) {
 }
 
 function isOllamaLanAddress(ip) {
-  // The desktop setup exception covers private LAN addresses only.
-  return /^(?:10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|f[cd][0-9a-f]{2}:)/i.test(ip);
+  // The desktop setup exception covers private LAN addresses only, including
+  // the 100.64.0.0/10 range that Tailscale assigns to tailnet devices.
+  return /^(?:10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|f[cd][0-9a-f]{2}:)/i.test(ip);
+}
+
+function classifyResolvedAddresses(addresses) {
+  const blockedAddresses = addresses.filter(isPrivateIP);
+  if (blockedAddresses.length > 0) {
+    return {
+      safe: false,
+      privateLan: blockedAddresses.every(isOllamaLanAddress),
+      reason: 'Hostname resolves to a private/reserved IP address',
+    };
+  }
+  return { safe: true, resolvedAddresses: addresses };
+}
+
+// Public DNS cannot see mDNS (.local) or /etc/hosts names. On the desktop the
+// user's own resolver decides what the Ollama host they typed points to.
+async function isSafeUrlWithSystemResolver(url, safety) {
+  if (!safety.unresolved || isIP(url.hostname.replace(/^\[|\]$/g, ''))) return safety;
+  let records;
+  try {
+    records = await dns.lookup(url.hostname, { all: true, verbatim: true });
+  } catch {
+    return safety;
+  }
+  const addresses = (Array.isArray(records) ? records : [records]).map((record) => record.address).filter(Boolean);
+  return addresses.length > 0 ? classifyResolvedAddresses(addresses) : safety;
 }
 
 async function isSafeUrl(urlString) {
@@ -633,22 +660,13 @@ async function isSafeUrl(urlString) {
     } catch { /* no AAAA records */ }
 
     if (addresses.length === 0) {
-      return { safe: false, reason: 'Could not resolve hostname' };
-    }
-
-    const blockedAddresses = addresses.filter(isPrivateIP);
-    if (blockedAddresses.length > 0) {
-      return {
-        safe: false,
-        privateLan: blockedAddresses.every(isOllamaLanAddress),
-        reason: 'Hostname resolves to a private/reserved IP address',
-      };
+      return { safe: false, unresolved: true, reason: 'Could not resolve hostname' };
     }
   } catch {
-    return { safe: false, reason: 'DNS resolution failed' };
+    return { safe: false, unresolved: true, reason: 'DNS resolution failed' };
   }
 
-  return { safe: true, resolvedAddresses: addresses };
+  return classifyResolvedAddresses(addresses);
 }
 
 function json(data, status = 200, extraHeaders = {}) {
@@ -2205,12 +2223,14 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       // Permit loopback or the already-configured Ollama origin to reach a
       // private address; require public-host validation and IP pinning for any
       // other caller-supplied URL so secret validation cannot scan LAN/metadata.
-      const safety = await isSafeUrl(parsed.toString());
+      const isDesktop = process.env.LOCAL_API_MODE === 'tauri-sidecar';
+      let safety = await isSafeUrl(parsed.toString());
+      if (isDesktop) safety = await isSafeUrlWithSystemResolver(parsed, safety);
       const isLoopback = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname.toLowerCase());
       if (!safety.safe && !isLoopback && !isConfiguredOllamaOrigin(parsed)) {
         // Settings saves only after validation. Let it save a LAN URL without
         // making an outbound request before the user has configured that origin.
-        if (safety.privateLan && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+        if (safety.privateLan && isDesktop) {
           return ok('Private Ollama URL accepted for configuration without a connection check');
         }
         return fail(`Ollama URL blocked: ${safety.reason}`);

@@ -670,12 +670,20 @@ async function proxyDocs(request: Request, url: URL, host: string): Promise<Resp
     forwardHeaders.set('user-agent', 'WorldMonitorDocsProxy/1.0');
   }
 
+  // The deadline covers the headers and any body this middleware reads itself.
+  // A streamed body is passed through after that and ends with the platform's
+  // own middleware deadline, so a slow asset is not cut off midway.
+  const deadline = new AbortController();
+  const timer = setTimeout(
+    () => deadline.abort(new DOMException('Docs upstream timed out', 'TimeoutError')),
+    DOCS_UPSTREAM_TIMEOUT_MS,
+  );
   try {
     const options: RequestInit & { duplex?: 'half' } = {
       method: request.method,
       headers: forwardHeaders,
       redirect: 'manual',
-      signal: AbortSignal.timeout(DOCS_UPSTREAM_TIMEOUT_MS),
+      signal: deadline.signal,
     };
     if (request.body) {
       options.body = request.body;
@@ -706,6 +714,8 @@ async function proxyDocs(request: Request, url: URL, host: string): Promise<Resp
     });
   } catch {
     return new Response('Docs upstream unavailable', { status: 502 });
+  } finally {
+    clearTimeout(timer);
   }
 }
 
