@@ -16,8 +16,8 @@ function setup(t: TestContext) {
   const redis = createRedisFetch({});
   const bodies: Array<{ bbox: number[]; datetime: string; collections: string[]; limit: number }> = [];
   const urls: string[] = [];
-  // STAC answers 200 unless a test says otherwise.
-  const control = { stacStatus: 200 };
+  // STAC answers 200 with one scene unless a test says otherwise.
+  const control = { stacStatus: 200, empty: false };
   t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     urls.push(url);
@@ -26,6 +26,7 @@ function setup(t: TestContext) {
     assert.equal(init?.method, 'POST');
     bodies.push(JSON.parse(String(init?.body)));
     if (control.stacStatus !== 200) return new Response(null, { status: control.stacStatus });
+    if (control.empty) return Response.json({ features: [] });
     return Response.json({ features: [{
       id: `scene-${bodies.length}`, properties: { datetime: request.datetime }, geometry: null,
       assets: { thumbnail: { href: 's3://fixture-bucket/preview.png' }, visual: { href: 'http://127.0.0.1/private' } },
@@ -127,11 +128,16 @@ test('a failed STAC search is negative-cached, not stored as an hour of "no scen
   assert.ok(redis.expires.get(key)! <= 300, `a failure must not hold the 1h positive TTL (got ${redis.expires.get(key)})`);
 });
 
-// Positive control: a real empty answer from a healthy provider still caches.
-test('a healthy STAC answer is cached positively for the full hour', async t => {
-  const { redis } = setup(t);
-  await searchImagery({} as never, request);
+// Positive control: a real empty answer from a healthy provider still caches
+// as "no scenes" for the full hour. Only a failed call takes the negative path.
+test('a healthy empty STAC answer is cached positively for the full hour', async t => {
+  const { redis, control } = setup(t);
+  control.empty = true;
+  const result = await searchImagery({} as never, request);
+  assert.deepEqual(result, { scenes: [], totalResults: 0, cacheHit: false });
   const key = [...redis.redis.keys()].find(name => name.startsWith('imagery:search:v2:'))!;
-  assert.match(redis.redis.get(key)!, /scenes/);
+  const stored = redis.redis.get(key)!;
+  assert.doesNotMatch(stored, /__WM_NEG__/);
+  assert.deepEqual(JSON.parse(stored), { scenes: [], totalResults: 0 });
   assert.equal(redis.expires.get(key), 3600);
 });
