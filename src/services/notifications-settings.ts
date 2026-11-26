@@ -1135,7 +1135,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // land after a later edit and undo it. With none in flight the save is
       // sent at once, so a close-time flush still dispatches synchronously.
       // authFetch signs with the session current at dispatch, so a deferred
-      // save is dropped if the account changed while it waited.
+      // save is dropped if the account changed while it waited. Saves land in
+      // order, so the last success leaves the stored channel count.
       let ruleSaveTail: Promise<unknown> | null = null;
       function queueRuleSave(rule: Parameters<typeof saveAlertRules>[0], saveSignal?: AbortSignal): Promise<void> {
         const run = ruleSaveTail
@@ -1146,6 +1147,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             return saveAlertRules(rule, saveSignal);
           })
           : saveAlertRules(rule, saveSignal);
+        void run.then(() => { storedRuleChannelCount = rule.channels.length; }, () => {});
         const tail = run.catch(() => {});
         ruleSaveTail = tail;
         void tail.then(() => { if (ruleSaveTail === tail) ruleSaveTail = null; });
@@ -1638,7 +1640,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         fireForgetSave(save, 'save alert rules');
         void save.then(
           () => {
-            storedRuleChannelCount = channels.length;
             if (state.enabled) firstChannelEnablePending = false;
             return true;
           },
@@ -1648,7 +1649,9 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           if (opts.reload) {
             await sendPendingEdits();
             if (signal.aborted) return;
-            await reloadNotifSection();
+            // A webhook signing secret shown meanwhile is visible only until
+            // a reload; its Done button reloads instead.
+            if (!container.querySelector('#usWebhookSecret')) await reloadNotifSection();
           }
           if (signal.aborted) return;
           const row = container.querySelector<HTMLElement>(`[data-channel-type="${newChannel}"]`);
