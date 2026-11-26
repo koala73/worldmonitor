@@ -253,5 +253,16 @@
     "script": "seed-regional-energy-ursea.mjs",
     "publishesAhead": true,
     "utcOffsetMin": -180
+  },
+  {
+    "id": "oil111",
+    "countryCode": "TW",
+    "name": "Taiwan MOEA Energy Administration county fuel surveys",
+    "sourceUrl": "https://www2.moeaea.gov.tw/oil111/Gasoline/CountyCityAvg",
+    "licence": "Taiwan government website open data declaration (free reuse with attribution)",
+    "intervalMin": 1440,
+    "maxContentAgeMin": 30240,
+    "script": "seed-regional-energy-oil111.mjs",
+    "utcOffsetMin": 480
   }
 ]

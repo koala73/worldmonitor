@@ -316,9 +316,9 @@ const PROVIDER_OVERRIDES = {
   },
   'www2.moeaea.gov.tw': {
     provider: 'www2.moeaea.gov.tw',
-    license: 'Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed',
-    attribution: 'Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.',
-    status: 'terms-review',
+    license: 'Taiwan government website open data declaration (www2.moeaea.gov.tw/oil111/opendataannouncement, read 2026-11-26): free, non-exclusive, irrevocable reuse including adaptation and redistribution, with attribution',
+    attribution: 'Credit Taiwan MOEA Energy Administration, oil111 fuel price information system (https://www2.moeaea.gov.tw/oil111/); national and county means are survey averages, and USD conversions are derived values.',
+    status: 'reviewed',
   },
   // Food-price publishers (#9892) whose own terms we recorded at onboarding.
   'stat.uz': {

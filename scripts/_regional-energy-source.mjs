@@ -25,6 +25,7 @@ import {
   ANPTL_INDEX_URL, discoverAnpTlPosts, discoverAnpTlPdf, parseAnpTlStations,
   CREG_PAGE_URL, parseCregPrices,
   URSEA_TOPIC_URL, discoverUrseaPages, parseUrseaMaximumPrices, parseUrseaReferencePrices,
+  OIL111_HOST, OIL111_REQUESTS, parseOil111Survey,
 } from './lib/regional-fuel-feeds.mjs';
 
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
@@ -39,6 +40,7 @@ const DOWNLOAD_HOSTS = new Set([
   'iccc.gov.pg', 'fccc.gov.fj', 'mem.gob.gt',
   'www.qatarenergy.qa', 'www.erb.org.zm', 'npa.gov.gh', 'www.sonabhy.bf', ...SONABHY_API_HOSTS,
   'www.zera.co.zw', DOE_HOST, DOE_MEDIA_HOST, 'www.anp.tl', 'creg.gov.co', 'www.gub.uy',
+  OIL111_HOST,
 ]);
 export const regionalEnergyKey = id => `energy:regional:${id}:v1`;
 export const regionalEnergyMetaKey = id => `seed-meta:energy:regional-${id}`;
@@ -316,6 +318,11 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
       throw new Error('No ursea price publication in effect');
     };
     points = [...await inForce(pages.maximum, parseUrseaMaximumPrices), ...await inForce(pages.reference, parseUrseaReferencePrices)];
+  }
+  if (id === 'oil111') {
+    // Five small POST responses: four weekly pump surveys and the monthly LPG survey.
+    points = [];
+    for (const request of OIL111_REQUESTS) points.push(...parseOil111Survey(await read(request.url, 'json', request.form), request, nowMs));
   }
   if (feed.publishesAhead) points = inEffect(points, nowMs, feed.utcOffsetMin);
   const snapshot = buildFeedSnapshot(id, points, downloaded.at(-1), nowMs);

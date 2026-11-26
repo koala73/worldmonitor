@@ -27,6 +27,7 @@ const FEED_TITLES: Record<string, string> = {
   anptl: 'ANP, Timor-Leste fuel prices',
   creg: 'CREG, Colombia fuel prices',
   ursea: 'URSEA, Uruguay fuel prices',
+  oil111: 'MOEA Energy Administration, Taiwan county fuel surveys',
 };
 
 const METRIC_LABELS: Record<string, string> = {

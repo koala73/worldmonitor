@@ -27,6 +27,7 @@ const json = name => JSON.parse(fixture(name));
 const point = (rows, metric) => rows.find(r => r.metric === metric);
 const BATCH_2 = new Set(['evn', 'korem', 'coes', 'iccc', 'fccc', 'mem']);
 const BATCH_3 = new Set(['qatarenergy', 'erb', 'npa', 'sonabhy', 'zera', 'doe', 'anptl', 'creg', 'ursea']);
+const OWNER_ISSUE = { oil111: 10113 };
 
 describe('regional energy source observations', () => {
   it('rejects large unterminated HTML without blocking the worker', () => {
@@ -221,7 +222,7 @@ describe('source discovery and publication boundary', () => {
       assert.equal(config.maxStaleMin, feed.intervalMin * 3);
       assert.equal(config.maxContentAgeMin, feed.maxContentAgeMin);
       assert.equal(config.cutover.activationKey, config.activationKey);
-      assert.equal(config.cutover.issue, BATCH_3.has(feed.id) ? 10051 : BATCH_2.has(feed.id) ? 9893 : 9842);
+      assert.equal(config.cutover.issue, OWNER_ISSUE[feed.id] ?? (BATCH_3.has(feed.id) ? 10051 : BATCH_2.has(feed.id) ? 9893 : 9842));
       const options = regionalEnergySeedOptions(feed.id);
       assert.equal(options.afterPublish, undefined);
       assert.equal(calls.length, feeds.indexOf(feed));

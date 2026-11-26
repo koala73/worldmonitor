@@ -45,3 +45,11 @@ widget, `creg-page.html` to the three newest price tables, `doe-ncr-page.html`
 to the payload fragments that link each weekly PDF, and the three `ursea-*.html`
 pages to their `<main>` element. Each HTML fixture starts with a comment naming
 its source URL.
+
+`oil111-92.json`, `oil111-95.json`, `oil111-98.json`, `oil111-diesel.json` and
+`oil111-lpg.json` are the unmodified (re-indented) responses of
+`https://www2.moeaea.gov.tw/oil111/{Gasoline,LPG}/CountyCityAvg/load` posted with
+`unit=week|month`, `oil=01..05` and `start=lastone` on 2026-11-26. Their expected
+national and county means (92: 31.11 national, 31.2 Taipei; 95: 32.54; diesel:
+29.74; LPG: 768.01 national, 844 Taipei, 1000 Lienchiang) were computed from the
+JSON independently with Python, weighting groups by surveyed stations.

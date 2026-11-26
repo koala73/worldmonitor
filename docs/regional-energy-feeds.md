@@ -30,6 +30,7 @@ is added.
 | ANP | TL | Lowest and highest listed petrol and diesel price per municipality and nationally, from the station listing (USD/l) | 1 day |
 | CREG | CO | Regulated regular gasoline and diesel prices by main city and their published average (COP/gal), newest three price changes | 12 hours |
 | URSEA | UY | Maximum pump prices set by the Executive (UYU/l; LPG UYU/kg), the PMIT maximum wholesale price, and URSEA's reference retail and import parity prices | 12 hours |
+| MOEA Energy Administration (oil111) | TW | Weekly national and county survey means for 92, 95 and 98 unleaded and super diesel (TWD/l); monthly 20 kg LPG cylinder means (TWD/20kg) | 1 day |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
 demand and load-shedding cells are commented out in the source and are omitted.
@@ -70,6 +71,19 @@ municipality and overall, and Timor-Leste is not a row in the fuel-price panel.
 The fuel-price panel reads QA, ZM, GH, BF, ZW, PH, CO and UY from these feeds
 through `REGIONAL_FUEL_SOURCES` in `scripts/seed-fuel-prices.mjs`, with
 fallback FX rates for ZMW, GHS, XOF and UYU.
+
+Taiwan's county surveys (#10113) come from the MOEA Energy Administration's
+oil111 site, whose open-data declaration licenses its data for free reuse with
+attribution. The seeder posts the site's own form for each survey: the weekly
+county averages for 92, 95 and 98 unleaded and super diesel, and the monthly
+20 kg LPG cylinder averages. Each county row splits its survey into plain,
+offshore and mountain stations. The feed publishes each county's mean weighted
+by surveyed stations, and the national mean weighted the same way, which equals
+the fuel-price panel's Taiwan price. A county with no surveyed station for a
+grade is omitted. Weekly prices are dated to the survey week's last day and LPG
+to the first of its month. A changed title, week, county name or survey group,
+an implausible price, a future survey, or fewer than 15 counties fails the run.
+The fuel-price panel keeps reading Taiwan's weekly national price directly.
 
 Since 2026-10-31 MEM's pages, sitemaps and REST API answer automated clients
 with a Cloudflare challenge. The seeder does not request them. It reads only the
