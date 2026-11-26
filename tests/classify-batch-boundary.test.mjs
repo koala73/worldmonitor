@@ -40,8 +40,11 @@ import { fileURLToPath } from 'node:url';
 import {
   batchBoundaryRowsSha,
   buildBatchBoundaryRows,
+  extractRelayOpenRouterModel,
+  extractRelayPrompt,
   isClearFalseCritical,
   planBatchBoundaryPass,
+  promptSha,
   scoreBatchBoundary,
 } from '../scripts/lib/classify-eval.mjs';
 
@@ -129,5 +132,61 @@ describe('batch-boundary rule', () => {
     assert.equal(batchBoundaryRowsSha(judged.rows), REGISTERED.rowsSha);
     assert.equal(judged.boundary.length, 47);
     assert.equal(judged.rows.filter((r) => r.role === 'fill').length, 413);
+  });
+});
+
+const { captures } = readJudged('tests/fixtures/classify-batch-boundary.json');
+const relaySrc = readFileSync(resolve(root, 'scripts/ais-relay.cjs'), 'utf8');
+// Written from relay-baseline after its capture; the test below holds them to it.
+const BASELINE = { clearFalseCritical: 23, threshold: 31 };
+
+describe('batch-boundary captures', () => {
+  it('are the registered design, with every boundary row answered', () => {
+    for (const name of ['relay-baseline', 'relay-current']) {
+      const c = captures[name];
+      assert.ok(c, name);
+      assert.deepEqual({ path: c.path, chunk: c.chunk, passes: c.passes, seed: c.seed, rowsSha: c.rowsSha }, REGISTERED, name);
+      assert.equal(c.completions, REGISTERED.passes * judged.boundary.length, name);
+      const s = scoreBatchBoundary(judged.rows, c);
+      assert.equal(s.asked, c.completions * REGISTERED.chunk, name);
+      assert.ok(s.unlabelled <= s.asked * MAX_UNLABELLED_SHARE, `${name}: ${s.unlabelled} unlabelled`);
+      assert.equal(c.clearFalseCriticalByPass.length, REGISTERED.passes, name);
+      assert.equal(c.clearFalseCriticalByPass.reduce((a, b) => a + b, 0), s.clearFalseCritical, name);
+      for (const r of judged.boundary) {
+        const n = c.labels[r.title];
+        assert.equal(n?.asked, REGISTERED.passes, `${name}: ${r.title}`);
+        const answered = ['critical', 'high', 'medium', 'low', 'info'].reduce((a, k) => a + (n[k] ?? 0), 0);
+        assert.ok(n.asked - answered <= MAX_UNLABELLED_PER_BOUNDARY_ROW, `${name}: ${r.title} unlabelled ${n.asked - answered}`);
+      }
+    }
+  });
+
+  it('relay-baseline is the prompt the gate was registered on, and sets the threshold', () => {
+    const b = captures['relay-baseline'];
+    assert.equal(b.promptSha, BASELINE_PROMPT_SHA);
+    assert.equal(scoreBatchBoundary(judged.rows, b).clearFalseCritical, BASELINE.clearFalseCritical);
+    assert.equal(gateThreshold(judged.rows, b), BASELINE.threshold);
+  });
+
+  it('records the false critical the baseline already carries', () => {
+    // At 50 titles per completion the production prompt labels this statement high
+    // (classify-judged-statements.json). In 5-title completions it is critical in 23 of 40.
+    const s = scoreBatchBoundary(judged.rows, captures['relay-baseline']);
+    assert.deepEqual(s.falseCriticalTitles, ['23/40 Israel says ceasefire with Hezbollah could collapse within days']);
+  });
+
+  it('relay-current is the prompt and model production sends today', () => {
+    // If this reds, re-capture (about $0.23, 3 minutes):
+    //   node --env-file=.env.local scripts/eval-classify-labels.mjs --batch-boundary --capture relay-current --force
+    // and review the per-title counts with: node scripts/eval-classify-labels.mjs --batch-boundary
+    assert.equal(captures['relay-current'].promptSha, promptSha(extractRelayPrompt(relaySrc)));
+    assert.equal(captures['relay-current'].model, extractRelayOpenRouterModel(relaySrc));
+    assert.equal(captures['relay-current'].model, captures['relay-baseline'].model, 'a model change is a new registration');
+  });
+
+  it('relay-current carries no more clear false criticals than the baseline allows', () => {
+    const s = scoreBatchBoundary(judged.rows, captures['relay-current']);
+    assert.ok(s.clearFalseCritical <= BASELINE.threshold,
+      `${s.clearFalseCritical} clear false criticals over ${REGISTERED.passes} passes, threshold ${BASELINE.threshold}:\n${s.falseCriticalTitles.join('\n')}`);
   });
 });
