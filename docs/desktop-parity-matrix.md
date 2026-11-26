@@ -162,9 +162,14 @@ release-candidate checklist:
    README/download.md badges vs the `windows-msi` in-app banner and updater —
    a product call on which installer is canonical.
 
-4. macOS updater artifacts (`.app.tar.gz`) ship without `.sig` — no signed
-   update chain. Documented as unsigned fallback; revisit with the release
-   train. → tracked in #5902 §3.
+4. Update model: notify-and-download, decided in #11408 (2026-11-26). The app
+   does not include the Tauri updater plugin, so there is no signed in-place
+   update chain, no `.sig` and no `latest.json`. The macOS `.app.tar.gz`
+   assets are tauri-action's archive of the built `.app`, not updater
+   bundles. They are kept as a portable alternative to the `.dmg`, because
+   they draw real downloads (v2.11.8: 1,195 against 2,543 for the dmgs).
+   Linux AppImages carry zsync update information for AppImageUpdate-style
+   tools (#5757). Documented in `docs/desktop-app.mdx` § Auto-Update.
 
 ## Drift prevention (current state)
 
