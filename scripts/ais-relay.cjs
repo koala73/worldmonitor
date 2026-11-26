@@ -5199,10 +5199,13 @@ const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recen
 // ── Importance score parity with digest ──────────────────────────────────────
 // Source-tier data loaded via requireShared('source-tiers.json'), which resolves
 // to either repo-root shared/ OR scripts/shared/ depending on packaging root.
+// The same tables, in the same order, as SOURCE_TIERS in
+// server/_shared/source-tiers.ts: the digest serves an originPublisher by its
+// tier there, and the relay must score it on that tier (#10977).
 const RELAY_SOURCE_TIERS = {
   ...requireShared('source-tiers.json'),
+  ...requireShared('telegram-source-tiers.json'),
   ...requireShared('x-account-source-tiers.json'),
-  [SAUDI_CIVIL_DEFENSE.name]: SAUDI_CIVIL_DEFENSE.tier,
 };
 const {
   createExplicitTierFourSourceSet,

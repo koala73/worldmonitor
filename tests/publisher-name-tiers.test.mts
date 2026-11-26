@@ -16,11 +16,11 @@ import vm from 'node:vm';
 import { __testing__, computeItemCredibilityScore, toProtoItem } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { SOURCE_TIERS, declaredSourceTier } from '../server/_shared/source-tiers';
 import { countPublisherFamilies, publisherFamilyFor, publisherFamilyForItem } from '../shared/publisher-families.js';
+import { foldPublisherName } from '../shared/publisher-name.js';
 
 const require = createRequire(import.meta.url);
 const { buildClassifyCandidateMap } = require('../scripts/lib/digest-stale-gate.cjs');
 const { reachesRealtimeRules } = require('../scripts/lib/news-story-key.cjs');
-const { SAUDI_CIVIL_DEFENSE } = require('../scripts/lib/saudi-civil-defense-alerts.cjs');
 
 const scriptsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
 const relaySrc = readFileSync(path.join(scriptsDir, 'ais-relay.cjs'), 'utf8');
@@ -36,7 +36,7 @@ function relaySlice(startMarker: string, endMarker: string): string {
 // with its own requireShared, so the test reads the tables the relay ships.
 const relay = (() => {
   const context = vm.createContext({
-    require, path, __dirname: scriptsDir, SAUDI_CIVIL_DEFENSE,
+    require, path, __dirname: scriptsDir,
     Date, Math, Number, String, RegExp, Object, Array, Set, Map,
   });
   vm.runInContext(relaySlice('function requireShared(', '\nconst RSS_ALLOWED_DOMAINS'), context);
@@ -132,9 +132,10 @@ describe('a leading "The" is one publisher family (#10977)', () => {
   });
 
   it('two tier-table outlets whose names differ only by "The" stay two families', () => {
-    const fold = (name: string) => name.trim().toLowerCase().replace(/^the\s+/, '');
     const byFold = new Map<string, string[]>();
-    for (const name of Object.keys(SOURCE_TIERS)) byFold.set(fold(name), [...(byFold.get(fold(name)) ?? []), name]);
+    for (const name of Object.keys(SOURCE_TIERS)) {
+      byFold.set(foldPublisherName(name), [...(byFold.get(foldPublisherName(name)) ?? []), name]);
+    }
     const pairs = [...byFold.values()].filter((names) => names.length > 1);
     assert.ok(pairs.some((names) => names.includes('The Hacker News') && names.includes('Hacker News')));
     for (const names of pairs) {
