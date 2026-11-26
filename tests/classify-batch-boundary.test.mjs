@@ -5,7 +5,8 @@
 // before the classify cache (#10987) and about 5 after. The four sibling suites capture at
 // 50 per completion. On 2026-11-26 a candidate prompt example passed all of them and, in
 // 5-title completions, labelled a judged statement ("Israel says ceasefire with Hezbollah
-// could collapse within days") critical in 4 of 10 runs, where the production prompt did not.
+// could collapse within days") critical in 4 of 10 runs. The production prompt did not, but
+// only with that probe's one fixed set of neighbours.
 //
 // The capture asks the relay prompt in 5-title completions: one judged boundary headline
 // (the statement and shipping-energy sets) among four tuning headlines, at a random
@@ -29,6 +30,15 @@
 // - Teeth: the dcc144836c example must fail this gate. If it passes, that is the result;
 //   the second positive control is the production prompt without its terms-versus-attack
 //   example line ("Iran sets its terms for reopening Hormuz" -> high).
+//
+// Result, 2026-11-26, seed 1. The registration above is unchanged.
+// - The production prompt labels the ceasefire statement critical in 23 of 40 passes
+//   (relay-baseline), against 0 of 10 with the probe's fixed neighbours. It is the only
+//   counted critical.
+// - The dcc144836c example passes, at 24 against a threshold of 31. Its extra criticals are
+//   on two borderline shipping-attack rows, which the gate reports and does not count:
+//   borderline criticals rose from 138 to 171.
+// - The second positive control fails, at 211.
 //
 // A new prompt is accepted by re-capturing `relay-current` (command below). The baseline
 // moves only with a new registration: a different model or changed judged sets.
