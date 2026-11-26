@@ -120,6 +120,12 @@ describe('a leading "The" names the same publisher (#10977)', () => {
     assert.equal(servedFromTopicFeed('Hacker News').served.originPublisher, 'Hacker News');
     assert.equal(relay.tier(relaySourceFor(servedFromTopicFeed('Hacker News').served)), 4);
   });
+
+  it('a spelling only the fold matches names neither of two outlets the fold joins', () => {
+    assert.equal(declaredSourceTier('The  Hacker News'), null);
+    assert.equal(servedFromTopicFeed('The  Hacker News').served.originPublisher, '');
+    assert.equal(declaredSourceTier('The  Times of India'), 2);
+  });
 });
 
 describe('a leading "The" is one publisher family (#10977)', () => {
