@@ -48,6 +48,7 @@ import { recordCreatedCheckoutSession } from "./checkoutSessionLog";
 // convex/companyMonitoring/*), so there is no module-boundary reason to fork it.
 import { normalizeCheckoutAttributionSource as normalizeAttributionSource } from "../../shared/mcp-attribution";
 import { acquisitionCheckoutMetadata } from "../../shared/acquisition-source";
+import { activePromoFor } from "../../shared/promo-campaign";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
@@ -151,6 +152,25 @@ function checkoutCustomerPrefill(
       ...(name && name.length <= MAX_PREFILL_NAME_LENGTH ? { name } : {}),
     },
   };
+}
+
+/**
+ * Did Dodo refuse the session because of its discount code? The SDK's
+ * APIError carries the response body on `.error`; Dodo names discount
+ * failures `DISCOUNT_CODE_EXPIRED`, `DISCOUNT_CODE_USAGE_LIMIT_EXCEEDED` and
+ * similar. The live rejection shape was not probed (no test-mode key), so the
+ * match also accepts `INVALID_DISCOUNT*` and a 4xx message naming a discount.
+ * Rate limits and server errors are never discount rejections.
+ */
+function isDiscountRejection(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const status = (err as { status?: unknown }).status;
+  if (typeof status !== "number" || status < 400 || status >= 500 || status === 429) return false;
+  const body = (err as { error?: unknown }).error;
+  const code = typeof body === "object" && body !== null ? (body as { code?: unknown }).code : undefined;
+  if (typeof code === "string" && /^(DISCOUNT_|INVALID_DISCOUNT)/i.test(code)) return true;
+  const message = err instanceof Error ? err.message : "";
+  return /discount/i.test(message);
 }
 
 // ---------------------------------------------------------------------------
@@ -421,13 +441,19 @@ async function _createCheckoutSession(
   // carry channel next to billing country. Only `wm_acq_*` keys, re-validated.
   Object.assign(metadata, acquisitionCheckoutMetadata(args.acquisition));
 
-  try {
-    // A 429 here is Dodo rate-limiting our shared API key (account-level, not
-    // per-user/IP — see #6027), so absorb transient limits with the bounded
-    // server-side ladder before falling back to the typed rate_limited outcome.
-    // The seam pins the SDK to maxRetries: 0 (lib/dodo.ts), so the ladder is
-    // the only retry layer — one attempt is exactly one provider request.
-    const result = await runCheckoutWithRateLimitRetry(
+  // The running promotion applies its own code to every checkout for its
+  // product, whatever surface started it. A code the caller sent wins.
+  const promo = args.discountCode ? null : activePromoFor(args.productId, Date.now());
+
+  // A 429 here is Dodo rate-limiting our shared API key (account-level, not
+  // per-user/IP — see #6027), so absorb transient limits with the bounded
+  // server-side ladder before falling back to the typed rate_limited outcome.
+  // The seam pins the SDK to maxRetries: 0 (lib/dodo.ts), so the ladder is
+  // the only retry layer — one attempt is exactly one provider request.
+  const createSession = (applyPromo: boolean) => {
+    const discountCode = args.discountCode ?? (applyPromo && promo ? promo.discountCode : undefined);
+    const sessionMetadata = applyPromo && promo ? { ...metadata, wm_promo: promo.id } : metadata;
+    return runCheckoutWithRateLimitRetry(
       () =>
         createDodoCheckoutSession({
           product_cart: [{ product_id: args.productId, quantity: 1 }],
@@ -438,8 +464,8 @@ async function _createCheckoutSession(
           // buyer can still bill a different address. Identity stays on
           // metadata.wm_user_id + HMAC signature, never on this email.
           ...checkoutCustomerPrefill(loginEmail, user.name),
-          ...(args.discountCode ? { discount_code: args.discountCode } : {}),
-          ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+          ...(discountCode ? { discount_code: discountCode } : {}),
+          ...(Object.keys(sessionMetadata).length > 0 ? { metadata: sessionMetadata } : {}),
           // Country, plus state/ZIP only where tax needs them, instead of a
           // full street address.
           minimal_address: true,
@@ -461,6 +487,23 @@ async function _createCheckoutSession(
           ),
       },
     );
+  };
+
+  try {
+    let result: Awaited<ReturnType<typeof createSession>>;
+    try {
+      result = await createSession(promo !== null);
+    } catch (err) {
+      // Dodo refused our own promo code (expired early, exhausted, edited in
+      // the dashboard). Sell at the list price rather than fail the checkout:
+      // one retry without the code, outside the rate-limit ladder so its
+      // budget is not doubled. A caller-supplied code keeps the old behavior.
+      if (!promo || !isDiscountRejection(err)) throw err;
+      console.warn(
+        `[checkout] promo_code_rejected promo=${promo.id} user=${user.userId} product=${args.productId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      result = await createSession(false);
+    }
     if (isCheckoutTimedOutOutcome(result)) {
       await recordTerminalCheckoutTimeout(ctx, {
         userId: user.userId,

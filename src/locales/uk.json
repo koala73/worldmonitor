@@ -2760,7 +2760,13 @@
       "headline": "Щоденні AI-брифінги на email або в Slack",
       "tagline": "плюс WM Analyst, правила сповіщень та MCP для Claude",
       "cta": "Перейти на Pro →",
-      "dismiss": "Закрити"
+      "dismiss": "Закрити",
+      "promoBadge": "Чорна п'ятниця",
+      "promoHeadline": "{{savings}}% знижки на Pro за перший рік",
+      "promoTagline": "{{perMonth}} на місяць при оплаті за рік. Скасуйте будь-коли. Закінчується {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% знижки на Pro Щорічно за перший рік",
+      "promoTaglineYearlyOnly": "Скасуйте будь-коли. Закінчується {{date}}.",
+      "promoCta": "Отримати пропозицію"
     },
     "billingState": {
       "onHoldDesc": "Помилка платежу. Оновіть спосіб оплати, щоб відновити доступ до преміум-функцій.",

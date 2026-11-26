@@ -2652,7 +2652,13 @@
       "headline": "每日AI情报摘要，通过邮件或Slack接收",
       "tagline": "另含WM Analyst、告警规则和适用于Claude的MCP",
       "cta": "升级到Pro →",
-      "dismiss": "关闭"
+      "dismiss": "关闭",
+      "promoBadge": "黑色星期五",
+      "promoHeadline": "Pro 首年立省 {{savings}}%",
+      "promoTagline": "每月 {{perMonth}}，按年计费。随时取消。优惠截止 {{date}}。",
+      "promoHeadlineYearlyOnly": "Pro 年度版首年立省 {{percent}}%",
+      "promoTaglineYearlyOnly": "随时取消。优惠截止 {{date}}。",
+      "promoCta": "获取优惠"
     },
     "billingState": {
       "onHoldDesc": "支付失败。请更新您的支付方式以恢复高级访问权限。",

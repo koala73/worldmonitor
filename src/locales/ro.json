@@ -2676,7 +2676,13 @@
       "headline": "Rapoarte zilnice AI prin email sau Slack",
       "tagline": "plus WM Analyst, reguli de alertă și MCP pentru Claude",
       "cta": "Upgrade la Pro →",
-      "dismiss": "Închide"
+      "dismiss": "Închide",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "{{savings}}% reducere la Pro pentru primul an",
+      "promoTagline": "{{perMonth}} pe lună, facturată anual. Anulează oricând. Se încheie {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% reducere la Pro Yearly pentru primul an",
+      "promoTaglineYearlyOnly": "Anulează oricând. Se încheie {{date}}.",
+      "promoCta": "Obține oferta"
     },
     "billingState": {
       "onHoldDesc": "Plata a eșuat. Actualizează metoda de plată pentru a restabili accesul premium.",

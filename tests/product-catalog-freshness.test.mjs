@@ -39,6 +39,10 @@ const PRODUCT_ID_EXCLUDE_PATTERNS = [
   // mirrors the Pro-family ids as literals; its drift-guard test asserts them
   // against the generated catalog, giving the same catalog-sync this guard wants.
   'src/services/pro-activation-state',
+  // Zero-import leaf shared by Convex, the dashboard Pro strip and /pro, so it
+  // names its one product as a literal; tests/promo-campaign.test.mts asserts
+  // it against the catalog's pro_annual product.
+  'shared/promo-campaign.ts',
   'scripts/generate-product-config',
   'scripts/generate-public-product-facts',
 ];

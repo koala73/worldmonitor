@@ -54,7 +54,9 @@ const ENGLISH_CEILING = {
   // acronyms, and words spelled the same in that language.
   // de 173 -> 174: the intel-history domain badge "Cyber" (#11245) is the
   // German term the catalogue already uses for its cyber filter and layer.
-  ar: 359, bg: 250, cs: 292, de: 174, el: 359, es: 433,
+  // de 174 -> 175: the Pro strip's promotion badge "Black Friday" is the term
+  // German retail uses as written.
+  ar: 359, bg: 250, cs: 292, de: 175, el: 359, es: 433,
   // fr 425 -> 426: "Concentration" (supply vulnerability) and "Normal"
   // (divergence regime) are spelled identically in French. Both are correct
   // translations, not placeholder copies.

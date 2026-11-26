@@ -2733,7 +2733,13 @@
       "headline": "Napi AI-összefoglalók e-mailben vagy Slacken",
       "tagline": "plusz WM Analyst, riasztási szabályok és MCP a Claudehez",
       "cta": "Frissítés Pro-ra →",
-      "dismiss": "Eltüntetés"
+      "dismiss": "Eltüntetés",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "{{savings}}% kedvezmény a Pro verzióra első évben",
+      "promoTagline": "{{perMonth}}/hónap, éves számlázás. Bármikor lemondható. Lejár: {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% kedvezmény a Pro Éves verzióra első évben",
+      "promoTaglineYearlyOnly": "Bármikor lemondható. Lejár: {{date}}.",
+      "promoCta": "Ajánlat aktiválása"
     },
     "billingState": {
       "onHoldDesc": "A fizetés sikertelen. Frissítse fizetési módját a prémium hozzáférés visszaállításához.",

@@ -2748,7 +2748,13 @@
       "headline": "Dnevni AI-briefinzi putem e-maila ili Slacka",
       "tagline": "plus WM Analyst, pravila upozorenja i MCP za Claude",
       "cta": "Nadogradi na Pro →",
-      "dismiss": "Odbaci"
+      "dismiss": "Odbaci",
+      "promoBadge": "Črni petak",
+      "promoHeadline": "{{savings}}% popusta na Pro za prvu godinu",
+      "promoTagline": "{{perMonth}} mjesečno, godišnje plaćanje. Otkaži bilo kada. Završava {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% popusta na Pro Godišnje za prvu godinu",
+      "promoTaglineYearlyOnly": "Otkaži bilo kada. Završava {{date}}.",
+      "promoCta": "Preuzmi ponudu"
     },
     "billingState": {
       "onHoldDesc": "Plaćanje nije uspjelo. Ažurirajte način plaćanja kako biste vratili premium pristup.",
