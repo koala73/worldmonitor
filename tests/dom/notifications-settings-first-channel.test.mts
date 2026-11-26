@@ -54,8 +54,10 @@ vi.mock('@/services/notification-channels', () => ({
   IncompatibleDeliveryError,
 }));
 
+const clerkState = vi.hoisted(() => ({ id: 'user_first_channel' }));
+
 vi.mock('@/services/clerk', () => ({
-  getCurrentClerkUser: () => ({ id: 'user_first_channel', email: 'first@worldmonitor.test' }),
+  getCurrentClerkUser: () => ({ id: clerkState.id, email: 'first@worldmonitor.test' }),
 }));
 
 vi.mock('@/services/entitlements', () => ({
@@ -117,6 +119,15 @@ const toggle = (root: HTMLElement): HTMLInputElement => {
   return el!;
 };
 
+// The connect path marks the row connected before its save, so only the
+// second read shows the reload has rendered.
+async function reloadedAfterConnect(container: HTMLElement): Promise<void> {
+  await vi.waitFor(() => {
+    expect(channelMocks.getChannelsData.mock.calls.length, 'panel reloaded after connect').toBeGreaterThanOrEqual(2);
+    expect(container.querySelector<HTMLElement>('#usNotifContent')?.style.display).toBe('block');
+  }, { timeout: 3000 });
+}
+
 async function connectEmail(container: HTMLElement): Promise<void> {
   const reads = channelMocks.getChannelsData.mock.calls.length;
   container.querySelector<HTMLButtonElement>('#usConnectEmail')!.click();
@@ -136,6 +147,7 @@ beforeEach(() => {
   while (cleanups.length) cleanups.pop()?.();
   document.body.replaceChildren();
   gate.tier = false;
+  clerkState.id = 'user_first_channel';
   store.channels = [];
   store.rule = null;
   store.saveGates = [];
@@ -212,9 +224,7 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1));
     await new Promise((resolve) => setTimeout(resolve, 20));
     release();
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-channel-type="email"]')?.classList.contains('us-notif-ch-on')).toBe(true);
-    });
+    await reloadedAfterConnect(container);
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(savedRules().some((saved) => saved.enabled === false), 'no save stored alerts as off').toBe(false);
@@ -288,9 +298,7 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     toggle(container).checked = false;
     toggle(container).dispatchEvent(new Event('change', { bubbles: true }));
     release();
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-channel-type="email"]')?.classList.contains('us-notif-ch-on')).toBe(true);
-    });
+    await reloadedAfterConnect(container);
     expect(toggle(container).checked, 'reload keeps the opt-out').toBe(false);
     await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(2), { timeout: 3000 });
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -321,6 +329,7 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     expect(lastSaved()?.channels).toContain('email');
     expect(lastSaved()?.eventTypes).toContain('watchlist_story_alert');
     expect(store.rule?.channels).toContain('email');
+    expect(container.querySelector<HTMLInputElement>('#usWatchlistAlerts')?.checked, 'reload shows the queued edit').toBe(true);
   });
 
   it('stores a later opt-out even when the earlier connect save lands after it', async () => {
@@ -337,10 +346,8 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     // The opt-out's debounced save fires while the connect save is still held.
     await new Promise((resolve) => setTimeout(resolve, 1200));
     release();
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-channel-type="email"]')?.classList.contains('us-notif-ch-on')).toBe(true);
-      expect(lastSaved()?.enabled).toBe(false);
-    }, { timeout: 3000 });
+    await reloadedAfterConnect(container);
+    await vi.waitFor(() => expect(lastSaved()?.enabled).toBe(false), { timeout: 3000 });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(store.rule).toMatchObject({ enabled: false, channels: ['email'] });
@@ -369,5 +376,47 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     }, { timeout: 3000 });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(container.querySelector('#usWebhookSecret')?.textContent, 'secret still shown').toBe('whsec_test_secret');
+  });
+  it('keeps an edit whose debounced save has not fired when the connect save lands', async () => {
+    gate.tier = true;
+    store.rule = rule({ enabled: false, channels: [] });
+    let release!: () => void;
+    store.saveGates.push(new Promise<void>((resolve) => { release = resolve; }));
+    const container = await mount();
+
+    container.querySelector<HTMLButtonElement>('#usConnectEmail')!.click();
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1));
+    const watchlist = container.querySelector<HTMLInputElement>('#usWatchlistAlerts')!;
+    watchlist.checked = true;
+    watchlist.dispatchEvent(new Event('change', { bubbles: true }));
+    release();
+    await reloadedAfterConnect(container);
+    expect(container.querySelector<HTMLInputElement>('#usWatchlistAlerts')?.checked, 'reload keeps the edit').toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    expect(lastSaved()?.eventTypes).toContain('watchlist_story_alert');
+    expect(store.rule?.eventTypes).toContain('watchlist_story_alert');
+    expect(store.rule).toMatchObject({ enabled: true, channels: ['email'] });
+  });
+
+  it('drops a queued rule save when the account changed before it could be sent', async () => {
+    gate.tier = true;
+    store.rule = rule({ enabled: false, channels: [] });
+    let release!: () => void;
+    store.saveGates.push(new Promise<void>((resolve) => { release = resolve; }));
+    const container = await mount();
+
+    container.querySelector<HTMLButtonElement>('#usConnectEmail')!.click();
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1));
+    const watchlist = container.querySelector<HTMLInputElement>('#usWatchlistAlerts')!;
+    watchlist.checked = true;
+    watchlist.dispatchEvent(new Event('change', { bubbles: true }));
+    // The watchlist save is queued behind the held connect save.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    clerkState.id = 'user_other_account';
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(channelMocks.saveAlertRules, 'no write under the other account').toHaveBeenCalledTimes(1);
   });
 });
