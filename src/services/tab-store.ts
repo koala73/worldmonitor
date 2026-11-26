@@ -15,6 +15,10 @@ import { DASHBOARD_TAB_ID_PATTERN, DASHBOARD_TAB_NAME_MAX_LENGTH } from '../../s
  * while a tab is active, the live global state (STORAGE_KEYS.panels +
  * PANEL_ORDER_KEY) is the source of truth, and the snapshot is refreshed
  * when the user switches away (see PanelLayoutManager.snapshotActiveTab).
+ *
+ * Signed in on the web, tabs also sync with the account one record per tab
+ * (#11141; src/services/tab-cloud-sync.ts). The active tab id stays per
+ * device and is not synced.
  */
 export interface PanelTab {
   id: string;
