@@ -266,6 +266,17 @@
     "utcOffsetMin": 480
   },
   {
+    "id": "searg",
+    "countryCode": "AR",
+    "name": "Argentina Secretaría de Energía pump prices",
+    "sourceUrl": "https://datos.energia.gob.ar/dataset/1c181390-5045-475e-94dc-410429be4b17",
+    "licence": "CC-BY-4.0",
+    "intervalMin": 720,
+    "maxContentAgeMin": 20160,
+    "script": "seed-regional-energy-searg.mjs",
+    "utcOffsetMin": -180
+  },
+  {
     "id": "oil111",
     "countryCode": "TW",
     "name": "Taiwan MOEA Energy Administration county fuel surveys",

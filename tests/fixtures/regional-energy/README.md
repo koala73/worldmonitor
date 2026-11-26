@@ -54,6 +54,14 @@ for 25 November (ULP 2.099, PULP 2.229, 98 RON 2.319, diesel 2.569 AUD/l) and
 the 24 November ULP median (1.947) were computed from the CSV independently
 with Python's `statistics.median`.
 
+`searg-surtidor-2024-02-06.csv` (#11154) is an unmodified excerpt of the
+Secretaría de Energía "Precios vigentes en surtidor - Resolución 314/2016" CSV
+(CC-BY-4.0): the header and every row of the first 40 stations, in file order,
+from the Internet Archive capture of 2024-02-06 08:41:39 UTC
+(`web.archive.org/web/20240206084139id_/http://datos.energia.gob.ar/...`). The
+live host refused connections when the feed was written. The tests freeze time
+at 2024-02-06 12:00 UTC.
+
 `oil111-92.json`, `oil111-95.json`, `oil111-98.json`, `oil111-diesel.json` and
 `oil111-lpg.json` are the unmodified (re-indented) responses of
 `https://www2.moeaea.gov.tw/oil111/{Gasoline,LPG}/CountyCityAvg/load` posted with

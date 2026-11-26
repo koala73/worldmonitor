@@ -31,6 +31,7 @@ is added.
 | CREG | CO | Regulated regular gasoline and diesel prices by main city and their published average (COP/gal), newest three price changes | 12 hours |
 | URSEA | UY | Maximum pump prices set by the Executive (UYU/l; LPG UYU/kg), the PMIT maximum wholesale price, and URSEA's reference retail and import parity prices | 12 hours |
 | FuelWatch | AU (Western Australia only) | Median pump price across stations on the newest day for ULP, PULP, 98 RON and diesel (AUD/l) | 12 hours |
+| Secretaría de Energía | AR | Median daytime pump price across stations for super and premium gasoline and grade 2 and grade 3 diesel (ARS/l) | 12 hours |
 | MOEA Energy Administration (oil111) | TW | Weekly national and county survey means for 92, 95 and 98 unleaded and super diesel (TWD/l); monthly 20 kg LPG cylinder means (TWD/20kg) | 1 day |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
@@ -93,6 +94,27 @@ FuelWatch page grants its reuse. FuelWatch covers Western Australia only, so the
 fuel-price panel names the row "Australia (Western Australia)" and shows the ULP
 and diesel medians for 5 days after their date. Credit: FuelWatch, Government of
 Western Australia.
+
+Argentina's pump prices (#11154) come from the Secretaría de Energía's
+Resolution 314/2016 dataset (CC-BY-4.0): a CSV of each station's latest declared
+price per product and tariff. A station keeps its row after it stops declaring,
+so the file reaches back to 2017. The feed takes daytime rows, keeps each
+station's newest declaration per product, and publishes the median over
+stations that declared within 30 days of the newest declaration in the file.
+A station whose price has held for more than 30 days drops out of that window,
+so the median leans toward stations that repriced recently. In the 2024-02-06
+file, about 3,490 of the 4,191 stations with a super gasoline row fell inside it. The observation date is that newest declaration's day in Argentina (UTC-3).
+Fewer than 200 stations for super gasoline or grade 2 diesel, a renamed product
+or tariff code, or more than 5% unreadable rows (a bad price or date, or a row
+with the wrong number of cells) fails the run, and last-good data
+is kept. CNG is priced per cubic metre and is not collected. The
+fuel-price panel shows the super and grade 2 medians for 14 days after their
+date, and only with a live ARS quote: the peso moves too fast for the static
+shared fallback rate. The provider host was unreachable from every vantage
+point tested on 2026-11-23 and 2026-11-26, so the parser was built from the
+2024-02-06 Internet Archive capture of the same file. The regional bundle runs
+in us-east4, which reaches CAMMESA; the 12-hour poll retries an outage on the
+next due tick.
 
 Taiwan's county surveys (#10113) come from the MOEA Energy Administration's
 oil111 site, whose open-data declaration licenses its data for free reuse with

@@ -26,6 +26,7 @@ import {
   CREG_PAGE_URL, parseCregPrices,
   URSEA_TOPIC_URL, discoverUrseaPages, parseUrseaMaximumPrices, parseUrseaReferencePrices,
   FUELWATCH_HOST, fuelWatchCsvUrls, parseFuelWatchPrices,
+  SEARG_CSV_URL, parseSeArgentinaPrices,
   OIL111_HOST, OIL111_REQUESTS, parseOil111Survey,
 } from './lib/regional-fuel-feeds.mjs';
 
@@ -42,6 +43,7 @@ const DOWNLOAD_HOSTS = new Set([
   'www.qatarenergy.qa', 'www.erb.org.zm', 'npa.gov.gh', 'www.sonabhy.bf', ...SONABHY_API_HOSTS,
   'www.zera.co.zw', DOE_HOST, DOE_MEDIA_HOST, 'www.anp.tl', 'creg.gov.co', 'www.gub.uy',
   FUELWATCH_HOST,
+  'datos.energia.gob.ar',
   OIL111_HOST,
 ]);
 export const regionalEnergyKey = id => `energy:regional:${id}:v1`;
@@ -334,6 +336,11 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
       try { points = parseFuelWatchPrices(body, nowMs); } catch (err) { if (err.message !== 'FuelWatch station sample is incomplete') throw err; }
     }
     if (!points?.length) points = parseFuelWatchPrices(await readMonth(previous), nowMs);
+  }
+  if (id === 'searg') {
+    // About 9 MB of station rows from a host that is often slow to answer. runSeed
+    // ends the fetch phase 40 s before the 120 s section timeout, so the read stops at 75 s.
+    points = parseSeArgentinaPrices(await read(SEARG_CSV_URL, 'text', undefined, 75000), nowMs);
   }
   if (id === 'oil111') {
     // Five small POST responses: four weekly pump surveys and the monthly LPG survey.

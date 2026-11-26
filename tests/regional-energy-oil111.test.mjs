@@ -52,6 +52,7 @@ describe('Taiwan oil111 county surveys', () => {
     assert.throws(changed(p => { p.res = '02'; }), /Changed oil111/);
     assert.throws(changed(p => { p.data.start = '2026/11/15 ~ 2026/11/22'; }), /Changed oil111 Unleaded 92 week/);
     assert.throws(changed(p => { p.data.gasoline[0].City = '台北'; }), /Changed oil111 county/);
+    assert.throws(changed(p => { p.data.gasoline.push({ ...p.data.gasoline[0], City: 'constructor' }); }), /Changed oil111 county constructor/, 'an inherited name is not a county');
     assert.throws(changed(p => { p.data.gasoline[0].SurDate = '2026/11/08 ~ 2026/11/14'; }), /Changed oil111 Unleaded 92 survey/);
     assert.throws(changed(p => { p.data.gasoline[0].Asnum = 1.5; }), /Changed oil111 survey groups/);
     assert.throws(changed(p => { p.data.gasoline[0].Aavg = 310; }), /Implausible oil111 price/);
