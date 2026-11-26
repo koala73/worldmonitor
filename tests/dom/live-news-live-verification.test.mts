@@ -885,6 +885,20 @@ describe('Live News live verification', () => {
         expect(analytics.track).not.toHaveBeenCalledWith('live-video-attempt-failed', expect.anything());
       });
 
+      it('drops Tap to play as soon as an early tap starts the video, while it is still buffering', async () => {
+        const play = await mountRefusedBloomberg();
+        await flush(TAP_MS + POLL);
+        expect(status()?.textContent).toBe('Tap to play');
+
+        play.mockResolvedValue(undefined);
+        status()!.querySelector('button')!.click();
+        Object.defineProperty(mediaVideo(), 'paused', { configurable: true, value: false });
+        mediaVideo().dispatchEvent(new Event('play'));
+        await flush(POLL);
+        expect(status()?.textContent).toBe('Connecting to Bloomberg…');
+        expect(status()?.querySelector('button')).toBeNull();
+      });
+
       it('plays the stream once the viewer taps, and keeps holding it while it buffers instead of moving on', async () => {
         const play = await mountRefusedBloomberg();
         await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);

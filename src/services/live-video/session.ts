@@ -714,7 +714,8 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
       // Only the last source offers a play control: an earlier one that stalls is about to hand over to the next.
       const hint = connectingHint(observation);
       const next = { ready: hint.ready, tapToPlay: hint.tapToPlay && options.holdUnstarted === true && lastSource };
-      if (next.ready !== lastHint.ready || next.tapToPlay !== lastHint.tapToPlay) {
+      // A resumed hold must replace the panel's unverified state even when the hint matches the one sent before it.
+      if (held || next.ready !== lastHint.ready || next.tapToPlay !== lastHint.tapToPlay) {
         lastHint = next;
         options.onState({ ...(viewState(state, parsed) as Extract<LiveVideoState, { phase: 'connecting' }>), ...next });
       }
