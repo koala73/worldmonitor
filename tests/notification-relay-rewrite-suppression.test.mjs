@@ -234,6 +234,23 @@ describe('reworded news alerts (#10916)', () => {
     } finally { h.restore(); }
   });
 
+  // #10976: the miss audit read a skipped rewrite as a story nobody received,
+  // because it matched receipts to headlines by shared words.
+  it('records the skipped rewrite and the alert it repeats on the score-log row', async () => {
+    const h = installHarness();
+    try {
+      await relay.processEvent(alert(CNN));
+      await relay.processEvent(alert(SUN));
+      await new Promise(done => setImmediate(done));
+      const rows = [...(h.zsets.get('shadow:score-log:v5') ?? new Map()).keys()].map(m => JSON.parse(m));
+      const outcomeOf = title => rows.find(r => r.title === title.slice(0, 160))?.outcome;
+      assert.deepEqual(outcomeOf(CNN), { matched: 1, sent: 1 });
+      assert.deepEqual(outcomeOf(SUN), {
+        matched: 1, repeat: 1, repeatOf: { id: `full:${newsPublisherCoverageKey(CNN).split(':').pop()}`, title: CNN.slice(0, 160) },
+      });
+    } finally { h.restore(); }
+  });
+
   // Gemini 2.5 Flash on a one-token answer called 10 of 21 rewrites of the
   // 2026-11-20 Russia-Poland strike new developments (10 emails for one
   // incident). The judge reasons now, so it needs a reasoning model, room to

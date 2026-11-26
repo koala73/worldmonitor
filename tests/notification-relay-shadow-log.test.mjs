@@ -1,66 +1,155 @@
 /**
- * Regression test: scripts/notification-relay.cjs must write to the shadow
- * log exactly ONCE per rss_alert event. Before the fix, processEvent() called
- * shadowLogScore() twice, producing ~50% near-duplicate pairs in
- * shadow:score-log:v1 (docs/internal/scoringDiagnostic.md §4).
- *
- * The relay runs with live Convex + Upstash connections, so we test the
- * contract by static analysis of the source rather than integration.
+ * shadow:score-log:v5 holds one row per dequeued rss_alert, written at dequeue
+ * time, and (#10976) the outcome the relay reached for it: how many realtime
+ * rules matched and where each one stopped. The daily miss audit
+ * (scripts/lib/alert-miss-audit.mjs) reads delivery from that outcome. Drives
+ * the real processEvent with stubbed Convex, Upstash and Telegram.
  *
  * Run: node --test tests/notification-relay-shadow-log.test.mjs
  */
 
-import { describe, it } from 'node:test';
+import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import Module, { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const relaySrc = readFileSync(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
   'utf-8',
 );
 
-function extractProcessEvent(src) {
-  const idx = src.indexOf('async function processEventDelivery(');
-  assert.ok(idx !== -1, 'processEvent not found in notification-relay.cjs');
-  const openIdx = src.indexOf('{', idx);
-  let depth = 1;
-  let i = openIdx + 1;
-  while (i < src.length && depth > 0) {
-    if (src[i] === '{') depth++;
-    else if (src[i] === '}') depth--;
-    i++;
+process.env.UPSTASH_REDIS_REST_URL ??= 'https://stub.upstash.io';
+process.env.UPSTASH_REDIS_REST_TOKEN ??= 'stub-token';
+process.env.CONVEX_URL ??= 'https://stub.convex.cloud';
+process.env.CONVEX_NOTIFICATION_RELAY_SECRET ??= 'stub-secret';
+const savedEnv = { TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN, IMPORTANCE_SCORE_MIN: process.env.IMPORTANCE_SCORE_MIN, IMPORTANCE_SCORE_LIVE: process.env.IMPORTANCE_SCORE_LIVE, OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY };
+// Read at import: the live ingress gate drops scores under 40.
+process.env.TELEGRAM_BOT_TOKEN = 'stub-bot-token';
+process.env.IMPORTANCE_SCORE_LIVE = '1';
+process.env.IMPORTANCE_SCORE_MIN = '40';
+delete process.env.OPENROUTER_API_KEY;
+
+const originalLoad = Module._load;
+Module._load = function patchedLoad(request, parent, ...rest) {
+  if (request === 'resend') return { Resend: class {} };
+  if (request === 'convex/browser') return { ConvexHttpClient: class { async query() {} } };
+  return originalLoad.call(this, request, parent, ...rest);
+};
+
+let relay;
+let originalFetch;
+before(() => {
+  relay = require(resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'));
+  originalFetch = globalThis.fetch;
+});
+afterEach(() => { globalThis.fetch = originalFetch; });
+after(() => {
+  for (const [key, value] of Object.entries(savedEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
-  return src.slice(idx, i);
+});
+
+const rule = { userId: 'user-1', digestMode: 'realtime', eventTypes: [], sensitivity: 'critical', countries: [], tickers: [], channels: ['telegram'], variant: 'full' };
+const TELEGRAM = { channelType: 'telegram', verified: true, telegramOwnership: 'verified_callback', chatId: 'chat-1' };
+
+let seq = 0;
+const alert = (importanceScore, variant = 'full') => ({
+  eventType: 'rss_alert',
+  severity: 'critical',
+  variant,
+  payload: { title: `Tankers struck near Ras Tanura terminal #${++seq}`, source: 'Test Wire', importanceScore, publishedAt: Date.now() - 60_000 },
+});
+
+async function drive(rules, event, channelsFor = () => [TELEGRAM]) {
+  const logs = [];
+  const rows = [];
+  const sentAt = [];
+  const silence = [console.log, console.warn, console.error, console.info];
+  console.log = (...a) => logs.push(a.join(' '));
+  console.warn = console.error = console.info = () => {};
+  globalThis.fetch = async (url, opts = {}) => {
+    const parsed = new URL(String(url));
+    if (parsed.pathname.includes('/relay/enabled-rules')) return { ok: true, json: async () => rules.map((r) => ({ ...rule, ...r })) };
+    if (parsed.pathname.includes('/relay/entitlement')) return { ok: true, json: async () => ({ tier: 1 }) };
+    if (parsed.pathname.includes('/relay/channels')) return { ok: true, json: async () => channelsFor(JSON.parse(opts.body).userId) };
+    if (parsed.hostname === 'api.telegram.org') {
+      sentAt.push(Date.now());
+      return { status: 200, ok: true, json: async () => ({ ok: true }) };
+    }
+    if (parsed.pathname.endsWith('/pipeline')) {
+      for (const [cmd, key, score, member] of JSON.parse(opts.body)) {
+        if (cmd === 'ZADD' && key === 'shadow:score-log:v5') rows.push({ score: Number(score), ...JSON.parse(member) });
+      }
+      return { ok: true, json: async () => [] };
+    }
+    if (String(url).includes('/SET/')) return { ok: true, json: async () => ({ result: 'OK' }) };
+    return { ok: true, json: async () => ({ result: null }) };
+  };
+  const dequeuedAt = Date.now();
+  try {
+    await relay.processEvent(event);
+  } finally {
+    [console.log, console.warn, console.error, console.info] = silence;
+  }
+  return { logs, rows, sentAt, dequeuedAt };
 }
 
-describe('notification-relay shadowLogScore discipline', () => {
-  const processEvent = extractProcessEvent(relaySrc);
-
-  it('calls shadowLogScore exactly once inside processEvent', () => {
-    const calls = processEvent.match(/shadowLogScore\s*\(/g) || [];
-    assert.equal(
-      calls.length, 1,
-      `processEvent must call shadowLogScore exactly once; found ${calls.length}`,
-    );
+describe('score-log row per dequeued rss_alert', () => {
+  it('writes one row at dequeue time with the delivery outcome', async () => {
+    const { rows, sentAt, dequeuedAt } = await drive([{}], alert(88));
+    assert.equal(rows.length, 1);
+    const [row] = rows;
+    assert.equal(row.score, row.ts, 'the zset score is the row time');
+    assert.ok(row.ts >= dequeuedAt && row.ts <= sentAt[0], 'ts is when the relay took the event, before it sent');
+    assert.equal(row.severity, 'critical');
+    assert.equal(row.variant, 'full');
+    assert.equal(row.source, 'Test Wire');
+    assert.equal(row.corroborationCount, null);
+    assert.deepEqual(row.outcome, { matched: 1, sent: 1 });
   });
 
-  it('calls shadowLogScore before the score gate, not after', () => {
-    const shadowIdx = processEvent.indexOf('shadowLogScore');
-    const gateIdx = processEvent.indexOf('IMPORTANCE_SCORE_LIVE');
-    assert.ok(shadowIdx !== -1, 'shadowLogScore call not found');
-    assert.ok(gateIdx !== -1, 'IMPORTANCE_SCORE_LIVE gate not found');
-    assert.ok(
-      shadowIdx < gateIdx,
-      'shadowLogScore must fire before the live score gate so we measure what would have been dropped',
-    );
+  it('still logs an event the live score gate drops, and says so', async () => {
+    const { rows } = await drive([{}], alert(30));
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].outcome, { stopped: 'score_gate' });
+  });
+
+  it('records the gates that dropped every rule when none matched', async () => {
+    const { rows } = await drive([{ variant: 'finance' }, { userId: 'user-2', sensitivity: 'critical', digestMode: 'daily' }], alert(88));
+    assert.deepEqual(rows[0].outcome, { matched: 0, noRule: { edition: 1, digest_mode: 1 } });
+  });
+
+  // 2026-11-22..25: every energy realtime rule listed no channel or only an
+  // unverified one, and the relay dropped them without a line.
+  it('counts rules with no usable channel and logs one summary line', async () => {
+    const energy = [
+      { userId: 'user-1', variant: 'energy', channels: [] },
+      { userId: 'user-2', variant: 'energy', channels: [] },
+      { userId: 'user-3', variant: 'energy', channels: [] },
+      { userId: 'user-4', variant: 'energy', channels: ['web_push'] },
+    ];
+    const unverifiedPush = { channelType: 'web_push', verified: false, endpoint: 'https://push.example/1', p256dh: 'k', auth: 'a' };
+    const { rows, logs, sentAt } = await drive(energy, alert(88, 'energy'), (userId) => (userId === 'user-4' ? [unverifiedPush] : [TELEGRAM]));
+    assert.equal(sentAt.length, 0);
+    assert.deepEqual(rows[0].outcome, { matched: 4, noChannelListed: 3, noChannelVerified: 1 });
+    assert.deepEqual(logs.filter((l) => l.startsWith('[relay] No usable channel:')), [
+      '[relay] No usable channel: dropped 4 rule(s) for edition="energy" (3 list no channel, 1 list no verified channel)',
+    ]);
+  });
+
+  it('counts a user whose every send failed apart from those it reached', async () => {
+    const { rows } = await drive([{}, { userId: 'user-2' }], alert(88), (userId) => (userId === 'user-2' ? [{ ...TELEGRAM, chatId: undefined }] : [TELEGRAM]));
+    assert.deepEqual(rows[0].outcome, { matched: 2, sent: 1, sendFailed: 1 });
   });
 });
 
 describe('shadow-log key version', () => {
-  it('uses the v4 JSON-member key (prompt upgrade clean dataset)', () => {
+  it('uses the v5 JSON-member key', () => {
     assert.match(
       relaySrc,
       /SHADOW_SCORE_LOG_KEY\s*=\s*['"]shadow:score-log:v5['"]/,
@@ -70,18 +159,6 @@ describe('shadow-log key version', () => {
       !/SHADOW_SCORE_LOG_KEY\s*=\s*['"]shadow:score-log:v[1234]['"]/.test(relaySrc),
       'legacy v1/v2/v3/v4 keys must not be active',
     );
-  });
-
-  it('shadowLogScore encodes a JSON record with severity + corroboration', () => {
-    const fnStart = relaySrc.indexOf('async function shadowLogScore');
-    assert.ok(fnStart !== -1, 'shadowLogScore not found');
-    const fnEnd = relaySrc.indexOf('\nasync function ', fnStart + 1);
-    const fn = relaySrc.slice(fnStart, fnEnd === -1 ? fnStart + 2000 : fnEnd);
-    assert.match(fn, /JSON\.stringify/, 'member must be JSON-encoded');
-    assert.match(fn, /severity:/, 'record must include severity');
-    assert.match(fn, /corroborationCount:/, 'record must include corroborationCount');
-    assert.match(fn, /variant:/, 'record must include variant');
-    assert.match(fn, /source:/, 'record must include source');
   });
 });
 
