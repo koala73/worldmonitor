@@ -298,7 +298,7 @@ describe("notificationChannels legacy alert-rule delivery validation", () => {
 
     const recovered = await save("critical");
     expect(recovered.status).toBe(200);
-    expect(await recovered.json()).toEqual({ ok: true });
+    expect(await recovered.json()).toEqual({ ok: true, enabled: false });
     expect(await t.run(ctx => ctx.db.get(id))).toMatchObject({ enabled: false, sensitivity: "critical" });
   });
 });

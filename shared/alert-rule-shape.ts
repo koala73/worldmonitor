@@ -182,3 +182,34 @@ export function getAlertRuleShapeViolation(input: {
 export function dedupeStrings<T extends string>(values: readonly T[]): T[] {
   return Array.from(new Set(values));
 }
+
+/**
+ * How a rule save resolves `enabled` (#10976). A save that sends `enabled`
+ * stores it. A save that omits it leaves the decision to the server: the save
+ * that stores a rule's first channel switches alerts on, and any other save
+ * keeps the stored value (off on insert).
+ */
+export interface ResolvedRuleEnabled {
+  enabled: boolean;
+  /** True when this save switches alerts on because it adds the first channel. */
+  firstChannel: boolean;
+}
+
+export function resolveRuleEnabled(
+  requested: boolean | undefined,
+  stored: { enabled: boolean; channels: readonly string[] } | null,
+  channels: readonly string[] | undefined,
+): ResolvedRuleEnabled {
+  if (requested !== undefined) return { enabled: requested, firstChannel: false };
+  if ((stored?.channels.length ?? 0) === 0 && (channels?.length ?? 0) > 0) {
+    return { enabled: true, firstChannel: true };
+  }
+  return { enabled: stored?.enabled ?? false, firstChannel: false };
+}
+
+/** What a rule save reports back: the stored `enabled`, and the first-channel decision when one was made. */
+export interface RuleSaveResult {
+  enabled: boolean;
+  firstChannel?: 'on' | 'held';
+  reason?: { code: string; message: string };
+}
