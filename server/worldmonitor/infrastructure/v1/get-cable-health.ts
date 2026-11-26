@@ -21,7 +21,14 @@ import { extractCableShipName, isCableRelatedNotice, isFreshNotice } from '../..
 const CACHE_KEY = 'cable-health-v1';
 const META_KEY = 'seed-meta:cable-health';
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+// Serving cutoff: a snapshot older than this is never returned to callers.
 const MAX_RETAINED_AGE_MS = 90 * 60 * 1000; // Same bound as the cable health seed budget.
+// Redis lifetime of a snapshot. Health rounds age to whole minutes and calls it
+// stale only above its 90-minute maxStaleMin, so the payload must outlive 90.5
+// minutes; otherwise a late warm-ping reads as EMPTY (crit) instead of
+// STALE_SEED (warn).
+const CACHE_RETENTION_MS = 95 * 60 * 1000;
+export const CABLE_HEALTH_CACHE_TTL_SECONDS = CACHE_RETENTION_MS / 1000;
 const NGA_CACHE_KEY = 'cable-health-nga-warnings-v2';
 const NGA_CACHE_TTL = 86400; // 24h — raw NGA warnings are stable; long TTL survives relay downtime without hammering upstream
 
@@ -413,7 +420,7 @@ function isUsableSnapshot(value: unknown): value is GetCableHealthResponse {
 }
 
 async function repairSnapshot(snapshot: GetCableHealthResponse): Promise<void> {
-  const deadline = snapshot.generatedAt + MAX_RETAINED_AGE_MS;
+  const deadline = snapshot.generatedAt + CACHE_RETENTION_MS;
   const encoded = JSON.stringify(snapshot);
   const metadata = { fetchedAt: snapshot.generatedAt, recordCount: Object.keys(snapshot.cables).length };
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
@@ -435,7 +442,7 @@ async function repairSnapshot(snapshot: GetCableHealthResponse): Promise<void> {
 }
 
 async function publishSnapshot(snapshot: GetCableHealthResponse): Promise<void> {
-  const remainingSeconds = Math.floor((snapshot.generatedAt + MAX_RETAINED_AGE_MS - Date.now()) / 1000);
+  const remainingSeconds = Math.floor((snapshot.generatedAt + CACHE_RETENTION_MS - Date.now()) / 1000);
   if (remainingSeconds <= 0) return;
   // Metadata describes a confirmed payload, never a cache read or failed refresh.
   if (await setCachedJson(CACHE_KEY, snapshot, remainingSeconds)) {
@@ -468,7 +475,7 @@ async function loadCableHealth(): Promise<GetCableHealthResponse> {
     // The retained snapshot below has the same deadline on every failed refresh.
   }
   if (isUsableSnapshot(retained)) {
-    const remainingSeconds = Math.floor((retained.generatedAt + MAX_RETAINED_AGE_MS - Date.now()) / 1000);
+    const remainingSeconds = Math.floor((retained.generatedAt + CACHE_RETENTION_MS - Date.now()) / 1000);
     if (!isUsableSnapshot(cached) && remainingSeconds > 0) {
       // Repair an evicted key without overwriting a concurrent refresh or
       // changing the original success clock and retention deadline.

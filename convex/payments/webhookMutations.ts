@@ -18,7 +18,8 @@ import {
   handlePaymentOrRefundEvent,
   handleDisputeEvent,
   resolvePlanKey,
-  isCoveringAt,
+  accessEndAt,
+  hasAccessAt,
   compareSubscriptionsByCoverage,
   billingDeletionForEvent,
   billingDeletionForUser,
@@ -684,10 +685,10 @@ export const attributeUnattributedPayment = internalMutation({
       const entitlement = await ctx.db.query("entitlements")
         .withIndex("by_userId", (q) => q.eq("userId", args.userId)).first();
       const now = Date.now();
-      if (!subscription || !isCoveringAt(subscription, now) || !entitlement || entitlement.validUntil <= now
+      if (!subscription || !hasAccessAt(subscription, now) || !entitlement || entitlement.validUntil <= now
         || compareSubscriptionsByCoverage(
           { planKey: entitlement.planKey, currentPeriodEnd: entitlement.validUntil },
-          { planKey: subscription.planKey, currentPeriodEnd: subscription.currentPeriodEnd },
+          { planKey: subscription.planKey, currentPeriodEnd: accessEndAt(subscription) },
         ) < 0) {
         throw new Error("[webhook] Matching subscription access is not confirmed; repair fulfillment before resolving this incident.");
       }

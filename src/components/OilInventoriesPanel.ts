@@ -245,7 +245,7 @@ export class OilInventoriesPanel extends Panel {
       const chartData = reversed.map(h => ({ x: h.date, y: h.fillPct }));
       const chart = buildLineChart(chartData, '#14b8a6', '%', 100);
       const sign = d.euGas.fillPctChange1d >= 0 ? '+' : '';
-      const meta = `Fill: ${escapeHtml(fmtNum(d.euGas.fillPct))}% | Trend: ${escapeHtml(d.euGas.trend)} | ${escapeHtml(sign + fmtNum(d.euGas.fillPctChange1d, 2))}%/d`;
+      const meta = `Fill: ${escapeHtml(fmtNum(d.euGas.fillPct))}% | Trend: ${escapeHtml(d.euGas.trend)} | ${escapeHtml(sign + fmtNum(d.euGas.fillPctChange1d, 2))} pp/d`;
       parts.push(section('EU Gas Storage Fill', chart, meta));
     }
 

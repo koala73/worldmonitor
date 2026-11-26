@@ -54,3 +54,66 @@ export function climateNewsContentMeta(data, nowMs = Date.now()) {
  * upstream-aggregator outage where every feed's parse silently breaks.
  */
 export const CLIMATE_NEWS_MAX_CONTENT_AGE_MIN = 7 * 24 * 60;
+
+// Per-item age cap for the latest-news panel. Climate Central's feed still
+// carries 2021-2022 articles that would otherwise fill the 100-item cap.
+export const CLIMATE_NEWS_MAX_ITEM_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+const OFF_EARTH_RE = /\b(martian|rover|exoplanets?|jupiter|saturn|venus)\b/i;
+// Checked only on feeds without a topic gate (English Earth-science feeds):
+// in ReliefWeb's French reports "Mars" is March ("01-08 Mars 2027").
+// Case-sensitive so UNEP's all-caps MARS (Methane Alert and Response System) passes.
+const MARS_RE = /\bMars\b/;
+
+// Applied to feeds whose scope is wider than climate (ReliefWeb's climate
+// theme also tags generic humanitarian bulletins and AI-policy reports).
+const CLIMATE_TOPIC_RE = /\b(climat\w*|clim[aá]tic\w*|weather|floods?|flooding|inondations?|inundaci\w*|droughts?|s[eé]cheresses?|sequ[ií]as?|heat\s*waves?|heatwaves?|extreme heat|canicul\w*|wildfires?|bushfires?|forest fires?|incendi\w*|cyclones?|hurricanes?|typhoons?|storms?|monsoons?|rainfall|el ni[nñ]o|la ni[nñ]a|emissions?|emisiones|carbon[eo]?|greenhouse|calentamiento|clima|warming|sea[- ]level|glaciers?|deforestation|biodiversity|environment\w*|environnement\w*|disaster risk|resilience|adaptation)\b/i;
+
+export function resolveReliefWebUrl(urlAlias) {
+  if (typeof urlAlias !== 'string' || !urlAlias.trim()) return '';
+  try {
+    return new URL(urlAlias.trim(), 'https://reliefweb.int').href;
+  } catch {
+    return '';
+  }
+}
+
+// `topics` carries source-side tags (ReliefWeb disaster types) that count as
+// topic evidence but are not part of the published item.
+export function isClimateNewsItemRelevant(item, { requireTopicMatch = false } = {}) {
+  const text = `${item?.title || ''} ${item?.summary || ''}`;
+  if (OFF_EARTH_RE.test(text)) return false;
+  if (!requireTopicMatch) return !MARS_RE.test(text);
+  return CLIMATE_TOPIC_RE.test(`${text} ${(item?.topics || []).join(' ')}`);
+}
+
+/**
+ * Merge per-feed results into the newest-first, URL-deduplicated panel list.
+ *
+ * @param {Array<{feed: {requireTopicMatch?: boolean}, items: Array}>} feedResults
+ * @param {number} nowMs
+ * @param {number} maxItems
+ */
+export function selectClimateNewsItems(feedResults, nowMs = Date.now(), maxItems = 100) {
+  const oldestAllowed = nowMs - CLIMATE_NEWS_MAX_ITEM_AGE_MS;
+  const candidates = [];
+  for (const { feed, items } of feedResults) {
+    for (const item of items) {
+      if (!(item.publishedAt >= oldestAllowed)) continue;
+      if (!isClimateNewsItemRelevant(item, feed)) continue;
+      const { topics: _topics, ...published } = item;
+      candidates.push(published);
+    }
+  }
+  candidates.sort((a, b) => b.publishedAt - a.publishedAt);
+
+  const seenUrls = new Set();
+  const selected = [];
+  for (const item of candidates) {
+    if (seenUrls.has(item.url)) continue;
+    seenUrls.add(item.url);
+    selected.push(item);
+    if (selected.length >= maxItems) break;
+  }
+  return selected;
+}

@@ -150,11 +150,17 @@ function normalize({ source, sourceNoticeId, officialUrl, countryCode = '', regi
 
 export { normalize as normalizePublicTender };
 
+// SAM search returns a noticedesc API link, which needs an API key, in place of the notice text.
+function samDescription(value) {
+  const description = firstString(value);
+  return /^https?:\/\/\S+$/i.test(description) ? '' : description;
+}
+
 export function normalizeSamOpportunity(raw) {
   const noticeId = firstString(raw?.noticeId, raw?.notice_id, raw?.solicitationNumber);
   return normalize({
     source: 'sam', sourceNoticeId: noticeId, officialUrl: firstString(raw?.uiLink, raw?.link, noticeId && `https://sam.gov/opp/${noticeId}/view`),
-    countryCode: 'US', region: 'North America', title: raw?.title, description: firstString(raw?.description, raw?.fullParentPathName),
+    countryCode: 'US', region: 'North America', title: raw?.title, description: samDescription(raw?.description),
     buyer: firstString(raw?.fullParentPathName, raw?.office), publishedAt: raw?.postedDate, updatedAt: raw?.modifiedDate,
     deadline: raw?.responseDeadLine, status: raw?.type === 'Award Notice' ? 'awarded' : 'open', noticeType: raw?.type,
     categoryCodes: raw?.naicsCode, sectors: raw?.classificationCode,

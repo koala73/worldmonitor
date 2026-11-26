@@ -101,6 +101,7 @@
       "scripts/shared/other-tokens.json",
       "scripts/shared/pizzint-history.cjs",
       "scripts/shared/story-identity.js",
+      "scripts/shared/theater-posture.js",
       "scripts/shared/air-traffic-aggregate.cjs",
       "scripts/shared/air-traffic-history.cjs",
       "scripts/shared/air-traffic-detector.cjs",
@@ -162,7 +163,12 @@
       "scripts/lib/brief-dedup-jaccard.mjs",
       "scripts/lib/_upstash-pipeline.mjs",
       "scripts/lib/llm-chain.cjs",
-      "scripts/shared/publisher-families.js"
+      "scripts/shared/publisher-families.js",
+      "scripts/_intel-history-collectors.mjs",
+      "scripts/_seed-history.mjs",
+      "scripts/lib/intel-history-cost.mjs",
+      "shared/country-names.json",
+      "shared/iso3-to-iso2.json"
     ],
     "documentedAt": "Dockerfile.relay"
   },
@@ -301,6 +307,7 @@
       "scripts/shared/notification-dedup.cjs",
       "scripts/shared/notification-link-suppression.cjs",
       "scripts/shared/notify-fields.cjs",
+      "scripts/shared/publisher-families.js",
       "scripts/shared/story-identity.js"
     ],
     "cronSchedule": null,
@@ -474,49 +481,13 @@
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
       "IRAN_EVENTS_ENABLED",
-      "R2_ACCOUNT_ID",
-      "R2_BOOTSTRAP_BUCKET",
-      "R2_BOOTSTRAP_ACCESS_KEY_ID",
-      "R2_BOOTSTRAP_SECRET_ACCESS_KEY"
+      "KV_BOOTSTRAP_ACCOUNT_ID",
+      "KV_BOOTSTRAP_NAMESPACE_ID",
+      "KV_BOOTSTRAP_WRITE_TOKEN"
     ],
     "watchPatterns": [],
     "cronSchedule": null,
-    "documentedAt": "issue #5300 U3 Railway provisioning contract"
-  },
-  {
-    "entry": "scripts/seed-bundle-portwatch-port-activity.mjs",
-    "deployMode": "dockerfile",
-    "dockerfile": "Dockerfile.seed-bundle-portwatch-port-activity",
-    "service": "seed-bundle-portwatch-port-activity",
-    "requiredEnv": [
-      "UPSTASH_REDIS_REST_URL",
-      "UPSTASH_REDIS_REST_TOKEN",
-      "PROXY_URL"
-    ],
-    "watchPatterns": [
-      ".dockerignore",
-      "Dockerfile.seed-bundle-portwatch-port-activity",
-      "scripts/_bundle-runner.mjs",
-      "scripts/_country-resolver.mjs",
-      "scripts/_env-file.mjs",
-      "scripts/_portwatch-content-freshness.mjs",
-      "scripts/_portwatch-request-diagnostics.mjs",
-      "scripts/_proxy-utils.cjs",
-      "scripts/_seed-contract.mjs",
-      "scripts/_seed-envelope-source.mjs",
-      "scripts/_seed-payload-codec.mjs",
-      "scripts/_seed-utils.mjs",
-      "scripts/lib/llm-telemetry.cjs",
-      "scripts/seed-bundle-portwatch-port-activity.mjs",
-      "scripts/seed-portwatch-port-activity.mjs",
-      "scripts/shared/compare-and-delete-script.cjs",
-      "scripts/shared/country-names.json",
-      "scripts/shared/iso3-to-iso2.json",
-      "shared/country-names.json",
-      "shared/iso3-to-iso2.json"
-    ],
-    "cronSchedule": "0 */12 * * *",
-    "documentedAt": "Dockerfile.seed-bundle-portwatch-port-activity"
+    "documentedAt": "issue #11194 KV bootstrap publisher contract"
   },
   {
     "entry": "scripts/scenario-worker.mjs",
@@ -766,7 +737,19 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/railpack.json",
-      "scripts/shared/compare-and-delete-script.cjs"
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/_country-resolver.mjs",
+      "scripts/_intel-history-collectors.mjs",
+      "scripts/_seed-history.mjs",
+      "scripts/lib/_upstash-pipeline.mjs",
+      "scripts/lib/brief-dedup-consts.mjs",
+      "scripts/lib/brief-dedup-jaccard.mjs",
+      "scripts/lib/brief-embedding.mjs",
+      "scripts/lib/intel-history-cost.mjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso3-to-iso2.json",
+      "shared/country-names.json",
+      "shared/iso3-to-iso2.json"
     ],
     "cronSchedule": "*/30 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
@@ -847,8 +830,11 @@
       "scripts/seed-market-alert-ledger.mjs",
       "scripts/seed-regional-snapshots.mjs",
       "scripts/seed-tension-evidence.mjs",
+      "scripts/shared/cii-country-borders.data.mjs",
+      "scripts/shared/cii-country-borders.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/correlation-runtime-mode.js",
+      "scripts/shared/country-mention.js",
       "scripts/shared/country-names.json",
       "scripts/shared/entity-extraction-core.js",
       "scripts/shared/entity-registry.js",
@@ -864,6 +850,7 @@
       "scripts/shared/source-tiers.json",
       "scripts/shared/syndication.js",
       "scripts/shared/text-analysis-core.js",
+      "scripts/wildfire/fire-country.mjs",
       "shared/country-names.json",
       "shared/iso3-to-iso2.json"
     ],
@@ -1361,7 +1348,19 @@
       "scripts/railpack.json",
       "scripts/package-lock.json",
       "scripts/nixpacks.toml",
-      "scripts/shared/compare-and-delete-script.cjs"
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/_country-resolver.mjs",
+      "scripts/_intel-history-collectors.mjs",
+      "scripts/_seed-history.mjs",
+      "scripts/lib/_upstash-pipeline.mjs",
+      "scripts/lib/brief-dedup-consts.mjs",
+      "scripts/lib/brief-dedup-jaccard.mjs",
+      "scripts/lib/brief-embedding.mjs",
+      "scripts/lib/intel-history-cost.mjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso3-to-iso2.json",
+      "shared/country-names.json",
+      "shared/iso3-to-iso2.json"
     ],
     "cronSchedule": "0 */1 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-2-seed-bundle-portwatch"
@@ -1490,7 +1489,17 @@
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/ucdp-candidate.cjs",
       "scripts/shared/ucdp-state-parties.cjs",
-      "scripts/shared/world-bank-rpc-cache.js"
+      "scripts/shared/world-bank-rpc-cache.js",
+      "scripts/_country-resolver.mjs",
+      "scripts/_intel-history-collectors.mjs",
+      "scripts/_seed-history.mjs",
+      "scripts/lib/_upstash-pipeline.mjs",
+      "scripts/lib/brief-dedup-consts.mjs",
+      "scripts/lib/brief-dedup-jaccard.mjs",
+      "scripts/lib/brief-embedding.mjs",
+      "scripts/lib/intel-history-cost.mjs",
+      "shared/country-names.json",
+      "shared/iso3-to-iso2.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-11-seed-bundle-relay-backup"
   },
@@ -1727,9 +1736,11 @@
       "scripts/package.json",
       "scripts/railpack.json",
       "scripts/seed-hs2-chokepoint-exposure.mjs",
+      "scripts/shared/bilateral-chokepoint-transit.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/supply-vulnerability-commodities.json",
-      "scripts/shared/country-port-clusters.json"
+      "scripts/shared/country-port-clusters.json",
+      "scripts/shared/iso2-to-region.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
@@ -1971,7 +1982,19 @@
       "scripts/seed-earthquakes.mjs",
       "scripts/lib/source-request-diagnostics.mjs",
       "scripts/seismology/nrcan-atom.mjs",
-      "scripts/shared/compare-and-delete-script.cjs"
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/_country-resolver.mjs",
+      "scripts/_intel-history-collectors.mjs",
+      "scripts/_seed-history.mjs",
+      "scripts/lib/_upstash-pipeline.mjs",
+      "scripts/lib/brief-dedup-consts.mjs",
+      "scripts/lib/brief-dedup-jaccard.mjs",
+      "scripts/lib/brief-embedding.mjs",
+      "scripts/lib/intel-history-cost.mjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso3-to-iso2.json",
+      "shared/country-names.json",
+      "shared/iso3-to-iso2.json"
     ],
     "cronSchedule": "*/5 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -2027,6 +2050,7 @@
       "scripts/seed-fire-detections.mjs",
       "scripts/wildfire/bc-fire-points.mjs",
       "scripts/wildfire/cwfis-wfs.mjs",
+      "scripts/wildfire/fire-country.mjs",
       "scripts/wildfire/firms-area.mjs",
       "scripts/wildfire/source-outcome.mjs",
       "scripts/shared/cii-country-borders.data.mjs",
@@ -2281,11 +2305,7 @@
     "startCommand": "node seed-live-video-resolved.mjs",
     "requiredEnv": [
       "UPSTASH_REDIS_REST_URL",
-      "UPSTASH_REDIS_REST_TOKEN",
-      [
-        "LIVE_VIDEO_PROXY_URL",
-        "PROXY_URL"
-      ]
+      "UPSTASH_REDIS_REST_TOKEN"
     ],
     "watchPatterns": [
       "scripts/_env-file.mjs",
@@ -2395,8 +2415,12 @@
       "scripts/package.json",
       "scripts/railpack.json",
       "scripts/seed-country-history.mjs",
+      "scripts/shared/article-url.js",
       "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-mention.js",
       "scripts/shared/country-names.json",
+      "scripts/shared/news-catalog.json",
+      "scripts/shared/publisher-families.js",
       "scripts/shared/rankable-universe.mjs",
       "scripts/shared/sovereign-status.json"
     ],
@@ -2724,6 +2748,7 @@
       "scripts/_seed-utils.mjs",
       "scripts/crawlable-developments.mjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/shared/article-url.js",
       "scripts/shared/brief-llm-core.js",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
@@ -2733,6 +2758,7 @@
       "server/_shared/source-tiers.ts",
       "shared/article-url.js",
       "shared/brief-claim-rules.js",
+      "shared/headline-publisher.js",
       "shared/brief-llm-core.js",
       "shared/brief-sections.js",
       "shared/country-names.json",

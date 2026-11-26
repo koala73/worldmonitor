@@ -1,5 +1,9 @@
 import { expect, test, devices, type Page } from '@playwright/test';
 
+// Layout and paint timing are measured with motion on, as users see it;
+// playwright.config.ts turns reduced motion on for every other spec.
+test.use({ reducedMotion: 'no-preference' });
+
 type Box = {
   height: number;
   width: number;

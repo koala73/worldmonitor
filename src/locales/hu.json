@@ -370,6 +370,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Frissítsen PRO verzióra a fegyverszállító függőségek és katonai kapacitások megtekintéséhez"
+    },
+    "intelMemory": {
+      "title": "Történelmi Hírszerzési Memória",
+      "help": "180 napos archívum a figyelemre méltó fegyveres konfliktusokról, katonai eseményekről, energetikai helyzetekről, polgári zavargásokról, kibertámadásokról, tengeri incidensekről, természeti katasztrófákról és repülési eseményekről, igény szerinti szemantikai előzmény-keresésével.",
+      "loading": "Történelmi hírszerzési memória betöltése…",
+      "proLocked": "Frissítsen PRO verzióra a 180 napos történelmi hírszerzési memória és precedens keresés eléréséhez",
+      "unavailable": "A történelmi hírszerzési memória ideiglenesen nem elérhető.",
+      "retry": "Újra",
+      "empty": "Nincsenek olyan archiválva hírszerzési események, amelyek ehhez az országhoz és domenhez passzolnának a 180 napos ablakban.",
+      "partial": "Az archívum lefedettése ennél a lekérdezésnél részleges; az elérhető rekordok továbbra is láthatók.",
+      "domainFilterLabel": "Történelmi hírszerzés szűrése domen szerint",
+      "domains": {
+        "all": "Összes",
+        "conflict": "Konfliktus",
+        "military": "Katonai",
+        "energy": "Energia",
+        "unrest": "Zavargások",
+        "cyber": "Kibernetikai",
+        "maritime": "Tengeri",
+        "natural": "Természeti veszélyek",
+        "aviation": "Légiforgalom"
+      },
+      "loadMore": "Továbbiak betöltése",
+      "loadingMore": "Betöltés…",
+      "loadMoreError": "Nem sikerült további eseményeket betölteni. Próbálkozzon újra.",
+      "sourceLink": "Forrás ↗",
+      "similarTitle": "Hasonló korábbi események keresése",
+      "useLatestHeadline": "Legutóbbi címsor használata",
+      "similarPlaceholder": "Írjon le egy alakulóban lévő helyzetet (legalább 10 karakter)…",
+      "findSimilar": "Hasonló események keresése",
+      "similarMinLength": "Adjon meg legalább 10 karaktert a korábbi precedensek kereséséhez.",
+      "similarLoading": "Történelmi precedensek keresése…",
+      "similarEmpty": "Nincsenek olyan korábbi események, amelyek átlépték volna a hasonlósági küszöbértéket.",
+      "similarUnavailable": "A precedens keresés ideiglenesen nem elérhető. Próbálkozzon újra."
     }
   },
   "header": {
@@ -1089,8 +1123,10 @@
       "upstreamUnavailable": "Ellátási lánc adatok átmenetileg nem érhetők el – gyorsítótárolt adatok jelenítünk meg",
       "spikeAlert": "Kiugrás észlelve – az arány jelentősen a 52 hetes átlag fölött van (heti)",
       "warnings": "figyelmeztetés(ek)",
-      "aisDisruptions": "Hajókövetési zavarok",
+      "aisDisruptions_one": "{{count}} hajókövetési zavar",
+      "aisDisruptions_other": "{{count}} hajókövetési zavar",
       "wowChange": "Heti változás",
+      "asOf": "{{date}} állapot szerint",
       "riskLevel": "Kockázati szint",
       "disruption": "Zavar",
       "vessels": "hajók",
@@ -1316,7 +1352,7 @@
         "auxiliary": "Segédhajók",
         "navalVessels": "Hadihajók"
       },
-      "infoTooltip": "<strong>Módszertan</strong><p>Katonai repülőgépeket és hadihajókat összesít a hadszíntér szerint.</p><ul><li><strong>Normális:</strong> Alapértelmezett tevékenység</li><li><strong>Megemelkedett:</strong> A küszöbérték felett (50+ repülőgép)</li><li><strong>Kritikus:</strong> Magas koncentráció (100+ repülőgép)</li></ul><p><strong>Sztrájk képes:</strong> Tankerhajók + Légköri korai figyelmeztető + Vadászrepülőgépek megfelelő számban a fenntartott műveletek érdekében.</p>",
+      "infoTooltip": "<strong>Módszertan</strong><p>Megszámolja a katonai repülőgépeket és a követett tengeri egységeket minden hadszíntéren.</p><ul><li><strong>Normál:</strong> A hadszínpad küszöbértéke alatt</li><li><strong>Fokozott:</strong> Az érték 3–8 közötti, hadszínterenként</li><li><strong>Kritikus:</strong> Az érték 8–20 közötti, hadszínterenként</li></ul><p>A hajók az érték számítására a fokozott küszöb feléig számítanak, így a hajók önmagukban soha nem emelnek szintet.</p><p><strong>Csapásmérésre képes:</strong> Támogatótartályok + Légfelderítő rendszerek + Vadászbombázók elegendő számban jelen vannak a fenntartott műveletek végrehajtásához.</p>",
       "scanningTheaters": "Színpadok átvizsgálása",
       "positions": "Repülőgépek pozíciói",
       "navalVesselsLoading": "Haditengerészeti járművek",
@@ -1358,7 +1394,9 @@
         "east-med-theater": "Keleti Mediterráneum",
         "israel-gaza-theater": "Izrael/Gáza",
         "yemen-redsea-theater": "Jemen/Vörös-tenger"
-      }
+      },
+      "instabilityChip": "Instabilitás {{score}}",
+      "instabilityNote": "{{nation}} instabilitási pontszáma: {{score}} a 100-ból. Csak tájékoztatásul. Ez nem befolyásolja a szintet, amely a színtéren lévő repülőgépek és hajók számából adódik."
     },
     "countryBrief": {
       "moreActions": "További műveletek",
@@ -1701,7 +1739,7 @@
       "briefFreshness": "Generálva {{minutes}}m idővel ezelőtt · legfrissebb forrás {{hours}}ó régi",
       "briefStoryDetails": "A hír részletei ({{count}})",
       "streamIdleStopLabel": "Élő videó leállítása üresjárat során",
-      "streamIdleStopDesc": "Az Élő Hírek és Élő Webkamerák leállnak ennyi idő után inaktivitás esetén, és egy értesítés jelenik meg a panelen.",
+      "streamIdleStopDesc": "Az Élő Hírek és Élő Webkamerák leállnak ennyi idő után inaktivitás esetén, és egy értesítés jelenik meg a panelen. Az Élő Hírek lejátszása folytatódik, amíg a hang be van kapcsolva.",
       "streamIdleStopNever": "Soha",
       "liveNewsAutoplayLabel": "Élő hírek automatikus lejátszása",
       "liveNewsAutoplayDesc": "Az élő hírek videója néma hanggal elindul, amint megjelenik a képernyőn. Ezt kikapcsolva a videó csak akkor töltődik be, amikor Ön elindítja."
@@ -1772,7 +1810,7 @@
       "noData": "nincs adat",
       "enable": "Engedélyezés",
       "convergenceMetric": "Konvergencia",
-      "ciiDeviation": "Ország Instabilitási Index Eltérés",
+      "topCiiScore": "Legmagasabb országinstabilitási pontszám",
       "infraEvents": "Infra események",
       "highAlerts": "Magas riasztások",
       "topRisks": "Legfontosabb kockázatok",
@@ -1885,7 +1923,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS műhold termális detektálása a megfigyelési területeken. Magas intenzitás = fényerő >360K és megbízhatóság >80%.",
       "possibleExplosions": "{{count}} lehetséges robbanás detektálva",
-      "explosionTooltip": "Hőjelenség konzisztens a robbanással (tűz sugárzási teljesítménye >80 MW, fényesség >380 K)"
+      "explosionTooltip": "Hőjelenség konzisztens a robbanással (tűz sugárzási teljesítménye >80 MW, fényesség >380 K)",
+      "agencyReports": "Hatóságok által jelentett tüzek",
+      "agencyDates": "Ügynökségi dátumok",
+      "shownOfTotal": "{{total}} tűzrekordból {{shown}} látható"
     },
     "ucdpEvents": {
       "stateBased": "Állami szintű",
@@ -1950,6 +1991,7 @@
       "refugees": "Menekültek",
       "asylumSeekers": "Menedékkérelmezők",
       "idps": "Menekültek",
+      "stateless": "Hontalanok",
       "total": "Összesen",
       "origins": "Származási helyek",
       "hosts": "Befogadó országok",
@@ -2349,7 +2391,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Üzemanyagárak</strong> Benzin és dízel üzemanyag-töltőállomási árai 30+ országban, USD/literben normalizálva az összehasonlíthatóság érdekében. Az árak a kormányzati nyílt adatprogramokból származnak és hetente frissülnek. A legolcsóbb és legdrágább országok kiemelésre kerülnek. Heti változás jelenik meg, ha az előző heti adatok rendelkezésre állnak.",
-      "countries": "országok"
+      "countries": "országok",
+      "observedStale": "{{date}}, {{days}} napos",
+      "monthlyMean": "{{month}} átlag"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Élelmiszerár-index</strong> Az ENSZ Élelmezési és Mezőgazdasági Szervezete Élelmiszerár-indexe az élelmiszeráru-kosár nemzetközi exportárainak nyomon követése (Gabonák, Tejtermékek, Hús, Olajok, Cukor), 2014-2016=100 alap. Havonta, minden hónap első péntekén frissítve.",
@@ -2578,6 +2622,7 @@
       "infoTooltip": "<strong>Pénzügyi stressz mutató</strong> WorldMonitor magas hozamú hitel-Treasury hosszú arány, tőzsdei volatilitásra és magas hozamú spread-re korrigálva: (HYG / TLT) / (VIX × magas hozamú spread / 100). Ez nem a Kansas City Fed pénzügyi stressz indexe. Az 1,5 vagy magasabb érték alacsony stresszt jelent; 0,3 alatt magas stresszt.",
       "title": "Pénzügyi stresszmutató",
       "usFsiValue": "US pénzügyi stressz mutató érték",
+      "asOf": "{{date}} állapot szerint",
       "cissTitle": "EU CISS (Euró Terület Szisztematikus Stressz)",
       "cissStale": "Az Európai Központi Bank nem tett közzé újabb értéket – ez az érték elavult lehet.",
       "notAvailable": "N/A",
@@ -2922,7 +2967,21 @@
       "saved": "Utolsó ismert frissítés {{time}} · Frissítések keresése",
       "savedOffline": "Utolsó ismert frissítés {{time}} · Nincs kapcsolat",
       "localSignals": "A betöltött irányítópult-jelzések alapján",
-      "emptySaved": "Az utolsó ismert frissítésben nem volt konvergencia."
+      "emptySaved": "Az utolsó ismert frissítésben nem volt konvergencia.",
+      "signalTypes": {
+        "militaryFlight": "Katonai repülés",
+        "militaryVessel": "Katonai hajó",
+        "aisGap": "AIS-kiesés",
+        "conflictEvent": "Konfliktusesemény",
+        "escalationOutage": "Kommunikációs kiesés",
+        "newsSeverity": "Súlyos hírek",
+        "sanctionsNews": "Szankciós hírek",
+        "marketMove": "Piaci mozgás",
+        "commoditySpike": "Nyersanyag-ugrás",
+        "earthquake": "Földrengés",
+        "infraOutage": "Infrastruktúra-kiesés",
+        "other": "Jelzés"
+      }
     },
     "thermalEscalation": {
       "title": "Hőmérsékleti Eszkaláció",
@@ -3365,6 +3424,10 @@
       },
       "warningAge": "Az első, még érvényes figyelmeztetés óta",
       "days": "{{amount}} nap"
+    },
+    "externalNavigation": {
+      "blocked": "A böngésződ letiltotta az új fület.",
+      "openLink": "{{host}} megnyitása"
     }
   },
   "popups": {
@@ -4448,7 +4511,13 @@
     "alert": "Riasztás: {{location}}",
     "multipleRegions": "Több régió",
     "trending": "„{{term}}\" Trending - {{count}} említés {{hours}}h alatt",
-    "eventsDetected": "{{count}} esemény észlelve a régióban ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} esemény észlelve: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "tüntetések",
+      "military_flight": "katonai repülések",
+      "military_vessel": "haditengerészeti hajók",
+      "earthquake": "szeizmikus aktivitás"
+    }
   },
   "intel": {
     "topics": {
@@ -5719,7 +5788,8 @@
           "seatCap": "Mind a 4 hely használatban van. Előbb távolítson el egy helyet.",
           "ownerDomain": "Munkatársak meghívásához a fiókja e-mail-címének vállalati tartományból kell származnia.",
           "self": "Nem hívhatja meg saját magát.",
-          "inviteeDomain": "A meghívott személy e-mail-címének vállalati tartományból kell származnia."
+          "inviteeDomain": "A meghívott személy e-mail-címének vállalati tartományból kell származnia.",
+          "rateLimited": "Elérte a gördülő 24 órás időablakban küldhető legfeljebb 20 meghívó korlátját. Kérjük, várjon, mielőtt további munkatársakat hívna meg."
         }
       },
       "enterpriseSeats": {

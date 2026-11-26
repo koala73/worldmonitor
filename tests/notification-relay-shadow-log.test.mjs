@@ -95,7 +95,7 @@ describe('reworded alert check (#10916)', () => {
     const { findRewriteAnchor } = await import('../scripts/lib/news-alert-coverage.mjs');
     const original = structuredClone(event);
     const pipeline = async commands => {
-      assert.deepEqual(commands[0], ['ZREVRANGEBYSCORE', 'news:alert-anchors:v1:full', at, `(${at - 86_400_000}`, 'WITHSCORES', 'LIMIT', 0, 64]);
+      assert.deepEqual(commands[0], ['ZREVRANGEBYSCORE', 'news:alert-anchors:v1:full', at, `(${at - 48 * 3_600_000}`, 'WITHSCORES', 'LIMIT', 0, 128]);
       return [{ result: [...anchor('City votes to repair the downtown crossing', 'full:a'), ...anchor('Unrelated weather report today', 'full:b')] }];
     };
     const embed = async titles => titles.map(t => (/weather/.test(t) ? [0, 1] : [1, 0]));
@@ -108,13 +108,34 @@ describe('reworded alert check (#10916)', () => {
     assert.deepEqual(event, original);
   });
 
+  it('shows the judge the earlier alert that ranks sixth, behind five wordings of another story', async () => {
+    // 2026-11-21: "Bahrain says Iran struck industrial site as tankers hit in
+    // Hormuz" ranked five tanker alerts above the Bahrain one. Shown three, the
+    // judge never saw the alert it repeats, and 21 subscribers got it again.
+    const { findRewriteAnchor } = await import('../scripts/lib/news-alert-coverage.mjs');
+    const tankers = ['Two tankers attacked in Hormuz strait: maritime agency', 'IRGC says two oil tankers hit naval mines in Strait of Hormuz', 'Two tankers attacked in Strait of Hormuz', 'UK maritime agency reports two tanker attacks near Oman', 'Oil tanker hits mine in east of Strait of Hormuz'];
+    const bahrain = 'Bahrain says Iranian strike hit civilian industrial facility, sparking fire';
+    const pipeline = async () => [{ result: [...tankers.flatMap((title, i) => anchor(title, `full:t${i}`)), ...anchor(bahrain, 'full:bahrain')] }];
+    // Cosine against the new headline [1, 0]: tankers 0.9 down to 0.74, Bahrain 0.69.
+    const cosine = c => [c, Math.sqrt(1 - c * c)];
+    // Titles reach `embed` normalised, so rank by position: the new headline, five tankers, Bahrain.
+    const seen = [];
+    const embed = async titles => { seen.push(...titles); return titles.map((_, i) => (i === 0 ? [1, 0] : i === 6 ? cosine(0.69) : cosine(0.9 - 0.04 * (i - 1)))); };
+    const judge = async (_system, user) => `{"same": ${user.split('\n').findIndex(line => line.includes(bahrain))}}`;
+    const repeat = { ...event, payload: { title: 'Bahrain says Iran struck industrial site as tankers hit in Hormuz', importanceScore: 83 } };
+    const decision = await findRewriteAnchor(repeat, { now: at, pipeline, embed, judge });
+    assert.equal(decision.anchor?.id, 'full:bahrain');
+    assert.equal(decision.anchor.score.toFixed(2), '0.69');
+    assert.match(seen[6], /bahrain says iranian strike/i);
+  });
+
   it('keeps the alert on every failure', async () => {
     const { findRewriteAnchor } = await import('../scripts/lib/news-alert-coverage.mjs');
     const rows = async () => [{ result: anchor('City votes to repair the downtown crossing', 'full:a') }];
     const same = [[1, 0], [1, 0]];
     const cases = {
       'redis down': { pipeline: async () => null, embed: async () => same, judge: async () => '{"same": 1}' },
-      'embedding error': { pipeline: rows, embed: async () => { throw new Error('provider 503'); }, judge: async () => '{"same": 1}' },
+      'embedding error, then judge gave nothing': { pipeline: rows, embed: async () => { throw new Error('provider 503'); }, judge: async () => null },
       'judge gave nothing': { pipeline: rows, embed: async () => same, judge: async () => null },
       'judge threw': { pipeline: rows, embed: async () => same, judge: async () => { throw new Error('timeout'); } },
     };
@@ -123,6 +144,23 @@ describe('reworded alert check (#10916)', () => {
       assert.equal(decision.anchor, null, name);
       assert.ok(decision.error, `${name} must be reported`);
     }
+  });
+
+  it('ranks by shared words when the embeddings fail, and says so', async () => {
+    const { findRewriteAnchor } = await import('../scripts/lib/news-alert-coverage.mjs');
+    const pipeline = async () => [{ result: [
+      ...anchor('Heavy snow closes mountain passes', 'full:snow'),
+      ...anchor('City votes to repair the downtown crossing', 'full:a'),
+    ] }];
+    let prompt = '';
+    const judge = async (_system, user) => { prompt = user; return '{"same": 1}'; };
+    const embed = async () => { throw new Error('provider 503'); };
+    const decision = await findRewriteAnchor(event, { now: at, pipeline, embed, judge });
+    assert.equal(decision.retrieval, 'words');
+    assert.equal(decision.embedError, 'Error: provider 503');
+    assert.equal(decision.error, null);
+    assert.equal(decision.anchor?.id, 'full:a');
+    assert.doesNotMatch(prompt, /snow/, 'a headline sharing no word is not shown');
   });
 
   it('never compares an exact repeat with itself', async () => {
@@ -189,11 +227,12 @@ describe('reworded alert check (#10916)', () => {
     assert.equal(longNew.judged, false);
   });
 
-  it('counts only receipts from the last 24 hours', async () => {
+  it('counts only receipts from the last 48 hours', async () => {
     const { usersAlertedFor } = await import('../scripts/lib/news-alert-coverage.mjs');
     const pipeline = async commands => {
       assert.deepEqual(commands[0], ['ZMSCORE', 'news:alert-anchor-recipients:v1:full:a', 'u1', 'u2', 'u3']);
-      return [{ result: [String(at - 3_600_000), String(at - 25 * 3_600_000), null] }];
+      // 28 hours: the mines claim of 2026-11-21 that alerted again the next day.
+      return [{ result: [String(at - 28 * 3_600_000), String(at - 49 * 3_600_000), null] }];
     };
     assert.deepEqual([...await usersAlertedFor('full:a', ['u1', 'u2', 'u3'], { now: at, pipeline })], ['u1']);
     assert.equal((await usersAlertedFor('full:a', ['u1'], { now: at, pipeline: async () => [{ error: 'ERR' }] })).size, 0);

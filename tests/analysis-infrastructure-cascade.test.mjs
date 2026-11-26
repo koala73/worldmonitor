@@ -159,12 +159,19 @@ describe('infrastructure cascade core — cascade simulation', () => {
     assert.equal(us.redundancyAvailable, true);
   });
 
-  it('scales impact with disruptionLevel and drops sub-threshold effects', () => {
+  it('scales impact and capacity with disruptionLevel and drops sub-threshold effects', () => {
     const graph = buildFixtureGraph();
 
     const half = calculateCascade(graph, 'cable:atlantic-1', 0.5);
     const halfGb = half.countriesAffected.find(c => c.country === 'GB');
     assert.equal(halfGb.impactLevel, 'medium', '0.6 * 0.5 = 0.30 → medium');
+    closeTo(halfGb.affectedCapacity, 0.3, 'partial cable capacity share');
+
+    const halfMalacca = calculateCascade(graph, 'chokepoint:malacca_strait', 0.5);
+    const halfCn = halfMalacca.countriesAffected.find(c => c.country === 'CN');
+    const halfSg = halfMalacca.countriesAffected.find(c => c.country === 'SG');
+    closeTo(halfCn.affectedCapacity, 0.49 * 0.5, 'partial direct capacity');
+    closeTo(halfSg.affectedCapacity, 0.56 * 0.696 * 0.5, 'partial chained capacity');
 
     const faint = calculateCascade(graph, 'cable:atlantic-1', 0.1);
     assert.deepEqual(
@@ -180,7 +187,7 @@ describe('infrastructure cascade core — cascade simulation', () => {
 
     assert.deepEqual(
       result.countriesAffected.map(c => c.country),
-      ['SG', 'CN', 'JP', 'KR'],
+      ['CN', 'JP', 'KR', 'SG'],
       'sorted by impact level, then by affected capacity',
     );
 
@@ -195,6 +202,7 @@ describe('infrastructure cascade core — cascade simulation', () => {
     // (0.7 * 0.8) * (0.87 * 0.8)
     const sgImpact = result.countriesAffected.find(c => c.country === 'SG');
     closeTo(sgImpact.affectedCapacity, 0.56 * 0.696, 'chained path capacity');
+    assert.equal(sgImpact.impactLevel, 'medium', 'severity follows the whole path, not only the port edge (0.696 alone is high)');
 
     // Direct chokepoint → country edge: 0.7 * (1 - 0.3)
     const cn = result.countriesAffected.find(c => c.country === 'CN');

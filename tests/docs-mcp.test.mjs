@@ -455,6 +455,24 @@ describe('docs-mcp handler', () => {
     assert.equal(res.headers.get('content-type'), 'application/json');
   });
 
+  it('drops upstream Set-Cookie so Mintlify cannot set cookies on the app origin', async () => {
+    clearUpstashEnv();
+    globalThis.fetch = async () =>
+      new Response('{"jsonrpc":"2.0","result":{},"id":1}', {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'set-cookie': 'upstream=value; Path=/' },
+      });
+    const res = await handler(
+      new Request('https://www.worldmonitor.app/api/docs-mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: '{"jsonrpc":"2.0","method":"tools/list","id":1}',
+      }),
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('set-cookie'), null);
+  });
+
   it('answers OPTIONS preflight locally with permissive CORS', async () => {
     const res = await handler(
       new Request('https://www.worldmonitor.app/api/docs-mcp', { method: 'OPTIONS' }),

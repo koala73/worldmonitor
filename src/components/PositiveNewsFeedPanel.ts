@@ -85,7 +85,6 @@ export class PositiveNewsFeedPanel extends Panel {
    */
   public renderPositiveNews(items: NewsItem[]): void {
     this.allItems = items;
-    this.setCount(items.length);
     this.applyFilter();
   }
 
@@ -97,6 +96,7 @@ export class PositiveNewsFeedPanel extends Panel {
       ? this.allItems
       : this.allItems.filter(item => item.happyCategory === this.activeFilter);
 
+    this.setCount(filtered.length);
     this.renderCards(filtered);
   }
 

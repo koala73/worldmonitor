@@ -13,8 +13,10 @@ const COMPONENTS_DIR = 'src/components';
 // the team menu adds 492. Every panel title ships in the shell, so the
 // Strategic Water Levels panel title adds 49. The "US States " scope prefix
 // on the Grid Disruption Clock title adds 10 bytes. The map context menu's
-// "Satellite passes here" item adds 47.
-const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492 + 80 + 49 + 10 + 47 + 36;
+// "Satellite passes here" item adds 47. The Country Brief Historical
+// Intelligence Memory section title adds 75 bytes (#11244). The Strategic
+// Posture tooltip, corrected to the real thresholds and the vessel cap, adds 128.
+const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492 + 80 + 49 + 10 + 47 + 36 + 75 + 128;
 
 function tsFilesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

@@ -49,15 +49,20 @@ const PROTOCOL_VERSION = '2025-06-18';
 // Per-call deadline. LLM-backed tools (analyze_situation, verify_claim, …) and
 // live flight search are the slowest legitimate answers.
 const CALL_DEADLINE_MS = 90_000;
-const RETRY_DELAY_MS = 15_000;
+// A failing call is retried once, in a second pass after every tool has had its
+// first call. The gap must outlast the server's default negative cache
+// (CACHED_FETCH_NEGATIVE_TTL_SECONDS, 120s): inside it a repeated call gets the
+// cached failure back without reaching the upstream (#11251). Handlers that set
+// a longer negative TTL (trade, company, quote tools) still answer from cache.
+export const RETRY_DELAY_MS = 130_000;
 // Paced well under the per-credential 60/min MCP limit: at most CONCURRENCY
 // calls in flight and at least MIN_START_GAP_MS between call starts (≤ 40/min).
 const CONCURRENCY = 3;
 const MIN_START_GAP_MS = 1_500;
 // No call or retry starts after this budget; tools not reached are reported as
-// budget_exhausted findings. Worst case after the budget: an in-flight call,
-// its retry pause and its retry (~3.3 min), so report + issue publication
-// always land inside the workflow's 30-minute job timeout.
+// budget_exhausted findings, and a failure whose retry was not reached keeps its
+// first result. Worst case after the budget: one in-flight call (90s), so report
+// + issue publication always land inside the workflow's 30-minute job timeout.
 const RUN_BUDGET_MS = 20 * 60_000;
 
 function isoDateOffset(days, now = new Date()) {
@@ -389,6 +394,7 @@ export async function runCanary({
 
   const ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
   const structuredByTool = new Map();
+  const callCounts = new Map();
   const waiters = new Map();
   const done = (name) => {
     if (!waiters.has(name)) {
@@ -410,16 +416,17 @@ export async function runCanary({
     if (budgetSpent()) return BUDGET_EXHAUSTED;
     await pace();
     if (budgetSpent()) return BUDGET_EXHAUSTED;
+    callCounts.set(tool.name, (callCounts.get(tool.name) ?? 0) + 1);
     const r = await rpc('tools/call', { name: tool.name, arguments: args });
     return { ...evaluateCall(r, validate, { acceptRpcErrorCodes }), ms: r.ms };
   }
 
-  async function runTool(tool) {
+  async function runTool(tool, passTools, attempts) {
     const fixture = resolveFixture(fixtures[tool.name]);
     let args = fixture.args;
     if (typeof fixture.derive === 'function') {
-      const inCanary = canaryTools.some((t) => t.name === fixture.after);
-      if (inCanary) await done(fixture.after).p;
+      const inPass = passTools.some((t) => t.name === fixture.after);
+      if (inPass) await done(fixture.after).p;
       const upstream = structuredByTool.get(fixture.after);
       args = upstream ? fixture.derive(upstream) : null;
       if (!args) {
@@ -432,40 +439,64 @@ export async function runCanary({
 
     const { validate, error: schemaError } = compileValidator(ajv, tool);
     if (schemaError) return { name: tool.name, ok: false, kind: 'schema_invalid', detail: schemaError, attempts: 0, ms: 0 };
-    let outcome = await callOnce(tool, args, validate, fixture.acceptRpcErrorCodes);
-    let attempts = 1;
-    if (!outcome.ok && outcome.kind !== 'budget_exhausted') {
-      await sleep(retryDelayMs);
-      outcome = await callOnce(tool, args, validate, fixture.acceptRpcErrorCodes);
-      attempts = 2;
-    }
+    const outcome = await callOnce(tool, args, validate, fixture.acceptRpcErrorCodes);
     if (outcome.structuredContent) structuredByTool.set(tool.name, outcome.structuredContent);
     if (tool.name === 'get_mcp_allowance') report.credential = outcome.kind === 'accepted_error' ? 'operator' : (outcome.ok ? 'user' : 'unknown');
     return { name: tool.name, ok: outcome.ok, kind: outcome.kind, detail: outcome.detail, attempts, ms: outcome.ms,
       ...(outcome.stale ? { stale: true, cachedAt: outcome.cachedAt } : {}) };
   }
 
-  // Tools whose output feeds another fixture run first so dependents can wait.
-  const queue = [...canaryTools].sort((a, b) => Number(Boolean(fixtures[a.name]?.derive)) - Number(Boolean(fixtures[b.name]?.derive)));
-  const results = [];
-  const worker = async () => {
-    while (queue.length) {
-      const tool = queue.shift();
-      let result;
-      try {
-        result = await runTool(tool);
-      } catch (err) {
-        result = { name: tool.name, ok: false, kind: 'canary_error', detail: truncate(err.message, 200), attempts: 0, ms: 0 };
+  async function runPass(passTools, attempts) {
+    waiters.clear();
+    // Tools whose output feeds another fixture run first so dependents can wait.
+    const queue = [...passTools].sort((a, b) => Number(Boolean(fixtures[a.name]?.derive)) - Number(Boolean(fixtures[b.name]?.derive)));
+    const results = [];
+    const worker = async () => {
+      while (queue.length) {
+        const tool = queue.shift();
+        let result;
+        try {
+          result = await runTool(tool, passTools, attempts);
+        } catch (err) {
+          result = { name: tool.name, ok: false, kind: 'canary_error', detail: truncate(err.message, 200), attempts, ms: 0 };
+        }
+        result.detail = redactCredential(result.detail, key);
+        results.push(result);
+        done(tool.name).resolve();
+        log(`${result.ok ? 'PASS' : 'FAIL'} ${tool.name} ${result.ms}ms${attempts > 1 ? ' (retry)' : ''}${result.detail ? ` — ${result.detail}` : ''}`);
       }
-      result.detail = redactCredential(result.detail, key);
-      results.push(result);
-      done(tool.name).resolve();
-      log(`${result.ok ? 'PASS' : 'FAIL'} ${tool.name} ${result.ms}ms${result.attempts > 1 ? ' (retried)' : ''}${result.detail ? ` — ${result.detail}` : ''}`);
-    }
-  };
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    };
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    return results;
+  }
 
-  report.results = results.sort((a, b) => a.name.localeCompare(b.name));
+  // Each tool gets at most two real calls. A dependent that could not chain
+  // runs again with its upstream, so its first real call may come in pass 2
+  // and earn a pass 3.
+  const byName = new Map((await runPass(canaryTools, 1)).map((r) => [r.name, r]));
+  for (let attempts = 2; ; attempts += 1) {
+    const failing = (name) => {
+      const r = byName.get(name);
+      return r && !r.ok && r.kind !== 'budget_exhausted' && r.kind !== 'schema_invalid';
+    };
+    const retryNames = new Set();
+    for (const t of canaryTools) {
+      if (!failing(t.name)) continue;
+      const calls = callCounts.get(t.name) ?? 0;
+      if (calls === 1) retryNames.add(t.name);
+    }
+    for (const t of canaryTools) {
+      const upstream = fixtures[t.name]?.after;
+      if (failing(t.name) && (callCounts.get(t.name) ?? 0) === 0 && retryNames.has(upstream)) retryNames.add(t.name);
+    }
+    if (retryNames.size === 0 || Date.now() + retryDelayMs >= budgetEndsAt) break;
+    await sleep(retryDelayMs);
+    for (const result of await runPass(canaryTools.filter((t) => retryNames.has(t.name)), attempts)) {
+      if (result.kind !== 'budget_exhausted') byName.set(result.name, result);
+    }
+  }
+
+  report.results = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
   return report;
 }
 
@@ -503,7 +534,7 @@ export function renderMarkdown(report, { runUrl = '' } = {}) {
     lines.push(`Answered with \`stale: true\` (not a failure; seed freshness is alarmed by /api/health): ${stale.map((s) => `\`${cell(s.name)}\``).join(', ')}.`, '');
   }
   lines.push(
-    'Each read-only tool is called with a real credential; a call passes when it answers HTTP 200 with no JSON-RPC error, no `isError`, and `structuredContent` that validates against the tool\'s advertised `outputSchema`. Failed calls are retried once before they count.',
+    'Each read-only tool is called with a real credential; a call passes when it answers HTTP 200 with no JSON-RPC error, no `isError`, and `structuredContent` that validates against the tool\'s advertised `outputSchema`. Failed calls are retried once, after the server\'s default two-minute failure cache, before they count.',
     '',
     'Run locally: `MCP_CANARY_KEY=wm_... node scripts/mcp-tool-canary.mjs --only <tool>`.',
   );

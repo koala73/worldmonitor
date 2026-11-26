@@ -299,6 +299,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Nâng cấp lên PRO để xem phụ thuộc nhà cung cấp vũ khí và năng lực quân sự"
+    },
+    "intelMemory": {
+      "title": "Bộ Nhớ Tình Báo Lịch Sử",
+      "help": "Kho lưu trữ 180 ngày các sự kiện đáng chú ý về xung đột, quân sự, năng lượng, bất ổn, an ninh mạng, hàng hải, thảm họa thiên nhiên và hàng không, với tìm kiếm tiền lệ ngữ nghĩa theo yêu cầu.",
+      "loading": "Đang tải bộ nhớ tình báo lịch sử…",
+      "proLocked": "Nâng cấp lên PRO để có bộ nhớ tình báo lịch sử 180 ngày và tìm kiếm tiền lệ",
+      "unavailable": "Bộ nhớ tình báo lịch sử hiện không khả dụng.",
+      "retry": "Thử lại",
+      "empty": "Không có sự kiện tình báo được lưu trữ nào khớp với quốc gia và lĩnh vực này trong cửa sổ 180 ngày.",
+      "partial": "Phạm vi lưu trữ là không đầy đủ cho truy vấn này; các bản ghi có sẵn vẫn hiển thị.",
+      "domainFilterLabel": "Lọc tình báo lịch sử theo lĩnh vực",
+      "domains": {
+        "all": "Tất cả",
+        "conflict": "Xung đột",
+        "military": "Quân sự",
+        "energy": "Năng lượng",
+        "unrest": "Bất ổn",
+        "cyber": "An ninh mạng",
+        "maritime": "Hàng hải",
+        "natural": "Thảm họa thiên nhiên",
+        "aviation": "Hàng không"
+      },
+      "loadMore": "Tải thêm",
+      "loadingMore": "Đang tải thêm…",
+      "loadMoreError": "Không thể tải thêm sự kiện. Vui lòng thử lại.",
+      "sourceLink": "Nguồn ↗",
+      "similarTitle": "Tìm các sự kiện tương tự trong quá khứ",
+      "useLatestHeadline": "Sử dụng tiêu đề mới nhất",
+      "similarPlaceholder": "Mô tả một tình huống đang phát triển (ít nhất 10 ký tự)…",
+      "findSimilar": "Tìm sự kiện tương tự",
+      "similarMinLength": "Nhập ít nhất 10 ký tự để tìm kiếm tiền lệ trong quá khứ.",
+      "similarLoading": "Đang tìm kiếm tiền lệ lịch sử…",
+      "similarEmpty": "Không có sự kiện tương tự trong quá khứ vượt qua ngưỡng độ tương tự.",
+      "similarUnavailable": "Tìm kiếm tiền lệ hiện không khả dụng. Vui lòng thử lại."
     }
   },
   "header": {
@@ -977,7 +1011,7 @@
       "upstreamUnavailable": "Dữ liệu chuỗi cung ứng tạm thời không khả dụng — hiển thị dữ liệu đã lưu cache",
       "spikeAlert": "Phát hiện đột biến — giá cao hơn đáng kể so với trung bình 52 tuần (hàng tuần)",
       "warnings": "cảnh báo",
-      "aisDisruptions": "Gián đoạn theo dõi tàu",
+      "aisDisruptions_other": "{{count}} gián đoạn theo dõi tàu",
       "disruption": "Gián đoạn",
       "vessels": "tàu",
       "incidents7d": "sự cố (7 ngày)",
@@ -988,6 +1022,7 @@
       "topProducers": "Nhà sản xuất hàng đầu",
       "risk": "Rủi ro",
       "wowChange": "Thay đổi tuần so với tuần trước",
+      "asOf": "tính đến {{date}}",
       "riskLevel": "Mức rủi ro",
       "flowUnavailable": "Dữ liệu lưu lượng không có sẵn",
       "containerRates": "Giá vận chuyển container",
@@ -1163,7 +1198,7 @@
         "auxiliary": "Hỗ trợ",
         "navalVessels": "Tàu Hải quân"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>Tổng hợp các tàu hải quân và máy bay quân sự theo khu vực chiến lược.</p><ul><li><strong>Normal:</strong> Hoạt động cơ bản</li><li><strong>Elevated:</strong> Vượt quá ngưỡng (50+ máy bay)</li><li><strong>Critical:</strong> Tập trung cao (100+ máy bay)</li></ul><p><strong>Strike Capable:</strong> Máy bay tiếp liệu + Cảnh báo sớm trên không + Máy bay chiến đấu có mặt với số lượng đủ cho các hoạt động bền vững.</p>",
+      "infoTooltip": "<strong>Phương pháp</strong><p>Đếm máy bay quân sự và tàu hải quân được theo dõi trong mỗi khu vực tác chiến.</p><ul><li><strong>Bình thường:</strong> Dưới ngưỡng của khu vực tác chiến</li><li><strong>Nâng cao:</strong> Số lượng đạt 3 đến 8, tùy theo khu vực tác chiến</li><li><strong>Tối cấp:</strong> Số lượng đạt 8 đến 20, tùy theo khu vực tác chiến</li></ul><p>Tàu góp phần vào số lượng lên đến nửa ngưỡng nâng cao, do đó tàu riêng lẻ không bao giờ nâng mức.</p><p><strong>Khả năng Tiến công:</strong> Tàu chở nhiên liệu + Hệ thống cảnh báo sớm trên không + Chiến đấu cơ hiện diện với số lượng đủ cho các hoạt động liên tục.</p>",
       "scanningTheaters": "Quét Chiến trường",
       "positions": "Vị trí máy bay",
       "navalVesselsLoading": "Tàu hải quân",
@@ -1205,7 +1240,9 @@
       },
       "emojiKeyLabel": "Chú giải Emoji",
       "emojiKeyAir": "Tài sản hàng không",
-      "emojiKeyNaval": "Tài sản hải quân"
+      "emojiKeyNaval": "Tài sản hải quân",
+      "instabilityChip": "Mức độ bất ổn {{score}}",
+      "instabilityNote": "Điểm bất ổn của {{nation}}: {{score}} trên 100. Hiển thị để tham khảo. Nó không thay đổi mức độ, mức độ được tính dựa trên số lượng máy bay và tàu chiến trong khu vực."
     },
     "countryBrief": {
       "moreActions": "Thao tác khác",
@@ -1547,7 +1584,7 @@
       "briefFreshness": "Được tạo {{minutes}}m trước · nguồn mới nhất {{hours}}h tuổi",
       "briefStoryDetails": "Chi tiết tin tức ({{count}})",
       "streamIdleStopLabel": "Dừng video trực tiếp khi không hoạt động",
-      "streamIdleStopDesc": "Dừng Live News và Live Webcams sau khoảng thời gian này nếu không có hoạt động và hiển thị thông báo trong panel.",
+      "streamIdleStopDesc": "Dừng Live News và Live Webcams sau khoảng thời gian này nếu không có hoạt động và hiển thị thông báo trong panel. Live News tiếp tục phát khi âm thanh đang bật.",
       "streamIdleStopNever": "Không bao giờ",
       "liveNewsAutoplayLabel": "Tự động phát tin tức trực tiếp",
       "liveNewsAutoplayDesc": "Bắt đầu phát video tin tức trực tiếp, không âm thanh, ngay khi nó xuất hiện trên màn hình. Tắt tùy chọn này để chỉ tải video khi bạn bắt đầu phát."
@@ -1618,7 +1655,7 @@
       "noData": "không có dữ liệu",
       "enable": "Bật",
       "convergenceMetric": "Hội tụ",
-      "ciiDeviation": "Độ Lệch Chỉ số Bất ổn định Đất nước",
+      "topCiiScore": "Điểm bất ổn quốc gia cao nhất",
       "infraEvents": "Sự cố Hạ tầng",
       "highAlerts": "Cảnh báo Cao",
       "topRisks": "Rủi ro Hàng đầu",
@@ -1730,7 +1767,10 @@
       },
       "infoTooltip": "Phát hiện nhiệt vệ tinh NASA FIRMS VIIRS trên các vùng xung đột được giám sát. Cường độ cao = độ sáng >360K & độ tin cậy >80%.",
       "possibleExplosions": "Phát hiện {{count}} vụ nổ có thể xảy ra",
-      "explosionTooltip": "Chữ ký nhiệt phù hợp với vụ nổ (công suất bức xạ nhiệt >80 MW, độ sáng >380 K)"
+      "explosionTooltip": "Chữ ký nhiệt phù hợp với vụ nổ (công suất bức xạ nhiệt >80 MW, độ sáng >380 K)",
+      "agencyReports": "Đám cháy do cơ quan báo cáo",
+      "agencyDates": "Ngày của cơ quan",
+      "shownOfTotal": "Hiển thị {{shown}} trên {{total}} bản ghi cháy"
     },
     "ucdpEvents": {
       "stateBased": "Nhà nước",
@@ -1795,6 +1835,7 @@
       "refugees": "Người tị nạn",
       "asylumSeekers": "Người xin Tị nạn",
       "idps": "Người Di dời Nội bộ",
+      "stateless": "Người không quốc tịch",
       "total": "Tổng",
       "origins": "Nguồn gốc",
       "hosts": "Nước tiếp nhận",
@@ -2284,6 +2325,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> Tỷ lệ World Monitor của tín dụng cao lợi nhuận so với Kho bạc dài hạn, được điều chỉnh theo biến động vốn chủ sở hữu và mức chênh lệch cao lợi nhuận: (HYG / TLT) / (VIX × Mức chênh lệch cao lợi nhuận / 100). Đây không phải là Chỉ số Căng thẳng Tài chính của Cục Dự trữ Kansas City. Giá trị 1,5 hoặc cao hơn là căng thẳng thấp; dưới 0,3 là căng thẳng cao.",
       "title": "Chỉ Số Áp Lực Tài Chính",
       "usFsiValue": "Giá trị Chỉ số Căng thẳng Tài chính của Mỹ",
+      "asOf": "Tính đến {{date}}",
       "cissTitle": "EU CISS (Áp Lực Hệ Thống Vùng Euro)",
       "notAvailable": "Không có sẵn",
       "interpretation": {
@@ -2554,7 +2596,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Giá bán lẻ tại cây xăng dầu cho xăng và dầu diesel trên 30+ quốc gia, chuẩn hóa thành USD/lít để so sánh. Giá được lấy từ các chương trình dữ liệu mở chính thức của chính phủ và cập nhật hàng tuần. Các quốc gia có giá rẻ nhất và đắt nhất được làm nổi bật. Thay đổi tuần so với tuần trước được hiển thị khi dữ liệu tuần trước có sẵn.",
-      "countries": "quốc gia"
+      "countries": "quốc gia",
+      "observedStale": "{{date}}, {{days}} ngày trước",
+      "monthlyMean": "trung bình {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Chỉ số Giá Thực phẩm của Tổ chức Lương thực và Nông nghiệp Liên hợp quốc theo dõi giá xuất khẩu quốc tế cho một rổ hàng hóa thực phẩm (Ngũ cốc, Sữa, Thịt, Dầu, Đường), cơ sở 2014-2016=100. Cập nhật hàng tháng vào thứ Sáu đầu tiên của mỗi tháng.",
@@ -2838,7 +2882,21 @@
       "saved": "Lần cập nhật gần nhất đã biết {{time}} · Đang kiểm tra cập nhật",
       "savedOffline": "Lần cập nhật gần nhất đã biết {{time}} · Ngoại tuyến",
       "localSignals": "Dựa trên các tín hiệu đã tải trong bảng điều khiển",
-      "emptySaved": "Không có sự hội tụ trong lần cập nhật gần nhất đã biết."
+      "emptySaved": "Không có sự hội tụ trong lần cập nhật gần nhất đã biết.",
+      "signalTypes": {
+        "militaryFlight": "Chuyến bay quân sự",
+        "militaryVessel": "Tàu quân sự",
+        "aisGap": "Gián đoạn AIS",
+        "conflictEvent": "Sự kiện xung đột",
+        "escalationOutage": "Gián đoạn liên lạc",
+        "newsSeverity": "Tin nghiêm trọng",
+        "sanctionsNews": "Tin trừng phạt",
+        "marketMove": "Biến động thị trường",
+        "commoditySpike": "Hàng hóa tăng vọt",
+        "earthquake": "Động đất",
+        "infraOutage": "Gián đoạn hạ tầng",
+        "other": "Tín hiệu"
+      }
     },
     "thermalEscalation": {
       "title": "Tăng cường nhiệt độ",
@@ -3275,6 +3333,10 @@
       },
       "warningAge": "Thời gian từ cảnh báo đầu tiên còn hiệu lực",
       "days": "{{amount}} ngày"
+    },
+    "externalNavigation": {
+      "blocked": "Trình duyệt của bạn đã chặn tab mới.",
+      "openLink": "Mở {{host}}"
     }
   },
   "popups": {
@@ -4357,7 +4419,13 @@
     "alert": "Cảnh báo: {{location}}",
     "multipleRegions": "Nhiều Khu vực",
     "trending": "\"{{term}}\" Xu hướng - {{count}} lượt nhắc trong {{hours}} giờ",
-    "eventsDetected": "Phát hiện {{count}} sự kiện trong khu vực ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "Phát hiện {{count}} sự kiện: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "biểu tình",
+      "military_flight": "chuyến bay quân sự",
+      "military_vessel": "tàu hải quân",
+      "earthquake": "hoạt động địa chấn"
+    }
   },
   "intel": {
     "topics": {
@@ -5683,7 +5751,8 @@
           "seatCap": "Cả 4 chỗ đã được dùng. Hãy xóa một chỗ trước.",
           "ownerDomain": "Email tài khoản của bạn phải là miền công ty để mời đồng nghiệp.",
           "self": "Bạn không thể mời chính mình.",
-          "inviteeDomain": "Email của người được mời phải là miền công ty."
+          "inviteeDomain": "Email của người được mời phải là miền công ty.",
+          "rateLimited": "Bạn đã gửi tối đa 20 lời mời trong khung 24 giờ trượt. Vui lòng đợi trước khi mời thêm đồng nghiệp."
         }
       },
       "enterpriseSeats": {

@@ -1071,9 +1071,6 @@
           "path": "scripts/_dosm-product-demand.mjs"
         },
         {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
-        {
           "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
@@ -1082,15 +1079,10 @@
       "host": "api.datos.gob.mx",
       "provider": "api.datos.gob.mx",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit api.datos.gob.mx and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.e-stat.go.jp",
@@ -1115,9 +1107,6 @@
       "attribution": "Credit api.eia.gov and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
         {
           "path": "scripts/seed-economy.mjs"
         },
@@ -1421,15 +1410,10 @@
       "host": "api.ossinsight.io",
       "provider": "api.ossinsight.io",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit api.ossinsight.io and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-research.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.planespotters.net",
@@ -1933,12 +1917,6 @@
           "path": "scripts/openapi-inject-servers.mjs"
         },
         {
-          "path": "scripts/post-pr3427-force-refresh.mjs"
-        },
-        {
-          "path": "scripts/post-pr3487-force-refresh.mjs"
-        },
-        {
           "path": "scripts/seed-china-decision-signals.mjs"
         },
         {
@@ -2033,6 +2011,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "apps.bea.gov",
+      "provider": "U.S. Bureau of Economic Analysis (BEA)",
+      "kind": "structured",
+      "observed": true,
+      "license": "U.S. government public-domain release schedule",
+      "attribution": "U.S. Bureau of Economic Analysis news release schedule.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-economic-calendar.mjs"
         }
       ]
     },
@@ -4548,6 +4540,20 @@
       ]
     },
     {
+      "host": "digital-strategy.ec.europa.eu",
+      "provider": "digital-strategy.ec.europa.eu",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit digital-strategy.ec.europa.eu and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "discord.com",
       "provider": "discord.com",
       "kind": "structured",
@@ -4818,7 +4824,7 @@
     {
       "host": "ec.europa.eu",
       "provider": "ec.europa.eu",
-      "kind": "feed+structured",
+      "kind": "structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit ec.europa.eu and link to the original upstream API/dataset.",
@@ -4838,9 +4844,6 @@
         },
         {
           "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
-        },
-        {
-          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5224,9 +5227,6 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
-        {
           "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
@@ -5550,15 +5550,10 @@
       "host": "euromaidanpress.com",
       "provider": "euromaidanpress.com",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit euromaidanpress.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "euroradio.fm",
@@ -10125,15 +10120,10 @@
       "host": "news.ycombinator.com",
       "provider": "news.ycombinator.com",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.ycombinator.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "newsbook.com.mt",
@@ -11883,7 +11873,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "scripts/seed-climate-news.mjs"
+          "path": "scripts/_climate-news-helpers.mjs"
         }
       ]
     },
@@ -12721,9 +12711,6 @@
       "attribution": "Credit sedeaplicaciones.minetur.gob.es and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "scripts/backfill-fuel-prices-prev.mjs"
-        },
         {
           "path": "scripts/seed-fuel-prices.mjs"
         }
@@ -22773,6 +22760,9 @@
         },
         {
           "path": "server/_shared/deprecation-policy.ts"
+        },
+        {
+          "path": "server/_shared/entitlement-coverage.ts"
         },
         {
           "path": "server/worldmonitor/cyber/v1/get-network-info.ts"

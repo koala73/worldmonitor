@@ -305,6 +305,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Uaktualnij do PRO, aby zobaczyć zależność od dostawców broni i potencjał militarny"
+    },
+    "intelMemory": {
+      "title": "Historyczna pamięć wywiadu",
+      "help": "180-dniowe archiwum znaczących zdarzeń konfliktowych, militarnych, energetycznych, niepokojów społecznych, cyber, morskich, zagrożeń naturalnych i lotniczych, z wyszukiwaniem na żądanie podobnych przypadków w historii.",
+      "loading": "Ładowanie historycznej pamięci wywiadu…",
+      "proLocked": "Uaktualnij do PRO, aby uzyskać dostęp do 180-dniowej historycznej pamięci wywiadu i wyszukiwania precedensów",
+      "unavailable": "Historyczna pamięć wywiadu jest czasowo niedostępna.",
+      "retry": "Ponów",
+      "empty": "Brak zarchiwizowanych zdarzeń wywiadu dopasowanych do tego kraju i dziedziny w oknie 180 dni.",
+      "partial": "Zasięg archiwum dla tego zapytania jest częściowy; dostępne rekordy pozostają widoczne.",
+      "domainFilterLabel": "Filtruj historyczny wywiad według dziedziny",
+      "domains": {
+        "all": "Wszystkie",
+        "conflict": "Konflikt",
+        "military": "Militarne",
+        "energy": "Energia",
+        "unrest": "Zamieszki",
+        "cyber": "Cyber",
+        "maritime": "Morskie",
+        "natural": "Zagrożenia naturalne",
+        "aviation": "Lotnictwo"
+      },
+      "loadMore": "Załaduj więcej",
+      "loadingMore": "Ładowanie…",
+      "loadMoreError": "Nie udało się załadować dodatkowych zdarzeń. Spróbuj ponownie.",
+      "sourceLink": "Źródło ↗",
+      "similarTitle": "Znajdź podobne poprzednie zdarzenia",
+      "useLatestHeadline": "Użyj najnowszego nagłówka",
+      "similarPlaceholder": "Opisz rozwijającą się sytuację (co najmniej 10 znaków)…",
+      "findSimilar": "Znajdź podobne zdarzenia",
+      "similarMinLength": "Wpisz co najmniej 10 znaków, aby wyszukać poprzednie precedensy.",
+      "similarLoading": "Wyszukiwanie historycznych precedensów…",
+      "similarEmpty": "Brak podobnych poprzednich zdarzeń przekroczyło próg podobieństwa.",
+      "similarUnavailable": "Wyszukiwanie precedensów jest czasowo niedostępne. Spróbuj ponownie."
     }
   },
   "header": {
@@ -1396,7 +1430,7 @@
       },
       "clickToViewMap": "Kliknij, żeby zobaczyć na mapie",
       "refresh": "Odświeżać",
-      "infoTooltip": "<strong>Metodologia</strong><p>Agreguje lotnictwo wojskowe i okręty marynarki wojennej podle teatru operacji.</p><ul><li><strong>Normalne:</strong> Aktywność bazowa</li><li><strong>Podwyższone:</strong> Powyżej progu (50+ samolotów)</li><li><strong>Krytyczne:</strong> Wysoka koncentracja (100+ samolotów)</li></ul><p><strong>Zdolność do uderzeń:</strong> Tankowce + Wczesne ostrzeganie lotnicze + Myśliwce w wystarczającej liczbie do operacji trwałych.</p>",
+      "infoTooltip": "<strong>Metodologia</strong><p>Liczy samoloty wojskowe i monitorowane jednostki marynarki wojennej w każdym teatrze operacyjnym.</p><ul><li><strong>Normalny:</strong> Poniżej progu teatru operacyjnego</li><li><strong>Podwyższony:</strong> Liczba osiąga 3 do 8, zależnie od teatru</li><li><strong>Krytyczny:</strong> Liczba osiąga 8 do 20, zależnie od teatru</li></ul><p>Statki liczą się aż do połowy progu podwyższonego, więc same statki nigdy nie podnoszą poziomu.</p><p><strong>Gotowość do przeprowadzenia uderzenia:</strong> Tankowce + Systemy wczesnego ostrzegania + Myśliwce obecne w wystarczającej liczbie do przeprowadzania operacji bojowych.</p>",
       "scanningTheaters": "Skanowanie teatrów",
       "positions": "Pozycje lotnicze",
       "navalVesselsLoading": "Okręty marynarki",
@@ -1438,7 +1472,9 @@
       },
       "emojiKeyLabel": "Legenda emoji",
       "emojiKeyAir": "Zasoby powietrzne",
-      "emojiKeyNaval": "Zasoby morskie"
+      "emojiKeyNaval": "Zasoby morskie",
+      "instabilityChip": "Niestabilność {{score}}",
+      "instabilityNote": "Wskaźnik niestabilności {{nation}}: {{score}} na 100. Pokazane dla kontekstu. Nie wpływa na poziom, który liczy statki powietrzne i okręty w teatrze operacji."
     },
     "techEvents": {
       "loading": "Ładowanie wydarzeń technicznych...",
@@ -1557,12 +1593,16 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS satelitarne wykrywanie temperatury w monitorowanych regionach konfliktu. Wysoka intensywność = jasność > 360 K i pewność > 80%.",
       "possibleExplosions": "Wykryto {{count}} możliwą(e) eksplozję(e)",
-      "explosionTooltip": "Sygnatura termiczna zgodna z wybuchem (moc promieniowania ognia >80 MW, jasność >380 K)"
+      "explosionTooltip": "Sygnatura termiczna zgodna z wybuchem (moc promieniowania ognia >80 MW, jasność >380 K)",
+      "agencyReports": "Pożary zgłoszone przez agencje",
+      "agencyDates": "Daty agencji",
+      "shownOfTotal": "Wyświetlono {{shown}} z {{total}} rekordów pożarów"
     },
     "displacement": {
       "refugees": "Uchodźcy",
       "asylumSeekers": "Osoby ubiegające się o azyl",
       "idps": "IDP",
+      "stateless": "Bezpaństwowcy",
       "total": "Całkowity",
       "origins": "Początki",
       "hosts": "Zastępy niebieskie",
@@ -1750,7 +1790,7 @@
       "noData": "brak danych",
       "enable": "Włącz",
       "convergenceMetric": "Zbieżność",
-      "ciiDeviation": "Odchylenie Country Instability Index",
+      "topCiiScore": "Najwyższy wynik niestabilności kraju",
       "infraEvents": "Zdarzenia infrastrukturalne",
       "highAlerts": "Wysokie alerty",
       "topRisks": "Główne ryzyka",
@@ -1850,7 +1890,7 @@
       "briefFreshness": "Wygenerowano {{minutes}}m temu · najnowsze źródło sprzed {{hours}}h",
       "briefStoryDetails": "Szczegóły wiadomości ({{count}})",
       "streamIdleStopLabel": "Zatrzymaj transmisję live gdy nieaktywna",
-      "streamIdleStopDesc": "Zatrzymuje Live News i Live Webcams po tym czasie bez aktywności i wyświetla powiadomienie w panelu.",
+      "streamIdleStopDesc": "Zatrzymuje Live News i Live Webcams po tym czasie bez aktywności i wyświetla powiadomienie w panelu. Live News gra dalej, dopóki dźwięk jest włączony.",
       "streamIdleStopNever": "Nigdy",
       "liveNewsAutoplayLabel": "Automatyczne odtwarzanie aktualności na żywo",
       "liveNewsAutoplayDesc": "Rozpoczyna odtwarzanie wideo aktualności na żywo, bez dźwięku, zaraz po jego pojawienia się na ekranie. Wyłącz tę opcję, aby wideo załadowało się tylko po jego ręcznym uruchomieniu."
@@ -2095,8 +2135,12 @@
       "topProducers": "Najwięksi producenci",
       "upstreamUnavailable": "Dane łańcucha dostaw tymczasowo niedostępne — wyświetlanie danych z pamięci podręcznej",
       "warnings": "ostrzeżenie(a)",
-      "aisDisruptions": "Zakłócenia śledzenia statków",
+      "aisDisruptions_one": "{{count}} zakłócenie śledzenia statków",
+      "aisDisruptions_few": "{{count}} zakłócenia śledzenia statków",
+      "aisDisruptions_many": "{{count}} zakłóceń śledzenia statków",
+      "aisDisruptions_other": "{{count}} zakłócenia śledzenia statków",
       "wowChange": "Zmiana tygodniowa",
+      "asOf": "stan na {{date}}",
       "riskLevel": "Poziom ryzyka",
       "flowUnavailable": "Dane przepływu niedostępne",
       "containerRates": "Stawki Kontenerowe",
@@ -2314,6 +2358,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor stosunek kredytów wysokodochodowych do długoterminowych obligacji skarbowych, skorygowany o zmienność akcji i spread wysokodochodowy: (HYG / TLT) / (VIX × High-yield spread / 100). To nie jest Financial Stress Index Kansas City Fed. Odczyt 1,5 lub wyższy oznacza niski stress; poniżej 0,3 oznacza wysoki stress.",
       "title": "Wskaźnik Stresu Finansowego",
       "usFsiValue": "Wartość Financial Stress Indicator USA",
+      "asOf": "Stan na {{date}}",
       "cissTitle": "EU CISS (Systemowy Stres w Strefie Euro)",
       "notAvailable": "N/D",
       "interpretation": {
@@ -2587,7 +2632,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Ceny detaliczne benzyny i oleju napędowego w ponad 30 krajach, znormalizowane do USD/litra dla porównywalności. Ceny pochodzą z oficjalnych rządowych programów otwartych danych i są aktualizowane co tydzień. Kraje z najtańszą i najdroższą paliwem są wyróżnione. Zmiana w stosunku do tygodnia poprzedniego jest wyświetlana, gdy dostępne są dane z poprzedniego tygodnia.",
-      "countries": "kraje"
+      "countries": "kraje",
+      "observedStale": "{{date}}, sprzed {{days}} dni",
+      "monthlyMean": "średnia za {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Indeks Cen Żywności Światowej Organizacji ds. Wyżywienia i Rolnictwa śledzi międzynarodowe ceny eksportowe koszyka towarów żywnościowych (Zboża, Nabiał, Mięso, Oleje, Cukier), podstawa 2014–2016=100. Aktualizowany co miesiąc w pierwszy piątek każdego miesiąca.",
@@ -2883,7 +2930,21 @@
       "saved": "Ostatnia znana aktualizacja {{time}} · Sprawdzanie aktualizacji",
       "savedOffline": "Ostatnia znana aktualizacja {{time}} · Brak połączenia",
       "localSignals": "Na podstawie sygnałów załadowanych w panelu",
-      "emptySaved": "Brak konwergencji w ostatniej znanej aktualizacji."
+      "emptySaved": "Brak konwergencji w ostatniej znanej aktualizacji.",
+      "signalTypes": {
+        "militaryFlight": "Lot wojskowy",
+        "militaryVessel": "Okręt wojskowy",
+        "aisGap": "Luka AIS",
+        "conflictEvent": "Zdarzenie konfliktowe",
+        "escalationOutage": "Awaria łączności",
+        "newsSeverity": "Poważne wiadomości",
+        "sanctionsNews": "Wiadomości o sankcjach",
+        "marketMove": "Ruch rynku",
+        "commoditySpike": "Skok cen surowców",
+        "earthquake": "Trzęsienie ziemi",
+        "infraOutage": "Awaria infrastruktury",
+        "other": "Sygnał"
+      }
     },
     "thermalEscalation": {
       "title": "Eskalacja termiczna",
@@ -3338,6 +3399,10 @@
       },
       "warningAge": "Czas od pierwszego nadal ważnego ostrzeżenia",
       "days": "{{amount}} dni"
+    },
+    "externalNavigation": {
+      "blocked": "Twoja przeglądarka zablokowała nową kartę.",
+      "openLink": "Otwórz {{host}}"
     }
   },
   "popups": {
@@ -4423,7 +4488,13 @@
     "alert": "Alarm: {{location}}",
     "multipleRegions": "Wiele regionów",
     "trending": "\"{{term}}\" w trendach — {{count}} wzmianek w {{hours}}h",
-    "eventsDetected": "{{count}} zdarzeń wykrytych w regionie ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "Wykryte zdarzenia ({{count}}): {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protesty",
+      "military_flight": "loty wojskowe",
+      "military_vessel": "okręty wojenne",
+      "earthquake": "aktywność sejsmiczna"
+    }
   },
   "intel": {
     "topics": {
@@ -5791,7 +5862,8 @@
           "seatCap": "Wszystkie 4 miejsca są używane. Najpierw usuń miejsce.",
           "ownerDomain": "Adres e-mail Twojego konta musi być z domeny firmowej, aby zapraszać kolegów.",
           "self": "Nie możesz zaprosić siebie.",
-          "inviteeDomain": "Adres e-mail osoby zaproszonej musi być z domeny firmowej."
+          "inviteeDomain": "Adres e-mail osoby zaproszonej musi być z domeny firmowej.",
+          "rateLimited": "Wysłano maksymalną liczbę 20 zaproszeń w kroczącym oknie 24 godzin. Poczekaj, zanim zaprosisz kolejnych współpracowników."
         }
       },
       "enterpriseSeats": {

@@ -299,6 +299,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "升級至PRO以檢視武器供應商依賴關係和軍事能力"
+    },
+    "intelMemory": {
+      "title": "歷史情報庫",
+      "help": "180天重要事件檔案庫，涵蓋衝突、軍事、能源、動盪、網路、海事、自然災害和航空，支援按需語義先例匹配。",
+      "loading": "正在載入歷史情報庫…",
+      "proLocked": "升級至PRO以獲得180天歷史情報庫和先例搜尋",
+      "unavailable": "歷史情報庫暫時不可用。",
+      "retry": "重試",
+      "empty": "在180天時間視窗內，沒有與該國家和領域匹配的歸檔情報事件。",
+      "partial": "本次查詢的檔案覆蓋不完整；可用的記錄仍然可見。",
+      "domainFilterLabel": "按領域篩選歷史情報",
+      "domains": {
+        "all": "全部",
+        "conflict": "衝突",
+        "military": "軍事",
+        "energy": "能源",
+        "unrest": "動盪",
+        "cyber": "網路",
+        "maritime": "海事",
+        "natural": "自然災害",
+        "aviation": "航空"
+      },
+      "loadMore": "載入更多",
+      "loadingMore": "正在載入…",
+      "loadMoreError": "無法載入更多事件。請重試。",
+      "sourceLink": "來源 ↗",
+      "similarTitle": "查詢相似的歷史事件",
+      "useLatestHeadline": "使用最新標題",
+      "similarPlaceholder": "描述一個發展中的局勢（至少10個字元）…",
+      "findSimilar": "查詢相似事件",
+      "similarMinLength": "輸入至少10個字元以搜尋歷史先例。",
+      "similarLoading": "正在搜尋歷史先例…",
+      "similarEmpty": "沒有歷史事件超過相似度閾值。",
+      "similarUnavailable": "先例搜尋暫時不可用。請重試。"
     }
   },
   "header": {
@@ -977,7 +1011,7 @@
       "upstreamUnavailable": "供應鏈資料暫時不可用 — 顯示快取資料",
       "spikeAlert": "檢測到異常飆升 — 費率顯著高於52周均值（周度）",
       "warnings": "條警告",
-      "aisDisruptions": "船舶追蹤中斷",
+      "aisDisruptions_other": "{{count}} 次船舶追蹤中斷",
       "disruption": "中斷",
       "vessels": "船舶",
       "incidents7d": "事件（7天）",
@@ -988,6 +1022,7 @@
       "topProducers": "主要生產國",
       "risk": "風險",
       "wowChange": "周環比變化",
+      "asOf": "截至 {{date}}",
       "riskLevel": "風險等級",
       "flowUnavailable": "流量資料不可用",
       "containerRates": "集裝箱運費",
@@ -1163,7 +1198,7 @@
         "auxiliary": "輔助艦",
         "navalVessels": "海軍艦艇"
       },
-      "infoTooltip": "<strong>方法論</strong><p>按作戰區域聚合軍用飛機和海軍艦艇。</p><ul><li><strong>正常：</strong> 基準活動</li><li><strong>升高：</strong> 超過閾值（50+ 架飛機）</li><li><strong>嚴重：</strong> 高度集中（100+ 架飛機）</li></ul><p><strong>具備打擊能力：</strong> 加油機 + 預警機 + 戰鬥機數量充足以維持持續作戰。</p>",
+      "infoTooltip": "<strong>方法論</strong><p>統計各軍事行動區的軍用飛機和被跟蹤的海軍艦艇數量。</p><ul><li><strong>正常：</strong>低於該行動區的閾值</li><li><strong>升高：</strong>計數達到 3 至 8，因行動區而異</li><li><strong>嚴重：</strong>計數達到 8 至 20，因行動區而異</li></ul><p>艦艇計入計數，最多可達升高閾值的一半，因此單獨的艦艇永遠不會引發等級提升。</p><p><strong>具有打擊能力：</strong>油料補給機、預警機以及戰鬥機數量充足，足以維持持續作戰。</p>",
       "scanningTheaters": "掃描戰區",
       "positions": "飛機位置",
       "navalVesselsLoading": "海軍艦艇",
@@ -1205,7 +1240,9 @@
       },
       "emojiKeyLabel": "表情符號圖例",
       "emojiKeyAir": "空中資產",
-      "emojiKeyNaval": "海軍資產"
+      "emojiKeyNaval": "海軍資產",
+      "instabilityChip": "不穩定指數 {{score}}",
+      "instabilityNote": "{{nation}} 不穩定指數：{{score}} 分（滿分100分）。僅供參考。該指數不影響威脅等級，威脅等級由該戰區內的飛機和艦船數量決定。"
     },
     "countryBrief": {
       "moreActions": "更多操作",
@@ -1548,7 +1585,7 @@
       "briefStoryDetails": "報道詳情 ({{count}})",
       "streamIdleStopLabel": "空閒時停止即時影片",
       "streamIdleStopNever": "從不",
-      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。",
+      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。聲音開啟時，即時新聞會繼續播放。",
       "liveNewsAutoplayLabel": "自動播放即時新聞",
       "liveNewsAutoplayDesc": "即時新聞影片出現在螢幕上時自動開始播放，靜音狀態。關閉此選項可僅在您手動啟動時載入影片。"
     },
@@ -1618,7 +1655,7 @@
       "noData": "無資料",
       "enable": "啟用",
       "convergenceMetric": "匯聚度",
-      "ciiDeviation": "國家不穩定指數偏差",
+      "topCiiScore": "最高國家不穩定得分",
       "infraEvents": "基礎設施事件",
       "highAlerts": "高等級警報",
       "topRisks": "主要風險",
@@ -1730,7 +1767,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS衛星在監控衝突區域的熱異常探測。高強度 = 亮度溫度>360K且置信度>80%。",
       "possibleExplosions": "檢測到 {{count}} 起可能爆炸",
-      "explosionTooltip": "熱訊號與爆炸一致（火輻射功率 >80 MW，亮度 >380 K）"
+      "explosionTooltip": "熱訊號與爆炸一致（火輻射功率 >80 MW，亮度 >380 K）",
+      "agencyReports": "機構報告的火災",
+      "agencyDates": "機構日期",
+      "shownOfTotal": "顯示 {{total}} 條火災記錄中的 {{shown}} 條"
     },
     "ucdpEvents": {
       "stateBased": "國家衝突",
@@ -1795,6 +1835,7 @@
       "refugees": "難民",
       "asylumSeekers": "尋求庇護者",
       "idps": "國內流離失所者",
+      "stateless": "無國籍者",
       "total": "總計",
       "origins": "來源國",
       "hosts": "收容國",
@@ -2284,6 +2325,7 @@
       "infoTooltip": "<strong>金融壓力指標</strong>World Monitor高收益債券與長期國債比率，根據股票波動率和高收益利差調整：（HYG / TLT）/（VIX × 高收益利差 / 100）。這不是堪薩斯城聯儲金融壓力指數。1.5或更高的讀數表示低壓力；低於0.3表示高壓力。",
       "title": "金融壓力指標",
       "usFsiValue": "美國金融壓力指標值",
+      "asOf": "截至 {{date}}",
       "cissTitle": "歐盟CISS（歐元區系統性壓力）",
       "notAvailable": "不適用",
       "interpretation": {
@@ -2554,7 +2596,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>燃油價格</strong>30多個國家的汽油和柴油零售泵價，以美元/升為單位進行比較。價格來自官方政府開放資料計劃，每週更新。最便宜和最昂貴的國家突出顯示。當獲得上週資料時顯示周環比變化。",
-      "countries": "個國家"
+      "countries": "個國家",
+      "observedStale": "{{date}}，{{days}} 天前",
+      "monthlyMean": "{{month}}均價"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>糧農組織食品價格指數</strong>聯合國糧食及農業組織的食品價格指數跟蹤食品商品籃（穀物、乳製品、肉類、油類、糖）的國際出口價格，基數2014-2016=100。每月第一個星期五更新。",
@@ -2838,7 +2882,21 @@
       "saved": "最近一次已知更新 {{time}} · 正在檢查更新",
       "savedOffline": "最近一次已知更新 {{time}} · 離線",
       "localSignals": "基於儀表板中已載入的訊號",
-      "emptySaved": "最近一次已知更新中未發現匯聚。"
+      "emptySaved": "最近一次已知更新中未發現匯聚。",
+      "signalTypes": {
+        "militaryFlight": "軍機飛行",
+        "militaryVessel": "軍艦",
+        "aisGap": "AIS 中斷",
+        "conflictEvent": "衝突事件",
+        "escalationOutage": "通訊中斷",
+        "newsSeverity": "嚴重新聞",
+        "sanctionsNews": "制裁新聞",
+        "marketMove": "市場波動",
+        "commoditySpike": "大宗商品飆升",
+        "earthquake": "地震",
+        "infraOutage": "基礎設施中斷",
+        "other": "訊號"
+      }
     },
     "thermalEscalation": {
       "title": "熱異常升級",
@@ -3275,6 +3333,10 @@
       },
       "warningAge": "距首條仍有效的預警",
       "days": "{{amount}} 天"
+    },
+    "externalNavigation": {
+      "blocked": "瀏覽器阻止了新標籤頁的開啟。",
+      "openLink": "開啟 {{host}}"
     }
   },
   "popups": {
@@ -4357,7 +4419,13 @@
     "alert": "警報：{{location}}",
     "multipleRegions": "多個區域",
     "trending": "「{{term}}」趨勢上升 — {{hours}}小時內{{count}}次提及",
-    "eventsDetected": "在區域（{{lat}}°, {{lon}}°）檢測到{{count}}個事件"
+    "eventsDetected": "檢測到{{count}}個事件：{{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗議",
+      "military_flight": "軍機飛行",
+      "military_vessel": "海軍艦艇",
+      "earthquake": "地震活動"
+    }
   },
   "intel": {
     "topics": {
@@ -5683,7 +5751,8 @@
           "seatCap": "4 個席位已全部使用。請先移除一個席位。",
           "ownerDomain": "您的帳戶郵箱必須是企業域名才能邀請團隊成員。",
           "self": "您無法邀請自己。",
-          "inviteeDomain": "被邀請人的郵箱必須是企業域名。"
+          "inviteeDomain": "被邀請人的郵箱必須是企業域名。",
+          "rateLimited": "您已在滾動 24 小時內達到最多 20 封邀請的上限。請稍候再邀請更多團隊成員。"
         }
       },
       "enterpriseSeats": {

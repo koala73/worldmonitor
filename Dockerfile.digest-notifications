@@ -137,4 +137,6 @@ COPY server/_shared/feelgood-classifier.js server/_shared/feelgood-classifier.d.
 COPY api/_upstash-json.js ./api/
 COPY api/_seed-envelope.js ./api/
 
+USER node
+
 CMD ["node", "scripts/seed-digest-notifications.mjs"]

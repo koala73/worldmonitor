@@ -247,7 +247,7 @@ export class EnergyComplexPanel extends Panel {
               ${miniSparkline(euSparklineValues, euChange1d, 80, 22)}
               <div>
                 <span class="commodity-price">${escapeHtml(euFillPct.toFixed(1))}%</span>
-                ${euChange1d !== null ? `<span class="commodity-change ${escapeHtml(euClass)}" style="margin-left:6px">${escapeHtml(euSign + euChange1d.toFixed(2))}% 1d</span>` : ''}
+                ${euChange1d !== null ? `<span class="commodity-change ${escapeHtml(euClass)}" style="margin-left:6px">${escapeHtml(euSign + euChange1d.toFixed(2))} pp 1d</span>` : ''}
                 ${euTrend ? `<span style="margin-left:6px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(euTrend)}</span>` : ''}
               </div>
             </div>

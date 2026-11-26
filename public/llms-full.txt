@@ -300,7 +300,7 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 <a id="corpus-data-sources"></a>
 ## Data Sources
 
-The live inventory currently covers 1360 attributed providers across 1383 observed source hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution page](https://www.worldmonitor.app/docs/source-attribution) lists hosts and observed surfaces. The [committed attribution manifest](https://github.com/koala73/worldmonitor/blob/main/shared/source-attribution-manifest.json) records license posture, required attribution, and review status, including terms-review entries.
+The live inventory currently covers 1358 attributed providers across 1381 observed source hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution page](https://www.worldmonitor.app/docs/source-attribution) lists hosts and observed surfaces. The [committed attribution manifest](https://github.com/koala73/worldmonitor/blob/main/shared/source-attribution-manifest.json) records license posture, required attribution, and review status, including terms-review entries.
 
 - ACLED (Armed Conflict Location & Event Data), self-hosted deployments with ACLED credentials only: Protests, riots, conflicts — 30-day window, tokenized API
 - GDELT (Global Database of Events, Language, and Tone): Geo-events, protest keywords, topic feeds
@@ -431,7 +431,7 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 <a id="corpus-source-provider-directory"></a>
 ## Source provider directory
 
-World Monitor publishes 1360 named providers across 27 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
+World Monitor publishes 1358 named providers across 27 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
 - [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 46 providers.
 - [Military & Strategic](https://www.worldmonitor.app/sources/military/): 22 providers.
@@ -451,20 +451,20 @@ World Monitor publishes 1360 named providers across 27 source catalog pages. Eac
 - [News & OSINT — page 14](https://www.worldmonitor.app/sources/news/page/14/): 60 providers.
 - [News & OSINT — page 15](https://www.worldmonitor.app/sources/news/page/15/): 60 providers.
 - [News & OSINT — page 16](https://www.worldmonitor.app/sources/news/page/16/): 60 providers.
-- [News & OSINT — page 17](https://www.worldmonitor.app/sources/news/page/17/): 10 providers.
+- [News & OSINT — page 17](https://www.worldmonitor.app/sources/news/page/17/): 8 providers.
 - [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 60 providers.
-- [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 41 providers.
-- [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 52 providers.
+- [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 43 providers.
+- [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 51 providers.
 - [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 55 providers.
 - [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 53 providers.
 - [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 15 providers.
 - [China Coverage](https://www.worldmonitor.app/sources/china/): 14 providers.
-- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 32 providers.
+- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 31 providers.
 
 <a id="corpus-comparisons"></a>
 ## Comparisons
 
-A comparison hub plus 12 head-to-head and category pages. Every page uses the same 11-column matrix (Product, Price, Update latency, Domains covered, Signup required, REST API, MCP server, Open source, Source count & licensing, Historical archive, Best for), states what each competitor wins, and answers the questions engines lift verbatim. Prices were checked at publication and can change.
+A comparison hub plus 12 head-to-head and category pages. Each comparison matrix starts with 11 common columns (Product, Price, Update latency, Domains covered, Signup required, REST API, MCP server, Open source, Source count & licensing, Historical archive, Best for). The shortlist adds 3 columns (Pricing model, Free tier or trial, Seats / team plan). The pages explain where competitors excel and answer common questions. Prices were checked at publication and can change.
 
 - [Compare World Monitor](https://www.worldmonitor.app/compare/): Compare World Monitor with Liveuamap, ACLED, GDELT, Dataminr, Recorded Future, and more: one master matrix, honest concessions, and FAQs.
 - [Liveuamap Alternatives](https://www.worldmonitor.app/compare/liveuamap-alternatives/): Eleven-column matrix comparing World Monitor with Liveuamap, Deep State Map, ACLED, ConflictZone.io, ISW, UNOSAT and ICG CrisisWatch on price, latency, API access and licensing, with the cells each competitor wins.
@@ -984,7 +984,7 @@ Current assignments:
 
 | Canonical id | Public name | Threat level | Weight | War-risk enum |
 |---|---|---|---:|---|
-| `suez` | Suez Canal | `high` | 30 | `WAR_RISK_TIER_HIGH` |
+| `suez` | Suez Canal | `elevated` | 15 | `WAR_RISK_TIER_ELEVATED` |
 | `malacca_strait` | Strait of Malacca | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
 | `hormuz_strait` | Strait of Hormuz | `war_zone` | 70 | `WAR_RISK_TIER_WAR_ZONE` |
 | `bab_el_mandeb` | Bab el-Mandeb | `critical` | 40 | `WAR_RISK_TIER_CRITICAL` |

@@ -291,7 +291,7 @@ export class SignalModal {
         </div>
         <div class="signal-context-item">
           <span class="context-label">Delta / z-score</span>
-          <span class="context-value">+${radiation.delta.toFixed(1)} / ${radiation.zScore.toFixed(2)}</span>
+          <span class="context-value">+${radiation.delta.toFixed(1)} / ${radiation.zScore === null ? '—' : radiation.zScore.toFixed(2)}</span>
         </div>
         <div class="signal-context-item">
           <span class="context-label">Confidence</span>

@@ -1073,7 +1073,8 @@
         "sanctionRefs": [],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
         "classifierVersion": "v1",
-        "classifierConfidence": 0.95
+        "classifierConfidence": 0.95,
+        "lifecycleState": "cancelled"
       }
     },
     "trans-panama-pipeline": {
@@ -1536,7 +1537,8 @@
         "sanctionRefs": [],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
         "classifierVersion": "v1",
-        "classifierConfidence": 0.9
+        "classifierConfidence": 0.9,
+        "lifecycleState": "closed"
       }
     },
     "djeno-congo": {
@@ -2568,7 +2570,7 @@
     "adria-oil-pipeline-hr": {
       "id": "adria-oil-pipeline-hr",
       "name": "Adria Oil Pipeline",
-      "operator": "Jadranski Naftovod [100.00%]; Gazprom [unknown %]",
+      "operator": "Jadranski Naftovod [100.00%]; Gazprom",
       "commodityType": "oil",
       "fromCountry": "HR",
       "toCountry": "BA",
@@ -2727,7 +2729,7 @@
     "alberta-ethane-gathering-system-aegs-ca": {
       "id": "alberta-ethane-gathering-system-aegs-ca",
       "name": "Alberta Ethane Gathering System (AEGS)",
-      "operator": "unknown [unknown %]",
+      "operator": "",
       "commodityType": "oil",
       "fromCountry": "CA",
       "toCountry": "CA",
@@ -2820,7 +2822,7 @@
     "almetyevsk-gorky-oil-pipeline-ii-ru": {
       "id": "almetyevsk-gorky-oil-pipeline-ii-ru",
       "name": "Almetyevsk-Gorky Oil Pipeline - II",
-      "operator": "Transneft [unknown %]",
+      "operator": "Transneft",
       "commodityType": "oil",
       "fromCountry": "RU",
       "toCountry": "RU",
@@ -2913,7 +2915,7 @@
     "arbuckle-pipeline-us": {
       "id": "arbuckle-pipeline-us",
       "name": "Arbuckle Pipeline",
-      "operator": "unknown [unknown %]",
+      "operator": "",
       "commodityType": "oil",
       "fromCountry": "US",
       "toCountry": "US",
@@ -3068,7 +3070,7 @@
     "baku-novorossiysk-oil-pipeline-az": {
       "id": "baku-novorossiysk-oil-pipeline-az",
       "name": "Baku-Novorossiysk Oil Pipeline",
-      "operator": "SOCAR [100.00%]; Transneft [unknown %]",
+      "operator": "SOCAR [100.00%]; Transneft",
       "commodityType": "oil",
       "fromCountry": "AZ",
       "toCountry": "RU",
@@ -3380,7 +3382,7 @@
     "bin-omar-baiji-k2-oil-pipeline-iq": {
       "id": "bin-omar-baiji-k2-oil-pipeline-iq",
       "name": "Bin Omar-Baiji K2 Oil Pipeline",
-      "operator": "unknown [unknown %]",
+      "operator": "",
       "commodityType": "oil",
       "fromCountry": "IQ",
       "toCountry": "IQ",
@@ -3969,7 +3971,7 @@
     "colombia-oil-pipeline-co": {
       "id": "colombia-oil-pipeline-co",
       "name": "Colombia Oil Pipeline",
-      "operator": "Cenit SAS [51.28%]; Hocol SA [21.72%]; Emerald Energy [unknown %]; Frontera Energy [unknown %]; Perenco [unknown %]; Repsol [unknown %]",
+      "operator": "Cenit SAS [51.28%]; Hocol SA [21.72%]; Emerald Energy; Frontera Energy; Perenco; Repsol",
       "commodityType": "oil",
       "fromCountry": "CO",
       "toCountry": "CO",
@@ -4310,7 +4312,7 @@
     "druzhba-oil-pipeline-kuibyshev-unecha-mozyr-1-ru": {
       "id": "druzhba-oil-pipeline-kuibyshev-unecha-mozyr-1-ru",
       "name": "Druzhba Oil Pipeline - Kuibyshev-Unecha-Mozyr-1",
-      "operator": "Gomeltransneft Druzhba JSC [unknown %]; Transneft-Druzhba JSC [unknown %]",
+      "operator": "Gomeltransneft Druzhba JSC; Transneft-Druzhba JSC",
       "commodityType": "oil",
       "fromCountry": "RU",
       "toCountry": "BY",
@@ -4372,7 +4374,7 @@
     "druzhba-oil-pipeline-mozyr-uzhgorod-oil-pipeline-i-by": {
       "id": "druzhba-oil-pipeline-mozyr-uzhgorod-oil-pipeline-i-by",
       "name": "Druzhba Oil Pipeline - Mozyr-Uzhgorod Oil Pipeline I",
-      "operator": "Gomeltransneft Druzhba JSC [unknown %]; UkrTransNafta [unknown %]",
+      "operator": "Gomeltransneft Druzhba JSC; UkrTransNafta",
       "commodityType": "oil",
       "fromCountry": "BY",
       "toCountry": "UA",
@@ -4403,7 +4405,7 @@
     "druzhba-oil-pipeline-sahy-bucany-litvinov-oil-pipeline-sk": {
       "id": "druzhba-oil-pipeline-sahy-bucany-litvinov-oil-pipeline-sk",
       "name": "Druzhba Oil Pipeline - Sahy-Bucany-Litvinov oil pipeline",
-      "operator": "MERO A.S [unknown %]; Transpetrol AS [unknown %]",
+      "operator": "MERO A.S; Transpetrol AS",
       "commodityType": "oil",
       "fromCountry": "SK",
       "toCountry": "CZ",
@@ -4434,7 +4436,7 @@
     "druzhba-oil-pipeline-unecha-polotsk-1-oil-pipeline-ru": {
       "id": "druzhba-oil-pipeline-unecha-polotsk-1-oil-pipeline-ru",
       "name": "Druzhba Oil Pipeline - Unecha-Polotsk 1 Oil Pipeline",
-      "operator": "Gomeltransneft Druzhba JSC [unknown %]; Transneft-Druzhba JSC [unknown %]",
+      "operator": "Gomeltransneft Druzhba JSC; Transneft-Druzhba JSC",
       "commodityType": "oil",
       "fromCountry": "RU",
       "toCountry": "BY",
@@ -4744,7 +4746,7 @@
     "el-sharara-zawiya-oil-pipeline-ly": {
       "id": "el-sharara-zawiya-oil-pipeline-ly",
       "name": "El Sharara-Zawiya Oil Pipeline",
-      "operator": "Libyan National Oil Corporation [88.00%]; Equinor [unknown %]; OMV [unknown %]; Repsol [unknown %]; TotalEnergies SE [unknown %]",
+      "operator": "Libyan National Oil Corporation [88.00%]; Equinor; OMV; Repsol; TotalEnergies SE",
       "commodityType": "oil",
       "fromCountry": "LY",
       "toCountry": "LY",
@@ -7040,7 +7042,7 @@
     "mehraran-shiraz-oil-pipeline-ir": {
       "id": "mehraran-shiraz-oil-pipeline-ir",
       "name": "Mehraran-Shiraz Oil Pipeline",
-      "operator": "unknown [unknown %]",
+      "operator": "",
       "commodityType": "oil",
       "fromCountry": "IR",
       "toCountry": "IR",
@@ -7538,7 +7540,7 @@
     "north-system-pipeline-us": {
       "id": "north-system-pipeline-us",
       "name": "North System Pipeline",
-      "operator": "unknown [unknown %]",
+      "operator": "",
       "commodityType": "oil",
       "fromCountry": "US",
       "toCountry": "US",
@@ -8034,7 +8036,7 @@
     "paradip-haldia-durgapur-lpg-pipeline-in": {
       "id": "paradip-haldia-durgapur-lpg-pipeline-in",
       "name": "Paradip Haldia Durgapur LPG Pipeline",
-      "operator": "unknown [unknown %]",
+      "operator": "",
       "commodityType": "oil",
       "fromCountry": "IN",
       "toCountry": "IN",
@@ -8499,7 +8501,7 @@
     "red-river-oil-pipeline-us": {
       "id": "red-river-oil-pipeline-us",
       "name": "Red River Oil Pipeline",
-      "operator": "Plains All American Pipeline [unknown %]; Valero Energy [unknown %]",
+      "operator": "Plains All American Pipeline; Valero Energy",
       "commodityType": "oil",
       "fromCountry": "US",
       "toCountry": "US",
@@ -9181,7 +9183,7 @@
     "sterling-ngl-pipelines-lines-i-ii-and-iii-us": {
       "id": "sterling-ngl-pipelines-lines-i-ii-and-iii-us",
       "name": "Sterling NGL Pipelines - Lines I, II, and III",
-      "operator": "unknown [unknown %]",
+      "operator": "",
       "commodityType": "oil",
       "fromCountry": "US",
       "toCountry": "US",
@@ -9367,7 +9369,7 @@
     "teppco-pipeline-us": {
       "id": "teppco-pipeline-us",
       "name": "TEPPCO Pipeline",
-      "operator": "unknown [unknown %]",
+      "operator": "",
       "commodityType": "oil",
       "fromCountry": "US",
       "toCountry": "US",
@@ -9772,7 +9774,7 @@
     "uzen-atyrau-samara-uas-pipeline-kz": {
       "id": "uzen-atyrau-samara-uas-pipeline-kz",
       "name": "Uzen-Atyrau-Samara (UAS) Pipeline",
-      "operator": "KazTransOil JSC [24.00%]; Transneft [unknown %]",
+      "operator": "KazTransOil JSC [24.00%]; Transneft",
       "commodityType": "oil",
       "fromCountry": "KZ",
       "toCountry": "RU",
@@ -10113,7 +10115,7 @@
     "wink-to-webster-pipeline-us": {
       "id": "wink-to-webster-pipeline-us",
       "name": "Wink to Webster Pipeline",
-      "operator": "Delek US [unknown %]; ExxonMobil [unknown %]; Lotus Midstream LLC [unknown %]; MPLX [unknown %]; Plains All American Pipeline [unknown %]; Rattler Midstream LP [unknown %]",
+      "operator": "Delek US; ExxonMobil; Lotus Midstream LLC; MPLX; Plains All American Pipeline; Rattler Midstream LP",
       "commodityType": "oil",
       "fromCountry": "US",
       "toCountry": "US",

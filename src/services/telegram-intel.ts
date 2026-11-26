@@ -1,5 +1,5 @@
 import { isDesktopRuntime, toApiUrl, toRuntimeUrl } from '@/services/runtime';
-import { createTimeoutSignal } from '@/services/timeout-signal';
+import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 import { normalizeTelegramUsername } from '@/services/telegram-watchlist';
 
 export interface TelegramItem {
@@ -10,6 +10,7 @@ export interface TelegramItem {
   url: string;
   ts: string;
   text: string;
+  textTruncated?: boolean;
   topic: string;
   tags: string[];
   earlySignal: boolean;
@@ -198,6 +199,7 @@ function parseTelegramItem(value: unknown): TelegramItem | null {
     url: parsed.url as string,
     ts: parsed.ts as string,
     text: parsed.text as string,
+    ...(parsed.textTruncated === true ? { textTruncated: true } : {}),
     topic: parsed.topic as string,
     tags: parsed.tags,
     earlySignal: parsed.earlySignal !== false,
@@ -237,8 +239,13 @@ function applyWatchlistMetadata(items: TelegramItem[]): TelegramItem[] {
   }));
 }
 
-export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedResponse> {
+export async function fetchTelegramFeed(limit = 50, signal?: AbortSignal): Promise<TelegramFeedResponse> {
   const generation = cacheGeneration;
+  if (signal?.aborted) {
+    throw signal.reason instanceof DOMException || signal.reason instanceof Error
+      ? signal.reason
+      : new DOMException('Aborted', 'AbortError');
+  }
   if (cachedResponse && Date.now() - cachedAt < CACHE_TTL) return cachedResponse;
 
   // Gating the route cost us the edge's `stale-if-error=120`: a shared entry used
@@ -260,10 +267,13 @@ export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedRespons
     return cachedResponse && Date.now() - cachedAt < STALE_FALLBACK_TTL ? cachedResponse : null;
   };
 
+  const timeoutSignal = createTimeoutSignal(15_000);
+  const requestSignal = signal ? combineAbortSignals([signal, timeoutSignal]) : timeoutSignal;
   let res: Response;
   try {
-    res = await fetch(telegramFeedUrl(limit), { signal: createTimeoutSignal(15_000) });
+    res = await fetch(telegramFeedUrl(limit), { signal: requestSignal });
   } catch (error) {
+    if (signal?.aborted) throw error;
     const stale = staleFallback();
     if (stale) return stale;
     throw error;
@@ -278,6 +288,7 @@ export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedRespons
   try {
     json = parseTelegramFeedResponse(await res.json());
   } catch (error) {
+    if (signal?.aborted) throw error;
     // A truncated or non-JSON 200 is the same class of upstream blip as a 5xx;
     // handling it differently would strand the panel on exactly the shape the
     // relay's own normalization fallthrough exists to tolerate.
@@ -286,6 +297,11 @@ export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedRespons
     throw error;
   }
   assertCurrentGeneration(generation);
+  if (signal?.aborted) {
+    throw signal.reason instanceof DOMException || signal.reason instanceof Error
+      ? signal.reason
+      : new DOMException('Aborted', 'AbortError');
+  }
   // A relay container that has not polled yet answers enabled with no posts and
   // no updatedAt. That is a restart, not an empty feed: keep the posts already
   // on screen, and never cache it, so the next refresh asks again.

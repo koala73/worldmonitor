@@ -25,8 +25,9 @@ const DIGEST_WARM_REQUEST_TIMEOUT_MS = 35_000;
 const DIGEST_WARM_HEARTBEAT_KEY = 'relay:heartbeat:news-digest-warm';
 // Health keeps the probe soft until the first healthy cycle writes this.
 const DIGEST_WARM_ACTIVATION_KEY = 'seed-activated:news:digest-warm:v1';
-// Three missed cycles before the heartbeat key expires.
-const DIGEST_WARM_HEARTBEAT_TTL_SECONDS = (3 * DIGEST_WARM_INTERVAL_MS) / 1000;
+// Four cycles. Health alarms after three missed cycles (51 min); the key must
+// outlive that boundary so a late cycle reads as STALE_SEED, not EMPTY.
+const DIGEST_WARM_HEARTBEAT_TTL_SECONDS = (4 * DIGEST_WARM_INTERVAL_MS) / 1000;
 
 function buildDigestWarmUrl(cell, env = process.env) {
   const variant = encodeURIComponent(cell.edition);

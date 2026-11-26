@@ -303,6 +303,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Actualizare la PRO pentru dependența furnizorilor de arme și capacitatea militară"
+    },
+    "intelMemory": {
+      "title": "Memorie istorică a informațiilor",
+      "help": "Arhivă de 180 de zile a evenimentelor notabile de conflict, militare, energetice, tulburări civile, cibernetice, maritime, catastrofe naturale și aviatice, cu potrivire semantică a precedenților la cerere.",
+      "loading": "Se încarcă memorie istorică a informațiilor…",
+      "proLocked": "Faceți upgrade la PRO pentru memorie istorică de 180 de zile și căutare de precedente",
+      "unavailable": "Memorie istorică a informațiilor nu este disponibilă temporar.",
+      "retry": "Reîncercați",
+      "empty": "Niciun eveniment arhivat din informații nu se potrivește acestei țări și domeniu în perioada de 180 de zile.",
+      "partial": "Acoperirea arhivei este parțială pentru această interogare; înregistrările disponibile rămân vizibile.",
+      "domainFilterLabel": "Filtrați informațiile istorice după domeniu",
+      "domains": {
+        "all": "Toate",
+        "conflict": "Conflict",
+        "military": "Militar",
+        "energy": "Energie",
+        "unrest": "Tulburări",
+        "cyber": "Cyber",
+        "maritime": "Maritim",
+        "natural": "Pericole naturale",
+        "aviation": "Aviație"
+      },
+      "loadMore": "Încărcați mai mult",
+      "loadingMore": "Se încarcă mai mult…",
+      "loadMoreError": "Nu s-au putut încărca evenimente suplimentare. Încercați din nou.",
+      "sourceLink": "Sursă ↗",
+      "similarTitle": "Găsiți evenimente similare din trecut",
+      "useLatestHeadline": "Folosiți cel mai recent titlu",
+      "similarPlaceholder": "Descrieți o situație în curs de dezvoltare (minimum 10 caractere)…",
+      "findSimilar": "Găsiți evenimente similare",
+      "similarMinLength": "Introduceți cel puțin 10 caractere pentru a căuta precedente istorice.",
+      "similarLoading": "Se caută precedente istorice…",
+      "similarEmpty": "Niciun eveniment similar din trecut nu a trecut pragul de similaritate.",
+      "similarUnavailable": "Căutarea de precedente nu este disponibilă temporar. Încercați din nou."
     }
   },
   "header": {
@@ -983,7 +1017,9 @@
       "upstreamUnavailable": "Datele lanțului de aprovizionare sunt temporar indisponibile — afișează datele din cache",
       "spikeAlert": "Salt detectat — rata semnificativ peste media pe 52 de săptămâni",
       "warnings": "avertisment(e)",
-      "aisDisruptions": "Perturbații în urmărirea navelor",
+      "aisDisruptions_one": "{{count}} perturbare în urmărirea navelor",
+      "aisDisruptions_few": "{{count}} perturbări în urmărirea navelor",
+      "aisDisruptions_other": "{{count}} de perturbări în urmărirea navelor",
       "disruption": "Perturbare",
       "vessels": "nave",
       "incidents7d": "Evenimente (7z)",
@@ -994,6 +1030,7 @@
       "topProducers": "Producători de top",
       "risk": "Risc",
       "wowChange": "Variație săptămânală",
+      "asOf": "la {{date}}",
       "riskLevel": "Nivel de risc",
       "flowUnavailable": "Date de flux indisponibile",
       "containerRates": "Rate containere",
@@ -1169,7 +1206,7 @@
         "auxiliary": "Auxiliar",
         "navalVessels": "Nave Militare"
       },
-      "infoTooltip": "<strong>Metodologie</strong><p>Agregă aeronave militare și nave militare pe teatru.</p><ul><li><strong>Normal:</strong> Activitate de referință</li><li><strong>Ridicat:</strong> Deasupra pragului (50+ aeronave)</li><li><strong>Critic:</strong> Concentrare ridicată (100+ aeronave)</li></ul><p><strong>Capabil de atac aerian:</strong> Cisterne + Avertizare timpurie aeriană + Avioane de vânătoare prezente în număr suficient pentru operații susținute.</p>",
+      "infoTooltip": "<strong>Metodologie</strong><p>Numără avioane militare și nave maritime monitorizate în fiecare teatru de operații.</p><ul><li><strong>Normal:</strong> Sub pragul teatrului</li><li><strong>Ridicat:</strong> Numărătoarea atinge 3 la 8, în funcție de teatru</li><li><strong>Critic:</strong> Numărătoarea atinge 8 la 20, în funcție de teatru</li></ul><p>Navele contribuie la numărătoare până la jumătate din pragul ridicat, deci navele singure nu vor ridica niciodată un nivel.</p><p><strong>Capabil de lovituri:</strong> Tancuri de combustibil + Avertizare timpurie aeriană + Avioane de luptă prezente în numere suficiente pentru operații susținute.</p>",
       "scanningTheaters": "Se scanează teatrele de operațiuni",
       "positions": "Pozițiile aeronavei",
       "navalVesselsLoading": "Nave navale",
@@ -1211,7 +1248,9 @@
       },
       "emojiKeyLabel": "Cheia Emoji",
       "emojiKeyAir": "Active Aeriene",
-      "emojiKeyNaval": "Active Navale"
+      "emojiKeyNaval": "Active Navale",
+      "instabilityChip": "Instabilitate {{score}}",
+      "instabilityNote": "Scor de instabilitate {{nation}}: {{score}} din 100. Afișat pentru context. Nu modifică nivelul, care numără aeronavele și navele din teatrul de operații."
     },
     "countryBrief": {
       "moreActions": "Mai multe acțiuni",
@@ -1555,7 +1594,7 @@
       "briefFreshness": "Generat {{minutes}}m în urmă · cea mai nouă sursă {{hours}}h vechime",
       "briefStoryDetails": "Detalii despre știre ({{count}})",
       "streamIdleStopLabel": "Oprește video live când este inactiv",
-      "streamIdleStopDesc": "Oprește Live News și Live Webcams după această perioadă fără activitate și afișează o notificare în panou.",
+      "streamIdleStopDesc": "Oprește Live News și Live Webcams după această perioadă fără activitate și afișează o notificare în panou. Live News continuă să fie redat cât timp sunetul este pornit.",
       "streamIdleStopNever": "Niciodată",
       "liveNewsAutoplayLabel": "Redare automată a știrilor live",
       "liveNewsAutoplayDesc": "Începe redarea videoclipului cu știri live, fără sunet, imediat ce acesta apare pe ecran. Dezactivați această opțiune pentru a încărca videoclipul doar când îl porniți dvs."
@@ -1626,7 +1665,7 @@
       "noData": "fără date",
       "enable": "Activați",
       "convergenceMetric": "Convergență",
-      "ciiDeviation": "Abatere a indicelui de instabilitate la nivel de țară",
+      "topCiiScore": "Cel mai mare scor de instabilitate al unei țări",
       "infraEvents": "Evenimente Infra",
       "highAlerts": "Alerte mari",
       "topRisks": "Principalele riscuri",
@@ -1740,7 +1779,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS detectii termice prin satelit în regiunile de conflict monitorizate. Intensitate mare = luminozitate >360K și încredere >80%.",
       "possibleExplosions": "{{count}} posibilă(e) explozie(explozie)",
-      "explosionTooltip": "Semnătură termică în concordanță cu explozie (putere radiantă de incendiu >80 MW, luminozitate >380 K)"
+      "explosionTooltip": "Semnătură termică în concordanță cu explozie (putere radiantă de incendiu >80 MW, luminozitate >380 K)",
+      "agencyReports": "Incendii raportate de agenții",
+      "agencyDates": "Datele agenției",
+      "shownOfTotal": "Se afișează {{shown}} din {{total}} înregistrări de incendii"
     },
     "ucdpEvents": {
       "stateBased": "Bazat pe stat",
@@ -1805,6 +1847,7 @@
       "refugees": "Refugiati",
       "asylumSeekers": "Solicitanții de azil",
       "idps": "Persoane strămutate intern",
+      "stateless": "Apatrizi",
       "total": "Total",
       "origins": "Țări de origine",
       "hosts": "Țări gazdă",
@@ -2304,6 +2347,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> Raport World Monitor dintre creditele cu randament ridicat și obligațiuni pe termen lung, ajustat pentru volatilitatea acțiunilor și spread-ul randamentului ridicat: (HYG / TLT) / (VIX × spread randament ridicat / 100). Aceasta nu este Indicele de Stres Financiar al Bancii Federale din Kansas City. O citire de 1,5 sau mai mare indică stres redus; sub 0,3 indică stres ridicat.",
       "title": "Indicatorul de Stres Financiar",
       "usFsiValue": "Valoarea indicatorului de stres financiar al SUA",
+      "asOf": "la {{date}}",
       "cissTitle": "EU CISS (Stres Sistemic Zona Euro)",
       "notAvailable": "N/A",
       "interpretation": {
@@ -2576,7 +2620,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Prețuri retail la benzină și motorină în peste 30 de țări, normalizate la USD/litru pentru comparație. Prețurile provin din programe oficiale de date deschise ale guvernelor și sunt actualizate săptămânal. Țările cu cele mai ieftine și cele mai scumpe prețuri sunt evidențiate. Modificarea de la o săptămână la alta este afișată atunci când sunt disponibile date din săptămâna anterioară.",
-      "countries": "țări"
+      "countries": "țări",
+      "observedStale": "{{date}}, de acum {{days}} zile",
+      "monthlyMean": "media pentru {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Indicele Prețului Alimentelor al Organizației pentru Alimentație și Agricultură a ONU urmărește prețurile de export internaționale pentru un coș de mărfuri alimentare (Cereale, Produse lactate, Carne, Uleiuri, Zahăr), baza 2014-2016=100. Actualizat lunar în prima vineri a fiecărei luni.",
@@ -2868,7 +2914,21 @@
       "saved": "Ultima actualizare cunoscută {{time}} · Se caută actualizări",
       "savedOffline": "Ultima actualizare cunoscută {{time}} · Fără conexiune",
       "localSignals": "Pe baza semnalelor încărcate în tabloul de bord",
-      "emptySaved": "Nu a existat convergență în ultima actualizare cunoscută."
+      "emptySaved": "Nu a existat convergență în ultima actualizare cunoscută.",
+      "signalTypes": {
+        "militaryFlight": "Zbor militar",
+        "militaryVessel": "Navă militară",
+        "aisGap": "Întrerupere AIS",
+        "conflictEvent": "Eveniment de conflict",
+        "escalationOutage": "Întrerupere comunicații",
+        "newsSeverity": "Știri grave",
+        "sanctionsNews": "Știri despre sancțiuni",
+        "marketMove": "Mișcare de piață",
+        "commoditySpike": "Salt al mărfurilor",
+        "earthquake": "Cutremur",
+        "infraOutage": "Întrerupere infrastructură",
+        "other": "Semnal"
+      }
     },
     "thermalEscalation": {
       "title": "Escaladare termică",
@@ -3317,6 +3377,10 @@
       },
       "warningAge": "Timp de la prima avertizare încă în vigoare",
       "days": "{{amount}} z"
+    },
+    "externalNavigation": {
+      "blocked": "Browserul tău a blocat deschiderea unei noi file.",
+      "openLink": "Deschide {{host}}"
     }
   },
   "popups": {
@@ -4401,7 +4465,13 @@
     "alert": "Alertă: {{location}}",
     "multipleRegions": "Regiuni multiple",
     "trending": "Tendințe „{{term}}” - {{count}} mențiuni în {{hours}}h",
-    "eventsDetected": "{{count}} evenimente detectate în regiune ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} evenimente detectate: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "proteste",
+      "military_flight": "zboruri militare",
+      "military_vessel": "nave militare",
+      "earthquake": "activitate seismică"
+    }
   },
   "intel": {
     "topics": {
@@ -5755,7 +5825,8 @@
           "seatCap": "Toate cele 4 locuri sunt ocupate. Elimină mai întâi un loc.",
           "ownerDomain": "Emailul tău de cont trebuie să fie dintr-un domeniu de companie pentru a invita coechipieri.",
           "self": "Nu te poți invita pe tine însuți.",
-          "inviteeDomain": "Emailul persoanei invitate trebuie să fie dintr-un domeniu de companie."
+          "inviteeDomain": "Emailul persoanei invitate trebuie să fie dintr-un domeniu de companie.",
+          "rateLimited": "Ai atins limita maximă de 20 de invitații într-o fereastră mobilă de 24 de ore. Așteaptă înainte de a invita alți colegi."
         }
       },
       "enterpriseSeats": {

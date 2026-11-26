@@ -26,7 +26,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "braces": "file:../vendor/braces",
     "hls.js": "^1.6.15",
-    "i18next": "^25.8.14",
+    "i18next": "^26.3.4",
     "i18next-browser-languagedetector": "^8.2.1",
     "lucide-react": "^0.546.0",
     "mailcheck": "^1.1.1",

@@ -3278,6 +3278,13 @@
     "ownershipClass": "unreviewed",
     "note": "Google News topic query aggregating many publishers; no single owner."
   },
+  "NHK News": {
+    "country": "JP",
+    "audience": "domestic",
+    "language": "ja",
+    "ownershipClass": "public-service",
+    "note": "Japanese public broadcaster with statutory independence; domestic news service."
+  },
   "NHK World": {
     "country": "JP",
     "audience": "international",
@@ -4069,7 +4076,7 @@
     "language": "en",
     "ownershipClass": "state"
   },
-  "SEC Filings": {
+  "IPO Filing News": {
     "country": "INTL",
     "audience": "international",
     "language": "en",
@@ -4895,8 +4902,7 @@
     "country": "UA",
     "audience": "international",
     "language": "en",
-    "ownershipClass": "nonprofit",
-    "note": "Feed actually ingests euromaidanpress.com (Euromaidan Press, NGO-run), not Ukrainska Pravda."
+    "ownershipClass": "private"
   },
   "Ukrinform": {
     "country": "UA",
@@ -5178,17 +5184,17 @@
     "ownershipClass": "private"
   },
   "YC Launches": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "private"
+  },
+  "YC News": {
     "country": "INTL",
     "audience": "international",
     "language": "en",
     "ownershipClass": "unreviewed",
     "note": "Google News keyword search with no site: filter; its rows come from many publishers."
-  },
-  "YC News": {
-    "country": "US",
-    "audience": "international",
-    "language": "en",
-    "ownershipClass": "private"
   },
   "Yedioth News": {
     "country": "IL",
@@ -9155,5 +9161,11 @@
     "audience": "international",
     "language": "fr",
     "ownershipClass": "public-service"
+  },
+  "Українська правда": {
+    "country": "UA",
+    "audience": "domestic",
+    "language": "uk",
+    "ownershipClass": "private"
   }
 }

@@ -5,7 +5,7 @@ import { getLatestRadiationWatch, type RadiationObservation } from './radiation'
 import type { CascadeImpactLevel } from '@/types';
 import { isInLearningMode } from './country-instability';
 import { getCachedCountryScores, isElevatedCiiScore } from './cached-risk-scores';
-import { getCountryAtCoordinates, getCountryNameByCode } from './country-geometry';
+import { getCountryAtCoordinates, getCountryNearCoordinates, getCountryNameByCode } from './country-geometry';
 import { t } from '@/services/i18n';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import { detectCiiScoreChanges } from './cii-score-changes';
@@ -71,7 +71,7 @@ export interface RadiationAlert {
   unit: string;
   baselineValue: number;
   delta: number;
-  zScore: number;
+  zScore: number | null;
   severity: 'elevated' | 'spike';
   confidence: RadiationObservation['confidence'];
   corroborated: boolean;
@@ -89,7 +89,7 @@ export interface RadiationAlert {
 
 export interface StrategicRiskOverview {
   convergenceAlerts: number;
-  avgCIIDeviation: number;
+  topCIIScore: number;
   infrastructureIncidents: number;
   compositeScore: number;
   trend: 'escalating' | 'stable' | 'de-escalating';
@@ -172,14 +172,16 @@ function getPriorityFromRadiation(observation: RadiationObservation, spikeCount:
 }
 
 function buildConvergenceAlert(convergence: GeoConvergenceAlert, alertId: string): UnifiedAlert {
-  const countries = getCountriesAtLocation(convergence.lat, convergence.lon);
-  const location = countries.join(', ') || 'Unknown';
+  const country = getCountryNearCoordinates(convergence.lat, convergence.lon);
+  const countries = country ? [country.code] : [];
+  const location = country?.name ?? getLocationName(convergence.lat, convergence.lon);
+  const types = convergence.types.map(type => t(`alerts.eventTypes.${type}`)).join(', ');
   return {
     id: alertId,
     type: 'convergence',
     priority: getPriorityFromConvergence(convergence.score, convergence.types.length),
     title: t('alerts.geoAlert', { location }),
-    summary: t('alerts.eventsDetected', { count: convergence.totalEvents, lat: convergence.lat.toFixed(1), lon: convergence.lon.toFixed(1) }),
+    summary: t('alerts.eventsDetected', { count: convergence.totalEvents, types, lat: convergence.lat.toFixed(1), lon: convergence.lon.toFixed(1) }),
     components: { convergence },
     location: { lat: convergence.lat, lon: convergence.lon },
     countries,
@@ -284,7 +286,7 @@ function getRadiationRank(observation: RadiationObservation): number {
   const confidenceRank = observation.confidence === 'high' ? 2 : observation.confidence === 'medium' ? 1 : 0;
   const corroborationBonus = observation.corroborated ? 300 : 0;
   const conflictPenalty = observation.conflictingSources ? 250 : 0;
-  return severityRank * 1000 + confidenceRank * 200 + corroborationBonus + observation.zScore * 100 + observation.delta - conflictPenalty;
+  return severityRank * 1000 + confidenceRank * 200 + corroborationBonus + (observation.zScore ?? 0) * 100 + observation.delta - conflictPenalty;
 }
 
 function createRadiationAlert(): UnifiedAlert | null {
@@ -641,7 +643,7 @@ export function calculateStrategicRiskOverview(
 
   return {
     convergenceAlerts: convergenceAlerts.length,
-    avgCIIDeviation: topCIIScore,  // Now shows top country score
+    topCIIScore,
     infrastructureIncidents: countInfrastructureIncidents(),
     compositeScore: composite,
     trend,

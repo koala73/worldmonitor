@@ -37,7 +37,7 @@ before(async () => {
   const result = await build({
     stdin: {
       contents: `
-        import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from './src/services/wildfires/index.ts';
+        import { fetchAllFires, flattenFires, summarizeFires, toMapFires } from './src/services/wildfires/index.ts';
         export { fetchAllFires };
         export { __testing__ as bootstrapTesting } from './src/services/bootstrap.ts';
         export const calls = { errors: [], updates: [], signals: [] };
@@ -106,7 +106,7 @@ it('fresh to expired to recovered clears every wildfire consumer before reportin
   assert.deepEqual(mapCalls.at(-1), []);
   assert.deepEqual(ctx.intelligenceCache.satelliteFires, []);
   assert.deepEqual(harness.calls.signals.at(-1), []);
-  assert.deepEqual(panelCalls.at(-1), [[], 0]);
+  assert.deepEqual(panelCalls.at(-1), [{ regions: [], agencyReports: [], sources: [], shownCount: 0 }, 0]);
   assert.deepEqual(statusCalls.at(-1), ['FIRMS', { status: 'error' }]);
   assert.deepEqual(errors, ['common.noData']);
   assert.deepEqual(harness.calls.errors, [['firms', 'stale_data']]);
@@ -125,7 +125,7 @@ it('fresh to expired to recovered clears every wildfire consumer before reportin
 it('real seeder envelopes hydrate through Redis and CDN without renewing or inventing source clocks', async (t) => {
   const key = 'wildfire:fires-bootstrap:v1';
   const env = { UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'fixture-token' };
-  for (const [name, value] of Object.entries({ ...env, BOOTSTRAP_R2_SHADOW_MEASURE: '0' })) {
+  for (const [name, value] of Object.entries(env)) {
     const original = process.env[name];
     process.env[name] = value;
     t.after(() => {

@@ -202,6 +202,93 @@ const ITEMS_PER_FEED = 5;
 // the whole feed grows the pool from about 4,400 to 8,300 headlines.
 const COUNTRY_ITEMS_PER_FEED = 100;
 const MAX_ITEMS_PER_CATEGORY = 20;
+
+// Broad policy searches also return shopping deals and unrelated agency
+// reports. The AI Policy and Regulation panel keeps headlines about a digital
+// subject or a policy action, and never consumer offers.
+const DIGITAL_SUBJECT_RE = /\b(?:ai|artificial intelligence|tech|digital|data|privacy|cyber\w*|online|internet|platforms?|apps?|software|algorithm\w*|chips?|semiconductors?|google|apple|amazon|meta|microsoft|nvidia|openai|anthropic|tiktok|social media|gdpr|telecom\w*|encryption|deepfakes?|chatbots?|bots?|crypto\w*|e-commerce|adtech|robot\w*|drones?)\b/i;
+const POLICY_ACTION_RE = /\b(?:regulat\w*|laws?|acts?|bills?|rules?|ruling|bans?|antitrust|monopoly|competition|courts?|judge|lawsuit|sues?|sued|fines?|fined|probes?|investigat\w*|polic(?:y|ies)|compliance|guidelines?|legislat\w*|congress\w*|parliament|senate|lawmakers?|governance|enforcement|oversight|executive order|white house|government|national security|consultation|copyright|export controls?|sanctions?|watchdog|regulators?)\b/i;
+const CONSUMER_OFFER_RE = /\b(?:(?:best|top|early|holiday|daily|weekend) deals|deals? of the (?:day|week)|discounts?|coupons?|promo codes?|black friday|cyber monday|prime day|on sale\b|lowest[- ]price[sd]?\b|save up to|deals?:)|\$\d[\d,.]*\s+off\b|\b\d+% off\b/i;
+
+// Google News searches match words anywhere on the page, so a site: search
+// for one desk returns that publisher's unrelated stories (#11266). Headlines
+// from those searches must name the panel's subject. Direct publisher feeds
+// are left alone: what a crypto outlet chooses to publish is editorial.
+const CENTRAL_BANK_TOPIC_RE = /\b(?:central banks?|monetary|interest rates?|rates? (?:hikes?|cuts?|decisions?|holds?|path|outlook|expectations|bets)|(?:hike|hikes|hiking|raise|raises|raising|cut|cuts|cutting|hold|holds|holding) (?:interest )?rates|inflation|disinflation|deflation|tightening|easing|stimulus|liquidity|reserves?|yield curve|bond[- ]buying|quantitative|balance sheet|policymakers?|policy committee|fpc|mpc|fomc|governor|fed|federal reserve|ecb|lagarde|boe|bank of england|bailey|boj|bank of japan|ueda|pboc|people'?s bank of china|yuan fix|reference rate|(?:loan prime|lending|benchmark) rates?|lpr|rbi|reserve bank|bank of canada|boc|bank of korea|bok|snb|swiss national bank|riksbank|norges bank|banxico|bundesbank)\b/i;
+const ENERGY_TOPIC_RE = /\b(?:energ(?:y|ies|i)|oil|oilfields?|crude|brent|wti|opec\+?|barrels?|bpd|petro\w*|ethanol|gas|natural gas|f?lng|lpg|henry hub|ttf|jkm|gasoline|diesel|fuels?|jet fuel|refiner(?:y|ies)|pipelines?|drilling|rigs?|shale|fracking|offshore|upstream|downstream|flaring|tankers?|hormuz|suez|bab el-mandeb|nord stream|druzhba|turkstream|power of siberia|power|electricity|grids?|blackouts?|utilit(?:y|ies)|nuclear|uranium|reactors?|iaea|coal|solar|wind|renewables?|hydrogen|batter(?:y|ies)|emissions|carbon|climate|mining|mines?|miners?|minerals?|metals?|copper|nickel|iron ore|lithium|cobalt|rare[- ]earths?|electric vehicles?|evs?|aramco|exxon\w*|chevron|conocophillips|equinor|gazprom|rosneft|enbridge|suncor|eia|iea)\b/i;
+const COMMODITY_TOPIC_RE = /\b(?:commodit(?:y|ies)|metals?|mining|miners?|mines?|smelt\w*|ore|iron ore|steel|gold|silver|platinum|palladium|bullion|copper|alumin(?:um|ium)|zinc|nickel|tin|lithium|cobalt|spodumene|rare[- ]earths?|critical minerals|minerals|uranium|nuclear|rhodium|lme|comex|futures|oil|crude|brent|wti|opec\+?|barrels?|bpd|exxon\w*|gas|lng|lpg|henry hub|ttf|jkm|coal|\w*fuels?|diesel|ulsd|gasoline|petro\w*|chemicals?|sulfur|cement|refiner(?:y|ies)|pipelines?|energy|platts|wheat|corn|soybeans?|grains?|sugar|coffee|cocoa|cotton|cattle|livestock|fertili[sz]ers?|potash|palm oil|hormuz|shipping|freight|tankers?)\b/i;
+const CRYPTO_TOPIC_RE = /\b(?:crypto\w*|bitcoin|btc|ether(?:eum)?|eth|blockchains?|stablecoins?|tokens?|tokeni[sz]\w*|defi|decentrali[sz]ed finance|dex(?:es)?|(?:re)?staking|mainnet|testnet|layer[- ]?2|rollups?|validators?|nfts?|non-fungible|web3|onchain|on-chain|altcoins?|memecoins?|coins?|binance|coinbase|kraken|okx|bybit|tether|usdt|usdc|circle|solana|xrp|ripple|dogecoin|cardano|uniswap|aave|chainlink|grayscale|saylor|satoshi|wallets?|digital assets?|cbdcs?|hashrate|halving|airdrops?|dao|prediction markets?|polymarket|kalshi)\b/i;
+const PRECIOUS_METALS_TOPIC_RE = /\b(?:gold|silver|platinum|palladium|rhodium|precious metals?|bullion|xau\w*|xag\w*|xpt\w*|xpd\w*|lbma|comex|gld|slv|ounces?|oz|jewel(?:le)?ry)\b/i;
+
+// A funding headline names a financing instrument and an event or amount.
+// "Raised" alone also matches dividends, guidance, charity drives and
+// people raised somewhere; "venture capital" alone matches guides.
+const FUNDING_SUBJECT_RE = /\b(?:fund(?:ing|raise)|financing|round|series [a-h]\b|(?:pre-)?seed|angel|venture|vc|backers?|backed|valuation|ipos?|s-1|safes?|\d[\d,.]*\s*(?:m|mn|mln|million|b|bn|billion)\s+raise)\b/i;
+const FUNDING_EVENT_RE = /\b(?:rais(?:es|ed|ing)|secures?|secured|lands?|landed|closes?|closed|bags?|nabs?|snags?|expands?|extends?|leads?|led|co-leads?|joins?|backs?|adds?|seeks?|eyes|launch(?:es)?|launched|announces?|ipos?|s-1|filings?)\b|(?:[$€£¥₹]|\b(?:us\$|usd|eur|gbp|rs\.?|inr)\s?)\d|\b\d[\d,.]*\s*(?:k|m|mn|mln|million|b|bn|billion|cr|crore)\b/i;
+const FUNDING_RAISE_AMOUNT_RE = /\b(?:rais(?:e|es|ed|ing)|secures?|secured|closes?|closed|lands?|landed|bags?|nabs?)\s+(?:(?:a|an|over|nearly|about|almost|more than|up to)\s+)?(?:[$€£¥₹]|(?:us\$|usd|eur|gbp|rs\.?|inr)\s?)?\d[\d,.]*\s*(?:m|mn|mln|million|b|bn|billion|cr|crore)\b/i;
+const FUNDING_CHARITY_RE = /\b(?:donors?|donations?|donat(?:e|es|ed|ing)|charit(?:y|ies|able)|shelter|fundraiser|scholarships?|bail|gofundme)\b/i;
+const FUNDING_STAGE_RE = /\b(?:series [a-h]|pre-seed|ipos?|s-1|valuation)\b/i;
+const FUNDING_GUIDE_RE = /\b(?:guides?|explained|explainer|lessons|how to|need to know|tips|to watch|in review|preferreds?)\b/i;
+// Tom's Hardware also publishes crime, policy and software stories, and its
+// whole feed lands in the hardware panel.
+const HARDWARE_TOPIC_RE = /\b(?:hardware|cpus?|gpus?|graphics(?: cards?)?|video cards?|processors?|chips?|chipsets?|chipmakers?|semiconductors?|silicon|wafers?|fabs?|foundry|tsmc|intel|amd|nvidia|qualcomm|micron|sk hynix|samsung|apple silicon|m\d|radeon|geforce|rtx|ryzen|core ultra|xeon|epyc|threadripper|memory|ram|dram|ddr\d|hbm|ssds?|hdds?|nvme|storage|hard drives?|motherboards?|pcs?|desktops?|laptops?|macbooks?|imacs?|mac mini|chromebooks?|tablets?|ipads?|monitors?|displays?|oled|keyboards?|mice|mouse|peripherals?|routers?|wi-fi|ethernet|raspberry pi|arduino|3d print(?:ers?|ing)|tool changers?|coolers?|cooling|psus?|power supply|consoles?|ps5|xbox|switch 2|handhelds?|steam deck|benchmarks?|overclock\w*|servers?|datacenters?|data centers?|supercomputers?|quantum computers?)\b/i;
+
+type CategoryGate = { eligible: (headline: string) => boolean; appliesTo?: (feedUrl: string) => boolean };
+const searchTopicGate = (topic: RegExp): CategoryGate => ({ eligible: (headline) => topic.test(headline), appliesTo: isGoogleNewsSearch });
+
+const CATEGORY_ELIGIBILITY: Readonly<Record<string, CategoryGate>> = {
+  policy: { eligible: (title) => POLICY_ACTION_RE.test(title) || (DIGITAL_SUBJECT_RE.test(title) && !CONSUMER_OFFER_RE.test(title)) },
+  centralbanks: searchTopicGate(CENTRAL_BANK_TOPIC_RE),
+  energy: searchTopicGate(ENERGY_TOPIC_RE),
+  'commodity-news': searchTopicGate(COMMODITY_TOPIC_RE),
+  crypto: searchTopicGate(CRYPTO_TOPIC_RE),
+  'gold-silver': searchTopicGate(PRECIOUS_METALS_TOPIC_RE),
+  funding: {
+    eligible: (headline) => !FUNDING_GUIDE_RE.test(headline)
+      && (!FUNDING_CHARITY_RE.test(headline) || FUNDING_STAGE_RE.test(headline))
+      && ((FUNDING_SUBJECT_RE.test(headline) && FUNDING_EVENT_RE.test(headline))
+        || FUNDING_RAISE_AMOUNT_RE.test(headline)),
+    appliesTo: isGoogleNewsSearch,
+  },
+  hardware: {
+    eligible: (headline) => HARDWARE_TOPIC_RE.test(headline),
+    appliesTo: (feedUrl) => feedPublisherHost(feedUrl) === 'tomshardware.com',
+  },
+};
+
+function isCategoryEligible(category: string, title: string, originPublisher = ''): boolean {
+  return CATEGORY_ELIGIBILITY[category]?.eligible(headlineWithoutAttribution(title, originPublisher)) ?? true;
+}
+
+function isGoogleNewsSearch(feedUrl: string): boolean {
+  try {
+    const parsed = new URL(feedUrl);
+    return parsed.hostname === 'news.google.com' && parsed.pathname.startsWith('/rss/search');
+  } catch {
+    return false;
+  }
+}
+
+// Applied while parsing, before the per-feed cap, so a rejected headline
+// neither takes a feed slot nor reaches the cached rows list-source-items reads.
+// Parsing is shared by every category that lists the URL, so a headline stays
+// when any of them accepts it, and a URL that also feeds an ungated category
+// is not gated at all.
+const FEED_ELIGIBILITY_CATEGORIES: ReadonlyMap<string, readonly string[]> = (() => {
+  const byUrl = new Map<string, Set<string> | null>();
+  for (const byCategory of Object.values(VARIANT_FEEDS)) {
+    for (const [category, feeds] of Object.entries(byCategory)) {
+      const gate = CATEGORY_ELIGIBILITY[category];
+      for (const feed of feeds) {
+        const prior = byUrl.get(feed.url);
+        if (!gate || (gate.appliesTo && !gate.appliesTo(feed.url))) byUrl.set(feed.url, null);
+        else if (prior !== null) byUrl.set(feed.url, (prior ?? new Set()).add(category));
+      }
+    }
+  }
+  return new Map([...byUrl].flatMap(([url, categories]) => (categories ? [[url, [...categories]] as const] : [])));
+})();
+
 const FEED_CAP_LEDGER_TOP = 20;
 
 // #10976: the feeds that lost the most items to ITEMS_PER_FEED, so a missed
@@ -1153,8 +1240,12 @@ export async function fetchAndParseRss(
       const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0, attempt };
       // Our own deadline says nothing about the feed: caching it would make
       // the next builds serve an empty row for 5 minutes instead of fetching.
+      // Absent-only: a probe waits up to 16 s, and another build may have
+      // stored a healthy parse of this feed meanwhile.
       if (attempt.failure !== 'deadline-abort') {
-        await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+        await setCachedJsonIfAbsent(cacheKey, empty, CACHE_TTL_EMPTY_S);
+      } else {
+        scheduleFeedProbe(feed, variant);
       }
       return empty;
     }
@@ -1306,6 +1397,28 @@ async function withRefreshSlot<T>(task: () => Promise<T>): Promise<T> {
   }
 }
 
+// One probe per feed across concurrent builds; a probe takes at most 16 s.
+const FEED_PROBE_LOCK_S = 30;
+const feedProbes = new Set<Promise<void>>();
+
+/**
+ * A feed the digest deadline cut was never judged on its own timeouts, and a
+ * feed that started late in the build is cut before them every time. Fetch it
+ * again after the response with no deadline, so its own 8 s direct and relay
+ * timers decide: a feed that hangs is cached as failed, a healthy one is
+ * cached healthy, and later builds stop waiting on it (#11134).
+ */
+function scheduleFeedProbe(feed: ServerFeed, variant: string): void {
+  const probe = withRefreshSlot(async () => {
+    const locked = await setCachedJsonIfAbsent(`rss:feed-probe-lock:v1:${variant}:${feed.url}`, 1, FEED_PROBE_LOCK_S);
+    if (locked) await fetchAndParseRss(feed, variant, new AbortController().signal);
+  }).catch(() => undefined);
+  feedProbes.add(probe);
+  void probe.finally(() => feedProbes.delete(probe));
+  const ctx = getUsageScope()?.ctx;
+  if (ctx) ctx.waitUntil(probe);
+}
+
 function scheduleFeedRefresh(feed: ServerFeed, variant: string, cached: ParseResult): void {
   const refresh = withRefreshSlot(() => refreshFeedCache(feed, variant, cached)).catch(() => 'failed' as const);
   const ctx = getUsageScope()?.ctx;
@@ -1409,10 +1522,17 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // a fresh item cannot sit below the cap in a relevance-ordered Google News
     // search, an editorial-order feed (NYT World) or a sitemap ordered by last
     // modification (#10978). Undated items keep feed order after dated ones.
-    // Excluded paths drop out first so they never take a slot.
+    // Excluded paths, suffix-only titles, quote and section pages and
+    // headlines the feed's category rejects drop out first so they never take a slot.
+    const eligibilityCategories = FEED_ELIGIBILITY_CATEGORIES.get(feed.url);
     const ranked = matches.flatMap((block, index) => {
       const lower = asciiLower(block);
-      if (sitemap && (!extractTag(block, 'news:title', lower) || !extractTag(block, 'loc', lower))) return [];
+      if (sitemap && !extractTag(block, 'loc', lower)) return [];
+      const title = extractTitleTag(block, sitemap ? 'news:title' : 'title', lower);
+      const originPublisher = feedItemOriginPublisher(block, lower, sitemap, isAtom);
+      if (!hasHeadlineText(title, originPublisher)) return [];
+      if (isReferencePageTitle(title, originPublisher)) return [];
+      if (eligibilityCategories && !eligibilityCategories.some(category => isCategoryEligible(category, title, originPublisher))) return [];
       if (excluded && hasExcludedPathSegment(feedItemLink(block, lower, sitemap, isAtom), excluded)) return [];
       const raw = sitemap ? extractTag(block, 'news:publication_date', lower) : extractFirstDateTag(block, isAtom, lower);
       return [{ block, index, publishedAt: usableFeedDateMs(raw) ?? -Infinity }];
@@ -1434,7 +1554,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     const blockLower = asciiLower(block);
     const forDigest = index < ITEMS_PER_FEED;
 
-    const title = extractTag(block, sitemap ? 'news:title' : 'title', blockLower);
+    const title = extractTitleTag(block, sitemap ? 'news:title' : 'title', blockLower);
     if (!title) continue;
 
     if (forDigest) parsedTotal++;
@@ -1477,13 +1597,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       continue;
     }
 
-    // RSS 2.0 <source url="...">Name</source> — the originating publisher,
-    // emitted per item by Google News. Atom's <source> is a metadata
-    // CONTAINER (nested elements, no text of its own), so only the RSS
-    // dialect is read; extractTag's [^<]* body would not match a container
-    // anyway, but skipping Atom keeps that an invariant rather than a
-    // regex accident.
-    const extractedOriginPublisher = isAtom || sitemap ? '' : extractTag(block, 'source', blockLower);
+    const extractedOriginPublisher = feedItemOriginPublisher(block, blockLower, sitemap, isAtom);
     // Ordinary feeds cannot vouch for RSS <source>. The country reader already
     // ignores untrusted origin metadata, so keep those late headlines and store
     // an empty publisher. Trusted aggregators still have the 200-character
@@ -1552,7 +1666,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       title,
       link,
       // Any link still set here passed the gate above.
-      linkVerified: link !== '',
+      linkVerified: link !== '' && !isLinkAggregatorFeed(feed),
       ...(blankedLinkHost ? { blankedLinkHost } : {}),
       publishedAt,
       isAlert,
@@ -1679,6 +1793,73 @@ function extractDescription(
   if (normalizeForDescriptionEquality(best) === normalizeForDescriptionEquality(title)) return '';
 
   return best.slice(0, MAX_DESCRIPTION_LEN);
+}
+
+// RSS 2.0 <source url="...">Name</source> — the originating publisher,
+// emitted per item by Google News. Atom's <source> is a metadata
+// CONTAINER (nested elements, no text of its own), so only the RSS
+// dialect is read; extractTag's [^<]* body would not match a container
+// anyway, but skipping Atom keeps that an invariant rather than a
+// regex accident.
+function feedItemOriginPublisher(block: string, lower: string, sitemap: boolean, isAtom: boolean): string {
+  return isAtom || sitemap ? '' : extractTag(block, 'source', lower);
+}
+
+function headlineWithoutAttribution(title: string, originPublisher: string): string {
+  const text = stripAttributionSuffix(title);
+  if (!originPublisher || !text.endsWith(originPublisher)) return text;
+  const head = text.slice(0, -originPublisher.length).trimEnd();
+  return /[-\u2013\u2014|]$/.test(head) ? head.slice(0, -1) : text;
+}
+
+/** False for a title that is only an attribution suffix, such as Google News' " - Department of Justice (.gov)". */
+function hasHeadlineText(title: string, originPublisher: string): boolean {
+  return /[\p{L}\p{N}]/u.test(headlineWithoutAttribution(title, originPublisher));
+}
+
+// Search feeds (Google News site: queries) also return a publisher's quote,
+// chart, tag and section pages under a fresh date. Their titles follow fixed
+// templates, so match those templates and leave articles that merely mention
+// a price or an index alone.
+const REFERENCE_PAGE_TITLE_PATTERNS: readonly RegExp[] = [
+  /\bStock Quote \(/, // AMD Stock Price | Advanced Micro Devices Inc. Stock Quote (U.S.: Nasdaq)
+  /^\S+ \| [^|]+ Overview$/, // DJIA | Dow Jones Industrial Average Overview
+  /^Check out .+ stock price \([^()]+\) in real time$/i,
+  /\([^()]+\) (?:Seasonal returns chart|performance history|options chain|risk|Historical Data|Stock Price, News, Quote & History)(?: -|$)/i,
+  /^TAG: /,
+  /: (?:Fund )?Performance$/, // PitchBook fund profiles
+  /^[A-Z-]+ News$/, // Kitco sections: COMMODITIES News
+  /^CNBC (?:\w+ )?Video News Clips on /, // CNBC Asia Video News Clips on the Stock Market
+  /\bNews, Opinion & Analysis$/i,
+  /^Price of \w+ per (?:Pound|Ounce)$/i,
+  /^(?:Live \w+ Prices|\w+ Spot Prices|\w+ Price Today) \| [^|]+ \| [^|]+$/, // Kitco: Live Gold Prices | Gold News And Analysis | Mining News
+];
+
+const REFERENCE_PAGE_TITLES = new Set([
+  'about dow jones newswires',
+  'my fan picks',
+  'research center',
+  's&p dow jones indices',
+  'videos',
+  'video news',
+]);
+
+/** True for a quote, chart, tag or section page that a search feed lists as an item. */
+function isReferencePageTitle(title: string, originPublisher: string): boolean {
+  // Google News can repeat the source suffix: "Research Center - PitchBook - PitchBook".
+  const headline = headlineWithoutAttribution(headlineWithoutAttribution(title, originPublisher).trimEnd(), originPublisher).trim();
+  if (REFERENCE_PAGE_TITLES.has(headline.toLowerCase())) return true;
+  return REFERENCE_PAGE_TITLE_PATTERNS.some(pattern => pattern.test(headline));
+}
+
+// Headlines are displayed as text, and some publishers (The Korea Herald) put
+// HTML-escaped text inside CDATA: "Sudan&apos;s capital". Left encoded, it took
+// a different story key from the plain wording, and an alert already sent went
+// out again on 2026-11-23. A bare `&` is not an entity and stays as it is.
+function extractTitleTag(xml: string, tag: string, lower = asciiLower(xml)): string {
+  const cdata = matchCdataTag(xml, lower, tag);
+  if (cdata !== null) return decodeXmlEntities(cdata.trim());
+  return extractTag(xml, tag, lower);
 }
 
 function extractTag(xml: string, tag: string, lower = asciiLower(xml)): string {
@@ -2439,15 +2620,19 @@ async function readAdoptionState(
 }
 
 export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
-  const resolved = item.originPublisherTrusted === true && typeof item.originPublisher === 'string' && item.originPublisher.trim()
-    ? resolveCredibilitySourceName(item).toLowerCase()
+  const publisherName = item.originPublisherTrusted === true && typeof item.originPublisher === 'string'
+    ? item.originPublisher.trim()
     : '';
+  const credibilitySource = resolveCredibilitySourceName(item);
+  const resolved = publisherName ? credibilitySource.toLowerCase() : '';
   // The tier table's spelling: the relay's tier lookup is exact-key.
   const origin = resolved ? Object.keys(SOURCE_TIERS).find((name) => name.toLowerCase() === resolved) ?? '' : '';
   return {
     source: item.source,
     // Only a publisher with a curated tier: the aggregator's text alone is not an identity.
     originPublisher: origin,
+    publisherName,
+    credibilityUnassessed: !hasReviewedPropagandaRisk(credibilitySource) && declaredSourceTier(credibilitySource) === null,
     title: item.title,
     link: item.link,
     publishedAt: item.publishedAt,
@@ -3025,6 +3210,16 @@ function expectedPublisherHostsForItem(
   return [...hosts];
 }
 
+// Curated link aggregators: each item links to the submitted article on any
+// site, so only the URL shape is checked, never the publisher.
+// Their links are not publisher-verified, so they never get `linkVerified`
+// and the alert relay re-gates them.
+const LINK_AGGREGATOR_FEED_HOSTS = new Set(['news.ycombinator.com', 'hnrss.org', 'lobste.rs']);
+
+function isLinkAggregatorFeed(feed: Pick<ServerFeed, 'url'>): boolean {
+  return LINK_AGGREGATOR_FEED_HOSTS.has(feedPublisherHost(feed?.url));
+}
+
 // Persistence no longer has the feed object. Recover its host from the
 // server-owned registry, never from upstream item metadata. Build once so
 // each story lookup stays independent of the number of configured feeds.
@@ -3086,6 +3281,7 @@ function isItemLinkAllowed(
   item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
   feed: Pick<ServerFeed, 'url' | 'linkHosts'>,
 ): boolean {
+  if (isLinkAggregatorFeed(feed)) return linkHostname(link) !== '';
   return isPublisherLink(link, expectedPublisherHostsForItem(item, feed));
 }
 
@@ -4267,6 +4463,9 @@ async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, dead
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  settleFeedProbes: async (): Promise<void> => {
+    while (feedProbes.size > 0) await Promise.all(feedProbes);
+  },
   topFeedCapDrops,
   recordPublisherCoverage,
   writeCoverageLedger,
@@ -4311,6 +4510,7 @@ export const __testing__ = {
   expectedPublisherHostsForItem,
   isAnchorEligible,
   isIdentityAnchorEligible,
+  isCategoryEligible,
   computeImportanceScore,
   computeCredibilityScore,
   computeItemCredibilityScore,

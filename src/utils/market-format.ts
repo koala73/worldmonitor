@@ -1,6 +1,8 @@
 // Shared market number formatters. Kept off the `@/utils` barrel so Node tests
 // can import pulse HTML without loading `proxy.ts` → `import.meta.env.DEV`.
 
+import type { CommodityQuoteCurrency } from '@/types';
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
@@ -29,6 +31,17 @@ export function formatQuotePrice(symbol: string, price: number | null | undefine
   return NON_DOLLAR_QUOTE.test(symbol) ? formatted.replace('$', '') : formatted;
 }
 
+const COMMODITY_CURRENCY_FORMAT: Record<CommodityQuoteCurrency, (dollars: string) => string> = {
+  USX: (dollars) => `${dollars.replace('$', '')}¢`,
+  EUR: (dollars) => dollars.replace('$', '€'),
+};
+
+/** formatPrice in the contract's quote currency; US dollars when it has none. */
+export function formatCommodityPrice(price: number | null | undefined, currency?: CommodityQuoteCurrency): string {
+  const formatted = formatPrice(price);
+  return currency && formatted.includes('$') ? COMMODITY_CURRENCY_FORMAT[currency](formatted) : formatted;
+}
+
 export function formatPrice(price: number | null | undefined): string {
   if (!isFiniteNumber(price)) return '--';
   const abs = Math.abs(price);
@@ -54,6 +67,14 @@ export function formatPrice(price: number | null | undefined): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+/** "$188.6B", "-$1.2B"; amounts under $0.1B keep two places so -0.04 is not "$-0.0B". */
+export function formatUsdBillions(billions: number): string {
+  const digits = Math.abs(billions) < 0.1 ? 2 : 1;
+  const magnitude = Math.abs(billions).toFixed(digits);
+  const sign = billions < 0 && Number(magnitude) !== 0 ? '-' : '';
+  return `${sign}$${magnitude}B`;
 }
 
 export function formatChange(change: number | null | undefined): string {

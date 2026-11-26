@@ -281,7 +281,6 @@ export const LEGACY_RAW_LOCAL_STORAGE = [
   'src/components/ProBanner.ts :: localStorage.<member> x5',
   'src/components/ProPreviewSection.ts :: localStorage.<member> x2',
   'src/components/SearchModal.ts :: localStorage.<member> x2',
-  'src/components/StrategicPosturePanel.ts :: localStorage.<member> x2',
   'src/components/WorldClockPanel.ts :: localStorage.<member> x1',
   'src/config/basemap.ts :: localStorage.<member> x2',
   'src/config/beta.ts :: localStorage.<member> x1',

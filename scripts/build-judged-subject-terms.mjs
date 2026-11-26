@@ -7,32 +7,21 @@
 // Countries come from every ISO code in shared/country-names.json, with names,
 // aliases, demonyms and exclusions from shared/country-mention.js plus the
 // capitals and keywords in scripts/data/country-codes.json (the CII names the
-// forecast emitter uses). Non-country regions come from REGIONS below. The
-// build fails when any region label the emitter can produce
-// (seed-forecasts.mjs EMITTED_REGION_LABELS) resolves to neither.
+// forecast emitter uses), and weak names with their co-terms from
+// country-mention's AMBIGUOUS_COUNTRY_TERMS. Non-country regions come from
+// REGIONS below. The build fails when any region label the emitter can
+// produce (seed-forecasts.mjs EMITTED_REGION_LABELS) resolves to neither.
 //
 // Usage: node scripts/build-judged-subject-terms.mjs [--check]
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { countryMentionTerms } from '../shared/country-mention.js';
+import { AMBIGUOUS_COUNTRY_TERMS as AMBIGUOUS, countryMentionTerms } from '../shared/country-mention.js';
 import { normalizeSubjectText as normalize } from './_forecast-subject.mjs';
 
 const OUTPUT = fileURLToPath(new URL('./shared/judged-subject-terms.json', import.meta.url));
 const COUNTRY_NAMES = JSON.parse(readFileSync(new URL('../shared/country-names.json', import.meta.url), 'utf8'));
 const COUNTRY_CODES = JSON.parse(readFileSync(new URL('./data/country-codes.json', import.meta.url), 'utf8'));
 
-// Names that are also common words, people, US states or neighbours' names.
-// A weak term counts only when the same item also carries one of its co-terms
-// or one of the country's strong terms.
-const AMBIGUOUS = {
-  GE: { weak: ['georgia', 'georgian'], co: ['tbilisi', 'caucasus', 'abkhazia', 'ossetia', 'georgian dream', 'kobakhidze', 'ivanishvili', 'batumi', 'kremlin', 'moscow', 'ukraine', 'crimea', 'eu', 'nato'] },
-  JO: { weak: ['jordan'], co: ['amman', 'hashemite', 'king abdullah', 'israel', 'israeli', 'gaza', 'west bank', 'syria', 'iraq', 'middle east', 'palestinian'] },
-  TD: { weak: ['chad'], co: ['ndjamena', 'n djamena', 'sahel', 'darfur', 'sudan', 'sudanese', 'deby', 'africa', 'african', 'nigeria', 'cameroon', 'lake chad'] },
-  NE: { weak: ['niger'], co: ['niamey', 'sahel', 'tiani', 'junta', 'mali', 'burkina', 'ecowas', 'africa', 'african'] },
-  TR: { weak: ['turkey'], co: ['ankara', 'erdogan', 'istanbul', 'kurdish', 'pkk', 'syria', 'nato', 'lira', 'turkiye'] },
-  CG: { weak: ['congo'], co: ['brazzaville', 'sassou'] },
-  CD: { weak: ['congo'], co: ['kinshasa', 'goma', 'kivu', 'ituri', 'm23', 'tshisekedi', 'ebola', 'drc', 'rwanda'] },
-};
 // Further exclusions on top of country-mention's.
 const EXTRA_EXCLUSIONS = {
   GN: ['guinea pig', 'guinea pigs', 'guinea fowl', 'guinea worm'],

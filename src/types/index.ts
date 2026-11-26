@@ -161,6 +161,12 @@ export interface NewsItem {
    * not newsworthiness. 0 is a real low score and must not be treated as absent.
    */
   credibilityScore?: number;
+  /** True when credibilityScore rests on no reviewed tier or risk entry for the publisher. */
+  credibilityUnassessed?: boolean;
+  /** Outlet a search feed's aggregator names for this item; `source` is then the search label. */
+  publisher?: string;
+  /** Curated tier spelling of `publisher`, for provenance lookups; absent when it has no tier. */
+  originPublisher?: string;
   corroborationCount?: number;
   storyMeta?: StoryMeta;
   /**
@@ -238,10 +244,14 @@ export interface Sector {
   name: string;
 }
 
+/** Yahoo Finance quote currency of a contract that is not quoted in US dollars. USX is US cents. */
+export type CommodityQuoteCurrency = 'USX' | 'EUR';
+
 export interface Commodity {
   symbol: string;
   name: string;
   display: string;
+  currency?: CommodityQuoteCurrency;
 }
 
 export interface MarketSymbol {

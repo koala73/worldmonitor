@@ -16,7 +16,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const gasRaw = JSON.parse(readFileSync(resolve(__dirname, '../scripts/data/pipelines-gas.json'), 'utf-8')) as { pipelines: Record<string, any> };
 const oilRaw = JSON.parse(readFileSync(resolve(__dirname, '../scripts/data/pipelines-oil.json'), 'utf-8')) as { pipelines: Record<string, any> };
 
-const VALID_BADGES = new Set(['flowing', 'reduced', 'offline', 'disputed']);
+const VALID_BADGES = new Set(['flowing', 'reduced', 'offline', 'disputed', 'cancelled', 'closed']);
 
 describe('PipelineStatusPanel bootstrap path — every raw pipeline yields a valid badge', () => {
   test('gas registry — every entry produces a valid public badge', () => {
@@ -51,10 +51,14 @@ describe('PipelineStatusPanel bootstrap path — every raw pipeline yields a val
     assert.equal(derivePipelinePublicBadge({}), 'disputed');
   });
 
-  test('known Nord Stream 1 entry derives "offline" (paperwork + operator + sanction)', () => {
+  test('Nord Stream 1 is offline with fresh evidence and disputed after 14 days', () => {
     const ns1 = gasRaw.pipelines['nord-stream-1'];
     assert.ok(ns1, 'nord-stream-1 should exist in curated registry');
-    assert.equal(derivePipelinePublicBadge(ns1.evidence, Date.parse('2026-04-22T12:00:00Z')), 'offline');
+    assert.equal(derivePipelinePublicBadge(ns1.evidence, Date.parse('2026-11-25T12:00:00Z')), 'offline');
+    const evidenceTime = Date.parse(ns1.evidence.lastEvidenceUpdate);
+    const freshnessWindow = 14 * 24 * 60 * 60 * 1000;
+    assert.equal(derivePipelinePublicBadge(ns1.evidence, evidenceTime + freshnessWindow), 'offline');
+    assert.equal(derivePipelinePublicBadge(ns1.evidence, evidenceTime + freshnessWindow + 1), 'disputed');
   });
 
   test('known Druzhba-South entry derives "disputed" (stale evidence 2026-04 fixture)', () => {
@@ -66,5 +70,17 @@ describe('PipelineStatusPanel bootstrap path — every raw pipeline yields a val
     assert.equal(derivePipelinePublicBadge(druzhbaS.evidence, Date.parse('2026-04-22T12:00:00Z')), 'reduced');
     // And demote to disputed if we pretend 60 days have passed with no update.
     assert.equal(derivePipelinePublicBadge(druzhbaS.evidence, Date.parse('2026-06-22T12:00:00Z')), 'disputed');
+  });
+
+  test('Keystone XL and Kirkuk–Haifa keep their terminal lifecycle long after the evidence date', () => {
+    const later = Date.parse('2026-11-25T12:00:00Z');
+    assert.equal(derivePipelinePublicBadge(oilRaw.pipelines['keystone-xl-cancelled'].evidence, later), 'cancelled');
+    assert.equal(derivePipelinePublicBadge(oilRaw.pipelines['kirkuk-haifa-idle'].evidence, later), 'closed');
+  });
+
+  test('operator labels carry no missing-share or missing-owner placeholders', () => {
+    for (const p of [...Object.values(gasRaw.pipelines), ...Object.values(oilRaw.pipelines)]) {
+      assert.doesNotMatch(p.operator, /unknown/i, `${p.id}: operator=${p.operator}`);
+    }
   });
 });

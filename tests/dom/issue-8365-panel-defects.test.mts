@@ -152,7 +152,7 @@ describe('DeductionPanel principal reset', () => {
   });
 });
 
-describe('EnergyCrisisPanel filter binding', () => {
+describe('EnergyCrisisPanel', () => {
   it('binds filter clicks on the stable content node after a debounced render', async () => {
     vi.useFakeTimers();
     const panel = new EnergyCrisisPanel();
@@ -188,6 +188,38 @@ describe('EnergyCrisisPanel filter binding', () => {
 
     expect(panel.getElement().querySelector('.ecp-filter-active')?.getAttribute('data-filter')).toBe('conservation');
     panel.destroy();
+  });
+
+  it('shows the registry review date in UTC+13', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('TZ', 'Pacific/Tongatapu');
+    const panel = new EnergyCrisisPanel();
+    try {
+      const updatedAt = '2026-11-18T12:00:00.000Z';
+      expect(new Date(updatedAt).getTimezoneOffset()).toBe(-13 * 60);
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json({
+        policies: [{
+          category: 'conservation',
+          sector: 'transport',
+          status: 'active',
+          country: 'France',
+          countryCode: 'FR',
+          measure: 'Cap speed',
+          dateAnnounced: '2026-01-01',
+        }],
+        updatedAt,
+      }));
+      document.body.append(panel.getElement());
+      await panel.fetchData();
+      await vi.runOnlyPendingTimersAsync();
+
+      const reviewDate = new Date(2026, 10, 18).toLocaleDateString();
+      expect(panel.getElement().querySelector('.ecp-footer span')?.textContent)
+        .toBe(`Updated ${reviewDate} · Source: IEA`);
+    } finally {
+      panel.destroy();
+      vi.unstubAllEnvs();
+    }
   });
 });
 

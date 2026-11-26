@@ -138,7 +138,7 @@ describe('aviation budget: call sites are wired to the cap', () => {
     // Keyed by LEG, not by the caller's requested direction: three of the four
     // directions issue the same dep_iata query, so keying on direction stored
     // duplicate departure payloads under two extra paid keys.
-    assert.match(src, /aviation:flights:\$\{airport\}:\$\{leg\}:v3:\$\{aviationStackBudgetCycle\(\)\}/);
+    assert.match(src, /aviation:flights:\$\{airport\}:\$\{leg\}:v4:\$\{aviationStackBudgetCycle\(\)\}/);
     assert.doesNotMatch(src, /aviation:flights:\$\{airport\}:\$\{direction\}/);
     // Upstream always fetches a fixed page per leg, then slices in memory.
     assert.match(src, /limit:\s*String\(UPSTREAM_PAGE\)/);

@@ -222,6 +222,19 @@ describe('layers', () => {
     const suez = features.find((f) => f.id === 'cp:suez');
     assert.match(suez.info.find(([k]) => k === 'Status')[1], /yellow/);
   });
+  it('shows an unavailable radiation z-score as unavailable, not zero', () => {
+    const station = bootstrap.data.radiationWatch.observations[0];
+    const observations = [
+      { ...station, id: 'unavailable', zScore: 0, zScoreAvailable: false },
+      { ...station, id: 'available', zScore: 2.08, zScoreAvailable: true },
+      { ...station, id: 'legacy', zScore: 2.08 },
+    ];
+    const { features } = buildFeatures({ ...ctx(), data: { radiationWatch: { observations } } }, { radiation: true });
+    const baseline = (id) => features.find((f) => f.id === `rad:${id}`).info.find(([k]) => k === 'Baseline')[1];
+    assert.match(baseline('unavailable'), /z —\)$/);
+    assert.match(baseline('available'), /z 2\.08\)$/);
+    assert.match(baseline('legacy'), /z 2\.08\)$/);
+  });
   it('reports lazy sources only for enabled layers', () => {
     const state = defaultLayerState();
     assert.ok(layerSources(state).includes('flights'));

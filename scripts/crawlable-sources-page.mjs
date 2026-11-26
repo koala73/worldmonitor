@@ -90,7 +90,7 @@ export const SOURCE_DOMAINS = [
     name: 'Tech Ecosystem',
     anchor: 'tech-ecosystem',
     blurb: 'Company HQs, startup hubs, cloud regions, accelerators, and research signals from repository analytics to conference calendars.',
-    providers: ['Crunchbase News', 'GitHub', 'OSS Insight', 'Product Hunt'],
+    providers: ['Crunchbase News', 'GitHub', 'Product Hunt'],
   },
 ];
 
@@ -102,7 +102,7 @@ const SOURCE_DOMAIN_MATCHERS = [
   ['energy', /energy|fuel|gas-storage|petroleum|oil-stock|electricity|gold|commodity|mineral|jodi|eia\.gov|gie\.eu|ember|low-carbon|power-reliability|grid-clock|fossil/],
   ['infrastructure', /infrastructure|cyber|cable|cloudflare|service-status|pipeline|internet-outage|portwatch|chokepoint|maritime|navigational-warning|abuseipdb|abuse\.ch/],
   ['finance', /econom|market|finance|stock|crypto|coin|exchange-rate|\bfx\b|yield|central-bank|trade|supply-chain|grocery|food-prices|bigmac|debt|bis-|ecb-|eurostat|world-bank|comtrade|fao-food|treasury|fiscaldata|world-cpi|oecd|e-stat|abs\.gov\.au/],
-  ['technology', /research|company|github|agentskills|technology|regulatory|tender|patent|startup|product-hunt|ossinsight|exa\.ai|firecrawl/],
+  ['technology', /research|company|github|agentskills|technology|regulatory|tender|patent|startup|product-hunt|exa\.ai|firecrawl/],
   ['geopolitics', /conflict|unrest|acled|ucdp|gdelt|security-advisor|sanction|travel-advisor|displacement|cross-border|resilience|country-fact|prediction-market|forecast-market|hapi/],
 ];
 
@@ -255,12 +255,12 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['api.iea.org', 'International Energy Agency (IEA)'],
   ['api.imd.gov.in', 'India Meteorological Department'],
   ['api.imf.org', 'International Monetary Fund (IMF)'],
-  ['api.ossinsight.io', 'OSS Insight'],
   ['en.sge.com.cn', 'Shanghai Gold Exchange (SGE)'],
   ['api.planespotters.net', 'Planespotters.net'],
   ['api.sam.gov', 'SAM.gov'],
   ['api.spdrgoldshares.com', 'SPDR Gold Shares'],
   ['api.stlouisfed.org', 'Federal Reserve Economic Data (FRED)'],
+  ['apps.bea.gov', 'U.S. Bureau of Economic Analysis (BEA)'],
   ['fred.stlouisfed.org', 'Federal Reserve Economic Data (FRED)'],
   ['api.ted.europa.eu', 'Tenders Electronic Daily (TED)'],
   ['api.tzevaadom.co.il', 'Tzeva Adom'],
@@ -344,7 +344,6 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['cp24.com', 'CP24'],
   ['ctvnews.ca', 'CTV News'],
   ['dlnews.com', 'DL News'],
-  ['euromaidanpress.com', 'Euromaidan Press'],
   ['focustaiwan.tw', 'Focus Taiwan'],
   ['gmfus.org', 'German Marshall Fund'],
   ['hiiraan.com', 'Hiiraan Online'],

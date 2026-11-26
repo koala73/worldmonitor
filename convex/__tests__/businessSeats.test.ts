@@ -284,6 +284,68 @@ describe("payments businessSeats inviteSeats", () => {
     ).rejects.toThrow(/SEAT_CAP_REACHED|TOO_MANY_EMAILS/);
   });
 
+  test("revoked invites count toward the rolling 24h invite cap; older ones do not", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const seedRevoked = async (subId: string, count: number, createdAt: number) => {
+      await seedBusinessSubscription(t, {
+        dodoSubscriptionId: subId,
+        status: "active",
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        ownerUserId: `${OWNER_ID}_${subId}`,
+      });
+      await t.run(async (ctx) => {
+        for (let i = 0; i < count; i++) {
+          await ctx.db.insert("businessProGrants", {
+            businessSubscriptionId: subId,
+            ownerUserId: `${OWNER_ID}_${subId}`,
+            inviteeEmail: `revoked-${i}@acme.com`,
+            domain: "acme.com",
+            status: "revoked",
+            createdAt,
+            expiresAt: createdAt + 14 * DAY_MS,
+          });
+        }
+      });
+    };
+    const owner = (subId: string) => ({
+      ...OWNER_IDENTITY,
+      subject: `${OWNER_ID}_${subId}`,
+      tokenIdentifier: `clerk|${OWNER_ID}_${subId}`,
+    });
+
+    // Invite/revoke cycling: 20 revoked rows in the window exhaust the cap
+    // even though none of them holds a seat.
+    await seedRevoked("sub_business_rate_full", 20, NOW - 60 * 60 * 1000);
+    await expect(
+      t.withIdentity(owner("sub_business_rate_full")).mutation(
+        api.payments.businessSeats.inviteSeats,
+        { emails: ["new@acme.com"] },
+      ),
+    ).rejects.toThrow(/INVITE_RATE_LIMITED/);
+
+    // 19 in the window leaves room for exactly one more.
+    await seedRevoked("sub_business_rate_edge", 19, NOW - 60 * 60 * 1000);
+    const edge = await t.withIdentity(owner("sub_business_rate_edge")).mutation(
+      api.payments.businessSeats.inviteSeats,
+      { emails: ["new@acme.com"] },
+    );
+    expect(edge.invited.map((i) => i.status)).toEqual(["created"]);
+
+    // Rows created before the 24h window no longer count.
+    await seedRevoked("sub_business_rate_old", 20, NOW - DAY_MS - 60 * 60 * 1000);
+    const old = await t.withIdentity(owner("sub_business_rate_old")).mutation(
+      api.payments.businessSeats.inviteSeats,
+      { emails: ["new@acme.com"] },
+    );
+    expect(old.invited.map((i) => i.status)).toEqual(["created"]);
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    vi.useRealTimers();
+  });
+
   test("cross-domain corporate invitee is allowed for API Business", async () => {
     // inviteSeats schedules sendBusinessInviteEmail via runAfter(0). Drain it
     // on fake timers: a real-timer leak patches the previous DatabaseFake
@@ -493,6 +555,36 @@ describe("payments businessSeats inviteSeats", () => {
         emails: ["teammate@acme.com"],
       }),
     ).rejects.toThrow(/OWNER_NOT_BUSINESS/);
+  });
+
+  test("a locked failed-renewal hold does not hide the owner's other, active Business subscription", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_locked",
+      status: "on_hold",
+      currentPeriodEnd: NOW + 20 * DAY_MS,
+    });
+    await t.run(async (ctx) => {
+      const locked = await ctx.db.query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_business_locked")).unique();
+      await ctx.db.patch(locked!._id, { accessEndsAt: NOW - DAY_MS });
+    });
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_live",
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+
+    const result = await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.inviteSeats, {
+      emails: ["teammate@acme.com"],
+    });
+    expect(result.invited).toHaveLength(1);
+    const grant = await t.run(async (ctx) => ctx.db.query("businessProGrants").first());
+    expect(grant?.businessSubscriptionId).toBe("sub_business_live");
   });
 
   test("lapsed Business owner → OWNER_NOT_BUSINESS", async () => {

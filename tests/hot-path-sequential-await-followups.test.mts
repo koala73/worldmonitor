@@ -238,7 +238,7 @@ describe('request handlers', () => {
     assert.doesNotMatch(source, /await getAiRoutingDecisionForUser\(/, 'the routing lookup must not be awaited alone');
     assert.match(
       source,
-      /Promise\.all\(\[\s*assembleAnalystContext\([^)]*\),\s*getAiRoutingDecisionForUser\(premiumIdentity\.userId\),?\s*\]\)/,
+      /const routingDecisionPromise = getAiRoutingDecisionForUser\(premiumIdentity\.userId\);\s*const \[context, routingDecision\] = await Promise\.all\(\[\s*assembleAnalystContext\([^)]*\{\s*routingDecisionPromise\s*\}[^)]*\),\s*routingDecisionPromise,?\s*\]\)/,
     );
   });
 

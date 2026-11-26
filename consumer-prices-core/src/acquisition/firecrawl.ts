@@ -12,13 +12,15 @@ interface FirecrawlScrapeResponse {
 
 interface FirecrawlSearchResponse {
   success: boolean;
-  data?: Array<{ url: string; title: string; description?: string; markdown?: string }>;
+  data?: {
+    web?: Array<{ url: string; title: string; description?: string; markdown?: string }>;
+  };
 }
 
 interface FirecrawlExtractResponse {
   success: boolean;
   data?: {
-    extract?: Record<string, unknown>;
+    json?: Record<string, unknown>;
     markdown?: string;
     metadata?: Record<string, unknown>;
   };
@@ -46,7 +48,7 @@ export function extractAbortMs(timeoutMs?: number): number {
 export class FirecrawlProvider implements AcquisitionProvider {
   readonly name = 'firecrawl' as const;
 
-  private readonly baseUrl = 'https://api.firecrawl.dev/v1';
+  private readonly baseUrl = 'https://api.firecrawl.dev/v2';
 
   constructor(private readonly apiKey: string) {}
 
@@ -65,6 +67,7 @@ export class FirecrawlProvider implements AcquisitionProvider {
       body: JSON.stringify({
         url,
         formats: ['html', 'markdown'],
+        maxAge: 0,
         waitFor: opts.waitForSelector ? 2000 : 0,
         timeout: opts.timeout ?? 30_000,
         headers: opts.headers,
@@ -98,7 +101,9 @@ export class FirecrawlProvider implements AcquisitionProvider {
         query,
         limit: opts.numResults ?? 10,
         includeDomains: opts.includeDomains,
-        scrapeOptions: { formats: ['markdown'] },
+        scrapeOptions: { formats: ['markdown'], maxAge: 0 },
+        // v2 defaults to 60 s; finish server-side before the client abort below.
+        timeout: 25_000,
       }),
       // Same bound as fetch/extract: a wedged provider connection must not
       // eat the whole run budget for one retailer.
@@ -108,7 +113,7 @@ export class FirecrawlProvider implements AcquisitionProvider {
     if (!resp.ok) throw new Error(`Firecrawl search failed: HTTP ${resp.status}`);
 
     const data = (await resp.json()) as FirecrawlSearchResponse;
-    return (data.data ?? []).map((r) => ({
+    return (data.data?.web ?? []).map((r) => ({
       url: r.url,
       title: r.title,
       text: r.description ?? r.markdown,
@@ -147,8 +152,12 @@ export class FirecrawlProvider implements AcquisitionProvider {
         url,
         // markdown rides along in the same render so the caller can verify an
         // extracted price actually appears on the page (price-evidence.ts).
-        formats: ['extract', 'markdown'],
-        extract: { schema: jsonSchema, ...(schema.prompt ? { prompt: schema.prompt } : {}) },
+        formats: [
+          { type: 'json', schema: jsonSchema, ...(schema.prompt ? { prompt: schema.prompt } : {}) },
+          'markdown',
+        ],
+        // v1 cache reads were opt-in; keep price checks fresh rather than reusing v2's two-day cache.
+        maxAge: 0,
         timeout: opts.timeout ?? 30_000,
         // Late-hydrating storefronts capture as a breadcrumb shell without a
         // settle delay; the abort deadline below must absorb it too.
@@ -178,7 +187,7 @@ export class FirecrawlProvider implements AcquisitionProvider {
 
     return {
       url,
-      data: (data.data?.extract ?? {}) as T,
+      data: (data.data?.json ?? {}) as T,
       provider: this.name,
       fetchedAt: new Date(),
       ...(typeof data.data?.metadata?.statusCode === 'number'
@@ -188,6 +197,7 @@ export class FirecrawlProvider implements AcquisitionProvider {
         ? { pageContent: data.data.markdown }
         : {}),
       ...(pageTitle ? { pageTitle: pageTitle.trim() } : {}),
+      ...(typeof metadata.title === 'string' && metadata.title.trim() ? { documentTitle: metadata.title.trim() } : {}),
     };
   }
 

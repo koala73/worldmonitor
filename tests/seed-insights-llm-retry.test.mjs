@@ -687,3 +687,43 @@ describe('legacy single-headline brief status-qualifier gate (#8441)', () => {
     assert.equal(result.briefProvider, 'openrouter');
   });
 });
+
+// #11274: an entity-corroborated story can carry one low-credibility publisher
+// into the single-headline fallback, which must not state its claim as fact.
+describe('legacy single-headline brief low-credibility attribution (#11274)', () => {
+  const story = {
+    primaryTitle: "Russia's war deaths in Ukraine approach 500,000",
+    primarySource: 'Daily Mirror Sri Lanka',
+    primaryLink: 'https://dailymirror.lk/x',
+    sources: ['Daily Mirror Sri Lanka'],
+    uniquePublisherCount: 1,
+    entityCorroboration: true,
+    credibilityScore: 29,
+  };
+  const legacyWith = async (text) => {
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    delete process.env.OLLAMA_API_URL;
+    __setInsightsLlmTransportForTests({ fetch: async () => okResponse(text) });
+    return generateLegacySingleHeadlineBrief([story]);
+  };
+
+  it('names the outlet on the LLM summary', async () => {
+    const result = await legacyWith("Russia's war deaths in Ukraine are approaching 500,000.");
+    assert.equal(result.worldBrief, "Daily Mirror Sri Lanka reports: Russia's war deaths in Ukraine are approaching 500,000.");
+  });
+
+  it('names the outlet on the headline fallback', async () => {
+    const result = await legacyWith("Former President Putin said Russia's war deaths in Ukraine approach 500,000.");
+    assert.equal(result.briefProvider, 'openrouter+headline-fallback');
+    assert.equal(result.worldBrief, "Daily Mirror Sri Lanka reports: Russia's war deaths in Ukraine approach 500,000");
+  });
+
+  it('leaves a higher-credibility story unattributed', async () => {
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    delete process.env.OLLAMA_API_URL;
+    const text = "Russia's war deaths in Ukraine are approaching 500,000.";
+    __setInsightsLlmTransportForTests({ fetch: async () => okResponse(text) });
+    const result = await generateLegacySingleHeadlineBrief([{ ...story, credibilityScore: 85 }]);
+    assert.equal(result.worldBrief, text);
+  });
+});

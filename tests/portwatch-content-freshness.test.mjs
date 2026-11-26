@@ -527,7 +527,7 @@ describe('content-freshness constant parity', () => {
   it('uses the budget the China corridor adapter actually enforces', () => {
     const adapter = read('server/worldmonitor/supply-chain/v1/china-corridor-source-adapters.ts');
     const budgets = [
-      ...adapter.matchAll(/contentFreshness\(observedAt,\s*([\d\s*]+),\s*assessedAt\)/g),
+      ...adapter.matchAll(/contentFreshness\(\w+,\s*([\d\s*]+),\s*assessedAt\)/g),
     ]
       .map(([, expression]) => parseProductExpression(expression));
 

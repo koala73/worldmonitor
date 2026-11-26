@@ -66,7 +66,7 @@ message PipelineEntry {
   repeated LatLon waypoints = 14;          // Optional; if empty, renderer draws a straight line
   PipelineEvidence evidence = 15;
   // Server-derived public badge. One of:
-  //   "flowing" | "reduced" | "offline" | "disputed"
+  //   "flowing" | "reduced" | "offline" | "disputed" | "cancelled" | "closed"
   string public_badge = 16;
 }
 
@@ -87,6 +87,9 @@ message PipelineEvidence {
   string last_evidence_update = 6;         // ISO8601
   string classifier_version = 7;
   double classifier_confidence = 8;        // 0..1
+  // Terminal lifecycle, independent of physical state and evidence age.
+  // One of: "" (in service or planned) | "cancelled" | "closed"
+  string lifecycle_state = 9;
 }
 
 message OperatorStatement {

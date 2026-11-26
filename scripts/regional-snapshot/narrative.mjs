@@ -30,6 +30,7 @@ import {
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
 } from '../_llm-model-timeouts.mjs';
+import { formatBalanceForPrompt } from './_helpers.mjs';
 
 const CHROME_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -182,16 +183,7 @@ export function buildNarrativePrompt(region, snapshot, evidence) {
     : '(no evidence available — reason over the balance vector alone)';
 
   const balance = snapshot.balance;
-  const balanceLine = [
-    `coercive=${balance.coercive_pressure.toFixed(2)}`,
-    `fragility=${balance.domestic_fragility.toFixed(2)}`,
-    `capital=${balance.capital_stress.toFixed(2)}`,
-    `energy_vuln=${balance.energy_vulnerability.toFixed(2)}`,
-    `alliance=${balance.alliance_cohesion.toFixed(2)}`,
-    `maritime=${balance.maritime_access.toFixed(2)}`,
-    `energy_lev=${balance.energy_leverage.toFixed(2)}`,
-    `net=${balance.net_balance.toFixed(2)}`,
-  ].join(' ');
+  const balanceLine = formatBalanceForPrompt(balance);
 
   const systemPrompt = [
     `You are a senior geopolitical analyst producing a regional intelligence brief.`,

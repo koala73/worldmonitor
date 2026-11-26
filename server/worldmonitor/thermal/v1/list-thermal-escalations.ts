@@ -48,21 +48,10 @@ export const listThermalEscalations: ThermalServiceHandler['listThermalEscalatio
   if (!seeded) return emptyResponse;
 
   const maxItems = clampMaxItems(req.maxItems ?? 0);
-  const sliced = (seeded.clusters ?? []).slice(0, maxItems);
-
-  const summary = {
-    clusterCount: sliced.length,
-    elevatedCount: sliced.filter(c => c.status === 'THERMAL_STATUS_ELEVATED').length,
-    spikeCount: sliced.filter(c => c.status === 'THERMAL_STATUS_SPIKE').length,
-    persistentCount: sliced.filter(c => c.status === 'THERMAL_STATUS_PERSISTENT').length,
-    conflictAdjacentCount: sliced.filter(c => c.context === 'THERMAL_CONTEXT_CONFLICT_ADJACENT').length,
-    highRelevanceCount: sliced.filter(c => c.strategicRelevance === 'THERMAL_RELEVANCE_HIGH').length,
-  };
-
   return {
     ...seeded,
     dataAvailable: true,
-    clusters: sliced,
-    summary,
+    clusters: (seeded.clusters ?? []).slice(0, maxItems),
+    summary: seeded.summary ?? emptyResponse.summary,
   };
 };

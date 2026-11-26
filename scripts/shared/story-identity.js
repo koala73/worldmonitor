@@ -296,7 +296,7 @@ export function stripAttributionSuffix(text, options) {
  * (pre-lowercase) text. Callers should pass raw titles — lowercasing
  * upstream destroys the entity signal (harmless, but the boost is lost).
  * @param {string} text
- * @returns {Array<{ tok: string; boost: number }>}
+ * @returns {Array<{ tok: string; boost: number; entity: boolean }>}
  */
 function contentTokens(text) {
   const kept = [];
@@ -311,7 +311,7 @@ function contentTokens(text) {
     const capitalized = /^\p{Lu}/u.test(clean);
     const hasDigit = /\p{N}/u.test(clean);
     const boost = hasDigit ? BOOST_NUMBER : capitalized ? BOOST_ENTITY : 1;
-    kept.push({ tok, boost });
+    kept.push({ tok, boost, entity: capitalized && !hasDigit && !CANDIDATE_STOPWORDS.has(tok) });
   }
   return kept;
 }
@@ -415,6 +415,7 @@ function lexicalStoryVector(text) {
   // dedup metric (|∩|/min) handled exactly this class; keep that
   // guarantee via token containment.
   return { u: un, b: bn, t: new Set(tokens.map((entry) => entry.tok)),
+    e: foldEntityVariants(tokens.filter((entry) => entry.entity).map((entry) => entry.tok)),
     f: { u: normalizeFeatures(fu), b: normalizeFeatures(fb) } };
 }
 
@@ -475,6 +476,56 @@ const CONTAINMENT_RESCUE_MIN_TOKENS = 4;
 const CONTAINMENT_RESCUE_RATIO = 0.9;
 const CONTAINMENT_RESCUE_SCORE = 0.9;
 
+// Same-parties rescue: reworded wire reports of one event ("Australia,
+// Solomon Islands sign security pact in blow to China" vs "Solomon
+// Islands ends controversial security pact with China for Australian
+// treaty") share few words but name the same parties. When one title's
+// ≥4 entity tokens all appear in the other, they share ≥2 non-entity
+// topic words, and the cosine is already moderate, they are the same
+// story. Entity tokens match by prefix, so "Australian" and "Australia’s"
+// match "Australia".
+const SAME_PARTIES_MIN_ENTITIES = 4;
+const SAME_PARTIES_SCORE_FLOOR = 0.43;
+const SAME_PARTIES_MIN_TOPIC_TOKENS = 2;
+
+/** @param {string} x @param {string} y */
+function isEntityVariant(x, y) {
+  return x === y || (Math.min(x.length, y.length) >= 4 && (x.startsWith(y) || y.startsWith(x)));
+}
+
+/**
+ * One token per party, so "Iran" and "Iranian" in one title count once.
+ * @param {string[]} toks
+ */
+function foldEntityVariants(toks) {
+  const kept = [];
+  for (const tok of [...new Set(toks)].sort((x, y) => x.length - y.length)) {
+    if (!kept.some((other) => isEntityVariant(tok, other))) kept.push(tok);
+  }
+  return new Set(kept);
+}
+
+/** @param {Set<string>} from @param {Set<string>} to */
+function entitiesCovered(from, to) {
+  for (const tok of from) {
+    if (![...to].some((other) => isEntityVariant(tok, other))) return false;
+  }
+  return true;
+}
+
+/** @param {{ t: Set<string>; e: Set<string> }} a @param {{ t: Set<string>; e: Set<string> }} b */
+function sameParties(a, b) {
+  if (Math.min(a.e.size, b.e.size) < SAME_PARTIES_MIN_ENTITIES) return false;
+  const aCovered = a.e.size <= b.e.size && entitiesCovered(a.e, b.e);
+  if (!aCovered && !(b.e.size <= a.e.size && entitiesCovered(b.e, a.e))) return false;
+  let sharedTopicTokens = 0;
+  for (const tok of a.t) {
+    if (!b.t.has(tok) || CANDIDATE_STOPWORDS.has(tok) || /\p{N}/u.test(tok)) continue;
+    if (![...a.e, ...b.e].some((party) => isEntityVariant(tok, party))) sharedTopicTokens++;
+  }
+  return sharedTopicTokens >= SAME_PARTIES_MIN_TOPIC_TOKENS;
+}
+
 export function cosineSimilarity(a, b) {
   if (!a || !b) return 0;
   // Exact lexical features prevent hash collisions and salt changes from
@@ -496,6 +547,9 @@ export function cosineSimilarity(a, b) {
         return CONTAINMENT_RESCUE_SCORE;
       }
     }
+  }
+  if (score < STORY_SIMILARITY_THRESHOLD && score >= SAME_PARTIES_SCORE_FLOOR && a.e && b.e && sameParties(a, b)) {
+    return STORY_SIMILARITY_THRESHOLD;
   }
   return score;
 }

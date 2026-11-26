@@ -959,6 +959,34 @@ describe('registry shape validation', () => {
       /dockerfile must be a non-empty string/,
     );
   });
+
+  it('rejects duplicate service names or entry paths in the registry', () => {
+    const duplicateService = [
+      managedRegistry[0],
+      { ...managedRegistry[0], entry: 'scripts/seed-example-other.mjs' },
+    ];
+    assert.throws(
+      () => managedRailwayServices(duplicateService),
+      /duplicate service "seed-example"/,
+    );
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, duplicateService),
+      /duplicate service "seed-example"/,
+    );
+
+    const duplicateEntry = [
+      managedRegistry[0],
+      { ...managedRegistry[0], service: 'seed-example-other' },
+    ];
+    assert.throws(
+      () => managedRailwayServices(duplicateEntry),
+      /duplicate entry "scripts\/seed-example\.mjs"/,
+    );
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, duplicateEntry),
+      /duplicate entry "scripts\/seed-example\.mjs"/,
+    );
+  });
 });
 
 describe('planned Railway service lifecycle', () => {
@@ -1107,11 +1135,8 @@ describe('planned Railway service lifecycle', () => {
     assert.equal(Object.hasOwn(live, 'lifecycle'), false);
     assert.equal(live.cronSchedule, '0 */6 * * *');
     assert.equal(live.startCommand, 'node seed-live-video-resolved.mjs');
-    assert.deepEqual(live.requiredEnv, [
-      'UPSTASH_REDIS_REST_URL',
-      'UPSTASH_REDIS_REST_TOKEN',
-      ['LIVE_VIDEO_PROXY_URL', 'PROXY_URL'],
-    ]);
+    // The proxy is only a fallback for pages the direct read cannot answer, so the seeder runs without it.
+    assert.deepEqual(live.requiredEnv, ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']);
     assert.ok(managedRailwayServices(RAILWAY_SERVICE_REGISTRY).includes(live));
   });
 

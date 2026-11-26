@@ -10,6 +10,7 @@ import type { RadiationObservation } from '@/services/radiation';
 import { UNDERSEA_CABLES } from '@/config/geo-map';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { parseLocalDate } from '@/utils/calendar-date';
 import { assessCorroboration, corroborationLabelHtml, evidenceFromItem } from '@/utils/corroboration-flag';
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { TransitChart } from '@/utils/transit-chart';
@@ -1125,7 +1126,7 @@ export class MapPopup {
             <span class="stat-value">${observation.sourceCount}</span>
           </div>
         </div>
-        <p class="popup-description">${escapeHtml(countryLabel(observation.country))} · z-score ${observation.zScore.toFixed(2)} · ${escapeHtml(observation.freshness)}${flags ? ` · ${escapeHtml(flags)}` : ''}</p>
+        <p class="popup-description">${escapeHtml(countryLabel(observation.country))} · z-score ${observation.zScore === null ? '—' : observation.zScore.toFixed(2)} · ${escapeHtml(observation.freshness)}${flags ? ` · ${escapeHtml(flags)}` : ''}</p>
       </div>
     `;
   }
@@ -3109,8 +3110,8 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
   }
 
   private renderTechEventPopup(event: TechEventPopupData): string {
-    const startDate = new Date(event.startDate);
-    const endDate = new Date(event.endDate);
+    const startDate = parseLocalDate(event.startDate);
+    const endDate = parseLocalDate(event.endDate || event.startDate);
     const dateStr = startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
     const endDateStr = endDate > startDate && endDate.toDateString() !== startDate.toDateString()
       ? ` - ${endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`

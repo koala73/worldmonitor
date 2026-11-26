@@ -24,6 +24,7 @@ export function buildEarningsCalendarResponse(
     revenueActual: e.revenueActual ?? 0,
     hasActuals: e.hasActuals ?? false,
     surpriseDirection: e.surpriseDirection ?? '',
+    revenueCurrency: e.revenueCurrency ?? '',
   }));
   const dates = entries.map(e => e.date).filter(Boolean).sort();
   const range = resolveCalendarRange(

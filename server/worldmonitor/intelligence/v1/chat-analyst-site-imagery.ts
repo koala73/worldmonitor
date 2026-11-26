@@ -27,7 +27,9 @@ export function imageryCountries(index: unknown, focus: string | null, query: st
   const codes = focus ? [focus] : [];
   for (const code of registry) {
     if (codes.length >= MAX_IMAGERY_COUNTRIES) break;
-    if (!codes.includes(code) && query && mentionsCountry(query, countryMentionTerms(code))) codes.push(code);
+    // A typed question names the country on purpose, often in lowercase, so
+    // weak names ("jordan", "turkey") need no headline proof here.
+    if (!codes.includes(code) && query && mentionsCountry(query, { ...countryMentionTerms(code), weakNames: [] })) codes.push(code);
   }
   return codes.slice(0, MAX_IMAGERY_COUNTRIES);
 }

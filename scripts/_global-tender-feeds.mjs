@@ -150,9 +150,24 @@ export async function fetchSouthAfrica({ now = Date.now(), fetchJsonFn } = {}) {
     noticeUrl: (release) => `https://www.etenders.gov.za/home/AdvertDetails/${encodeURIComponent(release.tender.id)}` }), now);
 }
 
+// Mercado Público answers failures with HTTP 200 and a { status, detail } body
+// whose detail carries a .NET stack trace after the message.
+function mercadoPublicoReader(fetchJsonFn) {
+  const read = reader(fetchJsonFn);
+  return async (url) => {
+    const payload = await read(url);
+    if (Number.isInteger(payload?.status) && payload.status >= 400) {
+      const error = new Error(`Mercado Público returned status ${payload.status}: ${text(payload.detail).split(/\s+at\s/)[0].trim()}`);
+      error.status = payload.status;
+      throw error;
+    }
+    return payload;
+  };
+}
+
 export async function fetchChile({ now = Date.now(), fetchJsonFn } = {}) {
   const source = 'chile-mercado-publico';
-  const read = reader(fetchJsonFn);
+  const read = mercadoPublicoReader(fetchJsonFn);
   const month = new Date(now);
   const url = `https://api.mercadopublico.cl/APISOCDS/OCDS/listaOCDSAgnoMes/${month.getUTCFullYear()}/${month.getUTCMonth() + 1}/0/${MAX_DETAILS}`;
   const payload = await read(url);

@@ -40,16 +40,21 @@ function parseDate(raw) {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === s ? s : '';
 }
 
-// CFTC releases COT every Friday ~3:30pm ET for Tuesday data. Given a reportDate
-// (Tuesday), the NEXT release is the Friday of the same week (reportDate + 3 days).
-// If today is already past that Friday, the next Tuesday's data releases the
-// following Friday — but we only call this with the *latest* stored row, so the
-// next release is always reportDate + 3 days.
-export function computeNextCotRelease(reportDate) {
+// CFTC releases COT on Fridays for the reportDate week. The next release is
+// the first Friday after reportDate that is not before `now`'s UTC date, so a
+// stored week never advertises a past release. Holiday shifts are not modelled.
+export function computeNextCotRelease(reportDate, now = new Date()) {
   if (!reportDate) return '';
   const d = new Date(`${reportDate}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return '';
-  d.setUTCDate(d.getUTCDate() + 3);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return firstFridayFrom(d, now);
+}
+
+function firstFridayFrom(d, now) {
+  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  if (d < today) d.setTime(today.getTime());
+  while (d.getUTCDay() !== 5) d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 
@@ -65,7 +70,7 @@ async function fetchSocrata(datasetId, extraParams = '') {
   return resp.json();
 }
 
-export function buildInstrument(target, currentRow, priorRow, kind) {
+export function buildInstrument(target, currentRow, priorRow, kind, now = new Date()) {
   const toNum = v => {
     const n = parseInt(String(v ?? '').replace(/,/g, '').trim(), 10);
     return Number.isNaN(n) ? 0 : n;
@@ -77,6 +82,7 @@ export function buildInstrument(target, currentRow, priorRow, kind) {
   let mmLong, mmShort, psLong, psShort, priorMmNet, priorPsNet;
   let leveragedFundsLong = 0;
   let leveragedFundsShort = 0;
+  let leveragedFundsAvailable = false;
   const smallTraderLong = toNum(currentRow.nonrept_positions_long_all);
   const smallTraderShort = toNum(currentRow.nonrept_positions_short_all);
   const smallTraderAvailable = currentRow.nonrept_positions_long_all != null
@@ -90,6 +96,8 @@ export function buildInstrument(target, currentRow, priorRow, kind) {
     // TFF report also exposes leveraged-funds positions — consumed by CotPositioningPanel.
     leveragedFundsLong = toNum(currentRow.lev_money_positions_long);
     leveragedFundsShort = toNum(currentRow.lev_money_positions_short);
+    leveragedFundsAvailable = currentRow.lev_money_positions_long != null
+      && currentRow.lev_money_positions_short != null;
     if (priorRow) {
       priorMmNet = toNum(priorRow.asset_mgr_positions_long) - toNum(priorRow.asset_mgr_positions_short);
       priorPsNet = toNum(priorRow.dealer_positions_long_all) - toNum(priorRow.dealer_positions_short_all);
@@ -126,7 +134,8 @@ export function buildInstrument(target, currentRow, priorRow, kind) {
     name: target.name,
     code: target.code,
     reportDate,
-    nextReleaseDate: computeNextCotRelease(reportDate),
+    nextReleaseDate: computeNextCotRelease(reportDate, now),
+    reportType: kind === 'financial' ? 'tff' : 'disaggregated',
     openInterest,
     managedMoney,
     producerSwap,
@@ -135,6 +144,7 @@ export function buildInstrument(target, currentRow, priorRow, kind) {
     assetManagerShort: mmShort,
     leveragedFundsLong,
     leveragedFundsShort,
+    leveragedFundsAvailable,
     smallTraderLong,
     smallTraderShort,
     smallTraderAvailable,

@@ -326,6 +326,9 @@ export const ERASE_WRITE_BUDGET = 64;
  */
 export const PENDING_STALE_AFTER_MS = 10 * 60_000;
 
+/** Delay before the sweep that removes briefs a racing compose left behind. */
+export const BRIEF_SWEEP_DELAY_MS = 15 * 60_000;
+
 export async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",

@@ -112,6 +112,40 @@
     "defenseIndustrialBase": {
       "proLocked": "Upgrade to PRO for arms-supplier dependency and military capacity"
     },
+    "intelMemory": {
+      "title": "Historical Intelligence Memory",
+      "help": "180-day archive of notable conflict, military, energy, unrest, cyber, maritime, natural hazard and aviation events, with on-demand semantic precedent matching.",
+      "loading": "Loading historical intelligence memory…",
+      "proLocked": "Upgrade to PRO for 180-day historical intelligence memory and precedent search",
+      "unavailable": "Historical intelligence memory is temporarily unavailable.",
+      "retry": "Retry",
+      "empty": "No archived intelligence events match this country and domain in the 180-day window.",
+      "partial": "Archive coverage is partial for this query; available records remain visible.",
+      "domainFilterLabel": "Filter historical intelligence by domain",
+      "domains": {
+        "all": "All",
+        "conflict": "Conflict",
+        "military": "Military",
+        "energy": "Energy",
+        "unrest": "Unrest",
+        "cyber": "Cyber",
+        "maritime": "Maritime",
+        "natural": "Natural hazards",
+        "aviation": "Aviation"
+      },
+      "loadMore": "Load more",
+      "loadingMore": "Loading more…",
+      "loadMoreError": "Could not load additional events. Try again.",
+      "sourceLink": "Source ↗",
+      "similarTitle": "Find similar past events",
+      "useLatestHeadline": "Use latest headline",
+      "similarPlaceholder": "Describe a developing situation (at least 10 characters)…",
+      "findSimilar": "Find similar events",
+      "similarMinLength": "Enter at least 10 characters to search past precedents.",
+      "similarLoading": "Searching historical precedents…",
+      "similarEmpty": "No similar past events cleared the similarity threshold.",
+      "similarUnavailable": "Precedent search is temporarily unavailable. Try again."
+    },
     "demographicsCapability": {
       "title": "Demographics & Workforce",
       "help": "Age structure, education pipeline, and industrial workforce capacity from UN World Population Prospects, UNESCO Institute for Statistics and World Bank World Development Indicators, and ILOSTAT.",
@@ -1189,8 +1223,10 @@
       "gasPipelinesUnavailable": "Gas pipeline data unavailable",
       "spikeAlert": "Spike detected — rate significantly above 52-week average (weekly)",
       "warnings": "warning(s)",
-      "aisDisruptions": "Ship tracking disruptions",
+      "aisDisruptions_one": "{{count}} ship tracking disruption",
+      "aisDisruptions_other": "{{count}} ship tracking disruptions",
       "wowChange": "Week-over-week change",
+      "asOf": "as of {{date}}",
       "riskLevel": "Risk level",
       "disruption": "Disruption",
       "vessels": "vessels",
@@ -1395,6 +1431,8 @@
       "elapsed": "Elapsed: {{elapsed}} s",
       "clickToView": "Click to view {{name}} on map",
       "clickToViewMap": "Click to view on map",
+      "instabilityChip": "Instability {{score}}",
+      "instabilityNote": "{{nation}} instability score: {{score}} out of 100. Shown for context. It does not change the level, which counts the aircraft and ships in the theater.",
       "refresh": "Refresh",
       "units": {
         "fighters": "Fighters",
@@ -1413,7 +1451,7 @@
         "auxiliary": "Auxiliary",
         "navalVessels": "Naval Vessels"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>Aggregates military aircraft and naval vessels by theater.</p><ul><li><strong>Normal:</strong> Baseline activity</li><li><strong>Elevated:</strong> Above threshold (50+ aircraft)</li><li><strong>Critical:</strong> High concentration (100+ aircraft)</li></ul><p><strong>Strike Capable:</strong> Tankers + Airborne early warning + Fighters present in sufficient numbers for sustained operations.</p>",
+      "infoTooltip": "<strong>Methodology</strong><p>Counts military aircraft and tracked naval vessels in each theater.</p><ul><li><strong>Normal:</strong> Below the theater's threshold</li><li><strong>Elevated:</strong> Count reaches 3 to 8, by theater</li><li><strong>Critical:</strong> Count reaches 8 to 20, by theater</li></ul><p>Ships add to the count up to half the elevated threshold, so ships alone never raise a level.</p><p><strong>Strike Capable:</strong> Tankers + Airborne early warning + Fighters present in sufficient numbers for sustained operations.</p>",
       "scanningTheaters": "Scanning Theaters",
       "positions": "Aircraft positions",
       "navalVesselsLoading": "Naval vessels",
@@ -1770,7 +1808,7 @@
       "streamAlwaysOnLabel": "Auto-play live webcams",
       "streamAlwaysOnDesc": "Starts the live webcam videos as soon as they are on screen. Leave this off to load them only when you start them yourself.",
       "streamIdleStopLabel": "Stop live video when idle",
-      "streamIdleStopDesc": "Stops Live News and Live Webcams after this long without activity and shows a notice in the panel.",
+      "streamIdleStopDesc": "Stops Live News and Live Webcams after this long without activity and shows a notice in the panel. Live News keeps playing while its sound is on.",
       "streamIdleStopNever": "Never",
       "frameworkNote": "Applies to client-generated analysis only",
       "loadingServerInsights": "Loading server insights...",
@@ -1874,7 +1912,7 @@
       "noData": "no data",
       "enable": "Enable",
       "convergenceMetric": "Convergence",
-      "ciiDeviation": "Country Instability Index Deviation",
+      "topCiiScore": "Top Country Instability Score",
       "infraEvents": "Infra Events",
       "highAlerts": "High Alerts",
       "dataFreshness": "Data Freshness",
@@ -1982,7 +2020,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS satellite thermal detections across monitored conflict regions. High-intensity = brightness >360K & confidence >80%.",
       "possibleExplosions": "{{count}} possible explosion(s) detected",
-      "explosionTooltip": "Thermal signature consistent with explosion (fire radiative power >80 MW, brightness >380 K)"
+      "explosionTooltip": "Thermal signature consistent with explosion (fire radiative power >80 MW, brightness >380 K)",
+      "agencyReports": "Agency-reported fires",
+      "agencyDates": "Agency dates",
+      "shownOfTotal": "Showing {{shown}} of {{total}} fire records"
     },
     "ucdpEvents": {
       "stateBased": "State-Based",
@@ -2047,6 +2088,7 @@
       "refugees": "Refugees",
       "asylumSeekers": "Asylum Seekers",
       "idps": "IDPs",
+      "stateless": "Stateless",
       "total": "Total",
       "origins": "Origins",
       "hosts": "Hosts",
@@ -2471,7 +2513,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Retail pump prices for gasoline and diesel across 30+ countries, normalized to USD/liter for comparison. Prices are sourced from official government open-data programs and updated weekly. Cheapest and most expensive countries are highlighted. Week-over-week change shown when prior week data is available.",
-      "countries": "countries"
+      "countries": "countries",
+      "observedStale": "{{date}}, {{days}} days old",
+      "monthlyMean": "{{month}} avg"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> The UN Food and Agriculture Organization's Food Price Index tracks international export prices for a basket of food commodities (Cereals, Dairy, Meat, Oils, Sugar), base 2014-2016=100. Updated monthly on the first Friday of each month.",
@@ -2708,6 +2752,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × High-yield spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US Financial Stress Indicator value",
+      "asOf": "As of {{date}}",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",
       "cissStale": "European Central Bank has not published a newer value — this reading may be out of date.",
       "notAvailable": "N/A",
@@ -3128,7 +3173,21 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signals",
       "analyzing": "Analyzing...",
-      "viewOnMap": "View on map"
+      "viewOnMap": "View on map",
+      "signalTypes": {
+        "militaryFlight": "Military flight",
+        "militaryVessel": "Military vessel",
+        "aisGap": "AIS gap",
+        "conflictEvent": "Conflict event",
+        "escalationOutage": "Comms outage",
+        "newsSeverity": "Severe news",
+        "sanctionsNews": "Sanctions news",
+        "marketMove": "Market move",
+        "commoditySpike": "Commodity spike",
+        "earthquake": "Earthquake",
+        "infraOutage": "Infrastructure outage",
+        "other": "Signal"
+      }
     },
     "thermalEscalation": {
       "title": "Thermal Escalation",
@@ -3265,6 +3324,10 @@
       "body": "A star on GitHub helps other people find it.",
       "star": "Star on GitHub",
       "dismiss": "Dismiss and don't ask again"
+    },
+    "externalNavigation": {
+      "blocked": "Your browser blocked the new tab.",
+      "openLink": "Open {{host}}"
     },
     "passkeyOffer": {
       "title": "Save a passkey?",
@@ -4494,7 +4557,13 @@
     "alert": "Alert: {{location}}",
     "multipleRegions": "Multiple Regions",
     "trending": "\"{{term}}\" Trending - {{count}} mentions in {{hours}}h",
-    "eventsDetected": "{{count}} events detected in region ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} events detected: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protests",
+      "military_flight": "military flights",
+      "military_vessel": "naval vessels",
+      "earthquake": "seismic activity"
+    }
   },
   "theaterPresets": {
     "label": "Coverage presets",
@@ -5698,7 +5767,8 @@
           "seatCap": "All 4 seats are used. Remove a seat first.",
           "ownerDomain": "Your account email must be a company domain to invite teammates.",
           "self": "You cannot invite yourself.",
-          "inviteeDomain": "The invitee email must be a company domain."
+          "inviteeDomain": "The invitee email must be a company domain.",
+          "rateLimited": "You have sent the maximum of 20 invites in a rolling 24-hour window. Please wait before inviting more teammates."
         }
       },
       "enterpriseSeats": {

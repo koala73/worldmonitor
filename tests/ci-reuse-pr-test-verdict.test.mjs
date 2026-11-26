@@ -119,13 +119,13 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
   it('never reuses a push that changes a cache key input or a workflow, and asks GitHub nothing', async () => {
     for (const file of ['package.json', 'package-lock.json', 'scripts/package-lock.json', 'blog-site/package.json', '.npmrc',
       'scripts/.npmrc', 'vendor/http-cache-semantics/index.js', '.github/workflows/test.yml', '.github/actions/install-root-deps/action.yml',
-      'scripts/download-node.sh']) {
+      'scripts/download-node.sh', 'e2e/fetch-embeddings-model.ts']) {
       assert.match(file, REUSE_BLOCKER, file);
       const d = await decide({}, { files: ['src/app/App.ts', file] });
       assert.deepEqual(d.reuse, {}, file);
       assert.deepEqual(d.calls, [], file);
     }
-    for (const file of ['src/package-json.ts', 'docs/package.json.md', 'tests/fixtures/package.json.gz']) assert.doesNotMatch(file, REUSE_BLOCKER, file);
+    for (const file of ['e2e/rag-vector-store.spec.ts', 'src/package-json.ts', 'docs/package.json.md', 'tests/fixtures/package.json.gz']) assert.doesNotMatch(file, REUSE_BLOCKER, file);
   });
 
   it('runs everything without a parent SHA or a file list', async () => {

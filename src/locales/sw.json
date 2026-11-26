@@ -370,6 +370,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Boreshaji hadi PRO kwa utegemezi wa wauzaji wa silaha na uwezo wa kijeshi"
+    },
+    "intelMemory": {
+      "title": "Kumbukumbu la Habari za Mitaala Zilizopita",
+      "help": "Kumbukumbu ya siku 180 ya matukio muhimu ya migogoro, kijeshi, nishati, machafuko, mtandao, baharini, majanga ya asili na anga, pamoja na utafutaji wa matukio yanayofanana unapohitajika.",
+      "loading": "Inapakia kumbukumbu la habari za mitaala zilizopita…",
+      "proLocked": "Boresha hadi PRO kwa kumbukumbu la habari za mitaala za siku 180 na utaftaji wa matukio yaliyopita",
+      "unavailable": "Kumbukumbu la habari za mitaala zilizopita haipatikani kwa sasa.",
+      "retry": "Jaribu tena",
+      "empty": "Hakuna matukio ya habari za mitaala yaliyohifadhiwa yanayolingana na nchi hii na kikoa katika dirisha la siku 180.",
+      "partial": "Kغطية ya hifadhidata haijafuzu kabisa kwa utaftaji huu; rekodi inayopatikana inabaki kuonekana.",
+      "domainFilterLabel": "Chuja habari za mitaala zilizopita kwa kikoa",
+      "domains": {
+        "all": "Zote",
+        "conflict": "Mgogoro",
+        "military": "Kijeshi",
+        "energy": "Nishati",
+        "unrest": "Machafuko",
+        "cyber": "Cyber",
+        "maritime": "Baharini",
+        "natural": "Majanga ya asili",
+        "aviation": "Anga"
+      },
+      "loadMore": "Pakia zaidi",
+      "loadingMore": "Inapakia zaidi…",
+      "loadMoreError": "Haikuweza kupakia matukio zaidi. Jaribu tena.",
+      "sourceLink": "Chanzo ↗",
+      "similarTitle": "Tafuta matukio yaliyofanana zilizopita",
+      "useLatestHeadline": "Tumia kichwa cha habari cha mwisho",
+      "similarPlaceholder": "Eleza hali inayoendelea (angalau herufi 10)…",
+      "findSimilar": "Tafuta matukio yaliyofanana",
+      "similarMinLength": "Ingiza angalau herufi 10 kutafuta matukio yaliyopita.",
+      "similarLoading": "Inatafuta matukio yaliyopita…",
+      "similarEmpty": "Hakuna matukio yaliyofanana yanayopita kiwango cha kufanana.",
+      "similarUnavailable": "Utaftaji wa matukio yaliyopita haipatikani kwa sasa. Jaribu tena."
     }
   },
   "header": {
@@ -1089,8 +1123,10 @@
       "upstreamUnavailable": "Data ya msururu wa ugavi haipatikani kwa muda - inaonyesha data iliyohifadhiwa",
       "spikeAlert": "Mwiba umegunduliwa - kiwango kikubwa zaidi ya wastani wa wiki 52 (kila wiki)",
       "warnings": "onyo",
-      "aisDisruptions": "Mataio ya ufuatiliaji wa meli",
+      "aisDisruptions_one": "Hitilafu {{count}} ya ufuatiliaji wa meli",
+      "aisDisruptions_other": "Hitilafu {{count}} za ufuatiliaji wa meli",
       "wowChange": "Mabadiliko ya wiki inayolingana na wiki",
+      "asOf": "kufikia {{date}}",
       "riskLevel": "Kiwango cha hatari",
       "disruption": "Usumbufu",
       "vessels": "vyombo",
@@ -1316,7 +1352,7 @@
         "auxiliary": "Msaidizi",
         "navalVessels": "Vyombo vya Majini"
       },
-      "infoTooltip": "<strong>Mbinu</strong><p>Huunganisha ndege za kijeshi na meli za kivita kwa eneo la operesheni.</p><ul><li><strong>Kawaida:</strong> Shughuli za msingi</li><li><strong>Iliyoinuliwa:</strong> Juu ya kiwango (ndege 50+)</li><li><strong>Muhimu:</strong> Mkusanyiko mkubwa (ndege 100+)</li></ul><p><strong>Uwezo wa kushambulia:</strong> Ndege za kujaza mafuta + Ndege za tahadhari ya mapema + Ndege za kivita zinapatikana kwa idadi ya kutosha kwa operesheni endelevu.</p>",
+      "infoTooltip": "<strong>Mbinu</strong><p>Huhesabu ndege wa kijeshi na meli zilizosimuliwa katika kila teatro.</p><ul><li><strong>Kawaida:</strong> Chini ya kizingiti cha teatro</li><li><strong>Imeongezwa:</strong> Hesabu inafikia 3 hadi 8, kwa teatro</li><li><strong>Muhimu:</strong> Hesabu inafikia 8 hadi 20, kwa teatro</li></ul><p>Meli zinachangia hesabu hadi nusu ya kizingiti kilichoongezwa, kwa hivyo meli peke yake haziwezi kuinua kiwango.</p><p><strong>Wenye Uwezo wa Shambulio:</strong> Tanki za mafuta + Onyo wa mapema ya angani + Ndege zililizo katika idadi ya kutosha kwa shughuli endelevu.</p>",
       "scanningTheaters": "Kuchanganua Sinema",
       "positions": "Nafasi za ndege",
       "navalVesselsLoading": "Vyombo vya majini",
@@ -1358,7 +1394,9 @@
         "east-med-theater": "Mashariki ya Mediterranean",
         "israel-gaza-theater": "Israel/Gaza",
         "yemen-redsea-theater": "Yemen/Bahari Nyekundu"
-      }
+      },
+      "instabilityChip": "Kutokuwa na Utulivu {{score}}",
+      "instabilityNote": "Alama ya kutokuwa na utulivu ya {{nation}}: {{score}} kati ya 100. Inaonyeshwa kwa muktadha. Haiathiri kiwango, ambacho kinahesabu ndege na meli za harbini katika jukwaa."
     },
     "countryBrief": {
       "moreActions": "Vitendo zaidi",
@@ -1701,7 +1739,7 @@
       "briefFreshness": "Ilizalishwa dakika {{minutes}} zilizopita · chanzo kipya zaidi cha saa {{hours}}",
       "briefStoryDetails": "Maelezo ya habari ({{count}})",
       "streamIdleStopLabel": "Simamisha video moja kwa moja wakati umekaa bila kufanya kitu",
-      "streamIdleStopDesc": "Husimamisha Habari za Moja kwa Moja na Kamera za Moja kwa Moja baada ya muda huu bila shughuli na kuonyesha onyo katika paneli.",
+      "streamIdleStopDesc": "Husimamisha Habari za Moja kwa Moja na Kamera za Moja kwa Moja baada ya muda huu bila shughuli na kuonyesha onyo katika paneli. Habari za Moja kwa Moja huendelea kucheza sauti yake ikiwa imewashwa.",
       "streamIdleStopNever": "Kamwe",
       "liveNewsAutoplayLabel": "Taslimia kiotomatiki habari moja kwa moja",
       "liveNewsAutoplayDesc": "Huanza video ya habari moja kwa moja, bila sauti, mara tu inapoonekana. Zima hii ili kupakia video tu wakati unapoisimamisha mwenyewe."
@@ -1777,7 +1815,7 @@
       "noData": "hakuna data",
       "enable": "Wezesha",
       "convergenceMetric": "Muunganiko",
-      "ciiDeviation": "Kupotoka kwa Fahirisi ya Kutokuwa na Uthabiti wa Nchi",
+      "topCiiScore": "Alama ya juu ya kutokuwa na uthabiti wa nchi",
       "infraEvents": "Matukio ya Infra",
       "highAlerts": "Tahadhari za Juu",
       "dataFreshness": "Usafi wa Data",
@@ -1885,7 +1923,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS ugunduzi wa joto wa setilaiti katika maeneo yenye migogoro inayofuatiliwa. Kiwango cha juu = mwangaza > 360K & kujiamini > 80%.",
       "possibleExplosions": "{{count}} milipuko inayoweza kutokea imetambuliwa",
-      "explosionTooltip": "Dalili ya joto inayolingana na mlipuko (nguvu ya radiyesivu ya moto >80 MW, mwangaza >380 K)"
+      "explosionTooltip": "Dalili ya joto inayolingana na mlipuko (nguvu ya radiyesivu ya moto >80 MW, mwangaza >380 K)",
+      "agencyReports": "Moto ulioripotiwa na mashirika",
+      "agencyDates": "Tarehe za shirika",
+      "shownOfTotal": "Inaonyesha rekodi {{shown}} kati ya {{total}} za moto"
     },
     "ucdpEvents": {
       "stateBased": "Kulingana na Jimbo",
@@ -1950,6 +1991,7 @@
       "refugees": "Wakimbizi",
       "asylumSeekers": "Watafuta hifadhi",
       "idps": "Wakimbizi wa ndani",
+      "stateless": "Wasio na uraia",
       "total": "Jumla",
       "origins": "Asili",
       "hosts": "Wenyeji",
@@ -2352,7 +2394,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Bei za pump ya rejareja kwa petroli na gesi kote nchi 30+, zilizosawazishwa kuwa USD/lita kwa kulinganisha. Bei zinakuja kutoka programu za data zilizofunguliwa za serikali na kusasishwa kila wiki. Nchi nyingi za bei nafuu zaidi na ghali zaidi zimeangaziwa. Mabadiliko ya juma kwa juma yanaonyeshwa wakati data ya juma iliyopita inapatikana.",
-      "countries": "nchi"
+      "countries": "nchi",
+      "observedStale": "{{date}}, umri wa siku {{days}}",
+      "monthlyMean": "wastani wa {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Food Price Index</strong> Fahirisi ya Bei ya Chakula ya Shirika la Umoja kwa Chakula na Ukulima linafuatilia bei za kumhimili kimataifa kwa kikapu cha bidhaa za chakula (Nafaka, Maziwa, Nyama, Mafuta, Sukari), msingi 2014-2016=100. Inasasishwa kila mwezi Ijumaa ya kwanza ya kila mwezi.",
@@ -2581,6 +2625,7 @@
       "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor uwiano wa mikakati ya juu-ya mavuno kwa Hazina za muda mrefu, iliyosasushwa kwa mabadiliko ya sehemu halisi na sehemu ya juu-ya mavuno: (HYG / TLT) / (VIX × Sehemu ya juu-ya mavuno / 100). Hii sio Kansas City Fed Financial Stress Index. Kusoma kwa 1.5 au zaidi ni mkazo mdogo; chini ya 0.3 ni mkazo mkubwa.",
       "title": "Kiashiria cha Dhiki ya Kifedha",
       "usFsiValue": "Thamani ya US Financial Stress Indicator",
+      "asOf": "kufikia {{date}}",
       "cissTitle": "EU CISS (Mfadhaiko wa Mfumo wa Eneo la Euro)",
       "cissStale": "European Central Bank haikuchapisha thamani mpya — kusoma hiki kinaweza kuwa cha kadimu.",
       "notAvailable": "N/A",
@@ -2818,7 +2863,21 @@
       "saved": "Sasisho la mwisho linalojulikana {{time}} · Inatafuta masasisho",
       "savedOffline": "Sasisho la mwisho linalojulikana {{time}} · Nje ya mtandao",
       "localSignals": "Kulingana na ishara zilizopakiwa kwenye dashibodi",
-      "emptySaved": "Hakukuwa na muunganiko katika sasisho la mwisho linalojulikana."
+      "emptySaved": "Hakukuwa na muunganiko katika sasisho la mwisho linalojulikana.",
+      "signalTypes": {
+        "militaryFlight": "Safari ya kijeshi",
+        "militaryVessel": "Chombo cha kijeshi",
+        "aisGap": "Pengo la AIS",
+        "conflictEvent": "Tukio la mzozo",
+        "escalationOutage": "Kukatika kwa mawasiliano",
+        "newsSeverity": "Habari nzito",
+        "sanctionsNews": "Habari za vikwazo",
+        "marketMove": "Mwenendo wa soko",
+        "commoditySpike": "Kupanda kwa bidhaa",
+        "earthquake": "Tetemeko la ardhi",
+        "infraOutage": "Kukatika kwa miundombinu",
+        "other": "Ishara"
+      }
     },
     "thermalEscalation": {
       "title": "Kuongezeka kwa joto",
@@ -3365,6 +3424,10 @@
       },
       "warningAge": "Muda tangu onyo la kwanza ambalo bado linatumika",
       "days": "Siku {{amount}}"
+    },
+    "externalNavigation": {
+      "blocked": "Kivinjari chako kilizuia kichupo kipya.",
+      "openLink": "Fungua {{host}}"
     }
   },
   "popups": {
@@ -4448,7 +4511,13 @@
     "alert": "Tahadhari: {{location}}",
     "multipleRegions": "Mikoa Nyingi",
     "trending": "\"{{term}}\" Inavuma - {{count}} inatajwa baada ya {{hours}}h",
-    "eventsDetected": "Matukio {{count}} yamegunduliwa katika eneo ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "Matukio {{count}} yamegunduliwa: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "maandamano",
+      "military_flight": "safari za ndege za kijeshi",
+      "military_vessel": "meli za kivita",
+      "earthquake": "shughuli za mitetemeko ya ardhi"
+    }
   },
   "intel": {
     "topics": {
@@ -5719,7 +5788,8 @@
           "seatCap": "Viti vyote 4 vinatumika. Ondoa kiti kwanza.",
           "ownerDomain": "Barua pepe ya akaunti yako lazima iwe ya kikoa cha kampuni ili kualika wenzako wa timu.",
           "self": "Huwezi kujialika mwenyewe.",
-          "inviteeDomain": "Barua pepe ya mwalikwa lazima iwe ya kikoa cha kampuni."
+          "inviteeDomain": "Barua pepe ya mwalikwa lazima iwe ya kikoa cha kampuni.",
+          "rateLimited": "Umetuma kiwango cha juu cha mialiko 20 ndani ya dirisha la saa 24 linalosonga. Tafadhali subiri kabla ya kualika wenzako zaidi."
         }
       },
       "enterpriseSeats": {

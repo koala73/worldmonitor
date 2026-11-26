@@ -13629,6 +13629,34 @@ function buildSimulationStructuralWorld(selectedTheaters, { stateUnits, worldSig
   };
 }
 
+const THEATER_LABEL_CONTEXT = [
+  (c) => c.marketContext?.topBucketLabel || '',
+  (c) => (c.commodityKey ? c.commodityKey.replace(/_/g, ' ').replace(/\blng\b/, 'LNG') : ''),
+  (c) => (c.routeFacilityKey && !c.routeFacilityKey.includes(':') ? c.routeFacilityKey : ''),
+];
+
+// Distinct state units can share a base label once the producer's "(domain)"
+// suffix is stripped, so qualify colliding theaters with the first context
+// that tells every member of the collision apart.
+function disambiguateTheaterLabels(theaters, candidates) {
+  const groups = new Map();
+  theaters.forEach((theater, i) => {
+    const key = theater.label.toLowerCase();
+    groups.set(key, [...(groups.get(key) || []), i]);
+  });
+  for (const indexes of groups.values()) {
+    if (indexes.length < 2) continue;
+    const contextOf = THEATER_LABEL_CONTEXT.find((pick) => {
+      const values = indexes.map((i) => pick(candidates[i]).toLowerCase());
+      return values.every(Boolean) && new Set(values).size === values.length;
+    });
+    indexes.forEach((i, n) => {
+      theaters[i].label = `${theaters[i].label} · ${contextOf ? contextOf(candidates[i]) : `#${n + 1}`}`;
+    });
+  }
+  return theaters;
+}
+
 function buildSimulationPackageFromDeepSnapshot(snapshot, priorWorldState = null) {
   const candidates = (snapshot.impactExpansionCandidates || [])
     .filter(isSimulationEligible)
@@ -13640,7 +13668,7 @@ function buildSimulationPackageFromDeepSnapshot(snapshot, priorWorldState = null
   const top = candidates.slice(0, 3);
   if (top.length === 0) return null;
 
-  const selectedTheaters = top.map((c, i) => ({
+  const selectedTheaters = disambiguateTheaterLabels(top.map((c, i) => ({
     theaterId: `theater-${i + 1}`,
     candidateStateId: c.candidateStateId,
     label: (c.candidateStateLabel || c.dominantRegion || 'unknown theater').replace(/\s*\([^)]+\)\s*$/, '').trim(),
@@ -13658,7 +13686,7 @@ function buildSimulationPackageFromDeepSnapshot(snapshot, priorWorldState = null
         .map((s) => String(s || '').trim())
         .filter(Boolean),
     )].slice(0, 12),
-  }));
+  })), top);
 
   const simulationRequirement = Object.fromEntries(
     selectedTheaters.map((theater) => [
