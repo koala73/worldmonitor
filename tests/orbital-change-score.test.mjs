@@ -550,9 +550,32 @@ describe('orbital change stage in the site seeder', () => {
       },
     });
     const acquisitions = await searchArchive(LAND, NOW);
-    assert.equal(bodies.length, MAX_SEARCH_PAGES);
-    assert.equal(acquisitions.length, MAX_SEARCH_PAGES);
+    assert.equal(bodies.length, 2 * MAX_SEARCH_PAGES, 'each backend search pages on its own');
+    assert.equal(acquisitions.length, 2 * MAX_SEARCH_PAGES);
     assert.equal(bodies[1].token, 'next:1');
+  });
+
+  // Since 2026-11-24 Planetary Computer answers HTTP 400 "Cross-collection searches require all
+  // collections to use the same backend" when Sentinel-2 is searched with Sentinel-1 or Landsat.
+  it('searches Sentinel-2 apart from Sentinel-1 and Landsat', async () => {
+    const searched = [];
+    const scene = (collection, platform, hours) => ({ id: `${collection}_${hours}`, collection, properties: { datetime: new Date(NOW - hours * 3_600_000).toISOString(), platform, 'eo:cloud_cover': 5 } });
+    const searchArchive = makeArchiveSearch({
+      minIntervalMs: 0,
+      fetchImpl: async (_url, init) => {
+        const { collections } = JSON.parse(init.body);
+        searched.push(collections);
+        if (collections.includes('sentinel-2-l2a') && collections.length > 1) {
+          return Response.json({ error: 'Cross-collection searches require all collections to use the same backend.' }, { status: 400 });
+        }
+        const features = collections.flatMap((c, i) => [scene(c, c === 'sentinel-2-l2a' ? 'Sentinel-2B' : c === 'landsat-c2-l2' ? 'landsat-9' : 'SENTINEL-1C', 10 + i)]);
+        return Response.json({ features, links: [] });
+      },
+    });
+    const acquisitions = await searchArchive(LAND, NOW);
+    assert.deepEqual(searched, [['sentinel-2-l2a'], ['sentinel-1-grd', 'landsat-c2-l2']]);
+    assert.deepEqual(acquisitions.map(a => a.collection).sort(), ['landsat-c2-l2', 'sentinel-1-grd', 'sentinel-2-l2a']);
+    assert.equal(acquisitions.complete, true);
   });
 
   it('reads no further search page once the deadline has passed', async () => {
@@ -568,7 +591,7 @@ describe('orbital change stage in the site seeder', () => {
       },
     });
     const acquisitions = await searchArchive(LAND, NOW, NOW + 90_000);
-    assert.equal(pages, 2, 'the first page always, then pages only while time is left');
+    assert.equal(pages, 2, 'the first page always, then pages only while time is left, and no second backend search');
     assert.equal(acquisitions.complete, false);
     const stage = makeChangeStage({ fetchStatistics: async () => assert.fail('a cut-short search is not scored'), budgetMs: 60_000, clock: () => NOW });
     const previous = { updatedAt: NOW - DAY_MS };

@@ -281,7 +281,7 @@ describe('get_intel_timeline local scope guard (WORLDMONITOR-10Y)', () => {
     assert.deepEqual(body.error?.data?.violations, [
       {
         field: 'domain',
-        description: 'Required unless country is set. One of conflict, military, or energy.',
+        description: 'Required unless country is set. One of conflict, military, energy, unrest, cyber, maritime, natural, or aviation.',
       },
       {
         field: 'country',

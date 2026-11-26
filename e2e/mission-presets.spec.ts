@@ -169,10 +169,10 @@ async function expectPanelsFromTop(page: Page): Promise<void> {
 }
 
 async function expectFreeMissionPanelLimit(page: Page): Promise<void> {
-  const settings = await readJsonLocalStorage<Record<string, { enabled: boolean }>>(page, 'worldmonitor-panels');
+  const settings = await readJsonLocalStorage<Record<string, { enabled: boolean; premium?: 'locked' | 'enhanced' }>>(page, 'worldmonitor-panels');
   expect(settings).not.toBeNull();
   const counted = Object.entries(settings!).filter(([key, config]) =>
-    config.enabled && key !== 'map' && !key.startsWith('cw-'));
+    config.enabled && key !== 'map' && !key.startsWith('cw-') && config.premium !== 'locked');
   expect(counted.length).toBeLessThanOrEqual(40);
   expect(settings!.map?.enabled).toBe(true);
   const disabledKeys = Object.entries(settings!).filter(([, config]) => !config.enabled).map(([key]) => key);

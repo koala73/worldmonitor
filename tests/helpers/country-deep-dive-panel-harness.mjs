@@ -210,7 +210,8 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['ports-stub', `export const PORTS = [];`],
     ['trade-routes-stub', `export function getChokepointRoutes() { return []; } export const TRADE_ROUTES = [];`],
     ['geo-stub', `export const STRATEGIC_WATERWAYS = [];`],
-    ['analytics-stub', `export function trackGateHit(feature) { globalThis.__wmCountryDeepDiveTestState.gateHits.push(feature); }`],
+    ['analytics-stub', `export function trackGateHit(feature) { globalThis.__wmCountryDeepDiveTestState.gateHits.push(feature); }
+      export function trackCountryHistoryAction() {} export function trackCountryHistoryUpsellClick() {}`],
     ['chokepoint-registry-stub', `export const CHOKEPOINT_REGISTRY = [];`],
     ['supplier-route-risk-stub', `
       export function computeAlternativeSuppliers(exporters) {

@@ -34,8 +34,12 @@ export function familyOf(source) {
 // The publishers of one headline: the families the digest's coverage history
 // holds for it (a topic feed's copy resolves to its original publisher there),
 // or the source's own family when there is no history.
+// Ids written before a family or name-fold change keep their old `label:`
+// spelling; map them to today's family so one outlet still counts once.
+const currentFamily = (id) => (id.startsWith('label:') ? publisherFamilyFor(id.slice('label:'.length)) || id : id);
+
 function familiesOf({ source, families }) {
-  const known = Array.isArray(families) ? families.filter(f => typeof f === 'string' && f) : [];
+  const known = Array.isArray(families) ? families.filter(f => typeof f === 'string' && f).map(currentFamily) : [];
   return known.length ? [...new Set(known)] : [familyOf(source)].filter(Boolean);
 }
 
@@ -101,7 +105,9 @@ async function readSightings(now, pipeline) {
   for (let i = 0; i + 1 < raw.length; i += 2) {
     try {
       const s = JSON.parse(raw[i]);
-      if (typeof s?.title === 'string' && typeof s.family === 'string' && s.family) sightings.push({ ...s, at: Number(raw[i + 1]) });
+      if (typeof s?.title === 'string' && typeof s.family === 'string' && s.family) {
+        sightings.push({ ...s, family: currentFamily(s.family), at: Number(raw[i + 1]) });
+      }
     } catch { /* skip a malformed member */ }
   }
   return sightings;

@@ -193,6 +193,11 @@ it('capture and reader retain every full-window party group without changing v14
 it('calibration captures retain both maps and the entire UCDP payload', () => {
   const f = FIXTURES[0]!;
   const raw = { ...f.inputs,
+    strikePressureV2: { version: 2, updatedAt: f.nowMs, days: { '2026-10-22': { IL: [1, 0, 0, 0] } } },
+    iranEventsV2: { events: [
+      { countryCode: 'IL', category: 'defense', severity: 'high', timestamp: f.nowMs },
+      { countryCode: '', location: 'Israel', severity: 'high', timestamp: f.nowMs },
+    ] },
     structuralPrior: { countries: Object.fromEntries(CII_EXPANDED_CAPTURE_TARGETS.map(code => [code, { pv: -0.5, year: 2024 }])) },
     economicStress: { schemaVersion: 1, countries: Object.fromEntries(Object.keys(TIER1_COUNTRIES).map((code, i) => [code, { measured: i < 25, members: {} }])) },
     ucdp: (() => {
@@ -204,6 +209,14 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
       return { events, ...summary, window: { startMs, endMs, complete: true, gapMonths: summary.gapMonths, missingReleases: [], months: summary.months } };
     })(),
   };
+  for (const [incomplete, error] of [
+    [{ strikePressureV2: null }, /strike-pressure:v2/],
+    [{ strikePressureV2: { ...raw.strikePressureV2, version: 1 } }, /strike-pressure:v2/],
+    [{ iranEventsV2: null }, /iran-events:v2/],
+    [{ iranEventsV2: { ...raw.iranEventsV2, version: 1 } }, /iran-events:v2/],
+  ] as const) {
+    assert.throws(() => validateCiiCalibrationInputs({ ...raw, ...incomplete }, CII_EXPANDED_CAPTURE_TARGETS), error);
+  }
   const trimmed = trimCiiRawInputs(raw, CII_EXPANDED_CAPTURE_TARGETS, true);
   assert.deepEqual(trimmed.ucdp, raw.ucdp);
   assert.deepEqual(trimmed.structuralPrior, raw.structuralPrior);
@@ -212,6 +225,8 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
   const captured = buildCiiFixture(raw, { label: 'calibration-test', capturedAt: f.capturedAt, nowMs: f.nowMs,
     iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null, targetCodes: CII_EXPANDED_CAPTURE_TARGETS, calibration: true });
   assert.equal(captured.calibration, true);
+  assert.deepEqual(captured.inputs.strikePressureV2, raw.strikePressureV2);
+  assert.deepEqual(captured.inputs.iranEventsV2, { events: raw.iranEventsV2.events.slice(0, 1) });
   // Global capture may include measured countries with no prior yet. The 37
   // calibration countries still require their priors and cannot be omitted.
   const globalTargets = [...CII_EXPANDED_CAPTURE_TARGETS, 'NO'];
@@ -220,6 +235,24 @@ it('calibration captures retain both maps and the entire UCDP payload', () => {
     targetCodes: globalTargets, calibration: true });
   assert.deepEqual(globalCapture.captureTargets, globalTargets);
   assert.deepEqual(globalCapture.inputs.ucdp, raw.ucdp);
+  // A v2 strike for a capture target outside the scored set keeps its own
+  // code; a country that is neither scored nor a target is still dropped.
+  const widerV2 = { ...raw,
+    strikePressureV2: { ...raw.strikePressureV2, days: { '2026-10-22': { IL: [1, 0, 0, 0], NO: [0, 1, 0, 0], KW: [0, 0, 1, 0] } } },
+    iranEventsV2: { events: [
+      { countryCode: 'NO', severity: 'high', timestamp: f.nowMs },
+      { countryCode: 'KW', severity: 'high', timestamp: f.nowMs },
+    ] },
+  };
+  const widerCapture = buildCiiFixture(widerV2, { label: 'global-v2-test', capturedAt: f.capturedAt,
+    nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled, notes: [], production: null,
+    targetCodes: globalTargets, calibration: true });
+  assert.deepEqual(widerCapture.inputs.strikePressureV2,
+    { ...raw.strikePressureV2, days: { '2026-10-22': { IL: [1, 0, 0, 0], NO: [0, 1, 0, 0] } } });
+  assert.deepEqual(widerCapture.inputs.iranEventsV2, { events: [{ severity: 'high', timestamp: f.nowMs, countryCode: 'NO' }] });
+  const scoredOnly = trimCiiRawInputs(widerV2, CII_EXPANDED_CAPTURE_TARGETS, true);
+  assert.deepEqual(scoredOnly.strikePressureV2, raw.strikePressureV2);
+  assert.deepEqual(scoredOnly.iranEventsV2, { events: [] });
   assert.throws(() => validateCiiCalibrationInputs(raw, globalTargets.filter(code => code !== 'PH')), /37-country/);
   const missingPrior = { ...raw, structuralPrior: { countries: { ...raw.structuralPrior.countries } } };
   delete missingPrior.structuralPrior.countries.PH;

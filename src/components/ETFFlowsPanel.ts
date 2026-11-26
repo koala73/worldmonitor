@@ -113,7 +113,7 @@ export class ETFFlowsPanel extends Panel {
     const s = d.summary || { etfCount: 0, totalVolume: 0, totalEstFlow: 0, netDirection: 'NEUTRAL', inflowCount: 0, outflowCount: 0 };
     const dirClass = `flow-${netFlowKind(s.netDirection)}`;
 
-    const rows = d.etfs.map(etf => `
+    const rows = [...d.etfs].sort((a, b) => b.volume - a.volume).map(etf => `
       <tr class="etf-row ${flowClass(etf.direction)}">
         <td class="etf-ticker">${escapeHtml(etf.ticker)}</td>
         <td class="etf-issuer">${escapeHtml(etf.issuer)}</td>

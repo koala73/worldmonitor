@@ -178,6 +178,8 @@ export class BusinessSeatsSection {
         this.error = t('settings.account.businessSeats.errors.self');
       } else if (msg.includes('INVITEE_DOMAIN_NOT_CORPORATE')) {
         this.error = t('settings.account.businessSeats.errors.inviteeDomain');
+      } else if (msg.includes('INVITE_RATE_LIMITED')) {
+        this.error = t('settings.account.businessSeats.errors.rateLimited');
       } else {
         this.error = msg;
       }

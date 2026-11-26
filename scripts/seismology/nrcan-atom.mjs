@@ -19,6 +19,15 @@ export const MAX_NRCAN_ATOM_BYTES = 1024 * 1024;
 export const EARTHQUAKES_MAX_CONTENT_AGE_MIN = 2 * 24 * 60; // 48h — min() of successful upstream newest
 export const EARTHQUAKE_PROVIDERS_KEY = 'seismology:earthquakes:providers:v1';
 const PROVIDER_MAX_AGE_MS = 30 * 60_000;
+// Each NRCan fetch is a ~330 KB body through the paid residential proxy, and
+// the feed regenerates only every 10 minutes. Refreshing at 15 minutes keeps
+// the attempt at snapshot age 15-20 on a 5-minute cron. A miss there still gets
+// health's pending window through the next run before the 30-minute expiry.
+const PROVIDER_POLICY = {
+  usgs: { retries: 1, refreshAfterMs: 0 },
+  // fetchAtomViaProxy already rotates three exits; an outer retry buys three more paid ones.
+  nrcan: { retries: 0, refreshAfterMs: 15 * 60_000 },
+};
 // Align NRCan's 30-day national bulletin with the USGS M4.5+ week layer.
 export const USGS_MIN_MAGNITUDE = 4.5;
 export const EARTHQUAKES_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -38,10 +47,6 @@ export class NrcanAtomParseError extends Error {
     this.code = 'SEED_ERROR';
     this.nonRetryable = true;
   }
-}
-
-export function nrcanAtomCacheKey(url = NRCAN_ATOM_URL) {
-  return `nrcan-atom:${url}`;
 }
 
 function tagValue(block, tag) {
@@ -289,16 +294,12 @@ export async function fetchApprovedAtom(url, {
   proxyAuth = '',
   proxyFetchFn = defaultNrcanProxyFetch,
   firstProxyExitFn = () => randomInt(1_000_000),
-  cache,
 } = {}) {
   const parsed = new URL(url);
   const allowed = new Set((allowedHosts || []).map((host) => String(host).toLowerCase()));
   if (parsed.protocol !== 'https:' || !allowed.has(parsed.hostname.toLowerCase())) {
     throw Object.assign(new Error('UNTRUSTED_SOURCE_HOST'), { nonRetryable: true });
   }
-  const cacheKey = nrcanAtomCacheKey(parsed.toString());
-  if (cache?.has(cacheKey)) return cache.get(cacheKey);
-
   const { response, xml } = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'direct' }, async observe => {
     const result = await fetchFn(parsed.toString(), {
       headers: {
@@ -313,15 +314,12 @@ export async function fetchApprovedAtom(url, {
   });
   if (response.status === 403 && proxyAuth) {
     await response.body?.cancel?.();
-    const xml = await fetchAtomViaProxy(parsed.toString(), response.status, { proxyAuth, proxyFetchFn, firstProxyExitFn, maxBytes });
-    cache?.set(cacheKey, xml);
-    return xml;
+    return fetchAtomViaProxy(parsed.toString(), response.status, { proxyAuth, proxyFetchFn, firstProxyExitFn, maxBytes });
   }
   if (!response.ok) {
     await response.body?.cancel?.();
     throw httpRetryError(response, { remainingBudgetMs: 2_000 });
   }
-  cache?.set(cacheKey, xml);
   return xml;
 }
 
@@ -329,7 +327,6 @@ export async function fetchNrcanAtom({
   fetchFn = globalThis.fetch,
   proxyAuth,
   proxyFetchFn,
-  cache,
   url = NRCAN_ATOM_URL,
 } = {}) {
   const xml = await fetchApprovedAtom(url, {
@@ -338,7 +335,6 @@ export async function fetchNrcanAtom({
     fetchFn,
     proxyAuth,
     proxyFetchFn,
-    cache,
   });
   const parsed = parseNrcanAtom(xml);
   return {
@@ -503,27 +499,40 @@ function usableProvider(snapshot, source, nowMs) {
       && Number.isFinite(eq.location?.latitude) && Number.isFinite(eq.location?.longitude));
 }
 
+function isFreshProvider(snapshot, source, nowMs) {
+  return usableProvider(snapshot, source, nowMs) && snapshot.consecutiveFailures === 0
+    && nowMs - snapshot.fetchedAt < PROVIDER_POLICY[source].refreshAfterMs;
+}
+
 export async function fetchMergedEarthquakes({ fetchUsgs, fetchNrcan, previousSources, nowMs = Date.now() }) {
   const sources = ['usgs', 'nrcan'];
-  const results = await Promise.allSettled([fetchUsgs, fetchNrcan].map(fetchSource => withRetry(async () => {
-    try { return await fetchSource(); }
+  const fetchers = { usgs: fetchUsgs, nrcan: fetchNrcan };
+  const fresh = Object.fromEntries(sources.map(source => [source, isFreshProvider(previousSources?.[source], source, nowMs)]));
+  const results = await Promise.allSettled(sources.map(source => (fresh[source] ? null : withRetry(async () => {
+    try { return await fetchers[source](); }
     catch (error) {
       if (error instanceof SyntaxError) error.nonRetryable = true;
       throw error;
     }
-  }, 1, 500)));
+  }, PROVIDER_POLICY[source].retries, 500))));
   const snapshots = {};
   const available = {};
   const failedSources = [];
   const failureDetails = [];
   for (const [index, source] of sources.entries()) {
+    const previous = previousSources?.[source];
+    if (fresh[source]) {
+      // Reused as stored: its fetchedAt keeps lastSourceSuccessAt and content age honest.
+      snapshots[source] = previous;
+      available[source] = previous;
+      continue;
+    }
     const result = results[index];
     if (result.status === 'fulfilled') {
       snapshots[source] = { ...result.value, fetchedAt: nowMs, consecutiveFailures: 0, firstFailureAt: null };
       available[source] = snapshots[source];
       continue;
     }
-    const previous = previousSources?.[source];
     const usable = usableProvider(previous, source, nowMs);
     const priorCount = previous?.consecutiveFailures;
     const knownStreak = Number.isInteger(priorCount) && priorCount >= 0 && priorCount <= 100;

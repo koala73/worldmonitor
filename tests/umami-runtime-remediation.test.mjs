@@ -237,6 +237,12 @@ describe('Umami runtime remediation (#6024)', () => {
       /^COPY --chmod=0444 scripts\/umami-retention\.sql \/app\/umami-retention\.sql$/m,
     );
     assert.match(dockerfile, /^ENV PGCONNECT_TIMEOUT=10$/m);
+    // COPY --chmod=0444 into a missing /app creates /app as 0444 too, which the
+    // non-root USER cannot traverse. WORKDIR has to create it (0755) first.
+    assert.match(
+      dockerfile,
+      /^WORKDIR \/app$[\s\S]*^COPY --chmod=0444 [^\n]* \/app\/umami-retention\.sql$[\s\S]*^USER postgres$/m,
+    );
     assert.match(
       dockerfile,
       /^CMD \["psql", "-X", "--set=ON_ERROR_STOP=1", "--file=\/app\/umami-retention\.sql"\]$/m,
@@ -342,6 +348,12 @@ describe('Umami runtime remediation (#6024)', () => {
       /docker build --file Dockerfile\.umami-retention --tag worldmonitor\/umami-retention:ci \./,
     );
     assert.match(umamiJob, /node tests\/umami-postgres-integration\.mjs/);
+    // Run the image itself, not only its SQL through the runner's psql: a
+    // USER that cannot read /app crashed the production cron (#11258).
+    assert.match(
+      umamiJob,
+      /docker run --rm --network host[\s\S]*?worldmonitor\/umami-retention:ci\s*$/m,
+    );
     assert.match(deployGate, /required='\[[^\n]*"umami-postgres"[^\n]*\]'/);
     assert.match(integration, /docker\/umami\/21_update_session_data\/migration\.sql/);
     assert.match(integration, /Promise\.all\(/);

@@ -529,6 +529,7 @@ export interface PipelineEvidence {
   lastEvidenceUpdate: string;
   classifierVersion: string;
   classifierConfidence: number;
+  lifecycleState: string;
 }
 
 export interface OperatorStatement {
@@ -726,6 +727,7 @@ export interface EnergyDisruptionEntry {
   classifierConfidence: number;
   lastEvidenceUpdate: string;
   countries: string[];
+  assetName: string;
 }
 
 export interface EnergyDisruptionSource {

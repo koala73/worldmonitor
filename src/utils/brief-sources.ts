@@ -4,6 +4,7 @@ import {
   normalizeInsightSource,
   normalizeInsightSourceUrl,
 } from '../../shared/insights-snapshot.js';
+import { headlineWithoutPublisher } from '../../shared/headline-publisher.js';
 
 export interface BriefSource {
   title: string;
@@ -62,6 +63,12 @@ export function normalizeCachedBriefSources(
     sources: collectBriefSources(cacheData?.sources ?? [], maxSources),
     legacySourceShape,
   };
+}
+
+// Headlines the brief reads, without the publisher byline the model would take
+// as part of the story (#11217). Mapped here, while each item still has its link.
+export function briefContextHeadlines(items: ReadonlyArray<{ title: string; source: string; link: string }>): string[] {
+  return items.map((item) => headlineWithoutPublisher(item.title, item.link, item.source));
 }
 
 export function buildBriefSourceContextLines(sources: BriefSource[]): string[] {

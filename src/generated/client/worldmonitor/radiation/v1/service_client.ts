@@ -40,6 +40,7 @@ export interface RadiationObservation {
   conflictingSources: boolean;
   convertedFromCpm: boolean;
   sourceCount: number;
+  zScoreAvailable: boolean;
 }
 
 export interface GeoCoordinates {

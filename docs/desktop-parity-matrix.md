@@ -34,7 +34,7 @@ Classifications: `parity` · `intentional difference` · `blocked` · `n/a`.
 | Linux secret storage fails without an activatable Secret Service; every keyring error in `SecretsCache::load_from_keychain` is silently swallowed (`if let Ok`), so users get an empty vault with zero diagnostics | #802 / #1905 | open — needs secure fallback + migration + diagnostics |
 | Released 2.5.23 lacks Internet Outages / Cyber Threats layers | #5829 | diagnosed — three compounding causes, see row below |
 | Desktop readiness/error diagnosability; sidecar readiness is assumed on port-file timeout (`main.rs:1443-1452`) rather than verified. (The stale `/api/risk-scores` citation in `src/services/desktop-readiness.ts` was repointed at the intelligence RPC under #5910, pinned by `tests/desktop-readiness-registry-paths.test.mjs`) | #1942 | open — reassess with this evidence |
-| AppImage update metadata (AppImageUpdate/zsync) | #5757 | open |
+| AppImage update metadata (AppImageUpdate/zsync) | #5757 | **Fixed by #11416**: `scripts/repack-linux-appimage.sh` embeds `gh-releases-zsync` update information and writes the `.zsync`; `build-desktop.yml` uploads it and the publish gate requires both `.zsync` files. First live release: 2.11.9 |
 | Uninstall experience | #5435 / #5487 | open |
 
 ### #5829 diagnosis (Internet Outages + Cyber Threats missing)
@@ -162,9 +162,15 @@ release-candidate checklist:
    README/download.md badges vs the `windows-msi` in-app banner and updater —
    a product call on which installer is canonical.
 
-4. macOS updater artifacts (`.app.tar.gz`) ship without `.sig` — no signed
-   update chain. Documented as unsigned fallback; revisit with the release
-   train. → tracked in #5902 §3.
+4. Update model: notify-and-download, decided in #11408 (2026-11-26). The app
+   does not include the Tauri updater plugin, so there is no signed in-place
+   update chain, no `.sig` and no `latest.json`. The macOS `.app.tar.gz`
+   assets are tauri-action's archive of the built `.app`, not updater
+   bundles. They are kept as a portable alternative to the `.dmg`, because
+   they draw real downloads (v2.11.8: 1,195 against 2,543 for the dmgs).
+   Linux AppImage update information for AppImageUpdate-style tools is
+   separate work, still open under #5757 (see the blocker table). The update
+   model is documented in `docs/desktop-app.mdx` § Auto-Update.
 
 ## Drift prevention (current state)
 

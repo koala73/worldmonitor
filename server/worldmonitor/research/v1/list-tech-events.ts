@@ -141,6 +141,13 @@ function normalizeLocation(location: string | null): (TechEventCoords) | null {
 
 // ---------- ICS Parser ----------
 
+// All-day DTEND is exclusive (RFC 5545), so the event's last day is the day before it.
+function inclusiveIcsEndDate(startDate: string, dtend: string | undefined): string {
+  if (!dtend || dtend <= startDate) return startDate;
+  const lastDay = new Date(Date.UTC(Number(dtend.slice(0, 4)), Number(dtend.slice(4, 6)) - 1, Number(dtend.slice(6, 8)) - 1));
+  return lastDay.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
 function parseICS(icsText: string): TechEvent[] {
   const events: TechEvent[] = [];
   const eventBlocks = icsText.split('BEGIN:VEVENT').slice(1);
@@ -157,7 +164,7 @@ function parseICS(icsText: string): TechEvent[] {
       const summary = summaryMatch[1]!.trim();
       const location = locationMatch ? locationMatch[1]!.trim() : '';
       const startDate = dtstartMatch[1]!;
-      const endDate = dtendMatch ? dtendMatch[1]! : startDate;
+      const endDate = inclusiveIcsEndDate(startDate, dtendMatch?.[1]);
       const url = urlMatch ? urlMatch[1]!.trim() : '';
       const uid = uidMatch ? uidMatch[1]!.trim() : '';
 

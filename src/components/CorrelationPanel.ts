@@ -30,6 +30,24 @@ const TREND_ICONS: Record<string, { symbol: string; color: string }> = {
   'de-escalating': { symbol: '\u2193', color: '#44cc44' },
 };
 
+const SIGNAL_TYPE_KEYS: Record<string, string> = {
+  military_flight: 'militaryFlight',
+  military_vessel: 'militaryVessel',
+  ais_gap: 'aisGap',
+  conflict_event: 'conflictEvent',
+  escalation_outage: 'escalationOutage',
+  news_severity: 'newsSeverity',
+  sanctions_news: 'sanctionsNews',
+  market_move: 'marketMove',
+  commodity_spike: 'commoditySpike',
+  earthquake: 'earthquake',
+  infra_outage: 'infraOutage',
+};
+
+function signalTypeLabel(type: string): string {
+  return t(`components.correlation.signalTypes.${SIGNAL_TYPE_KEYS[type] ?? 'other'}`);
+}
+
 export class CorrelationPanel extends Panel {
   private domain: CorrelationDomain;
   private expandedCard: string | null = null;
@@ -267,7 +285,7 @@ export class CorrelationPanel extends Panel {
       h('div', { style: 'padding:2px 0;display:flex;gap:6px;align-items:baseline;' },
         h('span', {
           style: 'font-size:calc(8px * var(--wm-panel-effective-scale, 1));padding:1px 4px;border-radius:3px;background:rgba(255,255,255,0.1);white-space:nowrap;',
-        }, s.type),
+        }, signalTypeLabel(s.type)),
         h('span', { style: 'opacity:0.8;' }, s.label),
       ),
     );

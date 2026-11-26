@@ -2,6 +2,7 @@
 
 import { loadEnvFile, runSeed, CHROME_UA } from './_seed-utils.mjs';
 import { createPortwatchRequestTrace } from './_portwatch-request-diagnostics.mjs';
+import { portwatchHistoryAfterPublish } from './_intel-history-collectors.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -117,6 +118,7 @@ if (isMain) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 150,
+    afterPublish: portwatchHistoryAfterPublish,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

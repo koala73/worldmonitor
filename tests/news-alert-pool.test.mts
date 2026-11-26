@@ -30,6 +30,13 @@ it('keeps the original publisher a topic feed carries, so the relay scores on it
   assert.deepEqual(alertPoolItems([topic, untrusted], [], now, 'en').map(i => [i.title, (i as { originPublisher?: string }).originPublisher]), [['topic', 'Reuters'], ['untrusted', undefined]]);
 });
 
+it('keeps the name the aggregator gave a publisher, so a pooled alert is not labelled with its tier key', () => {
+  // Google News attributes BBC Hausa to "BBC"; the bbc family's tier key is "BBC Middle East".
+  const bbc = item('bbc', 1, { source: 'BBC — El Salvador', originPublisher: 'BBC', originPublisherTrusted: true });
+  const untrusted = item('untrusted', 2, { source: 'Strategic Chokepoints', originPublisher: 'BBC', originPublisherTrusted: false });
+  assert.deepEqual(alertPoolItems([bbc, untrusted], [], now, 'en').map(i => [i.title, i.originPublisher, i.publisherName]), [['bbc', 'BBC Middle East', 'BBC'], ['untrusted', undefined, undefined]]);
+});
+
 it('pools only headlines in the digest language, so local-language outlets cannot alert an English edition', () => {
   const servable = [item('Trump, Xi and Putin end summit', 1), item('Baigėsi Trumpo, Putino, Xi Jinpingo susitikimas', 2, { source: '15min.lt', lang: 'lt' })];
   assert.deepEqual(alertPoolItems(servable, [], now, 'en').map(i => i.title), ['Trump, Xi and Putin end summit']);
@@ -47,11 +54,19 @@ it('pools an English Google News query whatever language its feed is routed to',
   assert.deepEqual(alertPoolItems(servable, [], now, 'en').map(i => i.title), ['Supreme Court overturns jail term']);
 });
 
+it('keeps a feed out of the pool when the catalog states its headlines are in another language', () => {
+  // NRK has no routing language; El País Uruguay is an English query that returns Spanish.
+  const servable = [item('Oil tanker struck near Hormuz', 1, { source: 'NRK', lang: 'en' }), item('Court rules on extradition', 2, { source: 'El País Uruguay', lang: 'es' })];
+  assert.deepEqual(alertPoolItems(servable, [], now, 'en'), []);
+});
+
 it('the pool keeps exactly the feeds the relay lets alert, for every feed in the catalog', () => {
   const feeds = [...Object.values(VARIANT_FEEDS).flatMap(byCategory => Object.values(byCategory).flat()), ...INTEL_SOURCES];
   const names = [...new Set(feeds.map(feed => feed.name))];
-  const candidates = buildClassifyCandidateMap({ categories: { all: { items: names.map(name => ({ title: name, source: name, publishedAt: now })) } } }, [], 'full', now, 3_600_000);
-  const alerting = names.filter(name => !candidates.get(name).otherLanguage);
+  // An English title per feed: this compares the feed rule, not the per-headline check.
+  const titleOf = (name: string) => `Headline ${names.indexOf(name)}`;
+  const candidates = buildClassifyCandidateMap({ categories: { all: { items: names.map(name => ({ title: titleOf(name), source: name, publishedAt: now })) } } }, [], 'full', now, 3_600_000);
+  const alerting = names.filter(name => !candidates.get(titleOf(name)).otherLanguage);
   // lang 'xx': a catalog feed is decided by the catalog, not by the item.
   const poolKeeps = (name: string) => alertPoolItems([item(name, 1, { source: name, lang: 'xx' })], [], now, 'en').length === 1;
   assert.deepEqual(names.filter(name => alerting.includes(name) !== poolKeeps(name)), []);

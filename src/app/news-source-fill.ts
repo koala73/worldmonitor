@@ -3,6 +3,7 @@ import { NewsServiceClient } from '@/services/generated-rpc-clients';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { protoItemToNewsItem } from '@/services/news-digest-items';
 import { effectivePubDateMs } from '@/services/feed-date';
+import { createRequestTimeoutSignal } from '@/services/timeout-signal';
 
 // A digest category keeps its top items across every feed it carries, so a
 // panel whose user turned sources off can be left with enabled sources that
@@ -54,7 +55,24 @@ export function fillFreeSlots(base: readonly NewsItem[], extra: readonly NewsIte
   return selected.sort(newestFirst);
 }
 
-let client: InstanceType<typeof NewsServiceClient> | null = null;
+export type SourceItemsClient = Pick<InstanceType<typeof NewsServiceClient>, 'listSourceItems'>;
+
+let client: SourceItemsClient | null = null;
+
+/**
+ * The deadline starts when the request is sent, not when the fill is asked
+ * for: the client's code loads on first use, and on a throttled phone that
+ * load plus the main-thread work before the send took 4s of a 5s budget set
+ * at the call, so every fill timed out just before its response arrived.
+ */
+export function createSourceItemsClient(Client: typeof NewsServiceClient = NewsServiceClient): SourceItemsClient {
+  return new Client(getRpcBaseUrl(), {
+    fetch: (input, init) => globalThis.fetch(input, {
+      ...init,
+      signal: createRequestTimeoutSignal(input, init, SOURCE_FILL_TIMEOUT_MS),
+    }),
+  });
+}
 
 /**
  * Cached items of `sources` in `category`, read from the first of `editions`
@@ -66,17 +84,17 @@ export async function fetchSourceItems(
   category: string,
   sources: readonly string[],
   language: string,
+  sourceClient: SourceItemsClient = (client ??= createSourceItemsClient()),
 ): Promise<NewsItem[]> {
   if (sources.length === 0) return [];
-  client ??= new NewsServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
   try {
-    const response = await client.listSourceItems(
+    const response = await sourceClient.listSourceItems(
       { editions: [...editions], category, sources: [...sources].sort(), lang: language },
-      { signal: AbortSignal.timeout(SOURCE_FILL_TIMEOUT_MS) },
     );
     return response.items.map(protoItemToNewsItem);
   } catch (error) {
-    console.warn(`[News] source rows for ${category} unavailable:`, error);
+    // String(): a DOMException serializes to {} in console captures.
+    console.warn(`[News] source rows for ${category} unavailable:`, String(error));
     return [];
   }
 }

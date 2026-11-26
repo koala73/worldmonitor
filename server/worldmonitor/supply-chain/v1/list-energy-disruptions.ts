@@ -66,6 +66,7 @@ export function projectDisruption(raw: unknown): EnergyDisruptionEntry | null {
     // surface an empty array there so the field is always present on the
     // wire but consumers can detect pre-denorm data by checking length.
     countries: coerceStringArray(r.countries),
+    assetName: coerceString(r.assetName),
   };
 }
 

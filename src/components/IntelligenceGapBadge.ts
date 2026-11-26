@@ -69,6 +69,8 @@ export class IntelligenceFindingsBadge {
   private audioEnabled = true;
   private enabled: boolean;
   private popupEnabled: boolean;
+  /** The last breaking-alerts change could not be stored; say so under the switch. */
+  private breakingAlertsSaveFailed = false;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissListener: (() => void) | null = null;
   private findingsModalOverlay: HTMLElement | null = null;
@@ -119,8 +121,13 @@ export class IntelligenceFindingsBadge {
       }
       if (toggleAttr === 'breaking-alerts') {
         e.stopPropagation();
-        const settings = getAlertSettings();
-        updateAlertSettings({ enabled: !settings.enabled });
+        // Flip what the reader saw. Re-reading storage here can disagree with the
+        // rendered switch (a failed read rendered the default, then storage
+        // recovered), and a click meant as "off" would turn alerts on.
+        const shownOn = target.closest('[data-toggle]')?.querySelector('.popup-toggle-switch')?.classList.contains('on')
+          ?? getAlertSettings().enabled;
+        // A rejected write leaves the switch where it was; tell the reader why.
+        this.breakingAlertsSaveFailed = !updateAlertSettings({ enabled: !shownOn });
         this.renderDropdown();
         return;
       }
@@ -375,7 +382,9 @@ export class IntelligenceFindingsBadge {
       <div class="popup-toggle-row" data-toggle="breaking-alerts">
         <span class="popup-toggle-label">🚨 ${escapeHtml(breakingLabel)}</span>
         <span class="popup-toggle-switch${breakingSettings.enabled ? ' on' : ''}"><span class="popup-toggle-knob"></span></span>
-      </div>`;
+      </div>${this.breakingAlertsSaveFailed
+        ? `<div class="popup-toggle-error" role="alert" data-breaking-alerts-save-error>${escapeHtml(t('components.intelligenceFindings.breakingAlertsNotSaved'))}</div>`
+        : ''}`;
   }
 
   private renderDropdown(): void {

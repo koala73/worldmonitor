@@ -23,7 +23,7 @@ export interface RadiationObservation {
   freshness: RadiationFreshness;
   baselineValue: number;
   delta: number;
-  zScore: number;
+  zScore: number | null;
   severity: RadiationSeverity;
   confidence: RadiationConfidence;
   corroborated: boolean;
@@ -104,7 +104,7 @@ function toObservation(raw: ProtoRadiationObservation): RadiationObservation {
     freshness: mapFreshness(raw.freshness),
     baselineValue: raw.baselineValue ?? raw.value,
     delta: raw.delta ?? 0,
-    zScore: raw.zScore ?? 0,
+    zScore: (raw.zScoreAvailable ?? raw.zScore !== 0) ? raw.zScore : null,
     severity: mapSeverity(raw.severity),
     confidence: mapConfidence(raw.confidence),
     corroborated: raw.corroborated ?? false,

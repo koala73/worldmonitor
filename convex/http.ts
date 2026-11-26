@@ -4,6 +4,7 @@ import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
 import { isDeliveryError } from "./lib/notificationDelivery";
+import { redactChannelForSettings } from "./notificationChannels";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
@@ -57,7 +58,7 @@ function allowedOrigin(origin: string | null): string | null {
     url.hostname = url.hostname.replace(/\.+$/, "");
     const candidate = `${url.protocol}//${url.host}`;
     if (TRUSTED_ORIGINS.some(pattern => pattern.test(candidate))) return origin;
-    if (process.env.NODE_ENV !== "production" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
+    if (process.env.CONVEX_IS_DEV === "true" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
     if (url.protocol === "https:" && !url.port && url.hostname.endsWith(".translate.goog")) {
       const encoded = url.hostname.slice(0, -".translate.goog".length);
       const decoded = encoded.replace(/--/g, "\0").replace(/-/g, ".").replace(/\0/g, "-");
@@ -392,6 +393,7 @@ export async function internalEntitlementsHttpHandler(
     );
     let billingStatus:
       | "subscription_lapsed"
+      | "payment_failed"
       | "renewal_verification_pending"
       | "renewal_verification_failed"
       | undefined;
@@ -461,7 +463,11 @@ export async function internalEntitlementsHttpHandler(
             verificationCouldExpandCoverage
           )
         ) {
-          billingStatus = verification.status;
+          billingStatus =
+            verification.status === "subscription_lapsed" &&
+            fallbackState?.paymentFailedHold
+              ? "payment_failed"
+              : verification.status;
           if ("retryAfterSeconds" in verification) {
             retryAfterSeconds = verification.retryAfterSeconds;
           }
@@ -1314,15 +1320,10 @@ http.route({
     try {
       if (action === "get") {
         const [channels, alertRules] = await Promise.all([
-          ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, { userId }),
+          ctx.runQuery(internal.notificationChannels.getChannelsByUserId, { userId }),
           ctx.runQuery((internal as any).alertRules.getAlertRulesByUserId, { userId }),
         ]);
-        // The signing secret is only ever shown once, at registration; the
-        // settings UI needs to know whether a webhook is signed, not the key.
-        const visibleChannels = (channels ?? []).map(
-          ({ webhookSecret, ...channel }: { webhookSecret?: string; [key: string]: unknown }) =>
-            channel.channelType === "webhook" ? { ...channel, webhookSigned: Boolean(webhookSecret) } : channel,
-        );
+        const visibleChannels = channels.map(redactChannelForSettings);
         return new Response(JSON.stringify({ channels: visibleChannels, alertRules: alertRules ?? [] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },

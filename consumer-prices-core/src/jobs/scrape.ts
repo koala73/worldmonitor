@@ -2,16 +2,16 @@
  * Scrape job: discovers targets and writes price observations to Postgres.
  * Respects per-retailer rate limits and acquisition provider config.
  */
+import { pathToFileURL } from 'node:url';
 import { query, closePool, withTransaction } from '../db/client.js';
 import { insertObservation } from '../db/queries/observations.js';
-import { upsertRetailerProduct } from '../db/queries/products.js';
+import { upsertCanonicalProduct, upsertRetailerProduct } from '../db/queries/products.js';
 import { parseSize, unitPrice as calcUnitPrice } from '../normalizers/size.js';
 import { loadAllRetailerConfigs, loadRetailerConfig } from '../config/loader.js';
 import { SearchAdapter, SearchTargetError } from '../adapters/search.js';
 import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
-import { upsertCanonicalProduct } from '../db/queries/products.js';
 import {
   demoteAutoProductMatchToCandidate,
   getBasketItemId,
@@ -242,18 +242,7 @@ export async function scrapeRetailer(slug: string) {
           continue;
         }
 
-        const productId = await upsertRetailerProduct({
-          retailerId,
-          retailerSku: product.retailerSku,
-          sourceUrl: product.sourceUrl,
-          rawTitle: product.rawTitle,
-          rawBrand: product.rawBrand,
-          rawSizeText: product.rawSizeText,
-          imageUrl: product.imageUrl,
-          categoryText: product.categoryText ?? target.category,
-        });
-
-        let discoveredMatch: Parameters<typeof upsertProductMatch>[0] | undefined;
+        let discoveredMatch: Omit<Parameters<typeof upsertProductMatch>[0], 'retailerProductId'> | undefined;
 
         // Skip only when the pin URL was used directly. That match row already exists.
         // A fresh Exa discovery, including fallback from a broken pin, still creates one.
@@ -283,7 +272,6 @@ export async function scrapeRetailer(slug: string) {
                 );
               }
               discoveredMatch = {
-                retailerProductId: productId,
                 canonicalProductId: canonicalId,
                 basketItemId,
                 matchScore: matchAdmission.score,
@@ -303,7 +291,6 @@ export async function scrapeRetailer(slug: string) {
         const parsed = product.normalizedSize ?? parseSize(product.rawSizeText);
         const up = parsed ? calcUnitPrice(product.price, parsed) : null;
         const observation = {
-          retailerProductId: productId,
           scrapeRunId: runId,
           price: product.price,
           listPrice: product.listPrice,
@@ -322,40 +309,46 @@ export async function scrapeRetailer(slug: string) {
           Boolean(pinnedMatchId) &&
           matchAdmission.status === 'candidate';
 
-        if (shouldDemoteDirectMatch || discoveredMatch) {
-          let demotedDirectMatch = false;
-          try {
-            // The match write acquires the conflicting row before the
-            // observation is inserted. Keeping both statements in one
-            // transaction prevents aggregate from observing either an old
-            // auto state with new candidate evidence or a new auto state with
-            // older candidate evidence. Concurrent scrape runs serialize on
-            // the match upsert/update row lock.
-            await withTransaction(async (execute) => {
-              if (shouldDemoteDirectMatch && pinnedMatchId) {
-                demotedDirectMatch = await demoteAutoProductMatchToCandidate({
-                  matchId: pinnedMatchId,
-                  matchScore: matchAdmission.score,
-                  evidence: matchAdmission.evidence,
-                }, execute);
-              }
-              if (discoveredMatch) await upsertProductMatch(discoveredMatch, execute);
-              await insertObservation(observation, execute);
-            });
-          } catch (cause) {
+        let demotedDirectMatch = false;
+        try {
+          // The product upsert serializes writes for this URL. Commit its
+          // confirmation timestamp and any match change with the observation
+          // so basket readers see consistent price and admission state.
+          await withTransaction(async (execute) => {
+            const productId = await upsertRetailerProduct({
+              retailerId,
+              retailerSku: product.retailerSku,
+              sourceUrl: product.sourceUrl,
+              rawTitle: product.rawTitle,
+              rawBrand: product.rawBrand,
+              rawSizeText: product.rawSizeText,
+              imageUrl: product.imageUrl,
+              categoryText: product.categoryText ?? target.category,
+            }, execute);
+            if (shouldDemoteDirectMatch && pinnedMatchId) {
+              demotedDirectMatch = await demoteAutoProductMatchToCandidate({
+                matchId: pinnedMatchId,
+                matchScore: matchAdmission.score,
+                evidence: matchAdmission.evidence,
+              }, execute);
+            }
+            if (discoveredMatch) await upsertProductMatch({ ...discoveredMatch, retailerProductId: productId }, execute);
+            await insertObservation({ ...observation, retailerProductId: productId }, execute);
+          });
+        } catch (cause) {
+          if (shouldDemoteDirectMatch || discoveredMatch) {
             logger.warn(`  [${target.id}] match/observation transaction failed: ${cause}`);
             throw new MatchAdmissionPersistenceError(
               `could not persist matched observation for ${target.id}`,
               cause,
             );
           }
-          if (demotedDirectMatch) {
-            logger.warn(
-              `  [${target.id}] direct auto pin downgraded to candidate score=${matchAdmission.score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
-            );
-          }
-        } else {
-          await insertObservation(observation);
+          throw cause;
+        }
+        if (demotedDirectMatch) {
+          logger.warn(
+            `  [${target.id}] direct auto pin downgraded to candidate score=${matchAdmission.score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
+          );
         }
 
         // Stale-pin maintenance — only when the pin URL was actually used (not Exa fallback).
@@ -496,15 +489,17 @@ async function main() {
   }
 }
 
-const __runStartedAt = Date.now();
-main()
-  .then(() => {
-    // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
-    // diagnostic can tell a clean run from a silent death; without it every run reads as unknown.
-    // main() CATCHES INTERNALLY and signals failure via process.exitCode, so it resolves even when
-    // the run failed — the guard is what stops this vouching for a failed scrape. Plain console.log
-    // rather than the logger: the marker must survive whatever transport/format the logger uses.
-    if (!process.exitCode) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
-  })
-  .catch(() => { process.exitCode = 1; })
-  .then(() => process.exit(process.exitCode ?? 0));
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const __runStartedAt = Date.now();
+  main()
+    .then(() => {
+      // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
+      // diagnostic can tell a clean run from a silent death; without it every run reads as unknown.
+      // main() CATCHES INTERNALLY and signals failure via process.exitCode, so it resolves even when
+      // the run failed — the guard is what stops this vouching for a failed scrape. Plain console.log
+      // rather than the logger: the marker must survive whatever transport/format the logger uses.
+      if (!process.exitCode) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
+    })
+    .catch(() => { process.exitCode = 1; })
+    .then(() => process.exit(process.exitCode ?? 0));
+}

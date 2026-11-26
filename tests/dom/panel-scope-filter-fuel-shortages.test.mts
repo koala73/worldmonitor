@@ -38,6 +38,8 @@ const scopeOf = (countries: string[], neighbours = true): ResolvedScope => {
 // TH's neighbours are KH, LA, MM and MY.
 const FOCUS = scopeOf(['TH']);
 
+const RECENT = new Date().toISOString();
+
 function shortage(id: string, country: string, severity: 'confirmed' | 'watch', product = 'diesel') {
   return {
     id,
@@ -45,7 +47,7 @@ function shortage(id: string, country: string, severity: 'confirmed' | 'watch', 
     product,
     severity,
     firstSeen: '2026-10-01',
-    lastConfirmed: '2026-11-01',
+    lastConfirmed: RECENT,
     resolvedAt: '',
     impactTypes: [],
     causeChain: [],

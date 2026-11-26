@@ -353,6 +353,7 @@ const BLOCK_SCHEMA = {
     count: { type: ['integer', 'null'] },
     findings: { type: 'array', items: FINDING_SCHEMA },
     omitted: { type: 'integer', description: 'Findings beyond the listed ones.' },
+    reason: { type: 'string', description: 'Why the block has no finding, without the status word. Present only when status is unavailable or not_covered.' },
   },
 };
 

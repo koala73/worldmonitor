@@ -34,19 +34,9 @@ separate outlets — two outlets plus a regulator, three outlets, or a regulator
 plus a hard operational signal like a cancelled flight. Ten stories rewriting one
 wire report do not add up to confirmation.
 
-<Warning>
-**Today this registry is maintained by hand, not by a classifier.** Alerts are
-curated in `scripts/data/fuel-shortages.json`; the seeder publishes that file as-is.
-There is no feed ingestion, no language-model second pass, and **no code that
-promotes, demotes, or expires a row** — `scripts/_fuel-shortage-registry.mjs:6-14`
-is explicit that the classifier pipeline was scoped but never shipped.
-
-So read the tiers below as the **evidence standard a curator applies**, not as
-automation you can rely on. In particular: a `confirmed` row is not
-self-expiring, and an alert that has stopped being true stays visible until
-someone edits it. Check each row's own timestamp rather than assuming staleness
-has been handled for you.
-</Warning>
+Curators maintain the source registry in `scripts/data/fuel-shortages.json`.
+They evaluate evidence and promote rows. The daily seeder applies the age rules
+below before publishing the registry.
 
 ## What we track
 
@@ -83,19 +73,17 @@ Moving `watch → confirmed` requires:
 
 The designed pipeline adds a language-model second pass that must agree before a row is promoted, holding it at `watch` when it disagrees. That check is part of the planned classifier and is not running today.
 
-### Decay policy — designed, not yet enforced
+### Decay policy
 
-- `confirmed` without a new corroborating signal in 7 days → demote to `watch`
-- `watch` without a new signal in 14 days → remove
+The daily seeder measures elapsed time from each row's `lastConfirmed` timestamp.
 
-<Warning>
-**No code enforces these ages today.** They are the maintenance contract, not a
-guarantee: nothing demotes or removes a row on its own, so a shortage that has
-resolved stays published until it is edited out. Treat the ages as the standard
-this registry is held to, and the row's own timestamp as the fact.
-</Warning>
+- At 7 days without a new signal, publish a `confirmed` row as `watch`.
+- At 14 days without a new signal, omit the row from the published registry. A
+  demotion uses the same timestamp, so it does not restart the clock.
 
-When the classifier ships, stale shortages will stop persisting silently — every demotion will write an entry to the planned public revision log. See [`/corrections`](/corrections) for the designed audit-surface shape and current status.
+Expired rows drop out of dashboard counts and API results. The curated source
+file retains them for evidence review. If new evidence confirms an entry,
+curators can update its timestamp and assign the supported tier.
 
 ## Evidence transparency
 

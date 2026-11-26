@@ -11,7 +11,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SearchAdapter } from '../adapters/search.js';
+import { getBasketRows } from '../basket-observations.js';
+import { hashPayload } from '../db/queries/observations.js';
+import { MAX_OBSERVATION_AGE_DAYS } from '../observation-freshness.js';
+import { scrapeRetailer } from './scrape.js';
 
 const serverUrl = process.env.CONSUMER_PRICES_TEST_DATABASE_URL;
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '../../migrations');
@@ -154,6 +159,62 @@ describe.skipIf(!serverUrl && !process.env.CI)('chained basket index (real Postg
     await observe(EGGS_A, 12, '0 seconds', false); // A out of stock; nothing changed price
     await job.aggregateBasket('essentials-ae', 'ae');
     expect((await latest())['eggs|essentials_index']).toBeCloseTo(83.33, 2);
+  });
+
+  it.each([
+    { path: 'matched', match: { basketSlug: 'essentials-ae', canonicalName: 'Eggs Fresh 12 Pack' }, failure: 'match-admission-persist-failed' },
+    { path: 'without a match write', match: {}, failure: 'unknown-error' },
+  ])('expires an unconfirmed price after a failed scrape ($path)', async ({ match, failure }) => {
+    const slug = 'carrefour_ae';
+    const url = 'https://www.carrefouruae.com/eggs';
+    const samePayload = { ...match, price: 12 };
+    await sql(`UPDATE retailers SET slug = $2 WHERE id = $1`, [RETAILER_A, slug]);
+    await sql(`UPDATE retailer_products SET source_url = $2 WHERE id = $1`, [EGGS_A, url]);
+    await sql(`UPDATE product_matches SET canonical_product_id = (
+      SELECT canonical_product_id FROM basket_items WHERE id = product_matches.basket_item_id
+    ) WHERE retailer_product_id = $1`, [EGGS_A]);
+    await sql(`UPDATE price_observations SET raw_hash = $2 WHERE retailer_product_id = $1`, [EGGS_A, hashPayload(samePayload)]);
+
+    const basketPrice = async () => (await getBasketRows('essentials-ae', 'ae'))
+      .find((row) => row.retailerProductId === EGGS_A);
+    expect(await basketPrice()).toMatchObject({ price: 12 });
+    const [aged] = await sql(
+      `UPDATE retailer_products SET last_seen_at = NOW() - make_interval(days => $2)
+       WHERE id = $1 RETURNING last_seen_at::text`,
+      [EGGS_A, MAX_OBSERVATION_AGE_DAYS + 1],
+    );
+    await sql(`ALTER TABLE price_observations ADD CONSTRAINT reject_fixture_price CHECK (price <> 13)`);
+
+    vi.stubEnv('EXA_API_KEYS', 'fixture');
+    vi.stubEnv('FIRECRAWL_API_KEY', 'fixture');
+    vi.spyOn(SearchAdapter.prototype, 'discoverTargets').mockResolvedValue([{ id: 'eggs', url, category: 'eggs' }]);
+    vi.spyOn(SearchAdapter.prototype, 'fetchTarget').mockResolvedValue({ url, html: '', statusCode: 200, fetchedAt: new Date() });
+    const product = {
+      sourceUrl: url, rawTitle: 'Eggs Fresh 12 Pack', rawBrand: null, rawSizeText: null,
+      imageUrl: null, categoryText: 'eggs', retailerSku: null, listPrice: null,
+      promoPrice: null, promoText: null, inStock: true,
+    };
+    vi.spyOn(SearchAdapter.prototype, 'parseListing')
+      .mockResolvedValueOnce([{ ...product, price: 13, rawPayload: { ...match, price: 13 } }])
+      .mockResolvedValueOnce([{ ...product, price: 12, rawPayload: samePayload }]);
+    try {
+      await scrapeRetailer(slug);
+      const [failedRun] = await sql(`SELECT status, failure_reasons FROM scrape_runs WHERE id <> $1`, [RUN]);
+      expect(failedRun).toEqual({ status: 'failed', failure_reasons: { [failure]: 1 } });
+      const [seen] = await sql(`SELECT last_seen_at::text FROM retailer_products WHERE id = $1`, [EGGS_A]);
+      expect.soft(seen.last_seen_at).toBe(aged.last_seen_at);
+      expect.soft(await basketPrice()).toBeUndefined();
+
+      await scrapeRetailer(slug);
+      const confirmed = await basketPrice();
+      expect(confirmed).toMatchObject({ price: 12 });
+      expect(confirmed?.lastSeenAt.getTime()).toBeGreaterThan(new Date(aged.last_seen_at).getTime());
+      expect(await sql(`SELECT price::float8 FROM price_observations WHERE retailer_product_id = $1`, [EGGS_A]))
+        .toEqual([{ price: 12 }]);
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('makes a run wait on the per-basket lock, then complete once it is released', async () => {

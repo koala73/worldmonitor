@@ -116,20 +116,12 @@ export async function fetchThermalEscalations(maxItems = 12): Promise<ThermalEsc
   const cacheKey = String(maxItems);
   const hydrated = getHydratedData('thermalEscalation') as HydratedThermalData | undefined;
   if (hydrated?.clusters?.length) {
-    const sliced = (hydrated.clusters ?? []).slice(0, maxItems).map(toCluster);
     const watch: ThermalEscalationWatch = {
       fetchedAt: hydrated.fetchedAt ? new Date(hydrated.fetchedAt) : new Date(0),
       observationWindowHours: hydrated.observationWindowHours ?? 24,
       sourceVersion: hydrated.sourceVersion || 'thermal-escalation-v1',
-      clusters: sliced,
-      summary: {
-        clusterCount: sliced.length,
-        elevatedCount: sliced.filter(c => c.status === 'elevated').length,
-        spikeCount: sliced.filter(c => c.status === 'spike').length,
-        persistentCount: sliced.filter(c => c.status === 'persistent').length,
-        conflictAdjacentCount: sliced.filter(c => c.context === 'conflict_adjacent').length,
-        highRelevanceCount: sliced.filter(c => c.strategicRelevance === 'high').length,
-      },
+      clusters: (hydrated.clusters ?? []).slice(0, maxItems).map(toCluster),
+      summary: toSummary(hydrated.summary),
     };
     // Warm the breaker under the same key a later recurring call reads
     // (#7048); the non-empty guard mirrors its shouldCache.
@@ -146,19 +138,23 @@ export async function fetchThermalEscalations(maxItems = 12): Promise<ThermalEsc
       observationWindowHours: response.observationWindowHours ?? 24,
       sourceVersion: response.sourceVersion || 'thermal-escalation-v1',
       clusters: (response.clusters ?? []).map(toCluster),
-      summary: {
-        clusterCount: response.summary?.clusterCount ?? 0,
-        elevatedCount: response.summary?.elevatedCount ?? 0,
-        spikeCount: response.summary?.spikeCount ?? 0,
-        persistentCount: response.summary?.persistentCount ?? 0,
-        conflictAdjacentCount: response.summary?.conflictAdjacentCount ?? 0,
-        highRelevanceCount: response.summary?.highRelevanceCount ?? 0,
-      },
+      summary: toSummary(response.summary),
     };
   }, emptyResult, {
     cacheKey,
     shouldCache: (r) => r.clusters.length > 0,
   });
+}
+
+function toSummary(summary: HydratedThermalData['summary']): ThermalEscalationWatch['summary'] {
+  return {
+    clusterCount: summary?.clusterCount ?? 0,
+    elevatedCount: summary?.elevatedCount ?? 0,
+    spikeCount: summary?.spikeCount ?? 0,
+    persistentCount: summary?.persistentCount ?? 0,
+    conflictAdjacentCount: summary?.conflictAdjacentCount ?? 0,
+    highRelevanceCount: summary?.highRelevanceCount ?? 0,
+  };
 }
 
 function toCluster(cluster: ProtoThermalEscalationCluster): ThermalEscalationCluster {

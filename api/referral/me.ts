@@ -34,6 +34,8 @@ import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { validateBearerToken } from '../../server/auth-session';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../_rate-limit.js';
 import { getReferralCodeForUser, buildShareUrl } from '../../server/_shared/referral-code';
 
 const PUBLIC_BASE =
@@ -97,10 +99,15 @@ export default async function handler(
   const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
   if (!jwt) return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
 
-  const session = await validateBearerToken(jwt);
+  const session = await validateBearerToken(jwt, { resolvePlan: false });
   if (!session.valid || !session.userId) {
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
   }
+
+  const limited = await checkRateLimit(req, cors, {
+    scope: 'referral-me', identifier: `user:${session.userId}`, limit: 30, window: '60 s',
+  });
+  if (limited) return limited;
 
   // Reuse BRIEF_URL_SIGNING_SECRET as the HMAC secret for referral
   // codes. Same secret, different message namespace (`referral:v1:`

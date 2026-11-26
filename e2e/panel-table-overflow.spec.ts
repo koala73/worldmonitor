@@ -920,7 +920,7 @@ test('Satellite Fires and every Displacement table fit the sidebar and phone wid
     const names = ['Democratic Republic of the Congo', 'Syrian Arab Republic', 'Venezuela (Bolivarian Republic of)'];
     const codes = ['CD', 'SY', 'VE'];
     const fires = new SatelliteFiresPanel();
-    fires.update(names.map((region, i) => ({ region, fires: [], fireCount: 12_345 - i, totalFrp: 98_765.4 / (i + 1), highIntensityCount: 4321, possibleExplosionCount: i === 1 ? 2 : 0 })), 37_000);
+    fires.update({ regions: names.map((region, i) => ({ region, fires: [], fireCount: 12_345 - i, totalFrp: 98_765.4 / (i + 1), highIntensityCount: 4321, possibleExplosionCount: i === 1 ? 2 : 0 })), agencyReports: [], sources: ['NASA FIRMS (VIIRS NOAA-20, NOAA-21)'], shownCount: 37_000 }, 37_000);
     const disp = new DisplacementPanel();
     disp.setData({
       year: 2025, globalTotals: { refugees: 1, asylumSeekers: 1, idps: 1, stateless: 1, total: 4 }, topFlows: [],
@@ -1154,10 +1154,13 @@ test('panel table text is readable in both themes', async ({ page }) => {
 
     mount('satellite-fires', () => {
       const panel = new SatelliteFiresPanel();
-      panel.update([
-        { region: 'Amazonas', fires: [], fireCount: 412, totalFrp: 9_876.5, highIntensityCount: 107, possibleExplosionCount: 0 },
-        { region: 'Sakha', fires: [], fireCount: 38, totalFrp: 412.2, highIntensityCount: 0, possibleExplosionCount: 0 },
-      ] as never, 450);
+      panel.update({
+        regions: [
+          { region: 'Amazonas', fires: [], fireCount: 412, totalFrp: 9_876.5, highIntensityCount: 107, possibleExplosionCount: 0 },
+          { region: 'Sakha', fires: [], fireCount: 38, totalFrp: 412.2, highIntensityCount: 0, possibleExplosionCount: 0 },
+        ],
+        agencyReports: [], sources: ['NASA FIRMS (VIIRS NOAA-20, NOAA-21)'], shownCount: 450,
+      } as never, 450);
       return panel.getElement();
     });
 

@@ -2,7 +2,8 @@
 
 import ExcelJS from 'exceljs';
 import { unzipSync, strFromU8 } from 'fflate';
-import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, writeExtraKey, getSharedFxRates, SHARED_FX_FALLBACKS, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { WDS_VECTORS_URL, fetchApprovedWdsJson, parseVectorSeries } from './lib/statcan-wds.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -174,6 +175,8 @@ async function fetchMalaysia() {
   }
 }
 
+const MINETUR_MAX_AGE_DAYS = 7;
+
 async function fetchSpain() {
   try {
     const url = 'https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/';
@@ -183,6 +186,13 @@ async function fetchSpain() {
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    const fecha = typeof data?.Fecha === 'string' ? data.Fecha.trim() : '';
+    const date = /^(\d{2})\/(\d{2})\/(\d{4})(?:\s|$)/.exec(fecha);
+    const observedAt = date && `${date[3]}-${date[2]}-${date[1]}`;
+    if (!fuelDateIsFresh(observedAt, MINETUR_MAX_AGE_DAYS, Date.now())) {
+      console.warn('  [ES] Missing, invalid or stale Fecha in Minetur response');
+      return [];
+    }
     const stations = data?.ListaEESSPrecio;
     if (!Array.isArray(stations) || stations.length === 0) return [];
 
@@ -211,14 +221,16 @@ async function fetchSpain() {
     console.log(`  [ES] Gasoline=${avgGasoline} EUR/L, Diesel=${avgDiesel} EUR/L (${stations.length} stations)`);
     return [{
       code: 'ES', name: 'Spain', currency: 'EUR', flag: '🇪🇸',
-      gasoline: avgGasoline != null ? { localPrice: avgGasoline, grade: 'E5', source: 'minetur.gob.es', observedAt: new Date().toISOString().slice(0, 10) } : null,
-      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel A', source: 'minetur.gob.es', observedAt: new Date().toISOString().slice(0, 10) } : null,
+      gasoline: avgGasoline != null ? { localPrice: avgGasoline, grade: 'E5', source: 'minetur.gob.es', observedAt } : null,
+      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel A', source: 'minetur.gob.es', observedAt } : null,
     }];
   } catch (err) {
     console.warn(`  [ES] fetchSpain error: ${err.message}`);
     return [];
   }
 }
+
+const CRE_SOURCE = 'cre.gob.mx';
 
 // MX: datos.gob.mx/v2 went unresponsive in 2026 — IPv4 connect hangs forever
 // even from residential IPs. Switched to CRE's publicacionexterna XML feed,
@@ -231,11 +243,7 @@ async function fetchMexico() {
       fetchWithProxyPreferred(url, { accept: 'application/xml,text/xml,*/*', timeoutMs: 30000 }),
     );
     const xml = await resp.text();
-    const re = (type) => new RegExp(`<gas_price\\s+type="${type}">([\\d.]+)</gas_price>`, 'g');
-    const collect = (type) => [...xml.matchAll(re(type))].map(m => parseFloat(m[1]))
-      .filter(v => Number.isFinite(v) && v > 5 && v < 100); // MXN/L sanity (5 < v < 100)
-    const regular = collect('regular');
-    const diesel = collect('diesel');
+    const { regular, diesel } = parseCREStationPrices(xml);
     if (!regular.length && !diesel.length) {
       console.warn(`  [MX] CRE returned ${xml.length} bytes but no usable <gas_price> rows`);
       return [];
@@ -243,12 +251,11 @@ async function fetchMexico() {
     const avg = (a) => a.length ? +(a.reduce((s, v) => s + v, 0) / a.length).toFixed(4) : null;
     const avgRegular = avg(regular);
     const avgDiesel = avg(diesel);
-    const observedAt = new Date().toISOString().slice(0, 10);
     console.log(`  [MX] Regular=${avgRegular} MXN/L (${regular.length}), Diesel=${avgDiesel} MXN/L (${diesel.length})`);
     return [{
       code: 'MX', name: 'Mexico', currency: 'MXN', flag: '🇲🇽',
-      gasoline: avgRegular != null ? { localPrice: avgRegular, grade: 'Regular', source: 'cre.gob.mx', observedAt } : null,
-      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel', source: 'cre.gob.mx', observedAt } : null,
+      gasoline: avgRegular != null ? { localPrice: avgRegular, grade: 'Regular', source: CRE_SOURCE } : null,
+      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel', source: CRE_SOURCE } : null,
     }];
   } catch (err) {
     console.warn(`  [MX] fetchMexico error: ${err.message}`);
@@ -782,6 +789,20 @@ const REGIONAL_FUEL_SOURCES = [
     gasoline: { area: 'Gasolina Súper 95', unit: 'UYU/l', grade: 'Super 95' },
     diesel: { area: 'Gas Oil 50S', unit: 'UYU/l', grade: 'Diesel 50S' },
   },
+  {
+    // Western Australia only (#10838): FuelWatch covers no other state, so the
+    // row is named for it rather than for Australia.
+    id: 'fuelwatch', code: 'AU', name: 'Australia (Western Australia)', currency: 'AUD', flag: '🇦🇺', source: 'FuelWatch (WA)', maxAgeDays: 5,
+    gasoline: { area: 'ULP; median of stations', unit: 'AUD/l', grade: 'ULP 91 (WA station median)' },
+    diesel: { area: 'Diesel; median of stations', unit: 'AUD/l', grade: 'Diesel (WA station median)' },
+  },
+  {
+    // Median of station declarations (#11154). The peso moves too fast for the
+    // static shared fallback rate, so the row needs a live ARS quote.
+    id: 'searg', code: 'AR', name: 'Argentina', currency: 'ARS', flag: '🇦🇷', source: 'datos.energia.gob.ar', maxAgeDays: 14, liveFxOnly: true,
+    gasoline: { area: 'Nafta (súper) entre 92 y 95 Ron; median of stations', unit: 'ARS/l', grade: 'Súper (92–95 RON)' },
+    diesel: { area: 'Gas Oil Grado 2; median of stations', unit: 'ARS/l', grade: 'Grado 2' },
+  },
 ];
 export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s => s.currency))];
 
@@ -790,7 +811,7 @@ export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s 
 // first so their countries are not dropped for want of a rate, then EUR, which prices
 // every EU row. (EU rows are all published as EUR, so no BGN quote is needed.)
 export const FUEL_FX_CURRENCIES = (() => {
-  const all = [...new Set(['EUR', 'MYR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BRL', 'NZD', 'GBP', 'NOK', 'ISK', 'TWD', ...REGIONAL_FUEL_CURRENCIES])];
+  const all = [...new Set(['EUR', 'MYR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BRL', 'NZD', 'GBP', 'NOK', 'ISK', 'TWD', 'CAD', ...REGIONAL_FUEL_CURRENCIES])];
   return [...all.filter(c => SHARED_FX_FALLBACKS[c] == null), ...all.filter(c => SHARED_FX_FALLBACKS[c] != null)];
 })();
 
@@ -841,6 +862,41 @@ export async function fetchNorway() {
   });
   if (!response.ok) throw new Error(`SSB HTTP ${response.status}`);
   const entry = parseNorwayFuel(await response.json());
+  return entry ? [entry] : [];
+}
+
+// Statistics Canada table 18-10-0001-01, Canada, regular unleaded at self-service
+// stations (#10838). StatCan publishes diesel for 18 cities but not for Canada, so
+// the row carries gasoline only rather than a city's diesel price.
+export const STATCAN_FUEL_VECTOR_ID = 1352087861;
+
+/** Read the newest monthly Canada average in cents/l as CAD/l, dated to its month start. */
+export function parseCanadaFuel(doc, nowMs = Date.now()) {
+  const latest = parseVectorSeries(doc, STATCAN_FUEL_VECTOR_ID).points.at(-1);
+  if (!latest || !/^\d{4}-\d{2}-01$/.test(latest.refPer)) return null;
+  const [year, month] = latest.refPer.split('-').map(Number);
+  // Age from month end: StatCan releases a month about six weeks after it starts.
+  const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  if (!fuelDateIsFresh(monthEnd, 65, nowMs)) return null;
+  const price = latest.value / 100;
+  if (!(price >= 0.5 && price <= 5)) return null;
+  return {
+    code: 'CA', name: 'Canada', currency: 'CAD', flag: '🇨🇦',
+    gasoline: { localPrice: +price.toFixed(4), grade: 'Regular unleaded (self-serve, monthly mean)', source: 'Statistics Canada, table 18-10-0001-01', observedAt: latest.refPer },
+    diesel: null,
+  };
+}
+
+/** Query the WDS for the last three months; StatCan refuses Railway egress, so proxy exits back up the direct request. */
+export async function fetchCanada({ fetchFn, proxyAuth = resolveProxyForConnect(), nowMs = Date.now() } = {}) {
+  const doc = await fetchApprovedWdsJson(WDS_VECTORS_URL, {
+    method: 'POST',
+    body: JSON.stringify([{ vectorId: STATCAN_FUEL_VECTOR_ID, latestN: 3 }]),
+    cacheKey: `statcan-wds:fuel:${STATCAN_FUEL_VECTOR_ID}`,
+    proxyAuth,
+    ...(fetchFn ? { fetchFn } : {}),
+  });
+  const entry = parseCanadaFuel(doc, nowMs);
   return entry ? [entry] : [];
 }
 
@@ -942,13 +998,20 @@ export function regionalFuelEntries(snapshots, nowMs = Date.now()) {
 }
 
 // GTQ, FJD and PGK have no shared fallback rate. Without a live quote a row
-// would publish with no USD price, so it is left out.
+// would publish with no USD price, so it is left out. A liveFxOnly source also
+// refuses the static fallback, which getSharedFxRates lists in fallbackCurrencies.
+export function regionalFuelHasUsableFx(entry, fxRates) {
+  const src = REGIONAL_FUEL_SOURCES.find(s => s.code === entry.code);
+  if (src?.liveFxOnly) return fxRates[entry.currency] > 0 && !fxRates.fallbackCurrencies?.includes(entry.currency);
+  return Boolean(fxRates[entry.currency] ?? SHARED_FX_FALLBACKS[entry.currency]);
+}
+
 async function fetchRegionalFuel(fxRates) {
   const snapshots = {};
   for (const { id } of REGIONAL_FUEL_SOURCES) snapshots[id] = await readSeedSnapshot(`energy:regional:${id}:v1`);
   const entries = regionalFuelEntries(snapshots).filter(e => {
-    if (fxRates[e.currency] ?? SHARED_FX_FALLBACKS[e.currency]) return true;
-    console.warn(`  [${e.code}] no ${e.currency}/USD rate — skipping`);
+    if (regionalFuelHasUsableFx(e, fxRates)) return true;
+    console.warn(`  [${e.code}] no live ${e.currency}/USD rate — skipping`);
     return false;
   });
   for (const e of entries) console.log(`  [${e.code}] Gasoline=${e.gasoline?.localPrice} ${e.currency}/L (${e.gasoline?.observedAt}), Diesel=${e.diesel?.localPrice} ${e.currency}/L (${e.diesel?.observedAt}) via ${e.gasoline?.source ?? e.diesel?.source}`);
@@ -983,7 +1046,7 @@ export function parseCREStationPrices(xml) {
 // block the multi-country snapshot.
 // These additions are optional coverage: outages/stale data omit their rows and
 // remain visible in failedSources/allSourcesFresh without blocking core coverage.
-const TOLERATED_FAILURES = new Set(['Brazil', 'New Zealand', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA']);
+const TOLERATED_FAILURES = new Set(['Spain-Minetur', 'Brazil', 'New Zealand', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA', 'Canada-StatCan']);
 
 // Publish gate. Exported so tests can lock in the contract.
 //
@@ -1042,8 +1105,11 @@ export function mergeFuelCountry(countryMap, entry, fxRates) {
   return validEntry;
 }
 
-async function main() {
-const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
+async function collectFuelPrices() {
+const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`, { strict: true }).catch(err => {
+  console.warn(`  [WoW] Could not read previous snapshot: ${err.message}`);
+  return undefined;
+});
 
 const fxSymbols = {};
 for (const ccy of FUEL_FX_CURRENCIES) {
@@ -1057,6 +1123,7 @@ const fetchResults = await Promise.allSettled([
   fetchMalaysia(),
   fetchMexico(),
   fetchUS_EIA(),
+  fetchSpain(), // The EU bulletin can fill gaps in the national feed.
   fetchEU_CSV(),
   fetchBrazil(),
   fetchNewZealand(),
@@ -1065,9 +1132,10 @@ const fetchResults = await Promise.allSettled([
   withFuelRetry('NO', fetchNorway),
   withFuelRetry('IS', () => fetchIceland(fxRates)),
   fetchTaiwan(),
+  fetchCanada().catch(err => { console.warn(`  [CA] fetchCanada error: ${err.message}`); return []; }),
 ]);
 
-const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA'];
+const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'Spain-Minetur', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA', 'Canada-StatCan'];
 let successfulSources = 0;
 const failedSources = [];
 
@@ -1124,15 +1192,16 @@ if (prevSnapshot?.countries?.length) {
 }
 
 // Compute WoW per fuel entry
-const prevAge = prevSnapshot?.fetchedAt ? Date.now() - new Date(prevSnapshot.fetchedAt).getTime() : 0;
-const hasPrevData = prevSnapshot?.countries?.length > 0;
-const prevTooRecent = prevAge > 0 && prevAge < MIN_WOW_AGE_MS;
+const fetchedAt = Date.now();
+const prevAge = fetchedAt - Date.parse(prevSnapshot?.fetchedAt);
+const hasBaseline = Array.isArray(prevSnapshot?.countries) && prevSnapshot.countries.length > 0 && prevAge >= 0;
+const prevTooRecent = hasBaseline && prevAge < MIN_WOW_AGE_MS;
 
-if (hasPrevData && prevTooRecent) {
+if (prevTooRecent) {
   console.warn(`  [WoW] Skipping WoW — previous snapshot is only ${Math.round(prevAge / 3600000)}h old (need 144h+)`);
 }
 
-const wowAvailable = hasPrevData && !prevTooRecent;
+const wowAvailable = hasBaseline && !prevTooRecent;
 
 if (wowAvailable) {
   const prevMap = new Map(prevSnapshot.countries.map(c => [c.code, c]));
@@ -1140,7 +1209,10 @@ if (wowAvailable) {
     const prev = prevMap.get(country.code);
     if (!prev) continue;
 
-    if (country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0) {
+    // Spain's national station mean and EU bulletin use different methods.
+    const compareGasoline = country.code !== 'ES' || country.gasoline?.source === prev.gasoline?.source;
+    const compareDiesel = country.code !== 'ES' || country.diesel?.source === prev.diesel?.source;
+    if (compareGasoline && country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0) {
       const raw = +((country.gasoline.usdPrice - prev.gasoline.usdPrice) / prev.gasoline.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} gasoline: ${raw}% — omitting`);
@@ -1148,7 +1220,7 @@ if (wowAvailable) {
         country.gasoline.wowPct = raw;
       }
     }
-    if (country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0) {
+    if (compareDiesel && country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0) {
       const raw = +((country.diesel.usdPrice - prev.diesel.usdPrice) / prev.diesel.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} diesel: ${raw}% — omitting`);
@@ -1181,13 +1253,13 @@ const untoleratedFailures = failedSources.filter(name => !TOLERATED_FAILURES.has
 const publishBlocking = untoleratedFailures.length > 0;
 console.log(`\n  Summary: ${countries.length} countries, ${successfulSources}/${sourceNames.length} sources`);
 if (publishBlocking) console.warn(`  [FRESHNESS] Failed sources this run: ${failedSources.join(', ')} — publish will be rejected, prev snapshot keeps serving`);
-else if (!allSourcesFresh) console.warn(`  [FRESHNESS] Tolerated failures this run: ${failedSources.join(', ')} — publishing without them; :prev will rotate`);
+else if (!allSourcesFresh) console.warn(`  [FRESHNESS] Tolerated failures this run: ${failedSources.join(', ')} — publishing without them`);
 console.log(`  Cheapest gasoline: ${cheapestGasoline}, Cheapest diesel: ${cheapestDiesel}`);
 console.log(`  Most expensive gasoline: ${mostExpensiveGasoline}, Most expensive diesel: ${mostExpensiveDiesel}`);
 
-const data = {
+const snapshot = {
   countries,
-  fetchedAt: new Date().toISOString(),
+  fetchedAt: new Date(fetchedAt).toISOString(),
   cheapestGasoline,
   cheapestDiesel,
   mostExpensiveGasoline,
@@ -1200,34 +1272,60 @@ const data = {
   countryCount: countries.length,
   allSourcesFresh,
 };
+return { snapshot, rotatePrev: prevSnapshot !== undefined && !prevTooRecent };
+}
 
-// Rotate :prev when no untolerated source failed. Tolerated-only failures
-// (e.g. Brazil ANP unreachable) drop those countries from the published
-// snapshot entirely, so rotating is safe — next week has no prev entry to
-// compare against, so no false ~0% WoW. Blocking failures (untolerated)
-// still freeze :prev to preserve WoW integrity, since the panel would
-// otherwise compare fresh-this-week to stale-carried-last-week = ~0%.
-const rotatePrev = !publishBlocking;
-if (!rotatePrev) console.warn(`  [:prev] Skipping rotation — WoW integrity preserved for next run`);
+async function main() {
+  const declareRecords = data => data.countries.length;
+  const source = { sourceVersion: 'multi-source-fuel-prices-v1', schemaVersion: 1 };
 
-const declareRecords = (d) => d?.countries?.length || 0;
-
-await runSeed('economic', 'fuel-prices', CANONICAL_KEY, async () => data, {
-  ttlSeconds: CACHE_TTL,
-  validateFn: validateFuel,
-  emptyDataIsFailure: true,
-  recordCount: (d) => d?.countries?.length || 0,
-  declareRecords,
-  sourceVersion: 'multi-source-fuel-prices-v1',
-  schemaVersion: 1,
-  maxStaleMin: 10080,
-  extraKeys: (wowAvailable && rotatePrev) ? [{
-    key: `${CANONICAL_KEY}:prev`,
-    transform: () => data,
-    ttl: CACHE_TTL * 2,
+  await runSeed('economic', 'fuel-prices', CANONICAL_KEY, collectFuelPrices, {
+    ttlSeconds: CACHE_TTL,
+    publishTransform: ({ snapshot }) => snapshot,
+    async beforePublish({ snapshot: data }) {
+      const mexico = data.countries.find(country => country.code === 'MX');
+      if (!mexico) return;
+      // The canonical snapshot contains the last published average. The WoW
+      // snapshot can lag it when runs publish less than six days apart.
+      const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true });
+      const previousMexico = previous?.countries?.find(country => country.code === 'MX');
+      const now = Date.parse(data.fetchedAt);
+      if (Date.parse(previous?.fetchedAt) > now) {
+        throw new Error('A newer fuel-price snapshot has already been published');
+      }
+      const today = data.fetchedAt.slice(0, 10);
+      for (const grade of ['gasoline', 'diesel']) {
+        const fuel = mexico[grade];
+        const prior = previousMexico?.[grade] ?? previous?.mexicoMissingGrades?.[grade];
+        const hasBaseline = prior?.source === CRE_SOURCE && Number.isFinite(prior.localPrice)
+          && fuelDateIsFresh(prior.observedAt, Infinity, now);
+        if (fuel) {
+          fuel.observedAt = hasBaseline && prior.localPrice === fuel.localPrice ? prior.observedAt : today;
+        } else if (hasBaseline) {
+          // Keep the baseline in the same atomic snapshot while the public grade is null.
+          data.mexicoMissingGrades ??= {};
+          data.mexicoMissingGrades[grade] = {
+            localPrice: prior.localPrice, observedAt: prior.observedAt, source: prior.source,
+          };
+        }
+      }
+    },
+    validateFn: validateFuel,
+    emptyDataIsFailure: true,
+    recordCount: declareRecords,
     declareRecords,
-  }] : [],
-});
+    ...source,
+    maxStaleMin: 10080,
+    async afterPublish({ snapshot: data, rotatePrev }, { recordCount, lockFence }) {
+      if (!rotatePrev) return;
+      await writeExtraKey(`${CANONICAL_KEY}:prev`, data, CACHE_TTL * 2, {
+        ...source,
+        fetchedAt: Date.parse(data.fetchedAt),
+        recordCount,
+        state: 'OK',
+      }, { lockFence });
+    },
+  });
 }
 
 if (process.argv[1]?.endsWith('seed-fuel-prices.mjs')) {

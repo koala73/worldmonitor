@@ -1,4 +1,5 @@
 import type { ClusteredEvent } from '@/types';
+import { headlineWithoutPublisher } from '../../shared/headline-publisher.js';
 import { inferHubsFromTitle, type TechHubLocation } from './tech-hub-index';
 import { deriveHubActivityLevel, deriveHubTrend, normalizeHubScore } from './hub-activity-scoring';
 
@@ -38,11 +39,15 @@ export function aggregateTechActivity(clusters: ClusteredEvent[]): TechHubActivi
 
   // Match each cluster to potential tech hubs
   for (const cluster of clusters) {
-    const matches = inferHubsFromTitle(cluster.primaryTitle);
+    const headline = headlineWithoutPublisher(cluster.primaryTitle, cluster.primaryLink, cluster.primarySource);
+    const matches = inferHubsFromTitle(headline);
+    const isTechStory = cluster.threat?.category === 'tech';
 
     for (const match of matches) {
       // Only consider matches with reasonable confidence
       if (match.confidence < 0.5) continue;
+      // A city name alone is technology evidence only in a technology story.
+      if (match.evidence === 'place' && !isTechStory) continue;
 
       let acc = hubAccumulators.get(match.hubId);
       if (!acc) {

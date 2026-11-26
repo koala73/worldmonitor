@@ -109,6 +109,7 @@ env:
     shared/source-provenance-declarations.ts
     shared/source-provenance.ts
     shared/telegram-channel-trust.ts
+    shared/telegram-source-tiers.json
     shared/x-account-source-tiers.json
     shared/x-account-trust.ts
     src/shared/premium-paths.ts

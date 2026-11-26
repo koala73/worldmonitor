@@ -88,6 +88,7 @@ Ready-made steps, one per mapped feature:
 | `steps/orbital-image-viewer.mjs` | [Orbital image viewer and Compare](features/orbital-watch.md) |
 | `steps/orbital-map-popups.mjs` | [Imagery row in map popups](features/orbital-watch.md) |
 | `steps/orbital-site-satellites.mjs` | [Watched site's tracked satellites](features/orbital-watch.md) |
+| `steps/strategic-posture-level.mjs` | Strategic Posture shows the level the API published. Serves the live public bootstrap because a worktree has no Redis; `WM_VERIFY_TARGET=https://www.worldmonitor.app` captures production, `WM_VERIFY_WIDTH=390` captures phone width |
 | `steps/_inspect.mjs` | not a feature — dumps live panel keys, layer handles, header ids, and the map renderer when a handle in the map has drifted |
 
 Environment switches: `WM_VERIFY_HEADED=1` (real window, real GPU — the only way to get the deck.gl map), `WM_VERIFY_SOFTWARE_GL=1` (reproduce the repo's playwright GL flags), `WM_VERIFY_PANEL`, `WM_VERIFY_LAYER`, `WM_VERIFY_COUNTRY`, `WM_VERIFY_SEARCH`.

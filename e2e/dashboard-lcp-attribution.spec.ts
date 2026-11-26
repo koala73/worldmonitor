@@ -1,6 +1,10 @@
 import { devices, expect, test, type Page } from '@playwright/test';
 import { evidenceScreenshot } from './evidence-screenshot';
 
+// Layout and paint timing are measured with motion on, as users see it;
+// playwright.config.ts turns reduced motion on for every other spec.
+test.use({ reducedMotion: 'no-preference' });
+
 const { defaultBrowserType: mobileDefaultBrowserType, ...mobileDevice } = devices['iPhone 14 Pro Max'];
 void mobileDefaultBrowserType;
 

@@ -40,6 +40,8 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders, isDisallowedOrigin } from '../../../../_cors.js';
 import { readRawJsonFromUpstash } from '../../../../_upstash-json.js';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../../../../_rate-limit.js';
 import { briefLocalizedKey } from '../../../../../shared/brief-envelope.js';
 import { assertBriefEnvelope, selectBriefEnvelope } from '../../../../../server/_shared/brief-render.js';
 // @ts-expect-error — JS module, no declaration file
@@ -143,6 +145,13 @@ async function respond(
     }
     throw err;
   }
+
+  // One token is good for a week and extra query values miss the CDN, so bound
+  // the renders per issue. Legitimate unfurls are cached for 7 days.
+  const limited = await checkRateLimit(req, { ...cors, 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'Vercel-CDN-Cache-Control': 'no-store' }, {
+    scope: 'brief-carousel', identifier: `${userId}:${issueDate}`, limit: 60, window: '10 m',
+  });
+  if (limited) return limited;
 
   // Optional localized sibling. A failed read, or a sibling that was read but
   // rejected (stale mid-regeneration, or invalid), falls back to canonical

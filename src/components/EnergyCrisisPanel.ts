@@ -172,7 +172,7 @@ export class EnergyCrisisPanel extends Panel {
 
     const sourceUrl = this.data.sourceUrl || 'https://www.iea.org/data-and-statistics/data-tools/2026-energy-crisis-policy-response-tracker';
     const footer = [
-      this.data.updatedAt ? `Updated ${new Date(this.data.updatedAt).toLocaleDateString()}` : '',
+      this.data.updatedAt ? `Updated ${new Date(this.data.updatedAt).toLocaleDateString(undefined, { timeZone: 'UTC' })}` : '',
       'Source: IEA',
     ].filter(Boolean).join(' · ');
 
