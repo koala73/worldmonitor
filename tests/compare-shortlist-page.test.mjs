@@ -390,7 +390,7 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
       /Dataminr quotes \$99.99 with no source that cites them/,
     );
     // Spellings the amount pattern cannot read are rejected instead of skipped.
-    for (const spelling of ['USD 30,000', '30,000 USD', 'US$30,000', '$ 30,000', '30,000 dollars', '40 €', '$40k', '$1.2 million']) {
+    for (const spelling of ['USD 30,000', '30,000 USD', 'US$30,000', '$ 30,000', '30,000 dollars', '40 €', '$40k', '$1.2 million', '$7,50', '$7,5000']) {
       assert.throws(
         () => shortlistPage(seedWith((seed) => { seed.faqs[0][1] += ` One rival charges ${spelling} a year.`; })),
         /write amounts as/,
@@ -406,6 +406,11 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
     assert.throws(
       () => shortlistPage(seedWith((seed) => { seed.faqs[0][1] += ' Unlike World Monitor, Crisis24 charges $39.99 per alert.'; })),
       /page prose quotes \$39.99, which no entry source or catalog price covers/,
+    );
+    // Use-case labels render as link text, so their amounts are checked too.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { seed.useCases[0].useCase += ' ($12,345/mo)'; })),
+      /page prose quotes \$12,345, which no entry source or catalog price covers/,
     );
     // A use-case row World Monitor wins still holds its runner-up to a cited source.
     assert.throws(

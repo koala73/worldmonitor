@@ -86,8 +86,9 @@ const CATALOG_PRICES = new Set(PRODUCT_FACTS.plans.map((plan) => plan.price).fil
 // A currency amount in entry prose: $65,000, £135,000, $9.54. A trailing comma is punctuation.
 const PROSE_AMOUNT_RE = /[$£€]\d+(?:,\d{3})*(?:\.\d+)?/g;
 // Amount spellings PROSE_AMOUNT_RE cannot read, so the source check would never see them:
-// USD 5,000, 5,000 USD, US$5,000, $ 5,000, 5,000 dollars, 40 €, $40k, $1.2 million.
-const UNSUPPORTED_AMOUNT_RE = /\b(?:USD|GBP|EUR)\s*\d|\d\s*(?:USD|GBP|EUR)\b|US\$|[$£€]\s+\d|\d\s*(?:dollars|pounds|euros|€)|[$£€]\d[\d,.]*\s*(?:k|m|bn|thousand|million|billion)\b/i;
+// USD 5,000, 5,000 USD, US$5,000, $ 5,000, 5,000 dollars, 40 €, $40k, $1.2 million, and a
+// broken comma group such as $7,50 that would otherwise read as $7.
+const UNSUPPORTED_AMOUNT_RE = /[$£€]\d+(?:,\d{3})*,(?:\d{1,2}|\d{4,})(?!\d)|\b(?:USD|GBP|EUR)\s*\d|\d\s*(?:USD|GBP|EUR)\b|US\$|[$£€]\s+\d|\d\s*(?:dollars|pounds|euros|€)|[$£€]\d[\d,.]*\s*(?:k|m|bn|thousand|million|billion)\b/i;
 // Catalog prices are USD, so only a dollar amount can be one.
 const isCatalogAmount = (amount) => amount.startsWith('$') && CATALOG_PRICES.has(Number(amount.slice(1).replaceAll(',', '')));
 
@@ -569,7 +570,7 @@ function pageProse(seed) {
     seed.ranking.heading, seed.ranking.intro, ...seed.ranking.criteria.flat(),
     seed.entriesHeading,
     ...seed.entries.flatMap((entry) => [entry.bestFor, ...entry.paragraphs, entry.bestSuitedFor]),
-    seed.useCaseIntro, ...seed.useCases.flatMap((row) => [row.recommended, row.why, row.runnerUp]),
+    seed.useCaseIntro, ...seed.useCases.flatMap((row) => [row.useCase, row.recommended, row.why, row.runnerUp]),
     seed.concessionIntro, ...seed.concessions.flat(), ...seed.faqs.flat(), ...seed.cta.paragraphs,
   ];
 }
