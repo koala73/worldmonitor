@@ -1410,11 +1410,11 @@ const EXCLUDED_HOSTS = new Set([
   'wingbits.com',
   // Vendor pricing, marketplace, and procurement pages cited as price sources
   // in /compare/ copy. Nothing fetches them.
+  'assets.applytosupply.digitalmarketplace.service.gov.uk',
   'aws.amazon.com',
   'liveuamap.com',
   'me.liveuamap.com',
   'offnadir-delta.com',
-  'www.applytosupply.digitalmarketplace.service.gov.uk',
   'www.factal.com',
   'www.vendr.com',
 ]);
