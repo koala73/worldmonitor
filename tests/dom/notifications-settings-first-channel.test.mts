@@ -93,6 +93,11 @@ function savedRules(): SavedRule[] {
   return channelMocks.saveAlertRules.mock.calls.map((call) => call[0] as SavedRule);
 }
 
+function lastSaved(): SavedRule | undefined {
+  const rules = savedRules();
+  return rules[rules.length - 1];
+}
+
 async function mount(): Promise<HTMLElement> {
   const container = document.createElement('div');
   const rendered = renderNotificationsSettings({ isSignedIn: true });
@@ -186,7 +191,7 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
 
     await connectEmail(container);
 
-    expect(savedRules().at(-1)).toMatchObject({ enabled: false, channels: ['telegram', 'email'] });
+    expect(lastSaved()).toMatchObject({ enabled: false, channels: ['telegram', 'email'] });
     expect(store.rule).toMatchObject({ enabled: false });
     expect(toggle(container).checked).toBe(false);
   });
@@ -217,7 +222,7 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
 
     await connectEmail(container);
 
-    expect(savedRules().at(-1)).toMatchObject({ enabled: false, countries: [], channels: ['email'] });
+    expect(lastSaved()).toMatchObject({ enabled: false, countries: [], channels: ['email'] });
     expect(savedRules().some((saved) => saved.enabled === true && saved.countries?.length === 0), 'no enabled save with an empty scope').toBe(false);
     expect(toggle(container).checked).toBe(true);
     const warn = container.querySelector<HTMLElement>('#usCountryScopeWarn')!;
@@ -233,9 +238,9 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     )!.click();
     expect(note!.hidden, 'note hides once a country is picked').toBe(true);
     await vi.waitFor(() => {
-      expect(savedRules().at(-1)?.countries?.length).toBe(1);
+      expect(lastSaved()?.countries?.length).toBe(1);
     }, { timeout: 3000 });
-    expect(savedRules().at(-1)).toMatchObject({ enabled: true, channels: ['email'] });
+    expect(lastSaved()).toMatchObject({ enabled: true, channels: ['email'] });
     expect(store.rule).toMatchObject({ enabled: true });
   });
 
