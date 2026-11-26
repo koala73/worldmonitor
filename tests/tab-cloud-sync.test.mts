@@ -1378,6 +1378,61 @@ describe('tab sync driver', () => {
     assert.ok(!toB.includes('A synced') && !toB.includes('A other'), `sent to user_b: ${JSON.stringify(toB)}`);
   });
 
+  it("a page that loaded tabs before its account's first sync finished does not push them into the next account", async () => {
+    // user_a is signed in but its first sync never finished: no stored state names it.
+    localStorage.setItem(SIGNED_IN_KEY, 'user_a#w1');
+    notePageTabsLoaded();
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A draft')] });
+    // Another window signs user_a out, user_b in, and finishes user_b's first sync.
+    localStorage.setItem(SIGNED_IN_KEY, 'user_b#w2');
+    localStorage.setItem(META_KEY, JSON.stringify({ userId: 'user_b', base: {}, tombstones: [], carried: {} }));
+    const serverB = new FakeServer();
+    useServer(serverB);
+    if (prepareTabSyncSignIn('user_b', true, host).willSync) startTabSync('user_b', host);
+    await settle();
+    const toB = serverB.calls.flatMap((c) => c.changes.map((ch) => ch.record?.name));
+    assert.ok(!toB.includes('A draft'), `sent to user_b: ${JSON.stringify(toB)}`);
+  });
+
+  it('a page whose sign-in has not finished a pass does not push its tabs after another window switches', async () => {
+    // user_a's first write never returns, so no pass applies on this page.
+    gated(server);
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A draft')] });
+    signIn('user_a', host);
+    await settle();
+    // Another window switches to user_b and finishes its first sync.
+    localStorage.setItem(SIGNED_IN_KEY, 'user_b#w2');
+    localStorage.setItem(META_KEY, JSON.stringify({ userId: 'user_b', base: {}, tombstones: [], carried: {} }));
+    const serverB = new FakeServer();
+    useServer(serverB);
+    if (prepareTabSyncSignIn('user_b', true, host).willSync) startTabSync('user_b', host);
+    await settle();
+    const toB = serverB.calls.flatMap((c) => c.changes.map((ch) => ch.record?.name));
+    assert.ok(!toB.includes('A draft'), `sent to user_b: ${JSON.stringify(toB)}`);
+  });
+
+  it('a page that could not read the sync state when its tabs loaded does not sync them', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    // Next load: the sync-state read throws while the layout loads its tabs.
+    __resetTabSyncForTests();
+    const store = localStorage as unknown as MemoryStorage;
+    const getItem = MemoryStorage.prototype.getItem.bind(store);
+    store.getItem = (k) => {
+      if (k === META_KEY) throw new Error('SecurityError');
+      return getItem(k);
+    };
+    notePageTabsLoaded();
+    store.getItem = getItem;
+    // Another window has since finished user_b's switch.
+    localStorage.setItem(SIGNED_IN_KEY, 'user_b#w2');
+    localStorage.setItem(META_KEY, JSON.stringify({ userId: 'user_b', base: {}, tombstones: [], carried: {} }));
+    const serverB = new FakeServer();
+    useServer(serverB);
+    assert.equal(prepareTabSyncSignIn('user_b', true, host).willSync, false);
+  });
+
   it('a stored-tabs read that fails once is not taken as no tabs', async () => {
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
     signIn('user_a', host);

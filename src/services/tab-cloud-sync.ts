@@ -369,15 +369,28 @@ let settledAccount: string | null | undefined;
 let departed: string[] = [];
 /**
  * The account whose tabs this page holds: the stored state's account when
- * the layout loaded its tabs, then each account a pass applies. Another
- * window can move the stored state on; this page's tabs stay where they
- * were. Null until the layout loads (whatever it loads then is current).
+ * the layout loaded its tabs (the signed-in account when no sync has named
+ * one yet), then each account a pass applies. Another window can move the
+ * stored state on; this page's tabs stay where they were. Null until the
+ * layout loads (whatever it loads then is current), and UNKNOWN_ACCOUNT
+ * when the owner could not be read: such a page does not sync.
  */
 let pageTabsAccount: string | null = null;
+/** Never an account id: the page's tabs belong to an account it could not read. */
+const UNKNOWN_ACCOUNT = '\u0000unknown';
 
 /** The layout has loaded its tabs from storage: they are the stored state's account's. */
 export function notePageTabsLoaded(): void {
-  pageTabsAccount = loadTabSyncMeta()?.userId ?? null;
+  const stored = safeStorageGetChecked(META_KEY);
+  const owner = stored.ok ? parseTabSyncMeta(stored.value)?.userId : undefined;
+  if (owner || !stored.ok) {
+    pageTabsAccount = owner || UNKNOWN_ACCOUNT;
+    return;
+  }
+  // No sync has finished on this device: the tabs are the signed-in
+  // account's work, or nobody's when no account is signed in.
+  const signedIn = safeStorageGetChecked(SIGNED_IN_KEY);
+  pageTabsAccount = signedIn.ok ? markerAccount(signedIn.value) || null : UNKNOWN_ACCOUNT;
 }
 
 /** The account a signed-in marker names. */
