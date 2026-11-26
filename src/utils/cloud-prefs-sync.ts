@@ -473,12 +473,15 @@ function setState(s: SyncState): void {
 function buildCloudBlob(): Record<string, string> | null {
   const blob: Record<string, string> = {};
   for (const key of CLOUD_SYNC_KEYS) {
-    if (_cloudApplyExclusions.has(key)) {
-      // Another subsystem owns this key, and the local copy may not be this
-      // account's (another account's layout until tab sync applies this
-      // one's): the row keeps its own value, or stays without one.
-      const skipped = _skippedCloudKeys.get(key);
-      if (skipped?.action.kind === 'set') blob[key] = skipped.action.value;
+    // A key another subsystem owns whose row value the last apply skipped:
+    // the local copy may still be another account's (until tab sync applies
+    // this one's), so the row keeps its own value, or stays without one.
+    // Nothing skipped means no apply ran (local was already in step with the
+    // row) and the local copy is this account's. Leaving it out would delete
+    // it from the row, since an upload replaces the whole blob.
+    const skipped = _cloudApplyExclusions.has(key) ? _skippedCloudKeys.get(key) : undefined;
+    if (skipped) {
+      if (skipped.action.kind === 'set') blob[key] = skipped.action.value;
       continue;
     }
     const read = safeStorageGetChecked(key);
@@ -616,8 +619,8 @@ let _skippedCloudSyncVersion: number | undefined;
 
 /**
  * Stop (or, with an empty list, resume) applying these keys from the cloud
- * blob. Uploads send the row's own value for them (the one the last cloud
- * apply skipped), never the device's copy. The local schema migration still
+ * blob. While the last cloud apply holds a skipped value for one, uploads
+ * send that row value instead of the device's copy. The local schema migration still
  * applies them: only cloud-derived values are skipped. A key taken out of
  * the list gets the value the last cloud apply skipped for it.
  */
