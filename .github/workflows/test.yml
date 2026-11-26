@@ -917,6 +917,7 @@ jobs:
             --env PGHOST=127.0.0.1 --env PGPORT=5432 \
             --env PGDATABASE=umami_integration \
             --env PGUSER=postgres --env PGPASSWORD=postgres \
+            --env 'PGOPTIONS=-c search_path=wm_umami_integration' \
             worldmonitor/umami-retention:ci
 
   sidecar:
