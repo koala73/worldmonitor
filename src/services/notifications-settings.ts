@@ -1134,10 +1134,17 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // is slow (a billing-verification retry, a reordered request) cannot
       // land after a later edit and undo it. With none in flight the save is
       // sent at once, so a close-time flush still dispatches synchronously.
+      // authFetch signs with the session current at dispatch, so a deferred
+      // save is dropped if the account changed while it waited.
       let ruleSaveTail: Promise<unknown> | null = null;
       function queueRuleSave(rule: Parameters<typeof saveAlertRules>[0], saveSignal?: AbortSignal): Promise<void> {
         const run = ruleSaveTail
-          ? ruleSaveTail.then(() => saveAlertRules(rule, saveSignal))
+          ? ruleSaveTail.then(() => {
+            if (renderedUserId !== (getCurrentClerkUser()?.id ?? null)) {
+              throw new Error('save alert rules: account changed before dispatch');
+            }
+            return saveAlertRules(rule, saveSignal);
+          })
           : saveAlertRules(rule, saveSignal);
         const tail = run.catch(() => {});
         ruleSaveTail = tail;
@@ -1581,6 +1588,31 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // settings there takes focus away and returns it.
       window.addEventListener('focus', resyncWebPushState, { signal });
 
+      // A reload re-renders the form from the server. Send every debounced
+      // edit first, while the form still shows it, and wait for those saves,
+      // so the reload neither shows nor later re-saves the old value.
+      function sendPendingEdits(): Promise<unknown> {
+        const pending: unknown[] = [];
+        if (alertRuleDebounceTimer !== null) {
+          clearTimeout(alertRuleDebounceTimer);
+          alertRuleDebounceTimer = null;
+          saveCurrentAlertRule();
+        }
+        if (qhDebounceTimer !== null) {
+          clearTimeout(qhDebounceTimer);
+          qhDebounceTimer = null;
+          pending.push(sendQuietHoursNow());
+        }
+        if (digestDebounceTimer !== null) {
+          clearTimeout(digestDebounceTimer);
+          digestDebounceTimer = null;
+          pending.push((digestFlushNow ?? sendDigestSettingsNow)());
+          digestFlushNow = null;
+        }
+        pending.push(ruleSaveTail);
+        return Promise.allSettled(pending);
+      }
+
       // Adds the connected channel to the rule, then reloads the section. The
       // reload waits for the save: a read that lands first renders the old
       // rule, and the Pro channel re-sync would then store that stale toggle.
@@ -1613,7 +1645,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           () => false,
         ).then(async (saved) => {
           if (signal.aborted) return;
-          if (opts.reload) await reloadNotifSection();
+          if (opts.reload) {
+            await sendPendingEdits();
+            if (signal.aborted) return;
+            await reloadNotifSection();
+          }
           if (signal.aborted) return;
           const row = container.querySelector<HTMLElement>(`[data-channel-type="${newChannel}"]`);
           if (!row) return;
@@ -1640,13 +1676,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         });
       }
 
-      const sendQuietHoursNow = (flush = false): void => {
+      const sendQuietHoursNow = (flush = false): Promise<unknown> => {
         const enabledEl = container.querySelector<HTMLInputElement>('#usQhEnabled');
         const startEl = container.querySelector<HTMLSelectElement>('#usQhStart');
         const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
         const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
         const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
-        fireForgetSave(setQuietHours({
+        const p = setQuietHours({
           variant: SITE_VARIANT,
           quietHoursEnabled: enabledEl?.checked ?? false,
           quietHoursStart: startEl ? Number(startEl.value) : 22,
@@ -1654,7 +1690,9 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           quietHoursTimezone: tzEl?.value || detectedTz,
           quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
           countries: countryPicker ? countryPicker.getValue() : undefined,
-        }, flush ? undefined : signal), 'save quiet hours');
+        }, flush ? undefined : signal);
+        fireForgetSave(p, 'save quiet hours');
+        return p;
       };
 
       const saveQuietHours = () => {
@@ -1789,8 +1827,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
           const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
           const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-          const sendModeChangeNow = (flush = false): void => {
-            void (async () => {
+          const sendModeChangeNow = (flush = false): Promise<void> => {
+            return (async () => {
               try {
                 const state = getCurrentAlertRuleFormState();
                 await setNotificationConfig({
