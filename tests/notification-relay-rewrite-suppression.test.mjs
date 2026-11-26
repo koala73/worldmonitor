@@ -245,7 +245,7 @@ describe('reworded news alerts (#10916)', () => {
     try {
       await relay.processEvent(alert(CNN));
       await relay.processEvent(alert(SUN));
-      await new Promise(done => setImmediate(done));
+      assert.equal(await relay.drainShadowLog(1_000), true);
       const rows = [...(h.zsets.get('shadow:score-log:v5') ?? new Map()).keys()].map(m => JSON.parse(m));
       const outcomeOf = title => rows.find(r => r.title === title.slice(0, 160))?.outcome;
       assert.deepEqual(outcomeOf(CNN), { matched: 1, sent: 1 });

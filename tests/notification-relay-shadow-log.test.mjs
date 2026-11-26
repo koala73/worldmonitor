@@ -118,6 +118,7 @@ async function drive(rules, event, { channelsFor = () => [TELEGRAM], onSend = as
   } finally {
     [console.log, console.warn, console.error, console.info, globalThis.setTimeout] = silence;
   }
+  assert.equal(await relay.drainShadowLog(1_000), true, 'the score-log swap settles');
   return { logs, rows: rowsNow(), sentAt, dequeuedAt };
 }
 
@@ -214,6 +215,44 @@ describe('score-log row per dequeued rss_alert', () => {
       assert.equal(await relay.drainShadowLog(20), true, 'nothing left in flight');
     } finally {
       release();
+      [console.log, console.warn, console.error] = silence;
+    }
+  });
+
+  // The loop pops the next event once processEvent returns, so a stalled
+  // score-log write must not hold it; shutdown still waits for the swap,
+  // even one that starts only after the drain began.
+  it('does not hold the queue on a stalled score-log write, and shutdown still waits for the swap', async () => {
+    const silence = [console.log, console.warn, console.error];
+    console.log = console.warn = console.error = () => {};
+    const gates = {};
+    const stall = (route) => new Promise((done) => { gates[route] = done; });
+    const stalls = { '/pipeline': stall('/pipeline'), '/multi-exec': stall('/multi-exec') };
+    const commands = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      const { pathname } = new URL(String(url));
+      if (stalls[pathname]) {
+        commands.push(...JSON.parse(opts.body).map(([cmd]) => cmd));
+        await stalls[pathname];
+        return { ok: true, json: async () => [] };
+      }
+      return pathname.includes('/relay/enabled-rules') ? down : ok(null);
+    };
+    const tick = (ms) => new Promise((done) => setTimeout(done, ms, 'stuck'));
+    try {
+      const processing = relay.processEvent(alert(88)).then(() => 'done');
+      assert.equal(await Promise.race([processing, tick(50)]), 'done', 'processEvent returns while the score-log write stalls');
+      let drained = null;
+      const draining = relay.drainShadowLog(5_000).then((v) => { drained = v; });
+      gates['/pipeline']();
+      await tick(20);
+      assert.deepEqual(commands, ['ZADD', 'ZREMRANGEBYSCORE', 'EXPIRE', 'ZREM', 'ZADD'], 'the swap follows the pending write');
+      assert.equal(drained, null, 'the drain waits for the swap that started after it');
+      gates['/multi-exec']();
+      await draining;
+      assert.equal(drained, true);
+    } finally {
+      Object.values(gates).forEach((open) => open());
       [console.log, console.warn, console.error] = silence;
     }
   });
