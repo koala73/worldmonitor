@@ -4,6 +4,8 @@ import {
   computeFlowWeightedExposures,
   computeCountryLevelExposure,
 } from '../scripts/seed-hs2-chokepoint-exposure.mjs';
+import { buildPayloadFromSources } from '../scripts/seed-supply-vulnerability.mjs';
+import { COMMODITY_REGISTRY } from '../scripts/shared/supply-vulnerability-coverage.mjs';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -145,6 +147,10 @@ describe('computeCountryLevelExposure (seed fallback)', () => {
     assert.ok(result.primaryChokepointId !== '');
   });
 
+  it('names no primary chokepoint when no nearby route crosses one', () => {
+    assert.equal(computeCountryLevelExposure([], 'landlocked', '10').primaryChokepointId, '');
+  });
+
   it('non-energy sectors produce identical scores (the original bug)', () => {
     const trCluster = getCluster('TR');
     const elec = computeCountryLevelExposure(trCluster.nearestRouteIds, trCluster.coastSide, '85');
@@ -165,16 +171,51 @@ describe('computeCountryLevelExposure (seed fallback)', () => {
   });
 });
 
-describe('algorithm parity with handler', () => {
-  it('seed flow-weighted matches handler algorithm (union-based route coverage)', () => {
-    // The handler (chokepoint-exposure-utils.ts) uses:
-    //   if (importerRoutes.has(r) || exporterRoutes.has(r)) overlap++
-    // Verify the seed produces the same pattern: SA→TR Energy should show
-    // Hormuz (SA exporter route) even though TR importer doesn't have Gulf routes
-    const energy = computeFlowWeightedExposures('TR', '27', TURKEY_COMTRADE);
-    const hormuz = energy.find(e => e.chokepointId === 'hormuz_strait');
-    assert.ok(hormuz && hormuz.exposureScore > 0,
-      'Hormuz should appear from SA exporter routes via union-based coverage');
+describe('bilateral chokepoint transit', () => {
+  const hormuzScore = (importer, hs2, products) =>
+    computeFlowWeightedExposures(importer, hs2, products).find(e => e.chokepointId === 'hormuz_strait').exposureScore;
+  const product = (hs4, exporters) => [{
+    hs4, description: hs4, totalValue: 1_000_000, year: 2024,
+    topExporters: exporters.map(([partnerIso2, share]) => ({ partnerCode: 0, partnerIso2, value: share * 1_000_000, share })),
+  }];
+
+  it('a nearby Gulf corridor alone does not put an importer behind Hormuz', () => {
+    assert.equal(hormuzScore('DJ', '12', product('1201', [['US', 0.6], ['BR', 0.4]])), 0, 'Djibouti soybeans from the Americas');
+    assert.equal(hormuzScore('TR', '26', product('2612', [['KZ', 0.5], ['RU', 0.3], ['CA', 0.2]])), 0, 'Türkiye uranium ore');
+    assert.equal(hormuzScore('MO', '27', product('2711', [['AU', 1]])), 0, 'Macao LNG from Australia');
+  });
+
+  it('counts a supplier share when exactly one partner is inside the Gulf', () => {
+    const lng = product('2711', [['QA', 0.4], ['AU', 0.6]]);
+    for (const hs2 of ['27', '027']) {
+      assert.equal(hormuzScore('MO', hs2, lng), 60, `Qatari LNG share for energy chapter ${hs2}`);
+    }
+    assert.equal(hormuzScore('IQ', '81', product('8112', [['CN', 0.7], ['SA', 0.3]])), 70, 'Saudi-Iraqi trade stays inside the Gulf');
+    assert.equal(hormuzScore('US', '27', product('2709', [['SA', 0.3], ['CA', 0.7]])), 45, 'Saudi crude to the US');
+  });
+
+  it('routes Brazilian bulk into China via the Cape of Good Hope', () => {
+    const exposures = computeFlowWeightedExposures('CN', '26', product('2601', [['BR', 1]]));
+    assert.equal(exposures.find(e => e.chokepointId === 'cape_of_good_hope').exposureScore, 100);
+  });
+
+  it('leaves trade with only landlocked suppliers unevaluated instead of scoring it zero', () => {
+    assert.deepEqual(computeFlowWeightedExposures('JP', '26', product('2603', [['MN', 1]])), []);
+    assert.ok(computeFlowWeightedExposures('JP', '26', product('2603', [['MN', 0.5], ['AU', 0.5]])).length > 0);
+  });
+
+  it('splits a supplier share across alternative corridors instead of crediting each in full', () => {
+    const exposures = computeFlowWeightedExposures('US', '85', product('8542', [['CN', 1]]));
+    const score = id => exposures.find(e => e.chokepointId === id).exposureScore;
+    for (const id of ['suez', 'panama', 'taiwan_strait']) {
+      assert.ok(Math.abs(score(id) - 100 / 3) < 0.1, `${id} carries one of three China-US corridors`);
+    }
+  });
+
+  it('keeps India-Gulf trade off the Malacca leg of the Gulf-Asia corridor', () => {
+    const exposures = computeFlowWeightedExposures('IN', '27', product('2709', [['SA', 1]]));
+    assert.equal(exposures.find(e => e.chokepointId === 'malacca_strait').exposureScore, 0);
+    assert.equal(exposures.find(e => e.chokepointId === 'hormuz_strait').exposureScore, 100);
   });
 });
 
@@ -210,6 +251,93 @@ describe('seed coverage manifest', () => {
         assert.ok(keys.has(`supply-chain:exposure:${country}:${hs2}:v1`));
       }
     } finally { globalThis.fetch = originalFetch; process.env = env; }
+  });
+
+  it('keeps a zero-crossing flow-weighted record instead of falling back to nearby routes', async () => {
+    const { main } = await import('../scripts/seed-hs2-chokepoint-exposure.mjs');
+    const originalFetch = globalThis.fetch;
+    const env = { ...process.env };
+    const writes = [];
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fixture.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    const djiboutiCereals = {
+      products: [{
+        hs4: '1001', description: 'Wheat', totalValue: 1_000_000, year: 2024,
+        topExporters: [
+          { partnerCode: 842, partnerIso2: 'US', value: 600_000, share: 0.6 },
+          { partnerCode: 76, partnerIso2: 'BR', value: 400_000, share: 0.4 },
+        ],
+      }],
+    };
+    globalThis.fetch = async (url, init) => {
+      const commands = JSON.parse(init.body);
+      if (!String(url).endsWith('/pipeline')) return Response.json({ result: 'OK' });
+      return Response.json(commands.map(command => {
+        if (command[0] === 'GET') {
+          const fixture = ['comtrade:bilateral-hs4:DJ:v1', 'comtrade:bilateral-hs4:ET:v1'].includes(command[1]);
+          return { result: fixture ? JSON.stringify(djiboutiCereals) : null };
+        }
+        writes.push(command);
+        return { result: 'OK' };
+      }));
+    };
+    try {
+      await main();
+      const record = JSON.parse(writes.find(c => c[1] === 'supply-chain:exposure:DJ:10:v1')[2]);
+      assert.equal(record.coverage, 'flow_weighted');
+      assert.equal(record.primaryChokepointId, '');
+      assert.ok(record.exposures.every(e => e.exposureScore === 0), 'no chokepoint between Djibouti and the Americas');
+      const landlocked = JSON.parse(writes.find(c => c[1] === 'supply-chain:exposure:ET:10:v1')[2]);
+      assert.notEqual(landlocked.coverage, 'flow_weighted', 'landlocked Ethiopia has no modeled sea route to evaluate');
+    } finally { globalThis.fetch = originalFetch; process.env = env; }
+  });
+
+  it('scores each HS27 commodity from its own seeded Hormuz share', async (t) => {
+    const { main } = await import('../scripts/seed-hs2-chokepoint-exposure.mjs');
+    const originalEnv = { ...process.env };
+    t.after(() => { process.env = originalEnv; });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fixture.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    const bilateral = {
+      products: [
+        US_COMTRADE[0],
+        {
+          hs4: '2711', totalValue: 100_000_000, year: 2023,
+          topExporters: [{ partnerIso2: 'QA', share: 0.4 }, { partnerIso2: 'AU', share: 0.6 }],
+        },
+      ],
+    };
+    const writes = new Map();
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      if (!String(url).endsWith('/pipeline')) return Response.json({ result: 'OK' });
+      return Response.json(JSON.parse(init.body).map(([command, key, value]) => {
+        if (command === 'GET') {
+          return { result: key === 'comtrade:bilateral-hs4:US:v1' ? JSON.stringify(bilateral) : null };
+        }
+        writes.set(key, JSON.parse(value));
+        return { result: 'OK' };
+      }));
+    });
+
+    await main();
+    const exposure = writes.get('supply-chain:exposure:US:27:v1');
+    const evaluatedAt = exposure.fetchedAt;
+    const sources = {
+      bilateralByCountry: { US: { data: bilateral, fetchedAt: evaluatedAt } },
+      exposureByCountryHs2: { 'US:27': { data: exposure, fetchedAt: evaluatedAt } },
+      chokepointFlows: { data: { hormuz_strait: { disrupted: false } }, fetchedAt: evaluatedAt },
+    };
+    const mappings = COMMODITY_REGISTRY.commodities.filter(mapping => mapping.transitHs2 === '27');
+    const payload = buildPayloadFromSources(sources, { mappings, evaluatedAt });
+    const shares = Object.fromEntries(payload.chokepoints.hormuz_strait.dependencies
+      .filter(row => row.countryIso2 === 'US')
+      .map(row => [row.commodityId, row.transitShare]));
+    assert.deepEqual(shares, { crude_oil: 0.3, lng: 0.4 });
+
+    // A record from before this seeder version has chapter totals only.
+    delete exposure.commodityExposures;
+    const legacy = buildPayloadFromSources(sources, { mappings, evaluatedAt });
+    assert.equal(legacy.chokepoints.hormuz_strait, undefined);
   });
 
   // The gap that let the manifest blackout ship: only the success path was covered, so

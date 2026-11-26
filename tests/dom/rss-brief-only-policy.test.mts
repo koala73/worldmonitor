@@ -104,7 +104,7 @@ describe('brief-only RSS fetch policy', () => {
   });
 
   it('does not ingest overlapping country feeds into global analysis, and aborts a superseded country', async () => {
-    const rss = overlappingRss(OVERLAPPING_TITLES);
+    const rss = overlappingRss(OVERLAPPING_TITLES.map(title => `${title} - Reuters`));
     let releaseFrance!: () => void;
     const franceHold = new Promise<void>(resolve => {
       releaseFrance = resolve;
@@ -162,5 +162,20 @@ describe('brief-only RSS fetch policy', () => {
     expect(classifierMocks.classifyWithAI).not.toHaveBeenCalled();
 
     releaseFrance();
+  });
+
+  it('looks beyond five raw headlines, then returns at most five reviewed items', async () => {
+    const unreviewed = Array.from({ length: 5 }, (_, index) => `Italy reference page ${index} - Britannica`);
+    const reviewed = Array.from({ length: 6 }, (_, index) => `Italy trade report ${index} - Reuters`);
+    const rss = overlappingRss([...unreviewed, ...reviewed]);
+    proxyMocks.fetchWithProxy.mockImplementation(async () => new Response(rss));
+
+    const feed = { name: 'Country coverage: Italy', url: '/api/rss-proxy?url=https://news.google.com/rss/search?q=Italy' };
+    const feedOptions = { policy: BRIEF_ONLY_RSS_FETCH_POLICY };
+    expect((await fetchFeed(feed, feedOptions)).map(item => item.title)).toEqual(unreviewed);
+    expect((await fetchCountryCoverage('Italy')).headlines.map(item => item.title)).toEqual(
+      reviewed.slice(0, 5).map(title => title.replace(' - Reuters', '')),
+    );
+    expect((await fetchFeed(feed, feedOptions)).map(item => item.title)).toEqual(unreviewed);
   });
 });

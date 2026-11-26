@@ -17,7 +17,7 @@ Account creation is an interactive browser flow, not an API:
 
 ## After signing up
 
-- **Upgrade to Pro, Pro Business, or API** from [worldmonitor.app/pro](https://www.worldmonitor.app/pro) — checkout runs on Dodo Payments; see [Plans & Pricing](/pricing). Pro and Pro Business are separate products: moving from one to the other means cancelling the current subscription in the billing portal and starting the new checkout.
+- **Upgrade to Pro, Pro Business, or API** from [worldmonitor.app/pro](https://www.worldmonitor.app/pro) — checkout runs on Dodo Payments; see [Plans & Pricing](/pricing). An active Pro subscription upgrades to Pro Business in place: choose Pro Business while signed in, review today's charge, and confirm. The billing period restarts on the upgrade day. If that payment fails, the subscription stays on Pro.
 - **Create an API key** from **Dashboard → Settings → API Keys** once subscribed to API Starter or API Business (`wm_` + 40 hex chars). The full value is shown only once; see [Find or replace your license / API key](/api-keys) for the exact steps and recovery instructions.
 - **Connect an agent via OAuth** instead of a key: MCP clients (Claude Desktop and others) use OAuth 2.1 + PKCE with dynamic client registration — no manual account dance; see [auth.md](https://www.worldmonitor.app/auth.md) for the self-bootstrapping discovery chain.
 
@@ -25,12 +25,12 @@ Account creation is an interactive browser flow, not an API:
 
 Signed-in users manage account settings and billing from the same avatar menu:
 
-- **Plan & billing** opens the signed-in billing tab directly.
-- **Settings** opens the general settings tab; the billing tab remains available alongside Panels, Sources, Notifications, API Keys, and eligible MCP-client settings.
+- **Plan & billing** opens the **Account** page directly.
+- **Settings** opens the settings list. The account card at the top leads to the same **Account** page; the other rows open Panels, Sources, Notifications, Display, Map, AI, API keys, AI agents and the rest, each on its own page.
 
-The billing tab shows the current plan and the state that matters operationally: renewal date for active subscriptions, payment action for `on_hold`, access-through date for a cancelled subscription, or a resubscribe path after expiry. **Manage Billing** opens the Dodo customer portal for payment methods, invoices, plan changes that Dodo supports, and cancellation.
+The **Account** page shows the current plan and the state that matters operationally: renewal date for active subscriptions, payment action for `on_hold`, access-through date for a cancelled subscription, or a resubscribe path after expiry. **Manage Billing** opens the Dodo customer portal for payment methods, invoices, plan changes that Dodo supports, and cancellation.
 
-Cancelling a subscription in the billing portal is not account deletion. To delete the signed-in World Monitor account itself, stay on **Plan & billing**, open **Delete account**, and type `DELETE`. That cancels covering subscriptions (remaining prepaid time is not refunded), revokes keys and tokens immediately, and removes or anonymizes personal Convex data. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry (name, email, phone, billing address); those records stop naming your login account, because the user id is replaced by a tombstone and signed identity markers are stripped from the payloads stored on them. Raw payment-provider webhook logs written before the deletion request are retained as delivered and still carry the identifiers they arrived with. Device-local dashboard preferences and desktop keychain secrets are not wiped remotely — sign out on other devices and clear this device's site data.
+Cancelling a subscription in the billing portal is not account deletion. To delete the signed-in World Monitor account itself, stay on the **Account** page, open **Delete account**, and type `DELETE`. That cancels covering subscriptions (remaining prepaid time is not refunded), revokes keys and tokens immediately, and removes or anonymizes personal Convex data. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry (name, email, phone, billing address); those records stop naming your login account, because the user id is replaced by a tombstone and signed identity markers are stripped from the payloads stored on them. Raw payment-provider webhook logs written before the deletion request are retained as delivered and still carry the identifiers they arrived with. Device-local dashboard preferences and desktop keychain secrets are not wiped remotely — sign out on other devices and clear this device's site data.
 
 Invitees can delete their own account. That does not cancel the owner's subscription. An owner deletion revokes every seat grant immediately.
 
@@ -51,7 +51,13 @@ API Business advertises **five Pro licenses total**: the subscription owner plus
 - The invitee receives Pro access, not ownership of the API Business subscription or its billing portal. A higher-tier subscription already owned by the invitee remains authoritative.
 - Removing a seat revokes the grant immediately. If the owner cancels, invited access continues only through the owner's paid-through date.
 
-This is the self-serve path for the five licenses included with monthly API Business. Additional seats, SSO/RBAC, or centralized workspace administration require an Enterprise agreement.
+The owner and accepted seat members can use [team dashboards](/features#team-dashboards) to share panel layouts and map settings. Open **Team** next to the dashboard tabs to publish or open a shared layout. Every team member can update or remove a shared dashboard. Pending invitations do not grant access.
+
+Accepted seats on monthly or annual API Business teams inherit Focus for shared team dashboards, even when their individual entitlement is Pro. They can publish and open shared layouts with country/date scope and panel filters while the parent subscription remains covering, including a cancelled subscription's paid-through period. Revoking the seat, ending that coverage, or moving the subscription off API Business removes this team access. This team grant does not upgrade the seat holder's individual Pro entitlement.
+
+Only one team is available at a time. An eligible Enterprise account takes priority over your own API Business subscription, which takes priority over an accepted seat on another owner's subscription. If either takes priority over your seat, you will not see the inviting team's dashboards. If no higher-priority team applies and several accepted seats qualify, World Monitor selects the first eligible seat it finds. Other inviting teams' dashboards are unavailable.
+
+This is the self-serve path for the five licenses included with monthly API Business. Additional seats, SSO/RBAC, or centralized workspace administration require an Enterprise agreement. Active Enterprise account members also have team dashboards.
 
 ## For agents
 

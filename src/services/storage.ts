@@ -18,11 +18,22 @@ let db: IDBDatabase | null = null;
 // `ReferenceError: indexedDB is not defined` as an unhandled rejection
 // (Sentry WORLDMONITOR-7479081164). Now: probe up-front and reject with a
 // named error that `withTransaction` recognises and degrades gracefully.
+//
+// The browser can also refuse the open itself: Chrome rejects with
+// `UnknownError: The user denied permission to access the database.` when site
+// storage is blocked, and sandboxed origins throw `SecurityError`
+// synchronously (Sentry WORLDMONITOR-1D1). Those DOMExceptions mean the same
+// thing, so they surface as IndexedDBUnavailableError with the browser error
+// kept as `cause`.
 export class IndexedDBUnavailableError extends Error {
-  constructor() {
-    super('IndexedDB is not available in this environment');
+  constructor(cause?: unknown) {
+    super('IndexedDB is not available in this environment', cause === undefined ? undefined : { cause });
     this.name = 'IndexedDBUnavailableError';
   }
+}
+
+function asUnavailable(err: unknown): unknown {
+  return err instanceof DOMException ? new IndexedDBUnavailableError(err) : err;
 }
 
 export async function initDB(): Promise<IDBDatabase> {
@@ -32,9 +43,15 @@ export async function initDB(): Promise<IDBDatabase> {
   }
 
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    let request: IDBOpenDBRequest;
+    try {
+      request = indexedDB.open(DB_NAME, DB_VERSION);
+    } catch (err) {
+      reject(asUnavailable(err));
+      return;
+    }
 
-    request.onerror = () => reject(request.error);
+    request.onerror = () => reject(asUnavailable(request.error));
 
     request.onsuccess = () => {
       db = request.result;
@@ -57,11 +74,58 @@ export async function initDB(): Promise<IDBDatabase> {
   });
 }
 
+/**
+ * Whether the database can be opened right now. False only when the browser
+ * has no IndexedDB or refuses it; other failures still reject. A failed open
+ * is not cached, so a later call retries.
+ */
+export async function isStorageAvailable(): Promise<boolean> {
+  try {
+    await initDB();
+    return true;
+  } catch (err) {
+    if (err instanceof IndexedDBUnavailableError) return false;
+    throw err;
+  }
+}
+
+/**
+ * Open the database during dashboard boot. The database only holds baselines
+ * and playback snapshots, so a browser that refuses storage must not stop the
+ * app: report false and let reads degrade. Other failures still reject.
+ */
+export async function openStorageForBoot(): Promise<boolean> {
+  const available = await isStorageAvailable();
+  if (!available) {
+    console.warn('[Storage] IndexedDB unavailable; baselines and snapshots are disabled');
+  }
+  return available;
+}
+
+/**
+ * A read that could not be performed. Distinct from "the key is not there":
+ * a caller that reads, modifies and writes back must tell those apart, or it
+ * rebuilds durable state from an absence it only imagined.
+ */
+export class StorageReadUnavailableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'StorageReadUnavailableError';
+  }
+}
+
 async function withTransaction<T>(
   storeName: string,
   mode: IDBTransactionMode,
   fn: (store: IDBObjectStore, tx: IDBTransaction) => IDBRequest | void,
   extractResult?: boolean,
+  /**
+   * Readonly only. `false` (the default) degrades a failed read to `undefined`,
+   * which is right where absence is a default — a playback UI with no snapshots
+   * renders empty either way. `true` throws instead, for a read whose result
+   * decides what gets written back.
+   */
+  failClosed = false,
 ): Promise<T> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -84,13 +148,14 @@ async function withTransaction<T>(
         if (attempt === 0) continue;
         console.warn('[Storage] IndexedDB connection closing after retry');
         if (mode === 'readwrite') throw new DOMException('IndexedDB write failed — connection closing', 'InvalidStateError');
+        if (failClosed) throw new StorageReadUnavailableError('IndexedDB read failed — connection closing', { cause: err });
         return undefined as T;
       }
       // Environments without IndexedDB (private mode, some webviews) hit
       // this branch. Degrade silently for reads; throw a typed error on
       // writes so callers can opt into different handling.
       if (err instanceof IndexedDBUnavailableError) {
-        if (mode === 'readwrite') throw err;
+        if (mode === 'readwrite' || failClosed) throw err;
         return undefined as T;
       }
       throw err;
@@ -106,11 +171,27 @@ export async function getBaseline(key: string): Promise<BaselineEntry | null> {
   return result || null;
 }
 
+/**
+ * `getBaseline` for the read-modify-write below, where a failed read must not
+ * pass for `null`. The degrading read returns `null` both when the key has
+ * never been written and when the connection closed mid-read, and
+ * `updateBaseline` reads that as "start a fresh baseline" — so it rebuilds a
+ * one-sample entry and puts it over up to 30 days of counts. The put lands:
+ * the failing read nulls the cached handle, so the write opens a new
+ * connection, which succeeds.
+ */
+async function readBaselineOrThrow(key: string): Promise<BaselineEntry | null> {
+  const result = await withTransaction<BaselineEntry | undefined>(
+    'baselines', 'readonly', (store) => store.get(key), true, true,
+  );
+  return result || null;
+}
+
 export async function updateBaseline(key: string, currentCount: number): Promise<BaselineEntry> {
   const now = Date.now();
   const DAY_MS = 24 * 60 * 60 * 1000;
 
-  let entry = await getBaseline(key);
+  let entry = await readBaselineOrThrow(key);
 
   if (!entry) {
     entry = {
@@ -181,12 +262,6 @@ export function calculateDeviation(current: number, baseline: BaselineEntry): {
     percentChange: Math.round(percentChange),
     level,
   };
-}
-
-export async function getAllBaselines(): Promise<BaselineEntry[]> {
-  return (await withTransaction<BaselineEntry[]>(
-    'baselines', 'readonly', (store) => store.getAll(), true,
-  )) || [];
 }
 
 // Snapshot types and functions

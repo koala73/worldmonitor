@@ -1,4 +1,4 @@
-import { getCountryBbox, getCountryPolygons } from '@/services/country-geometry';
+import { getCountryMapBbox } from '@/services/country-geometry';
 
 export interface CountryMapFocus {
   iso2: string;
@@ -95,8 +95,7 @@ export function focusFromCountryBbox(
 
 export function getCountryMapFocus(code: string): CountryMapFocus | null {
   const iso2 = code.toUpperCase();
-  const polygons = getCountryPolygons(iso2);
-  const bbox = (polygons && wrappingBboxFromPolygons(polygons)) || getCountryBbox(iso2);
+  const bbox = getCountryMapBbox(iso2, wrappingBboxFromPolygons);
   if (!bbox) return null;
   return { iso2, bbox, ...focusFromCountryBbox(bbox) };
 }

@@ -25,6 +25,8 @@ const OLD_BASE = 'abcdef0123456789abcdef0123456789abcdef01';
 // pinning a shorter list than production actually gates on.
 const REQUIRED_LITERAL = gateScript.match(/required='(\[[^']*\])'/)[1];
 const REQUIRED = JSON.parse(REQUIRED_LITERAL);
+// Workflow ids the fake GitHub serves for the runs and workflows listings.
+const FAKE_WORKFLOW_IDS = { Test: 1, 'Lint Code': 2, 'Deploy Gate': 3 };
 // Read the rules version from the script too: a bump must change the stamp, and
 // a test that recomputed the stamp from the name list alone would not notice.
 const GATE_RULES = gateScript.match(/gate_rules='([^']*)'/)[1];
@@ -180,9 +182,12 @@ function runGate(conclusions, {
   sweepStatuses,
   drift,
   associatedPulls = [[]],
+  openPulls,
   gatedRuns,
   gatedRunsReadFails = false,
+  workflowsReadFails = false,
   triggerRunId = '',
+  superseded,
 } = {}) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
   const fakeBin = join(tempDir, 'bin');
@@ -197,11 +202,14 @@ function runGate(conclusions, {
   const postTargetsFile = join(tempDir, 'post-targets');
   const rejectedFile = join(tempDir, 'rejected');
   const callsFile = join(tempDir, 'calls');
+  const fetchesFile = join(tempDir, 'fetches');
   const currentStatusesFile = join(tempDir, 'current-statuses.json');
   const statusReadFailuresFile = join(tempDir, 'status-read-failures');
   const summaryFile = join(tempDir, 'summary');
   const driftHeadFilesFile = join(tempDir, 'drift-head-files');
   const driftMainFilesFile = join(tempDir, 'drift-main-files');
+  const driftTargetFilesFile = join(tempDir, 'drift-target-files');
+  const driftActiveFilesFile = join(tempDir, 'drift-active-files');
 
   try {
     mkdirSync(fakeBin);
@@ -215,9 +223,29 @@ function runGate(conclusions, {
     writeFileSync(postTargetsFile, '');
     writeFileSync(rejectedFile, '');
     writeFileSync(callsFile, '');
+    writeFileSync(fetchesFile, '');
     writeFileSync(summaryFile, '');
+    const pushRunsFile = join(tempDir, 'push-runs.json');
+    const mainTestRunsFile = join(tempDir, 'main-test-runs.json');
+    const runJobsFile = join(tempDir, 'run-jobs.json');
+    writeFileSync(pushRunsFile, JSON.stringify([{ workflow_runs: superseded?.pushRuns ?? [] }]));
+    writeFileSync(mainTestRunsFile, JSON.stringify({ workflow_runs: superseded?.mainTestRuns ?? [] }));
+    writeFileSync(runJobsFile, JSON.stringify([{ jobs: (superseded?.jobs ?? []).map((name) => ({ name })) }]));
     const gatedRunsFile = join(tempDir, 'gated-runs.json');
-    writeFileSync(gatedRunsFile, JSON.stringify((gatedRuns ?? []).map((run, index) => ({ id: 100 + index, ...run }))));
+    // The runs API reports a run's `name` as its run-name when the workflow
+    // sets one (Test: "PR #N into main: ..."), so only workflow_id says which
+    // workflow a run belongs to. `name` here is the workflow; `runName` is
+    // what the API would show.
+    writeFileSync(gatedRunsFile, JSON.stringify((gatedRuns ?? []).map((run, index) => ({
+      id: 100 + index,
+      ...run,
+      workflow_id: FAKE_WORKFLOW_IDS[run.name] ?? 999,
+      api_name: run.runName ?? run.name,
+    }))));
+    const workflowsFile = join(tempDir, 'workflows.json');
+    writeFileSync(workflowsFile, JSON.stringify([{
+      workflows: Object.entries(FAKE_WORKFLOW_IDS).map(([name, id]) => ({ id, name })),
+    }]));
     const drifting = {
       mergeBase: MAIN_TIP, mainTip: MAIN_TIP, headTip: HEAD_TIP,
       headFiles: [], mainFiles: [], fetchFails: false, mergeBaseFails: false,
@@ -225,13 +253,16 @@ function runGate(conclusions, {
     };
     writeFileSync(driftHeadFilesFile, `${drifting.headFiles.join('\n')}\n`);
     writeFileSync(driftMainFilesFile, `${drifting.mainFiles.join('\n')}\n`);
+    writeFileSync(driftTargetFilesFile, `${(drifting.targetFiles ?? drifting.mainFiles).join('\n')}\n`);
     writeFileSync(statusReadFailuresFile, String(statusReadFailures));
     writeFileSync(currentStatusesFile, JSON.stringify(Object.fromEntries(
       (sweepStatuses ?? [{ sha: SHA, status: previousStatus ?? sweepStatus }])
         .filter(({ status }) => status)
         .map(({ sha, status }) => [sha, { ...status, context: 'gate', state: status.state.toLowerCase() }]),
     )));
-    const runsFor = (values, timestamp, idBase) => REQUIRED.flatMap((name, index) => values?.[name]
+    // Required names keep their index (and so their run ids); any other name
+    // given, like `docs-lint`, gets a run after them, as GitHub would serve it.
+    const runsFor = (values, timestamp, idBase) => [...new Set([...REQUIRED, ...Object.keys(values ?? {})])].flatMap((name, index) => values?.[name]
       ? [{
         name,
         conclusion: values[name] === 'pending' ? null : values[name].toUpperCase(),
@@ -366,6 +397,12 @@ function runGate(conclusions, {
         '  exit 0',
         'fi',
         'case "$*" in',
+        '  *"/pulls?state=open&per_page=100"*)',
+        '    echo "open-pulls" >> "$FAKE_CALLS"',
+        '    [ "$FAKE_OPEN_PULLS" = "unavailable" ] && exit 1',
+        '    printf \'%s\\n\' "$FAKE_OPEN_PULLS"',
+        '    exit 0',
+        '    ;;',
         '  *"/pulls?per_page=100"*)',
         '    echo "associated-pulls" >> "$FAKE_CALLS"',
         '    [ "$FAKE_ASSOCIATED_PULLS" = "unavailable" ] && exit 1',
@@ -450,10 +487,30 @@ function runGate(conclusions, {
         '    fi',
         '    exit 0',
         '    ;;',
+        '  *"actions/runs?head_sha="*"&event=push"*)',
+        '    echo "push-runs" >> "$FAKE_CALLS"',
+        '    cat "$FAKE_PUSH_RUNS"',
+        '    exit 0',
+        '    ;;',
+        '  *"actions/workflows/test.yml/runs"*)',
+        '    echo "main-test-runs" >> "$FAKE_CALLS"',
+        '    cat "$FAKE_MAIN_TEST_RUNS"',
+        '    exit 0',
+        '    ;;',
+        '  *"/compare/"*)',
+        '    echo "compare" >> "$FAKE_CALLS"',
+        '    printf \'%s\\n\' "$FAKE_COMPARE_STATUS"',
+        '    exit 0',
+        '    ;;',
+        '  *"/actions/runs/"[0-9]*"/jobs"*)',
+        '    echo "run-jobs" >> "$FAKE_CALLS"',
+        '    cat "$FAKE_RUN_JOBS"',
+        '    exit 0',
+        '    ;;',
         '  *"actions/runs?head_sha="*)',
         '    echo "head-runs-page" >> "$FAKE_CALLS"',
         '    [ "$FAKE_GATED_RUNS_FAIL" = "1" ] && { echo "gh: forced runs read failure (HTTP 502)" >&2; exit 1; }',
-        '    jq -c \'[{workflow_runs: [.[] | {id, name, status}]}]\' "$FAKE_GATED_RUNS"',
+        '    jq -c \'[{workflow_runs: [.[] | {id, name: .api_name, workflow_id, status}]}]\' "$FAKE_GATED_RUNS"',
         '    exit 0',
         '    ;;',
         '  *"/actions/runs/"[0-9]*)',
@@ -462,6 +519,12 @@ function runGate(conclusions, {
         '    fresh=$(jq -r --argjson id "$run_id" \'.[] | select(.id == $id) | .fresh // .status\' "$FAKE_GATED_RUNS")',
         '    [ "$fresh" = "error" ] && { echo "gh: forced run read failure (HTTP 502)" >&2; exit 1; }',
         '    printf \'%s\\n\' "$fresh"',
+        '    exit 0',
+        '    ;;',
+        '  *"actions/workflows?"*)',
+        '    echo "workflows-page" >> "$FAKE_CALLS"',
+        '    [ "$FAKE_WORKFLOWS_FAIL" = "1" ] && { echo "gh: forced workflows read failure (HTTP 502)" >&2; exit 1; }',
+        '    cat "$FAKE_WORKFLOWS"',
         '    exit 0',
         '    ;;',
         '  *"actions/workflows/deploy-gate.yml/runs"*)',
@@ -540,11 +603,17 @@ function runGate(conclusions, {
       'case "$1 $2" in',
       '  "fetch --no-tags")',
       '    echo "git-fetch" >> "$FAKE_CALLS"',
+      '    echo "$*" >> "$FAKE_FETCHES"',
       '    [ "$FAKE_GIT_FETCH_FAILS" = "1" ] && { echo "fatal: forced fetch failure" >&2; exit 128; }',
+      '    case "$*" in',
+      '      *"+refs/heads/main:"*) cp "$FAKE_GIT_MAIN_FILES" "$FAKE_GIT_ACTIVE_FILES" ;;',
+      '      *) cp "$FAKE_GIT_TARGET_FILES" "$FAKE_GIT_ACTIVE_FILES" ;;',
+      '    esac',
       '    exit 0',
       '    ;;',
       'esac',
       'case "$1" in',
+      '  check-ref-format) exit 0 ;;',
       '  rev-parse)',
       '    case "$*" in',
       '      *head*) printf \'%s\\n\' "$FAKE_GIT_HEAD_TIP" ;;',
@@ -561,7 +630,7 @@ function runGate(conclusions, {
       '  diff)',
       '    case "$*" in',
       '      *head*) cat "$FAKE_GIT_HEAD_FILES" ;;',
-      '      *) cat "$FAKE_GIT_MAIN_FILES" ;;',
+      '      *) cat "$FAKE_GIT_ACTIVE_FILES" ;;',
       '    esac',
       '    exit 0',
       '    ;;',
@@ -595,6 +664,8 @@ function runGate(conclusions, {
         env: {
           ...process.env,
           FAKE_CALLS: callsFile,
+          FAKE_FETCHES: fetchesFile,
+          FAKE_OPEN_PULLS: typeof openPulls === 'string' ? openPulls : JSON.stringify(openPulls ?? (Array.isArray(associatedPulls) && associatedPulls.every(Array.isArray) ? associatedPulls.map(page => page.filter(pr => pr.state === 'open')) : [[]])),
           FAKE_ASSOCIATED_PULLS: typeof associatedPulls === 'string' ? associatedPulls : JSON.stringify(associatedPulls),
           FAKE_CURRENT_STATUSES: currentStatusesFile,
           FAKE_STATUS_READ_FAILURES: statusReadFailuresFile,
@@ -605,6 +676,8 @@ function runGate(conclusions, {
           FAKE_GIT_HEAD_FILES: driftHeadFilesFile,
           FAKE_GIT_HEAD_TIP: drifting.headTip,
           FAKE_GIT_MAIN_FILES: driftMainFilesFile,
+          FAKE_GIT_TARGET_FILES: driftTargetFilesFile,
+          FAKE_GIT_ACTIVE_FILES: driftActiveFilesFile,
           FAKE_GIT_MAIN_TIP: drifting.mainTip,
           FAKE_GIT_MERGE_BASE: drifting.mergeBase,
           FAKE_GIT_MERGE_BASE_FAILS: drifting.mergeBaseFails ? '1' : '0',
@@ -627,8 +700,14 @@ function runGate(conclusions, {
           FAKE_STATUS_FAILURES: statusFailuresFile,
           FAKE_STATUS_FAILURES_PER_SHA: statusFailuresPerSha ? '1' : '0',
           FAKE_SWEEP_RESPONSES: sweepFile,
+          FAKE_PUSH_RUNS: pushRunsFile,
+          FAKE_MAIN_TEST_RUNS: mainTestRunsFile,
+          FAKE_RUN_JOBS: runJobsFile,
+          FAKE_COMPARE_STATUS: superseded?.compare ?? 'identical',
           FAKE_GATED_RUNS: gatedRunsFile,
           FAKE_GATED_RUNS_FAIL: gatedRunsReadFails ? '1' : '0',
+          FAKE_WORKFLOWS: workflowsFile,
+          FAKE_WORKFLOWS_FAIL: workflowsReadFails ? '1' : '0',
           GATED_WORKFLOWS: gatedRuns === undefined ? '' : 'Test,Lint Code',
           TRIGGER_RUN_ID: triggerRunId,
           FAKE_SHA: SHA,
@@ -654,6 +733,7 @@ function runGate(conclusions, {
     return {
       ...result,
       exitCodes,
+      fetches: readFileSync(fetchesFile, 'utf8').split('\n').filter(Boolean),
       statusReads: readFileSync(callsFile, 'utf8').split('\n').filter((call) => call === 'status-read').length,
       calls: readFileSync(callsFile, 'utf8').split('\n').filter((call) => call && call !== 'status-read'),
       postTargets: readFileSync(postTargetsFile, 'utf8').split('\n').filter(Boolean),
@@ -932,7 +1012,7 @@ describe('deploy gate commit-status description', () => {
       assert.equal(result.status, 0, result.stderr);
       assert.deepEqual(
         result.calls,
-        ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:101', 'status:pending'],
+        ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'workflows-page', 'run-read:101', 'status:pending'],
         `a ${status} Test run fires its own evaluation, so this one must not hold the runner`,
       );
       assert.equal(result.posted[0].state, 'pending');
@@ -946,11 +1026,11 @@ describe('deploy gate commit-status description', () => {
     ];
     for (const [label, options, reads] of [
       ['all gated runs completed', { gatedRuns: [{ name: 'Test', status: 'completed' }, { name: 'Lint Code', status: 'completed' }] }, []],
-      ['only an ungated run in flight', { gatedRuns: [{ name: 'Deploy Gate', status: 'in_progress' }, { name: 'Test', status: 'completed' }] }, []],
+      ['only an ungated run in flight', { gatedRuns: [{ name: 'Deploy Gate', status: 'in_progress' }, { name: 'Test', status: 'completed' }] }, ['workflows-page']],
       ['the runs listing failed', { gatedRuns: [{ name: 'Test', status: 'in_progress' }], gatedRunsReadFails: true }, []],
       // A stale listing snapshot still shows a finished run as running.
-      ['the run record says completed', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'completed' }] }, ['run-read:100']],
-      ['the run record cannot be read', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'error' }] }, ['run-read:100']],
+      ['the run record says completed', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'completed' }] }, ['workflows-page', 'run-read:100']],
+      ['the run record cannot be read', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'error' }] }, ['workflows-page', 'run-read:100']],
       // On the head's last event, the listing can lag this event's own run.
       ['only the triggering run reads as running', { gatedRuns: [{ name: 'Test', status: 'in_progress' }], triggerRunId: '100' }, []],
     ]) {
@@ -960,13 +1040,41 @@ describe('deploy gate commit-status description', () => {
     }
   });
 
+  it('recognises an unfinished PR Test run by its workflow, not its run-name', () => {
+    // test.yml sets `run-name: PR #N into BASE: TITLE` (#10926), and the runs
+    // API reports that as the run's `name`. Matching on name alone missed every
+    // PR Test run, so on 2026-11-23 98 of 171 burst evaluations slept 60s on a
+    // runner while Test was still running.
+    const result = runGate({}, {
+      gatedRuns: [
+        { name: 'Lint Code', status: 'completed' },
+        { name: 'Test', runName: 'PR #11204 into main: fix(reload): stop reloading open tabs', status: 'in_progress' },
+      ],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      result.calls,
+      ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'workflows-page', 'run-read:101', 'status:pending'],
+    );
+    assert.equal(result.posted[0].state, 'pending');
+  });
+
+  it('keeps the stale-read wait when the workflow listing cannot be read', () => {
+    const result = runGate({}, { gatedRuns: [{ name: 'Test', status: 'in_progress' }], workflowsReadFails: true });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-check-page', 'graphql-check-page', 'head-runs-page', 'workflows-page',
+      'sleep:60', 'graphql-check-page', 'graphql-check-page', 'status:pending',
+    ]);
+  });
+
   it('skips the wait for another unfinished run beside the triggering one', () => {
     const result = runGate({}, {
       gatedRuns: [{ name: 'Lint Code', status: 'in_progress' }, { name: 'Test', status: 'in_progress' }],
       triggerRunId: '100',
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(result.calls, ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:101', 'status:pending']);
+    assert.deepEqual(result.calls, ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'workflows-page', 'run-read:101', 'status:pending']);
   });
 
   it('skips the wait on one confirmed unfinished run even when another read failed', () => {
@@ -978,7 +1086,7 @@ describe('deploy gate commit-status description', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(
       result.calls,
-      ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:100', 'run-read:101', 'status:pending'],
+      ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'workflows-page', 'run-read:100', 'run-read:101', 'status:pending'],
     );
   });
 
@@ -1016,6 +1124,55 @@ describe('deploy gate commit-status description', () => {
     );
   });
 
+  describe('a main commit whose Test run a newer main push cancelled', () => {
+    const NEWER = MAIN_TIP;
+    // A cancelled run fails its always() aggregates too, so `unit` reads failure.
+    const cancelledTest = () => ({ ...conclusionsFor('success'), sidecar: 'cancelled', 'dom-tests': 'cancelled', unit: 'failure' });
+    const superseded = (overrides = {}) => ({
+      pushRuns: [{ id: 7, name: 'Test', head_branch: 'main', conclusion: 'cancelled', created_at: '2026-08-12T12:00:00Z', updated_at: '2026-08-12T12:04:10Z' }],
+      mainTestRuns: [
+        { head_sha: SHA, created_at: '2026-08-12T12:00:00Z' },
+        { head_sha: NEWER, created_at: '2026-08-12T12:04:05Z' },
+      ],
+      compare: 'ahead',
+      jobs: ['changes', 'sidecar', 'dom-tests', 'unit', 'unit-shard (1)'],
+      ...overrides,
+    });
+
+    it('publishes pending naming the superseding commit instead of failure', () => {
+      const result = runGate(cancelledTest(), { superseded: superseded() });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.rejected, [], `the API rejected a description: ${result.stderr}`);
+      assert.deepEqual(result.posted, [{
+        state: 'pending',
+        description: stamped(`Superseded on main by ${NEWER.slice(0, 10)}: Test was cancelled and that commit's run covers this one`),
+      }]);
+    });
+
+    const stillFails = {
+      'a failed check from another workflow': [{ ...cancelledTest(), typecheck: 'failure' }, superseded()],
+      'a Test run that failed rather than being cancelled': [cancelledTest(), superseded({
+        pushRuns: [{ id: 7, name: 'Test', head_branch: 'main', conclusion: 'failure', created_at: '2026-08-12T12:00:00Z', updated_at: '2026-08-12T12:04:10Z' }],
+      })],
+      'no newer main push while the run was live': [cancelledTest(), superseded({
+        mainTestRuns: [{ head_sha: SHA, created_at: '2026-08-12T12:00:00Z' }, { head_sha: NEWER, created_at: '2026-08-12T12:30:00Z' }],
+      })],
+      'a commit main does not contain': [cancelledTest(), superseded({ compare: 'diverged' })],
+      'a pull request run with no main push': [cancelledTest(), superseded({ pushRuns: [] })],
+    };
+    for (const [label, [conclusions, scenario]] of Object.entries(stillFails)) {
+      it(`still publishes failure for ${label}`, () => {
+        const result = runGate(conclusions, { superseded: scenario });
+
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(result.posted.length, 1);
+        assert.equal(result.posted[0].state, 'failure');
+        assert.match(result.posted[0].description, /^Required PR gates did not pass/);
+      });
+    }
+  });
+
   it('keeps the whole list when it fits', () => {
     const conclusions = conclusionsFor('success');
     delete conclusions.unit;
@@ -1028,6 +1185,55 @@ describe('deploy gate commit-status description', () => {
     assert.doesNotMatch(result.posted[0].description, /\.\.\. /, 'a description that fits must not be cut');
   });
 
+  describe('Lint Code and Typecheck job layout (#11215)', () => {
+    // #11215 folds six Lint Code and Typecheck jobs into `docs-lint` (and into
+    // the existing `biome` and `typecheck`). Deploy Gate runs main's copy of
+    // this script, so for the switch the gate accepts either layout per
+    // commit: a `docs-lint` check run means the new one.
+    const LEGACY = ['typecheck-changes', 'lint-changes', 'markdown', 'public-docs', 'mintlify-slugs', 'doc-anchors'];
+    const newLayout = (docsLint) => {
+      const conclusions = conclusionsFor('success');
+      for (const name of LEGACY) delete conclusions[name];
+      conclusions['docs-lint'] = docsLint;
+      return conclusions;
+    };
+
+    it('passes a commit on the new layout without the six old jobs', () => {
+      const result = runGate(newLayout('success'));
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.posted, [{ state: 'success', description: stamped('All required PR gates passed') }]);
+    });
+
+    it('fails a commit whose docs-lint failed', () => {
+      const result = runGate(newLayout('failure'));
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted.at(-1).state, 'failure');
+      assert.match(result.posted.at(-1).description, /did not pass \(1\): docs-lint /);
+    });
+
+    it('waits for a docs-lint run that has not finished', () => {
+      const result = runGate(newLayout('pending'));
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted.at(-1).description, stamped('Waiting for required PR gates (1): docs-lint'));
+    });
+
+    it('still requires every old job on a commit without docs-lint', () => {
+      const conclusions = conclusionsFor('success');
+      delete conclusions.markdown;
+      const result = runGate(conclusions);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted.at(-1).description, stamped('Waiting for required PR gates (1): markdown'));
+    });
+
+    it('does not let a docs-lint run excuse a failed job outside the six', () => {
+      const conclusions = newLayout('success');
+      conclusions.biome = 'failure';
+      const result = runGate(conclusions);
+      assert.equal(result.posted.at(-1).state, 'failure');
+      assert.match(result.posted.at(-1).description, /: biome /);
+    });
+  });
+
   it('still posts success when everything passed or skipped', () => {
     const conclusions = conclusionsFor('success');
     conclusions['desktop-rust'] = 'skipped';
@@ -1038,7 +1244,7 @@ describe('deploy gate commit-status description', () => {
       { state: 'success', description: stamped('All required PR gates passed') },
     ]);
     assert.deepEqual(result.calls, [
-      'graphql-check-page', 'graphql-check-page', 'git-fetch', 'git-merge-base', 'status:success',
+      'graphql-check-page', 'graphql-check-page', 'open-pulls', 'associated-pulls', 'git-fetch', 'git-merge-base', 'status:success',
     ]);
   });
 
@@ -1062,6 +1268,8 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'rest-check-runs-page',
+      'open-pulls',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1133,11 +1341,15 @@ describe('deploy gate commit-status description', () => {
       'status:pending',
       'graphql-check-page',
       'graphql-check-page',
+      'open-pulls',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
       'graphql-check-page',
       'graphql-check-page',
+      'open-pulls',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1272,6 +1484,8 @@ describe('deploy gate commit-status description', () => {
       'sleep:15',
       'graphql-check-page',
       'graphql-check-page',
+      'open-pulls',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1324,6 +1538,8 @@ describe('deploy gate commit-status description', () => {
       'graphql-check-page',
       'rate-limit:graphql',
       'rest-check-runs-page',
+      'open-pulls',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1340,6 +1556,8 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'graphql-check-page',
+      'open-pulls',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1360,6 +1578,8 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'graphql-check-page',
+      'open-pulls',
+      'associated-pulls',
       'git-fetch',
       'git-merge-base',
       'status:success',
@@ -1468,6 +1688,99 @@ describe('deploy gate stale-base drift', () => {
   const mergedPull = { state: 'closed', merged_at: '2026-08-12T12:00:00Z', head: { sha: SHA } };
   const overlap = diverged({ headFiles: ['api/widget-agent.ts'], mainFiles: ['api/widget-agent.ts'] });
 
+  const openPull = (base) => ({ state: 'open', merged_at: null, head: { sha: SHA, repo: { full_name: 'koala73/worldmonitor' } }, base: { ref: base, repo: { full_name: 'koala73/worldmonitor' } } });
+
+  it('compares an integration PR against its target instead of main', () => {
+    const result = runGate(conclusionsFor('success'), { associatedPulls: [[openPull('cii-v15')]] });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted.at(-1).state, 'success');
+    assert.match(result.fetches[0], /\+refs\/heads\/cii-v15:/);
+    assert.ok(!result.fetches[0].includes('+refs/heads/main:'));
+  });
+
+  it('still blocks overlapping changes on the integration target', () => {
+    const result = runGate(conclusionsFor('success'), { drift: overlap, associatedPulls: [[openPull('cii-v15')]] });
+    assert.equal(result.posted.at(-1).state, 'failure');
+    assert.match(result.posted.at(-1).description, /^Stale base: cii-v15 changed/);
+  });
+
+  it('checks every open target for a shared exact head, including main', () => {
+    const result = runGate(conclusionsFor('success'), { associatedPulls: [[openPull('cii-v15')], [openPull('main')]] });
+    assert.equal(result.posted.at(-1).state, 'success');
+    assert.equal(result.fetches.length, 2);
+    assert.match(result.fetches[0], /\+refs\/heads\/cii-v15:/);
+    assert.match(result.fetches[1], /\+refs\/heads\/main:/);
+  });
+
+  it('blocks drift on a later target after the first target passes', () => {
+    const result = runGate(conclusionsFor('success'), {
+      associatedPulls: [[openPull('cii-v15')], [openPull('main')]],
+      drift: { ...overlap, targetFiles: [] },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.fetches.length, 2);
+    assert.equal(result.posted.at(-1).state, 'failure');
+    assert.match(result.posted.at(-1).description, /^Stale base: main changed 1 file/);
+  });
+
+  it('checks an open integration target even when commit associations report only a merged PR', () => {
+    const result = runGate(conclusionsFor('success'), {
+      openPulls: [[], [openPull('cii-v15')]],
+      associatedPulls: [[mergedPull]],
+      drift: overlap,
+    });
+    assert.equal(result.posted.at(-1).state, 'failure');
+    assert.match(result.posted.at(-1).description, /^Stale base: cii-v15 changed/);
+    assert.ok(!result.calls.includes('associated-pulls'));
+  });
+
+  it('ignores a foreign head that tries to add a target to the same commit', () => {
+    const foreign = { ...openPull('main'), head: { sha: SHA, repo: { full_name: 'attacker/fork' } } };
+    const result = runGate(conclusionsFor('success'), {
+      openPulls: [[openPull('cii-v15'), foreign]],
+      drift: { ...overlap, targetFiles: [] },
+    });
+    assert.equal(result.posted.at(-1).state, 'success');
+    assert.equal(result.fetches.length, 1);
+    assert.match(result.fetches[0], /\+refs\/heads\/cii-v15:/);
+  });
+
+  it('retains main drift for fork-only heads', () => {
+    const foreign = { ...openPull('cii-v15'), head: { sha: SHA, repo: { full_name: 'attacker/fork' } } };
+    const result = runGate(conclusionsFor('success'), {
+      openPulls: [[foreign]],
+      drift: { ...overlap, targetFiles: [] },
+    });
+    assert.equal(result.posted.at(-1).state, 'failure');
+    assert.equal(result.fetches.length, 1);
+    assert.match(result.fetches[0], /\+refs\/heads\/main:/);
+  });
+
+  it('leaves missing head ownership metadata pending', () => {
+    const result = runGate(conclusionsFor('success'), {
+      openPulls: [[{ ...openPull('cii-v15'), head: { sha: SHA } }]],
+    });
+    assert.equal(result.posted.at(-1).state, 'pending');
+    assert.equal(result.fetches.length, 0);
+  });
+
+  it('leaves unreadable or incomplete open PR inventories pending', () => {
+    for (const openPulls of ['unavailable', [], [{ message: 'incomplete' }], [[{ state: 'open' }]]]) {
+      const result = runGate(conclusionsFor('success'), { openPulls });
+      assert.equal(result.posted.at(-1).state, 'pending');
+      assert.match(result.posted.at(-1).description, /could not read open PR targets/);
+      assert.equal(result.fetches.length, 0);
+    }
+  });
+
+  it('does not approve a head with missing or foreign target metadata', () => {
+    for (const base of [undefined, { ref: '' }, { ref: 'main', repo: { full_name: 'other/repo' } }]) {
+      const result = runGate(conclusionsFor('success'), { associatedPulls: [[{ ...openPull('main'), base }]] });
+      assert.equal(result.posted.at(-1).state, 'pending');
+      assert.equal(result.fetches.length, 0);
+    }
+  });
+
   it('passes a squash-merged exact head when a queued evaluation sees overlapping main changes', () => {
     const result = runGate(conclusionsFor('success'), {
       drift: overlap,
@@ -1481,7 +1794,7 @@ describe('deploy gate stale-base drift', () => {
 
   it('keeps drift blocking for open exact heads, unmerged closures and unrelated merged heads', () => {
     for (const associatedPulls of [
-      [[mergedPull], [{ state: 'open', merged_at: null, head: { sha: SHA } }]],
+      [[mergedPull], [openPull('main')]],
       [[{ ...mergedPull, merged_at: null }]],
       [[{ ...mergedPull, head: { sha: HEAD_TIP } }]],
       [[]],
@@ -1653,9 +1966,14 @@ describe('deploy gate stale-base drift over a real repository', () => {
     git(remote, 'config', 'uploadpack.allowFilter', 'true');
     git(remote, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
     commit(shape.base ?? ['README.md'], 'base');
+    if (shape.targetBranch) git(remote, 'branch', shape.targetBranch);
     git(remote, 'checkout', '-q', '-b', 'feature');
     if ((shape.head ?? []).length > 0) commit(shape.head, 'head');
     const headSha = git(remote, 'rev-parse', 'HEAD').trim();
+    if (shape.target?.length) {
+      git(remote, 'checkout', '-q', shape.targetBranch);
+      commit(shape.target, 'target');
+    }
     git(remote, 'checkout', '-q', 'main');
     if ((shape.main ?? []).length > 0) commit(shape.main, 'main');
     if (shape.shallow) {
@@ -1676,7 +1994,7 @@ describe('deploy gate stale-base drift over a real repository', () => {
     const root = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-git-'));
     try {
       const { remote, work, headSha } = fixture(root, shape);
-      const result = spawnSync('bash', ['-e', gateScriptPath, 'drift'], {
+      const result = spawnSync('bash', ['-e', gateScriptPath, 'drift', shape.targetBranch ?? 'main'], {
         cwd: work,
         encoding: 'utf8',
         timeout: 60_000,
@@ -1694,6 +2012,18 @@ describe('deploy gate stale-base drift over a real repository', () => {
       rmSync(root, { recursive: true, force: true });
     }
   };
+
+  it('ignores unrelated main drift when the actual integration target is unchanged', () => {
+    const result = drift({ base: ['a.ts'], head: ['a.ts'], main: ['a.ts'], targetBranch: 'cii-v15' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, '');
+  });
+
+  it('detects overlapping drift on the actual integration target', () => {
+    const result = drift({ base: ['a.ts'], head: ['a.ts'], main: ['b.ts'], targetBranch: 'cii-v15', target: ['a.ts'] });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'a.ts');
+  });
 
   it('names exactly the files both sides touched', () => {
     const result = drift({

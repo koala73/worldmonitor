@@ -297,16 +297,27 @@ export const LiveStrip = () => {
         {/* The same readings, and every crisis tracker, on one crawlable page.
             Search shows this homepage for "monitor the situation"; the link is
             how a crawler and a reader reach the board built for that search. */}
-        <a
-          href="/monitor-the-situation/"
-          data-umami-event="welcome-cta"
-          data-umami-event-target="welcome-live-situation"
-          className={`group mt-6 inline-block font-mono text-xs text-wm-green hover:text-wm-text transition-colors ${cardLinkFocusRing}`}
-        >
-          {t('welcome.live.situationLink')}
-          {/* Inline, not flex: a wrapped label keeps the arrow after its last word. */}
-          <CardLinkArrow className="ms-1.5 inline-block align-[-2px]" />
-        </a>
+        <div className="mt-6 flex flex-wrap gap-x-8 gap-y-3">
+          <a
+            href="/monitor-the-situation/"
+            data-umami-event="welcome-cta"
+            data-umami-event-target="welcome-live-situation"
+            className={`group inline-block font-mono text-xs text-wm-green hover:text-wm-text transition-colors ${cardLinkFocusRing}`}
+          >
+            {t('welcome.live.situationLink')}
+            {/* Inline, not flex: a wrapped label keeps the arrow after its last word. */}
+            <CardLinkArrow className="ms-1.5 inline-block align-[-2px]" />
+          </a>
+          <a
+            href="/blog/glossary/pentagon-pizza-index/"
+            data-umami-event="welcome-cta"
+            data-umami-event-target="welcome-live-pizza-index"
+            className={`group inline-block font-mono text-xs text-wm-green hover:text-wm-text transition-colors ${cardLinkFocusRing}`}
+          >
+            {t('welcome.live.pizzaIndexLink')}
+            <CardLinkArrow className="ms-1.5 inline-block align-[-2px]" />
+          </a>
+        </div>
         {!allLive && (
           <p className="mt-6 font-mono text-xs text-wm-muted">{t('welcome.live.refreshNote')}</p>
         )}

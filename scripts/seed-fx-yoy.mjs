@@ -26,9 +26,12 @@
  *       { countryCode: "AR", currency: "ARS",
  *         currentRate, yearAgoRate, yoyChange,
  *         drawdown24m, peakRate, peakDate, troughRate, troughDate,
- *         asOf, yearAgo },
+ *         asOf, yearAgo,
+ *         daily90?: { asOf, latest, anchor: { date, value }, sessions,
+ *                     noiseShare, reliable, source, yahooNoiseShare? } },
  *       ...
  *     ],
+ *     dailyOnly: [{ countryCode: "RU", currency: "RUB", daily90 }, ...],
  *     fetchedAt: "<iso>",
  *   }
  *
@@ -37,6 +40,7 @@
  */
 
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { fetchFallbackWindows, fallbackDailyQuotes } from './_currency-api.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
@@ -70,6 +74,24 @@ const CURRENCY_COUNTRY = {
   ZAR: 'ZA', NGN: 'NG', KES: 'KE',
 };
 
+// Currencies read from the second source only, for the CII currency member of
+// countries that otherwise rest on inflation alone. They are published in
+// `dailyOnly`, not `rates`, so the 45-currency stress table and its readers do
+// not change. Checked on 2026-11-13 against 240 days of snapshots: RUB moves as
+// a market rate; VES follows the official crawl; IQD held the 1,310 peg until
+// the central bank devalued by about 15% on 2026-10-07. IRR is left out: the
+// source sat near 1,375,000 from June to September 2026 while the official
+// rate moved from about 1.59 to 1.74 million, so its 90-day anchor was stale.
+export const DAILY_ONLY_CURRENCY_COUNTRY = Object.freeze({ RUB: 'RU', VES: 'VE', IQD: 'IQ' });
+
+/** One daily block per daily-only currency the second source covers. */
+export function buildDailyOnlyRates(windows) {
+  return Object.entries(DAILY_ONLY_CURRENCY_COUNTRY).flatMap(([currency, countryCode]) => {
+    const daily90 = fallbackDailyQuotes(currency, windows);
+    return daily90 ? [{ countryCode, currency, daily90 }] : [];
+  });
+}
+
 const FETCH_TIMEOUT_MS = 10_000;
 // AGENTS.md: stagger Yahoo Finance requests by 150 ms. This ran at 120 ms with
 // a bare fetch and no retry, so one 429 in the 60-currency sweep dropped that
@@ -96,6 +118,148 @@ async function fetchYahooHistory(currency) {
   }
   if (series.length < 13) throw new Error(`Insufficient bars (${series.length})`);
   return series;
+}
+
+// Daily closes for the CII currency member. Yahoo's cross rates carry quote
+// noise that a monthly close cannot be cleaned of: QARUSD=X flips between the
+// 3.64 peg and a level 3.6% away on about four days in ten, and SARUSD=X
+// prints isolated 3% spikes. cleanDailyQuotes removes what a median can and
+// flags the rest, so no reader mistakes a bad print for a devaluation.
+async function fetchYahooDaily(currency) {
+  const symbol = `${currency}USD=X`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d`;
+  // One attempt, no backoff: this request is optional, and the second source
+  // covers a currency it misses. The caller also caps its total time.
+  const data = await fetchYahooJson(url, { label: `${symbol} fx-daily`, timeoutMs: FETCH_TIMEOUT_MS, maxRetries: 0 });
+  const result = data?.chart?.result?.[0];
+  const timestamps = result?.timestamp;
+  const closes = result?.indicators?.quote?.[0]?.close;
+  if (!Array.isArray(timestamps) || !Array.isArray(closes)) {
+    throw new Error('Yahoo chart payload missing timestamp/close arrays');
+  }
+  return {
+    timeZone: result.meta?.exchangeTimezoneName || 'UTC',
+    points: timestamps.map((ts, i) => ({ t: ts * 1000, close: closes[i] })),
+  };
+}
+
+const DAY_MS = 86_400_000;
+export const FX_DAILY_WINDOW_DAYS = 90;
+export const FX_DAILY_MEDIAN_POINTS = 5;
+// A move of more than 1% that is undone within three sessions is a quote
+// error, not a price. Measured 2026-11-13 over 133 sessions: QAR 0.43, BHD
+// 0.37, PKR 0.14, SAR 0.06, every other currency at or below 0.04; EGP had 16
+// moves above 1% and none reverted. 0.10 sits in the gap.
+export const FX_NOISE_MOVE = 0.01;
+export const FX_NOISE_RETURN = 0.003;
+export const FX_NOISE_LOOKAHEAD = 3;
+export const FX_MAX_NOISE_SHARE = 0.10;
+const FX_DAILY_MIN_POINTS = 70;
+const FX_ANCHOR_MAX_GAP_DAYS = 7;
+const FX_WINDOW_MAX_SPAN_DAYS = 12;
+
+const median = (values) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+/**
+ * Clean a daily close series and derive the 90-day change inputs.
+ * Returns null when the series cannot support a 90-day comparison.
+ * `reliable: false` means the quotes are too noisy to compare at all; the
+ * reader must treat the currency as unmeasured, never as unchanged.
+ */
+export function cleanDailyQuotes(points, timeZone = 'UTC') {
+  const series = (Array.isArray(points) ? points : [])
+    .filter((p) => Number.isFinite(p?.t) && typeof p.close === 'number' && Number.isFinite(p.close) && p.close > 0)
+    .sort((a, b) => a.t - b.t);
+  if (series.length < FX_DAILY_MIN_POINTS) return null;
+  const closes = series.map((p) => p.close);
+
+  // A move above 1% that returns to its starting level within three sessions
+  // is a quote error. Count it, and drop the sessions it covers so that a run
+  // of bad prints at either end of the window cannot set a median.
+  const excursion = new Array(closes.length).fill(false);
+  let reverted = 0;
+  for (let i = 1; i < closes.length; i++) {
+    if (Math.abs(closes[i] / closes[i - 1] - 1) <= FX_NOISE_MOVE) continue;
+    for (let j = i + 1; j <= Math.min(closes.length - 1, i + FX_NOISE_LOOKAHEAD); j++) {
+      if (Math.abs(closes[j] / closes[i - 1] - 1) < FX_NOISE_RETURN) {
+        reverted += 1;
+        for (let k = i; k < j; k++) excursion[k] = true;
+        break;
+      }
+    }
+  }
+  const noiseShare = Math.round((reverted / closes.length) * 1000) / 1000;
+  const reliable = noiseShare <= FX_MAX_NOISE_SHARE;
+  let dayFormat;
+  try {
+    dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  } catch {
+    dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' });
+  }
+  const day = (p) => dayFormat.format(new Date(p.t));
+  // A series too noisy to compare still reports why, so the second source is tried.
+  const unusable = reliable ? null : { asOf: day(series.at(-1)), latest: null, anchor: null, sessions: closes.length, noiseShare, reliable: false, source: 'yahoo' };
+
+  const clean = series.filter((_, i) => !excursion[i]);
+  const half = FX_DAILY_MEDIAN_POINTS >> 1;
+  const last = clean.length - 1;
+  if (clean.length < FX_DAILY_MEDIAN_POINTS * 2) return unusable;
+  let anchorIdx = -1;
+  for (let i = last; i >= 0; i--) {
+    if (clean[i].t <= clean[last].t - FX_DAILY_WINDOW_DAYS * DAY_MS) { anchorIdx = i; break; }
+  }
+  if (anchorIdx < half || anchorIdx + half > last) return unusable;
+  if (clean[last].t - FX_DAILY_WINDOW_DAYS * DAY_MS - clean[anchorIdx].t > FX_ANCHOR_MAX_GAP_DAYS * DAY_MS) return unusable;
+  // Five sessions normally span five to seven calendar days. A wider window
+  // means the feed had a hole, and its median would mix old quotes with new.
+  const lateWindow = clean.slice(-FX_DAILY_MEDIAN_POINTS);
+  const anchorWindow = clean.slice(anchorIdx - half, anchorIdx + half + 1);
+  const span = (w) => (w.at(-1).t - w[0].t) / DAY_MS;
+  if (span(lateWindow) > FX_WINDOW_MAX_SPAN_DAYS || span(anchorWindow) > FX_WINDOW_MAX_SPAN_DAYS) return unusable;
+
+  return {
+    asOf: day(clean[last]),
+    latest: median(lateWindow.map((p) => p.close)),
+    anchor: { date: day(clean[anchorIdx]), value: median(anchorWindow.map((p) => p.close)) },
+    sessions: closes.length,
+    noiseShare,
+    reliable,
+    source: 'yahoo',
+  };
+}
+
+// The producer drops a currency observation older than seven days, so a block
+// that is noisy, empty or stale all need the second source.
+const FX_DAILY_MAX_AGE_DAYS = 7;
+export function needsFallback(daily90, nowMs = Date.now()) {
+  if (!daily90 || daily90.reliable !== true || !Number.isFinite(daily90.latest)) return true;
+  const asOfMs = Date.parse(daily90.asOf);
+  return !Number.isFinite(asOfMs) || nowMs - asOfMs > FX_DAILY_MAX_AGE_DAYS * DAY_MS;
+}
+
+// The daily series is optional; the YoY rows the resilience score reads are
+// not. runSeed rejects the whole fetch at its deadline and publishes nothing,
+// so the optional request is skipped unless its worst case fits beside the
+// remaining required requests (at the slowest pace seen so far) and a publish
+// reserve. Its worst case is a hard cap: one direct attempt plus the proxy
+// fallback, cut off at FX_OPTIONAL_CAP_MS.
+const FX_PUBLISH_RESERVE_MS = 15_000;
+export const FX_OPTIONAL_CAP_MS = 20_000;
+export function hasTimeForOptionalFetch({ nowMs, deadlineAtMs, remainingRequired, slowestRequestMs }) {
+  if (!Number.isFinite(deadlineAtMs)) return true;
+  const perRequired = slowestRequestMs + PER_CURRENCY_DELAY_MS;
+  return nowMs + FX_OPTIONAL_CAP_MS + perRequired * remainingRequired + FX_PUBLISH_RESERVE_MS <= deadlineAtMs;
+}
+
+/** Reject after `capMs` so an optional request can never run past its reserved time. */
+export function withTimeCap(promise, capMs, label) {
+  let timer;
+  const cap = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} exceeded ${capMs} ms`)), capMs); });
+  return Promise.race([promise, cap]).finally(() => clearTimeout(timer));
 }
 
 function computeYoy(series) {
@@ -147,27 +311,82 @@ function computeYoy(series) {
   };
 }
 
-async function fetchFxYoy() {
+async function fetchFxYoy({ fetchDeadlineAtMs = Infinity } = {}) {
   const rates = [];
   const failures = [];
+  const dailyFailures = [];
+  const currencies = Object.entries(CURRENCY_COUNTRY);
+  let done = 0;
+  let slowestRequestMs = 0;
   for (const [currency, countryCode] of Object.entries(CURRENCY_COUNTRY)) {
+    done += 1;
     try {
-      const series = await fetchYahooHistory(currency);
+      const startedAt = Date.now();
+      let series;
+      try {
+        series = await fetchYahooHistory(currency);
+      } finally {
+        // A failed required request sets the pace too: it is the slow case.
+        slowestRequestMs = Math.max(slowestRequestMs, Date.now() - startedAt);
+      }
       const yoy = computeYoy(series);
-      rates.push({ countryCode, currency, ...yoy });
+      // A failed, thin or skipped daily series costs the CII member only; the
+      // YoY row the resilience score reads is still published.
+      let daily90 = null;
+      if (!hasTimeForOptionalFetch({ nowMs: Date.now(), deadlineAtMs: fetchDeadlineAtMs, remainingRequired: currencies.length - done, slowestRequestMs })) {
+        dailyFailures.push({ currency, error: 'skipped: time budget' });
+      } else {
+        await new Promise((r) => setTimeout(r, PER_CURRENCY_DELAY_MS));
+        try {
+          const daily = await withTimeCap(fetchYahooDaily(currency), FX_OPTIONAL_CAP_MS, `${currency} fx-daily`);
+          daily90 = cleanDailyQuotes(daily.points, daily.timeZone);
+          if (!daily90) dailyFailures.push({ currency, error: 'insufficient daily history' });
+        } catch (err) {
+          dailyFailures.push({ currency, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      rates.push({ countryCode, currency, ...yoy, ...(daily90 ? { daily90 } : {}) });
     } catch (err) {
       failures.push({ currency, error: err instanceof Error ? err.message : String(err) });
     }
     await new Promise((r) => setTimeout(r, PER_CURRENCY_DELAY_MS));
   }
   console.log(`  FX YoY: ${rates.length}/${Object.keys(CURRENCY_COUNTRY).length} currencies`);
+  const noisy = rates.filter((r) => r.daily90 && !r.daily90.reliable).map((r) => `${r.currency}(${r.daily90.noiseShare})`);
+  console.log(`  FX daily: ${rates.filter((r) => r.daily90).length} cleaned, unreliable quotes: ${noisy.join(', ') || 'none'}`);
+  // Never let a noisy, missing or frozen Yahoo series cost a country its
+  // currency member while a clean second source has it.
+  // The daily-only currencies need the same snapshots, so they are always read.
+  const needFallback = rates.filter((r) => needsFallback(r.daily90));
+  let windows = null;
+  try {
+    if (Date.now() + FX_PUBLISH_RESERVE_MS * 2 > fetchDeadlineAtMs) throw new Error('skipped: time budget');
+    windows = await fetchFallbackWindows(Date.now(), { windowDays: FX_DAILY_WINDOW_DAYS, points: FX_DAILY_MEDIAN_POINTS });
+  } catch (err) {
+    console.log(`  FX fallback failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (needFallback.length > 0) {
+    const recovered = [];
+    for (const row of needFallback) {
+      const fallback = fallbackDailyQuotes(row.currency, windows);
+      if (!fallback) continue;
+      row.daily90 = { ...fallback, ...(row.daily90 ? { yahooNoiseShare: row.daily90.noiseShare } : {}) };
+      recovered.push(row.currency);
+    }
+    console.log(`  FX fallback (currency-api): recovered ${recovered.join(', ') || 'none'} of ${needFallback.map((r) => r.currency).join(', ')}`);
+  }
+  const dailyOnly = buildDailyOnlyRates(windows);
+  console.log(`  FX daily-only (currency-api): ${dailyOnly.map((r) => r.currency).join(', ') || 'none'} of ${Object.keys(DAILY_ONLY_CURRENCY_COUNTRY).join(', ')}`);
+  if (dailyFailures.length > 0) {
+    console.log(`  Daily failures: ${dailyFailures.map((f) => `${f.currency}(${f.error})`).join(', ')}`);
+  }
   if (failures.length > 0) {
     console.log(`  Failures: ${failures.map((f) => `${f.currency}(${f.error})`).join(', ')}`);
   }
   if (rates.length === 0) {
     throw new Error('All Yahoo FX history fetches failed');
   }
-  return { rates, fetchedAt: new Date().toISOString() };
+  return { rates, dailyOnly, fetchedAt: new Date().toISOString() };
 }
 
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;

@@ -1,5 +1,9 @@
 .ukmto-status, .ukmto-attribution, .ukmto-dates { color: var(--text-dim); font-size: 11px; }
 .ukmto-map-status { position: absolute; top: 52px; left: 10px; z-index: 1001; max-width: calc(100% - 20px); padding: 4px 8px; background: var(--bg); color: var(--text); font-size: 11px; pointer-events: none; }
+.time-slider:has(> .ukmto-map-status) { flex-wrap: wrap; }
+/* contain: inline-size gives the row no intrinsic width, so it wraps inside
+   the buttons' width instead of widening the shrink-to-fit panel over the map. */
+.time-slider > .ukmto-map-status { position: static; flex-basis: 100%; contain: inline-size; max-width: none; padding: 6px 0 0; background: none; color: var(--text-dim); }
 .ukmto-status { padding: 8px 10px 0; }
 .ukmto-attribution { padding: 0 10px; }
 .ukmto-attribution a { color: var(--accent); }

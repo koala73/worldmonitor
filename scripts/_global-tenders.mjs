@@ -37,10 +37,11 @@ const OFFICIAL_SOURCE_HOSTS = {
   'malaysia-myprocurement': ['myprocurement.treasury.gov.my'],
 };
 
-// A failed source keeps its last-good open tenders for a day: procurement
-// portals rate-limit, publish daily, and go quiet over weekends, and a
-// day-old open tender is still actionable until its own deadline.
-export const TENDER_SOURCE_RETENTION_MS = 24 * 60 * 60_000;
+// A failed source keeps its last-good open tenders for three days, the same
+// budget health grades it against: the seeder runs once a day, procurement
+// portals rate-limit and go quiet over weekends, and an open tender stays
+// actionable until its own deadline.
+export const TENDER_SOURCE_RETENTION_MS = 3 * 24 * 60 * 60_000;
 
 export function tracksTenderFreshness(source) {
   return ['contracts-finder', 'world-bank', 'colombia-secop', 'kenya-ppip', 'south-africa-etenders',
@@ -149,11 +150,17 @@ function normalize({ source, sourceNoticeId, officialUrl, countryCode = '', regi
 
 export { normalize as normalizePublicTender };
 
+// SAM search returns a noticedesc API link, which needs an API key, in place of the notice text.
+function samDescription(value) {
+  const description = firstString(value);
+  return /^https?:\/\/\S+$/i.test(description) ? '' : description;
+}
+
 export function normalizeSamOpportunity(raw) {
   const noticeId = firstString(raw?.noticeId, raw?.notice_id, raw?.solicitationNumber);
   return normalize({
     source: 'sam', sourceNoticeId: noticeId, officialUrl: firstString(raw?.uiLink, raw?.link, noticeId && `https://sam.gov/opp/${noticeId}/view`),
-    countryCode: 'US', region: 'North America', title: raw?.title, description: firstString(raw?.description, raw?.fullParentPathName),
+    countryCode: 'US', region: 'North America', title: raw?.title, description: samDescription(raw?.description),
     buyer: firstString(raw?.fullParentPathName, raw?.office), publishedAt: raw?.postedDate, updatedAt: raw?.modifiedDate,
     deadline: raw?.responseDeadLine, status: raw?.type === 'Award Notice' ? 'awarded' : 'open', noticeType: raw?.type,
     categoryCodes: raw?.naicsCode, sectors: raw?.classificationCode,

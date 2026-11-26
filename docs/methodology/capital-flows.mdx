@@ -100,7 +100,7 @@ curl -s "https://api.worldmonitor.app/api/economic/v1/get-capital-flows?country=
   -H "X-WorldMonitor-Key: $WM_KEY"
 ```
 
-**MCP.** `get_capital_flows` returns full views for up to 10 countries; with `counterpart` it adds one pair per country. Without a country it ranks the economies that have the chosen `sort` metric (the default `outflow_z` leaves out annual-only series, which have no z-score): the latest outflow or inflow z-score, flows as a share of GDP, net flows, the four-quarter change in deposits held abroad, or the change in foreign portfolio holdings. See the [MCP tools reference](/mcp-tools-reference#get_capital_flows).
+**MCP.** `get_capital_flows` returns full views for up to 10 countries; with `counterpart` it adds one pair per country. Without a country it ranks the economies that have the chosen `sort` metric (the default `outflow_z` leaves out annual-only series, which have no z-score): the latest outflow or inflow z-score, flows as a share of GDP, net flows, the four-quarter change in deposits held abroad, or the change in foreign portfolio holdings. See the [MCP tools reference](/mcp-tools/macro#get_capital_flows).
 
 ## Freshness
 

@@ -1,10 +1,18 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const base = 'https://webcams.windy.com/webcams/public/embed/player';
 const fixture = { webcamId: '123', title: 'Saved camera', lat: 25, lng: 55, category: 'city', country: 'AE', playerUrl: `${base}?webcamId=123&playerType=month&interactive=true`, active: true, pinnedAt: 1 };
 const vercel = JSON.parse(readFileSync('vercel.json', 'utf8'));
 const csp = vercel.headers.flatMap((entry: { headers: { key: string; value: string }[] }) => entry.headers).find((header: { key: string }) => header.key === 'Content-Security-Policy').value;
+
+// The harness attaches its listeners after a top-level await that the load event does not
+// wait for, so act only once it reports ready.
+async function openHarness(page: Page) {
+  await page.goto('/tests/pinned-webcams-harness.html');
+  await page.waitForFunction(() => (window as Window & { __pinnedWebcamsHarness?: { ready: boolean } }).__pinnedWebcamsHarness?.ready === true);
+}
 
 test('filters restored and imported records before frame navigation under shipped CSP', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
@@ -20,7 +28,7 @@ test('filters restored and imported records before frame navigation under shippe
   await page.addInitScript(({ fixture }) => {
     localStorage.setItem('wm-pinned-webcams', JSON.stringify([null, {}, fixture, { ...fixture, webcamId: '456', title: 'Rejected URL uses safe fallback', playerUrl: 'javascript:parent.__webcamCanary=true' }]));
   }, { fixture });
-  await page.goto('/tests/pinned-webcams-harness.html');
+  await openHarness(page);
   const frames = page.locator('.pinned-webcam-iframe');
   await expect(frames).toHaveCount(2);
   await expect(frames.nth(0)).toHaveAttribute('src', fixture.playerUrl);
@@ -34,7 +42,7 @@ test('filters restored and imported records before frame navigation under shippe
   await expect.poll(() => navigations.length).toBeGreaterThanOrEqual(3);
   await expect(page.frameLocator('.pinned-webcam-iframe').first().locator('body')).toContainText('Windy player test response');
   expect(await page.evaluate(() => Reflect.get(window, '__webcamCanary'))).toBeUndefined();
-  await page.screenshot({ path: testInfo.outputPath('validated-pins-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('validated-pins-desktop.png'), fullPage: true });
   await page.getByTitle('Unpin', { exact: true }).nth(2).press('Enter');
   await expect(frames).toHaveCount(2);
   await page.getByTitle('Hide stream', { exact: true }).nth(0).click();
@@ -45,13 +53,13 @@ test('filters restored and imported records before frame navigation under shippe
   await expect(frames).toHaveCount(1);
   await expect(frames).toHaveAttribute('src', `${base}/123/day`);
   await expect(page.frameLocator('.pinned-webcam-iframe').locator('body')).toContainText('Windy player test response');
-  await page.screenshot({ path: testInfo.outputPath('imported-fallback-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('imported-fallback-desktop.png'), fullPage: true });
   expect(navigations.every(url => new URL(url).origin === 'https://webcams.windy.com')).toBe(true);
 });
 
 test('bounds imported pins and shows the pin limit without losing saved cameras', async ({ page }, testInfo) => {
   await page.route('https://webcams.windy.com/**', route => route.fulfill({ contentType: 'text/html', body: 'Synthetic Windy response' }));
-  await page.goto('/tests/pinned-webcams-harness.html');
+  await openHarness(page);
   const rows = Array.from({ length: 40 }, (_, i) => ({ ...fixture, webcamId: String(i), playerUrl: `${base}/${i}/day`, pinnedAt: i }));
   await page.locator('#import').setInputFiles({ name: 'settings.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ version: 1, data: { 'wm-pinned-webcams': JSON.stringify(rows), 'wm-font-scale': '1.2' } })) });
   await expect(page.locator('#status')).toHaveText('Imported and read');
@@ -60,11 +68,11 @@ test('bounds imported pins and shows the pin limit without losing saved cameras'
   await expect(page.locator('.wm-toast')).toHaveText('You can pin up to 32 webcams');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('wm-pinned-webcams')!).length)).toBe(32);
   expect(await page.evaluate(() => localStorage.getItem('wm-font-scale'))).toBe('1.2');
-  await page.screenshot({ path: testInfo.outputPath('pin-limit-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('pin-limit-desktop.png'), fullPage: true });
 });
 
 test('normalizes malformed imported webcam blobs while retaining unrelated settings', async ({ page }) => {
-  await page.goto('/tests/pinned-webcams-harness.html');
+  await openHarness(page);
   for (const value of [null, {}, '[', 'null', '{}', ' '.repeat(16385)]) {
     await page.locator('#import').setInputFiles({ name: 'settings.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ version: 1, data: { 'wm-pinned-webcams': value, 'wm-font-scale': '1.2' } })) });
     await expect.poll(() => page.evaluate(() => localStorage.getItem('wm-pinned-webcams'))).toBe('[]');

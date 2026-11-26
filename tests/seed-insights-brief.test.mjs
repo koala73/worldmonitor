@@ -1477,3 +1477,121 @@ describe('status-qualifier gate on the World Brief (#8441)', () => {
     assert.match(note, /former|acting|interim/i);
   });
 });
+
+// #11274: a single low-credibility source was published as plain fact. On
+// 2026-11-25 the live lead read "Four Palestinians were killed in an Israeli
+// airstrike [2]" where [2] was one WAFA English item with credibilityScore 29.
+describe('low-credibility single-source attribution (#11274)', () => {
+  const topStories = [
+    {
+      primaryTitle: 'Four Palestinians killed in Israeli airstrike on Gaza City apartment',
+      primarySource: 'WAFA English',
+      primaryLink: 'http://wafa',
+      sources: ['WAFA English'],
+      uniquePublisherCount: 1,
+      credibilityScore: 29,
+    },
+    {
+      primaryTitle: 'Israeli opposition advances coalition deal to replace Netanyahu',
+      primarySource: 'Reuters',
+      primaryLink: 'http://reuters',
+      sources: ['Reuters', 'AP News'],
+      uniquePublisherCount: 2,
+      credibilityScore: 93,
+    },
+  ];
+  const lines = [
+    { n: 1, text: 'Four Palestinians were killed in an Israeli airstrike on Gaza City [1]' },
+    { n: 2, text: 'Israeli opposition advances a coalition deal to replace Netanyahu [2]' },
+  ];
+  const compose = (lead, storyLines = lines) => composeSynthesizedBriefResult(
+    JSON.stringify({ lead, lines: storyLines }),
+    topStories,
+    { validatorMode: 'enforce' },
+  );
+
+  it('shows the model each story credibility and flags a single low-credibility source', () => {
+    const prompt = synthesisUserPrompt(topStories);
+    assert.match(
+      prompt,
+      /1\. Four Palestinians killed in Israeli airstrike on Gaza City apartment \(WAFA English, 1 source, credibility 29\/100, single low-credibility source\)/,
+    );
+    assert.match(
+      prompt,
+      /2\. Israeli opposition advances coalition deal to replace Netanyahu \(Reuters, 2 sources, credibility 93\/100\)\n/,
+    );
+    assert.match(synthesisSystemPrompt('2026-11-25'), /single low-credibility source/);
+  });
+
+  it('does not flag a low score that other publishers corroborate', () => {
+    const prompt = synthesisUserPrompt([{ ...topStories[0], sources: ['WAFA English', 'AFP'], uniquePublisherCount: 2 }]);
+    assert.doesNotMatch(prompt, /single low-credibility source/);
+  });
+
+  it('drops a lead sentence that states the low-credibility claim as fact', () => {
+    const out = compose(
+      'Four Palestinians were killed in an Israeli airstrike [1]. Israeli opposition advanced a coalition deal to replace Netanyahu [2].',
+    );
+    assert.ok(out.brief);
+    assert.doesNotMatch(out.brief.lead, /Four Palestinians/);
+    assert.match(out.brief.lead, /Netanyahu \[2\]/);
+    assert.equal(out.brief.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNATTRIBUTED);
+  });
+
+  it('drops an unattributed low-credibility clause even when the sentence also cites a credible story', () => {
+    const out = compose(
+      'Israeli opposition advanced a coalition deal to replace Netanyahu [2]. Four Palestinians were killed in an Israeli airstrike [1], and the opposition advanced a coalition deal [2].',
+    );
+    assert.ok(out.brief);
+    assert.doesNotMatch(out.brief.lead, /Four Palestinians/);
+  });
+
+  it('drops a sentence whose outlet credit sits on a different clause than the claim', () => {
+    const out = compose(
+      'Israeli opposition advanced a coalition deal to replace Netanyahu [2]. Four Palestinians were killed in an Israeli airstrike [1], while WAFA English reported the opposition advanced a coalition deal [2].',
+    );
+    assert.ok(out.brief);
+    assert.equal(out.brief.lead, 'Israeli opposition advanced a coalition deal to replace Netanyahu [2].');
+  });
+
+  it('drops a sentence whose only outlet credit follows the last citation', () => {
+    const out = compose(
+      'Israeli opposition advanced a coalition deal to replace Netanyahu [2]. Four Palestinians were killed in an Israeli airstrike [1], and WAFA English reported the opposition advanced a coalition deal.',
+    );
+    assert.ok(out.brief);
+    assert.equal(out.brief.lead, 'Israeli opposition advanced a coalition deal to replace Netanyahu [2].');
+  });
+
+  it('publishes the claim when the lead names its outlet', () => {
+    const out = compose(
+      'WAFA English reported four Palestinians were killed in an Israeli airstrike [1], while Israeli opposition advanced a coalition deal to replace Netanyahu [2].',
+    );
+    assert.equal(out.rejection, null);
+    assert.match(out.brief.lead, /^WAFA English reported four Palestinians/);
+    assert.equal(out.brief.droppedLeadSentences, 0);
+  });
+
+  it('rejects with a correction the resample can follow when no lead sentence survives', () => {
+    const out = compose('Four Palestinians were killed in an Israeli airstrike [1].');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_UNATTRIBUTED);
+    const feedback = synthesisRejectionFeedback({ code: out.rejection, detail: out.rejectionDetail });
+    assert.match(feedback, /WAFA English reported/);
+  });
+
+  it('attributes the story line of a low-credibility story and leaves credible lines alone', () => {
+    const out = compose(
+      'WAFA English reported four Palestinians were killed in an Israeli airstrike [1], while Israeli opposition advanced a coalition deal to replace Netanyahu [2].',
+    );
+    assert.equal(out.brief.lines[0].text, 'WAFA English reports: Four Palestinians were killed in an Israeli airstrike on Gaza City [1]');
+    assert.equal(out.brief.lines[1].text, 'Israeli opposition advances a coalition deal to replace Netanyahu [2]');
+  });
+
+  it('keeps a story line that already names its outlet unchanged', () => {
+    const out = compose(
+      'WAFA English reported four Palestinians were killed in an Israeli airstrike [1], while Israeli opposition advanced a coalition deal to replace Netanyahu [2].',
+      [{ n: 1, text: 'According to WAFA English, four Palestinians were killed in Gaza City [1]' }, lines[1]],
+    );
+    assert.equal(out.brief.lines[0].text, 'According to WAFA English, four Palestinians were killed in Gaza City [1]');
+  });
+});

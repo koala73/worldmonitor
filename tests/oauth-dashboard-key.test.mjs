@@ -65,8 +65,8 @@ afterEach(() => {
 
 async function consent(apiKey = key, xhr = true) {
   const challenge = Buffer.from(await sha256Hex('a'.repeat(64)), 'hex').toString('base64url');
-  store.set('oauth:nonce:test', JSON.stringify({ client_id: 'client', redirect_uri: 'https://client.test/callback', code_challenge: challenge, state: 'state', bind_hash: await hashOAuthBindValue(BIND_VALUE) }));
-  store.set('oauth:client:client', JSON.stringify({ redirect_uris: ['https://client.test/callback'] }));
+  store.set('oauth:nonce:test', JSON.stringify({ client_id: 'client', redirect_uri: 'https://claude.ai/api/mcp/auth_callback', code_challenge: challenge, state: 'state', bind_hash: await hashOAuthBindValue(BIND_VALUE) }));
+  store.set('oauth:client:client', JSON.stringify({ redirect_uris: ['https://claude.ai/api/mcp/auth_callback'] }));
   return handler(new Request('https://api.worldmonitor.app/oauth/authorize', {
     method: 'POST', headers: { cookie: BIND_COOKIE_HEADER }, body: new URLSearchParams({ _nonce: 'test', _js: xhr ? '1' : '', api_key: apiKey }),
   }));
@@ -83,7 +83,7 @@ it('consents a dashboard key and resolves its bearer as a metered user', async (
   const exchange = await tokenEndpoint(new Request('https://api.worldmonitor.app/oauth/token', {
     method: 'POST', body: new URLSearchParams({
       grant_type: 'authorization_code', code, code_verifier: 'a'.repeat(64),
-      client_id: 'client', redirect_uri: 'https://client.test/callback',
+      client_id: 'client', redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
     }),
   }));
   assert.equal(exchange.status, 200);
@@ -119,7 +119,7 @@ it('reports validation failure as retryable', async () => {
     method: 'POST', headers: { cookie: BIND_COOKIE_HEADER }, body: new URLSearchParams({ _nonce: retry.nonce, _js: '1', api_key: key }),
   }));
   assert.equal(recovered.status, 200);
-  assert.equal(new URL((await recovered.json()).location).hostname, 'client.test');
+  assert.equal(new URL((await recovered.json()).location).hostname, 'claude.ai');
 });
 
 it('renders a usable native consent form after transient validation failure', async () => {

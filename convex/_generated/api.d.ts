@@ -16,6 +16,7 @@ import type * as accountDeletion_sideEffects from "../accountDeletion/sideEffect
 import type * as agentFeedback from "../agentFeedback.js";
 import type * as agentSources from "../agentSources.js";
 import type * as alertRules from "../alertRules.js";
+import type * as alertScopeMigration from "../alertScopeMigration.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as apiPlanLimitEmails from "../apiPlanLimitEmails.js";
 import type * as apiPlanLimitNotices from "../apiPlanLimitNotices.js";
@@ -69,6 +70,7 @@ import type * as lib_iso2 from "../lib/iso2.js";
 import type * as lib_notificationEmail from "../lib/notificationEmail.js";
 import type * as lib_resendEmail from "../lib/resendEmail.js";
 import type * as lib_shards from "../lib/shards.js";
+import type * as lib_teamDashboardLayout from "../lib/teamDashboardLayout.js";
 import type * as mcpProTokens from "../mcpProTokens.js";
 import type * as notificationChannels from "../notificationChannels.js";
 import type * as payments_backfillCustomerNormalizedEmail from "../payments/backfillCustomerNormalizedEmail.js";
@@ -90,6 +92,7 @@ import type * as payments_webhookHandlers from "../payments/webhookHandlers.js";
 import type * as payments_webhookMutations from "../payments/webhookMutations.js";
 import type * as registerInterest from "../registerInterest.js";
 import type * as resendWebhookHandler from "../resendWebhookHandler.js";
+import type * as teamDashboards from "../teamDashboards.js";
 import type * as telegramPairingTokens from "../telegramPairingTokens.js";
 import type * as userPreferences from "../userPreferences.js";
 import type * as users from "../users.js";
@@ -109,6 +112,7 @@ declare const fullApi: ApiFromModules<{
   agentFeedback: typeof agentFeedback;
   agentSources: typeof agentSources;
   alertRules: typeof alertRules;
+  alertScopeMigration: typeof alertScopeMigration;
   apiKeys: typeof apiKeys;
   apiPlanLimitEmails: typeof apiPlanLimitEmails;
   apiPlanLimitNotices: typeof apiPlanLimitNotices;
@@ -162,6 +166,7 @@ declare const fullApi: ApiFromModules<{
   "lib/notificationEmail": typeof lib_notificationEmail;
   "lib/resendEmail": typeof lib_resendEmail;
   "lib/shards": typeof lib_shards;
+  "lib/teamDashboardLayout": typeof lib_teamDashboardLayout;
   mcpProTokens: typeof mcpProTokens;
   notificationChannels: typeof notificationChannels;
   "payments/backfillCustomerNormalizedEmail": typeof payments_backfillCustomerNormalizedEmail;
@@ -183,6 +188,7 @@ declare const fullApi: ApiFromModules<{
   "payments/webhookMutations": typeof payments_webhookMutations;
   registerInterest: typeof registerInterest;
   resendWebhookHandler: typeof resendWebhookHandler;
+  teamDashboards: typeof teamDashboards;
   telegramPairingTokens: typeof telegramPairingTokens;
   userPreferences: typeof userPreferences;
   users: typeof users;

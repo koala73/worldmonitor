@@ -130,7 +130,7 @@ export function buildCentroids(geojson, fiftyM) {
   for (const [code, polygon] of countryPolygons(geojson, fiftyM)) {
     out[code] = polygon ? roundInside(interiorPoint(polygon), polygon) : MANUAL[code];
   }
-  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b, 'en-US')));
 }
 
 async function loadSources() {

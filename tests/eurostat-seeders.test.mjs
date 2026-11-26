@@ -192,14 +192,19 @@ describe('Registry wiring (issue #3028)', () => {
     assert.match(src, /eurostatIndProd:\s*\{[^}]*seed-meta:economic:eurostat-industrial-production/);
   });
 
-  it('MCP tool registry exposes the three new EU overlay tools', async () => {
-    const src = await readFile(resolve(ROOT, 'api/mcp/registry/cache-tools.ts'), 'utf8');
-    assert.match(src, /name: 'get_eu_housing_cycle'/);
-    assert.match(src, /name: 'get_eu_quarterly_gov_debt'/);
-    assert.match(src, /name: 'get_eu_industrial_production'/);
-    assert.match(src, /'economic:eurostat:house-prices:v1'/);
-    assert.match(src, /'economic:eurostat:gov-debt-q:v1'/);
-    assert.match(src, /'economic:eurostat:industrial-production:v1'/);
+  it('MCP serves the three EU overlays as get_country_macro datasets', async () => {
+    const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
+    const tool = TOOL_REGISTRY.find((entry) => entry.name === 'get_country_macro');
+    const datasets = {
+      'house-prices': 'economic:eurostat:house-prices:v1',
+      'gov-debt-q': 'economic:eurostat:gov-debt-q:v1',
+      'industrial-production': 'economic:eurostat:industrial-production:v1',
+    };
+    for (const [dataset, key] of Object.entries(datasets)) {
+      assert.ok(tool.inputSchema.properties.dataset.items.enum.includes(dataset), dataset);
+      assert.ok(tool._cacheKeys.includes(key), key);
+      assert.ok(tool._datasetKeys[dataset].includes(key), key);
+    }
   });
 
   it('macro bundle runner includes the three new scripts with distinct seed-meta keys', async () => {

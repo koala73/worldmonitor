@@ -11,12 +11,6 @@
 //
 // Deliberately has NO top-level side effects: no env guards, no
 // process.exit, no main(). Import anywhere.
-//
-// History: this file used to include a stand-alone Railway cron
-// (`seed-brief-composer.mjs`). That path was retired in the
-// consolidation PR — the digest cron now owns the compose+send
-// pipeline so there is exactly one cron writing brief:{userId}:
-// {issueDate} keys.
 
 import {
   assembleStubbedBriefEnvelope,
@@ -802,7 +796,7 @@ export function digestStoryToSynthesisShape(s) {
  *
  * @param {object} s — digest-shaped story from buildDigest()
  */
-function digestStoryToUpstreamTopStory(s) {
+export function digestStoryToUpstreamTopStory(s) {
   const sources = Array.isArray(s?.sources) ? s.sources : [];
   const primarySource = sources.length > 0 ? sources[0] : 'Multiple wires';
   const rawTitle = typeof s?.title === 'string' ? s.title : '';

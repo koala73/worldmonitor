@@ -55,6 +55,7 @@ export async function main(args) {
       shard: { type: 'string' },
       concurrency: { type: 'string', default: '4' },
       list: { type: 'boolean', default: false },
+      exclude: { type: 'string', multiple: true, default: [] },
       'built-output': { type: 'string', default: 'all' },
       timings: { type: 'string' },
       // Estimates to place files by. CI passes the newest ones its previous
@@ -91,7 +92,7 @@ export async function main(args) {
       .map((file) => file.split(sep).join('/'));
     if (!matches.length) throw new Error(`No test files match ${pattern}`);
     return matches;
-  }))], values['built-output']);
+  }))].filter((file) => !values.exclude.includes(file)), values['built-output']);
   if (!files.length) throw new Error(`No test files remain for --built-output=${values['built-output']}`);
   const durations = JSON.parse(readFileSync(values.durations ?? timingPath, 'utf8'));
   if (!durations || typeof durations !== 'object' || Array.isArray(durations)) {

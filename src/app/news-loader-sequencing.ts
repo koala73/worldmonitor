@@ -42,6 +42,12 @@ export interface RunNewsLoadPassOptions<TFeeds, TDigest, TItem> {
   ) => Promise<TItem[]>;
   onCategoryError?: (key: string | undefined, reason: unknown) => void;
   onDigestRefreshError?: (key: string | undefined, reason: unknown) => void;
+  /**
+   * Called once the categories and Intel have rendered from the fallback while
+   * the live digest is still pending, before the pass waits for it. Not called
+   * when the digest arrived within the grace window: that pass has no late tail.
+   */
+  onFirstPaint?: () => void;
 }
 
 export interface RunNewsLoadPassResult<TDigest, TItem> {
@@ -179,6 +185,7 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
   let finalDigest = initialDigest.digest;
 
   if (initialDigest.pending) {
+    options.onFirstPaint?.();
     // Settle every preset category against the digest this load ended with:
     // the ones it carries render from it, and the ones it does not (every one,
     // when it never arrived) take the stale or outage path they waited on.

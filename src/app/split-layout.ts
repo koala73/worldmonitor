@@ -8,8 +8,24 @@
 
 /** Viewport width (CSS px) at which the dashboard switches from the stacked
  * layout (map band above the panel grid) to the split layout (map column
- * beside the panels). Shared by web and the desktop app — issue #6417. */
-export const SPLIT_LAYOUT_MIN_WIDTH = 900;
+ * beside the panels). At 1440px the default 60% map leaves room for two
+ * 270px panel tracks plus gaps/padding. Shared by web and desktop (#10458). */
+export const SPLIT_LAYOUT_MIN_WIDTH = 1440;
+
+/** Whether the viewport is in the split layout, read the way the stylesheet
+ * reads it. `window.innerWidth` is a rounded integer, so at a fractional
+ * viewport width (browser zoom) it can disagree with `@media (min-width)`:
+ * at 1439.6px it says 1440 while the split media query does not match. Panel
+ * placement and the stylesheet must agree, or panels land in a zone the CSS
+ * hides (#6426). `innerWidth` is only the fallback where matchMedia is absent. */
+export function isSplitLayoutViewport(
+  target: { innerWidth: number; matchMedia?: (query: string) => { matches: boolean } },
+): boolean {
+  if (typeof target.matchMedia === 'function') {
+    return target.matchMedia(`(min-width: ${SPLIT_LAYOUT_MIN_WIDTH}px)`).matches;
+  }
+  return target.innerWidth >= SPLIT_LAYOUT_MIN_WIDTH;
+}
 
 /** Former web-only split threshold. It remains only to bound migration of the
  * legacy shared map-height preference to users who could have set it while

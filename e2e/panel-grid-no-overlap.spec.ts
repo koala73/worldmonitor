@@ -92,3 +92,106 @@ test('pinned dashboard panels do not overlap their grid neighbours', async ({ pa
       .toEqual([]);
   }
 });
+
+// A Pro-locked panel shows only a lock card (about 150px). Keeping its
+// two-row or four-row slot left a block of empty space above the panels below
+// it, so a signed-out visitor saw Supply Chain start mid-column.
+const LOCKED_PANELS = ['global-procurement', 'trade-policy'];
+
+test('Pro-locked panels shrink to one grid row', async ({ page }) => {
+  test.setTimeout(120_000);
+
+  await page.addInitScript((panels: string[]) => {
+    if (sessionStorage.getItem('__locked_footprint_e2e_init__')) return;
+    localStorage.setItem('worldmonitor-variant', 'full');
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+    localStorage.setItem('wm-layer-warning-dismissed', 'true');
+    localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+    const settings = JSON.parse(localStorage.getItem('worldmonitor-panels') || '{}');
+    for (const id of panels) settings[id] = { name: id, enabled: true, priority: 1 };
+    localStorage.setItem('worldmonitor-panels', JSON.stringify(settings));
+    sessionStorage.setItem('__locked_footprint_e2e_init__', '1');
+  }, LOCKED_PANELS);
+  // A shell can be replaced by its panel before the poll below sees it.
+  // Measure each shell while it is attached: when it is inserted and each
+  // time its class changes (the gating pass adds the lock class). A replaced
+  // shell is then judged on its last measurement, with the same bounds as a
+  // live one.
+  await page.addInitScript(() => {
+    type Shell = { height: number; rowMin: number; removed: boolean };
+    const shells: Record<string, Shell> = {};
+    (window as unknown as { __lockedShells: Record<string, Shell> }).__lockedShells = shells;
+    const measure = (el: Element) => {
+      if (!(el instanceof HTMLElement) || !el.classList.contains('panel-deferred-shell') || !el.isConnected) return;
+      const id = el.dataset.panel;
+      if (!id) return;
+      const rowMin = parseFloat(getComputedStyle(el).getPropertyValue('--dashboard-panel-row-min')) || 200;
+      shells[id] = { height: el.getBoundingClientRect().height, rowMin, removed: false };
+    };
+    new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === 'attributes') measure(record.target as Element);
+        for (const node of record.addedNodes) measure(node as Element);
+        for (const node of record.removedNodes) {
+          if (!(node instanceof HTMLElement) || !node.classList.contains('panel-deferred-shell')) continue;
+          const entry = node.dataset.panel ? shells[node.dataset.panel] : undefined;
+          if (entry) entry.removed = true;
+        }
+      }
+    }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+
+  // Once gating has run, a locked panel's deferred shell must already have the
+  // one-row footprint, so mounting the locked panel into it moves nothing.
+  await expect
+    .poll(
+      () => page.evaluate((panels: string[]) => {
+        // Every panel needs a shell measurement: live, or the last one taken
+        // before its shell was replaced. A panel never seen as a shell fails.
+        const recorded = (window as unknown as { __lockedShells: Record<string, { height: number; rowMin: number; removed: boolean }> }).__lockedShells;
+        const judge = (id: string, height: number, rowMin: number) =>
+          height > 0 && height <= rowMin + 1 ? 'one row' : `${id} shell ${Math.round(height)}px`;
+        const shells = panels.map((id) => {
+          const shell = document.querySelector<HTMLElement>(`#panelsGrid > .panel-deferred-shell[data-panel="${id}"]`);
+          if (shell) {
+            const rowMin = parseFloat(getComputedStyle(shell).getPropertyValue('--dashboard-panel-row-min')) || 200;
+            return judge(id, shell.getBoundingClientRect().height, rowMin);
+          }
+          const last = recorded[id];
+          if (!last?.removed) return `${id} has no deferred shell`;
+          return judge(id, last.height, last.rowMin);
+        });
+        return shells.find((s) => s !== 'one row') ?? 'one row';
+      }, LOCKED_PANELS),
+      { message: 'locked panel shells reserve one row', timeout: 30_000 },
+    )
+    .toBe('one row');
+
+  for (const id of LOCKED_PANELS) {
+    await expect
+      .poll(
+        () => page.evaluate((panelId: string) => {
+          const panel = document.querySelector<HTMLElement>(`#panelsGrid > .panel[data-panel="${panelId}"]`);
+          if (!panel) return 'missing';
+          panel.scrollIntoView({ block: 'center' });
+          if (panel.dataset.deferredPanel === 'true') return 'deferred';
+          if (!panel.classList.contains('panel-is-locked')) return 'unlocked';
+          const card = panel.querySelector<HTMLElement>('.panel-locked-state');
+          if (!card) return 'no lock card';
+          const slot = panel.getBoundingClientRect();
+          const cardBox = card.getBoundingClientRect();
+          // A hidden panel measures 0x0 and would pass the size checks below.
+          if (!slot.width || !slot.height || !cardBox.width || !cardBox.height) return 'not rendered';
+          const rowMin = parseFloat(getComputedStyle(panel).getPropertyValue('--dashboard-panel-row-min')) || 200;
+          const cardBottom = card.getBoundingClientRect().bottom;
+          if (cardBottom > slot.bottom + 1) return `lock card clipped (${Math.round(cardBottom - slot.bottom)}px)`;
+          return slot.height <= rowMin + 1 ? 'one row' : `slot ${Math.round(slot.height)}px`;
+        }, id),
+        { message: `${id} locked footprint`, timeout: 60_000 },
+      )
+      .toBe('one row');
+  }
+});

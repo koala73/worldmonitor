@@ -146,16 +146,19 @@ test('the right part of the translate button clicks, and the strip still resizes
   const panel = page.locator('.panel').first();
   const button = panel.locator('.cluster-meta .item-translate-btn').first();
   await expect(button).toBeVisible();
-  await button.evaluate((btn) => {
-    btn.addEventListener('click', (e) => {
+  // Cluster enrichment can replace the rows between setup and the click.
+  await panel.evaluate((el) => {
+    el.addEventListener('click', (e) => {
+      const first = el.querySelector('.cluster-meta .item-translate-btn');
+      if (!(e.target instanceof Node) || !first?.contains(e.target)) return;
       (window as unknown as { __translateClicks: number }).__translateClicks =
         ((window as unknown as { __translateClicks?: number }).__translateClicks ?? 0) + 1;
       e.stopPropagation();
-    });
+    }, { capture: true });
   });
 
-  const box = (await button.boundingBox())!;
-  await page.mouse.click(box.x + box.width - 2, box.y + box.height / 2);
+  const position = await button.evaluate(btn => ({ x: btn.clientWidth - 2, y: btn.clientHeight / 2 }));
+  await button.click({ position });
   expect(await page.evaluate(() => (window as unknown as { __translateClicks?: number }).__translateClicks ?? 0)).toBe(1);
   await expect(panel).not.toHaveClass(/col-resizing/);
 
@@ -184,6 +187,11 @@ test('aiming at a visible resize grip lands on its drag strip (#9729)', async ({
     style.textContent = '.panel-resize-handle, .panel-col-resize-handle { background: none !important; }'
       + ' .panel-resize-handle::after, .panel-col-resize-handle::after { color: #ff00ff !important; transition: none !important; }';
     document.head.appendChild(style);
+    // Chromium answers a viewport capture with "Unable to capture screenshot"
+    // until the page has produced a frame. That is normally immediate, but a
+    // WebGL map closing in the same browser process holds frames back for
+    // seconds, and this test can run straight after one.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     return ['.panel-col-resize-handle', '.panel-resize-handle'].map((selector) => {
       const r = panel.getElement().querySelector(selector)!.getBoundingClientRect();
       return { selector, x: r.left, y: r.top, width: r.width, height: r.height };

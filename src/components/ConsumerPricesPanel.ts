@@ -88,6 +88,11 @@ function freshnessLabel(min: number | null): string {
   return `${Math.round(min / 1440)}d ago`;
 }
 
+// Same rule the snapshot builder uses to name categories.
+function categoryLabel(category: string): string {
+  return category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function freshnessClass(min: number | null): string {
   if (min == null) return 'cp-fresh--unknown';
   if (min <= 60) return 'cp-fresh--ok';
@@ -649,12 +654,17 @@ export class ConsumerPricesPanel extends Panel {
       <div class="cp-mover-row cp-mover-row--${dir}">
         <div class="cp-mover-title">${escapeHtml(m.title)}</div>
         <div class="cp-mover-meta">
-          <span class="cp-mover-cat">${escapeHtml(m.category)}</span>
-          <span class="cp-mover-retailer">${escapeHtml(m.retailerSlug)}</span>
+          <span class="cp-mover-cat">${escapeHtml(categoryLabel(m.category))}</span>
+          <span class="cp-mover-retailer">${escapeHtml(this.retailerName(m.retailerSlug))}</span>
         </div>
         <div class="cp-mover-pct">${sign}${m.changePct.toFixed(1)}%</div>
       </div>
     `;
+  }
+
+  private retailerName(slug: string): string {
+    const known = [...(this.freshness?.retailers ?? []), ...(this.spread?.retailers ?? [])];
+    return known.find((r) => r.slug === slug)?.name ?? slug;
   }
 
   private renderSpread(): string {

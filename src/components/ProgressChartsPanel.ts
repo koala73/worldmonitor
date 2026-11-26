@@ -127,7 +127,7 @@ export class ProgressChartsPanel extends Panel {
    * Render a single area chart for a ProgressDataSet.
    */
   private renderChart(dataset: ProgressDataSet): void {
-    const { indicator, data, changePercent } = dataset;
+    const { indicator, data, oldestValue, latestValue } = dataset;
     const oldest = data[0]!;
 
     // Container div
@@ -161,9 +161,10 @@ export class ProgressChartsPanel extends Panel {
       color: 'var(--text-dim)',
     });
 
-    // Build change badge text
-    const sign = changePercent >= 0 ? '+' : '';
-    const changeText = `${sign}${changePercent.toFixed(1)}% since ${oldest.year}`;
+    // changePercent is inverted for lower-is-better indicators; show the real direction.
+    const actualChange = oldestValue !== 0 ? ((latestValue - oldestValue) / Math.abs(oldestValue)) * 100 : 0;
+    const sign = actualChange >= 0 ? '+' : '';
+    const changeText = `${sign}${actualChange.toFixed(1)}% since ${oldest.year}`;
     const unitText = indicator.unit ? ` (${indicator.unit})` : '';
     meta.textContent = changeText + unitText;
 
@@ -197,7 +198,8 @@ export class ProgressChartsPanel extends Panel {
   ): void {
     // Size from the chart's own box: themes pad the chart container (the happy
     // theme by 16px a side), so the panel body's width overstates it.
-    const containerWidth = container.clientWidth;
+    // clientWidth rounds up fractional grid tracks and can overflow by 1px.
+    const containerWidth = Math.floor(container.getBoundingClientRect().width);
     if (containerWidth <= 0) return;
 
     const width = containerWidth - CHART_MARGIN.left - CHART_MARGIN.right;

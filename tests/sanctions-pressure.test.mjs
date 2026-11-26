@@ -340,6 +340,27 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
     assert.equal(empty.semaError, undefined);
   });
 
+  it('moves the legacy XX row outside the country list without changing totals', async () => {
+    const unknown = { countryCode: 'XX', countryName: 'Unknown', entryCount: 4, newEntryCount: 0, vesselCount: 3, aircraftCount: 1 };
+    const russia = { countryCode: 'RU', countryName: 'Russia', entryCount: 2, newEntryCount: 0, vesselCount: 1, aircraftCount: 0 };
+    cacheStore.set(REDIS_KEY, cachedPayload({ countries: [unknown, russia], totalCount: 6, vesselCount: 4, aircraftCount: 1 }));
+    const response = await listSanctionsPressure(premiumContext(), { maxItems: 25 });
+    assert.deepEqual(response.countries, [russia]);
+    assert.deepEqual(response.unattributed, { entryCount: 4, vesselCount: 3, aircraftCount: 1 });
+    assert.equal(response.totalCount, 6);
+    assert.equal(response.vesselCount, 4);
+    assert.equal(response.aircraftCount, 1);
+  });
+
+  it('serves vessel flag registries apart from countries, and none for older snapshots', async () => {
+    const panama = { countryCode: 'PA', countryName: 'Panama', vesselCount: 276, newVesselCount: 2 };
+    cacheStore.set(REDIS_KEY, cachedPayload({ flagRegistries: [panama] }));
+    assert.deepEqual((await listSanctionsPressure(premiumContext(), { maxItems: 25 })).flagRegistries,
+      [{ ...panama, aircraftCount: 0, newAircraftCount: 0 }]);
+    cacheStore.set(REDIS_KEY, cachedPayload());
+    assert.deepEqual((await listSanctionsPressure(premiumContext(), { maxItems: 25 })).flagRegistries, []);
+  });
+
   // The same seed is served anonymously by /api/bootstrap, so the RPC is free
   // too: a Pro gate here only hid the data from API callers.
   it('serves anonymous callers the same payload as credentialed callers', async () => {
@@ -509,6 +530,49 @@ describe('sanctions frontend normalization parity', () => {
     assert.equal(rpcResult.semaError, 'SEMA unavailable');
     assert.equal(rpcResult.entries[0]?.sourceLists[0], 'SDN');
   });
+});
+
+it('lists vessel flag registries in their own section, not under countries', async () => {
+  const stubs = new Map([
+    ['./Panel', 'export class Panel { showLoading() {} setCount() {} setSafeContent(value) { this.rendered = value; } }'],
+    ['@/services/i18n', 'export function t(key) { return key; }'],
+  ]);
+  const result = await build({
+    entryPoints: [resolve(root, 'src/components/SanctionsPressurePanel.ts')],
+    bundle: true, format: 'esm', platform: 'browser', target: 'es2022', write: false,
+    plugins: [{ name: 'sanctions-panel-host', setup(api) {
+      api.onResolve({ filter: /.*/ }, args => stubs.has(args.path) ? { path: args.path, namespace: 'stub' } : null);
+      api.onLoad({ filter: /.*/, namespace: 'stub' }, args => ({ contents: stubs.get(args.path), loader: 'ts' }));
+    } }],
+  });
+  const { SanctionsPressurePanel } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
+  const panel = new SanctionsPressurePanel();
+  const base = {
+    totalCount: 3, newEntryCount: 0, semaCount: 0, semaError: null, vesselCount: 2, aircraftCount: 0,
+    fetchedAt: new Date(0), datasetDate: null, entries: [], programs: [],
+    countries: [{ countryCode: 'RU', countryName: 'Russia', entryCount: 1, newEntryCount: 0, vesselCount: 0, aircraftCount: 0 }],
+  };
+  panel.setData({ ...base, regulationTargets: [
+    { countryCode: 'BY', countryName: 'Belarus', entryCount: 500, newEntryCount: 2, vesselCount: 0, aircraftCount: 0 },
+  ], flagRegistries: [
+    { countryCode: 'PA', countryName: 'Panama', vesselCount: 2, newVesselCount: 0, aircraftCount: 0, newAircraftCount: 0 },
+    { countryCode: 'AW', countryName: 'Aruba', vesselCount: 0, newVesselCount: 0, aircraftCount: 1, newAircraftCount: 1 },
+  ] });
+  const html = String(panel.rendered);
+  const countries = html.indexOf('components.sanctionsPressure.sections.countries');
+  const registries = html.indexOf('components.sanctionsPressure.sections.flagRegistries');
+  assert.ok(countries >= 0 && registries > countries, 'registries render as a section after countries');
+  assert.doesNotMatch(html.slice(countries, registries), /Panama/);
+  assert.match(html.slice(registries), /Panama[\s\S]*🚢 2/);
+  assert.match(html.slice(registries), /Aruba[\s\S]*pills\.newCount[\s\S]*✈ 1/, 'aircraft registries render beside vessel flags');
+  const targets = html.indexOf('components.sanctionsPressure.sections.regulationTargets');
+  assert.ok(targets > registries);
+  assert.doesNotMatch(html.slice(countries, targets), /Belarus/);
+  assert.match(html.slice(targets), /targetExplanation[\s\S]*Belarus/);
+
+  panel.setData({ ...base, flagRegistries: [] });
+  assert.doesNotMatch(String(panel.rendered), /sections\.flagRegistries/, 'older snapshots without registries hide the section');
+  assert.doesNotMatch(String(panel.rendered), /sections\.regulationTargets/, 'older snapshots hide missing targets');
 });
 
 it('renders zero-record sanctions data as unavailable', async () => {

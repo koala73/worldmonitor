@@ -58,6 +58,7 @@ describe("checkout stamps the first-touch acquisition source", () => {
         campaign: "hormuz-launch",
         referrer: "t.co",
         landing: "pricing",
+        path: "/pro/",
         firstSeen: "2026-10-24",
       },
     });
@@ -68,6 +69,7 @@ describe("checkout stamps the first-touch acquisition source", () => {
       wm_acq_campaign: "hormuz-launch",
       wm_acq_referrer: "t.co",
       wm_acq_landing: "pricing",
+      wm_acq_path: "/pro/",
       wm_acq_first_seen: "2026-10-24",
       wm_user_id: USER_ID,
     });
@@ -78,12 +80,13 @@ describe("checkout stamps the first-touch acquisition source", () => {
     await t.action(internal.payments.checkout.internalCreateCheckout, {
       userId: USER_ID,
       productId: PRODUCT_ID,
-      acquisition: { referrer: "evil host/path", landing: "admin", firstSeen: "yesterday", medium: "cpc" },
+      acquisition: { referrer: "evil host/path", landing: "admin", path: "/pro/?x=<y>", firstSeen: "yesterday", medium: "cpc" },
     });
     const metadata = capturedMetadata();
     expect(metadata.wm_acq_medium).toBe("cpc");
     expect(metadata.wm_acq_referrer).toBeUndefined();
     expect(metadata.wm_acq_landing).toBeUndefined();
+    expect(metadata.wm_acq_path).toBeUndefined();
     expect(metadata.wm_acq_first_seen).toBeUndefined();
     expect(metadata.wm_user_id).toBe(USER_ID);
     expect(metadata.affonso_referral).toBeUndefined();

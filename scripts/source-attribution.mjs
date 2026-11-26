@@ -30,6 +30,11 @@ import {
 } from './source-catalog-identity.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// Pin the collation locale. A bare localeCompare() follows the host locale, so
+// a cs_CZ machine ("ch" sorts after "h") reordered the provider identity list,
+// broke the reviewed sha256 and failed `npm install`. 'en-US' keeps the order
+// CI and committed output already use.
+export const compareText = (left, right) => left.localeCompare(right, 'en-US');
 const MANIFEST_PATH = 'shared/source-attribution-manifest.json';
 const DOCS_PATH = 'docs/source-attribution.mdx';
 // MDX comments, not HTML ones: Mintlify parses docs/source-attribution.mdx as MDX v3,
@@ -93,6 +98,48 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  cnn: Object.freeze({
+    provider: 'CNN',
+    memberHosts: Object.freeze(['cnn.com', 'www.cnn.com']),
+    reason: 'The publisher supplies the direct news feed and the articles indexed by its existing Google News search.',
+    reviewReference: 'Issue #10937',
+  }),
+  'sky-news': Object.freeze({
+    provider: 'Sky News',
+    memberHosts: Object.freeze(['feeds.skynews.com', 'news.sky.com']),
+    reason: 'The publisher supplies the direct news feed and the articles indexed by its Google News claim-depth search.',
+    reviewReference: 'Issue #10937',
+  }),
+  'washington-post': Object.freeze({
+    provider: 'The Washington Post',
+    memberHosts: Object.freeze(['feeds.washingtonpost.com', 'washingtonpost.com']),
+    reason: 'The publisher supplies the direct news feed and the articles indexed by its Google News claim-depth search.',
+    reviewReference: 'Issue #10937',
+  }),
+  ukrinform: Object.freeze({
+    provider: 'Ukrinform',
+    memberHosts: Object.freeze(['ukrinform.net', 'www.ukrinform.net']),
+    reason: 'The publisher supplies the direct news feed and the articles indexed by its existing Google News search.',
+    reviewReference: 'Issue #10937',
+  }),
+  'world-bank-open-data': Object.freeze({
+    provider: 'World Bank Open Data',
+    memberHosts: Object.freeze(['api.worldbank.org', 'datacatalogfiles.worldbank.org']),
+    reason: 'The indicator API and official WGI bulk download publish World Bank data; Taiwan is available through the bulk release.',
+    reviewReference: 'CII structural prior, issue #10577',
+  }),
+  nsidc: Object.freeze({
+    provider: 'NSIDC',
+    memberHosts: Object.freeze(['noaadata.apps.nsidc.org', 'nsidc.org']),
+    reason: 'nsidc.org is the National Snow and Ice Data Center site that documents ICESat-2 ATL13; noaadata.apps.nsidc.org is its sea-ice data host.',
+    reviewReference: 'Strategic Water Levels (ICESat-2 ATL13) provider identity, issue #10490',
+  }),
+  sliderule: Object.freeze({
+    provider: 'SlideRule Earth',
+    memberHosts: Object.freeze(['sliderule.slideruleearth.io', 'slideruleearth.io']),
+    reason: 'sliderule.slideruleearth.io is the processing API documented by the SlideRule Earth site at slideruleearth.io.',
+    reviewReference: 'Strategic Water Levels (ICESat-2 ATL13) provider identity, issue #10490',
+  }),
   nvd: Object.freeze({
     provider: 'NVD (NIST)',
     memberHosts: Object.freeze(['nvd.nist.gov', 'services.nvd.nist.gov']),
@@ -122,6 +169,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     memberHosts: Object.freeze(['www.sonabhy.bf', 'king-prawn-app-6bsvl.ondigitalocean.app']),
     reason: 'The SONABHY tariff page reads its prices from the Strapi CMS its Nuxt state names; the feed reads the same CMS after confirming the page still points to it.',
     reviewReference: 'Issue #10051 fuel-price batch 3',
+  }),
+  ibge: Object.freeze({
+    provider: 'sidra.ibge.gov.br',
+    memberHosts: Object.freeze(['sidra.ibge.gov.br', 'apisidra.ibge.gov.br']),
+    reason: 'The IBGE SIDRA table page links the IPCA table whose values the SIDRA API serves.',
+    reviewReference: 'Issue #10837 food-price batch 6',
   }),
   jodi: Object.freeze({
     provider: 'www.jodidata.org',
@@ -219,6 +272,47 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  'catalogue.data.wa.gov.au': {
+    license: "CC-BY-4.0 (FuelWatch Historic Fuel Prices dataset licence on catalogue.data.wa.gov.au, read 2026-11-26; the monthly CSVs are served from warsydprdstafuelwatch.blob.core.windows.net)",
+    attribution: "Credit FuelWatch, Government of Western Australia, FuelWatch Historic Fuel Prices, and link to https://catalogue.data.wa.gov.au/dataset/fuelwatch-historic-fuel-prices; medians across stations and USD conversions are derived values.",
+    status: 'reviewed',
+  },
+  'datos.energia.gob.ar': {
+    license: "CC-BY-4.0 (dataset licence on datos.gob.ar/dataset/precios-en-surtidor, read 2026-11-26)",
+    attribution: "Credit Secretaría de Energía de la Nación (Argentina), Precios en surtidor - Resolución 314/2016, and link to https://datos.energia.gob.ar/dataset/1c181390-5045-475e-94dc-410429be4b17; medians across stations and USD conversions are derived values.",
+    status: 'reviewed',
+  },
+  'transparency.ems.rs': {
+    license: "All rights reserved (AD Elektromreža Srbije site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+    attribution: "Credit Elektromreža Srbije (EMS) transparency platform and link to https://transparency.ems.rs/; hour placement in UTC is derived.",
+    status: 'reviewed',
+  },
+  'www.nosbih.ba': {
+    license: "Copyright footer of the Independent System Operator in Bosnia and Herzegovina, no data licence; reuse cleared by the WorldMonitor owner on 2026-11-26",
+    attribution: "Credit NOS BiH (Independent System Operator in Bosnia and Herzegovina) and link to https://www.nosbih.ba/en/ees/graf-potrosnje/; hour placement in UTC is derived.",
+    status: 'reviewed',
+  },
+  'www.mepso.com.mk': {
+    license: "All rights reserved (MEPSO site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+    attribution: "Credit MEPSO, the North Macedonia transmission system operator, daily information report, and link to https://www.mepso.com.mk/; net cross-border flow is derived.",
+    status: 'reviewed',
+  },
+  'release-assets.githubusercontent.com': {
+    provider: 'US Restricted Parties feed (Tensorust LLC)',
+    license: 'CC BY 4.0 (Creative Commons Attribution 4.0 International)',
+    attribution: 'US Restricted Parties feed by Tensorust LLC (https://github.com/Mattbusel/us-restricted-parties), CC BY 4.0.',
+    status: 'reviewed',
+  },
+  'massoutage.com': {
+    license: 'MassOutage API and compilations CC BY 4.0. Upstream terms continue to apply.',
+    attribution: 'Credit MassOutage (massoutage.com), link to the source and license, and identify the calculated change in state totals.',
+    status: 'reviewed',
+  },
+  'wwwmobile.caiso.com': {
+    license: 'California ISO public website terms. Use factual emergency notice types and times.',
+    attribution: 'Credit California ISO and link to its emergency notifications.',
+    status: 'terms-review',
+  },
   'nvd.nist.gov': {
     provider: 'NVD (NIST)', identityGroup: 'nvd',
     license: 'Public domain (US Federal Government work)',
@@ -239,11 +333,17 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Credit Statistics Norway (SSB), table 09654, monthly average pump prices in NOK per litre; identify FX conversion as a derived value and link the CC BY 4.0 licence.',
     status: 'reviewed',
   },
+  'currency-api.pages.dev': {
+    provider: 'fawazahmed0 currency-api',
+    license: 'CC0-1.0 per the project repository (github.com/fawazahmed0/exchange-api); aggregated daily exchange rates, upstream sources not itemised by the project',
+    attribution: 'Credit the fawazahmed0 currency-api; used only as the second source for a currency whose Yahoo quotes are unreliable.',
+    status: 'terms-review',
+  },
   'www2.moeaea.gov.tw': {
     provider: 'www2.moeaea.gov.tw',
-    license: 'Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed',
-    attribution: 'Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.',
-    status: 'terms-review',
+    license: 'Taiwan government website open data declaration (www2.moeaea.gov.tw/oil111/opendataannouncement, read 2026-11-26): free, non-exclusive, irrevocable reuse including adaptation and redistribution, with attribution',
+    attribution: 'Credit Taiwan MOEA Energy Administration, oil111 fuel price information system (https://www2.moeaea.gov.tw/oil111/); national and county means are survey averages, and USD conversions are derived values.',
+    status: 'reviewed',
   },
   // Food-price publishers (#9892) whose own terms we recorded at onboarding.
   'stat.uz': {
@@ -285,6 +385,16 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Credit the National Statistics Office of Mongolia (www.1212.mn) and link the weekly price table.',
     status: 'terms-review',
   },
+  // Food-price publisher (#11153).
+  'datos.odepa.gob.cl': {
+    provider: 'datos.odepa.gob.cl',
+    license: 'Creative Commons Attribution (CKAN dataset license_id cc-by, read 2026-11-23)',
+    attribution: 'Credit the Oficina de Estudios y Políticas Agrarias (ODEPA), Ministry of Agriculture of Chile, and link the consumer prices dataset on datos.odepa.gob.cl.',
+    status: 'reviewed',
+  },
+  // IBGE SIDRA table page and its API host are one publisher (#10837); the licence is unverified, so terms-review stays.
+  'sidra.ibge.gov.br': { provider: 'sidra.ibge.gov.br', identityGroup: 'ibge' },
+  'apisidra.ibge.gov.br': { provider: 'sidra.ibge.gov.br', identityGroup: 'ibge' },
   'www.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'api.publisher.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'doe.gov.ph': { provider: 'doe.gov.ph', identityGroup: 'doe-ph' },
@@ -332,8 +442,16 @@ const PROVIDER_OVERRIDES = {
   },
   'api.worldbank.org': {
     provider: 'World Bank Open Data',
+    identityGroup: 'world-bank-open-data',
     license: 'World Development Indicators are licensed under CC BY 4.0. UNESCO UIS indicators mirrored through WDI also require the UIS attribution stated in the public source documentation.',
     attribution: 'World Bank Open Data. For education indicators: UNESCO Institute for Statistics via World Bank WDI; include the UIS source URL and extraction date.',
+    status: 'reviewed',
+  },
+  'datacatalogfiles.worldbank.org': {
+    provider: 'World Bank Open Data',
+    identityGroup: 'world-bank-open-data',
+    license: 'Worldwide Governance Indicators: Creative Commons Attribution 4.0 (CC BY 4.0).',
+    attribution: 'World Bank Worldwide Governance Indicators, 2026 release, data year 2025. Link the original bulk release recorded in each prior payload.',
     status: 'reviewed',
   },
   'api.x.com': { provider: 'X API' },
@@ -419,14 +537,22 @@ const PROVIDER_OVERRIDES = {
   'thedailystar.net': publisherMetadataFeed('The Daily Star'),
   'dhakatribune.com': publisherMetadataFeed('Dhaka Tribune'),
   // Major publishers after the 2026-10-16 Google News World audit; Google News site: feeds.
-  'nytimes.com': publisherMetadataFeed('The New York Times'),
+  'cnn.com': { ...publisherMetadataFeed('CNN'), identityGroup: 'cnn' },
+  'www.cnn.com': { ...publisherMetadataFeed('CNN'), identityGroup: 'cnn' },
+  'ukrinform.net': { ...publisherMetadataFeed('Ukrinform'), identityGroup: 'ukrinform' },
+  'www.ukrinform.net': { ...publisherMetadataFeed('Ukrinform'), identityGroup: 'ukrinform' },
+  'rss.nytimes.com': publisherMetadataFeed('The New York Times'),
   // Al Jazeera's claim-pool depth search (2026-10-17 /verify audit).
   'aljazeera.com': { ...publisherMetadataFeed('Al Jazeera'), identityGroup: 'al-jazeera' },
   'www.aljazeera.com': { provider: 'Al Jazeera', identityGroup: 'al-jazeera' },
-  'washingtonpost.com': publisherMetadataFeed('The Washington Post'),
+  'washingtonpost.com': { ...publisherMetadataFeed('The Washington Post'), identityGroup: 'washington-post' },
+  'feeds.washingtonpost.com': { ...publisherMetadataFeed('The Washington Post'), identityGroup: 'washington-post' },
   'economist.com': publisherMetadataFeed('The Economist'),
-  'independent.co.uk': publisherMetadataFeed('The Independent'),
-  'news.sky.com': publisherMetadataFeed('Sky News'),
+  'www.independent.co.uk': publisherMetadataFeed('The Independent'),
+  'news.sky.com': { ...publisherMetadataFeed('Sky News'), identityGroup: 'sky-news' },
+  'feeds.skynews.com': { ...publisherMetadataFeed('Sky News'), identityGroup: 'sky-news' },
+  'kyivindependent.com': publisherMetadataFeed('The Kyiv Independent'),
+  'english.nv.ua': publisherMetadataFeed('The New Voice of Ukraine'),
   'timesofisrael.com': publisherMetadataFeed('Times of Israel'),
   'middleeasteye.net': publisherMetadataFeed('Middle East Eye'),
   'japantimes.co.jp': publisherMetadataFeed('Japan Times'),
@@ -535,6 +661,12 @@ const PROVIDER_OVERRIDES = {
     license: 'Hyperliquid API terms',
     attribution: 'Hyperliquid; link to the relevant market/API response.',
     status: 'terms-review',
+  },
+  'apps.bea.gov': {
+    provider: 'U.S. Bureau of Economic Analysis (BEA)',
+    license: 'U.S. government public-domain release schedule',
+    attribution: 'U.S. Bureau of Economic Analysis news release schedule.',
+    status: 'reviewed',
   },
   'apps.fas.usda.gov': {
     provider: 'USDA FAS PSD',
@@ -854,8 +986,56 @@ const PROVIDER_OVERRIDES = {
     attribution: 'ReliefWeb, United Nations Office for the Coordination of Humanitarian Affairs (OCHA).',
     status: 'terms-review',
   },
+  'nsidc.org': {
+    provider: 'NSIDC', identityGroup: 'nsidc',
+    license: 'U.S. government/public dataset terms; collection-specific license applies',
+    attribution: 'National Snow and Ice Data Center (NSIDC); link to the dataset.',
+    status: 'terms-review',
+  },
+  'planetarycomputer.microsoft.com': {
+    provider: 'Microsoft Planetary Computer',
+    license: 'Copernicus Sentinel data under the Copernicus open licence; Landsat data are USGS public domain; Planetary Computer terms of use apply',
+    attribution: 'Microsoft Planetary Computer; credit "Contains modified Copernicus Sentinel data" or "Landsat imagery courtesy of the U.S. Geological Survey" and link to the item.',
+    status: 'terms-review',
+  },
+  'gibs.earthdata.nasa.gov': {
+    provider: 'NASA GIBS',
+    license: 'NASA Earth science data are openly shared without restriction (CC0 unless marked); GIBS asks clients to acknowledge it',
+    attribution: 'We acknowledge the use of imagery provided by services from NASA\'s Global Imagery Browse Services (GIBS), part of NASA\'s Earth Science Data and Information System (ESDIS).',
+    status: 'terms-review',
+  },
+  'view.eumetsat.int': {
+    provider: 'EUMETSAT EUMETView',
+    license: 'EUMETSAT Data Policy: Meteosat advanced image products are Core data, free and unrestricted for any use',
+    attribution: 'Contains EUMETSAT Meteosat imagery; credit EUMETSAT and link to EUMETView.',
+    status: 'terms-review',
+  },
+  'celestrak.org': {
+    provider: 'CelesTrak',
+    license: 'Public U.S. Space Force GP orbit elements republished by CelesTrak; CelesTrak usage terms apply and require review',
+    attribution: 'Orbit elements from CelesTrak; link to celestrak.org.',
+    status: 'terms-review',
+  },
+  'cmr.earthdata.nasa.gov': {
+    provider: 'NASA Earthdata CMR',
+    license: 'U.S. government public metadata; NASA Earthdata terms apply',
+    attribution: 'NASA Earthdata Common Metadata Repository (CMR); credit the dataset (NSIDC ICESat-2 ATL13 and ATL06).',
+    status: 'terms-review',
+  },
+  'sliderule.slideruleearth.io': {
+    provider: 'SlideRule Earth', identityGroup: 'sliderule',
+    license: 'Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)',
+    attribution: 'Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).',
+    status: 'terms-review',
+  },
+  'slideruleearth.io': {
+    provider: 'SlideRule Earth', identityGroup: 'sliderule',
+    license: 'Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)',
+    attribution: 'Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).',
+    status: 'terms-review',
+  },
   'noaadata.apps.nsidc.org': {
-    provider: 'NSIDC',
+    provider: 'NSIDC', identityGroup: 'nsidc',
     license: 'U.S. government/public dataset terms; collection-specific license applies',
     attribution: 'National Snow and Ice Data Center (NSIDC); link to the dataset.',
     status: 'terms-review',
@@ -1085,7 +1265,34 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'e9e1c1e84ccaad353d2e316eb3fd845a84bab4def9aa02387d171cc0a86a6fd3',
+  // PR #10998: identify the restricted-party feed on its release asset host.
+  sha256: '24fc088cb3e432fbf4036441830a14fee2e1fbe5d9d0a170dd1693ee1a10911f',
+  // 2026-11-26 (#10837): group the IBGE SIDRA table page and its API host as
+  // one Brazil food-price publisher; its licence stays under terms review.
+  // 2026-11-26 (#11153): add the ODEPA open-data portal as the Chile food-price
+  // publisher; the dataset is CC BY.
+  // 2026-11-25 (#11271): name BEA on the release-schedule host behind the
+  // economic calendar's GDP and PCE release times.
+  // 2026-11-18 (#10937): name The Kyiv Independent and The New Voice of
+  // Ukraine on their direct feeds. Group Sky News and The Washington Post with
+  // the hosts their Google News claim-depth searches fetch again. Drop the
+  // nytimes.com and independent.co.uk rows: both outlets now fetch only
+  // rss.nytimes.com and www.independent.co.uk, so the old rows read as
+  // dropped sources.
+  // 2026-11-13: name CelesTrak as the provider of the orbit elements behind
+  // satellite tracking and the point lookup (issue #10615), with its licence.
+  // 2026-11-13: add the browser-direct satellite image archives for the point
+  // lookup (issue #10615): Microsoft Planetary Computer, NASA GIBS and
+  // EUMETSAT EUMETView. Each publishes terms that allow display in a web
+  // client with credit.
+  // 2026-11-13: add the fawazahmed0 currency-api as the second exchange-rate
+  // source for a currency whose Yahoo quotes are unreliable (CII economic
+  // stress, issue #10577). Terms are under review; the project states CC0.
+  // 2026-11-12: identify the official WGI bulk release used for Taiwan's
+  // pinned CII prior, grouped with the World Bank indicator API.
+  // 2026-11-11: add the ICESat-2 ATL13 chain for Strategic Water Levels.
+  // NASA Earthdata CMR lists granules, SlideRule Earth subsets them, and
+  // NSIDC publishes the dataset; nsidc.org joins the existing NSIDC host.
   // 2026-11-05 (#10147, #10113): add Statistics Norway and Taiwan oil111
   // as distinct public fuel-price publishers; SSB is CC BY 4.0 and oil111
   // remains in terms review.
@@ -1098,19 +1305,19 @@ export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
   // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
   // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
-  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03).',
+  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the ODEPA open-data portal of Chile (datos.odepa.gob.cl) as a reviewed CC BY food-price publisher (#11153). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03). Add NASA Earthdata CMR, SlideRule Earth (API and site hosts as one identity) and nsidc.org under the existing NSIDC identity for the ICESat-2 ATL13 reservoir levels (2026-11-11). Add Microsoft Planetary Computer, NASA GIBS and EUMETSAT EUMETView as the satellite image archives the point lookup calls from the browser (2026-11-13). Group the IBGE SIDRA table page and API host of Brazil as one food-price publisher under terms review (#10837).',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups.',
+  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups; plus the Strategic Water Levels ICESat-2 ATL13 provider identity review and the direct publisher feeds in issue #10937; plus Issue #11153 ODEPA food-price publisher review; plus Issue #10837 IBGE SIDRA publisher grouping.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
   const identities = Object.entries(providerOverrides || {})
     .filter(([, override]) => typeof override?.provider === 'string')
     .map(([host, override]) => [host, override.provider])
-    .sort(([left], [right]) => left.localeCompare(right));
+    .sort(([left], [right]) => compareText(left, right));
   return createHash('sha256').update(JSON.stringify(identities)).digest('hex');
 }
 
@@ -1181,6 +1388,10 @@ const EXCLUDED_HOSTS = new Set([
   // ingested as data.
   'claude.ai',
   'chatgpt.com',
+  // One-click MCP install links in Settings → AI Agents
+  // (src/config/mcp-agent-clients.ts). Navigation targets, never fetched.
+  'cursor.com',
+  'vscode.dev',
   'searchconsole.googleapis.com',
   'www.googleapis.com',
   'yandex.com',
@@ -1214,11 +1425,11 @@ const EXCLUDED_HOSTS = new Set([
   'wingbits.com',
   // Vendor pricing, marketplace, and procurement pages cited as price sources
   // in /compare/ copy. Nothing fetches them.
+  'assets.applytosupply.digitalmarketplace.service.gov.uk',
   'aws.amazon.com',
   'liveuamap.com',
   'me.liveuamap.com',
   'offnadir-delta.com',
-  'www.applytosupply.digitalmarketplace.service.gov.uk',
   'www.factal.com',
   'www.vendr.com',
 ]);
@@ -1459,8 +1670,8 @@ export function scanUpstreamHosts(rootDir = ROOT) {
     recordHost(dynamic.host, dynamic.kind, dynamic.path);
   }
   return [...hosts.values()]
-    .map((entry) => ({ ...entry, kinds: [...entry.kinds].sort(), references: entry.references.sort((a, b) => a.path.localeCompare(b.path)) }))
-    .sort((a, b) => a.host.localeCompare(b.host));
+    .map((entry) => ({ ...entry, kinds: [...entry.kinds].sort(), references: entry.references.sort((a, b) => compareText(a.path, b.path)) }))
+    .sort((a, b) => compareText(a.host, b.host));
 }
 
 function defaultEntry(observed) {
@@ -1646,7 +1857,7 @@ export function buildManifest(
   const logicalEntries = [...LOGICAL_ENTRIES, ...(previous.logicalEntries || [])]
     .filter((entry) => !observedHosts.has(entry.host))
     .filter((entry, index, all) => all.findIndex((candidate) => candidate.provider === entry.provider && candidate.host === entry.host) === index)
-    .sort((a, b) => a.provider.localeCompare(b.provider));
+    .sort((a, b) => compareText(a.provider, b.provider));
   const logicalProviders = declarations
     ? buildLogicalProviders(declarations, geography || new Map())
     : (rootDir
@@ -1654,7 +1865,7 @@ export function buildManifest(
       : [...(previous.logicalProviders || [])]);
   return {
     version: 1,
-    entries: entries.sort((a, b) => a.host.localeCompare(b.host)),
+    entries: entries.sort((a, b) => compareText(a.host, b.host)),
     logicalEntries,
     logicalProviders,
   };
@@ -1982,7 +2193,7 @@ function markdownCell(value) {
 export function renderAttributionSection(inventory, manifest) {
   const stats = sourceAttributionStats(inventory, manifest);
   const entries = [...(manifest.entries || []), ...(manifest.logicalEntries || [])]
-    .sort((a, b) => (a.provider || '').localeCompare(b.provider || '') || a.host.localeCompare(b.host));
+    .sort((a, b) => compareText(a.provider || '', b.provider || '') || compareText(a.host, b.host));
   const rows = entries.map((entry) => {
     const references = entry.references || [];
     // Say when the list is cut. A reader auditing where a provider is used

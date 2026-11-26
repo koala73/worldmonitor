@@ -61,6 +61,27 @@ describe('map fullscreen resize synchronization', () => {
     expectImmediateAndSettledResize(() => fullscreenButton.click());
   });
 
+  it('leaves Escape to the orbital full view while it holds the map raised', () => {
+    const section = document.createElement('section');
+    section.id = 'mapSection';
+    const pinButton = document.createElement('button');
+    pinButton.id = 'mapPinBtn';
+    const fullscreenButton = document.createElement('button');
+    fullscreenButton.id = 'mapFullscreenBtn';
+    document.body.append(section, pinButton, fullscreenButton);
+    manager.setupMapPin();
+    fullscreenButton.click();
+    const pressEscape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    document.body.classList.add('orbital-full-view');
+    pressEscape();
+    expect(document.body.classList.contains('live-news-fullscreen-active')).toBe(true);
+
+    document.body.classList.remove('orbital-full-view');
+    pressEscape();
+    expect(document.body.classList.contains('live-news-fullscreen-active')).toBe(false);
+  });
+
   it('keeps the map-height separator value synchronized', () => {
     // Pin a stacked-layout viewport: from SPLIT_LAYOUT_MIN_WIDTH up the
     // handle resizes #mapContainer instead of the section

@@ -33,7 +33,8 @@ const DATE = '2026-11-02';
 // recording is keyed by window, so it is collected as of the same instant.
 const OBSERVED_AT = '2026-11-02T06:00:00Z';
 const REVISION = 'fixture-revision';
-const querySet = readJson('docs/research/seo-ai-visibility/query-set.json');
+// The fixtures and the 2026-07-27 baseline were measured with seo-ai-visibility-v1.
+const querySet = readJson('docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json');
 const previous = readJson('docs/research/seo-ai-visibility/baselines/2026-07-27.json');
 const reviewed = (id) => querySet.queries.find((query) => query.id === id).query;
 
@@ -46,6 +47,7 @@ async function gscSnapshot() {
     windows: deriveWindows(OBSERVED_AT),
     propertyKind: transport.manifest.propertyKind,
     reportedTotals: transport.manifest.reportedTotals,
+    querySet,
     revision: REVISION,
   });
 }
@@ -179,28 +181,24 @@ describe('weekly baseline: Search Console', () => {
     const gsc = await gscSnapshot();
     const window = windowOf(gsc.performance, '28d');
     window.siteTotals = { status: 'unavailable', reason: 'the site view was not collected' };
-    window.topQueries.push({ query: reviewed('q23'), brand: true, clicks: 7, impressions: 70, position: 1.5 });
     const { baseline } = build({ gsc });
     const source = baseline.search.googleSearchConsole;
     assert.deepEqual(
       windowOf(source, '28d').metrics,
       Object.fromEntries(SEARCH_METRICS.map((metric) => [metric, null])),
     );
-    assert.equal(source.queryRows.length, 1, 'the reviewed row itself is kept');
+    const pricing = source.queryRows.find((row) => row.windowLabel === '28d' && row.queryId === 'q23');
+    assert.equal(pricing.metrics.impressions, 40, 'the reviewed row itself is kept');
     assert.match(source.reason, /28d: no by-property site totals/);
   });
 });
 
 describe('weekly baseline: reviewed queries only', () => {
-  it('maps exact reviewed query text and drops everything else', async () => {
+  it('maps every reviewed query from its own lookup and ignores the top-query list', async () => {
     const snapshots = await allSnapshots();
     const gscWindow = windowOf(snapshots.gsc.performance, '28d');
-    gscWindow.topQueries.push(
-      { query: reviewed('q23'), brand: true, clicks: 7, impressions: 70, position: 1.5 },
-      // Case and spacing variants are different queries, not the reviewed one.
-      { query: reviewed('q23').toLowerCase(), brand: true, clicks: 3, impressions: 30, position: 2 },
-      { query: 'an unreviewed query', brand: false, clicks: 1, impressions: 10, position: 9 },
-    );
+    // The top-query list no longer feeds query rows, even on an exact match.
+    gscWindow.topQueries.push({ query: reviewed('q21'), brand: true, clicks: 7, impressions: 70, position: 1.5 });
     snapshots.bing.queries.windows['28d'].topQueries.push({
       query: reviewed('q18'),
       brand: true,
@@ -210,13 +208,25 @@ describe('weekly baseline: reviewed queries only', () => {
       avgImpressionPosition: 3.2,
       avgClickPosition: null,
     });
-    const { baseline } = build(snapshots);
+    const { baseline, markdown } = build(snapshots);
     const gscRows = baseline.search.googleSearchConsole.queryRows;
-    assert.deepEqual(gscRows, [{
+    assert.equal(gscRows.length, 2 * querySet.queries.length, 'one row per reviewed query and window');
+    const gscRow = (label, queryId) => gscRows.find((row) => row.windowLabel === label && row.queryId === queryId);
+    assert.deepEqual(gscRow('28d', 'q23'), {
       windowLabel: '28d',
       queryId: 'q23',
-      metrics: { impressions: 70, clicks: 7, ctr: 0.1, averagePosition: 1.5 },
-    }]);
+      metrics: { impressions: 40, clicks: 2, ctr: 0.05, averagePosition: 6.5 },
+    });
+    assert.equal(gscRow('28d', 'q21').metrics.impressions, null);
+    assert.match(gscRow('28d', 'q21').reason, /no lookup was recorded/);
+    assert.deepEqual(gscRow('28d', 'q18').metrics, {
+      impressions: null, clicks: null, ctr: null, averagePosition: null,
+    });
+    assert.match(gscRow('28d', 'q18').reason, /Not reported by Search Console/);
+    assert.match(gscRow('28d', 'q12').reason, /HTTP 500/);
+    assert.match(markdown, /\| Branded \/ entity \| 5 \| 28d: 1 of 5 queries reported \|/);
+    assert.match(markdown, /\| q23 \| World Monitor pricing \| Branded \/ entity \| 40 imp \/ 2 clicks \/ 5% \/ pos 6\.5 \|/);
+    assert.match(markdown, /\| q18 \| World Monitor vs GDELT \| Evaluation \| Not reported by Search Console[^|]* \| 40 imp \/ 4 clicks \/ 10% \/ pos 3\.2 \|/);
     assert.deepEqual(baseline.search.bingWebmaster.queryRows, [{
       windowLabel: '28d',
       queryId: 'q18',
@@ -348,7 +358,8 @@ describe('weekly baseline: Umami referrals', () => {
     for (const count of visitorDayCounts) assert.equal(metricNumbers.includes(count), false, `visitor-days ${count}`);
     assert.match(referrals.reason, /Umami visitors are visitor-days and are not reported as sessions/);
     // The families are named against the classification, in visitor-days.
-    assert.match(referrals.reason, /chatgpt 45;/);
+    // 170 is the utm_source count (referrer rows alone give 45): the larger of the two signals.
+    assert.match(referrals.reason, /chatgpt 170;/);
     assert.match(referrals.reason, /google_search_ai unavailable \(Google AI Overviews/);
     assert.match(referrals.reason, /bing\.com counts as search/);
   });
@@ -369,7 +380,7 @@ describe('weekly baseline: Umami referrals', () => {
     const { reason } = baseline.referrals;
     assert.ok(Buffer.byteLength(reason) <= 4096, `reason is ${Buffer.byteLength(reason)} bytes`);
     assert.equal(reason.split('HTTP 524').length - 1 <= 10, true, 'the shared failure is stated once');
-    assert.match(reason, /chatgpt 45 \(partial\)/);
+    assert.match(reason, /chatgpt 170 \(partial\)/);
   });
 
   it('leaves sessions null when a day of totals is missing', async () => {
@@ -423,5 +434,62 @@ describe('weekly baseline: AI surfaces and context', () => {
     assert.match(baseline.collectionContext.limitations[0], /no export was supplied by hand/);
     assert.deepEqual(baseline.referrals.classification, previous.referrals.classification);
     assert.deepEqual(baseline.opportunities, previous.opportunities);
+  });
+});
+
+describe('weekly baseline: the committed template', () => {
+  const directory = repoPath('docs/research/seo-ai-visibility');
+  const currentQuerySet = readJson('docs/research/seo-ai-visibility/query-set.json');
+  const template = JSON.parse(readFileSync(findPreviousBaseline(join(directory, 'baselines'), '2026-11-17'), 'utf8'));
+
+  async function weekOf(date, previousBaseline) {
+    const observedAt = `${date}T05:30:00Z`;
+    const transport = createGscFixtureTransport(repoPath('tests/fixtures/gsc/'));
+    const gsc = await collectGscSnapshot({
+      transport,
+      documents: transport.sitemaps(),
+      observedAt,
+      windows: deriveWindows(observedAt),
+      propertyKind: transport.manifest.propertyKind,
+      reportedTotals: transport.manifest.reportedTotals,
+      querySet: currentQuerySet,
+      revision: REVISION,
+    });
+    return buildWeeklyBaseline({
+      date,
+      snapshots: { gsc },
+      querySet: currentQuerySet,
+      previous: previousBaseline,
+      repositoryRevision: REVISION,
+    });
+  }
+
+  it('starts a new series, instead of failing, when query-set.json has moved past the template', async () => {
+    assert.notEqual(template.querySetId, currentQuerySet.querySetId);
+    const { baseline, markdown, compared } = await weekOf('2026-11-17', template);
+    assert.equal(compared, false);
+    assert.equal(baseline.querySetId, currentQuerySet.querySetId);
+    assert.match(markdown, new RegExp(`Not compared with \`${template.baselineId}\`: it was measured with query set`));
+    assert.doesNotMatch(markdown, /First recorded period/);
+  });
+
+  it('carries the site-wide context and the reviewed queue forward, without the template edit note', async () => {
+    const { baseline } = await weekOf('2026-11-17', template);
+    for (const field of ['geography', 'locale', 'device']) {
+      assert.match(baseline.collectionContext[field], /site-wide aggregates/);
+      assert.equal(baseline.collectionContext[field], template.collectionContext[field]);
+    }
+    assert.deepEqual(baseline.collectionContext.signedInStates, template.collectionContext.signedInStates);
+    assert.deepEqual(baseline.opportunities, template.opportunities);
+    assert.equal(baseline.collectionContext.limitations.some((line) => line.startsWith('Edited on')), false);
+    assert.doesNotMatch(baseline.collectionContext.limitations.join(' '), /France|panel context carried/);
+  });
+
+  it('compares the following week within the new series', async () => {
+    const first = await weekOf('2026-11-17', template);
+    const { markdown, compared } = await weekOf('2026-11-24', first.baseline);
+    assert.equal(compared, true);
+    assert.match(markdown, /Compared `2026-11-17` with `2026-11-24`\./);
+    assert.match(markdown, /Geography: All countries \(site-wide aggregates\)/);
   });
 });

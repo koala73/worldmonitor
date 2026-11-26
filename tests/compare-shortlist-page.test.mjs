@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { Window } from 'happy-dom';
 
 import { COMPARISON_MATRIX_COLUMNS, COMPARISON_PAGES, __test } from '../scripts/build-comparison-pages.mjs';
+import { buildLlmsFullText, withComparisonsSection } from '../scripts/build-llms-full.mjs';
 import {
   SHORTLIST_LAYOUT,
   SHORTLIST_PAGE_SEEDS,
@@ -207,6 +208,25 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
     }
   });
 
+  it('describes the rendered comparison matrix headers in both llms files', () => {
+    const hub = new Window().document;
+    hub.write(__test.renderCompareHub({ tpl, baseUrl: BASE_URL, lastmod: LASTMOD, snapshotDate: SNAPSHOT_DATE }));
+    const common = [...hub.querySelectorAll('table thead th')].map(text);
+    const shortlist = [...main.querySelectorAll('table[data-shortlist-matrix] thead th')].map(text);
+    const extra = shortlist.slice(common.length);
+    const outputs = {
+      'llms.txt': withComparisonsSection(readFileSync(join(repoRoot, 'public/llms.txt'), 'utf8')),
+      'llms-full.txt': buildLlmsFullText({ rootDir: repoRoot }),
+    };
+
+    for (const [name, output] of Object.entries(outputs)) {
+      const summary = output.match(/^## Comparisons\n\n([^\n]+)$/m)?.[1];
+      assert.ok(summary, `${name} must describe the comparison matrices`);
+      assert.ok(summary.includes(`${common.length} common columns (${common.join(', ')})`), `${name} must describe the ${common.length} common headers`);
+      assert.ok(summary.includes(`The shortlist adds ${extra.length} columns (${extra.join(', ')})`), `${name} must describe the ${extra.length} extra shortlist headers`);
+    }
+  });
+
   it('closes with the free-trial CTA as the last element', () => {
     const cta = main.querySelector('h2[data-cta]');
     assert.equal(text(cta), 'Try World Monitor for free (no credit card required)');
@@ -298,6 +318,14 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
     }
   });
 
+  it('dates price sources by the last price check and capabilities separately', () => {
+    const priceLines = [...document.querySelectorAll('[data-price-source]')].map((node) => text(node));
+    assert.ok(priceLines.length >= 1);
+    for (const line of priceLines) assert.ok(line.endsWith(`Checked ${page.pricesCheckedOn}.`), line);
+    assert.ok(text(document.body).includes(`Prices were checked on ${page.pricesCheckedOn} and capabilities on ${page.checkedOn}`));
+    assert.notEqual(page.pricesCheckedOn, page.checkedOn);
+  });
+
   it('rejects seeds that break the brief', () => {
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.keyTakeaways.pop(); })), /5 key takeaways/);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.title = 'Best Geopolitical Risk Intelligence Platforms in 2026 | World Monitor'; })), /under 60/);
@@ -317,6 +345,81 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
     assert.throws(() => shortlistPage(seedWith((seed) => { unpublished(seed).pricing.offers = []; })), /offers/);
     assert.throws(() => shortlistPage(seedWith((seed) => { unpublished(seed).pricing.sources = []; })), /in prose without a cited price source/);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.entries[0].paragraphs[0] += ' Pro costs $1.99/mo.'; })), /World Monitor prose prices/);
+    const recordedFuture = (seed) => seed.entries.find((entry) => entry.name === 'Recorded Future');
+    // #11144: one unrelated source must not cover every amount an entry prints.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { recordedFuture(seed).pricing.sources = [{ label: 'Unrelated', url: 'https://example.com/' }]; })),
+      /Recorded Future quotes \$72,703, £135,000, £21,600 with no source that cites them/,
+    );
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { recordedFuture(seed).paragraphs[1] += ' Another listing charges £7,650 a user.'; })),
+      /Recorded Future quotes £7,650 with no source that cites them/,
+    );
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { published(seed).pricing.cell = '$12,345/yr (listing)'; })),
+      /quotes \$12,345 with no source that cites them/,
+    );
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { recordedFuture(seed).pricing.sources[0].amounts.push('$1,234'); })),
+      /Recorded Future source "Vendr Recorded Future benchmark" lists \$1,234, which the entry does not print/,
+    );
+    // A World Monitor catalog price is USD; the same digits in pounds are not a catalog price.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { recordedFuture(seed).paragraphs[1] += ' A reseller adds a £39.99 fee.'; })),
+      /Recorded Future quotes £39.99 with no source that cites them/,
+    );
+    // Amounts outside the ranked entries must still trace to an entry's source or the catalog.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { seed.faqs[0][1] += ' One rival charges $12,345 a year.'; })),
+      /page prose quotes \$12,345, which no entry source or catalog price covers/,
+    );
+    const dataminr = (seed) => seed.entries.find((entry) => entry.name === 'Dataminr');
+    // Every matrix cell is scanned, not only the price cell.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { dataminr(seed).pricing.freeTier = 'Pilot from $5,000'; })),
+      /Dataminr quotes \$5,000 with no source that cites them/,
+    );
+    // A trailing comma is punctuation, not part of the amount.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { dataminr(seed).paragraphs[1] += ' One reseller quoted $1,234, then withdrew it.'; })),
+      /Dataminr quotes \$1,234 with no source that cites them/,
+    );
+    // A competitor price equal to a World Monitor catalog price still needs a source.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { dataminr(seed).paragraphs[1] += ' A starter alert pack costs $99.99 a month.'; })),
+      /Dataminr quotes \$99.99 with no source that cites them/,
+    );
+    // Spellings the amount pattern cannot read are rejected instead of skipped.
+    for (const spelling of ['USD 30,000', '30,000 USD', 'US$30,000', '$ 30,000', '30,000 dollars', '40 €', '$40k', '$1.2 million', '$7,50', '$7,5000']) {
+      assert.throws(
+        () => shortlistPage(seedWith((seed) => { seed.faqs[0][1] += ` One rival charges ${spelling} a year.`; })),
+        /write amounts as/,
+        spelling,
+      );
+    }
+    assert.throws(() => shortlistPage(seedWith((seed) => { delete seed.pricesCheckedOn; })), /pricesCheckedOn/);
+    // Naming World Monitor earlier in the sentence does not exempt a rival's price.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { dataminr(seed).paragraphs[1] += ' Unlike World Monitor, Dataminr sells a $99.99 add-on.'; })),
+      /Dataminr quotes \$99.99 with no source that cites them/,
+    );
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { seed.faqs[0][1] += ' Unlike World Monitor, Crisis24 charges $39.99 per alert.'; })),
+      /page prose quotes \$39.99, which no entry source or catalog price covers/,
+    );
+    // Use-case labels render as link text, so their amounts are checked too.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { seed.useCases[0].useCase += ' ($12,345/mo)'; })),
+      /page prose quotes \$12,345, which no entry source or catalog price covers/,
+    );
+    // A use-case row World Monitor wins still holds its runner-up to a cited source.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => {
+        const row = seed.useCases.find((candidate) => candidate.recommended.startsWith('World Monitor'));
+        row.runnerUp = 'Liveuamap PRO at $49.99';
+      })),
+      /page prose quotes \$49.99, which no entry source or catalog price covers/,
+    );
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.useCases[0].href = '/blog/vs/dataminr/'; })), /\/blog\/best\//);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.faqs = seed.faqs.slice(0, 5); })), /6-8 FAQs/);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.keyTakeaways[0] += ' See [the plans](http://example.com).'; })), /site path or https URL/);

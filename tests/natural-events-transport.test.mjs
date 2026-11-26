@@ -69,9 +69,7 @@ const run = transport => fetchNaturalEvents({
   fetchHkoWarningsFn: async () => ({ warnings: [], dataAvailable: true, sourceDecision: { status: 'used' } }),
 });
 
-test('late EONET headers leave progressing body time within the shared budget', { timeout: 10_000 }, async t => {
-  // Drive deadlines without charging real connection setup or CI scheduling
-  // delays against the narrow gap between late headers and their deadline.
+function mockTransportClock(t) {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
   t.mock.method(performance, 'now', () => Date.now());
   t.mock.method(AbortSignal, 'timeout', ms => {
@@ -79,6 +77,10 @@ test('late EONET headers leave progressing body time within the shared budget', 
     setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), ms);
     return controller.signal;
   });
+}
+
+test('late EONET headers leave progressing body time within the shared budget', { timeout: 10_000 }, async t => {
+  mockTransportClock(t);
   const body = new TextEncoder().encode(JSON.stringify({ events: [event] }));
   const transport = fixture((source, attempt, options) => {
     if (source !== 'eonet') return;
@@ -114,10 +116,38 @@ test('late EONET headers leave progressing body time within the shared budget', 
 });
 
 test('EONET aborts a silent body and retries within the existing source budget', { timeout: 10_000 }, async t => {
+  mockTransportClock(t);
+  useRealRetryDelay(t);
+  t.mock.method(Math, 'random', () => 0); // Select the 500 ms minimum backoff.
+  const cancelledAt = [];
+  const transport = fixture(source => source === 'eonet' ? new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode('{"events":[')); },
+    cancel() { cancelledAt.push(performance.now()); },
+  })) : undefined);
+
+  const pending = run(transport);
+  for (const attempt of [1, 2]) {
+    await new Promise(setImmediate);
+    assert.equal(transport.calls.get('eonet'), attempt);
+    t.mock.timers.tick(4_999);
+    assert.equal(cancelledAt.length, attempt - 1);
+    t.mock.timers.tick(1);
+    assert.equal(cancelledAt.length, attempt);
+    if (attempt === 1) {
+      await new Promise(setImmediate);
+      t.mock.timers.tick(500);
+    }
+  }
+  assert.deepEqual(cancelledAt, [5_000, 10_500]);
+  assert.equal((await pending)._eonetFailed, true);
+  assert.equal(transport.calls.get('eonet'), 2);
+});
+
+test('EONET closes both silent HTTP responses', { timeout: 10_000 }, async t => {
   compressTime(t);
-  let disconnected = 0;
-  const server = createServer((req, res) => {
-    req.on('close', () => disconnected++);
+  const closed = [];
+  const server = createServer((_req, res) => {
+    closed.push(new Promise(resolve => res.once('close', resolve)));
     res.writeHead(200); res.write('{"events":[');
   });
   server.listen(0, '127.0.0.1');
@@ -125,13 +155,10 @@ test('EONET aborts a silent body and retries within the existing source budget',
   t.after(() => { server.closeAllConnections(); server.close(); });
   const transport = fixture((source, _attempt, options) => source === 'eonet'
     ? fetch(`http://127.0.0.1:${server.address().port}`, options) : undefined);
-  const started = performance.now();
   const result = await run(transport);
   assert.equal(result._eonetFailed, true);
-  assert.equal(transport.calls.get('eonet'), 2);
-  assert.ok(performance.now() - started < 13_000);
-  await new Promise(resolve => setTimeout(resolve, 20));
-  assert.equal(disconnected, 2);
+  assert.equal(closed.length, 2);
+  await Promise.all(closed);
 });
 
 test('EONET progressing body cannot renew the total deadline', { timeout: 10_000 }, async t => {

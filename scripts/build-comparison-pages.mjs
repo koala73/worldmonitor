@@ -101,7 +101,8 @@ export const COMPARISON_MATRIX_COLUMNS = [
   'Best for',
 ];
 
-const shortlistUniversalColumns = SHORTLIST_MATRIX_COLUMNS.slice(0, UNIVERSAL_COLUMN_COUNT).map(([label]) => label);
+const shortlistMatrixLabels = SHORTLIST_MATRIX_COLUMNS.map(([label]) => label);
+const shortlistUniversalColumns = shortlistMatrixLabels.slice(0, UNIVERSAL_COLUMN_COUNT);
 if (shortlistUniversalColumns.join('|') !== COMPARISON_MATRIX_COLUMNS.join('|')) {
   throw new Error('shortlist matrix must open with COMPARISON_MATRIX_COLUMNS, got ' + shortlistUniversalColumns.join(', '));
 }
@@ -785,12 +786,18 @@ export function comparisonDiscoveryEntries(baseUrl) {
     title: COMPARE_HUB_TITLE,
     url: new URL(COMPARE_HUB_PATH, baseUrl).href,
     description: COMPARE_HUB_DESCRIPTION,
+    matrixColumns: COMPARISON_MATRIX_COLUMNS,
   };
   const pages = COMPARISON_PAGES.map((page) => {
     if (typeof page.summary !== 'string' || page.summary.trim() === '') {
       throw new Error(page.slug + ' needs a summary for the llms.txt Comparisons section');
     }
-    return { title: page.h1, url: new URL(page.path, baseUrl).href, description: page.summary };
+    return {
+      title: page.h1,
+      url: new URL(page.path, baseUrl).href,
+      description: page.summary,
+      matrixColumns: page.layout === SHORTLIST_LAYOUT ? shortlistMatrixLabels : COMPARISON_MATRIX_COLUMNS,
+    };
   });
   return [hub, ...pages];
 }

@@ -83,6 +83,14 @@ describe('fetchWidestTechEvents produces an unnarrowed payload (#5603 review)', 
     assert.ok(result.events.length > 1, `expected the unnarrowed set, got ${result.events.length}`);
   });
 
+  it('stores the last day of an all-day event, not the exclusive ICS DTEND', async () => {
+    const result = await fetchWidestTechEvents();
+    assert.ok(result);
+    const endDates = Object.fromEntries(result.events.map((e) => [e.title, e.endDate]));
+    assert.equal(endDates['Regression Test Conference 2026'], '2026-08-15');
+    assert.equal(endDates['Earnings: ExampleCorp Q3 2026'], '2026-09-01');
+  });
+
   it('takes no arguments, so caller state cannot be threaded back in', () => {
     assert.equal(fetchWidestTechEvents.length, 0);
   });
@@ -404,5 +412,23 @@ describe('listTechEvents cold-start cache write', () => {
       const ids = cachedPayload(redisSets).events.map(e => e.id);
       assert.ok(ids.includes('wm-conf-day1'), `partial fetches must still be cached, got: ${JSON.stringify(ids)}`);
     });
+  });
+});
+
+// The outer catch in listTechEvents must answer with a fixed error string:
+// echoing exception messages can expose internals (cache-key names from the
+// shared backoff error, upstream hostnames). The error stays non-empty so the
+// gateway's no-store contract (getRpcNoStoreReasonFromJson) still applies.
+describe('listTechEvents catch path hides exception text', () => {
+  it('returns the fixed request-failed error instead of the exception message', async () => {
+    // 'http://' is an invalid URL, so readTechEventsPagingPresence throws
+    // inside the handler's try block before any cache or upstream work.
+    const ctx = { request: { url: 'http://' }, pathParams: {}, headers: {} } as never;
+
+    const response = await listTechEvents(ctx, { type: '', mappable: false, limit: 0, days: 0 });
+
+    assert.equal(response.success, false);
+    assert.equal(response.error, 'tech events unavailable: request failed');
+    assert.doesNotMatch(JSON.stringify(response), /Invalid URL/);
   });
 });

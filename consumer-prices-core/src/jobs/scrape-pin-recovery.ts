@@ -1,15 +1,7 @@
 /**
- * Pin disable + auto-recovery helpers — extracted from scrape.ts so they
- * can be unit-tested in isolation (scrape.ts pulls a heavy transitive
- * dep tree including exa-js, playwright, etc.; this module only needs
- * `query`).
- *
- * The 3-strike threshold is symmetric on both sides:
- *   - 3 consecutive OOS  → set pin_disabled_at  (handleStaleOnOutOfStock)
- *   - 3 consecutive in-stock → clear pin_disabled_at (handleStaleOnInStock)
- *
- * See migration 009 + memory `sticky-disable-without-auto-recovery-decays`
- * for why both halves shipping together matters.
+ * Extracted from scrape.ts so a unit test can import these helpers without the scrape job.
+ * Three out-of-stock observations disable a pin. Three in-stock observations clear it.
+ * Migration 009 is the other half. Either half alone restarts the decay.
  */
 import { query } from '../db/client.js';
 

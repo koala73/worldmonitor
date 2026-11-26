@@ -16,7 +16,7 @@ import {
 import { classifyDenialResponse, type ClientEntitlementBelief } from '@/services/premium-denial';
 import { reportEntitlementDesync } from '@/services/entitlement-desync-telemetry';
 import { trackAnalystControlAction } from '@/services/analytics';
-import { h, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
+import { h, isImeEnter, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import {
   isDashboardControlAction,
   parseAgentBusAction,
@@ -119,6 +119,9 @@ const ANALYST_PURIFY_CONFIG = {
     'div', 'span'],
   ALLOWED_ATTR: ['class'],
   ALLOW_DATA_ATTR: false,
+  // DOMPurify keeps aria-* even when ALLOWED_ATTR omits them; an injected
+  // aria-hidden would hide the analysis from screen readers (parity with DeductionPanel).
+  ALLOW_ARIA_ATTR: false,
 };
 
 function renderMarkdown(raw: string): TrustedHtml {
@@ -308,6 +311,7 @@ export class ChatAnalystPanel extends Panel {
       if (!target || target !== this.inputEl) return;
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
+        if (isImeEnter(e)) return;
         this.sendFromInput();
       }
     });

@@ -49,7 +49,7 @@ const geography = loadSourceGeography(repoRoot);
 const catalog = await loadOutletCatalog(repoRoot);
 
 const candidates = {};
-for (const [name, outlet] of [...catalog].sort(([a], [b]) => a.localeCompare(b))) {
+for (const [name, outlet] of [...catalog].sort(([a], [b]) => a.localeCompare(b, 'en-US'))) {
   if (!includeProfiled && Object.prototype.hasOwnProperty.call(profiles, name)) continue;
   const hosts = [...new Set([...outlet.urls].map(publisherHost).filter(Boolean))];
   const hostOrigins = Object.fromEntries(hosts.map((host) => [host, resolveHostOrigin(host) ?? null]));

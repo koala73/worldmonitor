@@ -21,6 +21,11 @@ const { getConfiguredLlmHealthProviders } = await import(
 const { isSelfHostRelayPath } = await import(
   pathToFileURL(path.join(sharedResourceRoot, 'shared/selfhost-relay-paths.js')).href
 );
+// The hosted /api/rss-proxy feed allowlist, so Docker mode enforces the same
+// host set. api/ ships next to shared/ in both the Docker image and the bundle.
+const { isAllowedDomain: isAllowedRssDomain } = await import(
+  pathToFileURL(path.join(sharedResourceRoot, 'api/_rss-allowed-domain-match.js')).href
+);
 
 const brotliCompressAsync = promisify(brotliCompress);
 const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
@@ -382,6 +387,82 @@ const ALLOWED_ENV_KEYS = new Set([
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+// Matches api/rss-proxy.js MAX_FEED_BYTES.
+const RSS_PROXY_MAX_BODY_BYTES = 5 * 1024 * 1024;
+// Bounds buffered feed memory to RSS_PROXY_MAX_CONCURRENT * RSS_PROXY_MAX_BODY_BYTES.
+const RSS_PROXY_MAX_CONCURRENT = 12;
+// Docker mode only: nginx authenticates every caller, so limit each client IP.
+// A dashboard boot loads every enabled feed at once; this leaves room for
+// several viewers behind one NAT.
+const RSS_PROXY_CLIENT_LIMIT = 300;
+const RSS_PROXY_CLIENT_WINDOW_MS = 60_000;
+// Waiting requests are bounded in number and time so one client cannot build
+// a backlog that delays every other viewer's feeds.
+const RSS_PROXY_MAX_QUEUED = 48;
+const RSS_PROXY_QUEUE_WAIT_MS = 10_000;
+// Docker mode only: one client key may hold at most half the slots, so a
+// single caller cannot keep every viewer's feeds waiting.
+const RSS_PROXY_CLIENT_MAX_ACTIVE = 6;
+let _rssProxyQueueWaitMs = RSS_PROXY_QUEUE_WAIT_MS;
+let _activeRssProxyFetches = 0;
+const _rssProxyQueue = [];
+const _rssProxyClientActive = new Map();
+function rssProxyQueueError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+function rssProxyClientAtShare(client) {
+  return client != null && (_rssProxyClientActive.get(client) || 0) >= RSS_PROXY_CLIENT_MAX_ACTIVE;
+}
+function takeRssProxyClientShare(client) {
+  if (client != null) _rssProxyClientActive.set(client, (_rssProxyClientActive.get(client) || 0) + 1);
+}
+// `client` is the caller's rate-limit key in Docker mode and null otherwise.
+function acquireRssProxySlot(req, client = null) {
+  if (_activeRssProxyFetches < RSS_PROXY_MAX_CONCURRENT && !rssProxyClientAtShare(client)) {
+    _activeRssProxyFetches++;
+    takeRssProxyClientShare(client);
+    return Promise.resolve();
+  }
+  if (_rssProxyQueue.length >= RSS_PROXY_MAX_QUEUED) {
+    return Promise.reject(rssProxyQueueError('ERSSQUEUEFULL', 'RSS proxy queue full'));
+  }
+  return new Promise((resolve, reject) => {
+    const waiter = { req, client, resolve, reject };
+    waiter.timer = setTimeout(() => {
+      _rssProxyQueue.splice(_rssProxyQueue.indexOf(waiter), 1);
+      reject(rssProxyQueueError('ERSSQUEUETIMEOUT', 'RSS proxy queue wait timed out'));
+    }, _rssProxyQueueWaitMs);
+    _rssProxyQueue.push(waiter);
+  });
+}
+function releaseRssProxySlot(client = null) {
+  if (client != null) {
+    const held = (_rssProxyClientActive.get(client) || 1) - 1;
+    if (held > 0) _rssProxyClientActive.set(client, held);
+    else _rssProxyClientActive.delete(client);
+  }
+  for (let i = 0; i < _rssProxyQueue.length;) {
+    const waiter = _rssProxyQueue[i];
+    if (waiter.req.destroyed || waiter.req.socket?.destroyed) {
+      _rssProxyQueue.splice(i, 1);
+      clearTimeout(waiter.timer);
+      waiter.reject(rssProxyQueueError('ERSSCLIENTGONE', 'Client disconnected while queued'));
+      continue;
+    }
+    if (rssProxyClientAtShare(waiter.client)) {
+      i++;
+      continue;
+    }
+    _rssProxyQueue.splice(i, 1);
+    clearTimeout(waiter.timer);
+    takeRssProxyClientShare(waiter.client);
+    waiter.resolve();
+    return;
+  }
+  _activeRssProxyFetches--;
+}
 const RSS_PROXY_SECURITY_HEADERS = Object.freeze({
   // RSS publishers are untrusted. The response must not become a same-origin
   // document if a caller navigates to or frames the proxy URL.
@@ -498,6 +579,38 @@ function isPrivateIP(ip) {
   });
 }
 
+function isOllamaLanAddress(ip) {
+  // The desktop setup exception covers private LAN addresses only, including
+  // the 100.64.0.0/10 range that Tailscale assigns to tailnet devices.
+  return /^(?:10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|f[cd][0-9a-f]{2}:)/i.test(ip);
+}
+
+function classifyResolvedAddresses(addresses) {
+  const blockedAddresses = addresses.filter(isPrivateIP);
+  if (blockedAddresses.length > 0) {
+    return {
+      safe: false,
+      privateLan: blockedAddresses.every(isOllamaLanAddress),
+      reason: 'Hostname resolves to a private/reserved IP address',
+    };
+  }
+  return { safe: true, resolvedAddresses: addresses };
+}
+
+// Public DNS cannot see mDNS (.local) or /etc/hosts names. On the desktop the
+// user's own resolver decides what the Ollama host they typed points to.
+async function isSafeUrlWithSystemResolver(url, safety) {
+  if (!safety.unresolved || isIP(url.hostname.replace(/^\[|\]$/g, ''))) return safety;
+  let records;
+  try {
+    records = await dns.lookup(url.hostname, { all: true, verbatim: true });
+  } catch {
+    return safety;
+  }
+  const addresses = (Array.isArray(records) ? records : [records]).map((record) => record.address).filter(Boolean);
+  return addresses.length > 0 ? classifyResolvedAddresses(addresses) : safety;
+}
+
 async function isSafeUrl(urlString) {
   let parsed;
   try {
@@ -526,7 +639,7 @@ async function isSafeUrl(urlString) {
   // Check if the hostname is already an IP literal
   const ipLiteral = hostname.replace(/^\[|\]$/g, '');
   if (isPrivateIP(ipLiteral)) {
-    return { safe: false, reason: 'Requests to private/reserved IP addresses are not allowed' };
+    return { safe: false, privateLan: isOllamaLanAddress(ipLiteral), reason: 'Requests to private/reserved IP addresses are not allowed' };
   }
   if (isIP(ipLiteral)) {
     return { safe: true, resolvedAddresses: [ipLiteral] };
@@ -547,19 +660,13 @@ async function isSafeUrl(urlString) {
     } catch { /* no AAAA records */ }
 
     if (addresses.length === 0) {
-      return { safe: false, reason: 'Could not resolve hostname' };
-    }
-
-    for (const addr of addresses) {
-      if (isPrivateIP(addr)) {
-        return { safe: false, reason: 'Hostname resolves to a private/reserved IP address' };
-      }
+      return { safe: false, unresolved: true, reason: 'Could not resolve hostname' };
     }
   } catch {
-    return { safe: false, reason: 'DNS resolution failed' };
+    return { safe: false, unresolved: true, reason: 'DNS resolution failed' };
   }
 
-  return { safe: true, resolvedAddresses: addresses };
+  return classifyResolvedAddresses(addresses);
 }
 
 function json(data, status = 200, extraHeaders = {}) {
@@ -725,13 +832,38 @@ const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
 // Leave time for local fallback within the frontend's 5s request budgets.
 const CLOUD_PROXY_TIMEOUT_MS = 3000;
 
-async function readBody(req) {
+const DEFAULT_MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024;
+
+async function readBody(req, maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES) {
   if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
-    return req[REQUEST_BODY_CACHE];
+    const cached = req[REQUEST_BODY_CACHE];
+    if (maxBytes != null && cached && cached.length > maxBytes) {
+      const error = new Error(`Request body exceeds ${maxBytes} bytes`);
+      error.code = 'EBODYTOOLARGE';
+      throw error;
+    }
+    return cached;
   }
 
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let receivedBytes = 0;
+  let tooLarge = false;
+  for await (const chunk of req) {
+    receivedBytes += chunk.length;
+    if (maxBytes != null && receivedBytes > maxBytes) {
+      // Drain remaining chunks without buffering so the underlying socket stays
+      // open and the handler can send a clean 400 response before closing.
+      tooLarge = true;
+      chunks.length = 0;
+      continue;
+    }
+    chunks.push(chunk);
+  }
+  if (tooLarge) {
+    const error = new Error(`Request body exceeds ${maxBytes} bytes`);
+    error.code = 'EBODYTOOLARGE';
+    throw error;
+  }
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
   req[REQUEST_BODY_CACHE] = body;
   return body;
@@ -933,10 +1065,13 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
   headers.set('Content-Type', 'application/json');
   headers.set('Content-Length', String(Buffer.byteLength(body)));
 
+  const safety = await assertSafeSidecarFetchUrl(new URL(target));
+  const pinned = pickPinnedAddress(safety.resolvedAddresses);
   return fetchWithTimeout(target, {
     method: 'POST',
     headers: Object.fromEntries(headers.entries()),
     body,
+    ...(pinned ? { resolvedAddress: pinned.address, resolvedFamily: pinned.family } : {}),
   }, 15000);
 }
 
@@ -1124,21 +1259,45 @@ function selfHostKeyJson(body, status = 200, extraHeaders = {}) {
   return json(body, status, { 'Cache-Control': 'no-store', ...extraHeaders });
 }
 
-function selfHostClientAllowed(req, context) {
-  const client = String(req.headers['x-real-ip'] || req.socket.remoteAddress || 'unknown');
+const CLIENT_LIMIT_MAX_KEYS = 10_000;
+
+// nginx sets X-Real-IP from the connection (or a trusted proxy's header), so
+// the browser cannot choose its own key. One IPv6 /64 is one client: a single
+// host commonly owns the whole prefix.
+function clientLimitKey(req) {
+  const client = String(req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown');
+  const groups = ipv6Hextets(client);
+  if (!groups) return client;
+  if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff) {
+    return [groups[6] >> 8, groups[6] & 0xff, groups[7] >> 8, groups[7] & 0xff].join('.');
+  }
+  return `${groups.slice(0, 4).map((group) => group.toString(16)).join(':')}::/64`;
+}
+
+// Fixed-window count per client. Every window in one map has the same length
+// and is re-inserted when it starts, so the map stays ordered by expiry:
+// expired entries are dropped from the front and, past CLIENT_LIMIT_MAX_KEYS,
+// the oldest window is evicted. Each call does constant amortized work.
+function clientWithinLimit(req, limits, limit, windowMs) {
+  const client = clientLimitKey(req);
   const now = Date.now();
-  const limits = context.selfHostPostLimits;
-  if (limits.size > SELFHOST_VERDICT_CACHE_MAX) {
-    for (const [ip, window] of limits) if (window.resetAt <= now) limits.delete(ip);
+  for (const [key, window] of limits) {
+    if (window.resetAt > now) break;
+    limits.delete(key);
   }
   let window = limits.get(client);
-  if (!window || window.resetAt <= now) {
-    window = { count: 0, resetAt: now + SELFHOST_POST_WINDOW_MS };
+  if (!window) {
+    window = { count: 0, resetAt: now + windowMs };
     limits.set(client, window);
+    if (limits.size > CLIENT_LIMIT_MAX_KEYS) limits.delete(limits.keys().next().value);
   }
   window.count += 1;
-  if (window.count <= SELFHOST_POST_LIMIT) return { ok: true };
+  if (window.count <= limit) return { ok: true };
   return { ok: false, retryAfterSeconds: Math.max(1, Math.ceil((window.resetAt - now) / 1000)) };
+}
+
+function selfHostClientAllowed(req, context) {
+  return clientWithinLimit(req, context.selfHostPostLimits, SELFHOST_POST_LIMIT, SELFHOST_POST_WINDOW_MS);
 }
 
 // GET reports the browser's key status; POST stores a key the cloud vouches
@@ -1190,7 +1349,13 @@ async function handleSelfHostKey(req, context, cookieKey) {
   if (!allowed.ok) {
     return selfHostKeyJson({ error: 'Too many key checks' }, 429, { 'Retry-After': String(allowed.retryAfterSeconds) });
   }
-  const raw = await readBody(req);
+  let raw;
+  try {
+    raw = await readBody(req, SELFHOST_MAX_BODY_BYTES);
+  } catch (err) {
+    if (err?.code !== 'EBODYTOOLARGE') throw err;
+    raw = null;
+  }
   let key = null;
   if (raw && raw.length <= SELFHOST_MAX_BODY_BYTES) {
     try {
@@ -1292,6 +1457,10 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // generated route tables and fails when an entry is not a real RPC path, when
 // its handler reaches an upstream itself, or when a seed-only route is missing.
 const cloudPreferredExact = new Set([
+  // Orbital reads that only read seed-owned Redis; get-point-passes searches the archives live.
+  '/api/orbital/v1/list-imaging-satellites',
+  '/api/orbital/v1/get-country-imagery-evidence',
+  '/api/orbital/v1/get-watched-site-imagery',
   '/api/cyber/v1/list-cyber-threats',
   '/api/maritime/v1/list-ukmto-incidents',
   '/api/bootstrap',
@@ -1383,6 +1552,8 @@ const cloudPreferredExact = new Set([
   '/api/military/v1/get-usni-fleet-report',
   '/api/military/v1/list-defense-patents',
   '/api/news/v1/list-news-pool',
+  // Alert history is written by the cloud relay; the desktop holds none.
+  '/api/news/v1/list-sent-alerts',
   '/api/news/v1/list-source-items',
   '/api/news/v1/summarize-article-cache',
   '/api/research/v1/list-arxiv-papers',
@@ -1409,6 +1580,7 @@ const cloudPreferredExact = new Set([
   '/api/supply-chain/v1/list-storage-facilities',
   '/api/supply-chain/v1/list-vulnerability-rankings',
   '/api/trade/v1/get-customs-revenue',
+  '/api/trade/v1/get-monthly-sitc-trade',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-trade-barriers',
   '/api/trade/v1/get-trade-flows',
@@ -1611,6 +1783,7 @@ function resolveConfig(options = {}) {
     selfHostVerdicts: new Map(),
     selfHostVerdictChecks: new Map(),
     selfHostPostLimits: new Map(),
+    rssProxyLimits: new Map(),
     allowPrivateRemoteBase,
     allowPrivateFetchOrigins,
     logger,
@@ -1635,7 +1808,17 @@ async function handleLocalServiceStatus(context) {
   });
 }
 
+function startCloudRequestLog() {
+  const startedAt = Date.now();
+  const load = `upstream ${_activeUpstream}/${MAX_CONCURRENT_UPSTREAM} active, ${_upstreamQueue.length} queued`;
+  return {
+    prefix: `[local-api] ${new Date(startedAt).toISOString()}`,
+    timing: () => `in ${Date.now() - startedAt}ms (${load})`,
+  };
+}
+
 async function tryCloudFallback(requestUrl, req, context, reason) {
+  const { prefix, timing } = startCloudRequestLog();
   if (reason) {
     const route = requestUrl.pathname;
     const count = (fallbackCounts.get(route) || 0) + 1;
@@ -1644,15 +1827,15 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
       const brief = reason instanceof Error
         ? (reason.code === 'ERR_MODULE_NOT_FOUND' ? 'missing npm dependency' : reason.message)
         : reason;
-      context.logger.warn(`[local-api] ${route} → cloud (${brief})`);
+      context.logger.warn(`${prefix} ${route} → cloud (${brief})`);
     } else if (count === 5 || count % 100 === 0) {
-      context.logger.warn(`[local-api] ${route} → cloud x${count}`);
+      context.logger.warn(`${prefix} ${route} → cloud x${count}`);
     }
   }
   try {
     const resp = await proxyToCloud(requestUrl, req, context);
     if (!resp.ok) {
-      context.logger.warn(`[local-api] cloud returned ${resp.status} for ${requestUrl.pathname}`);
+      context.logger.warn(`${prefix} cloud returned ${resp.status} for ${requestUrl.pathname} ${timing()}`);
     }
     return resp;
   } catch (error) {
@@ -1665,7 +1848,7 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
         'If remoteBase intentionally points at a private/loopback host, pass allowPrivateRemoteBase=true programmatically.'
       );
     } else {
-      context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
+      context.logger.error(`${prefix} cloud fallback failed for ${requestUrl.pathname} ${timing()}`, error);
     }
     return null;
   }
@@ -1710,8 +1893,10 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   delete fetchOptions.allowPrivateNetwork;
   const resolvedAddress = fetchOptions.resolvedAddress;
   const requestedFamily = fetchOptions.resolvedFamily;
+  const maxBodyBytes = fetchOptions.maxBodyBytes;
   delete fetchOptions.resolvedAddress;
   delete fetchOptions.resolvedFamily;
+  delete fetchOptions.maxBodyBytes;
   const resolvedFamily = resolvedAddress ? isIP(resolvedAddress) : 0;
   if (resolvedAddress && resolvedFamily === 0) {
     throw new TypeError('resolvedAddress must be an IPv4 or IPv6 address');
@@ -1719,12 +1904,15 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   if (requestedFamily != null && requestedFamily !== resolvedFamily) {
     throw new TypeError('resolvedFamily must match resolvedAddress');
   }
-  if (u.protocol === 'https:') {
+  // A body cap needs the streaming request below, so capped plain-HTTP
+  // fetches take it too instead of the buffering fetch() fallback.
+  if (u.protocol === 'https:' || (maxBodyBytes != null && u.protocol === 'http:')) {
+    const mod = u.protocol === 'https:' ? https : http;
     return new Promise((resolve, reject) => {
       const reqOpts = {
         signal,
         hostname: u.hostname,
-        port: u.port || 443,
+        port: u.port || (u.protocol === 'https:' ? 443 : 80),
         path: u.pathname + u.search,
         method: fetchOptions.method || 'GET',
         headers: fetchOptions.headers || {},
@@ -1735,10 +1923,28 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
       if (resolvedAddress) {
         reqOpts.lookup = makePinnedLookup(resolvedAddress, resolvedFamily);
       }
-      const req = https.request(reqOpts, (res) => {
+      const req = mod.request(reqOpts, (res) => {
         const chunks = [];
+        let receivedBytes = 0;
+        const rejectOversized = () => {
+          const error = new Error(`Response body exceeds ${maxBodyBytes} bytes`);
+          error.code = 'EBODYTOOLARGE';
+          reject(error);
+          req.destroy(error);
+        };
+        if (maxBodyBytes != null && Number(res.headers['content-length']) > maxBodyBytes) {
+          rejectOversized();
+          return;
+        }
         res.on('error', reject);
-        res.on('data', (c) => chunks.push(c));
+        res.on('data', (c) => {
+          receivedBytes += c.length;
+          if (maxBodyBytes != null && receivedBytes > maxBodyBytes) {
+            rejectOversized();
+            return;
+          }
+          chunks.push(c);
+        });
         res.on('end', () => {
           const body = Buffer.concat(chunks);
           const headers = new Headers();
@@ -2006,21 +2212,43 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     }
 
     case 'OLLAMA_API_URL': {
-      let probeUrl;
+      let parsed;
       try {
-        const parsed = new URL(value);
+        parsed = new URL(value);
         if (!['http:', 'https:'].includes(parsed.protocol)) return fail('Must be an http(s) URL');
-        // Probe the OpenAI-compatible models endpoint
-        probeUrl = new URL('/v1/models', value).toString();
       } catch {
         return fail('Invalid URL');
       }
-      const response = await fetchWithTimeout(probeUrl, { method: 'GET', allowPrivateNetwork: true }, 8000);
+      if (parsed.username || parsed.password) return fail('URLs with credentials are not allowed');
+      // Permit loopback or the already-configured Ollama origin to reach a
+      // private address; require public-host validation and IP pinning for any
+      // other caller-supplied URL so secret validation cannot scan LAN/metadata.
+      const isDesktop = process.env.LOCAL_API_MODE === 'tauri-sidecar';
+      let safety = await isSafeUrl(parsed.toString());
+      if (isDesktop) safety = await isSafeUrlWithSystemResolver(parsed, safety);
+      const isLoopback = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname.toLowerCase());
+      if (!safety.safe && !isLoopback && !isConfiguredOllamaOrigin(parsed)) {
+        // Settings saves only after validation. Let it save a LAN URL without
+        // making an outbound request before the user has configured that origin.
+        if (safety.privateLan && isDesktop) {
+          return ok('Private Ollama URL accepted for configuration without a connection check');
+        }
+        return fail(`Ollama URL blocked: ${safety.reason}`);
+      }
+      const pinned = safety.safe ? pickPinnedAddress(safety.resolvedAddresses) : null;
+      if (safety.safe && !pinned) {
+        return fail('Ollama URL blocked: Could not resolve hostname');
+      }
+      const probeOptions = pinned
+        ? { method: 'GET', resolvedAddress: pinned.address, resolvedFamily: pinned.family }
+        : { method: 'GET', allowPrivateNetwork: true };
+      const probeUrl = new URL('/v1/models', parsed).toString();
+      const response = await fetchWithTimeout(probeUrl, probeOptions, 8000);
       if (!response.ok) {
         // Fall back to native Ollama /api/tags endpoint
         try {
-          const tagsUrl = new URL('/api/tags', value).toString();
-          const tagsResponse = await fetchWithTimeout(tagsUrl, { method: 'GET', allowPrivateNetwork: true }, 8000);
+          const tagsUrl = new URL('/api/tags', parsed).toString();
+          const tagsResponse = await fetchWithTimeout(tagsUrl, probeOptions, 8000);
           if (!tagsResponse.ok) return fail(`Ollama probe failed (${tagsResponse.status})`);
           return ok('Ollama endpoint verified (native API)');
         } catch {
@@ -2038,7 +2266,15 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'VITE_OPENSKY_RELAY_URL': {
       const probeUrl = relayToHttpUrl(value);
       if (!probeUrl) return fail('Relay URL is invalid');
-      const response = await fetchWithTimeout(probeUrl, { method: 'GET' });
+      const safety = await isSafeUrl(probeUrl);
+      if (!safety.safe) return fail(`Relay URL blocked: ${safety.reason}`);
+      const pinned = pickPinnedAddress(safety.resolvedAddresses);
+      if (!pinned) return fail('Relay URL blocked: Could not resolve hostname');
+      const response = await fetchWithTimeout(probeUrl, {
+        method: 'GET',
+        resolvedAddress: pinned.address,
+        resolvedFamily: pinned.family,
+      });
       if (response.status >= 500) return fail(`Relay probe failed (${response.status})`);
       return ok('Relay URL is reachable');
     }
@@ -2296,14 +2532,15 @@ async function dispatch(requestUrl, req, routes, context) {
     if (!convexUrl) {
       const cloudUrl = new URL(requestUrl);
       cloudUrl.pathname = '/api/leads/v1/register-interest';
+      const { prefix, timing } = startCloudRequestLog();
       try {
         const cloudResponse = await proxyRegisterInterestToCloud(cloudUrl, req, context);
         if (!cloudResponse.ok) {
-          context.logger.warn(`[local-api] cloud returned ${cloudResponse.status} for ${cloudUrl.pathname}`);
+          context.logger.warn(`${prefix} cloud returned ${cloudResponse.status} for ${cloudUrl.pathname} ${timing()}`);
         }
         return cloudResponse;
       } catch (error) {
-        context.logger.error('[local-api] register-interest cloud fallback failed', error);
+        context.logger.error(`${prefix} register-interest cloud fallback failed ${timing()}`, error);
       }
       return json({ error: 'Registration service unavailable' }, 503);
     }
@@ -2398,6 +2635,28 @@ async function dispatch(requestUrl, req, routes, context) {
     const feedUrl = requestUrl.searchParams.get('url');
     if (!feedUrl) return rssProxyJson({ error: 'Missing url parameter' }, 400);
 
+    // In Docker mode nginx adds the local token to every caller's request, so
+    // the token does not identify the user: hold the route to the hosted
+    // proxy's feed allowlist, default ports and a per-client rate limit.
+    if (context.mode === 'docker') {
+      const allowed = clientWithinLimit(req, context.rssProxyLimits, RSS_PROXY_CLIENT_LIMIT, RSS_PROXY_CLIENT_WINDOW_MS);
+      if (!allowed.ok) {
+        return json({ error: 'Too many requests' }, 429, {
+          ...RSS_PROXY_SECURITY_HEADERS,
+          'Retry-After': String(allowed.retryAfterSeconds),
+        });
+      }
+      let target;
+      try {
+        target = new URL(feedUrl);
+      } catch {
+        return rssProxyJson({ error: 'Invalid URL' }, 400);
+      }
+      if (!isAllowedRssDomain(target.hostname) || target.port !== '') {
+        return rssProxyJson({ error: 'Domain not allowed' }, 403);
+      }
+    }
+
     // SSRF protection: block private IPs, reserved ranges, and DNS rebinding
     const safety = await isSafeUrl(feedUrl);
     if (!safety.safe) {
@@ -2415,18 +2674,47 @@ async function dispatch(requestUrl, req, routes, context) {
         context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${JSON.stringify(feedUrl)})`);
         return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
       }
-      const response = await fetchWithTimeout(feedUrl, {
-        headers: {
-          'User-Agent': CHROME_UA,
-          'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        resolvedAddress: pinned.address,
-        resolvedFamily: pinned.family,
-      }, parsed.hostname === 'news.google.com' ? 20000 : 12000);
-      const rssBody = await response.text();
-      return rssProxyResponse(rssBody || '', response.status);
+      const client = context.mode === 'docker' ? clientLimitKey(req) : null;
+      await acquireRssProxySlot(req, client);
+      // nginx closes its upstream connection when the viewer goes away; stop the
+      // feed fetch then instead of holding the slot until it times out.
+      const clientGone = new AbortController();
+      const onClientGone = () => clientGone.abort();
+      req.socket?.once('close', onClientGone);
+      let rssBody;
+      let status;
+      try {
+        const response = await fetchWithTimeout(feedUrl, {
+          headers: {
+            'User-Agent': CHROME_UA,
+            'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          resolvedAddress: pinned.address,
+          resolvedFamily: pinned.family,
+          maxBodyBytes: RSS_PROXY_MAX_BODY_BYTES,
+          signal: clientGone.signal,
+        }, parsed.hostname === 'news.google.com' ? 20000 : 12000);
+        status = response.status;
+        rssBody = await response.text();
+      } finally {
+        req.socket?.off('close', onClientGone);
+        releaseRssProxySlot(client);
+      }
+      return rssProxyResponse(rssBody || '', status);
     } catch (e) {
+      if (e.code === 'EBODYTOOLARGE') {
+        return rssProxyJson({ error: 'Feed too large', url: feedUrl }, 502);
+      }
+      if (e.code === 'ERSSQUEUEFULL') {
+        return json({ error: 'Too many feed requests in progress' }, 503, {
+          ...RSS_PROXY_SECURITY_HEADERS,
+          'Retry-After': String(Math.ceil(RSS_PROXY_QUEUE_WAIT_MS / 1000)),
+        });
+      }
+      if (e.code === 'ERSSQUEUETIMEOUT' || e.code === 'ERSSCLIENTGONE') {
+        return rssProxyJson({ error: 'Feed timeout', url: feedUrl }, 504);
+      }
       const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
       return rssProxyJson({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed', url: feedUrl }, isTimeout ? 504 : 502);
     }
@@ -2610,6 +2898,10 @@ export const __testing__ = {
   parseDesktopKeyVerdict,
   setSelfHostVerdictTtlMs(ms) {
     selfHostVerdictTtlMs = ms;
+  },
+  clientWithinLimit,
+  setRssProxyQueueWaitMs(ms) {
+    _rssProxyQueueWaitMs = ms;
   },
   setSelfHostRelayTimeoutMs(ms) {
     selfHostRelayTimeoutMs = ms;

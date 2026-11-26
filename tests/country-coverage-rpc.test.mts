@@ -1324,15 +1324,26 @@ describe('GetCountryCoverage — end to end over the real collector', () => {
     assert.equal(strikes[0]?.timestampMs, (NOW_MS - 3 * HOUR) - ((NOW_MS - 3 * HOUR) % 1000));
   });
 
-  it('bounds the structured half with its own deadline', async () => {
+  it('bounds the structured half with its own deadline', async (t) => {
     // The coverage AbortController does not reach these producers — they are
     // plain handler calls that take no signal — so one hanging upstream would
     // otherwise hold the whole response open.
-    const response = await getCountryCoverage(ctx, request(), {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const pending = getCountryCoverage(ctx, request(), {
       now: () => NOW_MS,
       fetchCoverage: async () => coverage(),
       collectStructured: () => new Promise(() => { /* never settles */ }),
     });
+    // Let the healthy coverage feed settle and clear its independent timeout.
+    await new Promise<void>(resolve => setImmediate(resolve));
+    t.mock.timers.tick(7_999);
+    const settled = await Promise.race([
+      pending.then(() => true),
+      new Promise<boolean>(resolve => setImmediate(() => resolve(false))),
+    ]);
+    assert.equal(settled, false, 'structured producers have the full eight seconds');
+    t.mock.timers.tick(1);
+    const response = await pending;
     assert.equal(response.degraded, true);
     const structured = response.sources.filter(s => s.source.startsWith('structured:'));
     assert.ok(structured.length > 0, 'timed-out producers must still be reported');

@@ -85,6 +85,7 @@ export class FSIPanel extends Panel {
       let tltPrice = 0;
       let vix = 0;
       let hySpread = 0;
+      let fsiAsOf: number | null = null;
 
       if (hydrated && !hydrated.unavailable) {
         const hdr = (hydrated.headerMetrics ?? {}) as Record<string, Record<string, unknown> | null>;
@@ -94,6 +95,7 @@ export class FSIPanel extends Panel {
         tltPrice = Number(hdr?.fsi?.tltPrice ?? 0);
         if (!Number.isFinite(hygPrice)) hygPrice = 0;
         if (!Number.isFinite(tltPrice)) tltPrice = 0;
+        fsiAsOf = Number(hdr?.fsi?.asOf) || null;
         vix = Number(hdr?.vix?.value ?? 0);
         hySpread = Number(hdr?.hySpread?.value ?? 0);
       }
@@ -108,6 +110,7 @@ export class FSIPanel extends Panel {
           tltPrice = resp.tltPrice;
           vix = resp.vix;
           hySpread = resp.hySpread;
+          fsiAsOf = resp.fsiAsOf || null;
         }
       }
 
@@ -132,7 +135,7 @@ export class FSIPanel extends Panel {
       }
 
       this._hasData = true;
-      this.render({ fsiValue, fsiLabel, hygPrice, tltPrice, vix, hySpread }, euFsi);
+      this.render({ fsiValue, fsiLabel, hygPrice, tltPrice, vix, hySpread, fsiAsOf }, euFsi);
       return true;
     } catch (e) {
       if (!this._hasData) this.showError(e instanceof Error ? e.message : t('components.fsi.errors.failedToLoad'), () => void this.fetchData());
@@ -141,10 +144,10 @@ export class FSIPanel extends Panel {
   }
 
   private render(
-    resp: { fsiValue: number; fsiLabel: string; hygPrice: number; tltPrice: number; vix: number; hySpread: number },
+    resp: { fsiValue: number; fsiLabel: string; hygPrice: number; tltPrice: number; vix: number; hySpread: number; fsiAsOf: number | null },
     euFsi: GetEuFsiResponse | null,
   ): void {
-    const { fsiValue, fsiLabel, hygPrice, tltPrice, vix, hySpread } = resp;
+    const { fsiValue, fsiLabel, hygPrice, tltPrice, vix, hySpread, fsiAsOf } = resp;
     const labelColor = fsiLabelColor(fsiLabel);
     const fillPct = Math.min(Math.max((fsiValue / 2.5) * 100, 0), 100);
     const interpretation = fsiInterpretation(fsiLabel);
@@ -174,11 +177,12 @@ export class FSIPanel extends Panel {
         </div>`
       : '';
 
-    const html = `<div style="padding:12px 14px">
+    const html = `<div style="padding:12px 0">
       <div style="text-align:center;margin-bottom:16px">
         <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:4px">${escapeHtml(t('components.fsi.usFsiValue'))}</div>
         <div style="font-size:calc(36px * var(--wm-panel-effective-scale, 1));font-weight:700;color:${labelColor};line-height:1">${fsiValue.toFixed(4)}</div>
         <div style="font-size:calc(13px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${labelColor};margin-top:4px">${escapeHtml(fsiLabelDisplay(fsiLabel))}</div>
+        ${fsiAsOf ? `<div class="fsi-us-as-of" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:4px">${escapeHtml(t('components.fsi.asOf', { date: new Date(fsiAsOf).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }) }))}</div>` : ''}
       </div>
       <div style="margin:0 0 12px">
         <div style="display:flex;justify-content:space-between;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:3px">

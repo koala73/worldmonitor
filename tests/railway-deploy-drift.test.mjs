@@ -1051,6 +1051,75 @@ describe('deep-window fallback for unidentified-source windows', () => {
     assert.equal(results[1].verdict, 'CURRENT', 'other services pass through untouched');
   });
 
+  // 2026-11-09, seed-gdelt-intel: the build for #10343 FAILED at 07:30Z on a
+  // GitHub 504, and twelve later merges SKIPPED the service on watch paths. The
+  // fleet stream stops at head's commit time (11:48Z), so the shallow history
+  // held the SKIPPED records and the active 07:00Z image but not the failure,
+  // and the report said "no build and no rejection recorded".
+  it('re-reads a BEHIND service so a failed build older than head is named', async () => {
+    const reclassifyWithChange = (service, { deployments, error }) => classifyServiceDeploy({
+      service: service.name,
+      deployments,
+      error,
+      headSha: HEAD,
+      changedPathsSince: () => ['scripts/seed-example.mjs'],
+    });
+    const skipped = deployment('SKIPPED', { at: '2026-08-12T11:48:00.000Z' });
+    const running = deployment('SUCCESS', { at: '2026-08-12T07:00:00.000Z', sha: PREVIOUS });
+    const failed = deployment('FAILED', { at: '2026-08-12T07:30:00.000Z', sha: NEWER });
+    const shallow = reclassifyWithChange(svc('seed-a'), { deployments: [skipped, running], error: null });
+    assert.equal(shallow.verdict, 'BEHIND');
+
+    const { results, deepened, reclassified } = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => [skipped, failed, running],
+      reclassify: reclassifyWithChange,
+      now: NOW,
+    });
+    assert.equal(deepened, 1);
+    assert.equal(reclassified, 1);
+    assert.equal(results[0].verdict, 'BUILD_FAILED');
+    assert.match(results[0].detail, /the build for 4e89f7ea4 failed/);
+    assert.match(results[0].detail, /railway redeploy --service seed-a --from-source/);
+
+    const nothingNewer = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => [skipped, running],
+      reclassify: reclassifyWithChange,
+      now: NOW,
+    });
+    assert.equal(nothingNewer.results[0], shallow, 'a deep read that finds nothing new keeps BEHIND');
+    assert.equal(nothingNewer.reclassified, 0);
+    assert.equal(nothingNewer.unchanged, 1);
+  });
+
+  // #10358 review: the deep read has no Viewer-active marker, so a newer
+  // REMOVED deployment at head would read as the serving source and turn a
+  // correct BEHIND into CURRENT. The shallow read already named the source.
+  it('keeps BEHIND when a deep read names a different serving source', async () => {
+    const reclassifyWithChange = (service, { deployments, error }) => classifyServiceDeploy({
+      service: service.name,
+      deployments,
+      error,
+      headSha: HEAD,
+      changedPathsSince: () => ['scripts/seed-example.mjs'],
+    });
+    const running = deployment('SUCCESS', { at: '2026-08-12T07:00:00.000Z', sha: PREVIOUS });
+    const shallow = reclassifyWithChange(svc('seed-a'), { deployments: [running], error: null });
+    assert.equal(shallow.verdict, 'BEHIND');
+
+    const removedAtHead = deployment('REMOVED', { at: '2026-08-12T09:00:00.000Z', sha: HEAD });
+    const { results, reclassified, unchanged } = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => [removedAtHead, running],
+      reclassify: reclassifyWithChange,
+      now: NOW,
+    });
+    assert.equal(results[0], shallow, 'an older active image must stay reported');
+    assert.equal(reclassified, 0);
+    assert.equal(unchanged, 1);
+  });
+
   // #6483 review (adversarial, verified by execution): a cron seeder records a
   // running-status record per tick, so "no running record anywhere deep" is
   // itself evidence the container stopped ticking. A deep read surfacing a

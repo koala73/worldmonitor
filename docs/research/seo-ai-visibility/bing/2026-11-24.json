@@ -1,0 +1,797 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "bing-2026-11-24",
+  "observedAt": "2026-11-24T06:09:29.991Z",
+  "source": "bing-webmaster-api",
+  "site": null,
+  "windowEndSource": "GetRankAndTrafficStats",
+  "windows": [
+    {
+      "label": "28d",
+      "startDate": "2026-10-26",
+      "endDate": "2026-11-22"
+    },
+    {
+      "label": "90d",
+      "startDate": "2026-08-25",
+      "endDate": "2026-11-22"
+    }
+  ],
+  "traffic": {
+    "method": "GetRankAndTrafficStats",
+    "availability": "available",
+    "reason": null,
+    "basis": "daily-site-totals",
+    "windows": {
+      "28d": {
+        "startDate": "2026-10-26",
+        "endDate": "2026-11-22",
+        "daysReported": 28,
+        "impressions": 66693,
+        "clicks": 6492,
+        "ctr": 0.0973
+      },
+      "90d": {
+        "startDate": "2026-08-25",
+        "endDate": "2026-11-22",
+        "daysReported": 90,
+        "impressions": 234687,
+        "clicks": 22048,
+        "ctr": 0.0939
+      }
+    },
+    "weeklyTrend": [
+      {
+        "startDate": "2026-08-24",
+        "endDate": "2026-08-30",
+        "days": 6,
+        "impressions": 14065,
+        "clicks": 1813,
+        "ctr": 0.1289
+      },
+      {
+        "startDate": "2026-08-31",
+        "endDate": "2026-09-06",
+        "days": 7,
+        "impressions": 19527,
+        "clicks": 2103,
+        "ctr": 0.1077
+      },
+      {
+        "startDate": "2026-09-07",
+        "endDate": "2026-09-13",
+        "days": 7,
+        "impressions": 24421,
+        "clicks": 2050,
+        "ctr": 0.0839
+      },
+      {
+        "startDate": "2026-09-14",
+        "endDate": "2026-09-20",
+        "days": 7,
+        "impressions": 20893,
+        "clicks": 1855,
+        "ctr": 0.0888
+      },
+      {
+        "startDate": "2026-09-21",
+        "endDate": "2026-09-27",
+        "days": 7,
+        "impressions": 24604,
+        "clicks": 1641,
+        "ctr": 0.0667
+      },
+      {
+        "startDate": "2026-09-28",
+        "endDate": "2026-10-04",
+        "days": 7,
+        "impressions": 22911,
+        "clicks": 1557,
+        "ctr": 0.068
+      },
+      {
+        "startDate": "2026-10-05",
+        "endDate": "2026-10-11",
+        "days": 7,
+        "impressions": 12771,
+        "clicks": 1542,
+        "ctr": 0.1207
+      },
+      {
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-18",
+        "days": 7,
+        "impressions": 13007,
+        "clicks": 1411,
+        "ctr": 0.1085
+      },
+      {
+        "startDate": "2026-10-19",
+        "endDate": "2026-10-25",
+        "days": 7,
+        "impressions": 15795,
+        "clicks": 1584,
+        "ctr": 0.1003
+      },
+      {
+        "startDate": "2026-10-26",
+        "endDate": "2026-11-01",
+        "days": 7,
+        "impressions": 14099,
+        "clicks": 1514,
+        "ctr": 0.1074
+      },
+      {
+        "startDate": "2026-11-02",
+        "endDate": "2026-11-08",
+        "days": 7,
+        "impressions": 16298,
+        "clicks": 1639,
+        "ctr": 0.1006
+      },
+      {
+        "startDate": "2026-11-09",
+        "endDate": "2026-11-15",
+        "days": 7,
+        "impressions": 17733,
+        "clicks": 1511,
+        "ctr": 0.0852
+      },
+      {
+        "startDate": "2026-11-16",
+        "endDate": "2026-11-22",
+        "days": 7,
+        "impressions": 18563,
+        "clicks": 1828,
+        "ctr": 0.0985
+      }
+    ]
+  },
+  "queries": {
+    "method": "GetQueryStats",
+    "availability": "partial",
+    "reason": "Bing returns at most 100 rows per weekly bucket, so these sums cover the top rows of each week and are not totals. Totals come from the daily traffic section.",
+    "basis": "top-100-per-week",
+    "windows": {
+      "28d": {
+        "startDate": "2026-10-26",
+        "endDate": "2026-11-22",
+        "weeks": 4,
+        "firstWeekEnding": "2026-10-30",
+        "lastWeekEnding": "2026-11-20",
+        "weeksAtRowCap": 4,
+        "impressions": 27414,
+        "clicks": 4789,
+        "ctr": 0.1747,
+        "brand": {
+          "impressions": 13204,
+          "clicks": 4501,
+          "ctr": 0.3409,
+          "queries": 78
+        },
+        "nonBrand": {
+          "impressions": 14210,
+          "clicks": 288,
+          "ctr": 0.0203,
+          "queries": 218
+        },
+        "topQueries": [
+          {
+            "query": "world monitor",
+            "brand": true,
+            "impressions": 8621,
+            "clicks": 3200,
+            "ctr": 0.3712,
+            "avgImpressionPosition": 3.05,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world",
+            "brand": false,
+            "impressions": 6776,
+            "clicks": 7,
+            "ctr": 0.001,
+            "avgImpressionPosition": 6.63,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world monitor app",
+            "brand": true,
+            "impressions": 2029,
+            "clicks": 681,
+            "ctr": 0.3356,
+            "avgImpressionPosition": 2.66,
+            "avgClickPosition": null
+          },
+          {
+            "query": "monitor the situation",
+            "brand": false,
+            "impressions": 1896,
+            "clicks": 12,
+            "ctr": 0.0063,
+            "avgImpressionPosition": 4.8,
+            "avgClickPosition": null
+          },
+          {
+            "query": "suez canal",
+            "brand": false,
+            "impressions": 1395,
+            "clicks": 2,
+            "ctr": 0.0014,
+            "avgImpressionPosition": 7.95,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world app",
+            "brand": false,
+            "impressions": 823,
+            "clicks": 6,
+            "ctr": 0.0073,
+            "avgImpressionPosition": 7,
+            "avgClickPosition": null
+          },
+          {
+            "query": "worldmonitor.app",
+            "brand": true,
+            "impressions": 611,
+            "clicks": 145,
+            "ctr": 0.2373,
+            "avgImpressionPosition": 4.1,
+            "avgClickPosition": null
+          },
+          {
+            "query": "wordmonitor",
+            "brand": true,
+            "impressions": 518,
+            "clicks": 184,
+            "ctr": 0.3552,
+            "avgImpressionPosition": 3.41,
+            "avgClickPosition": null
+          },
+          {
+            "query": "www.worldmonitor.app",
+            "brand": true,
+            "impressions": 448,
+            "clicks": 68,
+            "ctr": 0.1518,
+            "avgImpressionPosition": 5.12,
+            "avgClickPosition": null
+          },
+          {
+            "query": "is the strait of hormuz open",
+            "brand": false,
+            "impressions": 241,
+            "clicks": 1,
+            "ctr": 0.0041,
+            "avgImpressionPosition": 6.16,
+            "avgClickPosition": null
+          },
+          {
+            "query": "ワールドディスプレイ",
+            "brand": false,
+            "impressions": 212,
+            "clicks": 0,
+            "ctr": 0,
+            "avgImpressionPosition": 3.5,
+            "avgClickPosition": null
+          },
+          {
+            "query": "monitoring the situation",
+            "brand": false,
+            "impressions": 153,
+            "clicks": 2,
+            "ctr": 0.0131,
+            "avgImpressionPosition": 4.84,
+            "avgClickPosition": null
+          },
+          {
+            "query": "pizza index",
+            "brand": false,
+            "impressions": 141,
+            "clicks": 3,
+            "ctr": 0.0213,
+            "avgImpressionPosition": 8.08,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world debt clock",
+            "brand": false,
+            "impressions": 118,
+            "clicks": 2,
+            "ctr": 0.0169,
+            "avgImpressionPosition": 9,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world news monitor",
+            "brand": false,
+            "impressions": 115,
+            "clicks": 4,
+            "ctr": 0.0348,
+            "avgImpressionPosition": 3.03,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world monitor官网",
+            "brand": true,
+            "impressions": 98,
+            "clicks": 10,
+            "ctr": 0.102,
+            "avgImpressionPosition": 3.86,
+            "avgClickPosition": null
+          },
+          {
+            "query": "bab el mandeb",
+            "brand": false,
+            "impressions": 97,
+            "clicks": 0,
+            "ctr": 0,
+            "avgImpressionPosition": 6.29,
+            "avgClickPosition": null
+          },
+          {
+            "query": "kerch strait",
+            "brand": false,
+            "impressions": 94,
+            "clicks": 2,
+            "ctr": 0.0213,
+            "avgImpressionPosition": 8,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world-monitor",
+            "brand": true,
+            "impressions": 92,
+            "clicks": 20,
+            "ctr": 0.2174,
+            "avgImpressionPosition": 2.93,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world wide outages",
+            "brand": false,
+            "impressions": 89,
+            "clicks": 1,
+            "ctr": 0.0112,
+            "avgImpressionPosition": 7.83,
+            "avgClickPosition": null
+          }
+        ]
+      },
+      "90d": {
+        "startDate": "2026-08-25",
+        "endDate": "2026-11-22",
+        "weeks": 13,
+        "firstWeekEnding": "2026-08-28",
+        "lastWeekEnding": "2026-11-20",
+        "weeksAtRowCap": 11,
+        "impressions": 138314,
+        "clicks": 16827,
+        "ctr": 0.1217,
+        "brand": {
+          "impressions": 48426,
+          "clicks": 15842,
+          "ctr": 0.3271,
+          "queries": 173
+        },
+        "nonBrand": {
+          "impressions": 89888,
+          "clicks": 985,
+          "ctr": 0.011,
+          "queries": 578
+        },
+        "topQueries": [
+          {
+            "query": "world",
+            "brand": false,
+            "impressions": 45894,
+            "clicks": 90,
+            "ctr": 0.002,
+            "avgImpressionPosition": 6.39,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world monitor",
+            "brand": true,
+            "impressions": 34239,
+            "clicks": 11804,
+            "ctr": 0.3448,
+            "avgImpressionPosition": 2.63,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world's tallest buildings",
+            "brand": false,
+            "impressions": 9205,
+            "clicks": 0,
+            "ctr": 0,
+            "avgImpressionPosition": 6.3,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world cup qualifiers schedule",
+            "brand": false,
+            "impressions": 8957,
+            "clicks": 0,
+            "ctr": 0,
+            "avgImpressionPosition": 6.34,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world monitor app",
+            "brand": true,
+            "impressions": 6516,
+            "clicks": 2135,
+            "ctr": 0.3277,
+            "avgImpressionPosition": 2.21,
+            "avgClickPosition": null
+          },
+          {
+            "query": "monitoring and logging",
+            "brand": false,
+            "impressions": 5843,
+            "clicks": 0,
+            "ctr": 0,
+            "avgImpressionPosition": 7.1,
+            "avgClickPosition": null
+          },
+          {
+            "query": "monitor the situation",
+            "brand": false,
+            "impressions": 3529,
+            "clicks": 20,
+            "ctr": 0.0057,
+            "avgImpressionPosition": 5.24,
+            "avgClickPosition": null
+          },
+          {
+            "query": "wordmonitor",
+            "brand": true,
+            "impressions": 1928,
+            "clicks": 596,
+            "ctr": 0.3091,
+            "avgImpressionPosition": 3.17,
+            "avgClickPosition": null
+          },
+          {
+            "query": "monitoring",
+            "brand": false,
+            "impressions": 1918,
+            "clicks": 4,
+            "ctr": 0.0021,
+            "avgImpressionPosition": 7.14,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world app",
+            "brand": false,
+            "impressions": 1629,
+            "clicks": 13,
+            "ctr": 0.008,
+            "avgImpressionPosition": 6.23,
+            "avgClickPosition": null
+          },
+          {
+            "query": "suez canal",
+            "brand": false,
+            "impressions": 1395,
+            "clicks": 2,
+            "ctr": 0.0014,
+            "avgImpressionPosition": 7.95,
+            "avgClickPosition": null
+          },
+          {
+            "query": "worldwatcher live",
+            "brand": false,
+            "impressions": 1290,
+            "clicks": 26,
+            "ctr": 0.0202,
+            "avgImpressionPosition": 5.02,
+            "avgClickPosition": null
+          },
+          {
+            "query": "worldmonitor.app",
+            "brand": true,
+            "impressions": 1197,
+            "clicks": 333,
+            "ctr": 0.2782,
+            "avgImpressionPosition": 3.3,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world monitor github",
+            "brand": true,
+            "impressions": 900,
+            "clicks": 39,
+            "ctr": 0.0433,
+            "avgImpressionPosition": 4.57,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world watcher.live",
+            "brand": false,
+            "impressions": 742,
+            "clicks": 10,
+            "ctr": 0.0135,
+            "avgImpressionPosition": 4.24,
+            "avgClickPosition": null
+          },
+          {
+            "query": "wolrd",
+            "brand": false,
+            "impressions": 599,
+            "clicks": 2,
+            "ctr": 0.0033,
+            "avgImpressionPosition": 7.36,
+            "avgClickPosition": null
+          },
+          {
+            "query": "ワールドディスプレイ",
+            "brand": false,
+            "impressions": 559,
+            "clicks": 0,
+            "ctr": 0,
+            "avgImpressionPosition": 5.67,
+            "avgClickPosition": null
+          },
+          {
+            "query": "world watcher",
+            "brand": false,
+            "impressions": 473,
+            "clicks": 39,
+            "ctr": 0.0825,
+            "avgImpressionPosition": 5.03,
+            "avgClickPosition": null
+          },
+          {
+            "query": "www.worldmonitor.app",
+            "brand": true,
+            "impressions": 448,
+            "clicks": 68,
+            "ctr": 0.1518,
+            "avgImpressionPosition": 5.12,
+            "avgClickPosition": null
+          },
+          {
+            "query": "worldmoniter",
+            "brand": true,
+            "impressions": 376,
+            "clicks": 123,
+            "ctr": 0.3271,
+            "avgImpressionPosition": 2.83,
+            "avgClickPosition": null
+          }
+        ]
+      }
+    }
+  },
+  "pages": {
+    "method": "GetPageStats",
+    "availability": "partial",
+    "reason": "Bing returns at most 100 rows per weekly bucket, so these sums cover the top rows of each week and are not totals. Totals come from the daily traffic section.",
+    "basis": "top-100-per-week",
+    "windows": {
+      "28d": {
+        "startDate": "2026-10-26",
+        "endDate": "2026-11-22",
+        "weeks": 4,
+        "firstWeekEnding": "2026-10-30",
+        "lastWeekEnding": "2026-11-20",
+        "weeksAtRowCap": 0,
+        "impressions": 58060,
+        "clicks": 6454,
+        "ctr": 0.1112,
+        "byFamily": {
+          "homepage": {
+            "impressions": 34173,
+            "clicks": 5714,
+            "ctr": 0.1672,
+            "urls": 6
+          },
+          "dashboard": {
+            "impressions": 5448,
+            "clicks": 179,
+            "ctr": 0.0329,
+            "urls": 10
+          },
+          "blog": {
+            "impressions": 1680,
+            "clicks": 100,
+            "ctr": 0.0595,
+            "urls": 10
+          },
+          "documentation": {
+            "impressions": 158,
+            "clicks": 4,
+            "ctr": 0.0253,
+            "urls": 6
+          },
+          "docs_zh": {
+            "impressions": 1623,
+            "clicks": 193,
+            "ctr": 0.1189,
+            "urls": 3
+          },
+          "country_pages": {
+            "impressions": 375,
+            "clicks": 15,
+            "ctr": 0.04,
+            "urls": 3
+          },
+          "chokepoints": {
+            "impressions": 5255,
+            "clicks": 92,
+            "ctr": 0.0175,
+            "urls": 7
+          },
+          "crises": {
+            "impressions": 2356,
+            "clicks": 36,
+            "ctr": 0.0153,
+            "urls": 7
+          },
+          "tools": {
+            "impressions": 6670,
+            "clicks": 117,
+            "ctr": 0.0175,
+            "urls": 8
+          },
+          "pricing": {
+            "impressions": 322,
+            "clicks": 4,
+            "ctr": 0.0124,
+            "urls": 1
+          }
+        },
+        "unmapped": {
+          "impressions": 0,
+          "clicks": 0,
+          "ctr": null,
+          "urls": []
+        }
+      },
+      "90d": {
+        "startDate": "2026-08-25",
+        "endDate": "2026-11-22",
+        "weeks": 13,
+        "firstWeekEnding": "2026-08-28",
+        "lastWeekEnding": "2026-11-20",
+        "weeksAtRowCap": 0,
+        "impressions": 223738,
+        "clicks": 22181,
+        "ctr": 0.0991,
+        "byFamily": {
+          "homepage": {
+            "impressions": 167095,
+            "clicks": 19931,
+            "ctr": 0.1193,
+            "urls": 7
+          },
+          "dashboard": {
+            "impressions": 26579,
+            "clicks": 912,
+            "ctr": 0.0343,
+            "urls": 15
+          },
+          "blog": {
+            "impressions": 3393,
+            "clicks": 221,
+            "ctr": 0.0651,
+            "urls": 24
+          },
+          "documentation": {
+            "impressions": 469,
+            "clicks": 18,
+            "ctr": 0.0384,
+            "urls": 14
+          },
+          "docs_zh": {
+            "impressions": 5781,
+            "clicks": 711,
+            "ctr": 0.123,
+            "urls": 10
+          },
+          "country_pages": {
+            "impressions": 1130,
+            "clicks": 36,
+            "ctr": 0.0319,
+            "urls": 16
+          },
+          "chokepoints": {
+            "impressions": 7065,
+            "clicks": 145,
+            "ctr": 0.0205,
+            "urls": 15
+          },
+          "crises": {
+            "impressions": 2508,
+            "clicks": 45,
+            "ctr": 0.0179,
+            "urls": 10
+          },
+          "tools": {
+            "impressions": 9188,
+            "clicks": 141,
+            "ctr": 0.0153,
+            "urls": 9
+          },
+          "pricing": {
+            "impressions": 497,
+            "clicks": 20,
+            "ctr": 0.0402,
+            "urls": 2
+          },
+          "developer_mcp": {
+            "impressions": 4,
+            "clicks": 0,
+            "ctr": 0,
+            "urls": 2
+          },
+          "sources": {
+            "impressions": 12,
+            "clicks": 0,
+            "ctr": 0,
+            "urls": 1
+          },
+          "compare": {
+            "impressions": 2,
+            "clicks": 1,
+            "ctr": 0.5,
+            "urls": 2
+          },
+          "research": {
+            "impressions": 14,
+            "clicks": 0,
+            "ctr": 0,
+            "urls": 1
+          },
+          "markdown_twins": {
+            "impressions": 1,
+            "clicks": 0,
+            "ctr": 0,
+            "urls": 1
+          }
+        },
+        "unmapped": {
+          "impressions": 0,
+          "clicks": 0,
+          "ctr": null,
+          "urls": []
+        }
+      }
+    }
+  },
+  "crawl": {
+    "method": "GetCrawlStats",
+    "availability": "partial",
+    "reason": "Bing returned no crawl row for 2026-10-26, so the 28-day change is not measured",
+    "latest": {
+      "date": "2026-11-23",
+      "inIndex": 1671,
+      "crawledPages": 3810,
+      "crawlErrors": 11,
+      "code2xx": 2672,
+      "code301": 77,
+      "code302": 1,
+      "code4xx": 11,
+      "code5xx": 0,
+      "blockedByRobotsTxt": 364,
+      "allOtherCodes": 1648,
+      "dnsFailures": 0,
+      "connectionTimeout": 0,
+      "containsMalware": 0,
+      "inLinks": 119113
+    },
+    "change": null
+  },
+  "aiPerformance": {
+    "method": null,
+    "availability": "unavailable",
+    "reason": "Bing Webmaster Tools reports AI Performance (citations and grounding queries) only in its UI; the Webmaster API has no method for it."
+  },
+  "guardrails": [
+    "Totals come only from the daily traffic rows. Query and page sums are top-100-per-week and are never reported as totals.",
+    "A position Bing reports as -1 is recorded as null, not as a rank.",
+    "The site URL and the API key stay in operator configuration and never reach this file."
+  ]
+}

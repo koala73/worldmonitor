@@ -403,6 +403,27 @@
         "token_endpoint_auth_method": "none",
         "application_type": "native"
       }
+    },
+    "https://manufact.com/oauth/client-metadata.json": {
+      "content_type": "application/json; charset=utf-8",
+      "cache_control": "public, max-age=0, must-revalidate",
+      "body": {
+        "client_id": "https://manufact.com/oauth/client-metadata.json",
+        "client_name": "Manufact Cloud",
+        "client_uri": "https://manufact.com",
+        "logo_uri": "https://cdn.mcp-use.com/mcpuse_logo_circle_dark.svg",
+        "redirect_uris": [
+          "https://manufact.com/inspector/oauth/callback"
+        ],
+        "grant_types": [
+          "authorization_code",
+          "refresh_token"
+        ],
+        "response_types": [
+          "code"
+        ],
+        "token_endpoint_auth_method": "none"
+      }
     }
   }
 }

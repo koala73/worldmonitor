@@ -1,6 +1,6 @@
 ---
 title: "World Monitor vs Recorded Future"
-description: "World Monitor vs Recorded Future for geopolitical and security intelligence. Recorded Future covers cyber threat intelligence and investigations at enterprise scale. World Monitor covers self-serve alerts, a live map, an API and MCP at published prices."
+description: "World Monitor vs Recorded Future for risk intelligence: Recorded Future covers enterprise cyber investigations, while World Monitor offers self-serve alerts."
 metaTitle: "World Monitor vs Recorded Future | World Monitor"
 keywords: "Recorded Future evaluators, world monitor vs recorded future, global intelligence tools"
 audience: "Recorded Future evaluators"
@@ -39,7 +39,7 @@ Recorded Future documents a [Geopolitical Intelligence](https://www.recordedfutu
 
 ## Where World Monitor is better
 
-World Monitor is the better fit for geopolitical monitoring without an enterprise contract. The [free map](https://www.worldmonitor.app/dashboard) needs no account and shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets together, with live ship transit counts at 13 [maritime chokepoints](https://www.worldmonitor.app/chokepoints). On the Pro plan, alert rules filter by event type, severity (all, high or critical) and country and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256. Delivery is real time or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)).
+World Monitor is the better fit for geopolitical monitoring without an enterprise contract. The [free map](https://www.worldmonitor.app/dashboard) needs no account and shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets together, with live ship transit counts at 13 [maritime chokepoints](https://www.worldmonitor.app/chokepoints/). On the Pro plan, alert rules filter by event type, severity (all, high or critical) and country and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256. Delivery is real time or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)).
 
 Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server for AI clients with Pro. Each outlet has an editorial tier from 1 (wire or official) to 4 (aggregator or blog), a propaganda-risk band and, where it applies, a state-affiliation label: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. Prices are published, and the code is open source under [AGPL-3.0](https://github.com/koala73/worldmonitor).
 

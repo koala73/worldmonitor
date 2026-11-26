@@ -269,3 +269,68 @@ describe("alertRules.countries — persistence + normalization", () => {
     expect(row?.digestMode).toBe("daily");
   });
 });
+
+// #10873: the activation flow's first rule is scoped to the followed countries
+// server-side, in the write's own transaction.
+describe("setNotificationConfigForUser seedCountriesFromFollowed", () => {
+  async function follow(t: ReturnType<typeof convexTest>, countries: string[]) {
+    await t.run(async (ctx) => {
+      let at = 1_000;
+      for (const country of countries) {
+        await ctx.db.insert("followedCountries", { userId: USER.subject, country, addedAt: at++ });
+      }
+    });
+  }
+  const seedWrite = (t: ReturnType<typeof convexTest>, extra: Record<string, unknown> = {}) =>
+    t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      enabled: true,
+      sensitivity: "critical",
+      channels: ["web_push"],
+      seedCountriesFromFollowed: true,
+      ...extra,
+    } as any);
+
+  test("scopes a new rule to the followed countries, oldest first", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t);
+    await follow(t, ["UA", "IL"]);
+    await seedWrite(t);
+    expect((await readRow(t))?.countries).toEqual(["UA", "IL"]);
+  });
+
+  test("never overwrites a scope already stored on the row", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t);
+    await follow(t, ["UA"]);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject, variant: VARIANT, enabled: false, countries: ["FR"],
+    });
+    await seedWrite(t);
+    expect((await readRow(t))?.countries).toEqual(["FR"]);
+  });
+
+  test("leaves the rule unscoped when the user follows nothing, and explicit countries win", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t);
+    await seedWrite(t);
+    expect((await readRow(t))?.countries).toBeUndefined();
+    await follow(t, ["UA"]);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject, variant: VARIANT, countries: [],
+    });
+    await seedWrite(t, { countries: ["GB"] });
+    expect((await readRow(t))?.countries).toEqual(["GB"]);
+  });
+
+  test("keeps a free account within its country cap across enabled rules", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject, variant: "finance", enabled: true, sensitivity: "critical", channels: ["email"], countries: ["FR"],
+    });
+    await follow(t, ["UA", "IL", "TW", "FR"]);
+    await seedWrite(t, { channels: ["email"] });
+    expect((await readRow(t))?.countries).toEqual(["UA", "IL", "FR"]);
+  });
+});

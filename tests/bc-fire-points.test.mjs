@@ -553,12 +553,15 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
     assert.equal(merged._cwfisState, 'ok');
     assert.equal(merged._bcState, 'failed');
 
+    // No BC recovery snapshot was retained here, so the failure carries no
+    // grace streak and alarms on the first run.
     const patch = canadianWildfireAfterPublish(merged).freshnessMetaPatch;
     assert.deepEqual(patch, {
       sourceState: 'degraded',
       errorCode: 'BC_WILDFIRE_SOURCE_FAILED',
       canadaSourceFailureCount: 1,
       failedSources: [], sourceHealth: {}, lastSourceAttemptAt: null,
+      consecutiveSourceFailures: null, lastSourceFailureCode: null,
     });
 
     const now = Date.parse('2026-08-14T12:00:00Z');
@@ -589,7 +592,9 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
       errorCode: 'CWFIS_PRESCRIBED_FAILED',
       canadaSourceFailureCount: 1,
       failedSources: [], sourceHealth: {}, lastSourceAttemptAt: null,
-    });
+      consecutiveSourceFailures: 3,
+      lastSourceFailureCode: 'CWFIS_PRESCRIBED_FAILED',
+    }, 'an unreadable predecessor starts at the warning threshold');
     assert.deepEqual(canadianWildfireAfterPublish({
       _cwfisState: 'failed',
       _cwfisErrorCode: 'unexpected raw message',
@@ -601,6 +606,109 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
       canadaSourceFailureCount: 2,
       failedSources: [], sourceHealth: {}, lastSourceAttemptAt: null,
     });
+  });
+
+  it('lets a retained BC or prescribed CWFIS failure alarm only on the third identical run', () => {
+    // Sentry WORLDMONITOR-1C1: on 2026-11-19 BC failed in runs at 17:31,
+    // 17:51, 19:32, 20:00 and 20:11 (longest streak 2) while the retained
+    // snapshot kept serving 2561 records, yet every run alarmed SEED_ERROR.
+    const now = Date.parse('2026-11-19T20:11:00Z');
+    const dataKey = healthTesting.BOOTSTRAP_KEYS.wildfires;
+    const metaKey = healthTesting.SEED_META.wildfires.key;
+    const classify = (patch) => healthTesting.classifyKey('wildfires', dataKey, { allowOnDemand: false }, {
+      keyStrens: new Map([[dataKey, 256]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[metaKey, JSON.stringify({
+        fetchedAt: now - 60_000, recordCount: 2561, ...patch,
+      })]]),
+      keyMetaErrors: new Map(),
+      now,
+    });
+    const retainedBc = {
+      _firmsState: 'ok', _firmsPartial: false, _cwfisState: 'ok',
+      _bcState: 'failed', _bcErrorCode: 'BC_WILDFIRE_SOURCE_FAILED',
+      _bcSnapshot: { version: 1, fetchedAt: now - 30 * 60_000, lastAttemptAt: now,
+        fireDetections: [], errorCode: 'BC_WILDFIRE_SOURCE_FAILED' },
+    };
+    const prescribed = {
+      _firmsState: 'ok', _firmsPartial: false, _bcState: 'ok',
+      _cwfisState: 'degraded', _cwfisErrorCode: 'CWFIS_PRESCRIBED_FAILED',
+    };
+    const ok = { _firmsState: 'ok', _firmsPartial: false, _cwfisState: 'ok', _bcState: 'ok' };
+
+    for (const [data, code] of [[retainedBc, 'BC_WILDFIRE_SOURCE_FAILED'], [prescribed, 'CWFIS_PRESCRIBED_FAILED']]) {
+      const first = canadianWildfireAfterPublish(data, { previousMeta: { sourceState: 'ok' } }).freshnessMetaPatch;
+      assert.equal(first.consecutiveSourceFailures, 1, code);
+      assert.equal(first.lastSourceFailureCode, code);
+      const firstEntry = classify(first);
+      assert.equal(firstEntry.status, 'OK', code);
+      assert.equal(firstEntry.sourceFailurePending, true);
+      assert.equal(firstEntry.errorCode, code);
+
+      const second = canadianWildfireAfterPublish(data, { previousMeta: { fetchedAt: now, ...first } }).freshnessMetaPatch;
+      assert.equal(second.consecutiveSourceFailures, 2);
+      assert.equal(classify(second).status, 'OK', `${code}: two runs are still transient`);
+
+      const third = canadianWildfireAfterPublish(data, { previousMeta: { fetchedAt: now, ...second } }).freshnessMetaPatch;
+      assert.equal(third.consecutiveSourceFailures, 3);
+      assert.equal(classify(third).status, 'SEED_ERROR', `${code}: a sustained failure alarms`);
+
+      // A successful run replaces seed-meta without the streak fields.
+      const recovered = canadianWildfireAfterPublish(ok, { previousMeta: third }).freshnessMetaPatch;
+      assert.deepEqual(recovered, { sourceState: 'ok' });
+      assert.equal(canadianWildfireAfterPublish(data, { previousMeta: recovered })
+        .freshnessMetaPatch.consecutiveSourceFailures, 1, `${code}: recovery restarts the streak`);
+
+      for (const previousMeta of [null, { sourceState: 'degraded', errorCode: code }]) {
+        const patch = canadianWildfireAfterPublish(data, { previousMeta }).freshnessMetaPatch;
+        assert.equal(patch.consecutiveSourceFailures, 3, `${code}: unknown history fails closed`);
+        assert.equal(classify(patch).status, 'SEED_ERROR');
+      }
+    }
+
+    const otherCode = canadianWildfireAfterPublish(retainedBc, { previousMeta: {
+      sourceState: 'degraded', errorCode: 'CWFIS_PRESCRIBED_FAILED',
+      consecutiveSourceFailures: 2, lastSourceFailureCode: 'CWFIS_PRESCRIBED_FAILED',
+    } }).freshnessMetaPatch;
+    assert.equal(otherCode.consecutiveSourceFailures, 1, 'a different failure cannot advance the BC streak');
+
+    // Without a retained BC snapshot the panel lost BC coverage, so alarm now.
+    const unretained = canadianWildfireAfterPublish({
+      ...retainedBc,
+      _bcSnapshot: { ...retainedBc._bcSnapshot, fetchedAt: null },
+    }, { previousMeta: { sourceState: 'ok' } }).freshnessMetaPatch;
+    assert.equal(unretained.consecutiveSourceFailures, null);
+    assert.equal(unretained.lastSourceFailureCode, null);
+    assert.equal(classify(unretained).status, 'SEED_ERROR');
+
+    // Partial FIRMS coverage on top of a Canadian failure is not one transient
+    // subsource failure: keep alarming on the first run, as before.
+    for (const data of [retainedBc, prescribed]) {
+      const patch = canadianWildfireAfterPublish({ ...data, _firmsPartial: true },
+        { previousMeta: { sourceState: 'ok' } }).freshnessMetaPatch;
+      assert.equal(patch.consecutiveSourceFailures, null, data._bcErrorCode ?? data._cwfisErrorCode);
+      assert.equal(patch.lastSourceFailureCode, null);
+      assert.equal(classify(patch).status, 'SEED_ERROR');
+    }
+  });
+
+  it('keeps the FIRMS partial and CWFIS active wildfire grace policies unchanged', () => {
+    const policies = healthTesting.SEED_META.wildfires.sourceFailure;
+    const policyFor = code => policies.find(candidate => candidate.failureCodePattern.test(code));
+    assert.equal(policyFor('FIRMS_PARTIAL_COVERAGE').warnAfterConsecutive, 2);
+    assert.equal(policyFor('FIRMS_PARTIAL_COVERAGE').maxPendingMin, undefined);
+    const cwfis = policyFor('CWFIS_SOURCE_FAILED');
+    assert.equal(cwfis.warnAfterConsecutive, 3);
+    assert.equal(cwfis.maxPendingMin, 180);
+    assert.deepEqual(cwfis.sources, ['cwfis', 'firms', 'bc']);
+    for (const code of ['BC_WILDFIRE_SOURCE_FAILED', 'CWFIS_PRESCRIBED_FAILED']) {
+      const policy = policyFor(code);
+      assert.equal(policy.warnAfterConsecutive, 3, code);
+      assert.equal(policy.sources, undefined);
+    }
+    for (const code of ['FIRMS_SOURCE_FAILED', 'CANADA_WILDFIRE_SOURCES_FAILED']) {
+      assert.equal(policyFor(code), undefined, `${code} alarms on the first run`);
+    }
   });
 
   it('throws when every upstream fails', async () => {
@@ -755,6 +863,62 @@ describe('host allowlist, cache key, transport', () => {
     assert.equal(data.fireDetections.find(row => row.id === 'fresh-firms').detectedAt, now);
     assert.equal(wfsCalls, 1, 'permanent HTTP 400 must not retry');
     assert.equal(canadianWildfireAfterPublish(data).freshnessMetaPatch.errorCode, 'BC_WILDFIRE_SOURCE_FAILED');
+  });
+
+  // BC's GeoServer answers some WFS pages with HTTP 400 NoApplicableCode
+  // carrying a server-side SocketTimeoutException. In production on
+  // 2026-11-08 BC failed this way on every other run and the next run
+  // succeeded, so health flapped to SEED_ERROR (Sentry WORLDMONITOR-1C1).
+  const wfsTimeout = () => new Response('<ows:ExceptionReport><ows:Exception exceptionCode="NoApplicableCode">'
+    + '<ows:ExceptionText>java.net.SocketTimeoutException: Read timed out</ows:ExceptionText>'
+    + '</ows:Exception></ows:ExceptionReport>', { status: 400 });
+
+  it('retries a WFS page once when the server reports its own timeout', async t => {
+    t.mock.method(console, 'warn', () => {});
+    const now = Date.parse('2026-09-13T02:20:00Z');
+    let wfsCalls = 0;
+    const result = await fetchBcFirePoints({ nowMs: now, wfsRetryDelayMs: 0, fetchFn: async url => {
+      if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+      wfsCalls++;
+      return wfsCalls === 1 ? wfsTimeout() : new Response(geojson);
+    } });
+    assert.equal(wfsCalls, 2);
+    assert.equal(result._bcState, 'ok');
+    assert.equal(result._bcVia, 'wfs');
+    assert.ok(result._bcCount > 0);
+  });
+
+  it('still retries a timeout that the capped diagnostic signal list leaves out', async t => {
+    t.mock.method(console, 'warn', () => {});
+    // Eight ORA codes fill the logged signal cap before 'timeout' is listed.
+    const ora = ['ORA-00904', 'ORA-00942', 'ORA-01017', 'ORA-01031', 'ORA-01722', 'ORA-03113', 'ORA-03114', 'ORA-12154'];
+    let wfsCalls = 0;
+    const result = await fetchBcFirePoints({ nowMs: Date.parse('2026-09-13T02:20:00Z'), wfsRetryDelayMs: 0, fetchFn: async url => {
+      if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+      wfsCalls++;
+      if (wfsCalls > 1) return new Response(geojson);
+      return new Response('<ows:ExceptionReport><ows:Exception exceptionCode="NoApplicableCode"><ows:ExceptionText>'
+        + `${ora.join(' ')} java.net.SocketTimeoutException: Read timed out</ows:ExceptionText>`
+        + '</ows:Exception></ows:ExceptionReport>', { status: 400 });
+    } });
+    assert.equal(wfsCalls, 2);
+    assert.equal(result._bcState, 'ok');
+  });
+
+  it('gives up on a WFS page after one timeout retry and keeps the retained rows', async t => {
+    t.mock.method(console, 'warn', () => {});
+    const now = Date.parse('2026-09-13T02:20:00Z');
+    const rows = parseBcFireGeoJson(geojson).fireDetections;
+    const previousSnapshot = { version: 1, fetchedAt: now - 600_000, fireDetections: rows };
+    let wfsCalls = 0;
+    const result = await fetchBcFirePoints({ previousSnapshot, nowMs: now, wfsRetryDelayMs: 0, fetchFn: async url => {
+      if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+      wfsCalls++;
+      return wfsTimeout();
+    } });
+    assert.equal(wfsCalls, 2);
+    assert.equal(result._bcState, 'failed');
+    assert.deepEqual(result.fireDetections, rows);
   });
 
   it('replaces retained BC rows only after complete valid coverage, including a valid empty response', async () => {

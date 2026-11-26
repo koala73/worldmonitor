@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { normalizeAdvisorySnapshot } from './intelligence-snapshots.js';
 import { RAW_SIGNAL_FAMILIES, RAW_SIGNAL_PROFILES, failedRawSignal, type RawSignalFamily } from './country-raw-signals-model';
 

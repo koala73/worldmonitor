@@ -28,7 +28,7 @@ describe('secondary dashboard startup', () => {
       'Umami must be injected by the deferred dashboard loader, not index.html',
     );
     assert.equal(
-      /<script\b[^>]+src=["']https:\/\/cdn\.debugbear\.com\/lpMwA9KpC6pf\.js["']/i.test(activeMarkup),
+      /<script\b[^>]+src=["']https:\/\/cdn\.debugbear\.com\/[^"']+\.js["']/i.test(activeMarkup),
       false,
       'DebugBear RUM must be injected by the dashboard loader, not index.html',
     );

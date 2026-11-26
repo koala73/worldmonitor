@@ -710,7 +710,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
     });
 
     it('keeps the 410 migration answer for a valid modern request on a product alias host', async () => {
-      const res = await handler(new Request('https://www.worldmonitor.app/mcp', {
+      const res = await handler(new Request('https://tech.worldmonitor.app/mcp', {
         method: 'POST',
         headers: modernHeaders('server/discover'),
         body: JSON.stringify(modernBody(22, 'server/discover')),

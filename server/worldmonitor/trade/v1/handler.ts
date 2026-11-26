@@ -8,6 +8,7 @@ import { getTradeFlows } from './get-trade-flows';
 import { getTradeBarriers } from './get-trade-barriers';
 import { getCustomsRevenue } from './get-customs-revenue';
 import { listComtradeFlows } from './list-comtrade-flows';
+import { getMonthlySitcTrade } from './get-monthly-sitc-trade';
 
 export const tradeHandler: TradeServiceHandler = {
   getTradeRestrictions,
@@ -18,4 +19,5 @@ export const tradeHandler: TradeServiceHandler = {
   getTradeBarriers,
   getCustomsRevenue,
   listComtradeFlows,
+  getMonthlySitcTrade,
 };

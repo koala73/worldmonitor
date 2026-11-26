@@ -109,7 +109,7 @@ function makeFixture({
   // node_modules/ is gitignored above so this stays invisible to `dirty`.
   writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}\n');
   copyFileSync(HOOK, join(root, '.husky', 'pre-push'));
-  for (const script of ['prepush-admission.mjs', 'prepush-attest.sh', 'prepush-changed-tests.sh', 'prepush-identity-gate.sh']) {
+  for (const script of ['prepush-admission.mjs', 'prepush-attest.sh', 'prepush-changed-tests.sh', 'prepush-identity-gate.sh', 'prepush-unrelated-history-gate.sh']) {
     copyFileSync(join(REPO_ROOT, 'scripts', script), join(root, 'scripts', script));
   }
   copyFileSync(
@@ -260,6 +260,7 @@ function pushWithPoisonedSharedHooksPath() {
     'prepush-attest.sh',
     'prepush-changed-tests.sh',
     'prepush-identity-gate.sh',
+    'prepush-unrelated-history-gate.sh',
   ]) {
     copyFileSync(join(REPO_ROOT, 'scripts', script), join(main, 'scripts', script));
   }

@@ -4,9 +4,11 @@
  * The server decides membership and admin rights; the section renders what
  * listMySeats returns and routes invite/remove to the admin mutations.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { EnterpriseSeatsView } from '@/services/billing';
+
+import { initTestI18n } from './helpers/i18n.mts';
 
 let view: EnterpriseSeatsView | null = null;
 const inviteEnterpriseMembers = vi.fn(async (_emails: string[]) => ({
@@ -41,6 +43,10 @@ function adminView(overrides: Partial<EnterpriseSeatsView> = {}): EnterpriseSeat
 }
 
 let overlay: HTMLElement;
+
+beforeAll(async () => {
+  await initTestI18n();
+});
 let section: InstanceType<typeof EnterpriseSeatsSection>;
 
 beforeEach(() => {

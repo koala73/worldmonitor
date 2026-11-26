@@ -61,11 +61,6 @@ function gasRecord(overrides = {}) {
 }
 
 describe('China JODI content validation', () => {
-  it('exports dedicated oil and gas validators', () => {
-    assert.equal(typeof oilModule.assessChinaOilCoverage, 'function');
-    assert.equal(typeof gasModule.assessChinaGasCoverage, 'function');
-  });
-
   it('accepts present, recent China oil and gas records', () => {
     const now = new Date('2026-07-13T00:00:00.000Z');
     const oil = oilModule.assessChinaOilCoverage([oilRecord()], now);

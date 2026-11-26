@@ -3,7 +3,7 @@ import { afterEach, beforeEach, it, mock } from 'node:test';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
-const redirectUri = 'https://client.test/callback';
+const redirectUri = 'https://claude.ai/api/mcp/auth_callback';
 let handler;
 let commands;
 let counts;

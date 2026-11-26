@@ -759,6 +759,171 @@ describe('Live News live verification', () => {
     expect(status()).toBeNull();
   });
 
+  describe('a ready stream that never starts', () => {
+    const TAP_MS = LIVE_VIDEO_TIMING.tapToPlayMs;
+
+    async function mountStalledCustomStream(): Promise<void> {
+      mount(['custom-hls-1'], { custom: [{ id: 'custom-hls-1', name: 'Local TV', hlsUrl: 'https://local.example/tv.m3u8' }] });
+      await playFromPlaceholder();
+      // The playlist loads and says live, but the media clock never moves.
+      latestHls().emit('hlsLevelLoaded', { details: { live: true } });
+    }
+
+    it('swaps the cover for a corner chip as soon as the player is ready, so its own controls are reachable', async () => {
+      mount(['custom-hls-1'], { custom: [{ id: 'custom-hls-1', name: 'Local TV', hlsUrl: 'https://local.example/tv.m3u8' }] });
+      await playFromPlaceholder();
+      expect(status()?.classList.contains('live-news-status--cover')).toBe(true);
+
+      latestHls().emit('hlsLevelLoaded', { details: { live: true } });
+      await flush(POLL);
+      expect(status()?.classList.contains('live-news-status--cover')).toBe(false);
+      expect(status()?.classList.contains('live-news-status--chip')).toBe(true);
+      expect(status()?.textContent).toBe('Connecting to Local TV…');
+    });
+
+    it('offers Tap to play within 3 s of ready, and a tap starts the video', async () => {
+      await mountStalledCustomStream();
+      const play = vi.spyOn(mediaVideo(), 'play').mockResolvedValue(undefined);
+
+      await flush(TAP_MS + POLL);
+      expect(status()?.textContent).toBe('Tap to play');
+      status()!.querySelector('button')!.click();
+      expect(play).toHaveBeenCalled();
+    });
+
+    it('keeps the channel, with Tap to play, at the deadline instead of marking it offline', async () => {
+      await mountStalledCustomStream();
+      await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+
+      expect(status()?.textContent).toBe('Tap to play');
+      expect(content().querySelector('.live-offline')).toBeNull();
+      expect(mediaVideo()).toBeTruthy();
+      expect(channelButton('custom-hls-1').classList.contains('offline')).toBe(false);
+      expect(analytics.track).toHaveBeenCalledWith('live-video-tap-to-play', { slot: 'live-news/custom-hls-1', kind: 'hls', detail: 'buffering' });
+      expect(analytics.track).not.toHaveBeenCalledWith('live-video-attempt-failed', expect.anything());
+    });
+
+    it('keeps Tap to play through a bare play event and drops it only once playback has advanced', async () => {
+      await mountStalledCustomStream();
+      await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+
+      // A native play event can fire while the video is still buffering: it is not proof of playback.
+      mediaVideo().dispatchEvent(new Event('play'));
+      await flush(POLL);
+      expect(status()?.textContent).toBe('Tap to play');
+
+      await flush(POLL);
+      mediaVideo().currentTime += 1;
+      await flush(POLL);
+      mediaVideo().currentTime += 1;
+      await flush(POLL);
+      expect(status()).toBeNull();
+    });
+
+    it('treats a fatal stream error while held as a failure, not a dead player under Tap to play', async () => {
+      await mountStalledCustomStream();
+      await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+      expect(status()?.textContent).toBe('Tap to play');
+
+      latestHls().emit('hlsError', { fatal: true, details: 'manifestLoadError' });
+      await flush(POLL);
+      expect(content().querySelector('.live-offline')).not.toBeNull();
+      expect(channelButton('custom-hls-1').classList.contains('offline')).toBe(true);
+    });
+
+    it('verifies a held stream once playback advances, so a later stream end is recovered, not ignored', async () => {
+      await mountStalledCustomStream();
+      await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+      expect(status()?.textContent).toBe('Tap to play');
+
+      mediaVideo().currentTime = 100;
+      await flush(POLL);
+      mediaVideo().currentTime += 1;
+      await flush(POLL);
+      expect(status()).toBeNull();
+
+      // Now verified live: the stream ending is handled instead of leaving a dead player.
+      mediaVideo().dispatchEvent(new Event('ended'));
+      await flush(POLL);
+      expect(latestHls().url).toBe('https://local.example/tv.m3u8');
+      expect(hlsState.instances.length).toBeGreaterThan(1);
+    });
+
+    it('does not hold a stalled playlist that has a fallback: it still falls through to the next entry', async () => {
+      mount(['bloomberg']);
+      await playFromPlaceholder();
+      latestHls().emit('hlsLevelLoaded', { details: { live: true } });
+      await flush(TAP_MS + POLL);
+      expect(status()?.textContent).toBe('Connecting to Bloomberg…');
+      expect(status()?.querySelector('button')).toBeNull();
+    });
+
+    describe('when the browser refuses to start the video (autoplay blocked)', () => {
+      const refusal = Object.assign(new Error('play() can only be initiated by a user gesture'), { name: 'NotAllowedError' });
+
+      /** Bloomberg HLS with a YouTube fallback; every play() the page makes without a gesture is refused. */
+      async function mountRefusedBloomberg(): Promise<ReturnType<typeof vi.spyOn>> {
+        const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(refusal);
+        mount(['bloomberg']);
+        await playFromPlaceholder();
+        latestHls().emit('hlsLevelLoaded', { details: { live: true } });
+        return play;
+      }
+
+      it('offers Tap to play on the first source within 3 s instead of falling through to YouTube', async () => {
+        await mountRefusedBloomberg();
+        await flush(TAP_MS + POLL);
+        expect(status()?.textContent).toBe('Tap to play');
+
+        // Past the full deadline: still the same HLS stream, no YouTube fallback, not offline.
+        await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+        expect(status()?.textContent).toBe('Tap to play');
+        expect(mediaVideo()).toBeTruthy();
+        expect(() => api().playerFor('Bloomberg live feed')).toThrow();
+        expect(channelButton('bloomberg').classList.contains('offline')).toBe(false);
+        expect(analytics.track).toHaveBeenCalledWith('live-video-tap-to-play', { slot: 'live-news/bloomberg', kind: 'hls', detail: 'refused-NotAllowedError' });
+        expect(analytics.track).not.toHaveBeenCalledWith('live-video-attempt-failed', expect.anything());
+      });
+
+      it('drops Tap to play as soon as an early tap starts the video, while it is still buffering', async () => {
+        const play = await mountRefusedBloomberg();
+        await flush(TAP_MS + POLL);
+        expect(status()?.textContent).toBe('Tap to play');
+
+        play.mockResolvedValue(undefined);
+        status()!.querySelector('button')!.click();
+        Object.defineProperty(mediaVideo(), 'paused', { configurable: true, value: false });
+        mediaVideo().dispatchEvent(new Event('play'));
+        await flush(POLL);
+        expect(status()?.textContent).toBe('Connecting to Bloomberg…');
+        expect(status()?.querySelector('button')).toBeNull();
+      });
+
+      it('plays the stream once the viewer taps, and keeps holding it while it buffers instead of moving on', async () => {
+        const play = await mountRefusedBloomberg();
+        await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+        expect(status()?.textContent).toBe('Tap to play');
+
+        play.mockResolvedValue(undefined);
+        status()!.querySelector('button')!.click();
+        expect(play).toHaveBeenCalledTimes(2);
+        Object.defineProperty(mediaVideo(), 'paused', { configurable: true, value: false });
+        mediaVideo().dispatchEvent(new Event('play'));
+        // The tap started it, but nothing has played yet: no fall-through to YouTube on the next poll.
+        await flush(POLL);
+        expect(() => api().playerFor('Bloomberg live feed')).toThrow();
+        expect(mediaVideo()).toBeTruthy();
+
+        mediaVideo().currentTime += 1;
+        await flush(POLL);
+        mediaVideo().currentTime += 1;
+        await flush(POLL);
+        expect(status()).toBeNull();
+        expect(analytics.track).not.toHaveBeenCalledWith('live-video-attempt-failed', expect.anything());
+      });
+    });
+  });
+
   it('plays the edited channel in its place when an edit from its offline card changes the channel id', async () => {
     mount(['bloomberg', 'custom-foo-news'], { custom: [{ id: 'custom-foo-news', name: 'Foo News', handle: '@FooNews' }] });
     await playFromPlaceholder();

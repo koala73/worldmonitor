@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, loadSharedConfig, sleep, runSeed, writeExtraKey, extendExistingTtl, extendExistingTtlDetailed, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata, writeFreshnessMetadataSafely } from './_seed-utils.mjs';
-import { fetchYahooJson, fetchYahooQuoteChart } from './_yahoo-fetch.mjs';
+import { createRedisIndexBasisResolver, fetchYahooJson, fetchYahooQuoteChart } from './_yahoo-fetch.mjs';
 import { buildCountryStockIndexSnapshot, countryStockIndexKey } from './_country-stock-index.mjs';
 import { loadCountryStockIndexes } from './_country-stock-index-registry.mjs';
 import { MOEX_SOURCE, fetchMoexCountryStockIndexSnapshot } from './_country-stock-index-moex.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
 import { mergeLastGoodQuotes, resolveMergedQuotesAsOf } from './shared/market-quote-refresh.cjs';
+import { capQuoteSparklines } from './shared/quote-sparkline.cjs';
 import { countCatalogFreshQuotes, loadMarketSeedUniverse } from './shared/market-seed-universe.cjs';
 import {
   authorizedProvidersMissingReason,
@@ -39,9 +40,11 @@ const RPC_KEY = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
 
 const YAHOO_ONLY = new Set(stocksConfig.yahooOnly);
 
+const resolveIndexClose = createRedisIndexBasisResolver();
+
 async function fetchYahooQuote(symbol) {
   try {
-    return await fetchYahooQuoteChart(symbol, { delayMs: YAHOO_DELAY_MS });
+    return await fetchYahooQuoteChart(symbol, { delayMs: YAHOO_DELAY_MS, resolveIndexClose });
   } catch (err) {
     console.warn(`  [Yahoo] ${symbol} error: ${err.message}`);
     return null;
@@ -83,7 +86,7 @@ async function fetchMarketQuotes() {
   const fetchedAt = Date.now();
 
   return {
-    quotes: mergedQuotes,
+    quotes: capQuoteSparklines(mergedQuotes),
     finnhubSkipped: !finnhubKey && !avKey,
     skipReason: (!finnhubKey && !avKey) ? authorizedProvidersMissingReason() : '',
     rateLimited: false,

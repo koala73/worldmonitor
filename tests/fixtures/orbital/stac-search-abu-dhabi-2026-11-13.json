@@ -1,0 +1,156 @@
+{
+ "source": "Microsoft Planetary Computer STAC search, POST https://planetarycomputer.microsoft.com/api/stac/v1/search, point 54.6E 24.4N, collections sentinel-2-l2a, sentinel-1-grd and landsat-c2-l2",
+ "retrievedAt": "2026-11-13",
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "id": "S1D_IW_GRDH_1SDV_20261111T142350_20261111T142415_005421_00A586",
+   "collection": "sentinel-1-grd",
+   "properties": {
+    "sat:relative_orbit": 130,
+    "platform": "sentinel-1d",
+    "sat:orbit_state": "ascending",
+    "datetime": "2026-11-11T14:24:03.365935Z"
+   }
+  },
+  {
+   "id": "S2B_MSIL2A_20261111T070119_R063_T40RBN_20261111T105612",
+   "collection": "sentinel-2-l2a",
+   "properties": {
+    "eo:cloud_cover": 69.021165,
+    "sat:relative_orbit": 63,
+    "platform": "Sentinel-2B",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-11T07:01:19.024000Z"
+   }
+  },
+  {
+   "id": "S2B_MSIL2A_20261111T070119_R063_T39RZH_20261111T105612",
+   "collection": "sentinel-2-l2a",
+   "properties": {
+    "eo:cloud_cover": 69.001043,
+    "sat:relative_orbit": 63,
+    "platform": "Sentinel-2B",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-11T07:01:19.024000Z"
+   }
+  },
+  {
+   "id": "S2A_MSIL2A_20261108T070311_R063_T40RBN_20261108T104208",
+   "collection": "sentinel-2-l2a",
+   "properties": {
+    "eo:cloud_cover": 0.162694,
+    "sat:relative_orbit": 63,
+    "platform": "Sentinel-2A",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-08T07:03:11.024000Z"
+   }
+  },
+  {
+   "id": "S2A_MSIL2A_20261108T070311_R063_T39RZH_20261108T104208",
+   "collection": "sentinel-2-l2a",
+   "properties": {
+    "eo:cloud_cover": 0.150103,
+    "sat:relative_orbit": 63,
+    "platform": "Sentinel-2A",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-08T07:03:11.024000Z"
+   }
+  },
+  {
+   "id": "S2B_MSIL2A_20261108T065109_R020_T40RBN_20261108T103534",
+   "collection": "sentinel-2-l2a",
+   "properties": {
+    "eo:cloud_cover": 0.227155,
+    "sat:relative_orbit": 20,
+    "platform": "Sentinel-2B",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-08T06:51:09.024000Z"
+   }
+  },
+  {
+   "id": "S2B_MSIL2A_20261108T065109_R020_T39RZH_20261108T103534",
+   "collection": "sentinel-2-l2a",
+   "properties": {
+    "eo:cloud_cover": 0.244401,
+    "sat:relative_orbit": 20,
+    "platform": "Sentinel-2B",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-08T06:51:09.024000Z"
+   }
+  },
+  {
+   "id": "S1C_IW_GRDH_1SDV_20261108T021439_20261108T021504_010239_014733",
+   "collection": "sentinel-1-grd",
+   "properties": {
+    "sat:relative_orbit": 166,
+    "platform": "sentinel-1c",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-08T02:14:52.305505Z"
+   }
+  },
+  {
+   "id": "S2C_MSIL2A_20261106T070051_R063_T40RBN_20261106T114952",
+   "collection": "sentinel-2-l2a",
+   "properties": {
+    "eo:cloud_cover": 0.38361,
+    "sat:relative_orbit": 63,
+    "platform": "Sentinel-2C",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-06T07:00:51.025000Z"
+   }
+  },
+  {
+   "id": "S2C_MSIL2A_20261106T070051_R063_T39RZH_20261106T114952",
+   "collection": "sentinel-2-l2a",
+   "properties": {
+    "eo:cloud_cover": 0.332875,
+    "sat:relative_orbit": 63,
+    "platform": "Sentinel-2C",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-06T07:00:51.025000Z"
+   }
+  },
+  {
+   "id": "S1C_IW_GRDH_1SDV_20261105T142352_20261105T142421_010203_0145F4",
+   "collection": "sentinel-1-grd",
+   "properties": {
+    "sat:relative_orbit": 130,
+    "platform": "sentinel-1c",
+    "sat:orbit_state": "ascending",
+    "datetime": "2026-11-05T14:24:06.997407Z"
+   }
+  },
+  {
+   "id": "S2C_MSIL2A_20261103T065031_R020_T40RBN_20261103T101659",
+   "collection": "sentinel-2-l2a",
+   "properties": {
+    "eo:cloud_cover": 6.372941,
+    "sat:relative_orbit": 20,
+    "platform": "Sentinel-2C",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-03T06:50:31.025000Z"
+   }
+  },
+  {
+   "id": "S2C_MSIL2A_20261103T065031_R020_T39RZH_20261103T101659",
+   "collection": "sentinel-2-l2a",
+   "properties": {
+    "eo:cloud_cover": 6.925809,
+    "sat:relative_orbit": 20,
+    "platform": "Sentinel-2C",
+    "sat:orbit_state": "descending",
+    "datetime": "2026-11-03T06:50:31.025000Z"
+   }
+  },
+  {
+   "id": "LC09_L2SP_160043_20261103_02_T1",
+   "collection": "landsat-c2-l2",
+   "properties": {
+    "eo:cloud_cover": 0.98,
+    "platform": "landsat-9",
+    "datetime": "2026-11-03T06:46:40.776197Z"
+   }
+  }
+ ]
+}

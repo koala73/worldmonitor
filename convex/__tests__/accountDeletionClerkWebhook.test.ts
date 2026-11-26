@@ -222,7 +222,8 @@ describe("Clerk account-deletion webhook", () => {
     process.env.DODO_API_KEY = "ddp_test";
     process.env.UPSTASH_REDIS_REST_URL = "https://upstash.test";
     process.env.UPSTASH_REDIS_REST_TOKEN = "token";
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(init?.body).startsWith('["SCAN",')) return Response.json({ result: ["0", []] });
       const url = String(input);
       if (isClerkApiUrl(url)) return new Response("gone", { status: 404 });
       if (url.includes("upstash.test")) return Response.json({ result: "OK" });
@@ -248,7 +249,8 @@ describe("Clerk account-deletion webhook", () => {
     process.env.DODO_API_KEY = "ddp_test";
     process.env.UPSTASH_REDIS_REST_URL = "https://upstash.test";
     process.env.UPSTASH_REDIS_REST_TOKEN = "token";
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(init?.body).startsWith('["SCAN",')) return Response.json({ result: ["0", []] });
       const url = String(input);
       if (isClerkApiUrl(url)) return new Response("gone", { status: 404 });
       if (url.includes("upstash.test")) return Response.json({ result: "OK" });
@@ -269,7 +271,9 @@ describe("Clerk account-deletion webhook", () => {
     expect(afterFirst?.source).toBe("clerk_webhook");
     expect(afterFirst?.status).toBe("complete");
 
-    const second = await postClerkWebhook(t, { payload, signature: `v1,${signature}` });
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const retrySignature = await signPayload(payload, { timestamp });
+    const second = await postClerkWebhook(t, { payload, timestamp, signature: `v1,${retrySignature}` });
     expect(second.status).toBe(200);
     const rows = await t.run(async (ctx) => ctx.db.query("accountDeletions").collect());
     expect(rows).toHaveLength(1);

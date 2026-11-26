@@ -47,6 +47,54 @@ let ratelimit: Ratelimit | null = null;
 const GLOBAL_RATE_LIMIT = 600;
 const GLOBAL_RATE_WINDOW: Duration = '60 s';
 const GLOBAL_RATE_WINDOW_SECONDS = durationToSeconds(GLOBAL_RATE_WINDOW);
+/** Upper bound on remembered denials, so callers that never return cannot grow it forever. */
+export const GLOBAL_BLOCKED_MAX_ENTRIES = 10_000;
+
+/**
+ * identifier -> blocked-until (ms). @upstash/ratelimit records each Redis
+ * denial here and answers later requests in the same window from it without
+ * Redis. Owning the Map lets the gateway read the same verdict synchronously.
+ * Keys carry the limiter prefix: `${GLOBAL_RATE_PREFIX}:${identifier}`.
+ *
+ * The cap is enforced on every write, the SDK's included. Past it, expired
+ * entries go first, then the oldest. An evicted caller is decided by Redis
+ * again, whose sliding window may admit it before the evicted reset; the
+ * entry only ever made the verdict stricter than Redis's. Eviction needs more
+ * than GLOBAL_BLOCKED_MAX_ENTRIES callers denied at once on one instance.
+ */
+class BoundedBlockedMap extends Map<string, number> {
+  override set(key: string, blockedUntil: number): this {
+    // A late reply from an earlier window must not shorten a live block.
+    const current = super.get(key);
+    if (current !== undefined && current > blockedUntil && current >= Date.now()) return this;
+    // Re-insert so iteration order stays oldest-first for eviction.
+    super.delete(key);
+    super.set(key, blockedUntil);
+    if (this.size <= GLOBAL_BLOCKED_MAX_ENTRIES) return this;
+    const now = Date.now();
+    // Same boundary as the SDK: an entry is live while now <= blockedUntil.
+    for (const [entry, until] of this) {
+      if (until < now) super.delete(entry);
+    }
+    for (const entry of this.keys()) {
+      if (this.size <= GLOBAL_BLOCKED_MAX_ENTRIES) break;
+      super.delete(entry);
+    }
+    return this;
+  }
+}
+
+const globalBlockedUntil = new BoundedBlockedMap();
+const GLOBAL_RATE_PREFIX = 'rl';
+
+export function __globalBlockedSizeForTest(): number {
+  return globalBlockedUntil.size;
+}
+
+/** The Map handed to @upstash/ratelimit as ephemeralCache, for tests that write to it as the SDK does. */
+export function __globalBlockedMapForTest(): Map<string, number> {
+  return globalBlockedUntil;
+}
 
 function getRatelimit(): Ratelimit | null {
   if (ratelimit) return ratelimit;
@@ -57,8 +105,9 @@ function getRatelimit(): Ratelimit | null {
   ratelimit = new Ratelimit({
     redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW),
-    prefix: 'rl',
+    prefix: GLOBAL_RATE_PREFIX,
     analytics: false,
+    ephemeralCache: globalBlockedUntil,
   });
   return ratelimit;
 }
@@ -543,6 +592,34 @@ function getPrincipalRateLimitIdentifier(
   return scope === 'api_key' ? `apikey-user:${principalUserId}` : `user:${principalUserId}`;
 }
 
+function globalBlockedKey(identifier: string): string {
+  return `${GLOBAL_RATE_PREFIX}:${identifier}`;
+}
+
+function globalRateLimitIdentifier(request: Request, opts: RateLimitOptions): string {
+  // Preserve the long-standing raw-IP key for anonymous traffic so an
+  // in-flight 60-second bucket does not reset during rollout. Trusted
+  // principals use a separate namespace.
+  return getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
+    getClientRateLimitKey(request);
+}
+
+/**
+ * True when this instance already knows checkRateLimit will deny the request:
+ * an unproven Cloudflare IP, or a caller the limiter denied earlier in the
+ * current window. Makes no Redis call.
+ */
+export function isGlobalRateLimitDenialKnown(request: Request, opts: RateLimitOptions = {}): boolean {
+  if (!opts.principalUserId && hasUnprovenCloudflareClientIp(request)) return true;
+  const key = globalBlockedKey(globalRateLimitIdentifier(request, opts));
+  const blockedUntil = globalBlockedUntil.get(key);
+  if (blockedUntil === undefined) return false;
+  // Same boundary as the SDK: live while now <= blockedUntil.
+  if (blockedUntil >= Date.now()) return true;
+  globalBlockedUntil.delete(key);
+  return false;
+}
+
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
   const proofDenied = !opts.principalUserId && checkIpScopedEdgeProof(request, corsHeaders);
   if (proofDenied) return proofDenied;
@@ -555,12 +632,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     return null;
   }
 
-  // Preserve the long-standing raw-IP key for anonymous traffic so an
-  // in-flight 60-second bucket does not reset during rollout. Trusted
-  // principals use a separate namespace.
-  const identifier =
-    getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
-    getClientRateLimitKey(request);
+  const identifier = globalRateLimitIdentifier(request, opts);
 
   try {
     const { success, limit, reset, reason } = await limitWithFallback(
@@ -574,6 +646,9 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     if (reason === 'timeout') throw new Error('rate-limit decision timed out');
 
     if (!success) {
+      // @upstash/ratelimit records Lua denials here itself; the fixed-window
+      // fallback does not, so record every denial for the gateway to read.
+      globalBlockedUntil.set(globalBlockedKey(identifier), reset);
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
     }
 
@@ -606,6 +681,11 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/news/v1/search-fact-checks': { limit: 20, window: '60 s' },
   // /verify claim search: public; a cache miss reads every feed cache.
   '/api/news/v1/search-claim-headlines': { limit: 30, window: '60 s' },
+  // Cmd+K headline search: one request per typing pause. A memo miss reads up
+  // to eight day buckets (about 4 MB) from Redis, so misses have their own
+  // per-caller budget in the handler (_headline-history.ts).
+  '/api/news/v1/search-headlines': { limit: 60, window: '60 s' },
+  '/api/news/v1/search-headline-archive': { limit: 60, window: '60 s' },
   '/api/aviation/v1/track-aircraft': { limit: 30, window: '60 s' },
   '/api/aviation/v1/list-aircraft-emergencies': { limit: 20, window: '60 s' },
   '/api/aviation/v1/search-google-flights': { limit: 30, window: '60 s' },
@@ -682,6 +762,12 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // Live lookups can fan out to position, schedule and photo providers.
   '/api/military/v1/get-wingbits-live-flight': { limit: 30, window: '60 s' },
   '/api/imagery/v1/search-imagery': { limit: 30, window: '60 s' },
+  // One catalog read per point lookup; the seeded key is never refreshed from here.
+  '/api/orbital/v1/list-imaging-satellites': { limit: 60, window: '60 s' },
+  '/api/orbital/v1/get-point-passes': { limit: 20, window: '60 s' },
+  '/api/orbital/v1/get-country-imagery-evidence': { limit: 60, window: '60 s' },
+  // One seeded site read per map popup.
+  '/api/orbital/v1/get-watched-site-imagery': { limit: 60, window: '60 s' },
   // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
   // cap the multiplier at the same 30/min budget as the other batch routes.
   '/api/batch/v1/execute': { limit: 30, window: '60 s' },
@@ -865,6 +951,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // before Nominatim. Redis outage therefore 503s instead of inheriting a
   // fail-open path that could expose the provider to unbounded aggregate load.
   '/api/infrastructure/v1/reverse-geocode': { limit: 60, window: '60 s' },
+  // Place-name search for the satellite pass lookup: submit-only, so 30/min per IP is
+  // generous. Cache misses spend the same fail-closed Nominatim bucket as reverse geocoding.
+  '/api/infrastructure/v1/search-place': { limit: 30, window: '60 s' },
   // Partner embed entitlement (#6599): keyed panels look up wm_ keys in Convex.
   // Cap per-IP so a stolen snippet cannot amplify validation traffic.
   '/api/embed/entitlement': { limit: 60, window: '60 s' },
@@ -944,6 +1033,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/conflict/v1/get-humanitarian-summary-batch': {
     reason: 'Batch summary fans out to the external HAPI (humdata) provider on cache miss.',
+  },
+  '/api/orbital/v1/get-point-passes': {
+    reason: 'Each uncached point propagates the imaging catalog and searches two public image archives.',
   },
   '/api/intelligence/v1/get-country-coverage': {
     reason: 'Country coverage fans out to two Google News feeds and the live military-flights path on cache miss.',
@@ -1059,6 +1151,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/infrastructure/v1/reverse-geocode': {
     reason: 'Proxies Nominatim (egress-IP ban enforcement), same provider and egress IPs as the legacy edge route. Must fail closed on a Redis outage rather than inherit the fail-open 600/min fallback.',
   },
+  '/api/infrastructure/v1/search-place': {
+    reason: 'Proxies Nominatim search on the same egress IPs and provider bucket as reverse geocoding; fail closed so a Redis outage cannot lift the per-IP budget.',
+  },
   '/api/embed/entitlement': {
     reason: 'Keyed-panel entitlement lookups amplify into Convex user-key validation; fail closed so a Redis outage cannot lift the per-IP budget.',
   },
@@ -1111,6 +1206,40 @@ export const RATE_LIMIT_MUTATION_FALLBACK_EXEMPT: Record<string, RateLimitPolicy
     reason:
       'Webhook registration is API-key authenticated (validateApiKey) and premium-gated before any work, so unauthenticated abuse is already blocked; the handler only writes to Redis, with no external provider or LLM spend.',
   },
+};
+
+interface StandaloneAdmissionDecision {
+  reason: string;
+  // A route that should get a caller limit and does not have one yet. Fixing it
+  // means adding the limit and deleting the entry; the lint fails on an entry
+  // whose route has gained one.
+  debt?: true;
+}
+
+// Standalone api/ routes that run no caller limiter. scripts/enforce-rate-limit-policies.mjs
+// fails on any other route whose own code does not call one.
+export const STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION: Record<string, StandaloneAdmissionDecision> = {
+  'api/agent-auth.ts': { reason: 'Returns a fixed auth challenge built from request host metadata; no backend call.' },
+  'api/geo.js': { reason: 'Returns the country from request headers; no backend call.' },
+  'api/http-message-signatures-directory.ts': { reason: 'Returns a hardcoded public key directory; no backend call.' },
+  'api/oauth-authorization-server.ts': { reason: 'OAuth discovery document built from constants; no backend call.' },
+  'api/oauth-protected-resource.ts': { reason: 'OAuth resource metadata built from constants; no backend call.' },
+  'api/og-story.js': { reason: 'Renders an SVG from query values and constants; no backend call.' },
+  'api/story.js': { reason: 'Returns a redirect or locally rendered share HTML; no backend call.' },
+  'api/youtube/embed.js': { reason: 'Returns a local HTML template; the YouTube script loads in the browser.' },
+  'api/cache-purge.js': { reason: 'Requires the RELAY_SHARED_SECRET bearer before any Redis work.' },
+  'api/internal/brief-why-matters.ts': { reason: 'Requires the RELAY_SHARED_SECRET bearer before cache or LLM work.' },
+  'api/seed-contract-probe.ts': { reason: 'Requires x-probe-secret to match RELAY_SHARED_SECRET before any probe runs.' },
+  'api/seed-health.js': { reason: 'Requires an enterprise operator key, checked locally, before any Redis read.' },
+  'api/opensky.js': { reason: 'Requires an enterprise operator key, or the local sidecar key on its loopback hop, before the relay call.' },
+  'api/download.js': { reason: 'CDN-cached release redirect; a cache bypass costs one Redis GET on a fixed key, and GitHub is called only when that key is empty.' },
+  'api/version.js': { reason: 'CDN-cached release version; a cache bypass costs one Redis GET on a fixed key, and GitHub is called only when that key is empty.' },
+  'api/gpsjam.js': { reason: 'CDN-cached seeded data; a cache bypass costs one Redis GET on a fixed key.' },
+  'api/open-data-chokepoints.js': { reason: 'CDN-cached seeded data; dates are bounded, so a cache bypass costs one Redis GET on a bounded key set.' },
+  'api/supply-chain/hormuz-tracker.js': { reason: 'CDN-cached seeded data; a cache bypass costs one Redis GET on a fixed key.' },
+  'api/miit-news.js': { reason: 'CDN-cached feed; a cache bypass costs one Redis GET on a fixed key, and MIIT is fetched only when that key is empty.' },
+  'api/product-catalog.js': { reason: 'CDN-cached catalog; a cache bypass costs one Redis GET on product-catalog:v3, and Dodo is called only when that key is empty. DELETE is secret-gated.' },
+  'api/health.js': { reason: 'Uptime monitors poll it, so a limit would page on-call. It serves the cached verdict first; a refresh takes a Redis SET NX lock, so one sweep runs at a time.' },
 };
 
 const endpointLimiters = new Map<string, Ratelimit>();
@@ -1363,6 +1492,7 @@ export function __resetRateLimitForTest(): void {
   nativeGoogleFlightsAdmissions = [];
   nativeAviationNewsAdmissions = [];
   ratelimit = null;
+  globalBlockedUntil.clear();
   endpointLimiters.clear();
   scopedLimiters.clear();
   scopedMissingConfigStages.clear();

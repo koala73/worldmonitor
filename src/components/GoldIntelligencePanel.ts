@@ -4,6 +4,7 @@ import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { toApiUrl } from '@/services/runtime';
 import { miniSparkline } from '@/utils/sparkline';
+import { sparklineSpanText } from './_sparkline-span';
 
 interface CrossCurrencyPrice { currency: string; flag: string; price: number }
 interface CotCategory { longPositions: string; shortPositions: string; netPct: number; oiSharePct: number; wowNetDelta: string }
@@ -47,6 +48,8 @@ interface GoldIntelligenceData {
   goldPrice: number;
   goldChangePct: number;
   goldSparkline: number[];
+  goldSparklineIntervalSeconds?: number;
+  goldSparklineStartAt?: number;
   silverPrice: number;
   platinumPrice: number;
   palladiumPrice: number;
@@ -193,6 +196,11 @@ export class GoldIntelligencePanel extends Panel {
     const changeColor = changePct >= 0 ? '#2ecc71' : '#e74c3c';
     const spark = miniSparkline(d.goldSparkline, changePct, 80, 20);
     const fresh = freshnessLabel(d.updatedAt);
+    const span = sparklineSpanText({
+      sparkline: d.goldSparkline,
+      sparklineIntervalSeconds: d.goldSparklineIntervalSeconds,
+      sparklineStartAt: d.goldSparklineStartAt,
+    });
 
     const sessionLine = d.session && d.session.dayHigh > 0
       ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">
@@ -210,7 +218,7 @@ export class GoldIntelligencePanel extends Panel {
         </div>
         <div style="display:flex;align-items:center;gap:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
           <span style="width:6px;height:6px;border-radius:50%;background:${fresh.dot};display:inline-block"></span>
-          <span>${escapeHtml(fresh.text)} • GC=F front-month</span>
+          <span>${escapeHtml(fresh.text)} • GC=F front-month${span ? ` • ${escapeHtml(span)}` : ''}</span>
         </div>
         ${sessionLine}
       </div>`;
@@ -324,9 +332,10 @@ export class GoldIntelligencePanel extends Panel {
     const cb = d.cbReserves;
     if (!cb || !cb.topHolders.length) return '';
 
+    const inTonnes = cb.valueIsOunces === true;
     const holderRow = (h: CbHolder, rank: number) => `<div style="display:flex;justify-content:space-between;font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:1px 0">
       <span style="color:var(--text-dim)">${rank}. ${escapeHtml(h.name)}</span>
-      <span style="font-weight:600">${cb.valueIsOunces === true && Number.isFinite(h.tonnes) && h.tonnes >= 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>
+      ${inTonnes ? `<span style="font-weight:600">${Number.isFinite(h.tonnes) && h.tonnes >= 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>` : ''}
     </div>`;
     const moverRow = (m: CbMover) => {
       const color = m.deltaTonnes12m >= 0 ? '#2ecc71' : '#e74c3c';
@@ -338,8 +347,8 @@ export class GoldIntelligencePanel extends Panel {
     };
 
     const holders = cb.topHolders.slice(0, 10).map((h, i) => holderRow(h, i + 1)).join('');
-    const buyers = cb.valueIsOunces === true ? cb.topBuyers12m.slice(0, 5).map(moverRow).join('') : '';
-    const sellers = cb.valueIsOunces === true ? cb.topSellers12m.slice(0, 5).map(moverRow).join('') : '';
+    const buyers = inTonnes ? cb.topBuyers12m.slice(0, 5).map(moverRow).join('') : '';
+    const sellers = inTonnes ? cb.topSellers12m.slice(0, 5).map(moverRow).join('') : '';
 
     const moversHtml = (buyers || sellers)
       ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
@@ -356,7 +365,7 @@ export class GoldIntelligencePanel extends Panel {
 
     return `<div class="energy-tape-section" style="margin-top:10px">
       <div class="energy-section-title">Central-Bank Reserves</div>
-      <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:4px">Top holders (tonnes)</div>
+      <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:4px">${inTonnes ? 'Top holders (tonnes)' : cb.valueIsOunces === false ? 'Top holders by USD value (tonnes unavailable)' : 'Top holders'}</div>
       ${holders}
       ${moversHtml}
       <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:6px;text-align:right">IMF IFS • as of ${escapeHtml(cb.asOfMonth)}</div>
@@ -430,6 +439,6 @@ export class GoldIntelligencePanel extends Panel {
       this.renderCbReserves(d),
       this.renderDrivers(d),
     ].join('');
-    this.setSafeContent(unsafeRawHtml(`<div style="padding:10px 14px">${html}</div>`, 'legacy Panel.setContent() migration'));
+    this.setSafeContent(unsafeRawHtml(`<div style="padding:10px 0">${html}</div>`, 'legacy Panel.setContent() migration'));
   }
 }

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Dedicated FX rates seed — fetches all currencies used across bigmac + grocery-basket
- * and writes them to shared:fx-rates:v1 (25h TTL).
+ * Dedicated FX rates seed — fetches all currencies used across bigmac + grocery-basket,
+ * plus the tender-only currencies, and writes them to shared:fx-rates:v1 (25h TTL).
  *
  * Deploy as a Railway cron service (daily, e.g. "0 6 * * *") so downstream
  * weekly seeds always find a warm cache and make zero Yahoo FX calls themselves.
@@ -34,8 +34,12 @@ export const ALL_CURRENCIES = [
   'TRY',
 ];
 
+// Tender currencies with no FX panel row. The panel lists every top-level rate,
+// so these sit in a nested map that only the procurement value sort reads.
+export const TENDER_ONLY_CURRENCIES = ['ALL', 'AMD', 'DOP', 'GEL'];
+
 const FX_SYMBOLS = Object.fromEntries(
-  ALL_CURRENCIES.map(c => [c, `${c}USD=X`])
+  [...ALL_CURRENCIES, ...TENDER_ONLY_CURRENCIES].map(c => [c, `${c}USD=X`])
 );
 
 function fallbackCurrencySet(data) {
@@ -48,10 +52,16 @@ function fallbackCurrencySet(data) {
 }
 
 export function buildFxRatesPayload({ rates, fallbackCurrencies }) {
-  const payload = { ...rates };
-  const uniqueFallbacks = [...new Set(fallbackCurrencies)];
+  const payload = {};
+  const tenderOnlyRates = {};
+  for (const [currency, rate] of Object.entries(rates)) {
+    if (!TENDER_ONLY_CURRENCIES.includes(currency)) payload[currency] = rate;
+    else if (Number.isFinite(rate) && rate > 0) tenderOnlyRates[currency] = rate;
+  }
+  const uniqueFallbacks = [...new Set(fallbackCurrencies)].filter(c => !TENDER_ONLY_CURRENCIES.includes(c));
   for (const currency of uniqueFallbacks) payload[currency] = null;
   payload.fallbackCurrencies = uniqueFallbacks;
+  payload.tenderOnlyRates = tenderOnlyRates;
   return payload;
 }
 

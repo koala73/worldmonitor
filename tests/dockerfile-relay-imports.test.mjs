@@ -27,10 +27,12 @@ const root = resolve(__dirname, '..');
 // container guards read Dockerfiles identically. `.json` is included because
 // require()'d data files (e.g. country-names.json behind
 // country-name-to-iso2.cjs, #5359) crash the container at startup when
-// missing, exactly like a missing .cjs.
+// missing, exactly like a missing .cjs. `.js` is included for the ESM modules
+// under scripts/shared/ that a .cjs loads with require() (story-identity.js
+// behind lib/news-story-key.cjs).
 function readCopyList(dockerfilePath) {
   const { files } = parseDockerfileCopy(readFileSync(dockerfilePath, 'utf-8'));
-  return new Set([...files].filter((f) => /^scripts\/.+\.(mjs|cjs|json)$/.test(f)));
+  return new Set([...files].filter((f) => /^scripts\/.+\.(mjs|cjs|js|json)$/.test(f)));
 }
 
 describe('Dockerfile.relay — transitive-import closure', () => {
@@ -56,6 +58,12 @@ describe('Dockerfile.relay — transitive-import closure', () => {
       copied.has('scripts/shared/iso3-to-iso2.json'),
       'iso3-to-iso2.json must be COPY\'d; _weather-alert-select.mjs reads it at import for SWIC member codes',
     );
+  });
+
+  it('copies the UCDP projection helper that ais-relay loads dynamically', () => {
+    // seedUcdpEvents() imports it inside the function, which the BFS below does
+    // not follow. A missing file fails only the projection write, after deploy.
+    assert.ok(copied.has('scripts/_ucdp-dashboard.mjs'));
   });
 
   it('copies the PizzINT history helper required by the relay', () => {

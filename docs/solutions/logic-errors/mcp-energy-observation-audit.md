@@ -67,8 +67,6 @@ Sixteen additional live responses passed the current advertised output schemas w
 | `get_social_velocity` | Live call blocked by daily quota. |
 | `get_temporal_anomalies` | Live call blocked by daily quota. |
 | `get_test_site_seismicity` | Live call blocked by daily quota. |
-| `get_toronto_reported_occurrences` | Live call blocked by daily quota. |
-| `get_toronto_calls_attended` | Live call blocked by daily quota. |
 
 ## Verification and rollout
 

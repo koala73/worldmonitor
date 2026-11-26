@@ -26,6 +26,10 @@ import {
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { listLabelChanges } from '../server/worldmonitor/news/v1/list-label-changes.ts';
 import { REDIS_PIPELINE_TIMEOUT_MS } from '../server/_shared/redis';
+import { __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
+
+// Each test sets its own revocations; drop the previous test's memoized read.
+beforeEach(__resetRevocationMemoForTest);
 
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);

@@ -1,0 +1,139 @@
+const COPY_MANUALLY_LABEL = 'Clipboard unavailable. Select this text to copy it.';
+const COPY_MANUALLY_CLOSE = 'Close';
+
+export interface CopyTextOptions {
+  label?: string;
+  closeLabel?: string;
+  reveal?: (text: string) => void;
+  writeText?: ((text: string) => Promise<void>) | null;
+  /** Mark the manual field so settings can remove a revealed API or embed key. */
+  secret?: boolean;
+  /** Limits a secret-field dismissal to the surface that opened it. */
+  owner?: string;
+  /** When this returns false, a failed copy does not open the manual field. */
+  retain?: () => boolean;
+}
+
+export async function copyText(text: string, options: CopyTextOptions = {}): Promise<boolean> {
+  const write = options.writeText === null ? null : readWrite(options);
+  if (write && await invokeWrite(write, text)) return true;
+  if (copyWithExecCommand(text)) return true;
+  if (!mayReveal(options)) return false;
+  return presentManualCopy(text, options);
+}
+
+function mayReveal(options: CopyTextOptions): boolean {
+  if (!options.retain) return true;
+  try {
+    return options.retain();
+  } catch {
+    return false;
+  }
+}
+
+function readWrite(options: CopyTextOptions): ((text: string) => Promise<void>) | null {
+  try {
+    return options.writeText ?? readNavigatorWrite();
+  } catch {
+    return null;
+  }
+}
+
+async function invokeWrite(write: (text: string) => Promise<void>, text: string): Promise<boolean> {
+  try {
+    await write(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function presentManualCopy(text: string, options: CopyTextOptions): boolean {
+  try {
+    if (options.reveal) options.reveal(text);
+    else revealCopyText(text, options.label ?? COPY_MANUALLY_LABEL, options.closeLabel ?? COPY_MANUALLY_CLOSE, options.secret === true, options.owner);
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function readNavigatorWrite(): ((text: string) => Promise<void>) | null {
+  if (typeof navigator === 'undefined' || navigator.clipboard == null) return null;
+  const writeText = navigator.clipboard.writeText;
+  if (typeof writeText !== 'function') return null;
+  return (value) => navigator.clipboard.writeText(value);
+}
+
+function copyWithExecCommand(text: string): boolean {
+  if (typeof document === 'undefined' || typeof document.execCommand !== 'function' || !document.body) return false;
+  const previous = document.activeElement;
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.setAttribute('aria-hidden', 'true');
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  try {
+    area.focus();
+    if (typeof area.select === 'function') area.select();
+    return document.execCommand('copy') === true;
+  } catch {
+    return false;
+  } finally {
+    area.remove();
+    restoreFocus(previous);
+  }
+}
+
+function restoreFocus(previous: Element | null): void {
+  if (!previous || previous === document.body || previous === document.documentElement) return;
+  const control = previous as { focus?: () => void; isConnected?: boolean };
+  if (control.isConnected === false || typeof control.focus !== 'function') return;
+  try {
+    control.focus();
+  } catch {
+    // The previous control can disappear or refuse focus.
+  }
+}
+
+export function dismissSecretCopyFallback(owner?: string): void {
+  if (typeof document === 'undefined') return;
+  const field = document.querySelector('.wm-copy[data-copy]');
+  if (!field) return;
+  if (owner !== undefined && field.getAttribute('data-copy') !== owner) return;
+  field.remove();
+}
+
+function revealCopyText(text: string, label: string, closeLabel: string, secret: boolean, owner?: string): void {
+  if (typeof document === 'undefined' || !document.body) return;
+  const previous = document.activeElement;
+  document.querySelector('.wm-copy')?.remove();
+  const root = document.createElement('div');
+  root.className = 'wm-copy';
+  root.setAttribute('role', 'status');
+  if (secret) root.setAttribute('data-copy', owner ?? '');
+  const labelEl = document.createElement('label');
+  labelEl.className = 'wm-copy-label';
+  labelEl.textContent = label;
+  const field = document.createElement('textarea');
+  field.className = 'wm-copy-input';
+  field.readOnly = true;
+  field.rows = Math.min(6, Math.max(1, text.split('\n').length));
+  field.value = text;
+  field.setAttribute('aria-label', label);
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'wm-copy-close';
+  close.textContent = closeLabel;
+  close.addEventListener('click', () => {
+    root.remove();
+    restoreFocus(previous);
+  });
+  labelEl.append(field);
+  root.append(labelEl, close);
+  document.body.appendChild(root);
+  field.focus();
+  if (typeof field.select === 'function') field.select();
+}

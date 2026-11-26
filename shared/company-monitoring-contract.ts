@@ -36,7 +36,6 @@ export const COMPANY_MONITORING_LIMITS = {
 
 export const COMPANY_MONITORING_CURSOR_VERSION = 1 as const;
 export const COMPANY_MONITORING_IMPORT_VERSION = 'cm-import-v1' as const;
-export const COMPANY_MONITORING_IMPORT_PATH = '/api/company-monitoring/v1/import-monitored-company-batch' as const;
 
 export const COMPANY_MONITORING_RPC_SCOPES = {
   CreateMonitoredCompany: 'company_monitoring:write',

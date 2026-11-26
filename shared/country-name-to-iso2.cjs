@@ -7,8 +7,12 @@ const COUNTRY_NAMES = require('./country-names.json');
 
 // Aliases the canonical map lacks. UCDP emits 'Bosnia-Herzegovina' (hyphen,
 // no 'and'), which normalizes to a token country-names.json doesn't carry.
+// OFAC vessel flags spell the other three; the apostrophe normalizes to a space.
 const EXTRA_ALIASES = Object.freeze({
   'bosnia herzegovina': 'BA',
+  'democratic people s republic of korea': 'KP',
+  'republic of palau': 'PW',
+  'st vincent and grenadines': 'VC',
 });
 
 const COUNTRY_NAME_TO_ISO2 = Object.freeze(
@@ -51,5 +55,6 @@ function countryNameToIso2(raw) {
 
 module.exports = {
   COUNTRY_NAME_TO_ISO2,
+  normalizeCountryToken,
   countryNameToIso2,
 };

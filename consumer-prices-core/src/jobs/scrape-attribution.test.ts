@@ -43,14 +43,8 @@ vi.mock('../config/loader.js', () => ({
   loadRetailerConfig: mocks.loadRetailerConfig,
   loadAllRetailerConfigs: mocks.loadAllRetailerConfigs,
 }));
-vi.mock('../acquisition/registry.js', () => ({
-  initProviders: vi.fn(),
-  teardownAll: vi.fn(),
-}));
 vi.mock('../acquisition/exa.js', () => ({ ExaProvider: class {} }));
 vi.mock('../acquisition/firecrawl.js', () => ({ FirecrawlProvider: class {} }));
-vi.mock('../adapters/generic.js', () => ({ GenericPlaywrightAdapter: class {} }));
-vi.mock('../adapters/exa-search.js', () => ({ ExaSearchAdapter: class {} }));
 vi.mock('../adapters/validator.js', () => ({ AUTO_MATCH_THRESHOLD: 0.9 }));
 vi.mock('./scrape-pin-recovery.js', () => ({
   handleStaleOnInStock: vi.fn(),
@@ -81,11 +75,6 @@ vi.mock('../adapters/search.js', () => {
   }
 
   return { SearchAdapter: MockSearchAdapter, SearchTargetError: MockSearchTargetError };
-});
-
-vi.spyOn(process, 'exit').mockImplementation((code?: number | string | null) => {
-  process.exitCode = typeof code === 'number' ? code : 0;
-  return undefined as never;
 });
 
 const { scrapeRetailer } = await import('./scrape.js');
@@ -201,7 +190,7 @@ describe('scrapeRetailer failure attribution', () => {
     expect(mocks.insertObservation).toHaveBeenCalledWith(expect.objectContaining({
       price: fixture.price, unitBasisQty: fixture.quantity, unitBasisUnit: fixture.unit,
       unitPrice: fixture.price / fixture.quantity,
-    }));
+    }), mocks.transactionExecute);
   });
 
   it('persists SearchTargetError reasons and a matching error count', async () => {

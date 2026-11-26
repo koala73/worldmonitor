@@ -9,11 +9,12 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { ListInternetDdosAttacksResponse, ListInternetOutagesResponse, ListInternetTrafficAnomaliesResponse, ListServiceStatusesResponse, InternetOutage as ProtoOutage, ServiceStatus as ProtoServiceStatus } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { InternetOutage } from '@/types';
-import { createCircuitBreaker } from '@/utils/circuit-breaker';
+import { createCircuitBreaker, type BreakerDataState } from '@/utils/circuit-breaker';
 import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
 import { dataFreshness } from '@/services/data-freshness';
 import { InfrastructureServiceClient } from '@/services/generated-rpc-clients';
+import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 
 // ---- Client + Circuit Breakers ----
 
@@ -136,8 +137,8 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
   return [];
 }
 
-export function getOutagesStatus(): string {
-  return outageBreaker.getStatus();
+export function getOutagesDataState(): BreakerDataState {
+  return outageBreaker.getDataState();
 }
 
 // ========================================================================
@@ -235,7 +236,12 @@ function computeSummary(services: ServiceStatusResult[]): ServiceStatusSummary {
   };
 }
 
-export async function fetchServiceStatuses(): Promise<ServiceStatusResponse> {
+export async function fetchServiceStatuses(signal?: AbortSignal): Promise<ServiceStatusResponse> {
+  if (signal?.aborted) {
+    throw signal.reason instanceof DOMException || signal.reason instanceof Error
+      ? signal.reason
+      : new DOMException('Aborted', 'AbortError');
+  }
   const hydrated = getHydratedData('serviceStatuses') as ListServiceStatusesResponse | undefined;
   if (hydrated?.statuses?.length) {
     // Warm the breaker under the same key a later recurring call reads (#7048);
@@ -245,11 +251,16 @@ export async function fetchServiceStatuses(): Promise<ServiceStatusResponse> {
     return { success: true, timestamp: new Date().toISOString(), summary: computeSummary(services), services };
   }
 
+  const timeoutSignal = createTimeoutSignal(15_000);
+  const requestSignal = signal ? combineAbortSignals([signal, timeoutSignal]) : timeoutSignal;
   const resp = await statusBreaker.execute(async () => {
     return client.listServiceStatuses({
       status: 'SERVICE_OPERATIONAL_STATUS_UNSPECIFIED',
-    });
-  }, emptyStatusFallback, { shouldCache: (r) => r.statuses.length > 0 });
+    }, { signal: requestSignal });
+  }, emptyStatusFallback, {
+    shouldCache: (r) => r.statuses.length > 0,
+    ignoreError: () => signal?.aborted === true,
+  });
 
   const services = resp.statuses.map(toServiceResult);
   return {

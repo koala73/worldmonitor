@@ -91,6 +91,12 @@ describe('country mention matcher', () => {
     assert.equal(mentions('SD', 'South Sudanese forces regroup near Juba'), false, '"South Sudanese" must not reach "Sudanese"');
     assert.equal(mentions('SS', 'South Sudanese forces regroup near Juba'), true);
     assert.equal(mentions('MX', 'New Mexico wildfire spreads'), false);
+    assert.equal(mentions('NE', 'Niger State killings: 35 dead in reprisals'), false, 'Niger State is in Nigeria');
+    assert.equal(mentions('NE', 'Niger Delta oil spill spreads'), false, 'the Niger Delta is in Nigeria');
+    assert.equal(mentions('NE', 'Niger junta extends transition'), true);
+    assert.equal(mentions('NE', 'Niger states it will reopen the border'), true, 'an exclusion must not swallow a longer word');
+    assert.equal(mentions('NE', 'Niger deltas of opinion widen'), true);
+    assert.equal(mentions('GN', 'Guinea-Bissauan president wins election'), false, 'prefix exclusions still cover a longer word');
     assert.equal(mentions('WS', 'American Samoa storm damage'), false);
     assert.equal(mentions('IN', 'Indian Ocean tsunami warning lifted'), false);
     assert.equal(mentions('FR', 'French Open final draws record crowd'), false);
@@ -116,6 +122,57 @@ describe('country mention matcher', () => {
     assert.equal(mentions('NG', 'Niger coup leaders meet ECOWAS'), false);
     assert.equal(mentions('NE', 'Nigerien junta expels envoy'), true);
     assert.equal(mentions('NG', 'Nigerian naira slides'), true);
+  });
+
+  // Titles from the crawlable pulse snapshots (#11189).
+  it('drops people, food and places that share a weak country name', () => {
+    assert.equal(mentions('TR', 'Poland reports bird flu outbreak on turkey farm - Reuters'), false);
+    assert.equal(mentions('JO', 'Bulls beat Cavaliers 122-108 behind Jordan Hawkins’ 19 points and 63 off the bench'), false);
+    assert.equal(mentions('JO', 'Jordan Bardella affirme qu\'"à sa connaissance" personne au RN n\'a bénéficié de fuites'), false);
+    assert.equal(mentions('JO', '«Il est là pour mettre les macronistes dans des valises» : Jordan Bardella dépeint David Lisnard'), false);
+    assert.equal(mentions('JO', 'Exclusive: Rep. Jim Jordan Lays Out How Republicans Can Win the Midterms'), false);
+    assert.equal(mentions('TD', "Gulfport Fire Department announces Chad Asher's promotion to battalion chief"), false);
+    assert.equal(mentions('TD', "Chad Bianco's security detail cost taxpayers millions — Ritz-Carlton rooms and a $665 steak dinner"), false);
+    assert.equal(mentions('TD', "Triple H 'addressed the Shorty G thing' before Chad Gable re-signed with WWE"), false);
+    assert.equal(mentions('TD', 'DeFi Development closes Strategy-style $11 million CHAD offering to grow Solana treasury'), false);
+    assert.equal(mentions('NE', 'Obi Meets Niger State Residents, Urges Nigerians To Turn Out For 2027 Elections'), false);
+    assert.equal(mentions('JO', 'Jim  Jordan speaks'), false, 'a double space still joins a two-word name');
+    assert.equal(mentions('JO', 'Jordan\tHawkins scores'), false, 'a tab still joins a two-word name');
+  });
+
+  it('reads an all-caps weak name as the country unless it is also a first name', () => {
+    assert.equal(mentions('TR', 'TURKEY raises interest rates'), true);
+    assert.equal(mentions('NE', 'NIGER junta extends transition'), true);
+    assert.equal(mentions('JO', 'JORDAN scores 40 in season opener'), false);
+  });
+
+  it('keeps country stories that name a weak country with no co-term', () => {
+    assert.equal(mentions('TR', 'Turkey Arrests Fund Managers Over Stock Market Manipulation Scandal'), true);
+    assert.equal(mentions('TR', 'Uganda suspends military ties with Turkey over extradition of Museveni critic'), true);
+    assert.equal(mentions('TR', 'Greece x Turkey military engagement by December 31?'), true, 'a Polymarket title in a Turkey brief');
+    assert.equal(mentions('TR', '24 km SE of Sindirgi, Turkey'), true, 'a quake place label');
+    assert.equal(mentions('JO', 'Iran attacks US base in Jordan, ships near Hormuz after tankers sunk - Reuters'), true);
+    assert.equal(mentions('JO', "Jordan banks won't raise interest rates on existing individual loans — ABJ"), true);
+    assert.equal(mentions('JO', "Unknown gunmen opened fire inside a church in Jordan's Karak - The National"), true);
+    assert.equal(mentions('JO', 'Saudi Arabia, Qatar, Jordan, Egypt condemn Iranian attack on Bahrain'), true);
+    assert.equal(mentions('NE', 'Pénurie de carburant au Niger : Agadez conditionne et plafonne les services à la pompe'), true);
+    assert.equal(mentions('NE', 'Niger Accuses France Of Inciting Attack On Key Military Airbase'), true);
+    assert.equal(mentions('TD', "Chad's Exports to China Jump Almost Fivefold"), true);
+    assert.equal(mentions('TD', 'In southern Chad, a preventable tragedy helps galvanise a community'), true);
+    assert.equal(mentions('GE', 'Citing Trafficking Risks, Georgia Plans Total Ban on Surrogacy'), true);
+  });
+
+  it('checks a weak name in linear time on long text with no spaces', () => {
+    const text = `${'x'.repeat(100_000)},Jordan`;
+    const started = performance.now();
+    assert.equal(mentions('JO', text), true);
+    assert.ok(performance.now() - started < 500, 'the neighbouring-word check must not backtrack over the whole prefix');
+  });
+
+  it('accepts a name-shaped weak name beside a co-term', () => {
+    assert.equal(mentions('JO', 'Israeli forces prevent 104 teachers from reaching schools in northern Jordan Valley - WAFA Agency'), true);
+    assert.equal(mentions('TR', 'turkey prices climb in Istanbul markets'), true);
+    assert.equal(mentions('TD', 'Chad Basin refugees flee Sudanese fighting'), true);
   });
 
   it('normalizes text the way names are stored', () => {

@@ -563,19 +563,19 @@ describe('ProActivationController power-step surface wiring', () => {
     features: Record<string, unknown>,
   ): Promise<{
     options: Record<string, unknown>;
-    settingsOpens: string[];
+    settingsOpens: Array<string | undefined>;
     searchOpens: string[];
   }> {
     installBrowserState();
     installEligibleMarkerlessAccount(userId, features);
     const { ProActivationController } = await loadController();
-    const settingsOpens: string[] = [];
+    const settingsOpens: Array<string | undefined> = [];
     const searchOpens: string[] = [];
     const ctx = {
       isDestroyed: false,
       isDesktopApp: false,
       container: { dispatchEvent() {} },
-      unifiedSettings: { open: (tab: string) => settingsOpens.push(tab) },
+      unifiedSettings: { open: (section?: string) => settingsOpens.push(section) },
     };
     const controller = new ProActivationController(ctx as never, {
       reloadPending: false,
@@ -656,8 +656,8 @@ describe('ProActivationController power-step surface wiring', () => {
     (options.openMcpClients as () => void)();
     assert.deepEqual(
       settingsOpens,
-      ['settings'],
-      'a lapsed mcpAccess must land on a rendered tab, not the vanished MCP panel',
+      [undefined],
+      'a lapsed mcpAccess must open the settings home list, not deep-link to MCP',
     );
   });
 
@@ -833,6 +833,65 @@ describe('ProActivationController activation-record identity (#5621)', () => {
           (first.activationSessionStartedAt as number),
         'the retained chip must mint a strictly newer order on every click',
       );
+    } finally {
+      ctx.isDestroyed = true;
+      controller.destroy();
+    }
+  });
+});
+
+describe('ProActivationController with site storage blocked (Sentry WORLDMONITOR-1D2)', () => {
+  /**
+   * Chrome with site data blocked makes the `localStorage` getter itself throw
+   * `SecurityError`. The marker and claim helpers already catch that, but
+   * `evaluate()` read `window.localStorage` to hand the fire-once helpers a
+   * handle, outside any try, so the read rejected `evaluate()` and surfaced as
+   * an unhandled rejection.
+   */
+  function blockStorage(): void {
+    Object.defineProperty((globalThis as unknown as { window: object }).window, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Access is denied for this document.', 'SecurityError');
+      },
+    });
+  }
+
+  it('still mounts onboarding for an eligible account and latches the tab', async () => {
+    installBrowserState();
+    installEligibleMarkerlessAccount('user-storage-blocked');
+    blockStorage();
+    const { ProActivationController } = await loadController();
+    const ctx = {
+      isDestroyed: false,
+      isDesktopApp: false,
+      container: { dispatchEvent() {} },
+      unifiedSettings: null,
+    };
+    const controller = new ProActivationController(ctx as never, {
+      reloadPending: false,
+      openAiAnalyst() {},
+    });
+    try {
+      controller.init();
+      await (controller as unknown as { evaluate(): Promise<void> }).evaluate();
+
+      const openedFor = (
+        globalThis as unknown as { __activationOpenedFor: string[] }
+      ).__activationOpenedFor;
+      for (let attempt = 0; attempt < 40 && openedFor.length === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.deepEqual(openedFor, ['user-storage-blocked']);
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        if ((controller as unknown as { mounting: boolean }).mounting === false) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      // The terminal fire-once write cannot land, so the in-tab latch is what
+      // stops a second mount this session.
+      assert.equal((controller as unknown as { resolved: boolean }).resolved, true);
+      await (controller as unknown as { evaluate(): Promise<void> }).evaluate();
+      assert.deepEqual(openedFor, ['user-storage-blocked']);
     } finally {
       ctx.isDestroyed = true;
       controller.destroy();

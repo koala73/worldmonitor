@@ -6,7 +6,7 @@ const { buildOverviewSnapshot } = await import('./worldmonitor.js');
 // Answers each overview query from the latest-date metrics; every other query is empty.
 function serve(latest: Array<[string, number]>) {
   query.mockImplementation(async (sql: string) => {
-    if (sql.includes('SELECT b.id FROM baskets')) return { rows: [] };
+    if (sql.includes('SELECT b.id, b.slug FROM baskets')) return { rows: [] };
     if (sql.includes('ci.metric_key, ci.metric_value') && !sql.includes('INTERVAL')) {
       return { rows: latest.map(([metric_key, v]) => ({ metric_key, metric_value: String(v) })) };
     }

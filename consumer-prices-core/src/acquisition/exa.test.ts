@@ -167,7 +167,7 @@ describe('ExaProvider.extract', () => {
   });
 
   it('propagates the abort timeout when the Exa request does not finish', async () => {
-    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+    const fetchMock = vi.fn((_input: string | URL, init?: RequestInit) =>
       new Promise<never>((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
       }),

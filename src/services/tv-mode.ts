@@ -1,4 +1,4 @@
-import { safeStorageGet, safeStorageSet } from '@/utils/safe-storage';
+import { safeStorageGet } from '@/utils/safe-storage';
 
 /**
  * TV Mode Controller — ambient fullscreen panel cycling for the happy variant.
@@ -99,17 +99,6 @@ export class TvModeController {
       this.exit();
     } else {
       this.enter();
-    }
-  }
-
-  setIntervalMs(ms: number): void {
-    this.intervalMs = clampInterval(ms);
-    safeStorageSet(TV_INTERVAL_KEY, String(this.intervalMs));
-
-    // Restart cycling if active
-    if (this.intervalId !== null) {
-      this.stopCycling();
-      this.startCycling();
     }
   }
 

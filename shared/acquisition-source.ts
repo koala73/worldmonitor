@@ -1,7 +1,7 @@
 /**
  * First-touch acquisition source: where a browser first came from (UTM tags,
- * referrer host, landing page family), kept so a later checkout can stamp it
- * onto the payment-provider subscription as `wm_acq_*` metadata. With billing
+ * referrer host, landing page family and path), kept so a later checkout can
+ * stamp it onto the payment-provider subscription as `wm_acq_*` metadata. With billing
  * country already on every Dodo subscription, that is enough to read
  * conversion and revenue by channel and country from the payment records
  * alone, without the client-side analytics that drop events.
@@ -21,17 +21,28 @@ export const ACQUISITION_COOKIE_NAME = 'wm-acq';
 export const ACQUISITION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const ACQUISITION_COOKIE_DOMAIN = 'worldmonitor.app';
 const MAX_TOKEN_LENGTH = 64;
+const MAX_PATH_LENGTH = 120;
+const PATH_PATTERN = /^\/[A-Za-z0-9/._~%-]*$/;
 const DIRECT = 'direct';
 const HOST_PATTERN = /^(?=.{1,253}$)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const LANDING_FAMILIES = new Set([
-  'homepage',
-  'dashboard',
-  'pricing',
-  'documentation',
-  'developer_mcp',
-  'use-cases',
-]);
+const LANDING_PREFIXES: readonly (readonly [prefix: string, family: string])[] = [
+  ['/dashboard', 'dashboard'],
+  ['/pro', 'pricing'],
+  ['/mcp', 'developer_mcp'],
+  ['/api', 'developer_mcp'],
+  ['/docs', 'documentation'],
+  ['/use-cases', 'use-cases'],
+  ['/chokepoints', 'chokepoints'],
+  ['/countries', 'countries'],
+  ['/crises', 'crises'],
+  ['/compare', 'compare'],
+  ['/tools', 'tools'],
+  ['/research', 'research'],
+  ['/agent', 'agent'],
+  ['/blog', 'blog'],
+];
+const LANDING_FAMILIES = new Set(['homepage', ...LANDING_PREFIXES.map(([, family]) => family)]);
 
 export interface AcquisitionSource {
   source?: string;
@@ -40,6 +51,8 @@ export interface AcquisitionSource {
   /** Referrer hostname without `www.`, or `direct`. */
   referrer?: string;
   landing?: string;
+  /** Exact landing pathname, only for a page in a listed family. Never the query or hash. */
+  path?: string;
   /** UTC day of the first visit, YYYY-MM-DD. */
   firstSeen?: string;
 }
@@ -70,23 +83,24 @@ function normalizeToken(value: unknown): string | undefined {
   return token || undefined;
 }
 
-/** Page family of the landing path, matching content-attribution's buckets. */
+/** Page family of the landing path, or undefined for an unlisted page. */
 function landingFamily(pathname: string): string | undefined {
   const path = pathname.toLowerCase().replace(/\/+$/, '') || '/';
-  const under = (prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
   if (path === '/') return 'homepage';
-  if (under('/dashboard')) return 'dashboard';
-  if (under('/pro')) return 'pricing';
-  if (under('/mcp') || under('/api')) return 'developer_mcp';
-  if (under('/docs')) return 'documentation';
-  if (under('/use-cases')) return 'use-cases';
-  return undefined;
+  return LANDING_PREFIXES.find(([prefix]) => path === prefix || path.startsWith(`${prefix}/`))?.[1];
 }
 
 function normalizeReferrer(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const host = value.trim().toLowerCase().replace(/^www\./, '');
   return host === DIRECT || HOST_PATTERN.test(host) ? host : undefined;
+}
+
+/** A path kept only when its family is listed and agrees with the recorded landing, if any. */
+function normalizePath(value: unknown, landing: string | undefined): string | undefined {
+  if (typeof value !== 'string' || value.length > MAX_PATH_LENGTH || !PATH_PATTERN.test(value)) return undefined;
+  const family = landingFamily(value);
+  return family && (!landing || family === landing) ? value : undefined;
 }
 
 function normalizeDay(value: unknown): string | undefined {
@@ -109,6 +123,7 @@ export function normalizeAcquisitionSource(input: unknown): AcquisitionSource | 
     campaign: normalizeToken(raw.campaign),
     referrer: normalizeReferrer(raw.referrer),
     landing,
+    path: normalizePath(raw.path, landing),
     firstSeen: normalizeDay(raw.firstSeen),
   };
   const result: AcquisitionSource = {};
@@ -142,6 +157,7 @@ export function parseAcquisitionSource(visit: AcquisitionVisit): AcquisitionSour
     campaign: params.get('utm_campaign'),
     referrer: referrerHost(visit.referrer),
     landing: landingFamily(visit.pathname),
+    path: visit.pathname,
     firstSeen: new Date(visit.now).toISOString().slice(0, 10),
   }) ?? { referrer: DIRECT };
 }
@@ -234,6 +250,46 @@ export function acquisitionCookieStorage(
 }
 
 /**
+ * The Set-Cookie value that records this navigation as the first touch, or
+ * null when the request already carries an unexpired record. It runs the
+ * browser capture over the request's Cookie header, so an edge handler writes
+ * exactly the cookie, attributes included, that page script would.
+ */
+export function firstTouchSetCookie(input: {
+  url: string;
+  cookieHeader: string | null;
+  referrer: string | null;
+  now: number;
+}): string | null {
+  let url: URL;
+  try {
+    url = new URL(input.url);
+  } catch {
+    return null;
+  }
+  const writes: string[] = [];
+  const jar = {
+    // A write replaces the only cookie the storage reads, so the read-back
+    // after a write sees the written value, as document.cookie would.
+    get cookie() {
+      const last = writes[writes.length - 1];
+      return last === undefined ? input.cookieHeader ?? '' : last.split(';')[0] ?? '';
+    },
+    set cookie(value: string) {
+      writes.push(value);
+    },
+  };
+  captureFirstTouchAcquisition(acquisitionCookieStorage(jar, url), {
+    search: url.search,
+    pathname: url.pathname,
+    referrer: input.referrer ?? '',
+    now: input.now,
+  });
+  // A stale or malformed record is removed before the new one is written.
+  return writes[writes.length - 1] ?? null;
+}
+
+/**
  * The page's document and location, read through globalThis because Convex
  * also compiles this file and has no DOM types. Null outside a browser.
  */
@@ -277,6 +333,7 @@ const METADATA_KEYS: Record<keyof AcquisitionSource, string> = {
   campaign: 'wm_acq_campaign',
   referrer: 'wm_acq_referrer',
   landing: 'wm_acq_landing',
+  path: 'wm_acq_path',
   firstSeen: 'wm_acq_first_seen',
 };
 
@@ -289,4 +346,15 @@ export function acquisitionCheckoutMetadata(input: unknown): Record<string, stri
     metadata[METADATA_KEYS[key]] = value;
   }
   return metadata;
+}
+
+/** The source record a checkout stamped onto provider metadata, re-validated. */
+export function acquisitionFromCheckoutMetadata(metadata: unknown): AcquisitionSource | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const raw = metadata as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const [key, metadataKey] of Object.entries(METADATA_KEYS)) {
+    fields[key] = raw[metadataKey];
+  }
+  return normalizeAcquisitionSource(fields);
 }

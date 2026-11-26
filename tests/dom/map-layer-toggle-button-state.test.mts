@@ -16,7 +16,7 @@
  * markup. A fixture that rebuilt the row by hand could not catch a change to
  * the component's own DOM shape.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MapComponent } from '@/components/Map';
 import type { MapLayers } from '@/types';
@@ -24,6 +24,7 @@ import type { MapLayers } from '@/types';
 // Standalone rather than `MapComponent & …`: `container` is private on the
 // class, so intersecting the two reduces the whole type to `never`.
 type LayerPicker = {
+  controlDisclosureCleanups: (() => void)[];
   canToggleLayer: () => boolean;
   container: HTMLElement;
   createLayerToggles: () => HTMLElement;
@@ -33,12 +34,26 @@ type LayerPicker = {
   toggleLayer: (layer: keyof MapLayers, source?: 'user' | 'programmatic') => void;
 };
 
+const pickers: LayerPicker[] = [];
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+});
+afterEach(() => {
+  for (const picker of pickers.splice(0)) {
+    picker.controlDisclosureCleanups.forEach(cleanup => cleanup());
+    picker.container.remove();
+  }
+  vi.unstubAllGlobals();
+});
+
 /**
  * Builds the picker through the component's own DOM builder, on a prototype
  * instance so the constructor's d3/ResizeObserver/network work stays out of it.
  */
 function createPicker(layers: Partial<MapLayers>): LayerPicker {
   const map = Object.create(MapComponent.prototype) as unknown as LayerPicker;
+  map.controlDisclosureCleanups = [];
+  pickers.push(map);
   map.container = document.createElement('div');
   map.state = { layers: { ...layers }, zoom: 4 };
   map.layerZoomOverrides = {};

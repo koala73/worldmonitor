@@ -1,0 +1,43 @@
+# answerrank config for the weekly AI-answer snapshot (scripts/seo-answerrank-collect.mjs).
+#
+# The questions and the product profile are fixed (inputs/queries.json and
+# inputs/profile.json) so weekly runs stay comparable. The 13 questions are
+# third-party wording copied from HN, Reddit and Search Console on 2026-10-18,
+# not written by us. Changing this file, the questions or the profile changes the
+# inputs digest, and the next snapshot starts a new comparison series.
+#
+# Model names use LiteLLM's provider/model format. Keys come from the
+# environment: OPENROUTER_API_KEY, ANTHROPIC_API_KEY, EXA_API_KEY.
+
+target:
+  url: https://www.worldmonitor.app
+  name: ""
+  description: ""
+  competitors: ["Liveuamap", "ACLED", "GDELT", "Dataminr", "Recorded Future", "DeepStateMap"]
+  max_pages: 6
+
+queries:
+  count: 13
+  intents: [category, problem, alternatives, evaluation, how-to]
+  language: English
+  extra: []
+
+models:
+  - {name: openrouter/openai/gpt-5.5, label: gpt}
+  - {name: anthropic/claude-sonnet-5-5, label: claude}
+  # Sonar always searches. OpenRouter has no tool-use endpoint for it, so a
+  # "+web" tool variant fails on every answer; native search is the only mode.
+  - {name: openrouter/perplexity/sonar-pro, label: perplexity, web_search: true}
+
+web_search:
+  compare: true
+  mode: tool
+  search: exa_ai
+  max_results: 5
+  max_searches: 3
+  force: false
+
+repetitions: 3
+concurrency: 1
+generator_model: openrouter/openai/gpt-5.5
+judge_model: anthropic/claude-sonnet-5-5

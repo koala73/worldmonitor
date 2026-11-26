@@ -10,6 +10,8 @@ import {
 } from '@/services/correlation-snapshots';
 import { describeFreshness } from '@/services/persistent-cache';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { PanelScopeFilter, focusedEmptyNode, scopeTagNode, type ScopeRow } from './panel-scope-filter';
 
 // Score-badge BACKGROUND colors. Badge text color is chosen per-background via
 // readableTextColor() so it clears WCAG AA on each: white on the dark `low`
@@ -28,6 +30,24 @@ const TREND_ICONS: Record<string, { symbol: string; color: string }> = {
   'de-escalating': { symbol: '\u2193', color: '#44cc44' },
 };
 
+const SIGNAL_TYPE_KEYS: Record<string, string> = {
+  military_flight: 'militaryFlight',
+  military_vessel: 'militaryVessel',
+  ais_gap: 'aisGap',
+  conflict_event: 'conflictEvent',
+  escalation_outage: 'escalationOutage',
+  news_severity: 'newsSeverity',
+  sanctions_news: 'sanctionsNews',
+  market_move: 'marketMove',
+  commodity_spike: 'commoditySpike',
+  earthquake: 'earthquake',
+  infra_outage: 'infraOutage',
+};
+
+function signalTypeLabel(type: string): string {
+  return t(`components.correlation.signalTypes.${SIGNAL_TYPE_KEYS[type] ?? 'other'}`);
+}
+
 export class CorrelationPanel extends Panel {
   private domain: CorrelationDomain;
   private expandedCard: string | null = null;
@@ -40,18 +60,22 @@ export class CorrelationPanel extends Panel {
   private assessedCards?: ConvergenceCard[];
   private renderedCards?: ConvergenceCard[];
   private renderedOrigin?: 'seed' | 'local';
+  // Dashboard focus (#10453): every card carries the ISO codes of its countries.
+  protected readonly scopeFilter: PanelScopeFilter;
 
   constructor(id: string, title: string, domain: CorrelationDomain, infoTooltip?: string) {
     super({ id, title, showCount: true, infoTooltip });
     this.domain = domain;
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.render() });
 
     this.requestRender();
     this.observeNearViewport(() => {
       if (this.correlationDestroyed) return;
       this.stopSnapshots = subscribeCorrelationSnapshot(this.domain, state => {
+        const newData = state.snapshot !== null && state.snapshot !== this.snapshotState.snapshot;
         this.snapshotState = state;
         this.requestAssessments();
-        this.requestRender(false);
+        this.requestRender(false, newData);
       });
     }, 400);
 
@@ -69,6 +93,23 @@ export class CorrelationPanel extends Panel {
     this.stopSnapshots?.();
     document.removeEventListener('wm:correlation-updated', this.boundUpdateHandler);
     super.destroy();
+  }
+
+  public override applyScope(scope: ResolvedScope | null): void {
+    // A redraw must not erase a load failure, including one that arrives
+    // after this redraw is queued and before its frame.
+    if (this.scopeFilter.setScope(scope) && !this.showingLoadFailure) this.requestRender(true, false);
+  }
+
+  public override showLoading(message?: string): void {
+    this.scopeFilter?.hideStrip();
+    super.showLoading(message);
+  }
+
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.queuedRecoversFromFailure = false;
+    this.scopeFilter.hideStrip();
+    super.showError(message, onRetry, autoRetrySeconds);
   }
 
   setMapNavigateHandler(handler: (lat: number, lon: number) => void): void {
@@ -99,16 +140,22 @@ export class CorrelationPanel extends Panel {
 
   private pendingRender = false;
   private forceRender = false;
+  private queuedRecoversFromFailure = false;
   /** Schedule a safe redraw for subclasses that install deferred panel data. */
-  protected requestRender(force = true): void {
+  protected requestRender(force = true, recoversFromFailure = false): void {
     this.forceRender ||= force;
+    this.queuedRecoversFromFailure ||= recoversFromFailure;
     if (this.correlationDestroyed || this.pendingRender) return;
     this.pendingRender = true;
     requestAnimationFrame(() => {
       this.pendingRender = false;
       if (this.correlationDestroyed) return;
       const force = this.forceRender;
+      const recovers = this.queuedRecoversFromFailure;
       this.forceRender = false;
+      this.queuedRecoversFromFailure = false;
+      // Only data may replace a load failure; a focus redraw may not.
+      if (!recovers && this.showingLoadFailure) return;
       this.render(force);
     });
   }
@@ -120,7 +167,8 @@ export class CorrelationPanel extends Panel {
   private render(force = true): void {
     if (this.correlationDestroyed) return;
     const cards = this.snapshotState.snapshot?.cards ?? [];
-    this.setCount(cards.length);
+    const view = this.scopeFilter.view(cards, (card) => card.countries);
+    this.setCount(view.rows.length);
     if (this.countEl) this.countEl.hidden = this.snapshotState.snapshot === null;
     const { snapshot, status, offline } = this.snapshotState;
     const notice = h('div', {
@@ -148,6 +196,9 @@ export class CorrelationPanel extends Panel {
     this.renderedOrigin = snapshot?.origin;
     const supplement = this.renderSupplement();
 
+    if (!snapshot || cards.length === 0) this.scopeFilter.hideStrip();
+    else this.scopeFilter.renderStrip(view);
+
     if (!snapshot) {
       this.setContentNodes(...(supplement ? [supplement] : []), notice);
       return;
@@ -163,7 +214,16 @@ export class CorrelationPanel extends Panel {
       return;
     }
 
-    const cardEls = cards.map(card => this.buildCard(card));
+    if (view.emptyByFocus) {
+      this.setContentNodes(
+        ...(supplement ? [supplement] : []),
+        notice,
+        focusedEmptyNode(t('focus.filter.emptyCorrelation')),
+      );
+      return;
+    }
+
+    const cardEls = view.rows.map(row => this.buildCard(row.item, row));
     // #6557: success render with data — route through the sanctioned helper.
     this.setContentNodes(
       ...(supplement ? [supplement] : []),
@@ -172,7 +232,7 @@ export class CorrelationPanel extends Panel {
     );
   }
 
-  private buildCard(card: ConvergenceCard): HTMLElement {
+  private buildCard(card: ConvergenceCard, row?: ScopeRow<ConvergenceCard>): HTMLElement {
     const scoreColor = card.score >= 70 ? SCORE_COLORS.critical
       : card.score >= 50 ? SCORE_COLORS.high
       : card.score >= 30 ? SCORE_COLORS.medium
@@ -191,6 +251,7 @@ export class CorrelationPanel extends Panel {
       h('span', {
         style: 'flex:1;font-size:calc(11px * var(--wm-panel-effective-scale, 1));line-height:1.3;',
       }, card.title),
+      scopeTagNode(row),
       h('span', {
         style: 'font-size:calc(9px * var(--wm-panel-effective-scale, 1));opacity:0.6;white-space:nowrap;',
       }, t('components.correlation.signals', { count: card.signals.length })),
@@ -224,7 +285,7 @@ export class CorrelationPanel extends Panel {
       h('div', { style: 'padding:2px 0;display:flex;gap:6px;align-items:baseline;' },
         h('span', {
           style: 'font-size:calc(8px * var(--wm-panel-effective-scale, 1));padding:1px 4px;border-radius:3px;background:rgba(255,255,255,0.1);white-space:nowrap;',
-        }, s.type),
+        }, signalTypeLabel(s.type)),
         h('span', { style: 'opacity:0.8;' }, s.label),
       ),
     );

@@ -1,6 +1,6 @@
 ---
 title: "ACLED alternatives for intelligence teams"
-description: "ACLED alternatives ranked by why people leave: access limits, live monitoring, alerts and API. Compare World Monitor, Liveuamap and Recorded Future, and when to stay with ACLED."
+description: "ACLED alternatives ranked by why teams leave: access limits, live monitoring, alerts and API. Compare World Monitor, Liveuamap and Recorded Future."
 metaTitle: "ACLED alternatives for conflict monitoring | World Monitor"
 keywords: "ACLED buyers, acled alternatives for intelligence teams, global intelligence tools"
 audience: "ACLED buyers"
@@ -87,6 +87,7 @@ The replacement must answer your research or monitoring question with acceptable
 ## More guides
 
 - [World Monitor vs ACLED](/blog/vs/acled/)
+- [GDELT alternatives](/blog/alternatives/gdelt/)
 - [Conflict data platforms for researchers](/blog/best/conflict-data-platforms-for-researchers/)
 - [Compare all providers](/blog/guides/#vs)
 - [Best tools by audience](/blog/guides/#best)

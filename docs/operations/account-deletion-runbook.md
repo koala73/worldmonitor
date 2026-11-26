@@ -65,6 +65,8 @@ proof this engine refuses, and a stale or attacker-influenced value would delete
 third party's records. The command is idempotent and reschedules itself until both
 the grant sweep and the email-keyed sweep report done; re-run
 `getDeletionStatusForOperator` afterwards to confirm `emailKeyedSkipped` is gone.
+On a completed deletion it then drops the supplied address from the deletion
+record, so the row does not keep the subject's email.
 
 If the row is `failed`, inspect `lastError` **with that command first**, correct the
 provider configuration or failure, then re-run `eraseConfirmedUser` to resume from

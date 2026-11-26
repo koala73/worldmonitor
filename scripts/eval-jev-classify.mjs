@@ -27,6 +27,7 @@ import {
   jevEndpoint, JEV_MODEL, THREAT_LEVELS, buildJevRequest, parseJevAnswers, hasNonLatinLetters,
 } from '../shared/jev-classify.js';
 import { isAcceptableDigest } from './shared/digest-acceptance.mjs';
+import { classifyCacheIdentity } from '../shared/story-identity.js';
 
 const args = Object.fromEntries(
   process.argv.slice(2).join(' ').split('--').filter(Boolean).map((a) => {
@@ -67,7 +68,7 @@ async function redis(command) {
 
 const parseMaybe = (v) => { if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch { return null; } };
 const cacheKey = (title) =>
-  `classify:sebuf:v6:${crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16)}`;
+  `classify:sebuf:v6:${crypto.createHash('sha256').update(classifyCacheIdentity(title)).digest('hex').slice(0, 16)}`;
 
 async function shadowReport() {
   const rows = (await redis(['LRANGE', 'classify:jev-shadow:v1', 0, LIMIT - 1]) ?? []).map(parseMaybe).filter(Boolean);
@@ -103,7 +104,8 @@ async function loadLabelledTitles() {
     }
     console.error(`  ${variant}: ${titles.size - before} new titles`);
   }
-  const all = [...titles.keys()];
+  // One title per cache key: copies of a story share one label.
+  const all = [...new Map([...titles.keys()].map((title) => [cacheKey(title), title])).values()];
   const labelled = [];
   for (let i = 0; i < all.length; i += 200) {
     const chunk = all.slice(i, i + 200);

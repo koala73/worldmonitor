@@ -1,12 +1,14 @@
 /**
  * Tests for server/_shared/relay.ts helper functions.
- * Uses dynamic import with environment variable stubbing.
+ * Both helpers read process.env on every call, so the suite imports them
+ * directly and stubs the environment per case.
  */
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { getRelayBaseUrl, getRelayHeaders } from '../server/_shared/relay.ts';
 
 // ─── Environment stub helpers ─────────────────────────────────────────────────
 
@@ -32,47 +34,6 @@ function withEnv(vars, fn) {
     }
   }
 }
-
-// ─── Load relay module functions inline (avoids ESM import caching issues) ───
-
-function loadRelayFunctions() {
-  const src = readFileSync(resolve('server/_shared/relay.ts'), 'utf-8');
-
-  // Extract and evaluate the two functions using Function constructor
-  // to avoid module caching problems with env var tests
-  const CHROME_UA = 'WorldMonitor-Test-UA';
-
-  const getRelayBaseUrl = () => {
-    const relayUrl = process.env.WS_RELAY_URL;
-    if (!relayUrl) return null;
-    return relayUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/$/, '');
-  };
-
-  const getRelayHeaders = (extra = {}) => {
-    const headers = {
-      Accept: 'application/json',
-      'User-Agent': CHROME_UA,
-      ...extra,
-    };
-    const relaySecret = process.env.RELAY_SHARED_SECRET;
-    if (!relaySecret) return headers;
-    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-    headers[relayHeader] = relaySecret;
-    if (relayHeader !== 'authorization') {
-      headers.Authorization = `Bearer ${relaySecret}`;
-    }
-    return headers;
-  };
-
-  // Verify source file still matches expected logic shape
-  assert.ok(src.includes('replace(/^ws(s?):\\/\\//'), 'relay.ts must use single-regex wss:// transform');
-  assert.ok(src.includes('...extra'), 'relay.ts must spread extra before auth headers');
-  assert.ok(src.includes("relayHeader !== 'authorization'"), 'relay.ts must guard against Authorization header collision');
-
-  return { getRelayBaseUrl, getRelayHeaders };
-}
-
-const { getRelayBaseUrl, getRelayHeaders } = loadRelayFunctions();
 
 // ─── getRelayBaseUrl tests ────────────────────────────────────────────────────
 

@@ -32,6 +32,13 @@ import {
 } from './crawlable-live-tools.mjs';
 import { chokepointPulseRecord } from './crawlable-chokepoint-live.mjs';
 import { LIVE_TOPIC_PAGES, liveTopicReading, liveTopicRpcPath } from './live-pages/index.mjs';
+import {
+  PIZZA_INDEX_SLUG,
+  PIZZA_INDEX_STATUS_PATH,
+  pizzaIndexReading,
+  pizzaIndexRecord,
+  publishedPizzaIndex,
+} from './live-pages/pentagon-pizza-index.mjs';
 import { activeWarsReading, palestineLocator } from './active-wars.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
@@ -53,6 +60,7 @@ import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.
 import DIGEST_EDITIONS from './shared/news-digest-editions.json' with { type: 'json' };
 import { isBriefRelevantTitle } from '../shared/brief-relevance.js';
 import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
+import { takeDistinctStories } from '../shared/story-dedupe.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,6 +93,11 @@ function numberFromEnv(name, fallback) {
 
 const REQUEST_GAP_MS = numberFromEnv('PULSE_FREEZE_GAP_MS', 120);
 const HTTP_TIMEOUT_MS = numberFromEnv('PULSE_FREEZE_TIMEOUT_MS', 20_000);
+// One request asks list-country-headlines for every country, and the handler's
+// time grows with the country count: 1 country ~2 s, 20 ~4 s, 195 ~22.5 s on
+// 2026-11-23. Under the default timeout the curated feeds aborted every week
+// and briefs fell from 131 countries to 86.
+const CURATED_FEEDS_TIMEOUT_MS = numberFromEnv('PULSE_FREEZE_CURATED_FEEDS_TIMEOUT_MS', 90_000);
 const OUTPUT_BASENAME = process.env.PULSE_FREEZE_OUTPUT_BASENAME || '';
 
 // Countries the upstream may legitimately fail to serve in a single run before
@@ -98,8 +111,8 @@ const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
 // A shortfall is recorded and warned about, NOT thrown. This step runs last,
 // just before the only write, so throwing here would discard ~196 successfully
 // captured countries over a news-content problem -- and two such Mondays in a
-// row would push the snapshot past MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS and hard-
-// fail the whole crawlable corpus build. The strip degrades to fewer rows (or
+// row would push the snapshot past MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS and block
+// official publishing of the whole crawlable corpus. The strip degrades to fewer rows (or
 // none); it can never fill the gap with something unattributable, because the
 // generator publishes exactly what this capture vouched for.
 const HEADLINE_CAPTURE_COUNT = 4;
@@ -278,10 +291,10 @@ function normalizeHttpsUrl(value) {
   }
 }
 
-async function fetchJson(url, { headers = {}, method = 'GET', body, apiBase = API_BASE } = {}) {
+async function fetchJson(url, { headers = {}, method = 'GET', body, apiBase = API_BASE, timeoutMs = HTTP_TIMEOUT_MS } = {}) {
   const origin = normalizeApiBase(apiBase);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
       method,
@@ -327,7 +340,7 @@ async function mintSession(apiBase = API_BASE) {
   return token;
 }
 
-async function authedGet(pathname, token, apiBase = API_BASE, { serviceKey = '' } = {}) {
+async function authedGet(pathname, token, apiBase = API_BASE, { serviceKey = '', timeoutMs } = {}) {
   const base = normalizeApiBase(apiBase);
   // Service-key callers pass the tier-gated routes (intel brief, timeline)
   // that reject the anonymous session with a 401. Same either/or contract as
@@ -336,7 +349,7 @@ async function authedGet(pathname, token, apiBase = API_BASE, { serviceKey = '' 
   const headers = serviceKey
     ? { 'X-WorldMonitor-Key': serviceKey }
     : { Cookie: `wm-session=${token}` };
-  return fetchJson(`${base}${pathname}`, { headers, apiBase: base });
+  return fetchJson(`${base}${pathname}`, { headers, apiBase: base, timeoutMs });
 }
 
 async function resolveLatestResilienceSnapshot() {
@@ -344,7 +357,7 @@ async function resolveLatestResilienceSnapshot() {
   const candidates = entries
     .map((filename) => ({ filename, match: filename.match(RESILIENCE_SNAPSHOT_RE) }))
     .filter(({ match }) => match)
-    .sort((a, b) => b.match[1].localeCompare(a.match[1]));
+    .sort((a, b) => b.match[1].localeCompare(a.match[1], 'en-US'));
   if (candidates.length === 0) {
     throw new Error('No resilience ranking snapshot found');
   }
@@ -572,7 +585,7 @@ function emptyDevelopments(freezeStartedAt, briefSkipped) {
 // would leave a shortfall with no recorded cause, since the request itself
 // succeeded -- the operator would see a count and no reason.
 export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
-  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0, duplicateUrl: 0 };
+  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0, duplicateUrl: 0, duplicateStory: 0 };
   const categories = payload && typeof payload === 'object' ? payload.categories : null;
   if (!categories || typeof categories !== 'object') return { rows: [], rejections };
   const rows = Object.values(categories)
@@ -596,7 +609,7 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
     .sort((a, b) => (
       b.importanceScore - a.importanceScore
       || b.publishedAtMs - a.publishedAtMs
-      || a.row.title.localeCompare(b.row.title)
+      || a.row.title.localeCompare(b.row.title, 'en-US')
     ));
 
   // Dedupe BEFORE the cap so a second edition of one story never occupies a
@@ -606,7 +619,13 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
   const deduped = dedupeByArticleUrl(rows, (entry) => entry.row.url);
   rejections.duplicateUrl = rows.length - deduped.length;
 
-  return { rows: deduped.slice(0, limit).map((entry) => entry.row), rejections };
+  // Then one row per story: two outlets' articles on one event have different
+  // URLs (#11190). Also before the cap, for the same reason. The tally counts
+  // the copies skipped while filling the strip.
+  const distinct = takeDistinctStories(deduped, (entry) => entry.row.title, limit);
+  rejections.duplicateStory = distinct.duplicates;
+
+  return { rows: distinct.rows.map((entry) => entry.row), rejections };
 }
 
 // Country matching is the shared matcher (shared/country-mention.js), the
@@ -645,7 +664,7 @@ function selectCountryHeadlines(digestItems, code, limit = COUNTRY_HEADLINE_LIMI
     .sort((a, b) => (
       b.importanceScore - a.importanceScore
       || b.publishedAtMs - a.publishedAtMs
-      || a.row.title.localeCompare(b.row.title)
+      || a.row.title.localeCompare(b.row.title, 'en-US')
     ))
     .slice(0, limit)
     .map((entry) => entry.row);
@@ -819,6 +838,29 @@ async function retainedActiveWars(rootDir) {
   ));
 }
 
+// The glossary page builds from this reading and the middleware swaps in the
+// current one. Without a current level (most nights) the newest earlier
+// edition's reading carries forward with its own timestamp, and
+// publishedPizzaIndex drops it once it ages out. The reading is judged against
+// the clock when it is read (or an injected `now`): the freeze reaches it after
+// hundreds of sequential requests, and its start time would make a reading
+// updated since then look future-dated.
+export async function capturePizzaIndex({ token, base, authOpts, rootDir, now: injectedNow }) {
+  let error = null;
+  let now = injectedNow ?? Date.now();
+  try {
+    const payload = await authedGet(PIZZA_INDEX_STATUS_PATH.split('?')[0], token, base, authOpts);
+    now = injectedNow ?? Date.now();
+    const view = pizzaIndexReading(payload, now);
+    if (view) return { pizzaIndex: { ...pizzaIndexRecord(view), retained: false }, error };
+    error = { id: PIZZA_INDEX_SLUG, message: 'no current level' };
+  } catch (caught) {
+    error = { id: PIZZA_INDEX_SLUG, message: caught instanceof Error ? caught.message : String(caught) };
+  }
+  const retained = await findInPreviousSnapshots(rootDir, (snapshot) => publishedPizzaIndex(snapshot, now));
+  return { pizzaIndex: retained ? { ...retained, retained: true } : null, error };
+}
+
 /** Failure codes are a fixed vocabulary because /accuracy/ publishes them. */
 function scorecardFailureCode(error) {
   if (error?.code) return error.code;
@@ -987,6 +1029,9 @@ export async function freezeCrawlableLivePulse({
     }
     await sleep(requestGapMs);
   }
+
+  const { pizzaIndex, error: pizzaIndexError } = await capturePizzaIndex({ token, base, authOpts, rootDir });
+  await sleep(requestGapMs);
 
   const crisisSnapshots = {};
   const crisisErrors = [];
@@ -1171,7 +1216,9 @@ export async function freezeCrawlableLivePulse({
   try {
     const query = new URLSearchParams();
     for (const code of Object.keys(countries)) query.append('country_codes', code);
-    const payload = await authedGet(`/api/news/v1/list-country-headlines?${query}`, token, base, authOpts);
+    const payload = await authedGet(`/api/news/v1/list-country-headlines?${query}`, token, base, {
+      ...authOpts, timeoutMs: CURATED_FEEDS_TIMEOUT_MS,
+    });
     if (!['complete', 'partial', 'unavailable'].includes(payload?.state)
       || !payload.countries || typeof payload.countries !== 'object') {
       throw new Error('country headline response did not report cache coverage');
@@ -1393,6 +1440,7 @@ export async function freezeCrawlableLivePulse({
     countries,
     chokepoints,
     liveTopics,
+    ...(pizzaIndex ? { pizzaIndex } : {}),
     crises: crisisSnapshots,
     activeWars,
     headlines,
@@ -1494,6 +1542,8 @@ export async function freezeCrawlableLivePulse({
       // Not a freeze gate: a missing topic builds as "no current reading" and
       // the middleware still serves the live one.
       liveTopics: liveTopicErrors,
+      // Not a gate either: no current level is the normal overnight answer.
+      pizzaIndex: pizzaIndexError ? [pizzaIndexError] : [],
       crises: crisisErrors,
       activeWars: activeWarErrors,
       headlines: headlineErrors,

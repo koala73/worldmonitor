@@ -1,19 +1,27 @@
 name: Test
+# Records which pull request and base a run tested. GitHub keeps no reliable
+# record of it after the PR merges, and the push-to-main verdict reuse in the
+# `changes` job credits only runs named for that PR into main. Other events
+# get the default name.
+run-name: "${{ github.event_name == 'pull_request' && format('PR #{0} into {1}: {2}', github.event.pull_request.number, github.event.pull_request.base.ref, github.event.pull_request.title) || '' }}"
 
 on:
   pull_request:
   push:
     branches: [main]
 
-# A superseded PR run owes nobody a verdict. Branch protection and
-# deploy-gate.sh both evaluate the head SHA only. Letting it finish burned
-# 59% of this workflow's runs on dead commits and queued the live commit
-# behind them. Cancellation is pull_request-only. A push to main still owes
-# the deploy gate a verdict, and `github.run_id` gives it a group of one so
-# nothing can evict it (#8443).
+# A superseded run owes nobody a verdict. Branch protection and deploy-gate.sh
+# both evaluate the head SHA only. Letting superseded PR runs finish burned 59%
+# of this workflow's runs on dead commits (#8443). Main pushes share one group
+# too: the newer main run tests a tree that contains the older commit, and 35
+# of 64 main runs (55% of main run time) were still going when the next merge
+# landed (2026-11-18..20). deploy-gate.sh posts "Superseded on main" pending,
+# not failure, for the cancelled commit, and the CI health scan does not count
+# the cancel as a timeout. A re-run of an old main run keeps a group of one
+# (run_id) so it cannot cancel the newer commit's run; so does any other event.
 concurrency:
-  group: test-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: test-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && 'main') || github.run_id }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -23,11 +31,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
+      # The push-only verdict reuse below reads commits, compares and Test runs.
+      actions: read
+      contents: read
     outputs:
-      code: ${{ steps.diff.outputs.code }}
-      browser: ${{ steps.diff.outputs.browser }}
+      # A push to main whose tree a green pull_request run already tested may
+      # switch these off (the reuse step); it can never switch one on.
+      code: ${{ steps.reuse.outputs.code || steps.diff.outputs.code }}
+      browser: ${{ steps.reuse.outputs.browser || steps.diff.outputs.browser }}
       digest: ${{ steps.diff.outputs.digest }}
-      validation: ${{ steps.diff.outputs.validation }}
+      validation: ${{ steps.reuse.outputs.validation || steps.diff.outputs.validation }}
       umami: ${{ steps.diff.outputs.umami }}
       consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
       desktop_config: ${{ steps.diff.outputs.desktop_config }}
@@ -84,11 +97,35 @@ jobs:
               emit_all_true
               exit 0
             fi
+            # A newer main push cancels the run in progress (see concurrency),
+            # so the previous commit may have no verdict. Diff from the newest
+            # main commit whose Test run succeeded, or a code commit cancelled
+            # by a docs-only one would never be tested on main. A red run is
+            # not a base either: the jobs it failed or never reached must
+            # still run for its commit.
+            if ! RUNS_JSON=$(gh api "repos/${{ github.repository }}/actions/workflows/test.yml/runs?event=push&branch=main&status=completed&per_page=50") ||
+               ! DECIDED=$(jq -er --argjson self "${{ github.run_id }}" '
+                 [.workflow_runs[]? | select(.id != $self and .conclusion == "success")]
+                 | first | .head_sha | strings' <<< "$RUNS_JSON"); then
+              echo "No successful main Test run found; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            if [ "$DECIDED" != "$BEFORE" ]; then
+              echo "Main Test runs after $DECIDED did not succeed; diffing from it instead of $BEFORE."
+            fi
+            BEFORE="$DECIDED"
             if ! COMPARE_JSON=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}"); then
               echo "Compare API failed; running every Test job."
               emit_all_true
               exit 0
             fi
+            if ! jq -e '.status == "ahead"' <<< "$COMPARE_JSON" >/dev/null; then
+              echo "This commit does not descend from $BEFORE; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            echo "push_base=$BEFORE" >> "$GITHUB_OUTPUT"
             if ! FILES_JSON=$(jq -ce '.files | arrays' <<< "$COMPARE_JSON"); then
               emit_all_true
               exit 0
@@ -126,6 +163,7 @@ jobs:
             emit_all_true
             exit 0
           fi
+          echo "files_json=$(printf '%s\n' "$FILES" | jq -Rsc 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
           CODE=$(printf '%s\n' "$FILES" | awk '
             /^docs\/research\/seo-ai-visibility\// { count++; next }
             # Committed resilience acceptance artifacts are docs-path data that
@@ -276,6 +314,8 @@ jobs:
             /^src-tauri\// { count++; next }
             /^package\.json$/ { count++; next }
             /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
+            /^scripts\/prefetch-appimage-tools\.sh$/ { count++; next }
+            /^scripts\/fetch-with-retry\.sh$/ { count++; next }
             /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
             /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
@@ -294,6 +334,34 @@ jobs:
             END { print count + 0 }
           ')
           echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+      # A squash merge whose PR head already contained main's previous tip has
+      # the same tree that PR's runs tested (18 of the last 100 merges on
+      # 2026-11-17, 15% of main-push Test job-minutes). Same tree, same verdict:
+      # the script switches off the unit and browser groups a green
+      # pull_request run on that head passed within 24 h. It never reuses when
+      # a lockfile, .npmrc, vendor/, .github/ or scripts/download-node.sh
+      # changed (main saves the shared caches those key), only trusts runs of
+      # that PR against main, and any lookup doubt or error leaves every job on.
+      - name: Check out the verdict reuse script
+        if: github.event_name == 'push'
+        continue-on-error: true
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout: |
+            .github/scripts/reuse-pr-test-verdict.mjs
+            scripts/lib/main-module.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Reuse a green pull request verdict on an identical tree
+        id: reuse
+        if: github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          PUSH_BASE: ${{ steps.diff.outputs.push_base }}
+          FILES_JSON: ${{ steps.diff.outputs.files_json }}
+        run: node .github/scripts/reuse-pr-test-verdict.mjs
 
   zapier:
     needs: changes
@@ -326,7 +394,11 @@ jobs:
         with:
           # Docs page dates derive from git history; a shallow checkout would
           # resolve every file to HEAD instead of its last content change.
+          # Blobless: git log --name-only reads commits and trees, not
+          # historical blobs (matching unit-shards, unit-built-output, and
+          # scripts/generate-docs-page-dates.mjs --fetch-history).
           fetch-depth: 0
+          filter: blob:none
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
@@ -470,7 +542,12 @@ jobs:
           WM_EXPECT_BUILT_OUTPUT: '1'
           WM_EXPECT_SCRIPTS_DEPS: '1'
           DURATIONS_KEY: ${{ needs.changes.outputs.durations_key }}
-        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl ${DURATIONS_KEY:+--durations="$HOME/data-test-durations/durations.json"}
+        run: >-
+          npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4
+          --exclude=tests/docs-page-dates.test.mjs
+          --exclude=tests/docs-i18n-parity.test.mjs
+          --exclude=tests/internal-link-redirects.test.mjs
+          --timings=${{ runner.temp }}/data-test-timings.jsonl ${DURATIONS_KEY:+--durations="$HOME/data-test-durations/durations.json"}
       # The next run's estimates, saved whether the tests passed or not: a cache
       # saved only by green runs goes stale exactly while main is red. The next
       # run reads only the newest entry, so if every shard saved, whichever
@@ -514,6 +591,7 @@ jobs:
           key: data-test-durations-v1-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
       - name: Upload data test timings
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: data-test-timings-${{ matrix.shard }}-${{ github.run_attempt }}
@@ -607,6 +685,12 @@ jobs:
           # The merge commit's FIRST parent is the base tip this tree was merged
           # onto, so it tracks what is actually under test. The pre-push hook
           # compares against origin/main for the same reason.
+          #
+          # On push, the base stays the push parent even when its Test run was
+          # cancelled or red. The check validates one transition: cutover.fromKey
+          # must equal the base's key, so an older base rejects a valid cutover
+          # that follows a commit which already repointed the probe. Each commit's
+          # own transition was checked by its pull request run.
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
@@ -650,6 +734,7 @@ jobs:
         # duplicate name within a run, which collides on the re-run someone
         # starts to chase the failure.
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: openapi-capacity-${{ github.run_attempt }}
@@ -683,6 +768,7 @@ jobs:
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --built-output=only --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
       - name: Upload data test timings
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: data-test-timings-built-output-${{ github.run_attempt }}
@@ -703,7 +789,6 @@ jobs:
         # exits 0 when its glob finds zero entry points, so "green" must
         # also mean "every discovered domain actually produced a bundle".
         run: |
-          node scripts/build-sidecar-sebuf.mjs
           node scripts/build-sidecar-handlers.mjs
           node -e '
             const { readdirSync, existsSync } = require("node:fs");
@@ -756,6 +841,20 @@ jobs:
     if: needs.changes.outputs.consumer_prices == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: consumer_prices_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=consumer_prices_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -766,6 +865,8 @@ jobs:
       - uses: ./.github/actions/install-redis
       - run: npm ci --prefix consumer-prices-core
       - run: npm test --prefix consumer-prices-core
+        env:
+          CONSUMER_PRICES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/consumer_prices_test
 
   umami-postgres:
     needs: changes
@@ -807,6 +908,17 @@ jobs:
         env:
           UMAMI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/umami_integration
         run: node tests/umami-runtime-write-probe.mjs
+      # The integration test runs the SQL through the runner's psql. This runs
+      # the built image's own CMD as its own USER, so an image that cannot read
+      # its SQL file fails here instead of crashing the Railway cron.
+      - name: Run the retention image's own tick
+        run: |
+          docker run --rm --network host \
+            --env PGHOST=127.0.0.1 --env PGPORT=5432 \
+            --env PGDATABASE=umami_integration \
+            --env PGUSER=postgres --env PGPASSWORD=postgres \
+            --env 'PGOPTIONS=-c search_path=wm_umami_integration' \
+            worldmonitor/umami-retention:ci
 
   sidecar:
     needs: changes
@@ -845,15 +957,13 @@ jobs:
       # The desktop app loads these bundles, not the api/ sources the suite
       # imports. Build them so the shipped-route check below reads what ships.
       - name: Build the sidecar handler bundles
-        run: |
-          node scripts/build-sidecar-sebuf.mjs
-          node scripts/build-sidecar-handlers.mjs
+        run: node scripts/build-sidecar-handlers.mjs
 
       - name: Test sidecar with the shipped Node.js runtime
         run: |
           export PATH="$PWD/src-tauri/sidecar/node:$PATH"
           node --version
-          npm run test:sidecar
+          npm run test:sidecar:desktop
           # Every route the app ships must load from the shipped files alone
           # on this runtime (#9906).
           node scripts/check-sidecar-shipped-routes.mjs
@@ -882,8 +992,11 @@ jobs:
             echo '::error::Desktop versions out of sync — run `npm run version:sync` and commit the result.'
             exit 1
           }
-      - name: Linux AppImage post-processing script parses
-        run: bash -n scripts/repack-linux-appimage.sh
+      - name: Linux AppImage build scripts parse
+        run: |
+          bash -n scripts/repack-linux-appimage.sh
+          bash -n scripts/prefetch-appimage-tools.sh
+          bash -n scripts/fetch-with-retry.sh
       - name: Desktop build env parity (#5905)
         # A VITE_ key missing from the Tauri build steps silently disables the
         # capability in every shipped build (sign-in, Pro, Cyber Threats were
@@ -980,6 +1093,17 @@ jobs:
             echo '::error::desktop Rust tests failed — repro locally with: mkdir -p dist && cd src-tauri && cargo test --locked (the mkdir is required: tauri-build embeds ../dist at compile time).'
             exit 1
           }
+      - name: cargo test (release cfg)
+        working-directory: src-tauri
+        # Release-only branches sit behind cfg(debug_assertions): no dev Clerk
+        # hosts, LOCAL_API_NODE_BIN ignored. Turning debug assertions off for
+        # this crate alone compiles them under test and reuses the dependency
+        # build from the step above.
+        run: |
+          cargo test --locked --config 'profile.test.package.world-monitor.debug-assertions=false' || {
+            echo "::error::desktop Rust tests failed with release cfg — repro locally with: mkdir -p dist && cd src-tauri && cargo test --locked --config 'profile.test.package.world-monitor.debug-assertions=false'"
+            exit 1
+          }
 
   convex-tests:
     needs: changes
@@ -992,7 +1116,10 @@ jobs:
         with:
           node-version: '24'
       - uses: ./.github/actions/install-root-deps
-      - run: npm run test:convex
+      # Vitest defaults to one worker fewer than the CPU count, which leaves one
+      # of the runner's 4 vCPUs idle. Four workers took the suite from 48.8s
+      # (81% CPU busy) to 45.5s (94%), alternating on one VM (bench run 44274790851).
+      - run: npm run test:convex -- --maxWorkers=4
 
   # DOM-behavioral gate tests (#5634). Kept OUT of the `unit` job's tsx glob:
   # the components under test import `@/services/i18n`, which uses
@@ -1013,22 +1140,30 @@ jobs:
       # never be type-checked — the first run of this config caught four real
       # type errors in them.
       - run: npm run typecheck:dom-tests
+      # Vitest defaults to one worker fewer than the CPU count. Four workers, one
+      # per vCPU, took the suite from 196.5s (74% CPU busy) to 176.1s (89%),
+      # alternating on one VM; six reached 170.5s at 95% (bench run 44274790851).
+      # VITEST_MAX_THREADS is the config's existing override, so local runs keep
+      # Vitest's default.
       - run: npm run test:dom
+        env:
+          VITEST_MAX_THREADS: '4'
 
   variant-smoke-shards:
     name: variant-smoke (${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        # Four shards. The specs run with two Playwright workers that keep the
+        # Eight shards. The specs run with two Playwright workers that keep the
         # runner's CPU 81-85% busy, and four workers only bought ~15% with more
         # flaky retries, so more runners is where the time comes from. The spec
-        # lists in package.json (test:e2e:ci-smoke:1..4) are balanced by
+        # lists in package.json (test:e2e:ci-smoke:1..8) are balanced by
         # measured test-seconds (history in docs/solutions/performance-issues/
         # ci-runners-are-cpu-bound-shard-before-parallel-steps.md). Re-balance
-        # them from the per-test durations in the list reporter output when a
-        # spec grows.
-        shard: [1, 2, 3, 4]
+        # them with `node scripts/balance-smoke-shards.mjs --write`, which packs
+        # the specs from per-test durations in recent main runs, when a spec is
+        # added or grows.
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.browser == 'true'
@@ -1060,6 +1195,23 @@ jobs:
             uses: ./.github/actions/install-browser-fonts
             timeout-minutes: 4
             continue-on-error: true
+      # rag-vector-store.spec.ts serves the embeddings model from this cache.
+      # Downloading it from Hugging Face inside the test let one stalled CDN
+      # transfer time out the spec's 90 s hook (#11158). A miss downloads it
+      # here, with per-attempt timeouts and sha256 checks, and fails loudly.
+      - name: Check whether this shard runs the RAG vector store spec
+        id: rag-spec
+        run: echo "needed=$(node -p "require('./package.json').scripts['test:e2e:ci-smoke:${{ matrix.shard }}'].includes('e2e/rag-vector-store.spec.ts')")" >> "$GITHUB_OUTPUT"
+      - name: Cache the e2e embeddings model
+        if: steps.rag-spec.outputs.needed == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/e2e-models
+          key: e2e-embeddings-model-${{ hashFiles('e2e/fetch-embeddings-model.ts') }}
+      - name: Fetch the e2e embeddings model
+        if: steps.rag-spec.outputs.needed == 'true'
+        timeout-minutes: 5
+        run: node e2e/fetch-embeddings-model.ts
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -1151,11 +1303,11 @@ jobs:
             sample_memory >> "$DIAGNOSTICS_DIR/memory-samples.log"
             mkdir -p test-results/browser-loss
             cp "$DIAGNOSTICS_DIR/"*.log test-results/browser-loss/
-            # A browser crash is not a flake. With retries at 1 a single crash
-            # is absorbed and the job reports `flaky`, which is how these went
-            # unnoticed from #5685 until #8447. Report every crash whatever the
-            # job outcome, and do not change the exit code while the rate is
-            # still around one crash per run.
+            # A browser crash is not a flake. While CI retried once, a single
+            # crash was absorbed and the job reported `flaky`, which is how
+            # these went unnoticed from #5685 until #8447. Playwright no longer
+            # retries, so a crash fails its test; this step still names the
+            # cause, and leaves the exit code to Playwright.
             CRASHES=$(grep -ac "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" 2>/dev/null || true)
             if [ "${CRASHES:-0}" -gt 0 ]; then
               echo "::error title=Browser crashed::chrome-headless-shell exited with SIGTRAP ${CRASHES} time(s) on ci-smoke shard ${{ matrix.shard }}. A green job does not mean no crash. See the browser-loss artifact."
@@ -1184,6 +1336,7 @@ jobs:
 
       - name: Upload ci-smoke Playwright artifacts
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-ci-smoke-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1199,11 +1352,18 @@ jobs:
     # server and Chrome, and more workers did not shorten it (bench run
     # 40097331565), so the gates moved off its path instead. Both parts keep the
     # full setup: each builds /pro (the legacy WebMCP tests load
-    # /pro/welcome.html) and a retry records video with Playwright's ffmpeg.
+    # /pro/welcome.html).
+    #
+    # The plugin parts run the MCP Apps view specs on the built views in
+    # dist/plugin. No other job ran them, so a change could break a view spec
+    # and still merge green (#10494 broke 31 metering tests). plugin-news runs
+    # the news metering spec alone and plugin-views runs the rest: with all
+    # news specs in one part it was the last browser job in 43 of 73 green PR
+    # runs (258s of work against 123s for the country view).
     strategy:
       fail-fast: false
       matrix:
-        part: [webmcp, pro-gates]
+        part: [webmcp, pro-gates, plugin-news, plugin-views]
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
@@ -1214,16 +1374,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
-          # node_modules comes from install-root-deps, so ~/.npm serves only
-          # the pro-test install inside build:pro. Keyed on the root lockfile
-          # it restored the 583 MB root download cache, and both parts pulling
-          # it at once took 12-62s instead of ~6s.
-          cache-dependency-path: pro-test/package-lock.json
       - uses: ./.github/actions/install-root-deps
-        with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+      - name: Install /pro dependencies
+        if: ${{ !startsWith(matrix.part, 'plugin-') }}
+        uses: ./.github/actions/install-pro-deps
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -1310,13 +1464,17 @@ jobs:
             # public/pro/ is built output since #6898. Keep this explicit and
             # immediately before the focused specs so the browser checks cannot
             # run against missing or stale bytes from another build.
-            run: npm run build:pro
+            # The plugin parts never load /pro. Dependencies are restored above
+            # via install-pro-deps (matching the install half of build:pro).
+            if: ${{ !startsWith(matrix.part, 'plugin-') }}
+            run: npm --prefix pro-test run build
       - name: Run fail-closed prehydration browser checks
         id: prehydration
         if: matrix.part == 'pro-gates'
         run: npm run test:e2e:prehydration
       - name: Upload prehydration Playwright artifacts
         if: ${{ !cancelled() && steps.prehydration.outcome != 'skipped' }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-prehydration-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1342,6 +1500,7 @@ jobs:
       # starts, so a later run would delete these gates' failure traces.
       - name: Upload /pro gate Playwright artifacts
         if: ${{ !cancelled() && steps.pro-gates.outcome != 'skipped' }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-pro-gates-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1363,9 +1522,26 @@ jobs:
       # itself a failure signal.
       - name: Upload WebMCP Playwright artifacts
         if: ${{ !cancelled() && steps.webmcp.outcome != 'skipped' }}
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-webmcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Each plugin script builds dist/plugin first: the specs load the built
+      # views, never the source.
+      - name: Run MCP Apps view specs
+        id: plugin
+        if: startsWith(matrix.part, 'plugin-')
+        run: npm run test:e2e:${{ matrix.part }}
+      - name: Upload MCP Apps view Playwright artifacts
+        if: ${{ !cancelled() && steps.plugin.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14

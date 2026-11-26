@@ -45,13 +45,18 @@ afterEach(() => {
 
 describe('/api/create-checkout acquisition relay', () => {
   it('forwards a normalized first-touch source to Convex', async () => {
-    const body = await relayedBody({ source: 'Twitter', referrer: 'www.t.co', landing: 'pricing', firstSeen: '2026-10-24' });
-    assert.deepEqual(body.acquisition, { source: 'twitter', referrer: 't.co', landing: 'pricing', firstSeen: '2026-10-24' });
+    const body = await relayedBody({ source: 'Twitter', referrer: 'www.t.co', landing: 'pricing', path: '/pro/', firstSeen: '2026-10-24' });
+    assert.deepEqual(body.acquisition, { source: 'twitter', referrer: 't.co', landing: 'pricing', path: '/pro/', firstSeen: '2026-10-24' });
   });
 
   it('strips unknown keys so the Convex argument validator cannot reject the checkout', async () => {
     const body = await relayedBody({ medium: 'cpc', email: 'someone@example.com', nested: { a: 1 } });
     assert.deepEqual(body.acquisition, { medium: 'cpc' });
+  });
+
+  it('drops an unsafe landing path and still forwards the rest', async () => {
+    const body = await relayedBody({ landing: 'countries', path: '/countries/iran/?q=<x>' });
+    assert.deepEqual(body.acquisition, { landing: 'countries' });
   });
 
   it('omits the field when the value is missing or unusable', async () => {

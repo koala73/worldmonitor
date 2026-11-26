@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package worldmonitor.orbital.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListImagingSatellitesRequest takes no filters: the catalog is one small shared document.
+message ListImagingSatellitesRequest {}
+
+// OmmElements is one set of published OMM mean elements, in CelesTrak's GP fields.
+message OmmElements {
+  // Satellite name as published, e.g. "SENTINEL-2A".
+  string object_name = 1;
+  // International designator, e.g. "2015-028A".
+  string object_id = 2;
+  // Element epoch, ISO 8601 UTC as published (no zone suffix means UTC).
+  string epoch = 3;
+  // Revolutions per day.
+  double mean_motion = 4;
+  double eccentricity = 5;
+  // Degrees.
+  double inclination = 6;
+  // Right ascension of the ascending node, degrees.
+  double ra_of_asc_node = 7;
+  // Argument of pericenter, degrees.
+  double arg_of_pericenter = 8;
+  // Mean anomaly, degrees.
+  double mean_anomaly = 9;
+  int32 ephemeris_type = 10;
+  // "U" for unclassified.
+  string classification_type = 11;
+  // NORAD catalogue number.
+  int32 norad_cat_id = 12;
+  int32 element_set_no = 13;
+  int32 rev_at_epoch = 14;
+  // Drag term, inverse Earth radii.
+  double bstar = 15;
+  // Revolutions per day squared.
+  double mean_motion_dot = 16;
+  // Revolutions per day cubed.
+  double mean_motion_ddot = 17;
+}
+
+// SensorProfile is one row of the published inventory of imaging-satellite families.
+message SensorProfile {
+  // Stable profile id, e.g. "sentinel-2".
+  string id = 1;
+  // Family name, e.g. "Sentinel-2".
+  string family = 2;
+  string operator = 3;
+  // One of open-optical, open-radar, open-lidar, weather-polar, commercial-optical, commercial-radar, government-optical, government-radar, military, crewed-station, geostationary.
+  string category = 4;
+  // Where the mission acquires: "land-coast" or "global".
+  string coverage = 5;
+  // Operator documentation the row is taken from.
+  repeated string sources = 6;
+}
+
+// ImagingSatellite is a profiled satellite with its newest orbit elements.
+message ImagingSatellite {
+  int32 norad_id = 1;
+  string name = 2;
+  // Id of the SensorProfile the satellite belongs to.
+  string profile_id = 3;
+  OmmElements elements = 4;
+}
+
+// CatalogDay holds the elements fetched on one UTC day; past passes use the day nearest each pass.
+message CatalogDay {
+  // UTC day, YYYY-MM-DD.
+  string day = 1;
+  // When that day's elements were fetched, as Unix epoch milliseconds.
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  repeated OmmElements elements = 3;
+}
+
+// ListImagingSatellitesResponse is the imaging catalog. With no catalog stored, the lists are empty and stale is true.
+message ListImagingSatellitesResponse {
+  // Version of the sensor-profile inventory below.
+  string inventory_version = 1;
+  repeated SensorProfile profiles = 2;
+  repeated ImagingSatellite satellites = 3;
+  // Prior days of elements, oldest first; the newest day equals the current elements.
+  repeated CatalogDay ring = 4;
+  // When the current elements were fetched, as Unix epoch milliseconds; 0 with no catalog.
+  int64 fetched_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Where the elements come from.
+  string source = 6;
+  // True when no catalog is stored or the stored one is older than its freshness limit.
+  bool stale = 7;
+}

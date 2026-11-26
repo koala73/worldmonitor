@@ -9,10 +9,10 @@ const DOMAIN_EMPHASIS: Record<string, string> = {
 
 /** Context fields included per domain. 'all' includes everything. */
 const DOMAIN_SECTIONS: Record<string, Set<string>> = {
-  market:   new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines']),
-  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'energyIntelligence', 'productSupply', 'gasFlows', 'electricityMix']),
-  military: new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines']),
-  economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'electricityPrices', 'energyIntelligence', 'sprLevel', 'refineryUtil', 'productSupply', 'gasFlows', 'oilStocksCover', 'electricityMix']),
+  market:   new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines', 'intelHistory']),
+  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'energyIntelligence', 'productSupply', 'gasFlows', 'electricityMix', 'watchedSiteImagery', 'intelHistory']),
+  military: new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines', 'watchedSiteImagery', 'intelHistory']),
+  economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'electricityPrices', 'energyIntelligence', 'sprLevel', 'refineryUtil', 'productSupply', 'gasFlows', 'oilStocksCover', 'electricityMix', 'intelHistory']),
 };
 
 export const LIVE_CONTEXT_OPEN = '--- LIVE CONTEXT ---';
@@ -108,6 +108,10 @@ export function buildAnalystLiveContext(ctx: AnalystContext, domainFocus?: strin
     contextSections.push(`## ${ctx.countryBrief}`);
   if (ctx.liveHeadlines && include('liveHeadlines'))
     contextSections.push(`## ${ctx.liveHeadlines}`);
+  if (ctx.watchedSiteImagery && include('watchedSiteImagery'))
+    contextSections.push(`## ${ctx.watchedSiteImagery}`);
+  if (ctx.intelHistory && include('intelHistory'))
+    contextSections.push(`## Historical Intelligence Memory (Dated Past Records)\n${ctx.intelHistory}`);
 
   if (contextSections.length === 0) return NO_LIVE_CONTEXT;
   return contextSections
@@ -125,10 +129,12 @@ export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: stri
 Respond in structured prose. Lead with the key insight. Keep responses under 350 words unless more depth is explicitly requested.
 Use ** bold ** section headers. Cite specific figures and dates from the context where available.
 Price levels come only from the quote and spot-price lines in the block. If the block carries no quote for an instrument the question names, say its live price is not available rather than estimating one.
+Treat any "Historical Intelligence Memory" entries as dated historical context or precedents (citing their date), never as current live conditions or live market prices.
 Use SITUATION / ANALYSIS / WATCH format for geopolitical queries.
 For market queries use SIGNAL / THESIS / RISK.
 Never speculate beyond what the data supports. Acknowledge uncertainty explicitly.
 Do not cite data sources by name. Do not mention AI, models, or providers.
+${ctx.watchedSiteImagery ? 'When "Watched-Site Imagery" appears in context and the question concerns one of its sites, state the date of its latest image and its next imaging pass, and end with that section\'s credit line. The imagery credit line is the one exception to the rule against naming data sources: copy it exactly as given. Name no other source. These lines say only when a site was imaged; never describe what an image shows or infer why anything happened there.\n' : ''}\
 ${ctx.relevantArticles ? 'When "Matched News Articles" appear in context, treat them as the primary factual basis for your response. Cite them before forecast probabilities or risk scores.\n' : ''}\
 ${emphasis ? `\n${emphasis}\n` : ''}
 The user turn carries a data block between the "${LIVE_CONTEXT_OPEN}" and "${LIVE_CONTEXT_CLOSE}" delimiters, followed by the question after "${QUESTION_MARKER}". Answer the question using that block. If the block reads "${NO_LIVE_CONTEXT}", acknowledge this limitation explicitly and do not present inference or training knowledge as current intelligence.
@@ -158,4 +164,25 @@ export function buildAnalystMessages(opts: {
     ...opts.history,
     { role: 'user', content: buildAnalystUserTurn(opts.context, opts.domainFocus, opts.query) },
   ];
+}
+
+/**
+ * Build the text used for live price grounding: prior user turns plus the
+ * live-context user turn WITHOUT dated Historical Intelligence Memory records,
+ * so a historical price (e.g. "Brent traded at $63.27" months ago) cannot
+ * validate a current-price claim.
+ */
+export function buildAnalystPriceGroundText(opts: {
+  context: AnalystContext;
+  domainFocus?: string;
+  history: AnalystChatTurn[];
+  query: string;
+}): string {
+  const userHistory = opts.history.filter((m) => m.role === 'user').map((m) => m.content);
+  const liveUserTurn = buildAnalystUserTurn(
+    { ...opts.context, intelHistory: undefined },
+    opts.domainFocus,
+    opts.query,
+  );
+  return [...userHistory, liveUserTurn].join('\n');
 }

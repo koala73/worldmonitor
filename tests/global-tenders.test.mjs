@@ -244,7 +244,7 @@ const CF_SUCCESS = '2026-07-13T05:00:00.000Z';
 function contractsFinderSnapshot() {
   const record = normalizeContractsFinderRelease({
     id: 'fixture', date: CF_SUCCESS,
-    tender: { title: 'Network services', status: 'active', tenderPeriod: { endDate: '2026-07-14T12:00:00Z' } },
+    tender: { title: 'Network services', status: 'active', tenderPeriod: { endDate: '2026-07-17T12:00:00Z' } },
   });
   return {
     fetchedAt: Date.parse(CF_SUCCESS), dataAvailable: true, tenders: [record],
@@ -271,10 +271,10 @@ test('Contracts Finder retains usable data with a durable failure episode and tr
   assert.equal(second.sourceStatuses[0].consecutiveFailures, 2);
   assert.equal(second.sourceStatuses[0].firstFailureAt, status.firstFailureAt);
   assert.equal(second.sourceStatuses[0].lastSuccessfulAt, CF_SUCCESS);
-  const lateDay = failContractsFinder(second, '2026-07-14T04:59:00.000Z');
-  assert.equal(lateDay.tenders.length, 1, 'a failed source keeps its open tenders for 24 hours');
-  const expired = failContractsFinder(lateDay, '2026-07-14T05:00:00.000Z');
-  assert.equal(expired.tenders.length, 0, 'source retention ends at 24 hours, even while the tender is still open');
+  const lateDay = failContractsFinder(second, '2026-07-16T04:59:00.000Z');
+  assert.equal(lateDay.tenders.length, 1, 'a failed source keeps its open tenders for 3 days');
+  const expired = failContractsFinder(lateDay, '2026-07-16T05:00:00.000Z');
+  assert.equal(expired.tenders.length, 0, 'source retention ends at 3 days, even while the tender is still open');
   assert.equal(expired.sourceStatuses[0].lastSuccessfulAt, CF_SUCCESS);
   const recovered = mergeTenderSourceResults({
     previousSnapshot: second, sourceNames: ['contracts-finder'], attemptedAt: '2026-07-13T07:05:00Z',
@@ -329,4 +329,16 @@ test('automation relevance requires source text evidence and never infers eligib
   assert.equal(fit.level, 'none');
   assert.deepEqual(fit.matchReasons, []);
   assert.deepEqual(fit.evidence, []);
+});
+
+test('SAM descriptions keep notice prose and drop the noticedesc API locator', () => {
+  const base = { noticeId: 'a5ed6a1c385f485792cc56d46933645f', title: '43--PUMP,ROTARY', fullParentPathName: 'DEPT OF DEFENSE.DEFENSE LOGISTICS AGENCY' };
+  const locator = normalizeSamOpportunity({ ...base, description: 'https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=a5ed6a1c385f485792cc56d46933645f' });
+  const prose = normalizeSamOpportunity({ ...base, description: 'Rotary pump for shipboard cooling.' });
+  const linkedProse = normalizeSamOpportunity({ ...base, description: 'https://sam.gov/opp/a5ed6a1c/view Rotary pump for shipboard cooling.' });
+
+  assert.equal(locator.description, '');
+  assert.equal(locator.buyer, 'DEPT OF DEFENSE.DEFENSE LOGISTICS AGENCY');
+  assert.equal(prose.description, 'Rotary pump for shipboard cooling.');
+  assert.equal(linkedProse.description, 'https://sam.gov/opp/a5ed6a1c/view Rotary pump for shipboard cooling.');
 });

@@ -126,6 +126,23 @@ describe('/pro funnel replay across the Dodo redirect (#4934 rounds 5+6)', () =>
     assert.equal(storage.getItem('wm-pro-funnel-pending'), null, 'marker clears after the retry delivers');
   });
 
+  it('keeps a boolean newAccount and drops any other value', async () => {
+    const analytics = await import('../src/services/analytics.ts');
+    analytics.resetAnalyticsForTesting();
+    const storage = new MemoryStorage();
+    storage.setItem('wm-pro-funnel-pending', JSON.stringify([
+      { event: 'checkout-start', data: { productId: 'pdt_0Nbtt71uObulf7fGXhQup', surface: 'pro-resume', authed: true, newAccount: true } },
+      { event: 'checkout-start', data: { productId: 'pdt_0Nbtt71uObulf7fGXhQup', surface: 'pro-resume', authed: true, newAccount: false } },
+      { event: 'checkout-start', data: { productId: 'pdt_0Nbtt71uObulf7fGXhQup', surface: 'pro-resume', authed: true, newAccount: 'true' } },
+    ]));
+    const calls = installWindow(storage, { withUmami: true });
+
+    analytics.replayPendingProFunnelEvents();
+
+    assert.deepEqual(calls.map((call) => call.data?.newAccount), [true, false, undefined]);
+    assert.equal('newAccount' in (calls[2]?.data ?? {}), false, 'a non-boolean newAccount must not reach analytics');
+  });
+
   it('is a no-op on ordinary boots and clears malformed/unreplayable storage', async () => {
     const analytics = await import('../src/services/analytics.ts');
     analytics.resetAnalyticsForTesting();

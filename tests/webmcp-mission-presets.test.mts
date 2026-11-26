@@ -66,8 +66,10 @@ function live(overrides: {
   activePresetId?: string | null;
   targetCancellationSupported?: boolean;
   isPanelEntitled?: (panelId: string) => boolean;
+  hasFocus?: boolean;
 } = {}) {
   return {
+    hasFocus: overrides.hasFocus,
     variant: overrides.variant ?? 'full',
     hasPremium: overrides.hasPremium ?? false,
     activePresetId: overrides.activePresetId ?? null,
@@ -107,7 +109,9 @@ describe('webmcp mission preset catalog', () => {
     const finance = listMissionPresetCatalog(live({ variant: 'finance' }));
     assert.equal(finance.presets.some((preset) => preset.id === 'nq-day-trader'), true);
     assert.equal(finance.count, getMissionPresetsForVariant('finance').length);
-    assert.equal(finance.count, getMissionPresetsForVariant('full').length + 1);
+    // Full offers Protective Travel, which finance does not (#10453), so the counts match.
+    assert.equal(finance.count, getMissionPresetsForVariant('full').length);
+    assert.equal(getMissionPresetsForVariant('full').some((preset) => preset.id === 'protective-travel'), true);
   });
 
   it('marks monitor-incompatible presets with a stable reason', () => {
@@ -186,7 +190,7 @@ describe('webmcp mission preset catalog', () => {
     for (const variant of SITE_VARIANTS) {
       for (const preset of MISSION_PRESETS) {
         const compatible = isMissionPresetMonitorCompatible(preset.id, variant);
-        const decision = evaluateMissionPresetApply(preset.id, live({ variant }));
+        const decision = evaluateMissionPresetApply(preset.id, live({ variant, hasFocus: true }));
         if (compatible) {
           assert.equal(decision.ok, true, `${variant}/${preset.id}`);
         } else {
@@ -489,5 +493,34 @@ describe('webmcp mission preset tools', () => {
     assert.ok(listTool);
     const listed = await listTool.execute({});
     assert.equal(listed.ok, true);
+  });
+});
+
+describe('webmcp mission presets that need the focus entitlement (#10453)', () => {
+  it('marks Protective Travel unavailable for a premium account without focus access', () => {
+    const result = listMissionPresetCatalog(live({ hasPremium: true, hasFocus: false }));
+    const travel = result.presets.find((preset) => preset.id === 'protective-travel');
+    assert.equal(travel?.entitled, false);
+    assert.equal(travel?.available, false);
+    assert.equal(travel?.unavailableReason, 'preset_not_entitled');
+    // Presets that do not need a focus are unaffected.
+    assert.equal(result.presets.find((preset) => preset.id === 'country-watcher')?.available, true);
+  });
+
+  it('treats an unknown focus entitlement as not entitled for a preset that requires it', () => {
+    const travel = listMissionPresetCatalog(live({ hasPremium: true })).presets.find((preset) => preset.id === 'protective-travel');
+    assert.equal(travel?.available, false);
+  });
+
+  it('lists Protective Travel as available with focus access', () => {
+    const travel = listMissionPresetCatalog(live({ hasPremium: true, hasFocus: true })).presets.find((preset) => preset.id === 'protective-travel');
+    assert.equal(travel?.available, true);
+  });
+
+  it('denies applying it without focus access, and allows it with', () => {
+    const denied = evaluateMissionPresetApply('protective-travel', live({ hasPremium: true, hasFocus: false }));
+    assert.equal(denied.ok, false);
+    assert.equal(denied.reason, 'preset_not_entitled');
+    assert.equal(evaluateMissionPresetApply('protective-travel', live({ hasPremium: true, hasFocus: true })).ok, true);
   });
 });

@@ -14,6 +14,8 @@ import {
   referrerFamily,
   renderUmamiMarkdown,
   runCli,
+  toScorecardReferralExport,
+  utmSourceFamily,
 } from '../scripts/seo-umami-collect.mjs';
 
 const repoPath = (relativePath) => new URL(`../${relativePath}`, import.meta.url).pathname;
@@ -56,10 +58,17 @@ const REFERRERS = [
   { x: 't.co', y: 4 },
   { x: 'example.org', y: 1 },
 ];
+// ChatGPT tags the links it cites with utm_source=chatgpt.com, so this count is larger than its referrer row.
+const UTM_SOURCES = [
+  { x: 'chatgpt.com', y: 12 },
+  { x: 'welcome', y: 4 },
+  { x: 'perplexity', y: 2 },
+];
 const responses = (overrides = {}) => ({
   [ENDPOINTS.totals]: STATS,
   [ENDPOINTS.channels]: CHANNELS,
   [ENDPOINTS.referrers]: REFERRERS,
+  [ENDPOINTS.utmSources]: UTM_SOURCES,
   ...overrides,
 });
 
@@ -134,7 +143,10 @@ describe('Umami referral collector', () => {
     assert.equal(googleAi.availability, 'unavailable');
     assert.equal(googleAi.visitorDays, null);
     assert.equal(direct.visitorDays, 200);
-    assert.equal(chatgpt.visitorDays, 7);
+    // 12 utm_source visitor-days beat the 7 referrer ones; the figure is the larger, not their sum.
+    assert.equal(chatgpt.visitorDays, 12);
+    assert.equal(chatgpt.referrerVisitorDays, 7);
+    assert.equal(chatgpt.utmVisitorDays, 12);
     assert.equal(otherAi.visitorDays, 2);
     assert.equal(snapshot.referrers.byFamily.search.visitorDays, 100);
     assert.equal(snapshot.referrers.byFamily.internal.visitorDays, 9);
@@ -171,7 +183,10 @@ describe('Umami referral collector', () => {
 
   it('sums each value across days', async () => {
     const snapshot = await collectUmamiSnapshot({
-      transport: memoryTransport(responses(), { [ENDPOINTS.referrers]: { 0: [{ x: 'chatgpt.com', y: 2 }], 5: [{ x: 'chatgpt.com', y: 3 }, { x: 'claude.ai', y: 1 }] } }),
+      transport: memoryTransport(responses(), {
+        [ENDPOINTS.referrers]: { 0: [{ x: 'chatgpt.com', y: 2 }], 5: [{ x: 'chatgpt.com', y: 3 }, { x: 'claude.ai', y: 1 }] },
+        [ENDPOINTS.utmSources]: { 0: [] },
+      }),
       observedAt: OBSERVED_AT,
     });
     assert.equal(snapshot.referrers.referrerFamilies.chatgpt.visitorDays, 5);
@@ -264,6 +279,149 @@ describe('Umami referral collector', () => {
     assert.equal(referrers.referrerFamilies.claude.visitorDays, 0);
   });
 
+  it('classifies utm_source values onto AI families, case-insensitively and on the whole value', () => {
+    const cases = {
+      'chatgpt.com': 'chatgpt',
+      'ChatGPT.com': 'chatgpt',
+      openai: 'chatgpt',
+      perplexity: 'perplexity',
+      'perplexity.ai': 'perplexity',
+      Claude: 'claude',
+      anthropic: 'claude',
+      'copilot.com': 'copilot_bing',
+      bing: 'copilot_bing',
+      gemini: 'other_ai_search',
+      poe: 'other_ai_search',
+      welcome: 'other',
+      embed: 'other',
+      'mcp.so': 'other',
+      'fakechatgpt.com': 'other',
+      'chatgpt.com.evil.example': 'other',
+      '': 'other',
+    };
+    for (const [value, family] of Object.entries(cases)) assert.equal(utmSourceFamily(value), family, value);
+  });
+
+  it('counts a visit with no referrer and utm_source=chatgpt.com toward chatgpt', async () => {
+    // No chatgpt.com referrer row at all: these visits arrived with an empty referrer.
+    const withoutChatgptReferrer = REFERRERS.filter((row) => row.x !== 'chatgpt.com');
+    const { referrers } = await collectUmamiSnapshot({
+      transport: memoryTransport(responses({ [ENDPOINTS.referrers]: [...withoutChatgptReferrer, { x: '', y: 12 }] })),
+      observedAt: OBSERVED_AT,
+    });
+    const { chatgpt } = referrers.referrerFamilies;
+    assert.equal(chatgpt.referrerVisitorDays, 0);
+    assert.equal(chatgpt.utmVisitorDays, 12);
+    assert.equal(chatgpt.visitorDays, 12);
+    assert.equal(chatgpt.availability, 'available');
+    assert.equal(referrers.utmSources.byFamily.chatgpt.sources[0].source, 'chatgpt.com');
+  });
+
+  it('never counts welcome, embed or other non-AI utm_source values toward an AI family', async () => {
+    const { referrers } = await collectUmamiSnapshot({
+      transport: memoryTransport(responses({
+        [ENDPOINTS.referrers]: [],
+        [ENDPOINTS.utmSources]: [{ x: 'welcome', y: 500 }, { x: 'embed', y: 300 }, { x: 'mcp.so', y: 9 }, { x: 'chatgpt.com', y: 3 }],
+      })),
+      observedAt: OBSERVED_AT,
+    });
+    const families = referrers.referrerFamilies;
+    assert.equal(families.chatgpt.visitorDays, 3);
+    for (const family of ['perplexity', 'claude', 'copilot_bing', 'other_ai_search']) {
+      assert.equal(families[family].visitorDays, 0, family);
+      assert.equal(families[family].utmVisitorDays, 0, family);
+    }
+  });
+
+  it('takes the larger of the referrer and utm_source counts, so a visit carrying both is not counted twice', async () => {
+    const snapshot = async (referrerCount, utmCount) => (await collectUmamiSnapshot({
+      transport: memoryTransport(responses({
+        [ENDPOINTS.referrers]: [{ x: 'chatgpt.com', y: referrerCount }],
+        [ENDPOINTS.utmSources]: [{ x: 'chatgpt.com', y: utmCount }],
+      })),
+      observedAt: OBSERVED_AT,
+    })).referrers.referrerFamilies.chatgpt;
+    const utmLarger = await snapshot(7, 12);
+    assert.equal(utmLarger.visitorDays, 12);
+    assert.notEqual(utmLarger.visitorDays, 19);
+    assert.equal(utmLarger.basis, 'max-of-referrer-and-utm-lower-bound');
+    const referrerLarger = await snapshot(20, 12);
+    assert.equal(referrerLarger.visitorDays, 20);
+    assert.equal(referrerLarger.referrerVisitorDays, 20);
+    assert.equal(referrerLarger.utmVisitorDays, 12);
+  });
+
+  it('marks a family partial, not lower, when a utm_source day is missing', async () => {
+    const down = new Error('[seo-umami] metrics?type=utmSource failed with HTTP 524 after 3 attempts');
+    const { referrers } = await collectUmamiSnapshot({
+      transport: memoryTransport(responses(), { [ENDPOINTS.utmSources]: { 3: down } }),
+      observedAt: OBSERVED_AT,
+    });
+    const { chatgpt } = referrers.referrerFamilies;
+    assert.equal(chatgpt.availability, 'partial');
+    assert.match(chatgpt.reason, /missing 1 of 28 days: 2026-10-08 \(metrics\?type=utmSource failed with HTTP 524/);
+    assert.equal(chatgpt.visitorDays, 12, 'the days that answered are still counted');
+    assert.equal(referrers.utmSources.availability, 'partial');
+    assert.equal(referrers.utmSources.daysReported, 27);
+  });
+
+  it('falls back to the referrer count, marked partial, when every utm_source day failed', async () => {
+    const down = new Error('[seo-umami] metrics?type=utmSource failed with HTTP 500 after 3 attempts');
+    const { referrers } = await collectUmamiSnapshot({
+      transport: memoryTransport(responses(), { [ENDPOINTS.utmSources]: Object.fromEntries(Array.from({ length: 28 }, (_, day) => [day, down])) }),
+      observedAt: OBSERVED_AT,
+    });
+    const { chatgpt } = referrers.referrerFamilies;
+    assert.equal(referrers.utmSources.availability, 'unavailable');
+    assert.equal(chatgpt.availability, 'partial');
+    assert.equal(chatgpt.visitorDays, 7);
+    assert.equal(chatgpt.utmVisitorDays, null);
+    assert.equal(chatgpt.basis, 'referrer-only');
+    assert.match(chatgpt.reason, /utm_source counts are unavailable \(metrics\?type=utmSource failed with HTTP 500/);
+  });
+
+  it('keeps the utm_source counts, marked partial, when every referrer day failed', async () => {
+    const down = new Error('[seo-umami] metrics?type=referrer failed with HTTP 500 after 3 attempts');
+    const { referrers } = await collectUmamiSnapshot({
+      transport: memoryTransport(responses(), { [ENDPOINTS.referrers]: Object.fromEntries(Array.from({ length: 28 }, (_, day) => [day, down])) }),
+      observedAt: OBSERVED_AT,
+    });
+    const { chatgpt } = referrers.referrerFamilies;
+    assert.equal(referrers.availability, 'unavailable');
+    assert.equal(chatgpt.availability, 'partial');
+    assert.equal(chatgpt.visitorDays, 12);
+    assert.equal(chatgpt.referrerVisitorDays, null);
+    assert.equal(chatgpt.basis, 'utm-only');
+    assert.match(chatgpt.reason, /referrer metrics are unavailable \(metrics\?type=referrer failed with HTTP 500/);
+  });
+
+  it('tells the scorecard the AI families are the larger of two signals, and why a utm_source shortfall happened', async () => {
+    const classification = { families: [{ id: 'chatgpt', hostSuffixes: ['chatgpt.com'] }] };
+    const snapshot = await collectUmamiSnapshot({ transport: memoryTransport(responses()), observedAt: OBSERVED_AT });
+    const combined = toScorecardReferralExport(snapshot, { classification });
+    assert.match(combined.reason, /larger of its referrer count .* and its utm_source count, never their sum/);
+    assert.match(combined.reason, /chatgpt 12\b/);
+    assert.doesNotMatch(combined.reason, /utm_source counts are/);
+
+    const down = new Error('[seo-umami] metrics?type=utmSource failed with HTTP 500 after 3 attempts');
+    const degraded = await collectUmamiSnapshot({
+      transport: memoryTransport(responses(), { [ENDPOINTS.utmSources]: Object.fromEntries(Array.from({ length: 28 }, (_, day) => [day, down])) }),
+      observedAt: OBSERVED_AT,
+    });
+    const fallback = toScorecardReferralExport(degraded, { classification });
+    assert.match(fallback.reason, /chatgpt 7 \(partial, referrer-only\)/);
+    assert.match(fallback.reason, /utm_source counts are unavailable: .*HTTP 500/);
+  });
+
+  it('reports the fixture chatgpt family at least as large as both of its inputs', async () => {
+    const { snapshot } = await collect();
+    const { chatgpt } = snapshot.referrers.referrerFamilies;
+    assert.ok(chatgpt.visitorDays >= chatgpt.utmVisitorDays);
+    assert.ok(chatgpt.visitorDays >= chatgpt.referrerVisitorDays);
+    assert.equal(chatgpt.visitorDays, Math.max(chatgpt.referrerVisitorDays, chatgpt.utmVisitorDays));
+    assert.ok(chatgpt.utmVisitorDays > chatgpt.referrerVisitorDays, 'the fixture mirrors production, where utm_source dominates');
+  });
+
   it('tracks the website the browser tracker reports to', () => {
     const analytics = readFileSync(repoPath('src/services/analytics.ts'), 'utf8');
     assert.match(analytics, new RegExp(`const UMAMI_WEBSITE_ID = '${UMAMI_WEBSITE_ID}'`));
@@ -289,7 +447,7 @@ describe('Umami live transport', () => {
       now: () => Date.parse(OBSERVED_AT),
       fetchImpl,
     });
-    assert.equal(calls.length, 1 + 28 * 3);
+    assert.equal(calls.length, 1 + 28 * 4);
     assert.equal(calls.filter((call) => call.url.endsWith('/api/auth/login')).length, 1);
     for (const call of calls) assert.match(call.init.headers['User-Agent'], /Mozilla/);
     for (const call of calls.slice(1)) {
@@ -298,6 +456,7 @@ describe('Umami live transport', () => {
     }
     assert.ok(calls.some((call) => call.url.includes(`/stats?startAt=${window.startAt}&endAt=${window.startAt + 86_400_000}`)));
     assert.ok(calls.some((call) => call.url.includes(`type=referrer&startAt=${window.startAt}&endAt=${window.startAt + 86_400_000}&limit=1000`)));
+    assert.ok(calls.some((call) => call.url.includes(`type=utmSource&startAt=${window.startAt}&endAt=${window.startAt + 86_400_000}&limit=1000`)));
     const serialized = JSON.stringify(snapshot) + markdown;
     for (const secret of ['tok-SECRET-123', 'viewer-name', 'hunter2-password']) assert.ok(!serialized.includes(secret), secret);
   });

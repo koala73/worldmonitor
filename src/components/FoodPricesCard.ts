@@ -43,14 +43,16 @@ export class FoodPricesCard {
     return h('label', { className: 'food-prices-filter' }, h('span', {}, title), select);
   }
 
-  private table(prices: FoodMarketPrice[], contextOnly: boolean, sourceId: string): HTMLElement {
+  private table(prices: FoodMarketPrice[], contextOnly: boolean, sourceId: string, reportDate = ''): HTMLElement {
     const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 });
     return h('div', { className: 'food-prices-table-wrap', tabIndex: 0, role: 'region', 'aria-label': label('prices'), 'data-price-table': contextOnly ? `context:${sourceId}` : 'weekly' },
       h('table', { className: 'wm-table food-prices-table' },
         h('thead', {}, h('tr', {}, ...[label('product'), label('price'), ...(contextOnly ? [] : [label('weekly')])].map(text => h('th', { scope: 'col' }, text)))),
         h('tbody', {}, ...prices.map(price => h('tr', {},
           h('th', { scope: 'row' }, price.item, price.origin ? h('small', {}, `${label('origin')}: ${price.origin}`) : null),
-          h('td', {}, `${format.format(price.price)} ${price.currency}`, h('small', {}, `/ ${price.unit}`)),
+          h('td', {}, `${format.format(price.price)} ${price.currency}`, h('small', {}, `/ ${price.unit}`),
+            // Sources whose items are collected on different days show each row's own date when it differs.
+            price.date && reportDate && price.date !== reportDate ? h('small', {}, `${label('report')}: ${price.date}`) : null),
           contextOnly ? null : h('td', {}, price.wowAvailable ? `${price.wowPct > 0 ? '+' : ''}${price.wowPct.toFixed(1)}%` : '—',
             h('small', {}, price.wowAvailable ? `${label('versus')} ${price.previousDate}` : label('noBaseline'))),
         )))));
@@ -78,7 +80,7 @@ export class FoodPricesCard {
       }), this.market, value => { this.market = value; this.render(); }));
       sections.push(h('div', { className: 'food-prices-filters' }, ...filters), this.sourceNote(source));
       const prices = source.prices.filter(price => JSON.stringify([price.market, price.marketType]) === this.market);
-      sections.push(prices.length ? this.table(prices, false, source.id) : h('p', {}, label('unavailable')));
+      sections.push(prices.length ? this.table(prices, false, source.id, source.latestReportDate) : h('p', {}, label('unavailable')));
     } else sections.push(h('p', {}, label('unavailable')));
 
     const giews = this.sources.find(source => source.id === 'giews');
@@ -124,7 +126,8 @@ export class FoodPricesCard {
   private sourceNote(source: FoodPriceSource): HTMLElement {
     return h('p', { className: 'food-prices-source', role: 'status' },
       sourceLink(source.url, source.name), ` · ${label(source.status)}`,
-      h('small', {}, `${label('report')}: ${source.latestReportDate || '—'} · ${label('checked')}: ${source.fetchedAt ? source.fetchedAt.slice(0, 10) : '—'}`),
-      ...(source.attribution ? [h('small', { className: 'food-prices-attribution' }, source.attribution)] : []));
+      // Publisher attribution lives in the API response and docs/food-price-sources.md,
+      // not on the card, so the price table stays at the top of the panel.
+      h('small', {}, `${label('report')}: ${source.latestReportDate || '—'} · ${label('checked')}: ${source.fetchedAt ? source.fetchedAt.slice(0, 10) : '—'}`));
   }
 }

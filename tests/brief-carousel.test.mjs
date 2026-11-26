@@ -14,7 +14,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pageFromIndex, renderCarouselImageResponse } from '../server/_shared/brief-carousel-render.ts';
+import { buildCarouselTree, carouselKeepsEnglish, pageFromIndex, renderCarouselImageResponse } from '../server/_shared/brief-carousel-render.ts';
+import { briefT } from '../shared/brief-strings.js';
+import { RTL_UI_LANGUAGES, UI_LANGUAGES } from '../shared/ui-languages.js';
 import { carouselUrlsFrom } from '../scripts/lib/digest-orchestration-helpers.mjs';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
@@ -63,7 +65,9 @@ async function installLocalFontFetch() {
           headers: { 'Content-Type': 'font/ttf' },
         });
       }
-      return originalFetch(input, init);
+      // Smoke renders are English and Latin-1: they need no font beyond the
+      // base file, so any other request is a regression, never a network call.
+      throw new Error(`carousel smoke render fetched ${inputUrl(input)}`);
     };
   })();
 
@@ -303,5 +307,49 @@ describe('renderCarouselImageResponse', () => {
       cc.includes('max-age=31536000'),
       `expected @vercel/og's default 1-year cache to survive on the raw ImageResponse, got "${cc}"`,
     );
+  });
+});
+
+describe('carousel chrome language', () => {
+  const texts = (env) => ['cover', 'threads', 'story'].map((p) => JSON.stringify(buildCarouselTree(env, p))).join('\n');
+  const v4 = { ...SAMPLE_ENVELOPE, version: 4 };
+
+  it('keeps English chrome for v1-v4 envelopes', () => {
+    const out = texts(v4);
+    for (const label of ['ISSUE Nº 001', '1 thread that shaped the world today.', 'Open for full brief', 'Digest / On The Desk', "Today's Threads", 'Source · Reuters']) {
+      assert.ok(out.includes(label), label);
+    }
+  });
+
+  it('translates chrome for a v5 envelope', () => {
+    const out = texts({ ...v4, version: 5, lang: 'fr' });
+    for (const label of ['NUMÉRO 001', 'Ouvrir le brief complet', 'Source · Reuters']) {
+      assert.ok(out.includes(label), label);
+    }
+    assert.ok(!out.includes('Open for full brief'));
+  });
+
+  it('ignores lang on non-v5 envelopes and keeps right-to-left languages English', () => {
+    for (const env of [{ ...v4, lang: 'fr' }, ...['ar', 'fa'].map((lang) => ({ ...v4, version: 5, lang }))]) {
+      assert.ok(texts(env).includes('Open for full brief'), JSON.stringify(env.lang));
+    }
+    for (const lang of ['ja', 'ru', 'pl', 'th']) {
+      assert.ok(!texts({ ...v4, version: 5, lang }).includes('Open for full brief'), lang);
+    }
+  });
+
+  // The renderer loads each script's face itself, so every left-to-right
+  // language draws localized; right-to-left waits for proven RTL renders.
+  it('keeps exactly the right-to-left languages English', () => {
+    for (const lang of UI_LANGUAGES.filter((l) => l !== 'en')) {
+      assert.equal(carouselKeepsEnglish({ version: 5, lang }), RTL_UI_LANGUAGES.includes(lang), lang);
+    }
+    assert.equal(briefT('fr', 'carousel.openFull'), 'Ouvrir le brief complet →');
+  });
+
+  it('never treats a missing, English or unknown sibling language as undrawable', () => {
+    for (const sibling of [null, undefined, 'x', {}, { lang: 'en' }, { lang: 'xx' }, { lang: 7 }]) {
+      assert.equal(carouselKeepsEnglish(sibling), false, JSON.stringify(sibling));
+    }
   });
 });

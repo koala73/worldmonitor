@@ -230,6 +230,24 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
     'hreflang alternates',
   );
 
+  // Variant favicons: crawlers read raw HTML without executing src/main.ts,
+  // Google recommends square icons larger than 48px (8px is the minimum).
+  // Search selects one favicon per hostname from its homepage declaration.
+  html = replaceCounted(
+    html,
+    /<link rel="icon" type="image\/png" sizes="96x96" href="\/favico\/android-chrome-96x96\.png" \/>/g,
+    () => `<link rel="icon" type="image/png" sizes="192x192" href="${origin}/favico/${variant}/android-chrome-192x192.png" />`,
+    ONE,
+    'variant 192x192 favicon',
+  );
+  html = replaceCounted(
+    html,
+    /(<link rel="(?:icon|apple-touch-icon)"[^>]*href=")\/favico\/((?:favicon|apple-touch-icon)[^"]*" \/>)/g,
+    (_m, a, b) => `${a}${origin}/favico/${variant}/${b}`,
+    { min: 4, max: 4 },
+    'variant favicons',
+  );
+
   // Social card images use the per-variant assets under public/favico/<variant>/.
   html = replaceCounted(
     html,

@@ -16,11 +16,6 @@
 // end-of-year UTC ms, apply 1h skew-limit). Only the BUDGET differs per
 // indicator (publication lag varies by source). Each seeder imports this helper
 // and brings its own `MAX_CONTENT_AGE_MIN` constant inline.
-//
-// Power-reliability still has its own `_power-reliability-helpers.mjs` for
-// now (its PR #3602 is already in review; backporting can come as a
-// follow-up after merge to keep that PR's diff focused). The math IS
-// identical — verify with `diff`.
 
 /**
  * Convert a year (number or numeric string like "2024") to end-of-year UTC ms.

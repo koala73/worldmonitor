@@ -1,6 +1,7 @@
 import { Agent, Dispatcher1Wrapper } from 'undici';
 import { createRequire } from 'node:module';
 import { randomInt } from 'node:crypto';
+import { lookup } from 'node:dns';
 import { setTimeout as delay } from 'node:timers/promises';
 import { rootCertificates } from 'node:tls';
 import sources from '../shared/food-price-sources.json' with { type: 'json' };
@@ -172,6 +173,24 @@ async function fetchViaProxy(url, init, { proxyAuth, proxyFetchFn, firstExit, de
   throw Object.assign(new Error(`food source proxy failed: ${redactProxyCredentials(last?.message || last)}`), { proxyUnreachable: !answered });
 }
 
+/**
+ * IPv4 only, but every IPv4 address in turn. With `family: 4` Node connects to
+ * the first resolved address alone, so a publisher with one dead A record
+ * (www.da.gov.ph: one of two addresses never answers, and the resolver rotates
+ * them) timed out on about half the runs. `autoSelectFamily` tries each address
+ * the lookup returns, giving each a short attempt window; it is ignored when
+ * `family` is set, so the lookup pins IPv4 instead.
+ */
+export function foodSourceConnectOptions(adapter, { dnsLookup = lookup } = {}) {
+  return {
+    lookup: (hostname, options, callback) => dnsLookup(hostname, { ...options, family: 4, all: true }, callback),
+    autoSelectFamily: true,
+    autoSelectFamilyAttemptTimeout: 2_500,
+    timeout: 15_000,
+    ...(adapter?.ca ? { ca: [...rootCertificates, ...adapter.ca] } : {}),
+  };
+}
+
 export async function collectFoodSource(id, {
   now = new Date(), fetchFn = (...args) => globalThis.fetch(...args), pause = delay, budgetMs = 230_000,
   // Callers pass resolveProxyForConnect(); the default keeps the collector direct and hermetic.
@@ -180,7 +199,7 @@ export async function collectFoodSource(id, {
   const source = sources.find(source => source.id === id);
   if (!source) throw new Error('unknown food-price source');
   const adapter = FOOD_PRICE_ADAPTERS[id];
-  const agent = new Agent({ connect: { family: 4, timeout: 15_000, ...(adapter?.ca ? { ca: [...rootCertificates, ...adapter.ca] } : {}) } });
+  const agent = new Agent({ connect: foodSourceConnectOptions(adapter) });
   const dispatcher = new Dispatcher1Wrapper(agent);
   const deadline = Date.now() + budgetMs;
   let requested = false;

@@ -1,5 +1,17 @@
 # News Translation Analysis
 
+## Dashboard focus translation review queue
+
+[#10561](https://github.com/koala73/worldmonitor/issues/10561): a reviewer
+confirmed corrections to the `focus` sentences in Swahili (`sw`), Dutch (`nl`),
+Simplified Chinese (`zh`), and Traditional Chinese (`zh-TW`) whose machine
+translation changed the meaning or did not parse. Those sentences are pinned in
+`tests/locale-completeness.test.mjs`. #10580 already renamed the action to
+"Trip assessment", so the button labels were left as they are. Open terminology
+choices that this pass did not settle: Swahili `kuzingatia` versus `lengo` where
+the current sentence is grammatical, Dutch `buren` versus `buurlanden`, and
+Simplified Chinese `疾病爆发` versus `暴发`.
+
 ## Current Architecture
 
 The application fetches news via `src/services/rss.ts`.

@@ -154,9 +154,11 @@ export function monthOffset(period, deltaMonths) {
 }
 
 export function buildReservesPayload(raw, indicator, goldUsdByCountry = {}, totalReservesUsdByCountry = {}) {
+  // IRFCL also returns group areas with non-ISO3 ids (e.g. G163).
+  const countries = Object.entries(raw).filter(([iso3]) => /^[A-Z]{3}$/.test(iso3) && !AGGREGATE_CODES.has(iso3));
   const asOfMonth = (() => {
     const all = new Set();
-    for (const c of Object.values(raw)) {
+    for (const [, c] of countries) {
       for (const m of Object.keys(c.byMonth)) all.add(m);
     }
     const sorted = [...all].sort();
@@ -189,8 +191,7 @@ export function buildReservesPayload(raw, indicator, goldUsdByCountry = {}, tota
   };
 
   const holders = [];
-  for (const [iso3, rec] of Object.entries(raw)) {
-    if (AGGREGATE_CODES.has(iso3)) continue;
+  for (const [iso3, rec] of countries) {
     const cur = latestAtOrBefore(rec.byMonth, asOfMonth);
     if (!cur) continue;
     const current = cur.value;

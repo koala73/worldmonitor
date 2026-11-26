@@ -159,6 +159,19 @@ export function deriveBillingUxState(
   return 'lapsed';
 }
 
+/**
+ * Which Pro upgrade strip a non-premium user sees: `lapsed` (resubscribe) or
+ * `upgrade`, or none. A paused subscriber (`on_hold` without a valid
+ * entitlement: a failed renewal past its access grace) gets none: the
+ * payment-failed banner already asks them to update their card, and checkout
+ * stays blocked while the provider retries it, so "Upgrade" would end at a
+ * duplicate-subscription 409.
+ */
+export function getProBannerVariant(state: BillingUxState): 'lapsed' | 'upgrade' | null {
+  if (state === 'on_hold') return null;
+  return state === 'lapsed' ? 'lapsed' : 'upgrade';
+}
+
 // Per-state sessionStorage dismissal keys. Distinct keys so dismissing the
 // pending banner never suppresses a later failed banner. The bare
 // 'pf-banner-dismissed' value predates #4771 and must stay unchanged so

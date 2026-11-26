@@ -43,7 +43,7 @@ for (const f of geojson.features) {
 }
 
 // Sort keys for stable diffs
-const sorted = Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b)));
+const sorted = Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b, 'en-US')));
 
 const out = path.join(root, 'shared', 'country-bboxes.json');
 fs.writeFileSync(out, JSON.stringify(sorted, null, 2) + '\n');

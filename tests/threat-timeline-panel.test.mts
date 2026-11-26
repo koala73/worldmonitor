@@ -9,12 +9,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
 import {
   buildThreatTimelineState,
+  buildThreatTimelineStateFromHistory,
   describeThreatTimelineTrend,
   normalizeClusterStories,
   normalizeServerInsightStories,
   normalizeThreatLevel,
 } from '../src/components/threat-timeline-utils.ts';
-import type { ServerInsights } from '../src/services/insights-loader.ts';
+import type { ServerInsights, ServerThreatTimeline } from '../src/services/insights-loader.ts';
 import type { ClusteredEvent } from '../src/types/index.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -165,6 +166,28 @@ function fallbackCluster(): ClusteredEvent {
   };
 }
 
+function dayKeyDaysAgo(nowMs: number, days: number): string {
+  return new Date(nowMs - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function counts(overrides: Partial<Record<'critical' | 'high' | 'medium' | 'low' | 'info', number>> = {}) {
+  return { critical: 0, high: 0, medium: 0, low: 0, info: 0, ...overrides };
+}
+
+/** A seeded week: one day per entry, oldest first, ending on `nowMs`'s day. */
+function seededHistory(
+  nowMs: number,
+  perDay: Array<Partial<Record<'critical' | 'high' | 'medium' | 'low' | 'info', number>>>,
+  recordingSinceDaysAgo = 6,
+): ServerThreatTimeline {
+  return {
+    version: 1,
+    recordingSince: dayKeyDaysAgo(nowMs, recordingSinceDaysAgo),
+    updatedAt: new Date(nowMs).toISOString(),
+    days: perDay.map((day, index) => ({ date: dayKeyDaysAgo(nowMs, perDay.length - 1 - index), counts: counts(day) })),
+  };
+}
+
 function waitForPanelRender(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 180));
 }
@@ -193,7 +216,8 @@ async function loadThreatTimelinePanelHarness() {
       export function toApiUrl(path) { return path; }
     `],
     ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }\nexport function hasTauriInvokeBridge() { return false; }`],
-    ['analytics-stub', `export function trackLayoutCustomized() {}`],
+    ['analytics-stub', `export function trackGateHit() {} export function trackPanelGateClick() {}
+      export function trackLayoutCustomized() {}`],
     ['ai-flow-settings-stub', `export function getAiFlowSettings() { return { badgeAnimation: false }; }`],
     ['runtime-config-stub', `export function getSecretState() { return { present: true }; }`],
     // Return null (not undefined) on purpose: harness stubs often use null
@@ -428,8 +452,8 @@ describe('ThreatTimelinePanel utilities', () => {
 
     assert.deepEqual(
       trendForStories([
-        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(0), primaryTitle: 'Recent high' }),
-        serverStory({ threatLevel: 'critical', pubDate: isoDaysAgo(1), primaryTitle: 'Recent critical' }),
+        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(1), primaryTitle: 'Recent high' }),
+        serverStory({ threatLevel: 'critical', pubDate: isoDaysAgo(2), primaryTitle: 'Recent critical' }),
       ]),
       { label: 'Worsening', copy: '2 recent vs 0 earlier', className: 'worsening' },
     );
@@ -445,10 +469,133 @@ describe('ThreatTimelinePanel utilities', () => {
     assert.deepEqual(
       trendForStories([
         serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(6), primaryTitle: 'Earlier high' }),
-        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(0), primaryTitle: 'Recent high' }),
+        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(1), primaryTitle: 'Recent high' }),
       ]),
       { label: 'Noisy', copy: '1 recent vs 1 earlier', className: 'noisy' },
     );
+  });
+});
+
+describe('ThreatTimelinePanel seeded history', () => {
+  const topItems = () => normalizeServerInsightStories({
+    generatedAt: new Date(NOW_MS).toISOString(),
+    topStories: [
+      serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(0), primaryTitle: 'Current high' }),
+      serverStory({ threatLevel: 'medium', pubDate: isoDaysAgo(0), primaryTitle: 'Current medium' }),
+    ],
+  });
+
+  it('charts every day of the week from the seeded history, not only the day the top stories were published', () => {
+    const history = seededHistory(NOW_MS, [
+      { high: 3, info: 5 }, { medium: 3 }, { critical: 1 }, {}, { low: 4 }, { high: 1 }, { high: 1, medium: 7 },
+    ]);
+    const state = buildThreatTimelineStateFromHistory(history, topItems(), { nowMs: NOW_MS });
+    assert.ok(state);
+
+    assert.deepEqual(state.days.map(day => day.total), [8, 3, 1, 0, 4, 1, 8]);
+    assert.equal(state.days.filter(day => day.total > 0).length, 6, 'six of seven days carry stories');
+    assert.deepEqual(state.totals, counts({ critical: 1, high: 5, medium: 10, low: 4, info: 5 }));
+    assert.equal(state.historyStoryCount, 20, 'info stories are not threat stories');
+    assert.equal(state.days.some(day => day.partial), false);
+    assert.deepEqual(
+      describeThreatTimelineTrend(state.days),
+      { label: 'Easing', copy: '1 recent vs 4 earlier', className: 'easing' },
+    );
+  });
+
+  it('compares the last three full days with the three before, leaving out the unfinished current day', () => {
+    // Live shape from #11273: ~300 a day, and only 40 so far at 04:21 UTC today.
+    const history = seededHistory(NOW_MS, [{ high: 300 }, { high: 300 }, { high: 300 }, { high: 300 }, { high: 300 }, { high: 300 }, { high: 40 }]);
+    const state = buildThreatTimelineStateFromHistory(history, [], { nowMs: NOW_MS });
+    assert.ok(state);
+    assert.deepEqual(
+      describeThreatTimelineTrend(state.days),
+      { label: 'Noisy', copy: '900 recent vs 900 earlier', className: 'noisy' },
+    );
+  });
+
+  it('does not call a small move in a large week a trend', () => {
+    const steady = seededHistory(NOW_MS, [{ high: 16 }, { high: 16 }, { high: 16 }, { high: 17 }, { high: 17 }, { high: 16 }, { high: 3 }]);
+    const steadyState = buildThreatTimelineStateFromHistory(steady, [], { nowMs: NOW_MS });
+    assert.ok(steadyState);
+    assert.equal(describeThreatTimelineTrend(steadyState.days).label, 'Noisy', '50 vs 48 is not worsening');
+
+    const rising = seededHistory(NOW_MS, [{ high: 16 }, { high: 16 }, { high: 16 }, { high: 20 }, { high: 20 }, { high: 21 }, { high: 3 }]);
+    const risingState = buildThreatTimelineStateFromHistory(rising, [], { nowMs: NOW_MS });
+    assert.ok(risingState);
+    assert.equal(describeThreatTimelineTrend(risingState.days).label, 'Worsening', '61 vs 48 is');
+
+    // Drops are measured against the earlier count too: 10 to 8 is 20%, not 25%.
+    const dip = seededHistory(NOW_MS, [{ high: 4 }, { high: 3 }, { high: 3 }, { high: 3 }, { high: 3 }, { high: 2 }, {}]);
+    const dipState = buildThreatTimelineStateFromHistory(dip, [], { nowMs: NOW_MS });
+    assert.ok(dipState);
+    assert.equal(describeThreatTimelineTrend(dipState.days).label, 'Noisy', '8 vs 10 is not easing');
+
+    const drop = seededHistory(NOW_MS, [{ high: 4 }, { high: 3 }, { high: 3 }, { high: 3 }, { high: 2 }, { high: 2 }, {}]);
+    const dropState = buildThreatTimelineStateFromHistory(drop, [], { nowMs: NOW_MS });
+    assert.ok(dropState);
+    assert.equal(describeThreatTimelineTrend(dropState.days).label, 'Easing', '7 vs 10 is');
+  });
+
+  it('keeps the grouped list to the current top stories, counted on their own', () => {
+    const history = seededHistory(NOW_MS, [{}, {}, {}, {}, {}, { high: 30 }, { high: 12 }]);
+    const state = buildThreatTimelineStateFromHistory(history, topItems(), { nowMs: NOW_MS });
+    assert.ok(state);
+
+    assert.deepEqual(state.groups.map(group => [group.level, group.count]), [['high', 1], ['medium', 1]]);
+    assert.equal(state.totals.high, 42, 'the legend reports the week');
+  });
+
+  it('marks days before recording began as partial and holds the trend until the week is recorded', () => {
+    const history = seededHistory(NOW_MS, [{}, {}, { high: 1 }, { high: 2 }, { high: 3 }, { high: 4 }, { high: 5 }], 1);
+    const state = buildThreatTimelineStateFromHistory(history, topItems(), { nowMs: NOW_MS });
+    assert.ok(state);
+
+    assert.deepEqual(state.days.map(day => Boolean(day.partial)), [true, true, true, true, true, false, false]);
+    assert.deepEqual(
+      describeThreatTimelineTrend(state.days),
+      { label: 'Building', copy: '1 of 7 days fully recorded', className: 'noisy' },
+    );
+  });
+
+  it('holds the trend as Building rather than Quiet while a quiet week is still being recorded', () => {
+    const history = seededHistory(NOW_MS, [{}, {}, {}, {}, {}, { low: 2 }, { info: 1 }], 1);
+    const state = buildThreatTimelineStateFromHistory(history, [], { nowMs: NOW_MS });
+    assert.ok(state);
+    assert.equal(describeThreatTimelineTrend(state.days).label, 'Building');
+  });
+
+  it('aligns a stale history to the current window and marks unrecorded recent days partial', () => {
+    const yesterday = NOW_MS - 24 * 60 * 60 * 1000;
+    const history = seededHistory(yesterday, [{}, {}, {}, {}, {}, {}, { high: 3 }]);
+    const state = buildThreatTimelineStateFromHistory(history, [], { nowMs: NOW_MS });
+    assert.ok(state);
+
+    assert.equal(state.days[5]?.counts.high, 3, 'yesterday keeps its count');
+    assert.equal(state.days[6]?.total, 0);
+    assert.equal(state.days[6]?.partial, true, 'today is not recorded yet');
+  });
+
+  it('marks outage days partial even inside the recorded range', () => {
+    const history = { ...seededHistory(NOW_MS, [{ high: 1 }, { high: 1 }, {}, {}, { high: 1 }, { high: 1 }, { high: 1 }]), partialDays: [dayKeyDaysAgo(NOW_MS, 4), dayKeyDaysAgo(NOW_MS, 3)] };
+    const state = buildThreatTimelineStateFromHistory(history, [], { nowMs: NOW_MS });
+    assert.ok(state);
+    assert.deepEqual(state.days.map(day => Boolean(day.partial)), [false, false, true, true, false, false, false]);
+    assert.equal(describeThreatTimelineTrend(state.days).label, 'Building');
+  });
+
+  it('returns null without a usable history so the caller falls back to the listed items', () => {
+    assert.equal(buildThreatTimelineStateFromHistory(undefined, topItems(), { nowMs: NOW_MS }), null);
+    assert.equal(buildThreatTimelineStateFromHistory({
+      version: 1, recordingSince: null, updatedAt: '', days: [{ date: 'not-a-day', counts: counts() }],
+    }, topItems(), { nowMs: NOW_MS }), null);
+  });
+
+  it('ignores negative and non-numeric counts', () => {
+    const history = seededHistory(NOW_MS, [{ high: -4, medium: Number.NaN, low: 2 }]);
+    const state = buildThreatTimelineStateFromHistory(history, [], { nowMs: NOW_MS });
+    assert.ok(state);
+    assert.deepEqual(state.totals, counts({ low: 2 }));
   });
 });
 
@@ -530,6 +677,66 @@ describe('ThreatTimelinePanel refresh behavior', () => {
       assert.doesNotMatch(contentEl.innerHTML, /Fallback protests spread after outage/);
       assert.doesNotMatch(contentEl.innerHTML, /Server insight snapshot unavailable/);
       assert.ok(badgeEl.classList.contains('live'), 'server recovery restores the live badge');
+    } finally {
+      panel.destroy();
+      harness.cleanup();
+    }
+  });
+
+  it('renders the seeded week: bars on earlier days, week totals, and the top stories listed apart', async () => {
+    const harness = await loadThreatTimelinePanelHarness();
+    const { ThreatTimelinePanel } = harness;
+    const panel = new ThreatTimelinePanel();
+    try {
+      const contentEl = panel.getElement().querySelector('.panel-content');
+      assert.ok(contentEl, 'panel content node should exist');
+
+      const now = Date.now();
+      panel.updateFromServerInsights(runtimeServerInsights({
+        threatTimeline: seededHistory(now, [{ high: 2, info: 40 }, { medium: 3 }, { high: 1 }, {}, { low: 4 }, { critical: 1 }, { high: 1 }]),
+      }));
+      await waitForPanelRender();
+
+      const html = contentEl.innerHTML;
+      const dayLabel = (daysAgo: number) => {
+        const date = new Date(now - daysAgo * 24 * 60 * 60 * 1000);
+        return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.getUTCMonth()]} ${date.getUTCDate()}`;
+      };
+      assert.ok(html.includes(`<title>${dayLabel(6)} High: 2</title>`), 'the oldest day has its own bar');
+      assert.ok(html.includes(`<title>${dayLabel(2)} Low: 4</title>`));
+      assert.match(html, /12 threat stories over 7 days/);
+      assert.match(html, /Top stories now/);
+      assert.doesNotMatch(html, /Info: \d|Info <strong>/, 'info is neither charted nor in the legend');
+      assert.match(html, /Fresh server-backed escalation/);
+    } finally {
+      panel.destroy();
+      harness.cleanup();
+    }
+  });
+
+  it('labels stories from the last hour with their age in minutes', async () => {
+    const harness = await loadThreatTimelinePanelHarness();
+    const { ThreatTimelinePanel } = harness;
+    const panel = new ThreatTimelinePanel();
+    try {
+      const contentEl = panel.getElement().querySelector('.panel-content');
+      assert.ok(contentEl, 'panel content node should exist');
+
+      const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000).toISOString();
+      panel.updateFromServerInsights(runtimeServerInsights({
+        topStories: [
+          serverStory({ primaryTitle: 'North Korea missile launch', primarySource: 'Reuters', pubDate: minutesAgo(24) }),
+          serverStory({ primaryTitle: 'Strait patrol expanded', primarySource: 'BBC Asia', pubDate: minutesAgo(44), threatLevel: 'critical' }),
+          serverStory({ primaryTitle: 'Ceasefire talks stall', primarySource: 'BBC World', pubDate: minutesAgo(90) }),
+        ],
+      }));
+      await waitForPanelRender();
+
+      const html = contentEl.innerHTML;
+      assert.match(html, /<span>24m ago<\/span>/);
+      assert.match(html, /<span>44m ago<\/span>/);
+      assert.match(html, /<span>1h ago<\/span>/);
+      assert.doesNotMatch(html, /just now/);
     } finally {
       panel.destroy();
       harness.cleanup();

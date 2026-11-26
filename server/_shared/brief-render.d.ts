@@ -55,3 +55,11 @@ export function renderBriefMagazine(
  * preview never points at an envelope the renderer will reject.
  */
 export function assertBriefEnvelope(envelope: unknown): asserts envelope is BriefEnvelope;
+
+/**
+ * Pick the envelope a private reader should render: the localized
+ * sibling (v5) when it validates and matches the canonical envelope's
+ * issuedAt and story clusterId order, otherwise the canonical one.
+ * Never throws.
+ */
+export function selectBriefEnvelope<T>(canonical: T, localized: unknown): T;

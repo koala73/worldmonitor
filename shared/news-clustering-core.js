@@ -21,7 +21,7 @@ import { SIMILARITY_THRESHOLD, SUPPRESSED_TRENDING_TERMS, jaccardSimilarity, tok
 // #6428: `sourceCount` is the ARTICLE count and stays that way — ranking,
 // velocity and ISQ all read it as volume. Corroboration badges need a
 // publisher count, which is a different question and gets its own field.
-import { publisherFamilyFor } from './publisher-families.js';
+import { publisherFamilyFor, publisherFamilyForDomain } from './publisher-families.js';
 import { detectSyndication } from './syndication.js';
 
 export const MAX_CLUSTER_NEWS_ITEMS = 1000;
@@ -108,6 +108,33 @@ export function aggregateThreats(items) {
   };
 }
 
+// Reworded reports of one event share fewer words than the 0.5 threshold asks
+// for, so a pair whose headlines (outlet credit removed) score at least
+// RESCUE_SIMILARITY still merges when they name enough of the same distinctive
+// terms and come from two different outlets. The outlet check keeps one
+// publisher's templated series apart.
+const RESCUE_SIMILARITY = 1 / 3;
+const RESCUE_MIN_SHARED_TERMS = 4;
+const PUBLISHER_CREDIT = /\s[-–—|]\s+([^-–—|]{1,60})$/;
+
+function splitPublisherCredit(title) {
+  const match = PUBLISHER_CREDIT.exec(title);
+  if (!match || match[1].trim().split(/\s+/).length > 6) return { headline: title, credit: '' };
+  return { headline: title.slice(0, match.index), credit: match[1].trim() };
+}
+
+function sharedDistinctiveTerms(a, b) {
+  let shared = 0;
+  for (const token of a) {
+    if (b.has(token) && !SUPPRESSED_TRENDING_TERMS.has(token) && !/^\d+$/.test(token)) shared++;
+  }
+  return shared;
+}
+
+function isRewordedReport(a, b) {
+  return jaccardSimilarity(a, b) >= RESCUE_SIMILARITY && sharedDistinctiveTerms(a, b) >= RESCUE_MIN_SHARED_TERMS;
+}
+
 function generateClusterId(items) {
   const sorted = [...items].sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime());
   const first = sorted[0];
@@ -140,11 +167,16 @@ export function clusterNewsCore(items, getSourceTier, tokenizeTitle = tokenize) 
 
   const tokenCache = new Map();
   const tokenList = [];
+  const headlineTokenList = [];
+  const publisherList = [];
   const invertedIndex = new Map();
   for (const item of itemsWithTier) {
     const tokens = tokenizeTitle(item.title);
     tokenCache.set(item.title, tokens);
     tokenList.push(tokens);
+    const { headline, credit } = splitPublisherCredit(item.title);
+    headlineTokenList.push(credit ? tokenizeTitle(headline) : tokens);
+    publisherList.push(publisherFamilyForDomain(credit) || publisherFamilyFor(credit || item.source));
   }
 
   for (let index = 0; index < tokenList.length; index++) {
@@ -191,7 +223,10 @@ export function clusterNewsCore(items, getSourceTier, tokenizeTitle = tokenize) 
       const tokensJ = tokenList[j];
       const similarity = jaccardSimilarity(tokensI, tokensJ);
 
-      if (similarity >= SIMILARITY_THRESHOLD) {
+      const sameEvent = similarity >= SIMILARITY_THRESHOLD
+        || (publisherList[i] !== publisherList[j]
+          && isRewordedReport(headlineTokenList[i], headlineTokenList[j]));
+      if (sameEvent) {
         cluster.push(otherItem);
         assigned.add(j);
       }

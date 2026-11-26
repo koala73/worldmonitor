@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-11",
+  "observedAt": "2026-11-11T13:55:58.824Z",
+  "status": "available",
+  "reason": null,
+  "tool": {
+    "name": "answerrank",
+    "revision": "7bcc853840cf05a92eed6926a3d012fef371753a"
+  },
+  "inputsDigest": "sha256:21b1baa14963d42738091cb9f1b44ed6d613ea283de1af2b9a879a2fa733a243",
+  "design": {
+    "questions": 13,
+    "repetitions": 3,
+    "judgeModel": "anthropic/claude-sonnet-5-5",
+    "variants": [
+      "claude",
+      "claude +web",
+      "gpt",
+      "gpt +web",
+      "perplexity"
+    ]
+  },
+  "answers": {
+    "planned": 195,
+    "scored": 195,
+    "unscored": 0,
+    "unscoredByVariant": {}
+  },
+  "overall": {
+    "answers": 195,
+    "mentions": 13,
+    "topPicks": 3,
+    "recommendations": 13,
+    "webAnswers": 117,
+    "searchedAnswers": 89,
+    "citations": 25,
+    "aeoScore": 5.3,
+    "shareOfVoice": 0.05439330543933055
+  },
+  "byVariant": {
+    "claude": {
+      "answers": 39,
+      "mentions": 0,
+      "topPicks": 0,
+      "recommendations": 0,
+      "webAnswers": 0,
+      "searchedAnswers": null,
+      "citations": null,
+      "aeoScore": 0,
+      "shareOfVoice": 0
+    },
+    "claude +web": {
+      "answers": 39,
+      "mentions": 6,
+      "topPicks": 0,
+      "recommendations": 6,
+      "webAnswers": 39,
+      "searchedAnswers": 31,
+      "citations": 3,
+      "aeoScore": 5.8,
+      "shareOfVoice": 0.1111111111111111
+    },
+    "gpt": {
+      "answers": 39,
+      "mentions": 0,
+      "topPicks": 0,
+      "recommendations": 0,
+      "webAnswers": 0,
+      "searchedAnswers": null,
+      "citations": null,
+      "aeoScore": 0,
+      "shareOfVoice": 0
+    },
+    "gpt +web": {
+      "answers": 39,
+      "mentions": 0,
+      "topPicks": 0,
+      "recommendations": 0,
+      "webAnswers": 39,
+      "searchedAnswers": 19,
+      "citations": 4,
+      "aeoScore": 1,
+      "shareOfVoice": 0
+    },
+    "perplexity": {
+      "answers": 39,
+      "mentions": 7,
+      "topPicks": 3,
+      "recommendations": 7,
+      "webAnswers": 39,
+      "searchedAnswers": 39,
+      "citations": 18,
+      "aeoScore": 15.5,
+      "shareOfVoice": 0.20588235294117646
+    }
+  },
+  "spendUsd": {
+    "answer": 5.6393,
+    "search": 0.69,
+    "judge": 1.582,
+    "total": 7.9113
+  },
+  "comparison": {
+    "previousDate": null,
+    "comparable": false,
+    "reason": "No earlier snapshot.",
+    "verdict": "not compared"
+  }
+}

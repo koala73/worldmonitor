@@ -191,42 +191,6 @@ describe('resilience release gate', () => {
     assert.equal(us.lowConfidence, false, `US has full 9/9 dataset coverage in fixtures and should not be flagged low-confidence`);
   });
 
-  // T1.1 regression test (Phase 1 of the country-resilience reference-grade
-  // upgrade plan, docs/internal/country-resilience-upgrade-plan.md).
-  //
-  // The origin review document (docs/internal/upgrading-country-resilience.md)
-  // claims: "Norway and the US both hit 100 under current fixtures, which
-  // broke the intended ordering and exposed a ceiling effect at the top end
-  // of the ranking."
-  //
-  // Investigation outcome (2026-04-11): the claim does NOT reproduce.
-  //
-  // Measured scores under the current release-gate fixtures and the
-  // post-PR-#2847 domain-weighted-average formula:
-  //
-  //     NO (elite tier)   overallScore = 86.58, baseline 86.85, stress 84.36
-  //     US (strong tier)  overallScore = 72.80, baseline 73.15, stress 70.58
-  //     Delta             NO - US = 13.78 points
-  //     Ceiling           neither country approaches 100; all 6 domains stay
-  //                       well inside the [0, 100] clamp range
-  // (Note: the investigation was run at the 5-domain state before the
-  // recovery domain landed; the overall ordering finding held after the
-  // Phase 2 recovery-domain addition — rerun under current fixtures
-  // continues to produce no ceiling and preserves NO > US by ≥8 points.)
-  //
-  // The ordering elite > strong > stressed > fragile is preserved. There is
-  // no hard 100 ceiling in the scorer, and nothing in _dimension-scorers.ts
-  // can produce a top-of-ranking tie between NO and US given the 14-point
-  // quality differential wired into the fixtures.
-  //
-  // Conclusion: the origin-doc symptom is misattributed or stale (it likely
-  // predates PR #2847's formula revert or references an older fixture set).
-  // The origin-doc changelog will be updated in a trailing commit after
-  // PR #2938 (the reference-grade plan) merges, since the origin doc is
-  // part of that PR.
-  //
-  // This test pins the current correct behavior so any future regression to
-  // a real top-of-ranking ceiling bug is caught immediately by CI.
   it('T1.1 regression: Norway and US do not both pin at 100 and preserve elite > strong ordering', async () => {
     installRedisFixtures();
 

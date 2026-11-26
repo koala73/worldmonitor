@@ -61,7 +61,7 @@ import {
 // ── Env knobs (read at request entry so Railway/Vercel flips take effect
 // on the next invocation without a redeploy) ───────────────────────────
 
-function readConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): {
+export function readConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): {
   primary: 'analyst' | 'gemini';
   invalidPrimaryRaw: string | null;
   shadowEnabled: boolean;

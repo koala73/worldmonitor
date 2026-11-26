@@ -1,0 +1,1061 @@
+{
+ "source": "Element84 Earth Search https://earth-search.aws.element84.com/v1/search (sentinel-2-l2a, sentinel-1-grd) and Microsoft Planetary Computer https://planetarycomputer.microsoft.com/api/stac/v1/search (sentinel-2-l2a, landsat-c2-l2), point searches, properties and assets trimmed to the fields the lookup reads.",
+ "retrievedAt": "2026-11-13",
+ "window": "2026-11-03T06:00:00Z/2026-11-13T06:00:00Z",
+ "points": {
+  "denver": {
+   "lat": 39.74,
+   "lon": -104.99,
+   "earth-search": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "id": "S1D_IW_GRDH_1SDV_20261113T010158_20261113T010223_005442_00A641",
+      "collection": "sentinel-1-grd",
+      "properties": {
+       "sat:orbit_state": "ascending",
+       "sat:relative_orbit": 151,
+       "platform": "sentinel-1d",
+       "start_datetime": "2026-11-13T01:01:58.096148Z",
+       "end_datetime": "2026-11-13T01:02:23.259139Z",
+       "datetime": "2026-11-13T01:02:10.677644Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "s3://sentinel-s1-l1c/GRD/2026/11/13/IW/DV/S1D_IW_GRDH_1SDV_20261113T010158_20261113T010223_005442_00A641_0CB3/preview/quick-look.png"
+       }
+      }
+     },
+     {
+      "id": "S2C_13SDD_20261111_1_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2c",
+       "eo:cloud_cover": 0.482147,
+       "view:sun_elevation": 32.2920737866324,
+       "s2:product_uri": "S2C_MSIL2A_20261111T175551_N0513_R141_T13SDD_20261111T205205.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
+       "datetime": "2026-11-11T18:03:04.882000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/S/DD/2026/11/S2C_13SDD_20261111_1_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2C_13SED_20261111_1_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2c",
+       "eo:cloud_cover": 0.001225,
+       "view:sun_elevation": 32.4696574337835,
+       "s2:product_uri": "S2C_MSIL2A_20261111T175551_N0513_R141_T13SED_20261111T205205.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
+       "datetime": "2026-11-11T18:03:02.371000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/S/ED/2026/11/S2C_13SED_20261111_1_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2C_13TDE_20261111_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2c",
+       "eo:cloud_cover": 7.899971,
+       "view:sun_elevation": 31.4006717638389,
+       "s2:product_uri": "S2C_MSIL2A_20261111T175551_N0513_R141_T13TDE_20261111T205205.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
+       "datetime": "2026-11-11T18:02:52.587000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/T/DE/2026/11/S2C_13TDE_20261111_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2C_13TEE_20261111_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2c",
+       "eo:cloud_cover": 49.644205,
+       "view:sun_elevation": 31.577612303289598,
+       "s2:product_uri": "S2C_MSIL2A_20261111T175551_N0513_R141_T13TEE_20261111T205205.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
+       "datetime": "2026-11-11T18:02:48.508000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/T/EE/2026/11/S2C_13TEE_20261111_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2C_13SDD_20261108_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2c",
+       "eo:cloud_cover": 0.020789,
+       "view:sun_elevation": 32.680231587898,
+       "s2:product_uri": "S2C_MSIL2A_20261108T174531_N0513_R098_T13SDD_20261108T210005.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
+       "datetime": "2026-11-08T17:53:09.121000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/S/DD/2026/11/S2C_13SDD_20261108_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2C_13SED_20261108_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2c",
+       "eo:cloud_cover": 4.6e-05,
+       "view:sun_elevation": 32.9016023623055,
+       "s2:product_uri": "S2C_MSIL2A_20261108T174531_N0513_R098_T13SED_20261108T210005.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
+       "datetime": "2026-11-08T17:53:06.101000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/S/ED/2026/11/S2C_13SED_20261108_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2C_13TDE_20261108_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2c",
+       "eo:cloud_cover": 0.065079,
+       "view:sun_elevation": 31.796773928880597,
+       "s2:product_uri": "S2C_MSIL2A_20261108T174531_N0513_R098_T13TDE_20261108T210005.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
+       "datetime": "2026-11-08T17:52:55.355000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/T/DE/2026/11/S2C_13TDE_20261108_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2C_13TEE_20261108_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2c",
+       "eo:cloud_cover": 0.010229,
+       "view:sun_elevation": 32.0170805063409,
+       "s2:product_uri": "S2C_MSIL2A_20261108T174531_N0513_R098_T13TEE_20261108T210005.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
+       "datetime": "2026-11-08T17:52:51.566000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/T/EE/2026/11/S2C_13TEE_20261108_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S1C_IW_GRDH_1SDV_20261107T010143_20261107T010208_010224_0146B2",
+      "collection": "sentinel-1-grd",
+      "properties": {
+       "sat:orbit_state": "ascending",
+       "sat:relative_orbit": 151,
+       "platform": "sentinel-1c",
+       "start_datetime": "2026-11-07T01:01:43.327131Z",
+       "end_datetime": "2026-11-07T01:02:08.325671Z",
+       "datetime": "2026-11-07T01:01:55.826401Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "s3://sentinel-s1-l1c/GRD/2026/11/7/IW/DV/S1C_IW_GRDH_1SDV_20261107T010143_20261107T010208_010224_0146B2_7CFC/preview/quick-look.png"
+       }
+      }
+     },
+     {
+      "id": "S2B_13SDD_20261106_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2b",
+       "eo:cloud_cover": 13.670124,
+       "view:sun_elevation": 33.717580816616,
+       "s2:product_uri": "S2B_MSIL2A_20261106T175529_N0513_R141_T13SDD_20261106T201016.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
+       "datetime": "2026-11-06T18:03:10.544000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/S/DD/2026/11/S2B_13SDD_20261106_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2B_13SED_20261106_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2b",
+       "eo:cloud_cover": 29.338419,
+       "view:sun_elevation": 33.8973367574236,
+       "s2:product_uri": "S2B_MSIL2A_20261106T175529_N0513_R141_T13SED_20261106T201016.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
+       "datetime": "2026-11-06T18:03:06.490000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/S/ED/2026/11/S2B_13SED_20261106_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2B_13TDE_20261106_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2b",
+       "eo:cloud_cover": 9.872459,
+       "view:sun_elevation": 32.8265590013354,
+       "s2:product_uri": "S2B_MSIL2A_20261106T175529_N0513_R141_T13TDE_20261106T201016.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
+       "datetime": "2026-11-06T18:02:56.097000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/T/DE/2026/11/S2B_13TDE_20261106_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2B_13TEE_20261106_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2b",
+       "eo:cloud_cover": 38.28626,
+       "view:sun_elevation": 33.0055778089488,
+       "s2:product_uri": "S2B_MSIL2A_20261106T175529_N0513_R141_T13TEE_20261106T201016.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
+       "datetime": "2026-11-06T18:02:52.033000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/T/EE/2026/11/S2B_13TEE_20261106_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S1D_IW_GRDH_1SDV_20261106T130859_20261106T130924_005347_00A2FD",
+      "collection": "sentinel-1-grd",
+      "properties": {
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 56,
+       "platform": "sentinel-1d",
+       "start_datetime": "2026-11-06T13:08:59.654591Z",
+       "end_datetime": "2026-11-06T13:09:24.653070Z",
+       "datetime": "2026-11-06T13:09:12.153831Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "s3://sentinel-s1-l1c/GRD/2026/11/6/IW/DV/S1D_IW_GRDH_1SDV_20261106T130859_20261106T130924_005347_00A2FD_45A2/preview/quick-look.png"
+       }
+      }
+     },
+     {
+      "id": "S2A_13SDD_20261103_1_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2a",
+       "eo:cloud_cover": 18.680765,
+       "view:sun_elevation": 34.6219685767078,
+       "s2:product_uri": "S2A_MSIL2A_20261103T175731_N0513_R141_T13SDD_20261103T210906.SAFE",
+       "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
+       "datetime": "2026-11-03T18:03:15.801000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/S/DD/2026/11/S2A_13SDD_20261103_1_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2A_13SED_20261103_1_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2a",
+       "eo:cloud_cover": 16.865423,
+       "view:sun_elevation": 34.8037227049424,
+       "s2:product_uri": "S2A_MSIL2A_20261103T175731_N0513_R141_T13SED_20261103T210906.SAFE",
+       "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
+       "datetime": "2026-11-03T18:03:11.731000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/S/ED/2026/11/S2A_13SED_20261103_1_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2A_13TDE_20261103_1_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2a",
+       "eo:cloud_cover": 44.613174,
+       "view:sun_elevation": 33.7312909558414,
+       "s2:product_uri": "S2A_MSIL2A_20261103T175731_N0513_R141_T13TDE_20261103T210906.SAFE",
+       "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
+       "datetime": "2026-11-03T18:03:01.355000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/T/DE/2026/11/S2A_13TDE_20261103_1_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2A_13TEE_20261103_1_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2a",
+       "eo:cloud_cover": 1.134968,
+       "view:sun_elevation": 33.912241121391,
+       "s2:product_uri": "S2A_MSIL2A_20261103T175731_N0513_R141_T13TEE_20261103T210906.SAFE",
+       "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
+       "datetime": "2026-11-03T18:02:57.299000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/T/EE/2026/11/S2A_13TEE_20261103_1_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2B_13SDD_20261103_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2b",
+       "eo:cloud_cover": 19.536866,
+       "view:sun_elevation": 34.1570847066955,
+       "s2:product_uri": "S2B_MSIL2A_20261103T174509_N0513_R098_T13SDD_20261103T195949.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
+       "datetime": "2026-11-03T17:53:13.657000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/S/DD/2026/11/S2B_13SDD_20261103_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2B_13SED_20261103_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2b",
+       "eo:cloud_cover": 18.144681,
+       "view:sun_elevation": 34.3827203703218,
+       "s2:product_uri": "S2B_MSIL2A_20261103T174509_N0513_R098_T13SED_20261103T195949.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
+       "datetime": "2026-11-03T17:53:10.651000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/S/ED/2026/11/S2B_13SED_20261103_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2B_13TDE_20261103_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2b",
+       "eo:cloud_cover": 0.108344,
+       "view:sun_elevation": 33.2745775719227,
+       "s2:product_uri": "S2B_MSIL2A_20261103T174509_N0513_R098_T13TDE_20261103T195949.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
+       "datetime": "2026-11-03T17:52:59.838000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/T/DE/2026/11/S2B_13TDE_20261103_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S2B_13TEE_20261103_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2b",
+       "eo:cloud_cover": 5.891221,
+       "view:sun_elevation": 33.4990089785661,
+       "s2:product_uri": "S2B_MSIL2A_20261103T174509_N0513_R098_T13TEE_20261103T195949.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
+       "datetime": "2026-11-03T17:52:56.102000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/13/T/EE/2026/11/S2B_13TEE_20261103_0_L2A/preview.jpg"
+       }
+      }
+     }
+    ]
+   },
+   "planetary-computer": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "id": "S2C_MSIL2A_20261111T175551_R141_T13TEE_20261111T205205",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-11T17:55:51.025000Z",
+       "platform": "Sentinel-2C",
+       "eo:cloud_cover": 49.644205,
+       "s2:product_uri": "S2C_MSIL2A_20261111T175551_N0513_R141_T13TEE_20261111T205205.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 58.4223876967104,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/T/EE/2026/11/11/S2C_MSIL2A_20261111T175551_N0513_R141_T13TEE_20261111T205205.SAFE/GRANULE/L2A_T13TEE_A011408_20261111T175554/IMG_DATA/R20m/T13TEE_20261111T175551_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2C_MSIL2A_20261111T175551_R141_T13TEE_20261111T205205&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2C_MSIL2A_20261111T175551_R141_T13TDE_20261111T205205",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-11T17:55:51.025000Z",
+       "platform": "Sentinel-2C",
+       "eo:cloud_cover": 7.899971,
+       "s2:product_uri": "S2C_MSIL2A_20261111T175551_N0513_R141_T13TDE_20261111T205205.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 58.5993282361611,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/T/DE/2026/11/11/S2C_MSIL2A_20261111T175551_N0513_R141_T13TDE_20261111T205205.SAFE/GRANULE/L2A_T13TDE_A011408_20261111T175554/IMG_DATA/R20m/T13TDE_20261111T175551_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2C_MSIL2A_20261111T175551_R141_T13TDE_20261111T205205&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2C_MSIL2A_20261111T175551_R141_T13SED_20261111T205205",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-11T17:55:51.025000Z",
+       "platform": "Sentinel-2C",
+       "eo:cloud_cover": 0.001225,
+       "s2:product_uri": "S2C_MSIL2A_20261111T175551_N0513_R141_T13SED_20261111T205205.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 57.5303425662165,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/S/ED/2026/11/11/S2C_MSIL2A_20261111T175551_N0513_R141_T13SED_20261111T205205.SAFE/GRANULE/L2A_T13SED_A011408_20261111T175554/IMG_DATA/R20m/T13SED_20261111T175551_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2C_MSIL2A_20261111T175551_R141_T13SED_20261111T205205&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2C_MSIL2A_20261111T175551_R141_T13SDD_20261111T205205",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-11T17:55:51.025000Z",
+       "platform": "Sentinel-2C",
+       "eo:cloud_cover": 0.482147,
+       "s2:product_uri": "S2C_MSIL2A_20261111T175551_N0513_R141_T13SDD_20261111T205205.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261111T205205_S20261111T175554_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 57.7079262133676,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/S/DD/2026/11/11/S2C_MSIL2A_20261111T175551_N0513_R141_T13SDD_20261111T205205.SAFE/GRANULE/L2A_T13SDD_A011408_20261111T175554/IMG_DATA/R20m/T13SDD_20261111T175551_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2C_MSIL2A_20261111T175551_R141_T13SDD_20261111T205205&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2C_MSIL2A_20261108T174531_R098_T13TEE_20261108T210005",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-08T17:45:31.025000Z",
+       "platform": "Sentinel-2C",
+       "eo:cloud_cover": 0.010229,
+       "s2:product_uri": "S2C_MSIL2A_20261108T174531_N0513_R098_T13TEE_20261108T210005.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 98,
+       "s2:mean_solar_zenith": 57.9829194936591,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/T/EE/2026/11/08/S2C_MSIL2A_20261108T174531_N0513_R098_T13TEE_20261108T210005.SAFE/GRANULE/L2A_T13TEE_A011365_20261108T174949/IMG_DATA/R20m/T13TEE_20261108T174531_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2C_MSIL2A_20261108T174531_R098_T13TEE_20261108T210005&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2C_MSIL2A_20261108T174531_R098_T13TDE_20261108T210005",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-08T17:45:31.025000Z",
+       "platform": "Sentinel-2C",
+       "eo:cloud_cover": 0.065079,
+       "s2:product_uri": "S2C_MSIL2A_20261108T174531_N0513_R098_T13TDE_20261108T210005.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 98,
+       "s2:mean_solar_zenith": 58.2032260711194,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/T/DE/2026/11/08/S2C_MSIL2A_20261108T174531_N0513_R098_T13TDE_20261108T210005.SAFE/GRANULE/L2A_T13TDE_A011365_20261108T174949/IMG_DATA/R20m/T13TDE_20261108T174531_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2C_MSIL2A_20261108T174531_R098_T13TDE_20261108T210005&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2C_MSIL2A_20261108T174531_R098_T13SED_20261108T210005",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-08T17:45:31.025000Z",
+       "platform": "Sentinel-2C",
+       "eo:cloud_cover": 4.6e-05,
+       "s2:product_uri": "S2C_MSIL2A_20261108T174531_N0513_R098_T13SED_20261108T210005.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 98,
+       "s2:mean_solar_zenith": 57.0983976376945,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/S/ED/2026/11/08/S2C_MSIL2A_20261108T174531_N0513_R098_T13SED_20261108T210005.SAFE/GRANULE/L2A_T13SED_A011365_20261108T174949/IMG_DATA/R20m/T13SED_20261108T174531_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2C_MSIL2A_20261108T174531_R098_T13SED_20261108T210005&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2C_MSIL2A_20261108T174531_R098_T13SDD_20261108T210005",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-08T17:45:31.025000Z",
+       "platform": "Sentinel-2C",
+       "eo:cloud_cover": 0.020789,
+       "s2:product_uri": "S2C_MSIL2A_20261108T174531_N0513_R098_T13SDD_20261108T210005.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261108T210005_S20261108T174949_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 98,
+       "s2:mean_solar_zenith": 57.319768412102,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/S/DD/2026/11/08/S2C_MSIL2A_20261108T174531_N0513_R098_T13SDD_20261108T210005.SAFE/GRANULE/L2A_T13SDD_A011365_20261108T174949/IMG_DATA/R20m/T13SDD_20261108T174531_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2C_MSIL2A_20261108T174531_R098_T13SDD_20261108T210005&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2B_MSIL2A_20261106T175529_R141_T13TEE_20261106T201016",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-06T17:55:29.024000Z",
+       "platform": "Sentinel-2B",
+       "eo:cloud_cover": 38.28626,
+       "s2:product_uri": "S2B_MSIL2A_20261106T175529_N0513_R141_T13TEE_20261106T201016.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 56.9944221910512,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/T/EE/2026/11/06/S2B_MSIL2A_20261106T175529_N0513_R141_T13TEE_20261106T201016.SAFE/GRANULE/L2A_T13TEE_A050503_20261106T180021/IMG_DATA/R20m/T13TEE_20261106T175529_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20261106T175529_R141_T13TEE_20261106T201016&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2B_MSIL2A_20261106T175529_R141_T13TDE_20261106T201016",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-06T17:55:29.024000Z",
+       "platform": "Sentinel-2B",
+       "eo:cloud_cover": 9.872459,
+       "s2:product_uri": "S2B_MSIL2A_20261106T175529_N0513_R141_T13TDE_20261106T201016.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 57.1734409986646,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/T/DE/2026/11/06/S2B_MSIL2A_20261106T175529_N0513_R141_T13TDE_20261106T201016.SAFE/GRANULE/L2A_T13TDE_A050503_20261106T180021/IMG_DATA/R20m/T13TDE_20261106T175529_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20261106T175529_R141_T13TDE_20261106T201016&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2B_MSIL2A_20261106T175529_R141_T13SED_20261106T201016",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-06T17:55:29.024000Z",
+       "platform": "Sentinel-2B",
+       "eo:cloud_cover": 29.338419,
+       "s2:product_uri": "S2B_MSIL2A_20261106T175529_N0513_R141_T13SED_20261106T201016.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 56.1026632425764,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/S/ED/2026/11/06/S2B_MSIL2A_20261106T175529_N0513_R141_T13SED_20261106T201016.SAFE/GRANULE/L2A_T13SED_A050503_20261106T180021/IMG_DATA/R20m/T13SED_20261106T175529_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20261106T175529_R141_T13SED_20261106T201016&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2B_MSIL2A_20261106T175529_R141_T13SDD_20261106T201016",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-06T17:55:29.024000Z",
+       "platform": "Sentinel-2B",
+       "eo:cloud_cover": 13.670124,
+       "s2:product_uri": "S2B_MSIL2A_20261106T175529_N0513_R141_T13SDD_20261106T201016.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261106T201016_S20261106T180021_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 56.282419183384,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/S/DD/2026/11/06/S2B_MSIL2A_20261106T175529_N0513_R141_T13SDD_20261106T201016.SAFE/GRANULE/L2A_T13SDD_A050503_20261106T180021/IMG_DATA/R20m/T13SDD_20261106T175529_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20261106T175529_R141_T13SDD_20261106T201016&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2A_MSIL2A_20261103T175731_R141_T13TEE_20261103T210906",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-03T17:57:31.024000Z",
+       "platform": "Sentinel-2A",
+       "eo:cloud_cover": 1.134968,
+       "s2:product_uri": "S2A_MSIL2A_20261103T175731_N0513_R141_T13TEE_20261103T210906.SAFE",
+       "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 56.087758878609,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/T/EE/2026/11/03/S2A_MSIL2A_20261103T175731_N0513_R141_T13TEE_20261103T210906.SAFE/GRANULE/L2A_T13TEE_A059369_20261103T175732/IMG_DATA/R20m/T13TEE_20261103T175731_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2A_MSIL2A_20261103T175731_R141_T13TEE_20261103T210906&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2A_MSIL2A_20261103T175731_R141_T13TDE_20261103T210906",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-03T17:57:31.024000Z",
+       "platform": "Sentinel-2A",
+       "eo:cloud_cover": 44.613174,
+       "s2:product_uri": "S2A_MSIL2A_20261103T175731_N0513_R141_T13TDE_20261103T210906.SAFE",
+       "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 56.2687090441586,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/T/DE/2026/11/03/S2A_MSIL2A_20261103T175731_N0513_R141_T13TDE_20261103T210906.SAFE/GRANULE/L2A_T13TDE_A059369_20261103T175732/IMG_DATA/R20m/T13TDE_20261103T175731_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2A_MSIL2A_20261103T175731_R141_T13TDE_20261103T210906&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2A_MSIL2A_20261103T175731_R141_T13SED_20261103T210906",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-03T17:57:31.024000Z",
+       "platform": "Sentinel-2A",
+       "eo:cloud_cover": 16.865423,
+       "s2:product_uri": "S2A_MSIL2A_20261103T175731_N0513_R141_T13SED_20261103T210906.SAFE",
+       "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 55.1962772950576,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/S/ED/2026/11/03/S2A_MSIL2A_20261103T175731_N0513_R141_T13SED_20261103T210906.SAFE/GRANULE/L2A_T13SED_A059369_20261103T175732/IMG_DATA/R20m/T13SED_20261103T175731_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2A_MSIL2A_20261103T175731_R141_T13SED_20261103T210906&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2A_MSIL2A_20261103T175731_R141_T13SDD_20261103T210906",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-03T17:57:31.024000Z",
+       "platform": "Sentinel-2A",
+       "eo:cloud_cover": 18.680765,
+       "s2:product_uri": "S2A_MSIL2A_20261103T175731_N0513_R141_T13SDD_20261103T210906.SAFE",
+       "s2:datastrip_id": "S2A_OPER_MSI_L2A_DS_2APS_20261103T210906_S20261103T175732_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 141,
+       "s2:mean_solar_zenith": 55.3780314232922,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/S/DD/2026/11/03/S2A_MSIL2A_20261103T175731_N0513_R141_T13SDD_20261103T210906.SAFE/GRANULE/L2A_T13SDD_A059369_20261103T175732/IMG_DATA/R20m/T13SDD_20261103T175731_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2A_MSIL2A_20261103T175731_R141_T13SDD_20261103T210906&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2B_MSIL2A_20261103T174509_R098_T13TEE_20261103T195949",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-03T17:45:09.024000Z",
+       "platform": "Sentinel-2B",
+       "eo:cloud_cover": 5.891221,
+       "s2:product_uri": "S2B_MSIL2A_20261103T174509_N0513_R098_T13TEE_20261103T195949.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 98,
+       "s2:mean_solar_zenith": 56.5009910214339,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/T/EE/2026/11/03/S2B_MSIL2A_20261103T174509_N0513_R098_T13TEE_20261103T195949.SAFE/GRANULE/L2A_T13TEE_A050460_20261103T174732/IMG_DATA/R20m/T13TEE_20261103T174509_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20261103T174509_R098_T13TEE_20261103T195949&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2B_MSIL2A_20261103T174509_R098_T13TDE_20261103T195949",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-03T17:45:09.024000Z",
+       "platform": "Sentinel-2B",
+       "eo:cloud_cover": 0.108344,
+       "s2:product_uri": "S2B_MSIL2A_20261103T174509_N0513_R098_T13TDE_20261103T195949.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 98,
+       "s2:mean_solar_zenith": 56.7254224280773,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/T/DE/2026/11/03/S2B_MSIL2A_20261103T174509_N0513_R098_T13TDE_20261103T195949.SAFE/GRANULE/L2A_T13TDE_A050460_20261103T174732/IMG_DATA/R20m/T13TDE_20261103T174509_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20261103T174509_R098_T13TDE_20261103T195949&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2B_MSIL2A_20261103T174509_R098_T13SED_20261103T195949",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-03T17:45:09.024000Z",
+       "platform": "Sentinel-2B",
+       "eo:cloud_cover": 18.144681,
+       "s2:product_uri": "S2B_MSIL2A_20261103T174509_N0513_R098_T13SED_20261103T195949.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 98,
+       "s2:mean_solar_zenith": 55.6172796296782,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/S/ED/2026/11/03/S2B_MSIL2A_20261103T174509_N0513_R098_T13SED_20261103T195949.SAFE/GRANULE/L2A_T13SED_A050460_20261103T174732/IMG_DATA/R20m/T13SED_20261103T174509_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20261103T174509_R098_T13SED_20261103T195949&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2B_MSIL2A_20261103T174509_R098_T13SDD_20261103T195949",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-03T17:45:09.024000Z",
+       "platform": "Sentinel-2B",
+       "eo:cloud_cover": 19.536866,
+       "s2:product_uri": "S2B_MSIL2A_20261103T174509_N0513_R098_T13SDD_20261103T195949.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261103T195949_S20261103T174732_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 98,
+       "s2:mean_solar_zenith": 55.8429152933045,
+       "proj:epsg": 32613
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/13/S/DD/2026/11/03/S2B_MSIL2A_20261103T174509_N0513_R098_T13SDD_20261103T195949.SAFE/GRANULE/L2A_T13SDD_A050460_20261103T174732/IMG_DATA/R20m/T13SDD_20261103T174509_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20261103T174509_R098_T13SDD_20261103T195949&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     }
+    ]
+   }
+  },
+  "dubai": {
+   "lat": 25.2,
+   "lon": 55.27,
+   "earth-search": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "id": "S1D_IW_GRDH_1SDV_20261111T142415_20261111T142440_005421_00A586",
+      "collection": "sentinel-1-grd",
+      "properties": {
+       "sat:orbit_state": "ascending",
+       "sat:relative_orbit": 130,
+       "platform": "sentinel-1d",
+       "start_datetime": "2026-11-11T14:24:15.866701Z",
+       "end_datetime": "2026-11-11T14:24:40.865244Z",
+       "datetime": "2026-11-11T14:24:28.365973Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "s3://sentinel-s1-l1c/GRD/2026/11/11/IW/DV/S1D_IW_GRDH_1SDV_20261111T142415_20261111T142440_005421_00A586_CEF6/preview/quick-look.png"
+       }
+      }
+     },
+     {
+      "id": "S2B_40RCN_20261108_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2b",
+       "eo:cloud_cover": 0.038819,
+       "view:sun_elevation": 46.1831907641489,
+       "s2:product_uri": "S2B_MSIL2A_20261108T065109_N0513_R020_T40RCN_20261108T103534.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261108T103534_S20261108T070105_N05.13",
+       "datetime": "2026-11-08T07:02:41.818000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/40/R/CN/2026/11/S2B_40RCN_20261108_0_L2A/preview.jpg"
+       }
+      }
+     },
+     {
+      "id": "S1C_IW_GRDH_1SDV_20261108T021439_20261108T021504_010239_014733",
+      "collection": "sentinel-1-grd",
+      "properties": {
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 166,
+       "platform": "sentinel-1c",
+       "start_datetime": "2026-11-08T02:14:39.806085Z",
+       "end_datetime": "2026-11-08T02:15:04.804926Z",
+       "datetime": "2026-11-08T02:14:52.305505Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "s3://sentinel-s1-l1c/GRD/2026/11/8/IW/DV/S1C_IW_GRDH_1SDV_20261108T021439_20261108T021504_010239_014733_E1BE/preview/quick-look.png"
+       }
+      }
+     },
+     {
+      "id": "S1C_IW_GRDH_1SDV_20261105T142352_20261105T142421_010203_0145F4",
+      "collection": "sentinel-1-grd",
+      "properties": {
+       "sat:orbit_state": "ascending",
+       "sat:relative_orbit": 130,
+       "platform": "sentinel-1c",
+       "start_datetime": "2026-11-05T14:23:52.358587Z",
+       "end_datetime": "2026-11-05T14:24:21.636227Z",
+       "datetime": "2026-11-05T14:24:06.997407Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "s3://sentinel-s1-l1c/GRD/2026/11/5/IW/DV/S1C_IW_GRDH_1SDV_20261105T142352_20261105T142421_010203_0145F4_58BF/preview/quick-look.png"
+       }
+      }
+     },
+     {
+      "id": "S2C_40RCN_20261103_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "platform": "sentinel-2c",
+       "eo:cloud_cover": 0.205275,
+       "view:sun_elevation": 47.6093535828461,
+       "s2:product_uri": "S2C_MSIL2A_20261103T065031_N0513_R020_T40RCN_20261103T101659.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261103T101659_S20261103T065604_N05.13",
+       "datetime": "2026-11-03T07:02:37.237000Z"
+      },
+      "assets": {
+       "thumbnail": {
+        "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/40/R/CN/2026/11/S2C_40RCN_20261103_0_L2A/preview.jpg"
+       }
+      }
+     }
+    ]
+   },
+   "planetary-computer": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "id": "S2B_MSIL2A_20261108T065109_R020_T40RCN_20261108T103534",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-08T06:51:09.024000Z",
+       "platform": "Sentinel-2B",
+       "eo:cloud_cover": 0.038819,
+       "s2:product_uri": "S2B_MSIL2A_20261108T065109_N0513_R020_T40RCN_20261108T103534.SAFE",
+       "s2:datastrip_id": "S2B_OPER_MSI_L2A_DS_2BPS_20261108T103534_S20261108T070105_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 20,
+       "s2:mean_solar_zenith": 43.8168092358511,
+       "proj:epsg": 32640
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/40/R/CN/2026/11/08/S2B_MSIL2A_20261108T065109_N0513_R020_T40RCN_20261108T103534.SAFE/GRANULE/L2A_T40RCN_A050525_20261108T070105/IMG_DATA/R20m/T40RCN_20261108T065109_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2B_MSIL2A_20261108T065109_R020_T40RCN_20261108T103534&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "S2C_MSIL2A_20261103T065031_R020_T40RCN_20261103T101659",
+      "collection": "sentinel-2-l2a",
+      "properties": {
+       "datetime": "2026-11-03T06:50:31.025000Z",
+       "platform": "Sentinel-2C",
+       "eo:cloud_cover": 0.205275,
+       "s2:product_uri": "S2C_MSIL2A_20261103T065031_N0513_R020_T40RCN_20261103T101659.SAFE",
+       "s2:datastrip_id": "S2C_OPER_MSI_L2A_DS_2CPS_20261103T101659_S20261103T065604_N05.13",
+       "sat:orbit_state": "descending",
+       "sat:relative_orbit": 20,
+       "s2:mean_solar_zenith": 42.3906464171539,
+       "proj:epsg": 32640
+      },
+      "assets": {
+       "SCL": {
+        "href": "https://sentinel2l2a01.blob.core.windows.net/sentinel2-l2/40/R/CN/2026/11/03/S2C_MSIL2A_20261103T065031_N0513_R020_T40RCN_20261103T101659.SAFE/GRANULE/L2A_T40RCN_A011287_20261103T065604/IMG_DATA/R20m/T40RCN_20261103T065031_SCL_20m.tif"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=S2C_MSIL2A_20261103T065031_R020_T40RCN_20261103T101659&assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png"
+       }
+      }
+     },
+     {
+      "id": "LC09_L2SP_160043_20261103_02_T1",
+      "collection": "landsat-c2-l2",
+      "properties": {
+       "gsd": 30,
+       "datetime": "2026-11-03T06:46:40.776197Z",
+       "platform": "landsat-9",
+       "eo:cloud_cover": 0.98,
+       "landsat:wrs_row": "043",
+       "landsat:wrs_path": "160",
+       "view:sun_elevation": 46.23476419,
+       "proj:epsg": 32640
+      },
+      "assets": {
+       "qa_pixel": {
+        "href": "https://landsateuwest.blob.core.windows.net/landsat-c2/level-2/standard/oli-tirs/2026/160/043/LC09_L2SP_160043_20261103_20261104_02_T1/LC09_L2SP_160043_20261103_20261104_02_T1_QA_PIXEL.TIF"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=landsat-c2-l2&item=LC09_L2SP_160043_20261103_02_T1&assets=red&assets=green&assets=blue&color_formula=gamma%20RGB%202.7,%20saturation%201.5,%20sigmoidal%20RGB%2015%200.55&format=png"
+       }
+      }
+     },
+     {
+      "id": "LC09_L2SP_160042_20261103_02_T1",
+      "collection": "landsat-c2-l2",
+      "properties": {
+       "gsd": 30,
+       "datetime": "2026-11-03T06:46:16.876709Z",
+       "platform": "landsat-9",
+       "eo:cloud_cover": 1.77,
+       "landsat:wrs_row": "042",
+       "landsat:wrs_path": "160",
+       "view:sun_elevation": 45.04935741,
+       "proj:epsg": 32640
+      },
+      "assets": {
+       "qa_pixel": {
+        "href": "https://landsateuwest.blob.core.windows.net/landsat-c2/level-2/standard/oli-tirs/2026/160/042/LC09_L2SP_160042_20261103_20261104_02_T1/LC09_L2SP_160042_20261103_20261104_02_T1_QA_PIXEL.TIF"
+       },
+       "rendered_preview": {
+        "href": "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=landsat-c2-l2&item=LC09_L2SP_160042_20261103_02_T1&assets=red&assets=green&assets=blue&color_formula=gamma%20RGB%202.7,%20saturation%201.5,%20sigmoidal%20RGB%2015%200.55&format=png"
+       }
+      }
+     }
+    ]
+   }
+  }
+ }
+}

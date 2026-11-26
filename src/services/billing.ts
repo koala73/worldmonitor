@@ -610,6 +610,39 @@ export async function updateBillingEmail(email: string): Promise<{ email: string
   );
 }
 
+export type ProBusinessUpgradeResponse =
+  | {
+      kind: 'preview';
+      fromPlanKey: string;
+      toPlanKey: string;
+      chargeAmount: number;
+      currency: string;
+      renewalAmount: number | null;
+      renewalCurrency: string | null;
+      renewalDate: string | null;
+      billingPeriod: 'monthly' | 'annual';
+    }
+  | { kind: 'upgraded'; fromPlanKey: string; toPlanKey: string };
+
+/**
+ * Preview (confirm=false) or apply (confirm=true) the in-place Pro → Pro
+ * Business upgrade. Rejects with a ConvexError whose `data.kind`
+ * (NO_UPGRADEABLE_PRO, ALREADY_PRO_BUSINESS, PRO_CANCEL_SCHEDULED, UPGRADE_IN_PROGRESS,
+ * UPGRADE_RATE_LIMITED,
+ * DODO_PLAN_CHANGE_ERROR, ...) the checkout dialog maps to copy.
+ */
+export async function requestProBusinessUpgrade(confirm: boolean): Promise<ProBusinessUpgradeResponse> {
+  const userId = requireSignedInUserId('upgrade to Pro Business');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'upgrading to Pro Business');
+  return settleAccountOperation(
+    userId,
+    'upgrading to Pro Business',
+    () => client.action(api.payments.billing.upgradeToProBusiness, { confirm }),
+  );
+}
+
 export interface EnterpriseSeat {
   memberId: string;
   email: string | null;

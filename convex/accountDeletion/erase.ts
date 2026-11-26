@@ -14,6 +14,7 @@ import { applyOwnerDeletedFence } from "../companyMonitoring/accounts";
 import { requireUserId, resolveUserId } from "../lib/auth";
 import { runEraseBatch, scheduleEraseContinuation } from "./batches";
 import {
+  BRIEF_SWEEP_DELAY_MS,
   PENDING_STALE_AFTER_MS,
   normalizeVerifiedEmail,
   sha256Hex,
@@ -471,6 +472,12 @@ export const markExternalComplete = internalMutation({
       return { status: "pending", userIdHash: row.userIdHash };
     }
     const now = Date.now();
+    // Schedule atomically with completion, once. A compose can write envelopes
+    // after our index snapshot and fail to clean them up itself.
+    await ctx.scheduler.runAfter(BRIEF_SWEEP_DELAY_MS,
+      internal.accountDeletion.sideEffects.sweepBriefEnvelopes,
+      { deletionId: row._id, cursor: "0", attempt: 0 },
+    );
     await ctx.db.patch(args.deletionId, {
       step: "complete",
       status: "complete",

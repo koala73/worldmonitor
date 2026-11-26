@@ -1,0 +1,14 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "world monitor pricing"
+      ],
+      "clicks": 2,
+      "impressions": 40,
+      "ctr": 0.05,
+      "position": 6.5
+    }
+  ],
+  "responseAggregationType": "byQuery"
+}

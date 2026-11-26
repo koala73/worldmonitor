@@ -28,7 +28,7 @@ This page names and links every developer resource type. For the machine-readabl
 
 ## Authentication in one line
 
-Discovery endpoints and `tools/list` are public. `get_sources` is the sole credential-free, daily-quota-free MCP data tool, with a separate fail-closed ceiling of 10 anonymous calls/minute/IP. Every other data call needs subscription access through an API key header `X-WorldMonitor-Key: wm_<40-hex>` (issue one at https://www.worldmonitor.app/pro) or OAuth 2.1 with scope `mcp`. The full walkthrough — including dynamic client registration and the Pro sign-in flow — lives at [auth.md](https://www.worldmonitor.app/auth.md).
+Discovery endpoints and `tools/list` are public. `get_sources` is daily-quota-free, with a separate fail-closed ceiling of 10 anonymous calls/minute/IP. `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed. MCP sign-in is OAuth 2.1 with scope `mcp`; REST API keys (header `X-WorldMonitor-Key: wm_<40-hex>`, issue one at https://www.worldmonitor.app/pro) are a paid feature. The full walkthrough — including dynamic client registration and the Pro sign-in flow — lives at [auth.md](https://www.worldmonitor.app/auth.md).
 
 ## Pricing, limits & support
 

@@ -227,6 +227,19 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     }
   });
 
+  it('installs the Railway CLI in every workflow through the retrying pinned installer', () => {
+    const workflowDir = resolve(repoRoot, '.github/workflows');
+    const rawInstalls = [];
+    let installerSteps = 0;
+    for (const file of readdirSync(workflowDir).filter((name) => /\.ya?ml$/.test(name))) {
+      const text = readFileSync(resolve(workflowDir, file), 'utf8');
+      if (/npm (install|i)\b[^\n]*@railway\/cli/.test(text)) rawInstalls.push(file);
+      installerSteps += text.match(/node scripts\/install-railway-cli\.mjs/g)?.length ?? 0;
+    }
+    assert.deepEqual(rawInstalls, []);
+    assert.ok(installerSteps >= 7, `expected the installer in every Railway CLI job, found ${installerSteps}`);
+  });
+
   it('contains no empty GitHub expression in any workflow', () => {
     const workflowDir = resolve(repoRoot, '.github/workflows');
     const offenders = [];

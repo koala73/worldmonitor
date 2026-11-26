@@ -38,7 +38,9 @@ export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
  * the rollout window for category/isFeelGood/isOpinion residue.
  * Shadow scoring key (written by notification-relay.cjs, which owns the live
  * value — the constant here is documentation only, not imported):
- *   shadow:score-log:v5            ZSet   score=epoch_ms, member=JSON{ts,importanceScore,severity,eventType,title,source,publishedAt,corroborationCount,variant}
+ *   shadow:score-log:v5            ZSet   score=epoch_ms (dequeue time), member=JSON{ts,importanceScore,severity,eventType,title,source,publishedAt,corroborationCount,variant,outcome}
+ *                                         outcome = the relay's per-rule tally for the event (#10976, see deliverToRules);
+ *                                         { stopped: 'pending' } from dequeue until delivery ends, then the row is swapped in one transaction
  *   shadow:score-log:v3            ZSet   legacy (weight rebalance) — self-prunes via 7d ZREMRANGEBYSCORE
  *   shadow:score-log:v2            ZSet   legacy (stale-score fix) — self-prunes
  *   shadow:score-log:v1            ZSet   legacy (pre-PR #3069) — self-prunes
@@ -92,6 +94,13 @@ export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
 export const CLIMATE_CO2_MONITORING_KEY = 'climate:co2-monitoring:v1';
 export const CLIMATE_OCEAN_ICE_KEY = 'climate:ocean-ice:v1';
 export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
+export const CLIMATE_RESERVOIR_LEVELS_KEY = 'climate:reservoir-levels:v1';
+export const ORBITAL_CATALOG_KEY = 'orbital:catalog:v1';
+export const ORBITAL_SITES_KEY = 'orbital:sites:v1';
+export const ORBITAL_SITE_KEY_PREFIX = 'orbital:site:v1:';
+/** Newest radar water-extent reading per reservoir site (scripts/seed-orbital-water-extent.mjs). */
+export const ORBITAL_WATER_EXTENT_LATEST_KEY = 'orbital:water-extent:latest:v1';
+export const ORBITAL_COUNTRY_KEY_PREFIX = 'orbital:country:v1:';
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 export const CHINA_COVERAGE_HEALTH_KEY = 'health:china-coverage:v1';
 export const CHINA_MACRO_KEY = BOOTSTRAP_CACHE_KEYS.chinaMacro;

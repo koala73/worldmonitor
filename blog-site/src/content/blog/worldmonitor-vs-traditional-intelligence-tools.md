@@ -13,7 +13,7 @@ modifiedDate: "2026-10-18"
 
 These tools are powerful. They're also gatekept behind budgets that exclude most of the world's analysts, researchers, journalists, and security professionals.
 
-World Monitor asks a different question: what if the intelligence dashboard was free?
+World Monitor asks a different question: what if the [intelligence dashboard](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/) was free?
 
 ## The Comparison
 
@@ -32,7 +32,7 @@ Let's be direct about what World Monitor is and isn't relative to established pl
 **World Monitor wins at:**
 
 - Geopolitical intelligence integration with market data
-- Conflict and military monitoring (Bloomberg has zero)
+- Conflict and [military monitoring](/blog/posts/military-flight-tracking-osint/) (Bloomberg has zero)
 - Visual map-based interface with a shared map-layer catalog
 - AI analysis that runs locally (Bloomberg's AI is cloud-only)
 - Price: free vs. $24,000/year (Quartz, 2022)
@@ -101,7 +101,7 @@ See [World Monitor vs Recorded Future](/compare/worldmonitor-vs-recorded-future/
 - Financial market integration
 - Interactive visual map interface
 - Local AI processing
-- Real-time conflict and disaster monitoring
+- Real-time conflict and [disaster monitoring](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/)
 - Price: free vs. undisclosed enterprise-negotiated licensing
 
 **Best for:** Analysts who need geopolitical intelligence alongside cyber threat data.

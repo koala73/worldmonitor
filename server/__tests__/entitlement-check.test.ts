@@ -29,6 +29,9 @@ import {
   getEntitlements,
   classifyBillingVerification,
   getBillingVerificationDenial,
+  isTerminalBillingStatus,
+  PAYMENT_FAILED_MESSAGE,
+  TERMINAL_BILLING_STATUSES,
   __negativeCacheMaxEntriesForTests,
   __negativeCacheSizeForTests,
   __negativeCacheTtlMsForTests,
@@ -462,6 +465,35 @@ describe("gateway entitlement check", () => {
     });
   });
 
+  test("payment_failed is a terminal 403 that points at the billing portal", async () => {
+    const result = await withConvexEntitlementResponse(
+      {
+        ...makeEntitlements(0),
+        validUntil: 0,
+        billingStatus: "payment_failed",
+      },
+      () => checkEntitlement("test-user", "/api/market/v1/analyze-stock", {}),
+    );
+
+    expect(result?.status).toBe(403);
+    expect(result?.headers.get("X-Billing-Verification")).toBe("payment_failed");
+    expect(result?.headers.get("Retry-After")).toBeNull();
+    expect(await result?.json()).toMatchObject({
+      error: PAYMENT_FAILED_MESSAGE,
+      code: "payment_failed",
+    });
+  });
+
+  test("a payment_failed marker is cached for the terminal 60 seconds, not a retry delay", async () => {
+    await withConvexEntitlementResponse(
+      { ...makeEntitlements(0), validUntil: 0, billingStatus: "payment_failed", retryAfterSeconds: 3 },
+      async () => {
+        await getEntitlements("test-user-payment-failed-ttl");
+      },
+    );
+    expect(vi.mocked(setCachedJson).mock.calls.at(-1)?.[2]).toBe(60);
+  });
+
   test.each([
     ["paid", 1, "pro_monthly", true],
     ["free", 0, "free", false],
@@ -518,6 +550,30 @@ describe("gateway entitlement check", () => {
         );
       },
     );
+  });
+
+  test("a billing-status marker without travelRiskAssessment reloads only when the travel shape is required", async () => {
+    const legacyMarker = {
+      ...makeEntitlements(1, "pro_business_monthly"),
+      billingStatus: "renewal_verification_pending" as const,
+      retryAfterSeconds: 11,
+    };
+    const current = {
+      ...legacyMarker,
+      features: { ...legacyMarker.features, travelRiskAssessment: true },
+    };
+
+    await withCachedEntitlementResponse(legacyMarker, current, async (fetchMock) => {
+      const served = await getEntitlements("travel-shape-marker-default");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(served?.features.travelRiskAssessment).toBeUndefined();
+    });
+
+    await withCachedEntitlementResponse(legacyMarker, current, async (fetchMock) => {
+      const reloaded = await getEntitlements("travel-shape-marker-required", { requireTravelRiskShape: true });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(reloaded?.features.travelRiskAssessment).toBe(true);
+    });
   });
 
   test("legacy renewal-freshness marker without embedAccess reloads before the marker cache return", async () => {
@@ -1067,7 +1123,7 @@ describe("classifyBillingVerification (#5622)", () => {
     expect(denial?.code).toBe("entitlement_verification_unavailable");
   });
 
-  test("a provider-confirmed lapse is the only terminal member", () => {
+  test("a provider-confirmed lapse is terminal", () => {
     expect(classifyBillingVerification({ billingStatus: "subscription_lapsed" })).toEqual({
       retryable: false,
       code: "subscription_lapsed",
@@ -1075,6 +1131,28 @@ describe("classifyBillingVerification (#5622)", () => {
       message: "Subscription lapsed",
       status: 403,
     });
+  });
+
+  test("a paused subscription is terminal and names the billing portal, not a renewal retry", () => {
+    expect(classifyBillingVerification({ billingStatus: "payment_failed", retryAfterSeconds: 3 })).toEqual({
+      retryable: false,
+      code: "payment_failed",
+      retryAfterSeconds: 0,
+      message: PAYMENT_FAILED_MESSAGE,
+      status: 403,
+    });
+    // api/_user-api-key.test.mjs pins the same text for that file's own copy.
+    expect(PAYMENT_FAILED_MESSAGE).toBe(
+      "Payment failed. Update your payment method at https://www.worldmonitor.app/dashboard?billing=portal to restore access.",
+    );
+  });
+
+  test("terminality is exactly the two provider-confirmed states", () => {
+    expect(TERMINAL_BILLING_STATUSES).toEqual(["subscription_lapsed", "payment_failed"]);
+    for (const status of TERMINAL_BILLING_STATUSES) expect(isTerminalBillingStatus(status)).toBe(true);
+    for (const status of ["renewal_verification_pending", "renewal_verification_failed", "entitlement_verification_unavailable", undefined]) {
+      expect(isTerminalBillingStatus(status)).toBe(false);
+    }
   });
 
   test.each([
@@ -1456,5 +1534,41 @@ describe("getEntitlements surfaces apiDailyAllowance (#3199 U2)", () => {
       if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
       else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #10451 — travelRiskAssessment is opt-in to the cache-shape gate
+// ---------------------------------------------------------------------------
+
+describe("getEntitlements requireTravelRiskShape (#10451)", () => {
+  const legacyBusiness = makeEntitlements(1, "pro_business_monthly");
+  const canonicalBusiness = {
+    ...legacyBusiness,
+    features: { ...legacyBusiness.features, travelRiskAssessment: true },
+  };
+
+  test("an ordinary read keeps serving a cached row that predates the flag", async () => {
+    await withCachedEntitlementResponse(legacyBusiness, canonicalBusiness, async (fetchMock) => {
+      const result = await getEntitlements("travel-legacy-ordinary");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result?.features.travelRiskAssessment).toBeUndefined();
+    });
+  });
+
+  test("a travel-risk read reloads a cached row that predates the flag", async () => {
+    await withCachedEntitlementResponse(legacyBusiness, canonicalBusiness, async (fetchMock) => {
+      const result = await getEntitlements("travel-legacy-shape", { requireTravelRiskShape: true });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result?.features.travelRiskAssessment).toBe(true);
+    });
+  });
+
+  test("a travel-risk read serves a cached row that already carries the flag", async () => {
+    await withCachedEntitlementResponse(canonicalBusiness, canonicalBusiness, async (fetchMock) => {
+      const result = await getEntitlements("travel-current-shape", { requireTravelRiskShape: true });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result?.features.travelRiskAssessment).toBe(true);
+    });
   });
 });

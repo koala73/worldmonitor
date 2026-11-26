@@ -1,0 +1,236 @@
+---
+title: "MCP 工具：信号与核查"
+sidebarTitle: "信号与核查"
+description: "World Monitor MCP 工具参考：事件分类、实体抽取、声明核查、社交与异常信号。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `classify_event`
+
+通过枚举校验的 WorldMonitor 事件分类器，将提供的新闻标题或短文本分类为威胁类别和严重性。分类器为 temperature-0、按标题缓存 24 小时，且只会返回固定类别/级别枚举中的值 —— 绝不返回自由格式的 LLM 输出。无法产生枚举有效结果时 `classification` 为 `null`。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| `text` | string（必填） | 待分类的标题或短摘录，1-500 字符。超长输入会返回 `error` 而不是被截断。 |
+
+- **API 端点：** `GET /api/intelligence/v1/classify-event`
+- **类型：** 对 LLM 分类器的受约束规范路由代理。该操作此前以 `llm-passthrough` 理由被排除在 MCP 对等之外；按标题的 24 小时缓存吸收重复请求，且分类器输出上限为 50 个 token。
+- **配额：** 标准 —— OAuth 与控制面板签发的 `wm_…` 密钥上下文每次调用均消耗 MCP 每日预留（默认每 UTC 日 50 次）。只有部署中明确列入许可名单的旧版运营方密钥跳过每日预留；每个已认证上下文仍受每分钟 60 次的限流保护。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"classify_event","arguments":{"text":"Iran closes Strait of Hormuz to tanker traffic"}}
+  }'
+```
+
+</CodeGroup>
+
+### `extract_entities`
+
+与仪表盘共享的确定性命名实体提取：注册表实体（公司、指数、大宗商品、加密货币、行业、国家 —— 通过别名与关键词匹配）加上模式实体（CVE 编号、APT/FIN 威胁组织代号、被追踪的世界领导人）。不涉及 LLM。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| `text` | string | 可选的提取文本，最长 2048 字符（超长输入返回 `error`）。省略时，工具转而跨当前头条摘要聚合实体。 |
+| `category` | string（枚举） | 在头条模式下，将聚合限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`science`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
+| `limit` | integer | 每个列表的最大实体数（1-50）。默认 20。 |
+
+- **API 端点：** `GET /api/news/v1/list-feed-digest`（仅头条模式；文本模式不发起任何请求）。
+- **类型：** 基于共享提取核心的确定性本地计算。头条模式下实体聚合为 `mentionCount`/`avgConfidence`；文本模式下每个匹配报告 `matchType`、`matchedText` 和 `confidence`。
+- **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"extract_entities","arguments":{"text":"CVE-2026-12345 exploited by APT28 against Microsoft cloud tenants"}}
+  }'
+```
+
+</CodeGroup>
+
+### `verify_claim`
+
+针对一条说法或标题的证据卡。在最新标题中找出报道同一事件的话题簇（一个事件常分布在多个簇中），并基于匹配簇给出 WorldMonitor 的覆盖判定。`variant: full`（默认）检索 WorldMonitor 信息源缓存中的所有最新标题（每个信息源最多 30 条），而不只是仪表板摘要提供的标题；与说法共享实义词最多的 100 条标题参与聚类。`tech` 变体检索其摘要。当簇中某条标题包含说法中至少一半的实义词且至少两个时即视为匹配；最多保留匹配度最高的 8 个簇。判定由 `assessCorroboration` 对所有匹配标题计算，因此同一发布方的转载源只计一次。
+
+返回 `found`、`state`（覆盖判定；已检索摘要但没有任何报道时为 `not-found`；摘要为空或不可用、未进行检索时为 `unknown` 且 `found: false`）、`corroboration`（`single-publisher`、`tier4-only`、`corroborated`、`unknown`）、带声明层级的 `publishers` 名单、最多 10 条带来源溯源信息的匹配 `headlines`、最佳匹配的 `credibilityScore`、`firstSeen` / `lastUpdated`，以及 `figures`：用简报溯源规则核对说法中的数字和日期是否出现在匹配标题中。`figures.ungrounded` 列出没有任何匹配标题提及的数字，并不表示该数字错误。`found: false` 表示没有匹配：`state` 为 `not-found` 时，该说法不在 WorldMonitor 当前的来源中；为 `unknown` 时，表示未进行检索。它绝不表示该说法为假。每个响应都带有相同的 `caveat`：衡量的是覆盖情况，而非准确性。
+
+`factChecks` 引用事实核查机构已就相似说法发布的评级。WorldMonitor 不对说法作出评级，只像引用通讯社报道一样注明出处地引用这些评级。每一项给出事实核查机构（`publisher`、`site`）、其原样评级 `rating`、发布日期 `reviewedAt`、链接 `url` 以及其所评级的说法 `claimReviewed`，并以 `label` 引出：这是对相似说法的事实核查，而非对本说法的核查。规则如下：
+
+- 仅限 [IFCN 原则准则](https://github.com/IFCN/verified-signatories)的认证签署机构，名单保存在 `shared/fact-checkers.json` 中，并像来源层级一样接受审核。以链接本身的域名为准，而非数据源报告的名称。
+- 仅显示强匹配：说法与被评级的说法须各自包含对方至少 60% 的实义词，且至少共有三个实义词。较弱的匹配不显示任何内容。
+- 英文事实核查，不限年份，按时间由新到旧排列。相互矛盾的评级全部列出，不作取舍。
+- 无论说法出自何人，规则均相同：匹配逻辑中不涉及任何人物、党派、话题或国家。
+- 评级绝不会改变 `state`、`corroboration` 或卡片中的任何其他内容。
+
+查询已执行时 `factChecks.state` 为 `ok`（此时 `items` 为空表示未找到）；未执行时为 `unavailable` 或 `not-configured`。查询失败绝不会导致工具调用失败。评级来自 Google Fact Check Tools API。
+
+**参数（工具专属）：**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `claim` | string | 要核查的说法或标题，最多 300 个字符。必填。 |
+| `variant` | `string: full / tech` | 要搜索的标题摘要变体。默认为 full。 |
+
+- **API 端点：** `GET /api/news/v1/list-feed-digest`、`GET /api/news/v1/search-fact-checks`、`GET /api/news/v1/search-claim-headlines`
+- **访问：** `subscription` — 需要 Pro 订阅。
+- **类型：** 基于最新标题窗口（最近 96 小时）的确定性本地计算，并非历史索引。不使用 LLM。
+- **配额：** 标准 — 每次调用都会消耗 MCP 每日配额。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"verify_claim","arguments":{"claim":"Trump strikes diesel deal with Putin"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_keyword_spikes`
+
+相对基线的关键词、CVE 与 APT/FIN 威胁组织飙升趋势，使用与仪表盘趋势关键词引擎相同的词项候选与飙升判定数学（最低近期计数、严格基线倍数、来源多样性门槛）。每条飙升包含 `sourceNames`（有对照表时为出版机构名称，否则为原始 feed 标签）以及最多三条 `{title, source, link}` 形式的 `sampleHeadlines`，以便代理归因并打开计数背后的报道。样本上的 `source` 是承载该折叠标题的全部出版机构；`link` 是规范的 `story:track:v1` URL，不一定属于某一个具名来源。工具会分别查询近期窗口与窗口前的基线数据，每组最多 800 条故事，因此高流量的近期窗口不会挤占基线样本。`baseline_hours` 报告实际采样的窗口前基线时长；`sample_truncated: true` 表示任一数据组触及上限。若没有窗口前故事，工具会返回空的飙升列表与明确的 `baseline unavailable` 说明，并且不会缓存该结果。结果按 `(window_hours, min_count)` 组合缓存 10 分钟。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| `window_hours` | integer | 检测飙升的近期窗口（1-12）。默认 2。 |
+| `min_count` | integer | 词项构成飙升所需的最低近期窗口故事数（2-20）。默认 5。 |
+| `limit` | integer | 返回飙升的上限（1-25）。默认 10。 |
+
+- **API 端点：** 无 —— 直接从 Redis 读取故事累积器与 story-track key；不代理任何 HTTP 端点。
+- **类型：** 确定性本地计算，附带 10 分钟 Redis 结果缓存。当累积器不可用/为空，或故事存储仅部分可读时返回 `note` —— 部分读取的结果绝不写入缓存，因此瞬时 Redis 故障不会在整个 TTL 内持续提供错误的飙升数据。
+- **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_keyword_spikes","arguments":{"window_hours":2,"limit":10}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_social_velocity`
+
+r/worldnews 与 r/geopolitics 中 `velocityScore`（得分对数 × 点赞率 × 6 小时衰减）最高的 30 条帖子，含得分、点赞率、评论数和链接（字段 `url`）。中继约每 3 小时刷新一次，超过 9 小时标记为过期，与 `/api/health` 的预算一致。帖子是未经核实的用户投稿：该工具衡量公众关注度，而非事件本身。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `subreddit` | string | 筛选为一个子版块（例如 "worldnews"、"geopolitics"）。 |
+| `limit` | number | 将帖子列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/intelligence/v1/get-social-velocity`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **9 小时**（中继约每 3 小时刷新一次；与 `/api/health` 预算一致）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_social_velocity","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `list_x_feed`
+
+精选公开新闻账号的 X 动态。仅返回永久链接与派生事实 — 从不返回帖文正文。用于查看哪些账号最近发帖，而不是转载正文。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `limit` | number | 否 | 返回的最大帖文数（1-200，默认 50） |
+| `topic` | string | 否 | 可选主题过滤，例如 breaking、conflict、geopolitics、cyber |
+| `account` | string | 否 | 可选账号 handle（不含 @） |
+
+- **API 端点：** `GET /api/intelligence/v1/list-x-feed`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**10.0s**。
+- **内容政策：** 帖文正文为 R4。MCP/embed 合作方仅获得事实 + 永久链接。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_x_feed","arguments":{"limit":20,"topic":"breaking"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_temporal_anomalies`
+
+时间异常监测：将当前事件计数与按星期和季节划分的基线进行对比，并按 z 分数评定严重度。新闻速度、卫星火点检测等被跟踪的数据流会与按工作日和月份分键的 90 天 Welford 基线比较。每个异常包含观测计数、预期基线计数、z 分数、倍数和严重度等级（medium ≥ 1.5σ、high ≥ 2σ、critical ≥ 3σ）。数据新鲜且异常列表为空，说明活动处于正常范围内 — 这本身就是信号。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `type` | string | 筛选为一个被跟踪的数据流类型（例如 "news"、"satellite_fires"）；响应中的 trackedTypes 列出当前已建立基线的类型。 |
+| `region` | string | 筛选为一个区域标签（不区分大小写的精确匹配）。 |
+| `min_severity` | string: medium / high / critical | 丢弃低于此严重度等级的异常。 |
+| `limit` | number | 将异常列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** 无（仅 MCP；底层 REST 基线端点为写穿式，已从对等性检查中排除）。
+- **类型：** 仅缓存读取 — 从 Redis 引导缓存亚秒级返回。MCP 调用不会调用生产者，也不会触发重建。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **45 分钟**。只有底层生产者路由/RPC（`GET /api/infrastructure/v1/list-temporal-anomalies`）收到流量时，才会在快照超过 20 分钟后按需重建。`cached_at` 记录该次重建的时间，而不是 MCP 调用时间，因此仅在生产者路由重建快照时推进。如果该路由没有流量，这个请求驱动的时间戳可能超过新鲜度预算。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_temporal_anomalies","arguments":{"min_severity":"high"}}
+  }'
+```
+
+</CodeGroup>

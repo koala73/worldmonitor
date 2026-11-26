@@ -54,7 +54,7 @@ describe('warm cells', () => {
   it('covers every digest edition, and each pair is a valid digest request', () => {
     assert.deepEqual([...new Set(cells.map((cell) => cell.edition))].sort(), [...editions].sort());
     assert.equal(cellKeys.size, cells.length, 'duplicate cells');
-    for (const cell of cells) assert.match(cell.lang, /^[a-z]{2}$/);
+    for (const cell of cells) assert.match(cell.lang, /^[a-z]{2,3}$/);
   });
 
   it('waits longer than the digest cache TTL plus a request, so every request rebuilds its cell', () => {

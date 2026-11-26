@@ -3,6 +3,22 @@
 
 import { cellToLatLng, isValidCell } from 'h3-js';
 
+// Morocco, Western Sahara, Algeria, Tunisia and western Libya north of the
+// Sahara's edge (21.5°N; 26°N across northern Mauritania). Across 35-37.6°N the
+// shore lines keep Spain, Sardinia, Sicily, Lampedusa and Malta in Europe; the
+// Canaries and Madeira are excluded. Mirrors isMaghreb in
+// scripts/regional-snapshot/mobility.mjs.
+function isNorthAfrica(lat, lon) {
+  if (lon < -17.2 || lon >= 25 || lat >= 37.6) return false;
+  if (lat > 27.5 && lat < 29.5 && lon > -18.3 && lon < -13.3) return false; // Canaries
+  if (lat > 32.3 && lat < 33.2 && lon > -17.4 && lon < -16.2) return false; // Madeira
+  if (lat < (lon >= -13 && lon < -4.8 ? 26.0 : 21.5)) return false;
+  if (lat < 35) return lon < 11.5 || lat < 34.5;
+  if (lon < -1.8) return lat < 36.0;
+  if (lon < 8.0) return lat < 37.1;
+  return lon < 11.5;
+}
+
 export function classifyRegion(lat, lon) {
   if (lat >= 29 && lat <= 42 && lon >= 43 && lon <= 63) return 'iran-iraq';
   if (lat >= 31 && lat <= 37 && lon >= 35 && lon <= 43) return 'levant';
@@ -14,6 +30,7 @@ export function classifyRegion(lat, lon) {
   if (lat >= 10 && lat <= 20 && lon >= 42 && lon <= 55) return 'yemen-horn';
   if (lat >= 0 && lat <= 12 && lon >= 32 && lon <= 48) return 'east-africa';
   if (lat >= 15 && lat <= 24 && lon >= 25 && lon <= 40) return 'sudan-sahel';
+  if (isNorthAfrica(lat, lon)) return 'north-africa';
   if (lat >= 50 && lat <= 72 && lon >= -10 && lon <= 25) return 'northern-europe';
   if (lat >= 35 && lat <= 50 && lon >= -10 && lon <= 25) return 'western-europe';
   if (lat >= 1 && lat <= 8 && lon >= 95 && lon <= 108) return 'southeast-asia';

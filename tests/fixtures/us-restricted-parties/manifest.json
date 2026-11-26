@@ -1,0 +1,54 @@
+{
+ "feed": "https://github.com/Mattbusel/us-restricted-parties",
+ "license": "CC BY 4.0 (data compiled by Tensorust LLC from US government sources)",
+ "format": "Senzing JSON Lines",
+ "built_at": "2026-11-18T02:14:50Z",
+ "lists": {
+  "us_dod_1260h": {
+   "data_source": "US_DOD_1260H",
+   "name": "DoD Chinese Military Companies (Section 1260H)",
+   "source": "Federal Register, DoD notices under Section 1260H",
+   "file": "us_dod_1260h.jsonl",
+   "fetched_at": "2026-11-18T02:14:50Z",
+   "records": 2,
+   "sha256": "430dc58752c7a3bcf3bc5818369361040027a1e61c843e1f93f347c21b7737f7"
+  },
+  "us_far_889": {
+   "data_source": "US_FAR_889",
+   "name": "Section 889 covered telecommunications and video surveillance companies",
+   "source": "eCFR, 48 CFR 52.204-25",
+   "file": "us_far_889.jsonl",
+   "fetched_at": "2026-11-18T02:14:50Z",
+   "records": 1,
+   "sha256": "04974a26c2bcb16fbe677c7ba7dfa47ba0b27512238797d95414470abfde3169"
+  },
+  "us_fcc_covered": {
+   "data_source": "US_FCC_COVERED",
+   "name": "FCC Covered List (Secure and Trusted Communications Networks Act)",
+   "source": "https://www.fcc.gov/supplychain/coveredlist",
+   "file": "us_fcc_covered.jsonl",
+   "fetched_at": "2026-11-18T02:14:50Z",
+   "records": 2,
+   "sha256": "480adf67b07c4c3cda22d2462ed79104377656a2895282aaa2813d5256ead635"
+  },
+  "us_dhs_uflpa": {
+   "data_source": "US_DHS_UFLPA",
+   "name": "UFLPA Entity List",
+   "source": "https://www.dhs.gov/uflpa-entity-list",
+   "file": "us_dhs_uflpa.jsonl",
+   "fetched_at": "2026-11-18T02:14:50Z",
+   "records": 2,
+   "sha256": "d570461fc6a853c546bb5124dd300bb6dd980c318852105503abff6ec56bff54"
+  },
+  "us_biosecure": {
+   "data_source": "US_BIOSECURE",
+   "name": "BIOSECURE biotechnology companies of concern (interim)",
+   "source": "Derived from us_dod_1260h; Federal Register watched for the OMB list",
+   "file": "us_biosecure.jsonl",
+   "fetched_at": "2026-11-18T02:14:50Z",
+   "records": 1,
+   "sha256": "1db6196b5edf3fda594d1b2b7fdbb15878d0fe7cfe519f1ca085b395e6907259"
+  }
+ },
+ "errors": {}
+}

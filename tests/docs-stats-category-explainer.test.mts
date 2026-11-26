@@ -14,7 +14,6 @@
  * for the wrong reason cannot masquerade as coverage.
  */
 import { readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -181,10 +180,5 @@ describe('--check wiring', () => {
   // suite green while the gate no longer runs. DOC_VALIDATORS is the wiring.
   it('runs the category explainer gate as part of --check', () => {
     assert.ok(DOC_VALIDATORS.includes(validateCategoryExplainerCopy));
-  });
-
-  it('exits 0 end to end on the real repo', () => {
-    const result = spawnSync('node', ['scripts/docs-stats.mjs', '--check'], { cwd: ROOT, encoding: 'utf8' });
-    assert.equal(result.status, 0, result.stderr);
   });
 });

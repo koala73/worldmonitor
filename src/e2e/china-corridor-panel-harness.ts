@@ -33,7 +33,9 @@ function signal(family: ChinaCorridorSignalFamily): CorridorSourceSignal {
     availability: 'available',
     publisher: {
       id: 'publisher:test',
-      name: family === 'hazard' ? '<script>unsafe publisher</script>' : `Reviewed ${family} publisher`,
+      name: family === 'hazard'
+        ? '<script>unsafe publisher</script>'
+        : family === 'port' ? 'IMF PortWatch' : `Reviewed ${family} publisher`,
       type: 'official',
     },
     sourceUrl: 'https://example.com/source',
@@ -47,8 +49,12 @@ function signal(family: ChinaCorridorSignalFamily): CorridorSourceSignal {
     revision: null,
     transportFreshness: 'fresh',
     contentFreshness: 'current',
-    summary: family === 'hazard' ? '<img src=x onerror=alert(1)> unsafe title' : `Reviewed ${family} condition`,
-    metrics: {},
+    summary: family === 'hazard'
+      ? '<img src=x onerror=alert(1)> unsafe title'
+      : family === 'port' ? 'PortWatch activity observation available for Shanghai.' : `Reviewed ${family} condition`,
+    metrics: family === 'port'
+      ? { tankerCalls30d: 423, trendDelta: -13, importTankerDwt30d: 4_250_000, exportTankerDwt30d: 812_000 }
+      : {},
   };
 }
 
@@ -82,6 +88,11 @@ const map = Object.create(MapContainer.prototype) as MapContainer;
 const mapInternals = map as unknown as Record<string, unknown>;
 Object.assign(mapInternals, {
   setCenter: () => {},
+  // rehydrateActiveMap() reads these constructor-built fields (#9164, #9637).
+  getState: () => ({ layers: {} }),
+  emergencyLayer: { setEnabled: () => {} },
+  notamAirspaceLayer: { setEnabled: () => {} },
+  cachedNotamAirspace: [],
   layerLoadingState: new Map(),
   layerReadyState: new Map(),
   pendingViewportActions: [],

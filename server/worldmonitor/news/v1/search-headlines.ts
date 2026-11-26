@@ -1,0 +1,79 @@
+import type {
+  SearchHeadlinesRequest,
+  SearchHeadlinesResponse,
+  ServerContext,
+} from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
+import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
+import { getClientRateLimitKey } from '../../../_shared/client-ip';
+import { readTrustedRateLimitPrincipal } from '../../../_shared/rate-limit';
+import { markNoCacheResponse } from '../../../_shared/response-headers';
+import { SERVER_EDITIONS } from './_feeds';
+import {
+  HEADLINE_HISTORY_FREE_HOURS,
+  HEADLINE_HISTORY_PRO_HOURS,
+  HEADLINE_SEARCH_MIN_QUERY_CHARS,
+  headlineQueryWords,
+  searchHeadlineHistory,
+} from './_headline-history';
+
+/**
+ * Who is charged for an index read the memo cannot answer. A batched or MCP
+ * sub-request re-derives its address from the platform egress, so the
+ * gateway-stamped account (client copies are stripped) comes first.
+ */
+function headlineSearchCaller(request: Request): string {
+  const principal = readTrustedRateLimitPrincipal(request.headers);
+  if (principal.principalUserId) return `principal:${principal.principalScope ?? 'session'}:${principal.principalUserId}`;
+  return `ip:${getClientRateLimitKey(request)}`;
+}
+
+/**
+ * Cmd+K headline search over the headline history (see _headline-history.ts).
+ *
+ * Two routes share this function and differ only in the window, so the plan
+ * decides the depth by which URL a caller may reach, never by a parameter:
+ *   /search-headlines          24 hours, any dashboard session
+ *   /search-headline-archive   7 days, in PREMIUM_RPC_PATHS (gateway-enforced)
+ * Either window is cut to what the language keeps (English 7 days, most
+ * others 3, the rest 1: headlineHistoryRetentionDays), and the response's
+ * windowHours names the window searched.
+ * Both routes are no-store in the gateway (RPC_CACHE_TIER): the history drops
+ * revoked articles on every request, so no cache may answer in its place.
+ */
+async function search(
+  ctx: ServerContext,
+  req: SearchHeadlinesRequest,
+  windowHours: number,
+): Promise<SearchHeadlinesResponse> {
+  const words = headlineQueryWords(req.query ?? '');
+  if (!words) {
+    throw new ValidationError([{
+      field: 'query',
+      description: `must hold at least ${HEADLINE_SEARCH_MIN_QUERY_CHARS} letters or digits`,
+    }]);
+  }
+  const variant = req.variant || 'full';
+  if (!(SERVER_EDITIONS as readonly string[]).includes(variant)) {
+    throw new ValidationError([{ field: 'variant', description: `must be one of: ${SERVER_EDITIONS.join(', ')}` }]);
+  }
+  const lang = req.lang || 'en';
+  if (!NEWS_LANGUAGES.has(lang)) {
+    throw new ValidationError([{ field: 'lang', description: 'must be a lowercase two-letter language code' }]);
+  }
+  const result = await searchHeadlineHistory(words, variant, lang, windowHours, headlineSearchCaller(ctx.request));
+  // A search that did not run (an unreadable index, or a caller with no index
+  // reads left) must not be cached as "no matches". The gateway
+  // stores neither route; this keeps that true for any other caller of the
+  // handler.
+  if (result.state === 'unavailable') markNoCacheResponse(ctx.request);
+  return result;
+}
+
+export function searchHeadlines(ctx: ServerContext, req: SearchHeadlinesRequest): Promise<SearchHeadlinesResponse> {
+  return search(ctx, req, HEADLINE_HISTORY_FREE_HOURS);
+}
+
+export function searchHeadlineArchive(ctx: ServerContext, req: SearchHeadlinesRequest): Promise<SearchHeadlinesResponse> {
+  return search(ctx, req, HEADLINE_HISTORY_PRO_HOURS);
+}

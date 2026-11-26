@@ -172,13 +172,18 @@ describe('glossary data integrity', () => {
     const page = readFileSync(new URL('../blog-site/src/pages/glossary/[slug].astro', import.meta.url), 'utf8');
     const liveTools = readFileSync(new URL('../scripts/crawlable-live-tools.mjs', import.meta.url), 'utf8');
     // The build and the routing middleware render the section with one
-    // function, so the hooks are checked in both of its states.
-    assert.match(page, /<Fragment set:html=\{renderPizzaIndexSection\(null\)\} \/>/);
+    // function, so the hooks are checked in each of its states.
+    assert.match(page, /<Fragment set:html=\{renderPizzaIndexSection\(publishedReading, \{ live: false \}\)\} \/>/);
+    // glossaryPizzaIndex's choice of snapshot and dateModified is unit-tested
+    // in tests/pizza-index-published.test.mjs; this pins that the page uses it.
+    assert.match(page, /glossaryPizzaIndex\(pulses, term\.modifiedDate\)/);
+    assert.match(page, /dateModified \? \{ dateModified \}/);
     const reading = {
       available: true, level: '3', label: 'Elevated Activity', updatedAt: Date.UTC(2026, 10, 5, 12),
       venues: [{ name: 'A', status: 'Normal' }],
     };
-    for (const section of [renderPizzaIndexSection(null), renderPizzaIndexSection(reading)]) {
+    const published = { updatedAt: '2026-11-04T21:30:00.000Z', level: '3', label: 'Elevated Activity', venues: [] };
+    for (const section of [renderPizzaIndexSection(null), renderPizzaIndexSection(reading), renderPizzaIndexSection(published, { live: false })]) {
       for (const hook of [
         'data-live-pizzint', 'data-live-status', 'data-live-answer', 'data-live-fallback', 'data-live-grid',
         'data-pizzint-level', 'data-pizzint-label', 'data-pizzint-venues', 'data-live-updated', 'data-live-refresh',

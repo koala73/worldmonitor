@@ -124,7 +124,7 @@ function injectStyles(): void {
     .fc-filter.fc-active { background: var(--accent-color, #3b82f6); color: #fff; border-color: var(--accent-color, #3b82f6); }
 
     /* ── NEXUS: theater grid ─────────────────────────────────────────────── */
-    .fc-nexus { padding: 8px; }
+    .fc-nexus { padding: 8px 0; }
     .fc-theater-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin-bottom: 10px; }
     .fc-theater-card {
       background: var(--panel-bg, #161b22);
@@ -278,7 +278,7 @@ function injectStyles(): void {
     .fc-forecast-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* ── Track record strip (#7074) ──────────────────────────────────────── */
-    .fc-record { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 10px; margin: 6px 8px 0; padding: 5px 8px; border: 1px solid var(--border-color, #30363d); border-radius: 4px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); line-height: 1.4; color: var(--text-secondary, #7d8590); }
+    .fc-record { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 10px; margin: 6px 0 0; padding: 5px 8px; border: 1px solid var(--border-color, #30363d); border-radius: 4px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); line-height: 1.4; color: var(--text-secondary, #7d8590); }
     .fc-record-label { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
     .fc-record-label[title] { cursor: help; }
     .fc-record-item { color: var(--text-primary, #e6edf3); white-space: nowrap; text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
@@ -404,6 +404,7 @@ export class ForecastPanel extends Panel {
         // filter in getVisibleForecasts().
         this.setCount(this.getVisibleForecasts().length);
         this.render();
+        this.reportFilterChoice(this.selectedRegion);
         return;
       }
 
@@ -591,6 +592,20 @@ export class ForecastPanel extends Panel {
     // when the simulation RPC resolves before the forecast RPC. updateForecasts will trigger
     // the combined render when it arrives.
     if (this.forecasts.length > 0) this.render();
+  }
+
+  // The region pill is a tab-level choice (#10453 phase 2): the analyst's
+  // region reaches a teammate who opens the shared dashboard.
+  public override getFilterChoice(): string | null {
+    return this.selectedRegion || null;
+  }
+
+  public override setFilterChoice(value: string | null): void {
+    const next = value ?? '';
+    if (next === this.selectedRegion || !FORECAST_REGIONS.some((r) => r.id === next)) return;
+    this.selectedRegion = next;
+    this.setCount(this.getVisibleForecasts().length);
+    this.render();
   }
 
   // Returns forecasts that pass the probability AND region filters. Domain

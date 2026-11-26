@@ -3,7 +3,7 @@
 #   docker build -f demos/verification-desk/Dockerfile -t verification-desk .
 # On Railway, set RAILWAY_DOCKERFILE_PATH=demos/verification-desk/Dockerfile.
 # Keys and DESK_PASSWORD come from the host's environment, never the image.
-FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5
 
 WORKDIR /app
 # Only what the desk imports: WorldMonitor's grading modules and the desk itself.

@@ -103,7 +103,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -261,7 +261,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -363,10 +363,10 @@ paths:
                                 "prices":
                                     - "change": 1.5
                                       "commodity": "example"
+                                      "frequency": "example"
                                       "name": "WorldMonitor Analyst"
                                       "price": 75.25
                                       "priceAt": 1717200000000
-                                      "unit": "example"
                             schema:
                                 $ref: '#/components/schemas/GetEnergyPricesResponse'
                 "400":
@@ -387,7 +387,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -523,7 +523,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -642,7 +642,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -756,7 +756,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -901,7 +901,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -1038,7 +1038,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -1151,7 +1151,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -1264,7 +1264,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -1377,7 +1377,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -1567,7 +1567,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -1689,7 +1689,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -1806,7 +1806,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -1921,7 +1921,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -2043,7 +2043,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -2177,7 +2177,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -2308,7 +2308,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -2420,7 +2420,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -2532,7 +2532,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -2647,7 +2647,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -2776,7 +2776,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -2891,7 +2891,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -3005,7 +3005,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -3119,7 +3119,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -3236,7 +3236,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -3353,7 +3353,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -3423,7 +3423,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFoodPrices
-            description: GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, market type, product, origin, unit and currency must match; levels are not comparable across countries.
+            description: GetFoodPrices returns local-currency market prices with prior-week comparisons (exactly seven days earlier, or for items surveyed on irregular days the most recent survey 7 to 28 days earlier), plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, market type, product, origin, unit and currency must match; levels are not comparable across countries.
             operationId: GetFoodPrices
             parameters:
                 - name: jmespath
@@ -3472,7 +3472,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -3601,7 +3601,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -3745,7 +3745,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -3876,7 +3876,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -4141,7 +4141,7 @@ paths:
                     description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -4290,7 +4290,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -4419,7 +4419,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -4547,7 +4547,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -4798,7 +4798,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -4941,7 +4941,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -5078,7 +5078,7 @@ paths:
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            description: Present when the 403 is a provider-confirmed billing denial; same value as the body `code`.
                             schema:
                                 type: string
                     content:
@@ -5252,7 +5252,8 @@ components:
                     type: string
                     enum:
                         - subscription_lapsed
-                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).
+                        - payment_failed
+                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse or payment failure (mirrored in the X-Billing-Verification response header).
                 requiredTier:
                     type: integer
                     format: int32
@@ -5453,7 +5454,7 @@ components:
                 price:
                     type: number
                     format: double
-                    description: Current price in USD.
+                    description: Observed price in USD. Check stale before treating it as current.
                 unit:
                     type: string
                     description: Unit of measurement (e.g., "$/barrel", "$/MMBtu").
@@ -5464,7 +5465,16 @@ components:
                 priceAt:
                     type: integer
                     format: int64
-                    description: 'Price date, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Observation date as Unix epoch milliseconds. For weekly prices, the week ending date.. Warning: Values > 2^53 may lose precision in JavaScript'
+                priceSource:
+                    type: string
+                priceBasis:
+                    type: string
+                frequency:
+                    type: string
+                stale:
+                    type: boolean
+                    description: True when the observation is undated, future-dated, or older than the freshness budget.
             required:
                 - commodity
             description: EnergyPrice represents a current energy commodity price from EIA.
@@ -6348,7 +6358,9 @@ components:
                 annualGrowth:
                     type: number
                     format: double
-                    description: Year-over-year debt growth percent (2023->2024).
+                    description: |-
+                        Percent change in debt_to_gdp versus the prior year. A falling ratio can
+                         coexist with rising debt, so this is not debt-stock growth.
                 perSecondRate:
                     type: number
                     format: double
@@ -6531,6 +6543,10 @@ components:
                     type: string
                 unit:
                     type: string
+                releaseAt:
+                    type: integer
+                    format: int64
+                    description: 'Scheduled release instant, as Unix epoch milliseconds. 0 when no authoritative release time is known.. Warning: Values > 2^53 may lose precision in JavaScript'
         GetCrudeInventoriesRequest:
             type: object
             description: GetCrudeInventoriesRequest is the request message for GetCrudeInventories.
@@ -6979,9 +6995,11 @@ components:
                 wowAvailable:
                     type: boolean
                     description: |-
-                        True only when the same series has a price exactly seven days before `date`.
-                         When false, there is no comparison: wow_pct, previous_date and previous_price
-                         are placeholders (0 or empty), not a 0% change.
+                        True only when the same series has a price exactly seven days before `date`, or,
+                         for items the source surveys on irregular days (PriceCatcher's basket survey),
+                         its most recent price from 7 to 28 days before `date`; previous_date states
+                         which. With no qualifying price, including a gap of more than 28 days, it is false. When false, there is no comparison: wow_pct, previous_date and
+                         previous_price are placeholders (0 or empty), not a 0% change.
                 wowPct:
                     type: number
                     format: double

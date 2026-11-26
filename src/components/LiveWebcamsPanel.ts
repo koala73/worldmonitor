@@ -56,7 +56,7 @@ const WEBCAM_FEEDS: WebcamFeed[] = [
   { id: 'iss-earth', city: 'ISS Earth View', country: 'Space', region: 'space' },
   { id: 'nasa-live', city: 'NASA TV', country: 'Space', region: 'space' },
   { id: 'space-x', city: 'SpaceX', country: 'Space', region: 'space' },
-  { id: 'space-walk', city: 'Space', country: 'Space', region: 'space' },
+  { id: 'space-walk', city: 'Sen 4K Earth View', country: 'Space', region: 'space' },
 ];
 
 const MAX_GRID_CELLS = 4;
@@ -128,11 +128,24 @@ export class LiveWebcamsPanel extends Panel {
   private idleStopped: { readonly feedIds: readonly string[]; readonly idleAfterMs: number } | null = null;
   private readonly boundVisibilityHandler = () => {
     if (document.hidden) {
+      // Webcams are silent, so nothing is lost by stopping them while nobody can see them. The auto-play
+      // wall starts again by itself on return; a wall the viewer started is remembered so it does too,
+      // instead of coming back as preview tiles that need starting again.
+      this.resumeFeedIdsOnTabReturn = this.alwaysOn ? [] : Array.from(this.activeIframeFeedIds);
       this.teardownPlayback();
+      return;
+    }
+    const resumeFeedIds = this.resumeFeedIdsOnTabReturn;
+    this.resumeFeedIdsOnTabReturn = [];
+    if (resumeFeedIds.length > 0 && !this.idleStopped && this.canHostLiveMedia()) {
+      for (const feedId of resumeFeedIds) this.activeIframeFeedIds.add(feedId);
+      if (this.isVisible) this.render();
       return;
     }
     if (!this.startAlwaysOnPlayback() && this.isVisible) this.render();
   };
+  /** Feeds the viewer had playing when the tab was hidden. Restored on return. */
+  private resumeFeedIdsOnTabReturn: string[] = [];
   private alwaysOn = getLiveStreamsAlwaysOn();
   private unsubscribeStreamSettings: (() => void) | null = null;
   private unsubscribeIdle: (() => void) | null = null;
@@ -301,9 +314,27 @@ export class LiveWebcamsPanel extends Panel {
     this.element.insertBefore(this.toolbar, this.content);
   }
 
+  // The region is a tab-level choice (#10453 phase 2): the analyst's region
+  // reaches a teammate who opens the shared dashboard.
+  public override getFilterChoice(): string | null {
+    return this.regionFilter === 'all' ? null : this.regionFilter;
+  }
+
+  public override setFilterChoice(value: string | null): void {
+    const next = (value ?? 'all') as RegionFilter;
+    if (!ALL_REGIONS.includes(next)) return;
+    this.applyRegionFilter(next);
+  }
+
   private setRegionFilter(filter: RegionFilter): void {
     if (filter === this.regionFilter) return;
     trackWebcamRegionFiltered(filter);
+    this.applyRegionFilter(filter);
+    this.reportFilterChoice(filter);
+  }
+
+  private applyRegionFilter(filter: RegionFilter): void {
+    if (filter === this.regionFilter) return;
     this.regionFilter = filter;
     this.toolbar?.querySelectorAll('.webcam-region-btn').forEach(btn => {
       (btn as HTMLElement).classList.toggle('active', (btn as HTMLElement).dataset.region === filter);
@@ -600,7 +631,9 @@ export class LiveWebcamsPanel extends Panel {
 
     const meta = document.createElement('div');
     meta.className = 'webcam-preview-meta';
-    meta.textContent = `${feed.country} · ${feed.region.replace('-', ' ')}`;
+    const metaParts = [feed.country, feed.region.replace('-', ' ')]
+      .filter((part, i, parts) => ![feed.city, ...parts.slice(0, i)].some(seen => seen.toLowerCase() === part.toLowerCase()));
+    meta.textContent = metaParts.join(' · ');
 
     const playBtn = document.createElement('button');
     playBtn.type = 'button';
@@ -778,6 +811,7 @@ export class LiveWebcamsPanel extends Panel {
 
   public stopLiveMediaForClose(): void {
     this.idleStopped = null;
+    this.resumeFeedIdsOnTabReturn = [];
     this.clearActivePlayback();
     this.substitutes.clear();
     if (this.isVisible && this.element.isConnected) {

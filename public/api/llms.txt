@@ -20,8 +20,8 @@ This is the API-section companion to the site-wide briefing at https://www.world
 
 ## Authentication
 
-- **API key:** send header `X-WorldMonitor-Key: wm_<40-hex>` on subscription-gated MCP and REST data calls. Issue a key at https://www.worldmonitor.app/pro
-- **Free MCP data exception:** `get_sources` is the sole credential-free, daily-quota-free data tool. Anonymous calls use a separate fail-closed limit of 10/minute/IP. All other data tools are subscription-gated.
+- **API key:** send header `X-WorldMonitor-Key: wm_<40-hex>` on REST API calls and paid MCP tools; API keys are a paid feature. Issue a key at https://www.worldmonitor.app/pro
+- **Free MCP access:** `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed. Anonymous `get_sources` calls use a separate fail-closed limit of 10/minute/IP.
 - **OAuth 2.1:** the MCP server supports OAuth (`scope=mcp`). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
 - **Auth matrix, plans & limits:** https://www.worldmonitor.app/docs/usage-auth · machine-readable pricing: https://www.worldmonitor.app/pricing.md · human auth guide: https://www.worldmonitor.app/auth.md
 
@@ -46,7 +46,7 @@ This is the API-section companion to the site-wide briefing at https://www.world
 ## Rate Limits & Quota
 
 - Discovery methods (`tools/list`, `prompts/list`, `describe_tool`) are quota-exempt but rate-limited to 60 requests/minute.
-- `get_sources` is the sole data call that consumes no daily quota. All other data calls are subscription-gated and use the applicable plan limits. Details: https://www.worldmonitor.app/pricing.md
+- `get_sources` consumes no daily quota. Free-account tools draw on the free daily allowance; paid tools use the applicable plan limits. Details: https://www.worldmonitor.app/pricing.md
 
 ## Developer Resource Pages
 

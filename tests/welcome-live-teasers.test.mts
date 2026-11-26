@@ -35,7 +35,7 @@ function requested(url: URL, key: string): string[] {
   return url.searchParams.getAll(key);
 }
 
-type Overrides = { chokepoints?: Record<string, unknown> };
+type Overrides = { chokepoints?: Record<string, unknown>; digest?: Record<string, unknown> };
 
 // Mirrors production on 2026-11-06: each quote endpoint returns only the
 // symbols it serves and names the rest as NOT_FOUND.
@@ -69,6 +69,9 @@ function productionLikeFetch(overrides: Overrides = {}) {
           upstreamUnavailable: true,
           ...overrides.chokepoints,
         });
+      case '/api/news/v1/list-feed-digest':
+        if (!overrides.digest) return new Response('{}', { status: 503 });
+        return json({ generatedAt: new Date().toISOString(), ...overrides.digest });
       default:
         return new Response('{}', { status: 503 });
     }
@@ -115,6 +118,33 @@ describe('welcome strip upgrades to live data', () => {
     }) as typeof fetch;
     const state = await fetchLiveTeasers();
     assert.equal(state.chokepoints.live, false);
+  });
+
+  // #11190: on 2026-11-23 Meduza and NV EN led the strip with the same Poland
+  // missile story under two URLs, so four rows showed three stories.
+  it('gives one live headline row to a story two outlets cover', async () => {
+    const at = Date.now();
+    const row = (title: string, source: string, link: string, importanceScore: number) => (
+      { title, source, link, publishedAt: at, importanceScore }
+    );
+    globalThis.fetch = productionLikeFetch({
+      digest: {
+        categories: {
+          europe: { items: [
+            row('All three \u2018flying objects\u2019 that fell in Poland turned out to be Russian X-101 cruise missiles', 'Meduza', 'https://meduza.io/en/news/poland', 90),
+            row('All three \u2018flying objects\u2019 that crashed in Poland were Russian Kh-101 missiles', 'NV EN', 'https://english.nv.ua/poland.html', 85),
+          ] },
+          world: { items: [
+            row('Fed holds rates steady amid inflation concerns', 'Reuters', 'https://www.reuters.com/a', 40),
+            row('Magnitude 6.8 earthquake strikes northern Chile', 'AP News', 'https://apnews.com/b', 30),
+            row('Apple unveils new AI features at WWDC keynote', 'BBC World', 'https://www.bbc.com/c', 20),
+          ] },
+        },
+      },
+    }) as typeof fetch;
+    const state = await fetchLiveTeasers();
+    assert.equal(state.headlines.live, true);
+    assert.deepEqual(state.headlines.items.map(h => h.source), ['Meduza', 'Reuters', 'AP News', 'BBC World']);
   });
 
   it('keeps the published snapshot when no chokepoint rows come back', async () => {

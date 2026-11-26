@@ -24,6 +24,8 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { resolveTechEventsPaging, type TechEventsPagingPresence } from './_tech-events-paging';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
 
 const REDIS_CACHE_KEY = 'research:tech-events:v1';
 const REDIS_CACHE_TTL = 21600; // 6 hr — weekly event data
@@ -139,6 +141,13 @@ function normalizeLocation(location: string | null): (TechEventCoords) | null {
 
 // ---------- ICS Parser ----------
 
+// All-day DTEND is exclusive (RFC 5545), so the event's last day is the day before it.
+function inclusiveIcsEndDate(startDate: string, dtend: string | undefined): string {
+  if (!dtend || dtend <= startDate) return startDate;
+  const lastDay = new Date(Date.UTC(Number(dtend.slice(0, 4)), Number(dtend.slice(4, 6)) - 1, Number(dtend.slice(6, 8)) - 1));
+  return lastDay.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
 function parseICS(icsText: string): TechEvent[] {
   const events: TechEvent[] = [];
   const eventBlocks = icsText.split('BEGIN:VEVENT').slice(1);
@@ -155,7 +164,7 @@ function parseICS(icsText: string): TechEvent[] {
       const summary = summaryMatch[1]!.trim();
       const location = locationMatch ? locationMatch[1]!.trim() : '';
       const startDate = dtstartMatch[1]!;
-      const endDate = dtendMatch ? dtendMatch[1]! : startDate;
+      const endDate = inclusiveIcsEndDate(startDate, dtendMatch?.[1]);
       const url = urlMatch ? urlMatch[1]!.trim() : '';
       const uid = uidMatch ? uidMatch[1]!.trim() : '';
 
@@ -475,6 +484,11 @@ export async function listTechEvents(
     const geocoded = geocodeEvents(result.events);
     return filterEvents(geocoded, req, pagingPresence);
   } catch (error) {
+    // Fixed string only: exception text can carry internals (the shared-cache
+    // backoff error embeds cache-key names). Stays non-empty so the gateway's
+    // no-store contract (getRpcNoStoreReasonFromJson) still applies.
+    console.error('[tech-events] listTechEvents failed:', error instanceof Error ? error.message : String(error));
+    captureSilentError(error, { tags: { route: 'research/list-tech-events', step: 'handler-catch' } });
     return {
       success: false,
       count: 0,
@@ -482,7 +496,7 @@ export async function listTechEvents(
       mappableCount: 0,
       lastUpdated: new Date().toISOString(),
       events: [],
-      error: error instanceof Error ? error.message : String(error),
+      error: 'tech events unavailable: request failed',
     };
   }
 }

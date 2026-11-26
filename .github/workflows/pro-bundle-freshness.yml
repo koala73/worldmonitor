@@ -25,6 +25,8 @@ on:
       - 'scripts/generate-public-product-facts.mjs'
       - 'shared/content-attribution.ts'
       - 'pro-test/**'
+      - '.github/workflows/pro-bundle-freshness.yml'
+      - '.github/actions/install-root-deps/**'
 
 permissions:
   contents: read
@@ -35,22 +37,38 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
+      # No setup-node `cache:`. This workflow runs only on pull requests, so a
+      # cache it keys itself is never written on main, and a PR cannot read
+      # another PR's cache: every PR missed and saved its own 592 MB npm
+      # cache, 8 identical copies at once, which pushed the repository past
+      # its 10 GB cache limit and evicted main's caches. Both installs below
+      # restore entries that test.yml writes on main.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            pro-test/package-lock.json
 
-      - name: Install root deps
-        run: npm ci --ignore-scripts
+      - uses: ./.github/actions/install-root-deps
 
       - name: Regenerate product facts
         run: npm run product:facts
 
+      # Same key as test.yml's unit-built-output restore (a test holds them
+      # equal), restore-only: a PR that changes pro-test's dependencies
+      # installs them without saving a copy only that PR could read.
+      - name: Restore pro-test dependencies
+        id: built-output-deps
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            blog-site/node_modules
+            pro-test/node_modules
+          key: built-output-deps-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('blog-site/package.json', 'blog-site/package-lock.json', 'blog-site/.npmrc', 'pro-test/package.json', 'pro-test/package-lock.json', 'pro-test/.npmrc', '.npmrc', 'vendor/**') }}
+
       - name: Install pro-test deps
-        run: cd pro-test && npm ci
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        env:
+          npm_config_allow_scripts: ''
+        run: npm --prefix pro-test ci --prefer-offline
 
       - name: Build pro-test
         run: cd pro-test && npm run build

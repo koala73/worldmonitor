@@ -205,7 +205,9 @@ describe('advisory source health', () => {
   it('wires the diagnostics into the seed run: stripped from both keys, written on publish and on a validation skip', async () => {
     const source = readFileSync(new URL('../scripts/seed-security-advisories.mjs', import.meta.url), 'utf8');
     assert.match(source, /publishTransform: advisoryPublishTransform/);
-    assert.match(source, /key: BOOTSTRAP_KEY, transform: advisoryPublishTransform/);
+    // The bootstrap transform strips the diagnostics through advisoryPublishTransform.
+    assert.match(source, /key: BOOTSTRAP_KEY, transform: advisoryBootstrapTransform/);
+    assert.match(source, /export function advisoryBootstrapTransform\(data\) \{\n.*= advisoryPublishTransform\(data\);/);
     assert.match(source, /afterPublish: advisoryAfterPublish/);
     assert.match(source, /afterValidationSkip: advisoryAfterPublish/);
   });

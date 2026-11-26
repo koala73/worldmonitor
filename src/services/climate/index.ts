@@ -1,5 +1,5 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { ClimateAnomaly as ProtoClimateAnomaly, Co2DataPoint as ProtoCo2DataPoint, Co2Monitoring as ProtoCo2Monitoring, AnomalySeverity as ProtoAnomalySeverity, AnomalyType as ProtoAnomalyType, GetCo2MonitoringResponse, GetOceanIceDataResponse, ListClimateAnomaliesResponse, ListClimateDisastersResponse } from '@/generated/client/worldmonitor/climate/v1/service_client';
+import type { ClimateAnomaly as ProtoClimateAnomaly, Co2DataPoint as ProtoCo2DataPoint, Co2Monitoring as ProtoCo2Monitoring, AnomalySeverity as ProtoAnomalySeverity, AnomalyType as ProtoAnomalyType, GetCo2MonitoringResponse, GetOceanIceDataResponse, ListClimateAnomaliesResponse, ListClimateDisastersResponse, ListReservoirLevelsResponse } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import {
@@ -8,6 +8,7 @@ import {
   type OceanIceIndicators,
   type OceanIceSeedSnakeShape,
 } from './ocean-ice';
+import { toReservoirLevelsSnapshot, type ReservoirLevelsSnapshot } from './reservoir-levels';
 import { ClimateServiceClient } from '@/services/generated-rpc-clients';
 
 // Re-export consumer-friendly type matching legacy shape exactly.
@@ -61,6 +62,7 @@ export interface Co2Monitoring {
 }
 
 export type { OceanIceIndicators, OceanIceTrendPoint } from './ocean-ice';
+export type { ReservoirLevel, ReservoirLevelStatus, ReservoirLevelsSnapshot } from './reservoir-levels';
 
 const client = new ClimateServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListClimateAnomaliesResponse>({ name: 'Climate Anomalies', cacheTtlMs: 20 * 60 * 1000, persistCache: true });
@@ -69,7 +71,9 @@ const oceanIceBreaker = createCircuitBreaker<GetOceanIceDataResponse>({ name: 'O
 
 const emptyClimateFallback: ListClimateAnomaliesResponse = { anomalies: [] };
 const emptyCo2Fallback: GetCo2MonitoringResponse = {};
+const reservoirLevelsBreaker = createCircuitBreaker<ListReservoirLevelsResponse>({ name: 'Reservoir Levels', cacheTtlMs: 26 * 60 * 60 * 1000, persistCache: true });
 const emptyOceanIceFallback: GetOceanIceDataResponse = {};
+const emptyReservoirLevelsFallback: ListReservoirLevelsResponse = { reservoirs: [], fetchedAt: 0, dataAvailable: false, methodology: '' };
 
 export async function fetchClimateAnomalies(): Promise<ClimateFetchResult> {
   const hydrated = getHydratedData('climateAnomalies') as ListClimateAnomaliesResponse | undefined;
@@ -128,6 +132,24 @@ export async function fetchOceanIceData(): Promise<OceanIceIndicators | null> {
   }, emptyOceanIceFallback, { shouldCache: (result) => Boolean(result.data) });
 
   return response.data ? toDisplayOceanIceData(response.data) : null;
+}
+
+export interface ReservoirLevelsFetchResult {
+  /** False when the request failed and no cached snapshot could answer it. */
+  ok: boolean;
+  /** Null when the RPC answered but the dataset has no readings yet (dataAvailable=false). */
+  snapshot: ReservoirLevelsSnapshot | null;
+}
+
+/** Strategic reservoir levels (ICESat-2 lidar). Read on demand: the panel or the map layer asks for it. */
+export async function fetchReservoirLevels(): Promise<ReservoirLevelsFetchResult> {
+  const response = await reservoirLevelsBreaker.execute(async () => {
+    return client.listReservoirLevels({});
+  }, emptyReservoirLevelsFallback, { shouldCache: (result) => result.dataAvailable === true && (result.reservoirs ?? []).length > 0 });
+  return {
+    ok: reservoirLevelsBreaker.getDataState().mode !== 'unavailable',
+    snapshot: toReservoirLevelsSnapshot(response),
+  };
 }
 
 // Presentation helpers (used by ClimateAnomalyPanel)

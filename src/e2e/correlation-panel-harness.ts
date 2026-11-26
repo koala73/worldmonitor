@@ -33,7 +33,7 @@ globalThis.fetch = async (input, init) => {
   return originalFetch(input, init);
 };
 
-await initI18n();
+await initI18n({ waitForFullTranslation: true });
 const app = document.getElementById('app')!;
 Object.assign(app.style, { padding: '24px', maxWidth: '820px', margin: '0 auto', minHeight: '100vh', overflow: 'auto' });
 const stateLabel = h('span', { id: 'fixture-state' }, mode);

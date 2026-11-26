@@ -71,4 +71,28 @@ describe('digest delivery plan', () => {
     ]);
     assert.equal(plan.sourceCountByClusterId.get('kept-cluster'), 6);
   });
+  it('uses localized stories for formatter output while cooldown and canonical copies stay English', () => {
+    const briefStories = [{ clusterId: 'kept-cluster', headline: 'Kept by the capped brief', threatLevel: 'high', source: 'Wire D', sourceUrl: 'https://example.com/kept', description: 'd', whyMatters: 'w', category: 'Energy', country: 'IR' }];
+    const localizedBriefStories = [{ ...briefStories[0], headline: 'Conservé par le brief' }];
+    const plan = buildDigestDeliveryPlan({ briefStories, rawStories, localizedBriefStories });
+    assert.equal(plan.formatterStories[0].title, 'Conservé par le brief');
+    assert.equal(plan.canonicalFormatterStories[0].title, 'Kept by the capped brief');
+    assert.equal(plan.cooldownIterableStories, briefStories);
+    assert.equal(plan.sourceCountByClusterId.get('kept-cluster'), 6);
+  });
+
+  it('ignores localized stories whose length differs from the canonical stories', () => {
+    const briefStories = [{ clusterId: 'kept-cluster', headline: 'Kept by the capped brief', threatLevel: 'high', source: 'Wire D', sourceUrl: 'https://example.com/kept', description: 'd', whyMatters: 'w', category: 'Energy', country: 'IR' }];
+    for (const localizedBriefStories of [[], [briefStories[0], briefStories[0]], null]) {
+      const plan = buildDigestDeliveryPlan({ briefStories, rawStories, localizedBriefStories });
+      assert.equal(plan.formatterStories[0].title, 'Kept by the capped brief');
+      assert.deepEqual(plan.formatterStories, plan.canonicalFormatterStories);
+    }
+  });
+
+  it('without brief stories, formatter and canonical stories are the raw stories', () => {
+    const plan = buildDigestDeliveryPlan({ briefStories: [], rawStories, localizedBriefStories: [{}] });
+    assert.equal(plan.formatterStories, rawStories);
+    assert.equal(plan.canonicalFormatterStories, rawStories);
+  });
 });

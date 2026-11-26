@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   isStorageAvailable,
   safeStorageGet,
+  safeStorageHandle,
   safeStorageKeys,
   safeStorageRemove,
   safeStorageRemoveChecked,
@@ -160,6 +161,20 @@ describe('isStorageAvailable', () => {
     vi.unstubAllGlobals();
     stubThrowingStorage();
     expect(isStorageAvailable()).toBe(false);
+  });
+});
+
+describe('safeStorageHandle', () => {
+  beforeEach(stubWorkingStorage);
+
+  it('returns the store, and null for both unreachable shapes instead of throwing', () => {
+    expect(safeStorageHandle()).toBe(localStorage);
+    stubNullStorage();
+    expect(safeStorageHandle()).toBeNull();
+    vi.unstubAllGlobals();
+    stubThrowingStorage();
+    expect(() => safeStorageHandle()).not.toThrow();
+    expect(safeStorageHandle()).toBeNull();
   });
 });
 

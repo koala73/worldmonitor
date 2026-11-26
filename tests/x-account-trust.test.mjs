@@ -29,6 +29,25 @@ function enabledSourceNames() {
 }
 
 describe('X news-account public trust registries (#6654)', () => {
+  it('keeps The Iran Watcher at specialist trust without official or state affiliation', () => {
+    const entry = X_ACCOUNT_TRUST.find((item) => item.sourceName === 'The Iran Watcher');
+    assert.ok(entry);
+    assert.equal(entry.tier, 3);
+    assert.equal(entry.type, 'intel');
+    assert.equal(entry.risk, 'medium');
+    assert.equal(entry.note, 'Iran and Persian Gulf monitor; not a newsroom, wire, or official publisher');
+    assert.doesNotMatch(entry.note, /independent/i);
+    assert.equal(entry.stateAffiliated, undefined);
+    assert.equal(entry.reuseTier, undefined);
+    assert.equal(entry.reuseType, undefined);
+    assert.equal(entry.reuseRisk, undefined);
+    assert.equal(X_ACCOUNT_SOURCE_TIERS['The Iran Watcher'], 3);
+    assert.equal(SOURCE_TIERS['The Iran Watcher'], 3);
+    assert.equal(SOURCE_TYPES['The Iran Watcher'], 'intel');
+    assert.equal(SOURCE_PROPAGANDA_RISK['The Iran Watcher'].risk, 'medium');
+    assert.equal(SOURCE_PROPAGANDA_RISK['The Iran Watcher'].stateAffiliated, undefined);
+  });
+
   it('registers every enabled X sourceName in the public trust registries', () => {
     const missing = [];
     for (const name of enabledSourceNames()) {

@@ -581,6 +581,7 @@ test('current apiAccess entitlement can be served from Redis cache without Conve
 
 for (const billingStatus of [
   'subscription_lapsed',
+  'payment_failed',
   'renewal_verification_pending',
   'renewal_verification_failed',
 ]) {
@@ -622,6 +623,7 @@ async function withMockedEntitlement(entitlement, fn) {
 
 for (const billingStatus of [
   'subscription_lapsed',
+  'payment_failed',
   'renewal_verification_pending',
   'renewal_verification_failed',
 ]) {
@@ -699,6 +701,81 @@ test('confirmed subscription lapse is distinct from verification failure', async
     assert.equal(result.reason, 'subscription_lapsed');
     assert.equal(result.error, 'API access subscription lapsed');
     assert.equal(result.headers['X-Billing-Verification'], 'subscription_lapsed');
+  });
+});
+
+const PAYMENT_FAILED_ERROR =
+  'Payment failed. Update your payment method at https://www.worldmonitor.app/dashboard?billing=portal to restore access.';
+
+test('a paused subscription is a terminal 403 that names the billing portal', async () => {
+  await withMockedEntitlement({
+    planKey: 'free',
+    validUntil: 0,
+    features: { apiAccess: false },
+    billingStatus: 'payment_failed',
+    retryAfterSeconds: 19,
+  }, async () => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 403);
+    assert.equal(result.reason, 'payment_failed');
+    assert.equal(result.error, PAYMENT_FAILED_ERROR);
+    assert.equal(result.unavailable, undefined);
+    assert.equal(result.headers['X-Billing-Verification'], 'payment_failed');
+    assert.equal(result.headers['Retry-After'], undefined);
+  });
+});
+
+test('a cached payment_failed marker answers without Convex and is written for 60 seconds', async () => {
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+    assert.equal(result.status, 403);
+    assert.equal(result.reason, 'payment_failed');
+    const setCommand = calls
+      .filter((call) => call.url.startsWith('https://upstash.test') && call.body.includes('"SET"'))
+      .map((call) => JSON.parse(call.body).find((entry) => entry[0] === 'SET'))
+      .find((command) => command?.[1] === 'entitlements:test:user_api_owner');
+    assert.ok(setCommand);
+    assert.equal(Number(setCommand[4]), 60);
+  }, {
+    entitlementResponse: {
+      planKey: 'free',
+      validUntil: 0,
+      features: { apiAccess: false },
+      billingStatus: 'payment_failed',
+      retryAfterSeconds: 3,
+    },
+  });
+
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+    assert.equal(result.status, 403);
+    assert.equal(result.error, PAYMENT_FAILED_ERROR);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+  }, {
+    redisCache: {
+      'entitlements:test:user_api_owner': {
+        planKey: 'free',
+        validUntil: 0,
+        features: { apiAccess: false },
+        billingStatus: 'payment_failed',
+      },
+    },
+  });
+});
+
+test('a free account without billing history keeps the plain subscription-required denial', async () => {
+  await withMockedEntitlement({
+    planKey: 'free',
+    validUntil: 0,
+    features: { apiAccess: false },
+  }, async () => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    assert.equal(result.status, 403);
+    assert.equal(result.error, 'API access subscription required');
+    assert.equal(result.reason, 'forbidden');
   });
 });
 

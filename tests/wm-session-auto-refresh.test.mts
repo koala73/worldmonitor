@@ -2565,10 +2565,10 @@ describe('wm-session cookie-persistence detection (Layer 3)', () => {
 
 describe('wm-session cookie-persistence detection — concurrent mints', () => {
   it('does not accuse the browser when an anonymous mint and a key-session mint overlap', async () => {
-    // The real page-boot shape: widget-store.ts and user-identity.ts both fire
-    // migrateLegacyKeysToHttpOnlySession() fire-and-forget (`void`) at module
-    // init, and establishWmKeySession bypasses ensureWmSession's `inflight`
-    // dedupe — so two mints leave before EITHER response installs a cookie.
+    // widget-store.ts fires migrateLegacyKeysToHttpOnlySession() at module
+    // init, and establishWmKeySession bypasses ensureWmSession's inflight
+    // dedupe, so an anonymous mint and a key-session mint can both be in
+    // flight before either response installs a cookie.
     // Both then honestly report hadSession:false, and reading the second one as
     // proof of non-persistence would black out a perfectly healthy session.
     memoryStorage.clear();

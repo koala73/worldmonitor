@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchGroceryBasketPrices, fetchCountryItems, COUNTRY_CONCURRENCY, COUNTRIES } from '../scripts/seed-grocery-basket.mjs';
+import { fetchGroceryBasketPrices, fetchCountryItems, isListingUrl, recordBaseline, selectWeekAgo, COUNTRY_CONCURRENCY, COUNTRIES } from '../scripts/seed-grocery-basket.mjs';
 
 // The seeder logs one line per country and item. Silence it so the flood can't
 // corrupt node:test's child-process message parser under --test-concurrency.
@@ -104,5 +104,440 @@ describe('seed-grocery-basket fetchCountryItems', () => {
     assert.equal(rice.available, false);
     assert.ok(items.filter((i) => i.itemId !== 'rice').every((i) => i.available && i.usdPrice === 2));
     assert.equal(routeUpdates.size, items.length - 1, 'every surviving item recorded its route before the country resolved');
+  });
+});
+
+describe('grocery basket comparability', () => {
+  const units = {
+    sugar: '1kg', salt: '1kg', rice: '1kg', pasta: '500g', potatoes: '1kg',
+    oil: '1L', flour: '1kg', eggs: '12pc', milk: '1L', bread: '400g',
+  };
+  const items = (count, price) => Object.entries(units).slice(0, count).map(([itemId, unit]) => ({
+    itemId, unit, usdPrice: price, localPrice: price, available: true,
+  }));
+  const [partial, complete, gained] = COUNTRIES;
+  const now = new Date('2026-11-10T06:02:00Z');
+  const previousWeek = {
+    basketVersion: 3,
+    fetchedAt: '2026-11-03T06:00:00Z',
+    countries: [
+      { code: partial.code, totalUsd: 7, items: items(7, 1) },
+      { code: complete.code, totalUsd: 20, items: items(10, 2) },
+      { code: gained.code, totalUsd: 18, items: items(9, 2) },
+    ],
+  };
+  const options = {
+    now,
+    getFxRatesFn: fakeFx,
+    routes: noRoutes,
+    fetchCountryItemsFn: async ({ code }) => code === partial.code ? items(8, 1)
+      : code === complete.code ? items(10, 2.1451) : code === gained.code ? items(10, 2.5) : [],
+  };
+
+  it('ranks complete baskets and compares only baskets complete a week earlier', async () => {
+    const data = await fetchGroceryBasketPrices(selectWeekAgo(recordBaseline([], previousWeek), now), options);
+    assert.equal(data.cheapestCountry, complete.code);
+    assert.equal(data.mostExpensiveCountry, gained.code);
+    assert.equal(data.countries[0].wowPct, null);
+    assert.equal(data.countries[1].totalUsd, 21.5);
+    assert.equal(data.countries[1].wowPct, 7.5);
+    assert.equal(data.countries[2].wowPct, null);
+    assert.equal(data.wowAvgPct, 7.5);
+    assert.equal(data.prevFetchedAt, previousWeek.fetchedAt);
+  });
+});
+
+describe('grocery basket week-over-week baseline', () => {
+  const units = {
+    sugar: '1kg', salt: '1kg', rice: '1kg', pasta: '500g', potatoes: '1kg',
+    oil: '1L', flour: '1kg', eggs: '12pc', milk: '1L', bread: '400g',
+  };
+  const [tracked] = COUNTRIES;
+  const start = Date.parse('2026-11-09T00:00:00Z');
+  const HOUR_MS = 3_600_000;
+  // Prices rise 1% of the starting price per day, so a true weekly change is about 7%.
+  const priceAt = (ms) => 1 + (ms - start) / (24 * HOUR_MS) / 100;
+  const runAt = (ms, baseline) => fetchGroceryBasketPrices(baseline, {
+    now: new Date(ms),
+    getFxRatesFn: fakeFx,
+    routes: noRoutes,
+    fetchCountryItemsFn: async ({ code }) => code === tracked.code
+      ? Object.entries(units).map(([itemId, unit]) => ({ itemId, unit, usdPrice: priceAt(ms), localPrice: priceAt(ms), available: true }))
+      : [],
+  });
+
+  it('compares a six-hourly run against the basket from seven days earlier', async () => {
+    let history = [];
+    const reported = [];
+    for (let ms = start; ms <= Date.parse('2026-11-17T12:00:00Z'); ms += 6 * HOUR_MS) {
+      const data = await runAt(ms, selectWeekAgo(history, new Date(ms)));
+      history = recordBaseline(history, data);
+      if (data.wowAvailable) reported.push({ ms, data });
+    }
+    assert.equal(new Date(reported[0].ms).toISOString(), '2026-11-15T12:00:00.000Z',
+      'the first comparison waits for a basket at least six and a half days old');
+    for (const { ms, data } of reported) {
+      const baselineAt = Date.parse(data.prevFetchedAt);
+      const gapHours = (ms - baselineAt) / HOUR_MS;
+      if (ms >= Date.parse('2026-11-16T00:00:00Z')) assert.equal(gapHours, 168, `${new Date(ms).toISOString()} baseline`);
+      else assert.ok(gapHours >= 156 && gapHours <= 180, `${new Date(ms).toISOString()} baseline is ${gapHours} h old`);
+      const total = (at) => Number(priceAt(at).toFixed(2)) * 10;
+      const expected = +((total(ms) - total(baselineAt)) / total(baselineAt) * 100).toFixed(2);
+      assert.equal(data.countries[0].wowPct, expected);
+    }
+  });
+
+  it('reports no change when no basket of the current version is about a week old', async () => {
+    const now = Date.parse('2026-11-17T00:00:00Z');
+    const weekOld = await runAt(now - 7 * 24 * HOUR_MS);
+    for (const history of [
+      recordBaseline([], await runAt(now - 8 * 24 * HOUR_MS)),
+      recordBaseline([], await runAt(now - 6 * 24 * HOUR_MS)),
+      recordBaseline([], { ...weekOld, basketVersion: 2 }),
+    ]) {
+      const data = await runAt(now, selectWeekAgo(history, new Date(now)));
+      assert.equal(data.wowAvailable, false);
+      assert.equal(data.prevFetchedAt, '');
+      assert.ok(data.countries.every(({ wowPct }) => wowPct === null));
+    }
+  });
+
+  it('keeps one entry per run and drops entries older than the comparison needs', async () => {
+    const now = Date.parse('2026-11-20T00:00:00Z');
+    const old = await runAt(now - 12 * 24 * HOUR_MS);
+    const current = await runAt(now);
+    const history = recordBaseline(recordBaseline(recordBaseline([], old), current), current);
+    assert.deepEqual(history.map(({ fetchedAt }) => fetchedAt), [current.fetchedAt]);
+  });
+});
+
+it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices', async (t) => {
+  const country = COUNTRIES.find(({ code }) => code === 'US');
+  const product = (slug) => `https://www.target.com/p/${slug}`;
+  const learnedUrl = product('old-milk-route');
+  const offer = (productName, price, quantity, unit, matchesStaple = true) => ({
+    matchesStaple, productName, price, currency: 'USD', quantity, unit,
+    offerEvidence: `Main product offer for ${productName}`,
+  });
+  const entries = {
+    rice: offer('Plain white rice, 1 lb', 0.89, 1, 'lb'),
+    flour: offer('All purpose flour, 5 lb', 3.99, 5, 'lb'),
+    eggs: offer('Large eggs, 18 pack', 6, 18, 'pc'),
+    oil: { ...offer('Pure canola oil, 900 ml', '4.50', '900', 'ML'), currency: ' usd ' },
+    salt: offer('Unavailable 10 kg salt, with a 1 kg recommendation', 2.75, 10, 'kg', false),
+    potatoes: offer('Sweet potato', 1.5, 1, 'kg', false),
+    milk: offer('Milk without a declared size', 3, 0, 'ml'),
+    sugar: offer('Sugar', 3, 1, 'l'),
+    pasta: offer('Dry spaghetti, 1000 kg', 1000, 1000, 'kg'),
+    bread: offer('White bread, 500 g', 0.001, 500, 'g'),
+  };
+  const itemQueries = {
+    'white rice': 'rice', 'all purpose': 'flour', 'fresh eggs': 'eggs', 'canola oil': 'oil',
+    'table salt': 'salt', 'potatoes': 'potatoes', 'fresh whole milk': 'milk', 'white granulated': 'sugar',
+    'spaghetti pasta': 'pasta', 'white bread': 'bread',
+  };
+  const firecrawlRequests = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    const request = JSON.parse(options.body);
+    if (url === 'https://api.firecrawl.dev/v2/scrape') {
+      firecrawlRequests.push(request);
+      // A learned route must pass the same checks as fresh search results.
+      return Response.json({ success: true, data: { json: request.url === learnedUrl
+        ? offer('Whole milk, 2 litres', 6, 2, 'l') : null } });
+    }
+    assert.equal(url, 'https://api.exa.ai/search');
+    const itemId = itemQueries[Object.keys(itemQueries).find(query => request.query.startsWith(query))];
+    if (request.userLocation === 'ID') {
+      return Response.json({ results: itemId === 'rice' ? [{
+        url: 'https://www.tokopedia.com/store/rice',
+        summary: JSON.stringify({ ...offer('Plain white rice, 5 kg', 120000, 5, 'kg'), currency: 'IDR' }),
+      }] : [] });
+    }
+    if (request.userLocation === 'IN') {
+      const pack = itemId === 'salt' ? offer('Table salt, 100 g', 10, 100, 'g')
+        : itemId === 'rice' ? offer('Plain white rice, 5 kg', 50, 5, 'kg') : null;
+      return Response.json({ results: pack ? [{
+        url: `https://www.bigbasket.com/pd/${itemId}`,
+        summary: JSON.stringify({ ...pack, currency: 'INR' }),
+      }] : [] });
+    }
+    return Response.json({ results: [
+      { url: product('no-offer'), summary: 'USD 0.99' },
+      ...(itemId ? [{ url: product(itemId), summary: JSON.stringify(entries[itemId]) }] : []),
+    ] });
+  });
+  const originalKey = process.env.EXA_API_KEYS;
+  const originalFirecrawl = process.env.FIRECRAWL_API_KEY;
+  process.env.EXA_API_KEYS = 'test';
+  process.env.FIRECRAWL_API_KEY = 'test';
+  t.after(() => {
+    if (originalKey === undefined) delete process.env.EXA_API_KEYS;
+    else process.env.EXA_API_KEYS = originalKey;
+    if (originalFirecrawl === undefined) delete process.env.FIRECRAWL_API_KEY;
+    else process.env.FIRECRAWL_API_KEY = originalFirecrawl;
+  });
+  const results = await fetchCountryItems(country, {
+    fxRate: 1,
+    learnedRoutes: new Map([['US:milk', { url: learnedUrl, hits: 1, failsSinceSuccess: 0 }]]),
+    routeUpdates: new Map(),
+    routeDeletes: new Set(),
+  });
+  const prices = Object.fromEntries(results.map(item => [item.itemId, item.usdPrice]));
+  assert.equal(prices.rice, 1.9621);
+  assert.equal(prices.flour, 1.7593);
+  assert.equal(prices.eggs, 4);
+  assert.equal(prices.oil, 5);
+  assert.equal(prices.milk, 3);
+  const learnedRequest = firecrawlRequests.find(({ url }) => url === learnedUrl);
+  assert.ok(learnedRequest, 'the learned item used Firecrawl v2');
+  assert.equal(learnedRequest.maxAge, 0);
+  // v2's server default is 60 s; it must give up before the seeder's 30 s abort.
+  assert.ok(learnedRequest.timeout < 30_000, 'Firecrawl server timeout fits inside the client abort');
+  assert.equal(learnedRequest.formats.length, 1);
+  assert.equal(learnedRequest.formats[0].type, 'json');
+  assert.equal(learnedRequest.formats[0].schema.type, 'object');
+  assert.match(learnedRequest.formats[0].prompt, /offer/i);
+  assert.ok(!('extract' in learnedRequest));
+  for (const itemId of ['salt', 'potatoes', 'sugar', 'pasta', 'bread']) assert.equal(prices[itemId], null);
+
+  const india = await fetchCountryItems(COUNTRIES.find(({ code }) => code === 'IN'), {
+    fxRate: 0.012, learnedRoutes: new Map(), routeUpdates: new Map(), routeDeletes: new Set(),
+  });
+  assert.equal(india.find(item => item.itemId === 'salt').localPrice, 100);
+  assert.equal(india.find(item => item.itemId === 'rice').localPrice, null);
+
+  const indonesia = await fetchCountryItems(COUNTRIES.find(({ code }) => code === 'ID'), {
+    fxRate: 0.00006, learnedRoutes: new Map(), routeUpdates: new Map(), routeDeletes: new Set(),
+  });
+  assert.equal(indonesia.find(item => item.itemId === 'rice').usdPrice, 1.44);
+});
+
+describe('grocery basket offer pages', () => {
+  const indonesia = COUNTRIES.find(({ code }) => code === 'ID');
+  const searchPage = 'https://www.tokopedia.com/find/minyak-goreng-canola-1-liter';
+  const productPage = 'https://www.tokopedia.com/aeon-fresh/minyak-canola-tropical-1-liter';
+  const canolaOffer = (price) => ({
+    matchesStaple: true, productName: 'Minyak canola 1 liter', price, currency: 'IDR', quantity: 1, unit: 'l',
+    offerEvidence: 'Canola oil 1 L listed with a price',
+  });
+
+  it('replaces Canadian listings with a complete basket of product offers', async (t) => {
+    const canada = COUNTRIES.find(({ code }) => code === 'CA');
+    const offers = [
+      ['sugar', /white granulated sugar/, 'Special Fine Granulated Sugar', '062847210233', 3.49, 2, 'kg'],
+      ['salt', /table salt/, 'Iodized Table Salt', '066010001055', 1.29, 1, 'kg'],
+      ['rice', /white rice/, 'Long Grain White Rice', '059749902373', 2.99, 900, 'g'],
+      ['pasta', /spaghetti pasta/, 'Dry Spaghetti Pasta', '064200130776', 2.49, 454, 'g'],
+      ['potatoes', /potatoes/, 'Russet Potatoes', '059749911153', 4.99, 5, 'lb'],
+      ['oil', /canola oil/, 'Pure Canola Oil', '059749888738', 3.79, 473, 'ml'],
+      ['flour', /all purpose wheat flour/, 'All-Purpose Flour', '059749892582', 3.99, 2.5, 'kg'],
+      ['eggs', /fresh eggs/, 'Large White Eggs', '059749896054', 3.99, 12, 'pc'],
+      ['milk', /fresh whole milk/, '3.25% Milk', '068200010045', 7.99, 4, 'l'],
+      ['bread', /white bread/, 'Enriched White Loaf', '063400012271', 4.69, 675, 'g'],
+    ];
+    const oldListing = 'https://www.loblaws.ca/en/collection/my-shop?navid=flyout-L1-my-shop-node';
+    const metroListing = 'https://www.metro.ca/en/online-grocery/aisles/pantry';
+    const learned = new Map(offers.map(([id]) => [`CA:${id}`, {
+      url: oldListing, hits: 4, failsSinceSuccess: 0,
+    }]));
+    const scraped = [];
+    const keys = ['EXA_API_KEYS', 'FIRECRAWL_API_KEY'];
+    const saved = keys.map(key => process.env[key]);
+    for (const key of keys) process.env[key] = 'test';
+    t.after(() => {
+      keys.forEach((key, index) => {
+        if (saved[index] === undefined) delete process.env[key];
+        else process.env[key] = saved[index];
+      });
+    });
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+      const request = JSON.parse(options.body);
+      if (url === 'https://api.firecrawl.dev/v2/scrape') {
+        scraped.push(request.url);
+        return Response.json({ success: true, data: { json: null } });
+      }
+      const fixture = offers.find(([, query]) => query.test(request.query));
+      if (!fixture || !request.includeDomains.includes('metro.ca') || request.numResults !== 10
+        || /\d/.test(request.query) || !request.query.endsWith('price Canadian grocery single product add to cart')) {
+        return Response.json({ results: [] });
+      }
+      const [, , productName, sku, price, quantity, unit] = fixture;
+      const summary = JSON.stringify({
+        productName, price, quantity, unit, currency: 'CAD', matchesStaple: true,
+        offerEvidence: `${productName} is available at the shown pack price`,
+      });
+      return Response.json({ results: [
+        { url: metroListing, summary },
+        { url: `${metroListing}/${productName.toLowerCase().replaceAll(' ', '-')}/p/${sku}`, summary },
+      ] });
+    });
+    const updates = new Map();
+    const deletes = new Set();
+    const result = await fetchGroceryBasketPrices(null, {
+      getFxRatesFn: async () => ({ CAD: 0.72 }),
+      fetchCountryItemsFn: (country, options) => country === canada ? fetchCountryItems(country, options) : [],
+      routes: {
+        read: async () => learned,
+        write: async (_scope, routeUpdates, routeDeletes) => {
+          for (const [key, route] of routeUpdates) updates.set(key, route);
+          for (const key of routeDeletes) deletes.add(key);
+        },
+      },
+    });
+    const row = result.countries.find(({ code }) => code === 'CA');
+    assert.equal(row.items.filter(({ available }) => available).length, offers.length);
+    assert.equal(result.cheapestCountry, 'CA');
+    assert.deepEqual(scraped, []);
+    for (const item of row.items) {
+      const key = `CA:${item.itemId}`;
+      assert.match(item.sourceSite, /\/p\/\d+$/);
+      assert.equal(isListingUrl(item.sourceSite), false);
+      assert.equal(deletes.has(key), true);
+      assert.equal(updates.get(key)?.url, item.sourceSite);
+    }
+  });
+
+  function mockRetailers(t, exaResults) {
+    const scraped = [];
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+      const request = JSON.parse(options.body);
+      if (url === 'https://api.firecrawl.dev/v2/scrape') {
+        scraped.push(request.url);
+        return Response.json({ success: true, data: { json: canolaOffer(89000) } });
+      }
+      return Response.json({ results: request.query.startsWith('canola') ? exaResults : [] });
+    });
+    const saved = { exa: process.env.EXA_API_KEYS, firecrawl: process.env.FIRECRAWL_API_KEY };
+    process.env.EXA_API_KEYS = 'test';
+    process.env.FIRECRAWL_API_KEY = 'test';
+    t.after(() => {
+      if (saved.exa === undefined) delete process.env.EXA_API_KEYS; else process.env.EXA_API_KEYS = saved.exa;
+      if (saved.firecrawl === undefined) delete process.env.FIRECRAWL_API_KEY; else process.env.FIRECRAWL_API_KEY = saved.firecrawl;
+    });
+    return scraped;
+  }
+
+  it('does not publish a price read from a retailer search page', async (t) => {
+    const scraped = mockRetailers(t, [{ url: searchPage, summary: JSON.stringify(canolaOffer(89000)) }]);
+    const routeUpdates = new Map();
+    const items = await fetchCountryItems(indonesia, {
+      fxRate: 0.00006, learnedRoutes: new Map(), routeUpdates, routeDeletes: new Set(),
+    });
+    const oil = items.find(item => item.itemId === 'oil');
+    assert.equal(oil.available, false);
+    assert.equal(oil.localPrice, null);
+    assert.equal(oil.sourceSite, '');
+    assert.ok(!scraped.includes(searchPage), 'the search page is not scraped as a fallback offer');
+    assert.ok(!routeUpdates.has('ID:oil'), 'the search page is not learned as a route');
+  });
+
+  it('evicts a learned search-page route and prices the product page instead', async (t) => {
+    const scraped = mockRetailers(t, [
+      { url: searchPage, summary: JSON.stringify(canolaOffer(89000)) },
+      { url: productPage, summary: JSON.stringify(canolaOffer(60000)) },
+    ]);
+    const routeUpdates = new Map();
+    const routeDeletes = new Set();
+    const items = await fetchCountryItems(indonesia, {
+      fxRate: 0.00006,
+      learnedRoutes: new Map([['ID:oil', { url: searchPage, hits: 4, failsSinceSuccess: 0 }]]),
+      routeUpdates,
+      routeDeletes,
+    });
+    const oil = items.find(item => item.itemId === 'oil');
+    assert.equal(oil.localPrice, 60000);
+    assert.equal(oil.sourceSite, productPage);
+    assert.ok(!scraped.includes(searchPage), 'the learned search page is not scraped');
+    assert.ok(routeDeletes.has('ID:oil'), 'the learned search page is evicted');
+    assert.equal(routeUpdates.get('ID:oil')?.url, productPage);
+  });
+
+  it('tells retailer listings from product pages on the configured retailers', () => {
+    for (const url of [
+      searchPage,
+      'https://www.walmart.com/c/kp/table-salt',
+      'https://www.carrefour.fr/r/epicerie-salee/pates',
+      'https://www.loblaws.ca/en/search?search-bar=no+name+spaghetti',
+      'https://www.loblaws.ca/en/food/bakery/bread/c/28251?page=4',
+      'https://www.realcanadiansuperstore.ca/en/collection/pc-grocery-staples',
+      'https://www.metro.ca/en/online-grocery/aisles/pantry/pasta-rice-beans/rice',
+      'https://www.walmart.ca/en/browse/grocery/pantry-food',
+      'https://mercado.carrefour.com.br/busca/ovos%20galinha%20organicos',
+      'https://www.woolworths.com.au/shop/browse/pantry/baking/flour',
+      'https://www.daraz.pk/tag/flat-pasta/',
+      'https://www.lazada.co.id/catalog/?q=minyak+canola',
+      'https://www.coupang.com/np/best100/bestseller/194332',
+      'https://www.amazon.in/gp/bestsellers/grocery/4859478031',
+      'https://www.carrefour.com.ar/almacen/aceites-y-vinagres?map=category-1,category-2',
+      'https://www.target.com/s/carnaroli+rice',
+      'https://blinkit.com/cn/rice/cid/16/1161',
+      'https://www.woolworths.co.za/cat/Food/Pantry/Pasta-Rice-Grains/_/N-j8vv2e',
+      'https://www.carrefoursa.com/uno/paketli-ekmekler/b/1401',
+      'https://www.fairprice.com.sg/category/white-rice',
+      'https://www.bim.com.tr/Categories/665/bakliyat-unlu-mamuller.aspx',
+      'https://listado.mercadolibre.com.mx/arroz-grano-largo',
+      'https://www.soriana.com/buscar?q=Ovarb',
+      'https://www.lazada.com.ph/trending/White-Rice-Best-Price/1929041890',
+    ]) assert.equal(isListingUrl(url), true, url);
+    for (const url of [
+      productPage,
+      'https://www.target.com/p/enriched-long-grain-white-rice-good-gather/-/A-89229583',
+      'https://www.kroger.com/p/organic-yellow-potatoes/0000000094727',
+      'https://www.walmart.com/ip/Capullo-Canola-Oil-1-l/10294419',
+      'https://www.asda.com/groceries/product/granulated-sugar/silver-spoon-granulated-sugar-1kg/8601',
+      'https://www.tesco.com/shop/en-GB/products/255340327',
+      'https://www.sainsburys.co.uk/groceries/product/sainsburys-easy-cook-long-grain-white-rice-1kg',
+      'https://www.rewe.de/shop/p/oryza-spitzen-langkorn-reis-1kg/108820',
+      'https://www.kaufland.de/product/433542827/',
+      'https://www.edeka.de/sortiment/4311501213681/',
+      'https://www.carrefour.fr/p/gros-sel-de-mer-simpl-3560070441020',
+      'https://www.seiyu.co.jp/pb/mo/mo-555/',
+      'https://sun-clay.life.co.jp/products/clay/Flour/8900.html',
+      'https://item.jd.com/10199070569714.html',
+      'https://www.amazon.in/Organic-Tattva-Masuri-White-Polished/dp/B00M57T5CU',
+      'https://www.bigbasket.com/pd/40004538/parrys-sugar-white-label-1-kg-pouch/',
+      'https://www.jiomart.com/p/groceries/maagaani-diabetic-friendly-low-gi-white-rice-1kg/611026576',
+      'https://www.coles.com.au/product/csr-white-sugar-1kg-120104',
+      'https://www.woolworths.com.au/shop/productdetails/306491/saxa-natural-australian-salt-traditional-cooking-seasoning',
+      'https://www.loblaws.ca/en/long-grain-white-rice/p/21689592_EA',
+      'https://www.realcanadiansuperstore.ca/en/rice-long-grain-white/p/21689592_EA?pdp_prior=21415930_EA',
+      'https://www.walmart.ca/en/ip/Long-Grain-White-Rice/58DTZVN8AN08',
+      'https://www.metro.ca/epicerie-en-ligne/allees/garde-manger/fines-herbes-epices-et-sauces/sels-et-poivres/sel-de-mer/p/062356541637',
+      'https://mercado.carrefour.com.br/produto/acucar-refinado-carrefour-1kg-17755',
+      'https://newsitefood.cloud.carrefour.com.br/sal-refinado-globo-1-kg-280127/p',
+      'https://www.extra.com.br/arroz-tio-joao-branco-1kg/p/1582273846',
+      'https://www.soriana.com/azucar-zulka-morena-1kg/646275.html',
+      'https://www.walmart.com.mx/ip/papa-blanca-alfa-por-kilo/00000000004083',
+      'https://articulo.mercadolibre.com.mx/MLM-1419795074-arroz-minute-white-rice-light-fluffy-204kg-importado-_JM',
+      'https://www.mercadolibre.com.mx/arroz-premium-g2-banquete-1kg/p/MLM19944396',
+      'https://www.chedraui.com.mx/arroz-blanco-morelos-organico-1kg-3005713/p',
+      'https://www.shoprite.co.za/All-Departments/Food/Food-Cupboard/Sugar-and-Sweeteners/White-Sugar/Selati-White-Sugar-1kg/p/10141801EA',
+      'https://www.checkers.co.za/product/sunfoil-canola-oil-750ml-10162387EA',
+      'https://www.woolworths.co.za/prod/_/A-6009189404535',
+      'https://www.migros.com.tr/keskinoglu-dogal-besi-m-orta-boy-yumurta-12li-53-62-g-p-1312d55',
+      'https://www.carrefoursa.com/feast-parmak-patates-1-kg-p-30074790',
+      'https://www.a101.com.tr/kapida/product/14001904',
+      'https://www.supermart.ng/products/golden-penny-white-granulated-sugar-1-kg',
+      'https://www.jumia.com.ng/golden-penny-gp-multipurpose-flour-1kg-419903371.html',
+      'https://www.konga.com/product/golden-grain-1121-white-sella-basmatic-rice-1kg-6913683',
+      'https://www.coupang.com/vp/products/9498948789',
+      'https://prod.danawa.com/info/?pcode=62397632',
+      'https://www.fairprice.com.sg/product/gpa-sugar-100-natural-coarse-cane-sugar-1-kg-90047218',
+      'https://www.daraz.pk/products/premium-white-sugar-1-kg-pure-refined-granulated-sugar-i947990028.html',
+      'https://www.carrefouruae.com/mafuae/en/white-sugar/al-osra-fine-white-sugar-1kg/p/1275791',
+      'https://gcc.luluhypermarket.com/en-sa/potato-saudi-1-kg/p/1793041-ea/',
+      'https://www.noon.com/egypt-en/white-rice-1-kg/Z0DFDA837FB94D4573A88Z/p/',
+      'https://www.carrefouregypt.com/mafegy/en/white-sugar/el-mazag-white-sugar-1k/p/604274',
+      'https://www.carrefour.ke/mafken/en/white-sugar/nutrameal-sugar-1kg/p/22071',
+      'https://www.carrefour.com.ar/azucar-refinada-fronterita-en-bolsa-1-kg-728484/p',
+      'https://www.cotodigital.com.ar/sitios/cdigi/productos/arroz-lf-00000-vanguardia-bol-1-kg/_/R-00114922-00114922-200?Dy=1',
+      'https://www.jumbo.com.ar/huevos-blancos-avicoper-12-u-1-paquete-2/p',
+      'https://www.disco.com.ar/arroz-san-salvador-grano-largo-00000-paquete-1-kg/p',
+      "https://shopee.co.id/Farmer's-Organic-White-Rice-Astro-Goods-1kg-i.881142017.43410756919",
+      'https://www.lazada.co.id/products/beras-organik-c4-kemasan-1-kg-organic-white-rice-sehat-i4363608332.html',
+      'https://www.blibli.com/p/md-organic-white-rice-beras-ciherang-1-kg/ps--UMM-60222-00054',
+      'https://www.lazada.com.ph/products/refined-white-sugar-1kg-i3031058466.html',
+      'https://h5.lazada.com.ph/products/robinsons-fresh-eggs-large-12s-i4436270136.html',
+    ]) assert.equal(isListingUrl(url), false, url);
   });
 });

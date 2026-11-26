@@ -9,7 +9,7 @@ const hlsjs = vi.hoisted(() => {
 
   /** Stands in for hls.js: the test plays the part of the playlist loader. */
   class FakeHls {
-    static readonly Events = { LEVEL_LOADED: 'hlsLevelLoaded', ERROR: 'hlsError', BUFFER_CREATED: 'hlsBufferCreated' } as const;
+    static readonly Events = { MANIFEST_LOADED: 'hlsManifestLoaded', LEVEL_LOADED: 'hlsLevelLoaded', ERROR: 'hlsError', BUFFER_CREATED: 'hlsBufferCreated' } as const;
     static isSupported(): boolean {
       return true;
     }
@@ -34,6 +34,10 @@ const hlsjs = vi.hoisted(() => {
 
     loadLivePlaylist(): void {
       this.listeners.get(FakeHls.Events.LEVEL_LOADED)?.(FakeHls.Events.LEVEL_LOADED, { details: { live: true } });
+    }
+
+    raiseFatal(details: string, code?: number): void {
+      this.listeners.get(FakeHls.Events.ERROR)?.(FakeHls.Events.ERROR, { fatal: true, details, response: code === undefined ? undefined : { code } });
     }
   }
 
@@ -126,6 +130,12 @@ describe('live video HLS transport', () => {
     expect(hlsjs.instances[0]?.config.capLevelOnFPSDrop).toBe(true);
   });
 
+  it('caps quality to the player size so a small panel does not stream 1080p', async () => {
+    await openLivePlaylistTile();
+
+    expect(hlsjs.instances[0]?.config.capLevelToPlayerSize).toBe(true);
+  });
+
   it('uses created buffers for audio inventory and ignores retired buffer events', async () => {
     const audio = vi.fn();
     openHlsTile(undefined, undefined, audio);
@@ -199,6 +209,8 @@ describe('live video HLS transport', () => {
   it('never shows a live playlist that sits on a stalled frame as live, and fails it as not started at the deadline', async () => {
     const tile = await openLivePlaylistTile();
     expect(tile.video.paused).toBe(false);
+    // Playing, with metadata but no frame ahead of the playhead.
+    Object.defineProperty(tile.video, 'readyState', { configurable: true, value: 1 /* HAVE_METADATA */ });
 
     await vi.advanceTimersByTimeAsync(LIVE_VIDEO_TIMING.verdictDeadlineMs - LIVE_VIDEO_TIMING.pollMs);
     expect(everShownLive(tile)).toBe(false);
@@ -208,7 +220,101 @@ describe('live video HLS transport', () => {
     expect(everShownLive(tile)).toBe(false);
     expect(lastState(tile)).toEqual({ phase: 'offline', reason: 'not-live', watchUrl: null });
     expect(tile.container.querySelector('video')).toBeNull();
-    expect(analytics.track).toHaveBeenCalledWith('live-video-attempt-failed', { slot: 'webcams/hls-test', kind: 'hls', outcome: 'not-started' });
+    expect(analytics.track).toHaveBeenCalledWith('live-video-attempt-failed', { slot: 'webcams/hls-test', kind: 'hls', outcome: 'not-started', detail: 'buffering' });
+  });
+
+  it('reports why a live playlist never started: the browser refused play(), or it played with frames but a frozen clock', async () => {
+    const refusal = Object.assign(new Error('play() can only be initiated by a user gesture'), { name: 'NotAllowedError' });
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(refusal);
+    try {
+      const refused = await openLivePlaylistTile();
+      expect(refused.video.paused).toBe(true);
+      await vi.advanceTimersByTimeAsync(LIVE_VIDEO_TIMING.verdictDeadlineMs);
+      expect(analytics.track).toHaveBeenLastCalledWith('live-video-attempt-failed', { slot: 'webcams/hls-test', kind: 'hls', outcome: 'not-started', detail: 'refused-NotAllowedError' });
+    } finally {
+      playSpy.mockRestore();
+    }
+    session?.destroy();
+
+    // play() was aborted by the source swap, autoplay started the video anyway, then the browser paused it.
+    const abort = Object.assign(new Error('The play() request was interrupted by a new load request'), { name: 'AbortError' });
+    const abortSpy = vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(abort);
+    try {
+      const restarted = await openLivePlaylistTile();
+      restarted.video.dispatchEvent(new Event('play'));
+      expect(restarted.video.paused).toBe(true);
+      await vi.advanceTimersByTimeAsync(LIVE_VIDEO_TIMING.verdictDeadlineMs);
+      expect(analytics.track).toHaveBeenLastCalledWith('live-video-attempt-failed', { slot: 'webcams/hls-test', kind: 'hls', outcome: 'not-started', detail: 'paused' });
+    } finally {
+      abortSpy.mockRestore();
+    }
+    session?.destroy();
+
+    const frozen = await openLivePlaylistTile();
+    Object.defineProperty(frozen.video, 'readyState', { configurable: true, value: 4 /* HAVE_ENOUGH_DATA */ });
+    await vi.advanceTimersByTimeAsync(LIVE_VIDEO_TIMING.verdictDeadlineMs);
+    expect(analytics.track).toHaveBeenLastCalledWith('live-video-attempt-failed', { slot: 'webcams/hls-test', kind: 'hls', outcome: 'not-started', detail: 'frozen' });
+  });
+
+  it('reports how far a stream got when it timed out: player still loading, playlist requested, or variant list only', async () => {
+    const early = LIVE_VIDEO_TIMING.nothingLoadedDeadlineMs;
+    const timeout = (detail: string) => ['live-video-attempt-failed', { slot: 'webcams/hls-test', kind: 'hls', outcome: 'timeout', detail }];
+
+    // hls.js has loaded and requested the playlist, but nothing came back.
+    openHlsTile();
+    await vi.advanceTimersByTimeAsync(early);
+    expect(analytics.track).toHaveBeenLastCalledWith(...timeout('playlist-loading'));
+    session?.destroy();
+
+    // The multivariant playlist arrived, but no media playlist followed.
+    openHlsTile();
+    await vi.advanceTimersByTimeAsync(0);
+    const hls = hlsjs.instances[hlsjs.instances.length - 1]!;
+    hls.listeners.get(hlsjs.FakeHls.Events.MANIFEST_LOADED)?.(hlsjs.FakeHls.Events.MANIFEST_LOADED, {});
+    await vi.advanceTimersByTimeAsync(early);
+    expect(analytics.track).toHaveBeenLastCalledWith(...timeout('level-loading'));
+    session?.destroy();
+
+    // The browser refused to start it and the playlist never came back.
+    const refusal = Object.assign(new Error('play() can only be initiated by a user gesture'), { name: 'NotAllowedError' });
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(refusal);
+    try {
+      openHlsTile();
+      await vi.advanceTimersByTimeAsync(early);
+      expect(analytics.track).toHaveBeenLastCalledWith(...timeout('playlist-loading-refused'));
+    } finally {
+      playSpy.mockRestore();
+    }
+    session?.destroy();
+
+    // Native HLS whose metadata never loaded, in a tab the viewer had hidden.
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('maybe');
+    const tracks = Object.assign(new EventTarget(), { length: 0 });
+    Object.defineProperty(HTMLVideoElement.prototype, 'audioTracks', { configurable: true, get: () => tracks });
+    const hidden = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    try {
+      openHlsTile();
+      await vi.advanceTimersByTimeAsync(early);
+      expect(analytics.track).toHaveBeenLastCalledWith(...timeout('native-loading-hidden'));
+    } finally {
+      hidden.mockRestore();
+      delete (HTMLVideoElement.prototype as HTMLVideoElement & { audioTracks?: unknown }).audioTracks;
+    }
+  });
+
+  it('reports the hls.js error detail with a fatal failure', async () => {
+    await openLivePlaylistTile();
+    hlsjs.instances[hlsjs.instances.length - 1]!.raiseFatal('manifestLoadError');
+    await poll();
+    expect(analytics.track).toHaveBeenCalledWith('live-video-attempt-failed', { slot: 'webcams/hls-test', kind: 'hls', outcome: 'hls-fatal', detail: 'manifestLoadError' });
+  });
+
+  it('reports the media error code when the video element fails', async () => {
+    const tile = await openLivePlaylistTile();
+    Object.defineProperty(tile.video, 'error', { configurable: true, value: { code: 3 } });
+    tile.video.dispatchEvent(new Event('error'));
+    await poll();
+    expect(analytics.track).toHaveBeenCalledWith('live-video-attempt-failed', { slot: 'webcams/hls-test', kind: 'hls', outcome: 'hls-fatal', detail: 'media-error-3' });
   });
 
   it('goes live only once the media clock has advanced a full second while playing', async () => {

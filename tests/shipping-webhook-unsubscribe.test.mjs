@@ -41,6 +41,7 @@ function stubUpstash(store) {
         store.delete(keys[0]);
         store.get(keys[1])?.delete(argv[1]);
         store.get(keys[2])?.delete(argv[1]);
+        store.get(keys[4])?.delete(argv[1]);
         store.delete(keys[3]);
         return { result: 1 };
       }
@@ -107,7 +108,7 @@ describe('DELETE /api/v2/shipping/webhooks/{subscriberId}', () => {
     assert.deepEqual([...store.get('webhook:all:v1')], ['wh_other'], 'global index pruned, other subscribers kept');
     assert.equal(store.has(`webhook:state:${SUB}:v1`), false, 'worker state dropped so a re-registration starts armed');
     const evalCall = pipelines.flat().find((c) => c[0] === 'EVAL');
-    assert.equal(evalCall[2], '4');
+    assert.equal(evalCall[2], '5');
     assert.equal(res.headers.get('Access-Control-Allow-Methods'), 'GET, DELETE, OPTIONS');
   });
 

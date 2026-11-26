@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 for (const count of [12, 50]) {
   test(`stored stock panels preserve ${count} mixed-case targets across partial refresh and failure`, async ({ page }, testInfo) => {
@@ -21,9 +22,14 @@ for (const count of [12, 50]) {
       })), ...(count === 12 ? [{ symbol: 'sym0', name: 'Duplicate case', display: 'SYM0' }] : [])]));
       const liveRequests: string[] = [];
       let fail = false;
+      let rotation = 0;
+      const ordered = () => [...symbols.slice(rotation), ...symbols.slice(0, rotation)];
+      // Ages are spaced a second apart so the analysis panel's newest-first
+      // order is fixed by `ordered()`, not by Date.now() ticking mid-response.
       const snapshot = (symbol: string, stale = false) => ({
         available: true, symbol, name: symbol, display: symbol, currency: 'USD',
-        generatedAt: new Date(Date.now() - (stale ? 172800000 : 60000)).toISOString(),
+        generatedAt: new Date(Date.now() - (stale ? 172800000 : 60000)
+          - Math.max(ordered().indexOf(symbol), 0) * 1000).toISOString(),
         currentPrice: 100, signal: 'Hold', signalScore: 50, compositeScore: 50,
         ratingSignal: 'Hold', ratingSummary: 'Controlled fixture', ratingAction: 'Monitor',
         ratingConfidence: 'Medium', ratingWhyNow: 'Stable', ratingBullishFactors: [], ratingRiskFactors: [],
@@ -40,9 +46,9 @@ for (const count of [12, 50]) {
           // setProKey resolves only after the HttpOnly key-session mint succeeds (#8269).
           body = { exp: Date.now() + 3_600_000 };
         } else if (url.pathname.endsWith('/get-stock-analysis-history')) {
-          body = { items: symbols.map((symbol, i) => ({ symbol, snapshots: [snapshot(symbol, i === count - 1)] })) };
+          body = { items: ordered().map((symbol) => ({ symbol, snapshots: [snapshot(symbol, symbol === symbols[count - 1])] })) };
         } else if (url.pathname.endsWith('/list-stored-stock-backtests')) {
-          body = { items: symbols.map((symbol, i) => snapshot(symbol, i === count - 1)) };
+          body = { items: ordered().map((symbol) => snapshot(symbol, symbol === symbols[count - 1])) };
         } else if (url.pathname.endsWith('/analyze-stock') || url.pathname.endsWith('/backtest-stock')) {
           const symbol = url.searchParams.get('symbol')!;
           liveRequests.push(symbol);
@@ -71,6 +77,10 @@ for (const count of [12, 50]) {
         status.textContent = JSON.stringify(liveRequests);
         fail = true;
       };
+      (window as unknown as { refreshRotated: () => void }).refreshRotated = () => {
+        rotation += 1;
+        button.click();
+      };
       document.body.append(label, button, status, analysis.getElement(), backtest.getElement());
       for (const panel of [analysis, backtest]) {
         panel.getElement().style.cssText = 'width:100%;height:500px;margin:16px 0;';
@@ -86,7 +96,7 @@ for (const count of [12, 50]) {
       await expect(row).toHaveCount(1);
       await expect(row).toBeVisible();
     }
-    await page.screenshot({ path: testInfo.outputPath(`stock-${count}-partial.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`stock-${count}-partial.png`), fullPage: true });
     await page.getByRole('button', { name: 'Refresh stock panels', exact: true }).click();
     await expect(page.locator('#fixture-status')).toHaveText(JSON.stringify([`sym${count - 1}`, `sym${count - 1}`]));
     await expect(page.locator('[data-panel="stock-analysis"]')).toContainText(`${count} symbols`);
@@ -97,10 +107,15 @@ for (const count of [12, 50]) {
       await expect(row).toHaveCount(1);
       await expect(row).toBeVisible();
     }
-    await page.screenshot({ path: testInfo.outputPath(`stock-${count}-fallback.png`), fullPage: true });
-    for (const id of ['stock-analysis', 'stock-backtest']) {
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`stock-${count}-fallback.png`), fullPage: true });
+    for (const [index, id] of ['stock-analysis', 'stock-backtest'].entries()) {
       const panel = page.locator(`[data-panel="${id}"]`);
-      await panel.getByRole('textbox').fill(`SYM${count - 1}`);
+      // A background refresh that reorders the rows replaces the search box
+      // while it has focus; what the user types next must still filter.
+      await panel.getByRole('textbox').focus();
+      await page.evaluate(() => (window as unknown as { refreshRotated: () => void }).refreshRotated());
+      await expect(panel.locator('tr.watchlist-row').first()).toHaveAttribute('data-rowkey', `SYM${index + 1}`);
+      await page.keyboard.insertText(`SYM${count - 1}`);
       await expect(panel.locator('tr.watchlist-row')).toHaveCount(1);
       await expect(panel.locator(`tr.watchlist-row[data-rowkey="SYM${count - 1}"]`)).toHaveCount(1);
     }

@@ -327,6 +327,17 @@ test('the independent raw-manifest oracle catches an active-predicate mutation',
   }
 });
 
+test('credits the restricted-party dataset on the host that serves its release assets', () => {
+  const manifest = loadManifest(rootDir);
+  const active = activeSourceAttributionEntries(manifest);
+  const provider = active.find((entry) => entry.host === 'release-assets.githubusercontent.com');
+  assert.equal(provider?.provider, 'US Restricted Parties feed (Tensorust LLC)');
+  assert.match(provider.license, /CC BY 4\.0/);
+  assert.match(provider.attribution, /Tensorust LLC/);
+  assert.deepEqual(provider.references, [{ path: 'scripts/_us-restricted-sanctions.mjs' }]);
+  assert.equal(active.some((entry) => entry.host === 'github.com'), false);
+});
+
 test('the issue audit providers are represented by named attribution rows', () => {
   const manifest = loadManifest(rootDir);
   const names = new Set([...manifest.entries, ...manifest.logicalEntries].map((entry) => entry.provider));

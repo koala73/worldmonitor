@@ -1,4 +1,5 @@
 import { hmac } from '@noble/hashes/hmac';
+import { bytesToHex } from '@noble/hashes/utils';
 import { sha256 } from '@noble/hashes/sha256';
 
 /**
@@ -295,7 +296,7 @@ export function stripAttributionSuffix(text, options) {
  * (pre-lowercase) text. Callers should pass raw titles — lowercasing
  * upstream destroys the entity signal (harmless, but the boost is lost).
  * @param {string} text
- * @returns {Array<{ tok: string; boost: number }>}
+ * @returns {Array<{ tok: string; boost: number; entity: boolean }>}
  */
 function contentTokens(text) {
   const kept = [];
@@ -310,7 +311,7 @@ function contentTokens(text) {
     const capitalized = /^\p{Lu}/u.test(clean);
     const hasDigit = /\p{N}/u.test(clean);
     const boost = hasDigit ? BOOST_NUMBER : capitalized ? BOOST_ENTITY : 1;
-    kept.push({ tok, boost });
+    kept.push({ tok, boost, entity: capitalized && !hasDigit && !CANDIDATE_STOPWORDS.has(tok) });
   }
   return kept;
 }
@@ -414,6 +415,7 @@ function lexicalStoryVector(text) {
   // dedup metric (|∩|/min) handled exactly this class; keep that
   // guarantee via token containment.
   return { u: un, b: bn, t: new Set(tokens.map((entry) => entry.tok)),
+    e: foldEntityVariants(tokens.filter((entry) => entry.entity).map((entry) => entry.tok)),
     f: { u: normalizeFeatures(fu), b: normalizeFeatures(fb) } };
 }
 
@@ -474,6 +476,56 @@ const CONTAINMENT_RESCUE_MIN_TOKENS = 4;
 const CONTAINMENT_RESCUE_RATIO = 0.9;
 const CONTAINMENT_RESCUE_SCORE = 0.9;
 
+// Same-parties rescue: reworded wire reports of one event ("Australia,
+// Solomon Islands sign security pact in blow to China" vs "Solomon
+// Islands ends controversial security pact with China for Australian
+// treaty") share few words but name the same parties. When one title's
+// ≥4 entity tokens all appear in the other, they share ≥2 non-entity
+// topic words, and the cosine is already moderate, they are the same
+// story. Entity tokens match by prefix, so "Australian" and "Australia’s"
+// match "Australia".
+const SAME_PARTIES_MIN_ENTITIES = 4;
+const SAME_PARTIES_SCORE_FLOOR = 0.43;
+const SAME_PARTIES_MIN_TOPIC_TOKENS = 2;
+
+/** @param {string} x @param {string} y */
+function isEntityVariant(x, y) {
+  return x === y || (Math.min(x.length, y.length) >= 4 && (x.startsWith(y) || y.startsWith(x)));
+}
+
+/**
+ * One token per party, so "Iran" and "Iranian" in one title count once.
+ * @param {string[]} toks
+ */
+function foldEntityVariants(toks) {
+  const kept = [];
+  for (const tok of [...new Set(toks)].sort((x, y) => x.length - y.length)) {
+    if (!kept.some((other) => isEntityVariant(tok, other))) kept.push(tok);
+  }
+  return new Set(kept);
+}
+
+/** @param {Set<string>} from @param {Set<string>} to */
+function entitiesCovered(from, to) {
+  for (const tok of from) {
+    if (![...to].some((other) => isEntityVariant(tok, other))) return false;
+  }
+  return true;
+}
+
+/** @param {{ t: Set<string>; e: Set<string> }} a @param {{ t: Set<string>; e: Set<string> }} b */
+function sameParties(a, b) {
+  if (Math.min(a.e.size, b.e.size) < SAME_PARTIES_MIN_ENTITIES) return false;
+  const aCovered = a.e.size <= b.e.size && entitiesCovered(a.e, b.e);
+  if (!aCovered && !(b.e.size <= a.e.size && entitiesCovered(b.e, a.e))) return false;
+  let sharedTopicTokens = 0;
+  for (const tok of a.t) {
+    if (!b.t.has(tok) || CANDIDATE_STOPWORDS.has(tok) || /\p{N}/u.test(tok)) continue;
+    if (![...a.e, ...b.e].some((party) => isEntityVariant(tok, party))) sharedTopicTokens++;
+  }
+  return sharedTopicTokens >= SAME_PARTIES_MIN_TOPIC_TOKENS;
+}
+
 export function cosineSimilarity(a, b) {
   if (!a || !b) return 0;
   // Exact lexical features prevent hash collisions and salt changes from
@@ -495,6 +547,9 @@ export function cosineSimilarity(a, b) {
         return CONTAINMENT_RESCUE_SCORE;
       }
     }
+  }
+  if (score < STORY_SIMILARITY_THRESHOLD && score >= SAME_PARTIES_SCORE_FLOOR && a.e && b.e && sameParties(a, b)) {
+    return STORY_SIMILARITY_THRESHOLD;
   }
   return score;
 }
@@ -640,4 +695,99 @@ export function clusterTexts(texts, opts = {}) {
   return Array.from(byRoot.entries())
     .sort((a, b) => a[0] - b[0])
     .map(([, members]) => members);
+}
+
+// Delivery and cross-build coverage must agree on punctuation and attribution.
+const NORMALIZED_TITLE_SCAN = 2_000;
+// Question marks across scripts, Greek ';' (U+037E) included. A false match
+// only gives a headline its own label; a miss merges a question into the report.
+const CLASSIFY_QUESTION_RE = /[\u003F\u003B\u037E\u055E\u061F\u0705\u1367\u203D\u2047\u2048\u2049\u2753\u2E2E\uA60F\uFE16\uFE56\uFF1F][^\p{L}\p{N}]*(?:[-–—|][^?\u061F\uFF1F]*)?$/u;
+// U.S. and U.K. are one word, as US and UK are.
+const DOTTED_ABBREVIATION_RE = /(?<![\p{L}\p{N}])(?:\p{L}\.){2,}/gu;
+// Anything between letters that is not a letter, number, space or apostrophe
+// is a word break (re-sign, re\u00adsign, re/sign are not resign). Enumerating
+// separators always misses one; an apostrophe stays inside its word (UAE's).
+const IN_WORD_HYPHEN_RE = /(?<=[\p{L}\p{N}])[^\p{L}\p{N}\s'\u2018\u2019\u02BC]+(?=[\p{L}\p{N}])/gu;
+// A credit is a bare outlet host: name.tld, www.name.tld, or name under a
+// country second level (bbc.co.uk). Any other dotted or underscored run
+// (mines.confirmed.com) is headline text.
+const BARE_HOST_RE = /^(?:www\.)?[\p{L}\p{N}-]+\.(?:(?:co|com|net|org|gov|ac|edu)\.[a-z]{2}|[\p{L}\p{N}-]+)$/u;
+
+/**
+ * The title without its outlet credits, or null when a stripped credit is not
+ * a bare host (a clause ending in a domain) or the chain is too long to check.
+ * Credits come off one at a time, as normalizeNewsStoryTitle strips them.
+ * @param {string} lower
+ */
+function stripOutletCredits(lower) {
+  let rest = lower;
+  for (let i = 0; ; i += 1) {
+    const domainless = stripOneAttribution(rest, 'domain', false);
+    const credit = rest.slice(domainless.length).trim().replace(/^[-–—|]\s*/, '');
+    if (credit && !BARE_HOST_RE.test(credit)) return null;
+    const next = stripOneAttribution(domainless, 'publisher', false);
+    if (next === rest) return rest;
+    if (i === 8) return null;
+    rest = next;
+  }
+}
+
+/**
+ * The identity the AI classify cache keys a headline on (#10976): its story,
+ * so outlet suffixes, case and punctuation share one label. The exact title
+ * is kept when sharing could hand one headline's label to different text:
+ * under four words (no story key), or a stripped credit that is not a bare
+ * host (several words, or clause words joined by dots or underscores). A
+ * question in any script keeps its own label, anything but an apostrophe
+ * between letters splits words (re-sign, resign), and a headline that still
+ * carries combining marks keeps its exact title.
+ * @param {string} title
+ */
+export function classifyCacheIdentity(title) {
+  if (typeof title !== 'string') return '';
+  // NFC first: a decomposed accent is the precomposed letter. Marks that
+  // remain are vowels or meaning in Arabic, Hebrew and Indic scripts, which
+  // the story normalizer deletes, so such a headline keeps its exact title.
+  const lower = title.normalize('NFC').toLowerCase();
+  if (/\p{M}/u.test(lower)) return lower;
+  const rest = stripOutletCredits(lower);
+  if (rest === null) return lower;
+  // Past the story scan the key is a prefix and the question test reads the
+  // tail, so a padded question would take the report's label: keep the title.
+  if (rest.length > NORMALIZED_TITLE_SCAN) return lower;
+  // Split in-word dashes after the credits are gone, so "Hormuz—Reuters" still strips.
+  const words = rest.replace(DOTTED_ABBREVIATION_RE, (run) => run.replaceAll('.', ''));
+  const story = normalizeNewsStoryTitle(words.replace(IN_WORD_HYPHEN_RE, ' '));
+  if (story.split(' ').length < 4) return lower;
+  // The question test reads the same credit-stripped text the key does, bounded
+  // above, so stripped whitespace cannot move the '?' out of its window.
+  return story + (CLASSIFY_QUESTION_RE.test(rest) ? ' ?' : '');
+}
+
+export function normalizeNewsStoryTitle(title) {
+  if (typeof title !== 'string') return '';
+  const stripped = stripAttributionSuffix(title.toLowerCase(), { allowPipe: false });
+  const bounded = stripped.length > NORMALIZED_TITLE_SCAN ? stripped.slice(0, NORMALIZED_TITLE_SCAN) : stripped;
+  return bounded
+    // Story tracking drops all punctuation, which makes "1.5 million" and
+    // "15 million" one headline. Held for a day, that would silence the
+    // second, so punctuation inside a number becomes a space instead.
+    .replace(/(?<=\p{N})[^\p{L}\p{N}\s]+(?=\p{N})/gu, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export const NEWS_PUBLISHER_COVERAGE_PREFIX = 'news:publisher-coverage:v2:';
+
+// One key per headline across editions (#10977): a publisher family carrying
+// the story in any edition corroborates it in every edition.
+export function newsPublisherCoverageKey(title) {
+  if (typeof title !== 'string' || !title) return '';
+  const normalized = normalizeNewsStoryTitle(title);
+  // Short or unsegmented headlines use the literal identity, like the relay,
+  // and so does one whose stripped credit is a clause, not an outlet: that
+  // wording must not take another headline's publisher count.
+  const identity = normalized.split(' ').length >= 4 && stripOutletCredits(title.toLowerCase()) !== null ? normalized : title;
+  return `${NEWS_PUBLISHER_COVERAGE_PREFIX}${bytesToHex(sha256(encoder.encode(identity)))}`;
 }

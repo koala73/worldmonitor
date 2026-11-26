@@ -10,12 +10,10 @@ const { openExternalUrl, startCheckout, showCheckoutErrorToast } = vi.hoisted(()
   startCheckout: vi.fn(async () => true),
   showCheckoutErrorToast: vi.fn((_message: string) => {}),
 }));
-let desktop = false;
 let referral: string | null = null;
 
 vi.mock('@/services/external-navigation', () => ({ openExternalUrl }));
 vi.mock('@/services/checkout', () => ({ startCheckout }));
-vi.mock('@/services/runtime', () => ({ isDesktopRuntime: () => desktop }));
 vi.mock('@/services/checkout-error-toast', () => ({ showCheckoutErrorToast }));
 vi.mock('@/services/referral-capture', () => ({ loadActiveReferral: () => referral }));
 
@@ -31,7 +29,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  desktop = false;
   referral = null;
 });
 
@@ -71,12 +68,6 @@ describe('openUpgradePlans', () => {
     expect(url.hash).toBe('#pricing');
     expect(url.searchParams.get('wm_checkout_mission')).toBe('crisis-desk');
     expect(url.searchParams.get('wm_checkout_panel')).toBe('cii');
-  });
-
-  it('marks the desktop handoff so /pro returns the purchase to the app', async () => {
-    desktop = true;
-    await openUpgradePlans();
-    expect(openExternalUrl).toHaveBeenCalledWith('https://worldmonitor.app/pro?wm_checkout_handoff=desktop#pricing', null, NO_POPUP);
   });
 
   it('carries the captured affiliate referral to /pro as ?ref=', async () => {

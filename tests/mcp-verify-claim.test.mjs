@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
-import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
+import Ajv2020 from 'ajv/dist/2020.js';
+import { outletProfileFields } from '../server/_shared/outlet-profile.ts';
 import { __testing__ as claimPool } from '../server/worldmonitor/news/v1/search-claim-headlines.ts';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache.ts';
 
@@ -106,6 +107,37 @@ describe('verify_claim MCP tool', () => {
     return body.result?.content?.[0]?.text ? JSON.parse(body.result.content[0].text) : body;
   }
 
+  // What a strict MCP client does with structuredContent (#10359).
+  async function assertAdvertisedShape(claims) {
+    const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    }));
+    const publicTool = (await listed.json()).result.tools.find((t) => t.name === 'verify_claim');
+    const validateAdvertised = new Ajv2020({
+      allErrors: true, allowUnionTypes: true, strict: true, strictRequired: false, validateFormats: false,
+    }).compile(publicTool.outputSchema);
+    for (const claim of claims) {
+      const { deps } = makeProDeps();
+      const response = await mcpHandler(proReq('POST', callBody('verify_claim', { claim })), deps);
+      const { structuredContent } = (await response.json()).result;
+      assert.ok(
+        validateAdvertised(structuredContent),
+        `${claim}: ${(validateAdvertised.errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message}`).join('; ')}`,
+      );
+      for (const headline of structuredContent.headlines) {
+        const profile = outletProfileFields(headline.source);
+        assert.deepEqual(
+          { homeCountry: headline.homeCountry, audience: headline.audience, language: headline.language, ownershipClass: headline.ownershipClass },
+          profile,
+          `${claim}: ${headline.source} carries its outlet profile`,
+        );
+        if (profile.homeCountry) assert.ok(headline.summary.endsWith(`Home ${profile.homeCountry}; ${profile.audience} audience; language ${profile.language}; ownership ${profile.ownershipClass}.`));
+      }
+      if (structuredContent.found) assert.ok(structuredContent.headlines.some((h) => h.homeCountry), `${claim}: at least one headline has a recorded profile`);
+    }
+  }
+
   it('is listed with a required, capped claim', async () => {
     const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -186,6 +218,11 @@ describe('verify_claim MCP tool', () => {
       assert.equal(requests.filter((url) => url.includes('/api/news/v1/')).length, 0, 'no gateway request: no digest read, no second billed unit');
     });
 
+    it('found and not-found results from the pool validate against the advertised outputSchema', async () => {
+      await assertAdvertisedShape(['Trump strikes diesel deal with Putin', 'Mars colony declares independence from Earth']);
+      assert.equal(requests.filter((url) => url.includes('list-feed-digest')).length, 0, 'the pool answered, not the digest');
+    });
+
     it('a searched pool with no match is not-found, not unknown', async () => {
       const result = await callTool({ claim: 'Mars colony declares independence from Earth' });
       assert.equal(result.found, false);
@@ -231,15 +268,7 @@ describe('verify_claim MCP tool', () => {
     assert.deepEqual({ state: unset.factChecks.state, items: unset.factChecks.items }, { state: 'not-configured', items: [] });
   });
 
-  it('found and not-found results both carry every documented required key', async () => {
-    const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
-    }));
-    const schema = documentedOutputSchema((await listed.json()).result.tools.find((t) => t.name === 'verify_claim'));
-    for (const claim of ['Trump strikes diesel deal with Putin', 'Mars colony declares independence from Earth']) {
-      const result = await callTool({ claim });
-      for (const key of schema.required) assert.ok(key in result, `${claim}: missing required output key ${key}`);
-    }
+  it('found and not-found results from the digest validate against the advertised outputSchema', async () => {
+    await assertAdvertisedShape(['Trump strikes diesel deal with Putin', 'Mars colony declares independence from Earth']);
   });
 });

@@ -48,17 +48,16 @@ export const assertSignedOutAuthHydrationKeepsHeaderStable = async (page: Page):
     const widget = document.createElement('div');
     widget.className = 'auth-header-widget';
 
+    const freeReason = document.createElement('span');
+    freeReason.className = 'auth-free-reason';
+    freeReason.textContent = 'Free: save your layout, follow countries, get alerts';
+    widget.appendChild(freeReason);
+
     const signInButton = document.createElement('button');
     signInButton.className = 'auth-signin-btn';
     signInButton.type = 'button';
     signInButton.textContent = 'Sign In';
     widget.appendChild(signInButton);
-
-    const signUpButton = document.createElement('button');
-    signUpButton.className = 'auth-signup-link';
-    signUpButton.type = 'button';
-    signUpButton.textContent = 'Create account';
-    widget.appendChild(signUpButton);
 
     authMount.replaceChildren(widget);
 
@@ -94,14 +93,22 @@ export const assertSignedOutAuthHydrationKeepsHeaderStable = async (page: Page):
       afterHeaderBox: rectOf(header),
       hydratedWidgetBox: rectOf(widget),
       authMountMinWidth: getComputedStyle(authMount).minWidth,
+      hasCreateAccount: Boolean(widget.querySelector('.auth-signup-link')),
+      hasFreeReason: Boolean(widget.querySelector('.auth-free-reason')),
+      signInCount: widget.querySelectorAll('.auth-signin-btn').length,
     };
   });
 
-  expect(hydrated.authMountMinWidth).toBe(`${HEADER_AUTH_SLOT_WIDTH}px`);
-  expect(result.beforeAuthMountBox.width).toBeGreaterThanOrEqual(HEADER_AUTH_SLOT_WIDTH);
-  expect(hydrated.afterAuthMountBox.width).toBeGreaterThanOrEqual(HEADER_AUTH_SLOT_WIDTH);
-  expect(hydrated.hydratedWidgetBox.width).toBeGreaterThan(180);
+  expect(hydrated.authMountMinWidth).toBe('72px');
+  expect(result.beforeAuthMountBox.width).toBeGreaterThanOrEqual(72);
+  expect(result.beforeAuthMountBox.width).toBeLessThanOrEqual(HEADER_AUTH_SLOT_WIDTH + 1);
+  expect(hydrated.afterAuthMountBox.width).toBeGreaterThanOrEqual(72);
+  expect(hydrated.afterAuthMountBox.width).toBeLessThanOrEqual(HEADER_AUTH_SLOT_WIDTH + 1);
+  expect(hydrated.hydratedWidgetBox.width).toBeGreaterThan(70);
   expect(hydrated.hydratedWidgetBox.width).toBeLessThanOrEqual(HEADER_AUTH_SLOT_WIDTH + 1);
+  expect(hydrated.hasCreateAccount).toBe(false);
+  expect(hydrated.hasFreeReason).toBe(true);
+  expect(hydrated.signInCount).toBe(1);
   if (result.pendingSkeletonCount > 0) {
     expect(result.pendingSkeletonCount).toBe(2);
   }

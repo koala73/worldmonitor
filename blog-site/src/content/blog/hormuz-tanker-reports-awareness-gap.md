@@ -6,6 +6,7 @@ keywords: "Hormuz tanker reports, maritime intelligence, World Monitor, OSINT mo
 audience: "Maritime analysts, energy analysts, supply-chain teams, OSINT researchers"
 heroImage: "/blog/images/blog/hormuz-tanker-reports-awareness-gap.jpg"
 pubDate: "2026-10-29"
+modifiedDate: "2026-11-10"
 ---
 
 *Information can be public and still be easy to miss. World Monitor exists to close that gap.*
@@ -43,7 +44,7 @@ Most people who care about Hormuz don’t sit in front of a terminal. Those who 
 
 Calling World Monitor “an RSS reader” mistakes one input for the product.
 
-**What it watches.** World Monitor’s [source catalog](/sources/) runs to hundreds of providers, and most of the ones that matter here aren’t headlines at all. They are live machine data: AIS vessel positions, military and civil flights from multiple ADS-B networks (adsb.lol, airplanes.live, OpenSky, Wingbits), USNI fleet positions, NGA maritime safety warnings, IMF PortWatch port and tanker activity, GPS-jamming maps, NASA FIRMS satellite fire detections, USGS earthquakes, ACLED conflict events, Cloudflare internet-outage data, EIA and JODI oil data, OFAC sanctions lists, and Polymarket and Kalshi odds.
+**What it watches.** World Monitor’s [source catalog](/sources/) runs to hundreds of providers, and most of the ones that matter here aren’t headlines at all. They are live machine data: [AIS vessel](/blog/posts/ais-vessel-tracking-accuracy/) positions, military and civil flights from multiple ADS-B networks (adsb.lol, airplanes.live, OpenSky, Wingbits), USNI fleet positions, NGA maritime safety warnings, IMF PortWatch port and tanker activity, GPS-jamming maps, NASA FIRMS satellite fire detections, USGS earthquakes, ACLED conflict events, Cloudflare internet-outage data, EIA and JODI oil data, OFAC sanctions lists, and Polymarket and Kalshi odds.
 
 It also follows reviewed Telegram channels where events break before they reach a newsroom: official accounts such as the IRGC’s, Israel’s Home Front Command and Ukraine’s Air Force; OSINT accounts such as Bellingcat, Aurora Intel and OSINTdefender; and regional outlets. Named outlets carry an editorial tier, with propaganda-risk ratings on the riskier ones, so a state-media claim is not weighed like a wire report.
 
@@ -53,11 +54,11 @@ It also follows reviewed Telegram channels where events break before they reach 
 - **Detects spikes**: keyword, CVE and threat-actor surges measured against a rolling baseline.
 - **Flags temporal anomalies**: activity compared with 90-day baselines for the same weekday and month, graded medium, high or critical.
 - **Finds convergence**: one-degree map cells where unrest, military flights, naval movements and earthquakes overlap within 24 hours.
-- **Scores escalation**: curated intelligence hotspots rated 1–5 from news pressure, country instability, convergence and nearby military activity.
+- **Scores escalation**: curated intelligence hotspots rated 1–5 from news pressure, [country instability](/blog/posts/country-instability-index-methodology-explained/), convergence and nearby military activity.
 - **Watches military surges**: fighters, tankers, AWACS, reconnaissance aircraft, bombers and drones counted per theater against their own history.
-- **Monitors chokepoints**: transit counts for the world’s strategic straits, Hormuz included, updated every 10 minutes against baselines, plus dark-ship and congestion events.
+- **Monitors chokepoints**: IMF PortWatch daily transit counts (published with a lag) plus live navigational warnings and AIS disruption events for the world’s strategic straits, Hormuz included.
 
-**What that means for Hormuz.** A news claim like Friday’s doesn’t arrive alone. In World Monitor it sits beside the strait’s live transit counts, nearby navigation warnings, GPS-interference readings, military flights in the theater, IRGC and Iranian state-media channels, and oil-market odds. An RSS reader gives you a headline. World Monitor gives you the headline and the context to judge it.
+**What that means for Hormuz.** A news claim like Friday’s doesn’t arrive alone. In World Monitor it sits beside the [live Strait of Hormuz status](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/), nearby navigation warnings, GPS-interference readings, military flights in the theater, IRGC and Iranian state-media channels, and oil-market odds. An RSS reader gives you a headline. World Monitor gives you the headline and the context to judge it.
 
 Every provider is listed in World Monitor’s [public source catalog](/sources/). For coverage by domain, cadence and methodology, see the [data sources guide](/docs/data-sources).
 

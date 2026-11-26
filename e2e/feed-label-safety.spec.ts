@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test('hostile feed fields remain text in map tooltips and COT rows', async ({ page }, testInfo) => {
   const hostile = '<img src=x onerror="alert(1)">';
@@ -31,5 +32,5 @@ test('hostile feed fields remain text in map tooltips and COT rows', async ({ pa
   await expect(page.locator('#feed-tooltip-fixture')).toContainText(hostile);
   await expect(page.locator('#feed-tooltip-fixture .deckgl-tooltip')).toBeVisible();
   await expect(page.locator('img,script[src="x"]')).toHaveCount(0);
-  await page.screenshot({ path: testInfo.outputPath('hostile-feed-text.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('hostile-feed-text.png'), fullPage: true });
 });

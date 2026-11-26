@@ -35,7 +35,7 @@ const spies = vi.hoisted(() => ({
 
 vi.mock('@/services', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services')>()),
-  initDB: vi.fn(async () => undefined),
+  openStorageForBoot: vi.fn(async () => true),
   disconnectAisStream: spies.disconnectAisStream,
   startFlightHistoryCleanup: spies.startFlightHistoryCleanup,
   stopFlightHistoryCleanup: spies.stopFlightHistoryCleanup,
@@ -472,5 +472,13 @@ describe('boot failure teardown (text, see header)', () => {
     const main = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf8');
     const boot = main.slice(main.indexOf("const app = new App('app');"), main.indexOf('// Debug helpers for geo-convergence testing'));
     expect(boot).toMatch(/\.catch\(\(error: unknown\) => \{[\s\S]*?app\.destroy\(\);[\s\S]*?\} catch \(cleanupError\)/);
+  });
+
+  it('main.ts renders the boot-failure screen after teardown, inside its own try', () => {
+    const main = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf8');
+    const boot = main.slice(main.indexOf("const app = new App('app');"), main.indexOf('// Debug helpers for geo-convergence testing'));
+    // After destroy (teardown cannot paint over it) and wrapped in try/catch
+    // (a render failure must not mask the boot error).
+    expect(boot).toMatch(/\} catch \(cleanupError\)[\s\S]*?try \{[\s\S]*?renderBootFailureScreen\(error\);[\s\S]*?\} catch \(renderError\)/);
   });
 });

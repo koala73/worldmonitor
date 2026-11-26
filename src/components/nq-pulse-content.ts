@@ -7,7 +7,6 @@ import {
   NQ_DELAYED_MAX_MS,
   NQ_PULSE_BASKET,
   NQ_PULSE_DISCLOSURE,
-  NQ_PULSE_ORDER,
   type NqPulseMarketSymbol,
   type NqPulseSymbol,
   type NqPulseUnit,
@@ -149,8 +148,4 @@ export function composeNqPulseHtml(input: {
 export function nqPulseAsOfLabel(asOf: string | null | undefined, freshness: NqFreshnessLabel): string {
   if (freshness === 'Freshness unavailable' || !asOf) return 'As of: Freshness unavailable';
   return `As of ${asOf}`;
-}
-
-export function displayOrderSymbols(): readonly NqPulseSymbol[] {
-  return NQ_PULSE_ORDER;
 }

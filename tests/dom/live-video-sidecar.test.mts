@@ -76,7 +76,7 @@ describe('live video sidecar transport', () => {
     expect(src.pathname).toBe('/api/youtube-embed');
     expect(src.searchParams.get('channel')).toBe(CHANNEL_ID);
     expect(src.searchParams.get('parentOrigin')).toBe(window.location.origin);
-    expect(states).toEqual([{ phase: 'connecting', attempt: 1, of: 1 }]);
+    expect(states).toEqual([{ phase: 'connecting', attempt: 1, of: 1, ready: false, tapToPlay: false }]);
     expect(iframeApi.load).not.toHaveBeenCalled();
   });
 

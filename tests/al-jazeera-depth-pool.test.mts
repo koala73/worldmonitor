@@ -10,8 +10,11 @@ import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
 import { __testing__ as digest } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { __testing__ as claimPool, searchClaimPool } from '../server/worldmonitor/news/v1/search-claim-headlines';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
-import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
+import { REVOKED_URLS_KEY, __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
+
+// Each test sets its own revocations; drop the previous test's memoized read.
+beforeEach(__resetRevocationMemoForTest);
 
 const gn = (q: string) => `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
 const NATIVE_URL = 'https://www.aljazeera.com/xml/rss/all.xml';
@@ -44,7 +47,9 @@ beforeEach(() => {
   revoked = [];
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // A deadline-cut fetch probes its feed after the response; finish it on this test's fetch.
+  await digest.settleFeedProbes();
   globalThis.fetch = originalFetch;
   for (const key of envKeys) {
     if (oldEnv[key] === undefined) delete process.env[key];
@@ -117,10 +122,11 @@ describe('Al Jazeera claim-pool depth feed', () => {
   it('settles when the build deadline aborts a stalled depth fetch, and never throws', async () => {
     stubFetch({});
     const stalled = globalThis.fetch;
-    globalThis.fetch = async (url, init) => String(url) === DEPTH_URL
+    const deadline = new AbortController();
+    // Stalls only until the deadline; the probe that follows it gets a quick answer.
+    globalThis.fetch = async (url, init) => String(url) === DEPTH_URL && !deadline.signal.aborted
       ? new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
       : stalled(url, init);
-    const deadline = new AbortController();
     let settled = false;
     const warming = digest.warmDepthFeeds([{ attemptId: 'middleeast:0', category: 'middleeast', feed: aljazeera }], 'full', deadline.signal)
       .then(() => { settled = true; });

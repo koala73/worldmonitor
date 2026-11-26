@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const panelReceiptSchema = z.object({
   token: z.string().max(160), expiresAt: z.string().datetime(), reused: z.boolean(),

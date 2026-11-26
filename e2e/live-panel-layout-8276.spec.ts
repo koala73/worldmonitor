@@ -1,4 +1,87 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
+
+test('expanded Live News keeps dashboard map dividers off the video (#11152)', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.addInitScript(() => {
+    localStorage.setItem('worldmonitor-variant', 'full');
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+    localStorage.setItem('wm-layer-warning-dismissed', 'true');
+    localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+    localStorage.setItem('map-split-height', '615px');
+    localStorage.setItem('wm-live-news-autoplay', 'false');
+  });
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
+
+  const news = page.locator('.panel[data-panel="live-news"]');
+  await news.scrollIntoViewIfNeeded();
+  const expand = news.getByRole('button', { name: 'Fullscreen', exact: true });
+  const heightHandle = page.locator('#mapResizeHandle');
+  const widthHandle = page.locator('#mapWidthResizeHandle');
+
+  // Replace the idle shell with the player markup before any live session starts.
+  const captureEvidence = process.env.WM_E2E_EVIDENCE === '1';
+  await news.locator('.live-news-placeholder').evaluate((placeholder, showClip) => {
+    const player = document.createElement('div');
+    player.className = 'live-news-player';
+    const video = document.createElement('video');
+    video.className = 'live-news-media';
+    video.controls = true;
+    if (showClip) video.src = '/assets/worldmonitor-plugin-walkthrough-2.10.1.mp4';
+    player.appendChild(video);
+    placeholder.replaceWith(player);
+  }, captureEvidence);
+  const video = news.locator('video.live-news-media');
+  if (captureEvidence) {
+    await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).readyState))
+      .toBeGreaterThanOrEqual(2);
+  }
+
+  await expect(heightHandle).toBeVisible();
+  await expect(widthHandle).toBeVisible();
+  const divider = (await heightHandle.boundingBox())!;
+  const dividerPoint = { x: divider.x + divider.width / 2, y: divider.y + divider.height / 2 };
+
+  await expand.click();
+  await evidenceScreenshot(page, { path: testInfo.outputPath('live-news-expanded.png') });
+  await expect.poll(() => video.evaluate((element, { x, y }) =>
+    document.elementFromPoint(x, y) === element, dividerPoint), {
+    message: 'video receives pointer input where the map height divider was',
+  }).toBe(true);
+  await expect(heightHandle).toBeHidden();
+  await expect(widthHandle).toBeHidden();
+
+  await video.evaluate(element => {
+    element.addEventListener('click', () => void element.requestFullscreen(), { once: true });
+  });
+  await video.click({ position: { x: 120, y: 120 } });
+  await expect.poll(() => video.evaluate(element => document.fullscreenElement === element)).toBe(true);
+  await page.evaluate(() => document.exitFullscreen());
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+  await page.keyboard.press('Escape');
+  await expect(heightHandle).toBeVisible();
+  await expect(widthHandle).toBeVisible();
+
+  await expand.click();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(heightHandle).toBeHidden();
+  await evidenceScreenshot(page, { path: testInfo.outputPath('live-news-expanded-stacked.png') });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect(heightHandle).toBeHidden();
+  await expect(widthHandle).toBeHidden();
+  await page.keyboard.press('Escape');
+
+  await expect(heightHandle).toBeVisible();
+  await expect(widthHandle).toBeVisible();
+  await page.mouse.move(dividerPoint.x, dividerPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(dividerPoint.x, dividerPoint.y + 50);
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('map-split-height'))).toBe('665px');
+});
 
 test('wide live video panels do not overlap adjacent dashboard panels (#8276)', async ({
   page,
@@ -40,6 +123,9 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
     timeout: 60_000,
   });
 
+  // The webcam wall takes three rows on a tall viewport. Live News holds one
+  // 16:9 player, so it takes two rows at every height (#10458 follow-up): a
+  // third row was 111-290px of empty panel under the video.
   const cases = [
     { height: 590, span: 2, panelHeight: 404 },
     { height: 671, span: 2, panelHeight: 404 },
@@ -72,6 +158,9 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
           );
 
           if (!panel) return false;
+
+          const wantSpan = id === 'live-news' ? 2 : span;
+          const wantHeight = id === 'live-news' ? 404 : panelHeight;
 
           const rect = panel.getBoundingClientRect();
           const style = getComputedStyle(panel);
@@ -124,8 +213,8 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
           const gap = next.rect.top - rect.bottom;
 
           return (
-            style.gridRowStart === `span ${span}` &&
-            Math.abs(rect.height - panelHeight) <= 2 &&
+            style.gridRowStart === `span ${wantSpan}` &&
+            Math.abs(rect.height - wantHeight) <= 2 &&
             Math.abs(gap - 4) <= 2 &&
             webcamCellsVisible &&
             !panel.classList.contains('resized')
@@ -140,6 +229,15 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
     ).toBe(true);
   }
   await page.setViewportSize({ width: 1600, height: 866 });
+  // The player fills the panel: no empty band between the video and the
+  // panel's bottom edge, at the natural size and after a user makes it taller.
+  const deadSpaceBelowPlayer = () => news.evaluate((element) => {
+    const player = element.querySelector('.live-news-player');
+    if (!player) return null;
+    return Math.round(element.getBoundingClientRect().bottom - player.getBoundingClientRect().bottom);
+  });
+  await expect.poll(deadSpaceBelowPlayer, { message: 'natural Live News footprint' }).toBeLessThanOrEqual(16);
+  expect(await deadSpaceBelowPlayer()).toBeGreaterThanOrEqual(0);
   const footprint = (panel: typeof news) => panel.evaluate(element => ({
     span: getComputedStyle(element).gridRowStart,
     height: Math.round(element.getBoundingClientRect().height),
@@ -173,8 +271,16 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
   for (const panel of [news, webcams]) {
     await panel.locator('.panel-collapse-btn').click();
     await expect(panel).not.toHaveClass(/panel-collapsed/);
-    await expect.poll(() => footprint(panel)).toEqual({ span: 'span 3', height: 608 });
+    await expect.poll(() => footprint(panel)).toEqual(
+      panel === news ? { span: 'span 2', height: 404 } : { span: 'span 3', height: 608 },
+    );
   }
+  const newsHandle = news.locator(':scope > .panel-resize-handle');
+  await newsHandle.focus();
+  await newsHandle.press('End');
+  await expect(news).toHaveClass(/\bspan-4\b/);
+  await expect.poll(deadSpaceBelowPlayer, { message: 'four-row Live News footprint' }).toBeLessThanOrEqual(16);
+  expect(await deadSpaceBelowPlayer(), 'four-row player stays inside the panel').toBeGreaterThanOrEqual(0);
 });
 
 test('collapsing a user-resized video panel releases its grid rows (#10185)', async ({
@@ -294,7 +400,7 @@ test('collapsed resized video panels release rows in the bottom grid (#10185)', 
     await expect(toolbar).toBeVisible();
     await toggle.click();
     await expect(panel).toHaveClass(/panel-collapsed/);
-    await page.screenshot({ path: testInfo.outputPath(`${id}-collapsed-bottom.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`${id}-collapsed-bottom.png`) });
     await expect.poll(span, { message: `collapsed ${id} reserves one bottom-grid row` }).toBe('span 1');
     await expect(toolbar).toBeHidden();
     await expect(handle).toBeHidden();

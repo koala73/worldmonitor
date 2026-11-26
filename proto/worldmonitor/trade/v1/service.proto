@@ -11,6 +11,7 @@ import "worldmonitor/trade/v1/get_trade_flows.proto";
 import "worldmonitor/trade/v1/get_trade_barriers.proto";
 import "worldmonitor/trade/v1/get_customs_revenue.proto";
 import "worldmonitor/trade/v1/list_comtrade_flows.proto";
+import "worldmonitor/trade/v1/get_monthly_sitc_trade.proto";
 
 // Trade policy intelligence from WTO, World Bank WITS and US Treasury data sources.
 service TradeService {
@@ -51,6 +52,11 @@ service TradeService {
   // GetCustomsRevenue returns monthly and fiscal-year-to-date US customs duty receipts in billions from the Monthly Treasury Statement, up to 50 recent months.
   rpc GetCustomsRevenue(GetCustomsRevenueRequest) returns (GetCustomsRevenueResponse) {
     option (sebuf.http.config) = {path: "/get-customs-revenue", method: HTTP_METHOD_GET};
+  }
+
+  // GetMonthlySitcTrade returns a country's monthly exports and imports by SITC section from the national statistics office, with unit value and volume indices; Malaysia (DOSM) is covered.
+  rpc GetMonthlySitcTrade(GetMonthlySitcTradeRequest) returns (GetMonthlySitcTradeResponse) {
+    option (sebuf.http.config) = {path: "/get-monthly-sitc-trade", method: HTTP_METHOD_GET};
   }
 
   // ListComtradeFlows returns UN Comtrade strategic-commodity flows by reporter and HS code, flagging 30% yearly swings.

@@ -299,5 +299,20 @@ export const CLIENT_METADATA_SNAPSHOTS = {
     response_types: [
       'code'
     ]
+  },
+  'https://manufact.com/oauth/client-metadata.json': {
+    client_id: 'https://manufact.com/oauth/client-metadata.json',
+    client_name: 'Manufact Cloud',
+    redirect_uris: [
+      'https://manufact.com/inspector/oauth/callback'
+    ],
+    token_endpoint_auth_method: 'none',
+    grant_types: [
+      'authorization_code',
+      'refresh_token'
+    ],
+    response_types: [
+      'code'
+    ]
   }
 };

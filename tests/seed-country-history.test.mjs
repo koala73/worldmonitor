@@ -82,6 +82,166 @@ test('headlines match complete country names without assigning nested names to a
   ]) assert.deepEqual(rows.get(code).topEvents.map(event => event.title), titles, code);
 });
 
+const poolRow = (title, link, extra = {}) => ({ title, link, source: 'Feed', category: 'middleeast', publishedAt: now - 2000, ...extra });
+
+test('headlines come from the whole feed pool, not only the front-page digest', () => {
+  const data = inputs();
+  data.countries = ['AE', 'IE', 'MX', 'RU', 'NE'];
+  data.digest.categories.politics.items = [];
+  data.pool = { feedsTotal: 2, feedsCached: 2, items: [
+    poolRow('Somalia-UAE rupture deepens over port deal', 'https://example.org/ae'),
+    poolRow('Northern Ireland doctors strike over pay', 'https://example.org/ni'),
+    poolRow('New Mexico approves uranium mine petition', 'https://example.org/nm'),
+    poolRow('Russian strike kills 11 in residential block', 'https://example.org/ru'),
+    poolRow('Emirati envoy meets Somali president', 'https://example.org/ae2'),
+    poolRow('Niger State killings: 35 dead in reprisals', 'https://example.org/ng'),
+    poolRow('Niger states it will reopen the border', 'https://example.org/ne'),
+  ] };
+  const rows = new Map(composeCountrySnapshots(data).map(row => [row.countryCode, row]));
+  assert.deepEqual(rows.get('AE').topEvents.map(event => event.link), ['https://example.org/ae', 'https://example.org/ae2']);
+  assert.deepEqual(rows.get('AE').topEvents[0], { title: 'Somalia-UAE rupture deepens over port deal', link: 'https://example.org/ae', source: 'Feed', category: 'middleeast' });
+  assert.deepEqual(rows.get('IE').topEvents, []);
+  assert.deepEqual(rows.get('MX').topEvents, []);
+  assert.deepEqual(rows.get('RU').topEvents.map(event => event.link), ['https://example.org/ru']);
+  assert.deepEqual(rows.get('NE').topEvents.map(event => event.link), ['https://example.org/ne']);
+});
+
+test('digest headlines rank first, then pool headlines from distinct publishers before repeats', () => {
+  const data = inputs();
+  data.countries = ['US'];
+  data.pool = { feedsTotal: 1, feedsCached: 1, items: [
+    poolRow('United States budget vote', 'https://a.example/1', { source: 'Gulf Daily News', publishedAt: now - 100 }),
+    poolRow('United States tariff ruling', 'https://a.example/2', { source: 'Gulf Daily News', publishedAt: now - 200 }),
+    poolRow('United States storm warning', 'https://b.example/3', { source: 'Khaleej Times', publishedAt: now - 300 }),
+    poolRow('United States talks begin', 'https://example.com/1', { source: 'Repeat', publishedAt: now - 50 }),
+  ] };
+  const [us] = composeCountrySnapshots(data);
+  assert.deepEqual(us.topEvents.map(event => event.link), ['https://example.com/1', 'https://a.example/1', 'https://b.example/3', 'https://a.example/2']);
+  assert.equal(us.topEvents[0].category, 'politics');
+});
+
+test('syndicated copies of one headline under different links and sources fill one slot, keeping the first copy', () => {
+  const data = inputs();
+  data.countries = ['UA', 'US'];
+  data.digest.categories.politics.items.push({ title: 'United States Talks Begin', link: 'https://example.com/syndicated', source: 'Other', publishedAt: now - 1100 });
+  const title = 'Estimates of Russians killed in Ukraine surpass all combined US war deaths since WWI';
+  data.pool = { feedsTotal: 2, feedsCached: 2, items: [
+    poolRow(title, 'https://www.militarytimes.com/news/1', { source: 'Military Times', publishedAt: now - 100 }),
+    poolRow(`${title.toUpperCase()}.`, 'https://www.defensenews.com/news/1', { source: 'Defense News', publishedAt: now - 200 }),
+    poolRow(`Estimates of Russians killed in Ukraine: surpass all combined  US war deaths since WWI`, 'https://c.example/1', { source: 'Wire', publishedAt: now - 300 }),
+    poolRow('United States talks begin!', 'https://d.example/1', { source: 'Other', publishedAt: now - 400 }),
+    poolRow('Ukraine grain corridor reopens', 'https://e.example/1', { source: 'Other', publishedAt: now - 500 }),
+  ] };
+  const rows = new Map(composeCountrySnapshots(data).map(row => [row.countryCode, row]));
+  assert.deepEqual(rows.get('UA').topEvents.map(event => [event.link, event.source]), [
+    ['https://www.militarytimes.com/news/1', 'Military Times'],
+    ['https://e.example/1', 'Other'],
+  ]);
+  // A pool copy of a digest headline loses to the digest-ranked copy.
+  assert.deepEqual(rows.get('US').topEvents.map(event => event.link), ['https://example.com/1', 'https://www.militarytimes.com/news/1']);
+});
+
+test('title repeats are judged on the stored 300-character title, and combining marks keep titles distinct', () => {
+  const data = inputs();
+  data.countries = ['US', 'IN'];
+  const long = `United States ${'a'.repeat(300)}`;
+  data.pool = { feedsTotal: 1, feedsCached: 1, items: [
+    poolRow(`${long} one`, 'https://a.example/long-1', { source: 'Gulf Daily News', publishedAt: now - 100 }),
+    poolRow(`${long} two`, 'https://b.example/long-2', { source: 'Khaleej Times', publishedAt: now - 200 }),
+    poolRow('India: आग', 'https://a.example/in-1', { source: 'Gulf Daily News', publishedAt: now - 300 }),
+    poolRow('India: आगे', 'https://b.example/in-2', { source: 'Khaleej Times', publishedAt: now - 400 }),
+  ] };
+  const rows = new Map(composeCountrySnapshots(data).map(row => [row.countryCode, row]));
+  assert.deepEqual(rows.get('US').topEvents.map(event => event.link), ['https://example.com/1', 'https://a.example/long-1']);
+  assert.deepEqual(rows.get('IN').topEvents.map(event => event.link), ['https://a.example/in-1', 'https://b.example/in-2']);
+});
+
+test('a copy deferred for publisher variety yields its story to a copy from a new publisher', () => {
+  const data = inputs();
+  data.countries = ['US'];
+  const story = 'United States sanctions shipping network';
+  data.pool = { feedsTotal: 1, feedsCached: 1, items: [
+    poolRow(story, 'https://example.com/story', { source: 'Example', publishedAt: now - 100 }),
+    poolRow(story, 'https://b.example/story', { source: 'Khaleej Times', publishedAt: now - 200 }),
+    ...['Gulf Daily News', 'Arab News', 'The National', 'Al Monitor'].map((source, i) =>
+      poolRow(`United States story ${i}`, `https://p${i}.example/1`, { source, publishedAt: now - 300 - i })),
+  ] };
+  const [us] = composeCountrySnapshots(data);
+  assert.equal(us.topEvents.length, 5);
+  assert.deepEqual(us.topEvents.slice(0, 2).map(event => [event.link, event.source]), [
+    ['https://example.com/1', 'Example'],
+    ['https://b.example/story', 'Khaleej Times'],
+  ]);
+  assert.equal(us.topEvents.filter(event => event.title === story).length, 1);
+});
+
+test('revoked, aggregator, stale and future pool rows never enter the archive', () => {
+  const data = inputs();
+  data.countries = ['US'];
+  data.digest.categories.politics.items = [];
+  data.revoked = new Set(['https://example.org/revoked']);
+  data.pool = { feedsTotal: 1, feedsCached: 1, items: [
+    poolRow('United States revoked story', 'https://example.org/revoked'),
+    poolRow('United States redirect story', 'https://news.google.com/rss/articles/abc'),
+    poolRow('United States plain http story', 'http://example.org/http'),
+    poolRow('United States old story', 'https://example.org/old', { publishedAt: now - 25 * 3600000 }),
+    poolRow('United States future story', 'https://example.org/future', { publishedAt: now + 2 * 3600000 }),
+    poolRow('United States kept story', 'https://example.org/kept'),
+  ] };
+  const [us] = composeCountrySnapshots(data);
+  assert.deepEqual(us.topEvents.map(event => event.link), ['https://example.org/kept']);
+});
+
+test('a revoked link is dropped in either its raw or normalized spelling, and the normalized link is stored', () => {
+  const data = inputs();
+  data.countries = ['US'];
+  data.digest.categories.politics.items = [];
+  data.revoked = new Set(['https://example.com/story', 'https://EXAMPLE.org:443/raw']);
+  data.pool = { feedsTotal: 1, feedsCached: 1, items: [
+    poolRow('United States normalized revoked', 'https://EXAMPLE.com:443/story'),
+    poolRow('United States raw revoked', 'https://EXAMPLE.org:443/raw'),
+    poolRow('United States kept', 'https://EXAMPLE.net:443/kept'),
+  ] };
+  const [us] = composeCountrySnapshots(data);
+  assert.deepEqual(us.topEvents.map(event => event.link), ['https://example.net/kept']);
+});
+
+test('revoked digest links are dropped and an empty feed pool marks news partial', () => {
+  const data = inputs();
+  data.revoked = new Set(['https://example.com/1']);
+  data.pool = { feedsTotal: 3, feedsCached: 0, items: [] };
+  const [us] = composeCountrySnapshots(data);
+  assert.deepEqual(us.topEvents, []);
+  assert.ok(us.keySignals.includes('news_partial'));
+});
+
+test('the pool reader keeps country rows only from the same parse and credits trusted origin publishers', async () => {
+  const { readFeedPool } = await import('../scripts/seed-country-history.mjs');
+  const feeds = [{ name: 'Wire', url: 'https://wire.example/rss', category: 'politics' }, { name: 'Other', url: 'https://other.example/rss', category: 'asia' }];
+  const row = (title, extra = {}) => ({ source: 'Wire', title, link: `https://wire.example/${title.length}`, publishedAt: now, ...extra });
+  const values = {
+    'rss:feed:v11:full:https://wire.example/rss': { parsedAt: 1, items: [row('Digest row'), row('Foreign row', { source: 'Elsewhere' })] },
+    'rss:feed-country:v1:full:https://wire.example/rss': { parsedAt: 1, items: [row('Country row longer', { originPublisher: 'Origin Daily', originPublisherTrusted: true })] },
+    'rss:feed:v11:full:https://other.example/rss': { parsedAt: 2, items: [] },
+    'rss:feed-country:v1:full:https://other.example/rss': { parsedAt: 1, items: [{ source: 'Other', title: 'Old parse', link: 'https://other.example/1', publishedAt: now }] },
+  };
+  const pool = await readFeedPool('', '', async (_url, _token, args) => ({ result: args.slice(1).map(key => values[key] ? JSON.stringify(values[key]) : null) }), feeds);
+  assert.equal(pool.feedsCached, 2);
+  assert.deepEqual(pool.items.map(item => [item.title, item.source, item.category]), [['Digest row', 'Wire', 'politics'], ['Country row longer', 'Origin Daily', 'politics']]);
+});
+
+test('the pool reader lists the same feeds the country headline RPC reads', async () => {
+  const { countryHistoryFeeds } = await import('../scripts/seed-country-history.mjs');
+  const { SERVER_NEWS_CATALOG } = await import('../shared/news-catalog.server.generated.ts');
+  const reachable = feed => !feed.lang || feed.lang === 'en' || !!feed.strategicDefault || !!feed.fetchInAllLanguages;
+  const expected = [...new Set([...Object.values(SERVER_NEWS_CATALOG.variantFeeds.full).flat(), ...SERVER_NEWS_CATALOG.intelSources]
+    .filter(reachable).map(feed => feed.url))].sort();
+  assert.deepEqual([...new Set(countryHistoryFeeds().map(feed => feed.url))].sort(), expected);
+  const rpc = readFileSync(new URL('../server/worldmonitor/news/v1/list-country-headlines.ts', import.meta.url), 'utf8');
+  assert.match(rpc, /VARIANT_FEEDS\.full \?\? \{\}\)\.flat\(\), \.\.\.INTEL_SOURCES\]/);
+  assert.match(rpc, /isServerFeedReachableForLanguage\(feed, 'en'\)/);
+});
+
 test('the daily executable recovers transient source reads and bounds permanent failures', () => {
   const entry = new URL('../scripts/seed-country-history.mjs', import.meta.url);
   for (const [status, recover, expectedReads, expectedExit] of [[503, true, 2, 0], [503, false, 3, 1], [401, false, 1, 1]]) {
@@ -94,6 +254,8 @@ test('the daily executable recovers transient source reads and bounds permanent 
       data.digest.generatedAt = new Date(Date.now()).toISOString();
       globalThis.fetch = async (_url, init) => {
         const args = JSON.parse(init.body);
+        if (args[0] === 'SMEMBERS') return Response.json({ result: [] });
+        if (args[0] === 'MGET' && args[1].startsWith('rss:')) return Response.json({ result: args.slice(1).map(() => null) });
         if (args[0] === 'MGET') {
           reads++;
           if (!${recover} || reads === 1) return new Response('fixture failure', { status: ${status} });

@@ -6,6 +6,8 @@ import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/fol
 import { isFollowed, subscribe as subscribeFollowed } from '@/services/followed-countries';
 import { toIso2 } from '@/utils/country-codes';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
 
 
 function alertColor(level: string): string {
@@ -38,6 +40,10 @@ export class DiseaseOutbreaksPanel extends Panel {
   private _followedOnlyHost: HTMLElement | null = null;
   private _followedOnlyTeardown: (() => void) | null = null;
   private _followedUnsub: (() => void) | null = null;
+  // Dashboard focus (#10453): outbreaks carry an ISO code; some carry none.
+  private readonly scopeFilter: PanelScopeFilter;
+  /** A refresh is in flight: the loading indicator must stay until data lands. */
+  private refreshing = false;
 
   constructor() {
     super({
@@ -46,6 +52,7 @@ export class DiseaseOutbreaksPanel extends Panel {
       showCount: false,
       infoTooltip: `${t('components.diseaseOutbreaks.infoTooltip')}<br><br><em>${t('components.diseaseOutbreaks.methodologyNote')}</em>`,
     });
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this._render() });
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-filter]');
       if (btn) {
@@ -140,9 +147,38 @@ export class DiseaseOutbreaksPanel extends Panel {
     this._render();
   }
 
+  public override applyScope(scope: ResolvedScope | null): void {
+    if (!this.scopeFilter.setScope(scope)) return;
+    // The next successful load draws with the new focus; redrawing now would
+    // erase a load failure or the loading state.
+    if (this._hasData && !this.showingLoadFailure && !this.refreshing) this._render();
+  }
+
+  public override showLoading(message?: string): void {
+    this.refreshing = true;
+    this.scopeFilter?.hideStrip();
+    super.showLoading(message);
+  }
+
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.refreshing = false;
+    this.scopeFilter.hideStrip();
+    super.showError(message, onRetry, autoRetrySeconds);
+  }
+
   private _render(): void {
+    this.refreshing = false;
+    // The focus narrows first (chosen countries, then neighbours); the level
+    // chips, search and "Followed only" then work within it, and the level
+    // counts are those of the focused set.
+    const view = this.scopeFilter.view(this._outbreaks, (o) => toIso2(o.countryCode ?? ''));
+    if (this._outbreaks.length === 0) this.scopeFilter.hideStrip();
+    else this.scopeFilter.renderStrip(view);
+    const scoped = view.rows.map((row) => row.item);
+    const rowFor = new Map<DiseaseOutbreakItem, ScopeRow<DiseaseOutbreakItem>>(view.rows.map((row) => [row.item, row]));
+
     const counts = { alert: 0, warning: 0, watch: 0 };
-    for (const o of this._outbreaks) {
+    for (const o of scoped) {
       const k = o.alertLevel as keyof typeof counts;
       if (k in counts) counts[k]++;
     }
@@ -150,13 +186,13 @@ export class DiseaseOutbreaksPanel extends Panel {
     const alertLevels = new Set(['alert', 'warning', 'watch']);
     let filtered = this._filter
       ? alertLevels.has(this._filter)
-        ? this._outbreaks.filter(o => o.alertLevel === this._filter)
-        : this._outbreaks.filter(o =>
+        ? scoped.filter(o => o.alertLevel === this._filter)
+        : scoped.filter(o =>
             o.disease.toLowerCase().includes(this._filter) ||
             o.location.toLowerCase().includes(this._filter) ||
             o.countryCode?.toLowerCase().includes(this._filter)
           )
-      : this._outbreaks;
+      : scoped;
 
     // U7 — "Followed only" filter chip. Hide rows whose `countryCode`
     // is not in the user's watchlist. Items without a country code are
@@ -171,9 +207,9 @@ export class DiseaseOutbreaksPanel extends Panel {
     }
 
     const filterBar = `<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
-      ${counts.alert > 0 ? `<button data-filter="alert" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 8px;border-radius:10px;border:1px solid rgba(231,76,60,0.4);background:${this._filter === 'alert' ? 'rgba(231,76,60,0.2)' : 'transparent'};color:#e74c3c;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.alert', { count: counts.alert }))}</button>` : ''}
-      ${counts.warning > 0 ? `<button data-filter="warning" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 8px;border-radius:10px;border:1px solid rgba(230,126,34,0.4);background:${this._filter === 'warning' ? 'rgba(230,126,34,0.2)' : 'transparent'};color:#e67e22;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.warning', { count: counts.warning }))}</button>` : ''}
-      ${counts.watch > 0 ? `<button data-filter="watch" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 8px;border-radius:10px;border:1px solid rgba(241,196,15,0.4);background:${this._filter === 'watch' ? 'rgba(241,196,15,0.2)' : 'transparent'};color:#f1c40f;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.watch', { count: counts.watch }))}</button>` : ''}
+      ${counts.alert > 0 || this._filter === 'alert' ? `<button data-filter="alert" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 8px;border-radius:10px;border:1px solid rgba(231,76,60,0.4);background:${this._filter === 'alert' ? 'rgba(231,76,60,0.2)' : 'transparent'};color:#e74c3c;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.alert', { count: counts.alert }))}</button>` : ''}
+      ${counts.warning > 0 || this._filter === 'warning' ? `<button data-filter="warning" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 8px;border-radius:10px;border:1px solid rgba(230,126,34,0.4);background:${this._filter === 'warning' ? 'rgba(230,126,34,0.2)' : 'transparent'};color:#e67e22;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.warning', { count: counts.warning }))}</button>` : ''}
+      ${counts.watch > 0 || this._filter === 'watch' ? `<button data-filter="watch" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 8px;border-radius:10px;border:1px solid rgba(241,196,15,0.4);background:${this._filter === 'watch' ? 'rgba(241,196,15,0.2)' : 'transparent'};color:#f1c40f;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.watch', { count: counts.watch }))}</button>` : ''}
     </div>`;
 
     const rows = filtered.map(o => {
@@ -189,7 +225,7 @@ export class DiseaseOutbreaksPanel extends Panel {
           <span style="flex-shrink:0;font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 5px;border-radius:3px;background:${color}22;color:${color};margin-top:1px">${label}</span>
           <div style="flex:1;min-width:0">
             <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);line-height:1.3">${escapeHtml(o.disease)}</div>
-            <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">${escapeHtml(o.location)}</div>
+            <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">${escapeHtml(o.location)} ${scopeTagHtml(rowFor.get(o))}</div>
             ${o.summary ? `<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:3px;line-height:1.4">${escapeHtml(o.summary.slice(0, 120))}${o.summary.length > 120 ? '…' : ''}</div>` : ''}
             <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
               ${sourceLink}
@@ -203,7 +239,9 @@ export class DiseaseOutbreaksPanel extends Panel {
     const emptyMessage = followedOnlyActive
       ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
       : t('components.diseaseOutbreaks.empty');
-    const empty = filtered.length === 0
+    const empty = view.emptyByFocus
+      ? focusedEmptyHtml(t('focus.filter.emptyOutbreaks'))
+      : filtered.length === 0
       ? `<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${escapeHtml(emptyMessage)}</div>`
       : '';
 

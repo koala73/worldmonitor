@@ -1,8 +1,23 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
+import { evidenceScreenshot } from './evidence-screenshot';
 const fixture = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/card.json', import.meta.url), 'utf8'));
 const additions = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/batches-4-5-card.json', import.meta.url), 'utf8'));
+const chile = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/odepa-card.json', import.meta.url), 'utf8'));
+const canadaBrazil = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/statcan-ibge-card.json', import.meta.url), 'utf8'));
+
+// Runs in the page before boot. Every case needs the same seed, so it lives in one place.
+function seedFoodPricesDashboard() {
+  localStorage.setItem('wm-layer-warning-dismissed', 'true');
+  localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+  localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+  localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
+  // Mark the full layout as applied, or the first boot resets panels to the variant defaults.
+  localStorage.setItem('worldmonitor-variant', 'full');
+  localStorage.setItem('worldmonitor-panel-layout-variant', 'full');
+  localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
+}
 
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
   test(`food prices: source selection and dated context at ${viewport.width}px`, async ({ page }, testInfo) => {
@@ -10,13 +25,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await acceptTesterKeySession(page);
     await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: { sources: [...fixture.sources, ...additions.sources] } }));
-    await page.addInitScript(() => {
-      localStorage.setItem('wm-layer-warning-dismissed', 'true');
-      localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
-      localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
-      localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
-      localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
-    });
+    await page.addInitScript(seedFoodPricesDashboard);
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
     const panel = page.locator('[data-panel="fao-food-price-index"]');
@@ -35,8 +44,15 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await panel.getByLabel('Country', { exact: true }).selectOption(id!);
       await expect(panel.locator('.food-prices-table').first()).toContainText(currency!);
     }
+    const malaysia = panel.locator('.food-prices-table').first();
+    await expect(malaysia.locator('tbody tr')).toHaveCount(58);
+    await expect(malaysia.locator('tbody tr').filter({ hasText: 'vs 2026-11-09' })).toHaveCount(39);
+    // Basket-survey items share the 16 November report date and compare with the 5 November survey.
+    await expect(malaysia.locator('tbody tr').filter({ hasText: 'vs 2026-11-05' })).toHaveCount(19);
     await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath(`food-prices-${viewport.width}-daily.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-daily.png`) });
+    await malaysia.locator('tbody tr').last().scrollIntoViewIfNeeded();
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-daily-end.png`) });
     const contextMarket = panel.getByLabel('Sudan · FEWS NET monthly market prices · Market', { exact: true });
     const markets = await contextMarket.locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value));
     await contextMarket.selectOption(markets[1]!);
@@ -44,16 +60,85 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await expect(panel.locator('[data-price-table="context:fewssd"]')).toContainText('SDG');
     await expect(panel.locator('[data-price-table="context:fewssd"]')).not.toContainText('Week over week');
     await contextMarket.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath(`food-prices-${viewport.width}-monthly.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-monthly.png`) });
     await expect(panel.locator('details')).toContainText('2026-06-01');
     await expect(panel.locator('details')).toContainText('CPI: 0.0% month-on-month');
     await expect(panel.locator('details')).toContainText('indices, not prices');
     await expect(panel.locator('[data-price-table="context:makstat"]')).toHaveCount(0);
     await panel.getByRole('heading', { name: 'North Macedonia · North Macedonia MakStat food CPI', exact: true }).scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath(`food-prices-${viewport.width}-indices.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-indices.png`) });
     await panel.getByLabel('Country', { exact: true }).selectOption('da');
     await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
     await expect(panel.getByLabel('Country', { exact: true })).toBeVisible();
+    const overflow = await panel.evaluate(element => ({ panel: element.scrollWidth - element.clientWidth, document: document.documentElement.scrollWidth - innerWidth }));
+    expect(overflow).toEqual({ panel: 0, document: 0 });
+  });
+}
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`food prices: Chile weekly prices by sector and outlet at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await acceptTesterKeySession(page);
+    await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: { sources: [...fixture.sources, ...chile.sources] } }));
+    await page.addInitScript(seedFoodPricesDashboard);
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
+    const panel = page.locator('[data-panel="fao-food-price-index"]');
+    await panel.scrollIntoViewIfNeeded();
+    await panel.getByLabel('Country', { exact: true }).selectOption('odepa');
+    const market = panel.getByLabel('Market', { exact: true });
+    await expect(market.locator('option')).toHaveText(['Metropolitana · Internet · Retail', 'Metropolitana · Oriente · Retail', 'Ñuble · Punilla · Retail']);
+    await market.selectOption({ label: 'Metropolitana · Oriente · Retail' });
+    const table = panel.locator('.food-prices-table').first();
+    await expect(table).toContainText('CLP');
+    await expect(table).toContainText('Marraqueta bread · bakery');
+    await expect(table).toContainText('Marraqueta bread · supermarket');
+    await expect(table).toContainText('vs 2026-11-09');
+    await expect(panel.locator('.food-prices-source').first()).toContainText('Report date: 2026-11-16');
+    await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-chile.png`) });
+    const overflow = await panel.evaluate(element => ({ panel: element.scrollWidth - element.clientWidth, document: document.documentElement.scrollWidth - innerWidth }));
+    expect(overflow).toEqual({ panel: 0, document: 0 });
+  });
+}
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`food prices: Canada monthly prices and Brazil food inflation in context at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await acceptTesterKeySession(page);
+    await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: { sources: [...fixture.sources, ...canadaBrazil.sources] } }));
+    await page.addInitScript(seedFoodPricesDashboard);
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
+    const panel = page.locator('[data-panel="fao-food-price-index"]');
+    await panel.scrollIntoViewIfNeeded();
+    // Monthly sources stay out of the weekly country list.
+    const countries = await panel.getByLabel('Country', { exact: true }).locator('option').allTextContents();
+    expect(countries).not.toContain('Canada');
+    expect(countries).not.toContain('Brazil');
+    await panel.locator('summary').click();
+    const market = panel.getByLabel('Canada · Statistics Canada monthly average retail prices · Market', { exact: true });
+    await expect(market.locator('option')).toHaveText(['Canada · Retail', 'Ontario · Retail', 'Yellowknife, Northwest Territories · Retail']);
+    const canada = panel.locator('[data-price-table="context:statcan"]');
+    await expect(canada).toContainText('CAD');
+    await expect(canada).toContainText('Bacon');
+    await expect(canada).toContainText('500 g');
+    await expect(canada).not.toContainText('Week over week');
+    await expect(canada.locator('tbody tr')).toHaveCount(106);
+    await market.selectOption({ label: 'Yellowknife, Northwest Territories · Retail' });
+    await expect(canada.locator('tbody tr')).not.toHaveCount(106);
+    await expect(panel.locator('details')).toContainText('2026-09-01');
+    await market.scrollIntoViewIfNeeded();
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-canada.png`) });
+    const brazil = panel.getByRole('heading', { name: 'Brazil · Brazil IBGE IPCA food and drink', exact: true });
+    await expect(brazil).toBeVisible();
+    await expect(panel.locator('details')).toContainText('Food and drink IPCA: +1.04% month-on-month (food at home +1.31%, away from home +0.36%); +5.73% over 12 months');
+    await expect(panel.locator('details')).toContainText('2026-10-01');
+    await expect(panel.locator('[data-price-table="context:ibge"]')).toHaveCount(0);
+    await brazil.scrollIntoViewIfNeeded();
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`food-prices-${viewport.width}-brazil.png`) });
     const overflow = await panel.evaluate(element => ({ panel: element.scrollWidth - element.clientWidth, document: document.documentElement.scrollWidth - innerWidth }));
     expect(overflow).toEqual({ panel: 0, document: 0 });
   });
@@ -68,13 +153,7 @@ for (const failure of ['http', 'empty']) {
     await page.route('**/api/economic/v1/get-fao-food-price-index*', route => failed
       ? route.fulfill({ status: failure === 'http' ? 503 : 200, json: {} })
       : route.fulfill({ json: { points: [{ date: '2026-09', ffpi: 126 }], currentFfpi: 126, momPct: 0.8, yoyPct: 2.1 } }));
-    await page.addInitScript(() => {
-      localStorage.setItem('wm-layer-warning-dismissed', 'true');
-      localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
-      localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
-      localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
-      localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
-    });
+    await page.addInitScript(seedFoodPricesDashboard);
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
     const panel = page.locator('[data-panel="fao-food-price-index"]');
@@ -96,13 +175,7 @@ for (const degraded of [{ sources: [] }, { unavailable: true, sources: fixture.s
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await acceptTesterKeySession(page);
     await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: failed ? degraded : fixture }));
-    await page.addInitScript(() => {
-      localStorage.setItem('wm-layer-warning-dismissed', 'true');
-      localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
-      localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
-      localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
-      localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
-    });
+    await page.addInitScript(seedFoodPricesDashboard);
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
     const panel = page.locator('[data-panel="fao-food-price-index"]');

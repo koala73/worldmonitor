@@ -155,14 +155,14 @@ describe('setupExportPanel — CTA routing through resolveGateAction', () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
-  it('sends a free user to the pricing page', () => {
+  it('sends a free user to the pricing page', async () => {
     verdict.mockReturnValue({ locked: true, reason: 'free_tier' });
     manager.setupExportPanel();
 
     trigger().click();
     cta().click();
 
-    expect(openSpy).toHaveBeenCalledWith(`${PRO_ORIGIN}/pro`, '_blank');
+    await vi.waitFor(() => expect(openSpy).toHaveBeenCalledWith(`${PRO_ORIGIN}/pro#pricing`, '_blank'));
     expect(authModalOpen).not.toHaveBeenCalled();
   });
 

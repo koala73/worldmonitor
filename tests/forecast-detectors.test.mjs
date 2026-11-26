@@ -248,8 +248,8 @@ describe('calibrateWithMarkets', () => {
       geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 30, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     };
     calibrateWithMarkets([pred], markets);
-    const expected = +(0.4 * 0.3 + 0.6 * 0.7).toFixed(3);
-    assert.equal(pred.probability, expected);
+    // 40% market price (0.30) + 60% model probability (0.70).
+    assert.equal(pred.probability, 0.54);
     assert.ok(pred.calibration !== null);
     assert.equal(pred.calibration.source, 'polymarket');
   });
@@ -322,7 +322,7 @@ describe('calibrateWithMarkets', () => {
       finance: [{ title: 'United States recession by end of 2026?', yesPrice: 30, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.ok(pred.calibration !== null, 'a finance-pool market must still calibrate');
-    assert.equal(pred.probability, +(0.4 * 0.3 + 0.6 * 0.7).toFixed(3));
+    assert.equal(pred.probability, 0.54);
   });
 
   it('calibrates from an anchor that lives in the tech pool', () => {
@@ -369,7 +369,7 @@ describe('calibrateWithMarkets', () => {
       geopolitical: [{ title: 'Will Sudan de-escalate into a ceasefire by 2026?', yesPrice: 80, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.ok(pred.calibration !== null);
-    assert.equal(pred.probability, +(0.4 * 0.8 + 0.6 * 0.55).toFixed(3));
+    assert.equal(pred.probability, 0.65);
   });
 
   it('does not treat destabilize as a stabilizing outcome stem', () => {
@@ -381,7 +381,7 @@ describe('calibrateWithMarkets', () => {
       geopolitical: [{ title: 'Will Sudan destabilize further amid renewed war?', yesPrice: 80, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.ok(pred.calibration !== null);
-    assert.equal(pred.probability, +(0.4 * 0.8 + 0.6 * 0.45).toFixed(3));
+    assert.equal(pred.probability, 0.59);
   });
 
   it('does not calibrate de-escalation forecasts from adverse conjugations', () => {
@@ -537,7 +537,7 @@ describe('market anchor event-class equivalence (#7071)', () => {
     const marketTitle = 'Will the U.S. strike Iran by October 20?';
     const pred = anchorFor('conflict', 'Iran', 'Escalation risk: Iran', marketTitle, { yesPrice: 30, endDate: new Date(EMITTED_AT + 14 * DAY).toISOString() });
     assert.equal(pred.calibration?.marketTitle, marketTitle);
-    assert.equal(pred.probability, +(0.4 * 0.3 + 0.6 * 0.35).toFixed(3));
+    assert.equal(pred.probability, 0.33);
   });
 
   it('does not anchor a market that settles past the horizon window or before emission', () => {
@@ -587,7 +587,7 @@ describe('market anchor event-class equivalence (#7071)', () => {
     const marketTitle = 'Will Russia launch a new offensive on Kharkiv in Ukraine by June 30?';
     const pred = anchorFor('conflict', 'Ukraine', 'Escalation risk: Ukraine', marketTitle, { yesPrice: 40 });
     assert.equal(pred.calibration?.marketTitle, marketTitle);
-    assert.equal(pred.probability, +(0.4 * 0.4 + 0.6 * 0.35).toFixed(3));
+    assert.equal(pred.probability, 0.37);
   });
 
   it('does not anchor a cyber threat-count forecast to a cyberattack event market', () => {
@@ -728,7 +728,7 @@ describe('market anchor event-class equivalence (#7071)', () => {
     it(`pins the event-class anchor "${title}" <= "${marketTitle}"`, () => {
       const pred = anchorFor(domain, region, title, marketTitle, { yesPrice: 20 });
       assert.equal(pred.calibration?.marketTitle, marketTitle);
-      assert.equal(pred.probability, +(0.4 * 0.2 + 0.6 * 0.35).toFixed(3));
+      assert.equal(pred.probability, 0.29);
     });
   }
 
@@ -747,7 +747,7 @@ describe('market anchor event-class equivalence (#7071)', () => {
     it(`anchors the region forecast "${title}" to the member-subject market "${marketTitle}"`, () => {
       const pred = anchorFor(domain, region, title, marketTitle, { yesPrice: 20 });
       assert.equal(pred.calibration?.marketTitle, marketTitle);
-      assert.equal(pred.probability, +(0.4 * 0.2 + 0.6 * 0.35).toFixed(3));
+      assert.equal(pred.probability, 0.29);
     });
   }
 
@@ -987,7 +987,7 @@ describe('word-boundary term matching: no substring false positives (#4933)', ()
       geopolitical: [{ title: 'Will Nigeria elections trigger unrest in 2026?', yesPrice: 80, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.ok(pred.calibration !== null);
-    assert.equal(pred.probability, +(0.4 * 0.8 + 0.6 * 0.7).toFixed(3));
+    assert.equal(pred.probability, 0.74);
   });
 
   it('getSearchTermsForRegion: DR Congo resolves to DR Congo, not Congo-Brazzaville', () => {
@@ -1087,13 +1087,6 @@ describe('computeTrends', () => {
     assert.equal(pred.priorProbability, 0.5);
   });
 
-  it('falling: delta < -0.05', () => {
-    const pred = makePrediction('conflict', 'Iran', 'Test', 0.3, 0.5, '7d', []);
-    const prior = { predictions: [{ id: pred.id, probability: 0.5 }] };
-    computeTrends([pred], prior);
-    assert.equal(pred.trend, 'falling');
-  });
-
   it('stable: delta within +/- 0.05', () => {
     const pred = makePrediction('conflict', 'Iran', 'Test', 0.52, 0.5, '7d', []);
     const prior = { predictions: [{ id: pred.id, probability: 0.5 }] };
@@ -1129,9 +1122,17 @@ describe('computeTrends', () => {
     assert.equal(pred.trend, 'falling');
   });
 
-  it('delta exactly at boundary: uses strict comparison (> 0.05)', () => {
-    const pred = makePrediction('conflict', 'Iran', 'Test', 0.549, 0.5, '7d', []);
-    const prior = { predictions: [{ id: pred.id, probability: 0.5 }] };
+  // 0.1 - 0.05 is exactly 0.05 in floating point; 0.55 - 0.5 is not.
+  it('delta exactly at +0.05: stable (strict > 0.05)', () => {
+    const pred = makePrediction('conflict', 'Iran', 'Test', 0.1, 0.5, '7d', []);
+    const prior = { predictions: [{ id: pred.id, probability: 0.05 }] };
+    computeTrends([pred], prior);
+    assert.equal(pred.trend, 'stable');
+  });
+
+  it('delta exactly at -0.05: stable (strict < -0.05)', () => {
+    const pred = makePrediction('conflict', 'Iran', 'Test', 0.05, 0.5, '7d', []);
+    const prior = { predictions: [{ id: pred.id, probability: 0.1 }] };
     computeTrends([pred], prior);
     assert.equal(pred.trend, 'stable');
   });
