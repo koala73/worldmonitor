@@ -953,7 +953,7 @@ function airportBlock(source: SourceSnapshot, trip: TripCountry, cap: number): B
 function airspaceBlock(trip: TripCountry): Block {
   return notCoveredBlock(
     'Airspace',
-    `this draft reads airspace restrictions for ${trip.countryName} only from monitored airport NOTAMs. National airspace closures and overflight warnings are not assessed.`,
+    `this draft reads airspace restrictions for ${trip.countryName} only from monitored airport NOTAMs and does not assess national airspace closures or overflight warnings.`,
   );
 }
 

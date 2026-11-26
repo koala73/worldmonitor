@@ -273,7 +273,7 @@ describe('travel risk draft for a Thailand, Vietnam and Indonesia trip', () => {
     );
     assert.match(
       paragraph,
-      /Airspace: not covered \(this draft reads airspace restrictions for Thailand only from monitored airport NOTAMs\. National airspace closures and overflight warnings are not assessed\)/,
+      /Airspace: not covered \(this draft reads airspace restrictions for Thailand only from monitored airport NOTAMs and does not assess national airspace closures or overflight warnings\)/,
     );
     // A clause that stops at the label reads as "nothing to report", which is
     // the opposite of what a not-covered block means.
