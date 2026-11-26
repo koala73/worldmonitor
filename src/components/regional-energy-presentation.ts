@@ -29,6 +29,7 @@ const FEED_TITLES: Record<string, string> = {
   ursea: 'URSEA, Uruguay fuel prices',
   fuelwatch: 'FuelWatch, Western Australia pump prices',
   searg: 'Secretaría de Energía, Argentina pump prices',
+  oil111: 'MOEA Energy Administration, Taiwan county fuel surveys',
 };
 
 const METRIC_LABELS: Record<string, string> = {

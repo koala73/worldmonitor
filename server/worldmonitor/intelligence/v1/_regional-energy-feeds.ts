@@ -39,7 +39,9 @@ function decodeFeed(feed: typeof feeds[number], raw: unknown, nowMs: number): Re
     const effectiveAt = typeof p.period === 'string' && !p.period.includes('T') ? time - localOffsetMs : time;
     if (!Number.isFinite(time) || effectiveAt > nowMs + 3600000 || typeof p.value !== 'number' || !Number.isFinite(p.value)
       || typeof p.metric !== 'string' || !p.metric || typeof p.unit !== 'string' || !p.unit || typeof p.area !== 'string') return invalid;
-    const seriesBudget = (feed as { seriesMaxContentAgeMin?: Partial<Record<string, number>> }).seriesMaxContentAgeMin?.[p.metric];
+    // Keyed by metric, or by metric|unit where one metric mixes publishing cadences.
+    const budgets = (feed as { seriesMaxContentAgeMin?: Partial<Record<string, number>> }).seriesMaxContentAgeMin;
+    const seriesBudget = budgets?.[`${p.metric}|${p.unit}`] ?? budgets?.[p.metric];
     const budget = typeof seriesBudget === 'number' ? seriesBudget : feed.maxContentAgeMin;
     const stale = nowMs - time > budget * 60000 || nowMs - fetchedAt > feed.intervalMin * 3 * 60000;
     const series = `${p.metric}|${p.area}`;

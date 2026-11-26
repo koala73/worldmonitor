@@ -32,6 +32,7 @@ is added.
 | URSEA | UY | Maximum pump prices set by the Executive (UYU/l; LPG UYU/kg), the PMIT maximum wholesale price, and URSEA's reference retail and import parity prices | 12 hours |
 | FuelWatch | AU (Western Australia only) | Median pump price across stations on the newest day for ULP, PULP, 98 RON and diesel (AUD/l) | 12 hours |
 | Secretaría de Energía | AR | Median daytime pump price across stations for super and premium gasoline and grade 2 and grade 3 diesel (ARS/l) | 12 hours |
+| MOEA Energy Administration (oil111) | TW | Weekly national and county survey means for 92, 95 and 98 unleaded and super diesel (TWD/l); monthly 20 kg LPG cylinder means (TWD/20kg) | 1 day |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
 demand and load-shedding cells are commented out in the source and are omitted.
@@ -115,6 +116,20 @@ point tested on 2026-11-23 and 2026-11-26, so the parser was built from the
 in us-east4, which reaches CAMMESA; the 12-hour poll retries an outage on the
 next due tick.
 
+Taiwan's county surveys (#10113) come from the MOEA Energy Administration's
+oil111 site, whose open-data declaration licenses its data for free reuse with
+attribution. The seeder posts the site's own form for each survey: the weekly
+county averages for 92, 95 and 98 unleaded and super diesel, and the monthly
+20 kg LPG cylinder averages. Each county row splits its survey into plain,
+offshore and mountain stations. The feed publishes each county's mean weighted
+by surveyed stations, and the national mean weighted the same way, which equals
+the fuel-price panel's Taiwan price. A county with no surveyed station for a
+grade is omitted. Weekly prices are dated to the survey week's last day and LPG
+to the first of its month. A changed title, week, county name or survey group,
+a missing station count, a repeated county, an implausible group or mean price,
+a future survey, or fewer than 15 counties fails the run.
+The fuel-price panel keeps reading Taiwan's weekly national price directly.
+
 Since 2026-10-31 MEM's pages, sitemaps and REST API answer automated clients
 with a Cloudflare challenge. The seeder does not request them. It reads only the
 upload files those pages link to, which MEM serves normally, and its robots file
@@ -169,8 +184,10 @@ age checks; daily periods use the source calendar day. Hourly periods use UTC.
 Feed status is `available`, `partial`, `stale`, `unavailable` (no seed) or `error`.
 Fresh fetch time cannot make old observations current. Status uses the latest
 observation in each series; individual observations also carry `stale`.
-ANP weekly prices and Eskom weekly outages have 21-day content budgets. Other
-budgets are in the registry. Optional feed failures do not discard peer feeds or
+ANP weekly prices and Eskom weekly outages have 21-day content budgets. A series
+budget is keyed by metric, or by metric and unit where one metric mixes
+cadences: Taiwan's monthly LPG survey (`fuel.retail_price|TWD/20kg`) has 62 days
+beside the weekly prices' 21. Other budgets are in the registry. Optional feed failures do not discard peer feeds or
 the existing profile. Core profile-cache failures retain their existing HTTP 503.
 
 ## Collection and activation

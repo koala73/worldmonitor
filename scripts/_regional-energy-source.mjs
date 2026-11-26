@@ -27,6 +27,7 @@ import {
   URSEA_TOPIC_URL, discoverUrseaPages, parseUrseaMaximumPrices, parseUrseaReferencePrices,
   FUELWATCH_HOST, fuelWatchCsvUrls, parseFuelWatchPrices,
   SEARG_CSV_URL, parseSeArgentinaPrices,
+  OIL111_HOST, OIL111_REQUESTS, parseOil111Survey,
 } from './lib/regional-fuel-feeds.mjs';
 
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
@@ -43,6 +44,7 @@ const DOWNLOAD_HOSTS = new Set([
   'www.zera.co.zw', DOE_HOST, DOE_MEDIA_HOST, 'www.anp.tl', 'creg.gov.co', 'www.gub.uy',
   FUELWATCH_HOST,
   'datos.energia.gob.ar',
+  OIL111_HOST,
 ]);
 export const regionalEnergyKey = id => `energy:regional:${id}:v1`;
 export const regionalEnergyMetaKey = id => `seed-meta:energy:regional-${id}`;
@@ -339,6 +341,11 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
     // About 9 MB of station rows from a host that is often slow to answer. runSeed
     // ends the fetch phase 40 s before the 120 s section timeout, so the read stops at 75 s.
     points = parseSeArgentinaPrices(await read(SEARG_CSV_URL, 'text', undefined, 75000), nowMs);
+  }
+  if (id === 'oil111') {
+    // Five small POST responses: four weekly pump surveys and the monthly LPG survey.
+    points = [];
+    for (const request of OIL111_REQUESTS) points.push(...parseOil111Survey(await read(request.url, 'json', request.form), request, nowMs));
   }
   if (feed.publishesAhead) points = inEffect(points, nowMs, feed.utcOffsetMin);
   const snapshot = buildFeedSnapshot(id, points, downloaded.at(-1), nowMs);

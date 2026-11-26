@@ -741,3 +741,86 @@ export function parseSeArgentinaPrices(source, nowMs = Date.now(), { minStations
   }
   return [...points.values()];
 }
+
+// ---- Taiwan MOEA Energy Administration oil111: county pump and LPG surveys (#10113) ----
+// The oil111 site's open-data declaration (/oil111/opendataannouncement) licenses
+// its data free of charge, non-exclusively and irrevocably, with attribution.
+// Each county row splits its survey into plain (A), offshore (B) and mountain (C)
+// stations; a group's mean is weighted by its surveyed-station count.
+
+export const OIL111_HOST = 'www2.moeaea.gov.tw';
+export const OIL111_REQUESTS = [
+  { product: 'Unleaded 92', path: 'Gasoline', oil: '01', unit: 'week', title: '各縣市92無鉛汽油週均價' },
+  { product: 'Unleaded 95', path: 'Gasoline', oil: '02', unit: 'week', title: '各縣市95無鉛汽油週均價' },
+  { product: 'Unleaded 98', path: 'Gasoline', oil: '03', unit: 'week', title: '各縣市98無鉛汽油週均價' },
+  { product: 'Super diesel', path: 'Gasoline', oil: '04', unit: 'week', title: '各縣市超級柴油週均價' },
+  { product: 'LPG 20 kg cylinder', path: 'LPG', oil: '05', unit: 'month' },
+].map(r => ({ ...r, url: `https://${OIL111_HOST}/oil111/${r.path}/CountyCityAvg/load`, form: `unit=${r.unit}&oil=${r.oil}&start=lastone` }));
+const OIL111_COUNTIES = {
+  臺北市: 'Taipei City', 基隆市: 'Keelung City', 新北市: 'New Taipei City', 宜蘭縣: 'Yilan County',
+  新竹市: 'Hsinchu City', 新竹縣: 'Hsinchu County', 桃園市: 'Taoyuan City', 苗栗縣: 'Miaoli County',
+  臺中市: 'Taichung City', 彰化縣: 'Changhua County', 南投縣: 'Nantou County', 嘉義市: 'Chiayi City',
+  嘉義縣: 'Chiayi County', 雲林縣: 'Yunlin County', 臺南市: 'Tainan City', 高雄市: 'Kaohsiung City',
+  澎湖縣: 'Penghu County', 屏東縣: 'Pingtung County', 臺東縣: 'Taitung County', 花蓮縣: 'Hualien County',
+  金門縣: 'Kinmen County', 連江縣: 'Lienchiang County',
+};
+const OIL111_MIN_COUNTIES = 15;
+const OIL111_GROUPS = ['A', 'B', 'C'];
+
+// Mean of the groups with surveyed stations, weighted by their station counts.
+// Every count is present; only an explicit zero marks a group without stations.
+function oil111Mean(row, countKey, [min, max]) {
+  let total = 0, count = 0;
+  for (const g of OIL111_GROUPS) {
+    const n = row[`${g}${countKey}`], price = row[`${g}avg`];
+    if (!Number.isInteger(n) || n < 0) throw new Error('Changed oil111 survey groups');
+    if (n === 0) continue;
+    if (!Number.isFinite(price)) throw new Error('Changed oil111 survey groups');
+    if (price < min || price > max) throw new Error('Implausible oil111 price');
+    total += price * n;
+    count += n;
+  }
+  return count ? +(total / count).toFixed(2) : null;
+}
+
+/** One survey response as a national mean and one mean per county, in TWD/l or TWD per 20 kg cylinder. */
+export function parseOil111Survey(payload, request, nowMs = Date.now()) {
+  const data = payload?.data;
+  const rows = data?.[request.path === 'LPG' ? 'dataarray' : 'gasoline'];
+  if (payload?.res !== '01' || !Array.isArray(rows) || (request.title && data.title !== request.title)) throw new Error(`Changed oil111 ${request.product} survey`);
+  let period;
+  if (request.unit === 'week') {
+    const m = /^(\d{4})\/(\d{2})\/(\d{2}) ~ (\d{4})\/(\d{2})\/(\d{2})$/.exec(data.start ?? '');
+    if (!m) throw new Error(`Changed oil111 ${request.product} week`);
+    const start = ymd(m[1], m[2], m[3]);
+    period = ymd(m[4], m[5], m[6]);
+    if (Date.parse(period) - Date.parse(start) !== 6 * 86400000) throw new Error(`Changed oil111 ${request.product} week`);
+  } else {
+    const m = /^(\d{4})\/(\d{2})$/.exec(data.start ?? '');
+    if (!m) throw new Error(`Changed oil111 ${request.product} month`);
+    period = ymd(m[1], m[2], 1);
+  }
+  const today = new Date(nowMs + 8 * 3600000).toISOString().slice(0, 10);
+  if (period > today) throw new Error(`Future oil111 ${request.product} survey`);
+  const [unit, min, max] = request.path === 'LPG' ? ['TWD/20kg', 200, 3000] : ['TWD/l', 5, 100];
+  const plausible = (point) => positive(point, min, max, 'oil111 price');
+  const points = new Map();
+  const national = oil111Mean(data, 'num', [min, max]);
+  if (national == null) throw new Error(`Missing oil111 ${request.product} national mean`);
+  addUnique(points, plausible(observation('fuel.retail_price', period, national, unit, request.product)));
+  let counties = 0;
+  const seen = new Set();
+  for (const row of rows) {
+    const county = Object.hasOwn(OIL111_COUNTIES, row?.City) ? OIL111_COUNTIES[row.City] : undefined;
+    if (!county) throw new Error(`Changed oil111 county ${row?.City}`);
+    if (seen.has(county)) throw new Error(`Duplicate oil111 county ${row.City}`);
+    seen.add(county);
+    if (row.SurDate !== data.start) throw new Error(`Changed oil111 ${request.product} survey`);
+    const mean = oil111Mean(row, 'snum', [min, max]);
+    if (mean == null) continue; // No station in this county sells the grade or reported it.
+    counties++;
+    addUnique(points, plausible(observation('fuel.retail_price', period, mean, unit, `${request.product}; ${county}`)));
+  }
+  if (counties < OIL111_MIN_COUNTIES) throw new Error(`Incomplete oil111 ${request.product} county survey`);
+  return [...points.values()];
+}
