@@ -2995,8 +2995,8 @@ export async function listFeedDigest(
   }
 }
 
-// Two commands per key, so 400 keys stay under Upstash's 1,000-command cap.
-const PUBLISHER_COVERAGE_BATCH_KEYS = 400;
+// Up to three commands per key, so 300 keys stay under Upstash's 1,000-command cap.
+const PUBLISHER_COVERAGE_BATCH_KEYS = 300;
 
 // Each exact headline owns one sorted set, shared by every edition. GT keeps a slower build from
 // moving a family's last observation backwards; retries replace the same member.
@@ -3021,10 +3021,13 @@ async function recordPublisherCoverage(
   // The relay scores on this history (#10977), so families that carried one
   // copy count once, as in the build's own corroborationCount (#9095), and a
   // wire reprint counts as the wire. Each merged group is written under one
-  // member that does not depend on item order.
-  const groups = new Map<string, Set<string>>();
+  // member that does not depend on item order. Reprints are found over every
+  // accepted item: "<headline> - AFP" and the bare headline have two keys.
+  // A reprint's own family is removed, since a build that had not seen the
+  // wire wrote it, and members carry no title for a reader to fold.
+  const familyFor = wireAwareFamilyFor(items);
+  const groups = new Map<string, { families: Set<string>; superseded: Set<string> }>();
   for (const [key, sharing] of carriers) {
-    const familyFor = wireAwareFamilyFor(sharing);
     const { groups: sameCopy } = detectSyndication(sharing, familyFor);
     const memberOf = new Map<string, string>();
     for (const { families } of sameCopy) {
@@ -3032,21 +3035,26 @@ async function recordPublisherCoverage(
       for (const family of families) memberOf.set(family, member);
     }
     const families = new Set<string>();
+    const superseded = new Set<string>();
     for (const item of sharing) {
       const family = familyFor(item);
       if (family) families.add(memberOf.get(family) ?? family);
+      const own = publisherFamilyForItem(item);
+      if (own && own !== family) superseded.add(own);
     }
-    groups.set(key, families);
+    for (const family of families) superseded.delete(family);
+    groups.set(key, { families, superseded });
   }
-  const entries = [...groups].filter(([, families]) => families.size > 0);
+  const entries = [...groups].filter(([, { families }]) => families.size > 0);
   for (let start = 0; start < entries.length; start += PUBLISHER_COVERAGE_BATCH_KEYS) {
     const timeout = redisTimeoutForDeadline(deadlineAt);
     if (!timeout) {
       console.warn(`[digest] publisher coverage write cut short: ${entries.length - start} of ${entries.length} headlines unwritten`);
       return;
     }
-    const commands = entries.slice(start, start + PUBLISHER_COVERAGE_BATCH_KEYS).flatMap(([key, families]) => [
+    const commands = entries.slice(start, start + PUBLISHER_COVERAGE_BATCH_KEYS).flatMap(([key, { families, superseded }]) => [
       ['ZADD', key, 'GT', ...[...families].flatMap(family => [observedAt, family])],
+      ...(superseded.size ? [['ZREM', key, ...superseded]] : []),
       ['EXPIRE', key, 86_400],
     ]);
     const rows = await runRedisTransaction(commands, false, timeout);

@@ -293,6 +293,52 @@ test('an outlet running the wire headline is written to its coverage as the wire
   assert.deepEqual(await families([{ title: EGYPT_INDEPENDENT, source: 'Arab Times' }, wire]), ['reuters']);
 });
 
+test('a reprint folds into its wire across coverage keys and across builds', async (t) => {
+  const sets = new Map<string, Map<string, number>>();
+  const apply = ([op, key, ...args]: (string | number)[]) => {
+    if (op === 'MULTI' || op === 'EXEC') return { result: 'OK' };
+    const members = sets.get(String(key)) ?? new Map<string, number>();
+    sets.set(String(key), members);
+    if (op === 'ZADD') {
+      assert.equal(args.shift(), 'GT');
+      for (let i = 0; i < args.length; i += 2) {
+        const family = String(args[i + 1]);
+        members.set(family, Math.max(Number(args[i]), members.get(family) ?? 0));
+      }
+    } else if (op === 'ZREM') {
+      for (const family of args) members.delete(String(family));
+    } else assert.equal(op, 'EXPIRE');
+    return { result: 1 };
+  };
+  t.mock.method(globalThis, 'fetch', async (_url, init) => Response.json(JSON.parse(init.body).map(apply)));
+  const saved = { ...process.env };
+  t.after(() => {
+    for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV']) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  process.env.VERCEL_ENV = 'production';
+  const stored = (title: string) => [...(sets.get(newsPublisherCoverageKey(title))?.keys() ?? [])].sort();
+  const reprint = (source: string) => ({ title: EGYPT_INDEPENDENT, source });
+
+  // "<headline> - AFP" keeps its credit in the coverage key, so the reprints' key holds no AFP item.
+  const afp = { title: `${EGYPT_INDEPENDENT} - AFP`, source: 'Google News', originPublisher: 'AFP', originPublisherTrusted: true };
+  const build = [afp, reprint('Arab Times'), reprint('Kansas City Star')];
+  await digest.recordPublisherCoverage(build, build, Date.now(), Infinity);
+  assert.deepEqual(stored(EGYPT_INDEPENDENT), ['afp']);
+
+  // A build that sees the wire removes the outlet an earlier build wrote.
+  sets.clear();
+  await digest.recordPublisherCoverage([reprint('Arab Times')], [reprint('Arab Times')], Date.now() - 60_000, Infinity);
+  assert.deepEqual(stored(EGYPT_INDEPENDENT), ['label:arab times']);
+  const later = [{ title: `${EGYPT_INDEPENDENT} - Reuters`, source: 'Reuters World' }, reprint('Arab Times')];
+  await digest.recordPublisherCoverage(later, later, Date.now(), Infinity);
+  assert.deepEqual(stored(EGYPT_INDEPENDENT), ['reuters']);
+});
+
 test('the coverage ledger write stops waiting at its deadline when Redis stalls', async (t) => {
   // The ledger runs after the coverage and history writes join, which may hold
   // until the tracking deadline; a 5 s Redis wait past that loses the digest.
