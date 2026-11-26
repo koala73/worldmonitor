@@ -5926,8 +5926,8 @@ async function seedClassifyForVariant(variant, seenTitles) {
 
   // One publish path for a fresh label and a cached one (#10976).
   // observed: the publisher families the coverage history holds for the title
-  // (#10977). crossWording: the families other wordings added, checked only
-  // when a label is fresh.
+  // (#10977). crossWording: the families other wordings added, checked when a
+  // label is fresh and kept on the label for its cached republish.
   const publishAlert = (title, level, category, { cached = false, observed, crossWording } = {}) => {
     const meta = allTitles.get(title) ?? {
       source: variant,
@@ -6062,7 +6062,12 @@ async function seedClassifyForVariant(variant, seenTitles) {
     const level = parsed?.level;
     if (!CLASSIFY_VALID_LEVELS.includes(level)) { countUnlabelled(titleArr[i]); continue; }
     if (level === 'critical' || level === 'high') {
-      publishAlert(titleArr[i], level, parsed.category ?? null, { cached: true, observed: cachedObserved.get(titleArr[i]) });
+      const families = Array.isArray(parsed.corroboratedBy) ? parsed.corroboratedBy.filter((f) => typeof f === 'string' && f) : [];
+      publishAlert(titleArr[i], level, parsed.category ?? null, {
+        cached: true,
+        observed: cachedObserved.get(titleArr[i]),
+        crossWording: families.length ? { families } : undefined,
+      });
     }
     if (!inSummary(titleArr[i]) || seenTitles.has(titleArr[i])) continue;
     seenTitles.add(titleArr[i]);
@@ -6119,7 +6124,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
       const category = CLASSIFY_VALID_CATEGORIES.includes(entry?.c) ? entry.c : null;
       if (!level || !category) continue;
       classifiedSet.add(idx);
-      await upstashSet(classifyKeyFor(chunk[idx]), { level, category, timestamp: Date.now() }, CLASSIFY_CACHE_TTL);
+      // The judged families ride on the label, so its cached republish scores
+      // as this one does without asking the judge again.
+      const corroboratedBy = level === 'critical' ? crossWording.get(chunk[idx])?.families : undefined;
+      await upstashSet(classifyKeyFor(chunk[idx]), { level, category, timestamp: Date.now(), ...(corroboratedBy ? { corroboratedBy } : {}) }, CLASSIFY_CACHE_TTL);
       classified++;
       labelled.push({ title: chunk[idx], level });
       for (const title of copiesOf(chunk[idx])) {

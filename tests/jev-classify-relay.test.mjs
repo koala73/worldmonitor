@@ -222,8 +222,8 @@ describe('relay wiring: shadow mode decides nothing', () => {
     assert.doesNotMatch(body, /=\s*await observeJevShadow\([^)]*\);[\s\S]{0,400}upstashSet\(classifyKeyFor/, 'the tally must not reach a label write');
   });
 
-  it('the cached row and the alert rule are exactly main\'s: no Jev field, no gate', () => {
-    assert.match(relay, /upstashSet\(classifyKeyFor\(chunk\[idx\]\), \{ level, category, timestamp: Date\.now\(\) \}, CLASSIFY_CACHE_TTL\)/);
+  it('the cached row and the alert rule carry no Jev field and no gate', () => {
+    assert.match(relay, /upstashSet\(classifyKeyFor\(chunk\[idx\]\), \{ level, category, timestamp: Date\.now\(\), \.\.\.\(corroboratedBy \? \{ corroboratedBy \} : \{\}\) \}, CLASSIFY_CACHE_TTL\)/);
     assert.doesNotMatch(relay, /pAlert|jevGateAllowsAlert|shouldPublishClassifiedAlert/);
   });
 
