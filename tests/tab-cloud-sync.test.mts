@@ -1229,6 +1229,23 @@ describe('tab sync driver', () => {
     assert.ok(serverB.calls.some((c) => c.changes.some((ch) => ch.record?.name === 'B new')));
   });
 
+  it("a departure read from the stored tabs does not take another account's synced tab", async () => {
+    const host = new FakeHost({ activeTabId: 'tab-c-1', tabs: [tab('tab-c-1', 'C synced')] });
+    signIn('user_c', host);
+    await settle();
+    // user_b signs in; its sync never runs a pass.
+    __resetTabSyncForTests();
+    assert.equal(prepareTabSyncSignIn('user_b', true, host).willSync, true);
+    // Next load: user_d signs in before the layout has its tabs.
+    __resetTabSyncForTests();
+    host.state.tabs.push(tab('tab-b-1', 'B draft'));
+    localStorage.setItem(`worldmonitor-tabs-v1:${SITE_VARIANT}`, JSON.stringify(host.state));
+    prepareTabSyncSignIn('user_d', true, new UnreadyHost(host.state));
+    const foreign = loadTabSyncMeta()!.foreign ?? {};
+    assert.equal(foreign['tab-c-1'], undefined, "user_c's synced tab is not user_b's");
+    assert.equal(foreign['tab-b-1'], 'user_b');
+  });
+
   it('a departure another window has recorded is not recorded again from this page', async () => {
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
     signIn('user_a', host);

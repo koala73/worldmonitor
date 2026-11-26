@@ -636,7 +636,7 @@ export function stopTabSync(): void {
  * switch leaves them out of the next account, where tabs made later
  * (while signed out) still go.
  */
-function unpushedOf(host: TabSyncHost | undefined, meta: TabSyncMeta): string[] | null {
+function unpushedOf(host: TabSyncHost | undefined, meta: TabSyncMeta, leaverOwnsState = true): string[] | null {
   let local: TabsState | null;
   try {
     local = host?.captureTabs() ?? null;
@@ -646,12 +646,15 @@ function unpushedOf(host: TabSyncHost | undefined, meta: TabSyncMeta): string[] 
   if (local) return unpushedIn(local, meta);
   // Before the layout has its tabs, the stored tabs are still the leaver's;
   // recording from them now beats recording later from tabs the next account
-  // may have made. The active tab counts as unpushed: its stored copy can
-  // lag the screen, and a synced tab held back is skipped by the merge.
+  // may have made. On the leaver's own state the active tab counts as
+  // unpushed: its stored copy can lag the screen, and a synced tab held back
+  // is skipped by the merge. On another account's state that tab may be
+  // that account's synced tab, so only tabs that differ from it count.
   const stored = loadTabsState();
   if (!stored) return null;
   const ids = unpushedIn(stored, meta);
-  if (stored.tabs.some((t) => t.id === stored.activeTabId) && !ids.includes(stored.activeTabId)) ids.push(stored.activeTabId);
+  const active = stored.activeTabId;
+  if (leaverOwnsState && stored.tabs.some((t) => t.id === active) && !ids.includes(active)) ids.push(active);
   return ids;
 }
 
@@ -679,7 +682,7 @@ function recordDeparture(marker: string, host: TabSyncHost | undefined): boolean
   const read = safeStorageGetChecked(META_KEY);
   if (!read.ok) return false;
   const meta = parseTabSyncMeta(read.value) ?? emptyTabSyncMeta(null);
-  const found = unpushedOf(host, meta);
+  const found = unpushedOf(host, meta, meta.userId === leaver);
   if (!found) return false;
   const foreign = { ...(meta.foreign ?? {}) };
   const unpushed = found.filter((id) => !foreign[id]);
