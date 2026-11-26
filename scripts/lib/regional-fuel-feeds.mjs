@@ -639,10 +639,12 @@ const median = values => {
 // median daytime price over stations that declared within 30 days of the
 // newest declaration, dated by that declaration's day in Argentina.
 export function parseSeArgentinaPrices(source, nowMs = Date.now(), { minStations = 200 } = {}) {
-  const { header, records } = csv(String(source));
+  // Free-text address and company cells make a stray ragged row plausible in an
+  // export this size; those rows count as unreadable instead of failing the file.
+  const { header, records, ragged } = csv(String(source), ',', { skipRagged: true });
   if (SEARG_COLUMNS.some(c => !header.includes(c))) throw new Error('Changed Secretaría de Energía price columns');
   const latest = new Map();
-  let considered = 0, unreadable = 0;
+  let considered = ragged, unreadable = ragged;
   for (const r of records) {
     const product = SEARG_PRODUCTS.get(r.idproducto);
     if (!product) continue;

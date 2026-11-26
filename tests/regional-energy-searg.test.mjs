@@ -55,6 +55,58 @@ describe('Argentina Secretaría de Energía pump prices', () => {
     assert.throws(() => parseSeArgentinaPrices(withRows(lines.map(l => l.replace(/,Diurno,[\d.]+,/, ',Diurno,n/a,'))), NOW, SMALL), /Unreadable Secretaría de Energía rows/);
   });
 
+  // Synthetic rows hold only the columns the parser reads.
+  const NAMES = { 2: 'Nafta (súper) entre 92 y 95 Ron', 3: 'Nafta (premium) de más de 95 Ron', 19: 'Gas Oil Grado 2', 21: 'Gas Oil Grado 3' };
+  const row = (station, product, price, when, night = false) =>
+    [station, product, NAMES[product], night ? 3 : 2, night ? 'Nocturno' : 'Diurno', price, when].join(',');
+  const synthetic = rows => ['idempresa,idproducto,producto,idtipohorario,tipohorario,precio,fecha_vigencia', ...rows].join('\n');
+  const both = (station, price, when, night) => [row(station, 2, price, when, night), row(station, 19, price, when, night)];
+  const ONE = { minStations: 1 };
+  const superMedian = points => value(points, 'Nafta (súper) entre 92 y 95 Ron; median of stations');
+
+  it('keeps only each station\'s newest daytime declaration, whatever the file order', () => {
+    const rows = [
+      ...both(1, '5000.0', '2024-01-20 09:00:00'), // superseded by the station's newer price
+      ...both(1, '100.0', '2024-02-01 10:00:00'),
+      ...both(2, '200.0', '2024-02-01 10:00:00'),
+      ...both(3, '300.0', '2024-02-01 10:00:00'),
+      ...both(3, '99999.0', '2024-02-03 22:00:00', true), // a newer night tariff never counts
+      ...both(4, '400.0', '2024-02-01 10:00:00'),
+    ];
+    for (const ordered of [rows, [...rows].reverse()]) {
+      const median = superMedian(parseSeArgentinaPrices(synthetic(ordered), NOW, ONE));
+      assert.equal(median.value, 250, 'even count: mean of the middle pair');
+      assert.equal(median.period, '2024-02-01');
+    }
+  });
+
+  it('counts a station declared exactly 30 days before the newest one, not a second earlier', () => {
+    const rows = [
+      ...both(1, '100.0', '2024-02-01 00:00:00'),
+      ...both(2, '200.0', '2024-01-02 00:00:00'),
+      ...both(3, '900.0', '2024-01-01 23:59:59'),
+    ];
+    assert.equal(superMedian(parseSeArgentinaPrices(synthetic(rows), NOW, ONE)).value, 150);
+  });
+
+  it('omits a thin premium or grade 3 sample but fails on a thin headline product', () => {
+    const rows = [1, 2, 3].flatMap(s => both(s, `${s}00.0`, '2024-02-01 10:00:00'));
+    const points = parseSeArgentinaPrices(synthetic([...rows, row(1, 3, '400.0', '2024-02-01 10:00:00'), row(1, 21, '500.0', '2024-02-01 10:00:00')]), NOW, { minStations: 3 });
+    assert.deepEqual(points.map(p => p.area).sort(), ['Gas Oil Grado 2; median of stations', 'Nafta (súper) entre 92 y 95 Ron; median of stations']);
+    const thinDiesel = rows.filter(r => !r.startsWith('3,19,'));
+    assert.throws(() => parseSeArgentinaPrices(synthetic(thinDiesel), NOW, { minStations: 3 }), /station sample is incomplete/);
+  });
+
+  it('tolerates up to 5% unreadable daytime rows, counting bad prices and bad dates', () => {
+    const bad = [row(90, 2, 'n/a', '2024-02-01 10:00:00'), row(91, 19, '800.0', '01/02/2024')];
+    const stations = n => Array.from({ length: n }, (_, i) => both(i + 1, `${i + 1}00.0`, '2024-02-01 10:00:00')).flat();
+    assert.equal(parseSeArgentinaPrices(synthetic([...stations(19), ...bad]), NOW, ONE).length, 2, '2 of 40 rows');
+    assert.throws(() => parseSeArgentinaPrices(synthetic([...stations(18), ...bad]), NOW, ONE), /Unreadable/, '2 of 38 rows');
+    const ragged = [bad[0], '92,2,Nafta (súper) entre 92 y 95 Ron,2,Diurno'];
+    assert.equal(parseSeArgentinaPrices(synthetic([...stations(19), ...ragged]), NOW, ONE).length, 2, 'a short row is one more unreadable row');
+    assert.throws(() => parseSeArgentinaPrices(synthetic([...stations(18), ...ragged]), NOW, ONE), /Unreadable/);
+  });
+
   it('reads the CSV through the regional feed with the shared provenance', async () => {
     const calls = [];
     const fetchFn = async (url, options) => {

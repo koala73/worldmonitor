@@ -78,9 +78,12 @@ price per product and tariff. A station keeps its row after it stops declaring,
 so the file reaches back to 2017. The feed takes daytime rows, keeps each
 station's newest declaration per product, and publishes the median over
 stations that declared within 30 days of the newest declaration in the file.
-The observation date is that newest declaration's day in Argentina (UTC-3).
+A station whose price has held for more than 30 days drops out of that window,
+so the median leans toward stations that repriced recently. In the 2024-02-06
+file, about 3,490 of the 4,191 stations with a super gasoline row fell inside it. The observation date is that newest declaration's day in Argentina (UTC-3).
 Fewer than 200 stations for super gasoline or grade 2 diesel, a renamed product
-or tariff code, or more than 5% unreadable rows fails the run, and last-good data
+or tariff code, or more than 5% unreadable rows (a bad price or date, or a row
+with the wrong number of cells) fails the run, and last-good data
 is kept. CNG is priced per cubic metre and is not collected. The
 fuel-price panel shows the super and grade 2 medians for 14 days after their
 date, and only with a live ARS quote: the peso moves too fast for the static

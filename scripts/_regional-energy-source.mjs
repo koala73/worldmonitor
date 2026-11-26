@@ -320,8 +320,9 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
     points = [...await inForce(pages.maximum, parseUrseaMaximumPrices), ...await inForce(pages.reference, parseUrseaReferencePrices)];
   }
   if (id === 'searg') {
-    // About 9 MB of station rows from a host that is often slow to answer.
-    points = parseSeArgentinaPrices(await read(SEARG_CSV_URL, 'text', undefined, 90000), nowMs);
+    // About 9 MB of station rows from a host that is often slow to answer. runSeed
+    // ends the fetch phase 40 s before the 120 s section timeout, so the read stops at 75 s.
+    points = parseSeArgentinaPrices(await read(SEARG_CSV_URL, 'text', undefined, 75000), nowMs);
   }
   if (feed.publishesAhead) points = inEffect(points, nowMs, feed.utcOffsetMin);
   const snapshot = buildFeedSnapshot(id, points, downloaded.at(-1), nowMs);
