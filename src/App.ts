@@ -239,7 +239,7 @@ import {
   type CloudPrefsAppliedDetail,
   type CloudPrefsSignInTerminalDetail,
 } from '@/utils/cloud-prefs-sync';
-import { prepareTabSyncSignIn, startTabSync, stopTabSync } from '@/services/tab-cloud-sync';
+import { prepareTabSyncSignIn, signOutTabSync, startTabSync, stopTabSync } from '@/services/tab-cloud-sync';
 
 /**
  * Preference-blob keys that hold the active tab's panels. While tab records
@@ -3122,7 +3122,7 @@ export class App {
         _convexWatchHandoffGeneration++;
         destroyEntitlementSubscription();
         destroySubscriptionWatch();
-        stopTabSync();
+        signOutTabSync(this.panelLayout.getTabSyncHost());
         // After sign-out drops the panel values tab sync skipped, so lifting
         // the exclusion does not apply the departing account's layout.
         cloudPrefsSignOut();

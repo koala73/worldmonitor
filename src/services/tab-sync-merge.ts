@@ -48,9 +48,22 @@ export interface TabSyncMeta {
   carried: Record<string, DashboardTabRecordPanel[]>;
   /**
    * Written when sync stops: tabs with this account's work that never
-   * reached it. An account switch leaves them with this account.
+   * reached it. An account switch keeps them for this account.
    */
   heldBack?: string[];
+  /**
+   * Set at sign-out. Tabs edited after it are the device user's and go to
+   * the next account; without it (a direct switch) every unpushed tab is
+   * the previous account's.
+   */
+  signedOut?: boolean;
+}
+
+/** Tabs kept for an account that is not signed in, with their sync bases. */
+export interface HeldTabs {
+  tabs: PanelTab[];
+  base: Record<string, TabSyncBase>;
+  carried: Record<string, DashboardTabRecordPanel[]>;
 }
 
 export function emptyTabSyncMeta(userId: string | null): TabSyncMeta {
@@ -198,6 +211,8 @@ export interface MergeInput {
   previousSyncKnown?: boolean;
   /** Tabs the server refused for the tab cap this session; never pushed. */
   localOnly?: ReadonlySet<string>;
+  /** Tabs an account switch kept for this account, put back now. */
+  restore?: HeldTabs | null;
 }
 
 export interface PendingTabChange {
@@ -214,6 +229,8 @@ export interface MergeResult {
   activeChanged: boolean;
   /** Anything in `state` differs from the input. */
   changed: boolean;
+  /** Account switch: the previous account's unpushed tabs, taken out of `state`. */
+  held: HeldTabs | null;
 }
 
 function freshDefaultTab(input: MergeInput): PanelTab {
@@ -261,19 +278,33 @@ export function mergeTabs(input: MergeInput): MergeResult {
   let activeContentChanged = false;
   const liveRows = input.rows.filter((r) => !r.deleted && r.record);
 
+  let held: HeldTabs | null = null;
   if (input.mode === 'account-switch') {
     // The previous account's synced tabs are its own and stay in its cloud.
-    // What was made or edited since (for example while signed out) is the
-    // device user's work and becomes the new account's, minus team links,
-    // which belong to the previous account's team. Work the previous session
-    // had not pushed when it stopped is that account's and stays behind.
+    // Its work that never reached it (unpushed edits, new tabs, tabs over the
+    // cap) is held for its next sign-in. Only what was made or edited after
+    // its sign-out is the device user's and becomes the new account's, minus
+    // team links, which belong to the previous account's team.
     const prev = meta;
-    const heldBack = new Set(input.meta.heldBack ?? []);
-    const kept = input.previousSyncKnown === false ? [] : tabs.filter((t) => {
-      if (heldBack.has(t.id)) return false;
-      const base = prev.base[t.id];
-      return !base || base.hash !== hashTabRecord(captureTabRecord(t, prev.carried[t.id]));
-    });
+    const heldBack = input.meta.signedOut ? new Set(input.meta.heldBack ?? []) : null;
+    const kept: PanelTab[] = [];
+    const hold: PanelTab[] = [];
+    if (input.previousSyncKnown !== false) {
+      for (const t of tabs) {
+        const base = prev.base[t.id];
+        const synced = !!base && base.hash === hashTabRecord(captureTabRecord(t, prev.carried[t.id]));
+        if (synced) continue;
+        if (!heldBack || heldBack.has(t.id)) hold.push(t);
+        else kept.push(t);
+      }
+    }
+    if (hold.length > 0 && prev.userId) {
+      held = { tabs: hold, base: {}, carried: {} };
+      for (const t of hold) {
+        if (prev.base[t.id]) held.base[t.id] = prev.base[t.id]!;
+        if (prev.carried[t.id]) held.carried[t.id] = prev.carried[t.id]!;
+      }
+    }
     tabs = kept.map((t) => {
       if (!t.team) return t;
       const copy = { ...t };
@@ -287,6 +318,20 @@ export function mergeTabs(input: MergeInput): MergeResult {
     if (only && Object.keys(meta.base).length === 0 && liveRows.length > 0 && isUntouchedDefault(only, input)) {
       tabs = [];
       changed = true;
+    }
+  }
+
+  if (input.restore) {
+    const present = new Set(tabs.map((t) => t.id));
+    for (const t of input.restore.tabs) {
+      if (present.has(t.id)) continue;
+      present.add(t.id);
+      tabs.push(t);
+      changed = true;
+      const base = input.restore.base[t.id];
+      if (base && !meta.base[t.id]) meta.base[t.id] = base;
+      const carried = input.restore.carried[t.id];
+      if (carried && !meta.carried[t.id]) meta.carried[t.id] = carried;
     }
   }
 
@@ -401,5 +446,6 @@ export function mergeTabs(input: MergeInput): MergeResult {
     changes,
     activeChanged: activeTabId !== originalActive || activeContentChanged,
     changed,
+    held,
   };
 }

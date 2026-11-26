@@ -21,6 +21,7 @@ import {
   notifyTabsChangedLocally,
   prepareTabSyncSignIn,
   recordTabDeleted,
+  signOutTabSync,
   startTabSync,
   stopTabSync,
   type TabSyncHost,
@@ -86,7 +87,8 @@ class FakeServer {
             : { tabId: change.tabId, version, deleted: true, createdAt: row?.createdAt ?? now, updatedAt: now });
           return { tabId: change.tabId, ok: true as const, version };
         });
-        queueMicrotask(() => this.emit());
+        // Like Convex: a call that wrote nothing sends no update.
+        if (results.some((r) => r.ok)) queueMicrotask(() => this.emit());
         return { ok: true, results };
       },
     };
@@ -293,29 +295,31 @@ describe('tab sync driver', () => {
     assert.equal(prepareTabSyncSignIn('user_a', true).willSync, false);
   });
 
-  it('reconnects after an error, then stops quietly', async () => {
+  it('reconnects after an error, and stops after repeated failures', async () => {
     mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
     const stopped: string[] = [];
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
     server.throwOnSync = new Error('Server Error');
     signIn('user_a', host, (r) => stopped.push(r));
     await settle();
-    assert.equal(server.calls.length, 1);
     assert.deepEqual(stopped, [], 'not yet: a reconnect is pending');
     server.throwOnSync = null;
     mock.timers.tick(15_000);
     await settle();
     assert.equal(server.rows.get('tab-a-1')!.record!.name, 'Tab tab-a-1', 'the reconnect pushed');
-    assert.deepEqual(stopped, []);
 
+    // A clean pass resets the budget: two more failures are retried again.
     server.throwOnSync = new Error('Server Error');
     host.state.tabs[0]!.name = 'Edit';
     notifyTabsChangedLocally();
     mock.timers.tick(2_000);
     await settle();
+    mock.timers.tick(15_000);
+    await settle();
+    assert.deepEqual(stopped, [], 'a fresh budget after the clean pass');
     mock.timers.tick(60_000);
     await settle();
-    assert.deepEqual(stopped, ['error'], 'out of reconnects');
+    assert.deepEqual(stopped, ['error'], 'three failures in a row');
   });
 
   it('an auth handshake that is not ready is retried, not latched off', async () => {
@@ -444,7 +448,7 @@ describe('tab sync driver', () => {
     const hostA = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
     signIn('user_a', hostA);
     await settle();
-    stopTabSync();
+    signOutTabSync(hostA);
     hostA.state.tabs.push(tab('tab-s-1', 'Signed out'));
 
     const serverB = new FakeServer();
@@ -472,6 +476,85 @@ describe('tab sync driver', () => {
     await settle();
     const sent = serverB.calls.flatMap((c) => c.changes.map((ch) => ch.record?.name));
     assert.ok(!sent.includes('A private') && !sent.includes('A new'), JSON.stringify(sent));
+  });
+
+  it('held tabs come back when the previous account signs in again', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const serverA = server;
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs[0]!.name = 'A private';
+    host.state.tabs.push(tab('tab-a-9', 'A new'));
+    notifyTabsChangedLocally();
+
+    const serverB = new FakeServer();
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    assert.ok(!host.state.tabs.some((t) => t.name === 'A private' || t.name === 'A new'), 'not on screen for B');
+    signOutTabSync(host);
+
+    useServer(serverA);
+    signIn('user_a', host);
+    await settle();
+    assert.equal(serverA.rows.get('tab-a-1')!.record!.name, 'A private');
+    assert.equal(serverA.rows.get('tab-a-9')!.record!.name, 'A new');
+    assert.ok(serverB.calls.every((c) => c.changes.every((ch) => ch.record?.name !== 'A private' && ch.record?.name !== 'A new')));
+  });
+
+  it('a tab refused for the cap stays with its account across a switch', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs.push(tab('tab-a-51', 'Over the cap'));
+    server.nextResult = { ok: true, results: [{ tabId: 'tab-a-51', ok: false, reason: 'TAB_LIMIT', limit: 50 }] };
+    notifyTabsChangedLocally();
+    server.emit();
+    await settle();
+    signOutTabSync(host);
+
+    const serverB = new FakeServer();
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    assert.ok(serverB.calls.every((c) => c.changes.every((ch) => ch.tabId !== 'tab-a-51')));
+    assert.ok(!host.state.tabs.some((t) => t.id === 'tab-a-51'));
+    signOutTabSync(host);
+
+    useServer(server);
+    signIn('user_a', host);
+    await settle();
+    assert.ok(host.state.tabs.some((t) => t.id === 'tab-a-51' && t.name === 'Over the cap'), 'back on its account');
+  });
+
+  it('an edit made after sync stopped on an error stays out of the next account', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    stopTabSync(); // sync gave up; the account is still signed in
+    host.state.tabs[0]!.name = 'A while sync was off';
+
+    const serverB = new FakeServer();
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    assert.ok(serverB.calls.every((c) => c.changes.every((ch) => ch.record?.name !== 'A while sync was off')));
+  });
+
+  it('a conflict that finds no server row hides the stale row for the retry', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    const stale = server.snapshot();
+    server.rows.delete('tab-a-1'); // gone on the server (an evicted delete marker)
+    host.state.tabs[0]!.name = 'Mine';
+    const before = server.calls.length;
+    server.listeners.forEach((l) => l(stale));
+    await settle();
+    const pushes = server.calls.slice(before).map((c) => c.changes[0]!.baseVersion);
+    assert.deepEqual(pushes, [1, undefined], 'the retry creates the tab instead of repeating the conflict');
+    assert.equal(server.rows.get('tab-a-1')!.record!.name, 'Mine');
   });
 
   it('a tab deleted while its first push is on the way stays deleted', async () => {

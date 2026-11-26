@@ -466,12 +466,12 @@ describe('mergeTabs account switch', () => {
     assert.ok(out.changes.every((c) => c.change.tabId !== a1.id));
   });
 
-  it('keeps tabs created or edited after the last sync, without their team link', () => {
+  it('keeps tabs created or edited after sign-out, without their team link', () => {
     const a1 = tab('tab-a-1');
     const later = { ...tab('tab-s-1', { name: 'Signed-out work' }), team: { id: 'dashA', version: 1 } };
     const out = mergeTabs(input({
       local: { activeTabId: later.id, tabs: [a1, later] },
-      meta: syncedMeta([a1], 1, 'user_a'),
+      meta: { ...syncedMeta([a1], 1, 'user_a'), signedOut: true },
       rows: [],
       mode: 'account-switch',
       userId: 'user_b',
@@ -480,5 +480,45 @@ describe('mergeTabs account switch', () => {
     assert.equal(out.state.tabs[0]!.team, undefined);
     assert.deepEqual(out.changes.map((c) => c.change.tabId), [later.id]);
     assert.equal(out.changes[0]!.change.record!.team, undefined);
+    assert.equal(out.held, null);
+  });
+
+  it("holds the previous account's unpushed work for it, with its bases", () => {
+    const a1 = tab('tab-a-1');
+    const meta = syncedMeta([a1], 3, 'user_a');
+    const edited = { ...a1, name: 'Edited before the switch' };
+    const fresh = tab('tab-a-2', { name: 'Never pushed' });
+    const signedOut = tab('tab-s-1', { name: 'After sign-out' });
+    // A direct switch: no sign-out, so every unpushed tab is user_a's.
+    const direct = mergeTabs(input({
+      local: { activeTabId: edited.id, tabs: [edited, fresh] }, meta, rows: [], mode: 'account-switch', userId: 'user_b',
+    }));
+    assert.deepEqual(direct.held!.tabs.map((t) => t.id), [edited.id, fresh.id]);
+    assert.deepEqual(direct.held!.base, { [a1.id]: meta.base[a1.id] });
+    assert.ok(direct.changes.every((c) => c.change.tabId !== edited.id && c.change.tabId !== fresh.id));
+    // After a sign-out, only the tabs unpushed at sign-out are held.
+    const after = mergeTabs(input({
+      local: { activeTabId: edited.id, tabs: [edited, signedOut] },
+      meta: { ...meta, signedOut: true, heldBack: [edited.id] }, rows: [], mode: 'account-switch', userId: 'user_b',
+    }));
+    assert.deepEqual(after.held!.tabs.map((t) => t.id), [edited.id]);
+    assert.deepEqual(ids(after.state), [signedOut.id]);
+  });
+
+  it('puts held tabs back with their bases, so an edit is pushed, not replaced', () => {
+    const a1 = tab('tab-a-1');
+    const meta = syncedMeta([a1], 3, 'user_a');
+    const edited = { ...a1, name: 'Edited before the switch' };
+    const out = mergeTabs(input({
+      local: { activeTabId: 'tab-b-1', tabs: [tab('tab-b-1')] },
+      meta: emptyTabSyncMeta('user_a'),
+      rows: [row(a1.id, 3, captureTabRecord(a1))],
+      mode: 'normal',
+      restore: { tabs: [edited], base: { [a1.id]: meta.base[a1.id]! }, carried: {} },
+    }));
+    assert.ok(ids(out.state).includes(a1.id));
+    const push = out.changes.find((c) => c.change.tabId === a1.id)!;
+    assert.equal(push.change.baseVersion, 3);
+    assert.equal(push.change.record!.name, 'Edited before the switch');
   });
 });
