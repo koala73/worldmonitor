@@ -292,7 +292,8 @@ export function parseZeraPrices(html) {
   const asOf = source.match(/As Of:\s*(\d{2})-(\d{2})-(20\d{2})/);
   if (!asOf) throw new Error('Missing ZERA price date');
   const period = ymd(asOf[3], asOf[2], asOf[1]);
-  const tokens = [...source.matchAll(/bdt-price-table-(heading|integer-part|period)[^"<>]*"\s*>([^<]{0,80})</g)]
+  // The class attribute may be quoted or, on the minified page, bare, and other attributes may follow it.
+  const tokens = [...source.matchAll(/bdt-price-table-(heading|integer-part|period)(?=[\s">])[^<>]*>([^<]{0,80})</g)]
     .map(m => ({ kind: m[1], value: text(m[2]) }));
   const points = new Map();
   let product = null, price = null;

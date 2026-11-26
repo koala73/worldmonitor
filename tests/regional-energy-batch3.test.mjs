@@ -279,6 +279,20 @@ describe('Burkina Faso SONABHY tariffs', () => {
 });
 
 describe('Zimbabwe ZERA energy prices', () => {
+  // Since 2026-11-16 the homepage is minified: single-token class attributes lose their quotes.
+  it('reads the widget when class attributes are unquoted', () => {
+    const quoted = fixture('zera-home.html');
+    const minified = quoted.replace(/class="([^"\s]+)"/g, 'class=$1');
+    assert.match(minified, /class=bdt-price-table-heading>/);
+    assert.deepEqual(parseZeraPrices(minified), parseZeraPrices(quoted));
+    const tokenClass = /class=("?)(bdt-price-table-(?:heading|integer-part|period)[^"<>]*)\1(?=[\s>])/g;
+    for (const html of [quoted, minified]) {
+      const withAttribute = html.replace(tokenClass, 'class=$1$2$1 data-x="1"');
+      assert.notEqual(withAttribute, html);
+      assert.deepEqual(parseZeraPrices(withAttribute), parseZeraPrices(quoted), 'an attribute after the class');
+    }
+  });
+
   it('reads the USD and ZWG price of each product from the homepage widget', async () => {
     const points = parseZeraPrices(fixture('zera-home.html'));
     assertUnique(points);

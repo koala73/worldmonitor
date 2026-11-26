@@ -103,22 +103,26 @@ function columns(header, names) {
 export function parsePgcb(html) {
   const table = blocks(cleanHtml(html), 'table').find(table => /Generation\(MW\)/.test(table.inner))?.inner;
   if (!table) throw new Error('Changed PGCB fuel table');
+  // A Nuclear column between Wind and India appeared on 2026-11-23.
+  const nuclear = /<th[^>]*>\s*Wind\s*<\/th>\s*<th[^>]*>\s*Nuclear\s*<\/th>/.test(table);
   let headerAt = 0;
-  for (const heading of ['Gas', 'Liquid Fuel', 'Coal', 'Hydro', 'Solar', 'Wind', 'India', 'Nepal']) {
+  for (const heading of ['Gas', 'Liquid Fuel', 'Coal', 'Hydro', 'Solar', 'Wind', ...(nuclear ? ['Nuclear'] : []), 'India', 'Nepal']) {
     const at = table.indexOf(heading, headerAt);
     if (at < 0) throw new Error('Changed PGCB fuel table');
     headerAt = at + heading.length;
   }
+  const metrics = ['generation', 'generation.gas', 'generation.liquid_fuel', 'generation.coal', 'generation.hydro', 'generation.solar', 'generation.wind',
+    ...(nuclear ? ['generation.nuclear'] : [])];
+  const india = metrics.length + 2;
   const points = [];
   for (const row of rows(table)) {
     if (!/^\d{2}-\d{2}-\d{4}$/.test(row[0] ?? '')) continue;
-    if (row.length !== 14) throw new Error('Changed PGCB row');
+    if (row.length !== india + 5) throw new Error('Changed PGCB row');
     const [d, m, y] = row[0].split('-');
     const period = iso(`${y}-${m}-${d}T${row[1]}`, '+06:00');
-    const metrics = ['generation', 'generation.gas', 'generation.liquid_fuel', 'generation.coal', 'generation.hydro', 'generation.solar', 'generation.wind'];
     metrics.forEach((metric, i) => points.push(observation(metric, period, row[i + 2], 'MW')));
-    points.push(observation('imports.india', period, number(row[9]) + number(row[10]) + number(row[11]), 'MW'));
-    points.push(observation('imports.nepal', period, row[12], 'MW'));
+    points.push(observation('imports.india', period, number(row[india]) + number(row[india + 1]) + number(row[india + 2]), 'MW'));
+    points.push(observation('imports.nepal', period, row[india + 3], 'MW'));
   }
   return required(points);
 }
