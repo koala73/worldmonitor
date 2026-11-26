@@ -354,6 +354,13 @@ const EVENTS = {
   // copy, or a retry that recovered). Carries outcome, failure kind and
   // variant only. A failure that left empty panels goes to Sentry instead.
   'news-digest-degraded': true,
+  // Demand readout for server-side playback (#11410). Once per page load per
+  // action: the metric is the share of sessions that ever take it. Playback
+  // `action` is open | step | live (open carries a banded local snapshot
+  // count); country history `action` is window-change (days) | date-select |
+  // upsell-click (allowedDays). Never a country code or a date.
+  'playback-action': true,
+  'country-history-action': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;
@@ -1051,6 +1058,7 @@ export function resetAnalyticsForTesting(): void {
   latestIdentityRevision = 0;
   proFunnelReplaysAwaitingDelivery = 0;
   layoutCustomizationsSent.clear();
+  historyDemandSent.clear();
   landingUtm = [];
   landingUtmPageviewConsumed = false;
 }
@@ -1919,6 +1927,41 @@ export function trackLayoutCustomized(kind: LayoutCustomizationKind): void {
   if (layoutCustomizationsSent.has(kind)) return;
   layoutCustomizationsSent.add(kind);
   track('layout-customize', { kind });
+}
+
+export type PlaybackAction = 'open' | 'step' | 'live';
+export type CountryHistoryAction = 'window-change' | 'date-select' | 'upsell-click';
+
+// Once per page load per action (#11410). A slider drag fires `input` per
+// pixel; only the first one says anything about demand.
+const historyDemandSent = new Set<string>();
+
+function playbackSnapshotBand(count: number): string {
+  // The dashboard saves one snapshot per 15 minutes it is open: 96 is a day of
+  // open time, 672 the full 7-day retention.
+  if (count <= 0) return '0';
+  if (count < 96) return '1-95';
+  if (count < 672) return '96-671';
+  return '672+';
+}
+
+export function trackPlaybackAction(action: PlaybackAction, snapshots?: number): void {
+  const key = `playback:${action}`;
+  if (historyDemandSent.has(key)) return;
+  historyDemandSent.add(key);
+  track('playback-action', action === 'open'
+    ? { action, snapshots: playbackSnapshotBand(snapshots ?? 0) }
+    : { action });
+}
+
+export function trackCountryHistoryAction(
+  action: CountryHistoryAction,
+  data?: { days?: number; allowedDays?: number },
+): void {
+  const key = `country-history:${action}`;
+  if (historyDemandSent.has(key)) return;
+  historyDemandSent.add(key);
+  track('country-history-action', { action, ...data });
 }
 
 // ---------------------------------------------------------------------------

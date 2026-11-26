@@ -1,5 +1,6 @@
 import { getSnapshotTimestamps, getSnapshotAt, isStorageAvailable, type DashboardSnapshot } from '@/services/storage';
 import { t } from '@/services/i18n';
+import { trackPlaybackAction } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { LatestRequestGuard } from '@/utils/latest-request-guard';
 
@@ -67,6 +68,7 @@ export class PlaybackControl {
     slider.addEventListener('input', () => {
       const idx = parseInt(slider.value, 10);
       this.currentIndex = idx;
+      trackPlaybackAction('step');
       this.loadSnapshot(idx);
     });
 
@@ -86,6 +88,7 @@ export class PlaybackControl {
     const timestamps = available ? await getSnapshotTimestamps() : [];
     if (!this.timestampGuard.isCurrent(requestId) || !this.element?.isConnected) return;
     this.setStorageUnavailable(!available);
+    trackPlaybackAction('open', timestamps.length);
     this.timestamps = timestamps;
     this.timestamps.sort((a, b) => a - b);
 
@@ -169,9 +172,11 @@ export class PlaybackControl {
         this.currentIndex = this.timestamps.length - 1;
         break;
       case 'live':
+        trackPlaybackAction('live');
         this.goLive();
         return;
     }
+    trackPlaybackAction('step');
 
     const slider = this.element.querySelector('.playback-slider') as HTMLInputElement;
     slider.value = String(this.currentIndex);
