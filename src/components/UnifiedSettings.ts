@@ -1652,6 +1652,22 @@ export class UnifiedSettings {
         </div>
       `;
     }
+    // A failed renewal past its access grace: Pro is paused, but the
+    // subscription still blocks a new checkout while Dodo retries the card, so
+    // "Upgrade to Pro" below would end at a duplicate-subscription 409. The
+    // fix is updating the card in the billing portal.
+    if (billingState === 'on_hold' && sub && !isEntitled()) {
+      return `
+        <div class="upgrade-pro-section upgrade-pro-paused" data-billing-state="on_hold" data-billing-tone="attention">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span class="upgrade-pro-tone-dot"></span>
+            <span class="upgrade-pro-plan-name">${escapeHtml(sub.displayName ?? 'Pro')}</span>
+          </div>
+          <div class="upgrade-pro-desc">${escapeHtml(t('components.billingState.onHoldDesc'))}</div>
+          <button class="manage-billing-btn manage-billing-btn-primary">${escapeHtml(t('components.billingState.updatePayment'))}</button>
+        </div>
+      `;
+    }
     // Signed-in user whose Convex entitlement snapshot has not arrived yet.
     // Rendering "Upgrade to Pro" in this window is how paying users click through to
     // /api/create-checkout and hit 409 duplicate_subscription — same race
@@ -2078,7 +2094,7 @@ export class UnifiedSettings {
     // collapse to getEffectivePanelConfig's disabled synthetic fallback.
     const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
     if (!panel.enabled && !isPanelEntitled(key, resolvedPanel, isProUser())) return;
-    if (!panel.enabled && !isProUser() && isFreePanelCapCounted(key)) {
+    if (!panel.enabled && !isProUser() && isFreePanelCapCounted(key, resolvedPanel)) {
       const enabledCount = countFreePanelCapUsage(this.draftPanelSettings);
       if (enabledCount >= FREE_MAX_PANELS) {
         showToast(t('modals.settingsWindow.freePanelLimit', { max: String(FREE_MAX_PANELS) }));

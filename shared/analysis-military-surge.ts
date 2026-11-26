@@ -110,13 +110,9 @@ export interface MilitarySurgeNewsContext {
   getFocalPoint(countryCode: string): { displayName: string; newsMentions: number; urgency: string } | null;
 }
 
-/** Country-instability lookup, injected for the same reason. */
-export type MilitarySurgeCiiLookup = (countryCode: string) => number | null;
-
 export interface MilitarySurgeEngineOptions {
   now?: () => number;
   newsContext?: MilitarySurgeNewsContext | null;
-  getCii?: MilitarySurgeCiiLookup | null;
 }
 
 // Sensitive regions where foreign military concentration is notable
@@ -620,66 +616,17 @@ export function getTheaterPostureSummaries(
 }
 
 /**
- * Map theater target nations to ISO2 country codes for CII lookup.
+ * ISO2 codes of the theaters' target nations, for showing a country's
+ * instability score beside its theater. The score is context only: it is not
+ * an input to the posture level (scripts/shared/theater-posture.js).
  */
-const TARGET_NATION_CODES: Record<string, string> = {
+export const POSTURE_TARGET_NATION_CODES: Readonly<Record<string, string>> = Object.freeze({
   'Iran': 'IR',
   'Taiwan': 'TW',
   'North Korea': 'KP',
   'Gaza': 'PS',
   'Yemen': 'YE',
-};
-
-/**
- * Recalculate posture level after vessels have been merged into summaries.
- * Uses "either triggers" logic: if aircraft OR vessels exceed thresholds, level escalates.
- * CII boost: theaters whose target nation has CII ≥ 70 get elevated, ≥ 85 get critical.
- */
-export function recalcPostureWithVessels(
-  postures: TheaterPostureSummary[],
-  getCii?: MilitarySurgeCiiLookup | null,
-): void {
-  for (const p of postures) {
-    const theater = POSTURE_THEATERS.find((t) => t.id === p.theaterId);
-    if (!theater) continue;
-
-    const airLevel: 0 | 1 | 2 =
-      p.totalAircraft >= theater.thresholds.critical ? 2
-        : p.totalAircraft >= theater.thresholds.elevated ? 1 : 0;
-
-    const navalLevel: 0 | 1 | 2 =
-      p.totalVessels >= theater.navalThresholds.critical ? 2
-        : p.totalVessels >= theater.navalThresholds.elevated ? 1 : 0;
-
-    // CII boost: high instability in target nation elevates theater posture
-    let ciiLevel: 0 | 1 | 2 = 0;
-    if (theater.targetNation && getCii) {
-      const code = TARGET_NATION_CODES[theater.targetNation];
-      if (code) {
-        const cii = getCii(code);
-        if (cii !== null) {
-          ciiLevel = cii >= 85 ? 2 : cii >= 70 ? 1 : 0;
-        }
-      }
-    }
-
-    const combined = Math.max(airLevel, navalLevel, ciiLevel) as 0 | 1 | 2;
-    p.postureLevel = combined === 2 ? 'critical' : combined === 1 ? 'elevated' : 'normal';
-
-    // Rebuild headline with combined context
-    const parts: string[] = [];
-    if (p.totalAircraft > 0) parts.push(`${p.totalAircraft} aircraft`);
-    if (p.totalVessels > 0) parts.push(`${p.totalVessels} vessels`);
-    const assetSummary = parts.join(' + ') || 'No assets';
-
-    p.headline =
-      p.postureLevel === 'critical'
-        ? `Critical military buildup - ${p.theaterName} (${assetSummary})`
-        : p.postureLevel === 'elevated'
-          ? `Elevated military activity - ${p.theaterName} (${assetSummary})`
-          : `Normal activity - ${p.theaterName}`;
-  }
-}
+});
 
 export function getCriticalPostures(
   flights: MilitaryFlightInput[],
@@ -698,7 +645,6 @@ export function getCriticalPostures(
 export class MilitarySurgeEngine<TFlight extends MilitaryFlightInput = MilitaryFlightInput> {
   private readonly now: () => number;
   private readonly newsContext: MilitarySurgeNewsContext | null;
-  private readonly getCii: MilitarySurgeCiiLookup | null;
 
   private readonly activityHistory = new Map<string, TheaterActivity[]>();
   private readonly activeSurges = new Map<string, SurgeAlert>();
@@ -709,7 +655,6 @@ export class MilitarySurgeEngine<TFlight extends MilitaryFlightInput = MilitaryF
   constructor(options: MilitarySurgeEngineOptions = {}) {
     this.now = options.now ?? (() => Date.now());
     this.newsContext = options.newsContext ?? null;
-    this.getCii = options.getCii ?? null;
     this.lastCleanup = this.now();
   }
 
@@ -936,10 +881,6 @@ export class MilitarySurgeEngine<TFlight extends MilitaryFlightInput = MilitaryF
 
   getTheaterPostureSummaries(flights: TFlight[]): TheaterPostureSummary[] {
     return getTheaterPostureSummaries(flights, this.activityHistory);
-  }
-
-  recalcPostureWithVessels(postures: TheaterPostureSummary[]): void {
-    recalcPostureWithVessels(postures, this.getCii);
   }
 
   getCriticalPostures(flights: TFlight[]): TheaterPostureSummary[] {

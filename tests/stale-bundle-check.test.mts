@@ -8,6 +8,8 @@ import {
 } from '../src/bootstrap/sentry-defer.ts';
 import { RELOAD_BLOCKING_MODAL_SELECTOR, RELOAD_POLICY_ATTR, type VisibleElementLike } from '../src/utils/open-modal.ts';
 import type { DeferralReport } from '../src/bootstrap/stale-bundle-check.ts';
+import type { SoftReloadHold } from '../src/bootstrap/soft-reload-policy.ts';
+import { _resetPageUnloadSignalForTests, isPageUnloading } from '../src/bootstrap/page-unload-signal.ts';
 
 // ---------------------------------------------------------------------------
 // Fake environment
@@ -20,6 +22,8 @@ interface FakeEnv {
   fetchCalls: Array<{ url: string; init?: RequestInit }>;
   fetchResponse: { ok: boolean; status: number; body: string };
   reloadCalls: number;
+  /** Runs inside the injected reload, to observe state at that moment. */
+  onReload?: () => void;
   clock: { value: number; tick(ms: number): void };
   visibilityState: 'visible' | 'hidden';
   /**
@@ -45,6 +49,22 @@ interface FakeEnv {
   supportsCheckVisibility: boolean;
   /** Reports observed, for the once-per-episode and wedge signals. */
   deferralReports: DeferralReport[];
+  /**
+   * What /client-compat.txt answers. The default is a 404, which is what a
+   * deploy from before the marker existed serves, so every older test keeps
+   * exercising the forced reload.
+   */
+  compatResponse: { status: number; body: string } | 'network-error';
+  /**
+   * The build the marker file names on its second line. Null means the build
+   * /build-hash.txt is serving, which is what one deployment does. Set it to
+   * model a deploy that changed between the two requests.
+   */
+  compatBuild: string | null;
+  /** URLs requested for the compatibility marker. */
+  compatCalls: string[];
+  /** Why a non-breaking reload is held right now; null lets it through. */
+  softHold: SoftReloadHold | null;
 }
 
 function makeEnv(initial: Partial<{ ok: boolean; status: number; body: string }> = {}): FakeEnv {
@@ -72,10 +92,20 @@ function makeEnv(initial: Partial<{ ok: boolean; status: number; body: string }>
     fetchGate: null,
     supportsCheckVisibility: true,
     deferralReports: [],
+    compatResponse: { status: 404, body: 'Not Found' },
+    compatBuild: null,
+    compatCalls: [],
+    softHold: null,
   };
 }
 
 const USE_PRODUCTION_FETCH = Symbol('production-fetch');
+/** True for the marker read that follows a hash mismatch, so a hand-written fetch can count hash reads only. */
+function isCompatRequest(input: RequestInfo | URL): boolean {
+  return String(input).startsWith('/client-compat.txt');
+}
+/** The compatibility marker baked into the running bundle in these tests. */
+const RUNNING_COMPAT = 'c1';
 
 function install(
   env: FakeEnv,
@@ -90,6 +120,13 @@ function install(
     ? undefined
     : fetchImpl ?? (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+      if (url.startsWith('/client-compat.txt')) {
+        env.compatCalls.push(url);
+        if (env.compatResponse === 'network-error') throw new TypeError('Failed to fetch');
+        const build = env.compatBuild ?? env.fetchResponse.body.trim();
+        const body = env.compatResponse.status === 200 ? `${env.compatResponse.body}\n${build}\n` : env.compatResponse.body;
+        return new Response(body, { status: env.compatResponse.status });
+      }
       env.fetchCalls.push({ url, init });
       if (env.fetchGate) await env.fetchGate;
       const { ok, status, body } = env.fetchResponse;
@@ -97,6 +134,8 @@ function install(
     });
   return installStaleBundleCheck({
     currentHash,
+    currentCompat: RUNNING_COMPAT,
+    softReloadHold: () => env.softHold,
     minIntervalMs,
     ...(wedgeAfterDeferrals === undefined ? {} : { wedgeAfterDeferrals }),
     fetch: injectedFetch,
@@ -148,7 +187,7 @@ function install(
       env.intervalCallbacks.push(cb);
       return env.intervalCallbacks.length; // dummy handle
     },
-    reload: () => { env.reloadCalls++; },
+    reload: () => { env.reloadCalls++; env.onReload?.(); },
     ...(useDefaultReporter ? {} : { reportDeferral: (report: DeferralReport) => { env.deferralReports.push(report); } }),
     now: () => env.clock.value,
   });
@@ -252,6 +291,18 @@ describe('installStaleBundleCheck', () => {
     await fireFocus(env);
     assert.equal(env.fetchCalls.length, 1);
     assert.equal(env.reloadCalls, 1);
+  });
+
+  it('marks the page as unloading before it reloads, so the aborted fetches are not reported', async () => {
+    _resetPageUnloadSignalForTests();
+    env.fetchResponse = { ok: true, status: 200, body: 'sha-newer-deploy\n' };
+    const seen: boolean[] = [];
+    env.onReload = () => { seen.push(isPageUnloading()); };
+    install(env);
+    assert.equal(isPageUnloading(), false);
+    await fireFocus(env);
+    assert.deepEqual(seen, [true]);
+    _resetPageUnloadSignalForTests();
   });
 
   it('does NOT reload when the deployed hash matches the running bundle', async () => {
@@ -690,7 +741,8 @@ describe('installStaleBundleCheck', () => {
   it('a rejected fetch from focus is not an unhandled rejection, and the next trigger reloads on a new hash', async () => {
     let calls = 0;
     const messages = await rejectionMessagesDuring(async () => {
-      install(env, 'sha-running-bundle', 60_000, undefined, false, async () => {
+      install(env, 'sha-running-bundle', 60_000, undefined, false, async (input) => {
+        if (isCompatRequest(input)) return new Response('Not Found', { status: 404 });
         calls += 1;
         if (calls === 1) throw new TypeError('Failed to fetch');
         return new Response('sha-newer-deploy');
@@ -726,7 +778,8 @@ describe('installStaleBundleCheck', () => {
   it('a one-sided then on the live fetch does not leave an unhandled rejection from focus or the interval', async () => {
     const previousFetch = globalThis.fetch;
     let calls = 0;
-    const previousSnapshot = _setFetchBeforeWindowPatchesForTests(async () => {
+    const previousSnapshot = _setFetchBeforeWindowPatchesForTests(async (input) => {
+      if (isCompatRequest(input)) return new Response('Not Found', { status: 404 });
       calls += 1;
       if (calls === 1) throw new TypeError('Failed to fetch');
       return new Response('sha-newer-deploy');
@@ -753,5 +806,269 @@ describe('installStaleBundleCheck', () => {
       globalThis.fetch = previousFetch;
       _setFetchBeforeWindowPatchesForTests(previousSnapshot);
     }
+  });
+});
+
+describe('installStaleBundleCheck — deploys that keep the compatibility marker', () => {
+  beforeEach(() => {
+    _resetPageUnloadSignalForTests();
+  });
+
+  function staleEnv(): FakeEnv {
+    const env = makeEnv({ body: 'sha-new-deploy' });
+    env.compatResponse = { status: 200, body: `${RUNNING_COMPAT}\n` };
+    return env;
+  }
+
+  it('does NOT reload a visible tab when the marker is unchanged', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    install(env);
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireInterval(env);
+    assert.equal(env.reloadCalls, 0);
+    assert.equal(isPageUnloading(), false);
+  });
+
+  it('does NOT reload while media is playing with sound', async () => {
+    const env = staleEnv();
+    env.softHold = 'audible-media';
+    install(env);
+    await fireInterval(env);
+    assert.equal(env.reloadCalls, 0);
+  });
+
+  it('does NOT reload a page that loaded recently', async () => {
+    const env = staleEnv();
+    env.softHold = 'recently-loaded';
+    install(env);
+    await fireInterval(env);
+    assert.equal(env.reloadCalls, 0);
+  });
+
+  it('reloads once nothing holds it, and marks the page as unloading first', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    install(env);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0);
+
+    env.softHold = null;
+    env.clock.tick(60_001);
+    let unloadingAtReload: boolean | null = null;
+    env.onReload = () => { unloadingAtReload = isPageUnloading(); };
+    await fireInterval(env);
+    assert.equal(env.reloadCalls, 1);
+    assert.equal(unloadingAtReload, true);
+  });
+
+  it('does NOT reload under an open modal, and leaves no debt that a visible tab would pay', async () => {
+    const env = staleEnv();
+    env.modal = 'open';
+    install(env);
+    await fireInterval(env);
+    assert.equal(env.reloadCalls, 0, 'the modal holds the reload');
+    assert.equal(env.deferralReports.length, 0, 'a held non-breaking reload is not a deferral episode');
+
+    // The modal closes and the viewer is back on the tab. A forced reload
+    // would land here; a non-breaking one must not.
+    env.modal = 'none';
+    env.softHold = 'visible';
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0);
+
+    env.softHold = null;
+    env.clock.tick(60_001);
+    await fireInterval(env);
+    assert.equal(env.reloadCalls, 1);
+  });
+
+  it('reloads a visible tab when the deployed marker differs', async () => {
+    const env = staleEnv();
+    env.compatResponse = { status: 200, body: 'c2' };
+    env.softHold = 'visible';
+    install(env);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 1);
+  });
+
+  it('reloads when the deploy serves no marker (a build from before it existed)', async () => {
+    const env = staleEnv();
+    env.compatResponse = { status: 404, body: 'Not Found' };
+    env.softHold = 'visible';
+    install(env);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 1);
+  });
+
+  it('reloads when the marker path answers with a page instead of a marker', async () => {
+    const env = staleEnv();
+    env.compatResponse = { status: 200, body: '<!doctype html><html><body>app shell</body></html>' };
+    env.softHold = 'visible';
+    install(env);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 1);
+  });
+
+  it('does NOT reload when the marker cannot be read, and decides on the next trigger', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    env.compatResponse = 'network-error';
+    install(env);
+    const rejections = await rejectionMessagesDuring(async () => { await fireFocus(env); });
+    assert.deepEqual(rejections, []);
+    assert.equal(env.reloadCalls, 0, 'a network failure is not evidence of a breaking deploy');
+
+    env.compatResponse = { status: 503, body: 'Service Unavailable' };
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0, 'neither is a server error');
+
+    env.compatResponse = { status: 200, body: 'c2' };
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 1);
+  });
+
+  it('treats a marker that stays unreadable as a breaking deploy, so a broken marker path cannot pin tabs to an old build', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    env.compatResponse = { status: 503, body: 'Service Unavailable' };
+    install(env);
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0, 'two failed reads are still a blip');
+
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.compatCalls.length, 3);
+    assert.equal(env.reloadCalls, 1, 'the third consecutive failed read for one deploy reloads');
+  });
+
+  it('counts unreadable markers per deploy, and a readable one clears the count', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    env.compatResponse = 'network-error';
+    install(env);
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireFocus(env);
+
+    // A newer deploy lands: its marker has not failed yet.
+    env.fetchResponse.body = 'sha-newer-deploy';
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0, 'two failures on each of two deploys do not add up to three');
+
+    env.compatResponse = { status: 200, body: RUNNING_COMPAT };
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0, 'a readable, unchanged marker settles it');
+  });
+
+  it('decides nothing when the marker names another build, and never caches that answer', async () => {
+    // The hash and the marker are two requests. A deploy that lands between
+    // them would otherwise file one build's marker under the other's hash.
+    const env = staleEnv();
+    env.softHold = 'visible';
+    env.compatResponse = { status: 200, body: 'c2' };
+    env.compatBuild = 'sha-some-other-deploy';
+    install(env);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0, 'a breaking marker for a different build says nothing about this one');
+
+    env.compatResponse = { status: 200, body: RUNNING_COMPAT };
+    env.compatBuild = null;
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.compatCalls.length, 2, 'the mismatched answer was not cached');
+    assert.equal(env.reloadCalls, 0);
+  });
+
+  it('never counts a marker from another build towards the unreadable limit', async () => {
+    // Two edges can disagree for minutes while a deploy propagates. That is
+    // not a broken marker path, and three such answers must not reload a
+    // visible tab.
+    const env = staleEnv();
+    env.softHold = 'visible';
+    env.compatBuild = 'sha-some-other-deploy';
+    install(env);
+    for (let i = 0; i < 5; i++) {
+      await fireFocus(env);
+      env.clock.tick(60_001);
+    }
+    assert.equal(env.compatCalls.length, 5, 'asked again every time, nothing cached');
+    assert.equal(env.reloadCalls, 0);
+
+    // It does not clear real failures either: two before, one after, is three.
+    env.compatResponse = { status: 503, body: 'Service Unavailable' };
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    env.compatResponse = { status: 200, body: RUNNING_COMPAT };
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    env.compatResponse = { status: 503, body: 'Service Unavailable' };
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 1, 'the third real failure for this deploy reloads');
+  });
+
+  it('reloads when the marker does not name its build', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    install(env, 'sha-running-bundle', 60_000, undefined, false, async (input) => {
+      if (isCompatRequest(input)) return new Response(RUNNING_COMPAT);
+      return new Response('sha-new-deploy');
+    });
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 1, 'an unrecognised marker file is treated as a breaking deploy');
+  });
+
+  it('reads the marker once per deployed hash, with cache-bust and no-store', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    install(env);
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    env.clock.tick(60_001);
+    await fireInterval(env);
+    assert.equal(env.fetchCalls.length, 3, 'the hash is re-read on every trigger');
+    assert.equal(env.compatCalls.length, 1, 'the marker of an already-classified deploy is not');
+    assert.match(env.compatCalls[0]!, /^\/client-compat\.txt\?t=\d+$/);
+  });
+
+  it('reloads a held tab when a later deploy changes the marker', async () => {
+    const env = staleEnv();
+    env.softHold = 'visible';
+    install(env);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0);
+
+    env.fetchResponse.body = 'sha-newer-deploy';
+    env.compatResponse = { status: 200, body: 'c2' };
+    env.clock.tick(60_001);
+    await fireFocus(env);
+    assert.equal(env.compatCalls.length, 2);
+    assert.equal(env.reloadCalls, 1);
+  });
+
+  it('a forced reload deferred by a modal still lands on a visible tab once the modal closes', async () => {
+    const env = staleEnv();
+    env.compatResponse = { status: 200, body: 'c2' };
+    env.softHold = 'visible';
+    env.modal = 'open';
+    install(env);
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 0);
+    env.modal = 'none';
+    await fireFocus(env);
+    assert.equal(env.reloadCalls, 1);
   });
 });

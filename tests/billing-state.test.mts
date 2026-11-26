@@ -16,6 +16,7 @@ import {
   getBillingBannerVariant,
   getBillingEmailErrorKey,
   getBillingGateOverride,
+  getProBannerVariant,
   suggestBillingEmail,
   getReactivationHref,
   getSubscriptionStatusTone,
@@ -478,5 +479,22 @@ describe('getSubscriptionStatusTone (#7315)', () => {
     // entitlement engine still considers entitled.
     const bogus = sub({ status: 'paused' as unknown as 'active' });
     assert.equal(getSubscriptionStatusTone(bogus, NOW), 'unknown');
+  });
+});
+
+describe('getProBannerVariant', () => {
+  it('a paused subscriber (on_hold past the access grace) gets no Upgrade strip', () => {
+    const paused = deriveBillingUxState(
+      sub({ status: 'on_hold' }),
+      ent({ planKey: 'free', validUntil: 0 }),
+      NOW,
+    );
+    assert.equal(paused, 'on_hold');
+    assert.equal(getProBannerVariant(paused), null);
+  });
+
+  it('lapsed subscribers get the resubscribe strip and everyone else the upgrade strip', () => {
+    assert.equal(getProBannerVariant('lapsed'), 'lapsed');
+    assert.equal(getProBannerVariant('free'), 'upgrade');
   });
 });

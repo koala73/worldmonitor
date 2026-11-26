@@ -500,6 +500,15 @@ describe("enforceEntitlement flag on the relay-path mutations", () => {
   // free row the relay then has to drop.
   test("setQuietHoursForUser (flagged) denies emptying the scope of an enabled rule", async () => {
     const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      enabled: true,
+      eventTypes: [],
+      sensitivity: "critical",
+      channels: ["web_push"],
+      countries: ["UA"],
+    });
     await expect(
       t.mutation(internal.alertRules.setQuietHoursForUser, {
         userId: USER.subject,
@@ -513,6 +522,15 @@ describe("enforceEntitlement flag on the relay-path mutations", () => {
 
   test("setDigestSettingsForUser (flagged) denies emptying the scope of an enabled rule", async () => {
     const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      enabled: true,
+      eventTypes: [],
+      sensitivity: "critical",
+      channels: ["web_push"],
+      countries: ["UA"],
+    });
     await expect(
       t.mutation(internal.alertRules.setDigestSettingsForUser, {
         userId: USER.subject,

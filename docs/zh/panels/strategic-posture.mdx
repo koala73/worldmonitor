@@ -1,21 +1,17 @@
 ---
 title: "AI 战略姿态"
-description: "AI 战略姿态面板基于缓存的多源姿态情报信号与实时海军舰艇 AIS 移动轨迹数据，为全球主要战区自动计算并生成军事部署强度卡片，涵盖航母打击群、两栖攻击编队、护航舰队部署与前沿基地兵力动态，支持一键点击战区位置直达 3D 全球地图精确定位，用于宏观军力态势评估与冲突升级早期监控。"
+description: "AI 战略姿态面板展示 AIS relay 为每个全球主要战区发布的军事姿态等级，等级依据战区内的军用飞机与受追踪海军舰艇计算，与 API 和 MCP 工具报告的等级一致；支持一键点击战区位置直达地图精确定位，用于宏观军力态势评估与冲突升级早期监控。"
 ---
 
-**AI Strategic Posture** 面板（内部 id `strategic-posture`）展示战区级军事姿态评估 — 将每个战区的缓存"种子"视图与实时军事舰艇移动混合，使渲染的姿态反映当今部署而非昨日部署。
+**AI Strategic Posture** 面板（内部 id `strategic-posture`）展示战区级军事姿态评估。它显示 AIS relay 为每个战区发布的等级，与 API 和 MCP 工具报告的等级相同。
 
 ## 面板显示内容
 
 一个垂直排列的战区姿态卡片列表。每张卡片包含战区名称、当前姿态摘要和点击穿透交互：选择一个战区会触发可选的位置点击回调，使宿主可以将地图缩放到其坐标。
 
-面板的内部加载 UX 值得注意：它在等待姿态 + 舰艇获取解析时使用 `setInterval` 跟踪已用时间，因此在慢速运行时读者能看到可见的进度信号。当种子过期时，面板设置过期指示器（`isStale`），使卡片表面可以标记它。
+面板在等待姿态获取解析时使用 `setInterval` 跟踪已用时间，因此在慢速运行时读者能看到可见的进度信号。当种子过期时，面板设置过期指示器（`isStale`），使卡片表面可以标记它。
 
-在面板底层：
-
-1. 通过 `fetchCachedTheaterPosture()` 加载缓存姿态。
-2. 通过 `fetchMilitaryVessels()` 获取当前军事舰艇。
-3. 使用 `recalcPostureWithVessels()` 即时重新计算姿态，使显示的摘要是一个新鲜的激增估计，而非仅仅是缓存值。
+面板通过 `fetchCachedTheaterPosture()` 加载姿态，并按发布结果渲染，不重新计算等级。当战区目标国家的不稳定指数达到 70 或以上时，卡片会以单独的标签显示该分数；该分数不改变等级。
 
 面板 id 为 `strategic-posture`；规范组件为 `src/components/StrategicPosturePanel.ts`。标题从 i18n 解析（`panels.strategicPosture`）；配置在 `src/config/panels.ts:23` 设置 `'AI Strategic Posture'`。
 
@@ -26,9 +22,8 @@ description: "AI 战略姿态面板基于缓存的多源姿态情报信号与实
 
 ## 数据来源
 
-- **缓存姿态**：种子级战区姿态摘要，通过 `@/services/cached-theater-posture` 读取。
-- **军事舰艇**：通过 `@/services/military-vessels` 获取实时位置（驱动军事地图图层的同一数据源）。
-- **激增重算**：`@/services/military-surge` 中的 `recalcPostureWithVessels()` 将缓存基线与今日舰艇位置混合，生成显示的 `TheaterPostureSummary`。
+- **战区姿态**：AIS relay 发布的各战区等级、飞机数量与受追踪舰艇数量（`theater-posture:sebuf:v1`，规则见 `scripts/shared/theater-posture.js`），通过 `@/services/cached-theater-posture` 读取。
+- **国家不稳定指数**：通过 `@/services/cached-risk-scores` 读取缓存的 CII 分数，仅作参考显示。
 
 ## 后端端点
 
@@ -41,7 +36,7 @@ description: "AI 战略姿态面板基于缓存的多源姿态情报信号与实
 
 ## 刷新频率
 
-面板不在轮询计时器上 — 在挂载时获取并在相关外部触发时重新渲染。底层姿态种子在军事 cron 上刷新；实时舰艇位置随 AIS relay 刷新。
+面板不在轮询计时器上 — 在挂载时获取并在相关外部触发时重新渲染。AIS relay 每 10 分钟重新发布一次战区姿态。
 
 ## 层级与门控
 

@@ -12,11 +12,12 @@ import { isMainModule } from '../../scripts/lib/main-module.mjs';
 
 // Shared caches are saved by main runs on a key miss, and these paths feed
 // their keys (root and nested lockfiles, .npmrc, the vendored packages, the
-// install actions, the sidecar's shipped-Node download script: every
+// install actions, the sidecar's shipped-Node download script, the e2e
+// embeddings model fetcher: every
 // hashFiles() input in test.yml and its actions). Skipping such a push would
 // leave the new entry unsaved and every later PR missing it. Workflow edits
 // change what the jobs do.
-export const REUSE_BLOCKER = /(^|\/)(package(-lock)?\.json|\.npmrc)$|^vendor\/|^\.github\/|^scripts\/download-node\.sh$/;
+export const REUSE_BLOCKER = /(^|\/)(package(-lock)?\.json|\.npmrc)$|^vendor\/|^\.github\/|^scripts\/download-node\.sh$|^e2e\/fetch-embeddings-model\.ts$/;
 export const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 // The jobs each `changes` output gates. A group is reusable only when every

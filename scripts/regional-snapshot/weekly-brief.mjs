@@ -19,6 +19,7 @@ import {
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
 } from '../_llm-model-timeouts.mjs';
+import { formatBalanceForPrompt } from './_helpers.mjs';
 
 const CHROME_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -111,16 +112,7 @@ export function emptyBrief(regionId) {
  */
 export function buildBriefPrompt(region, snapshot, transitions) {
   const balance = snapshot?.balance ?? {};
-  const balanceLine = [
-    `coercive=${num(balance.coercive_pressure)}`,
-    `fragility=${num(balance.domestic_fragility)}`,
-    `capital=${num(balance.capital_stress)}`,
-    `energy_vuln=${num(balance.energy_vulnerability)}`,
-    `alliance=${num(balance.alliance_cohesion)}`,
-    `maritime=${num(balance.maritime_access)}`,
-    `energy_lev=${num(balance.energy_leverage)}`,
-    `net=${num(balance.net_balance)}`,
-  ].join(' ');
+  const balanceLine = formatBalanceForPrompt(balance);
 
   const regimeLabel = snapshot?.regime?.label ?? 'unknown';
   const activeTriggers = (snapshot?.triggers?.active ?? [])
@@ -182,11 +174,6 @@ export function buildBriefPrompt(region, snapshot, transitions) {
   ].filter(Boolean).join('\n');
 
   return { systemPrompt, userPrompt };
-}
-
-function num(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n.toFixed(2) : '0.00';
 }
 
 /**

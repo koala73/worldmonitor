@@ -7,10 +7,11 @@ import { build } from 'esbuild';
 
 // Run in the normal unit-shards inventory. These reproducible esbuild + gzip-9
 // budgets are an early warning, not a substitute for Vercel's deployed artifact
-// measurement. MCP reserves 24 KiB below the 1 MiB Edge ceiling; displacement
+// measurement. MCP reserves 20 KiB below the 1 MiB Edge ceiling; displacement
 // gets a separate 300 KiB growth budget even though it has more platform room.
 for (const [entry, budget] of [
-  ['api/mcp.ts', 1024 * 1000],
+  // MCP bundles the server news catalog for claim search, so catalog query fixes grow it (#11363).
+  ['api/mcp.ts', 1024 * 1004],
   ['api/displacement/v1/[rpc].ts', 300 * 1024],
   // Orbital Watch point and country RPCs: about 166 KiB after #10725 added per-mission coverage grids (85 KB minified);
   // the budget leaves room for one more mission grid.

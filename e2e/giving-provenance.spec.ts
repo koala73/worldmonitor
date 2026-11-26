@@ -222,7 +222,7 @@ test.describe('Happy variant Giving provenance', () => {
       'Published benchmarks with partial source coverage.',
     );
     await expect(panel.locator('.giving-stat-headline .giving-stat-value')).toHaveText(
-      'At least $2.7B',
+      'At least $2.6B',
     );
     await expect(panel.locator('.giving-stat-headline')).toContainText(
       'Tracked platform giving — annualized estimate',

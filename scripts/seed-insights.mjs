@@ -36,6 +36,7 @@ import {
   synthesisSystemPrompt,
   synthesisUserPrompt,
   synthesisRejectionFeedback,
+  attributeLowCredibilityClaim,
 } from './_insights-brief.mjs';
 import {
   INSIGHTS_COMPOSER_THREW,
@@ -396,7 +397,7 @@ async function generateLegacySingleHeadlineBrief(topStories, { callBudgetMs } = 
     if (BRIEF_VALIDATOR_MODE === 'enforce') {
       console.warn(`  [brief_hallucination ENFORCE] dropped LLM summary: invented "${hallucinated}" not in headline; fell back to headline`);
       return {
-        worldBrief: topHeadline,
+        worldBrief: attributeLowCredibilityClaim(briefCluster, topHeadline),
         briefProvider: `${llmResult.provider}+headline-fallback`,
         briefModel: llmResult.model,
         worldBriefSources,
@@ -406,7 +407,7 @@ async function generateLegacySingleHeadlineBrief(topStories, { callBudgetMs } = 
     console.warn(`  [brief_hallucination SHADOW] would have dropped LLM summary: invented "${hallucinated}" not in headline`);
   }
   return {
-    worldBrief: llmResult.text,
+    worldBrief: attributeLowCredibilityClaim(briefCluster, llmResult.text),
     briefProvider: llmResult.provider,
     briefModel: llmResult.model,
     worldBriefSources,

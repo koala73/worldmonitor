@@ -145,6 +145,8 @@ describe('fetch attempt helpers (#7083)', () => {
     assert.equal(attempts.resolveTerminalFetchFailure({ directFailure: 'per-feed-timeout', relayFailure: 'relay-error', relayAttempted: true, deadlineAborted: false }), 'relay-error');
     assert.equal(attempts.resolveTerminalFetchFailure({ directFailure: 'direct-error', relayFailure: 'per-feed-timeout', relayAttempted: true, deadlineAborted: false }), 'relay-error');
     assert.equal(attempts.resolveTerminalFetchFailure({ directFailure: 'direct-error', relayFailure: 'relay-error', relayAttempted: true, deadlineAborted: true }), 'deadline-abort');
+    assert.equal(attempts.resolveTerminalFetchFailure({ directFailure: 'per-feed-timeout', relayFailure: 'deadline-abort', relayAttempted: true, deadlineAborted: true }), 'per-feed-timeout');
+    assert.equal(attempts.resolveTerminalFetchFailure({ directFailure: 'per-feed-timeout', relayFailure: null, relayAttempted: false, deadlineAborted: true }), 'per-feed-timeout');
     assert.equal(attempts.resolveTerminalFetchFailure({ directFailure: 'direct-error', relayFailure: null, relayAttempted: false, deadlineAborted: false }), 'direct-error');
   });
 

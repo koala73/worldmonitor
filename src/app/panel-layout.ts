@@ -37,6 +37,7 @@ import { MobilePanelNav } from '@/components/MobilePanelNav';
 import { debounce, loadFromStorage, saveToStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { renderExpandIconSvg } from '@/utils/ui-icons';
+import { TIME_RANGE_MS } from '@/utils/time-range';
 import {
   DASHBOARD_EXTERNAL_SITE_LINKS,
   resolveDashboardSiteOrigin,
@@ -4367,12 +4368,7 @@ export class PanelLayoutManager implements AppModule {
 
   private filterItemsByTimeRange(items: import('@/types').NewsItem[], range: import('@/components/MapContainer').TimeRange = this.ctx.currentTimeRange): import('@/types').NewsItem[] {
     if (range === 'all') return items;
-    const ranges: Record<string, number> = {
-      '1h': 60 * 60 * 1000, '6h': 6 * 60 * 60 * 1000,
-      '24h': 24 * 60 * 60 * 1000, '48h': 48 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000, 'all': Infinity,
-    };
-    const cutoff = Date.now() - (ranges[range] ?? Infinity);
+    const cutoff = Date.now() - (TIME_RANGE_MS[range] ?? Infinity);
     return items.filter((item) => {
       // Recency gate routed through effectivePubDateMs so pubDateMissing
       // items fail the cutoff check rather than falsely claiming freshness.

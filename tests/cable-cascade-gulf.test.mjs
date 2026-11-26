@@ -150,3 +150,29 @@ describe('cable cascade — Red Sea exits (#9722)', () => {
     }
   });
 });
+
+describe('Hormuz cascade — Gulf exporters and ports behind the strait', () => {
+  const result = calculateCascade(graph, HORMUZ, 1);
+  const byCountry = new Map(result.countriesAffected.map(c => [c.country, c]));
+
+  it('lists every major Gulf exporter EIA reports for 2024 Hormuz flows', () => {
+    for (const code of ['SA', 'IQ', 'AE', 'KW', 'QA', 'IR']) {
+      assert.ok(byCountry.has(code), `${code} must be affected, got ${[...byCountry.keys()].join(',')}`);
+    }
+  });
+
+  it('rates each country from the same strength as its capacity', () => {
+    const level = (v) => (v > 0.8 ? 'critical' : v > 0.5 ? 'high' : v > 0.2 ? 'medium' : 'low');
+    for (const c of result.countriesAffected) {
+      assert.equal(c.impactLevel, level(c.affectedCapacity), `${c.country} at ${c.affectedCapacity}`);
+    }
+  });
+
+  it('reaches Persian Gulf terminals beyond 500 km and skips the Fujairah bypass', () => {
+    const access = (graph.outgoing.get(HORMUZ) ?? []).filter(e => e.type === 'controls_access').map(e => e.to);
+    for (const port of ['ras_tanura', 'kharg_island', 'ras_laffan', 'jebel_ali']) {
+      assert.ok(access.includes(`port:${port}`), `${port} sits behind Hormuz`);
+    }
+    assert.ok(!access.includes('port:fujairah'), 'Fujairah loads on the Gulf of Oman');
+  });
+});

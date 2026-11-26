@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { claimSentryPreloadErrors } from '../src/bootstrap/sentry-defer';
+import { _resetPageUnloadSignalForTests, isPageUnloading } from '../src/bootstrap/page-unload-signal';
 
 type GuardModule = typeof import('../src/bootstrap/chunk-reload');
 
@@ -320,5 +321,24 @@ describe('deferred Sentry loader claims its own chunk failures', () => {
     target.dispatchEvent(new Event('vite:preloadError', { cancelable: true }));
     await settle();
     assert.equal(reloads, 1);
+  });
+
+  it('marks the page as unloading before either reload path runs', async () => {
+    for (const path of ['preloadError', 'readChunkModule'] as const) {
+      _resetPageUnloadSignalForTests();
+      setWindow({ sessionStorage: fakeStorage(), localStorage: fakeStorage() });
+      const { installChunkReloadGuard, readChunkModule } = await freshGuardModule();
+      const target = new EventTarget();
+      const seen: boolean[] = [];
+      installChunkReloadGuard('build-A', { eventTarget: target, reload: () => { seen.push(isPageUnloading()); } });
+      if (path === 'preloadError') {
+        target.dispatchEvent(new Event('vite:preloadError', { cancelable: true }));
+        await settle();
+      } else {
+        await assert.rejects(() => readChunkModule(Promise.reject(new TypeError('Load failed'))));
+      }
+      assert.deepEqual(seen, [true], path);
+    }
+    _resetPageUnloadSignalForTests();
   });
 });

@@ -26,7 +26,8 @@ const fixture = name => readFileSync(new URL(`./fixtures/regional-energy/${name}
 const json = name => JSON.parse(fixture(name));
 const point = (rows, metric) => rows.find(r => r.metric === metric);
 const BATCH_2 = new Set(['evn', 'korem', 'coes', 'iccc', 'fccc', 'mem']);
-const BATCH_3 = new Set(['qatarenergy', 'erb', 'npa', 'sonabhy', 'zera', 'doe', 'anptl', 'creg', 'ursea']);
+const BATCH_3 = new Set(['qatarenergy', 'erb', 'npa', 'sonabhy', 'zera', 'doe', 'anptl', 'creg', 'ursea', 'ems', 'nosbih', 'mepso']);
+const OWNER_ISSUE = { fuelwatch: 10838, searg: 11154, oil111: 10113 };
 
 describe('regional energy source observations', () => {
   it('rejects large unterminated HTML without blocking the worker', () => {
@@ -107,6 +108,27 @@ describe('regional energy source observations', () => {
     assert.equal(rows[0].period, '2026-10-29T13:30:00.000Z');
     assert.equal(point(rows, 'demand'), undefined);
     assert.equal(point(rows, 'load_shedding'), undefined);
+  });
+
+  // PGCB added a Nuclear column after Wind on 2026-11-23 (Rooppur).
+  it('reads the PGCB table with its Nuclear column', () => {
+    const rows = parsePgcb(fixture('pgcb-nuclear.html'));
+    const at = period => metric => rows.find(r => r.metric === metric && r.period === period)?.value;
+    const six = at('2026-11-26T00:00:00.000Z');
+    assert.equal(six('generation'), 8846);
+    assert.equal(six('generation.gas'), 3811);
+    assert.equal(six('generation.coal'), 3132);
+    assert.equal(six('generation.wind'), 26);
+    assert.equal(six('generation.nuclear'), 0);
+    assert.equal(six('imports.india'), 916 + 66 + 849);
+    assert.equal(six('imports.nepal'), 0);
+    assert.equal(at('2026-11-25T23:00:00.000Z')('generation.wind'), 16);
+    assert.equal(point(parsePgcb(fixture('pgcb.html')), 'generation.nuclear'), undefined, 'the older table has no Nuclear column');
+  });
+
+  it('rejects a PGCB row whose width does not match its header', () => {
+    const html = fixture('pgcb-nuclear.html').replace('<td>26</td>', '');
+    assert.throws(() => parsePgcb(html), /Changed PGCB row/);
   });
 
   it('reads dated NISO daily energy separately from peak power', () => {
@@ -221,7 +243,7 @@ describe('source discovery and publication boundary', () => {
       assert.equal(config.maxStaleMin, feed.intervalMin * 3);
       assert.equal(config.maxContentAgeMin, feed.maxContentAgeMin);
       assert.equal(config.cutover.activationKey, config.activationKey);
-      assert.equal(config.cutover.issue, BATCH_3.has(feed.id) ? 10051 : BATCH_2.has(feed.id) ? 9893 : 9842);
+      assert.equal(config.cutover.issue, OWNER_ISSUE[feed.id] ?? (BATCH_3.has(feed.id) ? 10051 : BATCH_2.has(feed.id) ? 9893 : 9842));
       const options = regionalEnergySeedOptions(feed.id);
       assert.equal(options.afterPublish, undefined);
       assert.equal(calls.length, feeds.indexOf(feed));

@@ -182,6 +182,22 @@ function extractOrgId(payload: Record<string, unknown>): string | null {
 // Avoids hammering the Clerk API on every premium request. TTL = 5 min.
 const _planCache = new Map<string, { role: 'free' | 'pro'; expiresAt: number }>();
 const PLAN_CACHE_TTL_MS = 5 * 60 * 1_000;
+const PLAN_CACHE_MAX_ENTRIES = 1_000;
+
+function setPlanCache(userId: string, role: 'free' | 'pro'): void {
+  const now = Date.now();
+  if (_planCache.size >= PLAN_CACHE_MAX_ENTRIES) {
+    for (const [key, entry] of _planCache) {
+      if (entry.expiresAt <= now) _planCache.delete(key);
+    }
+    while (_planCache.size >= PLAN_CACHE_MAX_ENTRIES) {
+      const oldest = _planCache.keys().next();
+      if (oldest.done) break;
+      _planCache.delete(oldest.value);
+    }
+  }
+  _planCache.set(userId, { role, expiresAt: now + PLAN_CACHE_TTL_MS });
+}
 
 // Matches the 3s budget used for the other external auth lookup
 // — an inline AbortSignal.timeout(3_000) in server/_shared/user-api-key.ts, and
@@ -209,7 +225,7 @@ export async function lookupClerkPlan(userId: string): Promise<ClerkPlanLookupRe
     // Adversarial DoS guard: validateBearerToken awaits this on every standard
     // (non-template) session token, so a Clerk API stall would otherwise let an
     // authenticated caller pin gateway invocations open indefinitely.
-    const resp = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
+    const resp = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(userId)}`, {
       headers: {
         Authorization: `Bearer ${CLERK_SECRET_KEY}`,
         // AGENTS.md: always set User-Agent on server-side fetches. Matches the
@@ -225,7 +241,7 @@ export async function lookupClerkPlan(userId: string): Promise<ClerkPlanLookupRe
     }
     const user = (await resp.json()) as { public_metadata?: Record<string, unknown> };
     const role: 'free' | 'pro' = user.public_metadata?.plan === 'pro' ? 'pro' : 'free';
-    _planCache.set(userId, { role, expiresAt: Date.now() + PLAN_CACHE_TTL_MS });
+    setPlanCache(userId, role);
     return role;
   } catch (err) {
     void captureSilentError(err, {

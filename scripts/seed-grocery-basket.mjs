@@ -67,6 +67,32 @@ product, or when only a member price, reference price or related product's price
 Only use units in the schema. Never guess a quantity or combine details from different offers.`;
 }
 
+// Search, category and brand listings show many products, so their prices are not an offer for one pack.
+// Each marker below was seen on a listing URL from a configured retailer and on none of their product pages
+// (e.g. tokopedia /find/, target /s/, walmart /c/ and /browse/, carrefour.fr /r/, carrefoursa /b/, coupang /best100/,
+// amazon /gp/bestsellers/, mercadolibre listado., VTEX ?map=).
+const LISTING_PATH_SEGMENTS = new Set([
+  'find', 'search', 's', 'busca', 'buscar', 'c', 'cn', 'cat', 'category', 'categories', 'r', 'b',
+  'browse', 'tag', 'trending', 'best100', 'bestsellers',
+]);
+const LISTING_QUERY_KEYS = new Set(['q', 'map']);
+const LISTING_SUBDOMAINS = new Set(['listado']);
+
+export function isListingUrl(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return true; }
+  const { hostname, pathname } = parsed;
+  // Canadian retailer aisles and curated collections can show prices without a
+  // listing marker. Require the retailer's product ID path on these hosts.
+  if (/(?:^|\.)(?:loblaws|realcanadiansuperstore|metro)\.ca$/.test(hostname)
+    && !/\/p\/[\w-]+\/?$/i.test(pathname)) return true;
+  if (/(?:^|\.)walmart\.ca$/.test(hostname)
+    && !/\/ip\/(?:[^/]+\/)?[a-z0-9]+\/?$/i.test(pathname)) return true;
+  return LISTING_SUBDOMAINS.has(hostname.split('.')[0].toLowerCase())
+    || pathname.toLowerCase().split('/').some(segment => LISTING_PATH_SEGMENTS.has(segment))
+    || [...parsed.searchParams.keys()].some(key => LISTING_QUERY_KEYS.has(key.toLowerCase()));
+}
+
 function offerNumber(value) {
   if (typeof value === 'number') return value;
   if (typeof value === 'string' && /^(?:\d+\.?\d*|\.\d+)$/.test(value.trim())) return Number(value);
@@ -98,9 +124,14 @@ async function searchExa(item, country) {
   const apiKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
   if (!apiKey) throw new Error('EXA_API_KEYS or EXA_API_KEY not set');
 
+  const isCanada = country.code === 'CA';
   const body = {
-    query: `${item.query} price`,
-    numResults: 5,
+    // Look for the packs Canadian retailers sell. Normalize the pack size
+    // after verifying the offer, just as for other countries.
+    query: isCanada
+      ? `${item.query.replace(/ \d+(?:kg|g|L| pack)$/, '')} price Canadian grocery single product add to cart`
+      : `${item.query} price`,
+    numResults: isCanada ? 10 : 5,
     type: 'auto',
     // Restrict to known local supermarket/retailer domains per country — prevents EXA
     // neural search from returning USD-priced global comparison pages (Numbeo, Tridge, etc.)
@@ -136,16 +167,20 @@ async function scrapeFirecrawl(url, item, currency, fxRate) {
   const apiKey = process.env.FIRECRAWL_API_KEY || '';
   if (!apiKey) return null;
   try {
-    const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    const resp = await fetch('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'User-Agent': 'WorldMonitor-GroceryBasket/1.0',
       },
       body: JSON.stringify({
         url,
-        formats: ['extract'],
-        extract: { prompt: offerPrompt(item, currency), schema: OFFER_SCHEMA },
+        formats: [{ type: 'json', prompt: offerPrompt(item, currency), schema: OFFER_SCHEMA }],
+        // Don't publish cached prices as new observations.
+        maxAge: 0,
+        // v2 defaults to 60 s; finish server-side before the client abort below.
+        timeout: 25_000,
       }),
       signal: AbortSignal.timeout(30_000),
     });
@@ -155,7 +190,7 @@ async function scrapeFirecrawl(url, item, currency, fxRate) {
       return null;
     }
     const data = await resp.json();
-    const price = normalizeOffer(data?.data?.extract, item, currency, fxRate);
+    const price = normalizeOffer(data?.data?.json, item, currency, fxRate);
     return price === null ? null : { price, source: url };
   } catch (err) {
     console.warn(`    [Firecrawl] error: ${err.message}`);
@@ -192,7 +227,9 @@ export async function fetchCountryItems(country, { fxRate, learnedRoutes, routeU
     await sleep(idx * 200); // stagger starts — 200ms prevents EXA rate limit with 10 concurrent
 
     const routeKey = `${country.code}:${item.id}`;
-    const learned = learnedRoutes.get(routeKey);
+    const learnedRoute = learnedRoutes.get(routeKey);
+    const learnedListing = learnedRoute && isListingUrl(learnedRoute.url);
+    const learned = learnedListing ? undefined : learnedRoute;
 
     // --- Learned route fast path + EXA fallback ---
     const { localPrice, sourceSite, routeUpdate, routeDelete } = await processItemRouteFn({
@@ -210,7 +247,7 @@ export async function fetchCountryItems(country, { fxRate, learnedRoutes, routeU
         try {
           const result = await searchExa(item, country);
           for (const entry of result?.results ?? []) {
-            if (!isAllowedRouteHost(entry.url, allowedHosts)) continue;
+            if (!isAllowedRouteHost(entry.url, allowedHosts) || isListingUrl(entry.url)) continue;
             urls.push(entry.url);
             let offer;
             try { offer = JSON.parse(entry.summary); } catch { continue; }
@@ -230,7 +267,7 @@ export async function fetchCountryItems(country, { fxRate, learnedRoutes, routeU
       firecrawlDelayMs: FIRECRAWL_DELAY_MS,
     });
 
-    if (routeDelete) routeDeletes.add(routeKey);
+    if (routeDelete || learnedListing) routeDeletes.add(routeKey);
     if (routeUpdate) routeUpdates.set(routeKey, routeUpdate);
 
     const usdPrice = localPrice !== null && fxRate ? +(localPrice * fxRate).toFixed(4) : null;

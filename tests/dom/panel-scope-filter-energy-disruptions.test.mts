@@ -47,6 +47,7 @@ function event(id: string, countries: string[], startAt: string, extra: Partial<
     classifierConfidence: 1,
     lastEvidenceUpdate: startAt,
     countries,
+    assetName: '',
     ...extra,
   };
 }

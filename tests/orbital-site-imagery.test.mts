@@ -105,6 +105,11 @@ describe('analyst watched-site imagery', () => {
     assert.deepEqual(imageryCountries(null, null, 'Iran'), []);
   });
 
+  it('reads a typed lowercase weak country name as the country', () => {
+    const index = { schema: 1, registryCountries: ['TR', 'JO'], countries: {} };
+    assert.deepEqual(imageryCountries(index, null, 'any new imagery for turkey and jordan?'), ['TR', 'JO']);
+  });
+
   it('puts the site the question names first and cites its image date and credits', () => {
     const imagery = countrySiteImagery(toCountryEvidence('IR', INDEX, IR_ROLLUP, NOW), NOW);
     const text = formatSiteImagery(imagery, ['natanz']);

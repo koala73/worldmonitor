@@ -48,6 +48,8 @@ import { COMPARE_AND_DELETE_SCRIPT } from '../shared/compare-and-delete-script.c
 import { SEED_LOCK_RENEW_SCRIPT, SEED_LOCK_FENCED_SET_SCRIPT } from '../scripts/_seed-utils.mjs';
 import { recordHistoryCost } from '../scripts/lib/intel-history-cost.mjs';
 import { createTenderReceipt, writeTenderReceipt } from '../scripts/_global-tender-receipts.mjs';
+import { createDurableTransitTracker } from '../shared/chokepoint-transit-store.js';
+import { readTransitWindow } from '../shared/chokepoint-transit-window.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -371,6 +373,37 @@ describe('redis-rest-proxy command gate', () => {
       false,
       'a one-character script variant must stay blocked',
     );
+  });
+
+  it('admits the EVAL commands emitted by the relay transit helpers', async () => {
+    const gate = buildGate();
+    const now = 1_790_000_000_000;
+    const hour = 60 * 60 * 1000;
+    const waterway = 'Fixture Strait';
+    const commands = [];
+    const capture = (result) => async (script, keys, args) => {
+      commands.push(['EVAL', script, String(keys.length), ...keys, ...args.map(String)]);
+      return result;
+    };
+
+    const tracker = createDurableTransitTracker({
+      gates: { [waterway]: { a: [[1, 1, 0.1]], b: [[2, 2, 0.1]] } },
+      maxTransitMs: 18 * hour,
+      cooldownMs: hour / 2,
+      evaluate: capture([1, '{}']),
+    });
+    tracker.observe('123456789', 1, 1, 'tanker', now);
+    await tracker.flush(now);
+    const gateUpdates = commands.length;
+    assert.ok(gateUpdates > 0, 'the tracker must emit a gate update');
+
+    const crossings = new Map([[waterway, [{ mmsi: '123456789', type: 'tanker', ts: now }]]]);
+    await readTransitWindow(crossings, now, capture([]));
+    assert.ok(commands.length > gateUpdates, 'the window reader must emit an EVAL');
+
+    for (const command of commands) {
+      assert.equal(accepts(gate, command), true, `the proxy must admit the transit EVAL for ${command[3]}`);
+    }
   });
 
   it('pins every military-bases version-switch script by exact bytes', () => {

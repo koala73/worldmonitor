@@ -272,7 +272,7 @@ async function seedProcess(initial, now, mode, activeFixture, bcFixture, kmlFixt
     if (url.hostname === 'firms.modaps.eosdis.nasa.gov') {
       calls.firms++;
       if (calls.firms === 27) clock += 3 * 60_000;
-      if (mode.startsWith('all-sources-fail') || (mode === 'firms-partial' && calls.firms === 1)) return new Response('', { status: 403 });
+      if (mode.startsWith('all-sources-fail') || ((mode === 'firms-partial' || mode === 'bc-fail-firms-partial') && calls.firms === 1)) return new Response('', { status: 403 });
       const iso = new Date(now - 60_000).toISOString();
       return new Response(`latitude,longitude,acq_date,acq_time,confidence,bright_ti4,frp\n49,-120,${iso.slice(0, 10)},${iso.slice(11, 16).replace(':', '')},h,340,12`);
     }
@@ -289,7 +289,7 @@ async function seedProcess(initial, now, mode, activeFixture, bcFixture, kmlFixt
       if (mode.startsWith('bc-')) {
         if (url.pathname.includes('/kml/')) return new Response(mode === 'bc-kml' ? kmlFixture : '<kml/>');
         calls.bc = (calls.bc || 0) + 1;
-        if (mode === 'bc-fail' || mode === 'bc-read-fail') return new Response('<ows:ExceptionReport/>', { status: 400 });
+        if (mode === 'bc-fail' || mode === 'bc-read-fail' || mode === 'bc-fail-firms-partial') return new Response('<ows:ExceptionReport/>', { status: 400 });
         if (mode === 'bc-empty-fail' && calls.bc > 1) return new Response('', { status: 400 });
         if (mode !== 'bc-empty' && !(mode.startsWith('bc-empty-') && calls.bc === 1)) return Response.json(bcFixture);
       }
@@ -367,6 +367,31 @@ test('natural seeder logs source clocks and failures before publication with fix
   assert.doesNotMatch(JSON.stringify(events(invalid)), /private/);
 });
 
+test('a skipped publication clears an earlier BC grace streak when grace no longer applies', () => {
+  // Partial FIRMS coverage takes the validation-skip path, which carries the
+  // previous seed-meta diagnostics forward. The new patch must override the
+  // retained-BC streak from the run before, or health keeps the grace.
+  const good = runSeedFixture([], NOW, 'bc-ok');
+  const graced = runSeedFixture(good.store, NOW + 10 * MIN, 'bc-fail');
+  const metaKey = health.SEED_META.wildfires.key;
+  assert.equal(JSON.parse(new Map(graced.store).get(metaKey)).consecutiveSourceFailures, 1, graced.output);
+  const now = NOW + 20 * MIN;
+  const skipped = runSeedFixture(graced.store, now, 'bc-fail-firms-partial');
+  assert.equal(skipped.status, 0, skipped.output);
+  const store = new Map(skipped.store);
+  const meta = JSON.parse(store.get(metaKey));
+  assert.equal(meta.errorCode, 'BC_WILDFIRE_SOURCE_FAILED');
+  assert.equal(meta.consecutiveSourceFailures, null);
+  assert.equal(meta.lastSourceFailureCode, null);
+  const entry = health.classifyKey('wildfires', health.BOOTSTRAP_KEYS.wildfires, { allowOnDemand: false }, {
+    keyStrens: new Map([[health.BOOTSTRAP_KEYS.wildfires, store.get('wildfire:fires:v1').length]]),
+    keyErrors: new Map(), keyMetaErrors: new Map(), keyMetaValues: new Map([[metaKey, store.get(metaKey)]]),
+    now: now + 3 * MIN,
+  });
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.sourceFailurePending, undefined);
+});
+
 test('source diagnostics cannot replace an acquisition result or original failure', async (t) => {
   t.mock.method(console, 'log', () => { throw new Error('log unavailable'); });
   const result = { fireDetections: [], _firmsFulfilledCalls: 27, _firmsFailedCalls: 0 };
@@ -420,6 +445,12 @@ test('BC failures and unconfirmed empty results keep source coverage through the
     assert.equal(meta.fetchedAt, now + 3 * MIN);
     assert.equal(meta.sourceState, sourceFailed ? 'degraded' : 'ok');
     if (sourceFailed) assert.equal(meta.errorCode, 'BC_WILDFIRE_SOURCE_FAILED');
+    // The real seeder reads its previous seed-meta, so a retained BC failure
+    // counts runs and stays OK until the third identical failure. An expired
+    // snapshot (minute 120) retains nothing and alarms at once.
+    const expectedStreak = { 10: 1, 20: 2, 30: 3, 40: 4, 120: null, 170: 1 }[minute];
+    assert.equal(meta.consecutiveSourceFailures, expectedStreak, `minute ${minute}`);
+    const graced = Number.isInteger(expectedStreak) && expectedStreak < 3;
     const expectedPublic = JSON.parse(store.get('wildfire:fires-bootstrap:v1')).data.fireDetections;
     assert.deepEqual(captured.reader.fireDetections, expectedPublic);
     assert.ok(captured.reader.fireDetections.some(row => row.source === 'firms' && row.detectedAt === now - MIN));
@@ -434,7 +465,8 @@ test('BC failures and unconfirmed empty results keep source coverage through the
       keyErrors: new Map(), keyMetaErrors: new Map(), keyMetaValues: new Map([[metaKey, store.get(metaKey)]]),
       now: now + 3 * MIN,
     });
-    assert.equal(entry.status, sourceFailed ? 'SEED_ERROR' : 'OK');
+    assert.equal(entry.status, sourceFailed && !graced ? 'SEED_ERROR' : 'OK', `minute ${minute}`);
+    assert.equal(entry.sourceFailurePending, graced ? true : undefined, `minute ${minute}`);
     assert.equal(entry.sourceFailurePendingUntil, undefined);
     previous = captured.store;
   }

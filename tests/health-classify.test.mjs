@@ -2192,8 +2192,8 @@ test('classifyKey: expired transitional producers fail closed when missing or em
 });
 
 test('classifyKey: suppressed retailer-spread (present key, 0 records) while fresh → OK, not EMPTY_DATA', () => {
-  // The consumer-prices aggregate job writes retailer_spread_pct: 0 ("spread
-  // suppressed (N/4 common items)") when a market's retailers share < 4 common
+  // computeRetailerSpread (consumer-prices-core/src/basket-observations.ts)
+  // publishes a spread of 0 when a market's retailers share < 4 common
   // basket items — a valid data-coverage state, not an outage. The key exists
   // (296-byte payload → hasData=true) with metaCount=0, so without the
   // zero-record exemption it would wrongly classify EMPTY_DATA (crit) and

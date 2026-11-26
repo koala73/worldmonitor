@@ -41,7 +41,11 @@ import { sha256Hex } from './hash';
 // old prompt could carry an answer an injected headline steered (a live eval
 // echoed a planted canary 4 times in 4), and a cache hit is served verbatim,
 // so they are retired rather than left to age out over the 24 h TTL.
-export const CACHE_VERSION = 'v12';
+//
+// Bumped v12 → v13 on 2026-11-25 (#11268): Good Things digest rows were
+// written by the multi-headline brief prompt with the publisher as a second
+// headline, and some carry unrelated stories or headline commentary.
+export const CACHE_VERSION = 'v13';
 
 // 128 bits of SHA-256. Wide enough that a second preimage is infeasible,
 // short enough that the longest key stays inside the 120-character tail the

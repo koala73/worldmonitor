@@ -9,6 +9,7 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import { channelTypeValidator } from "./constants";
 import { requireVerifiedAccountEmail, lookupVerifiedAccountEmail } from "./lib/notificationEmail";
 import { deliveryResultValidator, isDeliveryError } from "./lib/notificationDelivery";
@@ -531,18 +532,25 @@ export const createPairingTokenForUser = internalMutation({
   },
 });
 
+export function redactChannelForSettings(channel: Doc<"notificationChannels">) {
+  if (channel.channelType === "webhook") {
+    const { webhookSecret, webhookEnvelope: _webhookEnvelope, ...safeChannel } = channel;
+    return { ...safeChannel, webhookSigned: Boolean(webhookSecret) };
+  }
+  if ("webhookEnvelope" in channel) {
+    const { webhookEnvelope: _webhookEnvelope, ...safeChannel } = channel;
+    return safeChannel;
+  }
+  return channel;
+}
+
 export const getChannels = query({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
-    const channels = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
-      .collect();
-    return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
-      || (channel.channelType === "telegram" && channel.telegramOwnership !== "verified_callback")
-      ? { ...channel, verified: false } : channel);
+    const channels = await readChannelsForDelivery(ctx, identity.subject);
+    return channels.map(redactChannelForSettings);
   },
 });
 
@@ -673,22 +681,45 @@ async function applyDeliveryResult(ctx: MutationCtx, { userId, channelType, deli
 
 const NOTIFICATION_SETTINGS_URL = "https://www.worldmonitor.app/dashboard?settings=notifications";
 
-/** The channel-disabled notice, plain text and HTML. Exported for tests. */
-export function disabledChannelNotice(args: { channelType: string; error: string; firstFailedAt: number }): { text: string; html: string } {
+const CHANNEL_LABELS: Record<ChannelType, string> = {
+  telegram: "Telegram", email: "Email", slack: "Slack", discord: "Discord",
+  teams: "Microsoft Teams", webhook: "Webhook", web_push: "Browser Push",
+};
+
+/**
+ * The channel-disabled notice: subject, plain text and HTML. Exported for tests.
+ *
+ * A push service answering 404/410 means the browser ended the subscription
+ * (site data cleared, permission revoked, or the browser expired it). The
+ * settings page cannot repair that row, so that case gets its own copy.
+ */
+export function disabledChannelNotice(args: { channelType: ChannelType; error: string; firstFailedAt: number }): { subject: string; text: string; html: string } {
   const started = new Date(args.firstFailedAt).toISOString();
-  const headline = `Your ${args.channelType} notification channel was disabled after delivery failures.`;
-  const text = `${headline}\n\nError: ${args.error}\nFailures started: ${started}\n\nUpdate and save your channel to resume notifications:\n${NOTIFICATION_SETTINGS_URL}`;
+  const label = CHANNEL_LABELS[args.channelType] ?? args.channelType;
+  const expiredPush = args.channelType === "web_push" && /^HTTP (404|410)$/.test(args.error);
+  const subject = expiredPush
+    ? "WorldMonitor browser notifications turned off"
+    : "WorldMonitor notification channel disabled";
+  const headline = expiredPush
+    ? "Your browser ended its notification subscription, so we stopped sending Browser Push alerts."
+    : `Your ${label} notification channel was disabled after delivery failures.`;
+  const action = expiredPush
+    ? "Open World Monitor in the browser where you want alerts and turn on Browser Push again in notification settings."
+    : "Update and save your channel to resume notifications.";
+  const heading = expiredPush ? "Browser notifications turned off" : "Notification channel disabled";
+  const button = expiredPush ? "Turn notifications back on" : "Fix your channel";
+  const text = `${headline}\n\nChannel: ${label}\nError: ${args.error}\nFailures started: ${started}\n\n${action}\n${NOTIFICATION_SETTINGS_URL}`;
   const html = emailFrame({
     preheader: headline,
     kicker: "Alert settings",
     accent: EMAIL_RED,
-    bodyHtml: `${emailHeading("Notification channel disabled", escapeEmailHtml(headline))}
-      ${emailCard(emailFacts(emailFactRow("Channel", escapeEmailHtml(args.channelType)) + emailFactRow("Error", escapeEmailHtml(args.error)) + emailFactRow("Failing since", escapeEmailHtml(started))), { label: "Delivery failures", color: EMAIL_RED })}
-      ${emailParagraph("Update and save your channel to resume notifications.")}
-      ${emailButton(NOTIFICATION_SETTINGS_URL, "Fix your channel")}`,
+    bodyHtml: `${emailHeading(heading, escapeEmailHtml(headline))}
+      ${emailCard(emailFacts(emailFactRow("Channel", escapeEmailHtml(label)) + emailFactRow("Error", escapeEmailHtml(args.error)) + emailFactRow("Failing since", escapeEmailHtml(started))), { label: "Delivery failures", color: EMAIL_RED })}
+      ${emailParagraph(escapeEmailHtml(action))}
+      ${emailButton(NOTIFICATION_SETTINGS_URL, button)}`,
     footerNote: "You're receiving this because notifications are on for your account.",
   });
-  return { text, html };
+  return { subject, text, html };
 }
 
 export const sendDisabledChannelNotice = internalAction({
@@ -704,10 +735,10 @@ export const sendDisabledChannelNotice = internalAction({
       if (!email) return;
       const apiKey = process.env.RESEND_API_KEY;
       if (!apiKey) throw new Error("EMAIL_UNAVAILABLE");
-      const { text, html } = disabledChannelNotice(args);
+      const { subject, text, html } = disabledChannelNotice(args);
       await sendResendEmail(ctx, {
         apiKey, from: process.env.RESEND_FROM ?? "WorldMonitor <notifications@worldmonitor.app>",
-        to: email, subject: "WorldMonitor notification channel disabled",
+        to: email, subject,
         text, html, purpose: "transactional",
         idempotencyKey: `channel-disabled-${args.noticeId}`,
       });

@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 .idea/
 dist/
 public/blog/
@@ -101,7 +101,7 @@ src-tauri/sidecar/node/*
 # AI planning session state
 .planning/
 
-# Compiled sebuf gateway bundle (built by scripts/build-sidecar-sebuf.mjs)
+# Legacy compiled catch-all sebuf gateway bundle (catch-all removed in #785)
 api/[[][[].*.js
 
 # Compiled sidecar domain handler bundles (built by scripts/build-sidecar-handlers.mjs)

@@ -52,7 +52,6 @@ function makePublicSlowRequest() {
 beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
-  delete process.env.BOOTSTRAP_R2_SHADOW_MEASURE;
 });
 
 test('bootstrap removes expired EONET records without removing a companion with the same ID', async () => {

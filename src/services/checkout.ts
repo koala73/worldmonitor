@@ -679,9 +679,12 @@ export async function startCheckout(
         clearCheckoutAttempt('duplicate');
         const planKey = body?.subscription?.planKey;
         const planDisplayName = resolvePlanDisplayName(planKey);
-        const isProBusinessUpgrade = await isProBusinessCheckoutTarget(productId);
+        // A paused hold is not an upgrade case: the card has to be fixed first.
+        const paused = body?.subscription?.status === 'on_hold';
+        const isProBusinessUpgrade = !paused && await isProBusinessCheckoutTarget(productId);
         const showGuidedDuplicateDialog = (): void => showDuplicateSubscriptionDialog({
           planDisplayName,
+          paused,
           // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
           // pairing; every other pairing keeps the portal line.
           isProBusinessUpgrade,

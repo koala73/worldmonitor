@@ -11,6 +11,14 @@
 //
 // Types are duplicated (not imported) so this module stays a leaf and
 // shared/source-provenance.ts can spread the records without a cycle.
+//
+// Editorial tiers also live in telegram-source-tiers.json, the table the relay
+// (scripts/ais-relay.cjs) loads beside source-tiers.json: CommonJS cannot read
+// this file, and the relay must score a name on the tier the digest declares.
+// tests/telegram-trust-registry.test.mjs holds each entry's tier to it.
+
+import telegramSourceTiers from './telegram-source-tiers.json';
+
 type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 'tech' | 'other' | 'unknown';
 type PropagandaRisk = 'low' | 'medium' | 'high' | 'unknown';
 
@@ -661,11 +669,7 @@ export const TELEGRAM_SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> 
     .map((entry) => [entry.name, telegramRiskProfile(entry)]),
 );
 
-export const TELEGRAM_SOURCE_TIERS: Record<string, number> = Object.fromEntries(
-  TELEGRAM_CHANNEL_TRUST
-    .filter((entry) => !entry.reuseExisting)
-    .map((entry) => [entry.name, entry.tier]),
-);
+export const TELEGRAM_SOURCE_TIERS = telegramSourceTiers as Record<string, number>;
 
 export const TELEGRAM_HANDLE_TO_PUBLIC_NAME: Record<string, string> = Object.fromEntries(
   TELEGRAM_CHANNEL_TRUST.map((entry) => [entry.handle, entry.name]),

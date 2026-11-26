@@ -6,7 +6,7 @@
  * Independent clock from Bank of Canada Valet. Empty change-list is valid quiet.
  */
 
-import { loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, resolveProxyForConnect, runSeed } from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import {
   STATCAN_MAX_CONTENT_AGE_MIN,
@@ -33,7 +33,7 @@ async function markActivated() {
 }
 
 if (process.argv[1]?.endsWith('seed-statcan-wds.mjs')) {
-  runSeed('economic', 'statcan-wds', CANONICAL_KEY, fetchStatcanWds, {
+  runSeed('economic', 'statcan-wds', CANONICAL_KEY, () => fetchStatcanWds({ proxyAuth: resolveProxyForConnect() }), {
     validateFn: validateStatcanPayload,
     ttlSeconds: TTL,
     sourceVersion: 'statcan-wds-cpi+lfs+changed-cubes',

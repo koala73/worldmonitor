@@ -429,8 +429,15 @@ jobs:
           APPIMAGE="${IMAGES[0]}"
           TOOL_ARCH=${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}
           bash scripts/repack-linux-appimage.sh "$APPIMAGE" "$TOOL_ARCH"
+          # The repack writes the delta-update file (#5757) next to the AppImage,
+          # under the name GitHub gives the uploaded AppImage (spaces → dots).
+          ZSYNC="$(dirname "$APPIMAGE")/$(basename "$APPIMAGE" | tr ' ' '.').zsync"
+          if [ ! -s "$ZSYNC" ]; then
+            echo "::error::Repack did not produce $ZSYNC"
+            exit 1
+          fi
 
-          # --- Re-upload stripped AppImage to GitHub Release ---
+          # --- Re-upload stripped AppImage and its .zsync to GitHub Release ---
           # Single release line (#5908): this must stay the same tag the build
           # legs publish (`v__VERSION__`) and the same one update-release-notes
           # edits. The two halves of this workflow previously disagreed.
@@ -439,10 +446,16 @@ jobs:
           echo "Computed release tag: $TAG_NAME"
           if gh release view "$TAG_NAME" &>/dev/null; then
             echo "Re-uploading stripped AppImage to release $TAG_NAME"
-            gh release upload "$TAG_NAME" "$APPIMAGE" --clobber
-            echo "Replaced release asset: $(basename "$APPIMAGE")"
+            gh release upload "$TAG_NAME" "$APPIMAGE" "$ZSYNC" --clobber
+            echo "Replaced release asset: $(basename "$APPIMAGE"), uploaded $(basename "$ZSYNC")"
           else
-            echo "::warning::Release $TAG_NAME not found — skipping re-upload"
+            # tauri-action has just created or reused this release, so its
+            # absence is a lookup failure, not a normal state. Skipping would
+            # leave tauri-action's unstripped AppImage, and any .zsync from an
+            # earlier run of this tag, on the release; the gate checks names only,
+            # so it would publish a .zsync that no longer matches the AppImage.
+            echo "::error::Release $TAG_NAME not found — cannot replace the AppImage and its .zsync"
+            exit 1
           fi
 
       - name: Smoke-test AppImage (Linux)
@@ -602,6 +615,17 @@ jobs:
           done
           if [ -n "$MISSING" ]; then
             echo "::error::Refusing to publish $TAG — no asset matches:$MISSING. The release stays a draft; investigate the failed platform before publishing."
+            exit 1
+          fi
+
+          # Each AppImage embeds update information that names its .zsync on the
+          # latest release (#5757). Publishing without it would leave every
+          # AppImageUpdate client looking for a file that is not there.
+          for suffix in '_amd64\.AppImage\.zsync$' '_aarch64\.AppImage\.zsync$'; do
+            printf '%s\n' "$SERVABLE" | grep -qE "$suffix" || MISSING="$MISSING $suffix"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Refusing to publish $TAG — no delta-update file matches:$MISSING. The release stays a draft."
             exit 1
           fi
 

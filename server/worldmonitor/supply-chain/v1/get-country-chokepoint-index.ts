@@ -103,7 +103,7 @@ export async function getCountryChokepointIndex(
     const coastSide = getCoastSide(iso2);
     if (exposures[0]) exposures[0] = { ...exposures[0], coastSide };
 
-    const primaryId = exposures[0]?.chokepointId ?? '';
+    const primaryId = exposures[0] && exposures[0].exposureScore > 0 ? exposures[0].chokepointId : '';
     const vulnIndex = vulnerabilityIndex(exposures);
 
     const result: GetCountryChokepointIndexResponse = {

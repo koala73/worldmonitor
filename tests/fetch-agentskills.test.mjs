@@ -232,6 +232,47 @@ test('serves a cached skill without touching agentskills.io', async () => {
   );
 });
 
+test('bounds skill name, description and instructions from upstream and from cache', async () => {
+  const oversized = {
+    name: 'N'.repeat(5_000),
+    description: 'D'.repeat(5_000),
+    instructions: 'I'.repeat(5_000),
+  };
+  const assertBounded = (body) => {
+    assert.equal(body.name.length, 200);
+    assert.equal(body.description.length, 1_000);
+    assert.equal(body.instructions.length, 2_000);
+    assert.equal(body.truncated, true);
+  };
+
+  spyFetch((url) => {
+    if (url.includes('/get/')) return cacheMiss();
+    if (url.includes('fake-upstash')) return upstashReply(29, 30);
+    return new Response(JSON.stringify(oversized), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+  const fresh = await handler(makeRequest({ url: SKILL_URL }, uniqueCallerIp()), makeCtx().ctx);
+  assert.equal(fresh.status, 200);
+  assertBounded(await fresh.json());
+
+  // An entry written before the bounds existed is trimmed on the way out.
+  spyFetch((url) => {
+    if (url.includes('/get/')) {
+      return new Response(JSON.stringify({ result: JSON.stringify({ ...oversized, truncated: false }) }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.includes('fake-upstash')) return upstashReply(28, 30);
+    return skillResponse();
+  });
+  const cached = await handler(makeRequest({ url: SKILL_URL }, uniqueCallerIp()), makeCtx().ctx);
+  assert.equal(cached.status, 200);
+  assertBounded(await cached.json());
+});
+
 test('rejects an over-long URL before it can mint a cache key', async () => {
   const calls = spyFetch((url) => (url.includes('fake-upstash') ? upstashReply(29, 30) : skillResponse()));
   const { ctx } = makeCtx();

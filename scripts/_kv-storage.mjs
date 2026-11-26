@@ -16,8 +16,8 @@
 export const MAX_KV_VALUE_BYTES = 25 * 1024 * 1024; // 25 MiB
 
 /**
- * Resolve KV write config from env, or `null` when unconfigured — so the publisher skips KV
- * gracefully on deploys without the credentials (backward-compatible, flag-by-presence).
+ * Resolve KV write config from env, or `null` when any required credential is missing.
+ * The bootstrap publisher treats a `null` result as a fatal configuration error.
  */
 export function resolveKvStorageConfig(env = process.env) {
   const accountId = env.KV_BOOTSTRAP_ACCOUNT_ID || env.CLOUDFLARE_R2_ACCOUNT_ID;
@@ -30,8 +30,7 @@ export function resolveKvStorageConfig(env = process.env) {
 /**
  * Write one JSON value to a KV namespace. Enforces the 25 MiB cap BEFORE the network call and
  * throws on breach — a bloated tier must fail loudly, never truncate silently (the 11.5 MB
- * #5311 lesson). The caller treats KV writes as best-effort and never lets this abort the
- * canonical R2 publish.
+ * #5311 lesson). KV is the primary sink for the bootstrap publisher, so write errors propagate.
  *
  * @returns {Promise<{ key: string, bytes: number }>}
  */

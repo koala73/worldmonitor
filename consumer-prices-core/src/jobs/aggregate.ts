@@ -7,76 +7,13 @@ import { query, closePool, withTransaction, type QueryExecutor } from '../db/cli
 import { loadAllBasketConfigs } from '../config/loader.js';
 import { validateAll } from './validate.js';
 import { FX_RATES_TO_USD } from '../fx/rates.js';
-import { MAX_OBSERVATION_AGE_DAYS } from '../observation-freshness.js';
+import { getBasketRows, type BasketRow } from '../basket-observations.js';
 import { INDEX_METHODOLOGY_VERSION } from '../index-methodology.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[aggregate] ${msg}`, ...args),
   warn: (msg: string, ...args: unknown[]) => console.warn(`[aggregate] ${msg}`, ...args),
 };
-
-interface BasketRow {
-  basketItemId: string;
-  category: string;
-  weight: number;
-  retailerProductId: string;
-  retailerSlug: string;
-  price: number;
-  unitPrice: number | null;
-  currencyCode: string;
-  observedAt: Date;
-}
-
-
-async function getBasketRows(basketSlug: string, marketCode: string, execute: QueryExecutor = query): Promise<BasketRow[]> {
-  const result = await execute<{
-    basket_item_id: string;
-    category: string;
-    weight: string;
-    retailer_product_id: string;
-    retailer_slug: string;
-    price: string;
-    unit_price: string | null;
-    currency_code: string;
-    observed_at: Date;
-  }>(
-    `SELECT bi.id AS basket_item_id,
-            bi.category,
-            bi.weight,
-            rp.id AS retailer_product_id,
-            r.slug AS retailer_slug,
-            po.price,
-            po.unit_price,
-            po.currency_code,
-            po.observed_at
-     FROM baskets b
-     JOIN basket_items bi ON bi.basket_id = b.id AND bi.active = true
-     JOIN product_matches pm ON pm.basket_item_id = bi.id AND pm.match_status IN ('auto','approved') AND pm.pin_disabled_at IS NULL
-     JOIN retailer_products rp ON rp.id = pm.retailer_product_id AND rp.active = true
-     JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
-     JOIN LATERAL (
-       SELECT price, unit_price, currency_code, observed_at, in_stock
-       FROM price_observations
-       WHERE retailer_product_id = rp.id
-       ORDER BY observed_at DESC, id DESC LIMIT 1
-     ) po ON po.in_stock = true
-       AND rp.last_seen_at >= statement_timestamp() - make_interval(days => $3)
-     WHERE b.slug = $1`,
-    [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
-  );
-
-  return result.rows.map((r) => ({
-    basketItemId: r.basket_item_id,
-    category: r.category,
-    weight: parseFloat(r.weight),
-    retailerProductId: r.retailer_product_id,
-    retailerSlug: r.retailer_slug,
-    price: parseFloat(r.price),
-    unitPrice: r.unit_price ? parseFloat(r.unit_price) : null,
-    currencyCode: r.currency_code,
-    observedAt: r.observed_at,
-  }));
-}
 
 // Baseline per item = average price on the first day it was observed on or after
 // baseDate. A single fixed day leaves every item observed later without a
@@ -394,37 +331,6 @@ async function aggregateBasketLocked(
   if (essentialsIndex !== null) writes.push([null, null, 'essentials_index', essentialsIndex]);
   if (valueIndex !== null) writes.push([null, null, 'value_index', valueIndex]);
   writes.push([null, null, 'coverage_pct', coveragePct]);
-
-  // Retailer spread: (most expensive basket - cheapest basket) / cheapest × 100
-  // Only compare retailers on the INTERSECTION of basket items they all carry.
-  // Also deduplicate: per (retailer, basketItem) take cheapest price to avoid
-  // inflating totals when multiple SKUs are matched to the same basket item.
-  const byRetailerItem = new Map<string, Map<string, number>>();
-  for (const r of rows) {
-    if (!byRetailerItem.has(r.retailerSlug)) byRetailerItem.set(r.retailerSlug, new Map());
-    const itemMap = byRetailerItem.get(r.retailerSlug)!;
-    const existing = itemMap.get(r.basketItemId);
-    if (existing === undefined || r.price < existing) itemMap.set(r.basketItemId, r.price);
-  }
-  const MIN_SPREAD_ITEMS = 4;
-  const retailerSlugs = [...byRetailerItem.keys()];
-  if (retailerSlugs.length >= 2) {
-    // Find basket items covered by every retailer
-    const commonItemIds = [...byRetailerItem.get(retailerSlugs[0])!.keys()].filter((itemId) =>
-      retailerSlugs.every((slug) => byRetailerItem.get(slug)!.has(itemId)),
-    );
-    if (commonItemIds.length >= MIN_SPREAD_ITEMS) {
-      const retailerTotals = retailerSlugs.map((slug) =>
-        commonItemIds.reduce((sum, id) => sum + byRetailerItem.get(slug)!.get(id)!, 0),
-      );
-      const spreadPct = ((Math.max(...retailerTotals) - Math.min(...retailerTotals)) / Math.min(...retailerTotals)) * 100;
-      writes.push([null, null, 'retailer_spread_pct', Math.round(spreadPct * 10) / 10]);
-    } else {
-      // Insufficient overlap — write explicit 0 to prevent stale noisy value persisting
-      writes.push([null, null, 'retailer_spread_pct', 0]);
-      logger.info(`${basketSlug}: spread suppressed (${commonItemIds.length}/${MIN_SPREAD_ITEMS} common items)`);
-    }
-  }
 
   // Per-category indices for buildTopCategories snapshot
   const byCategory = new Map<string, BasketRow[]>();

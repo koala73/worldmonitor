@@ -2,6 +2,7 @@
 
 import { isIP } from 'node:net';
 import { loadEnvFile, CHROME_UA, runSeed, verifySeedKey, writeExtraKey } from './_seed-utils.mjs';
+import { cyberHistoryAfterPublish } from './_intel-history-collectors.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -878,6 +879,7 @@ if (isMain) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 240,
+    afterPublish: cyberHistoryAfterPublish,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);

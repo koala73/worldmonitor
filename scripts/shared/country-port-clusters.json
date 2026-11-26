@@ -1,7 +1,7 @@
 {
   "_comment": "Country port cluster config for HS2 chokepoint exposure seeding. Maps iso2 -> { nearestRouteIds, coastSide }. coastSide: 'atlantic'|'pacific'|'indian'|'med'|'landlocked'|'multi'. nearestRouteIds are TRADE_ROUTES.id values from src/config/trade-routes.ts.",
   "US": { "nearestRouteIds": ["china-us-west", "china-us-east-suez", "china-us-east-panama", "transatlantic", "us-europe-lng", "us-west-northeast-asia", "us-gulf-asia-panama"], "coastSide": "multi" },
-  "CN": { "nearestRouteIds": ["china-europe-suez", "china-us-west", "china-us-east-suez", "china-us-east-panama", "gulf-asia-oil", "qatar-asia-lng", "intra-asia-container", "china-africa", "cpec-route"], "coastSide": "pacific" },
+  "CN": { "nearestRouteIds": ["china-europe-suez", "china-us-west", "china-us-east-suez", "china-us-east-panama", "gulf-asia-oil", "qatar-asia-lng", "intra-asia-container", "china-africa", "cpec-route", "brazil-china-bulk"], "coastSide": "pacific" },
   "RU": { "nearestRouteIds": ["russia-med-oil"], "coastSide": "multi" },
   "IR": { "nearestRouteIds": ["gulf-europe-oil", "gulf-asia-oil"], "coastSide": "indian" },
   "IN": { "nearestRouteIds": ["india-europe", "india-se-asia", "gulf-asia-oil"], "coastSide": "indian" },
