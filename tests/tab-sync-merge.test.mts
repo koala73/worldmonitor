@@ -605,7 +605,9 @@ describe('mergeTabs account switch', () => {
     assert.equal(out2.changes[0]!.change.baseVersion, 2);
   });
 
-  it("removes a tab whose unanswered write landed and was deleted elsewhere since", () => {
+  it("keeps a tab with an unanswered write when its row is a tombstone", () => {
+    // A tombstone has no content: nothing shows it is this device's write
+    // deleted elsewhere rather than another writer's row, so the tab stays.
     const mine = tab('tab-a-1', { name: 'Mine' });
     const other = tab('tab-a-2', { name: 'Other' });
     const sent = { [mine.id]: { version: 1, hash: hashTabRecord(captureTabRecord(mine)) } };
@@ -614,17 +616,8 @@ describe('mergeTabs account switch', () => {
       meta: { ...emptyTabSyncMeta('user_a'), sent },
       rows: [row(mine.id, 2, null), row(other.id, 1, captureTabRecord(other))],
     }));
-    assert.deepEqual(ids(out.state), [other.id]);
-    assert.ok(!out.changes.some((c) => c.change.tabId === mine.id), 'not pushed over the delete');
-    assert.equal(out.meta.sent?.[mine.id], undefined);
-    // Edited here after that write: the edit wins over the delete.
-    const later = { ...mine, name: 'Edited here' };
-    const out2 = mergeTabs(input({
-      local: { activeTabId: other.id, tabs: [later, other] },
-      meta: { ...emptyTabSyncMeta('user_a'), sent },
-      rows: [row(mine.id, 2, null), row(other.id, 1, captureTabRecord(other))],
-    }));
-    assert.equal(out2.changes.find((c) => c.change.tabId === mine.id)!.change.baseVersion, 2);
+    assert.deepEqual(ids(out.state), [mine.id, other.id]);
+    assert.equal(out.changes.find((c) => c.change.tabId === mine.id)!.change.baseVersion, 2);
   });
 
   it('reports only the held tabs it put back', () => {

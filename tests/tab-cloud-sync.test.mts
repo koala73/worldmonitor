@@ -1051,8 +1051,12 @@ describe('tab sync driver', () => {
     __resetTabSyncForTests();
     const serverC = new FakeServer();
     useServer(serverC);
-    signIn('user_c', host);
+    // user_c is prepared before the layout has tabs: user_b still waits.
+    assert.equal(prepareTabSyncSignIn('user_c', true, new UnreadyHost(host.state)).willSync, true);
+    assert.match(localStorage.getItem(DEPARTED_KEY) ?? '', /user_b/);
+    startTabSync('user_c', host);
     await settle();
+    assert.equal(localStorage.getItem(DEPARTED_KEY), '', 'recorded by the first pass');
     assert.ok(!sentNames(serverC).includes('B private'), JSON.stringify(sentNames(serverC)));
     const held = JSON.parse(localStorage.getItem(`worldmonitor-tabs-held-v1:${SITE_VARIANT}`) ?? '{}');
     assert.deepEqual(held.user_b?.records.map((r: { id: string }) => r.id), ['tab-b-1']);
@@ -1196,7 +1200,7 @@ describe('tab sync driver', () => {
     const restore = failWrites(SIGNED_IN_KEY);
     prepareTabSyncSignIn('user_b', true, host);
     restore();
-    assert.equal(localStorage.getItem(SIGNED_IN_KEY), 'user_a');
+    assert.match(localStorage.getItem(SIGNED_IN_KEY) ?? '', /^user_a#/);
     host.state.tabs = host.state.tabs.filter((t) => t.id !== 'tab-a-2');
     recordTabDeleted('tab-a-2');
     assert.ok(!loadTabSyncMeta()!.tombstones.includes('tab-a-2'));
@@ -1238,6 +1242,47 @@ describe('tab sync driver', () => {
     assert.equal(server.calls.length, before, 'nothing pushed');
     assert.equal(localStorage.getItem(SIGNED_IN_KEY), 'user_c');
     assert.equal(loadTabSyncMeta()!.foreign, undefined, 'no departure recorded');
+  });
+
+  it('an account that returns is recorded again when it leaves, even if its old marks stay', async () => {
+    // user_a synced, then signed out.
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A synced')] });
+    signIn('user_a', host);
+    await settle();
+    signOutTabSync(host);
+    // user_b signs in and leaves before a pass: its departure is recorded on user_a's state.
+    assert.equal(prepareTabSyncSignIn('user_b', true, host).willSync, true);
+    signOutTabSync(host, 'user_b');
+    const bMarks = () => (loadTabSyncMeta()!.departed ?? []).filter((m) => /^user_b(#|$)/.test(m));
+    assert.equal(bMarks().length, 1);
+    // user_b comes back; the write that clears its old marks fails.
+    const restore = failWrites(META_KEY);
+    prepareTabSyncSignIn('user_b', false, host);
+    restore();
+    assert.equal(bMarks().length, 1, 'old marks kept');
+    host.state.tabs.push(tab('tab-b-5', 'B again'));
+    // user_c signs in next.
+    const serverC = new FakeServer();
+    useServer(serverC);
+    signIn('user_c', host);
+    await settle();
+    const toC = serverC.calls.flatMap((c) => c.changes.map((ch) => ch.record?.name));
+    assert.ok(!toC.includes('B again'), `sent to user_c: ${JSON.stringify(toC)}`);
+    const held = JSON.parse(localStorage.getItem(HELD_KEY) ?? '{}');
+    assert.ok((held.user_b?.records ?? []).some((r: { id: string }) => r.id === 'tab-b-5'), 'held for user_b');
+  });
+
+  it("keeps a held copy when the device has a different copy of that tab", async () => {
+    const draft = tab('tab-a-2', 'Draft');
+    localStorage.setItem(META_KEY, JSON.stringify({ userId: 'user_a', base: {}, tombstones: [], carried: {} }));
+    localStorage.setItem(HELD_KEY, JSON.stringify({
+      user_a: { records: [{ id: 'tab-a-2', record: captureTabRecord(tab('tab-a-2', 'Final')) }], base: {}, tombstones: [], sent: {} },
+    }));
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), draft] });
+    signIn('user_a', host);
+    await settle();
+    assert.equal(server.rows.get('tab-a-2')!.record!.name, 'Draft');
+    assert.match(localStorage.getItem(HELD_KEY) ?? '', /Final/, 'the other copy stays held');
   });
 
   it('a delete made while signed out does not reach the account', async () => {

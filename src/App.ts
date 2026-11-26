@@ -2854,6 +2854,8 @@ export class App {
     this.enforceFreeTierLimits();
 
     let _prevUserId: string | null = null;
+    // Whether the first settled auth state was seen (tab sync, #11141).
+    let _authSettledOnce = false;
     let _convexWatchHandoffGeneration = 0;
     // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders
     // on a false→true transition or an account change while still premium.
@@ -3132,6 +3134,13 @@ export class App {
         this.tierPreferenceHandoff.clear();
         this.pendingPreferenceHandoffGeneration = undefined;
       }
+      if (userId === null && _prevUserId === null && !session.isPending && !_authSettledOnce) {
+        // The page loaded signed out: a session that ended with no page open
+        // to see it (expiry, a sign-out elsewhere) is a departure too, so tab
+        // changes made from here on are not filed under that account.
+        signOutTabSync(this.panelLayout.getTabSyncHost());
+      }
+      if (!session.isPending) _authSettledOnce = true;
       _prevUserId = userId;
       // Run after account handoff/reset so this pass cannot enforce the
       // previous user's entitlement against the new user's panels.

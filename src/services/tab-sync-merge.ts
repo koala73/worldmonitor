@@ -72,8 +72,9 @@ export interface TabSyncMeta {
    */
   foreign?: Record<string, string>;
   /**
-   * Accounts whose `foreign` marks are recorded on this state. Recording one
-   * again would mark work done since as theirs.
+   * Sign-ins (signed-in markers, `<account>#<sign-in>`) whose departure is
+   * recorded on this state. Recording one again would mark work done since
+   * under the next account as theirs.
    */
   departed?: string[];
 }
@@ -590,12 +591,13 @@ export function mergeTabs(input: MergeInput): MergeResult {
           // The row is this device's landed write (or a later edit of it
           // elsewhere), or this device lost its sync state: take the row.
           replaced.set(id, adopt(local, row));
-        } else if (sent && row.version >= sent.version && localHash === sent.hash) {
-          // This device's unanswered write landed and was deleted elsewhere
-          // since, with no edit here after it: the delete wins.
-          removed.add(id);
-          forget(id);
-        } else push(local, row.version);
+        } else {
+          // A deleted row with no base here: pushed back over the delete. A
+          // tombstone has no content, so nothing proves it is this device's
+          // unanswered write deleted elsewhere rather than another writer's
+          // row; keeping the tab may bring a deleted tab back, never loses one.
+          push(local, row.version);
+        }
         continue;
       }
       if (!row) push(local, undefined);

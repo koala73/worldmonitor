@@ -130,6 +130,43 @@ describe('PanelLayoutManager tab sync host', () => {
     expect(apply.call({ ...self, ctx: { isDestroyed: true } }, next, false)).toBe(false);
   });
 
+  it("reports a merge whose active tab's panel layout could not be stored", () => {
+    const self = {
+      tabsState: { activeTabId: 'tab-a1-b1', tabs: [tab('tab-a1-b1', 'Main', false)] } as TabsState,
+      ctx: { isDestroyed: false },
+      applyTabPanelFilters: vi.fn(),
+      applyTabPanelState: vi.fn(() => false),
+      healStoredTabSnapshots: vi.fn(),
+      panelTabBar: { refresh: vi.fn() },
+      updateTabCapLock: vi.fn(),
+    };
+    const next: TabsState = { activeTabId: 'tab-a1-b1', tabs: [tab('tab-a1-b1', 'Main', true)] };
+    // The next load would build the old layout: the pass must not take this one as applied.
+    expect(method<(n: TabsState, a: boolean) => boolean>('applySyncedTabs').call(self, next, true)).toBe(false);
+    expect(self.applyTabPanelState).toHaveBeenCalled();
+  });
+
+  it('reports whether the panel layout writes were stored', () => {
+    const self = {
+      ctx: { panelSettings: {}, PANEL_ORDER_KEY: 'panel-order', unifiedSettings: null },
+      isProTierResolvedOrFallback: () => false,
+      applyPanelSettings: vi.fn(),
+      applySavedPanelOrder: vi.fn(),
+      mountLiveNewsIfReady: vi.fn(),
+      scheduleLoadAllData: vi.fn(),
+    };
+    const apply = method<(s: Record<string, unknown>, o: string[], b: string[]) => boolean>('applyTabPanelState');
+    expect(apply.call(self, { markets: { name: 'Markets', enabled: true } }, ['markets'], [])).toBe(true);
+    const spy = vi.spyOn(localStorage, 'setItem').mockImplementation((key) => {
+      if (key === 'panel-order') throw new DOMException('full', 'QuotaExceededError');
+    });
+    try {
+      expect(apply.call(self, { markets: { name: 'Markets', enabled: true } }, ['markets'], [])).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('ignores a merge that lands after the layout is torn down', () => {
     const self = {
       tabsState: { activeTabId: 'tab-a1-b1', tabs: [tab('tab-a1-b1', 'Main', false)] } as TabsState,

@@ -2742,7 +2742,10 @@ export class PanelLayoutManager implements AppModule {
   /**
    * Store and show tabs merged with the account's synced tabs. False when
    * they could not be stored; nothing is shown then either, so the tabs on
-   * screen and the tabs kept for the next load never disagree.
+   * screen and the tabs kept for the next load never disagree. Also false
+   * when the active tab's layout is shown but its panel writes failed: the
+   * next load builds the old layout, so the sync pass must not record this
+   * one as applied (it would read the old layout back as a local edit).
    */
   private applySyncedTabs(next: TabsState, activeChanged: boolean): boolean {
     if (!this.tabsState || this.ctx.isDestroyed) return false;
@@ -2753,7 +2756,10 @@ export class PanelLayoutManager implements AppModule {
       if (active) {
         restoreActiveScope(active.scope ?? null);
         this.applyTabPanelFilters(active.panelFilters);
-        this.applyTabPanelState(active.panelSettings, active.panelOrder, active.bottomSet);
+        if (!this.applyTabPanelState(active.panelSettings, active.panelOrder, active.bottomSet)) {
+          this.panelTabBar?.refresh();
+          return false;
+        }
       }
     }
     // Tabs from another device can hold a layout over this account's cap.
@@ -2929,7 +2935,7 @@ export class PanelLayoutManager implements AppModule {
     panelSettings: Record<string, PanelConfig>,
     panelOrder: string[],
     bottomSet: string[],
-  ): void {
+  ): boolean {
     const isDynamicPanel = (k: string) =>
       !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-'));
 
@@ -2968,9 +2974,12 @@ export class PanelLayoutManager implements AppModule {
       : next;
 
     this.ctx.panelSettings = capped;
-    saveToStorage(STORAGE_KEYS.panels, capped);
-    saveToStorage(this.ctx.PANEL_ORDER_KEY, panelOrder);
-    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', bottomSet);
+    // Each write is attempted; the result says whether the next load builds this layout.
+    const stored = [
+      saveToStorage(STORAGE_KEYS.panels, capped),
+      saveToStorage(this.ctx.PANEL_ORDER_KEY, panelOrder),
+      saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', bottomSet),
+    ].every(Boolean);
 
     this.applyPanelSettings();
     // The tab's own order, not a read-back: a failed write must not leave the old order on screen.
@@ -2978,6 +2987,7 @@ export class PanelLayoutManager implements AppModule {
     this.ctx.unifiedSettings?.refreshPanelToggles();
     this.mountLiveNewsIfReady();
     this.scheduleLoadAllData();
+    return stored;
   }
 
   private setupMobilePanelNav(): void {
