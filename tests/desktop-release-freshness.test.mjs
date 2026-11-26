@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, posix, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -212,21 +212,44 @@ describe('SHIPPED_PATHS covers what the binary bundles', () => {
   it('includes every script the Tauri build command runs, except pure checks', () => {
     // Gates that only fail the build and write nothing that ships.
     const CHECK_ONLY = new Set(['scripts/check-vite-env-secrets.mjs']);
+    // Generators whose outputs are committed and kept current by CI's
+    // `npm run generate:check`: what they put in the bundle reaches main as a
+    // commit to src/ or public/, which the clock already counts.
+    const COMMITTED_OUTPUT = new Set([
+      'scripts/generate-product-config.mjs',
+      'scripts/generate-public-product-facts.mjs',
+      'scripts/build-ai-search.mjs',
+    ]);
+    const derived = readFileSync(join(root, 'scripts/generate-derived.mjs'), 'utf8');
+    for (const file of COMMITTED_OUTPUT) assert.ok(derived.includes(`'${file}'`), `${file} is not checked by generate:check`);
     const scripts = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts;
     const files = new Set();
     const seen = new Set();
     const walk = (command) => {
       for (const m of command.matchAll(/npm run (?:--silent )?([\w:.-]+)/g)) {
-        if (!seen.has(m[1]) && scripts[m[1]]) { seen.add(m[1]); walk(scripts[m[1]]); }
+        // npm runs `pre<name>` and `post<name>` hooks around `npm run <name>`.
+        for (const name of [`pre${m[1]}`, m[1], `post${m[1]}`]) {
+          if (!seen.has(name) && scripts[name]) { seen.add(name); walk(scripts[name]); }
+        }
       }
       for (const m of command.matchAll(/(scripts\/[\w./-]+\.(?:mjs|cjs|js|sh|ts))/g)) files.add(m[1]);
     };
     walk(conf.build.beforeBuildCommand);
-    assert.ok(files.has('scripts/build-sidecar-handlers.mjs'), `build chain not followed: ${[...files]}`);
-    for (const file of files) {
-      if (CHECK_ONLY.has(file)) continue;
-      assert.ok(covered(file), `${file} runs in the desktop build but is outside SHIPPED_PATHS`);
+    for (const file of COMMITTED_OUTPUT) files.delete(file);
+    // A build script's own imports under scripts/ shape its output too.
+    const queue = [...files];
+    while (queue.length) {
+      const file = queue.pop();
+      const source = readFileSync(join(root, file), 'utf8');
+      for (const m of source.matchAll(/(?:from |import\()['"](\.{1,2}\/[^'"]+)['"]/g)) {
+        const target = posix.normalize(posix.join(posix.dirname(file), m[1]));
+        if (target.startsWith('scripts/') && !files.has(target)) { files.add(target); queue.push(target); }
+      }
     }
+    assert.ok(files.has('scripts/build-sidecar-handlers.mjs'), `build chain not followed: ${[...files]}`);
+    assert.ok(files.has('scripts/generate-inventory-facts.mjs'), `prebuild:desktop hook not followed: ${[...files]}`);
+    const missing = [...files].filter((file) => !CHECK_ONLY.has(file) && !covered(file)).sort();
+    assert.deepEqual(missing, [], 'these run in the desktop build but are outside SHIPPED_PATHS');
   });
   it('includes the sidecar handler sources and the frontend build inputs', () => {
     for (const path of ['server/worldmonitor/economic/v1/handler.ts', 'src/main.ts', 'index.html', 'vite.config.ts', 'tsconfig.json', 'src-tauri/src/main.rs']) {

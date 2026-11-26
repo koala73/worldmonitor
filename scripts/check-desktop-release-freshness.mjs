@@ -53,6 +53,16 @@ export const SHIPPED_PATHS = [
   'scripts/build-sidecar-handlers.mjs',
   // Writes the gitignored src-tauri/notices/ bundle resource during build:desktop.
   'scripts/generate-third-party-notices.mjs',
+  // prebuild:desktop → product:facts. This generator writes the gitignored
+  // public/product-facts.json (copied into dist/) and the sidecar's
+  // api/_inventory-facts.generated.js; the next three are its imports. The
+  // other product:facts generators write committed files that CI's
+  // generate:check keeps current, so their changes reach main as src/ or
+  // public/ commits.
+  'scripts/generate-inventory-facts.mjs',
+  'scripts/docs-stats.mjs',
+  'scripts/source-attribution.mjs',
+  'scripts/source-catalog-identity.mjs',
   'scripts/download-node.sh',
 ];
 
