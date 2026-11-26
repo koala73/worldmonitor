@@ -65,40 +65,60 @@ const alert = (importanceScore, variant = 'full') => ({
   payload: { title: `Tankers struck near Ras Tanura terminal #${++seq}`, source: 'Test Wire', importanceScore, publishedAt: Date.now() - 60_000 },
 });
 
-async function drive(rules, event, channelsFor = () => [TELEGRAM]) {
+const ok = (result) => ({ ok: true, status: 200, json: async () => ({ result }) });
+const down = { ok: false, status: 503, json: async () => ({}) };
+
+// channelsFor(userId) returns the user's channels, or null for a failed read.
+// onSend(rows) runs inside each Telegram send with the score log as it stands.
+// rpush / lpush / release answer the held-queue push, the event-queue re-push
+// and the dedup-claim compare-and-delete.
+async function drive(rules, event, { channelsFor = () => [TELEGRAM], onSend = async () => {}, rpush = true, lpush = true, release = false } = {}) {
   const logs = [];
-  const rows = [];
+  const scoreLog = new Map();
+  const rowsNow = () => [...scoreLog].map(([member, score]) => ({ score, ...JSON.parse(member) }));
   const sentAt = [];
-  const silence = [console.log, console.warn, console.error, console.info];
-  console.log = (...a) => logs.push(a.join(' '));
-  console.warn = console.error = console.info = () => {};
+  const silence = [console.log, console.warn, console.error, console.info, globalThis.setTimeout];
+  console.log = console.warn = (...a) => logs.push(a.join(' '));
+  console.error = console.info = () => {};
+  // The re-queue backs off for seconds before it returns.
+  globalThis.setTimeout = (fn, _ms, ...args) => silence[4](fn, 0, ...args);
   globalThis.fetch = async (url, opts = {}) => {
     const parsed = new URL(String(url));
     if (parsed.pathname.includes('/relay/enabled-rules')) {
-      return rules ? { ok: true, json: async () => rules.map((r) => ({ ...rule, ...r })) } : { ok: false, status: 503, json: async () => ({}) };
+      return rules ? { ok: true, json: async () => rules.map((r) => ({ ...rule, ...r })) } : down;
     }
     if (parsed.pathname.includes('/relay/entitlement')) return { ok: true, json: async () => ({ tier: 1 }) };
-    if (parsed.pathname.includes('/relay/channels')) return { ok: true, json: async () => channelsFor(JSON.parse(opts.body).userId) };
+    if (parsed.pathname.includes('/relay/channels')) {
+      const channels = channelsFor(JSON.parse(opts.body).userId);
+      return channels ? { ok: true, json: async () => channels } : down;
+    }
     if (parsed.hostname === 'api.telegram.org') {
+      await onSend(rowsNow());
       sentAt.push(Date.now());
       return { status: 200, ok: true, json: async () => ({ ok: true }) };
     }
-    if (parsed.pathname.endsWith('/pipeline')) {
-      for (const [cmd, key, score, member] of JSON.parse(opts.body)) {
-        if (cmd === 'ZADD' && key === 'shadow:score-log:v5') rows.push({ score: Number(score), ...JSON.parse(member) });
-      }
-      return { ok: true, json: async () => [] };
+    if (parsed.pathname === '/pipeline' || parsed.pathname === '/multi-exec') {
+      const results = JSON.parse(opts.body).map(([cmd, key, ...args]) => {
+        if (key !== 'shadow:score-log:v5') return { result: 1 };
+        if (cmd === 'ZADD') scoreLog.set(args[1], Number(args[0]));
+        if (cmd === 'ZREM') return { result: Number(scoreLog.delete(args[0])) };
+        return { result: 1 };
+      });
+      return { ok: true, json: async () => results };
     }
-    if (String(url).includes('/SET/')) return { ok: true, json: async () => ({ result: 'OK' }) };
-    return { ok: true, json: async () => ({ result: null }) };
+    if (parsed.pathname === '/' && JSON.parse(opts.body)[0] === 'EVAL') return ok(release ? 1 : 0);
+    if (parsed.pathname.startsWith('/RPUSH/')) return rpush ? ok(1) : down;
+    if (parsed.pathname.startsWith('/LPUSH/')) return lpush ? ok(1) : down;
+    if (String(url).includes('/SET/')) return ok('OK');
+    return ok(null);
   };
   const dequeuedAt = Date.now();
   try {
     await relay.processEvent(event);
   } finally {
-    [console.log, console.warn, console.error, console.info] = silence;
+    [console.log, console.warn, console.error, console.info, globalThis.setTimeout] = silence;
   }
-  return { logs, rows, sentAt, dequeuedAt };
+  return { logs, rows: rowsNow(), sentAt, dequeuedAt };
 }
 
 describe('score-log row per dequeued rss_alert', () => {
@@ -122,7 +142,7 @@ describe('score-log row per dequeued rss_alert', () => {
   });
 
   it('records that the rules read failed and the event could not go back on the queue', async () => {
-    const { rows } = await drive(null, alert(88));
+    const { rows } = await drive(null, alert(88), { lpush: false });
     assert.equal(rows.length, 1);
     assert.deepEqual(rows[0].outcome, { stopped: 'rules_unavailable' });
   });
@@ -142,7 +162,7 @@ describe('score-log row per dequeued rss_alert', () => {
       { userId: 'user-4', variant: 'energy', channels: ['web_push'] },
     ];
     const unverifiedPush = { channelType: 'web_push', verified: false, endpoint: 'https://push.example/1', p256dh: 'k', auth: 'a' };
-    const { rows, logs, sentAt } = await drive(energy, alert(88, 'energy'), (userId) => (userId === 'user-4' ? [unverifiedPush] : [TELEGRAM]));
+    const { rows, logs, sentAt } = await drive(energy, alert(88, 'energy'), { channelsFor: (userId) => (userId === 'user-4' ? [unverifiedPush] : [TELEGRAM]) });
     assert.equal(sentAt.length, 0);
     assert.deepEqual(rows[0].outcome, { matched: 4, noChannelListed: 3, noChannelVerified: 1 });
     assert.deepEqual(logs.filter((l) => l.startsWith('[relay] No usable channel:')), [
@@ -151,8 +171,45 @@ describe('score-log row per dequeued rss_alert', () => {
   });
 
   it('counts a user whose every send failed apart from those it reached', async () => {
-    const { rows } = await drive([{}, { userId: 'user-2' }], alert(88), (userId) => (userId === 'user-2' ? [{ ...TELEGRAM, chatId: undefined }] : [TELEGRAM]));
+    const { rows } = await drive([{}, { userId: 'user-2' }], alert(88), { channelsFor: (userId) => (userId === 'user-2' ? [{ ...TELEGRAM, chatId: undefined }] : [TELEGRAM]) });
     assert.deepEqual(rows[0].outcome, { matched: 2, sent: 1, sendFailed: 1 });
+  });
+
+  // The queue pop already removed the event, and SIGTERM exits at once, so a
+  // row written only after delivery would vanish with the relay.
+  it('keeps a pending row while the relay is still delivering, then swaps in the outcome', async () => {
+    let during = null;
+    const { rows } = await drive([{}], alert(88), { onSend: async (now) => { during = now; } });
+    assert.equal(during?.length, 1, 'the row exists before the first send');
+    assert.deepEqual(during[0].outcome, { stopped: 'pending' });
+    assert.equal(rows.length, 1, 'the pending row is replaced, not joined');
+    assert.equal(rows[0].ts, during[0].ts);
+    assert.equal(rows[0].score, during[0].score);
+    assert.deepEqual(rows[0].outcome, { matched: 1, sent: 1 });
+  });
+
+  // Realtime rules take only critical news alerts, and quiet hours deliver
+  // those, so only non-critical event types such as the air-traffic all-clear
+  // reach the hold.
+  it('reports a quiet-hours hold the held queue refused instead of counting it held', async () => {
+    const quietRule = { quietHoursEnabled: true, quietHoursStart: 0, quietHoursEnd: 24, quietHoursOverride: 'batch_on_wake' };
+    const recovery = () => ({ eventType: 'aviation_traffic_collapse', severity: 'high', variant: 'full', payload: { kind: 'recovery', title: `Air traffic resumes over Kuwait #${++seq}` } });
+    const failure = (logs) => logs.filter((l) => l.startsWith('[relay] Quiet hours hold failed'));
+    const held = await drive([quietRule], recovery());
+    assert.ok(held.logs.some((l) => l.startsWith('[relay] Quiet hours hold for user-1')), held.logs.join('\n'));
+    assert.deepEqual(failure(held.logs), []);
+    const refused = await drive([quietRule], recovery(), { rpush: false });
+    assert.deepEqual(failure(refused.logs), ['[relay] Quiet hours hold failed for user-1: the held queue refused the event']);
+  });
+
+  // A failed channel read whose event went back on the queue is decided by
+  // the retry; one that could not be retried lost the alert for that user.
+  it('tells a channel read the relay retries apart from one it dropped', async () => {
+    const channelsFor = (userId) => (userId === 'user-2' ? null : [TELEGRAM]);
+    const users = [{}, { userId: 'user-2' }];
+    assert.deepEqual((await drive(users, alert(88), { channelsFor, release: true })).rows[0].outcome, { matched: 2, sent: 1, channelsRequeued: 1 });
+    assert.deepEqual((await drive(users, alert(88), { channelsFor, release: true, lpush: false })).rows[0].outcome, { matched: 2, sent: 1, channelsFailed: 1 });
+    assert.deepEqual((await drive(users, alert(88), { channelsFor, release: false })).rows[0].outcome, { matched: 2, sent: 1, channelsFailed: 1 });
   });
 });
 

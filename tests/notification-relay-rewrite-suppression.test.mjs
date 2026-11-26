@@ -130,6 +130,10 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
         }
         return added;
       }
+      case 'ZREM': {
+        const z = zsets.get(key) ?? new Map();
+        return args.filter(m => z.delete(m)).length;
+      }
       case 'ZMSCORE': {
         const z = zsets.get(key) ?? new Map();
         return args.map(m => (z.has(m) ? String(z.get(m)) : null));
@@ -196,7 +200,7 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
         stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 40, output_tokens: 6 },
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
-    if (path === '/pipeline') {
+    if (path === '/pipeline' || path === '/multi-exec') {
       const body = JSON.parse(opts.body);
       return { ok: true, status: 200, json: async () => body.map(c => ({ result: run(c) })) };
     }

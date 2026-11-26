@@ -137,6 +137,100 @@ describe('daily miss audit', () => {
     assert.deepEqual(result.noChannel.map((s) => s.rules), [1]);
   });
 
+  it('reports a failed send as a miss even when another rule in the edition sent it', () => {
+    const { missed } = auditMisses({ queued: [queued('11:00', 'Lloyd\'s List', 'Two tankers hit mines in the Strait of Hormuz', 88, { outcome: { matched: 2, sent: 1, sendFailed: 1 } })], sent: [] });
+    assert.equal(missed.length, 1);
+    assert.equal(missed[0].gate, 'sendFailed=1');
+    assert.equal(missed[0].counts, 'matched=2, sendFailed=1, sent=1');
+  });
+
+  it('reports a failed edition when another edition delivered the story', () => {
+    const title = 'Two tankers hit mines in the Strait of Hormuz';
+    const { missed } = auditMisses({
+      queued: [
+        queued('11:00', 'Reuters', title, 88),
+        queued('11:00', 'Reuters', title, 88, { variant: 'finance', outcome: { matched: 2, sendFailed: 2 } }),
+      ],
+      sent: [],
+    });
+    assert.deepEqual(missed.map((s) => [s.edition, s.gate]), [['finance', 'sendFailed=2']]);
+  });
+
+  // An edition where no rule matched or the free ladder clamped every rule
+  // failed nobody when another edition delivered the story.
+  it('keeps an edition with no failure out of the misses when another edition delivered', () => {
+    const title = 'Two tankers hit mines in the Strait of Hormuz';
+    const result = auditMisses({
+      queued: [
+        queued('11:00', 'Reuters', title, 88),
+        queued('11:00', 'Reuters', title, 88, { variant: 'finance', outcome: { matched: 0, noRule: { edition: 30 } } }),
+        queued('11:00', 'Reuters', title, 88, { variant: 'tech', outcome: null }),
+      ],
+      sent: [],
+    });
+    assert.deepEqual(result.missed, []);
+    assert.deepEqual(result.notRecorded, []);
+  });
+
+  it('does not report a failure the relay put back on the queue when the retry delivered', () => {
+    const title = 'Two tankers hit mines in the Strait of Hormuz';
+    for (const first of [{ matched: 4, sent: 3, channelsRequeued: 1 }, { stopped: 'rules_requeued' }]) {
+      const result = auditMisses({
+        queued: [
+          queued('11:00', 'Reuters', title, 88, { outcome: first }),
+          queued('11:01', 'Reuters', title, 88, { outcome: { matched: 4, dedup: 3, sent: 1 } }),
+        ],
+        sent: [],
+      });
+      assert.deepEqual(result.missed, [], JSON.stringify(first));
+    }
+  });
+
+  // A story queued across the deploy: the earlier copy has no outcome and may
+  // be the one that delivered, so the later copy's dedup hits prove nothing.
+  it('keeps a story unknown when its earlier copy predates recorded outcomes', () => {
+    const result = auditMisses({
+      queued: [
+        queued('11:00', 'Lloyd\'s List', 'Two tankers hit mines in the Strait of Hormuz', 88, { outcome: null }),
+        queued('11:04', 'Reuters', 'Two tankers hit mines in Strait of Hormuz', 86, { outcome: { matched: 3, dedup: 3 } }),
+      ],
+      sent: [{ title: 'Two tankers hit mines in the Strait of Hormuz', sentAt: at('11:01') }],
+    });
+    assert.deepEqual(result.missed, []);
+    assert.equal(result.notRecorded.length, 1);
+  });
+
+  it('still reports a recorded failure next to a copy that predates recorded outcomes', () => {
+    const { missed } = auditMisses({
+      queued: [
+        queued('11:00', 'Lloyd\'s List', 'Two tankers hit mines in the Strait of Hormuz', 88, { outcome: null }),
+        queued('11:04', 'Reuters', 'Two tankers hit mines in Strait of Hormuz', 86, { outcome: { matched: 3, sendFailed: 3 } }),
+      ],
+      sent: [],
+    });
+    assert.equal(missed[0]?.gate, 'sendFailed=3');
+  });
+
+  // The relay writes the row at dequeue as pending and swaps in the outcome
+  // when delivery ends; a row still pending was cut off mid-delivery.
+  it('reports an event the relay never finished as an interrupted miss, even when another edition delivered', () => {
+    const title = 'Two tankers hit mines in the Strait of Hormuz';
+    const { missed } = auditMisses({
+      queued: [
+        queued('11:00', 'Reuters', title, 88),
+        queued('11:00', 'Reuters', title, 88, { variant: 'finance', outcome: { stopped: 'pending' } }),
+      ],
+      sent: [],
+    });
+    assert.deepEqual(missed.map((s) => [s.edition, s.gate]), [['finance', 'stopped=interrupted (no outcome recorded)']]);
+  });
+
+  it('reports a quiet-hours hold that could not be queued as a miss', () => {
+    const { missed } = auditMisses({ queued: [queued('02:00', 'AFP', 'Earthquake topples buildings in central Chile', 89, { outcome: { matched: 2, held: 1, holdFailed: 1 } })], sent: [] });
+    assert.equal(missed.length, 1);
+    assert.equal(missed[0].gate, 'holdFailed=1');
+  });
+
   it('shows every rule count on a non-miss line, so nothing is absorbed silently', () => {
     const { repeat } = auditMisses({
       queued: [queued('09:30', 'SunOnline International', REWORDED, 84, { outcome: { matched: 30, repeat: 22, dedup: 2, freeSeverity: 6, repeatOf: { id: 'full:abc', title: DIRTY_BOMB } } })],
