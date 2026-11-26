@@ -3123,8 +3123,10 @@ export class App {
         destroyEntitlementSubscription();
         destroySubscriptionWatch();
         stopTabSync();
-        setCloudBlobApplyExclusions([]);
+        // After sign-out drops the panel values tab sync skipped, so lifting
+        // the exclusion does not apply the departing account's layout.
         cloudPrefsSignOut();
+        setCloudBlobApplyExclusions([]);
         resetEntitlementState();
         resetEntitlementVerification();
         this.tierPreferenceHandoff.clear();

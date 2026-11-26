@@ -1472,24 +1472,39 @@ describe('cloud blob apply exclusions (#11141)', () => {
   // describe whichever tab another device had open. Applying them would
   // overwrite the tab on screen, so App excludes them for the session.
   const PANEL_KEYS = ['worldmonitor-panels', 'panel-order', 'panel-order-bottom-set'] as const;
+  const LOCAL_PANELS = '{"local":{"enabled":true}}';
+  const CLOUD_PANELS = '{"cloud":{"enabled":true}}';
 
-  async function signInWithCloudPanels(exclude: readonly string[]) {
+  type CloudPrefs = Awaited<ReturnType<typeof loadCloudPrefsModule>>;
+
+  async function signedInWithExclusions(
+    exclude: readonly string[],
+    after: (cloudPrefs: CloudPrefs, controls: HarnessControls) => void,
+  ) {
     const seen: Record<string, string | null> = {};
     await runHarness(async (cloudPrefs, controls) => {
       localStorage.setItem('wm-cloud-sync-version', '1');
-      localStorage.setItem('worldmonitor-panels', '{"local":{"enabled":true}}');
+      localStorage.setItem('worldmonitor-panels', LOCAL_PANELS);
       localStorage.setItem('panel-order', '["local"]');
       controls.seedRow('test-token', {
-        'worldmonitor-panels': '{"cloud":{"enabled":true}}',
+        'worldmonitor-panels': CLOUD_PANELS,
         'panel-order': '["cloud"]',
         'worldmonitor-theme': 'light',
       }, 2);
       cloudPrefs.setCloudBlobApplyExclusions(exclude);
       try {
         await cloudPrefs.onSignIn('user-1', 'full');
-        for (const key of [...PANEL_KEYS, 'worldmonitor-theme']) seen[key] = localStorage.getItem(key);
+        seen.afterSignInPanels = localStorage.getItem('worldmonitor-panels');
+        seen.afterSignInOrder = localStorage.getItem('panel-order');
+        seen.theme = localStorage.getItem('worldmonitor-theme');
+        controls.events.length = 0;
+        after(cloudPrefs, controls);
+        seen.panels = localStorage.getItem('worldmonitor-panels');
+        seen.order = localStorage.getItem('panel-order');
+        seen.announced = JSON.stringify(controls.events
+          .filter((e) => e.type === cloudPrefs.CLOUD_PREFS_APPLIED_EVENT)
+          .flatMap((e) => (e.detail as { keys: string[] }).keys));
       } finally {
-        cloudPrefs.setCloudBlobApplyExclusions([]);
         await cloudPrefs.syncNow();
       }
     });
@@ -1497,15 +1512,45 @@ describe('cloud blob apply exclusions (#11141)', () => {
   }
 
   it('keeps the local panel keys and still applies every other key', async () => {
-    const seen = await signInWithCloudPanels(PANEL_KEYS);
-    assert.equal(seen['worldmonitor-panels'], '{"local":{"enabled":true}}');
-    assert.equal(seen['panel-order'], '["local"]');
-    assert.equal(seen['worldmonitor-theme'], 'light');
+    const seen = await signedInWithExclusions(PANEL_KEYS, () => {});
+    assert.equal(seen.afterSignInPanels, LOCAL_PANELS);
+    assert.equal(seen.afterSignInOrder, '["local"]');
+    assert.equal(seen.theme, 'light');
   });
 
-  it('applies the panel keys again once the exclusion is cleared', async () => {
-    const seen = await signInWithCloudPanels([]);
-    assert.equal(seen['worldmonitor-panels'], '{"cloud":{"enabled":true}}');
-    assert.equal(seen['panel-order'], '["cloud"]');
+  it('applies the panel keys when nothing excludes them', async () => {
+    const seen = await signedInWithExclusions([], () => {});
+    assert.equal(seen.afterSignInPanels, CLOUD_PANELS);
+    assert.equal(seen.afterSignInOrder, '["cloud"]');
+  });
+
+  it('applies and announces the skipped values once tab sync gives the keys back', async () => {
+    // Tab sync stopping (no deployment yet, an error) must not cost the
+    // session the panel layout cloud-prefs would have applied.
+    const seen = await signedInWithExclusions(PANEL_KEYS, (cloudPrefs) => {
+      cloudPrefs.setCloudBlobApplyExclusions([]);
+    });
+    assert.equal(seen.panels, CLOUD_PANELS);
+    assert.equal(seen.order, '["cloud"]');
+    assert.deepEqual(JSON.parse(seen.announced!).sort(), ['panel-order', 'worldmonitor-panels']);
+  });
+
+  it('keeps a key changed on this device after the skip', async () => {
+    const seen = await signedInWithExclusions(PANEL_KEYS, (cloudPrefs) => {
+      localStorage.setItem('worldmonitor-panels', '{"edited":{"enabled":true}}');
+      cloudPrefs.setCloudBlobApplyExclusions([]);
+    });
+    assert.equal(seen.panels, '{"edited":{"enabled":true}}');
+    assert.equal(seen.order, '["cloud"]');
+  });
+
+  it('drops the skipped values at sign-out', async () => {
+    const seen = await signedInWithExclusions(PANEL_KEYS, (cloudPrefs) => {
+      cloudPrefs.onSignOut();
+      cloudPrefs.setCloudBlobApplyExclusions([]);
+    });
+    assert.equal(seen.panels, LOCAL_PANELS);
+    assert.equal(seen.order, '["local"]');
+    assert.equal(seen.announced, '[]');
   });
 });
