@@ -5,10 +5,13 @@
  *   node scripts/audit-alert-misses.mjs                    # last 24 hours
  *   node scripts/audit-alert-misses.mjs --date 2026-11-18  # one UTC day (score log keeps 7 days)
  *
- * Reads shadow:score-log:v5 (every rss_alert the relay dequeued) and every
- * wm:notif:sent:v1:<userId> list (what the relay delivered), groups headlines
- * into stories, and prints each critical story nobody received with the gate
- * that stopped it. See scripts/lib/alert-miss-audit.mjs.
+ * Reads shadow:score-log:v5 (every rss_alert the relay dequeued, with the
+ * outcome the relay recorded for it), groups headlines into stories, and
+ * prints each critical story nobody received with its edition and the gate
+ * that stopped it. Reworded repeats the relay skipped, editions with no usable
+ * channel and quiet-hours holds are listed apart from misses. The
+ * wm:notif:sent:v1:<userId> receipts only time stories against the wires.
+ * See scripts/lib/alert-miss-audit.mjs.
  */
 import { loadEnvFile } from './_env-file.mjs';
 import { BREAKING_WIRES, auditMisses } from './lib/alert-miss-audit.mjs';
@@ -18,6 +21,14 @@ const SENT_PREFIX = 'wm:notif:sent:v1:';
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Rows queued this recently may still be on their way to subscribers.
 const SETTLE_MS = 15 * 60 * 1000;
+
+const SECTIONS = [
+  ['missed', 'Critical stories that reached nobody', (s) => `gate=${s.gate}`],
+  ['noChannel', 'Config gap: no usable channel on the edition\'s matching rules', (s) => `rules=${s.rules} (${s.listedNone} list no channel)`],
+  ['repeat', 'Not misses: reworded repeats of an alert subscribers already had', (s) => `skipped=${s.skippedUsers} repeat_of="${s.repeatOf?.title ?? 'unknown'}"`],
+  ['quietHours', 'Not misses: silenced by quiet hours', (s) => `users=${s.users}`],
+  ['notRecorded', 'Unknown: queued before the relay recorded outcomes', null],
+];
 
 // The score log keeps 7 days; an older day would print an empty report.
 const RETENTION_DAYS = 7;
@@ -80,13 +91,16 @@ async function main() {
     for (const list of lists) sent.push(...parseRows(list).filter((r) => (r.eventType === undefined || r.eventType === 'rss_alert') && r.sentAt >= from - DAY_MS && r.sentAt < to + DAY_MS));
   }
 
-  const { missed, wireStories, deliveredBeforeWire } = auditMisses({ queued, sent });
+  const audit = auditMisses({ queued, sent });
   console.log(`${new Date(from).toISOString()} to ${new Date(to).toISOString()}: ${queued.length} queued rows, ${sent.length} delivered records from ${keys.length} users`);
-  console.log(`\nCritical stories with no delivery receipt: ${missed.length}`);
-  for (const story of missed) {
-    console.log(`  ${new Date(story.firstQueuedAt).toISOString()}  ${story.title}`);
-    console.log(`    gate=${story.gate}  best=${story.bestScore}  sources=${story.sources.join(', ')}`);
+  for (const [verdict, heading, describe] of SECTIONS) {
+    console.log(`\n${heading}: ${audit[verdict].length}`);
+    for (const story of describe ? audit[verdict] : []) {
+      console.log(`  ${new Date(story.firstQueuedAt).toISOString()}  [${story.edition}]  ${story.title}`);
+      console.log(`    ${describe(story)}  best=${story.bestScore}  sources=${story.sources.join(', ')}`);
+    }
   }
+  const { wireStories, deliveredBeforeWire } = audit;
   console.log(`\nAhead of the wires (${BREAKING_WIRES.join(', ')}): ${deliveredBeforeWire} of ${wireStories} wire-covered stories reached subscribers before the first wire copy`);
 }
 

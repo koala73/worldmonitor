@@ -2006,12 +2006,15 @@ const IMPORTANCE_SCORE_MIN = Number(process.env.IMPORTANCE_SCORE_MIN ?? 40);
 const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v5';
 const SHADOW_LOG_TTL = 7 * 24 * 3600; // 7 days
 
-async function shadowLogScore(event) {
+// One row per dequeued rss_alert. `ts` is when the relay took the event (the
+// latency report measures publish-to-queue with it); `outcome` is what the
+// relay then decided, which the daily miss audit (#10976) reads instead of
+// guessing delivery from headline overlap.
+async function shadowLogScore(event, dequeuedAt, outcome) {
   const importanceScore = event.payload?.importanceScore ?? 0;
   if (!UPSTASH_URL || !UPSTASH_TOKEN || importanceScore === 0) return;
-  const now = Date.now();
   const record = {
-    ts: now,
+    ts: dequeuedAt,
     importanceScore,
     severity: event.severity ?? 'high',
     eventType: event.eventType,
@@ -2021,9 +2024,10 @@ async function shadowLogScore(event) {
     corroborationCount: event.payload?.corroborationCount ?? null,
     ...(Array.isArray(event.payload?.corroboratedBy) ? { corroboratedBy: event.payload.corroboratedBy.slice(0, 10) } : {}),
     variant: event.variant ?? '',
+    outcome,
   };
   const member = JSON.stringify(record);
-  const cutoff = String(now - SHADOW_LOG_TTL * 1000); // prune entries older than 7 days
+  const cutoff = String(Date.now() - SHADOW_LOG_TTL * 1000); // prune entries older than 7 days
   // One pipelined HTTP request: ZADD + ZREMRANGEBYSCORE prune + 30-day
   // belt-and-suspenders EXPIRE. Saves ~50% round-trips vs sequential calls
   // and bounds growth even if writes stop and the rolling prune stalls.
@@ -2037,7 +2041,7 @@ async function shadowLogScore(event) {
         'User-Agent': 'worldmonitor-relay/1.0',
       },
       body: JSON.stringify([
-        ['ZADD', SHADOW_SCORE_LOG_KEY, String(now), member],
+        ['ZADD', SHADOW_SCORE_LOG_KEY, String(dequeuedAt), member],
         ['ZREMRANGEBYSCORE', SHADOW_SCORE_LOG_KEY, '-inf', cutoff],
         ['EXPIRE', SHADOW_SCORE_LOG_KEY, '2592000'],
       ]),
@@ -2316,11 +2320,30 @@ async function processEventDelivery(event) {
     .replace(/[\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
   console.log('[relay] Processing event:', eventLog);
 
-  // Shadow log importanceScore for comparison. Gate at caller: only rss_alert
-  // events carry importanceScore; for everything else shadowLogScore would
-  // short-circuit, but we still pay the promise/microtask cost unless gated here.
-  if (event.eventType === 'rss_alert') shadowLogScore(event).catch(() => {});
+  // Only rss_alert events carry importanceScore, so only they get a score-log
+  // row. It is written once the outcome is known, on every exit.
+  if (event.eventType !== 'rss_alert') return deliverToRules(event, {});
+  const dequeuedAt = Date.now();
+  const outcome = {};
+  try {
+    await deliverToRules(event, outcome);
+  } catch (err) {
+    outcome.stopped = 'error';
+    throw err;
+  } finally {
+    shadowLogScore(event, dequeuedAt, outcome).catch(() => {});
+  }
+}
 
+/**
+ * Deliver one event to every matching realtime rule. `outcome` gets where the
+ * event stopped (`stopped`), or `matched` and one count per rule under the
+ * branch that ended it: sent, held, repeat, quietHours, dedup, channelsFailed,
+ * noChannelListed, noChannelVerified, sendFailed, freeSeverity, freeEventType,
+ * freeScope. Zero counts are left out.
+ */
+async function deliverToRules(event, outcome) {
+  const bump = (bucket) => { outcome[bucket] = (outcome[bucket] ?? 0) + 1; };
   // Score gate — only for relay-emitted rss_alert (no userId). Browser-submitted
   // events (with userId) have importanceScore stripped at ingestion and no server-
   // computed score; gating them would drop every browser notification once
@@ -2330,6 +2353,7 @@ async function processEventDelivery(event) {
     const score = event.payload?.importanceScore ?? 0;
     if (score < IMPORTANCE_SCORE_MIN) {
       console.log(`[relay] Score gate: dropped ${event.eventType} score=${score} < ${IMPORTANCE_SCORE_MIN}`);
+      outcome.stopped = 'score_gate';
       return;
     }
   }
@@ -2338,7 +2362,7 @@ async function processEventDelivery(event) {
   try {
     enabledRules = await fetchEnabledRules(true);
   } catch (err) {
-    await requeueAfterRulesFailure(event, err);
+    outcome.stopped = (await requeueAfterRulesFailure(event, err)) ? 'rules_requeued' : 'rules_unavailable';
     return;
   }
 
@@ -2353,6 +2377,7 @@ async function processEventDelivery(event) {
     if (reason) dropReasons[reason] = (dropReasons[reason] ?? 0) + 1;
     return reason === null;
   });
+  outcome.matched = matching.length;
 
   // Deploy observability for the #5359 default-DROP change: rules that passed
   // every OTHER gate but were excluded by country scope, so support can
@@ -2364,6 +2389,7 @@ async function processEventDelivery(event) {
     console.log(`[relay] Country-scope drop: ${event.eventType} attribution=${attribution} excluded ${dropReasons.delivery_scope} scoped rule(s)`);
   }
   if (matching.length === 0) {
+    outcome.noRule = dropReasons;
     console.log(`[relay] No rule matched: ${JSON.stringify(event.eventType)} severity=${JSON.stringify(event.severity ?? 'high')} score=${JSON.stringify(event.payload?.importanceScore ?? 'n/a')} edition=${JSON.stringify(event.variant || 'any')} rules=${enabledRules.length} drops=${JSON.stringify(dropReasons)}`);
   }
 
@@ -2374,6 +2400,7 @@ async function processEventDelivery(event) {
   // Suppression count is derived from the pre-PRO rule match so the log line
   // scopes the incident even when some rules would later drop on entitlement.
   if (matching.length > 0 && (await suppressedLinksFor(event, matching.length, 'stage=deliver')).length > 0) {
+    outcome.stopped = 'link_suppressed';
     return;
   }
 
@@ -2382,8 +2409,6 @@ async function processEventDelivery(event) {
   const rewrite = await checkAlertRewrite(event, matching);
   await refreshAlertCoverage([event]);
   const reachedUsers = new Set();
-  let rewriteSkips = 0;
-
 
   // Batch tier check: resolve all unique userIds in parallel instead of
   // one-by-one. getUserTier() has a 15-min Redis cache, so this is cheap
@@ -2398,16 +2423,13 @@ async function processEventDelivery(event) {
 
   const subject = formatSubject(event);
   const eventSeverity = event.severity ?? 'high';
-  let freeSeverityDrops = 0;
-  let freeEventTypeDrops = 0;
-  let freeScopeDrops = 0;
   let channelsFailedUsers = 0;
   let channelsFetchError = null;
 
   for (const rule of matching) {
     const userTier = tierByUser.get(rule.userId) ?? 0;
     if (!freeTierAllowsEvent(userTier, eventSeverity)) {
-      freeSeverityDrops += 1;
+      bump('freeSeverity');
       continue;
     }
     // Orbital watched-site alerts are Pro-only outright, whatever the ladder
@@ -2415,7 +2437,7 @@ async function processEventDelivery(event) {
     // runs only at write time, so delivery re-applies it here or a
     // downgraded account keeps the paid stream on its leftover rule.
     if (!freeTierAllowsEventType(userTier, event.eventType)) {
-      freeEventTypeDrops += 1;
+      bump('freeEventType');
       continue;
     }
     // Free rules must carry an explicit country scope; a legacy worldwide
@@ -2424,14 +2446,14 @@ async function processEventDelivery(event) {
     // quiet-hours hold so held batches are scope-clamped at hold time too.
     const scope = freeTierCountryScope(userTier, rule.countries);
     if (!scope.ok || (userTier < 1 && !eventMatchesDeliveryScope(event, { ...rule, countries: scope.countries }))) {
-      freeScopeDrops += 1;
+      bump('freeScope');
       continue;
     }
 
     // #10916: this user already had an alert for the same development under
     // another outlet's wording. Users the earlier alert did not reach still get it.
     if (rewrite.alreadyAlerted.has(rule.userId)) {
-      rewriteSkips += 1;
+      bump('repeat');
       continue;
     }
 
@@ -2439,6 +2461,7 @@ async function processEventDelivery(event) {
 
     if (quietAction === 'suppress') {
       console.log(`[relay] Quiet hours suppress for ${rule.userId} (severity=${eventSeverity}, override=${rule.quietHoursOverride ?? 'critical_only'})`);
+      bump('quietHours');
       continue;
     }
 
@@ -2459,11 +2482,13 @@ async function processEventDelivery(event) {
       });
       if (!dedupDecision.shouldPublish) {
         if (dedupDecision.isDuplicate) console.log(`[relay] Dedup hit (held) for ${rule.userId}`);
+        bump('dedup');
         continue;
       }
       console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
       await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
       reachedUsers.add(rule.userId);
+      bump('held');
       continue;
     }
 
@@ -2483,6 +2508,7 @@ async function processEventDelivery(event) {
     });
     if (!dedupDecision.shouldPublish) {
       if (dedupDecision.isDuplicate) console.log(`[relay] Dedup hit for ${rule.userId}`);
+      bump('dedup');
       continue;
     }
 
@@ -2511,6 +2537,7 @@ async function processEventDelivery(event) {
       } else {
         console.warn(`[relay] Could not release the dedup claim for ${rule.userId}; this event stays suppressed for them until it expires`);
       }
+      bump('channelsFailed');
       continue;
     }
 
@@ -2520,7 +2547,10 @@ async function processEventDelivery(event) {
       (c.channelType !== 'email' || c.emailOwnership === 'verified_account') &&
       (c.channelType !== 'telegram' || c.telegramOwnership === 'verified_callback') &&
       rule.channels.includes(c.channelType));
-    if (verifiedChannels.length === 0) continue;
+    if (verifiedChannels.length === 0) {
+      bump(rule.channels.length === 0 ? 'noChannelListed' : 'noChannelVerified');
+      continue;
+    }
 
     let impactText = '';
     // #4273: the AI-composed impact block is paid output — the free catalog
@@ -2576,14 +2606,20 @@ async function processEventDelivery(event) {
     }
     if (deliveredChannels.length > 0) {
       reachedUsers.add(rule.userId);
+      bump('sent');
       await noteSentAlertForEvent(rule.userId, event, deliveredChannels);
+    } else {
+      bump('sendFailed');
     }
   }
-  await finishAlertRewrite(event, rewrite, reachedUsers, rewriteSkips);
+  await finishAlertRewrite(event, rewrite, reachedUsers, outcome.repeat ?? 0);
+  if (outcome.repeat) outcome.repeatOf = { id: rewrite.decision.anchor.id, title: String(rewrite.decision.anchor.title).slice(0, 160) };
 
-  if (freeSeverityDrops > 0) console.log(`[relay] Free-ladder severity clamp: dropped ${freeSeverityDrops} rule(s) for non-critical event (severity=${eventSeverity})`);
-  if (freeEventTypeDrops > 0) console.log(`[relay] Free-ladder event-type clamp: dropped ${freeEventTypeDrops} rule(s) for Pro-only event type (${String(event.eventType ?? 'unknown').replace(/[\r\n]/g, ' ').slice(0, 80)})`);
-  if (freeScopeDrops > 0) console.log(`[relay] Free-ladder country-scope clamp: dropped ${freeScopeDrops} rule(s) without a matching explicit country scope`);
+  if (outcome.freeSeverity) console.log(`[relay] Free-ladder severity clamp: dropped ${outcome.freeSeverity} rule(s) for non-critical event (severity=${eventSeverity})`);
+  if (outcome.freeEventType) console.log(`[relay] Free-ladder event-type clamp: dropped ${outcome.freeEventType} rule(s) for Pro-only event type (${String(event.eventType ?? 'unknown').replace(/[\r\n]/g, ' ').slice(0, 80)})`);
+  if (outcome.freeScope) console.log(`[relay] Free-ladder country-scope clamp: dropped ${outcome.freeScope} rule(s) without a matching explicit country scope`);
+  const noChannel = (outcome.noChannelListed ?? 0) + (outcome.noChannelVerified ?? 0);
+  if (noChannel > 0) console.log(`[relay] No usable channel: dropped ${noChannel} rule(s) for edition=${JSON.stringify(event.variant || 'any')} (${outcome.noChannelListed ?? 0} list no channel, ${outcome.noChannelVerified ?? 0} list no verified channel)`);
   if (channelsFailedUsers > 0) await requeueAfterChannelsFailure(event, channelsFetchError, channelsFailedUsers);
 }
 
