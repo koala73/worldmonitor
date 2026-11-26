@@ -141,7 +141,9 @@ export function composeCountrySnapshots({ countries, risk, ranking, digest, pool
     if (!url || url.username || url.password || revoked.has(item.link) || revoked.has(url.href) || !storableLink(url.href)) return null;
     return { ...item, link: url.href };
   };
-  const prepare = item => ({ ...item, normalized: normalizeMentionText(item.title) });
+  // Syndicated copies run one headline under different links, so the stored title is compared too.
+  const prepare = item => ({ ...item, normalized: normalizeMentionText(item.title),
+    titleKey: normalizeMentionText(item.title.slice(0, 300)).replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim() });
   // The digest is the editorially ranked front page, so its headlines lead.
   const digestEvents = Object.entries(digest.categories).flatMap(([category, bucket]) => {
     if (!Array.isArray(bucket?.items)) throw new Error('country history malformed news bucket');
@@ -159,9 +161,11 @@ export function composeCountrySnapshots({ countries, risk, ranking, digest, pool
     const res = resilience.get(countryCode);
     const matches = countryMatcher(countryCode);
     const seen = new Set();
+    const seenTitles = new Set();
     const take = item => {
-      if (seen.has(item.link) || !matches(item)) return false;
+      if (seen.has(item.link) || seenTitles.has(item.titleKey) || !matches(item)) return false;
       seen.add(item.link);
+      seenTitles.add(item.titleKey);
       return true;
     };
     const fromDigest = digestEvents.filter(take);
@@ -169,12 +173,25 @@ export function composeCountrySnapshots({ countries, risk, ranking, digest, pool
     const families = new Set(fromDigest.map(item => publisherFamilyFor(item.source)));
     const first = [];
     const rest = [];
+    const deferred = new Map();
     for (const item of poolEvents) {
       if (fromDigest.length + first.length >= HEADLINE_LIMIT) break;
-      if (!take(item)) continue;
       const family = publisherFamilyFor(item.source);
-      if (families.has(family)) rest.push(item);
-      else {
+      // A story deferred for publisher variety moves up when a new publisher also ran it.
+      const waiting = deferred.get(item.titleKey);
+      if (waiting && !families.has(family) && !seen.has(item.link) && matches(item)) {
+        rest.splice(rest.indexOf(waiting), 1);
+        deferred.delete(item.titleKey);
+        seen.add(item.link);
+        families.add(family);
+        first.push(item);
+        continue;
+      }
+      if (!take(item)) continue;
+      if (families.has(family)) {
+        rest.push(item);
+        deferred.set(item.titleKey, item);
+      } else {
         families.add(family);
         first.push(item);
       }

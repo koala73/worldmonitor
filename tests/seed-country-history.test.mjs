@@ -120,6 +120,61 @@ test('digest headlines rank first, then pool headlines from distinct publishers 
   assert.equal(us.topEvents[0].category, 'politics');
 });
 
+test('syndicated copies of one headline under different links and sources fill one slot, keeping the first copy', () => {
+  const data = inputs();
+  data.countries = ['UA', 'US'];
+  data.digest.categories.politics.items.push({ title: 'United States Talks Begin', link: 'https://example.com/syndicated', source: 'Other', publishedAt: now - 1100 });
+  const title = 'Estimates of Russians killed in Ukraine surpass all combined US war deaths since WWI';
+  data.pool = { feedsTotal: 2, feedsCached: 2, items: [
+    poolRow(title, 'https://www.militarytimes.com/news/1', { source: 'Military Times', publishedAt: now - 100 }),
+    poolRow(`${title.toUpperCase()}.`, 'https://www.defensenews.com/news/1', { source: 'Defense News', publishedAt: now - 200 }),
+    poolRow(`Estimates of Russians killed in Ukraine: surpass all combined  US war deaths since WWI`, 'https://c.example/1', { source: 'Wire', publishedAt: now - 300 }),
+    poolRow('United States talks begin!', 'https://d.example/1', { source: 'Other', publishedAt: now - 400 }),
+    poolRow('Ukraine grain corridor reopens', 'https://e.example/1', { source: 'Other', publishedAt: now - 500 }),
+  ] };
+  const rows = new Map(composeCountrySnapshots(data).map(row => [row.countryCode, row]));
+  assert.deepEqual(rows.get('UA').topEvents.map(event => [event.link, event.source]), [
+    ['https://www.militarytimes.com/news/1', 'Military Times'],
+    ['https://e.example/1', 'Other'],
+  ]);
+  // A pool copy of a digest headline loses to the digest-ranked copy.
+  assert.deepEqual(rows.get('US').topEvents.map(event => event.link), ['https://example.com/1', 'https://www.militarytimes.com/news/1']);
+});
+
+test('title repeats are judged on the stored 300-character title, and combining marks keep titles distinct', () => {
+  const data = inputs();
+  data.countries = ['US', 'IN'];
+  const long = `United States ${'a'.repeat(300)}`;
+  data.pool = { feedsTotal: 1, feedsCached: 1, items: [
+    poolRow(`${long} one`, 'https://a.example/long-1', { source: 'Gulf Daily News', publishedAt: now - 100 }),
+    poolRow(`${long} two`, 'https://b.example/long-2', { source: 'Khaleej Times', publishedAt: now - 200 }),
+    poolRow('India: आग', 'https://a.example/in-1', { source: 'Gulf Daily News', publishedAt: now - 300 }),
+    poolRow('India: आगे', 'https://b.example/in-2', { source: 'Khaleej Times', publishedAt: now - 400 }),
+  ] };
+  const rows = new Map(composeCountrySnapshots(data).map(row => [row.countryCode, row]));
+  assert.deepEqual(rows.get('US').topEvents.map(event => event.link), ['https://example.com/1', 'https://a.example/long-1']);
+  assert.deepEqual(rows.get('IN').topEvents.map(event => event.link), ['https://a.example/in-1', 'https://b.example/in-2']);
+});
+
+test('a copy deferred for publisher variety yields its story to a copy from a new publisher', () => {
+  const data = inputs();
+  data.countries = ['US'];
+  const story = 'United States sanctions shipping network';
+  data.pool = { feedsTotal: 1, feedsCached: 1, items: [
+    poolRow(story, 'https://example.com/story', { source: 'Example', publishedAt: now - 100 }),
+    poolRow(story, 'https://b.example/story', { source: 'Khaleej Times', publishedAt: now - 200 }),
+    ...['Gulf Daily News', 'Arab News', 'The National', 'Al Monitor'].map((source, i) =>
+      poolRow(`United States story ${i}`, `https://p${i}.example/1`, { source, publishedAt: now - 300 - i })),
+  ] };
+  const [us] = composeCountrySnapshots(data);
+  assert.equal(us.topEvents.length, 5);
+  assert.deepEqual(us.topEvents.slice(0, 2).map(event => [event.link, event.source]), [
+    ['https://example.com/1', 'Example'],
+    ['https://b.example/story', 'Khaleej Times'],
+  ]);
+  assert.equal(us.topEvents.filter(event => event.title === story).length, 1);
+});
+
 test('revoked, aggregator, stale and future pool rows never enter the archive', () => {
   const data = inputs();
   data.countries = ['US'];
