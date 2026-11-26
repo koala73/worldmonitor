@@ -1466,3 +1466,152 @@ describe('settings import cloud transaction', () => {
     assert.equal(result.acceptedDataByToken['test-token']?.['worldmonitor-theme'], 'light');
   });
 });
+
+describe('cloud blob apply exclusions (#11141)', () => {
+  // While dashboard tabs sync as their own records, the blob's panel keys
+  // describe whichever tab another device had open. Applying them would
+  // overwrite the tab on screen, so App excludes them for the session.
+  const PANEL_KEYS = ['worldmonitor-panels', 'panel-order', 'panel-order-bottom-set'] as const;
+  const LOCAL_PANELS = '{"local":{"enabled":true}}';
+  const CLOUD_PANELS = '{"cloud":{"enabled":true}}';
+
+  type CloudPrefs = Awaited<ReturnType<typeof loadCloudPrefsModule>>;
+
+  async function signedInWithExclusions(
+    exclude: readonly string[],
+    after: (cloudPrefs: CloudPrefs, controls: HarnessControls) => void,
+  ) {
+    const seen: Record<string, string | null> = {};
+    await runHarness(async (cloudPrefs, controls) => {
+      localStorage.setItem('wm-cloud-sync-version', '1');
+      localStorage.setItem('worldmonitor-panels', LOCAL_PANELS);
+      localStorage.setItem('panel-order', '["local"]');
+      controls.seedRow('test-token', {
+        'worldmonitor-panels': CLOUD_PANELS,
+        'panel-order': '["cloud"]',
+        'worldmonitor-theme': 'light',
+      }, 2);
+      cloudPrefs.setCloudBlobApplyExclusions(exclude);
+      try {
+        await cloudPrefs.onSignIn('user-1', 'full');
+        seen.afterSignInPanels = localStorage.getItem('worldmonitor-panels');
+        seen.afterSignInOrder = localStorage.getItem('panel-order');
+        seen.theme = localStorage.getItem('worldmonitor-theme');
+        controls.events.length = 0;
+        after(cloudPrefs, controls);
+        seen.panels = localStorage.getItem('worldmonitor-panels');
+        seen.order = localStorage.getItem('panel-order');
+        seen.announced = JSON.stringify(controls.events
+          .filter((e) => e.type === cloudPrefs.CLOUD_PREFS_APPLIED_EVENT)
+          .flatMap((e) => (e.detail as { keys: string[] }).keys));
+      } finally {
+        await cloudPrefs.syncNow();
+      }
+    });
+    return seen;
+  }
+
+  it('keeps the local panel keys and still applies every other key', async () => {
+    const seen = await signedInWithExclusions(PANEL_KEYS, () => {});
+    assert.equal(seen.afterSignInPanels, LOCAL_PANELS);
+    assert.equal(seen.afterSignInOrder, '["local"]');
+    assert.equal(seen.theme, 'light');
+  });
+
+  it('applies the panel keys when nothing excludes them', async () => {
+    const seen = await signedInWithExclusions([], () => {});
+    assert.equal(seen.afterSignInPanels, CLOUD_PANELS);
+    assert.equal(seen.afterSignInOrder, '["cloud"]');
+  });
+
+  it('applies and announces the skipped values once tab sync gives the keys back', async () => {
+    // Tab sync stopping (no deployment yet, an error) must not cost the
+    // session the panel layout cloud-prefs would have applied.
+    const seen = await signedInWithExclusions(PANEL_KEYS, (cloudPrefs) => {
+      cloudPrefs.setCloudBlobApplyExclusions([]);
+    });
+    assert.equal(seen.panels, CLOUD_PANELS);
+    assert.equal(seen.order, '["cloud"]');
+    assert.deepEqual(JSON.parse(seen.announced!).sort(), ['panel-order', 'worldmonitor-panels']);
+  });
+
+  it('keeps a key changed on this device after the skip', async () => {
+    const seen = await signedInWithExclusions(PANEL_KEYS, (cloudPrefs) => {
+      localStorage.setItem('worldmonitor-panels', '{"edited":{"enabled":true}}');
+      cloudPrefs.setCloudBlobApplyExclusions([]);
+    });
+    assert.equal(seen.panels, '{"edited":{"enabled":true}}');
+    assert.equal(seen.order, '["cloud"]');
+  });
+
+  it('uploads the row\'s own values for excluded keys, not this device\'s copy', async () => {
+    // Until tab sync applies the signed-in account's tabs, the local panel keys
+    // can be another account's: an upload must not file them into this row.
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      cloudPrefs.install('full');
+      localStorage.setItem('wm-cloud-sync-version', '1');
+      localStorage.setItem('worldmonitor-panels', LOCAL_PANELS);
+      localStorage.setItem('panel-order', '["local"]');
+      controls.seedRow('test-token', {
+        'worldmonitor-panels': CLOUD_PANELS,
+        'worldmonitor-theme': 'light',
+      }, 2);
+      cloudPrefs.setCloudBlobApplyExclusions(PANEL_KEYS);
+      try {
+        await cloudPrefs.onSignIn('user-1', 'full');
+        cloudPrefs.applyLocalPreferenceImport([['worldmonitor-theme', 'dark']]);
+        await cloudPrefs.syncNow();
+      } finally {
+        cloudPrefs.setCloudBlobApplyExclusions([]);
+      }
+    });
+    const posted = result.acceptedDataByToken['test-token']!;
+    assert.equal(posted['worldmonitor-theme'], 'dark');
+    assert.equal(posted['worldmonitor-panels'], CLOUD_PANELS);
+    assert.equal(posted['panel-order'], undefined, 'the row had none');
+  });
+
+  it('uploads the local panel keys when no apply skipped them', async () => {
+    // A reload of an account already in sync: the row is not newer, so nothing
+    // is applied or skipped. An upload replaces the blob, and leaving the
+    // excluded keys out would delete them from the row.
+    const result = await runHarness(async (cloudPrefs) => {
+      cloudPrefs.install('full');
+      localStorage.setItem('wm-cloud-sync-version', '3');
+      localStorage.setItem('worldmonitor-panels', LOCAL_PANELS);
+      localStorage.setItem('panel-order', '["local"]');
+      cloudPrefs.setCloudBlobApplyExclusions(PANEL_KEYS);
+      try {
+        await cloudPrefs.onSignIn('user-1', 'full');
+        await cloudPrefs.syncNow();
+      } finally {
+        cloudPrefs.setCloudBlobApplyExclusions([]);
+      }
+    });
+    const posted = result.acceptedDataByToken['test-token']!;
+    assert.equal(posted['worldmonitor-panels'], LOCAL_PANELS);
+    assert.equal(posted['panel-order'], '["local"]');
+  });
+
+  it('drops the skipped values when another account signs in', async () => {
+    // A direct switch: tab sync for the new account can lift the exclusion
+    // before cloud-prefs signs it in, and must not apply the old account's values.
+    const seen = await signedInWithExclusions(PANEL_KEYS, (cloudPrefs) => {
+      cloudPrefs.dropSkippedCloudBlobValues();
+      cloudPrefs.setCloudBlobApplyExclusions([]);
+    });
+    assert.equal(seen.panels, LOCAL_PANELS);
+    assert.equal(seen.order, '["local"]');
+    assert.equal(seen.announced, '[]');
+  });
+
+  it('drops the skipped values at sign-out', async () => {
+    const seen = await signedInWithExclusions(PANEL_KEYS, (cloudPrefs) => {
+      cloudPrefs.onSignOut();
+      cloudPrefs.setCloudBlobApplyExclusions([]);
+    });
+    assert.equal(seen.panels, LOCAL_PANELS);
+    assert.equal(seen.order, '["local"]');
+    assert.equal(seen.announced, '[]');
+  });
+});

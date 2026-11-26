@@ -232,11 +232,22 @@ import {
   getSyncVersion,
   hasPendingCloudPrefsRetry,
   install as installCloudPrefsSync,
+  isCloudSyncEnabled,
   onSignIn as cloudPrefsSignIn,
   onSignOut as cloudPrefsSignOut,
+  setCloudBlobApplyExclusions,
+  dropSkippedCloudBlobValues,
   type CloudPrefsAppliedDetail,
   type CloudPrefsSignInTerminalDetail,
 } from '@/utils/cloud-prefs-sync';
+import { prepareTabSyncSignIn, signOutTabSync, startTabSync, stopTabSync } from '@/services/tab-cloud-sync';
+
+/**
+ * Preference-blob keys that hold the active tab's panels. While tab records
+ * sync (#11141) they own that state, so a blob from another device must not
+ * overwrite the tab on screen. Uploads are unchanged.
+ */
+const TAB_SYNCED_BLOB_KEYS = ['worldmonitor-panels', 'panel-order', 'panel-order-bottom-set'] as const;
 import {
   migrateFrontlineEuropeDefaultsV3,
   migrateStrategicDefaultsV4,
@@ -2597,6 +2608,23 @@ export class App {
     };
   }
 
+  /** Sync dashboard tabs with the signed-in account (#11141). */
+  private startDashboardTabSync(userId: string): void {
+    // Runs on a sign-in, before cloud-prefs records it: panel values skipped
+    // for the previous account must not be applied when the exclusions lift.
+    dropSkippedCloudBlobValues();
+    const { willSync } = prepareTabSyncSignIn(userId, isCloudSyncEnabled(), this.panelLayout.getTabSyncHost());
+    if (!willSync) {
+      stopTabSync();
+      setCloudBlobApplyExclusions([]);
+      return;
+    }
+    setCloudBlobApplyExclusions(TAB_SYNCED_BLOB_KEYS);
+    // When tab sync stops for good (no deployment, an error), the blob's
+    // panel keys go back to cloud-prefs so panel sync keeps working.
+    startTabSync(userId, this.panelLayout.getTabSyncHost(), () => setCloudBlobApplyExclusions([]));
+  }
+
   public async init(webMcpController: AbortController | null): Promise<void> {
     const initStart = performance.now();
     markLcpDebug('wm:boot:app-init-start');
@@ -2830,6 +2858,8 @@ export class App {
     this.enforceFreeTierLimits();
 
     let _prevUserId: string | null = null;
+    // Whether the first settled auth state was seen (tab sync, #11141).
+    let _authSettledOnce = false;
     let _convexWatchHandoffGeneration = 0;
     // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders
     // on a false→true transition or an account change while still premium.
@@ -2924,6 +2954,10 @@ export class App {
           () => hasPendingCloudPrefsRetry(),
         );
         this.pendingPreferenceHandoffGeneration = preferenceHandoffGeneration;
+
+        // Before cloud-prefs records this sign-in: tab sync reads which
+        // account this browser's tabs came from.
+        this.startDashboardTabSync(userId);
 
         // Rebind Convex watches to the real Clerk userId (was bound to anon UUID at init)
         // destroyEntitlementSubscription deliberately PRESERVES the last
@@ -3094,12 +3128,23 @@ export class App {
         _convexWatchHandoffGeneration++;
         destroyEntitlementSubscription();
         destroySubscriptionWatch();
+        signOutTabSync(this.panelLayout.getTabSyncHost(), _prevUserId);
+        // After sign-out drops the panel values tab sync skipped, so lifting
+        // the exclusion does not apply the departing account's layout.
         cloudPrefsSignOut();
+        setCloudBlobApplyExclusions([]);
         resetEntitlementState();
         resetEntitlementVerification();
         this.tierPreferenceHandoff.clear();
         this.pendingPreferenceHandoffGeneration = undefined;
       }
+      if (userId === null && _prevUserId === null && !session.isPending && !_authSettledOnce) {
+        // The page loaded signed out: a session that ended with no page open
+        // to see it (expiry, a sign-out elsewhere) is a departure too, so tab
+        // changes made from here on are not filed under that account.
+        signOutTabSync(this.panelLayout.getTabSyncHost());
+      }
+      if (!session.isPending) _authSettledOnce = true;
       _prevUserId = userId;
       // Run after account handoff/reset so this pass cannot enforce the
       // previous user's entitlement against the new user's panels.
@@ -3847,6 +3892,7 @@ export class App {
     this.webMcpController = null;
     this.tierPreferenceHandoff.clear();
     this.pendingPreferenceHandoffGeneration = undefined;
+    stopTabSync();
     this.viewportHydrationReady = false;
     this.viewportHydrationReadyAt = 0;
     this.viewportTriggersArmed = false;

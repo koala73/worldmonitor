@@ -87,6 +87,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
       'shared/embed-access.ts',
       'shared/tab-focus-access.ts',
       'shared/tab-scope.ts',
+      'shared/dashboard-tab-sync.ts',
       'shared/desktop-key-access.js',
       'shared/legal.ts',
       'shared/agent-client-source.js',

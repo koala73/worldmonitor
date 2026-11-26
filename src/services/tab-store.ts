@@ -2,9 +2,10 @@ import type { PanelConfig } from '@/types';
 import { SITE_VARIANT } from '@/config/variant';
 import { ALL_PANELS } from '@/config/panels';
 import { isDynamicPanel, resetMissionPresetState } from '@/services/mission-presets';
-import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
+import { safeStorageGet, safeStorageGetChecked, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import { normalizeScope, type TabScope } from '../../shared/tab-scope';
 import { normalizePanelFilters, type PanelFilters } from './panel-filters';
+import { DASHBOARD_TAB_ID_PATTERN, DASHBOARD_TAB_NAME_MAX_LENGTH } from '../../shared/dashboard-tab-sync';
 
 /**
  * Dashboard tabs — named, persistent panel workspaces.
@@ -14,6 +15,10 @@ import { normalizePanelFilters, type PanelFilters } from './panel-filters';
  * while a tab is active, the live global state (STORAGE_KEYS.panels +
  * PANEL_ORDER_KEY) is the source of truth, and the snapshot is refreshed
  * when the user switches away (see PanelLayoutManager.snapshotActiveTab).
+ *
+ * Signed in on the web, tabs also sync with the account one record per tab
+ * (#11141; src/services/tab-cloud-sync.ts). The active tab id stays per
+ * device and is not synced.
  */
 export interface PanelTab {
   id: string;
@@ -47,14 +52,9 @@ export interface TabsState {
   tabs: PanelTab[];
 }
 
-/** Matches the dashboard tab rename input (`maxLength` on the visible control). */
-export const DASHBOARD_TAB_NAME_MAX_LENGTH = 40;
-
-/**
- * Stable tab IDs from `generateTabId()`. Agents must use these, never display names.
- * `Date.now().toString(36)` and the random suffix are lowercase base36.
- */
-export const DASHBOARD_TAB_ID_PATTERN = '^tab-[a-z0-9]+-[a-z0-9]+$';
+// Shared with the server's tab-sync validator (#11141). Agents must use tab
+// IDs, never display names.
+export { DASHBOARD_TAB_NAME_MAX_LENGTH, DASHBOARD_TAB_ID_PATTERN };
 export const DASHBOARD_TAB_ID_RE = new RegExp(DASHBOARD_TAB_ID_PATTERN);
 
 // Per-variant key: each variant has its own default panel set, so tabs
@@ -117,6 +117,22 @@ export function loadTabsState(): TabsState | null {
     return normalizeTabsState(JSON.parse(raw));
   } catch {
     return null;
+  }
+}
+
+/**
+ * One read of the stored tabs: `ok` false when storage could not be read,
+ * else the tabs the layout would load (null for none or an unloadable value).
+ */
+export function readStoredTabs(): { ok: false } | { ok: true; state: TabsState | null } {
+  const read = safeStorageGetChecked(TABS_STORAGE_KEY);
+  if (!read.ok) return { ok: false };
+  const raw = read.value;
+  if (!raw) return { ok: true, state: null };
+  try {
+    return { ok: true, state: normalizeTabsState(JSON.parse(raw)) };
+  } catch {
+    return { ok: true, state: null };
   }
 }
 

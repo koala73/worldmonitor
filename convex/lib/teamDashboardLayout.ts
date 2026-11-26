@@ -1,6 +1,7 @@
 import { ConvexError, v, type Infer } from "convex/values";
 import { normalizeScope } from "../../shared/tab-scope";
 import { isValidIso2 } from "./iso2";
+import { DASHBOARD_KEY_RE, MAX_DASHBOARD_PANELS } from "../../shared/dashboard-tab-sync";
 
 /**
  * The stored shape of a team dashboard (convex/teamDashboards.ts). Shared by
@@ -39,16 +40,16 @@ export const teamDashboardLayoutValidator = v.object({
 
 export type TeamDashboardLayout = Infer<typeof teamDashboardLayoutValidator>;
 
-const MAX_PANELS = 400;
+const MAX_PANELS = MAX_DASHBOARD_PANELS;
 const MAX_LAYERS = 200;
 // Mirror src/utils/panel-grid.ts (MAX_PANEL_ROW_SPAN, MAX_PANEL_COL_SPAN).
 const MAX_ROW_SPAN = 4;
 const MAX_COL_SPAN = 3;
-const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/;
+const KEY_RE = DASHBOARD_KEY_RE;
 const MAX_PANEL_FILTERS = 40;
 const MAX_PANEL_FILTER_VALUE_LENGTH = 200;
 
-function invalid(field: string): never {
+export function invalid(field: string): never {
   throw new ConvexError({ kind: "INVALID_LAYOUT", field });
 }
 
@@ -83,7 +84,7 @@ export function checkTeamDashboardLayout(layout: TeamDashboardLayout): void {
  * here anything it would drop or change is refused, since layouts are stored
  * verbatim.
  */
-function checkScope(scope: NonNullable<TeamDashboardLayout["scope"]>): void {
+export function checkScope(scope: NonNullable<TeamDashboardLayout["scope"]>): void {
   const normalized = normalizeScope(scope);
   if (
     !normalized ||
@@ -96,7 +97,7 @@ function checkScope(scope: NonNullable<TeamDashboardLayout["scope"]>): void {
   }
 }
 
-function checkPanelFilters(filters: NonNullable<TeamDashboardLayout["panelFilters"]>): void {
+export function checkPanelFilters(filters: NonNullable<TeamDashboardLayout["panelFilters"]>): void {
   if (filters.length > MAX_PANEL_FILTERS) invalid("panelFilters");
   const seen = new Set<string>();
   for (const filter of filters) {

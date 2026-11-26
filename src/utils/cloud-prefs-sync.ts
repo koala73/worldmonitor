@@ -17,6 +17,7 @@ import {
   ACCOUNT_PROVENANCE_SYNC_KEYS,
   CLOUD_SYNC_KEYS,
   resolveCloudBlobKeyAction,
+  type CloudBlobKeyAction,
   type CloudSyncKey,
 } from './sync-keys';
 import { isDesktopRuntime } from '@/services/runtime';
@@ -472,6 +473,17 @@ function setState(s: SyncState): void {
 function buildCloudBlob(): Record<string, string> | null {
   const blob: Record<string, string> = {};
   for (const key of CLOUD_SYNC_KEYS) {
+    // A key another subsystem owns whose row value the last apply skipped:
+    // the local copy may still be another account's (until tab sync applies
+    // this one's), so the row keeps its own value, or stays without one.
+    // Nothing skipped means no apply ran (local was already in step with the
+    // row) and the local copy is this account's. Leaving it out would delete
+    // it from the row, since an upload replaces the whole blob.
+    const skipped = _cloudApplyExclusions.has(key) ? _skippedCloudKeys.get(key) : undefined;
+    if (skipped) {
+      if (skipped.action.kind === 'set') blob[key] = skipped.action.value;
+      continue;
+    }
     const read = safeStorageGetChecked(key);
     if (!read.ok) return null;
     if (read.value !== null) blob[key] = key === PINNED_WEBCAMS_KEY
@@ -593,6 +605,81 @@ function clearForeignAccountState(userId: string): boolean {
   return true;
 }
 
+// Keys another subsystem owns for now. Synced dashboard tabs (#11141) carry
+// the panel layout per tab, so while tab sync runs the blob's panel keys,
+// which hold whichever tab another device last had open, must not land here.
+let _cloudApplyExclusions: ReadonlySet<string> = new Set();
+/**
+ * The last cloud apply's values for excluded keys, with the local value each
+ * replaced. If the owner stops (tab sync failing), the key still gets the
+ * cloud value it skipped, unless the local value has changed since.
+ */
+const _skippedCloudKeys = new Map<CloudSyncKey, { action: CloudBlobKeyAction; localAtSkip: string | null }>();
+let _skippedCloudSyncVersion: number | undefined;
+
+/**
+ * Stop (or, with an empty list, resume) applying these keys from the cloud
+ * blob. While the last cloud apply holds a skipped value for one, uploads
+ * send that row value instead of the device's copy. The local schema migration still
+ * applies them: only cloud-derived values are skipped. A key taken out of
+ * the list gets the value the last cloud apply skipped for it.
+ */
+export function setCloudBlobApplyExclusions(keys: readonly CloudSyncKey[]): void {
+  const next = new Set<string>(keys);
+  const released = [..._skippedCloudKeys.keys()].filter((key) => !next.has(key));
+  _cloudApplyExclusions = next;
+  if (released.length === 0) return;
+  const changedKeys: CloudSyncKey[] = [];
+  _suppressPatch = true;
+  try {
+    for (const key of released) {
+      const skipped = _skippedCloudKeys.get(key)!;
+      _skippedCloudKeys.delete(key);
+      const now = safeStorageGetChecked(key);
+      if (!now.ok || now.value !== skipped.localAtSkip) continue;
+      if (writeCloudKey(key, skipped.action) === 'changed') changedKeys.push(key);
+    }
+  } finally {
+    _suppressPatch = false;
+  }
+  dispatchCloudPrefsApplied(changedKeys, _skippedCloudSyncVersion);
+}
+
+/**
+ * Forget the cloud values the last apply skipped. They belong to the account
+ * that was signed in then; call this when another account signs in, before
+ * anything lifts the exclusions.
+ */
+export function dropSkippedCloudBlobValues(): void {
+  _skippedCloudKeys.clear();
+}
+
+/** Write one key's cloud value. The caller holds `_suppressPatch`. */
+function writeCloudKey(key: CloudSyncKey, action: CloudBlobKeyAction): 'changed' | 'same' | 'failed' {
+  // The pre-read decides whether to ANNOUNCE the key, and a failed read
+  // degrading to null answers wrongly in both directions: a `set` looks
+  // different when it was not, and a `remove` looks absent when it was
+  // present — so the deletion lands but is never announced, and consumers
+  // keep serving the removed preference until a reload (#7833 review).
+  //
+  // On an undeterminable pre-read this ANNOUNCES the key rather than
+  // aborting, which is a deliberate departure from the suggested fix. The
+  // write itself is separately checked, so storage is already correct; a
+  // spurious announcement just makes consumers re-read a key that did not
+  // change, which is a no-op. Aborting would fail a whole reconciliation
+  // over a recoverable read, and announcing self-heals.
+  if (action.kind === 'keep') return 'same';
+  const before = safeStorageGetChecked(key);
+  if (action.kind === 'set') {
+    const shouldAnnounce = !before.ok || before.value !== action.value;
+    if (!safeStorageSetChecked(key, action.value)) return 'failed';
+    return shouldAnnounce ? 'changed' : 'same';
+  }
+  const shouldAnnounce = !before.ok || before.value !== null;
+  if (!safeStorageRemoveChecked(key)) return 'failed';
+  return shouldAnnounce ? 'changed' : 'same';
+}
+
 /**
  * Write the cloud blob over local prefs. Returns false when a usable store
  * REJECTED one of the writes.
@@ -608,9 +695,17 @@ function clearForeignAccountState(userId: string): boolean {
  * `changedKeys` now records only writes that actually landed, so a consumer of
  * CLOUD_PREFS_APPLIED cannot re-read storage for a key that never changed.
  */
-function applyCloudBlob(data: Record<string, unknown>, syncVersion?: number): boolean {
+function applyCloudBlob(
+  data: Record<string, unknown>,
+  syncVersion?: number,
+  source: 'cloud' | 'local-migration' = 'cloud',
+): boolean {
   const changedKeys: CloudSyncKey[] = [];
   let allWritesLanded = true;
+  if (source === 'cloud') {
+    _skippedCloudKeys.clear();
+    _skippedCloudSyncVersion = syncVersion;
+  }
   _suppressPatch = true;
   try {
     for (const key of CLOUD_SYNC_KEYS) {
@@ -619,35 +714,14 @@ function applyCloudBlob(data: Record<string, unknown>, syncVersion?: number): bo
       // client during rolling deployments. See resolveCloudBlobKeyAction.
       const action = resolveCloudBlobKeyAction(key, data);
       if (action.kind === 'keep') continue;
-      // The pre-read decides whether to ANNOUNCE the key, and a failed read
-      // degrading to null answers wrongly in both directions: a `set` looks
-      // different when it was not, and a `remove` looks absent when it was
-      // present — so the deletion lands but is never announced, and consumers
-      // keep serving the removed preference until a reload (#7833 review).
-      //
-      // On an undeterminable pre-read this ANNOUNCES the key rather than
-      // aborting, which is a deliberate departure from the suggested fix. The
-      // write itself is separately checked, so storage is already correct; a
-      // spurious announcement just makes consumers re-read a key that did not
-      // change, which is a no-op. Aborting would fail a whole reconciliation
-      // over a recoverable read, and announcing self-heals.
-      if (action.kind === 'set') {
-        const before = safeStorageGetChecked(key);
-        const shouldAnnounce = !before.ok || before.value !== action.value;
-        if (safeStorageSetChecked(key, action.value)) {
-          if (shouldAnnounce) changedKeys.push(key);
-        } else {
-          allWritesLanded = false;
-        }
-      } else {
-        const before = safeStorageGetChecked(key);
-        const shouldAnnounce = !before.ok || before.value !== null;
-        if (safeStorageRemoveChecked(key)) {
-          if (shouldAnnounce) changedKeys.push(key);
-        } else {
-          allWritesLanded = false;
-        }
+      if (source === 'cloud' && _cloudApplyExclusions.has(key)) {
+        const local = safeStorageGetChecked(key);
+        if (local.ok) _skippedCloudKeys.set(key, { action, localAtSkip: local.value });
+        continue;
       }
+      const outcome = writeCloudKey(key, action);
+      if (outcome === 'changed') changedKeys.push(key);
+      else if (outcome === 'failed') allWritesLanded = false;
     }
   } finally {
     _suppressPatch = false;
@@ -773,7 +847,7 @@ function migrateLocalBlobIfNeeded(): PreparedCloudBlob | null {
     publisherDirectMarker.value === 'done',
   );
   const migratedData = migrated.data as Record<string, string>;
-  if (migratedData !== blob && !applyCloudBlob(migratedData)) {
+  if (migratedData !== blob && !applyCloudBlob(migratedData, undefined, 'local-migration')) {
     // The migrated blob did not land, so the local state is neither the old
     // snapshot nor the new one. Returning `blob` here — as an earlier round of
     // this fix did — hands callers a VALID PreparedCloudBlob, which they then
@@ -1351,6 +1425,8 @@ export function onSignOut(): void {
   _dirtyKeys.clear();
   if (!preservePersistedDirtyKeys) persistDirtyKeys();
   _dirtyKeysUserId = null;
+  // Skipped values belong to the account signing out; never apply them later.
+  _skippedCloudKeys.clear();
 
   // Preserve prefs; only clear sync metadata
   safeStorageRemove(KEY_SYNC_VERSION);

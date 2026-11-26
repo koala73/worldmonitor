@@ -319,7 +319,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "dpa": {"datePublished":"2026-08-20","dateModified":"2026-11-02"},
   "embed-live-map": {"datePublished":"2026-06-12","dateModified":"2026-09-05"},
   "eula": {"datePublished":"2026-08-20","dateModified":"2026-11-02"},
-  "features": {"datePublished":"2026-03-12","dateModified":"2026-11-17"},
+  "features": {"datePublished":"2026-03-12","dateModified":"2026-11-26"},
   "finance-data": {"datePublished":"2026-03-11","dateModified":"2026-11-12"},
   "gemini-antigravity": {"datePublished":"2026-11-01","dateModified":"2026-11-01"},
   "geographic-convergence": {"datePublished":"2026-03-12","dateModified":"2026-06-07"},

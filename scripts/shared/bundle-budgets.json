@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 456084
+    "raw": 458049
   },
   "chunks": {
     "analytics": {
-      "raw": 52318,
+      "raw": 52660,
       "files": 1
     },
     "auth-state": {
@@ -19,7 +19,7 @@
       "files": 1
     },
     "clerk": {
-      "raw": 26560,
+      "raw": 26884,
       "files": 1
     },
     "convex-client": {
@@ -47,7 +47,7 @@
       "files": 1
     },
     "i18n": {
-      "raw": 52560,
+      "raw": 51437,
       "files": 1
     },
     "i18n-url": {
@@ -55,7 +55,7 @@
       "files": 1
     },
     "main": {
-      "raw": 142780,
+      "raw": 144748,
       "files": 1
     },
     "map-layer-definitions": {
@@ -63,7 +63,7 @@
       "files": 1
     },
     "panels": {
-      "raw": 38224,
+      "raw": 38361,
       "files": 1
     },
     "runtime-config": {
@@ -71,7 +71,7 @@
       "files": 1
     },
     "safe-storage": {
-      "raw": 1209,
+      "raw": 1275,
       "files": 1
     },
     "sensitive-url-params": {
@@ -79,7 +79,7 @@
       "files": 1
     },
     "tab-store": {
-      "raw": 14621,
+      "raw": 14697,
       "files": 1
     },
     "tauri-bridge": {
@@ -87,7 +87,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 72651,
+      "raw": 72826,
       "files": 1
     },
     "theme-manager": {
@@ -101,11 +101,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1863741
+      "raw": 1899487
     },
     "chunks": {
       "App": {
-        "raw": 1023740,
+        "raw": 1055281,
         "files": 1
       },
       "ai-flow-settings": {
@@ -129,11 +129,11 @@
         "files": 1
       },
       "checkout": {
-        "raw": 15350,
+        "raw": 15402,
         "files": 1
       },
       "cloud-prefs-sync": {
-        "raw": 6992,
+        "raw": 7645,
         "files": 1
       },
       "continuous": {
@@ -141,7 +141,7 @@
         "files": 1
       },
       "corroboration": {
-        "raw": 45827,
+        "raw": 46530,
         "files": 1
       },
       "country-names": {
@@ -161,15 +161,15 @@
         "files": 1
       },
       "feeds": {
-        "raw": 193336,
+        "raw": 194576,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 196023,
+        "raw": 196349,
         "files": 1
       },
       "index": {
-        "raw": 40141,
+        "raw": 40661,
         "files": 2
       },
       "layout-batch": {
@@ -177,11 +177,11 @@
         "files": 1
       },
       "markets": {
-        "raw": 9518,
+        "raw": 9623,
         "files": 1
       },
       "news-credibility": {
-        "raw": 9393,
+        "raw": 9880,
         "files": 1
       },
       "panel-display-name": {
@@ -189,7 +189,7 @@
         "files": 1
       },
       "panel-gating": {
-        "raw": 6233,
+        "raw": 6314,
         "files": 1
       },
       "panel-storage": {
@@ -225,7 +225,7 @@
         "files": 1
       },
       "source-provenance": {
-        "raw": 190650,
+        "raw": 190688,
         "files": 1
       },
       "storage-facility-registry-store": {
