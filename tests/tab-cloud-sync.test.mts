@@ -807,6 +807,77 @@ describe('tab sync driver', () => {
     assert.ok(!host.state.tabs.some((t) => t.name === 'B private'));
   });
 
+  it("on a device that never synced, an unsynced account's tabs do not go to the next account", async () => {
+    __setTabSyncTransportForTests(async () => null);
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'Before anyone')] });
+    signIn('user_b', host);
+    await settle();
+    host.state.tabs.push(tab('tab-b-1', 'B private'));
+    signOutTabSync(host, 'user_b');
+
+    __resetTabSyncForTests();
+    const serverC = new FakeServer();
+    useServer(serverC);
+    signIn('user_c', host);
+    await settle();
+    assert.ok(serverC.calls.every((c) => c.changes.every((ch) => ch.record?.name !== 'B private')));
+    assert.ok(!host.state.tabs.some((t) => t.name === 'B private'));
+  });
+
+  it("an owner's edit made without a sync pass is not filed under the next unsynced account", async () => {
+    const serverA = server;
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    // Next load: user_a is back, but sync cannot run; it edits, then user_b signs in directly.
+    __resetTabSyncForTests();
+    __setTabSyncTransportForTests(async () => null);
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs[0]!.name = 'A edit';
+    __resetTabSyncForTests();
+    __setTabSyncTransportForTests(async () => null);
+    signIn('user_b', host);
+    await settle();
+    host.state.tabs.push(tab('tab-b-1', 'B private'));
+
+    __resetTabSyncForTests();
+    useServer(new FakeServer());
+    signIn('user_c', host);
+    await settle();
+    signOutTabSync(host, 'user_c');
+    const held = JSON.parse(localStorage.getItem(`worldmonitor-tabs-held-v1:${SITE_VARIANT}`) ?? '{}');
+    assert.deepEqual(held.user_a?.records.map((r: { id: string }) => r.id), ['tab-a-1']);
+    assert.deepEqual(held.user_b?.records.map((r: { id: string }) => r.id), ['tab-b-1']);
+  });
+
+  it('records a departure seen before the tabs load at the first pass', async () => {
+    const serverA = server;
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    __resetTabSyncForTests();
+    __setTabSyncTransportForTests(async () => null);
+    signIn('user_b', host);
+    await settle();
+    host.state.tabs.push(tab('tab-b-1', 'B private'));
+
+    // Next load: user_a signs in before the layout has its tabs.
+    __resetTabSyncForTests();
+    useServer(serverA);
+    class LateHost extends FakeHost {
+      ready = false;
+      override captureTabs(): TabsState { return this.ready ? super.captureTabs() : (null as unknown as TabsState); }
+    }
+    const late = new LateHost(host.state);
+    assert.equal(prepareTabSyncSignIn('user_a', true, late).willSync, true);
+    late.ready = true;
+    startTabSync('user_a', late);
+    await settle();
+    assert.ok(serverA.calls.every((c) => c.changes.every((ch) => ch.record?.name !== 'B private')));
+    assert.ok(!late.state.tabs.some((t) => t.name === 'B private'));
+  });
+
   it('keeps every tab on the device when they do not all fit in the held store', async () => {
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
     signIn('user_a', host);

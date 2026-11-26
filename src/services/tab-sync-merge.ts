@@ -58,16 +58,22 @@ export interface TabSyncMeta {
    */
   signedOut?: boolean;
   /**
-   * Per tab with no base: the version its last write would get (1 for a
-   * new tab). A write whose answer never arrived (the session stopped) may
-   * still have landed; a row at or past this version is this device's write.
+   * Per tab with no base: its last write, by the version it would get (1
+   * for a new tab) and the record's hash. A write whose answer never arrived
+   * (the session stopped) may still have landed; a row at or past that
+   * version is this device's write or a later edit of it.
    */
-  sent?: Record<string, number>;
+  sent?: Record<string, SentWrite>;
   /**
    * Tabs made or edited under another account that signed in here but never
    * finished a sync pass, by that account. They are its work, not `userId`'s.
    */
   foreign?: Record<string, string>;
+}
+
+export interface SentWrite {
+  version: number;
+  hash: string;
 }
 
 /** Tabs kept for an account that is not signed in, with their sync bases. */
@@ -77,7 +83,7 @@ export interface HeldTabs {
   carried: Record<string, DashboardTabRecordPanel[]>;
   /** Deletes that never reached the account. */
   tombstones: string[];
-  sent: Record<string, number>;
+  sent: Record<string, SentWrite>;
 }
 
 export function emptyTabSyncMeta(userId: string | null): TabSyncMeta {
@@ -323,7 +329,7 @@ export function mergeTabs(input: MergeInput): MergeResult {
     if (input.meta.carried[t.id]) held.carried[t.id] = input.meta.carried[t.id]!;
     if (!from) return;
     if (from.base[t.id]) held.base[t.id] = from.base[t.id]!;
-    if (from.sent?.[t.id] !== undefined) held.sent[t.id] = from.sent[t.id]!;
+    if (from.sent?.[t.id]) held.sent[t.id] = from.sent[t.id]!;
   };
 
   // Work done under an account whose sync never ran is that account's. Its
@@ -375,11 +381,11 @@ export function mergeTabs(input: MergeInput): MergeResult {
       for (const t of hold) holdFor(prev.userId, t, prev);
       // Its deletes that never reached it go with it too.
       for (const id of prev.tombstones) {
-        if (!prev.base[id] && prev.sent?.[id] === undefined) continue;
+        if (!prev.base[id] && !prev.sent?.[id]) continue;
         const held = (heldBy[prev.userId] ??= emptyHeldTabs());
         held.tombstones.push(id);
         if (prev.base[id]) held.base[id] = prev.base[id]!;
-        if (prev.sent?.[id] !== undefined) held.sent[id] = prev.sent[id]!;
+        if (prev.sent?.[id]) held.sent[id] = prev.sent[id]!;
       }
     }
     tabs = kept.map((t) => {
@@ -407,7 +413,7 @@ export function mergeTabs(input: MergeInput): MergeResult {
       const base = restore.base[id];
       if (base && !meta.base[id]) meta.base[id] = base;
       const sent = restore.sent[id];
-      if (sent !== undefined && meta.sent?.[id] === undefined) (meta.sent ??= {})[id] = sent;
+      if (sent && !meta.sent?.[id]) (meta.sent ??= {})[id] = sent;
     };
     for (const t of restore.tabs) {
       if (present.has(t.id) || meta.tombstones.includes(t.id)) {
@@ -474,7 +480,7 @@ export function mergeTabs(input: MergeInput): MergeResult {
     if (tombstones.has(id) && !local) {
       if (remoteLive && base && row!.version === base.version) {
         changes.push({ change: { tabId: id, baseVersion: base.version, record: null }, hash: null });
-      } else if (remoteLive && !base && sent !== undefined && row!.version === sent) {
+      } else if (remoteLive && !base && sent && row!.version === sent.version) {
         // Deleted while its first write was unanswered, and that write landed.
         changes.push({ change: { tabId: id, baseVersion: row!.version, record: null }, hash: null });
       } else if (remoteLive) {
@@ -504,14 +510,13 @@ export function mergeTabs(input: MergeInput): MergeResult {
       }
       if (!base) {
         if (!row) push(local, undefined);
-        else if (remoteLive && sent !== undefined && row.version >= sent) {
-          // This device's unanswered write landed (and maybe was edited
-          // since). The local copy holds this device's later work.
-          if (localHash === hashTabRecord(row.record!)) replaced.set(id, adopt(local, row));
-          else push(local, row.version);
+        else if (remoteLive && sent && row.version >= sent.version && localHash !== sent.hash) {
+          // This device's unanswered write landed, and the tab was edited
+          // here since: that later work is pushed over the row.
+          push(local, row.version);
         } else if (remoteLive) {
-          // The server holds this tab but this device has no base for it (lost
-          // sync state): the server's copy is the known-good one.
+          // The row is this device's landed write (or a later edit of it
+          // elsewhere), or this device lost its sync state: take the row.
           replaced.set(id, adopt(local, row));
         } else push(local, row.version);
         continue;

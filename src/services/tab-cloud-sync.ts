@@ -20,6 +20,7 @@ import {
   type HeldTabs,
   type MergeMode,
   type PendingTabChange,
+  type SentWrite,
   type TabSyncMeta,
 } from './tab-sync-merge';
 
@@ -140,10 +141,14 @@ function parseTabSyncMeta(raw: string | null): TabSyncMeta | null {
   }
 }
 
-function parseSent(value: unknown): Record<string, number> {
-  const sent: Record<string, number> = {};
+function parseSent(value: unknown): Record<string, SentWrite> {
+  const sent: Record<string, SentWrite> = {};
   if (isRecord(value)) {
-    for (const [id, version] of Object.entries(value)) if (Number.isInteger(version)) sent[id] = version as number;
+    for (const [id, entry] of Object.entries(value)) {
+      if (isRecord(entry) && Number.isInteger(entry.version) && typeof entry.hash === 'string') {
+        sent[id] = { version: entry.version as number, hash: entry.hash };
+      }
+    }
   }
   return sent;
 }
@@ -161,7 +166,7 @@ interface StoredHeld {
   records: Array<{ id: string; record: DashboardTabRecord }>;
   base: TabSyncMeta['base'];
   tombstones: string[];
-  sent: Record<string, number>;
+  sent: Record<string, SentWrite>;
 }
 
 /** The held store; null when it exists but cannot be read, so no write replaces it. */
@@ -340,6 +345,8 @@ let session: Session | null = null;
 let prepared: Pending | null = null;
 /** Set when the deployment lacks the functions; sync stays off for the page. */
 let unavailableForPage = false;
+/** An account that left before its tabs could be read; recorded at the first pass. */
+let departure: string | null = null;
 
 /**
  * Read which account this browser's tabs belong to, before cloud-prefs
@@ -355,8 +362,11 @@ export function prepareTabSyncSignIn(userId: string, enabled: boolean, host?: Ta
   // wrong merge mode; tabs stay local instead.
   const signedIn = safeStorageGetChecked(SIGNED_IN_KEY);
   if (!signedIn.ok) return { willSync: false };
-  if (signedIn.value && signedIn.value !== userId) recordDeparture(signedIn.value, host);
-  safeStorageSet(SIGNED_IN_KEY, userId);
+  // Before the layout has its tabs the departure cannot be read; the first
+  // pass records it, and the stored account changes only once it is.
+  departure = null;
+  if (signedIn.value && signedIn.value !== userId && !recordDeparture(signedIn.value, host)) departure = signedIn.value;
+  else safeStorageSet(SIGNED_IN_KEY, userId);
   const stored = safeStorageGetChecked(META_KEY);
   if (!stored.ok) return { willSync: false };
   const meta = parseTabSyncMeta(stored.value);
@@ -543,7 +553,10 @@ function unpushedOf(host: TabSyncHost, meta: TabSyncMeta): string[] {
   } catch {
     return [];
   }
-  if (!local) return [];
+  return local ? unpushedIn(local, meta) : [];
+}
+
+function unpushedIn(local: TabsState, meta: TabSyncMeta): string[] {
   return local.tabs
     .filter((t) => {
       const base = meta.base[t.id];
@@ -553,29 +566,45 @@ function unpushedOf(host: TabSyncHost, meta: TabSyncMeta): string[] {
 }
 
 /**
- * `leaver` signed in here and is gone. When the stored state is another
- * account's (the leaver's sync never finished a pass), the leaver's unpushed
- * work is marked as its own, so it is held for it rather than pushed to the
- * account the state belongs to. Work that account left behind (`heldBack`)
- * stays that account's.
+ * `leaver` signed in here and is gone. Its work that never reached its
+ * account is marked as its own, so a later sign-in holds it for it:
+ * - when the stored state is the leaver's, as `heldBack` (unless it signed
+ *   out, which wrote that already);
+ * - otherwise (its sync never finished a pass), in `foreign`, leaving the
+ *   work the state's own account left behind (`heldBack`) to that account.
+ * Returns false when the tabs could not be read, so the caller tries again.
  */
-function recordDeparture(leaver: string, host: TabSyncHost | undefined): void {
-  if (!host) return;
+function recordDeparture(leaver: string, host: TabSyncHost | undefined): boolean {
+  if (!host) return false;
   const read = safeStorageGetChecked(META_KEY);
-  if (!read.ok) return;
+  if (!read.ok) return false;
+  let local: TabsState | null;
+  try {
+    local = host.captureTabs();
+  } catch {
+    local = null;
+  }
+  if (!local) return false;
   const meta = parseTabSyncMeta(read.value) ?? emptyTabSyncMeta(null);
-  if (meta.userId === leaver) return;
-  const theirs = new Set(meta.heldBack ?? []);
   const foreign = { ...(meta.foreign ?? {}) };
+  const unpushed = unpushedIn(local, meta).filter((id) => !foreign[id]);
+  if (meta.userId === leaver) {
+    if (meta.signedOut) return true;
+    meta.heldBack = unpushed;
+    saveTabSyncMeta(meta);
+    return true;
+  }
+  const theirs = new Set(meta.heldBack ?? []);
   let marked = false;
-  for (const id of unpushedOf(host, meta)) {
-    if (theirs.has(id) || foreign[id]) continue;
+  for (const id of unpushed) {
+    if (theirs.has(id)) continue;
     foreign[id] = leaver;
     marked = true;
   }
-  if (!marked) return;
+  if (!marked) return true;
   meta.foreign = foreign;
   saveTabSyncMeta(meta);
+  return true;
 }
 
 /**
@@ -586,6 +615,8 @@ function recordDeparture(leaver: string, host: TabSyncHost | undefined): void {
 export function signOutTabSync(host: TabSyncHost, userId?: string | null): void {
   const running = session !== null && session.meta !== null;
   stopTabSync();
+  // An earlier account's departure still waiting for the tabs: record it now.
+  if (departure && departure !== userId && recordDeparture(departure, host)) departure = null;
   const signedIn = safeStorageGetChecked(SIGNED_IN_KEY);
   const leaver = userId ?? (signedIn.ok ? signedIn.value : null);
   if (signedIn.ok && signedIn.value) safeStorageSet(SIGNED_IN_KEY, '');
@@ -605,6 +636,7 @@ export function __resetTabSyncForTests(): void {
   stopTabSync();
   prepared = null;
   unavailableForPage = false;
+  departure = null;
 }
 
 export function isTabSyncActive(): boolean {
@@ -634,7 +666,7 @@ export function recordTabDeleted(tabId: string): void {
   if (!meta) return;
   // Never written to the server: nothing to delete. A write still
   // unanswered (`sent`) may have landed; the merge deletes it if so.
-  if (!meta.base[tabId] && meta.sent?.[tabId] === undefined) return;
+  if (!meta.base[tabId] && !meta.sent?.[tabId]) return;
   if (!meta.tombstones.includes(tabId)) meta.tombstones.push(tabId);
   saveTabSyncMeta(meta);
   notifyTabsChangedLocally();
@@ -644,7 +676,9 @@ function metaForPass(s: Session): TabSyncMeta {
   if (s.pending?.mode === 'account-switch') return s.pending.previousMeta;
   if (s.meta) return s.meta;
   const stored = loadTabSyncMeta();
-  return stored && stored.userId === s.userId ? stored : emptyTabSyncMeta(s.userId);
+  if (stored && stored.userId === s.userId) return stored;
+  // Another account's state (or none): only its marks of whose tabs are whose carry over.
+  return { ...emptyTabSyncMeta(s.userId), ...(stored?.foreign ? { foreign: stored.foreign } : {}) };
 }
 
 /** The subscription's rows with this session's newer writes laid over. */
@@ -692,6 +726,17 @@ async function runPass(s: Session): Promise<void> {
 async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
   const local = s.host.captureTabs();
   if (!local) return;
+  if (departure && departure !== s.userId) {
+    if (!recordDeparture(departure, s.host)) return;
+    departure = null;
+    safeStorageSet(SIGNED_IN_KEY, s.userId);
+    // The switch was prepared before the marks existed.
+    if (s.pending) {
+      const marked = loadTabSyncMeta();
+      s.pending.previousMeta = { ...s.pending.previousMeta, ...(marked?.foreign ? { foreign: marked.foreign } : {}) };
+      if (s.pending.previousMeta.userId === marked?.userId && marked?.heldBack) s.pending.previousMeta.heldBack = marked.heldBack;
+    }
+  }
   const pending = s.pending;
   const result = mergeTabs({
     local,
@@ -723,13 +768,18 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
   }
   // A write can land with its answer lost (the session stops first); note
   // the version it would give each tab that has no base yet.
-  for (const { change } of result.changes) {
-    if (change.record && !meta.base[change.tabId]) (meta.sent ??= {})[change.tabId] = (change.baseVersion ?? 0) + 1;
+  for (const { change, hash } of result.changes) {
+    if (change.record && hash && !meta.base[change.tabId]) {
+      (meta.sent ??= {})[change.tabId] = { version: (change.baseVersion ?? 0) + 1, hash };
+    }
   }
   // Put-back tabs leave the held store once this pass stored them here;
   // otherwise once the server holds them.
   if (saveTabSyncMeta(meta) && stored && result.changed) releaseRestored(s, null, result.restored);
-  if (result.changes.length === 0) return;
+  if (result.changes.length === 0) {
+    releaseRestored(s, meta);
+    return;
+  }
 
   let conflicts = 0;
   for (let i = 0; i < result.changes.length; i += MAX_DASHBOARD_TAB_CHANGES_PER_CALL) {

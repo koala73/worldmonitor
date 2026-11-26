@@ -107,6 +107,26 @@ describe('PanelLayoutManager tab sync host', () => {
     expect(calls).toEqual(['filters', 'panels', 'heal', 'refresh', 'cap']);
   });
 
+  it('reports whether the merged tabs were stored', () => {
+    const self = {
+      tabsState: { activeTabId: 'tab-a1-b1', tabs: [tab('tab-a1-b1', 'Main', false)] } as TabsState,
+      ctx: { isDestroyed: false },
+      healStoredTabSnapshots: vi.fn(),
+      panelTabBar: { refresh: vi.fn() },
+      updateTabCapLock: vi.fn(),
+    };
+    const apply = method<(next: TabsState, activeChanged: boolean) => boolean>('applySyncedTabs');
+    const next: TabsState = { activeTabId: 'tab-a1-b1', tabs: [tab('tab-a1-b1', 'Main', true)] };
+    expect(apply.call(self, next, false)).toBe(true);
+    const spy = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError'); });
+    try {
+      expect(apply.call(self, { ...next, tabs: [tab('tab-a1-b1', 'Renamed', true)] }, false)).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(apply.call({ ...self, ctx: { isDestroyed: true } }, next, false)).toBe(false);
+  });
+
   it('ignores a merge that lands after the layout is torn down', () => {
     const self = {
       tabsState: { activeTabId: 'tab-a1-b1', tabs: [tab('tab-a1-b1', 'Main', false)] } as TabsState,

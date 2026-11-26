@@ -523,6 +523,28 @@ describe('mergeTabs account switch', () => {
     assert.deepEqual(ids(after.state), [signedOut.id]);
   });
 
+  it("adopts another device's edit made after this device's unanswered write landed", () => {
+    const mine = tab('tab-a-1', { name: 'Mine' });
+    const sentHash = hashTabRecord(captureTabRecord(mine));
+    const theirs = { ...mine, name: 'Renamed elsewhere' };
+    const out = mergeTabs(input({
+      local: { activeTabId: mine.id, tabs: [mine] },
+      meta: { ...emptyTabSyncMeta('user_a'), sent: { [mine.id]: { version: 1, hash: sentHash } } },
+      rows: [row(mine.id, 2, captureTabRecord(theirs))],
+    }));
+    assert.equal(out.state.tabs[0]!.name, 'Renamed elsewhere');
+    assert.deepEqual(out.changes, []);
+    // Edited here after that write: this device's later work is pushed.
+    const later = { ...mine, name: 'Edited here' };
+    const out2 = mergeTabs(input({
+      local: { activeTabId: later.id, tabs: [later] },
+      meta: { ...emptyTabSyncMeta('user_a'), sent: { [mine.id]: { version: 1, hash: sentHash } } },
+      rows: [row(mine.id, 2, captureTabRecord(theirs))],
+    }));
+    assert.equal(out2.changes[0]!.change.record!.name, 'Edited here');
+    assert.equal(out2.changes[0]!.change.baseVersion, 2);
+  });
+
   it('reports only the held tabs it put back', () => {
     const here = tab('tab-a-1', { name: 'On the device' });
     const out = mergeTabs(input({
