@@ -43,11 +43,15 @@ const OTHER_LANGUAGE_WORDS = new Set([
   'là', 'có', 'được', 'cho', 'với', 'không', 'tại', 'trong', 'ya', 'wa', 'kwa', 'katika',
 ]);
 
-// Hausa, matched in any case: Hausa outlets title-case headlines, and none of
-// these is an English word or name particle ("da", "a" and "ga" are left out).
+// Hausa function words. None is an English word or name particle ("da", "a"
+// and "ga" are left out). Hausa outlets title-case headlines, so the words
+// that are not also names count capitalized too; "Amma", "Wanda", "Bayan",
+// "Inda", "Wata", "Wani", "Domin" and "Tare" are names in English headlines.
+const HAUSA_TITLE_CASE_WORDS = new Set([
+  'cikin', 'kuma', 'daga', 'saboda', 'yadda', 'zai', 'za', 'ta', 'suka', 'wadda', 'kafin',
+]);
 const HAUSA_WORDS = new Set([
-  'cikin', 'kuma', 'amma', 'wani', 'wata', 'daga', 'bayan', 'domin', 'saboda', 'yadda', 'tare', 'zai', 'za', 'ta',
-  'suka', 'wanda', 'wadda', 'inda', 'kafin',
+  ...HAUSA_TITLE_CASE_WORDS, 'amma', 'wani', 'wata', 'bayan', 'domin', 'tare', 'wanda', 'inda',
 ]);
 
 const ENGLISH_WORDS = new Set([
@@ -97,7 +101,7 @@ function headlineInOtherLanguage(title) {
   for (const word of words) {
     const lower = word.toLowerCase();
     if (HAUSA_HOOKED_WORD.test(word)) hooked.add(lower);
-    if (HAUSA_WORDS.has(lower)) other.add(lower);
+    if (HAUSA_WORDS.has(word) || HAUSA_TITLE_CASE_WORDS.has(lower)) other.add(lower);
     // Case matters: "I" is English and "i" is Norwegian or Polish; "De" opens a name.
     else if (OTHER_LANGUAGE_WORDS.has(word)) other.add(word);
     else if (ENGLISH_WORDS.has(word.toLowerCase())) english++;

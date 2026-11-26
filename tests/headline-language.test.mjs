@@ -43,6 +43,8 @@ describe('headlineInOtherLanguage', () => {
       'We’ve seen it; they’re done',
       'Kano emir backs Ɗan Fodio university plan',
       'Ɗan Fodio University: Ɗan Fodio statue unveiled',
+      'Amma Asante joins Wanda Sykes project',
+      'Bayan Inda and Wata Domin named to Tare council',
       'Gunmen kill 12 in Zamfara as governor flies to Abuja',
       '',
     ]) assert.equal(headlineInOtherLanguage(title), false, title);
