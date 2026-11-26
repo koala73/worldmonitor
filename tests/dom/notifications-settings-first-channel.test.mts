@@ -25,6 +25,7 @@ const channelMocks = vi.hoisted(() => ({
   getChannelsData: vi.fn(),
   saveAlertRules: vi.fn(),
   setEmailChannel: vi.fn(),
+  setWebhookChannel: vi.fn(),
 }));
 
 const { IncompatibleDeliveryError } = vi.hoisted(() => ({ IncompatibleDeliveryError: class IncompatibleDeliveryError extends Error {} }));
@@ -41,7 +42,7 @@ vi.mock('@/services/notification-channels', () => ({
   saveAlertRules: channelMocks.saveAlertRules,
   createPairingToken: vi.fn(),
   setEmailChannel: channelMocks.setEmailChannel,
-  setWebhookChannel: vi.fn(),
+  setWebhookChannel: channelMocks.setWebhookChannel,
   setTeamsChannel: vi.fn(),
   sendChannelTest: vi.fn(),
   startSlackOAuth: vi.fn(),
@@ -150,6 +151,10 @@ beforeEach(() => {
   });
   channelMocks.setEmailChannel.mockReset().mockImplementation(async () => {
     store.channels = [...store.channels.filter((c) => c.channelType !== 'email'), connected('email')];
+  });
+  channelMocks.setWebhookChannel.mockReset().mockImplementation(async () => {
+    store.channels = [...store.channels.filter((c) => c.channelType !== 'webhook'), { channelType: 'webhook', verified: true, linkedAt: 1, webhookSigned: true }];
+    return { signingSecret: 'whsec_test_secret' };
   });
 });
 
@@ -316,5 +321,52 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(store.rule?.channels).toContain('email');
+  });
+  it('stores a later opt-out even when the earlier connect save lands after it', async () => {
+    gate.tier = true;
+    store.rule = rule({ enabled: false, channels: [] });
+    let release!: () => void;
+    store.saveGates.push(new Promise<void>((resolve) => { release = resolve; }));
+    const container = await mount();
+
+    container.querySelector<HTMLButtonElement>('#usConnectEmail')!.click();
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1));
+    toggle(container).checked = false;
+    toggle(container).dispatchEvent(new Event('change', { bubbles: true }));
+    // The opt-out's debounced save fires while the connect save is still held.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    release();
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-channel-type="email"]')?.classList.contains('us-notif-ch-on')).toBe(true);
+      expect(lastSaved()?.enabled).toBe(false);
+    }, { timeout: 3000 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(store.rule).toMatchObject({ enabled: false, channels: ['email'] });
+  });
+
+  it('keeps the webhook signing secret on screen when the failed rule save is retried', async () => {
+    gate.tier = true;
+    store.rule = rule({ enabled: false, channels: [] });
+    store.saveGates.push('reject');
+    const container = await mount();
+
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.test/wm';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    const retry = await vi.waitFor(() => {
+      const el = container.querySelector<HTMLButtonElement>('[data-channel-type="webhook"] [role="alert"] button');
+      expect(el, 'retry on the webhook row').not.toBeNull();
+      return el!;
+    });
+    expect(container.querySelector('#usWebhookSecret')?.textContent).toBe('whsec_test_secret');
+
+    retry.click();
+    await vi.waitFor(() => {
+      expect(store.rule).toMatchObject({ enabled: true, channels: ['webhook'] });
+      expect(container.querySelector('[data-channel-type="webhook"] [role="alert"]')).toBeNull();
+    }, { timeout: 3000 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(container.querySelector('#usWebhookSecret')?.textContent, 'secret still shown').toBe('whsec_test_secret');
   });
 });
