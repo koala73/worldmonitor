@@ -23,9 +23,8 @@ test.beforeEach(async ({ page }, testInfo) => {
     const RealDate = Date;
     const now = () => RealDate.now() + offset;
     globalThis.Date = class extends RealDate {
-      constructor(...args: ConstructorParameters<typeof Date>) {
-        if (args.length === 0) super(now());
-        else super(...args);
+      constructor(...args: unknown[]) {
+        super(...((args.length === 0 ? [now()] : args) as [number]));
       }
       static now() { return now(); }
     } as DateConstructor;
