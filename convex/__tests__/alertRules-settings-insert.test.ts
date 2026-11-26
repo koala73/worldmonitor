@@ -85,7 +85,7 @@ describe("settings saves on a variant with no rule (#10976)", () => {
     expect(await storedRule(t)).toMatchObject({ enabled: true, digestMode: "daily" });
   });
 
-  test("choosing a channel in settings afterwards enables the rule and keeps quiet hours", async () => {
+  test("switching alerts on in settings afterwards enables the rule with its channel and keeps quiet hours", async () => {
     const t = convexTest(schema, modules);
     await seedPro(t);
     await t.mutation(internal.alertRules.setQuietHoursForUser, {
@@ -101,16 +101,22 @@ describe("settings saves on a variant with no rule (#10976)", () => {
     expect(await relayRuleUsers(t)).toEqual([USER]);
   });
 
-  test("the activation alerts step afterwards enables the rule with its push channel", async () => {
+  test("the activation alerts step afterwards enables the rule, scoped to followed countries", async () => {
     const t = convexTest(schema, modules);
     await seedPro(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("followedCountries", { userId: USER, country: "AE", addedAt: 1 });
+    });
     await t.mutation(internal.alertRules.setDigestSettingsForUser, {
       userId: USER, variant: VARIANT, digestMode: "realtime",
     });
     await t.mutation(internal.alertRules.setNotificationConfigForUser, {
       userId: USER, variant: VARIANT, enabled: true, sensitivity: "critical", channels: ["web_push"],
+      seedCountriesFromFollowed: true,
     });
-    expect(await storedRule(t)).toMatchObject({ enabled: true, channels: ["web_push"], digestMode: "realtime" });
+    expect(await storedRule(t)).toMatchObject({
+      enabled: true, channels: ["web_push"], countries: ["AE"], digestMode: "realtime",
+    });
     expect(await relayRuleUsers(t)).toEqual([USER]);
   });
 
