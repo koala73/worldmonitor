@@ -120,6 +120,8 @@ const WM = {
 };
 
 const CHECKED_ON = '16 October 2026';
+// Every cited price source and its amounts were re-fetched on this date (#11144).
+const PRICES_CHECKED_ON = '26 November 2026';
 
 const ENTRIES = [
   {
@@ -416,6 +418,7 @@ export const SHORTLIST_PAGE_SEEDS = [
     },
     datePublished: '2026-09-04',
     checkedOn: CHECKED_ON,
+    pricesCheckedOn: PRICES_CHECKED_ON,
     intro: `This shortlist ranks eight geopolitical risk intelligence platforms for 2026 on what a buyer can check before a sales call. World Monitor ranks #1 because its dashboard is free without signup, Pro starts at ${WM.pro}, and it ships a REST API and an MCP server. Dataminr, Recorded Future, Seerist and Crisis24 are sales-led and win on depth, speed or assistance. Factal, Liveuamap and Off-Nadir Delta fill narrower jobs for newsrooms, map readers and satellite-linked event research.`,
     keyTakeaways: [
       `Entry prices span a free dashboard and five-figure annual contracts. World Monitor Pro costs ${WM.pro}, Liveuamap PRO starts at $7 per month, and Seerist's marketplace listing is $75,000 a year for five named users.`,
@@ -792,11 +795,11 @@ export function renderShortlistPage(page, { tpl, baseUrl, lastmod, snapshotDate,
     ...helpers.renderMeasurement(page.slug, snapshotDate, escapeHtml),
     '',
     `      <h2>${escapeHtml(page.entriesHeading)}</h2>`,
-    ...page.entries.flatMap((entry, index) => renderEntry(entry, index + 1, page.checkedOn, escapeHtml)),
+    ...page.entries.flatMap((entry, index) => renderEntry(entry, index + 1, page.pricesCheckedOn, escapeHtml)),
     '',
     '      <h2>Side-by-side comparison</h2>',
     matrix,
-    `      <p class="source">Prices and capabilities were checked on ${escapeHtml(page.checkedOn)} and can change. Enterprise figures marked undisclosed are negotiated, not list prices. Third-party marketplace or procurement figures are cited inline where used.</p>`,
+    `      <p class="source">Prices were checked on ${escapeHtml(page.pricesCheckedOn)} and capabilities on ${escapeHtml(page.checkedOn)}, and both can change. Enterprise figures marked undisclosed are negotiated, not list prices. Third-party marketplace or procurement figures are cited inline where used.</p>`,
     '',
     '      <h2>Which platform fits your use case</h2>',
     `      <p>${inline(page.useCaseIntro)}</p>`,
