@@ -26,8 +26,11 @@ describe('alert replay set (#10976)', () => {
       it('has a recorded matcher answer for every question the replay asks', () => {
         assert.deepEqual(missing, [], 'run tests/helpers/record-alert-replay-matches.mts');
       });
+      it('runs the reworded-repeat check without an error', () => {
+        assert.deepEqual(rows.filter((r) => r.repeatCheckError).map((r) => `${r.wording.title}: ${r.repeatCheckError}`), []);
+      });
 
-      for (const { wording, loggedInputsScore, score, reaches, corroboratedBy } of rows) {
+      for (const { wording, loggedInputsScore, score, reaches, corroboratedBy, repeatOf } of rows) {
         describe(`${wording.originPublisher ?? wording.source} copy queued at ${wording.seenAt}`, () => {
           it('scores the logged inputs as production logged them', () => {
             // A tier-table fix changes what the logged inputs score today; the
@@ -37,14 +40,20 @@ describe('alert replay set (#10976)', () => {
           });
           it('scores and routes as today\'s code does', () => {
             assert.deepEqual(
-              { score, reaches, corroboratedBy: [...corroboratedBy].sort() },
-              { score: wording.scoreNow, reaches: wording.reaches, corroboratedBy: [...(wording.corroboratedBy ?? [])].sort() },
+              { score, reaches, corroboratedBy: [...corroboratedBy].sort(), repeatOf },
+              {
+                score: wording.scoreNow, reaches: wording.reaches, corroboratedBy: [...(wording.corroboratedBy ?? [])].sort(),
+                repeatOf: wording.repeatOf ?? null,
+              },
             );
           });
         });
       }
 
-      const alerted = rows.some((r) => r.reaches === 'realtime');
+      // An alert counts when it reaches the edition's subscriber and the
+      // reworded-repeat check does not skip it. An earlier alert kept in the
+      // set as context never counts.
+      const alerted = rows.some((r) => !r.wording.context && r.reaches === 'realtime' && !r.repeatOf);
       if (incident.knownMiss) {
         it(`still misses: ${incident.knownMiss}`, () => {
           assert.equal(alerted, false, 'the miss is fixed: drop knownMiss');
