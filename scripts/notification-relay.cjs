@@ -2039,6 +2039,25 @@ async function shadowLogRequest(route, commands) {
   }
 }
 
+// Score-log writes still in flight, so SIGTERM can let them land before exit.
+const shadowLogWrites = new Set();
+function trackShadowLog(request) {
+  shadowLogWrites.add(request);
+  request.finally(() => shadowLogWrites.delete(request));
+  return request;
+}
+
+// True when every score-log write in flight settled within timeoutMs.
+async function drainShadowLog(timeoutMs) {
+  let timer;
+  const timedOut = new Promise((done) => { timer = setTimeout(done, timeoutMs, false); });
+  try {
+    return await Promise.race([Promise.allSettled([...shadowLogWrites]).then(() => true), timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // One row per dequeued rss_alert. It is written at dequeue with outcome
 // { stopped: 'pending' }, because the queue pop already removed the event and
 // a relay killed mid-delivery must still leave it for the daily miss audit
@@ -2064,19 +2083,19 @@ function startShadowLog(event) {
   });
   const pending = member({ stopped: 'pending' });
   // The prune and the 30-day EXPIRE bound growth even if the rolling prune stalls.
-  const written = shadowLogRequest('pipeline', [
+  const written = trackShadowLog(shadowLogRequest('pipeline', [
     ['ZADD', SHADOW_SCORE_LOG_KEY, String(dequeuedAt), pending],
     ['ZREMRANGEBYSCORE', SHADOW_SCORE_LOG_KEY, '-inf', String(dequeuedAt - SHADOW_LOG_TTL * 1000)],
     ['EXPIRE', SHADOW_SCORE_LOG_KEY, '2592000'],
-  ]);
+  ]));
   // Sent only after the pending write settles, so its ZREM cannot land first
   // and leave two rows.
   return async (outcome) => {
     await written;
-    await shadowLogRequest('multi-exec', [
+    await trackShadowLog(shadowLogRequest('multi-exec', [
       ['ZREM', SHADOW_SCORE_LOG_KEY, pending],
       ['ZADD', SHADOW_SCORE_LOG_KEY, String(dequeuedAt), member(outcome)],
-    ]);
+    ]));
   };
 }
 
@@ -2665,6 +2684,11 @@ async function popNextEvent(pollNumber) {
 // The relay polls RPOP every 1s when idle; processes immediately when messages exist.
 // Advantage over pub/sub: messages survive relay restarts and are not lost.
 
+// Set on SIGTERM so the loop pops nothing it could not log.
+let shuttingDown = false;
+// Bounded, so a stalled Upstash cannot hold a deploy's shutdown.
+const SHUTDOWN_LOG_WAIT_MS = 2000;
+
 async function subscribe() {
   console.log('[relay] Starting notification relay...');
   console.log('[relay] UPSTASH_URL set:', !!UPSTASH_URL, '| CONVEX_URL set:', !!CONVEX_URL, '| RELAY_SECRET set:', !!RELAY_SECRET);
@@ -2673,7 +2697,7 @@ async function subscribe() {
   let lastDrainMs = 0;
   let pollNumber = 0;
   const DRAIN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-  while (true) {
+  while (!shuttingDown) {
     try {
       // Periodically flush batch_on_wake held events regardless of queue activity
       const nowMs = Date.now();
@@ -2720,8 +2744,10 @@ if (require.main === module) {
   // Also once shortly after boot, so redeploys cannot keep pushing the run out.
   setTimeout(runMissAudit, 10 * 60_000).unref();
   setInterval(runMissAudit, MISS_AUDIT_INTERVAL_MS);
-  process.on('SIGTERM', () => {
+  process.on('SIGTERM', async () => {
     console.log('[relay] SIGTERM received — shutting down');
+    shuttingDown = true;
+    if (!(await drainShadowLog(SHUTDOWN_LOG_WAIT_MS))) console.warn('[relay] Exiting with score-log writes still in flight');
     process.exit(0);
   });
 
@@ -2794,6 +2820,7 @@ module.exports = {
   popNextEvent,
   holdEvent,
   QUIET_HELD_MAX,
+  drainShadowLog,
   // Exported so the re-queue suite drives the real retry path.
   requeueAfterRulesFailure,
   requeueAfterChannelsFailure,
