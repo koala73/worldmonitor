@@ -720,6 +720,9 @@ const STANDALONE_KEYS = {
   simulationPackageLatest:  'forecast:simulation-package:latest',
   simulationOutcomeLatest:  'forecast:simulation-outcome:latest',
   newsThreatSummary:        'news:threat:summary:v1',
+  // What the relay's cross-wording matcher checks did over the last hour (#11426).
+  // No dashboard reads it; recordCount is the number of checks that reached a provider.
+  newsCrossWordingMatcher:  'news:cross-wording-health:v1',
   climateNews:              'climate:news-intelligence:v1',
   pizzint:                  'intelligence:pizzint:seed:v1',
   // Retained PizzINT observations (docs/architecture/pizzint-history.md). No
@@ -2513,6 +2516,15 @@ const SEED_META = {
     },
   },
   euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap. Data freshness is tracked separately via content-age (STALE_CONTENT) — see seed-fsi-eu.mjs.
+  // The relay's classify cycle writes it every 15 minutes. It reads SEED_ERROR
+  // (with the most frequent failure as errorCode) when, over the last hour, at
+  // least two checks failed and more than half of the checks failed, and
+  // NOT_CONFIGURED on a relay without OPENROUTER_API_KEY (#11426).
+  newsCrossWordingMatcher: {
+    key: 'seed-meta:news:cross-wording-health', maxStaleMin: 60,
+    activationKey: 'seed-activated:news:cross-wording-health',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 11426, activationKey: 'seed-activated:news:cross-wording-health' },
+  },
   newsThreatSummary: { key: 'seed-meta:news:threat-summary',          maxStaleMin: 60 }, // relay classify writes every 15min (27-48min across restarts); 60min budget sits under the 2h payload TTL so this goes stale before the key vanishes
   shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval (was 30 = 2×, too tight on relay hiccup)
   diseaseOutbreaks:  { key: 'seed-meta:health:disease-outbreaks',      maxStaleMin: 2880 }, // daily seed; 2880 = 48h = 2x interval
@@ -3069,6 +3081,9 @@ const ON_DEMAND_KEYS = new Set([
   // shipping-webhook-worker Railway service is provisioned. The worker SETs the
   // durable marker on its first tick that reads the score feed; strict from then on.
   'shippingWebhookWorker',
+  // Deployment-order bridge (#11426): the relay SETs the marker on its first
+  // classify cycle after this reader ships; strict from then on.
+  'newsCrossWordingMatcher',
   'sanctionsChanges',
   // Same deployment-order bridge as chinaCoverage: Vercel can ship this reader
   // before seed-bundle-macro's next 08:00 UTC tick publishes the first CBR
@@ -3316,6 +3331,7 @@ const ACTIVATION_MARKERS = {
   countryHistory: SEED_META.countryHistory.activationKey,
   companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
   shippingWebhookWorker: SEED_META.shippingWebhookWorker.activationKey,
+  newsCrossWordingMatcher: SEED_META.newsCrossWordingMatcher.activationKey,
   sanctionsChanges: SEED_META.sanctionsChanges.activationKey,
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
@@ -3826,6 +3842,9 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // Zero active webhook subscribers is a valid state; the status key is still
   // written every tick, so a missing key stays a hard failure.
   'shippingWebhookWorker',
+  // An hour with no critical headline to check is a valid state; the relay still
+  // writes the payload every classify cycle, so a missing key stays a hard failure.
+  'newsCrossWordingMatcher',
   // Both Toronto CAD sources publish an explicit {records:[]} envelope on a
   // quiet tick. Keep zero valid without softening a missing payload after each
   // activation marker exists.

@@ -20,8 +20,9 @@ function harness({ module: loaded = true } = {}) {
   const lines = [];
   const corroboration = {
     recordSightings: async (sightings) => { recorded.push(...sightings); },
-    crossWordingFamilies: async (candidates) => {
+    crossWordingFamilies: async (candidates, opts = {}) => {
       checked.push(...candidates);
+      opts.report?.({ checks: candidates.length, matches: candidates.length, failures: {}, unchecked: 0 });
       return new Map(candidates.map((c) => [c.title, { families: ['a', 'b', 'c', 'd', 'e'] }]));
     },
   };
@@ -41,7 +42,11 @@ function harness({ module: loaded = true } = {}) {
     const all = new Map(items.map((item) => [item.title, { source: 'Feed', publishedAt: Date.now(), corroborationCount: 1, ...item.meta }]));
     return vm.runInContext('crossWordingFamilies', context)(chunk, levels, all, observed);
   };
-  return { run, recorded, checked, lines, refill: () => vm.runInContext('crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS', context) };
+  return {
+    run, recorded, checked, lines,
+    refill: () => vm.runInContext('crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS', context),
+    reports: () => JSON.parse(vm.runInContext('JSON.stringify(crossWordingReports)', context)),
+  };
 }
 
 const titlesOf = (rows) => rows.map((row) => row.title);
@@ -97,8 +102,88 @@ describe('relay cross-wording corroboration (#10977)', () => {
     assert.equal((await h.run(batch('fourth'))).size, 6);
   });
 
+  it('reports each call, with the copies the cycle budget left unchecked (#11426)', async () => {
+    const h = harness();
+    const batch = (prefix) => Array.from({ length: 6 }, (_, i) => ({ title: `${prefix} ${i}`, level: 'critical' }));
+    await h.run(batch('first'));
+    await h.run(batch('second'));
+    await h.run(batch('third'));
+    const reports = h.reports();
+    assert.deepEqual(reports.map(({ checks, unchecked }) => ({ checks, unchecked })), [
+      { checks: 6, unchecked: 0 }, { checks: 2, unchecked: 4 }, { checks: 0, unchecked: 6 },
+    ]);
+    assert.ok(reports.every((r) => Number.isFinite(r.at)));
+  });
+
   it('adds nothing when the module failed to load', async () => {
     const h = harness({ module: false });
     assert.equal((await h.run([{ title: 'critical under the bar', level: 'critical' }])).size, 0);
+  });
+});
+
+// The classify cycle's health write (#11426).
+const writerStart = relay.indexOf('let crossWordingHealthResumed');
+const writerEnd = relay.indexOf('\nasync function seedClassify(', writerStart);
+const corroborationModule = await import('../scripts/lib/news-corroboration.mjs');
+
+function writerHarness({ env = { OPENROUTER_API_KEY: 'key' }, stored = new Map(), setOk = true, reports = [] } = {}) {
+  assert.ok(writerStart > 0 && writerEnd > writerStart);
+  const writes = [];
+  const lines = [];
+  const context = {
+    newsCorroborationPromise: Promise.resolve(corroborationModule),
+    crossWordingReports: reports,
+    upstashGet: async (key) => stored.get(key) ?? null,
+    upstashSet: async (key, value, ttl) => { writes.push({ key, value, ttl }); if (setOk) stored.set(key, value); return setOk; },
+    upstashPipeline: async (commands) => { writes.push({ commands }); return commands.map(() => ({ result: 'OK' })); },
+    process: { env }, console: { log: (l) => lines.push(l), warn: (...a) => lines.push(a.join(' ')) },
+    Date, Number, Array, Boolean, JSON,
+  };
+  vm.createContext(context);
+  vm.runInContext(relay.slice(writerStart, writerEnd), context);
+  return { write: () => vm.runInContext('writeCrossWordingHealth()', context), writes, lines, stored, reports };
+}
+
+describe('relay cross-wording health write (#11426)', () => {
+  it('writes the payload, then seed-meta, then the activation marker', async () => {
+    const at = Date.now() - 60_000;
+    const h = writerHarness({ reports: [{ at, checks: 3, matches: 0, failures: { EMBED_HTTP_402: 3 }, unchecked: 0 }] });
+    await h.write();
+    assert.deepEqual(h.writes.map((w) => w.key ?? w.commands[0].slice(0, 2).join(' ')), [
+      'news:cross-wording-health:v1', 'seed-meta:news:cross-wording-health', 'SET seed-activated:news:cross-wording-health',
+    ]);
+    assert.equal(JSON.stringify(h.writes[2].commands), JSON.stringify([['SET', 'seed-activated:news:cross-wording-health', '1', 'NX']]));
+    assert.equal(h.writes[0].ttl, 7 * 86_400);
+    assert.equal(h.writes[1].ttl, 7 * 86_400);
+    const meta = h.writes[1].value;
+    assert.equal(meta.sourceState, 'degraded');
+    assert.equal(meta.errorCode, 'EMBED_HTTP_402');
+    assert.equal(meta.recordCount, 3);
+    assert.match(h.lines.join('\n'), /\[news-corroboration\].*"health":"degraded".*EMBED_HTTP_402/);
+  });
+
+  it('reads unavailable on a relay without an OpenRouter key', async () => {
+    const h = writerHarness({ env: {} });
+    await h.write();
+    assert.equal(h.writes[1].value.sourceState, 'unavailable');
+  });
+
+  it('keeps seed-meta and the marker when the payload write fails', async () => {
+    const h = writerHarness({ setOk: false });
+    await h.write();
+    assert.deepEqual(h.writes.map((w) => w.key), ['news:cross-wording-health:v1']);
+  });
+
+  it('resumes the hour the previous process recorded, once', async () => {
+    const earlier = Date.now() - 30 * 60_000;
+    const stored = new Map([['news:cross-wording-health:v1', {
+      reports: [{ at: earlier, checks: 2, matches: 0, failures: { JUDGE_HTTP_402: 2 }, unchecked: 0 }, 'junk'],
+    }]]);
+    const h = writerHarness({ stored, reports: [{ at: Date.now() - 60_000, checks: 1, matches: 0, failures: { JUDGE_HTTP_402: 1 }, unchecked: 0 }] });
+    await h.write();
+    assert.equal(h.writes[1].value.sourceState, 'degraded');
+    assert.equal(h.writes[1].value.recordCount, 3);
+    await h.write();
+    assert.equal(h.reports.length, 2, 'the stored hour is read back only on the first write');
   });
 });

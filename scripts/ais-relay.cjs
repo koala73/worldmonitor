@@ -5738,6 +5738,15 @@ function recordAlertLatency(latency, { severity, importanceScore, variant, sourc
 const CROSS_WORDING_MAX_CHECKS = 8;
 let crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS;
 
+// What each matcher call's checks did (#11426), from classify cycles and build
+// passes alike. The cycle publishes the last hour as news:cross-wording-health:v1.
+const CROSS_WORDING_REPORT_RETENTION_MS = 2 * 60 * 60_000;
+const crossWordingReports = [];
+function noteCrossWordingReport(report, at = Date.now()) {
+  crossWordingReports.push({ at, ...report });
+  while (crossWordingReports.length && crossWordingReports[0].at < at - CROSS_WORDING_REPORT_RETENTION_MS) crossWordingReports.shift();
+}
+
 // Publisher families of the other wordings of each critical copy under the
 // realtime bar (#10977). High copies only corroborate; they are never boosted.
 async function crossWordingFamilies(chunk, acceptedLevels, allTitles, observedPublishers) {
@@ -5765,10 +5774,13 @@ async function crossWordingFamilies(chunk, acceptedLevels, allTitles, observedPu
   await corroboration.recordSightings(sightings);
   const checked = candidates.slice(0, Math.max(0, crossWordingChecksLeft));
   crossWordingChecksLeft -= checked.length;
-  if (checked.length < candidates.length) {
-    console.log(`[news-corroboration] ${JSON.stringify({ unchecked: candidates.length - checked.length, reason: 'budget' })}`);
+  const overBudget = candidates.length - checked.length;
+  if (overBudget > 0) {
+    console.log(`[news-corroboration] ${JSON.stringify({ unchecked: overBudget, reason: 'budget' })}`);
   }
-  return corroboration.crossWordingFamilies(checked);
+  return corroboration.crossWordingFamilies(checked, {
+    report: (r) => noteCrossWordingReport({ ...r, unchecked: r.unchecked + overBudget }),
+  });
 }
 
 async function seedClassifyForVariant(variant, seenTitles) {
@@ -6177,6 +6189,43 @@ async function seedClassifyForVariant(variant, seenTitles) {
   return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled, digestBuildAt };
 }
 
+// Publishes the cross-wording matcher's last hour (#11426) once per classify
+// cycle, on every exit, so a relay that stops writing reads STALE_SEED. The
+// first write after a restart resumes the hour the previous process recorded.
+let crossWordingHealthResumed = false;
+async function writeCrossWordingHealth() {
+  try {
+    const corroboration = await newsCorroborationPromise;
+    if (!corroboration) return;
+    const key = corroboration.CROSS_WORDING_HEALTH_KEY;
+    if (!crossWordingHealthResumed) {
+      const previous = await upstashGet(key);
+      crossWordingHealthResumed = true;
+      const before = crossWordingReports[0]?.at ?? Date.now();
+      const resumed = (Array.isArray(previous?.reports) ? previous.reports : [])
+        .filter((r) => r && typeof r === 'object' && Number.isFinite(r.at) && r.at < before);
+      crossWordingReports.unshift(...resumed);
+    }
+    const now = Date.now();
+    const { payload, meta } = corroboration.summarizeCrossWordingHealth(crossWordingReports, {
+      now, configured: Boolean(process.env.OPENROUTER_API_KEY),
+    });
+    const ttl = corroboration.CROSS_WORDING_HEALTH_TTL_S;
+    // seed-meta advances only after the payload lands.
+    if (!await upstashSet(key, payload, ttl)) {
+      console.warn('[news-corroboration] health write failed');
+      return;
+    }
+    if (!await upstashSet(corroboration.CROSS_WORDING_HEALTH_META_KEY, meta, ttl)) return;
+    await upstashPipeline([['SET', corroboration.CROSS_WORDING_HEALTH_ACTIVATION_KEY, '1', 'NX']]);
+    if (meta.sourceState === 'degraded') {
+      console.warn(`[news-corroboration] ${JSON.stringify({ health: 'degraded', errorCode: meta.errorCode, checks: payload.checks, failed: payload.failed, failures: payload.failures })}`);
+    }
+  } catch (e) {
+    console.warn('[news-corroboration] health write error:', e?.message || e);
+  }
+}
+
 async function seedClassify() {
   if (classifyInFlight) return;
   classifyInFlight = true;
@@ -6276,6 +6325,7 @@ async function seedClassify() {
   } catch (e) {
     console.warn('[Classify] Seed error:', e?.message || e);
   } finally {
+    await writeCrossWordingHealth();
     classifyInFlight = false;
   }
 }

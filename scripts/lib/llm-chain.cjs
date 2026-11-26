@@ -147,6 +147,9 @@ const LLM_PROVIDERS = [
  * @param {Record<string, unknown>} [opts.jsonSchema] - JSON schema for the reply, sent to `invoke`
  *   providers (anthropic) as structured output. OpenAI-compatible attempts take theirs from `extraBody`.
  * @param {string} [opts.stage] - llm_call telemetry surface tag (#4944 U5)
+ * @param {(attempts: Array<{ provider: string, ok: boolean, reason: string | null }>) => void} [opts.onAttempts]
+ *   Called once before returning, with every provider attempt in order, so a
+ *   caller can tell why the chain returned null (`reason` is `http_402`, `timeout`, ...).
  * @returns {Promise<string|null>} Generated text, or null if all providers fail
  */
 async function callLLM(systemPrompt, userPrompt, opts = {}) {
@@ -161,6 +164,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     extraBody,
     jsonSchema,
     stage = 'llm-chain',
+    onAttempts,
   } = opts;
   const allowedSet = allowedProviders ? new Set(allowedProviders) : null;
   const skipSet = skipProviders ? new Set(skipProviders) : null;
@@ -173,7 +177,12 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
 
   const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
   const events = [];
+  const attempts = [];
   let attemptIndex = 0;
+  const finish = (text) => {
+    try { onAttempts?.(attempts); } catch { /* a caller's hook never changes the result */ }
+    return text;
+  };
 
   for (const provider of chain) {
     if (allowedSet && !allowedSet.has(provider.name)) continue;
@@ -192,6 +201,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     // attempts get an event and advance the fallback index.
     const t0 = Date.now();
     const record = (ok, extra = {}) => {
+      attempts.push({ provider: provider.name, ok, reason: typeof extra.reason === 'string' ? extra.reason : null });
       events.push(buildLlmCallEvent({
         provider: provider.name, model, stage, ok,
         durationMs: Date.now() - t0, promptChars, maxTokens,
@@ -222,7 +232,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
         console.log(`[llm-chain] ${provider.name} OK (${text.length} chars)`);
         record(true, result.usage);
         void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
-        return text;
+        return finish(text);
       }
 
       const resp = await fetch(apiUrl, {
@@ -271,7 +281,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
       console.log(`[llm-chain] ${provider.name} OK (${text.length} chars)`);
       record(true, usage);
       void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
-      return text;
+      return finish(text);
     } catch (err) {
       console.warn(`[llm-chain] ${provider.name} failed: ${err.message}`);
       const status = typeof err?.status === 'number' ? err.status : null;
@@ -282,7 +292,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
 
   console.warn('[llm-chain] all providers failed');
   void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
-  return null;
+  return finish(null);
 }
 
 module.exports = { callLLM, stripReasoningPreamble };
