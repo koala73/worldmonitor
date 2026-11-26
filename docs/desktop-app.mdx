@@ -241,6 +241,8 @@ Updating is notify-and-download: the app tells you a new version exists and link
 
 Update prompts are dismissable per-version — dismissing v2.5.0 won't suppress v2.6.0 notifications. One World Monitor binary ships and every variant is selected in-app, so the updater resolves the download by OS and architecture alone (`/api/download?platform=…`) rather than by variant.
 
+Linux AppImages also carry AppImage update information pointing at the latest GitHub Release, so [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate), AppImageLauncher and similar tools can update them in place and download only the changed blocks. Each release publishes a `.zsync` file next to each AppImage for this.
+
 A version the updater cannot parse is reported as `version_unparsable` and never treated as "up to date" — silently concluding "no update" from an unreadable version is exactly how a single malformed release tag could stop every client updating (#5908).
 
 The `/api/version` endpoint reads the latest GitHub Release tag and caches the result at the edge for 5 minutes (`s-maxage=300`, served stale for up to 60 s while revalidating and for up to an hour if GitHub errors), so version checks don't hit the GitHub API on every request.
