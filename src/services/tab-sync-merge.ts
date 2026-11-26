@@ -231,6 +231,8 @@ export interface MergeResult {
   changed: boolean;
   /** Account switch: the previous account's unpushed tabs, taken out of `state`. */
   held: HeldTabs | null;
+  /** Ids from `restore` now in `state`. */
+  restored: string[];
 }
 
 function freshDefaultTab(input: MergeInput): PanelTab {
@@ -289,7 +291,11 @@ export function mergeTabs(input: MergeInput): MergeResult {
     const heldBack = input.meta.signedOut ? new Set(input.meta.heldBack ?? []) : null;
     const kept: PanelTab[] = [];
     const hold: PanelTab[] = [];
-    if (input.previousSyncKnown !== false) {
+    if (input.previousSyncKnown === false) {
+      // The previous account signed in before tab sync: nothing says which
+      // tabs it synced, so all of them are kept for it.
+      hold.push(...tabs);
+    } else {
       for (const t of tabs) {
         const base = prev.base[t.id];
         const synced = !!base && base.hash === hashTabRecord(captureTabRecord(t, prev.carried[t.id]));
@@ -321,11 +327,13 @@ export function mergeTabs(input: MergeInput): MergeResult {
     }
   }
 
+  const restored: string[] = [];
   if (input.restore) {
     const present = new Set(tabs.map((t) => t.id));
     for (const t of input.restore.tabs) {
       if (present.has(t.id)) continue;
       present.add(t.id);
+      restored.push(t.id);
       tabs.push(t);
       changed = true;
       const base = input.restore.base[t.id];
@@ -447,5 +455,6 @@ export function mergeTabs(input: MergeInput): MergeResult {
     activeChanged: activeTabId !== originalActive || activeContentChanged,
     changed,
     held,
+    restored,
   };
 }

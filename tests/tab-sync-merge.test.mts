@@ -505,6 +505,16 @@ describe('mergeTabs account switch', () => {
     assert.deepEqual(ids(after.state), [signedOut.id]);
   });
 
+  it('reports only the held tabs it put back', () => {
+    const here = tab('tab-a-1', { name: 'On the device' });
+    const out = mergeTabs(input({
+      local: { activeTabId: here.id, tabs: [here] }, rows: [],
+      restore: { tabs: [tab('tab-a-1', { name: 'Held' }), tab('tab-a-2')], base: {}, carried: {} },
+    }));
+    assert.deepEqual(out.restored, ['tab-a-2']);
+    assert.equal(out.state.tabs.find((t) => t.id === 'tab-a-1')!.name, 'On the device');
+  });
+
   it('puts held tabs back with their bases, so an edit is pushed, not replaced', () => {
     const a1 = tab('tab-a-1');
     const meta = syncedMeta([a1], 3, 'user_a');

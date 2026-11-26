@@ -2,10 +2,11 @@ import type { PanelConfig } from '@/types';
 import { SITE_VARIANT } from '@/config/variant';
 import { getConvexApi, getConvexClient, waitForConvexAuthForUser } from '@/services/convex-client';
 import type { TabsState } from '@/services/tab-store';
-import { safeStorageGetChecked, safeStorageSet } from '@/utils/safe-storage';
+import { safeStorageGetChecked, safeStorageSet, safeStorageSetChecked } from '@/utils/safe-storage';
 import {
   MAX_DASHBOARD_TAB_CHANGES_PER_CALL,
   type DashboardTabChange,
+  type DashboardTabRecord,
   type DashboardTabRow,
   type SyncDashboardTabsResult,
 } from '../../shared/dashboard-tab-sync';
@@ -13,6 +14,7 @@ import {
   captureTabRecord,
   emptyTabSyncMeta,
   hashTabRecord,
+  applyTabRecord,
   mergeTabs,
   type HeldTabs,
   type MergeMode,
@@ -65,6 +67,7 @@ const META_KEY = `worldmonitor-tabs-sync-v1:${SITE_VARIANT}`;
 // reached that account. They come back at its next sign-in.
 const HELD_KEY = `worldmonitor-tabs-held-v1:${SITE_VARIANT}`;
 const MAX_HELD_TABS = 50;
+const MAX_HELD_ACCOUNTS = 5;
 // cloud-prefs-sync.ts records the account at every sign-in. It is read
 // before that sign-in overwrites it, as the previous account when this
 // browser has no tab-sync state yet.
@@ -126,24 +129,31 @@ function saveTabSyncMeta(meta: TabSyncMeta): void {
   safeStorageSet(META_KEY, JSON.stringify(meta));
 }
 
-function isStoredTab(value: unknown): value is TabsState['tabs'][number] {
-  return isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string'
-    && isRecord(value.panelSettings) && Array.isArray(value.panelOrder) && Array.isArray(value.bottomSet);
+/**
+ * Held tabs as stored: each tab's record (what the server would hold, a few
+ * hundred bytes) and its sync base. A held tab is rebuilt from its record
+ * when it comes back.
+ */
+interface StoredHeld {
+  records: Array<{ id: string; record: DashboardTabRecord }>;
+  base: TabSyncMeta['base'];
 }
 
-function loadHeld(): Record<string, HeldTabs> {
+function loadHeld(): Record<string, StoredHeld> {
   const raw = safeStorageGetChecked(HELD_KEY).value;
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return {};
-    const out: Record<string, HeldTabs> = {};
+    const out: Record<string, StoredHeld> = {};
     for (const [userId, entry] of Object.entries(parsed)) {
-      if (!isRecord(entry) || !Array.isArray(entry.tabs)) continue;
-      const tabs = entry.tabs.filter(isStoredTab);
-      if (tabs.length === 0) continue;
-      const base = parseTabSyncMeta(JSON.stringify({ base: entry.base, carried: entry.carried }));
-      out[userId] = { tabs, base: base?.base ?? {}, carried: base?.carried ?? {} };
+      if (!isRecord(entry) || !Array.isArray(entry.records)) continue;
+      const records = entry.records.filter((r): r is StoredHeld['records'][number] =>
+        isRecord(r) && typeof r.id === 'string' && isRecord(r.record)
+        && typeof r.record.name === 'string' && Array.isArray(r.record.panels));
+      if (records.length === 0) continue;
+      const base = parseTabSyncMeta(JSON.stringify({ base: entry.base }))?.base ?? {};
+      out[userId] = { records, base };
     }
     return out;
   } catch {
@@ -151,27 +161,51 @@ function loadHeld(): Record<string, HeldTabs> {
   }
 }
 
-function saveHeld(held: Record<string, HeldTabs>): void {
-  safeStorageSet(HELD_KEY, JSON.stringify(held));
+function saveHeld(held: Record<string, StoredHeld>): boolean {
+  return safeStorageSetChecked(HELD_KEY, JSON.stringify(held));
 }
 
-/** Keep an account's held tabs, newest last, replacing older copies of a tab. */
-function holdTabs(userId: string, add: HeldTabs): void {
+/**
+ * Keep an account's held tabs, replacing older copies of a tab. Returns
+ * false when they could not be stored: the caller must then keep them.
+ */
+function holdTabs(userId: string, add: HeldTabs): boolean {
   const all = loadHeld();
-  const prev = all[userId] ?? { tabs: [], base: {}, carried: {} };
-  const ids = new Set(add.tabs.map((t) => t.id));
-  const tabs = [...prev.tabs.filter((t) => !ids.has(t.id)), ...add.tabs].slice(-MAX_HELD_TABS);
-  const keep = new Set(tabs.map((t) => t.id));
-  const pick = <T>(rec: Record<string, T>) => Object.fromEntries(Object.entries(rec).filter(([id]) => keep.has(id)));
-  all[userId] = { tabs, base: pick({ ...prev.base, ...add.base }), carried: pick({ ...prev.carried, ...add.carried }) };
-  saveHeld(all);
-}
-
-function releaseHeld(userId: string): void {
-  const all = loadHeld();
-  if (!all[userId]) return;
+  const prev = all[userId] ?? { records: [], base: {} };
+  const records = add.tabs.map((t) => ({ id: t.id, record: captureTabRecord(t, add.carried[t.id]) }));
+  const ids = new Set(records.map((r) => r.id));
+  const merged = [...prev.records.filter((r) => !ids.has(r.id)), ...records].slice(-MAX_HELD_TABS);
+  const keep = new Set(merged.map((r) => r.id));
+  const base = Object.fromEntries(Object.entries({ ...prev.base, ...add.base }).filter(([id]) => keep.has(id)));
   delete all[userId];
+  all[userId] = { records: merged, base };
+  // The accounts held for longest go first.
+  for (const key of Object.keys(all).slice(0, Math.max(0, Object.keys(all).length - MAX_HELD_ACCOUNTS))) delete all[key];
+  return saveHeld(all);
+}
+
+/** Forget held tabs that are back on the device. */
+function releaseHeld(userId: string, ids: readonly string[]): void {
+  const all = loadHeld();
+  const entry = all[userId];
+  if (!entry || ids.length === 0) return;
+  const gone = new Set(ids);
+  const records = entry.records.filter((r) => !gone.has(r.id));
+  if (records.length === 0) delete all[userId];
+  else all[userId] = { records, base: Object.fromEntries(Object.entries(entry.base).filter(([id]) => !gone.has(id))) };
   saveHeld(all);
+}
+
+/** Rebuild held tabs for the merge from their records. */
+function heldForMerge(stored: StoredHeld, currentPanelSettings: Record<string, PanelConfig>): HeldTabs {
+  const held: HeldTabs = { tabs: [], base: {}, carried: {} };
+  for (const { id, record } of stored.records) {
+    const { tab, carried } = applyTabRecord(undefined, record, currentPanelSettings, id);
+    held.tabs.push(tab);
+    if (carried.length > 0) held.carried[id] = carried;
+    if (stored.base[id]) held.base[id] = stored.base[id]!;
+  }
+  return held;
 }
 
 async function convexTransport(userId: string): Promise<TabSyncTransport | 'auth-timeout' | null> {
@@ -212,7 +246,7 @@ interface Pending {
   /** For an account switch: the previous account's sync state. */
   previousMeta: TabSyncMeta;
   /** This account's tabs an earlier switch held, to put back. */
-  restore: HeldTabs | null;
+  restore: StoredHeld | null;
 }
 
 interface Session {
@@ -272,6 +306,13 @@ export function prepareTabSyncSignIn(userId: string, enabled: boolean): { willSy
   const stored = safeStorageGetChecked(META_KEY);
   if (!stored.ok) return { willSync: false };
   const meta = parseTabSyncMeta(stored.value);
+  if (meta?.userId === userId && (meta.signedOut || meta.heldBack)) {
+    // This account is back: the marks from its last sign-out no longer
+    // describe this device, even if sync never completes a pass this time.
+    delete meta.signedOut;
+    delete meta.heldBack;
+    saveTabSyncMeta(meta);
+  }
   let previous: string | null;
   let previousSyncKnown: boolean;
   if (meta?.userId) {
@@ -577,12 +618,15 @@ async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
     userId: s.userId,
     previousSyncKnown: pending?.previousSyncKnown ?? true,
     localOnly: s.localOnly,
-    restore: pending?.restore ?? null,
+    restore: pending?.restore ? heldForMerge(pending.restore, s.host.currentPanelSettings()) : null,
   });
+  // Store held tabs before the layout drops them. If they cannot be stored,
+  // nothing is applied or pushed: they stay on the device.
+  if (result.held && pending?.previousMeta.userId && !holdTabs(pending.previousMeta.userId, result.held)) {
+    throw new Error("could not keep the previous account's tabs on this device");
+  }
   s.pending = null;
-  // Store held tabs before the layout drops them, and release what came back.
-  if (result.held && pending?.previousMeta.userId) holdTabs(pending.previousMeta.userId, result.held);
-  if (pending?.restore) releaseHeld(s.userId);
+  releaseHeld(s.userId, result.restored);
   const meta = { ...result.meta, userId: s.userId };
   s.meta = meta;
   if (result.changed) {
@@ -652,6 +696,7 @@ function settle(
         if (result.version > 0) learn(s, { tabId: result.tabId, version: result.version, deleted: true, createdAt: now, updatedAt: now });
       } else if (pending.hash) {
         meta.base[result.tabId] = { version: result.version, hash: pending.hash };
+        s.absent.delete(result.tabId);
         learn(s, { tabId: result.tabId, version: result.version, deleted: false, record, createdAt: now, updatedAt: now });
         if (s.deletedUnsynced.delete(result.tabId) && !meta.tombstones.includes(result.tabId)) {
           meta.tombstones.push(result.tabId);

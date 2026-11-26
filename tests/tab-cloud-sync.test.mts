@@ -557,6 +557,88 @@ describe('tab sync driver', () => {
     assert.equal(server.rows.get('tab-a-1')!.record!.name, 'Mine');
   });
 
+  it('signing back in clears the last sign-out, even if sync never runs a pass', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    signOutTabSync(host);
+    // Next load: user_a is back but tab sync cannot reach the deployment.
+    __resetTabSyncForTests();
+    __setTabSyncTransportForTests(async () => null);
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs[0]!.name = 'A secret edit';
+    // Next load: a direct switch to user_b.
+    __resetTabSyncForTests();
+    const serverB = new FakeServer();
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    assert.ok(serverB.calls.every((c) => c.changes.every((ch) => ch.record?.name !== 'A secret edit')));
+  });
+
+  it("keeps a pre-sync account's tabs for it instead of dropping them", async () => {
+    localStorage.setItem('wm-last-signed-in-as', 'user_a');
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1', 'A work')] });
+    signIn('user_b', host);
+    await settle();
+    assert.ok(!host.state.tabs.some((t) => t.name === 'A work'), 'not shown to user_b');
+    signOutTabSync(host);
+    useServer(new FakeServer());
+    signIn('user_a', host);
+    await settle();
+    assert.ok(host.state.tabs.some((t) => t.name === 'A work'));
+  });
+
+  it('shows a remote edit to a tab recreated after a conflict found no row', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2')] });
+    signIn('user_a', host);
+    await settle();
+    for (const name of ['x2', 'x3']) { host.state.tabs[0]!.name = name; server.emit(); await settle(); }
+    const stale = server.snapshot();
+    server.rows.delete('tab-a-1');
+    host.state.tabs[0]!.name = 'Mine';
+    server.listeners.forEach((l) => l(stale));
+    await settle();
+    assert.equal(server.rows.get('tab-a-1')!.version, 1, 'recreated');
+    const r = server.rows.get('tab-a-1')!;
+    server.rows.set('tab-a-1', { ...r, version: 2, record: { ...r.record!, name: 'Remote edit' } });
+    server.emit();
+    await settle();
+    assert.equal(host.state.tabs.find((t) => t.id === 'tab-a-1')!.name, 'Remote edit');
+  });
+
+  it('keeps the tabs on the device when they cannot be held for the previous account', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs[0]!.name = 'A unpushed';
+    const store = localStorage as unknown as MemoryStorage;
+    const setItem = store.setItem.bind(store);
+    store.setItem = (key, value) => {
+      if (key.startsWith('worldmonitor-tabs-held-v1')) throw new Error('QuotaExceededError');
+      setItem(key, value);
+    };
+    const serverB = new FakeServer();
+    useServer(serverB);
+    signIn('user_b', host);
+    await settle();
+    assert.ok(host.state.tabs.some((t) => t.name === 'A unpushed'), 'still on the device');
+    assert.ok(serverB.calls.every((c) => c.changes.every((ch) => ch.record?.name !== 'A unpushed')));
+  });
+
+  it('holds compact records, not whole tabs', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs.push(tab('tab-a-2', 'Unpushed'));
+    useServer(new FakeServer());
+    signIn('user_b', host);
+    await settle();
+    const raw = localStorage.getItem(`worldmonitor-tabs-held-v1:${SITE_VARIANT}`)!;
+    assert.ok(raw.length < JSON.stringify(tab('tab-a-2')).length / 2, `${raw.length} bytes`);
+  });
+
   it('a tab deleted while its first push is on the way stays deleted', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
