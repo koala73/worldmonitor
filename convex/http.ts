@@ -18,6 +18,7 @@ import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
 import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { ALERT_CAPABILITY_VIOLATION_CODES, ALERT_UPGRADE_URL } from "../shared/alert-capabilities";
+import type { RuleSaveResult } from "../shared/alert-rule-shape";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import { normalizeAcquisitionSource } from "../shared/acquisition-source";
 import { briefL10nDeliverableLanguages } from "../shared/ui-languages";
@@ -1431,7 +1432,7 @@ http.route({
         const VALID_SENSITIVITY = new Set(["all", "high", "critical"]);
         if (
           typeof body.variant !== "string" || !body.variant ||
-          typeof body.enabled !== "boolean" ||
+          (body.enabled !== undefined && typeof body.enabled !== "boolean") ||
           !Array.isArray(body.eventTypes) ||
           !Array.isArray(body.channels) ||
           (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) ||
@@ -1443,12 +1444,14 @@ http.route({
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        let saved: RuleSaveResult;
         try {
-          await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
+          saved = await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
             userId,
             enforceEntitlement: true,
             variant: body.variant,
-            enabled: body.enabled,
+            // Omitted: the mutation decides (#10976) — a first channel switches alerts on.
+            enabled: body.enabled as boolean | undefined,
             eventTypes: body.eventTypes as string[],
             // Pass body.sensitivity through unchanged (may be undefined).
             // setAlertRulesForUser now accepts optional sensitivity and uses
@@ -1494,7 +1497,7 @@ http.route({
           }
           throw err;
         }
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true, ...saved }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "set-quiet-hours") {
@@ -1587,8 +1590,9 @@ http.route({
         if (body.reservoirAlert !== undefined && !isReservoirAlertBody(body.reservoirAlert)) {
           return new Response(JSON.stringify({ error: "RESERVOIR_ALERT_INVALID" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        let saved: RuleSaveResult;
         try {
-          await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
+          saved = await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
             userId,
             variant: body.variant,
             enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
@@ -1637,7 +1641,7 @@ http.route({
           }
           throw err;
         }
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true, ...saved }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: { "Content-Type": "application/json" } });

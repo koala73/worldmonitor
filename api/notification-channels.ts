@@ -248,6 +248,22 @@ async function relayValidationPassthrough(resp: Response, cors: Record<string, s
   return json(payload, resp.status, cors);
 }
 
+/**
+ * A rule save's result from the relay (#10976): the stored `enabled`, and when
+ * the save added the rule's first channel, whether alerts switched on or stayed
+ * off and why. The settings panel renders the stored state from it.
+ */
+async function ruleSaveResult(resp: Response): Promise<Record<string, unknown>> {
+  const body = await resp.json().catch(() => null) as { enabled?: unknown; firstChannel?: unknown; reason?: { code?: unknown; message?: unknown } } | null;
+  if (typeof body?.enabled !== 'boolean') return {};
+  const { code, message } = body.reason ?? {};
+  return {
+    enabled: body.enabled,
+    ...(body.firstChannel === 'on' || body.firstChannel === 'held' ? { firstChannel: body.firstChannel } : {}),
+    ...(typeof code === 'string' ? { reason: { code, message: typeof message === 'string' ? message : '' } } : {}),
+  };
+}
+
 function json(body: unknown, status: number, cors: Record<string, string>, noCache = false): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -855,7 +871,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        return finish(json({ ok: true }, 200, corsHeaders));
+        return finish(json({ ok: true, ...(await ruleSaveResult(resp)) }, 200, corsHeaders));
       }
 
       if (action === 'set-quiet-hours') {
@@ -977,7 +993,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           console.error('[notification-channels] POST set-notification-config relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        return finish(json({ ok: true }, 200, corsHeaders));
+        return finish(json({ ok: true, ...(await ruleSaveResult(resp)) }, 200, corsHeaders));
       }
 
       return finish(json({ error: 'Unknown action' }, 400, corsHeaders));

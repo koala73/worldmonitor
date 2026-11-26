@@ -52,6 +52,7 @@ import {
   RESERVOIR_ALERT_EVENT_TYPE,
   RESERVOIR_ALERT_RESERVOIRS_MAX,
   type ReservoirAlertSettings,
+  type RuleSaveResult,
 } from '../../shared/alert-rule-shape';
 
 
@@ -156,12 +157,6 @@ function submitChannelOAuthForm(popup: Window, launch: ChannelOAuthLaunch): void
   popup.document.body.appendChild(form);
   form.submit();
 }
-
-// Marks the failed channel-connect rule save message; the next rule save that
-// lands removes it.
-const CHANNEL_RULE_SAVE_ERROR_ATTR = 'data-channel-rule-save-error';
-// Marks the note that a connected channel waits for a free-plan country pick.
-const SCOPE_PAUSED_NOTE_ATTR = 'data-scope-paused-note';
 
 function appendNotificationError(rowEl: HTMLElement, message: string): void {
   rowEl.querySelector('.us-notif-error')?.remove();
@@ -365,17 +360,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       let secretCopyGeneration = 0;
       let legacyDigestPending = false;
       let legacyDigestConversionInFlight = false;
-      // Connecting the first channel to a rule that has none switches alerts
-      // on (#10976). `storedRuleChannelCount` is the stored rule's channel
-      // count, not the connected rows: channels are per account, rules per
-      // variant. A user who set the toggle in this panel keeps that choice,
-      // and every reload shows it, so a pending save cannot render it away.
-      let storedRuleChannelCount = 0;
-      let enabledToggleChoice: boolean | null = null;
-      // That switch-on is not stored yet: the free plan paused it for an
-      // empty country scope, or the save failed. The toggle keeps showing it
-      // across reloads, so the next save (picking a country) stores it.
-      let firstChannelEnablePending = false;
 
       if (!signedIn) {
         const upgradeBtn = container.querySelector<HTMLButtonElement>('#usNotifUpgradeBtn');
@@ -731,7 +715,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const channelTypes: ChannelType[] = ['telegram', 'email', 'slack', 'discord', 'teams', 'webhook', 'web_push'];
         const alertRule = data.alertRules?.[0] ?? null;
         const sensitivity = alertRule?.sensitivity ?? 'all';
-        storedRuleChannelCount = alertRule?.channels?.length ?? 0;
         legacyDigestPending = DIGEST_CRON_ENABLED && !caps.digestModes.has('daily')
           && alertRule !== null && (alertRule.digestMode ?? 'realtime') !== 'realtime';
 
@@ -841,10 +824,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <div class="ai-flow-toggle-desc">Receive alerts for events matching your filters</div>
               </div>
               <label class="ai-flow-switch">
-                <input type="checkbox" id="usNotifEnabled"${(enabledToggleChoice ?? (alertRule?.enabled || firstChannelEnablePending)) ? ' checked' : ''}>
+                <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled ? ' checked' : ''}>
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
+            <div id="usNotifEnabledNote" class="us-notif-ch-sub-warn us-notif-scope-warn" role="status" hidden></div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
                 <div class="ai-flow-toggle-label">Watchlist story alerts</div>
@@ -1129,36 +1113,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // skips tier 0, so that rule would deliver nothing anywhere. After the
       // first alert-rule save lands (it narrows sensitivity to critical, the
       // realtime precondition), write the realtime mode the panel shows.
-      // Each rule save sends the whole rule and the server keeps the last one
-      // it accepts, so saves go out one at a time: an earlier snapshot that
-      // is slow (a billing-verification retry, a reordered request) cannot
-      // land after a later edit and undo it. With none in flight the save is
-      // sent at once, so a close-time flush still dispatches synchronously.
-      // authFetch signs with the session current at dispatch, so a deferred
-      // save is dropped if the account changed while it waited. Saves land in
-      // order, so the last success leaves the stored channel count.
-      let ruleSaveTail: Promise<unknown> | null = null;
-      function queueRuleSave(rule: Parameters<typeof saveAlertRules>[0], saveSignal?: AbortSignal): Promise<void> {
-        const run = ruleSaveTail
-          ? ruleSaveTail.then(() => {
-            if (renderedUserId !== (getCurrentClerkUser()?.id ?? null)) {
-              throw new Error('save alert rules: account changed before dispatch');
-            }
-            return saveAlertRules(rule, saveSignal);
-          })
-          : saveAlertRules(rule, saveSignal);
-        void run.then(() => { storedRuleChannelCount = rule.channels.length; }, () => {});
-        const tail = run.catch(() => {});
-        ruleSaveTail = tail;
-        void tail.then(() => { if (ruleSaveTail === tail) ruleSaveTail = null; });
-        return run;
-      }
-
-      function afterRuleSave<T>(saved: Promise<T>, flush = false): Promise<T> {
-        const p = saved.then((result) => {
-          container.querySelector(`[${CHANNEL_RULE_SAVE_ERROR_ATTR}]`)?.remove();
-          return result;
-        });
+      function afterRuleSave<T>(p: Promise<T>, flush = false): Promise<T> {
         if (!legacyDigestPending || legacyDigestConversionInFlight) return p;
         legacyDigestConversionInFlight = true;
         return p.then(
@@ -1202,22 +1157,42 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         });
       }
 
-      // Resolves once the reload rendered, failed, or was superseded.
-      function reloadNotifSection(): Promise<void> {
+      // Run once the section shows current content: a superseded reload hands
+      // them to the one that renders.
+      const onRenderedQueue: Array<() => void> = [];
+      function runOnRendered(): void {
+        for (const run of onRenderedQueue.splice(0)) run();
+      }
+
+      // The webhook signing secret is shown once, so a reload the user did not
+      // ask for (keepWebhookSecret) leaves it on screen; Done reloads.
+      function reloadNotifSection(opts: { keepWebhookSecret?: boolean; onRendered?: () => void } = {}): void {
+        if (opts.onRendered) onRenderedQueue.push(opts.onRendered);
+        if (opts.keepWebhookSecret && container.querySelector('#usWebhookSecret')) {
+          runOnRendered();
+          return;
+        }
         const generation = ++notifReloadGeneration;
         secretCopyGeneration += 1;
         dismissSecretCopyFallback(NOTIFICATION_SECRET_COPY_OWNER);
         const loadingEl = container.querySelector<HTMLElement>('#usNotifLoading');
         const contentEl = container.querySelector<HTMLElement>('#usNotifContent');
-        if (!loadingEl || !contentEl) return Promise.resolve();
+        if (!loadingEl || !contentEl) return;
         loadingEl.style.display = 'block';
         contentEl.style.display = 'none';
-        if (signal.aborted) return Promise.resolve();
-        return Promise.all([
+        if (signal.aborted) return;
+        Promise.all([
           getChannelsData(undefined, signal),
           readWebPushSettingsState(),
         ]).then(([data, webPushState]) => {
           if (signal.aborted || generation !== notifReloadGeneration) return;
+          if (opts.keepWebhookSecret && contentEl.querySelector('#usWebhookSecret')) {
+            requestedWebPushState = null;
+            loadingEl.style.display = 'none';
+            contentEl.style.display = 'block';
+            runOnRendered();
+            return;
+          }
           renderedWebPushState = webPushState;
           requestedWebPushState = null;
           setTrustedHtml(contentEl, trustedHtml(renderNotifContent(data, webPushState), "legacy direct innerHTML migration"));
@@ -1234,6 +1209,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             countryPicker = null;
           }
 
+          runOnRendered();
           const pickerRoot = contentEl.querySelector<HTMLElement>('#usNotifCountryPicker');
           if (!pickerRoot) return;
 
@@ -1271,7 +1247,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             const empty = (countryPicker?.getValue().length ?? 0) === 0;
             const warn = contentEl.querySelector<HTMLElement>(caps.requireCountryScope ? '#usCountryScopeWarn' : '#usCountryScopeHint');
             if (warn) warn.hidden = !empty;
-            for (const note of contentEl.querySelectorAll<HTMLElement>(`[${SCOPE_PAUSED_NOTE_ATTR}]`)) note.hidden = !empty;
           };
           countryPicker = mountCountryChipPicker(pickerRoot, {
             initial,
@@ -1337,7 +1312,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
        * centralizing makes future drift impossible to introduce silently.
        */
       function getCurrentAlertRuleFormState(): {
-        enabled: boolean;
+        enabled?: boolean;
         eventTypes: string[];
         sensitivity: 'all' | 'high' | 'critical';
         channels: ChannelType[];
@@ -1405,8 +1380,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const scopeEmptyOnFreePlan = caps.requireCountryScope
           && alertRuleCountries !== undefined
           && alertRuleCountries.length === 0;
+        // #10976: an off toggle the user has not set in this render asserts
+        // nothing. The save omits `enabled`, so the server keeps the stored
+        // value or switches alerts on for the rule's first channel, and a save
+        // sent before the panel shows that switch-on cannot undo it.
+        const enabledAsserted = enabledEl !== null && (enabledEl.checked || enabledEl.dataset.userSet !== undefined);
         return {
-          enabled: (enabledEl?.checked ?? false) && !scopeEmptyOnFreePlan,
+          ...(enabledAsserted ? { enabled: enabledEl.checked && !scopeEmptyOnFreePlan } : {}),
           eventTypes,
           sensitivity: (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical',
           channels: connectedChannelTypes,
@@ -1542,10 +1522,26 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const state = getCurrentAlertRuleFormState();
         // flush: the panel is closing and `signal` is already aborted —
         // passing it would cancel the very request the flush exists to send.
-        fireForgetSave(afterRuleSave(queueRuleSave({
+        fireForgetSave(afterRuleSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
-        }, opts?.flush ? undefined : signal), opts?.flush ?? false), 'save alert rules');
+        }, opts?.flush ? undefined : signal), opts?.flush ?? false).then(showRuleSaveResult), 'save alert rules');
+      }
+
+      // The server decided `enabled` for the rule's first channel (#10976).
+      function showRuleSaveResult(result: Partial<RuleSaveResult>): void {
+        if (signal.aborted) return;
+        if (result.firstChannel === 'on') reloadNotifSection({ keepWebhookSecret: true });
+        else if (result.firstChannel === 'held') showEnabledNote(result.reason);
+      }
+
+      function showEnabledNote(reason: RuleSaveResult['reason']): void {
+        const note = container.querySelector<HTMLElement>('#usNotifEnabledNote');
+        if (!note) return;
+        note.textContent = reason?.code === 'ALERT_COUNTRY_SCOPE_REQUIRED'
+          ? 'Alerts are off. Pick a country under Country scope, then switch on Enable notifications.'
+          : `Alerts are off. ${reason?.message ?? ''}`.trim();
+        note.hidden = false;
       }
 
       reloadNotifSection();
@@ -1590,102 +1586,55 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // settings there takes focus away and returns it.
       window.addEventListener('focus', resyncWebPushState, { signal });
 
-      // A reload re-renders the form from the server. Send every debounced
-      // edit first, while the form still shows it, and wait for those saves,
-      // so the reload neither shows nor later re-saves the old value.
-      function sendPendingEdits(): Promise<unknown> {
-        const pending: unknown[] = [];
-        if (alertRuleDebounceTimer !== null) {
-          clearTimeout(alertRuleDebounceTimer);
-          alertRuleDebounceTimer = null;
-          saveCurrentAlertRule();
-        }
-        if (qhDebounceTimer !== null) {
-          clearTimeout(qhDebounceTimer);
-          qhDebounceTimer = null;
-          pending.push(sendQuietHoursNow());
-        }
-        if (digestDebounceTimer !== null) {
-          clearTimeout(digestDebounceTimer);
-          digestDebounceTimer = null;
-          pending.push((digestFlushNow ?? sendDigestSettingsNow)());
-          digestFlushNow = null;
-        }
-        pending.push(ruleSaveTail);
-        return Promise.allSettled(pending);
-      }
-
-      // Adds the connected channel to the rule, then reloads the section. The
-      // reload waits for the save: a read that lands first renders the old
-      // rule, and the Pro channel re-sync would then store that stale toggle.
-      function saveRuleWithNewChannel(newChannel: ChannelType, opts: { reload: boolean } = { reload: true }): void {
-        if (storedRuleChannelCount === 0 && enabledToggleChoice === null) {
-          const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
-          if (enabledEl) enabledEl.checked = true;
-          firstChannelEnablePending = true;
-        }
+      // Adds the connected channel to the rule, then reloads the section to
+      // show what the server stored: the first channel switches alerts on
+      // (#10976), and the free plan without a country keeps them off.
+      function saveRuleWithNewChannel(newChannel: ChannelType, opts = { reload: true }): void {
         // Rule saves read channels off the connected rows. Mark this one now,
         // or a save made while this one is pending would drop the channel.
         container.querySelector<HTMLElement>(`[data-channel-type="${newChannel}"]`)?.classList.add('us-notif-ch-on');
-        // Read after the switch-on, so the free plan's empty-scope pause in
-        // getCurrentAlertRuleFormState still applies to it.
         const state = getCurrentAlertRuleFormState();
         // Augment channels with the newly connected one (set semantics).
         const channels = [...new Set([...state.channels, newChannel])];
-        const save = afterRuleSave(queueRuleSave({
+        const save = afterRuleSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
           channels,
         }, signal));
         fireForgetSave(save, 'save alert rules');
-        void save.then(
-          () => {
-            if (state.enabled) firstChannelEnablePending = false;
-            return true;
-          },
-          () => false,
-        ).then(async (saved) => {
+        void save.then((result) => result, () => null).then((result) => {
           if (signal.aborted) return;
-          if (opts.reload) {
-            await sendPendingEdits();
-            if (signal.aborted) return;
-            // A webhook signing secret shown meanwhile is visible only until
-            // a reload; its Done button reloads instead.
-            if (!container.querySelector('#usWebhookSecret')) await reloadNotifSection();
-          }
-          if (signal.aborted) return;
-          const row = container.querySelector<HTMLElement>(`[data-channel-type="${newChannel}"]`);
-          if (!row) return;
-          if (!saved) {
-            appendNotificationError(row, ' This channel was not added to your alerts.');
-            const error = row.querySelector<HTMLElement>('.us-notif-error');
-            error?.setAttribute(CHANNEL_RULE_SAVE_ERROR_ATTR, '');
-            const retry = document.createElement('button');
-            retry.type = 'button';
-            retry.className = 'us-notif-ch-btn';
-            retry.dataset.channelRuleRetry = newChannel;
-            retry.textContent = 'Try again';
-            error?.prepend(retry);
-          } else if (firstChannelEnablePending && caps.requireCountryScope && countryPicker?.getValue().length === 0) {
-            // The free plan's pause: the scope warning sits far below, so
-            // say it where the user just acted.
-            const note = document.createElement('div');
-            note.className = 'us-notif-ch-sub us-notif-ch-sub-wrap us-notif-ch-sub-warn';
-            note.setAttribute('role', 'status');
-            note.setAttribute(SCOPE_PAUSED_NOTE_ATTR, '');
-            note.textContent = 'Pick a country under Country scope to start alerts.';
-            (row.querySelector('.us-notif-ch-body') ?? row).appendChild(note);
-          }
+          const show = (): void => {
+            if (!result) showChannelRuleSaveFailure(newChannel, opts);
+            else if (result.firstChannel === 'held') showEnabledNote(result.reason);
+          };
+          if (opts.reload) reloadNotifSection({ keepWebhookSecret: true, onRendered: show });
+          else show();
         });
       }
 
-      const sendQuietHoursNow = (flush = false): Promise<unknown> => {
+      function showChannelRuleSaveFailure(channel: ChannelType, opts: { reload: boolean }): void {
+        const row = container.querySelector<HTMLElement>(`[data-channel-type="${channel}"]`);
+        if (!row) return;
+        appendNotificationError(row, ' This channel was not added to your alerts.');
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'us-notif-ch-btn';
+        retry.textContent = 'Try again';
+        retry.addEventListener('click', () => {
+          row.querySelector('.us-notif-error')?.remove();
+          saveRuleWithNewChannel(channel, opts);
+        }, { signal });
+        row.querySelector('.us-notif-error')?.prepend(retry);
+      }
+
+      const sendQuietHoursNow = (flush = false): void => {
         const enabledEl = container.querySelector<HTMLInputElement>('#usQhEnabled');
         const startEl = container.querySelector<HTMLSelectElement>('#usQhStart');
         const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
         const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
         const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
-        const p = setQuietHours({
+        fireForgetSave(setQuietHours({
           variant: SITE_VARIANT,
           quietHoursEnabled: enabledEl?.checked ?? false,
           quietHoursStart: startEl ? Number(startEl.value) : 22,
@@ -1693,9 +1642,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           quietHoursTimezone: tzEl?.value || detectedTz,
           quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
           countries: countryPicker ? countryPicker.getValue() : undefined,
-        }, flush ? undefined : signal);
-        fireForgetSave(p, 'save quiet hours');
-        return p;
+        }, flush ? undefined : signal), 'save quiet hours');
       };
 
       const saveQuietHours = () => {
@@ -1830,18 +1777,18 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
           const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
           const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-          const sendModeChangeNow = (flush = false): Promise<void> => {
-            return (async () => {
+          const sendModeChangeNow = (flush = false): void => {
+            void (async () => {
               try {
                 const state = getCurrentAlertRuleFormState();
-                await setNotificationConfig({
+                showRuleSaveResult(await setNotificationConfig({
                   variant: SITE_VARIANT,
                   ...state,
                   digestMode: target.value as DigestMode,
                   digestHour: hourEl ? Number(hourEl.value) : 8,
                   digestTimezone: tzEl?.value || detectedTz,
                   ...(snappedSensitivity ? { sensitivity: snappedSensitivity } : {}),
-                }, undefined, flush ? undefined : signal);
+                }, undefined, flush ? undefined : signal));
               } catch (err) {
                 if (err instanceof IncompatibleDeliveryError) {
                   const hint = container.querySelector<HTMLElement>('#usSensitivityHint');
@@ -1900,11 +1847,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             // reads from the DOM, which has already been updated by the time
             // the debounce fires, but explicit override avoids any race).
             const state = getCurrentAlertRuleFormState();
-            fireForgetSave(afterRuleSave(queueRuleSave({
+            fireForgetSave(afterRuleSave(saveAlertRules({
               variant: SITE_VARIANT,
               ...state,
               aiDigestEnabled: target.checked,
-            }, signal)), 'save alert rules');
+            }, signal)).then(showRuleSaveResult), 'save alert rules');
           }, 500);
           return;
         }
@@ -1929,8 +1876,9 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           container.querySelector<HTMLElement>('#usOrbitalScope')?.toggleAttribute('hidden', !anyOn);
         }
         if (target.id === 'usNotifEnabled') {
-          enabledToggleChoice = (target as HTMLInputElement).checked;
-          firstChannelEnablePending = false;
+          // The user's own choice: every later save in this render asserts it.
+          target.dataset.userSet = '';
+          container.querySelector<HTMLElement>('#usNotifEnabledNote')?.toggleAttribute('hidden', true);
         }
         if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts' || target.id === 'usOrbitalWindowAlerts' || target.id === 'usOrbitalChangeAlerts' || target.id === 'usReservoirAlerts' || target.id === 'usReservoirBelowPercent' || target.id === 'usReservoirSeasonal') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
@@ -1938,10 +1886,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             alertRuleDebounceTimer = null;
             // Source from the centralized helper so `countries` flows through.
             const state = getCurrentAlertRuleFormState();
-            fireForgetSave(afterRuleSave(queueRuleSave({
+            fireForgetSave(afterRuleSave(saveAlertRules({
               variant: SITE_VARIANT,
               ...state,
-            }, signal)), 'save alert rules');
+            }, signal)).then(showRuleSaveResult), 'save alert rules');
           }, 1000);
         }
       }, { signal });
@@ -1951,16 +1899,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
         if (target.closest('[data-ios-install]')) {
           openIosInstallSheet();
-          return;
-        }
-
-        const ruleRetry = target.closest<HTMLButtonElement>('[data-channel-rule-retry]');
-        if (ruleRetry?.dataset.channelRuleRetry) {
-          ruleRetry.disabled = true;
-          // A reload would wipe a webhook signing secret still on screen.
-          saveRuleWithNewChannel(ruleRetry.dataset.channelRuleRetry as ChannelType, {
-            reload: !container.querySelector('#usWebhookSecret'),
-          });
           return;
         }
 
@@ -2261,12 +2199,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           setWebhookChannel(url, labelInput?.value?.trim() || undefined, signal).then(({ signingSecret }) => {
             if (signal.aborted) return;
             const rowEl = container.querySelector<HTMLElement>('[data-channel-type="webhook"]');
-            // A shown secret must not be wiped by the reload.
             saveRuleWithNewChannel('webhook', { reload: !signingSecret || !rowEl });
             if (!signingSecret || !rowEl) return;
-            // Mark the row connected so a rule save made while the secret is
-            // on screen (getCurrentAlertRuleFormState) keeps the webhook.
-            rowEl.classList.add('us-notif-ch-on');
             // The secret is shown once; the server keeps only an encrypted copy.
             setTrustedHtml(rowEl, trustedHtml(`
               <div class="us-notif-ch-icon">${channelIcon('webhook')}</div>
