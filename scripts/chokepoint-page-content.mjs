@@ -150,11 +150,13 @@ export const CHOKEPOINT_CONTENT = {
     ],
     region: 'Persian Gulf ↔ Gulf of Oman',
     glossarySlug: 'strait-of-hormuz',
-    // Answer engines rank this page on "is the Strait of Hormuz open", so the
-    // title and H1 carry that question instead of the generic status label.
-    metaTitle: 'Is the Strait of Hormuz Open? Live Status | World Monitor',
+    // The H1 carries "is the Strait of Hormuz open"; the title and description
+    // carry the ship-count question the live reading also answers. With the
+    // open question in all three, search returned other sites for "how many
+    // ships are passing through Hormuz compared with normal" and never this page.
+    metaTitle: 'Strait of Hormuz Ships per Day vs Normal | World Monitor',
     metaDescription:
-      'Is the Strait of Hormuz open? Live disruption score, IMF PortWatch daily transits against the year-earlier normal, and navigational warnings for the strait.',
+      'How many ships cross the Strait of Hormuz today? IMF PortWatch daily transits against the year-earlier normal, a live disruption score and navigation warnings.',
     heading: 'Is the Strait of Hormuz open?',
     whyHeading: 'Why is the Strait of Hormuz the most watched energy chokepoint?',
     blurb:
@@ -171,8 +173,8 @@ export const CHOKEPOINT_CONTENT = {
         answer: 'This page’s live reading at the top gives the current disruption score, active navigational warnings and the latest IMF PortWatch daily transit count with its publication lag. The score is a risk signal, not an official open or closed declaration.',
       },
       {
-        question: 'Is there a sea route that avoids the Strait of Hormuz?',
-        answer: 'No. Gulf exports that leave by ship must use Hormuz. Bypass pipelines move some crude overland; they are not a second seaborne strait and they do not move Qatar’s LNG.',
+        question: 'How many ships pass through the Strait of Hormuz each day?',
+        answer: 'The live reading at the top of this page gives the latest IMF PortWatch daily transit count, the seven-day average, and that average as a percentage of the daily average over the twelve months that ended a year earlier. The reading names that baseline period. PortWatch publishes several days behind, so the reading also states the date of the latest count.',
       },
     ],
   },
@@ -181,9 +183,12 @@ export const CHOKEPOINT_CONTENT = {
     countryCodes: CHOKEPOINT_COUNTRY_CODES.bab_el_mandeb,
     crisisSlugs: ['red-sea-security'],
     region: 'Red Sea ↔ Gulf of Aden',
-    metaTitle: 'Bab el-Mandeb Status: Red Sea Shipping Risk | World Monitor',
+    // "bab el mandeb transit" is this page's largest search query, so the
+    // title keeps the word. The comparison is called a year ago, never normal:
+    // the year-earlier baseline here was already depressed by Red Sea attacks.
+    metaTitle: 'Bab el-Mandeb Ship Transits vs a Year Ago | World Monitor',
     metaDescription:
-      'Bab el-Mandeb status: live disruption risk, AIS warnings and Red Sea security signals at the Suez route’s southern gate, where attacks push ships to the Cape.',
+      'How many ships cross Bab el-Mandeb today? IMF PortWatch daily transits against the year-earlier average, plus live disruption risk and Red Sea security signals.',
     whyHeading: 'Why do Suez sailings also have to clear Bab el-Mandeb?',
     blurb:
       'Bab el-Mandeb is the strait between the Horn of Africa and the Arabian Peninsula that connects the Red Sea to the Gulf of Aden and the Indian Ocean. Every ship using the Suez Canal route also transits Bab el-Mandeb, so attacks or instability here push traffic onto the far longer Cape of Good Hope route.',
@@ -199,8 +204,8 @@ export const CHOKEPOINT_CONTENT = {
         answer: 'Not on a voyage between the Indian Ocean and the Mediterranean. The Red Sea has one southern gate. Intra-Red Sea moves are a different geography.',
       },
       {
-        question: 'Does World Monitor model an energy shock for Bab el-Mandeb?',
-        answer: 'Yes. It is one of the four shock-model chokepoints. The EIA 2023 World Oil Transit Chokepoints baseline is 6.2 million barrels a day.',
+        question: 'How many ships pass through Bab el-Mandeb each day?',
+        answer: 'The live reading at the top of this page gives the latest IMF PortWatch daily transit count, the seven-day average, and that average as a percentage of the daily average over the twelve months that ended a year earlier. The reading names that baseline period. Traffic here was already below its pre-crisis level in that baseline, so a reading near 100% means steady, not back to normal. PortWatch publishes several days behind, so the reading also states the date of the latest count.',
       },
     ],
   },
