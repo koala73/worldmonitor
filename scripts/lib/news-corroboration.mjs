@@ -101,7 +101,12 @@ async function readSightings(now, pipeline) {
   for (let i = 0; i + 1 < raw.length; i += 2) {
     try {
       const s = JSON.parse(raw[i]);
-      if (typeof s?.title === 'string' && typeof s.family === 'string' && s.family) sightings.push({ ...s, at: Number(raw[i + 1]) });
+      if (typeof s?.title === 'string' && typeof s.family === 'string' && s.family) {
+        // Members written before a family or name-fold change keep their old
+        // `label:` id; remap it so one outlet still counts once.
+        const family = s.family.startsWith('label:') ? publisherFamilyFor(s.family.slice('label:'.length)) || s.family : s.family;
+        sightings.push({ ...s, family, at: Number(raw[i + 1]) });
+      }
     } catch { /* skip a malformed member */ }
   }
   return sightings;
