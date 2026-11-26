@@ -82,10 +82,6 @@ const LOOPBACK = [
   // authorize.js sets code/state through searchParams, which overwrites rather
   // than appends. Only the fragment and userinfo are refused (#RFC 6749 3.1.2).
   'http://localhost:4200/callback?flow=desktop',
-  // A bare '#' parses to an empty hash, so it carries nothing and stays
-  // accepted — the same boundary the CIMD path draws with its `u.hash` check.
-  // Pinned so the two paths cannot drift apart silently.
-  'http://localhost:8787/callback#',
 ];
 
 // RFC 6749 §3.1.2: "The redirection endpoint URI MUST NOT include a fragment
@@ -97,6 +93,7 @@ const LOOPBACK = [
 // only loosened the route would still be caught.
 const LOOPBACK_COMPONENT_SMUGGLING = {
   'loopback with a fragment': 'http://localhost:8787/callback#x',
+  'loopback with an empty fragment': 'http://localhost:8787/callback#',
   'loopback IPv4 with a fragment': 'http://127.0.0.1:33418/#evil',
   'loopback IPv6 with a fragment': 'http://[::1]/oauth_callback#x',
   'loopback carrying credentials': 'http://user:pw@localhost:8787/callback',
