@@ -69,6 +69,8 @@ export class IntelligenceFindingsBadge {
   private audioEnabled = true;
   private enabled: boolean;
   private popupEnabled: boolean;
+  /** The last breaking-alerts change could not be stored; say so under the switch. */
+  private breakingAlertsSaveFailed = false;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissListener: (() => void) | null = null;
   private findingsModalOverlay: HTMLElement | null = null;
@@ -120,7 +122,8 @@ export class IntelligenceFindingsBadge {
       if (toggleAttr === 'breaking-alerts') {
         e.stopPropagation();
         const settings = getAlertSettings();
-        updateAlertSettings({ enabled: !settings.enabled });
+        // A rejected write leaves the switch where it was; tell the reader why.
+        this.breakingAlertsSaveFailed = !updateAlertSettings({ enabled: !settings.enabled });
         this.renderDropdown();
         return;
       }
@@ -375,7 +378,9 @@ export class IntelligenceFindingsBadge {
       <div class="popup-toggle-row" data-toggle="breaking-alerts">
         <span class="popup-toggle-label">🚨 ${escapeHtml(breakingLabel)}</span>
         <span class="popup-toggle-switch${breakingSettings.enabled ? ' on' : ''}"><span class="popup-toggle-knob"></span></span>
-      </div>`;
+      </div>${this.breakingAlertsSaveFailed
+        ? `<div class="popup-toggle-error" role="alert" data-breaking-alerts-save-error>${escapeHtml(t('components.intelligenceFindings.breakingAlertsNotSaved'))}</div>`
+        : ''}`;
   }
 
   private renderDropdown(): void {

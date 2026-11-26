@@ -1625,7 +1625,8 @@
         "hoursAgo": "{{count}} h fa",
         "daysAgo": "{{count}} g fa"
       },
-      "hideFindings": "Nascondi risultati"
+      "hideFindings": "Nascondi risultati",
+      "breakingAlertsNotSaved": "Impossibile salvare questa modifica. Il tuo browser non consente a questo sito di memorizzare le impostazioni."
     },
     "satelliteFires": {
       "region": "Regione",

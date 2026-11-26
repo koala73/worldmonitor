@@ -2096,7 +2096,8 @@
         "minutesAgo": "{{count}}p ezelőtt",
         "hoursAgo": "{{count}}ó ezelőtt",
         "daysAgo": "{{count}}n ezelőtt"
-      }
+      },
+      "breakingAlertsNotSaved": "Nem sikerült menteni a módosítást. A böngésző nem engedélyezi ennek az oldalnak a beállítások tárolását."
     },
     "countryTimeline": {
       "now": "most",

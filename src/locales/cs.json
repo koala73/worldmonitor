@@ -1937,7 +1937,8 @@
         "hoursAgo": "před {{count}} h",
         "daysAgo": "před {{count}} d"
       },
-      "hideFindings": "Skrýt nálezy"
+      "hideFindings": "Skrýt nálezy",
+      "breakingAlertsNotSaved": "Změnu se nepodařilo uložit. Váš prohlížeč neumožňuje tomuto webu ukládat nastavení."
     },
     "countryTimeline": {
       "now": "nyní",

@@ -2096,7 +2096,8 @@
         "minutesAgo": "{{count}} मिनट पहले",
         "hoursAgo": "{{count}} घंटे पहले",
         "daysAgo": "{{count}} दिन पहले"
-      }
+      },
+      "breakingAlertsNotSaved": "इस परिवर्तन को सहेजा नहीं जा सका। आपका ब्राउज़र इस साइट को सेटिंग स्टोर करने की अनुमति नहीं दे रहा है।"
     },
     "countryTimeline": {
       "now": "अभी",

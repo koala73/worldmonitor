@@ -1578,7 +1578,8 @@
       },
       "breakingAlerts": "Pilne alerty",
       "popupAlerts": "Wyświetlaj nowe alerty w okienku",
-      "hideFindings": "Ukryj wyniki"
+      "hideFindings": "Ukryj wyniki",
+      "breakingAlertsNotSaved": "Nie można zapisać tej zmiany. Twoja przeglądarka nie pozwala tej stronie na przechowywanie ustawień."
     },
     "satelliteFires": {
       "region": "Region",

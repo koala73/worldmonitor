@@ -1817,7 +1817,8 @@
       },
       "breakingAlerts": "تنبيهات عاجلة",
       "popupAlerts": "إظهار التنبيهات الجديدة",
-      "hideFindings": "إخفاء النتائج"
+      "hideFindings": "إخفاء النتائج",
+      "breakingAlertsNotSaved": "تعذر حفظ هذا التغيير. متصفحك لا يسمح لهذا الموقع بحفظ الإعدادات."
     },
     "countryTimeline": {
       "now": "الآن",

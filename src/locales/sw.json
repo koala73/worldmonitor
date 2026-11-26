@@ -2099,7 +2099,8 @@
         "minutesAgo": "Dakika {{count}} zilizopita",
         "hoursAgo": "Saa {{count}} zilizopita",
         "daysAgo": "Siku {{count}} zilizopita"
-      }
+      },
+      "breakingAlertsNotSaved": "Imeshindikana kuhifadhi badiliko hili. Kivinjari chako hakiruhusu tovuti hii kuhifadhi mipangilio."
     },
     "countryTimeline": {
       "now": "sasa",

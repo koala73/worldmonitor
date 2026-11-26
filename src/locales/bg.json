@@ -1946,7 +1946,8 @@
         "minutesAgo": "{{count}}m преди",
         "hoursAgo": "{{count}}h преди",
         "daysAgo": "{{count}}d преди"
-      }
+      },
+      "breakingAlertsNotSaved": "Промяната не можа да бъде запазена. Браузърът ви не позволява на този сайт да съхранява настройки."
     },
     "countryTimeline": {
       "now": "сега",

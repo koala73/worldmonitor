@@ -1621,7 +1621,8 @@
         "hoursAgo": "Vor {{count}}h",
         "daysAgo": "Vor {{count}}d"
       },
-      "hideFindings": "Erkenntnisse ausblenden"
+      "hideFindings": "Erkenntnisse ausblenden",
+      "breakingAlertsNotSaved": "Diese Änderung konnte nicht gespeichert werden. Ihr Browser erlaubt dieser Website nicht, Einstellungen zu speichern."
     },
     "satelliteFires": {
       "region": "Region",

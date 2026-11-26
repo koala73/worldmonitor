@@ -1020,7 +1020,8 @@
       },
       "breakingAlerts": "Urgente meldingen",
       "popupAlerts": "Nieuwe meldingen weergeven",
-      "hideFindings": "Bevindingen verbergen"
+      "hideFindings": "Bevindingen verbergen",
+      "breakingAlertsNotSaved": "Deze wijziging kon niet worden opgeslagen. Je browser staat niet toe dat deze site instellingen opslaat."
     },
     "economic": {
       "noIndicatorData": "Nog geen indicatorgegevens — Federal Reserve Economic Data wordt mogelijk geladen",

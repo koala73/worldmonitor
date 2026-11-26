@@ -2185,6 +2185,7 @@
     },
     "intelligenceFindings": {
       "breakingAlerts": "Breaking Alerts",
+      "breakingAlertsNotSaved": "Couldn't save this change. Your browser isn't letting this site store settings.",
       "popupAlerts": "Pop up new alerts",
       "badgeTitle": "Intelligence findings",
       "title": "Intelligence Findings",

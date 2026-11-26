@@ -2099,7 +2099,8 @@
         "minutesAgo": "{{count}} دقیقه پیش",
         "hoursAgo": "{{count}} ساعت پیش",
         "daysAgo": "{{count}} روز پیش"
-      }
+      },
+      "breakingAlertsNotSaved": "ذخیرهٔ این تغییر ممکن نشد. مرورگر شما به این سایت اجازهٔ ذخیرهٔ تنظیمات را نمی‌دهد."
     },
     "countryTimeline": {
       "now": "اکنون",

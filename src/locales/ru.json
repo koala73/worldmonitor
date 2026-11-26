@@ -1958,7 +1958,8 @@
         "minutesAgo": "{{count}}м назад",
         "hoursAgo": "{{count}}ч назад",
         "daysAgo": "{{count}}д назад"
-      }
+      },
+      "breakingAlertsNotSaved": "Не удалось сохранить изменение. Ваш браузер не разрешает этому сайту сохранять параметры."
     },
     "countryTimeline": {
       "now": "сейчас",

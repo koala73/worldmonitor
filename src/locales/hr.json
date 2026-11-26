@@ -2106,7 +2106,8 @@
         "minutesAgo": "{{count}}m prije",
         "hoursAgo": "{{count}}h prije",
         "daysAgo": "{{count}}d prije"
-      }
+      },
+      "breakingAlertsNotSaved": "Nije moguće spremiti promjenu. Vaš preglednik ne dozvoljava ovoj stranici pohranu postavki."
     },
     "countryTimeline": {
       "now": "sada",

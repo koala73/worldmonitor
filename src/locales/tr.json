@@ -1946,7 +1946,8 @@
         "minutesAgo": "{{count}}dk once",
         "hoursAgo": "{{count}}sa once",
         "daysAgo": "{{count}}g once"
-      }
+      },
+      "breakingAlertsNotSaved": "Bu değişiklik kaydedilemedi. Tarayıcınız bu siteye ayarları depolamasına izin vermiyor."
     },
     "countryTimeline": {
       "now": "simdi",
