@@ -201,7 +201,9 @@ export const _getRegistrationsPage = internalQuery({
 
 /**
  * Stamp a single registration with `proLaunchWave = waveLabel` by
- * normalizedEmail. Idempotent on `(normalizedEmail, waveLabel)`.
+ * normalizedEmail. Idempotent on `(normalizedEmail, waveLabel)`, and
+ * ownership-preserving: a row another wave already stamped is reported as
+ * `ownedByOtherWave` and left alone.
  *
  * Mirrors `backfillCanaryWaveStamps:_stampWaveByNormalizedEmail` —
  * the two are identical logic, kept separate so each module's
@@ -222,8 +224,20 @@ export const _stampWaveByNormalizedEmail = internalMutation({
       )
       .first();
     if (!row) return { result: "notFound" as const };
-    if (row.proLaunchWave === waveLabel) {
-      return { result: "alreadyStamped" as const };
+    if (row.proLaunchWave !== undefined) {
+      // Ownership, not just idempotency. The production stamper in
+      // `waveRuns._markContactPushed` guards on ANY existing value ("a late
+      // worker must preserve ownership and the original assignment time"),
+      // and `_cleanupDiscardedWavePickedContacts` only unstamps a row whose
+      // label still equals its own run's. Overwriting a later wave's stamp
+      // therefore sends the contact twice AND puts it out of reach of that
+      // unstamp, while rewriting `proLaunchWaveAssignedAt` to the wrong send
+      // time.
+      return {
+        result: row.proLaunchWave === waveLabel
+          ? ("alreadyStamped" as const)
+          : ("ownedByOtherWave" as const),
+      };
     }
     await ctx.db.patch(row._id, {
       proLaunchWave: waveLabel,
@@ -253,6 +267,12 @@ export type WaveExportStats = {
   // Push-side failures (Resend rejected the contact). Not stamped, so
   // available for retry in the next wave.
   failed: number;
+  // Push succeeded but the registration already belonged to another wave,
+  // so its stamp was left alone. The contact is in this wave's Resend
+  // segment and will receive this wave's email too — a duplicate the
+  // operator needs to know about, which is why it is counted rather than
+  // silently overwritten.
+  stampOwnedByOtherWave: number;
   // Push succeeded but the Convex stamp throw — pushed contact is in
   // the Resend segment but `proLaunchWave` wasn't set. Rare (Convex
   // mutation-level). The contact may receive a duplicate email if
@@ -390,6 +410,7 @@ export const assignAndExportWave = internalAction({
       unsubscribedSkipped: 0,
       failed: 0,
       stampFailed: 0,
+      stampOwnedByOtherWave: 0,
       underfilled: picked.length < count,
     };
     const assignedAt = Date.now();
@@ -437,10 +458,16 @@ export const assignAndExportWave = internalAction({
       // duplicate-email risk for the rare un-stamped-but-pushed case
       // is documented above and far preferable to halting the wave.
       try {
-        await ctx.runMutation(
+        const out = await ctx.runMutation(
           internal.broadcast.audienceWaveExport._stampWaveByNormalizedEmail,
           { normalizedEmail: email, waveLabel, assignedAt },
         );
+        if (out.result === "ownedByOtherWave") {
+          stats.stampOwnedByOtherWave++;
+          console.warn(
+            `[assignAndExportWave] ${maskEmail(email)} is already owned by another wave; stamp left alone, but it is in segment ${segmentName} and will receive this wave's email too.`,
+          );
+        }
       } catch (err) {
         // sentry-coverage-ok: stamp failures are counted into
         // `stats.stampFailed` and surfaced in the action's return

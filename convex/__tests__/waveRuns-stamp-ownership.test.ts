@@ -99,3 +99,54 @@ describe("contact push preserves wave stamp ownership", () => {
     expect((await read(t)).registration).toEqual(pushed.registration);
   });
 });
+
+// The reverse direction of the suite above. `_markContactPushed` preserves an
+// existing stamp, and `_cleanupDiscardedWavePickedContacts` only unstamps a
+// row whose label still matches its own run — but the legacy CLI stamper
+// compared against its OWN label only, so it rewrote ownership another wave
+// had already committed, and rewrote `proLaunchWaveAssignedAt` with it. The
+// contact then sat in two Resend segments, received two launch emails, and
+// was out of reach of the discard-time unstamp.
+describe("the legacy wave stamper preserves ownership it does not hold", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+  const stamp = (t: ReturnType<typeof convexTest>, label: string, assignedAt: number) =>
+    t.mutation(internal.broadcast.audienceWaveExport._stampWaveByNormalizedEmail, {
+      normalizedEmail: email, waveLabel: label, assignedAt,
+    });
+
+  test("a row the production pipeline already stamped is reported, not overwritten", async () => {
+    const { t, args } = await setup();
+    expect(await t.mutation(internal.broadcast.waveRuns._markContactPushed, args))
+      .toEqual({ ok: true, stampResult: "stamped" });
+    const owned = (await read(t)).registration!;
+    expect(owned.proLaunchWave).toBe(waveLabel);
+
+    expect(await stamp(t, "test-wave-9", 999)).toEqual({ result: "ownedByOtherWave" });
+    const after = (await read(t)).registration!;
+    expect(after.proLaunchWave).toBe(waveLabel);
+    expect(after.proLaunchWaveAssignedAt).toBe(owned.proLaunchWaveAssignedAt);
+  });
+
+  test("the discard-time unstamp still reaches a contact the CLI ran over", async () => {
+    const { t, args } = await setup();
+    await t.mutation(internal.broadcast.waveRuns._markContactPushed, args);
+    await stamp(t, "test-wave-9", 999);
+    await t.mutation(internal.broadcast.waveRuns._markPickFailed, {
+      runId, substatus: "persist-failed", error: "synthetic terminal failure before broadcast",
+    });
+    await t.mutation(internal.broadcast.waveRuns._cleanupDiscardedWavePickedContacts, { runId });
+    // Only reachable because the label still belongs to this run.
+    expect((await read(t)).registration!.proLaunchWave).toBeUndefined();
+  });
+
+  test("an unstamped row and a re-stamp of the same label are unchanged", async () => {
+    const { t } = await setup();
+    expect(await stamp(t, waveLabel, 123)).toEqual({ result: "stamped" });
+    expect(await stamp(t, waveLabel, 456)).toEqual({ result: "alreadyStamped" });
+    const row = (await read(t)).registration!;
+    expect(row.proLaunchWave).toBe(waveLabel);
+    expect(row.proLaunchWaveAssignedAt).toBe(123);
+  });
+});
