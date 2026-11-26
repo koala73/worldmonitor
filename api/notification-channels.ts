@@ -30,7 +30,7 @@ import {
   checkScopedRateLimit,
   scopedTooManyRequestsResponse,
 } from '../server/_shared/rate-limit';
-import { getAlertRuleShapeViolation } from '../shared/alert-rule-shape';
+import { getAlertRuleShapeViolation, isRuleEnabledIntent } from '../shared/alert-rule-shape';
 import { ALERT_UPGRADE_URL, FREE_ALERT_CHANNELS } from '../shared/alert-capabilities';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
@@ -366,6 +366,7 @@ interface PostBody {
   webhookLabel?: string;
   variant?: string;
   enabled?: boolean;
+  enabledIntent?: unknown;
   eventTypes?: string[];
   sensitivity?: string;
   channels?: string[];
@@ -836,9 +837,12 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       }
 
       if (action === 'set-alert-rules') {
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers, chokepoints, orbitalSites, reservoirAlert } = body;
+        const { variant, enabled, enabledIntent, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers, chokepoints, orbitalSites, reservoirAlert } = body;
         const shapeError = alertRuleShapeError({ variant, eventTypes, channels, orbitalSites, reservoirAlert }, corsHeaders);
         if (shapeError) return finish(shapeError);
+        if (enabledIntent !== undefined && !isRuleEnabledIntent(enabledIntent)) {
+          return finish(json({ error: 'ENABLED_INTENT_INVALID', message: 'enabledIntent must be "keep" or "connect"' }, 400, corsHeaders));
+        }
         if (tickers !== undefined && !Array.isArray(tickers)) {
           return finish(json({ error: 'TICKERS_MUST_BE_ARRAY' }, 400, corsHeaders));
         }
@@ -850,6 +854,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           userId: session.userId,
           variant,
           enabled,
+          enabledIntent,
           eventTypes,
           sensitivity,
           channels,
@@ -944,10 +949,13 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       if (action === 'set-notification-config') {
         const VALID_SENSITIVITY = new Set(['all', 'high', 'critical']);
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers, chokepoints, orbitalSites, reservoirAlert, seedCountriesFromFollowed } = body;
+        const { variant, enabled, enabledIntent, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers, chokepoints, orbitalSites, reservoirAlert, seedCountriesFromFollowed } = body;
         if (!variant) return finish(json({ error: 'variant required' }, 400, corsHeaders));
         const shapeError = alertRuleShapeError({ variant, eventTypes, channels, orbitalSites, reservoirAlert }, corsHeaders);
         if (shapeError) return finish(shapeError);
+        if (enabledIntent !== undefined && !isRuleEnabledIntent(enabledIntent)) {
+          return finish(json({ error: 'ENABLED_INTENT_INVALID', message: 'enabledIntent must be "keep" or "connect"' }, 400, corsHeaders));
+        }
         if (sensitivity !== undefined && !VALID_SENSITIVITY.has(sensitivity)) {
           return finish(json({ error: 'invalid sensitivity' }, 400, corsHeaders));
         }
@@ -968,6 +976,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           userId: session.userId,
           variant,
           enabled,
+          enabledIntent,
           eventTypes,
           sensitivity,
           channels,

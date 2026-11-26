@@ -52,6 +52,7 @@ import {
   RESERVOIR_ALERT_EVENT_TYPE,
   RESERVOIR_ALERT_RESERVOIRS_MAX,
   type ReservoirAlertSettings,
+  type RuleEnabledIntent,
   type RuleSaveResult,
 } from '../../shared/alert-rule-shape';
 
@@ -360,6 +361,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       let secretCopyGeneration = 0;
       let legacyDigestPending = false;
       let legacyDigestConversionInFlight = false;
+      // Channels whose connect save has not been stored yet (#10976).
+      const pendingConnects = new Set<ChannelType>();
 
       if (!signedIn) {
         const upgradeBtn = container.querySelector<HTMLButtonElement>('#usNotifUpgradeBtn');
@@ -1312,7 +1315,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
        * centralizing makes future drift impossible to introduce silently.
        */
       function getCurrentAlertRuleFormState(): {
-        enabled?: boolean;
+        enabled: boolean;
+        enabledIntent?: RuleEnabledIntent;
         eventTypes: string[];
         sensitivity: 'all' | 'high' | 'critical';
         channels: ChannelType[];
@@ -1380,13 +1384,20 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const scopeEmptyOnFreePlan = caps.requireCountryScope
           && alertRuleCountries !== undefined
           && alertRuleCountries.length === 0;
-        // #10976: an off toggle the user has not set in this render asserts
-        // nothing. The save omits `enabled`, so the server keeps the stored
-        // value or switches alerts on for the rule's first channel, and a save
-        // sent before the panel shows that switch-on cannot undo it.
+        // #10976: an off toggle the user has not set in this render is not a
+        // choice. The server keeps the stored value ("keep"), or switches
+        // alerts on when a connecting channel is the rule's first ("connect"),
+        // so a save sent before the panel shows a switch-on cannot undo it.
+        // The free empty-scope pause stays a stored off, except on a connect,
+        // where the server keeps the rule off and says why.
         const enabledAsserted = enabledEl !== null && (enabledEl.checked || enabledEl.dataset.userSet !== undefined);
+        const connecting = connectedChannelTypes.some((type) => pendingConnects.has(type));
+        const enabledIntent: RuleEnabledIntent | undefined = enabledAsserted ? undefined
+          : connecting ? 'connect'
+            : scopeEmptyOnFreePlan ? undefined : 'keep';
         return {
-          ...(enabledAsserted ? { enabled: enabledEl.checked && !scopeEmptyOnFreePlan } : {}),
+          enabled: (enabledEl?.checked ?? false) && !scopeEmptyOnFreePlan,
+          ...(enabledIntent ? { enabledIntent } : {}),
           eventTypes,
           sensitivity: (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical',
           channels: connectedChannelTypes,
@@ -1593,6 +1604,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         // Rule saves read channels off the connected rows. Mark this one now,
         // or a save made while this one is pending would drop the channel.
         container.querySelector<HTMLElement>(`[data-channel-type="${newChannel}"]`)?.classList.add('us-notif-ch-on');
+        pendingConnects.add(newChannel);
         const state = getCurrentAlertRuleFormState();
         // Augment channels with the newly connected one (set semantics).
         const channels = [...new Set([...state.channels, newChannel])];
@@ -1603,6 +1615,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         }, signal));
         fireForgetSave(save, 'save alert rules');
         void save.then((result) => result, () => null).then((result) => {
+          if (result) pendingConnects.delete(newChannel);
           if (signal.aborted) return;
           const show = (): void => {
             if (!result) showChannelRuleSaveFailure(newChannel, opts);

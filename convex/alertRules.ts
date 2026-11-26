@@ -19,6 +19,7 @@ import {
   ORBITAL_SITE_ALERT_EVENT_TYPES,
   RESERVOIR_ALERT_EVENT_TYPE,
   resolveRuleEnabled,
+  RULE_ENABLED_INTENTS,
   type ResolvedRuleEnabled,
   type RuleSaveResult,
 } from "../shared/alert-rule-shape";
@@ -145,10 +146,12 @@ async function assertAlertCapabilitiesFor(
  * reason, so connecting a channel never fails on a rung only an enabled rule
  * has to pass. Any other refusal still throws.
  */
-async function checkResolvedEnabled(
-  resolved: ResolvedRuleEnabled,
-  check: (enabled: boolean) => Promise<void>,
-): Promise<RuleSaveResult> {
+type RuleSaveDecision<E extends boolean | undefined> = Omit<RuleSaveResult, "enabled"> & { enabled: E | boolean };
+
+async function checkResolvedEnabled<E extends boolean | undefined>(
+  resolved: ResolvedRuleEnabled<E>,
+  check: (enabled: E | boolean) => Promise<void>,
+): Promise<RuleSaveDecision<E>> {
   try {
     await check(resolved.enabled);
   } catch (err) {
@@ -159,6 +162,8 @@ async function checkResolvedEnabled(
   }
   return resolved.firstChannel ? { enabled: true, firstChannel: "on" } : { enabled: resolved.enabled };
 }
+
+const enabledIntentValidator = v.union(...RULE_ENABLED_INTENTS.map((intent) => v.literal(intent)));
 
 function capabilityRefusal(err: unknown): { code: string; message: string } | null {
   if (!(err instanceof ConvexError)) return null;
@@ -400,7 +405,8 @@ export const setAlertRulesForUser = internalMutation({
   args: {
     userId: v.string(),
     variant: v.string(),
-    enabled: v.optional(v.boolean()),
+    enabled: v.boolean(),
+    enabledIntent: v.optional(enabledIntentValidator),
     eventTypes: v.array(v.string()),
     sensitivity: v.optional(sensitivityValidator),
     channels: v.array(channelTypeValidator),
@@ -440,7 +446,7 @@ export const setAlertRulesForUser = internalMutation({
     const normalizedCountries = rest.countries !== undefined
       ? normalizeCountries(rest.countries)
       : undefined;
-    const result = await checkResolvedEnabled(resolveRuleEnabled(rest.enabled, existing, channels), async (enabled) => {
+    const result = await checkResolvedEnabled(resolveRuleEnabled(rest.enabled, rest.enabledIntent, existing, channels), async (enabled) => {
       if (!rest.enforceEntitlement) return;
       // Validate only what this call writes — see the sister comment in
       // setNotificationConfigForUser. `channels` is a required arg here, so
@@ -714,6 +720,7 @@ export const setNotificationConfigForUser = internalMutation({
     userId: v.string(),
     variant: v.string(),
     enabled: v.optional(v.boolean()),
+    enabledIntent: v.optional(enabledIntentValidator),
     eventTypes: v.optional(v.array(v.string())),
     sensitivity: v.optional(sensitivityValidator),
     channels: v.optional(v.array(channelTypeValidator)),
@@ -803,7 +810,7 @@ export const setNotificationConfigForUser = internalMutation({
     // wider-than-plan row, so untouched stored fields are not re-judged here.
     // Delivery stays clamped to the caller's ladder either way
     // (scripts/notification-relay.cjs).
-    const result = await checkResolvedEnabled(resolveRuleEnabled(args.enabled, existing, channels), (enabled) =>
+    const decision = await checkResolvedEnabled(resolveRuleEnabled(args.enabled, args.enabledIntent, existing, channels), (enabled) =>
       assertAlertCapabilitiesFor(ctx, userId, {
         ...(args.sensitivity !== undefined || !existing ? { sensitivity: pair.sensitivity } : {}),
         ...(args.digestMode !== undefined || !existing ? { digestMode: pair.digestMode } : {}),
@@ -813,19 +820,20 @@ export const setNotificationConfigForUser = internalMutation({
         // Whole-rule view for the worldwide-scope check (Greptile P1): an
         // omitted or empty countries list is a worldwide rule, which the free
         // ladder does not include. Disables stay allowed.
-        enabled,
+        enabled: enabled ?? existing?.enabled ?? true,
         effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
         // Union also judged on a re-enable without countries — see the sister
         // comment in setAlertRulesForUser (Strix review 7).
-      }, normalizedCountries !== undefined || (enabled && existing?.enabled === false)
+      }, normalizedCountries !== undefined || (enabled === true && existing?.enabled === false)
         ? { variant, countries: normalizedCountries ?? existing?.countries ?? [] }
         : undefined));
+    const result: RuleSaveResult = { ...decision, enabled: decision.enabled ?? existing?.enabled ?? true };
 
     const now = Date.now();
 
     if (existing) {
       const patch: Record<string, unknown> = { updatedAt: now };
-      patch.enabled = result.enabled;
+      if (decision.enabled !== undefined) patch.enabled = decision.enabled;
       if (eventTypes !== undefined) patch.eventTypes = eventTypes;
       // Only patch sensitivity when caller explicitly supplied it.
       if (args.sensitivity !== undefined) patch.sensitivity = args.sensitivity;
