@@ -38,7 +38,9 @@ export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
  * the rollout window for category/isFeelGood/isOpinion residue.
  * Shadow scoring key (written by notification-relay.cjs, which owns the live
  * value — the constant here is documentation only, not imported):
- *   shadow:score-log:v5            ZSet   score=epoch_ms, member=JSON{ts,importanceScore,severity,eventType,title,source,publishedAt,corroborationCount,variant}
+ *   shadow:score-log:v5            ZSet   score=epoch_ms (dequeue time), member=JSON{ts,importanceScore,severity,eventType,title,source,publishedAt,corroborationCount,variant,outcome}
+ *                                         outcome = the relay's per-rule tally for the event (#10976, see deliverToRules);
+ *                                         { stopped: 'pending' } from dequeue until delivery ends, then the row is swapped in one transaction
  *   shadow:score-log:v3            ZSet   legacy (weight rebalance) — self-prunes via 7d ZREMRANGEBYSCORE
  *   shadow:score-log:v2            ZSet   legacy (stale-score fix) — self-prunes
  *   shadow:score-log:v1            ZSet   legacy (pre-PR #3069) — self-prunes

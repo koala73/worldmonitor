@@ -787,6 +787,7 @@ const STANDALONE_KEYS = {
   regionalEnergyAnptl:    'energy:regional:anptl:v1',
   regionalEnergyCreg:     'energy:regional:creg:v1',
   regionalEnergyUrsea:    'energy:regional:ursea:v1',
+  regionalEnergyFuelwatch: 'energy:regional:fuelwatch:v1',
   regionalEnergySearg:    'energy:regional:searg:v1',
   resilienceIntervals:      'resilience:intervals:v12:US',
   sprPolicies:              'energy:spr-policies:v1',
@@ -2763,6 +2764,8 @@ const SEED_META = {
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-creg' } },
   regionalEnergyUrsea: { key: 'seed-meta:energy:regional-ursea', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-ursea',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-ursea' } },
+  regionalEnergyFuelwatch: { key: 'seed-meta:energy:regional-fuelwatch', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 5760, activationKey: 'seed-activated:energy:regional-fuelwatch',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10838, activationKey: 'seed-activated:energy:regional-fuelwatch' } },
   regionalEnergySearg: { key: 'seed-meta:energy:regional-searg', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 20160, activationKey: 'seed-activated:energy:regional-searg',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 11154, activationKey: 'seed-activated:energy:regional-searg' } },
   cryptoSectors:        { key: 'seed-meta:market:crypto-sectors',             maxStaleMin: 120 }, // relay loop every ~30min; 120min = 2h = 4x interval
@@ -3006,6 +3009,7 @@ const ON_DEMAND_KEYS = new Set([
   'regionalEnergyAnptl',
   'regionalEnergyCreg',
   'regionalEnergyUrsea',
+  'regionalEnergyFuelwatch',
   'regionalEnergySearg',
   // New ICESat-2 probe: absent before the first daily climate bundle run. firstPublicationMaxWaitMin
   // bounds the grace to one day; seed-activated:climate:reservoir-levels revokes it.
@@ -3255,6 +3259,7 @@ const ACTIVATION_MARKERS = {
   regionalEnergyAnptl: SEED_META.regionalEnergyAnptl.activationKey,
   regionalEnergyCreg: SEED_META.regionalEnergyCreg.activationKey,
   regionalEnergyUrsea: SEED_META.regionalEnergyUrsea.activationKey,
+  regionalEnergyFuelwatch: SEED_META.regionalEnergyFuelwatch.activationKey,
   regionalEnergySearg: SEED_META.regionalEnergySearg.activationKey,
   reservoirLevels: SEED_META.reservoirLevels.activationKey,
   orbitalCatalog: SEED_META.orbitalCatalog.activationKey,

@@ -46,6 +46,14 @@ to the payload fragments that link each weekly PDF, and the three `ursea-*.html`
 pages to their `<main>` element. Each HTML fixture starts with a comment naming
 its source URL.
 
+`fuelwatch-retail-2026-11-excerpt.csv` is a verbatim excerpt of
+`https://warsydprdstafuelwatch.blob.core.windows.net/historical-reports/FuelWatchRetail-11-2026.csv`
+as read on 2026-11-26 (FuelWatch Historic Fuel Prices, CC BY 4.0): every 30th
+station by trading name, 24 and 25 November, all products. Its expected medians
+for 25 November (ULP 2.099, PULP 2.229, 98 RON 2.319, diesel 2.569 AUD/l) and
+the 24 November ULP median (1.947) were computed from the CSV independently
+with Python's `statistics.median`.
+
 `searg-surtidor-2024-02-06.csv` (#11154) is an unmodified excerpt of the
 Secretaría de Energía "Precios vigentes en surtidor - Resolución 314/2016" CSV
 (CC-BY-4.0): the header and every row of the first 40 stations, in file order,

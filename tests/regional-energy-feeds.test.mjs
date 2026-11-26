@@ -27,7 +27,7 @@ const json = name => JSON.parse(fixture(name));
 const point = (rows, metric) => rows.find(r => r.metric === metric);
 const BATCH_2 = new Set(['evn', 'korem', 'coes', 'iccc', 'fccc', 'mem']);
 const BATCH_3 = new Set(['qatarenergy', 'erb', 'npa', 'sonabhy', 'zera', 'doe', 'anptl', 'creg', 'ursea']);
-const OWNER_ISSUE = { searg: 11154 };
+const OWNER_ISSUE = { fuelwatch: 10838, searg: 11154 };
 
 describe('regional energy source observations', () => {
   it('rejects large unterminated HTML without blocking the worker', () => {

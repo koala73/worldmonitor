@@ -74,6 +74,7 @@ describe('regional energy presentation', () => {
   it('translates source-language areas and drops grid codes', () => {
     expect(regionalAreaLabel('Gasolina Regular; Guatemala City')).toBe('Regular gasoline, Guatemala City');
     expect(regionalAreaLabel('GASOLINA COMUM')).toBe('Regular gasoline');
+    expect(regionalAreaLabel('ULP; median of stations')).toBe('Unleaded 91 (ULP), Median of stations');
     expect(regionalAreaLabel('Север - Юг')).toBe('North–South zone');
     expect(regionalAreaLabel('LPG 12 Kg Cylinder; LPG Schedule 1')).toBe('LPG 12 kg cylinder, Price zone 1');
     expect(regionalAreaLabel('Motor Spirit; Schedule 3')).toBe('Petrol, Price zone 3');

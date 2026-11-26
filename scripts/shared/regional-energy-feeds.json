@@ -255,6 +255,17 @@
     "utcOffsetMin": -180
   },
   {
+    "id": "fuelwatch",
+    "countryCode": "AU",
+    "name": "Western Australia FuelWatch pump prices",
+    "sourceUrl": "https://catalogue.data.wa.gov.au/dataset/fuelwatch-historic-fuel-prices",
+    "licence": "CC-BY-4.0",
+    "intervalMin": 720,
+    "maxContentAgeMin": 5760,
+    "script": "seed-regional-energy-fuelwatch.mjs",
+    "utcOffsetMin": 480
+  },
+  {
     "id": "searg",
     "countryCode": "AR",
     "name": "Argentina Secretaría de Energía pump prices",

@@ -130,6 +130,10 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
         }
         return added;
       }
+      case 'ZREM': {
+        const z = zsets.get(key) ?? new Map();
+        return args.filter(m => z.delete(m)).length;
+      }
       case 'ZMSCORE': {
         const z = zsets.get(key) ?? new Map();
         return args.map(m => (z.has(m) ? String(z.get(m)) : null));
@@ -196,7 +200,7 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
         stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 40, output_tokens: 6 },
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
-    if (path === '/pipeline') {
+    if (path === '/pipeline' || path === '/multi-exec') {
       const body = JSON.parse(opts.body);
       return { ok: true, status: 200, json: async () => body.map(c => ({ result: run(c) })) };
     }
@@ -231,6 +235,23 @@ describe('reworded news alerts (#10916)', () => {
       assert.equal(record.skippedUsers, 1);
       assert.equal(record.reachedUsers, 0);
       assert.ok(record.anchor && record.anchor.score > 0.99);
+    } finally { h.restore(); }
+  });
+
+  // #10976: the miss audit read a skipped rewrite as a story nobody received,
+  // because it matched receipts to headlines by shared words.
+  it('records the skipped rewrite and the alert it repeats on the score-log row', async () => {
+    const h = installHarness();
+    try {
+      await relay.processEvent(alert(CNN));
+      await relay.processEvent(alert(SUN));
+      assert.equal(await relay.drainShadowLog(1_000), true);
+      const rows = [...(h.zsets.get('shadow:score-log:v5') ?? new Map()).keys()].map(m => JSON.parse(m));
+      const outcomeOf = title => rows.find(r => r.title === title.slice(0, 160))?.outcome;
+      assert.deepEqual(outcomeOf(CNN), { matched: 1, sent: 1 });
+      assert.deepEqual(outcomeOf(SUN), {
+        matched: 1, repeat: 1, repeatOf: { id: `full:${newsPublisherCoverageKey(CNN).split(':').pop()}`, title: CNN.slice(0, 160) },
+      });
     } finally { h.restore(); }
   });
 

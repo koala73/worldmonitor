@@ -5,7 +5,7 @@
 // turn an index page into the document URLs to read, newest first.
 import {
   cleanHtml, text, blocks, rows, number, observation, publicUrl,
-  validDay, ymd, EN_MONTHS, EN_MONTH_RE, addUnique, decodeTitle, csv,
+  validDay, ymd, EN_MONTHS, EN_MONTH_RE, addUnique, decodeTitle, csv, pad2,
 } from './regional-energy-feeds.mjs';
 
 const monthIndex = name => {
@@ -609,6 +609,70 @@ export function parseUrseaReferencePrices(html) {
 }
 
 
+// ---- Western Australia FuelWatch: daily station retail prices (CSV, #10838) ----
+// The CC BY 4.0 "FuelWatch Historic Fuel Prices" dataset (data.wa.gov.au) is one
+// CSV per month, rewritten each night with the previous day's station prices.
+// The FuelWatch RSS feed is not used: it is marked "All Rights Reserved".
+
+export const FUELWATCH_HOST = 'warsydprdstafuelwatch.blob.core.windows.net';
+const FUELWATCH_UTC_OFFSET_MS = 8 * 3600000;
+/** This month's file in Perth time, then last month's (a new file appears only after its first day). */
+export function fuelWatchCsvUrls(nowMs = Date.now()) {
+  const perth = new Date(nowMs + FUELWATCH_UTC_OFFSET_MS);
+  const months = [[perth.getUTCFullYear(), perth.getUTCMonth()], [perth.getUTCFullYear(), perth.getUTCMonth() - 1]];
+  return months.map(([y, m]) => {
+    const first = new Date(Date.UTC(y, m, 1));
+    return `https://${FUELWATCH_HOST}/historical-reports/FuelWatchRetail-${pad2(first.getUTCMonth() + 1)}-${first.getUTCFullYear()}.csv`;
+  });
+}
+
+const FUELWATCH_PRODUCTS = ['ULP', 'PULP', '98 RON', 'Diesel'];
+const FUELWATCH_HEADLINE = ['ULP', 'Diesel'];
+const FUELWATCH_COLUMNS = ['PUBLISH_DATE', 'TRADING_NAME', 'PRODUCT_DESCRIPTION', 'PRODUCT_PRICE', 'ADDRESS', 'LOCATION'];
+const FUELWATCH_MAX_UNREADABLE = 0.05;
+const median = values => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return +(sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2).toFixed(4);
+};
+
+// Prices are cents per litre. Each station appears once per product per day; the
+// feed publishes the median of stations on the newest day the file holds.
+export function parseFuelWatchPrices(source, nowMs = Date.now(), { minStations = 400 } = {}) {
+  const { header, records, ragged } = csv(String(source), ',', { skipRagged: true });
+  if (FUELWATCH_COLUMNS.some(c => !header.includes(c))) throw new Error('Changed FuelWatch price columns');
+  const today = new Date(nowMs + FUELWATCH_UTC_OFFSET_MS).toISOString().slice(0, 10);
+  const days = new Map();
+  let considered = ragged, unreadable = ragged;
+  for (const r of records) {
+    if (!FUELWATCH_PRODUCTS.includes(r.PRODUCT_DESCRIPTION)) continue;
+    considered++;
+    const d = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(r.PUBLISH_DATE);
+    const price = /^\d+(?:\.\d+)?$/.test(r.PRODUCT_PRICE) ? Number(r.PRODUCT_PRICE) : NaN;
+    let day = null;
+    try { day = d && ymd(d[3], d[2], d[1]); } catch { day = null; }
+    if (!day || !(price > 0)) { unreadable++; continue; }
+    if (day > today) continue;
+    if (!days.has(day)) days.set(day, new Map());
+    days.get(day).set(`${r.PRODUCT_DESCRIPTION}|${r.TRADING_NAME}|${r.ADDRESS}|${r.LOCATION}`, { product: r.PRODUCT_DESCRIPTION, price });
+  }
+  if (!considered || unreadable / considered > FUELWATCH_MAX_UNREADABLE) throw new Error('Unreadable FuelWatch rows');
+  // The newest day whose ULP and diesel samples are complete, so a partly
+  // written last day falls back to the day before it.
+  const complete = day => FUELWATCH_HEADLINE.every(product =>
+    [...days.get(day).values()].filter(s => s.product === product).length >= minStations);
+  const period = [...days.keys()].sort().reverse().find(complete);
+  if (!period) throw new Error('FuelWatch station sample is incomplete');
+  const stations = [...days.get(period).values()];
+  const points = new Map();
+  for (const product of FUELWATCH_PRODUCTS) {
+    const prices = stations.filter(s => s.product === product).map(s => s.price / 100);
+    if (prices.length < minStations) continue;
+    addUnique(points, positive(observation('fuel.retail_price', period, median(prices), 'AUD/l', `${product}; median of stations`), 0.5, 10, 'FuelWatch price'));
+  }
+  return [...points.values()];
+}
+
 // ---- Argentina Secretaría de Energía: declared pump prices per station (CSV, #11154) ----
 
 const SEARG_HOST = 'datos.energia.gob.ar';
@@ -628,7 +692,7 @@ const SEARG_MAX_UNREADABLE = 0.05;
 // Argentina has no daylight saving time.
 const SEARG_OFFSET = '-03:00';
 
-const median = values => {
+const seargMedian = values => {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = sorted.length >> 1;
   return +(sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2).toFixed(2);
@@ -673,7 +737,7 @@ export function parseSeArgentinaPrices(source, nowMs = Date.now(), { minStations
       if (SEARG_HEADLINE.includes(id)) throw new Error('Secretaría de Energía station sample is incomplete');
       continue;
     }
-    addUnique(points, positive(observation('fuel.retail_price', period, median(prices), 'ARS/l', `${product}; median of stations`), 1, 1e7, 'Secretaría de Energía price'));
+    addUnique(points, positive(observation('fuel.retail_price', period, seargMedian(prices), 'ARS/l', `${product}; median of stations`), 1, 1e7, 'Secretaría de Energía price'));
   }
   return [...points.values()];
 }
