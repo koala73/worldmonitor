@@ -185,6 +185,15 @@ export function getProviderCredentials(
     const apiKey = process.env.ATLASCLOUD_API_KEY;
     if (!apiKey) return null;
     const baseUrl = process.env.ATLASCLOUD_API_BASE || 'https://api.atlascloud.ai/v1';
+    // A scheme-less or non-http(s) base would yield a relative URL that later
+    // throws inside the health probe and aborts the whole provider chain.
+    try {
+      const { protocol } = new URL(baseUrl);
+      if (protocol !== 'https:' && protocol !== 'http:') throw new Error('unsupported protocol');
+    } catch {
+      console.warn('[llm] Atlas Cloud disabled: ATLASCLOUD_API_BASE must be an absolute http(s) URL');
+      return null;
+    }
     return {
       apiUrl: openAiChatCompletionsUrl(baseUrl),
       model: overrides.model
@@ -775,7 +784,8 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
       // Keep one independent provider reachable inside the caller's wall-clock
       // budget. The fixed free models share OpenRouter's control plane, so a
       // stalled OpenRouter completion must not consume the next origin's reserve.
-      const hasIndependentFallback = isOpenRouterProvider(providerName)
+      const reservesIndependentFallback = isOpenRouterProvider(providerName) || providerName === 'atlascloud';
+      const hasIndependentFallback = reservesIndependentFallback
         && providers.slice(providerIndex + 1).some((laterProvider) => {
           const laterCreds = getProviderCredentials(laterProvider, {
             model: modelOverrides?.[laterProvider as LlmProviderName],
@@ -950,7 +960,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         } else {
           record(false, { reason: timedOut ? 'timeout' : 'fetch_error' });
         }
-        if (timedOut && hasIndependentFallback) {
+        if (timedOut && hasIndependentFallback && isOpenRouterProvider(providerName)) {
           skipRemainingOpenRouter = true;
         }
         if (forcedProvider) return null;
