@@ -42,6 +42,18 @@ export class DotCanvas {
     this.occupied.fill(0);
   }
 
+  // Drop dots (not glyphs) inside a cell rectangle, for panels drawn over the scene.
+  clearRect(cx, cy, w, h) {
+    for (let y = Math.max(0, cy); y < Math.min(this.rows, cy + h); y++) {
+      for (let x = Math.max(0, cx); x < Math.min(this.cols, cx + w); x++) {
+        const i = y * this.cols + x;
+        this.code[i] = 0;
+        this.color[i] = null;
+        this.pri[i] = -32768;
+      }
+    }
+  }
+
   inBounds(x, y) {
     return x >= 0 && y >= 0 && x < this.w && y < this.h;
   }
@@ -209,7 +221,7 @@ export class DotCanvas {
 
   writeText(x, y, text, fg, bg, attr, pri) {
     let i = 0;
-    for (const ch of text) {
+    for (const ch of sanitize(String(text ?? ''))) {
       this.glyph(x + i, y, ch, fg, { bg, attr, pri });
       i += strWidth(ch);
     }
