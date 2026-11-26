@@ -368,9 +368,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // Connecting the first channel to a rule that has none switches alerts
       // on (#10976). `storedRuleChannelCount` is the stored rule's channel
       // count, not the connected rows: channels are per account, rules per
-      // variant. A user who set the toggle in this panel keeps that choice.
+      // variant. A user who set the toggle in this panel keeps that choice,
+      // and every reload shows it, so a pending save cannot render it away.
       let storedRuleChannelCount = 0;
-      let enabledToggleTouched = false;
+      let enabledToggleChoice: boolean | null = null;
       // That switch-on is not stored yet: the free plan paused it for an
       // empty country scope, or the save failed. The toggle keeps showing it
       // across reloads, so the next save (picking a country) stores it.
@@ -840,7 +841,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <div class="ai-flow-toggle-desc">Receive alerts for events matching your filters</div>
               </div>
               <label class="ai-flow-switch">
-                <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled || firstChannelEnablePending ? ' checked' : ''}>
+                <input type="checkbox" id="usNotifEnabled"${(enabledToggleChoice ?? (alertRule?.enabled || firstChannelEnablePending)) ? ' checked' : ''}>
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
@@ -1568,11 +1569,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // reload waits for the save: a read that lands first renders the old
       // rule, and the Pro channel re-sync would then store that stale toggle.
       function saveRuleWithNewChannel(newChannel: ChannelType, opts: { reload: boolean } = { reload: true }): void {
-        if (storedRuleChannelCount === 0 && !enabledToggleTouched) {
+        if (storedRuleChannelCount === 0 && enabledToggleChoice === null) {
           const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
           if (enabledEl) enabledEl.checked = true;
           firstChannelEnablePending = true;
         }
+        // Rule saves read channels off the connected rows. Mark this one now,
+        // or a save made while this one is pending would drop the channel.
+        container.querySelector<HTMLElement>(`[data-channel-type="${newChannel}"]`)?.classList.add('us-notif-ch-on');
         // Read after the switch-on, so the free plan's empty-scope pause in
         // getCurrentAlertRuleFormState still applies to it.
         const state = getCurrentAlertRuleFormState();
@@ -1598,8 +1602,15 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           const row = container.querySelector<HTMLElement>(`[data-channel-type="${newChannel}"]`);
           if (!row) return;
           if (!saved) {
-            appendNotificationError(row, 'Try again by changing any alert setting below. This channel was not added to your alerts.');
-            row.querySelector('.us-notif-error')?.setAttribute(CHANNEL_RULE_SAVE_ERROR_ATTR, '');
+            appendNotificationError(row, ' This channel was not added to your alerts.');
+            const error = row.querySelector<HTMLElement>('.us-notif-error');
+            error?.setAttribute(CHANNEL_RULE_SAVE_ERROR_ATTR, '');
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'us-notif-ch-btn';
+            retry.dataset.channelRuleRetry = newChannel;
+            retry.textContent = 'Try again';
+            error?.prepend(retry);
           } else if (firstChannelEnablePending && caps.requireCountryScope && countryPicker?.getValue().length === 0) {
             // The free plan's pause: the scope warning sits far below, so
             // say it where the user just acted.
@@ -1861,7 +1872,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           container.querySelector<HTMLElement>('#usOrbitalScope')?.toggleAttribute('hidden', !anyOn);
         }
         if (target.id === 'usNotifEnabled') {
-          enabledToggleTouched = true;
+          enabledToggleChoice = (target as HTMLInputElement).checked;
           firstChannelEnablePending = false;
         }
         if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts' || target.id === 'usOrbitalWindowAlerts' || target.id === 'usOrbitalChangeAlerts' || target.id === 'usReservoirAlerts' || target.id === 'usReservoirBelowPercent' || target.id === 'usReservoirSeasonal') {
@@ -1883,6 +1894,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
         if (target.closest('[data-ios-install]')) {
           openIosInstallSheet();
+          return;
+        }
+
+        const ruleRetry = target.closest<HTMLButtonElement>('[data-channel-rule-retry]');
+        if (ruleRetry?.dataset.channelRuleRetry) {
+          ruleRetry.disabled = true;
+          saveRuleWithNewChannel(ruleRetry.dataset.channelRuleRetry as ChannelType);
           return;
         }
 
