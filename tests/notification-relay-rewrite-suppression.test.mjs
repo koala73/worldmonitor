@@ -535,6 +535,65 @@ describe('reworded news alerts (#10916)', () => {
   });
 });
 
+// #11156: the Dymer strike near Kyiv on 2026-11-22 reached every subscriber
+// six times. Each later wording's nearest earlier alert scored 0.53 to 0.58,
+// under the 0.60 floor, so the judge never saw them.
+describe('retrieval floor (#11156)', () => {
+  const RESCUERS = 'Rescuers Race To Find Survivors Of Russian Attack On Apartment Near Kyiv; At Least 2 Killed';
+  const DYMER = 'Death toll from Russian attack in Dymer rises to four – Zelensky';
+  // Unit vectors whose cosine with the new headline's is the given score.
+  const at = score => { const v = new Array(512).fill(0); v[0] = score; v[1] = Math.sqrt(1 - score * score); return v; };
+
+  async function check(title, earlier, judge = async () => '{"same": 1}') {
+    const lib = await import('../scripts/lib/news-alert-coverage.mjs');
+    const now = Date.now();
+    const raw = Object.keys(earlier).flatMap((t, i) => [JSON.stringify({ id: `full:earlier-${i}`, title: t }), String(now - (i + 1) * 3_600_000)]);
+    const pipeline = async () => [{ result: raw }];
+    const scores = [1, ...Object.values(earlier)];
+    const embed = async titles => titles.map((_, i) => at(scores[i]));
+    const prompts = [];
+    const decision = await lib.findRewriteAnchor(alert(title), {
+      now, pipeline, embed, judge: async (system, user, opts) => { prompts.push(user); return judge(system, user, opts); },
+    });
+    return { decision, prompts };
+  }
+
+  it('judges a rewording whose nearest earlier alert scores under 0.60', async () => {
+    const { decision, prompts } = await check(DYMER, { [RESCUERS]: 0.53, 'Gaza death toll rises to 74,736': 0.3 });
+    assert.equal(decision.judged, true);
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[0], /EARLIER:\n1\. \(1 hour earlier\) Rescuers Race/);
+    assert.doesNotMatch(prompts[0], /Gaza/, 'a headline under 0.45 is not shown');
+    assert.equal(decision.anchor?.title, RESCUERS);
+  });
+
+  it('does not show lower-scoring headlines when one clears 0.60', async () => {
+    // A longer list of weaker wordings makes the judge readier to merge: at a
+    // flat 0.45 floor it hid Putin's "painful response" threat (0.67).
+    const { decision, prompts } = await check(DYMER, { 'Two killed as Russian attack destroys apartment building near Kyiv': 0.65, [RESCUERS]: 0.53 });
+    assert.equal(decision.judged, true);
+    assert.doesNotMatch(prompts[0], /Rescuers Race/);
+    assert.match(prompts[0], /EARLIER:\n1\. .*Two killed/);
+  });
+
+  it('does not ask the judge when the nearest earlier alert scores under 0.45', async () => {
+    const { decision, prompts } = await check(DYMER, { 'Israel steps up strikes across Middle East': 0.44 });
+    assert.equal(decision.judged, false);
+    assert.equal(prompts.length, 0);
+    assert.equal(decision.best.score.toFixed(2), '0.44');
+    assert.equal(decision.anchor, null);
+  });
+
+  // With the lower floor the judge saw "Russia fires about 100 missiles at
+  // Ukraine, with one likely crossing into Poland" next to the mass attack it
+  // belongs to, and called it a repeat in 13 of 16 runs.
+  it('tells the judge that an attack reaching another country is a development', async () => {
+    const { REWRITE_JUDGE_SYSTEM_PROMPT } = await import('../scripts/lib/news-alert-coverage.mjs');
+    const newList = REWRITE_JUDGE_SYSTEM_PROMPT.split('It is a new development when')[1];
+    assert.match(newList, /reaching another country/);
+  });
+});
+
 describe('rewrite judge deadline', () => {
   // A reply after the check's deadline cannot change delivery, so the direct
   // route must not start once the check has given up.
