@@ -256,7 +256,7 @@ jobs:
       - name: Restore the trusted main Makefile
         run: git show origin/main:Makefile > Makefile
 
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # setup-go v6 uses GOTOOLCHAIN=local; match the pinned sebuf toolchain requirement.
           go-version: '1.26'
@@ -326,7 +326,7 @@ jobs:
       - name: Install Node dependencies
         run: npm ci --ignore-scripts
 
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # setup-go v6 uses GOTOOLCHAIN=local; match the pinned sebuf toolchain requirement.
           go-version: '1.26'
@@ -559,7 +559,7 @@ jobs:
       - name: Install Node dependencies
         run: npm ci --ignore-scripts
 
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # setup-go v6 uses GOTOOLCHAIN=local; match the pinned sebuf toolchain requirement.
           go-version: '1.26'
