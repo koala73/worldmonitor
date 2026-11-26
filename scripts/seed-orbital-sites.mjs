@@ -17,6 +17,7 @@ import {
   planPublication,
   ROLLUP_MAX_AGE_MS,
   siteKey,
+  ARCHIVE_SEARCH_GROUPS,
   STAC_SEARCH_URL,
   stacSearchBody,
 } from './_orbital-sites.mjs';
@@ -111,21 +112,27 @@ export function makeArchiveSearch({ fetchImpl = (...args) => globalThis.fetch(..
   }
   // Follows the search's `next` link (a POST body with a token) so a busy site is not cut at one
   // page, but reads no further page once the caller's deadline has passed.
-  async function search(body, deadlineMs = Infinity) {
+  // Several bodies run in turn and merge; a body not reached before the deadline leaves the search incomplete.
+  async function search(bodies, deadlineMs = Infinity) {
     const features = [];
-    let next = body;
-    for (let pages = 0; next && pages < MAX_SEARCH_PAGES && (pages === 0 || clock() < deadlineMs); pages += 1) {
-      const json = await page(next);
-      if (Array.isArray(json?.features)) features.push(...json.features);
-      const link = Array.isArray(json?.links) ? json.links.find((l) => l?.rel === 'next' && l.body?.token) : null;
-      next = link ? { ...body, ...link.body } : null;
+    let complete = true;
+    for (const [index, body] of (Array.isArray(bodies) ? bodies : [bodies]).entries()) {
+      if (index > 0 && clock() >= deadlineMs) { complete = false; break; }
+      let next = body;
+      for (let pages = 0; next && pages < MAX_SEARCH_PAGES && (pages === 0 || clock() < deadlineMs); pages += 1) {
+        const json = await page(next);
+        if (Array.isArray(json?.features)) features.push(...json.features);
+        const link = Array.isArray(json?.links) ? json.links.find((l) => l?.rel === 'next' && l.body?.token) : null;
+        next = link ? { ...body, ...link.body } : null;
+      }
+      if (next !== null) complete = false;
     }
     // Newest first: a search cut short lacks the oldest scenes, which change scoring must not skip past.
     const acquisitions = acquisitionsFromStac(features);
-    acquisitions.complete = next === null;
+    acquisitions.complete = complete;
     return acquisitions;
   }
-  const searchArchive = (site, nowMs, deadlineMs) => search(stacSearchBody(site, nowMs), deadlineMs);
+  const searchArchive = (site, nowMs, deadlineMs) => search(ARCHIVE_SEARCH_GROUPS.map((collections) => stacSearchBody(site, nowMs, collections)), deadlineMs);
   searchArchive.backfill = (site, nowMs, deadlineMs) => search(backfillSearchBody(site, nowMs, ARCHIVE_LOOKBACK_DAYS), deadlineMs).catch((error) => {
     throw error instanceof ArchiveRefusal ? new ScoringRefusal(error.message) : error;
   });
