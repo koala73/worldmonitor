@@ -419,4 +419,40 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
 
     expect(channelMocks.saveAlertRules, 'no write under the other account').toHaveBeenCalledTimes(1);
   });
+  it('keeps alerts off when a channel joins a rule the load-time re-sync already gave a channel', async () => {
+    gate.tier = true;
+    store.channels = [connected('email')];
+    store.rule = rule({ enabled: false, channels: [] });
+    const container = await mount();
+    await vi.waitFor(() => expect(store.rule?.channels).toEqual(['email']));
+
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.test/wm';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    await vi.waitFor(() => expect(store.rule?.channels).toContain('webhook'));
+
+    expect(store.rule).toMatchObject({ enabled: false });
+    expect(toggle(container).checked).toBe(false);
+  });
+
+  it('does not reload a webhook signing secret away when an earlier connect save lands', async () => {
+    gate.tier = true;
+    store.rule = rule({ enabled: false, channels: [] });
+    let release!: () => void;
+    store.saveGates.push(new Promise<void>((resolve) => { release = resolve; }));
+    const container = await mount();
+
+    container.querySelector<HTMLButtonElement>('#usConnectEmail')!.click();
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1));
+    container.querySelector<HTMLButtonElement>('#usConnectWebhook')!.click();
+    container.querySelector<HTMLInputElement>('#usWebhookUrl')!.value = 'https://hooks.example.test/wm';
+    container.querySelector<HTMLButtonElement>('#usWebhookSave')!.click();
+    await vi.waitFor(() => expect(container.querySelector('#usWebhookSecret')).not.toBeNull());
+    release();
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(container.querySelector('#usWebhookSecret')?.textContent, 'secret still shown').toBe('whsec_test_secret');
+    expect(store.rule?.channels).toEqual(expect.arrayContaining(['email', 'webhook']));
+  });
 });
