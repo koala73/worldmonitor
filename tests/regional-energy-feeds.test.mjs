@@ -26,7 +26,7 @@ const fixture = name => readFileSync(new URL(`./fixtures/regional-energy/${name}
 const json = name => JSON.parse(fixture(name));
 const point = (rows, metric) => rows.find(r => r.metric === metric);
 const BATCH_2 = new Set(['evn', 'korem', 'coes', 'iccc', 'fccc', 'mem']);
-const BATCH_3 = new Set(['qatarenergy', 'erb', 'npa', 'sonabhy', 'zera', 'doe', 'anptl', 'creg', 'ursea']);
+const BATCH_3 = new Set(['qatarenergy', 'erb', 'npa', 'sonabhy', 'zera', 'doe', 'anptl', 'creg', 'ursea', 'ems', 'nosbih', 'mepso']);
 
 describe('regional energy source observations', () => {
   it('rejects large unterminated HTML without blocking the worker', () => {

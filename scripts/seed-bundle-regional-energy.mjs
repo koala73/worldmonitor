@@ -31,6 +31,9 @@ const SECTIONS = [
   { label: 'Regional-Energy-anptl', script: 'seed-regional-energy-anptl.mjs', seedMetaKey: 'energy:regional-anptl', canonicalKey: 'energy:regional:anptl:v1', completionMetaKey: 'seed-completion:energy:regional-anptl', expectedSourceVersion: 'regional-energy-anptl-v1', intervalMs: 86400000, timeoutMs: 120_000 },
   { label: 'Regional-Energy-creg', script: 'seed-regional-energy-creg.mjs', seedMetaKey: 'energy:regional-creg', canonicalKey: 'energy:regional:creg:v1', completionMetaKey: 'seed-completion:energy:regional-creg', expectedSourceVersion: 'regional-energy-creg-v1', intervalMs: 43200000, timeoutMs: 120_000 },
   { label: 'Regional-Energy-ursea', script: 'seed-regional-energy-ursea.mjs', seedMetaKey: 'energy:regional-ursea', canonicalKey: 'energy:regional:ursea:v1', completionMetaKey: 'seed-completion:energy:regional-ursea', expectedSourceVersion: 'regional-energy-ursea-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-ems', script: 'seed-regional-energy-ems.mjs', seedMetaKey: 'energy:regional-ems', canonicalKey: 'energy:regional:ems:v1', completionMetaKey: 'seed-completion:energy:regional-ems', expectedSourceVersion: 'regional-energy-ems-v1', intervalMs: 3600000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-nosbih', script: 'seed-regional-energy-nosbih.mjs', seedMetaKey: 'energy:regional-nosbih', canonicalKey: 'energy:regional:nosbih:v1', completionMetaKey: 'seed-completion:energy:regional-nosbih', expectedSourceVersion: 'regional-energy-nosbih-v1', intervalMs: 3600000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-mepso', script: 'seed-regional-energy-mepso.mjs', seedMetaKey: 'energy:regional-mepso', canonicalKey: 'energy:regional:mepso:v1', completionMetaKey: 'seed-completion:energy:regional-mepso', expectedSourceVersion: 'regional-energy-mepso-v1', intervalMs: 21600000, timeoutMs: 120_000 },
 ];
 
 // A null claim means another run holds the lease, credentials are absent, or

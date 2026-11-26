@@ -14961,6 +14961,23 @@
       ]
     },
     {
+      "host": "transparency.ems.rs",
+      "provider": "transparency.ems.rs",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved (AD Elektromreža Srbije site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+      "attribution": "Credit Elektromreža Srbije (EMS) transparency platform and link to https://transparency.ems.rs/; hour placement in UTC is derived.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "travel.state.gov",
       "provider": "travel.state.gov",
       "kind": "structured",
@@ -19835,6 +19852,20 @@
       ]
     },
     {
+      "host": "www.mepso.com.mk",
+      "provider": "www.mepso.com.mk",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved (MEPSO site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+      "attribution": "Credit MEPSO, the North Macedonia transmission system operator, daily information report, and link to https://www.mepso.com.mk/; net cross-border flow is derived.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.meydan.tv",
       "provider": "www.meydan.tv",
       "kind": "feed",
@@ -20301,6 +20332,23 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.nosbih.ba",
+      "provider": "www.nosbih.ba",
+      "kind": "structured",
+      "observed": true,
+      "license": "Copyright footer of the Independent System Operator in Bosnia and Herzegovina, no data licence; reuse cleared by the WorldMonitor owner on 2026-11-26",
+      "attribution": "Credit NOS BiH (Independent System Operator in Bosnia and Herzegovina) and link to https://www.nosbih.ba/en/ees/graf-potrosnje/; hour placement in UTC is derived.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },

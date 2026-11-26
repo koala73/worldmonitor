@@ -253,5 +253,35 @@
     "script": "seed-regional-energy-ursea.mjs",
     "publishesAhead": true,
     "utcOffsetMin": -180
+  },
+  {
+    "id": "ems",
+    "countryCode": "RS",
+    "name": "EMS Serbia hourly system load",
+    "sourceUrl": "https://transparency.ems.rs/balanceareaprofile/dload/dload.php",
+    "licence": "All rights reserved (site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+    "intervalMin": 60,
+    "maxContentAgeMin": 2160,
+    "script": "seed-regional-energy-ems.mjs"
+  },
+  {
+    "id": "nosbih",
+    "countryCode": "BA",
+    "name": "NOS BiH hourly production and consumption",
+    "sourceUrl": "https://www.nosbih.ba/en/ees/graf-potrosnje/",
+    "licence": "Site footer copyright, no data licence; reuse cleared by the WorldMonitor owner on 2026-11-26",
+    "intervalMin": 60,
+    "maxContentAgeMin": 360,
+    "script": "seed-regional-energy-nosbih.mjs"
+  },
+  {
+    "id": "mepso",
+    "countryCode": "MK",
+    "name": "MEPSO North Macedonia daily energy report",
+    "sourceUrl": "https://www.mepso.com.mk/",
+    "licence": "All rights reserved (site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+    "intervalMin": 360,
+    "maxContentAgeMin": 10080,
+    "script": "seed-regional-energy-mepso.mjs"
   }
 ]

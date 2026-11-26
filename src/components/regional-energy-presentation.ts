@@ -27,6 +27,9 @@ const FEED_TITLES: Record<string, string> = {
   anptl: 'ANP, Timor-Leste fuel prices',
   creg: 'CREG, Colombia fuel prices',
   ursea: 'URSEA, Uruguay fuel prices',
+  ems: 'EMS, Serbia transmission system operator',
+  nosbih: 'NOS BiH, Bosnia and Herzegovina system operator',
+  mepso: 'MEPSO, North Macedonia transmission system operator',
 };
 
 const METRIC_LABELS: Record<string, string> = {

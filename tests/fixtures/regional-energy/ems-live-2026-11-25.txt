@@ -1,0 +1,3 @@
+<br />
+<b>Notice</b>:  Undefined variable: data1 in <b>/var/www/tr/balanceareaprofile/aload/get_results.php</b> on line <b>30</b><br />
+null

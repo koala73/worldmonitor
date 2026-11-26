@@ -30,6 +30,9 @@ is added.
 | ANP | TL | Lowest and highest listed petrol and diesel price per municipality and nationally, from the station listing (USD/l) | 1 day |
 | CREG | CO | Regulated regular gasoline and diesel prices by main city and their published average (COP/gal), newest three price changes | 12 hours |
 | URSEA | UY | Maximum pump prices set by the Executive (UYU/l; LPG UYU/kg), the PMIT maximum wholesale price, and URSEA's reference retail and import parity prices | 12 hours |
+| EMS | RS | Hourly system load: today's provisional operational values and the newest consolidated day (MW) | 1 hour |
+| NOS BiH | BA | Hourly actual production and consumption for yesterday and today (MW) | 1 hour |
+| MEPSO | MK | Daily metered output by source (hydro, thermal, gas, wind, solar), energy delivered to consumers and net cross-border flow (MWh) | 6 hours |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
 demand and load-shedding cells are commented out in the source and are omitted.
@@ -45,8 +48,46 @@ CO and UY. Their parsers live in `scripts/lib/regional-fuel-feeds.mjs`. Two
 sources from that issue are not collected: Kenya's EPRA pump-price page timed
 out on every connection on 2026-11-02, directly and through the US relay
 (Cloudflare 522 from the origin), and Honduras's SEN publishes its weekly price
-cards only as images. The three Balkan grid feeds in the issue are outside
-this fuel-price batch.
+cards only as images. Kenya still timed out on 2026-11-26.
+
+The issue's three Western Balkan grid feeds follow the fuel-price batch. All
+three operators publish local clock hours (Central European Time, UTC+1 in
+winter and UTC+2 in summer), so the parsers place hours through the
+`Europe/Belgrade` zone and publish UTC hour starts. A 23- or 25-hour DST change
+day is skipped: the providers' hour numbering on those days is ambiguous, and
+EMS sums or nets the shifted hour (6,429 MW on 25 October 2026).
+
+- **EMS** (`transparency.ems.rs`) serves today's hourly load as operational
+  values a little over an hour behind, and the realised hourly load about two
+  days later. Yesterday has neither. The feed publishes today's values as
+  `demand` with area `provisional` and the newest consolidated day as plain
+  `demand`, so the hours after local midnight still have a series; its content
+  budget is 36 hours. The responses lead with PHP notices, which are stripped.
+  The realised endpoint returns the day-ahead forecast, the realised load and an
+  unlabelled signed row that the page does not display; only the realised load
+  is read.
+- **NOS BiH** (`www.nosbih.ba`) returns the production page's table inside JSON
+  from a WordPress AJAX POST. Hours are labelled by their end (`01:00` is the
+  first hour, `00:00` the last). The feed reads actual production and
+  consumption for yesterday and today; planned values are not read. Its server
+  sends the AJAX response with neither a length nor chunking and ends the body
+  only by closing the connection, so the seeder sends `Connection: close` to
+  that host.
+- **MEPSO** (`www.mepso.com.mk`) links a daily metered report per day from its
+  home page, about three days late. The seeder reads the newest PDF and
+  publishes each source's daily total, the energy delivered to directly
+  connected consumers and distribution systems, and the signed net
+  cross-border flow (inflow less outflow, so positive is a net import). The
+  gross inflow and outflow include transit, so they are not published as
+  imports and exports. Each row's total must equal its 24 hourly figures, and
+  delivered energy must equal generation plus net inflow less losses, plus
+  energy taken from distribution-connected plants (within 15% of delivered
+  energy); otherwise the run fails. A report covering a DST change day is
+  skipped for the one before it. The content budget is seven days.
+
+EMS and MEPSO state all rights reserved and NOS BiH shows only a copyright
+footer; reuse of all three was cleared by the WorldMonitor owner on 2026-11-26,
+and the registry records both.
 
 The third batch publishes retail prices rather than grid observations, so most
 of its feeds carry `publishesAhead`: a monthly or weekly price is dated from its first day
