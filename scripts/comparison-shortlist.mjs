@@ -30,8 +30,10 @@ const ENTERPRISE_UNDISCLOSED = 'Enterprise-negotiated (undisclosed)';
  * @property {string[]} paragraphs     With bestSuitedFor, 200-300 words.
  * @property {string} bestSuitedFor
  * @property {{ cell: string, model: string, freeTier: string, published: boolean,
- *   offers?: object[], sources?: { label: string, url: string }[] }} pricing
+ *   offers?: object[], sources?: { label: string, url: string, amounts?: string[] }[] }} pricing
  *   `published: false` means the cell is a placeholder and no Offer may exist.
+ *   A competitor's `source.amounts` lists, as printed, each currency amount in the
+ *   entry's prose or price cell that the source cites.
  * @property {string} latency
  * @property {string} domains
  * @property {string} signup
@@ -81,8 +83,8 @@ function catalogLimit(tier, field) {
 }
 
 const CATALOG_PRICES = new Set(PRODUCT_FACTS.plans.map((plan) => plan.price).filter(Number.isFinite));
-// A currency amount in entry prose: $65,000, £40,500, $9.54.
-const PROSE_AMOUNT_RE = /[$£€]\d[\d,]*(?:\.\d+)?/g;
+// A currency amount in entry prose: $65,000, £40,500, $9.54. A trailing comma is punctuation.
+const PROSE_AMOUNT_RE = /[$£€]\d+(?:,\d{3})*(?:\.\d+)?/g;
 
 const monthly = (planKey) =>`$${catalogPlan(planKey).price.toFixed(2)}/mo`;
 
@@ -165,8 +167,8 @@ const ENTRIES = [
       freeTier: 'None published',
       published: false,
       sources: [
-        { label: 'AWS Marketplace: Dataminr Pulse', url: 'https://aws.amazon.com/marketplace/pp/prodview-3tflfnrcskima' },
-        { label: 'Vendr Dataminr benchmark', url: 'https://www.vendr.com/marketplace/dataminr' },
+        { label: 'AWS Marketplace: Dataminr Pulse', url: 'https://aws.amazon.com/marketplace/pp/prodview-3tflfnrcskima', amounts: ['$65,000'] },
+        { label: 'Vendr Dataminr benchmark', url: 'https://www.vendr.com/marketplace/dataminr', amounts: ['$22,000', '$15,000', '$62,500'] },
       ],
     },
     latency: 'Real-time alerting (no latency figure published)',
@@ -189,7 +191,7 @@ const ENTRIES = [
     bestFor: 'threat intelligence at enterprise scale',
     paragraphs: [
       'Recorded Future is a threat intelligence platform. It covers cyber threats, physical threats, geopolitical risk, country risk and travel safety, and it collects intelligence continuously. The breadth is the reason to buy it, because one vendor can serve the security operations team and the geopolitical desk. Enterprise customers get a REST API documented in the [Recorded Future API reference](https://docs.recordedfuture.com/reference/get-started).',
-      'There is no public list price. Vendr reports a median buyer price of $72,703 a year, based on 48 purchases. A UK G-Cloud 14 listing from the reseller ITogether prices the Recorded Future platform at £40,500 a licence a year. Other G-Cloud 14 reseller listings use different units and prices, such as £7,650 a user, £10,125 a user a year and £67,500 an instance a year, so that figure describes one listing and is not the price. Treat both numbers as context for a budget conversation, not as an offer.',
+      'There is no public list price. Vendr reports a median buyer price of $72,703 a year, based on 48 purchases. A UK G-Cloud 14 listing from the reseller ITogether prices the Recorded Future platform at £40,500 a licence a year. Other G-Cloud 14 reseller listings price per user or per instance and at different amounts, so that figure describes one listing and is not the price. Treat both numbers as context for a budget conversation, not as an offer.',
       "Recorded Future made a hosted MCP server generally available in September 2026, documented on its [support site](https://support.recordedfuture.com/hc/en-us/articles/55744099282963-Recorded-Future-MCP-Overview). It is included at no extra cost on packages with unlimited integration users, and each tool call is limited to the caller's entitlements. A [free browser extension](https://go.recordedfuture.com/browser-extension) is available, and the G-Cloud listing offers a 30-day sandbox trial on request. Seat terms are not published, so ask for them in the written quote. The contract size makes Recorded Future a hard first purchase for a small team. It fits an organization that already runs a threat intelligence program.",
     ],
     bestSuitedFor: 'enterprise security teams that want cyber and geopolitical threat intelligence from one vendor and can run a procurement cycle.',
@@ -199,8 +201,8 @@ const ENTRIES = [
       freeTier: 'Free browser extension; sandbox trial on request',
       published: false,
       sources: [
-        { label: 'Vendr Recorded Future benchmark', url: 'https://www.vendr.com/marketplace/recorded-future' },
-        { label: 'UK G-Cloud 14 listing (ITogether)', url: 'https://www.applytosupply.digitalmarketplace.service.gov.uk/g-cloud/services/609101270005042' },
+        { label: 'Vendr Recorded Future benchmark', url: 'https://www.vendr.com/marketplace/recorded-future', amounts: ['$72,703'] },
+        { label: 'UK G-Cloud 14 listing (ITogether)', url: 'https://www.applytosupply.digitalmarketplace.service.gov.uk/g-cloud/services/609101270005042', amounts: ['£40,500'] },
       ],
     },
     latency: 'Continuous intelligence platform',
@@ -233,7 +235,7 @@ const ENTRIES = [
       model: 'Sales-led',
       freeTier: 'None published',
       published: true,
-      sources: [{ label: 'AWS Marketplace: Seerist Decision-Ready Intelligence Platform', url: 'https://aws.amazon.com/marketplace/pp/prodview-rwny7yfqed4ey' }],
+      sources: [{ label: 'AWS Marketplace: Seerist Decision-Ready Intelligence Platform', url: 'https://aws.amazon.com/marketplace/pp/prodview-rwny7yfqed4ey', amounts: ['$75,000'] }],
     },
     latency: NOT_PUBLISHED,
     domains: 'Geopolitical and security risk analysis',
@@ -331,8 +333,8 @@ const ENTRIES = [
         usdOffer('Liveuamap Enterprise API (monthly, from)', '1000.00', 'https://liveuamap.com/promo/api'),
       ],
       sources: [
-        { label: 'Liveuamap plans', url: 'https://me.liveuamap.com/welcome' },
-        { label: 'Liveuamap API pricing', url: 'https://liveuamap.com/promo/api' },
+        { label: 'Liveuamap plans', url: 'https://me.liveuamap.com/welcome', amounts: ['$7', '$9.54'] },
+        { label: 'Liveuamap API pricing', url: 'https://liveuamap.com/promo/api', amounts: ['$150', '$1,000'] },
       ],
     },
     latency: 'Live news feed (no latency figure published)',
@@ -372,7 +374,7 @@ const ENTRIES = [
         usdOffer('Off-Nadir Delta Team Plus (monthly)', '499.00', 'https://offnadir-delta.com/pricing'),
       ],
       sources: [
-        { label: 'Off-Nadir Delta pricing', url: 'https://offnadir-delta.com/pricing' },
+        { label: 'Off-Nadir Delta pricing', url: 'https://offnadir-delta.com/pricing', amounts: ['$0', '$19', '$190', '$59', '$590', '$199', '$499', '$15', '$40', '$90'] },
         { label: 'Off-Nadir Delta API docs', url: 'https://offnadir-delta.com/docs/api' },
         { label: 'Off-Nadir Delta MCP docs', url: 'https://offnadir-delta.com/docs/mcp' },
       ],
@@ -584,6 +586,17 @@ export function shortlistPage(seed) {
       if (stray.length) fail(`World Monitor prose prices must come from the product catalog, got ${stray.join(', ')}`);
     } else if (proseAmounts.length && !pricing.sources?.length) {
       fail(`${entry.name} quotes ${proseAmounts.join(', ')} in prose without a cited price source`);
+    } else {
+      // Every competitor amount needs a source that cites it. World Monitor's own
+      // catalog prices may appear in a comparison sentence; the catalog is their source.
+      const printed = [...proseAmounts, ...(pricing.cell.match(PROSE_AMOUNT_RE) ?? [])];
+      const cited = new Set((pricing.sources ?? []).flatMap((source) => source.amounts ?? []));
+      const uncited = [...new Set(printed)].filter((amount) => !cited.has(amount) && !CATALOG_PRICES.has(Number(amount.slice(1).replaceAll(',', ''))));
+      if (uncited.length) fail(`${entry.name} quotes ${uncited.join(', ')} with no source that cites them`);
+      for (const source of pricing.sources ?? []) {
+        const stale = (source.amounts ?? []).filter((amount) => !printed.includes(amount));
+        if (stale.length) fail(`${entry.name} source "${source.label}" lists ${stale.join(', ')}, which the entry does not print`);
+      }
     }
     if (pricing.published) {
       if (!pricing.sources?.length) fail(`${entry.name} needs a cited source for its published price`);

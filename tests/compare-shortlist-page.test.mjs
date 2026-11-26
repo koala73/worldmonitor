@@ -337,6 +337,24 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
     assert.throws(() => shortlistPage(seedWith((seed) => { unpublished(seed).pricing.offers = []; })), /offers/);
     assert.throws(() => shortlistPage(seedWith((seed) => { unpublished(seed).pricing.sources = []; })), /in prose without a cited price source/);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.entries[0].paragraphs[0] += ' Pro costs $1.99/mo.'; })), /World Monitor prose prices/);
+    const recordedFuture = (seed) => seed.entries.find((entry) => entry.name === 'Recorded Future');
+    // #11144: one unrelated source must not cover every amount an entry prints.
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { recordedFuture(seed).pricing.sources = [{ label: 'Unrelated', url: 'https://example.com/' }]; })),
+      /Recorded Future quotes \$72,703, £40,500 with no source that cites them/,
+    );
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { recordedFuture(seed).paragraphs[1] += ' Another listing charges £7,650 a user.'; })),
+      /Recorded Future quotes £7,650 with no source that cites them/,
+    );
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { published(seed).pricing.cell = '$12,345/yr (listing)'; })),
+      /quotes \$12,345 with no source that cites them/,
+    );
+    assert.throws(
+      () => shortlistPage(seedWith((seed) => { recordedFuture(seed).pricing.sources[0].amounts.push('$1,234'); })),
+      /Recorded Future source "Vendr Recorded Future benchmark" lists \$1,234, which the entry does not print/,
+    );
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.useCases[0].href = '/blog/vs/dataminr/'; })), /\/blog\/best\//);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.faqs = seed.faqs.slice(0, 5); })), /6-8 FAQs/);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.keyTakeaways[0] += ' See [the plans](http://example.com).'; })), /site path or https URL/);
