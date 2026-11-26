@@ -20,8 +20,9 @@ function harness({ module: loaded = true } = {}) {
   const lines = [];
   const corroboration = {
     recordSightings: async (sightings) => { recorded.push(...sightings); },
-    crossWordingFamilies: async (candidates) => {
+    crossWordingFamilies: async (candidates, { outcomes } = {}) => {
       checked.push(...candidates);
+      outcomes?.push(...candidates.map(() => ({ result: 'matched' })));
       return new Map(candidates.map((c) => [c.title, { families: ['a', 'b', 'c', 'd', 'e'] }]));
     },
   };
@@ -41,7 +42,11 @@ function harness({ module: loaded = true } = {}) {
     const all = new Map(items.map((item) => [item.title, { source: 'Feed', publishedAt: Date.now(), corroborationCount: 1, ...item.meta }]));
     return vm.runInContext('crossWordingFamilies', context)(chunk, levels, all, observed);
   };
-  return { run, recorded, checked, lines, refill: () => vm.runInContext('crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS', context) };
+  return {
+    run, recorded, checked, lines,
+    refill: () => vm.runInContext('crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS', context),
+    outcomes: () => vm.runInContext('crossWordingOutcomes', context),
+  };
 }
 
 const titlesOf = (rows) => rows.map((row) => row.title);
@@ -95,6 +100,13 @@ describe('relay cross-wording corroboration (#10977)', () => {
     assert.equal(h.checked.length, 8);
     h.refill();
     assert.equal((await h.run(batch('fourth'))).size, 6);
+  });
+
+  it('collects every check outcome until the cycle writes them (#11426)', async () => {
+    const h = harness();
+    await h.run([{ title: 'first', level: 'critical' }]);
+    await h.run([{ title: 'second', level: 'critical' }, { title: 'third', level: 'critical' }]);
+    assert.equal(h.outcomes().length, 3);
   });
 
   it('adds nothing when the module failed to load', async () => {
