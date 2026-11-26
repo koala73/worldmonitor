@@ -1529,12 +1529,9 @@ describe('proxy exit preference', () => {
     );
   });
 
-  it('deliberately leaves the per-symbol tier on the configured exit', async () => {
-    // Characterizes the KNOWN GAP documented in collectV7Valuations: the
-    // per-symbol tier is NOT given the remembered exit, because routing it there
-    // would stop the batch running on healthy cycles and the batch is what keeps
-    // the preference fresh. Pinning it means a future change in either direction
-    // is a visible decision rather than an accident. See issue #6279.
+  it('forwards skipProxy to the per-symbol tier when a batch fallback exists (#6279)', async () => {
+    // Proxy deferral is now the contract: the per-symbol tier must not spend
+    // configured-exit proxy when the batch can recover exit-truncated symbols.
     const perSymbolOptions = [];
     const client = rotatingClient({ goodExit: 7, symbols: ['XLK', 'SMH'] });
     const wrapped = {
@@ -1558,10 +1555,11 @@ describe('proxy exit preference', () => {
 
     assert.ok(perSymbolOptions.length > 0, 'the per-symbol tier ran');
     for (const options of perSymbolOptions) {
+      assert.equal(options?.skipProxy, true, 'batch-capable clients defer the per-symbol proxy leg');
       assert.equal(
         options?.startExitAttempt,
         undefined,
-        'the per-symbol tier receives no exit override today',
+        'the per-symbol tier still receives no exit override',
       );
     }
     assert.deepEqual(client.startsSeen, [7], 'only the batch consumes the remembered exit');
