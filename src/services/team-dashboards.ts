@@ -90,7 +90,7 @@ export interface TeamDashboardCaptureInput extends TabPanels {
  * dashboards). Absent dates are left out rather than sent as undefined. Null
  * for no scope or one `normalizeScope` rejects, which publish would refuse.
  */
-function captureScope(raw: TabScope | null | undefined): NonNullable<TeamDashboardLayout['scope']> | null {
+export function captureScope(raw: TabScope | null | undefined): NonNullable<TeamDashboardLayout['scope']> | null {
   const scope = raw ? normalizeScope(raw) : null;
   if (!scope) return null;
   return {
