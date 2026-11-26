@@ -140,3 +140,68 @@ describe("discard never makes emailed recipients eligible again", () => {
     expect(await state(t)).toEqual(before);
   });
 });
+
+// The daily cron is the safety net for a failed run the operator forgot to
+// discard. `_listFailedWaveRunsForCleanup` used to `take(100)` and only then
+// filter: every row in the range shares one index key, so that is always the
+// OLDEST 100 failed runs, and nothing ever moves a run out of that prefix —
+// cleanup deletes `wavePickedContacts` rows and unstamps registrations but
+// never patches the `waveRuns` row, and a run that failed after its broadcast
+// was created is never cleanable at all. Once 100 such runs sit at the head,
+// the net reaches nothing newer, and every contact a forgotten wave pushed
+// stays stamped and excluded from every future wave for good.
+describe("the daily cleanup scan is not starved by uncleanable failed runs", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+
+  const DAY = 24 * 60 * 60 * 1000;
+
+  async function seedFailedRuns(count: number, make: (i: number) => Record<string, unknown>) {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      for (let i = 0; i < count; i++) {
+        await ctx.db.insert("waveRuns", {
+          runId: `blocker-${i}`, waveLabel: `blocker-wave-${i}`,
+          requestedCount: 1, batchSize: 1, totalCount: 1, underfilled: false,
+          pushedCount: 0, failedCount: 0,
+          status: "failed", createdAt: Date.now() - 10 * DAY, updatedAt: Date.now() - 10 * DAY,
+          ...make(i),
+        });
+      }
+    });
+    return t;
+  }
+
+  test("a newer cleanable run is found behind 100 permanently uncleanable ones", async () => {
+    // Failed AFTER the broadcast was created: never cleanable, and never
+    // leaves the `status: "failed"` range.
+    const t = await seedFailedRuns(100, (i) => ({
+      broadcastId: `broadcast-${i}`, failureSubstatus: "send-broadcast-failed",
+    }));
+    await t.run(async (ctx) => {
+      await ctx.db.insert("waveRuns", {
+        runId: "forgotten-run", waveLabel: "forgotten-wave",
+        requestedCount: 1, batchSize: 1, totalCount: 1, underfilled: false,
+        pushedCount: 1, failedCount: 0,
+        status: "failed", failureSubstatus: "persist-failed",
+        createdAt: Date.now() - 2 * DAY, updatedAt: Date.now() - 2 * DAY,
+      });
+    });
+    expect(await t.query(internal.broadcast.waveRuns._listFailedWaveRunsForCleanup, {}))
+      .toEqual(["forgotten-run"]);
+  });
+
+  test("the per-tick cleanup budget still caps how many runs are returned", async () => {
+    const t = await seedFailedRuns(130, () => ({ failureSubstatus: "persist-failed" }));
+    const candidates = await t.query(internal.broadcast.waveRuns._listFailedWaveRunsForCleanup, {});
+    expect(candidates).toHaveLength(100);
+    expect(candidates[0]).toBe("blocker-0");
+  });
+
+  test("positive control: a run inside the 24h window is still left alone", async () => {
+    const t = await seedFailedRuns(1, () => ({
+      failureSubstatus: "persist-failed", updatedAt: Date.now() - 60 * 1000,
+    }));
+    expect(await t.query(internal.broadcast.waveRuns._listFailedWaveRunsForCleanup, {})).toEqual([]);
+  });
+});
