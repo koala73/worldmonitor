@@ -31,18 +31,15 @@ const quakes = (count: number) =>
 const iranEvents = (count: number) =>
   Array.from({ length: count }, (_, i) => ({ id: `e${i}`, lat: 0, lon: 0, timestamp: Date.now() - i }));
 
-/** MapContainer with its renderer choice and device forced, and a stub globe. */
+/** Exercise the real setters without starting renderer initialization. */
 async function containerOnGlobe({ isMobile }: { isMobile: boolean }) {
   const { MapContainer } = await import('@/components/MapContainer');
-  const host = document.body.appendChild(document.createElement('div'));
-  const container = new MapContainer(host, { layers: {} } as never, true);
   const globe: GlobeStub = { setEarthquakes: vi.fn(), setIranEvents: vi.fn() };
-  Object.assign(container as unknown as Record<string, unknown>, {
+  const container = Object.assign(Object.create(MapContainer.prototype), {
     useGlobe: true,
-    useDeckGL: false,
     isMobile,
     globeMap: globe,
-  });
+  }) as InstanceType<typeof MapContainer>;
   return { container, globe };
 }
 
