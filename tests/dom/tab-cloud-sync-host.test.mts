@@ -7,6 +7,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { PanelLayoutManager } from '@/app/panel-layout';
+import { __resetTabSyncForTests, prepareTabSyncSignIn } from '@/services/tab-cloud-sync';
 import { publishOrShareAsNew } from '@/services/team-dashboards-store';
 import type { PanelTab, TabsState } from '@/services/tab-store';
 import { initTestI18n } from './helpers/i18n.mts';
@@ -19,6 +20,7 @@ vi.mock('@/services/team-dashboards-store', async (importOriginal) => ({
 beforeAll(initTestI18n);
 afterEach(() => {
   localStorage.clear();
+  __resetTabSyncForTests();
   document.querySelectorAll('.toast-notification').forEach((el) => el.remove());
   vi.restoreAllMocks();
 });
@@ -187,6 +189,7 @@ describe('PanelLayoutManager tab sync host', () => {
       tombstones: [],
       carried: {},
     }));
+    prepareTabSyncSignIn('user_1', false); // auth settled on user_1, sync off
     const self = {
       tabsState: { activeTabId: 'tab-a1-b1', tabs: [tab('tab-a1-b1', 'Main', false), tab('tab-a2-b2', 'Energy', true)] } as TabsState,
       panelTabBar: { refresh: vi.fn() },

@@ -357,6 +357,12 @@ let session: Session | null = null;
 let prepared: Pending | null = null;
 /** Set when the deployment lacks the functions; sync stays off for the page. */
 let unavailableForPage = false;
+/**
+ * The account this page's auth settled on: set at sign-in preparation, null
+ * at sign-out, undefined until either. Before it is known the stored marker
+ * may name an account whose session already ended, so no delete is recorded.
+ */
+let settledAccount: string | null | undefined;
 /** This page's copy of the departed list, for when storage cannot keep it. */
 let departed: string[] = [];
 
@@ -411,6 +417,7 @@ function recordDepartures(add: readonly string[], host: TabSyncHost | undefined)
  */
 export function prepareTabSyncSignIn(userId: string, enabled: boolean, host?: TabSyncHost): { willSync: boolean } {
   prepared = null;
+  settledAccount = userId;
   // A direct switch: stop the previous account's session first, so the
   // state it stores (and the tabs it held back) is what this sign-in reads.
   if (session && session.userId !== userId) stopTabSync();
@@ -691,6 +698,7 @@ function recordDeparture(marker: string, host: TabSyncHost | undefined): boolean
  */
 export function signOutTabSync(host: TabSyncHost, userId?: string | null): void {
   stopTabSync();
+  settledAccount = null;
   const signedIn = safeStorageGetChecked(SIGNED_IN_KEY);
   const current = signedIn.ok ? signedIn.value : null;
   // The sign-in that ends: the marker's, when it names the leaving account.
@@ -711,6 +719,7 @@ export function __resetTabSyncForTests(): void {
   prepared = null;
   unavailableForPage = false;
   departed = [];
+  settledAccount = undefined;
 }
 
 export function isTabSyncActive(): boolean {
@@ -743,6 +752,8 @@ export function recordTabDeleted(tabId: string): void {
   const marker = safeStorageGetChecked(SIGNED_IN_KEY).value;
   const signedIn = s ? s.userId : markerAccount(marker);
   if (!signedIn || meta.userId !== signedIn) return;
+  // With sync off, only once auth has settled on that account.
+  if (!s && settledAccount !== signedIn) return;
   // This sign-in's departure is recorded: the delete is the next account's.
   if (marker && markerAccount(marker) === signedIn && meta.departed?.includes(marker)) return;
   // Never written to the server: nothing to delete. A write still

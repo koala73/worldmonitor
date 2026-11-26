@@ -1313,6 +1313,21 @@ describe('tab sync driver', () => {
     assert.deepEqual(loadTabSyncMeta()!.tombstones, []);
   });
 
+  it('a delete made before auth settles does not reach the stored account', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2')] });
+    signIn('user_a', host);
+    await settle();
+    // A new page: the stored marker still names user_a, whose session may have ended.
+    __resetTabSyncForTests();
+    host.state.tabs = host.state.tabs.filter((t) => t.id !== 'tab-a-2');
+    recordTabDeleted('tab-a-2');
+    assert.ok(!loadTabSyncMeta()!.tombstones.includes('tab-a-2'));
+    // Once auth settles on user_a, its deletes are recorded again.
+    prepareTabSyncSignIn('user_a', false, host);
+    recordTabDeleted('tab-a-2');
+    assert.ok(loadTabSyncMeta()!.tombstones.includes('tab-a-2'));
+  });
+
   it('a delete made with sync off still reaches the account signed in', async () => {
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2')] });
     signIn('user_a', host);
