@@ -2,6 +2,9 @@ FROM postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143
 
 ENV PGCONNECT_TIMEOUT=10
 
+# WORKDIR creates /app as 0755. Without it, COPY --chmod=0444 also creates
+# /app itself as 0444, which the postgres user below cannot traverse.
+WORKDIR /app
 COPY --chmod=0444 scripts/umami-retention.sql /app/umami-retention.sql
 
 # libpq reads PGHOST, PGPORT, PGDATABASE, PGUSER, and PGPASSWORD directly.

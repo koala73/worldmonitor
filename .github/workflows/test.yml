@@ -908,6 +908,16 @@ jobs:
         env:
           UMAMI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/umami_integration
         run: node tests/umami-runtime-write-probe.mjs
+      # The integration test runs the SQL through the runner's psql. This runs
+      # the built image's own CMD as its own USER, so an image that cannot read
+      # its SQL file fails here instead of crashing the Railway cron.
+      - name: Run the retention image's own tick
+        run: |
+          docker run --rm --network host \
+            --env PGHOST=127.0.0.1 --env PGPORT=5432 \
+            --env PGDATABASE=umami_integration \
+            --env PGUSER=postgres --env PGPASSWORD=postgres \
+            worldmonitor/umami-retention:ci
 
   sidecar:
     needs: changes
