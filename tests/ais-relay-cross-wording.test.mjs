@@ -126,14 +126,18 @@ const writerStart = relay.indexOf('let crossWordingHealthResumed');
 const writerEnd = relay.indexOf('\nasync function seedClassify(', writerStart);
 const corroborationModule = await import('../scripts/lib/news-corroboration.mjs');
 
-function writerHarness({ env = { OPENROUTER_API_KEY: 'key' }, stored = new Map(), setOk = true, reports = [] } = {}) {
+function writerHarness({ env = { OPENROUTER_API_KEY: 'key' }, stored = new Map(), setOk = true, reports = [], failReads = 0 } = {}) {
+  const readFails = { count: failReads };
   assert.ok(writerStart > 0 && writerEnd > writerStart);
   const writes = [];
   const lines = [];
   const context = {
     newsCorroborationPromise: Promise.resolve(corroborationModule),
     crossWordingReports: reports,
-    upstashGet: async (key) => stored.get(key) ?? null,
+    upstashGet: async (key, onFailure) => {
+      if (readFails.count > 0) { readFails.count -= 1; onFailure?.('timeout'); return null; }
+      return stored.get(key) ?? null;
+    },
     upstashSet: async (key, value, ttl) => { writes.push({ key, value, ttl }); if (setOk) stored.set(key, value); return setOk; },
     upstashPipeline: async (commands) => { writes.push({ commands }); return commands.map(() => ({ result: 'OK' })); },
     process: { env }, console: { log: (l) => lines.push(l), warn: (...a) => lines.push(a.join(' ')) },
@@ -185,5 +189,32 @@ describe('relay cross-wording health write (#11426)', () => {
     assert.equal(h.writes[1].value.recordCount, 3);
     await h.write();
     assert.equal(h.reports.length, 2, 'the stored hour is read back only on the first write');
+  });
+
+  it('tries the resume again after a failed read', async () => {
+    const stored = new Map([['news:cross-wording-health:v1', {
+      reports: [{ at: Date.now() - 30 * 60_000, checks: 2, matches: 0, failures: { JUDGE_HTTP_402: 2 }, unchecked: 0 }],
+    }]]);
+    const h = writerHarness({ stored, failReads: 1 });
+    await h.write();
+    assert.equal(h.reports.length, 0);
+    stored.set('news:cross-wording-health:v1', { reports: [{ at: Date.now() - 30 * 60_000, checks: 2, matches: 0, failures: { JUDGE_HTTP_402: 2 }, unchecked: 0 }] });
+    await h.write();
+    assert.equal(h.reports.length, 1, 'the second cycle resumes the stored hour');
+  });
+
+  it('is written from every exit of the classify cycle', () => {
+    const start = relay.indexOf('async function seedClassify() {');
+    const end = relay.indexOf('\n}\n', start);
+    const body = relay.slice(start, end);
+    const finallyAt = body.lastIndexOf('} finally {');
+    assert.ok(finallyAt > 0, 'seedClassify has a finally block');
+    assert.match(body.slice(finallyAt), /await writeCrossWordingHealth\(\);/);
+    // The early exits sit inside the try, so they reach the finally.
+    const tryAt = body.indexOf('try {');
+    for (const exit of ['no LLM provider keys configured', 'not writing seed-meta:classify']) {
+      const at = body.indexOf(exit);
+      assert.ok(at > tryAt && at < finallyAt, exit);
+    }
   });
 });

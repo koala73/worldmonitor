@@ -6199,8 +6199,10 @@ async function writeCrossWordingHealth() {
     if (!corroboration) return;
     const key = corroboration.CROSS_WORDING_HEALTH_KEY;
     if (!crossWordingHealthResumed) {
-      const previous = await upstashGet(key);
-      crossWordingHealthResumed = true;
+      let readFailed = false;
+      const previous = await upstashGet(key, () => { readFailed = true; });
+      // A failed read is retried next cycle; a missing key means there is nothing to resume.
+      crossWordingHealthResumed = !readFailed;
       const before = crossWordingReports[0]?.at ?? Date.now();
       const resumed = (Array.isArray(previous?.reports) ? previous.reports : [])
         .filter((r) => r && typeof r === 'object' && Number.isFinite(r.at) && r.at < before);
