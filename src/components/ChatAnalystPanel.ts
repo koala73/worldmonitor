@@ -119,6 +119,9 @@ const ANALYST_PURIFY_CONFIG = {
     'div', 'span'],
   ALLOWED_ATTR: ['class'],
   ALLOW_DATA_ATTR: false,
+  // DOMPurify keeps aria-* even when ALLOWED_ATTR omits them; an injected
+  // aria-hidden would hide the analysis from screen readers (parity with DeductionPanel).
+  ALLOW_ARIA_ATTR: false,
 };
 
 function renderMarkdown(raw: string): TrustedHtml {

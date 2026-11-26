@@ -375,7 +375,8 @@ describe('independent upstreams and content-age min()', () => {
     // runSeed writes seed-meta itself and merges only afterPublish's
     // freshnessMetaPatch. A hook that exists but is not registered is inert.
     const seeder = readFileSync(new URL('../scripts/seed-earthquakes.mjs', import.meta.url), 'utf8');
-    assert.match(seeder, /afterPublish:\s*earthquakesAfterPublish/);
+    // The intel-history hook (#11245) wraps it; the wrapper returns this hook's result.
+    assert.match(seeder, /afterPublish:\s*(?:withHistoryAfterPublish\(\s*)?earthquakesAfterPublish\b/);
   });
 
   it('throws when every upstream fails', async () => {

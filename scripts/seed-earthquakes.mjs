@@ -21,6 +21,7 @@ import {
   fetchNrcanAtom,
   parseUsgsGeojson,
 } from './seismology/nrcan-atom.mjs';
+import { earthquakeHistoryAfterPublish, withHistoryAfterPublish } from './_intel-history-collectors.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -134,7 +135,7 @@ runSeed('seismology', 'earthquakes', CANONICAL_KEY, fetchEarthquakes, {
   beforePublish: async (data) => {
     await writeExtraKey(EARTHQUAKE_PROVIDERS_KEY, data._providerSnapshots, CACHE_TTL);
   },
-  afterPublish: earthquakesAfterPublish,
+  afterPublish: withHistoryAfterPublish(earthquakesAfterPublish, earthquakeHistoryAfterPublish),
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

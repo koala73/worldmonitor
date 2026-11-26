@@ -16,7 +16,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "AP News",
-          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site%3Aapnews.com%20%22World%20News%22%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Reuters World",
@@ -393,7 +393,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Ukrainska Pravda EN",
-          "url": "https://news.google.com/rss/search?q=site%3Aeuromaidanpress.com%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site%3Apravda.com.ua%2Feng%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "NV EN",
@@ -2276,7 +2276,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Commodity Trading",
-          "url": "https://news.google.com/rss/search?q=(\"commodity+trading\"+OR+\"futures+market\"+OR+CME+OR+NYMEX+OR+COMEX)+when:2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"commodity%20trading\"%20OR%20\"commodity%20futures\"%20OR%20\"commodities%20trading\"%20OR%20NYMEX%20OR%20COMEX)%20when:2d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "gov": [
@@ -5476,7 +5476,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
       "science": [
         {
           "name": "Reuters Science",
-          "url": "https://news.google.com/rss/search?q=site%3Areuters.com%20science%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site%3Areuters.com%2Fscience%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Nature News",
@@ -5816,7 +5816,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
       "accelerators": [
         {
           "name": "YC News",
-          "url": "https://news.ycombinator.com/rss"
+          "url": "https://news.google.com/rss/search?q=(\"Y+Combinator\"+OR+\"YC-backed\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Demo Day News",
@@ -5864,7 +5864,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Tech Antitrust",
-          "url": "https://news.google.com/rss/search?q=tech%20antitrust%20OR%20FTC%20Google%20OR%20FTC%20Apple%20OR%20FTC%20Amazon%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(antitrust%20OR%20%22competition%20law%22)%20(%22Big%20Tech%22%20OR%20Google%20OR%20Apple%20OR%20Amazon%20OR%20Meta%20OR%20Microsoft%20OR%20Nvidia)%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "China Tech Policy",
@@ -5876,7 +5876,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "EU Commission Digital",
-          "url": "https://news.google.com/rss/search?q=site:ec.europa.eu+digital+OR+technology+when:14d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site:digital-strategy.ec.europa.eu+when:14d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "EU Digital Policy",
@@ -5914,17 +5914,20 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "YC Launches",
-          "url": "https://news.google.com/rss/search?q=(\"Y+Combinator\"+OR+\"YC+launch\"+OR+\"YC+W25\"+OR+\"YC+S25\")+when:7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://hnrss.org/launches",
+          "linkHosts": [
+            "news.ycombinator.com"
+          ]
         }
       ],
       "funding": [
         {
           "name": "VC News",
-          "url": "https://news.google.com/rss/search?q=(%22Series%20A%22%20OR%20%22Series%20B%22%20OR%20%22Series%20C%22%20OR%20%22venture%20capital%22%20OR%20%22funding%20round%22)%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(%22Series%20A%22%20OR%20%22Series%20B%22%20OR%20%22Series%20C%22)%20(raises%20OR%20raised%20OR%20secures%20OR%20lands%20OR%20closes)%20-preferred%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
-          "name": "SEC Filings",
-          "url": "https://news.google.com/rss/search?q=(S-1+OR+\"IPO+filing\"+OR+\"SEC+filing\")+startup+when:7d&hl=en-US&gl=US&ceid=US:en"
+          "name": "IPO Filing News",
+          "url": "https://news.google.com/rss/search?q=(\"IPO+filing\"+OR+\"files+for+IPO\"+OR+\"filed+for+an+IPO\"+OR+\"S-1+filing\"+OR+\"confidentially+filed\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Seed & Pre-Seed",
@@ -5932,7 +5935,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Startup Funding",
-          "url": "https://news.google.com/rss/search?q=(\"startup+funding\"+OR+\"raised+funding\"+OR+\"raised+$\"+OR+\"funding+announced\")+when:7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"startup+raises\"+OR+\"startup+raised\"+OR+\"startup+secures\"+OR+\"startup+funding+round\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "cloud": [
@@ -6210,7 +6213,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
       "forex": [
         {
           "name": "Forex News",
-          "url": "https://news.google.com/rss/search?q=(forex%20OR%20currency%20OR%20%22exchange%20rate%22%20OR%20FX%20OR%20%22US%20dollar%22)%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(forex%20OR%20currency%20OR%20\"exchange%20rate\"%20OR%20FX%20OR%20\"US%20dollar\")%20-gaming%20-\"in-game\"%20-MMORPG%20-MMO%20when:2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Central Bank Rates",
@@ -6232,7 +6235,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Treasury Watch",
-          "url": "https://news.google.com/rss/search?q=(\"US+Treasury\"+OR+\"Treasury+auction\"+OR+\"10-year+yield\"+OR+\"2-year+yield\")+when:2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"Treasury%20yields\"%20OR%20\"Treasury%20yield\"%20OR%20\"Treasury%20auction\"%20OR%20\"Treasury%20notes\"%20OR%20\"Treasury%20bonds\"%20OR%20\"10-year%20yield\"%20OR%20\"2-year%20yield\")%20when:2d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "commodities": [
@@ -6250,7 +6253,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Commodity Trading",
-          "url": "https://news.google.com/rss/search?q=(\"commodity+trading\"+OR+\"futures+market\"+OR+CME+OR+NYMEX+OR+COMEX)+when:2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"commodity%20trading\"%20OR%20\"commodity%20futures\"%20OR%20\"commodities%20trading\"%20OR%20NYMEX%20OR%20COMEX)%20when:2d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "crypto": [
@@ -6313,7 +6316,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Bloomberg Crypto",
-          "url": "https://news.google.com/rss/search?q=bloomberg+crypto+when:1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=bloomberg%20(intitle:crypto%20OR%20intitle:bitcoin%20OR%20intitle:cryptocurrency%20OR%20intitle:stablecoin%20OR%20intitle:ether%20OR%20intitle:blockchain)%20when:1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Reuters Crypto",
@@ -6429,7 +6432,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Banking Rules",
-          "url": "https://news.google.com/rss/search?q=(Basel%20OR%20%22capital%20requirements%22%20OR%20%22banking%20regulation%22)%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"Basel%20Committee\"%20OR%20\"Basel%20III\"%20OR%20\"Basel%20IV\"%20OR%20\"Basel%203.1\"%20OR%20\"Basel%20endgame\"%20OR%20\"capital%20requirements\"%20OR%20\"banking%20regulation\")%20when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Crypto Regulation",
@@ -6439,11 +6442,11 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
       "institutional": [
         {
           "name": "Hedge Fund News",
-          "url": "https://news.google.com/rss/search?q=(%22hedge%20fund%22%20OR%20Bridgewater%20OR%20Citadel%20OR%20Renaissance)%20when%3A7d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"hedge%20fund\"%20OR%20\"Bridgewater%20Associates\"%20OR%20\"Ray%20Dalio\"%20OR%20\"Citadel%20Securities\"%20OR%20\"Renaissance%20Technologies\")%20when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Private Equity",
-          "url": "https://news.google.com/rss/search?q=(%22private%20equity%22%20OR%20Blackstone%20OR%20KKR%20OR%20Apollo%20OR%20Carlyle)%20when%3A3d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"private%20equity\"%20OR%20\"Blackstone%20Inc\"%20OR%20\"KKR%20%26%20Co\"%20OR%20\"Apollo%20Global\"%20OR%20\"Carlyle%20Group\")%20when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Sovereign Wealth",
@@ -6493,7 +6496,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
       "nq-news": [
         {
           "name": "Reuters Nasdaq Futures",
-          "url": "https://news.google.com/rss/search?q=site:reuters.com+(Nasdaq+futures+OR+NQ+OR+\"E-mini\")+when:1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site:reuters.com%20(intitle:Nasdaq%20OR%20intitle:\"stock%20futures\")%20when:2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Nasdaq-100 & QQQ",
@@ -6525,11 +6528,11 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Bloomberg Commodities",
-          "url": "https://news.google.com/rss/search?q=site%3Abloomberg.com%20commodities%20OR%20metals%20OR%20mining%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site:bloomberg.com%20(intitle:commodities%20OR%20intitle:metals%20OR%20intitle:mining%20OR%20intitle:copper%20OR%20intitle:gold%20OR%20intitle:silver%20OR%20intitle:oil%20OR%20intitle:aluminum%20OR%20intitle:aluminium)%20when:1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Reuters Commodities",
-          "url": "https://news.google.com/rss/search?q=site%3Areuters.com%20commodities%20OR%20metals%20OR%20mining%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site:reuters.com%20(intitle:commodities%20OR%20intitle:metals%20OR%20intitle:mining%20OR%20intitle:copper%20OR%20intitle:gold%20OR%20intitle:silver%20OR%20intitle:oil%20OR%20intitle:aluminum%20OR%20intitle:aluminium)%20when:1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "S&P Global Commodity",
@@ -6537,7 +6540,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "CNBC Commodities",
-          "url": "https://news.google.com/rss/search?q=site%3Acnbc.com%20(commodities%20OR%20metals%20OR%20gold%20OR%20copper)%20when%3A1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site:cnbc.com%20(intitle:commodities%20OR%20intitle:metals%20OR%20intitle:mining%20OR%20intitle:copper%20OR%20intitle:gold%20OR%20intitle:silver%20OR%20intitle:oil%20OR%20intitle:aluminum%20OR%20intitle:aluminium)%20when:1d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "gold-silver": [
@@ -6563,7 +6566,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "FX Empire Gold",
-          "url": "https://news.google.com/rss/search?q=site:fxempire.com+gold+when:1d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=site:fxempire.com%20(intitle:gold%20OR%20intitle:silver)%20when:1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Gold Silver Worlds",
@@ -6631,7 +6634,7 @@ export const SERVER_NEWS_CATALOG: ServerNewsCatalog = {
         },
         {
           "name": "Mine Web (SNL)",
-          "url": "https://news.google.com/rss/search?q=(%22mining%20company%22%20OR%20%22mine%20production%22%20OR%20%22mining%20operations%22)%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
+          "url": "https://news.google.com/rss/search?q=(\"mining%20company\"%20OR%20\"mine%20production\"%20OR%20\"mining%20operations\")%20-bitcoin%20-crypto%20-cryptocurrency%20when:2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Resource World",

@@ -7,7 +7,17 @@
 import { ValidationError } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import { cachedFetchJsonWithMeta } from './redis';
 
-const HISTORY_DOMAINS = new Set(['conflict', 'military', 'energy']);
+/**
+ * Domains the intel-history collectors write (scripts/_seed-history.mjs callers).
+ * Mirrored by the three request protos' `domain` pattern and the MCP enum in
+ * api/mcp/registry/rpc-tools.ts; tests/intel-history-endpoints.test.mts pins
+ * all of them to the domains the collectors actually write.
+ */
+export const HISTORY_DOMAINS: readonly string[] = Object.freeze([
+  'conflict', 'military', 'energy', 'unrest', 'cyber', 'maritime', 'natural', 'aviation',
+]);
+const HISTORY_DOMAIN_SET = new Set(HISTORY_DOMAINS);
+const HISTORY_DOMAIN_LIST = `${HISTORY_DOMAINS.slice(0, -1).join(', ')}, or ${HISTORY_DOMAINS[HISTORY_DOMAINS.length - 1]}`;
 const SUCCESS_CACHE_TTL_SECONDS = 30 * 60;
 
 export interface ValidatedHistoryScope {
@@ -36,8 +46,8 @@ export function validateHistoryScope(
 ): ValidatedHistoryScope {
   const domain = typeof req.domain === 'string' ? req.domain.trim().toLowerCase() : '';
   const country = typeof req.country === 'string' ? req.country.trim().toUpperCase() : '';
-  if (domain && !HISTORY_DOMAINS.has(domain)) {
-    invalid('domain', 'domain must be one of conflict, military, or energy');
+  if (domain && !HISTORY_DOMAIN_SET.has(domain)) {
+    invalid('domain', `domain must be one of ${HISTORY_DOMAIN_LIST}`);
   }
   if (country && !/^[A-Z]{2}$/.test(country)) {
     invalid('country', 'country must be an ISO 3166-1 alpha-2 code');

@@ -1,4 +1,7 @@
+import { basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
+import { EMBEDDINGS_MODEL, loadEmbeddingsModelFiles } from './fetch-embeddings-model';
 
 let sharedPage: Page;
 
@@ -7,6 +10,26 @@ test.describe('RAG vector store (worker-side)', () => {
 
   test.beforeAll(async ({ browser }) => {
     sharedPage = await browser.newPage();
+    const offHostRequests: string[] = [];
+    await sharedPage.context().route((url) => url.hostname !== '127.0.0.1', (route) => {
+      offHostRequests.push(route.request().url());
+      return route.abort();
+    });
+    const modelFiles = await loadEmbeddingsModelFiles();
+    const modelPrefix = `https://huggingface.co/${EMBEDDINGS_MODEL}/resolve/main/`;
+    const modelFile = (url: string) => (url.startsWith(modelPrefix) ? modelFiles.get(url.slice(modelPrefix.length)) : undefined);
+    await sharedPage.context().route((url) => modelFile(url.href) !== undefined, (route) =>
+      route.fulfill({
+        body: modelFile(route.request().url()),
+        contentType: 'application/octet-stream',
+        headers: { 'access-control-allow-origin': '*' },
+      }));
+    await sharedPage.context().route(/\/@xenova\/transformers@[^/]+\/dist\/ort-[\w-]+\.wasm$/, (route) =>
+      route.fulfill({
+        path: fileURLToPath(new URL(`../node_modules/@xenova/transformers/dist/${basename(route.request().url())}`, import.meta.url)),
+        contentType: 'application/wasm',
+        headers: { 'access-control-allow-origin': '*' },
+      }));
     await sharedPage.goto('/tests/runtime-harness.html');
     const supported = await sharedPage.evaluate(async () => {
       const { initI18n } = await import('/src/services/i18n.ts');
@@ -17,6 +40,7 @@ test.describe('RAG vector store (worker-side)', () => {
       await mlWorker.loadModel('embeddings');
       return true;
     });
+    expect(offHostRequests, 'the model and runtime load without leaving the test host').toEqual([]);
     if (!supported) test.skip(true, 'ML worker not supported');
   });
 

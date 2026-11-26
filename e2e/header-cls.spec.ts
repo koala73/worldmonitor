@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { assertSignedOutAuthHydrationKeepsHeaderStable, HEADER_AUTH_SLOT_WIDTH } from './header-reservation';
 
+// Layout and paint timing are measured with motion on, as users see it;
+// playwright.config.ts turns reduced motion on for every other spec.
+test.use({ reducedMotion: 'no-preference' });
+
 declare global {
   interface Window {
     __wmHeaderClsEntries?: Array<{

@@ -12,13 +12,82 @@ const CACHE_TTL = 129600; // 36h — 3× a 12h cron interval
 
 // FRED release IDs for major US macro events
 // https://api.stlouisfed.org/fred/releases
+// FRED carries release dates only. `etTime` is the agency's fixed release time
+// (BLS CPI and Employment Situation, Census retail sales: 8:30 a.m. ET). BEA moves
+// some GDP and PCE releases to 10:00 a.m., so those take the instant BEA publishes
+// in its machine-readable schedule (`beaRelease`) and stay unknown without it.
 const FRED_RELEASES = [
-  { id: 10,  event: 'CPI',              unit: '%' },
-  { id: 50,  event: 'Nonfarm Payrolls', unit: 'K' },
-  { id: 53,  event: 'GDP',              unit: '%' },
-  { id: 54,  event: 'PCE',              unit: '%' },
-  { id: 9,   event: 'Retail Sales',     unit: '%' },
+  { id: 10,  event: 'CPI',              unit: '%', etTime: '08:30' },
+  { id: 50,  event: 'Nonfarm Payrolls', unit: 'K', etTime: '08:30' },
+  { id: 53,  event: 'GDP',              unit: '%', beaRelease: 'Gross Domestic Product' },
+  { id: 54,  event: 'PCE',              unit: '%', beaRelease: 'Personal Income and Outlays' },
+  { id: 9,   event: 'Retail Sales',     unit: '%', etTime: '08:30' },
 ];
+
+// The FOMC statement is released at 2:00 p.m. ET on the decision day.
+const FOMC_STATEMENT_ET = '14:00';
+
+const BEA_RELEASE_DATES_URL = 'https://apps.bea.gov/API/signup/release_dates.json';
+const US_EASTERN = 'America/New_York';
+
+const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: US_EASTERN,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function etParts(ms) {
+  return Object.fromEntries(ET_PARTS_FMT.formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+}
+
+/** Epoch milliseconds for a wall-clock `HH:MM` in US Eastern time on `YYYY-MM-DD` (DST-aware). */
+export function easternInstant(date, hhmm) {
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm] = hhmm.split(':').map(Number);
+  const wall = Date.UTC(y, m - 1, d, hh, mm);
+  const offsetAt = (ms) => {
+    const p = etParts(ms);
+    return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute)) - ms;
+  };
+  const utc = wall - offsetAt(wall);
+  return wall - offsetAt(utc);
+}
+
+/** Map of Eastern release date (YYYY-MM-DD) to epoch milliseconds for one BEA release. */
+export function parseBeaReleaseTimes(json, releaseName) {
+  const byDate = new Map();
+  for (const raw of json?.[releaseName]?.release_dates ?? []) {
+    const ms = Date.parse(raw);
+    if (!Number.isFinite(ms)) continue;
+    const p = etParts(ms);
+    byDate.set(`${p.year}-${p.month}-${p.day}`, ms);
+  }
+  return byDate;
+}
+
+async function fetchBeaReleaseDates() {
+  try {
+    const resp = await fetch(BEA_RELEASE_DATES_URL, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return await resp.json();
+  } catch (err) {
+    console.warn(`  BEA release schedule fetch failed (${err.message}) — GDP/PCE release times unknown`);
+    return null;
+  }
+}
+
+export function fredReleaseAt(release, date, beaSchedule) {
+  if (release.etTime) return easternInstant(date, release.etTime);
+  if (release.beaRelease && beaSchedule) return parseBeaReleaseTimes(beaSchedule, release.beaRelease).get(date) ?? 0;
+  return 0;
+}
 
 // Fallback FOMC rate decision dates (day 2 of each 2-day meeting = decision day)
 // Source: federalreserve.gov/monetarypolicy/fomccalendars.htm
@@ -46,77 +115,93 @@ const EUROSTAT_DATASETS = [
   { id: 'namq_10_gdp',   event: 'Euro Area GDP',        country: 'EA', impact: 'high',   unit: '%' },
 ];
 
-// Scrape FOMC meeting dates from the official Fed calendar page.
-// Takes the second day of each 2-day meeting as the rate decision date.
-// Falls back to FOMC_DATES_FALLBACK if the page is unreachable or parse fails.
-async function fetchFomcDates(fallback) {
+const FED_MONTHS = {
+  January: '01', February: '02', March: '03', April: '04',
+  May: '05', June: '06', July: '07', August: '08',
+  September: '09', October: '10', November: '11', December: '12',
+};
+
+// Rate decision dates (second day of each 2-day meeting) from the Fed calendar page.
+// The page lists meetings in per-year sections, and its notes also carry inline
+// dates such as "January 25-26, 2028", so both formats are read on every page.
+export function parseFomcDates(html) {
+  const MON = Object.keys(FED_MONTHS).join('|');
+  const dates = [];
+
+  const reSame = new RegExp(`\\b(${MON})\\s+\\d{1,2}[-\u2013](\\d{1,2})\\*?\\s*,\\s*(20\\d{2})`, 'g');
+  const reCross = new RegExp(`\\b(?:${MON})\\s+\\d{1,2}\\s*[-\u2013]\\s*(${MON})\\s+(\\d{1,2})\\*?\\s*,\\s*(20\\d{2})`, 'g');
+  for (const [, month, day2, year] of html.matchAll(reSame)) {
+    dates.push(`${year}-${FED_MONTHS[month]}-${day2.padStart(2, '0')}`);
+  }
+  for (const [, month2, day2, year] of html.matchAll(reCross)) {
+    dates.push(`${year}-${FED_MONTHS[month2]}-${day2.padStart(2, '0')}`);
+  }
+
+  const monthByPrefix = Object.fromEntries(Object.entries(FED_MONTHS).map(([name, mm]) => [name.slice(0, 3), mm]));
+  const yearRe = /\b(20\d{2})\s+FOMC\s+Meetings/gi;
+  let yearMatch;
+  while ((yearMatch = yearRe.exec(html)) !== null) {
+    const year = yearMatch[1];
+    const sectionStart = yearMatch.index;
+    const nextYearIdx = html.indexOf(' FOMC Meetings', sectionStart + 20);
+    const section = html.slice(sectionStart, nextYearIdx > sectionStart ? nextYearIdx : html.length);
+
+    // Each meeting row: <div class="fomc-meeting__month"><strong>Apr/May</strong></div>
+    // <div class="fomc-meeting__date">30-1*</div>. A range ending in a smaller day crosses into the last month.
+    // Rows noted as a "Monetary Policy Strategy Meeting" announce no rate decision.
+    for (const row of section.split('fomc-meeting__month').slice(1)) {
+      const cells = row.match(/^[^>]*>\s*(?:<strong>)?([A-Za-z/]+)[\s\S]*?fomc-meeting__date[^>]*>\s*\d{1,2}\s*[-\u2013]\s*(\d{1,2})/);
+      if (!cells || /strategy meeting/i.test(row)) continue;
+      const mm = monthByPrefix[cells[1].split('/').at(-1).slice(0, 3)];
+      if (mm) dates.push(`${year}-${mm}-${cells[2].padStart(2, '0')}`);
+    }
+  }
+
+  return [...new Set(dates)].sort();
+}
+
+// Falls back to FOMC_DATES_FALLBACK if the page is unreachable or lists no meeting in `year`.
+async function fetchFomcDates(fallback, year) {
   try {
     const resp = await fetch('https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm', {
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const html = await resp.text();
-
-    const MONTHS = {
-      January: '01', February: '02', March: '03', April: '04',
-      May: '05', June: '06', July: '07', August: '08',
-      September: '09', October: '10', November: '11', December: '12',
-    };
-    const MON = Object.keys(MONTHS).join('|');
-    const dates = [];
-
-    // Strategy A: inline format "January 27-28, 2026" (legacy)
-    const reSame = new RegExp(`\\b(${MON})\\s+\\d{1,2}[-\u2013](\\d{1,2})\\*?\\s*,\\s*(20\\d{2})`, 'g');
-    const reCross = new RegExp(`\\b${MON}\\s+\\d{1,2}\\s*[-\u2013]\\s*(${MON})\\s+(\\d{1,2})\\*?\\s*,\\s*(20\\d{2})`, 'g');
-    let m;
-    while ((m = reSame.exec(html)) !== null) {
-      const [, month, day2, year] = m;
-      if (month && day2 && year) dates.push(`${year}-${MONTHS[month]}-${day2.padStart(2, '0')}`);
-    }
-    while ((m = reCross.exec(html)) !== null) {
-      const [, month2, day2, year] = m;
-      if (month2 && day2 && year) dates.push(`${year}-${MONTHS[month2]}-${day2.padStart(2, '0')}`);
-    }
-
-    // Strategy B: structured sections — year in heading, month + "dd-dd" in body.
-    // Matches pages where year/month/range are in separate HTML elements.
-    if (dates.length === 0) {
-      const yearRe = /\b(20\d{2})\s+FOMC\s+Meetings/gi;
-      let yearMatch;
-      while ((yearMatch = yearRe.exec(html)) !== null) {
-        const year = yearMatch[1];
-        const sectionStart = yearMatch.index;
-        const nextYearIdx = html.indexOf(' FOMC Meetings', sectionStart + 20);
-        const sectionEnd = nextYearIdx > sectionStart ? nextYearIdx : html.length;
-        const section = html.slice(sectionStart, sectionEnd);
-
-        const monthRe = new RegExp(`\\b(${MON})\\b`, 'g');
-        let monthMatch;
-        while ((monthMatch = monthRe.exec(section)) !== null) {
-          const month = monthMatch[1];
-          const afterMonth = section.slice(monthMatch.index + month.length, monthMatch.index + month.length + 80);
-          const rangeMatch = afterMonth.match(/(\d{1,2})\s*[-\u2013]\s*(\d{1,2})/);
-          if (rangeMatch) {
-            const day2 = rangeMatch[2];
-            dates.push(`${year}-${MONTHS[month]}-${day2.padStart(2, '0')}`);
-          }
-        }
-      }
-    }
-
-    const unique = [...new Set(dates)].sort();
-    if (unique.length === 0) throw new Error('no dates parsed from Fed page');
-    console.log(`  FOMC: fetched ${unique.length} meeting dates from federalreserve.gov`);
-    return unique;
+    const dates = parseFomcDates(await resp.text());
+    if (!dates.some((d) => d.startsWith(`${year}-`))) throw new Error(`no ${year} meeting dates parsed from Fed page`);
+    console.log(`  FOMC: fetched ${dates.length} meeting dates from federalreserve.gov`);
+    return dates;
   } catch (err) {
     console.warn(`  FOMC dates fetch failed (${err.message}) — using fallback`);
     return fallback;
   }
 }
 
-// Scrape ECB Governing Council monetary policy meeting dates from the official ECB calendar.
-// Filters to Day 2 entries (press conference day = rate decision announcement).
+// Each calendar entry is a date followed by its own description, so a date counts as a
+// rate decision only when the text between it and the next date is a monetary policy Day 2.
+function ecbDecisionDates(html, dateRe, toIso) {
+  const matches = [...html.matchAll(dateRe)];
+  return matches
+    .filter((match, i) => {
+      const entry = html.slice(match.index, matches[i + 1]?.index ?? match.index + 800);
+      return /monetary policy/i.test(entry) && /\bDay\s*2\b/i.test(entry);
+    })
+    .map(toIso);
+}
+
+// ECB Governing Council rate decision dates (Day 2, press conference day) from the ECB calendar.
+export function parseEcbCouncilDates(html) {
+  let dates = ecbDecisionDates(html, /datetime="(\d{4}-\d{2}-\d{2})"/g, (m) => m[1]);
+  if (dates.length === 0) {
+    dates = ecbDecisionDates(html, /(\d{1,2})\/(\d{2})\/(\d{4})/g, ([, dd, mm, yyyy]) => `${yyyy}-${mm}-${dd.padStart(2, '0')}`);
+  }
+  if (dates.length === 0) {
+    dates = ecbDecisionDates(html, /\b(20\d{2}-\d{2}-\d{2})\b/g, (m) => m[1]);
+  }
+  return [...new Set(dates)].sort();
+}
+
 // Falls back to ECB_RATE_DATES_FALLBACK if the page is unreachable or parse fails.
 async function fetchEcbCouncilDates(fallback) {
   try {
@@ -125,57 +210,10 @@ async function fetchEcbCouncilDates(fallback) {
       signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const html = await resp.text();
-
-    const dates = [];
-
-    // Strategy A: datetime="YYYY-MM-DD" attributes with "monetary policy" + "Day 2" context
-    const dateRe = /datetime="(\d{4}-\d{2}-\d{2})"/g;
-    const allMatches = [...html.matchAll(dateRe)];
-    for (let i = 0; i < allMatches.length; i++) {
-      const match = allMatches[i];
-      const nextIdx = allMatches[i + 1]?.index ?? match.index + 800;
-      const ctx = html.slice(match.index, nextIdx);
-      if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
-        dates.push(match[1]);
-      }
-    }
-
-    // Strategy B: DD/MM/YYYY format in text near "monetary policy" + "Day 2"
-    if (dates.length === 0) {
-      const dateRe2 = /(\d{1,2})\/(\d{2})\/(\d{4})/g;
-      const allMatches2 = [...html.matchAll(dateRe2)];
-      for (let i = 0; i < allMatches2.length; i++) {
-        const match = allMatches2[i];
-        const ctxStart = Math.max(0, match.index - 400);
-        const ctxEnd = Math.min(html.length, match.index + 400);
-        const ctx = html.slice(ctxStart, ctxEnd);
-        if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
-          const [, dd, mm, yyyy] = match;
-          dates.push(`${yyyy}-${mm}-${dd.padStart(2, '0')}`);
-        }
-      }
-    }
-
-    // Strategy C: ISO dates (YYYY-MM-DD) in text near "monetary policy" + "Day 2"
-    if (dates.length === 0) {
-      const dateRe3 = /\b(20\d{2}-\d{2}-\d{2})\b/g;
-      const allMatches3 = [...html.matchAll(dateRe3)];
-      for (let i = 0; i < allMatches3.length; i++) {
-        const match = allMatches3[i];
-        const ctxStart = Math.max(0, match.index - 400);
-        const ctxEnd = Math.min(html.length, match.index + 400);
-        const ctx = html.slice(ctxStart, ctxEnd);
-        if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
-          dates.push(match[1]);
-        }
-      }
-    }
-
-    const unique = [...new Set(dates)].sort();
-    if (unique.length === 0) throw new Error('no dates parsed from ECB page');
-    console.log(`  ECB: fetched ${unique.length} council dates from ecb.europa.eu`);
-    return unique;
+    const dates = parseEcbCouncilDates(await resp.text());
+    if (dates.length === 0) throw new Error('no dates parsed from ECB page');
+    console.log(`  ECB: fetched ${dates.length} council dates from ecb.europa.eu`);
+    return dates;
   } catch (err) {
     console.warn(`  ECB council dates fetch failed (${err.message}) — using fallback`);
     return fallback;
@@ -248,13 +286,13 @@ async function fetchEconomicCalendar() {
   // Fetch FOMC and ECB dates dynamically; fall back to hardcoded if unavailable
   console.log('  Fetching FOMC and ECB Governing Council dates...');
   const [fomcAllDates, ecbAllDates] = await Promise.all([
-    fetchFomcDates(FOMC_DATES_FALLBACK),
+    fetchFomcDates(FOMC_DATES_FALLBACK, today.slice(0, 4)),
     fetchEcbCouncilDates(ECB_RATE_DATES_FALLBACK),
   ]);
 
   const fomcEvents = fomcAllDates
     .filter((d) => d >= fromDate && d <= toDate)
-    .map((date) => ({ event: 'FOMC Rate Decision', country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit: '' }));
+    .map((date) => ({ event: 'FOMC Rate Decision', country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit: '', releaseAt: easternInstant(date, FOMC_STATEMENT_ET) }));
 
   const ecbEvents = ecbAllDates
     .filter((d) => d >= fromDate && d <= toDate)
@@ -292,14 +330,17 @@ async function fetchEconomicCalendar() {
   }
 
   console.log(`  Fetching FRED economic release calendar ${fromDate} → ${toDate}`);
+  const beaSchedule = await fetchBeaReleaseDates();
 
   await Promise.all(
-    FRED_RELEASES.map(async ({ id, event, unit }) => {
+    FRED_RELEASES.map(async (release) => {
+      const { id, event, unit } = release;
       try {
         const dates = await fetchFredReleaseDates(id, apiKey, fromDate, toDate);
         console.log(`  ${event} (release_id=${id}): ${dates.length} upcoming date(s)`);
         for (const date of dates) {
-          events.push({ event, country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit });
+          const releaseAt = fredReleaseAt(release, date, beaSchedule);
+          events.push({ event, country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit, releaseAt });
         }
       } catch (err) {
         console.warn(`  FRED release ${id} (${event}) failed: ${err.message} — skipping`);

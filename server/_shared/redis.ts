@@ -507,6 +507,8 @@ export async function prependCachedJsonList(
 }
 
 const NEG_SENTINEL = '__WM_NEG__';
+/** Default negative-cache window for a fetcher that returned null. */
+export const CACHED_FETCH_NEGATIVE_TTL_SECONDS = 120;
 const FETCH_ERROR_NEGATIVE_TTL_SECONDS = 30;
 /** Short isolate-local backoff when error negative-caching is disabled. Distinct from NEG_SENTINEL. */
 const FETCH_ERROR_UNAVAILABLE_BACKOFF_SECONDS = 3;
@@ -938,7 +940,7 @@ export async function cachedFetchJson<T extends object>(
   key: string,
   ttlSeconds: number,
   fetcher: CachedJsonFetcher<T>,
-  negativeTtlSeconds = 120,
+  negativeTtlSeconds = CACHED_FETCH_NEGATIVE_TTL_SECONDS,
   opts?: CachedFetchOpts,
 ): Promise<T | null> {
   // Rebuild the public option shape so structurally assignable objects cannot
@@ -1021,7 +1023,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   key: string,
   ttlSeconds: number,
   fetcher: CachedJsonFetcher<T>,
-  negativeTtlSeconds = 120,
+  negativeTtlSeconds = CACHED_FETCH_NEGATIVE_TTL_SECONDS,
   opts?: CachedFetchWithMetaOpts<T>,
 ): Promise<{ data: T | null; source: 'cache' | 'fresh' | 'skipped'; leader: boolean }> {
   return cachedFetchJsonCore(key, ttlSeconds, fetcher, negativeTtlSeconds, opts, 'cachedFetchJsonWithMeta');

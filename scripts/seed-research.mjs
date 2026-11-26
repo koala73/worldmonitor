@@ -172,6 +172,13 @@ export async function fetchHackerNews() {
 
 // ─── Tech Events (Techmeme ICS + dev.events RSS) ───
 
+// All-day DTEND is exclusive (RFC 5545), so the event's last day is the day before it.
+function inclusiveIcsEndDate(startDate, dtend) {
+  if (!dtend || dtend <= startDate) return startDate;
+  const lastDay = new Date(Date.UTC(Number(dtend.slice(0, 4)), Number(dtend.slice(4, 6)) - 1, Number(dtend.slice(6, 8)) - 1));
+  return lastDay.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
 async function fetchTechEvents() {
   const ICS_URL = 'https://www.techmeme.com/newsy_events.ics';
   const RSS_URL = 'https://dev.events/rss.xml';
@@ -190,7 +197,7 @@ async function fetchTechEvents() {
         const summary = block.match(/SUMMARY:(.+)/)?.[1]?.trim() || '';
         const location = block.match(/LOCATION:(.+)/)?.[1]?.trim() || '';
         const dtstart = block.match(/DTSTART;VALUE=DATE:(\d+)/)?.[1] || '';
-        const dtend = block.match(/DTEND;VALUE=DATE:(\d+)/)?.[1] || dtstart;
+        const dtend = inclusiveIcsEndDate(dtstart, block.match(/DTEND;VALUE=DATE:(\d+)/)?.[1]);
         const url = block.match(/URL:(.+)/)?.[1]?.trim() || '';
         const uid = block.match(/UID:(.+)/)?.[1]?.trim() || '';
         if (!summary || !dtstart) continue;

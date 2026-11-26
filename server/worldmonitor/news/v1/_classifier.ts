@@ -1,3 +1,5 @@
+import { withoutMetaphoricalCoup } from '../../../../shared/threat-keyword-classifier';
+
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
 export const SEVERITY_VALUES: Record<ThreatLevel, number> = {
@@ -344,7 +346,7 @@ export function hasHistoricalMarker(title: string, nowMs: number = Date.now()): 
 }
 
 export function classifyByKeyword(title: string, variant?: string): ClassificationResult {
-  const lower = title.toLowerCase();
+  const lower = withoutMetaphoricalCoup(title.toLowerCase());
 
   if (EXCLUSIONS.some(ex => lower.includes(ex))) {
     return { level: 'info', category: 'general', confidence: 0.3, source: 'keyword' };

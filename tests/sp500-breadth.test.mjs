@@ -103,22 +103,29 @@ describe('mergeBreadthHistory', () => {
   it('appends a new day and sets current from the last history row', () => {
     const prior = [{ date: '2026-09-01', ...completeReadings() }];
     const nextReadings = { pctAbove20d: 30, pctAbove50d: 40, pctAbove200d: 70 };
-    const { history, current, updatedExisting } = mergeBreadthHistory(prior, nextReadings, '2026-09-05');
+    const { history, current, updatedExisting } = mergeBreadthHistory(prior, nextReadings, '2026-09-04');
     assert.equal(updatedExisting, false);
     assert.equal(history.length, 2);
-    assert.deepEqual(history.at(-1), { date: '2026-09-05', ...nextReadings });
+    assert.deepEqual(history.at(-1), { date: '2026-09-04', ...nextReadings });
     assert.deepEqual(current, nextReadings);
     assert.deepEqual(prior[0], { date: '2026-09-01', ...completeReadings() });
   });
 
   it('overwrites the same-day row and keeps current aligned with history[-1]', () => {
-    const prior = [{ date: '2026-09-05', ...completeReadings() }];
+    const prior = [{ date: '2026-09-04', ...completeReadings() }];
     const nextReadings = { pctAbove20d: 21, pctAbove50d: 51, pctAbove200d: 81 };
-    const { history, current, updatedExisting } = mergeBreadthHistory(prior, nextReadings, '2026-09-05');
+    const { history, current, updatedExisting } = mergeBreadthHistory(prior, nextReadings, '2026-09-04');
     assert.equal(updatedExisting, true);
     assert.equal(history.length, 1);
-    assert.deepEqual(history[0], { date: '2026-09-05', ...nextReadings });
+    assert.deepEqual(history[0], { date: '2026-09-04', ...nextReadings });
     assert.deepEqual(current, nextReadings);
+  });
+
+  it('drops stored weekend, malformed and impossible session dates', () => {
+    const prior = ['2026-02-27', '2026-02-30', '2026-04-11', '2026-04-12', 'bad', '2026-04-13']
+      .map((date) => ({ date, ...completeReadings() }));
+    const { history } = mergeBreadthHistory(prior, completeReadings(), '2026-04-14');
+    assert.deepEqual(history.map((row) => row.date), ['2026-02-27', '2026-04-13', '2026-04-14']);
   });
 });
 

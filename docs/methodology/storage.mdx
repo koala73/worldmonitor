@@ -57,6 +57,24 @@ If an operator publishes fill %, we show it. If they don't, we show `not disclos
 
 When fill data is unavailable at the facility level, the panel falls back to country-level aggregate (e.g. "DE gas storage: 62% overall; Rehden facility fill not disclosed") — both numbers labeled with their source.
 
+## How public badges move
+
+**`OPERATIONAL` has no age-based expiry.** It means the latest recorded
+physical state was operational. An old observation alone gives no evidence
+of a change. To confirm that a facility is operating now, check the
+evidence date and look for a current source.
+
+Evidence is stale when it is more than 14 days old or its date is unknown.
+The Strategic Storage Atlas shows the evidence date and marks stale
+evidence in the facility row and detail drawer. `REDUCED` and `OFFLINE`
+require fresh evidence to keep their badges. When that evidence goes stale,
+the badge becomes `DISPUTED`.
+
+The same badge rule applies to the Atlas, map layer, API, and MCP tools.
+When new evidence confirms or changes a facility's state, update the
+curated record and its evidence date. Republishing the registry preserves
+the original evidence date.
+
 ## Freshness SLA
 
 | Object | Target freshness | Stale policy |

@@ -29,6 +29,9 @@ import {
   getEntitlements,
   classifyBillingVerification,
   getBillingVerificationDenial,
+  isTerminalBillingStatus,
+  PAYMENT_FAILED_MESSAGE,
+  TERMINAL_BILLING_STATUSES,
   __negativeCacheMaxEntriesForTests,
   __negativeCacheSizeForTests,
   __negativeCacheTtlMsForTests,
@@ -460,6 +463,35 @@ describe("gateway entitlement check", () => {
       error: "Subscription lapsed",
       code: "subscription_lapsed",
     });
+  });
+
+  test("payment_failed is a terminal 403 that points at the billing portal", async () => {
+    const result = await withConvexEntitlementResponse(
+      {
+        ...makeEntitlements(0),
+        validUntil: 0,
+        billingStatus: "payment_failed",
+      },
+      () => checkEntitlement("test-user", "/api/market/v1/analyze-stock", {}),
+    );
+
+    expect(result?.status).toBe(403);
+    expect(result?.headers.get("X-Billing-Verification")).toBe("payment_failed");
+    expect(result?.headers.get("Retry-After")).toBeNull();
+    expect(await result?.json()).toMatchObject({
+      error: PAYMENT_FAILED_MESSAGE,
+      code: "payment_failed",
+    });
+  });
+
+  test("a payment_failed marker is cached for the terminal 60 seconds, not a retry delay", async () => {
+    await withConvexEntitlementResponse(
+      { ...makeEntitlements(0), validUntil: 0, billingStatus: "payment_failed", retryAfterSeconds: 3 },
+      async () => {
+        await getEntitlements("test-user-payment-failed-ttl");
+      },
+    );
+    expect(vi.mocked(setCachedJson).mock.calls.at(-1)?.[2]).toBe(60);
   });
 
   test.each([
@@ -1091,7 +1123,7 @@ describe("classifyBillingVerification (#5622)", () => {
     expect(denial?.code).toBe("entitlement_verification_unavailable");
   });
 
-  test("a provider-confirmed lapse is the only terminal member", () => {
+  test("a provider-confirmed lapse is terminal", () => {
     expect(classifyBillingVerification({ billingStatus: "subscription_lapsed" })).toEqual({
       retryable: false,
       code: "subscription_lapsed",
@@ -1099,6 +1131,28 @@ describe("classifyBillingVerification (#5622)", () => {
       message: "Subscription lapsed",
       status: 403,
     });
+  });
+
+  test("a paused subscription is terminal and names the billing portal, not a renewal retry", () => {
+    expect(classifyBillingVerification({ billingStatus: "payment_failed", retryAfterSeconds: 3 })).toEqual({
+      retryable: false,
+      code: "payment_failed",
+      retryAfterSeconds: 0,
+      message: PAYMENT_FAILED_MESSAGE,
+      status: 403,
+    });
+    // api/_user-api-key.test.mjs pins the same text for that file's own copy.
+    expect(PAYMENT_FAILED_MESSAGE).toBe(
+      "Payment failed. Update your payment method at https://www.worldmonitor.app/dashboard?billing=portal to restore access.",
+    );
+  });
+
+  test("terminality is exactly the two provider-confirmed states", () => {
+    expect(TERMINAL_BILLING_STATUSES).toEqual(["subscription_lapsed", "payment_failed"]);
+    for (const status of TERMINAL_BILLING_STATUSES) expect(isTerminalBillingStatus(status)).toBe(true);
+    for (const status of ["renewal_verification_pending", "renewal_verification_failed", "entitlement_verification_unavailable", undefined]) {
+      expect(isTerminalBillingStatus(status)).toBe(false);
+    }
   });
 
   test.each([

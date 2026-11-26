@@ -1,5 +1,9 @@
 import { devices, expect, test } from '@playwright/test';
 
+// Layout and paint timing are measured with motion on, as users see it;
+// playwright.config.ts turns reduced motion on for every other spec.
+test.use({ reducedMotion: 'no-preference' });
+
 // #5159 / PR #5205 review P2: the source-pattern guard in
 // tests/skeleton-app-footprint-parity.test.mjs proves the creation template
 // SEEDS .collapsed, but only a behavioral check proves the section is never

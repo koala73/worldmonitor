@@ -579,6 +579,38 @@ function isPrivateIP(ip) {
   });
 }
 
+function isOllamaLanAddress(ip) {
+  // The desktop setup exception covers private LAN addresses only, including
+  // the 100.64.0.0/10 range that Tailscale assigns to tailnet devices.
+  return /^(?:10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|f[cd][0-9a-f]{2}:)/i.test(ip);
+}
+
+function classifyResolvedAddresses(addresses) {
+  const blockedAddresses = addresses.filter(isPrivateIP);
+  if (blockedAddresses.length > 0) {
+    return {
+      safe: false,
+      privateLan: blockedAddresses.every(isOllamaLanAddress),
+      reason: 'Hostname resolves to a private/reserved IP address',
+    };
+  }
+  return { safe: true, resolvedAddresses: addresses };
+}
+
+// Public DNS cannot see mDNS (.local) or /etc/hosts names. On the desktop the
+// user's own resolver decides what the Ollama host they typed points to.
+async function isSafeUrlWithSystemResolver(url, safety) {
+  if (!safety.unresolved || isIP(url.hostname.replace(/^\[|\]$/g, ''))) return safety;
+  let records;
+  try {
+    records = await dns.lookup(url.hostname, { all: true, verbatim: true });
+  } catch {
+    return safety;
+  }
+  const addresses = (Array.isArray(records) ? records : [records]).map((record) => record.address).filter(Boolean);
+  return addresses.length > 0 ? classifyResolvedAddresses(addresses) : safety;
+}
+
 async function isSafeUrl(urlString) {
   let parsed;
   try {
@@ -607,7 +639,7 @@ async function isSafeUrl(urlString) {
   // Check if the hostname is already an IP literal
   const ipLiteral = hostname.replace(/^\[|\]$/g, '');
   if (isPrivateIP(ipLiteral)) {
-    return { safe: false, reason: 'Requests to private/reserved IP addresses are not allowed' };
+    return { safe: false, privateLan: isOllamaLanAddress(ipLiteral), reason: 'Requests to private/reserved IP addresses are not allowed' };
   }
   if (isIP(ipLiteral)) {
     return { safe: true, resolvedAddresses: [ipLiteral] };
@@ -628,19 +660,13 @@ async function isSafeUrl(urlString) {
     } catch { /* no AAAA records */ }
 
     if (addresses.length === 0) {
-      return { safe: false, reason: 'Could not resolve hostname' };
-    }
-
-    for (const addr of addresses) {
-      if (isPrivateIP(addr)) {
-        return { safe: false, reason: 'Hostname resolves to a private/reserved IP address' };
-      }
+      return { safe: false, unresolved: true, reason: 'Could not resolve hostname' };
     }
   } catch {
-    return { safe: false, reason: 'DNS resolution failed' };
+    return { safe: false, unresolved: true, reason: 'DNS resolution failed' };
   }
 
-  return { safe: true, resolvedAddresses: addresses };
+  return classifyResolvedAddresses(addresses);
 }
 
 function json(data, status = 200, extraHeaders = {}) {
@@ -806,13 +832,38 @@ const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
 // Leave time for local fallback within the frontend's 5s request budgets.
 const CLOUD_PROXY_TIMEOUT_MS = 3000;
 
-async function readBody(req) {
+const DEFAULT_MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024;
+
+async function readBody(req, maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES) {
   if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
-    return req[REQUEST_BODY_CACHE];
+    const cached = req[REQUEST_BODY_CACHE];
+    if (maxBytes != null && cached && cached.length > maxBytes) {
+      const error = new Error(`Request body exceeds ${maxBytes} bytes`);
+      error.code = 'EBODYTOOLARGE';
+      throw error;
+    }
+    return cached;
   }
 
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let receivedBytes = 0;
+  let tooLarge = false;
+  for await (const chunk of req) {
+    receivedBytes += chunk.length;
+    if (maxBytes != null && receivedBytes > maxBytes) {
+      // Drain remaining chunks without buffering so the underlying socket stays
+      // open and the handler can send a clean 400 response before closing.
+      tooLarge = true;
+      chunks.length = 0;
+      continue;
+    }
+    chunks.push(chunk);
+  }
+  if (tooLarge) {
+    const error = new Error(`Request body exceeds ${maxBytes} bytes`);
+    error.code = 'EBODYTOOLARGE';
+    throw error;
+  }
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
   req[REQUEST_BODY_CACHE] = body;
   return body;
@@ -1014,10 +1065,13 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
   headers.set('Content-Type', 'application/json');
   headers.set('Content-Length', String(Buffer.byteLength(body)));
 
+  const safety = await assertSafeSidecarFetchUrl(new URL(target));
+  const pinned = pickPinnedAddress(safety.resolvedAddresses);
   return fetchWithTimeout(target, {
     method: 'POST',
     headers: Object.fromEntries(headers.entries()),
     body,
+    ...(pinned ? { resolvedAddress: pinned.address, resolvedFamily: pinned.family } : {}),
   }, 15000);
 }
 
@@ -1295,7 +1349,13 @@ async function handleSelfHostKey(req, context, cookieKey) {
   if (!allowed.ok) {
     return selfHostKeyJson({ error: 'Too many key checks' }, 429, { 'Retry-After': String(allowed.retryAfterSeconds) });
   }
-  const raw = await readBody(req);
+  let raw;
+  try {
+    raw = await readBody(req, SELFHOST_MAX_BODY_BYTES);
+  } catch (err) {
+    if (err?.code !== 'EBODYTOOLARGE') throw err;
+    raw = null;
+  }
   let key = null;
   if (raw && raw.length <= SELFHOST_MAX_BODY_BYTES) {
     try {
@@ -2152,21 +2212,43 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     }
 
     case 'OLLAMA_API_URL': {
-      let probeUrl;
+      let parsed;
       try {
-        const parsed = new URL(value);
+        parsed = new URL(value);
         if (!['http:', 'https:'].includes(parsed.protocol)) return fail('Must be an http(s) URL');
-        // Probe the OpenAI-compatible models endpoint
-        probeUrl = new URL('/v1/models', value).toString();
       } catch {
         return fail('Invalid URL');
       }
-      const response = await fetchWithTimeout(probeUrl, { method: 'GET', allowPrivateNetwork: true }, 8000);
+      if (parsed.username || parsed.password) return fail('URLs with credentials are not allowed');
+      // Permit loopback or the already-configured Ollama origin to reach a
+      // private address; require public-host validation and IP pinning for any
+      // other caller-supplied URL so secret validation cannot scan LAN/metadata.
+      const isDesktop = process.env.LOCAL_API_MODE === 'tauri-sidecar';
+      let safety = await isSafeUrl(parsed.toString());
+      if (isDesktop) safety = await isSafeUrlWithSystemResolver(parsed, safety);
+      const isLoopback = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname.toLowerCase());
+      if (!safety.safe && !isLoopback && !isConfiguredOllamaOrigin(parsed)) {
+        // Settings saves only after validation. Let it save a LAN URL without
+        // making an outbound request before the user has configured that origin.
+        if (safety.privateLan && isDesktop) {
+          return ok('Private Ollama URL accepted for configuration without a connection check');
+        }
+        return fail(`Ollama URL blocked: ${safety.reason}`);
+      }
+      const pinned = safety.safe ? pickPinnedAddress(safety.resolvedAddresses) : null;
+      if (safety.safe && !pinned) {
+        return fail('Ollama URL blocked: Could not resolve hostname');
+      }
+      const probeOptions = pinned
+        ? { method: 'GET', resolvedAddress: pinned.address, resolvedFamily: pinned.family }
+        : { method: 'GET', allowPrivateNetwork: true };
+      const probeUrl = new URL('/v1/models', parsed).toString();
+      const response = await fetchWithTimeout(probeUrl, probeOptions, 8000);
       if (!response.ok) {
         // Fall back to native Ollama /api/tags endpoint
         try {
-          const tagsUrl = new URL('/api/tags', value).toString();
-          const tagsResponse = await fetchWithTimeout(tagsUrl, { method: 'GET', allowPrivateNetwork: true }, 8000);
+          const tagsUrl = new URL('/api/tags', parsed).toString();
+          const tagsResponse = await fetchWithTimeout(tagsUrl, probeOptions, 8000);
           if (!tagsResponse.ok) return fail(`Ollama probe failed (${tagsResponse.status})`);
           return ok('Ollama endpoint verified (native API)');
         } catch {
@@ -2184,7 +2266,15 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'VITE_OPENSKY_RELAY_URL': {
       const probeUrl = relayToHttpUrl(value);
       if (!probeUrl) return fail('Relay URL is invalid');
-      const response = await fetchWithTimeout(probeUrl, { method: 'GET' });
+      const safety = await isSafeUrl(probeUrl);
+      if (!safety.safe) return fail(`Relay URL blocked: ${safety.reason}`);
+      const pinned = pickPinnedAddress(safety.resolvedAddresses);
+      if (!pinned) return fail('Relay URL blocked: Could not resolve hostname');
+      const response = await fetchWithTimeout(probeUrl, {
+        method: 'GET',
+        resolvedAddress: pinned.address,
+        resolvedFamily: pinned.family,
+      });
       if (response.status >= 500) return fail(`Relay probe failed (${response.status})`);
       return ok('Relay URL is reachable');
     }

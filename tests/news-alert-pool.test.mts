@@ -30,6 +30,13 @@ it('keeps the original publisher a topic feed carries, so the relay scores on it
   assert.deepEqual(alertPoolItems([topic, untrusted], [], now, 'en').map(i => [i.title, (i as { originPublisher?: string }).originPublisher]), [['topic', 'Reuters'], ['untrusted', undefined]]);
 });
 
+it('keeps the name the aggregator gave a publisher, so a pooled alert is not labelled with its tier key', () => {
+  // Google News attributes BBC Hausa to "BBC"; the bbc family's tier key is "BBC Middle East".
+  const bbc = item('bbc', 1, { source: 'BBC — El Salvador', originPublisher: 'BBC', originPublisherTrusted: true });
+  const untrusted = item('untrusted', 2, { source: 'Strategic Chokepoints', originPublisher: 'BBC', originPublisherTrusted: false });
+  assert.deepEqual(alertPoolItems([bbc, untrusted], [], now, 'en').map(i => [i.title, i.originPublisher, i.publisherName]), [['bbc', 'BBC Middle East', 'BBC'], ['untrusted', undefined, undefined]]);
+});
+
 it('pools only headlines in the digest language, so local-language outlets cannot alert an English edition', () => {
   const servable = [item('Trump, Xi and Putin end summit', 1), item('Baigėsi Trumpo, Putino, Xi Jinpingo susitikimas', 2, { source: '15min.lt', lang: 'lt' })];
   assert.deepEqual(alertPoolItems(servable, [], now, 'en').map(i => i.title), ['Trump, Xi and Putin end summit']);

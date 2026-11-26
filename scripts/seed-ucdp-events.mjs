@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { loadEnvFile } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { compactUcdpDashboardPayload, UCDP_BOOTSTRAP_KEY, UCDP_BOOTSTRAP_META_KEY } from './_ucdp-dashboard.mjs';
+import { ucdpHistoryAfterPublish } from './_intel-history-collectors.mjs';
 // GED Candidate discovery/fetch/merge is shared with scripts/ais-relay.cjs so the
 // two UCDP writers cannot drift (they already had, on discovery concurrency and
 // probe timeout). CJS module imported from ESM, as seed-market-quotes.mjs does
@@ -434,6 +435,11 @@ async function main() {
     signal: AbortSignal.timeout(5_000),
   }).catch(() => console.error('  seed-meta write failed'));
   console.log(`  Wrote seed-meta: ${metaKey}`);
+
+  // Intel-history (#11245). The relay's seedUcdpEvents runs the same hook, so
+  // whichever writer publishes appends the same rows under one ingest-health
+  // record. Fail-open: the hook logs and returns on every failure.
+  await ucdpHistoryAfterPublish(payload, { runId: `${Date.now()}-ucdp-backup` });
 
   const getResp = await fetch(`${redisUrl}/get/${encodeURIComponent(REDIS_KEY)}`, {
     headers: { Authorization: `Bearer ${redisToken}`, 'User-Agent': CHROME_UA },

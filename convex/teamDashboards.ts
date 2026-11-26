@@ -17,7 +17,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 import { assertAccountWritable } from "./accountDeletion/guard";
 import { requireUserId, resolveUserId } from "./lib/auth";
 import { checkTeamDashboardLayout, teamDashboardLayoutValidator } from "./lib/teamDashboardLayout";
-import { isBusinessPlan, isCoveringAt } from "./payments/subscriptionHelpers";
+import { hasAccessAt, isBusinessPlan } from "./payments/subscriptionHelpers";
 import { liveMemberAccount } from "./lib/enterpriseAccounts";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import { hasTabFocus } from "../shared/tab-focus-access";
@@ -58,7 +58,7 @@ export async function resolveTeam(ctx: ReadCtx, userId: string, now: number): Pr
     .query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .collect();
-  const own = ownSubs.find((s) => isBusinessPlan(s.planKey) && isCoveringAt(s, now));
+  const own = ownSubs.find((s) => isBusinessPlan(s.planKey) && hasAccessAt(s, now));
   if (own) return { key: `business:${own.dodoSubscriptionId}`, kind: "business", planKey: own.planKey, seat: false };
 
   const grants = await ctx.db
@@ -73,7 +73,7 @@ export async function resolveTeam(ctx: ReadCtx, userId: string, now: number): Pr
       .unique();
     // Same rule the entitlement uses: the seat counts only while its parent
     // subscription is both covering and still on the API Business tier.
-    if (sub && isBusinessPlan(sub.planKey) && isCoveringAt(sub, now)) {
+    if (sub && isBusinessPlan(sub.planKey) && hasAccessAt(sub, now)) {
       return { key: `business:${grant.businessSubscriptionId}`, kind: "business", planKey: sub.planKey, seat: true };
     }
   }

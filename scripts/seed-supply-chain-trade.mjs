@@ -419,6 +419,16 @@ export function accumulateHistory(newIndices, previousPayload) {
 
 // ─── WTO helpers ───
 
+// WTO /data bodies are Latin-1 bytes without a charset (T\xFCrkiye), so
+// UTF-8 decoding turns every accented name into U+FFFD. /reporters is UTF-8.
+function decodeWtoBody(buffer) {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    return new TextDecoder('windows-1252').decode(buffer);
+  }
+}
+
 // Returns parsed JSON on success, null on any failure (HTTP error, timeout,
 // network abort, JSON parse). The null contract lets every batch-loop caller
 // — `fetchTariffTrends`, `fetchTradeRestrictions`, `fetchTradeBarriers` —
@@ -449,7 +459,7 @@ export async function wtoFetch(path, params) {
       console.warn(`[WTO] HTTP ${resp.status} for ${path} i=${indicator} reporters=${reporterCount}`);
       return null;
     }
-    return await resp.json();
+    return JSON.parse(decodeWtoBody(await resp.arrayBuffer()));
   } catch (err) {
     const cause = err?.name === 'TimeoutError' || err?.name === 'AbortError'
       ? 'timeout'

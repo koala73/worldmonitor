@@ -124,6 +124,11 @@ export interface Block {
   findings: Finding[];
   /** Findings beyond the per-block cap, counted but not listed. */
   omitted: number;
+  /**
+   * Why a block has no finding to report, without the status word the block
+   * already carries. Set for 'unavailable' and 'not_covered'; absent otherwise.
+   */
+  reason?: string;
 }
 
 export interface CountryBlocks {
@@ -299,11 +304,12 @@ function unavailableBlock(topic: string, sourceName: string, reason: string): Bl
     count: null,
     findings: [],
     omitted: 0,
+    reason,
   };
 }
 
 function notCoveredBlock(topic: string, statement: string): Block {
-  return { topic, status: 'not_covered', statement: `Not covered: ${statement}`, source: '', asOf: null, count: null, findings: [], omitted: 0 };
+  return { topic, status: 'not_covered', statement: `Not covered: ${statement}`, source: '', asOf: null, count: null, findings: [], omitted: 0, reason: statement };
 }
 
 interface Dated { ms: number | null; finding: Finding }
@@ -947,7 +953,7 @@ function airportBlock(source: SourceSnapshot, trip: TripCountry, cap: number): B
 function airspaceBlock(trip: TripCountry): Block {
   return notCoveredBlock(
     'Airspace',
-    `this draft reads airspace restrictions for ${trip.countryName} only from the airport NOTAM rows above. National airspace closures and overflight warnings are not assessed.`,
+    `this draft reads airspace restrictions for ${trip.countryName} only from monitored airport NOTAMs and does not assess national airspace closures or overflight warnings.`,
   );
 }
 
@@ -1001,9 +1007,17 @@ function communicationsBlocks(sources: TravelRiskSources, trip: TripCountry, cap
 // Summary
 // ---------------------------------------------------------------------------
 
+/** The block's own explanation, parenthesised like the origin on a reporting clause. */
+function clauseReason(block: Block): string {
+  const text = (block.reason ?? '').trim().replace(/\.$/, '').trim();
+  return text ? ` (${text})` : '';
+}
+
 function clause(block: Block): string {
-  if (block.status === 'unavailable') return `${block.topic}: unavailable`;
-  if (block.status === 'not_covered') return `${block.topic}: not covered`;
+  // A bare "unavailable" or "not covered" reads as "nothing to report", which is
+  // the opposite of what it means. Carry the reason the block already holds.
+  if (block.status === 'unavailable') return `${block.topic}: unavailable${clauseReason(block)}`;
+  if (block.status === 'not_covered') return `${block.topic}: not covered${clauseReason(block)}`;
   const origin = `${block.source}, ${block.asOf ?? 'update time unknown'}`;
   if (block.count !== null) return `${block.topic}: ${block.count} (${origin})`;
   const first = block.findings[0];

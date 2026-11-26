@@ -253,5 +253,71 @@
     "script": "seed-regional-energy-ursea.mjs",
     "publishesAhead": true,
     "utcOffsetMin": -180
+  },
+  {
+    "id": "fuelwatch",
+    "countryCode": "AU",
+    "name": "Western Australia FuelWatch pump prices",
+    "sourceUrl": "https://catalogue.data.wa.gov.au/dataset/fuelwatch-historic-fuel-prices",
+    "licence": "CC-BY-4.0",
+    "intervalMin": 720,
+    "maxContentAgeMin": 5760,
+    "script": "seed-regional-energy-fuelwatch.mjs",
+    "utcOffsetMin": 480
+  },
+  {
+    "id": "searg",
+    "countryCode": "AR",
+    "name": "Argentina Secretaría de Energía pump prices",
+    "sourceUrl": "https://datos.energia.gob.ar/dataset/1c181390-5045-475e-94dc-410429be4b17",
+    "licence": "CC-BY-4.0",
+    "intervalMin": 720,
+    "maxContentAgeMin": 20160,
+    "script": "seed-regional-energy-searg.mjs",
+    "utcOffsetMin": -180
+  },
+  {
+    "id": "oil111",
+    "countryCode": "TW",
+    "name": "Taiwan MOEA Energy Administration county fuel surveys",
+    "sourceUrl": "https://www2.moeaea.gov.tw/oil111/Gasoline/CountyCityAvg",
+    "licence": "Taiwan government website open data declaration (free reuse with attribution)",
+    "intervalMin": 1440,
+    "maxContentAgeMin": 30240,
+    "script": "seed-regional-energy-oil111.mjs",
+    "utcOffsetMin": 480,
+    "seriesMaxContentAgeMin": {
+      "fuel.retail_price|TWD/20kg": 89280
+    }
+  },
+  {
+    "id": "ems",
+    "countryCode": "RS",
+    "name": "EMS Serbia hourly system load",
+    "sourceUrl": "https://transparency.ems.rs/balanceareaprofile/dload/dload.php",
+    "licence": "All rights reserved (site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+    "intervalMin": 60,
+    "maxContentAgeMin": 4320,
+    "script": "seed-regional-energy-ems.mjs"
+  },
+  {
+    "id": "nosbih",
+    "countryCode": "BA",
+    "name": "NOS BiH hourly production and consumption",
+    "sourceUrl": "https://www.nosbih.ba/en/ees/graf-potrosnje/",
+    "licence": "Site footer copyright, no data licence; reuse cleared by the WorldMonitor owner on 2026-11-26",
+    "intervalMin": 60,
+    "maxContentAgeMin": 360,
+    "script": "seed-regional-energy-nosbih.mjs"
+  },
+  {
+    "id": "mepso",
+    "countryCode": "MK",
+    "name": "MEPSO North Macedonia daily energy report",
+    "sourceUrl": "https://www.mepso.com.mk/",
+    "licence": "All rights reserved (site footer); reuse cleared by the WorldMonitor owner on 2026-11-26",
+    "intervalMin": 360,
+    "maxContentAgeMin": 10080,
+    "script": "seed-regional-energy-mepso.mjs"
   }
 ]

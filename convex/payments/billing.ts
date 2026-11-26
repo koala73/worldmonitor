@@ -26,10 +26,18 @@ import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../confi
 import { proActivationStepIdValidator } from "../constants";
 import { EMAIL_AMBER, emailButton, emailCard, emailFrame, emailHeading, emailNote, emailParagraph, escapeEmailHtml } from "../../shared/email-frame";
 import {
+  accessEndAt,
   billingDeletionForUser,
+  failedRenewalAccessEndsAt,
+  handleSubscriptionCancelled,
+  handleSubscriptionExpired,
+  handleSubscriptionPlanChanged,
+  handleSubscriptionRenewed,
+  hasAccessAt,
   isCancellationScheduled,
   isCoveringAt,
   isNewerEvent,
+  recomputeAcceptedBusinessInvitees,
   recomputeEntitlementFromAllSubs,
   resolveBillingRecipient,
   resolvePlanKey,
@@ -1300,9 +1308,11 @@ export const getOnDemandRenewalFallbackState = internalQuery({
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .collect();
 
+    // accessEndAt, not currentPeriodEnd: a failed renewal's unpaid month must
+    // not come back through this fallback after its access grace.
     const currentSubscription = subscriptions
       .filter((subscription) =>
-        subscription.currentPeriodEnd >= args.now &&
+        accessEndAt(subscription) >= args.now &&
         (
           subscription.status === "active" ||
           subscription.status === "on_hold" ||
@@ -1311,8 +1321,8 @@ export const getOnDemandRenewalFallbackState = internalQuery({
       )
       .sort((a, b) =>
         compareEntitlementPlans(
-          { planKey: b.planKey, validUntil: b.currentPeriodEnd },
-          { planKey: a.planKey, validUntil: a.currentPeriodEnd },
+          { planKey: b.planKey, validUntil: accessEndAt(b) },
+          { planKey: a.planKey, validUntil: accessEndAt(a) },
         ),
       )[0];
 
@@ -1335,12 +1345,19 @@ export const getOnDemandRenewalFallbackState = internalQuery({
         ? {
             planKey: currentSubscription.planKey,
             features: getFeaturesForPlan(currentSubscription.planKey),
-            validUntil: currentSubscription.currentPeriodEnd,
+            validUntil: accessEndAt(currentSubscription),
           }
         : null,
       strongestRecentlyStaleFeatures: strongestRecentlyStaleSubscription
         ? getFeaturesForPlan(strongestRecentlyStaleSubscription.planKey)
         : null,
+      // A failed renewal past its access grace that Dodo is still retrying:
+      // the subscription is paused, not ended, and checkout stays blocked.
+      paymentFailedHold: subscriptions.some((subscription) =>
+        subscription.status === "on_hold" &&
+        isCoveringAt(subscription, args.now) &&
+        !hasAccessAt(subscription, args.now),
+      ),
     };
   },
 });
@@ -1690,8 +1707,18 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
     const stillStaleAfterPatch =
       args.remote.status === "active" && args.remote.currentPeriodEnd < args.observedAt;
     const deletion = await billingDeletionForUser(ctx, existing.userId);
+    // The row is local-active (guarded above), so a remote on_hold is the
+    // transition into a hold the webhook never delivered. Anchor it like the
+    // on_hold handler does: the dunning episode starts now, and the access
+    // grace is decided from the period Dodo reports.
+    const enteringHold = args.remote.status === "on_hold";
+    const accessEndsAt = enteringHold
+      ? await failedRenewalAccessEndsAt(ctx, existing, args.remote.currentPeriodStart, args.observedAt)
+      : undefined;
     await ctx.db.patch(existing._id, {
       status: args.remote.status,
+      ...(enteringHold ? { onHoldAt: args.observedAt } : {}),
+      accessEndsAt,
       dodoProductId: args.remote.productId,
       planKey,
       currentPeriodStart: args.remote.currentPeriodStart,
@@ -1727,12 +1754,193 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
     });
 
     await recomputeEntitlementFromAllSubs(ctx, existing.userId, args.observedAt);
+    // A Business subscription's accepted invitees follow the owner's new
+    // period and grace, as they do when the webhook delivers the change.
+    await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, args.observedAt);
     return {
       kind: "reconciled",
       status: args.remote.status,
       planKey,
       currentPeriodEnd: args.remote.currentPeriodEnd,
     };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Locked-hold recovery. A failed renewal loses access at its `accessEndsAt`
+// while Dodo keeps retrying the card. If a retry succeeds but the recovery
+// webhook is lost, nothing else moves the row off on_hold: the missed-renewal
+// reconciler above only scans local-active rows. This sweep asks Dodo about
+// each locked hold and, when Dodo says active, applies it through the same
+// handler a `subscription.renewed` webhook uses.
+// ---------------------------------------------------------------------------
+
+const ON_HOLD_RECOVERY_RECHECK_MS = 6 * 60 * 60 * 1000;
+const ON_HOLD_RECOVERY_BATCH_SIZE = 50;
+// Dodo retries for 30 days from the hold, which can outlast a short period
+// (a 28-day February, or a hold that settled days late), so keep checking a
+// locked hold for this long after its local period end.
+const ON_HOLD_RECOVERY_TAIL_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * on_hold rows whose access grace has ended but whose unpaid period has not,
+ * (or ended less than `ON_HOLD_RECOVERY_TAIL_MS` ago), so Dodo may still
+ * recover them, and that were not checked in the last
+ * `ON_HOLD_RECOVERY_RECHECK_MS`. Bounded by the period window: only holds
+ * from roughly the last month qualify.
+ */
+export const listLockedOnHoldForRecovery = internalQuery({
+  args: { now: v.number() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_status_currentPeriodEnd", (q) =>
+        q.eq("status", "on_hold").gt("currentPeriodEnd", args.now - ON_HOLD_RECOVERY_TAIL_MS),
+      )
+      .take(500);
+    return rows
+      .filter((row) =>
+        row.accessEndsAt !== undefined &&
+        row.accessEndsAt <= args.now &&
+        (row.lastReconcileAttemptAt === undefined ||
+          args.now - row.lastReconcileAttemptAt >= ON_HOLD_RECOVERY_RECHECK_MS),
+      )
+      // Least recently checked first, so a backlog larger than one batch
+      // rotates instead of re-checking the same rows every run.
+      .sort((a, b) => (a.lastReconcileAttemptAt ?? 0) - (b.lastReconcileAttemptAt ?? 0))
+      .slice(0, ON_HOLD_RECOVERY_BATCH_SIZE)
+      .map((row) => ({ _id: row._id, dodoSubscriptionId: row.dodoSubscriptionId }));
+  },
+});
+
+/**
+ * Applies a Dodo lookup to a locked hold. While the row is still on_hold and
+ * no webhook wrote it at or after the lookup, an `active` remote recovers it
+ * and a `cancelled` or `expired` remote closes it through the matching webhook
+ * handler; anything else records the check so the row waits for the next
+ * window. Never touches `updatedAt` on a no-op (it carries webhook ordering).
+ */
+export const applyOnHoldRecovery = internalMutation({
+  args: {
+    subscriptionId: v.id("subscriptions"),
+    observedAt: v.number(),
+    remoteStatus: v.optional(v.string()),
+    remoteRaw: v.optional(v.any()),
+    remoteCurrentPeriodStart: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<"recovered" | "closed" | "checked" | "skipped"> => {
+    const existing = await ctx.db.get(args.subscriptionId);
+    if (!existing || existing.status !== "on_hold") return "skipped";
+    if (
+      args.remoteStatus === "active" &&
+      args.remoteRaw !== undefined &&
+      isNewerEvent(existing.updatedAt, args.observedAt)
+    ) {
+      await handleSubscriptionRenewed(ctx, args.remoteRaw, args.observedAt);
+      // Dodo allows a plan change on a held subscription. If its webhook was
+      // lost too, apply it in this transaction (grants and entitlement
+      // included) so access is restored on the plan Dodo actually bills.
+      const remoteProductId = (args.remoteRaw as { product_id?: unknown }).product_id;
+      if (typeof remoteProductId === "string" && remoteProductId !== existing.dodoProductId) {
+        await handleSubscriptionPlanChanged(ctx, args.remoteRaw, args.observedAt);
+      }
+      return "recovered";
+    }
+    // Dodo ended the subscription while it was held and that webhook was lost.
+    // Apply it, or the row keeps blocking a new checkout until its period ends.
+    if (
+      (args.remoteStatus === "cancelled" || args.remoteStatus === "expired") &&
+      args.remoteRaw !== undefined &&
+      isNewerEvent(existing.updatedAt, args.observedAt)
+    ) {
+      if (args.remoteStatus === "cancelled") {
+        // A late retry may have paid the period before the cancel, with its
+        // recovery webhook lost. The cancel keeps the stored cutoff, so drop
+        // it first when a succeeded charge covers the period Dodo reports.
+        if (
+          existing.accessEndsAt !== undefined &&
+          args.remoteCurrentPeriodStart !== undefined &&
+          (await failedRenewalAccessEndsAt(ctx, existing, args.remoteCurrentPeriodStart, args.observedAt)) === undefined
+        ) {
+          await ctx.db.patch(existing._id, { accessEndsAt: undefined });
+        }
+        await handleSubscriptionCancelled(ctx, args.remoteRaw, args.observedAt);
+        // Accepted invitees still hold the grace date from the hold; bring
+        // them to the owner's (possibly restored) coverage.
+        await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, args.observedAt);
+      } else {
+        await handleSubscriptionExpired(ctx, args.remoteRaw, args.observedAt);
+      }
+      return "closed";
+    }
+    await ctx.db.patch(existing._id, { lastReconcileAttemptAt: args.observedAt });
+    return "checked";
+  },
+});
+
+export const reconcileLockedOnHoldSubscriptions = internalAction({
+  args: {
+    now: v.optional(v.number()),
+    remoteSubscriptionsForTest: v.optional(
+      v.array(dodoReconciliationRemoteSubscriptionValidator),
+    ),
+  },
+  handler: async (ctx, args): Promise<{ inspected: number; recovered: number; failed: number }> => {
+    if (args.remoteSubscriptionsForTest !== undefined && process.env.NODE_ENV !== "test") {
+      throw new Error("[billing/on-hold-recovery] test injection args are only allowed under test");
+    }
+    const now = args.now ?? Date.now();
+    const rows = (await ctx.runQuery(
+      internal.payments.billing.listLockedOnHoldForRecovery,
+      { now },
+    )) as Array<{ _id: Id<"subscriptions">; dodoSubscriptionId: string }>;
+    const remoteById = new Map(
+      (args.remoteSubscriptionsForTest ?? []).map((remote) => [remote.subscription_id, remote]),
+    );
+    const client = args.remoteSubscriptionsForTest !== undefined
+      ? null
+      : rows.length > 0
+        ? getDodoClient({ timeout: DODO_RENEWAL_RECONCILIATION_TIMEOUT_MS, maxRetries: 0 })
+        : null;
+
+    const summary = { inspected: 0, recovered: 0, failed: 0 };
+    for (const row of rows) {
+      summary.inspected++;
+      try {
+        const remote = client
+          ? await client.subscriptions.retrieve(row.dodoSubscriptionId)
+          : remoteById.get(row.dodoSubscriptionId);
+        if (!remote) throw new Error("missing test remote subscription");
+        const normalized = normalizeRemoteSubscription(remote);
+        const outcome = (await ctx.runMutation(internal.payments.billing.applyOnHoldRecovery, {
+          subscriptionId: row._id,
+          observedAt: now,
+          ...(normalized.kind === "supported"
+            ? {
+                remoteStatus: normalized.value.status,
+                remoteRaw: normalized.value.rawPayload,
+                remoteCurrentPeriodStart: normalized.value.currentPeriodStart,
+              }
+            : {}),
+        })) as "recovered" | "closed" | "checked" | "skipped";
+        if (outcome === "recovered") summary.recovered++;
+      } catch (err) {
+        summary.failed++;
+        // sentry-coverage-ok: structured console.error is forwarded by Convex
+        // auto-Sentry; one failed lookup must not stop the rest of the sweep.
+        console.error(
+          `[billing/on-hold-recovery] Failed to check dodoSubscriptionId=${row.dodoSubscriptionId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        await ctx.runMutation(internal.payments.billing.applyOnHoldRecovery, {
+          subscriptionId: row._id,
+          observedAt: now,
+        });
+      }
+    }
+    if (summary.inspected > 0) {
+      console.log(`[billing/on-hold-recovery] ${JSON.stringify(summary)}`);
+    }
+    return summary;
   },
 });
 
@@ -3018,7 +3226,12 @@ export const getCheckoutBlockingSubscription = internalQuery({
             targetCatalogEntry.tierGroup,
           )
         ) return false;
-        return isCoveringAt(sub, now);
+        // An on_hold row blocks for its whole retry window: Dodo may still
+        // charge it, and a second subscription would bill twice. A cancelled
+        // row will never charge again, so it blocks only while it still
+        // grants access (a cancel during a failed-renewal hold ends at the
+        // hold's grace, not the unpaid period end).
+        return sub.status === "cancelled" ? hasAccessAt(sub, now) : isCoveringAt(sub, now);
       })
       .sort((a, b) => {
         const pa = getSubscriptionStatusPriority(a.status);
@@ -4425,14 +4638,14 @@ export const claimSubscription = mutation({
             .collect();
           let bestCoveringSubscription: (typeof realSubscriptions)[number] | null = null;
           for (const candidate of realSubscriptions) {
-            if (!isCoveringAt(candidate, recomputeTimestamp)) continue;
+            if (!hasAccessAt(candidate, recomputeTimestamp)) continue;
             if (
               bestCoveringSubscription === null ||
               compareEntitlementPlans(
-                { planKey: candidate.planKey, validUntil: candidate.currentPeriodEnd },
+                { planKey: candidate.planKey, validUntil: accessEndAt(candidate) },
                 {
                   planKey: bestCoveringSubscription.planKey,
-                  validUntil: bestCoveringSubscription.currentPeriodEnd,
+                  validUntil: accessEndAt(bestCoveringSubscription),
                 },
               ) > 0
             ) {
@@ -4442,7 +4655,7 @@ export const claimSubscription = mutation({
           const strongestCurrentCoverage = bestCoveringSubscription
             ? {
                 planKey: bestCoveringSubscription.planKey,
-                validUntil: bestCoveringSubscription.currentPeriodEnd,
+                validUntil: accessEndAt(bestCoveringSubscription),
               }
             : existingEntitlement.validUntil > recomputeTimestamp
               ? { planKey: existingEntitlement.planKey, validUntil: existingEntitlement.validUntil }

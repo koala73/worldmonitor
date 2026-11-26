@@ -73,6 +73,9 @@ COPY scripts/lib/news-story-key.cjs ./scripts/lib/news-story-key.cjs
 # news-story-key.cjs loads this copy, not /app/shared/: it imports
 # @noble/hashes, which resolves from scripts/node_modules only.
 COPY scripts/shared/story-identity.js ./scripts/shared/story-identity.js
+# The one theater posture rule; the relay is its only publisher and the
+# military-flights seeder imports the same file from its scripts/ container.
+COPY scripts/shared/theater-posture.js ./scripts/shared/theater-posture.js
 # Cross-wording corroboration (#10977) and its import closure.
 COPY scripts/lib/news-corroboration.mjs ./scripts/lib/news-corroboration.mjs
 COPY scripts/lib/brief-embedding.mjs ./scripts/lib/brief-embedding.mjs
@@ -81,6 +84,7 @@ COPY scripts/lib/brief-dedup-jaccard.mjs ./scripts/lib/brief-dedup-jaccard.mjs
 COPY scripts/lib/_upstash-pipeline.mjs ./scripts/lib/_upstash-pipeline.mjs
 COPY scripts/lib/llm-chain.cjs ./scripts/lib/llm-chain.cjs
 COPY scripts/shared/publisher-families.js ./scripts/shared/publisher-families.js
+COPY scripts/shared/publisher-name.js ./scripts/shared/publisher-name.js
 # Publisher-link relay gate required by digest-stale-gate.cjs (#8398):
 # relay-emitted rss_alert events must not carry off-publisher links.
 COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-relay-gate.cjs
@@ -213,6 +217,13 @@ COPY scripts/_weather-alert-select.mjs ./scripts/_weather-alert-select.mjs
 # risk as the file above rather than a degraded weather seed.
 COPY scripts/lib/geo-coord.mjs ./scripts/lib/geo-coord.mjs
 COPY scripts/_country-resolver.mjs ./scripts/_country-resolver.mjs
+# seedUcdpEvents imports the UCDP intel-history hook after each publish
+# (#11245). The import sits inside a try/catch, so a missing file only drops
+# history, but the hook's whole closure ships so history actually lands. The
+# brief-embedding/dedup/_upstash-pipeline files it also needs are COPY'd above.
+COPY scripts/_intel-history-collectors.mjs ./scripts/_intel-history-collectors.mjs
+COPY scripts/_seed-history.mjs ./scripts/_seed-history.mjs
+COPY scripts/lib/intel-history-cost.mjs ./scripts/lib/intel-history-cost.mjs
 COPY scripts/_climate-news-helpers.mjs ./scripts/_climate-news-helpers.mjs
 # Shared single-pass entity decoder imported by seed-climate-news.mjs (and the
 # other seeders migrated in #5436). Same ERR_MODULE_NOT_FOUND risk as above.
@@ -240,5 +251,7 @@ EXPOSE 3004
 # a public (unauthenticated) route in ais-relay.cjs.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://127.0.0.1:3004/health >/dev/null 2>&1 || exit 1
+
+USER node
 
 CMD ["node", "scripts/ais-relay.cjs"]

@@ -169,7 +169,8 @@ export class DeductionPanel extends Panel {
         ] as const;
 
         // Collect top-level children; group by section boundary
-        const nodes = Array.from(container.childNodes) as HTMLElement[];
+        const nodes = (Array.from(container.childNodes) as HTMLElement[])
+            .filter(n => n.nodeType !== Node.TEXT_NODE || n.textContent?.trim());
         const groups: { cls: string; label: string; nodes: HTMLElement[] }[] = [];
         let current: { cls: string; label: string; nodes: HTMLElement[] } | null = null;
 
@@ -225,41 +226,38 @@ export class DeductionPanel extends Panel {
             }
             section.appendChild(labelEl);
 
-            // Add body nodes (skip first node which was the header paragraph)
+            // The header paragraph's text after its <strong> heading belongs to the section body.
+            const headingNode = group.nodes[0];
             const bodyNodes = group.nodes.slice(1);
-            if (bodyNodes.length === 0 && group.nodes[0]) {
-                // Inline header: strip the strong header, keep the rest as body
-                const clone = group.nodes[0].cloneNode(true) as HTMLElement;
+            const headingStrong = headingNode?.querySelector?.('strong');
+            if (headingNode && (headingStrong || bodyNodes.length === 0)) {
+                const clone = headingNode.cloneNode(true) as HTMLElement;
                 clone.querySelector('strong')?.remove();
-                const bodyDiv = document.createElement('div');
-                bodyDiv.className = group.cls === 'ds-primary' ? 'ds-primary-body' : '';
-                setTrustedHtml(
-                    bodyDiv,
-                    trustedHtml(clone.innerHTML.replace(/^[\s:–—-]+/, ''), 'legacy direct innerHTML migration'),
-                );
-                section.appendChild(bodyDiv);
-            } else {
-                // For alt paths: inject probability badges into li items
-                if (group.cls === 'ds-alt') {
-                    bodyNodes.forEach(n => {
-                        if (n.tagName === 'UL') {
-                            n.querySelectorAll('li').forEach(li => {
-                                const probability = extractDeductionProbability(li.textContent ?? '', { leadingOnly: true });
-                                if (probability) {
-                                    const badge = document.createElement('span');
-                                    badge.className = 'ds-alt-prob';
-                                    badge.textContent = probability.label;
-                                    badge.title = probability.isRange ? 'Rough probability range from the source' : 'Approximate probability from the source';
-                                    li.textContent = probability.remainder;
-                                    li.insertBefore(badge, li.firstChild);
-                                }
-                            });
-                        }
-                        section.appendChild(n);
-                    });
-                } else {
-                    bodyNodes.forEach(n => section.appendChild(n));
+                const inlineHtml = clone.innerHTML.replace(/^\s*(?:[:–—]|-(?=\s))?\s*/, '');
+                if (inlineHtml.trim()) {
+                    const bodyDiv = document.createElement('div');
+                    bodyDiv.className = group.cls === 'ds-primary' ? 'ds-primary-body' : '';
+                    setTrustedHtml(bodyDiv, trustedHtml(inlineHtml, 'legacy direct innerHTML migration'));
+                    section.appendChild(bodyDiv);
                 }
+            }
+
+            // For alt paths: inject probability badges into li items
+            for (const n of bodyNodes) {
+                if (group.cls === 'ds-alt' && n.tagName === 'UL') {
+                    n.querySelectorAll('li').forEach(li => {
+                        const probability = extractDeductionProbability(li.textContent ?? '', { leadingOnly: true });
+                        if (probability) {
+                            const badge = document.createElement('span');
+                            badge.className = 'ds-alt-prob';
+                            badge.textContent = probability.label;
+                            badge.title = probability.isRange ? 'Rough probability range from the source' : 'Approximate probability from the source';
+                            li.textContent = probability.remainder;
+                            li.insertBefore(badge, li.firstChild);
+                        }
+                    });
+                }
+                section.appendChild(n);
             }
 
             container.appendChild(section);

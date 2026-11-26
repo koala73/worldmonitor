@@ -37,8 +37,8 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
   // Each miss fetches a page from our own origin. Crawlers read these on purpose, so the per-IP budget is wide.
-  // Public /{page}.md URLs arrive without the Cloudflare edge proof, so the key is passed explicitly:
-  // the proven client IP when present, else Vercel's peer IP, never a 403.
+  // The key is explicit so a request without the Cloudflare edge proof falls back to Vercel's peer IP
+  // instead of a 403. The edge-proof rule covers /{page}.md, so normally this is the real client IP.
   const limited = await checkRateLimit(req, { 'Access-Control-Allow-Origin': '*', 'X-Robots-Tag': 'noindex', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'Vercel-CDN-Cache-Control': 'no-store' }, {
     scope: 'md-twin', identifier: getClientRateLimitKey(req), limit: 300, window: '60 s',
   });

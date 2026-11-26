@@ -11,6 +11,7 @@ import {
   logSeedResult,
   releaseLock,
 } from './_seed-utils.mjs';
+import { bilateralTransitShares, hasModeledSeaRoute } from './shared/bilateral-chokepoint-transit.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -71,6 +72,9 @@ const CHOKEPOINT_REGISTRY = [
 
 /** @type {Record<string, {nearestRouteIds: string[], coastSide: string}>} */
 const COUNTRY_PORT_CLUSTERS = require('./shared/country-port-clusters.json');
+/** @type {Record<string, string>} */
+const COUNTRY_REGIONS = require('./shared/iso2-to-region.json');
+const TRANSIT_CONTEXT = { clusters: COUNTRY_PORT_CLUSTERS, regions: COUNTRY_REGIONS, chokepoints: CHOKEPOINT_REGISTRY };
 
 // The country universe this seeder writes for. Derived from static config, so it is
 // knowable even when a run fails — writeMeta() publishes it on every path so a failed
@@ -95,50 +99,47 @@ function hs4ToHs2(hs4) {
 
 /**
  * Flow-weighted exposure — mirrors chokepoint-exposure-utils.ts:computeFlowWeightedExposures.
- * Uses importerRoutes OR exporterRoutes union for route coverage (same as handler).
+ * A supplier's share counts toward a chokepoint only when the bilateral route crosses it.
  * @param {string} importerIso2
  * @param {string} hs2
  * @param {ComtradeProduct[]} products
  * @returns {object[]}
  */
 export function computeFlowWeightedExposures(importerIso2, hs2, products) {
-  const isEnergy = hs2 === '27';
   const normalizedHs2 = String(Number.parseInt(hs2, 10));
   const matchingProducts = products.filter(p => hs4ToHs2(p.hs4) === normalizedHs2);
 
-  if (matchingProducts.length === 0) return [];
+  return computeBilateralExposures(importerIso2, matchingProducts, normalizedHs2 === '27');
+}
 
-  const importerCluster = COUNTRY_PORT_CLUSTERS[importerIso2];
-  const importerRoutes = new Set(importerCluster?.nearestRouteIds ?? []);
-  const totalSectorValue = matchingProducts.reduce((s, p) => s + p.totalValue, 0);
+/** @param {string} importerIso2 @param {ComtradeProduct[]} matchingProducts @param {boolean} [boostEnergy] */
+function computeBilateralExposures(importerIso2, matchingProducts, boostEnergy = false) {
+  if (matchingProducts.length === 0) return [];
+  const totalValue = matchingProducts.reduce((sum, product) => sum + product.totalValue, 0);
 
   /** @type {Map<string, number>} */
   const cpScores = new Map();
   for (const cp of CHOKEPOINT_REGISTRY) cpScores.set(cp.id, 0);
 
+  let modeled = false;
   for (const product of matchingProducts) {
-    const productWeight = totalSectorValue > 0 ? product.totalValue / totalSectorValue : 0;
+    const productWeight = totalValue > 0 ? product.totalValue / totalValue : 0;
 
     for (const exporter of product.topExporters) {
       if (!exporter.partnerIso2) continue;
-      const exporterCluster = COUNTRY_PORT_CLUSTERS[exporter.partnerIso2];
-      const exporterRoutes = new Set(exporterCluster?.nearestRouteIds ?? []);
-
-      for (const cp of CHOKEPOINT_REGISTRY) {
-        let overlap = 0;
-        for (const r of cp.routeIds) {
-          if (importerRoutes.has(r) || exporterRoutes.has(r)) overlap++;
-        }
-        const routeCoverage = overlap / Math.max(cp.routeIds.length, 1);
-        const contribution = routeCoverage * exporter.share * productWeight * 100;
-        cpScores.set(cp.id, (cpScores.get(cp.id) ?? 0) + contribution);
+      if (hasModeledSeaRoute(importerIso2, exporter.partnerIso2, TRANSIT_CONTEXT.clusters)) modeled = true;
+      for (const [cpId, fraction] of bilateralTransitShares(importerIso2, exporter.partnerIso2, TRANSIT_CONTEXT)) {
+        cpScores.set(cpId, (cpScores.get(cpId) ?? 0) + fraction * exporter.share * productWeight * 100);
       }
     }
   }
 
+  // No supplier pair has a modeled sea route, so zero would be unevaluated rather than measured.
+  if (!modeled) return [];
+
   const entries = CHOKEPOINT_REGISTRY.map(cp => {
     let score = cpScores.get(cp.id) ?? 0;
-    if (isEnergy && cp.shockModelSupported) score = Math.min(score * 1.5, 100);
+    if (boostEnergy && cp.shockModelSupported) score *= 1.5;
     score = Math.min(score, 100);
     return {
       chokepointId: cp.id,
@@ -185,7 +186,7 @@ export function computeCountryLevelExposure(nearestRouteIds, coastSide, hs2) {
 
   return {
     exposures: entries,
-    primaryChokepointId: entries[0]?.chokepointId ?? '',
+    primaryChokepointId: entries[0]?.exposureScore > 0 ? entries[0].chokepointId : '',
     vulnerabilityIndex,
     coverage: 'country_route_fallback',
   };
@@ -317,18 +318,19 @@ export async function main() {
     };
 
     for (const hs2 of HS2_CODES) {
+      const mappings = SUPPLY_VULNERABILITY_COMMODITIES.commodities.filter(mapping => mapping.transitHs2 === hs2);
       for (const [iso2, cluster] of countries) {
         const comtradeProducts = comtradeMap.get(iso2);
         let result;
 
         if (comtradeProducts && comtradeProducts.length > 0) {
           const exposures = computeFlowWeightedExposures(iso2, hs2, comtradeProducts);
-          if (exposures.length > 0 && exposures.some(e => e.exposureScore > 0)) {
+          if (exposures.length > 0) {
             const coastSide = cluster.coastSide ?? '';
-            if (exposures[0]) exposures[0] = { ...exposures[0], coastSide };
+            exposures[0] = { ...exposures[0], coastSide };
             result = {
               exposures,
-              primaryChokepointId: exposures[0]?.chokepointId ?? '',
+              primaryChokepointId: exposures[0].exposureScore > 0 ? exposures[0].chokepointId : '',
               vulnerabilityIndex: buildVulnIndex(exposures),
               coverage: 'flow_weighted',
             };
@@ -342,10 +344,28 @@ export async function main() {
           fallbackCount++;
         }
 
+        // Commodity values are trade shares expressed as percentages. The HS2
+        // energy boost applies only to the chapter's vulnerability index inputs.
+        const commodityExposures = {};
+        if (comtradeProducts?.length) {
+          for (const mapping of mappings) {
+            const products = comtradeProducts.filter(product => (
+              product.totalValue > 0 && mapping.hs4.includes(product.hs4)
+            ));
+            const exposures = computeBilateralExposures(iso2, products);
+            if (exposures.length > 0) {
+              commodityExposures[mapping.id] = Object.fromEntries(
+                exposures.map(entry => [entry.chokepointId, entry.exposureScore]),
+              );
+            }
+          }
+        }
+
         const payload = JSON.stringify({
           iso2,
           hs2,
           ...result,
+          ...(Object.keys(commodityExposures).length > 0 ? { commodityExposures } : {}),
           fetchedAt: new Date().toISOString(),
         });
         commands.push(['SET', `${KEY_PREFIX}${iso2}:${hs2}:v1`, payload, 'EX', TTL_SECONDS]);

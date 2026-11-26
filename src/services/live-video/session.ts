@@ -55,7 +55,8 @@ export interface LiveVideoOptions {
   readonly muted: boolean;
   /**
    * Keep a ready, live stream that never starts as a 'unverified' (reason 'not-started') state the viewer can
-   * start, instead of failing the source. Applies to the last source in the chain; earlier ones still fall through.
+   * start, instead of failing the source. Applies to the last source in the chain; earlier ones still fall through,
+   * except an HLS stream the browser refused to start (autoplay blocked), which every later source would hit too.
    */
   readonly holdUnstarted?: boolean;
   readonly presentation: LiveVideoPresentation;
@@ -103,6 +104,8 @@ interface Transport {
   observe(): PlayerObservation;
   /** Telemetry only: why a live HLS playlist never started playing. */
   stallDetail?(): string;
+  /** Telemetry only: how far an HLS stream got before it timed out. */
+  timeoutDetail?(): string;
   setMuted(muted: boolean): void;
   setPaused(paused: boolean): void;
   destroy(): void;
@@ -461,6 +464,8 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
   let lastSample: { readonly atMs: number; readonly seconds: number } | null = null;
   let reportedMuted = context.muted;
   let playRefusal: string | null = null;
+  /** How far loading got, for a timeout report: hls.js chunk, playlist request, variant list, or the native player. */
+  let loadStage: 'player-loading' | 'playlist-loading' | 'level-loading' | 'native-loading' = 'player-loading';
   const startPlayback = () => {
     playRefusal = null;
     video.play()?.catch((error: unknown) => {
@@ -529,6 +534,7 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
       tracks?.removeEventListener('addtrack', readAudioTracks);
       tracks?.removeEventListener('removetrack', readAudioTracks);
     };
+    loadStage = 'native-loading';
     video.src = candidate.url;
   };
   if (nativeHls && (video.audioTracks || !context.onAudioAvailabilityChange)) {
@@ -546,6 +552,7 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
       // in 18 s). hls.js re-measures the player, so fullscreen raises the cap.
       const instance = new Hls({ enableWorker: true, lowLatencyMode: true, capLevelOnFPSDrop: true, capLevelToPlayerSize: true });
       hls = instance;
+      instance.on(Hls.Events.MANIFEST_LOADED, () => { loadStage = 'level-loading'; });
       instance.on(Hls.Events.LEVEL_LOADED, (_event, data) => { manifest = data.details.live ? 'live' : 'vod'; });
       instance.on(Hls.Events.BUFFER_CREATED, (_event, { tracks }) => {
         context.onAudioAvailabilityChange?.(tracks.audio ? 'available'
@@ -556,6 +563,7 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
         const status = data.response?.code;
         fail(typeof status === 'number' && status >= 400 ? { kind: 'http', status } : { kind: 'fatal', detail: data.details });
       });
+      loadStage = 'playlist-loading';
       instance.loadSource(candidate.url);
       instance.attachMedia(video);
     }, () => {
@@ -567,11 +575,23 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
   if (context.autoplay) startPlayback();
 
   return {
-    observe: () => ({ transport: 'hls', elapsedMs: context.elapsedMs(), manifest, progress: readProgress(), failure }),
+    observe: () => ({
+      transport: 'hls',
+      elapsedMs: context.elapsedMs(),
+      manifest,
+      progress: readProgress(),
+      startRefused: video.paused && playRefusal === 'NotAllowedError',
+      failure,
+    }),
     // A refused play() leaves the video paused; a playing video short of HAVE_FUTURE_DATA is still buffering.
     stallDetail: () => {
       if (video.paused) return playRefusal ? `refused-${playRefusal}` : 'paused';
       return video.readyState < HAVE_FUTURE_DATA ? 'buffering' : 'frozen';
+    },
+    // A refused start or a hidden (throttled) tab is reported apart from a slow network or server.
+    timeoutDetail: () => {
+      const refused = video.paused && playRefusal === 'NotAllowedError' ? '-refused' : '';
+      return `${loadStage}${refused}${document.visibilityState === 'hidden' ? '-hidden' : ''}`;
     },
     setMuted(muted) {
       // Already known to the caller: never report it back.
@@ -619,8 +639,9 @@ function attemptOutcome(verdict: SettledVerdict, transport: Transport): Record<s
     const { outcome } = verdict;
     if (outcome.kind === 'player-error') return { outcome: 'player-error', code: outcome.code };
     if (outcome.kind === 'hls-fatal') return { outcome: 'hls-fatal', detail: outcome.detail };
-    const stall = outcome.kind === 'not-started' ? transport.stallDetail?.() : undefined;
-    return stall ? { outcome: outcome.kind, detail: stall } : { outcome: outcome.kind };
+    const detail = outcome.kind === 'not-started' ? transport.stallDetail?.()
+      : outcome.kind === 'timeout' ? transport.timeoutDetail?.() : undefined;
+    return detail ? { outcome: outcome.kind, detail } : { outcome: outcome.kind };
   }
   return { outcome: verdict.verdict === 'unverifiable' ? verdict.reason : verdict.verdict };
 }
@@ -647,6 +668,8 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
   let muted = options.muted;
   let paused = !options.autoplay;
   let lastHint = { ready: false, tapToPlay: false };
+  /** The mounted source was held for the viewer once: after a tap it keeps holding while it buffers, never moves on. */
+  let heldThisMount = false;
 
   /** A ready, live stream held for the viewer to start: still watched, so it can go live or fail like any other. */
   const isHeld = () => state.phase === 'unverified' && state.reason === 'not-started';
@@ -680,7 +703,8 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
     const held = isHeld();
     const observation = transport.observe();
     const lastSource = state.order.every((other) => other === index || state.attempts.some((attempt) => attempt.index === other));
-    const verdict = classifyAttempt(observation, { holdUnstarted: options.holdUnstarted === true && lastSource });
+    const hold = options.holdUnstarted === true;
+    const verdict = classifyAttempt(observation, { holdUnstarted: hold && (lastSource || heldThisMount), holdRefused: hold });
     if (held) {
       // Still not started: nothing to change. Playback that began, or a fatal error, re-enters the normal transitions.
       if (verdict.verdict === 'unverifiable' && verdict.reason === 'not-started') return;
@@ -690,7 +714,8 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
       // Only the last source offers a play control: an earlier one that stalls is about to hand over to the next.
       const hint = connectingHint(observation);
       const next = { ready: hint.ready, tapToPlay: hint.tapToPlay && options.holdUnstarted === true && lastSource };
-      if (next.ready !== lastHint.ready || next.tapToPlay !== lastHint.tapToPlay) {
+      // A resumed hold must replace the panel's unverified state even when the hint matches the one sent before it.
+      if (held || next.ready !== lastHint.ready || next.tapToPlay !== lastHint.tapToPlay) {
         lastHint = next;
         options.onState({ ...(viewState(state, parsed) as Extract<LiveVideoState, { phase: 'connecting' }>), ...next });
       }
@@ -703,7 +728,9 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
       track('live-video-attempt-failed', { slot, kind: candidate.kind, ...attemptOutcome(verdict, transport) });
     }
     if (verdict.verdict === 'unverifiable' && verdict.reason === 'not-started') {
-      track('live-video-tap-to-play', { slot, kind: candidate.kind });
+      heldThisMount = true;
+      const detail = transport.stallDetail?.();
+      track('live-video-tap-to-play', detail ? { slot, kind: candidate.kind, detail } : { slot, kind: candidate.kind });
     }
     apply(step);
   };
@@ -711,6 +738,7 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
   function mount(index: number): void {
     unmount();
     lastHint = { ready: false, tapToPlay: false };
+    heldThisMount = false;
     options.onAudioAvailabilityChange?.('unknown');
     const { candidate } = parsed.candidates[index]!;
     const startedAt = Date.now();

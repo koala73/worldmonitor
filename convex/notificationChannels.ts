@@ -9,6 +9,7 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import { channelTypeValidator } from "./constants";
 import { requireVerifiedAccountEmail, lookupVerifiedAccountEmail } from "./lib/notificationEmail";
 import { deliveryResultValidator, isDeliveryError } from "./lib/notificationDelivery";
@@ -531,18 +532,25 @@ export const createPairingTokenForUser = internalMutation({
   },
 });
 
+export function redactChannelForSettings(channel: Doc<"notificationChannels">) {
+  if (channel.channelType === "webhook") {
+    const { webhookSecret, webhookEnvelope: _webhookEnvelope, ...safeChannel } = channel;
+    return { ...safeChannel, webhookSigned: Boolean(webhookSecret) };
+  }
+  if ("webhookEnvelope" in channel) {
+    const { webhookEnvelope: _webhookEnvelope, ...safeChannel } = channel;
+    return safeChannel;
+  }
+  return channel;
+}
+
 export const getChannels = query({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
-    const channels = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
-      .collect();
-    return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
-      || (channel.channelType === "telegram" && channel.telegramOwnership !== "verified_callback")
-      ? { ...channel, verified: false } : channel);
+    const channels = await readChannelsForDelivery(ctx, identity.subject);
+    return channels.map(redactChannelForSettings);
   },
 });
 

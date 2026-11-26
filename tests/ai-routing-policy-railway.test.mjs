@@ -137,6 +137,15 @@ describe('AI routing policy on Railway jobs', () => {
       assert.ok(body.max_tokens > 200);
     });
 
+    it('sends a JSON schema to anthropic as structured output, and not to openrouter', async () => {
+      const { llmHosts, llmBodies } = stubFetch({ anthropicStatus: 529, text: '{"same": 1}' });
+      const schema = { type: 'object', properties: { same: { type: 'integer' } }, required: ['same'], additionalProperties: false };
+      await callLLM('sys', 'user', { allowedProviders: ['anthropic', 'openrouter'], jsonSchema: schema });
+      assert.deepEqual(llmHosts, ['api.anthropic.com', 'openrouter.ai']);
+      assert.deepEqual(llmBodies[0].output_config, { effort: 'low', format: { type: 'json_schema', schema } });
+      assert.equal('output_config' in llmBodies[1], false);
+    });
+
     it('reaches no provider for an empty or unknown allowlist', async () => {
       const { llmHosts } = stubFetch();
       assert.equal(await callLLM('sys', 'user', { allowedProviders: [] }), null);

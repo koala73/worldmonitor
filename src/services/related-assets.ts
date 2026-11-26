@@ -188,20 +188,30 @@ function countKeywordMatches(titles: string[], keywords: string[]): number {
   }, 0);
 }
 
+// Hotspot keywords mix place names with subjects reported worldwide; a subject
+// alone must not place a story at that hotspot.
+const NON_GEOGRAPHIC_KEYWORDS = new Set(['ai', 'artificial intelligence', 'tech layoffs', 'oil', 'energy', 'lng']);
+
+function countPlaceMatches(titles: string[], keywords: string[]): number {
+  return countKeywordMatches(titles, keywords.filter(keyword => !NON_GEOGRAPHIC_KEYWORDS.has(keyword)));
+}
+
 function inferOrigin(titles: string[]): AssetOrigin | null {
   const hotspotCandidates = INTEL_HOTSPOTS.map((hotspot) => ({
     label: hotspot.name,
     lat: hotspot.lat,
     lon: hotspot.lon,
     score: countKeywordMatches(titles, hotspot.keywords),
-  })).filter(candidate => candidate.score > 0);
+    placed: countPlaceMatches(titles, hotspot.keywords) > 0,
+  })).filter(candidate => candidate.placed);
 
   const conflictCandidates = CONFLICT_ZONES.map((conflict) => ({
     label: conflict.name,
     lat: conflict.center[1],
     lon: conflict.center[0],
     score: countKeywordMatches(titles, conflict.keywords ?? []),
-  })).filter(candidate => candidate.score > 0);
+    placed: countPlaceMatches(titles, conflict.keywords ?? []) > 0,
+  })).filter(candidate => candidate.placed);
 
   const allCandidates = [...hotspotCandidates, ...conflictCandidates];
   if (allCandidates.length === 0) return null;

@@ -231,6 +231,16 @@ test('a new live HTML week retains the latest 52 genuine weeks and their source 
   assert.equal(JSON.parse(result.cache[metaKey].value).recordCount, 52);
 });
 
+test('eight readings with a skipped survey week are not an eight-week average', () => {
+  const cache = fullHistory();
+  const value = JSON.parse(cache[key].value);
+  value.data.weeks.splice(3, 1);
+  cache[key].value = JSON.stringify(value);
+  const result = run({ source: 'html', cache });
+  assert.equal(result.status, 0, result.log);
+  assert.equal(JSON.parse(result.cache[key].value).data.avg8w, null);
+});
+
 test('a repeated live week replaces that date without duplicating or shrinking history', () => {
   const cache = fullHistory();
   const value = JSON.parse(cache[key].value);
@@ -282,7 +292,7 @@ test('usable live HTML publishes the existing AAII consumer shape', () => {
   assert.equal(canonical.data.seededAt, '2026-10-15T22:02:40.592Z');
   assert.deepEqual(canonical.data.latest, { date: '2026-10-15', bullish: 40, bearish: 30, neutral: 30, spread: 10 });
   assert.deepEqual(canonical.data.weeks, [canonical.data.latest]);
-  assert.deepEqual(canonical.data.avg8w, { bullish: 40, bearish: 30, neutral: 30, spread: 10 });
+  assert.equal(canonical.data.avg8w, null, 'one survey week is not an eight-week average');
   assert.equal(result.cache[key].expiresAt, now + 21 * 86400_000);
   assert.equal(JSON.parse(result.cache[metaKey].value).fetchedAt, now);
   assert.match(result.log, /"event":"seed_complete"/);

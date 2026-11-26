@@ -353,7 +353,7 @@ describe('Live Webcams live verification', () => {
     mountOnScreen();
     click('.webcam-region-btn[data-region="space"]');
     await playWall();
-    expect(playingFeeds()).toEqual(['ISS Earth View live webcam', 'Space live webcam']);
+    expect(playingFeeds()).toEqual(['ISS Earth View live webcam', 'Sen 4K Earth View live webcam']);
 
     api().playerFor('ISS Earth View live webcam').error(150);
     await flush(LIVE_VIDEO_TIMING.pollMs);

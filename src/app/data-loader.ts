@@ -16,6 +16,7 @@ import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/service
 import type { ClusteredEvent, Feed, NewsItem, MapLayers, MilitaryFlight } from '@/types';
 import type { MarketData, InternetOutage } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
+import { TIME_RANGE_MS } from '@/utils/time-range';
 import {
   FEEDS,
   CANONICAL_FEEDS,
@@ -116,7 +117,7 @@ import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid, clusterNewsWithWorkerFallback } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
 import { consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
-import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
+import { fetchAllFires, flattenFires, summarizeFires, toMapFires } from '@/services/wildfires';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
 import { ingestConflictsForCountryData, ingestDisplacementForCountryData, ingestClimateForCountryData, ingestGpsJammingForCountryData, isInLearningMode, type CountryScore } from '@/services/country-instability';
@@ -170,7 +171,6 @@ import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import type { DigestCoverageSummary } from '@/components/StatusPanel';
 import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
 import type { PredictionPanel } from '@/components/PredictionPanel';
-import type { InsightsPanel } from '@/components/InsightsPanel';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 
 import type { EconomicPanel } from '@/components/EconomicPanel';
@@ -200,6 +200,7 @@ import { checkMilestones } from '@/services/celebration';
 import { fetchHappinessScores } from '@/services/happiness-data';
 import { fetchRenewableInstallations } from '@/services/renewable-installations';
 import { filterBySentiment } from '@/services/sentiment-gate';
+import { dedupeHappyItems, isBreakthroughStory, isHeroStory, selectCuratedHappyItems } from '@/services/happy-selection';
 import { fetchAllPositiveTopicIntelligence } from '@/services/gdelt-intel';
 import { fetchPositiveGeoEvents, geocodePositiveNewsItems, type PositiveGeoEvent } from '@/services/positive-events-geo';
 import type { HappyContentCategory } from '@/services/positive-classifier';
@@ -679,9 +680,11 @@ export class DataLoaderManager implements AppModule {
     if (transition.render === 'cached' && cached) {
       this.callPanel('cii', 'renderFromCached', cached);
       this.applyCiiScoresToMap(cached.cii.map(toCountryScore));
+      this.callPanel('strategic-posture', 'refreshInstabilityNotes');
     } else if (transition.render === 'unavailable') {
       this.callPanel('cii', 'renderUnavailable');
       this.applyCiiScoresToMap([]);
+      this.callPanel('strategic-posture', 'refreshInstabilityNotes');
     }
 
     if (transition.refreshBrief) this.callbacks.refreshOpenCountryBrief();
@@ -1724,15 +1727,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   getTimeRangeWindowMs(range: TimeRange): number {
-    const ranges: Record<TimeRange, number> = {
-      '1h': 60 * 60 * 1000,
-      '6h': 6 * 60 * 60 * 1000,
-      '24h': 24 * 60 * 60 * 1000,
-      '48h': 48 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000,
-      'all': Infinity,
-    };
-    return ranges[range];
+    return TIME_RANGE_MS[range];
   }
 
   filterItemsByTimeRange(items: NewsItem[], range: TimeRange = this.ctx.currentTimeRange): NewsItem[] {
@@ -2597,7 +2592,8 @@ export class DataLoaderManager implements AppModule {
 
     // Happy variant: run multi-stage positive news pipeline + map layers
     if (SITE_VARIANT === 'happy') {
-      await this.loadHappySupplementaryAndRender();
+      await this.loadHappySupplementaryAndRender(generation);
+      if (!this.isCurrentNewsLoad(generation)) return;
       await Promise.allSettled([
         this.ctx.mapLayers.positiveEvents ? this.loadPositiveEvents() : Promise.resolve(),
         this.ctx.mapLayers.kindness ? Promise.resolve(this.loadKindnessData()) : Promise.resolve(),
@@ -4195,10 +4191,17 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadUkmtoIncidents(): Promise<void> {
+  async loadUkmtoIncidents(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return;
     if (SITE_VARIANT !== 'full' && !this.ctx.panelSettings['ukmto-incidents']?.enabled) return;
-    const snapshot = await fetchUkmtoIncidents();
-    if (this.ctx.isDestroyed) return;
+    let snapshot;
+    try {
+      snapshot = await fetchUkmtoIncidents(signal);
+    } catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) return;
+      throw error;
+    }
+    if (this.ctx.isDestroyed || signal?.aborted) return;
     this.callPanel('ukmto-incidents', 'setData', snapshot);
     this.ctx.map?.setUkmtoSnapshot(snapshot);
   }
@@ -4383,8 +4386,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setMilitaryVessels(vessels, vesselClusters);
       this.ctx.map?.updateMilitaryForEscalation(flights, vessels);
       this.loadCachedPosturesForBanner();
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.setMilitaryFlights(flights);
       const hasData = flights.length > 0 || vessels.length > 0;
       this.ctx.map?.setLayerReady('military', hasData);
       const militaryCount = flights.length + vessels.length;
@@ -4434,8 +4435,6 @@ export class DataLoaderManager implements AppModule {
       }
 
       this.loadCachedPosturesForBanner();
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.setMilitaryFlights(flightData.flights);
 
       const hasData = flightData.flights.length > 0 || vesselData.vessels.length > 0;
       this.ctx.map?.setLayerReady('military', hasData);
@@ -4614,17 +4613,18 @@ export class DataLoaderManager implements AppModule {
     if (signal?.aborted) return;
     const procurementPanel = this.ctx.panels['global-procurement'] as GlobalProcurementPanel | undefined;
     if (!procurementPanel) return;
+    const isScopedFilterRequest = filters !== undefined && signal !== undefined;
     if (
       filters === undefined
-      && signal === undefined
       && this.activeGlobalTenderScopedGeneration !== null
     ) return;
     const requestGeneration = ++this.globalTenderGeneration;
-    this.activeGlobalTenderScopedGeneration = signal ? requestGeneration : null;
+    this.activeGlobalTenderScopedGeneration = isScopedFilterRequest ? requestGeneration : null;
     const previousGlobalTenderFilters = { ...this.globalTenderFilters };
     const requestFilters = filters ?? this.globalTenderFilters;
     this.globalTenderFilters = { ...requestFilters, cursor: '' };
     let canceledFiltersRestored = false;
+    let markedLoading = false;
     const releaseScopedRequest = () => {
       if (this.activeGlobalTenderScopedGeneration === requestGeneration) {
         this.activeGlobalTenderScopedGeneration = null;
@@ -4639,10 +4639,11 @@ export class DataLoaderManager implements AppModule {
       canceledFiltersRestored = true;
       this.globalTenderFilters = previousGlobalTenderFilters;
     };
-    signal?.addEventListener('abort', () => {
+    const onAbort = () => {
       restoreCanceledFilters();
       releaseScopedRequest();
-    }, { once: true });
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
     const isCanceledOrStale = () => {
       restoreCanceledFilters();
       return signal?.aborted === true || requestGeneration !== this.globalTenderGeneration;
@@ -4659,6 +4660,7 @@ export class DataLoaderManager implements AppModule {
       }
       if (isCanceledOrStale()) return;
       procurementPanel.setLoading(true, append);
+      markedLoading = true;
       try {
         const { fetchGlobalTenders } = await import('@/services/global-tenders');
         if (isCanceledOrStale()) return;
@@ -4667,10 +4669,12 @@ export class DataLoaderManager implements AppModule {
         if (!hasPremiumAccess()) {
           if (isCanceledOrStale()) return;
           procurementPanel.clear();
+          markedLoading = false;
           return;
         }
         if (isCanceledOrStale()) return;
         procurementPanel.update(data, append);
+        markedLoading = false;
         if (isCanceledOrStale()) return;
         this.ctx.statusPanel?.updateApi('Global Procurement', {
           status: !data.dataAvailable ? 'error' : ['partial', 'stale'].includes(data.availability) ? 'warning' : 'ok',
@@ -4680,11 +4684,22 @@ export class DataLoaderManager implements AppModule {
         console.warn('[App] Global tenders failed:', error);
         if (isCanceledOrStale()) return;
         procurementPanel.showUnavailable();
+        markedLoading = false;
         if (isCanceledOrStale()) return;
         this.ctx.statusPanel?.updateApi('Global Procurement', { status: 'error' });
       }
     } finally {
+      signal?.removeEventListener('abort', onAbort);
       releaseScopedRequest();
+      if (
+        markedLoading
+        && !isScopedFilterRequest
+        && signal?.aborted === true
+        && requestGeneration === this.globalTenderGeneration
+        && !this.ctx.isDestroyed
+      ) {
+        procurementPanel.setLoading(false);
+      }
     }
   }
 
@@ -5084,7 +5099,7 @@ export class DataLoaderManager implements AppModule {
       if (fireResult.skipped) {
         this.ctx.intelligenceCache.satelliteFires = [];
         this.ctx.map?.setFires([]);
-        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
+        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(summarizeFires({}), 0);
         await runSignalAggregator(this.ctx.statusPanel, 'satellite fires', (aggregator) => aggregator.ingestSatelliteFires([]));
         dataFreshness.recordError('firms', fireResult.reason ?? 'no_data');
         // en.json carries panels.satelliteFires as a flat title string, so the
@@ -5096,7 +5111,6 @@ export class DataLoaderManager implements AppModule {
       const { regions, totalCount } = fireResult;
       if (totalCount > 0) {
         const flat = flattenFires(regions);
-        const stats = computeRegionStats(regions);
         const satelliteFires = flat.map(f => ({
           lat: f.location?.latitude ?? 0,
           lon: f.location?.longitude ?? 0,
@@ -5111,12 +5125,12 @@ export class DataLoaderManager implements AppModule {
 
         this.ctx.map?.setFires(toMapFires(flat));
 
-        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(stats, totalCount);
+        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(summarizeFires(regions), totalCount);
 
         dataFreshness.recordUpdate('firms', totalCount);
       } else {
         this.ctx.intelligenceCache.satelliteFires = [];
-        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
+        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(summarizeFires({}), 0);
       }
       this.ctx.statusPanel?.updateApi('FIRMS', { status: 'ok' });
     } catch (e) {
@@ -5172,7 +5186,7 @@ export class DataLoaderManager implements AppModule {
   // synthesized `Date.now()` stamps would fraudulently claim freshness
   // for the 24h gate window. Pre-v2 entries are left to TTL out (no
   // explicit invalidation needed).
-  private static readonly HAPPY_ITEMS_CACHE_KEY = 'happy-all-items:v2';
+  private static readonly HAPPY_ITEMS_CACHE_KEY = 'happy-all-items:v3';
 
   async hydrateHappyPanelsFromCache(): Promise<void> {
     try {
@@ -5186,25 +5200,27 @@ export class DataLoaderManager implements AppModule {
         pubDate: new Date(displayPubDateMs(item)),
       }));
 
-      const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
-      this.callPanel('breakthroughs', 'setItems',
-        items.filter(item => scienceSources.includes(item.source) || item.happyCategory === 'science-health')
-      );
-      this.callPanel('spotlight', 'setHeroStory',
-        items.filter(item => item.happyCategory === 'humanity-kindness')
-          .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))[0]
-      );
-      this.callPanel('digest', 'setStories',
-        [...items].sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a)).slice(0, 5)
-      );
+      this.renderHappyStoryPanels(items);
       this.callPanel('positive-feed', 'renderPositiveNews', items);
     } catch (err) {
       console.warn('[App] Happy panel cache hydration failed:', err);
     }
   }
 
-  private async loadHappySupplementaryAndRender(): Promise<void> {
-    const curated = [...this.ctx.happyAllItems];
+  private renderHappyStoryPanels(items: NewsItem[]): void {
+    this.callPanel('breakthroughs', 'setItems', items.filter(isBreakthroughStory));
+    this.callPanel('spotlight', 'setHeroStory',
+      items.filter(isHeroStory).sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))[0]
+    );
+    this.callPanel('digest', 'setStories',
+      [...items].sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a)).slice(0, 5)
+    );
+  }
+
+  private async loadHappySupplementaryAndRender(generation: number): Promise<void> {
+    const curated = await selectCuratedHappyItems(this.ctx.happyAllItems, filterBySentiment);
+    if (!this.isCurrentNewsLoad(generation)) return;
+    this.ctx.happyAllItems = curated;
     this.callPanel('positive-feed', 'renderPositiveNews', curated);
 
     let supplementary: NewsItem[] = [];
@@ -5222,32 +5238,19 @@ export class DataLoaderManager implements AppModule {
         }))
       );
 
-      supplementary = await filterBySentiment(gdeltItems);
+      supplementary = await selectCuratedHappyItems(gdeltItems, filterBySentiment);
     } catch (err) {
       console.warn('[App] Happy supplementary pipeline failed, using curated only:', err);
     }
+    if (!this.isCurrentNewsLoad(generation)) return;
 
     if (supplementary.length > 0) {
-      const merged = [...curated, ...supplementary];
+      const merged = dedupeHappyItems([...curated, ...supplementary]);
       merged.sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a));
       this.callPanel('positive-feed', 'renderPositiveNews', merged);
     }
 
-    const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
-    const scienceItems = this.ctx.happyAllItems.filter(item =>
-      scienceSources.includes(item.source) || item.happyCategory === 'science-health'
-    );
-    this.callPanel('breakthroughs', 'setItems', scienceItems);
-
-    const heroItem = this.ctx.happyAllItems
-      .filter(item => item.happyCategory === 'humanity-kindness')
-      .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))[0];
-    this.callPanel('spotlight', 'setHeroStory', heroItem);
-
-    const digestItems = [...this.ctx.happyAllItems]
-      .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))
-      .slice(0, 5);
-    this.callPanel('digest', 'setStories', digestItems);
+    this.renderHappyStoryPanels(curated);
 
     setPersistentCache(
       DataLoaderManager.HAPPY_ITEMS_CACHE_KEY,
@@ -5434,18 +5437,20 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadTelegramIntel(): Promise<void> {
+  async loadTelegramIntel(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return;
     if (isDesktopRuntime() && !hasPremiumAccess()) return;
     const generation = getTelegramIntelGeneration();
     const isCurrent = () => !this.ctx.isDestroyed
+      && !signal?.aborted
       && generation === getTelegramIntelGeneration()
       && (!isDesktopRuntime() || hasPremiumAccess());
     try {
-      const result = await fetchTelegramFeed();
+      const result = await fetchTelegramFeed(50, signal);
       if (!isCurrent()) return;
       this.callPanel('telegram-intel', 'setData', result, generation);
     } catch (error) {
-      if (!isCurrent()) return;
+      if (!isCurrent() || (error instanceof DOMException && error.name === 'AbortError')) return;
       console.error('[App] Telegram intel fetch failed:', error);
       this.callPanel('telegram-intel', 'setData', {
         source: 'telegram', enabled: false, count: 0, updatedAt: null, items: [],

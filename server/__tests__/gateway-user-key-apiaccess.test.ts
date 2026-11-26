@@ -68,7 +68,7 @@ type Ent = {
   planKey: string;
   features: Record<string, unknown>;
   validUntil: number;
-  billingStatus?: "subscription_lapsed" | "renewal_verification_pending" | "renewal_verification_failed";
+  billingStatus?: "subscription_lapsed" | "payment_failed" | "renewal_verification_pending" | "renewal_verification_failed";
   retryAfterSeconds?: number;
 } | null;
 let entitlement: Ent = ACTIVE;
@@ -364,6 +364,39 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
 
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({ code: "subscription_lapsed" });
+  });
+
+  test("a paused subscription on a wm_ key returns payment_failed with the billing portal", async () => {
+    entitlement = {
+      planKey: "free",
+      features: { tier: 0, apiAccess: false, apiRateLimit: 0 },
+      validUntil: 0,
+      billingStatus: "payment_failed",
+      retryAfterSeconds: 3,
+    };
+
+    const res = await makeGateway()(keyReq(REGULAR_PATH), ctx);
+
+    expect(res.status).toBe(403);
+    expect(res.headers.get("X-Billing-Verification")).toBe("payment_failed");
+    expect(res.headers.get("Retry-After")).toBeNull();
+    const body = await res.json();
+    expect(body).toMatchObject({ code: "payment_failed" });
+    expect(body.error).toContain("https://www.worldmonitor.app/dashboard?billing=portal");
+  });
+
+  test("a free owner's wm_ key keeps the plain subscription-required denial", async () => {
+    entitlement = {
+      planKey: "free",
+      features: { tier: 0, apiAccess: false, apiRateLimit: 0 },
+      validUntil: 0,
+    };
+
+    const res = await makeGateway()(keyReq(REGULAR_PATH), ctx);
+
+    expect(res.status).toBe(403);
+    expect(res.headers.get("X-Billing-Verification")).toBeNull();
+    expect((await res.json()).error).toBe("API access requires an active subscription");
   });
 
   test("legacy premium bearer surfaces renewal verification failure", async () => {

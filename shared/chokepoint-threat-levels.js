@@ -13,7 +13,7 @@
  * THREAT_CONFIG_LAST_REVIEWED in the handler for the review date.
  */
 export const CHOKEPOINT_THREAT_LEVELS = Object.freeze({
-  suez: 'high',
+  suez: 'elevated',
   malacca_strait: 'normal',
   hormuz_strait: 'war_zone',
   bab_el_mandeb: 'critical',

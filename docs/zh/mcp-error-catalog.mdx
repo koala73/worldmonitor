@@ -137,9 +137,10 @@ Content-Type: application/json
 
 ### `-32002` —— 终止性权益拒绝
 
-权益拒绝通常为 HTTP **403**，带 `Cache-Control: no-store`，且**不带** `WWW-Authenticate`：凭证仍有效，但当前权益不允许该调用，重新鉴权无法改变结果。`error.data.reason` 区分两种情况：
+权益拒绝通常为 HTTP **403**，带 `Cache-Control: no-store`，且**不带** `WWW-Authenticate`：凭证仍有效，但当前权益不允许该调用，重新鉴权无法改变结果。`error.data.reason` 区分三种情况：
 
 - **`lapsed-subscription`**：这是一个罕见的执行中竞态：订阅在权益预检查通过之后、Pro 工具的下游抓取之前失效。如果权益预检查时已有服务方确认的失效结果，账户会被重新分类到受限免费账户路径，不会在预检查中发出此拒绝。较晚出现的下游 `BillingDenialError` 会由 `api/mcp/dispatch.ts` 重新发出，并带 `X-Billing-Verification: subscription_lapsed`，因为该次执行中的 Pro 操作已无法完成。
+- **`payment-failed`**：订阅的续费扣款失败，且访问宽限期已结束，支付服务方仍在重试扣款。账户处于暂停状态而非已取消：它保留免费额度，调用 Pro-only 工具、套餐功能工具或 Pro-only 资源时，`api/mcp/dispatch.ts` 返回此拒绝而不是 `upgrade-required`。`upgradeUrl` 为账单门户 `https://www.worldmonitor.app/dashboard?billing=portal`，且不带 `recommendedPlan` 或 `checkoutTool`，因为扣款重试期间无法发起新结账。若扣款失败发生在 Pro 调用执行中，则走上面的执行中形式，带 `data.code: "payment_failed"` 和 `X-Billing-Verification: payment_failed`。`message` 不含 URL，ChatGPT 收到的仅作说明的 `nextStep` 也不含 URL。
 - **`upgrade-required`**：免费额度账户调用了 `subscription` 工具，或经确认的非免费权益不足（例如已过期或停用的付费权益行）。这类拒绝发生在额度预留之前，不消耗调用槽位。
 
 ```json
@@ -158,7 +159,7 @@ Content-Type: application/json
 }
 ```
 
-**结账提示。** 由 `api/mcp/dispatch.ts` 发出的 `upgrade-required`，以及 `-32029` 下的 `allowance-exhausted` 和 `quota-exceeded`，在调用方持有绑定用户的凭据且存在高一级的自助套餐时，会额外带上 `recommendedPlan`。`recommendedPlan` 的对应关系为：免费 → `pro_monthly`，Pro → `pro_business_monthly`，API Starter → `api_business`。`checkoutTool: "start_upgrade"` 只出现在免费账户上，因为只有它能通过新结账购买该套餐：Pro → Pro Business 是在定价页确认的按比例原地升级，API Starter → API Business 是在账单门户中按比例变更套餐，所以付费调用方只收到 `recommendedPlan`。Pro Business、API Business、Enterprise、运营方密钥和匿名调用方不带这两个字段。`message` 与 `upgradeUrl` 保持不变。
+**结账提示。** 由 `api/mcp/dispatch.ts` 发出的 `upgrade-required`，以及 `-32029` 下的 `allowance-exhausted` 和 `quota-exceeded`，在调用方持有绑定用户的凭据且存在高一级的自助套餐时，会额外带上 `recommendedPlan`。`recommendedPlan` 的对应关系为：免费 → `pro_monthly`，Pro → `pro_business_monthly`，API Starter → `api_business`。`checkoutTool: "start_upgrade"` 只出现在免费账户上，因为只有它能通过新结账购买该套餐：Pro → Pro Business 是在定价页确认的按比例原地升级，API Starter → API Business 是在账单门户中按比例变更套餐，所以付费调用方只收到 `recommendedPlan`。Pro Business、API Business、Enterprise、运营方密钥和匿名调用方不带这两个字段。`message` 与 `upgradeUrl` 保持不变。处于暂停状态的账户（上面的 `payment-failed`）也不带这两个字段，而是带 `paymentFailed: true`，其 `allowance-exhausted` 的 `nextStep` 指向账单门户。
 
 **ChatGPT。** ChatGPT 的应用规范不允许应用发起结账或推广升级，因此 `User-Agent` 为 ChatGPT 的 `openai-mcp/…`（Codex 除外）的请求不会收到 `recommendedPlan` 或 `checkoutTool`。其 `nextStep` 只说明当前套餐包含什么，并指出 `upgradeUrl` 介绍各套餐；订阅失效和 API 套餐的消息也去掉了重新订阅或升级的引导。`reason`、JSON-RPC 代码、HTTP 状态和 `upgradeUrl` 与其他客户端相同。`start_upgrade` 不会出现在 ChatGPT 的工具列表中，调用它会返回 `Unknown tool`。
 
@@ -420,7 +421,7 @@ MCP handler 可能返回的每个状态码。大多数 JSON-RPC 回复 —— �
 | **204** | 空                     | n/a              | `OPTIONS` 预检（规范主机 `/mcp`、`/api/mcp`、well-known，以及已列出的生产别名主机） |
 | **400** | JSON-RPC 信封         | `-32600`         | SSE 重放 `GET` 缺少有效的 `Mcp-Session-Id`。 |
 | **401** | JSON-RPC 信封         | `-32001`         | 出现在规范主机的 `/mcp` 与 `/api/mcp`（以及 well-known 上的受限方法）：凭证缺失/无效/过期，或 Pro MCP 令牌被撤销。设置了 `WWW-Authenticate` 头。别名主机的传输是 410，不是 401。 |
-| **403** | JSON-RPC 信封         | `-32002`         | 终止性权益拒绝：`lapsed-subscription` 仅在服务方确认的失效结果落在 Pro 调用执行中时出现（同时设置 `X-Billing-Verification: subscription_lapsed`）；`upgrade-required` 表示免费额度调用 Pro-only 工具，或非免费权益不活跃。预检查时已存在的失效结果会改走受限免费账户路径。不设置 `WWW-Authenticate`，因为重新鉴权无法修复已发出的拒绝。 |
+| **403** | JSON-RPC 信封         | `-32002`         | 终止性权益拒绝：`lapsed-subscription` 仅在服务方确认的失效结果落在 Pro 调用执行中时出现（同时设置 `X-Billing-Verification: subscription_lapsed`）；`payment-failed` 表示暂停的账户（续费失败且已过访问宽限期）调用 Pro-only 工具，或扣款失败发生在 Pro 调用执行中（执行中形式设置 `X-Billing-Verification: payment_failed`）；`upgrade-required` 表示免费额度调用 Pro-only 工具，或非免费权益不活跃。预检查时已存在的失效结果会改走受限免费账户路径。不设置 `WWW-Authenticate`，因为重新鉴权无法修复已发出的拒绝。 |
 | **404** | JSON-RPC 信封         | `-32004`         | SSE 重放光标不存在（流已过期或重连落到另一实例）。 |
 | **405** | 空                     | n/a              | 请求方法不是 `POST`、`GET`、`HEAD` 或 `OPTIONS`，或带 SSE `Accept` 但不带 `Last-Event-ID` 的 `GET`/`HEAD`（不提供独立服务器→客户端流）。设置 `Allow: POST, GET, HEAD, OPTIONS`。在已列出的生产别名上，405 还带有 `Link: <https://worldmonitor.app/mcp>; rel="canonical"`。 |
 | **406** | JSON-RPC 信封         | `-32600`         | SSE 重放 `GET` 未接受 `text/event-stream`。 |

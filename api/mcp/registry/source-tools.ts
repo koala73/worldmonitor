@@ -34,7 +34,11 @@ interface ManifestEntry {
   license?: string;
 }
 
-const ACTIVE_PROVIDERS = attributionEntries.providers as ManifestEntry[];
+// Rows are [host, provider, kind, status, license]; see scripts/generate-mcp-source-providers.mjs.
+type ProviderRow = [host: string, provider: string, kind: string, status: string, license: string];
+const ACTIVE_PROVIDERS: ManifestEntry[] = (attributionEntries.providers as ProviderRow[]).map(
+  ([host, provider, kind, status, license]) => ({ host, provider, kind, status, license }),
+);
 const EXCLUDED_COUNT = attributionEntries.excludedProviderCount;
 
 const PROVIDER_HOSTS = new Map<string, string[]>();
