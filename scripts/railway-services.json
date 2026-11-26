@@ -1012,6 +1012,7 @@
       "scripts/seed-regional-energy-petrobangla.mjs",
       "scripts/seed-regional-energy-pgcb.mjs",
       "scripts/seed-regional-energy-qatarenergy.mjs",
+      "scripts/seed-regional-energy-searg.mjs",
       "scripts/seed-regional-energy-sonabhy.mjs",
       "scripts/seed-regional-energy-ursea.mjs",
       "scripts/seed-regional-energy-zera.mjs",

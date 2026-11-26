@@ -28,6 +28,7 @@ const FEED_TITLES: Record<string, string> = {
   creg: 'CREG, Colombia fuel prices',
   ursea: 'URSEA, Uruguay fuel prices',
   fuelwatch: 'FuelWatch, Western Australia pump prices',
+  searg: 'Secretaría de Energía, Argentina pump prices',
 };
 
 const METRIC_LABELS: Record<string, string> = {
@@ -142,6 +143,11 @@ const AREA_LABELS: Record<string, string> = {
   ULP: 'Unleaded 91 (ULP)',
   PULP: 'Premium unleaded 95 (PULP)',
   '98 RON': 'Premium unleaded 98',
+  // Argentina Secretaría de Energía (Spanish product names)
+  'Nafta (súper) entre 92 y 95 Ron': 'Super gasoline (92–95 RON)',
+  'Nafta (premium) de más de 95 Ron': 'Premium gasoline (over 95 RON)',
+  'Gas Oil Grado 2': 'Diesel grade 2',
+  'Gas Oil Grado 3': 'Diesel grade 3 (premium)',
   'in ZWG': 'in Zimbabwe gold',
   // KOREM (Russian zone names)
   'Запад': 'West zone',

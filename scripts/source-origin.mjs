@@ -364,6 +364,7 @@ const HOST_ORIGINS = Object.freeze({
   'www.ocpv-ci.com': 'CI',
   'api.cammesa.com': 'AR',
   'warsydprdstafuelwatch.blob.core.windows.net': 'AU',
+  'datos.energia.gob.ar': 'AR',
   'admin.gse.com.ge': 'GE',
   'erp.powergrid.gov.bd': 'BD',
   'petrobangla.org.bd': 'BD',

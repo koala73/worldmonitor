@@ -32,6 +32,7 @@ const SECTIONS = [
   { label: 'Regional-Energy-creg', script: 'seed-regional-energy-creg.mjs', seedMetaKey: 'energy:regional-creg', canonicalKey: 'energy:regional:creg:v1', completionMetaKey: 'seed-completion:energy:regional-creg', expectedSourceVersion: 'regional-energy-creg-v1', intervalMs: 43200000, timeoutMs: 120_000 },
   { label: 'Regional-Energy-ursea', script: 'seed-regional-energy-ursea.mjs', seedMetaKey: 'energy:regional-ursea', canonicalKey: 'energy:regional:ursea:v1', completionMetaKey: 'seed-completion:energy:regional-ursea', expectedSourceVersion: 'regional-energy-ursea-v1', intervalMs: 43200000, timeoutMs: 120_000 },
   { label: 'Regional-Energy-fuelwatch', script: 'seed-regional-energy-fuelwatch.mjs', seedMetaKey: 'energy:regional-fuelwatch', canonicalKey: 'energy:regional:fuelwatch:v1', completionMetaKey: 'seed-completion:energy:regional-fuelwatch', expectedSourceVersion: 'regional-energy-fuelwatch-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-searg', script: 'seed-regional-energy-searg.mjs', seedMetaKey: 'energy:regional-searg', canonicalKey: 'energy:regional:searg:v1', completionMetaKey: 'seed-completion:energy:regional-searg', expectedSourceVersion: 'regional-energy-searg-v1', intervalMs: 43200000, timeoutMs: 120_000 },
 ];
 
 // A null claim means another run holds the lease, credentials are absent, or
