@@ -106,6 +106,7 @@ We compared documented capabilities with the tasks in this guide. World Monitor 
 
 - [The related World Monitor workflow](/blog/posts/country-risk-monitoring-due-diligence-worldmonitor/)
 - [Build your own alert pipeline with the World Monitor API](/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/)
+- [Protest and strike monitoring tools for companies with offices abroad](/blog/best/protest-and-strike-monitoring-tools-for-companies-with-offices-abroad/)
 - [All audience guides](/blog/guides/#best)
 
 ## Head-to-head comparisons

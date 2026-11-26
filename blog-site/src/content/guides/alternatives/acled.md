@@ -87,6 +87,7 @@ The replacement must answer your research or monitoring question with acceptable
 ## More guides
 
 - [World Monitor vs ACLED](/blog/vs/acled/)
+- [GDELT alternatives](/blog/alternatives/gdelt/)
 - [Conflict data platforms for researchers](/blog/best/conflict-data-platforms-for-researchers/)
 - [Compare all providers](/blog/guides/#vs)
 - [Best tools by audience](/blog/guides/#best)
