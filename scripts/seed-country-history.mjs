@@ -141,7 +141,11 @@ export function composeCountrySnapshots({ countries, risk, ranking, digest, pool
     if (!url || url.username || url.password || revoked.has(item.link) || revoked.has(url.href) || !storableLink(url.href)) return null;
     return { ...item, link: url.href };
   };
-  const prepare = item => ({ ...item, normalized: normalizeMentionText(item.title) });
+  const prepare = item => {
+    const normalized = normalizeMentionText(item.title);
+    // Syndicated copies run one headline under different links, so titles are compared too.
+    return { ...item, normalized, titleKey: normalized.replace(/[^\p{L}\p{N}]+/gu, ' ').trim() };
+  };
   // The digest is the editorially ranked front page, so its headlines lead.
   const digestEvents = Object.entries(digest.categories).flatMap(([category, bucket]) => {
     if (!Array.isArray(bucket?.items)) throw new Error('country history malformed news bucket');
@@ -159,9 +163,11 @@ export function composeCountrySnapshots({ countries, risk, ranking, digest, pool
     const res = resilience.get(countryCode);
     const matches = countryMatcher(countryCode);
     const seen = new Set();
+    const seenTitles = new Set();
     const take = item => {
-      if (seen.has(item.link) || !matches(item)) return false;
+      if (seen.has(item.link) || seenTitles.has(item.titleKey) || !matches(item)) return false;
       seen.add(item.link);
+      seenTitles.add(item.titleKey);
       return true;
     };
     const fromDigest = digestEvents.filter(take);

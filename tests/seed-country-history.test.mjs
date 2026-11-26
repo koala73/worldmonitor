@@ -120,6 +120,27 @@ test('digest headlines rank first, then pool headlines from distinct publishers 
   assert.equal(us.topEvents[0].category, 'politics');
 });
 
+test('syndicated copies of one headline under different links and sources fill one slot, keeping the first copy', () => {
+  const data = inputs();
+  data.countries = ['UA', 'US'];
+  data.digest.categories.politics.items.push({ title: 'United States Talks Begin', link: 'https://example.com/syndicated', source: 'Other', publishedAt: now - 1100 });
+  const title = 'Estimates of Russians killed in Ukraine surpass all combined US war deaths since WWI';
+  data.pool = { feedsTotal: 2, feedsCached: 2, items: [
+    poolRow(title, 'https://www.militarytimes.com/news/1', { source: 'Military Times', publishedAt: now - 100 }),
+    poolRow(`${title.toUpperCase()}.`, 'https://www.defensenews.com/news/1', { source: 'Defense News', publishedAt: now - 200 }),
+    poolRow(`Estimates of Russians killed in Ukraine: surpass all combined  US war deaths since WWI`, 'https://c.example/1', { source: 'Wire', publishedAt: now - 300 }),
+    poolRow('United States talks begin!', 'https://d.example/1', { source: 'Other', publishedAt: now - 400 }),
+    poolRow('Ukraine grain corridor reopens', 'https://e.example/1', { source: 'Other', publishedAt: now - 500 }),
+  ] };
+  const rows = new Map(composeCountrySnapshots(data).map(row => [row.countryCode, row]));
+  assert.deepEqual(rows.get('UA').topEvents.map(event => [event.link, event.source]), [
+    ['https://www.militarytimes.com/news/1', 'Military Times'],
+    ['https://e.example/1', 'Other'],
+  ]);
+  // A pool copy of a digest headline loses to the digest-ranked copy.
+  assert.deepEqual(rows.get('US').topEvents.map(event => event.link), ['https://example.com/1', 'https://www.militarytimes.com/news/1']);
+});
+
 test('revoked, aggregator, stale and future pool rows never enter the archive', () => {
   const data = inputs();
   data.countries = ['US'];
