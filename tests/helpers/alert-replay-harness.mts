@@ -346,7 +346,10 @@ export function recordedMatcher(incident: Incident) {
     }
     return JSON.stringify({ same });
   };
-  return { embed, judge, missing };
+  // A recorded verdict the replay never asks for means the check stopped running
+  // where the record says it ran.
+  const unusedRewrites = () => (incident.rewrites ?? []).filter((r) => !rewriteCalls.has(r)).map((r) => r.candidate);
+  return { embed, judge, missing, unusedRewrites };
 }
 
 // Every alert rule belongs to one edition (alertRules.variant), so the replay
@@ -433,7 +436,12 @@ export async function replayIncident(
       });
       const event = relay.published[0];
       const reach = event ? reachOf(event) : { reaches: 'none' as const, dropReason: 'unpublished' };
-      const repeat = reach.reaches === 'realtime' ? await checkRepeat(event!, at, rewriteOpts) : { repeatOf: null, repeatCheckError: null };
+      // Production also checks a copy that reaches only country-scoped rules,
+      // and that check adds anchors and merges coverage. The replay has no such
+      // subscriber, so a local copy fails here until one is modelled.
+      const repeat = reach.reaches === 'realtime'
+        ? await checkRepeat(event!, at, rewriteOpts)
+        : { repeatOf: null, repeatCheckError: reach.reaches === 'local' ? 'local reach: the replay does not model the repeat check for country-scoped rules' : null };
       results.push({
         wording,
         loggedInputsScore,

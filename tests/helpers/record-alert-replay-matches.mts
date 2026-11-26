@@ -69,12 +69,15 @@ for (const incident of fixture.incidents) {
       const asked = parseRewritePrompt(userPrompt);
       const candidate = titleOf(asked.candidate);
       const earlier = asked.earlier.map(titleOf);
+      let row = rewrites.find((r) => r.candidate === candidate && r.earlier.join('\n') === earlier.join('\n'));
+      if (!row) rewrites.push(row = { candidate, earlier, votes: [] });
+      // The check asks both votes at once and names its anchor from the first,
+      // so each reply keeps the slot of the call that asked it, not its finish order.
+      const slot = row.votes.push(Number.NaN) - 1;
       const text = await defaultRewriteJudge(systemPrompt, userPrompt, opts as { deadlineAt?: number });
       const pick = parseRewriteVerdict(text, earlier.length);
       if (pick === null && !/^\s*\{\s*"same"\s*:\s*0\s*\}\s*$/.test(String(text))) throw new Error(`unparseable repeat verdict ${JSON.stringify(text)}`);
-      let row = rewrites.find((r) => r.candidate === candidate && r.earlier.join('\n') === earlier.join('\n'));
-      if (!row) rewrites.push(row = { candidate, earlier, votes: [] });
-      row.votes.push(pick === null ? 0 : pick + 1);
+      row.votes[slot] = pick === null ? 0 : pick + 1;
       return text;
     }
     const pair = /^Headline A: (.*)\nHeadline B, seen \d+h earlier: (.*)$/.exec(userPrompt);

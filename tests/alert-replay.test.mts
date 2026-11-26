@@ -14,17 +14,21 @@ const { incidents } = JSON.parse(
   readFileSync(new URL('./fixtures/alert-replays.json', import.meta.url), 'utf8'),
 ) as { incidents: Incident[] };
 
-const replays: Array<{ incident: Incident; missing: string[]; rows: Replayed[] }> = [];
+const replays: Array<{ incident: Incident; missing: string[]; unusedRewrites: string[]; rows: Replayed[] }> = [];
 for (const incident of incidents) {
   const matcher = recordedMatcher(incident);
-  replays.push({ incident, missing: matcher.missing, rows: await replayIncident(incident, matcher) });
+  const rows = await replayIncident(incident, matcher);
+  replays.push({ incident, missing: matcher.missing, unusedRewrites: matcher.unusedRewrites(), rows });
 }
 
 describe('alert replay set (#10976)', () => {
-  for (const { incident, missing, rows } of replays) {
+  for (const { incident, missing, unusedRewrites, rows } of replays) {
     describe(incident.id, () => {
       it('has a recorded matcher answer for every question the replay asks', () => {
         assert.deepEqual(missing, [], 'run tests/helpers/record-alert-replay-matches.mts');
+      });
+      it('asks every recorded repeat-check question', () => {
+        assert.deepEqual(unusedRewrites, [], 'the repeat check no longer runs where it was recorded');
       });
       it('runs the reworded-repeat check without an error', () => {
         assert.deepEqual(rows.filter((r) => r.repeatCheckError).map((r) => `${r.wording.title}: ${r.repeatCheckError}`), []);
