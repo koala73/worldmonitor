@@ -669,6 +669,8 @@ const STANDALONE_KEYS = {
   foodPricesCsblv: 'economic:food-prices:csblv:v1',
   foodPricesMakstat: 'economic:food-prices:makstat:v1',
   foodPricesOdepa: 'economic:food-prices:odepa:v1',
+  foodPricesStatcan: 'economic:food-prices:statcan:v1',
+  foodPricesIbge: 'economic:food-prices:ibge:v1',
 
   worldCpiImf:           'seed-meta:economic:world-cpi-imf',
   worldCpiEurostat:      'seed-meta:economic:world-cpi-eurostat',
@@ -2329,6 +2331,18 @@ const SEED_META = {
     activationKey: 'seed-activated:economic:food-prices-odepa',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 11153, activationKey: 'seed-activated:economic:food-prices-odepa' },
   },
+  foodPricesStatcan: {
+    key: 'seed-meta:economic:food-prices-statcan',
+    maxStaleMin: 64800,
+    activationKey: 'seed-activated:economic:food-prices-statcan',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10837, activationKey: 'seed-activated:economic:food-prices-statcan' },
+  },
+  foodPricesIbge: {
+    key: 'seed-meta:economic:food-prices-ibge',
+    maxStaleMin: 64800,
+    activationKey: 'seed-activated:economic:food-prices-ibge',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10837, activationKey: 'seed-activated:economic:food-prices-ibge' },
+  },
   worldCpiImf: {
     key: 'seed-meta:economic:world-cpi-imf',
     maxStaleMin: 4320,
@@ -2965,7 +2979,7 @@ const ON_DEMAND_KEYS = new Set([
   'foodPricesFewssd', 'foodPricesFewsss', 'foodPricesFewsye', 'foodPricesFewsht',
   'foodPricesTwmoa', 'foodPricesGeostat', 'foodPricesPricecatcher', 'foodPricesMcba',
   'foodPricesCso', 'foodPricesStatec', 'foodPricesFoagfruit', 'foodPricesFoagegg', 'foodPricesFoagmilk',
-  'foodPricesCsblv', 'foodPricesMakstat', 'foodPricesOdepa',
+  'foodPricesCsblv', 'foodPricesMakstat', 'foodPricesOdepa', 'foodPricesStatcan', 'foodPricesIbge',
   'regionalEnergyPgcb',
   'regionalEnergyPetrobangla',
   'regionalEnergyNiso',
@@ -3343,6 +3357,8 @@ const ACTIVATION_MARKERS = {
   foodPricesCsblv: SEED_META.foodPricesCsblv.activationKey,
   foodPricesMakstat: SEED_META.foodPricesMakstat.activationKey,
   foodPricesOdepa: SEED_META.foodPricesOdepa.activationKey,
+  foodPricesStatcan: SEED_META.foodPricesStatcan.activationKey,
+  foodPricesIbge: SEED_META.foodPricesIbge.activationKey,
 
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
