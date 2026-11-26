@@ -65,6 +65,9 @@ export interface Wording {
   seenAt: string;
   corroboration: number;
   observedScore: number;
+  /** What the logged inputs score today when a tier-table fix moved it, with the reason. */
+  loggedInputsScoreNow?: number;
+  loggedInputsScoreNowBecause?: string;
   scoreNow: number;
   reaches: Reach;
   corroboratedBy?: string[];
