@@ -4735,7 +4735,7 @@ describe('crawlable corpus generator', () => {
       assert.match(hormuz, /<title>Strait of Hormuz Ships per Day vs Normal \| World Monitor<\/title>/);
       assert.match(hormuz, /<meta name="description" content="How many ships cross the Strait of Hormuz today\? IMF PortWatch daily transits against the year-earlier normal/);
       const babElMandeb = read(outDir, 'chokepoints/bab-el-mandeb/index.html');
-      assert.match(babElMandeb, /<title>Bab el-Mandeb Ships per Day vs Normal \| World Monitor<\/title>/);
+      assert.match(babElMandeb, /<title>Bab el-Mandeb Ship Transits Today vs Normal \| World Monitor<\/title>/);
       assert.match(babElMandeb, /<meta name="description" content="How many ships cross Bab el-Mandeb today\? IMF PortWatch daily transits against the year-earlier normal/);
       for (const [page, name] of [[hormuz, 'the Strait of Hormuz'], [babElMandeb, 'Bab el-Mandeb']]) {
         assert.ok(page.includes(`How many ships pass through ${name} each day?`), `${name} answers the ship-count question in its FAQ`);

@@ -183,7 +183,9 @@ export const CHOKEPOINT_CONTENT = {
     countryCodes: CHOKEPOINT_COUNTRY_CODES.bab_el_mandeb,
     crisisSlugs: ['red-sea-security'],
     region: 'Red Sea ↔ Gulf of Aden',
-    metaTitle: 'Bab el-Mandeb Ships per Day vs Normal | World Monitor',
+    // "bab el mandeb transit" is this page's largest search query, so the
+    // title keeps the word while it adds the comparison with normal.
+    metaTitle: 'Bab el-Mandeb Ship Transits Today vs Normal | World Monitor',
     metaDescription:
       'How many ships cross Bab el-Mandeb today? IMF PortWatch daily transits against the year-earlier normal, plus live disruption risk and Red Sea security signals.',
     whyHeading: 'Why do Suez sailings also have to clear Bab el-Mandeb?',

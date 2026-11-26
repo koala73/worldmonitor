@@ -96,6 +96,7 @@ No product in this guide does. GDELT's event archive reaches back decades. World
 
 ## More guides
 
+- [World Monitor vs GDELT, side by side](https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/)
 - [World Monitor vs ACLED](/blog/vs/acled/)
 - [ACLED alternatives](/blog/alternatives/acled/)
 - [Intelligence APIs for developers](/blog/best/intelligence-apis-for-developers/)
