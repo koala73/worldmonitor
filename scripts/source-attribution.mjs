@@ -272,6 +272,11 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  'datos.energia.gob.ar': {
+    license: "CC-BY-4.0 (dataset licence on datos.gob.ar/dataset/precios-en-surtidor, read 2026-11-26)",
+    attribution: "Credit Secretaría de Energía de la Nación (Argentina), Precios en surtidor - Resolución 314/2016, and link to https://datos.energia.gob.ar/dataset/1c181390-5045-475e-94dc-410429be4b17; medians across stations and USD conversions are derived values.",
+    status: 'reviewed',
+  },
   'release-assets.githubusercontent.com': {
     provider: 'US Restricted Parties feed (Tensorust LLC)',
     license: 'CC BY 4.0 (Creative Commons Attribution 4.0 International)',
