@@ -594,21 +594,6 @@ function clearForeignAccountState(userId: string): boolean {
   return true;
 }
 
-/**
- * Write the cloud blob over local prefs. Returns false when a usable store
- * REJECTED one of the writes.
- *
- * The return value is load-bearing, not decoration. Every caller follows this
- * with `setSyncVersion` / `setLocalSchemaVersion`, and those markers are tiny
- * while the pref values are not — so a `QuotaExceededError` can drop the value
- * and still let the marker land. Local then claims to be at cloud's version
- * while holding stale values, and the next upload posts them back over good
- * cloud data. Before #7833 the raw `setItem` threw and aborted the whole
- * reconciliation, which is the safety this restores.
- *
- * `changedKeys` now records only writes that actually landed, so a consumer of
- * CLOUD_PREFS_APPLIED cannot re-read storage for a key that never changed.
- */
 // Keys another subsystem owns for now. Synced dashboard tabs (#11141) carry
 // the panel layout per tab, so while tab sync runs the blob's panel keys,
 // which hold whichever tab another device last had open, must not land here.
@@ -674,6 +659,21 @@ function writeCloudKey(key: CloudSyncKey, action: CloudBlobKeyAction): 'changed'
   return shouldAnnounce ? 'changed' : 'same';
 }
 
+/**
+ * Write the cloud blob over local prefs. Returns false when a usable store
+ * REJECTED one of the writes.
+ *
+ * The return value is load-bearing, not decoration. Every caller follows this
+ * with `setSyncVersion` / `setLocalSchemaVersion`, and those markers are tiny
+ * while the pref values are not — so a `QuotaExceededError` can drop the value
+ * and still let the marker land. Local then claims to be at cloud's version
+ * while holding stale values, and the next upload posts them back over good
+ * cloud data. Before #7833 the raw `setItem` threw and aborted the whole
+ * reconciliation, which is the safety this restores.
+ *
+ * `changedKeys` now records only writes that actually landed, so a consumer of
+ * CLOUD_PREFS_APPLIED cannot re-read storage for a key that never changed.
+ */
 function applyCloudBlob(
   data: Record<string, unknown>,
   syncVersion?: number,

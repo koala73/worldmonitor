@@ -6,7 +6,9 @@ import { captureScope } from '@/services/team-dashboards';
 import { filtersFromEntries, filtersToEntries } from '@/services/panel-filters';
 import { normalizeScope } from '../../shared/tab-scope';
 import {
+  DASHBOARD_KEY_RE,
   DASHBOARD_TAB_NAME_MAX_LENGTH,
+  MAX_DASHBOARD_PANELS,
   type DashboardTabChange,
   type DashboardTabRecord,
   type DashboardTabRecordPanel,
@@ -44,16 +46,19 @@ export interface TabSyncMeta {
   tombstones: string[];
   /** Per tab: record entries this device cannot render, carried on every push. */
   carried: Record<string, DashboardTabRecordPanel[]>;
+  /**
+   * Written when sync stops: tabs with this account's work that never
+   * reached it. An account switch leaves them with this account.
+   */
+  heldBack?: string[];
 }
 
 export function emptyTabSyncMeta(userId: string | null): TabSyncMeta {
   return { userId, base: {}, tombstones: [], carried: {} };
 }
 
-// Mirrors the server's key rule (convex/lib/teamDashboardLayout.ts KEY_RE)
-// so a capture never sends something the mutation would refuse.
-const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/;
-const MAX_RECORD_PANELS = 400;
+// The server's key rule, so a capture never sends something the mutation refuses.
+const KEY_RE = DASHBOARD_KEY_RE;
 const FALLBACK_TAB_NAME = 'Tab';
 
 const hasOwn = (record: object, key: string): boolean => Object.prototype.hasOwnProperty.call(record, key);
@@ -86,7 +91,7 @@ export function captureTabRecord(tab: PanelTab, carried: readonly DashboardTabRe
     panels.push(entry.bottom ? { key: entry.key, on: entry.on, bottom: true } : { key: entry.key, on: entry.on });
   }
 
-  const record: DashboardTabRecord = { name: recordName(tab.name), panels: panels.slice(0, MAX_RECORD_PANELS) };
+  const record: DashboardTabRecord = { name: recordName(tab.name), panels: panels.slice(0, MAX_DASHBOARD_PANELS) };
   const scope = captureScope(tab.scope);
   if (scope) record.scope = scope;
   const filters = filtersToEntries(tab.panelFilters);
@@ -179,6 +184,8 @@ export interface MergeInput {
   currentPanelSettings: Record<string, PanelConfig>;
   /** The localized name of the auto-created tab, for the untouched test. */
   defaultName: string;
+  /** The panel order a first-run tab shows; omitted, order is not compared. */
+  defaultPanelOrder?: readonly string[];
   mode: MergeMode;
   newTabId: () => string;
   /** The account signing in. Required for an account switch. */
@@ -220,16 +227,25 @@ function onKeys(record: DashboardTabRecord): Set<string> {
 
 /**
  * The tab this device made on its first run and nobody changed: the default
- * name, no focus, filters or team link, and exactly the default panels on.
- * Decided from content, so a device that predates tab sync qualifies too.
+ * name, no focus, filters or team link, exactly the default panels on, none
+ * docked, and the visible panels in this device's first-run order. Decided
+ * from content, so a device that predates tab sync qualifies too.
  */
 function isUntouchedDefault(tab: PanelTab, input: MergeInput): boolean {
   if (tab.name.trim() !== input.defaultName || tab.scope || tab.team) return false;
   if (tab.panelFilters && Object.keys(tab.panelFilters).length > 0) return false;
+  if (tab.bottomSet.length > 0) return false;
   const defaults = defaultTabPanels(input.currentPanelSettings);
   const mine = onKeys(captureTabRecord(tab));
   const expected = onKeys(captureTabRecord({ id: tab.id, name: tab.name, ...defaults, bottomSet: [] }));
-  return mine.size === expected.size && [...mine].every((key) => expected.has(key));
+  if (mine.size !== expected.size || [...mine].some((key) => !expected.has(key))) return false;
+  if (!input.defaultPanelOrder) return true;
+  // Panels the free tier hides are placed by the layout, not the user, so
+  // only the panels on screen are compared.
+  const rank = new Map(input.defaultPanelOrder.map((key, i) => [key, i]));
+  const visible = tab.panelOrder.filter((key) => key !== 'map' && tab.panelSettings[key]?.enabled === true);
+  const firstRun = [...visible].sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity));
+  return visible.every((key, i) => key === firstRun[i]);
 }
 
 export function mergeTabs(input: MergeInput): MergeResult {
@@ -249,9 +265,12 @@ export function mergeTabs(input: MergeInput): MergeResult {
     // The previous account's synced tabs are its own and stay in its cloud.
     // What was made or edited since (for example while signed out) is the
     // device user's work and becomes the new account's, minus team links,
-    // which belong to the previous account's team.
+    // which belong to the previous account's team. Work the previous session
+    // had not pushed when it stopped is that account's and stays behind.
     const prev = meta;
+    const heldBack = new Set(input.meta.heldBack ?? []);
     const kept = input.previousSyncKnown === false ? [] : tabs.filter((t) => {
+      if (heldBack.has(t.id)) return false;
       const base = prev.base[t.id];
       return !base || base.hash !== hashTabRecord(captureTabRecord(t, prev.carried[t.id]));
     });

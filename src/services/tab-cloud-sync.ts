@@ -2,7 +2,7 @@ import type { PanelConfig } from '@/types';
 import { SITE_VARIANT } from '@/config/variant';
 import { getConvexApi, getConvexClient, waitForConvexAuthForUser } from '@/services/convex-client';
 import type { TabsState } from '@/services/tab-store';
-import { safeStorageGet, safeStorageSet } from '@/utils/safe-storage';
+import { safeStorageGetChecked, safeStorageSet } from '@/utils/safe-storage';
 import {
   MAX_DASHBOARD_TAB_CHANGES_PER_CALL,
   type DashboardTabChange,
@@ -25,9 +25,15 @@ import {
  * rows, merges (src/services/tab-sync-merge.ts), applies the result through
  * the layout manager, and pushes local edits.
  *
- * Failure is quiet: any thrown error stops sync for the page session and
- * tabs keep working locally. `onStopped` lets App hand the blob's panel keys
- * back to cloud-prefs, so a missing deployment never loses panel sync.
+ * Failure is quiet: an error reconnects a couple of times and then stops
+ * sync, and tabs keep working locally. `onStopped` lets App hand the blob's
+ * panel keys back to cloud-prefs, so a missing deployment never loses panel
+ * sync.
+ *
+ * Each window keeps its own copy of the sync state in memory and only writes
+ * it to storage for the next load. Two windows of one account share storage,
+ * so reading another window's bases would make each one see its own older
+ * tabs as edits and push them back and forth.
  */
 
 /** What the layout manager provides. */
@@ -41,6 +47,8 @@ export interface TabSyncHost {
   applyTabs(next: TabsState, activeChanged: boolean): void;
   currentPanelSettings(): Record<string, PanelConfig>;
   defaultTabName(): string;
+  /** The panel order before anyone moved a panel, for the untouched-tab test. */
+  defaultPanelOrder(): readonly string[];
   newTabId(): string;
 }
 
@@ -58,14 +66,19 @@ const META_KEY = `worldmonitor-tabs-sync-v1:${SITE_VARIANT}`;
 const LAST_SIGNED_IN_AS_KEY = 'wm-last-signed-in-as';
 const PUSH_DEBOUNCE_MS = 2_000;
 const ACTIVE_CHECK_INTERVAL_MS = 30_000;
+/** Waits before each reconnect after an error; then sync stops for the page. */
+const RECONNECT_DELAYS_MS = [15_000, 60_000];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** Parse stored sync state; null when absent or unusable. */
+/** Parse stored sync state; null when absent, unreadable or unusable. */
 export function loadTabSyncMeta(): TabSyncMeta | null {
-  const raw = safeStorageGet(META_KEY);
+  return parseTabSyncMeta(safeStorageGetChecked(META_KEY).value);
+}
+
+function parseTabSyncMeta(raw: string | null): TabSyncMeta | null {
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -91,7 +104,10 @@ export function loadTabSyncMeta(): TabSyncMeta | null {
         if (entries.length > 0) carried[id] = entries;
       }
     }
-    return { userId, base, tombstones, carried };
+    const heldBack = Array.isArray(parsed.heldBack)
+      ? parsed.heldBack.filter((id): id is string => typeof id === 'string')
+      : [];
+    return { userId, base, tombstones, carried, ...(heldBack.length > 0 ? { heldBack } : {}) };
   } catch {
     return null;
   }
@@ -101,10 +117,10 @@ function saveTabSyncMeta(meta: TabSyncMeta): void {
   safeStorageSet(META_KEY, JSON.stringify(meta));
 }
 
-async function convexTransport(userId: string): Promise<TabSyncTransport | null> {
+async function convexTransport(userId: string): Promise<TabSyncTransport | 'auth-timeout' | null> {
   const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
   if (!client || !api) return null;
-  if (!await waitForConvexAuthForUser(userId)) return null;
+  if (!await waitForConvexAuthForUser(userId)) return 'auth-timeout';
   return {
     subscribe(variant, onRows, onError) {
       const teardown = client.onUpdate(
@@ -124,10 +140,11 @@ async function convexTransport(userId: string): Promise<TabSyncTransport | null>
   };
 }
 
-let transportFactory: (userId: string) => Promise<TabSyncTransport | null> = convexTransport;
+type TransportFactory = (userId: string) => Promise<TabSyncTransport | 'auth-timeout' | null>;
+let transportFactory: TransportFactory = convexTransport;
 
 /** Test seam: replace the Convex transport. */
-export function __setTabSyncTransportForTests(factory: ((userId: string) => Promise<TabSyncTransport | null>) | null): void {
+export function __setTabSyncTransportForTests(factory: TransportFactory | null): void {
   transportFactory = factory ?? convexTransport;
 }
 
@@ -145,7 +162,19 @@ interface Session {
   host: TabSyncHost;
   onStopped: (reason: TabSyncStopReason) => void;
   pending: Pending | null;
+  /** This window's sync state, from its first pass on. */
+  meta: TabSyncMeta | null;
   rows: DashboardTabRow[] | null;
+  /**
+   * Rows this session wrote or was handed in a conflict, newer than the
+   * subscription has shown yet. A pass merges against rows with these laid
+   * over, or it would undo its own landed writes.
+   */
+  learned: Map<string, DashboardTabRow>;
+  /** Tabs deleted here while they had no base yet (first push in flight). */
+  deletedUnsynced: Set<string>;
+  reconnects: number;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
   unsubscribe: (() => void) | null;
   transport: TabSyncTransport | null;
   running: boolean;
@@ -169,15 +198,24 @@ let unavailableForPage = false;
  */
 export function prepareTabSyncSignIn(userId: string, enabled: boolean): { willSync: boolean } {
   prepared = null;
+  // A direct switch: stop the previous account's session first, so the
+  // state it stores (and the tabs it held back) is what this sign-in reads.
+  if (session && session.userId !== userId) stopTabSync();
   if (!enabled || unavailableForPage) return { willSync: false };
-  const meta = loadTabSyncMeta();
+  // An unreadable key would look like "no previous account" and pick the
+  // wrong merge mode; tabs stay local instead.
+  const stored = safeStorageGetChecked(META_KEY);
+  if (!stored.ok) return { willSync: false };
+  const meta = parseTabSyncMeta(stored.value);
   let previous: string | null;
   let previousSyncKnown: boolean;
   if (meta?.userId) {
     previous = meta.userId;
     previousSyncKnown = true;
   } else {
-    previous = safeStorageGet(LAST_SIGNED_IN_AS_KEY);
+    const last = safeStorageGetChecked(LAST_SIGNED_IN_AS_KEY);
+    if (!last.ok) return { willSync: false };
+    previous = last.value;
     previousSyncKnown = false;
   }
   let mode: MergeMode;
@@ -210,7 +248,12 @@ export function startTabSync(
     host,
     onStopped,
     pending,
+    meta: null,
     rows: null,
+    learned: new Map(),
+    deletedUnsynced: new Set(),
+    reconnects: 0,
+    reconnectTimer: null,
     unsubscribe: null,
     transport: null,
     running: false,
@@ -228,16 +271,47 @@ function isCurrent(s: Session): boolean {
   return session === s && s.generation === generation;
 }
 
+/** The deployment has no tab-sync functions: retrying cannot help. */
+function isMissingFunction(err: unknown): boolean {
+  return err instanceof Error && /Could not find public function/i.test(err.message);
+}
+
 function fail(s: Session, reason: TabSyncStopReason, err?: unknown): void {
   if (!isCurrent(s)) return;
+  if (reason === 'error' && isMissingFunction(err)) reason = 'unavailable';
+  if (reason === 'error' && s.reconnects < RECONNECT_DELAYS_MS.length) {
+    if (err) console.warn('[tab-sync] reconnecting:', err instanceof Error ? err.message : err);
+    disconnect(s);
+    const delay = RECONNECT_DELAYS_MS[s.reconnects]!;
+    s.reconnects += 1;
+    s.reconnectTimer = setTimeout(() => {
+      s.reconnectTimer = null;
+      if (isCurrent(s)) void connect(s);
+    }, delay);
+    return;
+  }
   if (reason !== 'wrong-account') unavailableForPage = true;
   if (err) console.warn('[tab-sync] stopped:', err instanceof Error ? err.message : err);
   stopTabSync();
   s.onStopped(reason);
 }
 
+/** Drop the subscription and timers; the session itself stays current. */
+function disconnect(s: Session): void {
+  try { s.unsubscribe?.(); } catch { /* already gone */ }
+  s.unsubscribe = null;
+  s.transport = null;
+  s.rows = null;
+  if (s.debounce) clearTimeout(s.debounce);
+  s.debounce = null;
+  if (s.interval) clearInterval(s.interval);
+  s.interval = null;
+  if (s.onVisibility && typeof document !== 'undefined') document.removeEventListener('visibilitychange', s.onVisibility);
+  s.onVisibility = null;
+}
+
 async function connect(s: Session): Promise<void> {
-  let transport: TabSyncTransport | null;
+  let transport: TabSyncTransport | 'auth-timeout' | null;
   try {
     transport = await transportFactory(s.userId);
   } catch (err) {
@@ -245,6 +319,10 @@ async function connect(s: Session): Promise<void> {
     return;
   }
   if (!isCurrent(s)) return;
+  if (transport === 'auth-timeout') {
+    fail(s, 'error', new Error('Convex auth was not ready for this account'));
+    return;
+  }
   if (!transport) {
     fail(s, 'unavailable');
     return;
@@ -280,10 +358,30 @@ export function stopTabSync(): void {
   session = null;
   generation += 1;
   if (!s) return;
-  try { s.unsubscribe?.(); } catch { /* already gone */ }
-  if (s.debounce) clearTimeout(s.debounce);
-  if (s.interval) clearInterval(s.interval);
-  if (s.onVisibility && typeof document !== 'undefined') document.removeEventListener('visibilitychange', s.onVisibility);
+  disconnect(s);
+  if (s.reconnectTimer) clearTimeout(s.reconnectTimer);
+  if (s.meta) saveTabSyncMeta({ ...s.meta, heldBack: unpushedTabs(s, s.meta) });
+}
+
+/**
+ * Tabs holding this account's work that never reached it: new since the
+ * last push, or edited. An account switch leaves them out of the next
+ * account, where tabs made later (while signed out) still go.
+ */
+function unpushedTabs(s: Session, meta: TabSyncMeta): string[] {
+  let local: TabsState | null;
+  try {
+    local = s.host.captureTabs();
+  } catch {
+    return [];
+  }
+  if (!local) return [];
+  return local.tabs
+    .filter((t) => {
+      const base = meta.base[t.id];
+      return !base || base.hash !== hashTabRecord(captureTabRecord(t, meta.carried[t.id]));
+    })
+    .map((t) => t.id);
 }
 
 /** Test seam: forget page-level state between cases. */
@@ -315,8 +413,14 @@ export function notifyTabsChangedLocally(): void {
 export function recordTabDeleted(tabId: string): void {
   // Recorded even while signed out: the delete reaches the account that
   // synced the tab at its next sign-in. A tab never synced has nothing to delete.
-  const meta = loadTabSyncMeta();
-  if (!meta || !meta.base[tabId]) return;
+  const s = session;
+  const meta = s?.meta ?? loadTabSyncMeta();
+  if (!meta) return;
+  if (!meta.base[tabId]) {
+    // Its first push may be on the way; settle turns that into a delete.
+    s?.deletedUnsynced.add(tabId);
+    return;
+  }
   if (!meta.tombstones.includes(tabId)) meta.tombstones.push(tabId);
   saveTabSyncMeta(meta);
   notifyTabsChangedLocally();
@@ -324,8 +428,25 @@ export function recordTabDeleted(tabId: string): void {
 
 function metaForPass(s: Session): TabSyncMeta {
   if (s.pending?.mode === 'account-switch') return s.pending.previousMeta;
+  if (s.meta) return s.meta;
   const stored = loadTabSyncMeta();
   return stored && stored.userId === s.userId ? stored : emptyTabSyncMeta(s.userId);
+}
+
+/** The subscription's rows with this session's newer writes laid over. */
+function currentRows(s: Session): DashboardTabRow[] {
+  const byId = new Map((s.rows ?? []).map((r) => [r.tabId, r]));
+  for (const [id, row] of s.learned) {
+    const shown = byId.get(id);
+    if (shown && shown.version >= row.version) s.learned.delete(id);
+    else byId.set(id, row);
+  }
+  return [...byId.values()];
+}
+
+function learn(s: Session, row: DashboardTabRow): void {
+  const known = s.learned.get(row.tabId);
+  if (!known || known.version < row.version) s.learned.set(row.tabId, row);
 }
 
 async function runPass(s: Session): Promise<void> {
@@ -336,7 +457,7 @@ async function runPass(s: Session): Promise<void> {
   }
   s.running = true;
   try {
-    await passOnce(s, s.rows, true);
+    await passOnce(s, true);
   } catch (err) {
     fail(s, 'error', err);
   } finally {
@@ -348,16 +469,17 @@ async function runPass(s: Session): Promise<void> {
   }
 }
 
-async function passOnce(s: Session, rows: DashboardTabRow[], mayRetry: boolean): Promise<void> {
+async function passOnce(s: Session, mayRetry: boolean): Promise<void> {
   const local = s.host.captureTabs();
   if (!local) return;
   const pending = s.pending;
   const result = mergeTabs({
     local,
     meta: metaForPass(s),
-    rows,
+    rows: currentRows(s),
     currentPanelSettings: s.host.currentPanelSettings(),
     defaultName: s.host.defaultTabName(),
+    defaultPanelOrder: s.host.defaultPanelOrder(),
     mode: pending?.mode ?? 'normal',
     newTabId: () => s.host.newTabId(),
     userId: s.userId,
@@ -366,6 +488,7 @@ async function passOnce(s: Session, rows: DashboardTabRow[], mayRetry: boolean):
   });
   s.pending = null;
   const meta = { ...result.meta, userId: s.userId };
+  s.meta = meta;
   if (result.changed) {
     s.host.applyTabs(result.state, result.activeChanged);
     if (result.activeChanged) rebaseAppliedActiveTab(s, meta, result.changes);
@@ -373,7 +496,7 @@ async function passOnce(s: Session, rows: DashboardTabRow[], mayRetry: boolean):
   saveTabSyncMeta(meta);
   if (result.changes.length === 0) return;
 
-  const conflicts = new Map<string, DashboardTabRow | null>();
+  let conflicts = 0;
   for (let i = 0; i < result.changes.length; i += MAX_DASHBOARD_TAB_CHANGES_PER_CALL) {
     const chunk = result.changes.slice(i, i + MAX_DASHBOARD_TAB_CHANGES_PER_CALL);
     const outcome = await s.transport!.sync({
@@ -387,15 +510,10 @@ async function passOnce(s: Session, rows: DashboardTabRow[], mayRetry: boolean):
       // RATE_LIMITED: the edits are still unsynced by hash; the next tick resends them.
       return;
     }
-    settle(s, chunk, outcome.results, conflicts);
+    conflicts += settle(s, chunk, outcome.results);
   }
 
-  if (conflicts.size > 0 && mayRetry) {
-    const merged = rows.filter((r) => !conflicts.has(r.tabId));
-    for (const row of conflicts.values()) if (row) merged.push(row);
-    s.rows = merged;
-    await passOnce(s, merged, false);
-  }
+  if (conflicts > 0 && mayRetry) await passOnce(s, false);
 }
 
 /**
@@ -415,31 +533,42 @@ function rebaseAppliedActiveTab(s: Session, meta: TabSyncMeta, changes: readonly
   meta.base[active.id] = { version: base.version, hash: hashTabRecord(captureTabRecord(active, meta.carried[active.id])) };
 }
 
+/** Record what the server accepted. Returns how many changes conflicted. */
 function settle(
   s: Session,
   chunk: PendingTabChange[],
   results: Extract<SyncDashboardTabsResult, { ok: true }>['results'],
-  conflicts: Map<string, DashboardTabRow | null>,
-): void {
-  const meta = loadTabSyncMeta() ?? emptyTabSyncMeta(s.userId);
-  meta.userId = s.userId;
+): number {
+  const meta = s.meta ?? emptyTabSyncMeta(s.userId);
+  s.meta = meta;
   const byId = new Map(chunk.map((c) => [c.change.tabId, c]));
+  const now = Date.now();
+  let conflicts = 0;
   for (const result of results) {
     const pending = byId.get(result.tabId);
     if (!pending) continue;
     if (result.ok) {
-      if (pending.change.record === null) {
+      const { record } = pending.change;
+      if (record === null) {
         delete meta.base[result.tabId];
         delete meta.carried[result.tabId];
         meta.tombstones = meta.tombstones.filter((id) => id !== result.tabId);
+        if (result.version > 0) learn(s, { tabId: result.tabId, version: result.version, deleted: true, createdAt: now, updatedAt: now });
       } else if (pending.hash) {
         meta.base[result.tabId] = { version: result.version, hash: pending.hash };
+        learn(s, { tabId: result.tabId, version: result.version, deleted: false, record, createdAt: now, updatedAt: now });
+        if (s.deletedUnsynced.delete(result.tabId) && !meta.tombstones.includes(result.tabId)) {
+          meta.tombstones.push(result.tabId);
+          notifyTabsChangedLocally();
+        }
       }
     } else if (result.reason === 'CONFLICT') {
-      conflicts.set(result.tabId, result.row);
+      conflicts += 1;
+      if (result.row) learn(s, result.row);
     } else {
       s.localOnly.add(result.tabId);
     }
   }
   saveTabSyncMeta(meta);
+  return conflicts;
 }

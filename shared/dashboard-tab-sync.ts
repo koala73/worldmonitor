@@ -21,6 +21,10 @@ export const MAX_SYNCED_DASHBOARD_TABS = 50;
 export const MAX_DASHBOARD_TAB_TOMBSTONES = 100;
 /** Changes one sync call may carry. */
 export const MAX_DASHBOARD_TAB_CHANGES_PER_CALL = 60;
+/** Panels one tab record (and one team layout) may list. */
+export const MAX_DASHBOARD_PANELS = 400;
+/** A panel, layer or map key, as the server accepts it. */
+export const DASHBOARD_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/;
 
 /** One panel in a synced tab: grid order is array order. */
 export interface DashboardTabRecordPanel {

@@ -558,6 +558,8 @@ export class PanelLayoutManager implements AppModule {
   private observedHydrationPanels = new WeakSet<Panel>();
   private initiallyMountedEnabledPanelCount = 0;
   private resolvedPanelOrder: string[] = [];
+  /** The order before any panel was moved: see firstRunPanelOrder. */
+  private firstRunOrder: string[] = [];
   private bottomSetMemory: Set<string> = new Set();
   private criticalBannerEl: HTMLElement | null = null;
   private mobilePanelNav: MobilePanelNav | null = null;
@@ -2757,12 +2759,47 @@ export class PanelLayoutManager implements AppModule {
   }
 
   /** The layout side of tab sync, for App to hand to startTabSync. */
+  /**
+   * The panel order a device shows before anyone moves a panel. Tab sync
+   * compares a lone tab against it to tell a first-run tab from a customized one.
+   */
+  private firstRunPanelOrder(defaultOrder: string[]): string[] {
+    const allOrder = [...defaultOrder];
+
+    if (SITE_VARIANT !== 'happy') {
+      const liveNewsIdx = allOrder.indexOf('live-news');
+      if (liveNewsIdx > 0) {
+        allOrder.splice(liveNewsIdx, 1);
+        allOrder.unshift('live-news');
+      }
+
+      const webcamsIdx = allOrder.indexOf('live-webcams');
+      if (webcamsIdx !== -1 && webcamsIdx !== allOrder.indexOf('live-news') + 1) {
+        allOrder.splice(webcamsIdx, 1);
+        const afterNews = allOrder.indexOf('live-news') + 1;
+        allOrder.splice(afterNews, 0, 'live-webcams');
+      }
+    }
+
+    if (this.ctx.isDesktopApp) {
+      const runtimeIdx = allOrder.indexOf('runtime-config');
+      if (runtimeIdx > 1) {
+        allOrder.splice(runtimeIdx, 1);
+        allOrder.splice(1, 0, 'runtime-config');
+      } else if (runtimeIdx === -1) {
+        allOrder.splice(1, 0, 'runtime-config');
+      }
+    }
+    return allOrder;
+  }
+
   public getTabSyncHost(): TabSyncHost {
     return {
       captureTabs: () => this.captureTabsForSync(),
       applyTabs: (next, activeChanged) => this.applySyncedTabs(next, activeChanged),
       currentPanelSettings: () => this.ctx.panelSettings,
       defaultTabName: () => t('dashboardTabs.defaultName'),
+      defaultPanelOrder: () => this.firstRunOrder,
       newTabId: () => generateTabId(),
     };
   }
@@ -4171,33 +4208,9 @@ export class PanelLayoutManager implements AppModule {
       if (SITE_VARIANT !== 'happy' && !valid.includes('monitors')) valid.push('monitors');
       allOrder = valid;
     } else {
-      allOrder = [...defaultOrder];
-
-      if (SITE_VARIANT !== 'happy') {
-        const liveNewsIdx = allOrder.indexOf('live-news');
-        if (liveNewsIdx > 0) {
-          allOrder.splice(liveNewsIdx, 1);
-          allOrder.unshift('live-news');
-        }
-
-        const webcamsIdx = allOrder.indexOf('live-webcams');
-        if (webcamsIdx !== -1 && webcamsIdx !== allOrder.indexOf('live-news') + 1) {
-          allOrder.splice(webcamsIdx, 1);
-          const afterNews = allOrder.indexOf('live-news') + 1;
-          allOrder.splice(afterNews, 0, 'live-webcams');
-        }
-      }
-
-      if (this.ctx.isDesktopApp) {
-        const runtimeIdx = allOrder.indexOf('runtime-config');
-        if (runtimeIdx > 1) {
-          allOrder.splice(runtimeIdx, 1);
-          allOrder.splice(1, 0, 'runtime-config');
-        } else if (runtimeIdx === -1) {
-          allOrder.splice(1, 0, 'runtime-config');
-        }
-      }
+      allOrder = this.firstRunPanelOrder(defaultOrder);
     }
+    this.firstRunOrder = this.firstRunPanelOrder(defaultOrder);
 
     this.resolvedPanelOrder = allOrder;
 

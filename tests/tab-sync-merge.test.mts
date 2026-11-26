@@ -391,6 +391,31 @@ describe('mergeTabs first sync', () => {
     }
   });
 
+  it('keeps both when the lone default tab was reordered or had a panel docked', () => {
+    const cloud = tab('tab-c-1', { name: 'Markets' });
+    const reordered = tab('tab-l-1', { name: DEFAULT_NAME, on: defaultOn() });
+    reordered.panelOrder = [...reordered.panelOrder].reverse();
+    const docked = tab('tab-l-2', { name: DEFAULT_NAME, on: defaultOn() });
+    docked.bottomSet = [defaultOn()[0]!];
+    const defaultPanelOrder = tab('tab-x-1').panelOrder;
+    for (const lone of [reordered, docked]) {
+      const out = mergeTabs(input({ local: { activeTabId: lone.id, tabs: [lone] }, rows: [row(cloud.id, 1, captureTabRecord(cloud))], mode: 'first-sync', defaultPanelOrder }));
+      assert.deepEqual(ids(out.state), [lone.id, cloud.id]);
+    }
+  });
+
+  it("compares a lone tab with this device's first-run order, not the settings order", () => {
+    const cloud = tab('tab-c-1', { name: 'Markets' });
+    // The layout puts some panels first on a fresh device (live news, webcams).
+    const lone = tab('tab-l-1', { name: DEFAULT_NAME, on: defaultOn() });
+    lone.panelOrder = [...lone.panelOrder].reverse();
+    const out = mergeTabs(input({
+      local: { activeTabId: lone.id, tabs: [lone] }, rows: [row(cloud.id, 1, captureTabRecord(cloud))],
+      mode: 'first-sync', defaultPanelOrder: lone.panelOrder,
+    }));
+    assert.deepEqual(ids(out.state), [cloud.id]);
+  });
+
   it('uploads the lone default when the account has no cloud tabs', () => {
     const lone = tab('tab-l-1', { name: DEFAULT_NAME, on: defaultOn() });
     const out = mergeTabs(input({ local: { activeTabId: lone.id, tabs: [lone] }, rows: [], mode: 'first-sync' }));

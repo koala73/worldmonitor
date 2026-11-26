@@ -141,12 +141,14 @@ describe('PanelLayoutManager tab sync host', () => {
   it('exposes the host App hands to the sync driver', () => {
     const self = {
       ctx: { panelSettings: { markets: { name: 'Markets', enabled: true, priority: 1 } } },
+      firstRunOrder: ['live-news', 'markets'],
       captureTabsForSync: vi.fn(() => null),
       applySyncedTabs: vi.fn(),
     };
     const host = method<() => import('@/services/tab-cloud-sync').TabSyncHost>('getTabSyncHost').call(self);
     expect(host.currentPanelSettings()).toBe(self.ctx.panelSettings);
     expect(host.defaultTabName()).toBe('Main');
+    expect(host.defaultPanelOrder()).toEqual(['live-news', 'markets']);
     expect(host.newTabId()).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
     host.captureTabs();
     host.applyTabs({ activeTabId: 'tab-a1-b1', tabs: [] }, true);

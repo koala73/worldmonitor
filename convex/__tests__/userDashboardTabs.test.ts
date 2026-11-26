@@ -9,6 +9,7 @@ import schema from "../schema";
 import { api } from "../_generated/api";
 import { USER_PREFS_WRITE_RATE_LIMIT } from "../constants";
 import {
+  MAX_DASHBOARD_TAB_CHANGES_PER_CALL,
   MAX_DASHBOARD_TAB_TOMBSTONES,
   MAX_SYNCED_DASHBOARD_TABS,
   type DashboardTabRecord,
@@ -137,6 +138,37 @@ describe("listDashboardTabs / syncDashboardTabs", () => {
     await sync(USER_A, [{ tabId: tabId(1), baseVersion: 1, record: null }]);
     expect(await sync(USER_A, [{ tabId: tabId(999), record: RECORD }]))
       .toMatchObject({ ok: true, results: [{ ok: true, version: 1 }] });
+  });
+
+  test("a deleted tab brought back counts against the cap", async () => {
+    const { sync } = setup();
+    const changes = Array.from({ length: MAX_SYNCED_DASHBOARD_TABS }, (_, i) => ({ tabId: tabId(i + 1), record: RECORD }));
+    await sync(USER_A, changes);
+    await sync(USER_A, [{ tabId: tabId(1), baseVersion: 1, record: null }]);
+    await sync(USER_A, [{ tabId: tabId(999), record: RECORD }]);
+    expect(await sync(USER_A, [{ tabId: tabId(1), baseVersion: 2, record: RECORD }])).toEqual({
+      ok: true,
+      results: [{ tabId: tabId(1), ok: false, reason: "TAB_LIMIT", limit: MAX_SYNCED_DASHBOARD_TABS }],
+    });
+  });
+
+  test("refuses an oversized batch and a tab listed twice", async () => {
+    const { sync } = setup();
+    const tooMany = Array.from({ length: MAX_DASHBOARD_TAB_CHANGES_PER_CALL + 1 }, (_, i) => ({ tabId: tabId(i + 1), record: RECORD }));
+    await expect(sync(USER_A, tooMany)).rejects.toThrow(/INVALID_TAB/);
+    await expect(sync(USER_A, [{ tabId: tabId(1), record: RECORD }, { tabId: tabId(1), record: RECORD }]))
+      .rejects.toThrow(/INVALID_TAB/);
+  });
+
+  test("deleting a tab the server never had is a no-op, and a stale delete conflicts", async () => {
+    const { sync, list } = setup();
+    expect(await sync(USER_A, [{ tabId: tabId(7), record: null }]))
+      .toEqual({ ok: true, results: [{ tabId: tabId(7), ok: true, version: 0 }] });
+    expect(await list(USER_A)).toEqual([]);
+    await sync(USER_A, [{ tabId: tabId(8), record: RECORD }]);
+    await sync(USER_A, [{ tabId: tabId(8), baseVersion: 1, record: { ...RECORD, name: "Two" } }]);
+    expect(await sync(USER_A, [{ tabId: tabId(8), baseVersion: 1, record: null }]))
+      .toMatchObject({ ok: true, results: [{ tabId: tabId(8), ok: false, reason: "CONFLICT", row: { version: 2 } }] });
   });
 
   test("keeps only the newest tombstones", async () => {

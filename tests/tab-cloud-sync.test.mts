@@ -103,6 +103,7 @@ class FakeHost implements TabSyncHost {
   }
   currentPanelSettings(): Record<string, PanelConfig> { return defaults(); }
   defaultTabName(): string { return 'Main'; }
+  defaultPanelOrder(): string[] { return tab('tab-x-1').panelOrder; }
   private n = 0;
   newTabId(): string { return `tab-host${(this.n += 1)}-qq`; }
 }
@@ -234,6 +235,31 @@ describe('tab sync driver', () => {
     assert.equal(server.rows.get('tab-a-1')!.record!.name, 'Mine');
   });
 
+  it('a conflict retry keeps the edits and deletes the same push landed', async () => {
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2'), tab('tab-a-3')] });
+    signIn('user_a', host);
+    await settle();
+    const stale = server.snapshot();
+    const row = server.rows.get('tab-a-1')!;
+    server.rows.set('tab-a-1', { ...row, version: 5, record: { ...row.record!, name: 'Theirs' } });
+    host.state.tabs[0]!.name = 'Mine';
+    host.state.tabs[1]!.name = 'Renamed';
+    host.state.tabs = host.state.tabs.filter((t) => t.id !== 'tab-a-3');
+    recordTabDeleted('tab-a-3');
+    // A pass on rows from before the other device's edit.
+    const appliedBefore = host.applied.length;
+    server.listeners.forEach((l) => l(stale));
+    await settle();
+    // No pass may show the landed rename undone or the deleted tab back.
+    for (const { state } of host.applied.slice(appliedBefore)) {
+      assert.deepEqual(state.tabs.map((t) => [t.id, t.name]), [['tab-a-1', 'Mine'], ['tab-a-2', 'Renamed']]);
+    }
+    assert.equal(server.rows.get('tab-a-1')!.record!.name, 'Mine');
+    assert.equal(server.rows.get('tab-a-2')!.record!.name, 'Renamed');
+    assert.equal(server.rows.get('tab-a-3')!.deleted, true);
+    assert.deepEqual(host.state.tabs.map((t) => [t.id, t.name]), [['tab-a-1', 'Mine'], ['tab-a-2', 'Renamed']]);
+  });
+
   it('keeps edits after RATE_LIMITED and resends them later', async () => {
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
     server.nextResult = { ok: false, reason: 'RATE_LIMITED', limit: 30, reset: 0 };
@@ -256,16 +282,129 @@ describe('tab sync driver', () => {
     assert.equal(server.calls.length, before);
   });
 
-  it('a thrown error stops sync quietly and reports it', async () => {
+  it('a deployment without the functions stops sync for the page', async () => {
     const stopped: string[] = [];
     const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
     server.throwOnSync = new Error('Could not find public function for userPreferences:syncDashboardTabs');
     signIn('user_a', host, (r) => stopped.push(r));
     await settle();
-    assert.deepEqual(stopped, ['error']);
+    assert.deepEqual(stopped, ['unavailable']);
     assert.equal(host.state.tabs.length, 1);
-    // Off for the rest of the page.
     assert.equal(prepareTabSyncSignIn('user_a', true).willSync, false);
+  });
+
+  it('reconnects after an error, then stops quietly', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const stopped: string[] = [];
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    server.throwOnSync = new Error('Server Error');
+    signIn('user_a', host, (r) => stopped.push(r));
+    await settle();
+    assert.equal(server.calls.length, 1);
+    assert.deepEqual(stopped, [], 'not yet: a reconnect is pending');
+    server.throwOnSync = null;
+    mock.timers.tick(15_000);
+    await settle();
+    assert.equal(server.rows.get('tab-a-1')!.record!.name, 'Tab tab-a-1', 'the reconnect pushed');
+    assert.deepEqual(stopped, []);
+
+    server.throwOnSync = new Error('Server Error');
+    host.state.tabs[0]!.name = 'Edit';
+    notifyTabsChangedLocally();
+    mock.timers.tick(2_000);
+    await settle();
+    mock.timers.tick(60_000);
+    await settle();
+    assert.deepEqual(stopped, ['error'], 'out of reconnects');
+  });
+
+  it('an auth handshake that is not ready is retried, not latched off', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    let attempts = 0;
+    __setTabSyncTransportForTests(async (userId) => (attempts += 1) === 1 ? 'auth-timeout' : server.transport(userId));
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    assert.equal(server.rows.size, 0);
+    mock.timers.tick(15_000);
+    await settle();
+    assert.equal(server.rows.size, 1);
+  });
+
+  it('a subscription error reconnects', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    let fireError!: (err: Error) => void;
+    let subscriptions = 0;
+    __setTabSyncTransportForTests(async (userId) => {
+      const t = server.transport(userId);
+      return { ...t, subscribe: (v, onRows, onError) => { subscriptions += 1; fireError = onError; return t.subscribe(v, onRows, onError); } };
+    });
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', host);
+    await settle();
+    fireError(new Error('socket closed'));
+    assert.equal(server.listeners.size, 0, 'the old subscription is dropped');
+    mock.timers.tick(15_000);
+    await settle();
+    assert.equal(subscriptions, 2);
+    assert.equal(server.listeners.size, 1);
+  });
+
+  it('pushes an edit when the page is hidden, before the debounce', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const doc = new EventTarget() as EventTarget & { visibilityState: string };
+    doc.visibilityState = 'visible';
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: doc });
+    try {
+      const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+      signIn('user_a', host);
+      await settle();
+      host.state.tabs[0]!.name = 'Closing';
+      notifyTabsChangedLocally();
+      doc.visibilityState = 'hidden';
+      doc.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+      assert.equal(server.rows.get('tab-a-1')!.record!.name, 'Closing');
+    } finally {
+      delete (globalThis as { document?: unknown }).document;
+    }
+  });
+
+  it('two windows of one account converge instead of pushing back and forth', async () => {
+    // A second window: its own module instance, sharing this storage. Its
+    // subscription is delivered by hand, after window 1 has its result, as
+    // happens when the two windows' connections deliver at different times.
+    const w2 = await import('../src/services/tab-cloud-sync.ts?window2') as typeof import('../src/services/tab-cloud-sync.ts');
+    let deliver2!: (rows: DashboardTabRow[]) => void;
+    w2.__setTabSyncTransportForTests(async (userId) => ({
+      ...server.transport(userId),
+      subscribe: (_v, onRows) => { deliver2 = onRows; return () => {}; },
+    }));
+    try {
+      const host1 = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+      signIn('user_a', host1);
+      await settle();
+      const host2 = new FakeHost(structuredClone(host1.state));
+      assert.equal(w2.prepareTabSyncSignIn('user_a', true).willSync, true);
+      w2.startTabSync('user_a', host2);
+      await settle();
+      deliver2(server.snapshot());
+      await settle();
+
+      const before = server.calls.length;
+      host1.state.tabs[0]!.name = 'From window 1';
+      server.emit();
+      await settle();
+      deliver2(server.snapshot());
+      await settle();
+      server.emit();
+      await settle();
+      assert.equal(server.calls.length, before + 1, 'one push, no echo');
+      assert.equal(server.rows.get('tab-a-1')!.record!.name, 'From window 1');
+      assert.equal(host2.state.tabs[0]!.name, 'From window 1');
+    } finally {
+      w2.__resetTabSyncForTests();
+    }
   });
 
   it('a result for a signed-out session is discarded', async () => {
@@ -314,6 +453,53 @@ describe('tab sync driver', () => {
     signIn('user_b', hostB);
     await settle();
     assert.deepEqual(serverB.calls.flatMap((c) => c.changes.map((ch) => ch.tabId)), ['tab-s-1']);
+  });
+
+  it("an edit the previous account never received stays out of the next account", async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const hostA = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1')] });
+    signIn('user_a', hostA);
+    await settle();
+    // Edited and a tab added inside the debounce, then a direct switch.
+    hostA.state.tabs[0]!.name = 'A private';
+    hostA.state.tabs.push(tab('tab-a-9', 'A new'));
+    notifyTabsChangedLocally();
+
+    const serverB = new FakeServer();
+    useServer(serverB);
+    const hostB = hostA;
+    signIn('user_b', hostB);
+    await settle();
+    const sent = serverB.calls.flatMap((c) => c.changes.map((ch) => ch.record?.name));
+    assert.ok(!sent.includes('A private') && !sent.includes('A new'), JSON.stringify(sent));
+  });
+
+  it('a tab deleted while its first push is on the way stays deleted', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    __setTabSyncTransportForTests(async (userId) => {
+      const t = server.transport(userId);
+      return { ...t, sync: async (args) => { await gate; return t.sync(args); } };
+    });
+    const host = new FakeHost({ activeTabId: 'tab-a-1', tabs: [tab('tab-a-1'), tab('tab-a-2')] });
+    signIn('user_a', host);
+    await settle();
+    host.state.tabs = host.state.tabs.filter((t) => t.id !== 'tab-a-2');
+    recordTabDeleted('tab-a-2');
+    release();
+    await settle();
+    server.emit();
+    await settle();
+    assert.equal(server.rows.get('tab-a-2')!.deleted, true);
+    assert.deepEqual(host.state.tabs.map((t) => t.id), ['tab-a-1']);
+  });
+
+  it('stays local when the sync state cannot be read', () => {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true, writable: true,
+      value: { getItem() { throw new Error('SecurityError'); }, setItem() {}, removeItem() {} },
+    });
+    assert.equal(prepareTabSyncSignIn('user_a', true).willSync, false);
   });
 
   it('falls back to the last signed-in account when no tab sync state exists', async () => {

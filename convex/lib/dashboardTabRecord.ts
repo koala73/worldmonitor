@@ -1,10 +1,12 @@
 import { ConvexError, v, type Infer } from "convex/values";
 import {
+  DASHBOARD_KEY_RE,
   DASHBOARD_TAB_ID_PATTERN,
   DASHBOARD_TAB_NAME_MAX_LENGTH,
+  MAX_DASHBOARD_PANELS,
   type DashboardTabRecord,
 } from "../../shared/dashboard-tab-sync";
-import { checkPanelFilters, checkScope, KEY_RE, MAX_PANELS } from "./teamDashboardLayout";
+import { checkPanelFilters, checkScope } from "./teamDashboardLayout";
 
 /**
  * The stored shape of one synced dashboard tab (convex/userPreferences.ts,
@@ -56,10 +58,10 @@ export function checkDashboardTabRecord(record: StoredRecord): void {
   if (name.length === 0 || name.length > DASHBOARD_TAB_NAME_MAX_LENGTH || name !== record.name) {
     invalidTab("name");
   }
-  if (record.panels.length > MAX_PANELS) invalidTab("panels");
+  if (record.panels.length > MAX_DASHBOARD_PANELS) invalidTab("panels");
   const seen = new Set<string>();
   for (const panel of record.panels) {
-    if (!KEY_RE.test(panel.key) || seen.has(panel.key)) invalidTab("panels.key");
+    if (!DASHBOARD_KEY_RE.test(panel.key) || seen.has(panel.key)) invalidTab("panels.key");
     seen.add(panel.key);
   }
   if (record.scope) checkScope(record.scope);
