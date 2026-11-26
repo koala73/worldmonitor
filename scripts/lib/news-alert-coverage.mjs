@@ -73,8 +73,9 @@ const ANCHOR_LIMIT = 128;
 export const REWRITE_RETRIEVAL_MIN = 0.6;
 // When none does, those scoring at least this are shown instead. The Dymer
 // strike near Kyiv on 2026-11-22 reached every subscriber six times: each later
-// wording's nearest earlier alert scored 0.53 to 0.58, and so did the wordings
-// of the Zaporizhzhia toll, the Shenzhen summit and the Myanmar genocide ruling.
+// wording's nearest earlier alert scored 0.53 to 0.58, and later wordings of
+// the Zaporizhzhia toll, the Shenzhen summit and the Myanmar genocide ruling
+// scored 0.50 to 0.59.
 // The lower floor is kept to that case because a longer list of weaker
 // wordings makes the model readier to merge: at a flat 0.45 it hid Putin's
 // "painful response" threat and the EU-UK deal, both above 0.60
