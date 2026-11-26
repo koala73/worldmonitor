@@ -74,7 +74,9 @@ async function drive(rules, event, channelsFor = () => [TELEGRAM]) {
   console.warn = console.error = console.info = () => {};
   globalThis.fetch = async (url, opts = {}) => {
     const parsed = new URL(String(url));
-    if (parsed.pathname.includes('/relay/enabled-rules')) return { ok: true, json: async () => rules.map((r) => ({ ...rule, ...r })) };
+    if (parsed.pathname.includes('/relay/enabled-rules')) {
+      return rules ? { ok: true, json: async () => rules.map((r) => ({ ...rule, ...r })) } : { ok: false, status: 503, json: async () => ({}) };
+    }
     if (parsed.pathname.includes('/relay/entitlement')) return { ok: true, json: async () => ({ tier: 1 }) };
     if (parsed.pathname.includes('/relay/channels')) return { ok: true, json: async () => channelsFor(JSON.parse(opts.body).userId) };
     if (parsed.hostname === 'api.telegram.org') {
@@ -117,6 +119,12 @@ describe('score-log row per dequeued rss_alert', () => {
     const { rows } = await drive([{}], alert(30));
     assert.equal(rows.length, 1);
     assert.deepEqual(rows[0].outcome, { stopped: 'score_gate' });
+  });
+
+  it('records that the rules read failed and the event could not go back on the queue', async () => {
+    const { rows } = await drive(null, alert(88));
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].outcome, { stopped: 'rules_unavailable' });
   });
 
   it('records the gates that dropped every rule when none matched', async () => {

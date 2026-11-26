@@ -29,16 +29,19 @@ export function groupStories(rows) {
   return stories.map((s) => s.rows);
 }
 
-// Rule counts a miss can name, in the relay's evaluation order.
-const MISS_BUCKETS = ['freeSeverity', 'freeEventType', 'freeScope', 'dedup', 'channelsFailed', 'sendFailed'];
+// The relay's per-rule counts (notification-relay.cjs deliverToRules), in its
+// evaluation order. `matched` is the total the others share.
+const BUCKETS = ['matched', 'freeSeverity', 'freeEventType', 'freeScope', 'repeat', 'quietHours', 'dedup', 'held', 'channelsFailed', 'noChannelListed', 'noChannelVerified', 'sendFailed', 'sent'];
+// Rules that should have delivered and did not, and stops that lost the event.
+const FAILED_BUCKETS = ['channelsFailed', 'sendFailed'];
+const FAILED_STOPS = new Set(['error', 'rules_unavailable', 'rules_requeued']);
+const MISS_BUCKETS = ['freeSeverity', 'freeEventType', 'freeScope', 'dedup', ...FAILED_BUCKETS];
 
 /** One edition's recorded outcomes summed. */
 function tallyOutcomes(rows) {
   const tally = { stopped: new Set(), noRule: {}, repeatOf: null };
   for (const { outcome } of rows) {
-    for (const [field, value] of Object.entries(outcome)) {
-      if (typeof value === 'number') tally[field] = (tally[field] ?? 0) + value;
-    }
+    for (const bucket of BUCKETS) if (outcome[bucket]) tally[bucket] = (tally[bucket] ?? 0) + outcome[bucket];
     if (outcome.stopped) tally.stopped.add(outcome.stopped);
     for (const [gate, n] of Object.entries(outcome.noRule ?? {})) tally.noRule[gate] = (tally.noRule[gate] ?? 0) + n;
     tally.repeatOf ??= outcome.repeatOf ?? null;
@@ -46,12 +49,14 @@ function tallyOutcomes(rows) {
   return tally;
 }
 
-const count = (tally, field) => tally[field] ?? 0;
+const count = (tally, bucket) => tally[bucket] ?? 0;
 const noChannel = (tally) => count(tally, 'noChannelListed') + count(tally, 'noChannelVerified');
+const failed = (tally) => FAILED_BUCKETS.some((bucket) => count(tally, bucket) > 0) || [...tally.stopped].some((stop) => FAILED_STOPS.has(stop));
+const formatCounts = (tally) => BUCKETS.filter((bucket) => count(tally, bucket) > 0).map((bucket) => `${bucket}=${count(tally, bucket)}`).join(', ');
 
 function missGate(rows, tally) {
   const best = Math.max(...rows.filter((r) => r.severity === 'critical').map((r) => Number(r.importanceScore) || 0));
-  if (best < REALTIME_CRITICAL_SCORE) return `score_bar (best ${best} < ${REALTIME_CRITICAL_SCORE})`;
+  if (best < REALTIME_CRITICAL_SCORE && !failed(tally)) return `score_bar (best ${best} < ${REALTIME_CRITICAL_SCORE})`;
   const parts = [
     ...[...tally.stopped].map((stop) => `stopped=${stop}`),
     ...(Object.keys(tally.noRule).length ? [`no rule matched (${Object.entries(tally.noRule).map(([gate, n]) => `${gate}=${n}`).join(', ')})`] : []),
@@ -61,24 +66,33 @@ function missGate(rows, tally) {
 }
 
 // Where one edition's copies of a critical story stopped. First match wins:
-// a user who had the story already, or will get it after quiet hours, was not
-// missed, and an edition with no usable channel is a config gap.
+// any rule that should have delivered and did not makes it a miss; otherwise
+// users who had the story already or are in quiet hours were not missed, and
+// rules with no usable channel are a config gap.
 const VERDICTS = [
-  ['delivered', (tally) => count(tally, 'sent') + count(tally, 'held') > 0, () => ({})],
-  ['repeat', (tally) => count(tally, 'repeat') > 0, (tally) => ({ repeatOf: tally.repeatOf, skippedUsers: tally.repeat })],
-  ['noChannel', (tally) => noChannel(tally) > 0, (tally) => ({ rules: noChannel(tally), listedNone: count(tally, 'noChannelListed') })],
-  ['quietHours', (tally) => count(tally, 'quietHours') > 0, (tally) => ({ users: tally.quietHours })],
-  ['missed', () => true, (tally, rows) => ({ gate: missGate(rows, tally) })],
+  ['delivered', (tally) => count(tally, 'sent') + count(tally, 'held') > 0],
+  ['missed', failed],
+  ['repeat', (tally) => count(tally, 'repeat') > 0],
+  ['noChannel', (tally) => noChannel(tally) > 0],
+  ['quietHours', (tally) => count(tally, 'quietHours') > 0],
+  ['missed', () => true],
 ];
+const DETAILS = {
+  missed: (tally, rows) => ({ gate: missGate(rows, tally) }),
+  repeat: (tally) => ({ repeatOf: tally.repeatOf, skippedUsers: tally.repeat }),
+  noChannel: (tally) => ({ rules: noChannel(tally), listedNone: count(tally, 'noChannelListed') }),
+  quietHours: (tally) => ({ users: tally.quietHours }),
+};
 
 /**
  * @param {{ queued: Array<{ts:number,title:string,source:string,severity:string,importanceScore:number,variant?:string,publishedAt?:number|null,outcome?:object}>,
  *           sent: Array<{title:string,sentAt:number}> }} input
  *   `sent` (delivery receipts) only times stories against the wires.
  * @returns Each critical story that reached nobody, once per edition, under
- *   `missed`, `repeat`, `noChannel`, `quietHours`, or `notRecorded` (rows
- *   logged before the relay recorded outcomes). An edition with no usable
- *   channel is listed even when another edition delivered the story.
+ *   `missed`, `repeat`, `quietHours`, or `notRecorded` (rows logged before
+ *   the relay recorded outcomes). Every edition that reached nobody and has
+ *   rules with no usable channel is also under `noChannel`, even when another
+ *   edition delivered the story.
  */
 export function auditMisses({ queued, sent }) {
   const rows = [
@@ -98,26 +112,28 @@ export function auditMisses({ queued, sent }) {
       if (sentAts.length > 0 && Math.min(...sentAts) < Math.min(...wireAts)) beforeWire++;
     }
     if (!storyQueued.some((r) => r.severity === 'critical')) continue;
-    const editions = Map.groupBy(storyQueued, (r) => r.variant || 'none');
-    const verdicts = [...editions].filter(([, editionRows]) => editionRows.some((r) => r.severity === 'critical')).map(([edition, editionRows]) => {
-      const recorded = editionRows.filter((r) => r.outcome && typeof r.outcome === 'object');
-      if (recorded.length === 0) return { edition, editionRows, verdict: 'notRecorded', detail: {} };
-      const tally = tallyOutcomes(recorded);
-      const [verdict, , detail] = VERDICTS.find(([, applies]) => applies(tally));
-      return { edition, editionRows, verdict, detail: detail(tally, editionRows) };
-    });
     const delivered = storyQueued.some((r) => count(r.outcome ?? {}, 'sent') + count(r.outcome ?? {}, 'held') > 0);
-    for (const { edition, editionRows, verdict, detail } of verdicts) {
-      if (verdict === 'delivered' || (delivered && verdict !== 'noChannel')) continue;
+    for (const [edition, editionRows] of Map.groupBy(storyQueued, (r) => r.variant || 'none')) {
+      if (!editionRows.some((r) => r.severity === 'critical')) continue;
       const first = editionRows.reduce((a, b) => (a.ts <= b.ts ? a : b));
-      result[verdict].push({
+      const entry = {
         title: first.title,
         edition,
         firstQueuedAt: first.ts,
         sources: [...new Set(editionRows.map((r) => r.source))],
         bestScore: Math.max(...editionRows.map((r) => Number(r.importanceScore) || 0)),
-        ...detail,
-      });
+      };
+      const recorded = editionRows.filter((r) => r.outcome && typeof r.outcome === 'object');
+      if (recorded.length === 0) {
+        if (!delivered) result.notRecorded.push(entry);
+        continue;
+      }
+      const tally = tallyOutcomes(recorded);
+      const [verdict] = VERDICTS.find(([, applies]) => applies(tally));
+      if (verdict === 'delivered') continue;
+      const lists = new Set(delivered ? [] : [verdict]);
+      if (noChannel(tally) > 0) lists.add('noChannel');
+      for (const list of lists) result[list].push({ ...entry, counts: formatCounts(tally), ...DETAILS[list](tally, editionRows) });
     }
   }
   return { ...result, wireStories, deliveredBeforeWire: beforeWire };

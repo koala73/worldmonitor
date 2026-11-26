@@ -97,7 +97,7 @@ async function main() {
     console.log(`\n${heading}: ${audit[verdict].length}`);
     for (const story of describe ? audit[verdict] : []) {
       console.log(`  ${new Date(story.firstQueuedAt).toISOString()}  [${story.edition}]  ${story.title}`);
-      console.log(`    ${describe(story)}  best=${story.bestScore}  sources=${story.sources.join(', ')}`);
+      console.log(`    ${describe(story)}  rules: ${story.counts}  best=${story.bestScore}  sources=${story.sources.join(', ')}`);
     }
   }
   const { wireStories, deliveredBeforeWire } = audit;

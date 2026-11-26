@@ -108,6 +108,43 @@ describe('daily miss audit', () => {
     assert.equal(missed[0].gate, 'dedup=1, sendFailed=2');
   });
 
+  // One rule in a benign bucket must not hide rules that should have delivered.
+  it('reports failed sends as a miss even when other rules had no channel, and keeps the config gap', () => {
+    const result = auditMisses({ queued: [queued('11:00', 'Lloyd\'s List', 'Two tankers hit mines in the Strait of Hormuz', 88, { outcome: { matched: 25, noChannelListed: 3, sendFailed: 22 } })], sent: [] });
+    assert.equal(result.missed.length, 1);
+    assert.equal(result.missed[0].gate, 'sendFailed=22');
+    assert.equal(result.noChannel.length, 1);
+    assert.equal(result.noChannel[0].rules, 3);
+  });
+
+  it('reports failed sends as a miss even when one user had the story already', () => {
+    const result = auditMisses({ queued: [queued('11:00', 'Lloyd\'s List', 'Two tankers hit mines in the Strait of Hormuz', 88, { outcome: { matched: 22, repeat: 1, sendFailed: 21 } })], sent: [] });
+    assert.equal(result.missed.length, 1);
+    assert.equal(result.missed[0].gate, 'sendFailed=21');
+    assert.deepEqual(result.repeat, []);
+  });
+
+  it('reports a miss when one copy had no channel and the others failed to send', () => {
+    const result = auditMisses({
+      queued: [
+        queued('11:00', 'Lloyd\'s List', 'Two tankers hit mines in the Strait of Hormuz', 88, { outcome: { matched: 5, sendFailed: 5 } }),
+        queued('11:04', 'Reuters', 'Two tankers hit mines in Strait of Hormuz', 86, { outcome: { matched: 1, noChannelListed: 1 } }),
+      ],
+      sent: [],
+    });
+    assert.equal(result.missed.length, 1);
+    assert.equal(result.missed[0].gate, 'sendFailed=5');
+    assert.deepEqual(result.noChannel.map((s) => s.rules), [1]);
+  });
+
+  it('shows every rule count on a non-miss line, so nothing is absorbed silently', () => {
+    const { repeat } = auditMisses({
+      queued: [queued('09:30', 'SunOnline International', REWORDED, 84, { outcome: { matched: 30, repeat: 22, dedup: 2, freeSeverity: 6, repeatOf: { id: 'full:abc', title: DIRTY_BOMB } } })],
+      sent: [],
+    });
+    assert.equal(repeat[0].counts, 'matched=30, freeSeverity=6, repeat=22, dedup=2');
+  });
+
   it('counts rows logged before the relay recorded outcomes instead of calling them misses', () => {
     const result = auditMisses({ queued: [queued('11:00', 'Lloyd\'s List', 'Two tankers hit mines in the Strait of Hormuz', 88, { outcome: null })], sent: [] });
     assert.deepEqual(result.missed, []);
