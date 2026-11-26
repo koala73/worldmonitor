@@ -77,11 +77,6 @@ vi.mock('../adapters/search.js', () => {
   return { SearchAdapter: MockSearchAdapter, SearchTargetError: MockSearchTargetError };
 });
 
-vi.spyOn(process, 'exit').mockImplementation((code?: number | string | null) => {
-  process.exitCode = typeof code === 'number' ? code : 0;
-  return undefined as never;
-});
-
 const { scrapeRetailer } = await import('./scrape.js');
 const { SearchTargetError } = await import('../adapters/search.js');
 
@@ -195,7 +190,7 @@ describe('scrapeRetailer failure attribution', () => {
     expect(mocks.insertObservation).toHaveBeenCalledWith(expect.objectContaining({
       price: fixture.price, unitBasisQty: fixture.quantity, unitBasisUnit: fixture.unit,
       unitPrice: fixture.price / fixture.quantity,
-    }));
+    }), mocks.transactionExecute);
   });
 
   it('persists SearchTargetError reasons and a matching error count', async () => {
