@@ -58,15 +58,18 @@ describe('shipping and energy attack label set', () => {
   });
 
   it('records the critical/high boundary per path', () => {
-    assert.deepEqual(criticalBoundary('relay-after'), { keptCritical: 9, clearCritical: 13, falseCritical: 2 });
-    assert.deepEqual(criticalBoundary('relay-after-rerun'), { keptCritical: 7, clearCritical: 13, falseCritical: 1 });
+    // Before #11432 the relay kept 9 and 7 of the 13 (false critical 2 and 1).
+    assert.deepEqual(criticalBoundary('relay-after'), { keptCritical: 13, clearCritical: 13, falseCritical: 2 });
+    assert.deepEqual(criticalBoundary('relay-after-rerun'), { keptCritical: 13, clearCritical: 13, falseCritical: 2 });
     assert.deepEqual(criticalBoundary('rpc-after'), { keptCritical: 13, clearCritical: 13, falseCritical: 4 });
   });
 
-  it('records that the Reuters ADNOC wording is labelled high on the relay and critical on the RPC', () => {
+  it('labels the Reuters ADNOC wording critical on both paths', () => {
+    // The relay labelled it high until #11432 added that a report that an attack happened
+    // is critical whoever reports it.
     const i = set.rows.findIndex((r) => r.title.includes('one crew member missing after attack on its vessel in Hormuz'));
     assert.equal(set.rows[i].judge, 'critical');
-    for (const name of ['relay-after', 'relay-after-rerun']) assert.equal(set.runs[name].labels[i], 'high', name);
+    for (const name of ['relay-after', 'relay-after-rerun']) assert.equal(set.runs[name].labels[i], 'critical', name);
     assert.equal(set.runs['rpc-after'].labels[i], 'critical');
   });
 });

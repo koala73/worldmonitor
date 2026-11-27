@@ -183,8 +183,8 @@
   "relay-after": {
    "path": "relay",
    "model": "deepseek/deepseek-v4.1-flash",
-   "promptSha": "b610d9e51327d5e3",
-   "note": "closures that have taken effect, terms-vs-attack examples (captured 2026-11-21)",
+   "promptSha": "9b13ab92056bf3ca",
+   "note": "#11432: critical needs the event to have happened; warnings, threats, vows and predictions are high (captured 2026-11-27)",
    "labels": [
     "high",
     "high",
@@ -203,10 +203,10 @@
     "critical",
     "critical",
     "critical",
-    "high",
     "critical",
-    "high",
-    "high",
+    "critical",
+    "critical",
+    "critical",
     "critical",
     "critical"
    ]
@@ -214,8 +214,8 @@
   "relay-after-rerun": {
    "path": "relay",
    "model": "deepseek/deepseek-v4.1-flash",
-   "promptSha": "b610d9e51327d5e3",
-   "note": "closures that have taken effect, terms-vs-attack examples (captured 2026-11-21)",
+   "promptSha": "9b13ab92056bf3ca",
+   "note": "#11432: critical needs the event to have happened; warnings, threats, vows and predictions are high (captured 2026-11-27)",
    "labels": [
     "high",
     "high",
@@ -234,10 +234,10 @@
     "critical",
     "critical",
     "critical",
-    "high",
     "critical",
-    "high",
-    "high",
+    "critical",
+    "critical",
+    "critical",
     "critical",
     "critical"
    ]

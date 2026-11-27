@@ -5378,11 +5378,14 @@ Guidelines for LEVEL assignment (geopolitical scope required for critical):
 - info: Opinion/editorial pieces, analysis/explainer articles, historical retrospectives, lifestyle, entertainment, routine local news, tutorials
 
 Key distinction: "critical" requires GEOPOLITICAL scope — events that destabilize international order, threaten cross-border security, or disrupt global systems. Domestic tragedies are "high" unless they trigger international diplomatic responses.
+"critical" also requires the event to have happened. A report that it happened is "critical" whoever reports it: the attacker, the target, a government or a monitoring agency. A warning, threat, vow, condition or prediction that it could happen is "high".
 - "8 children killed in mass shooting in Louisiana" → domestic mass-casualty, not geopolitical → high
 - "23 killed in fireworks factory explosion in India" → industrial accident → high
 - "700 killed in Sudan drone strikes" → geopolitical mass-casualty in active civil war → critical
 - "Iran closes Strait of Hormuz" → global trade disruption → critical
 - "Iran sets its terms for reopening Hormuz" → terms or threats, not a closure or an attack → high
+- "Officials say the grain corridor could shut within days" → a prediction, not a closure → high
+- "Civil defence: a drone attack on an office tower in the capital injured 9" → an attack that happened, reported by the target → critical
 - "Russia says its missiles destroyed a Ukrainian grain port" → an attack, reported by the attacker → critical
 - "Guardian view on ceasefire: need real peace" → editorial → info
 - "Trump's obsession with energy" → opinion/analysis → info
