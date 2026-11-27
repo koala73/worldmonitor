@@ -116,6 +116,15 @@ describe('check-sentry-resolve-markers CLI', () => {
       assert.equal(blocked.status, 1, blocked.stdout + blocked.stderr);
       assert.match(blocked.stderr, /WORLDMONITOR-NEW/);
       assert.doesNotMatch(blocked.stderr, /WORLDMONITOR-OLD/);
+
+      const zero = '0'.repeat(40);
+      const run = (input) => spawnSync(process.execPath, [script, '--push-stdin'], { cwd: dir, env, encoding: 'utf8', input });
+      const deletion = run(`(delete) ${zero} refs/heads/x ${base}\n`);
+      assert.equal(deletion.status, 0, `branch deletion: ${deletion.stderr}`);
+      const tag = run(`refs/tags/v1 ${marked} refs/tags/v1 ${zero}\n`);
+      assert.equal(tag.status, 0, `tag-only push: ${tag.stderr}`);
+      const noNewCommits = run(`refs/heads/y ${base} refs/heads/y ${base}\n`);
+      assert.equal(noNewCommits.status, 0, `push with no new commits: ${noNewCommits.stderr}`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -131,5 +140,21 @@ describe('wiring', () => {
     assert.ok(scan, 'scan step');
     assert.doesNotMatch(scan.run, /\$\{\{/, 'PR text reaches the script through env, never interpolated into the shell');
     assert.match(scan.env.PR_BODY, /github\.event\.pull_request\.body/);
+  });
+
+  it('joins the PR body and title in the order Sentry scans them', () => {
+    const scan = workflow.jobs.scan.steps.find((step) => typeof step.run === 'string' && step.run.includes('pr-text.md'));
+    const dir = mkdtempSync(join(tmpdir(), 'wm-sentry-markers-pr-'));
+    try {
+      const result = spawnSync('bash', ['-c', scan.run], {
+        cwd: fileURLToPath(new URL('..', import.meta.url)),
+        encoding: 'utf8',
+        env: { ...process.env, RUNNER_TEMP: dir, PR_TITLE: 'WORLDMONITOR-1AY: handle stale bundles', PR_BODY: 'Verify events post-fix' },
+      });
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      assert.match(result.stderr, /WORLDMONITOR-1AY/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

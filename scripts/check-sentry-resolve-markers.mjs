@@ -114,13 +114,13 @@ function main() {
   });
   if (process.env.WM_ALLOW_SENTRY_RESOLVE_MARKERS) return 0;
 
-  const sources = [];
-  for (const path of values['text-file'] ?? []) sources.push({ source: path, text: readFileSync(path, 'utf8') });
-  if (values['push-stdin']) sources.push(...pushedCommitMessages(readFileSync(0, 'utf8')));
-  if (sources.length === 0) {
+  if (!values['text-file'] && !values['push-stdin']) {
     console.error('Pass --text-file <path> or --push-stdin.');
     return 2;
   }
+  const sources = [];
+  for (const path of values['text-file'] ?? []) sources.push({ source: path, text: readFileSync(path, 'utf8') });
+  if (values['push-stdin']) sources.push(...pushedCommitMessages(readFileSync(0, 'utf8')));
 
   let found = 0;
   for (const { source, text } of sources) {

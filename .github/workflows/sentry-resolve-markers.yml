@@ -24,13 +24,13 @@ jobs:
         with:
           node-version: '24'
 
-      # Sentry reads the PR title and body as resolve markers when the PR opens
-      # or is edited, and pins the issue to the merge release.
+      # Sentry scans "<body> <title>" as one text, so a run can start in the
+      # body and reach a short ID in the title. Match that join exactly.
       - name: Scan the PR title and body for Sentry resolve markers
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set -euo pipefail
-          printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > "$RUNNER_TEMP/pr-text.md"
+          printf '%s %s\n' "$PR_BODY" "$PR_TITLE" > "$RUNNER_TEMP/pr-text.md"
           node scripts/check-sentry-resolve-markers.mjs --text-file "$RUNNER_TEMP/pr-text.md"

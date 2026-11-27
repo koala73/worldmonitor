@@ -192,7 +192,7 @@ Only the short ID, permalink, pin kind, and sanitized pin value reach the report
 
 **Plain resolve only.** Never resolve into `inRelease`, `inNextRelease`, or `inCommit`. Read `statusDetails` back after every resolve and confirm it carries none of those three pin keys. Assert on the pin keys, not on the object being empty, for the reason given in What Didn't Work. Do not trust the write response, because a resolved-to-resolved write returns 200 without changing anything.
 
-**Scan commit messages and PR text before they leave the machine.** The marker is wider than a keyword beside a short ID. Sentry's matcher (`src/sentry/utils/groupreference.py` in getsentry/sentry) is `\b(Fix|Fixes|Fixed|Close|Closes|Closed|Resolve|Resolves|Resolved):?\s+([A-Za-z0-9_\-\s,]+)\b`. After the keyword it captures the whole run of words, digits, hyphens, commas and line breaks, and every short ID in that run resolves. A hyphen gives the keyword a word boundary, so `post-fix` counts. Any other punctuation ends the run.
+**Scan commit messages and PR text before they leave the machine.** The marker is wider than a keyword beside a short ID. Sentry's matcher (`src/sentry/utils/groupreference.py` in getsentry/sentry) is `\b(Fix|Fixes|Fixed|Close|Closes|Closed|Resolve|Resolves|Resolved):?\s+([A-Za-z0-9_\-\s,]+)\b`. After the keyword it captures the whole run of words, digits, hyphens, commas and line breaks, and every short ID in that run resolves. A hyphen gives the keyword a word boundary, so `post-fix` counts. A colon directly after the keyword is part of the marker. After that, any other punctuation ends the run. For a PR, Sentry scans the body and title as one text, body first, so a run in the body can reach a short ID in the title.
 
 The keyword-adjacent grep this section used to recommend missed both 2026-11 pins. A branch commit read `in two post-fix events of Sentry WORLDMONITOR-1AY a`, and the #11053 PR body read `Fixes Sentry WORLDMONITOR-1FR and WORLDMONITOR-1FS`. `scripts/check-sentry-resolve-markers.mjs` ports the matcher, strips backticks before matching because of the 2026-09-07 backticked pin, and agrees with the Python regex on 460 recent commit messages and PR bodies.
 
@@ -200,7 +200,7 @@ The keyword-adjacent grep this section used to recommend missed both 2026-11 pin
 node scripts/check-sentry-resolve-markers.mjs --text-file /path/to/pr-body.md
 ```
 
-The pre-push hook runs it over the pushed commits with `--push-stdin`, and the `Sentry Resolve Markers` workflow runs it over the PR title and body on open and edit. Any hit means rewrite the message before the branch is visible. Put the short ID in its own sentence after a period, or drop the keyword. After rewriting, confirm the tree is byte-identical with `git diff <old-sha> HEAD` returning empty, then force-push. File content is never scanned, so the same text is safe in a source file or a doc.
+The pre-push hook runs it over the pushed commits with `--push-stdin`, and the `Sentry Resolve Markers` workflow runs it over the PR title and body on open and edit. Put the short ID in its own sentence after a period, or drop the keyword. A hit in the PR title or body means editing the PR, since a force-push does not change it. A hit in a commit message means rewriting the commit before the branch is visible. After rewriting, confirm the tree is byte-identical with `git diff <old-sha> HEAD` returning empty, then force-push. File content is never scanned, so the same text is safe in a source file or a doc.
 
 **Audit the board on a schedule and on demand.**
 
