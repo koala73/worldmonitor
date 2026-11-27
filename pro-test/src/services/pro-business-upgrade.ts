@@ -3,10 +3,11 @@
  *
  * Mirrors src/services/pro-business-upgrade-dialog.ts for this sealed build
  * (no src/ imports, no Convex client): it calls the edge routes
- * /api/pro-business-upgrade and /api/pro-annual-switch, which relay to the
- * same Convex runner. The copy
- * functions below hand-mirror src/services/pro-business-upgrade-copy.ts and
- * are pinned by tests/pro-business-upgrade-copy.test.mts.
+ * /api/pro-business-upgrade, /api/pro-annual-switch and /api/api-starter-switch,
+ * which relay to the same Convex runner. The copy functions below hand-mirror
+ * src/services/pro-business-upgrade-copy.ts and src/services/api-starter-switch-copy.ts
+ * and are pinned by tests/pro-business-upgrade-copy.test.mts and
+ * tests/api-starter-switch-copy.test.mts.
  */
 
 import * as Sentry from '@sentry/react';
@@ -133,6 +134,7 @@ interface UpgradeCallResult {
   ok: boolean;
   data: {
     kind?: unknown;
+    fromPlanKey?: unknown;
     toPlanKey?: unknown;
     discounted?: unknown;
     percentOff?: unknown;
@@ -145,7 +147,7 @@ interface UpgradeCallResult {
 // Each plan change has its own route, so a deployment that predates the switch
 // answers 404 for it instead of running a Pro Business upgrade. A failed
 // switch call is never retried on the other route.
-type PlanChangeRoute = 'pro-business-upgrade' | 'pro-annual-switch';
+type PlanChangeRoute = 'pro-business-upgrade' | 'pro-annual-switch' | 'api-starter-switch';
 
 async function callUpgrade(
   apiBase: string,
@@ -510,4 +512,207 @@ export async function runProAnnualSwitchFlow(options: {
 
   const quote = await fetchQuote(options.fallback);
   if (quote) showQuote(quote, null);
+}
+
+// ── Individual Pro → API Starter switch (mirrors src/services/api-starter-switch-copy.ts) ──
+
+const API_STARTER_SWITCH_TARGET_PLANS: ReadonlySet<string> = new Set(['api_starter', 'api_starter_annual']);
+
+interface ApiStarterSwitchPreview {
+  fromPlanKey: string;
+  chargeAmount: number;
+  currency: string;
+  renewalAmount: number | null;
+  renewalCurrency: string | null;
+  renewalDate: string | null;
+  billingPeriod: 'monthly' | 'annual';
+}
+
+/** A whitelisted name for the plan being left; never the raw key. */
+function apiStarterSwitchFromPlanName(planKey: string): string {
+  if (planKey === 'pro_annual') return 'Pro Yearly';
+  if (planKey === 'pro_monthly' || planKey === 'pro_monthly_mcp') return 'Pro Monthly';
+  return 'Pro';
+}
+
+function buildApiStarterSwitchBody(preview: ApiStarterSwitchPreview): string {
+  const from = apiStarterSwitchFromPlanName(preview.fromPlanKey);
+  const charge = formatMinorAmount(preview.chargeAmount, preview.currency);
+  const period = preview.billingPeriod === 'annual' ? 'year' : 'month';
+  const date = formatRenewalDate(preview.renewalDate);
+  // The charge currency is the customer's, not the plan's: never borrow it for the renewal.
+  const price = preview.renewalAmount === null || !preview.renewalCurrency
+    ? 'the API Starter price'
+    : `${formatMinorAmount(preview.renewalAmount, preview.renewalCurrency)} a ${period} plus any tax`;
+  const renewal = date ? `It renews at ${price} on ${date}.` : `It renews at ${price}.`;
+  return (
+    `Your ${from} subscription moves to API Starter now. ` +
+    `You pay ${charge} today, less the unused part of this ${period}. Your billing period restarts today. ` +
+    `${renewal} ` +
+    'Your dashboard stays the same, and you can create an API key in Settings, under API keys. ' +
+    `If the payment fails, you stay on ${from}.`
+  );
+}
+
+const API_SWITCH_TITLE = 'Switch to API Starter';
+const API_SWITCH_CONFIRM_LABEL = 'Switch now';
+const API_SWITCH_DISMISS_LABEL = 'Not now';
+const API_SWITCH_SUCCESS_TITLE = 'Switched to API Starter';
+const API_SWITCH_SUCCESS_BODY =
+  'Your plan changes as soon as the payment confirms, usually within a minute. Then you can create an API key in Settings, under API keys.';
+const API_SWITCH_CANCEL_SCHEDULED_TITLE = 'Resume Pro first';
+const API_SWITCH_CANCEL_SCHEDULED_BODY =
+  'Your Pro subscription is set to cancel at the end of this period. Resume it in the billing portal first, then switch to API Starter.';
+const API_SWITCH_ACCOUNT_CHANGED_BODY =
+  'You switched accounts after this quote. Start the switch again from the account you want to move to API Starter.';
+const API_SWITCH_FAILED_TITLE = 'Switch not confirmed';
+const API_SWITCH_FAILED_BODY =
+  'We could not confirm the switch. Check your plan in the billing portal before you try again, or email support@worldmonitor.app.';
+const API_SWITCH_CHARGE_CHANGED_NOTICE =
+  'The price changed since your quote and your plan has not changed. Here is the new price.';
+const API_SWITCH_UNAVAILABLE_BODY =
+  'We could not price the switch right now. Try again in a few minutes, or email support@worldmonitor.app.';
+
+/**
+ * Refusals the server sends only after it picked the Pro subscription to
+ * switch. The account holds one, so the purchase stops: a checkout would sell
+ * it a second subscription.
+ */
+const API_SWITCH_HOLDER_ERRORS: ReadonlySet<string> = new Set(['UPGRADE_RATE_LIMITED', 'UPGRADE_IN_PROGRESS', 'DODO_PLAN_CHANGE_ERROR']);
+
+/**
+ * In-place individual Pro → API Starter switch, mirroring
+ * runApiStarterSwitchFlow in src/services/api-starter-switch-dialog.ts. /pro
+ * calls it before every signed-in API Starter checkout. 'not-switchable' means
+ * no dialog was shown: the account has no Pro the server would switch, or the
+ * route gave no answer about it (an older deploy answers 404), and the
+ * checkout runs as before.
+ */
+export async function runApiStarterSwitchFlow(options: {
+  apiBase: string;
+  getToken: () => Promise<string | null>;
+  getUserId: () => Promise<string | null>;
+  openPortal: () => void;
+}): Promise<'shown' | 'not-switchable'> {
+  const previewUserId = await options.getUserId();
+  if (!previewUserId) return 'not-switchable';
+  const closeOnly = (title: string, body: string): void => showDialog({
+    title,
+    body,
+    confirmLabel: 'Close',
+    dismissLabel: 'Dismiss',
+    onConfirm: () => {},
+  });
+
+  // A quote; 'shown' after this flow showed the next step; null when the
+  // account has no Pro the server would switch.
+  const fetchQuote = async (): Promise<ApiStarterSwitchPreview | 'shown' | null> => {
+    const token = await options.getToken();
+    const result = token
+      ? await callUpgrade(options.apiBase, token, false, {}, 'api-starter-switch')
+      : { ok: false, data: {}, error: 'no_token' };
+    const data = result.data;
+    // Only a quote for API Starter may reach this dialog.
+    if (
+      result.ok &&
+      data.kind === 'preview' &&
+      typeof data.toPlanKey === 'string' &&
+      API_STARTER_SWITCH_TARGET_PLANS.has(data.toPlanKey) &&
+      typeof data.chargeAmount === 'number' &&
+      Number.isFinite(data.chargeAmount) &&
+      typeof data.currency === 'string'
+    ) {
+      return {
+        fromPlanKey: typeof data.fromPlanKey === 'string' ? data.fromPlanKey : '',
+        chargeAmount: data.chargeAmount,
+        currency: data.currency,
+        renewalAmount: typeof data.renewalAmount === 'number' ? data.renewalAmount : null,
+        renewalCurrency: typeof data.renewalCurrency === 'string' ? data.renewalCurrency : null,
+        renewalDate: typeof data.renewalDate === 'string' ? data.renewalDate : null,
+        billingPeriod: data.billingPeriod === 'annual' ? 'annual' : 'monthly',
+      };
+    }
+    if (result.error === 'PRO_CANCEL_SCHEDULED') {
+      showDialog({
+        title: API_SWITCH_CANCEL_SCHEDULED_TITLE,
+        body: API_SWITCH_CANCEL_SCHEDULED_BODY,
+        confirmLabel: 'Open billing portal',
+        dismissLabel: 'Close',
+        onConfirm: options.openPortal,
+      });
+      return 'shown';
+    }
+    if (API_SWITCH_HOLDER_ERRORS.has(result.error)) {
+      Sentry.captureMessage('API Starter switch preview unavailable', {
+        level: 'warning',
+        tags: { surface: 'pro-marketing', code: result.error },
+      });
+      closeOnly(API_SWITCH_TITLE, API_SWITCH_UNAVAILABLE_BODY);
+      return 'shown';
+    }
+    return null;
+  };
+
+  // `notice` is set on a re-quote; a re-quote is never re-quoted again.
+  const showQuote = (quote: ApiStarterSwitchPreview, notice: string | null): void => {
+    const requoted = notice !== null;
+    const body = buildApiStarterSwitchBody(quote);
+    showDialog({
+      title: API_SWITCH_TITLE,
+      body: notice ? `${notice} ${body}` : body,
+      confirmLabel: API_SWITCH_CONFIRM_LABEL,
+      dismissLabel: API_SWITCH_DISMISS_LABEL,
+      onConfirm: () => {
+        void (async () => {
+          // Clerk tokens live ~60 s; the user may have read the dialog longer.
+          const freshToken = await options.getToken();
+          // After the token: its retry reads the active session again, and the
+          // account can change while it waits.
+          if (await options.getUserId() !== previewUserId) {
+            closeOnly('Account changed', API_SWITCH_ACCOUNT_CHANGED_BODY);
+            return;
+          }
+          const applied = freshToken
+            ? await callUpgrade(options.apiBase, freshToken, true, {
+              acceptedChargeAmount: quote.chargeAmount,
+              acceptedChargeCurrency: quote.currency,
+            }, 'api-starter-switch')
+            : { ok: false, data: {}, error: 'no_token' };
+          // Only a reply that says the plan is now API Starter is a switch.
+          if (
+            applied.ok &&
+            applied.data.kind === 'upgraded' &&
+            typeof applied.data.toPlanKey === 'string' &&
+            API_STARTER_SWITCH_TARGET_PLANS.has(applied.data.toPlanKey)
+          ) {
+            showDialog({
+              title: API_SWITCH_SUCCESS_TITLE,
+              body: API_SWITCH_SUCCESS_BODY,
+              confirmLabel: 'Go to dashboard',
+              dismissLabel: 'Close',
+              onConfirm: () => { window.location.assign('https://www.worldmonitor.app/dashboard'); },
+            });
+            return;
+          }
+          // The charge grew past the one accepted; the server sent nothing.
+          if (!requoted && applied.error === 'CHARGE_CHANGED') {
+            const fresh = await fetchQuote();
+            if (fresh === null) closeOnly(API_SWITCH_FAILED_TITLE, API_SWITCH_FAILED_BODY);
+            else if (fresh !== 'shown') showQuote(fresh, API_SWITCH_CHARGE_CHANGED_NOTICE);
+            return;
+          }
+          Sentry.captureMessage('API Starter switch failed', {
+            level: 'warning',
+            tags: { surface: 'pro-marketing', code: applied.error || 'unexpected_shape' },
+          });
+          closeOnly(API_SWITCH_FAILED_TITLE, API_SWITCH_FAILED_BODY);
+        })();
+      },
+    });
+  };
+
+  const quote = await fetchQuote();
+  if (quote === null) return 'not-switchable';
+  if (quote !== 'shown') showQuote(quote, null);
+  return 'shown';
 }

@@ -33,7 +33,12 @@ import {
 } from './checkout-transport';
 import { createTimeoutSignal } from './timeout-signal';
 import { watchAuthModalDismissal } from './auth-modal-watch';
-import { IN_PLACE_UPGRADE_SOURCE_PLANS, runProAnnualSwitchFlow, runProBusinessUpgradeFlow } from './pro-business-upgrade';
+import {
+  IN_PLACE_UPGRADE_SOURCE_PLANS,
+  runApiStarterSwitchFlow,
+  runProAnnualSwitchFlow,
+  runProBusinessUpgradeFlow,
+} from './pro-business-upgrade';
 import {
   checkoutRetryAtMs,
   checkoutRetryRemainingSeconds,
@@ -445,6 +450,9 @@ async function confirmDesktopAccount(
 async function checkoutAs(c: LoadedClerk, productId: string, options: ProCheckoutOptions): Promise<boolean> {
   const confirmed = await confirmDesktopAccount(c, productId, options);
   if (!confirmed) return false;
+  // An individual Pro holder moves to API Starter in place instead of buying a
+  // second subscription. Every other account continues to checkout.
+  if (API_STARTER_PRODUCT_IDS.has(productId) && await offerApiStarterSwitch() === 'shown') return false;
   const { bypassPendingGuard: _dropped, ...fresh } = options;
   return doCheckout(productId, confirmed.options, confirmed.userId
     ? { userId: confirmed.userId, restart: () => checkoutAs(c, productId, fresh) }
@@ -1087,6 +1095,39 @@ const PRO_BUSINESS_PRODUCT_IDS: ReadonlySet<string> = new Set(
     .flatMap((tier) => [tier.monthlyProductId, tier.annualProductId])
     .filter((id): id is string => typeof id === 'string' && id.length > 0),
 );
+
+/** API Starter's product ids, from the same tier data; the in-place switch target for an individual Pro. */
+const API_STARTER_PRODUCT_IDS: ReadonlySet<string> = new Set(
+  (fallbackTiers as Array<{ name?: string; monthlyProductId?: string; annualProductId?: string }>)
+    .filter((tier) => tier.name === 'API Starter')
+    .flatMap((tier) => [tier.monthlyProductId, tier.annualProductId])
+    .filter((id): id is string => typeof id === 'string' && id.length > 0),
+);
+
+/**
+ * Quotes the in-place API Starter switch. 'not-switchable' (no Pro to switch,
+ * an older deploy, any failure) lets the checkout run as before. The server
+ * keeps the cadence, so a Pro Yearly holder is quoted API Starter Annual
+ * whichever API Starter product was picked.
+ */
+async function offerApiStarterSwitch(): Promise<'shown' | 'not-switchable'> {
+  try {
+    return await runApiStarterSwitchFlow({
+      apiBase: API_BASE,
+      getToken: getAuthToken,
+      getUserId: async () => (await ensureClerk().catch(() => null))?.user?.id ?? null,
+      openPortal: () => {
+        const reservedWin = prereserveBillingPortalTab();
+        void getAuthToken().then((freshToken) => {
+          if (freshToken) void openBillingPortal(freshToken, reservedWin);
+          else if (reservedWin && !reservedWin.closed) reservedWin.close();
+        });
+      },
+    });
+  } catch {
+    return 'not-switchable';
+  }
+}
 
 /** Pro Yearly's product id, from the same tier data; the Pro Monthly → Pro Yearly switch target. */
 const PRO_YEARLY_PRODUCT_ID: string | undefined =
