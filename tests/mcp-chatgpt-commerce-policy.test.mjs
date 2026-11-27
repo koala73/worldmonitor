@@ -241,6 +241,12 @@ describe('denials sent to ChatGPT inform without selling', () => {
     // The clause that stops an OAuth retry loop survives the rewrite.
     assert.match(lapsed.error.message, /Re-authenticating will not help/);
     assert.match(lapsed.error.data.nextStep, /re-authenticating will not restore access/);
+
+    const paused = await (await chatgpt(getMcpBillingVerificationDenial({ billingStatus: 'payment_failed' }, {}, 1))).json();
+    assert.equal(paused.error.data.reason, 'payment-failed');
+    assertInformsOnly(paused.error, 'payment-failed');
+    assert.doesNotMatch(JSON.stringify(paused.error), /https?:\/\//, 'payment-failed: no billing portal link');
+    assert.match(paused.error.data.nextStep, /paused until the payment method is updated/);
   });
 
   it('leaves non-denial responses byte-identical', async () => {
