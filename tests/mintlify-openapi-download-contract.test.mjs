@@ -15,18 +15,72 @@ function findTab(language, label) {
 }
 
 describe('Mintlify OpenAPI download contract', () => {
-  it('binds both API Reference tabs to the unified World Monitor bundle', () => {
+  it('binds every API Reference operation to a real World Monitor spec', () => {
+    // Each service group carries its own spec, so no page in the tab can fall
+    // back to Mintlify's demo specification (#6574). The tab itself carries
+    // none: a tab-level spec also renders every operation into every sidebar
+    // in the tab, which put ~7,400 characters of navigation ahead of each
+    // page's main content (orank content-start-position).
     for (const [language, label] of [
       ['en', 'API Reference'],
       ['zh', 'API 参考'],
     ]) {
       const tab = findTab(language, label);
       assert.ok(tab, `${language} ${label} tab must exist`);
-      assert.equal(
-        tab.openapi,
-        'api/worldmonitor.openapi.yaml',
-        `${language} ${label} tab must inherit the unified OpenAPI bundle`,
-      );
+      assert.equal(tab.openapi, undefined, `${language} ${label} tab must not carry a tab-level spec`);
+      assert.ok(Array.isArray(tab.dropdowns) && tab.dropdowns.length > 1, `${language} ${label} sidebar must be split`);
+      const specs = new Set();
+      const groups = [];
+      const walk = (node) => {
+        if (Array.isArray(node)) return node.forEach(walk);
+        if (!node || typeof node !== 'object') return;
+        if (node.openapi) {
+          specs.add(node.openapi);
+          groups.push(node);
+        }
+        Object.values(node).forEach(walk);
+      };
+      walk(tab.dropdowns);
+      assert.ok(groups.length >= 30, `${language} ${label} must bind its service groups`);
+      for (const spec of specs) {
+        const doc = loadYaml(readFileSync(resolve(root, 'docs', spec), 'utf8'));
+        assert.equal(doc.openapi, '3.1.0', spec);
+        // Generated service specs target the API host; the hand-authored
+        // commerce spec targets www, where those plain functions run.
+        assert.ok(doc.servers?.length, spec);
+        for (const server of doc.servers) assert.match(server.url, /^https:\/\/(?:api|www)\.worldmonitor\.app$/, spec);
+      }
+    }
+  });
+
+  it('publishes every bundle operation through a service group', () => {
+    const bundle = loadYaml(readFileSync(bundlePath, 'utf8'));
+    const tab = findTab('en', 'API Reference');
+    const bound = new Set();
+    const walk = (node) => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== 'object') return;
+      if (node.openapi) {
+        const spec = loadYaml(readFileSync(resolve(root, 'docs', node.openapi), 'utf8'));
+        const pages = (node.pages ?? []).filter((page) => typeof page === 'string');
+        if (pages.length) {
+          for (const page of pages) bound.add(page.startsWith('webhook ') ? page : page.toLowerCase());
+        } else {
+          for (const [path, item] of Object.entries(spec.paths ?? {})) {
+            for (const method of Object.keys(item)) bound.add(`${method} ${path}`);
+          }
+        }
+      }
+      Object.values(node).forEach(walk);
+    };
+    walk(tab.dropdowns);
+    for (const [path, item] of Object.entries(bundle.paths)) {
+      for (const method of Object.keys(item).filter((key) => ['get', 'post', 'put', 'patch', 'delete'].includes(key))) {
+        assert.ok(bound.has(`${method} ${path}`), `${method.toUpperCase()} ${path} has no API Reference page`);
+      }
+    }
+    for (const name of Object.keys(bundle.webhooks ?? {})) {
+      assert.ok(bound.has(`webhook ${name}`), `webhook ${name} has no API Reference page`);
     }
   });
 

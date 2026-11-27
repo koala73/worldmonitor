@@ -41,22 +41,32 @@ function listDocPages() {
   walk('docs');
   // Mintlify derives API page paths from each operation's tag and summary.
   // Read the configured sources so unlisted specs do not create phantom pages.
-  const sources = new Set();
+  // A group that lists `pages` (`GET /path`, `webhook name`) publishes only
+  // those operations from its spec; one without publishes them all.
+  const sources = new Map();
   const collectSources = (value) => {
     if (Array.isArray(value)) value.forEach(collectSources);
     else if (value && typeof value === 'object') {
-      if (typeof value.openapi === 'string') sources.add(`docs/${value.openapi}`);
+      if (typeof value.openapi === 'string') {
+        const file = `docs/${value.openapi}`;
+        const listed = (value.pages ?? []).filter((page) => typeof page === 'string');
+        const previous = sources.get(file);
+        if (!listed.length) sources.set(file, null);
+        else if (previous !== null) sources.set(file, new Set([...(previous ?? []), ...listed]));
+      }
       Object.values(value).forEach(collectSources);
     }
   };
   collectSources(JSON.parse(readFileSync(join(ROOT, 'docs/docs.json'), 'utf8')));
   const slugify = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  for (const file of sources) {
+  for (const [file, listed] of sources) {
     const spec = loadYaml(readFileSync(join(ROOT, file), 'utf8'));
-    for (const paths of [spec.paths, spec.webhooks]) {
-      for (const methods of Object.values(paths ?? {})) {
+    for (const [container, paths] of [['path', spec.paths], ['webhook', spec.webhooks]]) {
+      for (const [key, methods] of Object.entries(paths ?? {})) {
         for (const [method, operation] of Object.entries(methods)) {
           if (!['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'].includes(method)) continue;
+          const reference = container === 'webhook' ? `webhook ${key}` : `${method.toUpperCase()} ${key}`;
+          if (listed && !listed.has(reference)) continue;
           const tag = operation.tags?.[0];
           const name = operation.summary || operation.operationId;
           if (!tag || !name) throw new Error(`docs page dates: missing API page tag or name in ${file}`);

@@ -41,6 +41,10 @@ function sectionBetween(content, startHeading, endHeading) {
   return content.slice(start, end);
 }
 
+// Mintlify OpenAPI page references (`GET /api/...`, `webhook <name>`) name an
+// operation in the group's spec, not an MDX file.
+const OPENAPI_PAGE_REFERENCE = /^(?:(?:GET|POST|PUT|PATCH|DELETE) \/|webhook )/;
+
 function collectPagePaths(node, pages = []) {
   if (Array.isArray(node)) {
     for (const item of node) collectPagePaths(item, pages);
@@ -78,6 +82,7 @@ const enPages = [...new Set(enPagesRaw)].filter(p =>
   typeof p === 'string' &&
   !p.startsWith('http') &&
   !p.startsWith('api/') &&
+  !OPENAPI_PAGE_REFERENCE.test(p) &&
   !p.endsWith('.yaml') &&
   !p.endsWith('.json')
 );
@@ -149,6 +154,7 @@ describe('docs i18n parity', () => {
       !p.startsWith('zh/') &&
       !p.startsWith('http') &&
       !p.startsWith('api/') &&
+      !OPENAPI_PAGE_REFERENCE.test(p) &&
       !p.endsWith('.yaml') &&
       !p.endsWith('.json')
     );
