@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // Label real Saudi Civil Defense posts through the relay prompt, one post per completion at
 // MAX_POST_CHARS, as publishSaudiCivilDefenseAlerts sends them (#11432). Read-only: no Redis.
+// With --batched, every post goes in one completion, shuffled per pass: the producer sends
+// all cache misses together when several posts arrive within its window.
 //
 //   node scripts/eval-classify-saudi-posts.mjs                    # print the captures, offline, free
 //   node --env-file=.env.local scripts/eval-classify-saudi-posts.mjs --capture relay-current --force
+//   node --env-file=.env.local scripts/eval-classify-saudi-posts.mjs --batched --capture relay-current-batched --force
 // 40 passes over the posts in tests/fixtures/classify-saudi-civil-defense-posts.json, about $0.02.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -22,10 +25,11 @@ const CONCURRENCY = 8;
 const argv = process.argv.slice(2);
 const capture = argv.includes('--capture') ? argv[argv.indexOf('--capture') + 1] : undefined;
 const force = argv.includes('--force');
+const batched = argv.includes('--batched');
 const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8'));
 
 const show = (name, c) => {
-  console.log(`\n${name}  (${c.model}, prompt ${c.promptSha}, ${c.passes} passes, maxChars ${c.maxChars})`);
+  console.log(`\n${name}  (${c.model}, prompt ${c.promptSha}, ${c.passes} passes, ${c.batched ? 'all posts per completion' : 'one post per completion'}, maxChars ${c.maxChars})`);
   for (const r of fixture.rows) console.log(`  ${JSON.stringify(c.labels[r.note])}  judge ${r.judge}  ${r.note}`);
 };
 if (!capture) {
@@ -41,14 +45,15 @@ const prompt = extractRelayPrompt(relaySrc);
 const model = extractRelayOpenRouterModel(relaySrc);
 let usd = 0;
 
-// Mirrors classifyFetchLlmSingle for one post: same sanitising, clip and token budget.
-async function label(text) {
-  const line = `0|${text.replace(/[\n\r]/g, ' ').replace(/\|/g, '/').slice(0, MAX_POST_CHARS).trim()}`;
+// Mirrors classifyFetchLlmSingle: same sanitising, clip and token budget (40 per post).
+// Returns one level per text, 'unlabelled' when the answer has none.
+async function label(texts) {
+  const lines = texts.map((t, i) => `${i}|${t.replace(/[\n\r]/g, ' ').replace(/\|/g, '/').slice(0, MAX_POST_CHARS).trim()}`);
   const body = JSON.stringify({
     model,
-    messages: [{ role: 'system', content: prompt }, { role: 'user', content: line }],
+    messages: [{ role: 'system', content: prompt }, { role: 'user', content: lines.join('\n') }],
     temperature: 0,
-    max_tokens: 40,
+    max_tokens: texts.length * 40,
     reasoning: { enabled: false },
     provider: OPENROUTER_PROVIDER_ROUTING,
   });
@@ -64,34 +69,50 @@ async function label(text) {
         const json = await resp.json();
         usd += json.usage?.cost ?? 0;
         const entries = JSON.parse(json.choices?.[0]?.message?.content?.match(/\[[\s\S]*\]/)?.[0] ?? '[]');
-        const level = entries.find((e) => e?.i === 0)?.l;
-        return LEVELS.includes(level) ? level : 'unlabelled';
+        return texts.map((_, i) => {
+          const level = entries.find((e) => e?.i === i)?.l;
+          return LEVELS.includes(level) ? level : 'unlabelled';
+        });
       }
     } catch { /* retry */ }
     await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
   }
-  return 'unlabelled';
+  return texts.map(() => 'unlabelled');
 }
 
-const jobs = fixture.rows.flatMap((r) => Array.from({ length: PASSES }, () => r));
+// A fixed seed per pass, so a batched capture's orders can be reproduced.
+function shuffled(rows, pass) {
+  let a = (pass + 1) * 0x9e3779b1;
+  const rand = () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const out = [...rows];
+  for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }
+  return out;
+}
+
+const jobs = batched
+  ? Array.from({ length: PASSES }, (_, pass) => shuffled(fixture.rows, pass))
+  : fixture.rows.flatMap((r) => Array.from({ length: PASSES }, () => [r]));
 const labels = Object.fromEntries(fixture.rows.map((r) => [r.note, {}]));
 let next = 0;
 await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
   while (next < jobs.length) {
-    const r = jobs[next++];
-    const level = await label(r.text);
-    labels[r.note][level] = (labels[r.note][level] ?? 0) + 1;
+    const rows = jobs[next++];
+    const levels = await label(rows.map((r) => r.text));
+    rows.forEach((r, i) => { labels[r.note][levels[i]] = (labels[r.note][levels[i]] ?? 0) + 1; });
   }
 }));
 fixture.captures[capture] = {
   model,
   promptSha: promptSha(prompt),
   passes: PASSES,
+  batched,
   maxChars: MAX_POST_CHARS,
   usd: Number(usd.toFixed(4)),
   capturedAt: new Date().toISOString(),
   labels,
 };
-writeFileSync(FIXTURE, `${JSON.stringify(fixture, null, 1)}\n`);
+// The posts carry bidi marks; store them escaped so the repo's hidden-Unicode check passes.
+const json = JSON.stringify(fixture, null, 1).replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+writeFileSync(FIXTURE, `${json}\n`);
 show(capture, fixture.captures[capture]);
 console.log(`$${usd.toFixed(4)}; wrote captures["${capture}"]`);

@@ -1,5 +1,5 @@
 {
- "note": "Real posts from t.me/s/SaudiDCD (read 2026-11-27), each labelled alone through the relay prompt at MAX_POST_CHARS, the shape publishSaudiCivilDefenseAlerts sends. judge is author-judged, not blind. Re-capture after any relay prompt or model change: node --env-file=.env.local scripts/eval-classify-saudi-posts.mjs --capture relay-current --force",
+ "note": "Real posts from t.me/s/SaudiDCD (read 2026-11-27), each labelled alone through the relay prompt at MAX_POST_CHARS, the shape publishSaudiCivilDefenseAlerts sends. judge is author-judged, not blind. relay-current-batched sends all six in one completion, shuffled per pass. Re-capture both after any relay prompt or model change: node --env-file=.env.local scripts/eval-classify-saudi-posts.mjs --capture relay-current --force, then the same with --batched --capture relay-current-batched --force",
  "rows": [
   {
    "text": "\u200fتم إطلاق إنذار من المنصة الوطنية للإنذار المبكر في حالات الطوارئ في منطقة جازان للتحذير من خطر، اتبع الآتي:\n\n\u200fA warning has been issued by the National Early Warning Platform in Jazan Province to alert of a potential danger. Please follow the instructions below:",
@@ -37,9 +37,10 @@
    "model": "deepseek/deepseek-v4.1-flash",
    "promptSha": "9b13ab92056bf3ca",
    "passes": 40,
+   "batched": false,
    "maxChars": 4096,
    "usd": 0.014,
-   "capturedAt": "2026-11-27T03:41:01.216Z",
+   "capturedAt": "2026-11-27T03:51:51.556Z",
    "labels": {
     "early warning (National Early Warning Platform), Jazan": {
      "info": 40
@@ -113,6 +114,43 @@
     },
     "house fire put out": {
      "info": 40
+    },
+    "fire-safety violation notice": {
+     "info": 40
+    }
+   }
+  },
+  "relay-current-batched": {
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "9b13ab92056bf3ca",
+   "passes": 40,
+   "batched": true,
+   "maxChars": 4096,
+   "usd": 0.0111,
+   "capturedAt": "2026-11-27T03:51:55.307Z",
+   "labels": {
+    "early warning (National Early Warning Platform), Jazan": {
+     "medium": 21,
+     "high": 10,
+     "low": 2,
+     "info": 7
+    },
+    "early warning, Riyadh": {
+     "medium": 21,
+     "high": 10,
+     "low": 2,
+     "info": 7
+    },
+    "all-clear, Jazan": {
+     "info": 26,
+     "low": 14
+    },
+    "Houthi attack on a Riyadh financial-centre tower, 11 injured; critical in production": {
+     "critical": 40
+    },
+    "house fire put out": {
+     "low": 11,
+     "info": 29
     },
     "fire-safety violation notice": {
      "info": 40
