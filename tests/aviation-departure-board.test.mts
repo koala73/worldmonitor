@@ -82,7 +82,7 @@ const RAW_PAGE = [
 ];
 
 function mockRedisAndRelay(store: Map<string, string>) {
-  const calls = { relayUrls: [] as string[], reservedKeys: [] as string[] };
+  const calls = { relayUrls: [] as string[], reservedKeys: [] as string[], cacheWrites: [] as unknown[][] };
   mock.method(Date, 'now', () => NOW);
   mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -98,8 +98,9 @@ function mockRedisAndRelay(store: Map<string, string>) {
       }));
     }
     if (url === 'https://redis.test/') {
-      const [, key, payload] = JSON.parse(String(init?.body ?? '[]')) as [string, string, string];
-      store.set(key, payload);
+      const command = JSON.parse(String(init?.body ?? '[]')) as [string, string, string, ...unknown[]];
+      calls.cacheWrites.push(command);
+      store.set(command[1], command[2]);
       return Response.json({ result: 'OK' });
     }
     if (url.startsWith('https://relay.test/aviationstack')) {
@@ -111,15 +112,17 @@ function mockRedisAndRelay(store: Map<string, string>) {
   return calls;
 }
 
-async function departures() {
+async function board(direction: string) {
   const request = new Request('https://worldmonitor.app/api/aviation/v1/list-airport-flights?airport=LHR', {
     headers: { 'X-WorldMonitor-Key': 'test-key' },
   });
   return listAirportFlights(
     { request, pathParams: {}, headers: {} } as never,
-    { airport: 'LHR', direction: 'FLIGHT_DIRECTION_DEPARTURE', limit: 30 } as never,
+    { airport: 'LHR', direction, limit: 30 } as never,
   );
 }
+
+const departures = () => board('FLIGHT_DIRECTION_DEPARTURE');
 
 function boardStore(fetchedAt: number) {
   return new Map([[departureBoardKey('LHR'), JSON.stringify({ fetchedAt, rows: trimBoardRows(RAW_PAGE) })]]);
@@ -153,6 +156,24 @@ describe('departure board hand-off from the aviation seeder', () => {
     assert.equal(calls.relayUrls.length, 1);
     assert.equal(response.source, 'aviationstack');
     assert.ok(response.flights.every(f => f.updatedAt === NOW));
+  });
+
+  it('keeps a bought arrival page for an hour, as long as a board lives', async () => {
+    const calls = mockRedisAndRelay(boardStore(NOW - 10 * 60 * 1000));
+    await board('FLIGHT_DIRECTION_BOTH');
+
+    assert.equal(calls.relayUrls.length, 1, 'only the arrival leg is bought');
+    assert.match(calls.relayUrls[0], /arr_iata=LHR/);
+    const arrivalWrite = calls.cacheWrites.find(([, key]) => String(key).startsWith('aviation:flights:LHR:arrival:'));
+    assert.deepEqual(arrivalWrite?.slice(3), ['EX', '3600']);
+  });
+
+  it('keeps a bought departure page for 15 minutes when no board covers the hub', async () => {
+    const calls = mockRedisAndRelay(new Map());
+    await departures();
+
+    const departureWrite = calls.cacheWrites.find(([, key]) => String(key).startsWith('aviation:flights:LHR:departure:'));
+    assert.deepEqual(departureWrite?.slice(3), ['EX', '900']);
   });
 
   it('reads the key the seeder writes', () => {

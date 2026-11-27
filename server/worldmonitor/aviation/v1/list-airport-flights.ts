@@ -18,7 +18,10 @@ import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-
 // expired. Any TTL at or below a caller's polling interval buys nothing — it
 // only guarantees the paid call. 900s breaks that resonance for any poller
 // faster than 15min, and departure boards do not move meaningfully inside it.
-const CACHE_TTL = 900;
+// Arrivals hold for an hour: at the seeded hubs the departure leg is already an
+// hourly board, so a fresher arrival leg beside it buys four paid calls an hour
+// for a board that is no fresher overall.
+const LEG_CACHE_TTL: Record<'departure' | 'arrival', number> = { departure: 900, arrival: 3600 };
 // Always fetch a full page upstream and cache it once per airport+leg, then
 // slice to the caller's requested limit in memory. Threading req.limit into the
 // cache key (and the upstream query) meant limit 30 vs 31 vs 50 were separate
@@ -241,7 +244,7 @@ async function fetchLeg(airport: string, leg: Leg, now: number): Promise<LegResu
     let unavailableSource = 'unavailable';
 
     const result = await cachedFetchJson<{ flights: FlightInstance[]; source: 'aviationstack' }>(
-        cacheKey, CACHE_TTL, async () => {
+        cacheKey, LEG_CACHE_TTL[leg], async () => {
             const relayBase = getRelayBaseUrl();
             if (!relayBase) {
                 unavailableSource = 'none';
