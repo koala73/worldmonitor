@@ -1525,16 +1525,25 @@ async function preserveLastGoodFaa() {
     const fetchedAt = (await upstashGet(FAA_META_KEY))?.fetchedAt;
     if (typeof fetchedAt === 'number' && Number.isFinite(fetchedAt)) ageMin = (Date.now() - fetchedAt) / 60_000;
   } catch { /* unknown age — treat as out of budget */ }
+  const age = ageMin === null ? 'unknown age' : `${Math.round(ageMin)}min old`;
   const remainingSec = ageMin === null ? 0 : Math.floor((FAA_MAX_STALE_MIN - ageMin) * 60);
-  if (remainingSec > 0) {
-    try { await extendExistingTtl([FAA_KEY], Math.min(remainingSec, FAA_TTL)); } catch {}
-    console.warn(`[FAA] kept last-good delays (${Math.round(ageMin)}min old) for ${Math.round(remainingSec / 60)}min more; seed-meta not refreshed`);
-  } else {
-    const age = ageMin === null ? 'unknown age' : `${Math.round(ageMin)}min old`;
-    // upstashDel answers false for both an absent key and a failed command.
-    const deleted = await upstashDel(FAA_KEY);
-    console.warn(`[FAA] last-good delays (${age}) are past maxStaleMin ${FAA_MAX_STALE_MIN}; ${deleted ? 'deleted them' : 'none deleted (absent or DEL failed)'}`);
+  const withinBudget = remainingSec > 0;
+  if (withinBudget) {
+    // extendExistingTtl answers false, not a throw, when the EXPIRE fails or the
+    // key is gone. Without the shorter expiry the key keeps its write TTL, so it
+    // is deleted rather than reported as bounded.
+    let bounded = false;
+    try { bounded = await extendExistingTtl([FAA_KEY], Math.min(remainingSec, FAA_TTL)); } catch {}
+    if (bounded) {
+      console.warn(`[FAA] kept last-good delays (${age}) for ${Math.round(remainingSec / 60)}min more; seed-meta not refreshed`);
+      return;
+    }
   }
+  // upstashDel answers false for both an absent key and a failed command.
+  const outcome = (await upstashDel(FAA_KEY)) ? 'deleted them' : 'none deleted (absent or DEL failed)';
+  console.warn(withinBudget
+    ? `[FAA] could not shorten last-good delays (${age}) to the budget; ${outcome}`
+    : `[FAA] last-good delays (${age}) are past maxStaleMin ${FAA_MAX_STALE_MIN}; ${outcome}`);
 }
 
 // Failure path for the NOTAM side-car. seed-meta:aviation:notam.fetchedAt is the

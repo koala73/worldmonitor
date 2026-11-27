@@ -60,6 +60,9 @@ globalThis.fetch = async (input, options = {}) => {
     // TEST_META_WRITE_FAIL: any request that writes FAA seed-meta answers HTTP 500.
     const touchesMeta = (Array.isArray(body[0]) ? body : [body]).some(([verb, key]) => verb === 'SET' && key === metaKey);
     if (process.env.TEST_META_WRITE_FAIL && touchesMeta) return new Response('upstream error', { status: 500 });
+    // TEST_EXPIRE_FAIL: every EXPIRE on the FAA data key answers HTTP 500.
+    const expiresFaa = (Array.isArray(body[0]) ? body : [body]).some(([verb, key]) => verb === 'EXPIRE' && key === faaKey);
+    if (process.env.TEST_EXPIRE_FAIL && expiresFaa) return new Response('upstream error', { status: 500 });
     if (url.pathname === '/pipeline' || url.pathname === '/multi-exec') return Response.json(body.map(item => ({ result: command(item) })));
     return Response.json({ result: command(body) });
   }
@@ -147,6 +150,17 @@ test('FAA failure past the health budget deletes last-good delays', () => {
   assert.equal(state.expires.some(([key]) => key === FAA_KEY), false, log);
   assert.equal(state.faa, null, 'stale FAA delays must not keep serving on their old TTL');
   assert.equal(state.meta.fetchedAt, state.initialFetchedAt, 'seed-meta stays so health reports STALE_SEED');
+});
+
+// extendExistingTtl answers false instead of throwing. Without the shorter
+// expiry the key keeps its write TTL (up to 2h), past the 90-min budget.
+test('FAA failure whose TTL cut fails deletes last-good delays', () => {
+  const { state, stdout, stderr } = runAviation({ TEST_FAA_MODE: 'fetchError', TEST_META_AGE_MIN: '60', TEST_EXPIRE_FAIL: '1' });
+  const log = stdout + stderr;
+  assert.doesNotMatch(log, /kept last-good delays/);
+  assert.match(log, /\[FAA\] could not shorten last-good delays .*; deleted them/);
+  assert.equal(state.faa, null, log);
+  assert.equal(state.meta.fetchedAt, state.initialFetchedAt);
 });
 
 test('FAA failure with unknown seed-meta age deletes last-good delays', () => {
