@@ -22,7 +22,7 @@ import {
   aviationStackBudgetCycle,
   avstackBudgetKey as serverAvstackBudgetKey,
 } from '../server/worldmonitor/aviation/v1/_avstack-budget.ts';
-import { avstackBudgetKey as seederAvstackBudgetKey } from '../scripts/seed-aviation.mjs';
+import { AVIATIONSTACK_LIST, avstackBudgetKey as seederAvstackBudgetKey } from '../scripts/seed-aviation.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -284,10 +284,13 @@ describe('aviation budget: call sites are wired to the cap', () => {
     assert.ok(hardCap > 0 && hardCap <= 50_000, `hard cap ${hardCap} must sit under the 50,000/cycle plan`);
     assert.equal(seederDefault, hardCap, 'seeder mirror must default to the same hard cap');
     assert.ok(requestCap < hardCap, `request ceiling ${requestCap} must leave the seeder headroom under ${hardCap}`);
-    // 56 airports x 24 sweeps x 30d — what the seeder structurally needs.
+    // One call per hub per hourly sweep over the longest (31-day) cycle. Request
+    // spend has its own counter, so it can reach its full ceiling and the
+    // seeder must still fit in what remains.
+    const seederNeed = AVIATIONSTACK_LIST.length * 24 * 31;
     assert.ok(
-      hardCap - requestCap >= 40_320,
-      `only ${hardCap - requestCap} reserved for the seeder, which needs ~40,320/cycle`,
+      hardCap - requestCap >= seederNeed,
+      `only ${hardCap - requestCap} reserved for the seeder, which needs ${seederNeed}/cycle`,
     );
   });
 

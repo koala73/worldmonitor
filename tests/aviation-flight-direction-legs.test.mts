@@ -98,8 +98,8 @@ function installFetchMock(payloads: LegPayloads = {}, failures: LegFailures = {}
     if (url === 'https://redis.test/pipeline') {
       const commands = JSON.parse(String(init?.body ?? '[]')) as unknown[][];
       const results = commands.map((command) => {
-        const [verb, , count] = command;
-        if (verb === 'INCRBY') calls.reservations.push(Number(count));
+        const [verb, key, count] = command;
+        if (verb === 'INCRBY' && String(key).startsWith('aviation:avstack:calls:')) calls.reservations.push(Number(count));
         return { result: 1 };
       });
       return new Response(JSON.stringify(results), { status: 200 });

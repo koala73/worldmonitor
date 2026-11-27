@@ -20,11 +20,11 @@ import { runRedisPipeline } from '../../../_shared/redis';
 // Two ceilings so user-panel and API traffic can't starve the curated seeder
 // (the seeder feeds the map + health):
 //   - request-time calls stop once THEIR OWN spend reaches
-//     AVIATIONSTACK_REQUEST_BUDGET (default 7k), counted on a separate
-//     `aviation:avstack:request-calls:<cycle>` key. Measuring it against the
-//     shared counter instead let the seeder's steady spend exhaust it three
-//     days into every cycle, so flight-status and airport-flights answered
-//     source "budget" for the remaining four weeks.
+//     AVIATIONSTACK_REQUEST_BUDGET (default 6k), counted on a separate
+//     `aviation:avstack:request-calls:<cycle>` key. Measured against the
+//     shared counter, seeder spend counted toward it, the total crossed 7k
+//     under three days into the cycle, and flight-status and airport-flights
+//     answered source "budget" for the remaining four weeks.
 //   - all calls (incl. seeder) stop at AVIATIONSTACK_MONTHLY_BUDGET (default
 //     48k) on the shared counter — the gap reserves headroom for the seeder.
 // Defaults sit under a 50,000/cycle plan. Note the seeder alone needs ~40.3k
@@ -110,7 +110,7 @@ export async function reserveAviationStackCalls(
   if (kind === 'request') {
     counters.push({
       key: avstackRequestBudgetKey(now),
-      ceiling: Math.min(hardCap, intEnv('AVIATIONSTACK_REQUEST_BUDGET', 7_000)),
+      ceiling: Math.min(hardCap, intEnv('AVIATIONSTACK_REQUEST_BUDGET', 6_000)),
     });
   }
 
