@@ -11,6 +11,12 @@ vi.mock('@/services/runtime-config', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/runtime-config')>(),
   isFeatureAvailable: (feature: string) => feature === 'aiOpenRouter',
 }));
+// Translation is Pro and goes through the credentialed client; route it to the
+// stubbed fetch so the circuit-recovery test counts every provider request.
+vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => true }));
+vi.mock('@/services/premium-fetch', () => ({
+  premiumFetch: (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init),
+}));
 
 import { generateSummary, translateText } from '@/services/summarization';
 
