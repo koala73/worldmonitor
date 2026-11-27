@@ -91,6 +91,7 @@ function mountPlugin(): void {
   let digestReloadAttempted = false;
   let openingResultSeen = false;
   let appliedDeepLink: string | undefined;
+  let applyingDeepLink: string | undefined;
   let resolveMounted!: () => void;
   let rejectMounted!: (error: unknown) => void;
   const whenMounted = new Promise<void>((resolve, reject) => { resolveMounted = resolve; rejectMounted = reject; });
@@ -546,19 +547,24 @@ function mountPlugin(): void {
   // A ChatGPT deep link opens this entrypoint with empty arguments and passes the view in the host context.
   // Each new link applies once, after the first dashboard result that renders (the opening one, or a refresh
   // after a failed opening), so that result's empty view cannot overwrite it.
+  // A link that fails (map data or the renderer) stays retryable: the next successful render, such as
+  // Refresh news, applies it again. A link the user interrupted by moving the map counts as applied.
   function applyDeepLink(): void {
     const url = host.deepLink;
-    if (!url || url === appliedDeepLink || !digest) return;
-    appliedDeepLink = url;
+    if (!url || url === appliedDeepLink || url === applyingDeepLink || !digest) return;
     const link = newsViewFromDeepLink(url);
-    if (!link) return;
+    if (!link) { appliedDeepLink = url; return; }
+    applyingDeepLink = url;
     // A link replaces the whole view, so an omitted time range means all time for the news and the map alike.
     const linked: PluginNewsView = { time_range: 'all', ...link.view };
     // A category this dashboard did not load is dropped like any other invalid field; the rest still applies.
-    void applyView(linked, { reset: true, dropUnloadedCategory: true }).catch(error => {
+    void applyView(linked, { reset: true, dropUnloadedCategory: true }).then(receipt => {
+      const outcome = receipt as { applied?: boolean; viewport?: { interruptedBy?: string } };
+      if (outcome.applied !== false || outcome.viewport?.interruptedBy === 'human') appliedDeepLink = url;
+    }, error => {
       status.textContent = 'The linked view could not be applied. Showing news with the previous filters.';
       mapStatus.textContent = error instanceof Error ? error.message : 'The linked map view is unavailable.';
-    });
+    }).finally(() => { if (applyingDeepLink === url) applyingDeepLink = undefined; });
   }
 
   function reportSize(): void {

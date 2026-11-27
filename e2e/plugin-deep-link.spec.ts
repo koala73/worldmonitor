@@ -13,7 +13,8 @@ type Message = { method?: string; params?: Record<string, unknown> };
 
 const ARTICLE = { title: 'Controlled report', source: 'Fixture publisher', link: 'https://example.com/news', publishedAt: Date.now(), location: { latitude: 35, longitude: 139 }, isAlert: false };
 
-async function installHost(page: Page, deepLink?: string, options: { openingError?: boolean } = {}) {
+async function installHost(page: Page, deepLink?: string, options: { openingError?: boolean; hazardFailures?: number } = {}) {
+  let hazardFailures = options.hazardFailures ?? 0;
   const messages: Message[] = [];
   const toolCalls: Array<Record<string, unknown>> = [];
   const serve = (route: Parameters<Parameters<Page['route']>[1]>[0], path: string) => route.fulfill({ path, headers: { 'Access-Control-Allow-Origin': '*' } });
@@ -32,6 +33,10 @@ async function installHost(page: Page, deepLink?: string, options: { openingErro
       };
     }
     if (method !== 'tools/call') return {};
+    if (params.name === 'get_natural_disasters') {
+      if (hazardFailures-- > 0) return { __rpcError: 'Hazard request failed' };
+      return { structuredContent: { data: { earthquakes: { earthquakes: [] }, events: { dataAvailable: true, events: [] }, fires: { dataAvailable: true, fireDetections: [] } } } };
+    }
     toolCalls.push(params.arguments);
     if (options.openingError && toolCalls.length === 1) return { isError: true, content: [{ type: 'text', text: 'The dashboard request failed.' }] };
     return { structuredContent: { categories: { world: { items: [ARTICLE] }, conflict: { items: [] } }, coverage: { state: 'complete', servedStale: false }, requestedView: {} } };
@@ -53,8 +58,8 @@ async function installHost(page: Page, deepLink?: string, options: { openingErro
         return;
       }
       if (data.id === undefined || !data.method) return;
-      const result = await bridge.hostCall(data.method, data.params);
-      frame.contentWindow!.postMessage({ jsonrpc: '2.0', id: data.id, result }, '*');
+      const result = await bridge.hostCall(data.method, data.params) as { __rpcError?: string };
+      frame.contentWindow!.postMessage(result.__rpcError ? { jsonrpc: '2.0', id: data.id, error: { code: -32000, message: result.__rpcError } } : { jsonrpc: '2.0', id: data.id, result }, '*');
     });
     frame.srcdoc = html.replace('<head>', `<head><base href="${location.origin}/">`);
   }, { html });
@@ -139,4 +144,11 @@ test('a repeated dashboard result keeps the linked filters', async ({ page }) =>
   await expect.poll(() => contextUpdates(host.messages).length).toBeGreaterThan(before);
   await page.waitForTimeout(500);
   expect(lastReportedView(host.messages)).toMatchObject({ country: 'IR', category: 'conflict' });
+});
+
+test('a link whose map data failed applies again after Refresh news', async ({ page }) => {
+  const host = await installHost(page, '/?country=IR&map_layers=natural', { hazardFailures: 1 });
+  await expect(host.frame.getByText('The linked view could not be applied. Showing news with the previous filters.')).toBeVisible();
+  await host.frame.getByRole('button', { name: 'Refresh news' }).click();
+  await expect.poll(() => lastReportedView(host.messages)).toMatchObject({ country: 'IR', map_layers: ['natural'] });
 });
