@@ -18,6 +18,11 @@ import { initTestI18n } from './helpers/i18n.mts';
 
 const gate = vi.hoisted(() => ({ tier: false }));
 
+const pushState = vi.hoisted(() => ({
+  supported: false,
+  permission: 'unsupported' as 'default' | 'granted' | 'denied' | 'unsupported',
+}));
+
 const store = vi.hoisted(() => ({
   channels: [] as NotificationChannel[],
   rule: null as AlertRule | null,
@@ -37,8 +42,8 @@ const channelMocks = vi.hoisted(() => ({
 const { IncompatibleDeliveryError } = vi.hoisted(() => ({ IncompatibleDeliveryError: class IncompatibleDeliveryError extends Error {} }));
 
 vi.mock('@/services/push-notifications', () => ({
-  isWebPushSupported: () => false,
-  getPushPermission: () => 'unsupported',
+  isWebPushSupported: () => pushState.supported,
+  getPushPermission: () => pushState.permission,
   subscribeToPush: vi.fn(),
   unsubscribeFromPush: vi.fn(),
 }));
@@ -178,6 +183,8 @@ beforeEach(() => {
   while (cleanups.length) cleanups.pop()?.();
   document.body.replaceChildren();
   gate.tier = false;
+  pushState.supported = false;
+  pushState.permission = 'unsupported';
   store.channels = [];
   store.rule = null;
   store.saveGates = [];
@@ -480,5 +487,48 @@ describe('connecting the first channel switches alerts on (#10976)', () => {
       expect(container.querySelector('[data-channel-type="email"] [role="alert"] button')?.textContent).toBe('Try again');
     }, { timeout: 3000 });
     expect(container.querySelector('#usWebhookSecret')?.textContent, 'secret still shown').toBe('whsec_test_secret');
+  });
+
+  it('keeps the webhook signing secret when notification permission changes, and Done still reloads', async () => {
+    gate.tier = true;
+    pushState.supported = true;
+    pushState.permission = 'default';
+    const status = new EventTarget();
+    const query = vi.fn(async () => status);
+    const originalPermissions = navigator.permissions;
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: { query },
+    });
+    cleanups.push(() => {
+      Object.defineProperty(navigator, 'permissions', { configurable: true, value: originalPermissions });
+    });
+    store.rule = rule({ enabled: false, channels: [] });
+    const { container } = await mount();
+    await vi.waitFor(() => expect(query).toHaveBeenCalled());
+    await Promise.resolve();
+
+    connectWebhook(container);
+    await vi.waitFor(() => {
+      expect(container.querySelector('#usWebhookSecret')?.textContent).toBe('whsec_test_secret');
+    });
+
+    pushState.permission = 'denied';
+    status.dispatchEvent(new Event('change'));
+    await tick(50);
+
+    expect(container.querySelector('#usWebhookSecret')?.textContent, 'secret still shown').toBe('whsec_test_secret');
+    expect(container.querySelector('#usWebhookSecretDone'), 'Done reachable').not.toBeNull();
+    expect(container.querySelector<HTMLElement>('#usNotifContent')?.style.display, 'section visible').toBe('block');
+
+    const reads = channelMocks.getChannelsData.mock.calls.length;
+    container.querySelector<HTMLButtonElement>('#usWebhookSecretDone')!.click();
+    await vi.waitFor(() => {
+      expect(channelMocks.getChannelsData.mock.calls.length, 'section reloaded').toBeGreaterThan(reads);
+      expect(container.querySelector('#usWebhookSecret')).toBeNull();
+    });
+    await shown(container);
+    expect(container.querySelector('[data-channel-type="webhook"] .us-notif-ch-sub')?.textContent).toContain('Signed');
+    expect(container.querySelector<HTMLElement>('[data-channel-type="web_push"]')?.dataset.webPushState).toBe('denied');
   });
 });
