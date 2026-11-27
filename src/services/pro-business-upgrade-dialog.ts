@@ -202,8 +202,7 @@ export async function runProAnnualSwitchFlow(options: ProAnnualSwitchFlowOptions
   ): Promise<Extract<ProBusinessUpgradeResponse, { kind: 'preview' }> | null> => {
     try {
       const quote = await options.requestSwitch(listPrice ? { confirm: false, listPrice: true } : { confirm: false });
-      // A server that predates the switch ignores `kind` and quotes Pro
-      // Business; only a quote for Pro Yearly may reach this dialog.
+      // Only a quote for Pro Yearly may reach this dialog.
       if (quote.kind === 'preview' && quote.toPlanKey === 'pro_annual') return quote;
     } catch (err) {
       if (options.errorKind(err) === 'PRO_CANCEL_SCHEDULED') {
@@ -236,13 +235,19 @@ export async function runProAnnualSwitchFlow(options: ProAnnualSwitchFlowOptions
             return;
           }
           try {
-            await options.requestSwitch({
+            const applied = await options.requestSwitch({
               confirm: true,
               discounted,
               ...(quote.acceptsQuoteGuards === true
                 ? { acceptedChargeAmount: quote.chargeAmount, acceptedChargeCurrency: quote.currency }
                 : {}),
             });
+            // Only a reply that says the plan is now Pro Yearly is a switch.
+            if (applied.kind !== 'upgraded' || applied.toPlanKey !== 'pro_annual') {
+              options.reportError('applyProAnnualSwitch', new Error(`unexpected switch result: ${applied.kind}/${applied.toPlanKey}`));
+              showResult(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY);
+              return;
+            }
             showResult(SWITCH_SUCCESS_TITLE, SWITCH_SUCCESS_BODY, options.afterSuccess, 'Done');
           } catch (err) {
             const kind = options.errorKind(err);

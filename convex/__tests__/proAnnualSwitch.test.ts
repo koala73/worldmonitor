@@ -1,7 +1,8 @@
 /**
- * Pro Monthly → Pro Yearly in place, through the Pro Business upgrade runner
- * with kind "pro_annual". The running promotion's code rides on the change
- * while it lasts; the switch itself stays available afterwards at list price.
+ * Pro Monthly → Pro Yearly in place, through its own action and relay
+ * (switchToProAnnual, /relay/pro-annual-switch), which share the Pro Business
+ * upgrade runner. The running promotion's code rides on the change while it
+ * lasts; the switch itself stays available afterwards at list price.
  *
  * The clock is pinned on both sides of the promotion's end so these cases keep
  * their meaning after the real offer ends.
@@ -160,7 +161,7 @@ describe("switch action", () => {
   const run = (
     t: ReturnType<typeof convexTest>,
     args: { confirm: boolean; discounted?: boolean; acceptedChargeAmount?: number; acceptedChargeCurrency?: string },
-  ) => t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { kind: "pro_annual", ...args });
+  ) => t.withIdentity(USER).action(api.payments.billing.switchToProAnnual, args);
   const claims = (t: ReturnType<typeof convexTest>) => t.run((ctx) => ctx.db.query("proBusinessUpgradeClaims").collect());
   const withTotal = (preview: ReturnType<typeof discountedPreview>, total: number, currency = "USD") => ({
     ...preview,
@@ -245,8 +246,8 @@ describe("switch action", () => {
   test("a list-price preview during the offer sends no code and says the offer was not applied", async () => {
     const t = await setup(DURING);
     previewChangePlan.mockResolvedValue(listPreview());
-    const result = await t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, {
-      kind: "pro_annual", confirm: false, listPrice: true,
+    const result = await t.withIdentity(USER).action(api.payments.billing.switchToProAnnual, {
+      confirm: false, listPrice: true,
     });
     expect(result).toMatchObject({ kind: "preview", discounted: false, percentOff: null, offerNotApplied: true, chargeAmount: 32096 });
     expect(previewChangePlan).toHaveBeenCalledTimes(1);
@@ -256,14 +257,14 @@ describe("switch action", () => {
   test("the relay validates and forwards a list-price preview", async () => {
     vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "synthetic-relay-secret");
     const t = await setup(DURING);
-    const post = (body: unknown) => t.fetch("/relay/pro-business-upgrade", {
+    const post = (body: unknown) => t.fetch("/relay/pro-annual-switch", {
       method: "POST",
       headers: { Authorization: "Bearer synthetic-relay-secret", "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    expect((await post({ userId: USER.subject, confirm: false, kind: "pro_annual", listPrice: "yes" })).status).toBe(400);
+    expect((await post({ userId: USER.subject, confirm: false, listPrice: "yes" })).status).toBe(400);
     previewChangePlan.mockResolvedValue(listPreview());
-    const res = await post({ userId: USER.subject, confirm: false, kind: "pro_annual", listPrice: true });
+    const res = await post({ userId: USER.subject, confirm: false, listPrice: true });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ discounted: false, offerNotApplied: true });
     expect(previewChangePlan.mock.calls[0]![1]).not.toHaveProperty("discount_code");
@@ -478,12 +479,12 @@ describe("switch action", () => {
       vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "synthetic-relay-secret");
       vi.spyOn(console, "error").mockImplementation(() => {});
       const t = await setup(DURING);
-      const post = (body: unknown) => t.fetch("/relay/pro-business-upgrade", {
+      const post = (body: unknown) => t.fetch("/relay/pro-annual-switch", {
         method: "POST",
         headers: { Authorization: "Bearer synthetic-relay-secret", "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const base = { userId: USER.subject, confirm: true, kind: "pro_annual", discounted: true };
+      const base = { userId: USER.subject, confirm: true, discounted: true };
       for (const bad of [
         { acceptedChargeAmount: "10496", acceptedChargeCurrency: "USD" },
         { acceptedChargeAmount: -1, acceptedChargeCurrency: "USD" },
@@ -504,20 +505,85 @@ describe("switch action", () => {
     });
   });
 
-  test("the /pro relay validates kind and the confirm's discount flag, and maps the new refusals", async () => {
+  test("the /pro switch relay validates the confirm's discount flag and maps the new refusals", async () => {
     vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "synthetic-relay-secret");
     const t = await setup(AFTER);
-    const post = (body: unknown) => t.fetch("/relay/pro-business-upgrade", {
+    const post = (body: unknown) => t.fetch("/relay/pro-annual-switch", {
       method: "POST",
       headers: { Authorization: "Bearer synthetic-relay-secret", "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    expect((await post({ userId: USER.subject, confirm: false, kind: "pro_lifetime" })).status).toBe(400);
-    expect((await post({ userId: USER.subject, confirm: true, kind: "pro_annual" })).status).toBe(400);
-    expect((await post({ userId: USER.subject, confirm: true, kind: "pro_annual", discounted: "yes" })).status).toBe(400);
+    expect((await post({ userId: USER.subject, discounted: true })).status).toBe(400);
+    expect((await post({ userId: USER.subject, confirm: true })).status).toBe(400);
+    expect((await post({ userId: USER.subject, confirm: true, discounted: "yes" })).status).toBe(400);
     retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
-    const ended = await post({ userId: USER.subject, confirm: true, kind: "pro_annual", discounted: true });
+    const ended = await post({ userId: USER.subject, confirm: true, discounted: true });
     expect(ended.status).toBe(409);
     expect(await ended.json()).toEqual({ error: "PROMO_ENDED" });
+  });
+
+  // Each plan change has its own entry point, so a deploy that predates the
+  // switch answers "no such function or route" instead of running a Pro
+  // Business upgrade. The Pro Business entry points take what they took before
+  // the switch existed, and refuse a Pro Yearly request before any Dodo call.
+  describe("rollback protection", () => {
+    const relayPost = (t: ReturnType<typeof convexTest>, path: string, body: unknown) => t.fetch(path, {
+      method: "POST",
+      headers: { Authorization: "Bearer synthetic-relay-secret", "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    test("the Pro Business action refuses a Pro Yearly request before Dodo", async () => {
+      const t = await setup(DURING);
+      for (const args of [
+        { confirm: false, kind: "pro_annual" },
+        { confirm: true, kind: "pro_annual", discounted: true },
+      ]) {
+        await expect(
+          t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, args as never),
+        ).rejects.toThrow();
+      }
+      expect(previewChangePlan).not.toHaveBeenCalled();
+      expect(changePlan).not.toHaveBeenCalled();
+      expect(await claims(t)).toEqual([]);
+    });
+
+    test("the Pro Business relay refuses a Pro Yearly request before Dodo", async () => {
+      vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "synthetic-relay-secret");
+      const t = await setup(DURING);
+      for (const body of [
+        { userId: USER.subject, confirm: false, kind: "pro_annual" },
+        { userId: USER.subject, confirm: true, kind: "pro_annual", discounted: true },
+        { userId: USER.subject, confirm: false, kind: "pro_lifetime" },
+      ]) {
+        const res = await relayPost(t, "/relay/pro-business-upgrade", body);
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: "INVALID_KIND" });
+      }
+      expect(previewChangePlan).not.toHaveBeenCalled();
+      expect(changePlan).not.toHaveBeenCalled();
+    });
+
+    // An open /pro tab or dashboard from before the switch.
+    test("the Pro Business relay and action still upgrade a Pro Monthly to Pro Business", async () => {
+      vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "synthetic-relay-secret");
+      const t = await setup(DURING);
+      previewChangePlan.mockResolvedValue(listPreview());
+      const res = await relayPost(t, "/relay/pro-business-upgrade", { userId: USER.subject, confirm: false });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ kind: "preview", toPlanKey: "pro_business_monthly" });
+      const viaAction = await t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: false });
+      expect(viaAction).toMatchObject({ kind: "preview", toPlanKey: "pro_business_monthly" });
+      for (const call of previewChangePlan.mock.calls) {
+        expect(call[1]).not.toHaveProperty("discount_code");
+      }
+    });
+
+    test("a Pro Business quote does not advertise the switch's confirm guards", async () => {
+      const t = await setup(DURING);
+      previewChangePlan.mockResolvedValue(listPreview());
+      const result = await t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: false });
+      expect(result).not.toHaveProperty("acceptsQuoteGuards");
+    });
   });
 });

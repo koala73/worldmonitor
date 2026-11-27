@@ -1060,6 +1060,13 @@
       "removal_issue": "TBD"
     },
     {
+      "path": "api/pro-annual-switch.ts",
+      "category": "deferred",
+      "reason": "Previews or applies the in-place Pro Monthly to Pro Yearly Dodo plan change for /pro, on its own route so a deployment that predates it answers 404. Paired with pro-business-upgrade.ts, create-checkout.ts and customer-portal.ts; migrate together.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
       "path": "api/product-catalog.js",
       "category": "deferred",
       "reason": "Returns Dodo product catalog (pricing tiers). Migrate alongside the rest of the payments surface.",

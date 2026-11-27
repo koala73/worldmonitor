@@ -256,6 +256,7 @@
 *Could not find public function for 'payments/billing:grantComplimentaryEntitlement'*
 *Could not find public function for 'payments/billing:inspectCustomerOwnership'*
 *Could not find public function for 'payments/billing:internalGetCustomerPortalUrl'*
+*Could not find public function for 'payments/billing:internalSwitchToProAnnual'*
 *Could not find public function for 'payments/billing:internalUpgradeToProBusiness'*
 *Could not find public function for 'payments/billing:listLockedOnHoldForRecovery'*
 *Could not find public function for 'payments/billing:listStaleActiveSubscriptionsForRenewalReconciliation'*

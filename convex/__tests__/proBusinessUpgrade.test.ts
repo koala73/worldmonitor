@@ -130,7 +130,6 @@ describe("upgradeToProBusiness action", () => {
       billingPeriod: "monthly",
       discounted: false,
       percentOff: null,
-      acceptsQuoteGuards: true,
     });
     expect(previewChangePlan).toHaveBeenCalledWith("sub_pro_1", expect.objectContaining({
       product_id: PRO_BUSINESS_MONTHLY,

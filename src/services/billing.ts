@@ -625,7 +625,7 @@ export type ProBusinessUpgradeResponse =
       discounted?: boolean;
       /** Dodo's whole percent off the first period on a discounted quote, else null. */
       percentOff?: number | null;
-      /** The server takes listPrice and the accepted charge. Absent from an older Convex. */
+      /** Pro Yearly quotes: the server takes listPrice and the accepted charge. */
       acceptsQuoteGuards?: boolean;
       /** The offer runs, but this quote is at list price. */
       offerNotApplied?: boolean;
@@ -670,8 +670,9 @@ export async function requestProAnnualSwitch(
   return settleAccountOperation(
     userId,
     'switching to Pro Yearly',
-    // Only the fields the request carries: an older Convex rejects unknown ones.
-    () => client.action(api.payments.billing.upgradeToProBusiness, { ...request, kind: 'pro_annual' }),
+    // Its own action: a Convex deployment that predates the switch has none,
+    // so the call fails instead of running a Pro Business upgrade.
+    () => client.action(api.payments.billing.switchToProAnnual, request),
   );
 }
 

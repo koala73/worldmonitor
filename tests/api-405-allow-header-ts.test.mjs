@@ -31,6 +31,7 @@ const CASES = [
   { name: 'notify', path: '/api/notify', module: '../api/notify.ts', allow: 'POST, OPTIONS', refused: 'GET', preflight: true },
   { name: 'create-checkout', path: '/api/create-checkout', module: '../api/create-checkout.ts', allow: 'POST, OPTIONS', refused: 'GET', preflight: true },
   { name: 'pro-business-upgrade', path: '/api/pro-business-upgrade', module: '../api/pro-business-upgrade.ts', allow: 'POST, OPTIONS', refused: 'GET', preflight: true },
+  { name: 'pro-annual-switch', path: '/api/pro-annual-switch', module: '../api/pro-annual-switch.ts', allow: 'POST, OPTIONS', refused: 'GET', preflight: true },
   { name: 'widget-agent', path: '/api/widget-agent', module: '../api/widget-agent.ts', allow: 'GET, POST, OPTIONS', refused: 'PUT', preflight: true, headers: { 'X-Widget-Key': process.env.WIDGET_AGENT_KEY } },
   { name: 'symbol-search', path: '/api/symbol-search', module: '../api/symbol-search.ts', allow: 'GET, OPTIONS', refused: 'POST', preflight: true },
   {

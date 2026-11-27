@@ -42,6 +42,7 @@ const UPGRADED = { kind: 'upgraded', fromPlanKey: 'pro_monthly', toPlanKey: 'pro
 type Reply = { status: number; body: unknown };
 let replies: Reply[];
 let bodies: unknown[];
+let paths: string[];
 let fellBack: boolean;
 
 function options() {
@@ -67,10 +68,14 @@ function dialog() {
 beforeEach(() => {
   replies = [];
   bodies = [];
+  paths = [];
   fellBack = false;
-  vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+    paths.push(new URL(url).pathname);
     bodies.push(JSON.parse(String(init.body)));
     const reply = replies.shift() ?? { status: 500, body: {} };
+    // Status 0: the request never reaches a server.
+    if (reply.status === 0) throw new TypeError('Failed to fetch');
     return new Response(JSON.stringify(reply.body), { status: reply.status, headers: { 'Content-Type': 'application/json' } });
   }));
 });
@@ -81,7 +86,7 @@ afterEach(() => {
 });
 
 describe('/pro Pro Yearly switch flow', () => {
-  it('quotes and confirms with the kind and the quote it showed', async () => {
+  it('quotes and confirms with the quote it showed', async () => {
     replies = [{ status: 200, body: QUOTE }, { status: 200, body: UPGRADED }];
     await runProAnnualSwitchFlow(options());
     expect(dialog().title).toBe('Switch to Pro Yearly');
@@ -89,9 +94,53 @@ describe('/pro Pro Yearly switch flow', () => {
     dialog().confirm();
     await vi.waitFor(() => expect(dialog().title).toBe('Switched to Pro Yearly'));
     expect(bodies).toEqual([
-      { confirm: false, kind: 'pro_annual' },
-      { confirm: true, kind: 'pro_annual', discounted: true },
+      { confirm: false },
+      { confirm: true, discounted: true },
     ]);
+    expect(paths).toEqual(['/pro-annual-switch', '/pro-annual-switch']);
+  });
+
+  // Each plan change has its own route, so an edge or Convex deployment that
+  // predates the switch answers 404 instead of running a Pro Business upgrade.
+  describe('a deployment that predates the switch route', () => {
+    // What the old edge answers today: api/[...notfound].ts.
+    const NOT_FOUND = { status: 404, body: { error: { code: 'not_found', message: 'No API endpoint matches /api/pro-annual-switch.' } } };
+
+    it('falls back on the quote, and never tries the Pro Business route', async () => {
+      replies = [NOT_FOUND];
+      await runProAnnualSwitchFlow(options());
+      expect(fellBack).toBe(true);
+      expect(dialog().open).toBe(false);
+      expect(paths).toEqual(['/pro-annual-switch']);
+    });
+
+    // A rollback between the quote and the confirm.
+    it('fails closed on the confirm, and never tries the Pro Business route', async () => {
+      replies = [{ status: 200, body: QUOTE }, NOT_FOUND];
+      await runProAnnualSwitchFlow(options());
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().title).toBe('Switch not confirmed'));
+      expect(paths).toEqual(['/pro-annual-switch', '/pro-annual-switch']);
+    });
+
+    it('fails closed when the confirm cannot reach the route', async () => {
+      replies = [{ status: 200, body: QUOTE }, { status: 0, body: null }];
+      await runProAnnualSwitchFlow(options());
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().title).toBe('Switch not confirmed'));
+      expect(paths).toEqual(['/pro-annual-switch', '/pro-annual-switch']);
+    });
+
+    // Only a reply that says the plan is now Pro Yearly is a switch.
+    it('does not report a switch for a success reply that names another plan', async () => {
+      replies = [
+        { status: 200, body: QUOTE },
+        { status: 200, body: { kind: 'upgraded', fromPlanKey: 'pro_monthly', toPlanKey: 'pro_business_monthly' } },
+      ];
+      await runProAnnualSwitchFlow(options());
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().title).toBe('Switch not confirmed'));
+    });
   });
 
   it('re-quotes once after PROMO_ENDED and confirms only the new price', async () => {
@@ -108,10 +157,10 @@ describe('/pro Pro Yearly switch flow', () => {
     dialog().confirm();
     await vi.waitFor(() => expect(dialog().title).toBe('Switched to Pro Yearly'));
     expect(bodies).toEqual([
-      { confirm: false, kind: 'pro_annual' },
-      { confirm: true, kind: 'pro_annual', discounted: true },
-      { confirm: false, kind: 'pro_annual' },
-      { confirm: true, kind: 'pro_annual', discounted: false },
+      { confirm: false },
+      { confirm: true, discounted: true },
+      { confirm: false },
+      { confirm: true, discounted: false },
     ]);
   });
 
@@ -133,7 +182,7 @@ describe('/pro Pro Yearly switch flow', () => {
     await runProAnnualSwitchFlow(options());
     expect(fellBack).toBe(true);
     expect(dialog().open).toBe(false);
-    expect(bodies).toEqual([{ confirm: false, kind: 'pro_annual' }]);
+    expect(bodies).toEqual([{ confirm: false }]);
   });
 
   describe('accepted charge', () => {
@@ -145,7 +194,7 @@ describe('/pro Pro Yearly switch flow', () => {
       dialog().confirm();
       await vi.waitFor(() => expect(dialog().title).toBe('Switched to Pro Yearly'));
       expect(bodies[1]).toEqual({
-        confirm: true, kind: 'pro_annual', discounted: true, acceptedChargeAmount: 10496, acceptedChargeCurrency: 'USD',
+        confirm: true, discounted: true, acceptedChargeAmount: 10496, acceptedChargeCurrency: 'USD',
       });
     });
 
@@ -163,8 +212,8 @@ describe('/pro Pro Yearly switch flow', () => {
       dialog().confirm();
       await vi.waitFor(() => expect(dialog().title).toBe('Switched to Pro Yearly'));
       expect(bodies.slice(2)).toEqual([
-        { confirm: false, kind: 'pro_annual' },
-        { confirm: true, kind: 'pro_annual', discounted: true, acceptedChargeAmount: 10600, acceptedChargeCurrency: 'USD' },
+        { confirm: false },
+        { confirm: true, discounted: true, acceptedChargeAmount: 10600, acceptedChargeCurrency: 'USD' },
       ]);
     });
 
@@ -189,8 +238,8 @@ describe('/pro Pro Yearly switch flow', () => {
       dialog().confirm();
       await vi.waitFor(() => expect(dialog().title).toBe('Switched to Pro Yearly'));
       expect(bodies.slice(2)).toEqual([
-        { confirm: false, kind: 'pro_annual', listPrice: true },
-        { confirm: true, kind: 'pro_annual', discounted: false, acceptedChargeAmount: 33503, acceptedChargeCurrency: 'USD' },
+        { confirm: false, listPrice: true },
+        { confirm: true, discounted: false, acceptedChargeAmount: 33503, acceptedChargeCurrency: 'USD' },
       ]);
     });
 
@@ -233,7 +282,7 @@ describe('/pro Pro Yearly switch flow', () => {
       await runProAnnualSwitchFlow(switchingAccountOptions());
       dialog().confirm();
       await vi.waitFor(() => expect(dialog().title).toBe('Account changed'));
-      expect(bodies).toEqual([{ confirm: false, kind: 'pro_annual' }]);
+      expect(bodies).toEqual([{ confirm: false }]);
     });
 
     it('the Pro Business upgrade refuses to confirm for the other account', async () => {

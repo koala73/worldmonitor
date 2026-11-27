@@ -258,6 +258,33 @@ describe('runProAnnualSwitchFlow', () => {
     assert.deepEqual(h.calls, [{ confirm: false }]);
   });
 
+  // A rollback between the quote and the confirm: the older Convex has no
+  // switch action. The flow fails closed and does not try another call.
+  it('fails closed when the confirm reaches a server without the switch', async () => {
+    const h = switchHarness(async (call) => {
+      if (call.confirm) throw new Error("Could not find public function for 'payments/billing:switchToProAnnual'");
+      return SWITCH_QUOTE;
+    });
+    await runProAnnualSwitchFlow(h.options);
+    h.dialogs[0]!.onConfirm();
+    await settle();
+    assert.deepEqual(h.calls, [{ confirm: false }, { confirm: true, discounted: true }]);
+    assert.equal(h.dialogs[1]?.title, 'Switch not confirmed');
+    assert.equal(h.succeeded(), false);
+  });
+
+  // Only a reply that says the plan is now Pro Yearly is a switch.
+  it('does not report a switch for a reply that names another plan', async () => {
+    const h = switchHarness(async (call) => (
+      call.confirm ? { ...upgraded, toPlanKey: 'pro_business_monthly' } : SWITCH_QUOTE
+    ));
+    await runProAnnualSwitchFlow(h.options);
+    h.dialogs[0]!.onConfirm();
+    await settle();
+    assert.equal(h.dialogs[1]?.title, 'Switch not confirmed');
+    assert.equal(h.succeeded(), false);
+  });
+
   it('treats an unknown confirm outcome as unconfirmed, never as a re-quote', async () => {
     const h = switchHarness(async (call) => {
       if (call.confirm) throw new Error('timeout');

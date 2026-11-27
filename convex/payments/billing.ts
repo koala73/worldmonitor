@@ -4171,12 +4171,12 @@ export type ProBusinessUpgradeResult =
       /** The provider-side discount on the first period (the Dodo figure), or null. */
       percentOff: number | null;
       /**
-       * This server takes the quote guards: a confirm may name the charge it
-       * accepted (acceptedChargeAmount + acceptedChargeCurrency), and a
-       * preview may ask for the list price (listPrice). A client sends those
-       * only when the quote says so: an older Convex rejects unknown arguments.
+       * Pro Yearly quotes only: the switch takes the quote guards. A confirm
+       * may name the charge it accepted (acceptedChargeAmount +
+       * acceptedChargeCurrency), and a preview may ask for the list price
+       * (listPrice). The clients send those only when the quote says so.
        */
-      acceptsQuoteGuards: true;
+      acceptsQuoteGuards?: true;
       /** The offer is running, but this quote is at list price. */
       offerNotApplied?: true;
     }
@@ -4424,7 +4424,8 @@ export async function runPlanChange(
         billingPeriod,
         discounted,
         percentOff: discounted && promo ? promo.percentOff : null,
-        acceptsQuoteGuards: true,
+        // The Pro Business action takes only `confirm`.
+        ...(kind === "pro_annual" ? { acceptsQuoteGuards: true as const } : {}),
         // The offer runs but this quote is at list price (code refused, or a
         // list-price re-quote): the client says so above the price.
         ...(promo && !discounted ? { offerNotApplied: true as const } : {}),
@@ -4543,55 +4544,61 @@ function isCurrencyCode(value: unknown): value is string {
   return typeof value === "string" && /^[A-Z]{3}$/.test(value);
 }
 
+// Each plan change has its own entry points (and /pro relay route), so a
+// client never reaches a deployment that predates the change it asks for: that
+// deployment has no such function or route and the call fails. The Pro
+// Business entry points take exactly what they took before the switch existed;
+// a Pro Yearly request sent to them fails argument validation before any Dodo
+// call, never running as a Pro Business upgrade.
+
 /** Dashboard entry point. Auth-gated via requireUserId(ctx). */
 export const upgradeToProBusiness = action({
-  args: {
-    confirm: v.boolean(),
-    kind: v.optional(planChangeKindValidator),
-    /** The quote's `discounted` flag, echoed on a Pro Yearly confirm. */
-    discounted: v.optional(v.boolean()),
-    /** The quote's immediate charge; a client sends it only when the quote had acceptsQuoteGuards. */
-    acceptedChargeAmount: v.optional(v.number()),
-    acceptedChargeCurrency: v.optional(v.string()),
-    /** Preview at list price; sent only to a server whose quote had acceptsQuoteGuards. */
-    listPrice: v.optional(v.boolean()),
-  },
+  args: { confirm: v.boolean() },
   handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
     const userId = await requireUserId(ctx);
-    return runPlanChange(ctx, userId, {
-      confirm: args.confirm,
-      kind: args.kind ?? "pro_business",
-      discounted: args.discounted,
-      acceptedChargeAmount: args.acceptedChargeAmount,
-      acceptedChargeCurrency: args.acceptedChargeCurrency,
-      listPrice: args.listPrice,
-    });
+    return runProBusinessUpgrade(ctx, userId, args.confirm);
   },
 });
 
 /** /pro entry point, reached through the edge relay after Clerk verification. */
 export const internalUpgradeToProBusiness = internalAction({
-  args: {
-    userId: v.string(),
-    confirm: v.boolean(),
-    kind: v.optional(planChangeKindValidator),
-    discounted: v.optional(v.boolean()),
-    acceptedChargeAmount: v.optional(v.number()),
-    acceptedChargeCurrency: v.optional(v.string()),
-    listPrice: v.optional(v.boolean()),
-  },
+  args: { userId: v.string(), confirm: v.boolean() },
   handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
     if (!args.userId) {
       throw new ConvexError({ kind: "USER_ID_REQUIRED" });
     }
-    return runPlanChange(ctx, args.userId, {
-      confirm: args.confirm,
-      kind: args.kind ?? "pro_business",
-      discounted: args.discounted,
-      acceptedChargeAmount: args.acceptedChargeAmount,
-      acceptedChargeCurrency: args.acceptedChargeCurrency,
-      listPrice: args.listPrice,
-    });
+    return runProBusinessUpgrade(ctx, args.userId, args.confirm);
+  },
+});
+
+const proAnnualSwitchArgs = {
+  confirm: v.boolean(),
+  /** The quote's `discounted` flag; a confirm must echo it. */
+  discounted: v.optional(v.boolean()),
+  /** The quote's immediate charge; a client sends it only when the quote had acceptsQuoteGuards. */
+  acceptedChargeAmount: v.optional(v.number()),
+  acceptedChargeCurrency: v.optional(v.string()),
+  /** Preview at list price: the re-quote after a refused code. */
+  listPrice: v.optional(v.boolean()),
+};
+
+/** Dashboard entry point for Pro Monthly → Pro Yearly. Auth-gated via requireUserId(ctx). */
+export const switchToProAnnual = action({
+  args: proAnnualSwitchArgs,
+  handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
+    const userId = await requireUserId(ctx);
+    return runPlanChange(ctx, userId, { ...args, kind: "pro_annual" });
+  },
+});
+
+/** /pro entry point for the switch, reached through its own edge relay after Clerk verification. */
+export const internalSwitchToProAnnual = internalAction({
+  args: { userId: v.string(), ...proAnnualSwitchArgs },
+  handler: async (ctx, { userId, ...args }): Promise<ProBusinessUpgradeResult> => {
+    if (!userId) {
+      throw new ConvexError({ kind: "USER_ID_REQUIRED" });
+    }
+    return runPlanChange(ctx, userId, { ...args, kind: "pro_annual" });
   },
 });
 

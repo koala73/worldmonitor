@@ -2,8 +2,9 @@
  * In-place Pro → Pro Business upgrade for the /pro page.
  *
  * Mirrors src/services/pro-business-upgrade-dialog.ts for this sealed build
- * (no src/ imports, no Convex client): it calls the edge route
- * /api/pro-business-upgrade, which relays to the same Convex action. The copy
+ * (no src/ imports, no Convex client): it calls the edge routes
+ * /api/pro-business-upgrade and /api/pro-annual-switch, which relay to the
+ * same Convex runner. The copy
  * functions below hand-mirror src/services/pro-business-upgrade-copy.ts and
  * are pinned by tests/pro-business-upgrade-copy.test.mts.
  */
@@ -141,20 +142,25 @@ interface UpgradeCallResult {
   error: string;
 }
 
+// Each plan change has its own route, so a deployment that predates the switch
+// answers 404 for it instead of running a Pro Business upgrade. A failed
+// switch call is never retried on the other route.
+type PlanChangeRoute = 'pro-business-upgrade' | 'pro-annual-switch';
+
 async function callUpgrade(
   apiBase: string,
   token: string,
   confirm: boolean,
   extra: {
-    kind?: 'pro_annual';
     discounted?: boolean;
     acceptedChargeAmount?: number;
     acceptedChargeCurrency?: string;
     listPrice?: true;
   } = {},
+  route: PlanChangeRoute = 'pro-business-upgrade',
 ): Promise<UpgradeCallResult> {
   try {
-    const resp = await fetch(`${apiBase}/pro-business-upgrade`, {
+    const resp = await fetch(`${apiBase}/${route}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -392,11 +398,10 @@ export async function runProAnnualSwitchFlow(options: {
   const fetchQuote = async (onFailure: () => void, listPrice = false): Promise<SwitchPreview | null> => {
     const token = await options.getToken();
     const result = token
-      ? await callUpgrade(options.apiBase, token, false, { kind: 'pro_annual', ...(listPrice ? { listPrice: true as const } : {}) })
+      ? await callUpgrade(options.apiBase, token, false, listPrice ? { listPrice: true } : {}, 'pro-annual-switch')
       : { ok: false, data: {}, error: 'no_token' };
     const data = result.data;
-    // A server that predates the switch ignores `kind` and quotes Pro
-    // Business; only a quote for Pro Yearly may reach this dialog.
+    // Only a quote for Pro Yearly may reach this dialog.
     if (
       result.ok &&
       data.kind === 'preview' &&
@@ -457,15 +462,15 @@ export async function runProAnnualSwitchFlow(options: {
           }
           const applied = freshToken
             ? await callUpgrade(options.apiBase, freshToken, true, {
-              kind: 'pro_annual',
               discounted: quote.discounted,
               // Only to a server whose quote says it checks the charge.
               ...(quote.acceptsQuoteGuards
                 ? { acceptedChargeAmount: quote.chargeAmount, acceptedChargeCurrency: quote.currency }
                 : {}),
-            })
+            }, 'pro-annual-switch')
             : { ok: false, data: {}, error: 'no_token' };
-          if (applied.ok) {
+          // Only a reply that says the plan is now Pro Yearly is a switch.
+          if (applied.ok && applied.data.kind === 'upgraded' && applied.data.toPlanKey === 'pro_annual') {
             showDialog({
               title: SWITCH_SUCCESS_TITLE,
               body: SWITCH_SUCCESS_BODY,
@@ -494,7 +499,7 @@ export async function runProAnnualSwitchFlow(options: {
           }
           Sentry.captureMessage('Pro Yearly switch failed', {
             level: 'warning',
-            tags: { surface: 'pro-marketing', code: applied.error },
+            tags: { surface: 'pro-marketing', code: applied.error || 'unexpected_shape' },
           });
           closeOnly(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY);
         })();
