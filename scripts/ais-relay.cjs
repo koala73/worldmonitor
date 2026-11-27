@@ -5312,7 +5312,8 @@ function relayEntityCorroborationScore(count) {
 // every build and edition (#10977), in one short read. A title without a
 // history falls back to the build's own count. Families a wire-aware build
 // folded into a wire on that headline are dropped (#11434): an edition build
-// without the wire copy writes them back.
+// without the wire copy writes them back. The record lives while builds keep
+// carrying the wire, so it is read whole.
 async function readObservedPublishers(titles) {
   if (titles.length === 0) return new Map();
   const now = Date.now();
@@ -5321,7 +5322,7 @@ async function readObservedPublishers(titles) {
   const reprintKeys = keyed.map(([, key]) => newsPublisherReprintsKey(key));
   const rows = await upstashPipeline([
     ...keyed.map(([, key]) => ['ZRANGEBYSCORE', key, since, now]),
-    ...reprintKeys.filter(Boolean).map((key) => ['ZRANGEBYSCORE', key, since, now]),
+    ...reprintKeys.filter(Boolean).map((key) => ['ZRANGEBYSCORE', key, '-inf', '+inf']),
   ], { deadlineMs: 1500 });
   const observed = new Map();
   let reprintRow = keyed.length;

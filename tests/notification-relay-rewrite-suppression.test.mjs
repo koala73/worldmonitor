@@ -120,13 +120,14 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
         const z = zsets.get(key) ?? new Map();
         zsets.set(key, z);
         const nx = args[0] === 'NX';
-        const pairs = nx ? args.slice(1) : args;
+        const gt = args[0] === 'GT';
+        const pairs = nx || gt ? args.slice(1) : args;
         let added = 0;
         for (let i = 0; i + 1 < pairs.length; i += 2) {
           const [score, member] = [Number(pairs[i]), pairs[i + 1]];
           if (key.startsWith('news:alert-anchors:')) calls.anchorWrites.push(JSON.parse(member).title);
           if (!z.has(member)) added += 1;
-          if (!nx || !z.has(member)) z.set(member, score);
+          if (nx ? !z.has(member) : !gt || !(z.get(member) >= score)) z.set(member, score);
         }
         return added;
       }
@@ -149,8 +150,10 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
         return args.map(a => (s.has(a) ? 1 : 0));
       }
       case 'ZRANGEBYSCORE': {
-        const min = Number(String(args[0]).replace('(', ''));
-        return [...(zsets.get(key) ?? [])].filter(([, sc]) => sc > min && sc <= Number(args[1])).map(([m]) => m);
+        const bound = raw => (raw === '-inf' ? -Infinity : raw === '+inf' ? Infinity : Number(String(raw).replace('(', '')));
+        const [min, max] = [bound(args[0]), bound(args[1])];
+        const hits = [...(zsets.get(key) ?? [])].filter(([, sc]) => (min === -Infinity ? sc >= min : sc > min) && sc <= max);
+        return args.includes('WITHSCORES') ? hits.flatMap(([m, s]) => [m, String(s)]) : hits.map(([m]) => m);
       }
       case 'GET': return null;
       default: return 1;

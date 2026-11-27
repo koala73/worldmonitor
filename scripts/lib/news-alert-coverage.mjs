@@ -27,8 +27,12 @@ export async function refreshPublisherCounts(events, now = Date.now(), pipeline 
   if (!reads.size) return;
   // Each headline's families, then the families a wire-aware build folded
   // into a wire there (#11434), which an edition without the wire wrote back.
+  // The record lives while builds keep carrying the wire, so it is read whole.
   const keys = [...reads.keys()];
-  const commands = [...keys, ...keys.map(newsPublisherReprintsKey)].map(key => ['ZRANGEBYSCORE', key, `(${now - DAY}`, now]);
+  const commands = [
+    ...keys.map(key => ['ZRANGEBYSCORE', key, `(${now - DAY}`, now]),
+    ...keys.map(key => ['ZRANGEBYSCORE', newsPublisherReprintsKey(key), '-inf', '+inf']),
+  ];
   const rows = await pipeline(commands, { timeoutMs: 500 });
   let i = 0;
   for (const group of reads.values()) {
@@ -353,27 +357,41 @@ export async function usersAlertedFor(anchorIds, userIds, { now = Date.now(), pi
  * One story told in two wordings: give each wording's publisher history the
  * union of both, so the coverage line counts every outlet that carried it.
  * Members are publisher families scored by when they were last seen (the
- * digest writes them with ZADD GT), so MAX keeps the latest sighting and the
- * reader's 24-hour window still applies. Best effort.
+ * digest writes them with ZADD GT), so the copy keeps the latest sighting and
+ * the reader's 24-hour window still applies. Each wording's reprint record
+ * stays on its own key (#11434): a family the digest folded into the wire on
+ * one wording is not copied to the other, and the same family's own wording
+ * still counts there. Best effort.
  */
 export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedisPipeline) {
   const own = rewriteCheckApplies(event) ? newsPublisherCoverageKey(event.payload.title) : '';
   if (!own || typeof anchorId !== 'string' || !anchorId.startsWith(`${event.variant}:`)) return false;
   const anchor = `${NEWS_PUBLISHER_COVERAGE_PREFIX}${anchorId.slice(event.variant.length + 1)}`;
   if (anchor === own) return false;
-  // The reprint records travel with the families they fold (#11434), or a
-  // reprint written back on one wording would count on the other.
-  const [anchorReprints, ownReprints] = [newsPublisherReprintsKey(anchor), newsPublisherReprintsKey(own)];
   try {
+    const read = await pipeline(
+      [anchor, own, newsPublisherReprintsKey(anchor), newsPublisherReprintsKey(own)]
+        .map(key => ['ZRANGEBYSCORE', key, '-inf', '+inf', 'WITHSCORES']),
+      { timeoutMs: 1_000 },
+    );
+    if (!Array.isArray(read) || !read.every(row => row && !row.error && Array.isArray(row.result))) return false;
+    const [anchorRows, ownRows, anchorReprints, ownReprints] = read.map(row => row.result);
+    // [score, member] pairs of `rows`, without the families `reprints` records.
+    const copy = (rows, reprints) => {
+      const folded = new Set(reprints.filter((_, i) => i % 2 === 0));
+      const pairs = [];
+      for (let i = 0; i + 1 < rows.length; i += 2) {
+        if (!folded.has(rows[i]) && Number.isFinite(Number(rows[i + 1]))) pairs.push(Number(rows[i + 1]), rows[i]);
+      }
+      return pairs;
+    };
+    const toAnchor = copy(ownRows, ownReprints);
+    const toOwn = copy(anchorRows, anchorReprints);
     const rows = await pipeline([
-      ['ZUNIONSTORE', anchor, 2, anchor, own, 'AGGREGATE', 'MAX'],
-      ['ZUNIONSTORE', own, 2, anchor, own, 'AGGREGATE', 'MAX'],
+      ...(toAnchor.length ? [['ZADD', anchor, 'GT', ...toAnchor]] : []),
+      ...(toOwn.length ? [['ZADD', own, 'GT', ...toOwn]] : []),
       ['EXPIRE', anchor, DAY / 1000],
       ['EXPIRE', own, DAY / 1000],
-      ['ZUNIONSTORE', anchorReprints, 2, anchorReprints, ownReprints, 'AGGREGATE', 'MAX'],
-      ['ZUNIONSTORE', ownReprints, 2, anchorReprints, ownReprints, 'AGGREGATE', 'MAX'],
-      ['EXPIRE', anchorReprints, DAY / 1000],
-      ['EXPIRE', ownReprints, DAY / 1000],
     ], { timeoutMs: 1_000 });
     return Array.isArray(rows) && rows.every(row => row && !row.error);
   } catch {
