@@ -30,6 +30,10 @@ import { isMainModule } from '../../scripts/lib/main-module.mjs';
 // leave the new entry unsaved and every later PR missing it. Workflow edits
 // change what the jobs do.
 export const REUSE_BLOCKER = /(^|\/)(package(-lock)?\.json|\.npmrc)$|^vendor\/|^\.github\/|^scripts\/download-node\.sh$|^e2e\/fetch-embeddings-model\.ts$/;
+// The subset of REUSE_BLOCKER that changes what a Test run does: the cache
+// key inputs, test.yml itself, and the local actions and scripts it runs.
+// Other workflows (codeql.yml, convex-deploy.yml, ...) do not.
+export const TEST_INPUT = /(^|\/)(package(-lock)?\.json|\.npmrc)$|^vendor\/|^\.github\/(workflows\/test\.yml$|actions\/|scripts\/)|^scripts\/download-node\.sh$|^e2e\/fetch-embeddings-model\.ts$/;
 export const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 // More untested main commits than this and browser runs on main instead of
 // looking each one up (three requests a commit).
@@ -146,9 +150,22 @@ async function decideBrowser({ api, repo, sha, base, now }) {
   for (const entry of found) {
     if (!entry.pr) return { reason: `browser: ${entry.reason}` };
     if (!browserSettled(entry.jobs)) return { reason: `browser: run ${entry.run.id} of PR #${entry.pr.number} did not settle it` };
-    settled.push(`#${entry.pr.number}`);
+    settled.push(entry);
   }
-  return { ok: true, reason: `browser: settled by the pull request runs of ${settled.join(', ')}` };
+  // The files list above covers main after `base`. A PR that branched before
+  // `base` may have been tested under an older test.yml, lockfile or cache
+  // input that main changed before `base` (its own full run then made it the
+  // base). Refuse when main changed any such path since the PR's merge base.
+  // GitHub caps a comparison's files at 300, so a capped list refuses too.
+  const drift = await Promise.all(settled.map((entry) => api(`repos/${repo}/compare/${entry.pr.head.sha}...${base}`)));
+  for (const [i, comparison] of drift.entries()) {
+    const changed = (comparison.files ?? []).map((file) => file.filename);
+    const pr = settled[i].pr.number;
+    if (changed.length >= 300) return { reason: `browser: main changed too many files since PR #${pr} branched to check its inputs` };
+    const input = changed.find((file) => TEST_INPUT.test(file));
+    if (input) return { reason: `browser: main changed ${input} after PR #${pr} branched, so its run used other inputs` };
+  }
+  return { ok: true, reason: `browser: settled by the pull request runs of ${settled.map((entry) => `#${entry.pr.number}`).join(', ')}` };
 }
 
 // The `changes` outputs to override. Reusing `code` also clears `validation`:

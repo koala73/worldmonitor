@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   candidateRunListArgs,
+  distinctBranchRuns,
   estimateSpecs,
   median,
   packShards,
@@ -185,6 +186,20 @@ describe('candidateRunListArgs', () => {
     assert.equal(flag('-w'), 'Test');
     assert.equal(flag('-R'), 'o/r');
     assert.ok(!args.includes('-b'), 'PR runs are on their head branches, not main');
-    assert.ok(Number(flag('-L')) >= 6 * 8, 'most PR runs carry no browser shards, so look wider than --count');
+    assert.ok(Number(flag('-L')) >= 300, 'most PR runs carry no browser shards, so look far wider than --count');
+    assert.equal(flag('--json'), 'databaseId,headBranch');
+  });
+});
+
+describe('distinctBranchRuns', () => {
+  it('keeps the first listed run of each PR branch, so one PR cannot fill the sample', () => {
+    const runs = [
+      { databaseId: 5, headBranch: 'feat/a' },
+      { databaseId: 4, headBranch: 'feat/a' },
+      { databaseId: 3, headBranch: 'fix/b' },
+      { databaseId: 2, headBranch: 'feat/a' },
+      { databaseId: 1, headBranch: 'ci/c' },
+    ];
+    assert.deepEqual(distinctBranchRuns(runs), ['5', '3', '1']);
   });
 });

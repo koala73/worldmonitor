@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, posix, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { parse } from 'yaml';
-import { browserSettled, decideReuse, GROUPS, MAX_COMMITS, main, outputsFor, REUSE_BLOCKER } from '../.github/scripts/reuse-pr-test-verdict.mjs';
+import { browserSettled, decideReuse, GROUPS, MAX_COMMITS, main, outputsFor, REUSE_BLOCKER, TEST_INPUT } from '../.github/scripts/reuse-pr-test-verdict.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const workflow = parse(readFileSync(join(root, '.github/workflows/test.yml'), 'utf8'));
@@ -38,6 +38,9 @@ function fixture(overrides = {}) {
     if (path === 'repos/o/r/commits/S/pulls') return state.pulls;
     if (path === 'repos/o/r/commits/D1/pulls') return [];
     if (path === 'repos/o/r/compare/P...H') return state.compare;
+    // What main changed since a PR head branched, up to the base: nothing unless a case says.
+    const drift = path.match(/^repos\/o\/r\/compare\/(H\d*)\.\.\.(\w+)$/);
+    if (drift) return { files: (state.drift?.[drift[1]] ?? []).map((filename) => ({ filename })) };
     // The commits main has not tested yet: S alone unless a case adds earlier merges.
     const since = path.match(/^repos\/o\/r\/compare\/(\w+)\.\.\.S$/);
     if (since) {
@@ -198,6 +201,32 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
     assert.deepEqual((await decide({ sinceOverride: { total_commits: 300 } })).reuse, { code: true });
     assert.deepEqual((await decide({ sinceOverride: { status: 'diverged' } })).reuse, { code: true });
     assert.deepEqual((await decide({ since: { P: ['C5'] } })).reuse, { code: true });
+  });
+
+  // A PR tested before main changed a workflow, lockfile or cache input ran
+  // under the old one; that main commit's full run then became the base, so
+  // the push's own file list no longer shows the change.
+  it('refuses browser when main changed a cache key or workflow input after a PR branched', async () => {
+    for (const file of ['.github/workflows/test.yml', 'package-lock.json', 'e2e/fetch-embeddings-model.ts']) {
+      const d = await decide({ drift: { H: ['src/app/App.ts', file] } });
+      assert.deepEqual(d.reuse, { code: true }, file);
+      assert.match(d.reason, new RegExp(`browser: main changed ${file.replace(/[.]/g, '\\.')} after PR #7 branched`), file);
+    }
+    // An earlier merge in a multi-commit push is checked too.
+    assert.deepEqual((await decide({ since: { OLDER: ['C5', 'S'] }, drift: { H5: ['package.json'] } }, { decidedBase: 'OLDER' })).reuse, {});
+    // Application drift and other workflows are fine, and a comparison GitHub capped cannot prove the inputs unchanged.
+    assert.deepEqual((await decide({ drift: { H: ['src/app/App.ts', 'e2e/map.spec.ts', '.github/workflows/codeql.yml'] } })).reuse, { code: true, browser: true });
+    assert.deepEqual((await decide({ drift: { H: Array.from({ length: 300 }, (_, i) => `src/f${i}.ts`) } })).reuse, { code: true });
+  });
+
+  it('counts as a Test input every cache key input and every local action or script test.yml uses', () => {
+    const yml = readFileSync(join(root, '.github/workflows/test.yml'), 'utf8');
+    const used = [...new Set([...yml.matchAll(/\.github\/(?:actions|scripts)\/[\w.-]+/g)].map((m) => m[0]))];
+    assert.ok(used.length >= 4, 'expected test.yml to use local actions and scripts');
+    for (const path of [...used, '.github/workflows/test.yml']) assert.match(path, TEST_INPUT, path);
+    // Every Test input still blocks a push that changes it.
+    for (const path of ['package-lock.json', '.npmrc', 'vendor/x.js', 'scripts/download-node.sh', 'e2e/fetch-embeddings-model.ts', ...used]) assert.match(path, REUSE_BLOCKER, path);
+    for (const path of ['.github/workflows/codeql.yml', 'src/app/App.ts']) assert.doesNotMatch(path, TEST_INPUT, path);
   });
 
   it('settles browser on a full green matrix or a full skip, nothing in between', () => {

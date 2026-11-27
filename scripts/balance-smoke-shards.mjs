@@ -255,13 +255,21 @@ async function measureRun(repo, runId, shardCount) {
 }
 
 // Many PR runs skip the browser group (no browser path changed), and
-// collectRuns skips those, so the candidate list is wider than --count.
+// collectRuns skips those, so the candidate list is far wider than --count:
+// one listing call, and a skipped candidate costs one jobs request.
 export function candidateRunListArgs(repo, count) {
-  return ['run', 'list', '-R', repo, '-w', 'Test', '--event', 'pull_request', '--status', 'success', '-L', String(count * 8), '--json', 'databaseId'];
+  return ['run', 'list', '-R', repo, '-w', 'Test', '--event', 'pull_request', '--status', 'success', '-L', String(Math.max(count * 50, 300)), '--json', 'databaseId,headBranch'];
+}
+
+// At most one run per PR branch (the newest, as listed): a PR that grew a
+// spec and re-ran several times must not supply every sample of the median.
+export function distinctBranchRuns(runs) {
+  const seen = new Set();
+  return runs.filter((run) => !seen.has(run.headBranch) && seen.add(run.headBranch)).map((run) => String(run.databaseId));
 }
 
 async function collectRuns(args, shardCount) {
-  const candidates = args.runs ?? JSON.parse(await gh(candidateRunListArgs(args.repo, args.count))).map((run) => String(run.databaseId));
+  const candidates = args.runs ?? distinctBranchRuns(JSON.parse(await gh(candidateRunListArgs(args.repo, args.count))));
   const used = [];
   for (const runId of candidates) {
     if (!args.runs && used.length === args.count) break;
