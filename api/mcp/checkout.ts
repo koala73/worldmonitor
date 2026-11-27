@@ -37,7 +37,7 @@ const SWITCH_PREVIEW_RELAY_TIMEOUT_MS = 8_000;
 const API_STARTER_SWITCH_PLANS: ReadonlySet<string> = new Set(['api_starter', 'api_starter_annual']);
 /** Entitlement plans that may come from an individual Pro the server would switch. */
 const API_STARTER_SWITCH_SOURCE_PLANS: ReadonlySet<string> = new Set(['pro_monthly', 'pro_monthly_mcp', 'pro_annual']);
-const SWITCH_URL = 'https://www.worldmonitor.app/dashboard';
+const SWITCH_URL = 'https://www.worldmonitor.app/dashboard?settings=account';
 
 interface CatalogPlan {
   planKey: string;
@@ -323,14 +323,14 @@ async function apiStarterSwitchRefusal(
         reason: 'switch-in-place',
         switchUrl: SWITCH_URL,
         nextStep: 'Pro moves to API Starter as a prorated change on the same subscription, not through a new checkout, and this tool does not charge. '
-          + `Ask the user to open ${SWITCH_URL} while signed in, go to Settings, Account, and choose Switch to API Starter; they confirm the prorated charge there.`,
+          + `Ask the user to open ${SWITCH_URL}, which opens Settings, Account, and choose Switch to API Starter; they confirm the prorated charge there.`,
       });
     case 'resume-first':
       return rpcError(id, -32002, 'This account has a Pro subscription that is set to cancel.', corsHeaders, {
         reason: 'pro-cancel-scheduled',
         switchUrl: SWITCH_URL,
         nextStep: `The Pro subscription is set to cancel at the end of this period. Ask the user to resume it in the billing portal (${BILLING_PORTAL_HINT}), `
-          + `then switch to API Starter at ${SWITCH_URL} under Settings, Account.`,
+          + `then switch to API Starter at ${SWITCH_URL}, which opens Settings, Account.`,
       });
     case 'not-switchable':
       return null;

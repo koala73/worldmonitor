@@ -473,7 +473,7 @@ describe('start_upgrade for API Starter', () => {
       assert.equal(called.response.status, 200);
       assert.equal(called.body.error.code, -32002);
       assert.equal(called.body.error.data.reason, 'switch-in-place');
-      assert.equal(called.body.error.data.switchUrl, 'https://www.worldmonitor.app/dashboard');
+      assert.equal(called.body.error.data.switchUrl, 'https://www.worldmonitor.app/dashboard?settings=account');
       assert.match(called.body.error.data.nextStep, /https:\/\/www\.worldmonitor\.app\/dashboard/);
       assert.match(called.body.error.data.nextStep, /Settings, Account/);
       assert.match(called.body.error.data.nextStep, /Switch to API Starter/);
