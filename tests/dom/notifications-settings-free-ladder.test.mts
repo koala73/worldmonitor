@@ -153,8 +153,8 @@ beforeEach(() => {
   gate.verificationListeners = [];
   clerkState.id = 'user_ladder';
   channelMocks.getChannelsData.mockReset();
-  channelMocks.saveAlertRules.mockReset().mockResolvedValue(undefined);
-  channelMocks.setNotificationConfig.mockReset().mockResolvedValue(undefined);
+  channelMocks.saveAlertRules.mockReset().mockResolvedValue({});
+  channelMocks.setNotificationConfig.mockReset().mockResolvedValue({});
   channelMocks.setDigestSettings.mockReset().mockResolvedValue(undefined);
   upgradeMocks.openUpgradePlans.mockReset();
 });

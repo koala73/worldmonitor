@@ -133,7 +133,7 @@ beforeEach(() => {
   channelMocks.getChannelsData.mockReset();
   channelMocks.setEmailChannel.mockReset().mockResolvedValue(undefined);
   channelMocks.saveAlertRules.mockReset();
-  channelMocks.saveAlertRules.mockResolvedValue(undefined);
+  channelMocks.saveAlertRules.mockResolvedValue({});
   channelMocks.deleteChannel.mockReset();
   channelMocks.deleteChannel.mockResolvedValue(undefined);
 });

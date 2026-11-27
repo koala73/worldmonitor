@@ -117,8 +117,8 @@ beforeEach(() => {
   document.body.replaceChildren();
   gate.tier = true;
   channelMocks.getChannelsData.mockReset();
-  channelMocks.saveAlertRules.mockReset().mockResolvedValue(undefined);
-  channelMocks.setNotificationConfig.mockReset().mockResolvedValue(undefined);
+  channelMocks.saveAlertRules.mockReset().mockResolvedValue({});
+  channelMocks.setNotificationConfig.mockReset().mockResolvedValue({});
   channelMocks.setDigestSettings.mockReset().mockResolvedValue(undefined);
 });
 

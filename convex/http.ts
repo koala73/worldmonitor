@@ -18,6 +18,7 @@ import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
 import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { ALERT_CAPABILITY_VIOLATION_CODES, ALERT_UPGRADE_URL } from "../shared/alert-capabilities";
+import { isRuleEnabledIntent, type RuleSaveResult } from "../shared/alert-rule-shape";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import { normalizeAcquisitionSource } from "../shared/acquisition-source";
 import { briefL10nDeliverableLanguages } from "../shared/ui-languages";
@@ -1273,6 +1274,7 @@ http.route({
       email?: string;
       variant?: string;
       enabled?: boolean;
+      enabledIntent?: unknown;
       eventTypes?: string[];
       sensitivity?: string;
       channels?: string[];
@@ -1432,6 +1434,7 @@ http.route({
         if (
           typeof body.variant !== "string" || !body.variant ||
           typeof body.enabled !== "boolean" ||
+          (body.enabledIntent !== undefined && !isRuleEnabledIntent(body.enabledIntent)) ||
           !Array.isArray(body.eventTypes) ||
           !Array.isArray(body.channels) ||
           (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) ||
@@ -1443,12 +1446,14 @@ http.route({
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        let saved: RuleSaveResult;
         try {
-          await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
+          saved = await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
             userId,
             enforceEntitlement: true,
             variant: body.variant,
             enabled: body.enabled,
+            enabledIntent: body.enabledIntent,
             eventTypes: body.eventTypes as string[],
             // Pass body.sensitivity through unchanged (may be undefined).
             // setAlertRulesForUser now accepts optional sensitivity and uses
@@ -1494,7 +1499,7 @@ http.route({
           }
           throw err;
         }
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true, ...saved }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "set-quiet-hours") {
@@ -1587,11 +1592,16 @@ http.route({
         if (body.reservoirAlert !== undefined && !isReservoirAlertBody(body.reservoirAlert)) {
           return new Response(JSON.stringify({ error: "RESERVOIR_ALERT_INVALID" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        if (body.enabledIntent !== undefined && !isRuleEnabledIntent(body.enabledIntent)) {
+          return new Response(JSON.stringify({ error: "ENABLED_INTENT_INVALID" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        let saved: RuleSaveResult;
         try {
-          await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
+          saved = await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
             userId,
             variant: body.variant,
             enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+            enabledIntent: body.enabledIntent,
             eventTypes: Array.isArray(body.eventTypes) ? (body.eventTypes as string[]) : undefined,
             sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
             channels: Array.isArray(body.channels) ? (body.channels as Array<"telegram" | "slack" | "email" | "discord" | "teams" | "webhook" | "web_push">) : undefined,
@@ -1637,7 +1647,7 @@ http.route({
           }
           throw err;
         }
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true, ...saved }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: { "Content-Type": "application/json" } });

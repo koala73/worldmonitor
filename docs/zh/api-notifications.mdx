@@ -35,7 +35,7 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 | `set-channel` | 注册或更新渠道。对于 `webhook` 渠道,`webhookEnvelope` URL 仅接受 HTTPS,不得解析到私有/回环地址,并在存储前使用 AES-256-GCM 加密。可选字段:`email`、`webhookLabel`(截断至 100 字符)。 |
 | `set-web-push` | 为已登录用户注册浏览器 Web Push 订阅。 |
 | `delete-channel` | 按类型移除渠道(`email`、`webhook`、`telegram`、`web-push` 等)。 |
-| `set-alert-rules` | 一次性替换调用方的告警规则集合。 |
+| `set-alert-rules` | 一次性替换调用方的告警规则集合。可选 `enabledIntent`：`keep` 保留规则当前存储的 `enabled`，忽略请求中的值；`connect`（正在连接一个渠道）还会在规则尚无已存储渠道时开启告警。免费方案若会拒绝这次开启，规则保持关闭。响应包含存储后的 `enabled`；当 `connect` 保存做出该判断时，还包含 `firstChannel`（`on` 或 `held`），`held` 时附带含能力 `code` 和 `message` 的 `reason`。 |
 | `set-quiet-hours` | 设置"勿扰"时间窗口。 |
 | `set-digest-settings` | 配置摘要发送节奏和渠道路由。 |
 

@@ -116,7 +116,7 @@ beforeEach(() => {
   while (cleanups.length) cleanups.pop()?.();
   document.body.replaceChildren();
   channelMocks.getChannelsData.mockReset();
-  channelMocks.saveAlertRules.mockReset().mockResolvedValue(undefined);
+  channelMocks.saveAlertRules.mockReset().mockResolvedValue({});
 });
 
 afterAll(() => {

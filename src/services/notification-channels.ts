@@ -4,7 +4,7 @@ import {
   readBillingVerificationCode,
 } from '@/services/billing-retry';
 import { SITE_VARIANT } from '@/config/variant';
-import type { ReservoirAlertSettings } from '../../shared/alert-rule-shape';
+import type { ReservoirAlertSettings, RuleEnabledIntent, RuleSaveResult } from '../../shared/alert-rule-shape';
 
 export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'teams' | 'webhook' | 'web_push';
 export type Sensitivity = 'all' | 'high' | 'critical';
@@ -357,16 +357,19 @@ export async function deleteChannel(
   if (!res.ok) throw new Error(`delete channel: ${res.status}`);
 }
 
+/** A rule save. With `enabledIntent` the server decides `enabled` (#10976). */
+export type AlertRuleSave = AlertRule & { enabledIntent?: RuleEnabledIntent };
+
 export async function saveAlertRules(
-  rules: AlertRule,
+  rules: AlertRuleSave,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<Partial<RuleSaveResult>> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set-alert-rules', ...rules }),
   }, undefined, signal);
-  if (res.ok) return;
+  if (res.ok) return await res.json().catch(() => ({})) as Partial<RuleSaveResult>;
   // Mirror setNotificationConfig: the relay may return structured 400
   // INCOMPATIBLE_DELIVERY when legacy set-alert-rules hits the
   // (realtime, high|all) gate. Route that to IncompatibleDeliveryError so the
@@ -496,6 +499,7 @@ export class IncompatibleDeliveryError extends Error {
 export async function setNotificationConfig(args: {
   variant: string;
   enabled?: boolean;
+  enabledIntent?: RuleEnabledIntent;
   eventTypes?: string[];
   sensitivity?: Sensitivity;
   channels?: ChannelType[];
@@ -510,13 +514,13 @@ export async function setNotificationConfig(args: {
   reservoirAlert?: ReservoirAlertSettings;
   /** Scope a rule with no stored countries to the followed countries, server-side (#10873). */
   seedCountriesFromFollowed?: boolean;
-}, expectedUserId?: string, signal?: AbortSignal): Promise<void> {
+}, expectedUserId?: string, signal?: AbortSignal): Promise<Partial<RuleSaveResult>> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set-notification-config', ...args }),
   }, expectedUserId, signal);
-  if (res.ok) return;
+  if (res.ok) return await res.json().catch(() => ({})) as Partial<RuleSaveResult>;
   let body: { error?: string; message?: string } = {};
   try { body = await res.json(); } catch { /* keep default */ }
   if (res.status === 400 && body.error === 'INCOMPATIBLE_DELIVERY') {
