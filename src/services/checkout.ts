@@ -13,7 +13,13 @@
 
 import type { DodoProductId } from '@/config/products';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { openBillingPortal, prereserveBillingPortalTab, requestProAnnualSwitch, requestProBusinessUpgrade } from './billing';
+import {
+  openBillingPortal,
+  prereserveBillingPortalTab,
+  requestApiStarterSwitch,
+  requestProAnnualSwitch,
+  requestProBusinessUpgrade,
+} from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
@@ -502,6 +508,42 @@ async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> 
   }
 }
 
+async function isApiStarterCheckoutTarget(productId: string): Promise<boolean> {
+  try {
+    const { DODO_PRODUCTS } = await import('@/config/products');
+    return productId === DODO_PRODUCTS.API_STARTER_MONTHLY || productId === DODO_PRODUCTS.API_STARTER_ANNUAL;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * In-place individual Pro → API Starter switch. Reached from Settings and,
+ * before any API Starter checkout, from startCheckout. Resolves
+ * 'not-switchable' when the account has no Pro the server would switch (or the
+ * flow cannot run), and the caller then goes on as before. The server keeps
+ * the cadence, so a Pro Yearly holder is quoted API Starter Annual whichever
+ * API Starter product was picked.
+ */
+export async function startApiStarterSwitch(
+  /** Settings returns focus to its switch button; the checkout path passes nothing. */
+  onDismiss?: () => void,
+): Promise<'shown' | 'not-switchable'> {
+  // A failed chunk load (stale deploy, flaky network) continues to checkout.
+  const flowModule = await import('./api-starter-switch-dialog').catch(() => null);
+  if (!flowModule) return 'not-switchable';
+  return flowModule.runApiStarterSwitchFlow({
+    requestSwitch: requestApiStarterSwitch,
+    currentUserId: () => getCurrentClerkUser()?.id,
+    openPortal: openPortalFromDialog,
+    afterSuccess: () => window.location.reload(),
+    showDialog: showCheckoutConfirmDialog,
+    errorKind: extractBillingErrorKind,
+    reportError: reportPlanChangeError,
+    ...(onDismiss ? { onDismiss } : {}),
+  });
+}
+
 /**
  * First-touch acquisition record for the checkout payload. Loaded on demand so
  * the module stays out of the main chunk; any failure sends no attribution.
@@ -621,6 +663,21 @@ export async function startCheckout(
         );
     showCheckoutErrorToast(error.userMessage);
     return false;
+  }
+
+  // An individual Pro holder moves to API Starter in place instead of buying
+  // a second subscription. Every other account continues to checkout.
+  if (await isApiStarterCheckoutTarget(productId)) {
+    _checkoutInFlight = true;
+    let switchOutcome: 'shown' | 'not-switchable' = 'not-switchable';
+    try {
+      switchOutcome = await startApiStarterSwitch();
+    } catch {
+      // Treated as not switchable: the checkout runs exactly as before.
+    } finally {
+      _checkoutInFlight = false;
+    }
+    if (switchOutcome === 'shown') return false;
   }
 
   _checkoutInFlight = true;

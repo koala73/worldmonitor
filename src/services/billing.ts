@@ -676,6 +676,30 @@ export async function requestProAnnualSwitch(
   );
 }
 
+/**
+ * Preview or apply the in-place individual Pro → API Starter switch. Every
+ * confirm names the charge the quote showed; the server refuses a higher one
+ * with CHARGE_CHANGED, and an account with no Pro to switch with
+ * NO_UPGRADEABLE_PRO or ALREADY_API_PLAN.
+ */
+export async function requestApiStarterSwitch(
+  request:
+    | { confirm: false }
+    | { confirm: true; acceptedChargeAmount: number; acceptedChargeCurrency: string },
+): Promise<ProBusinessUpgradeResponse> {
+  const userId = requireSignedInUserId('switch to API Starter');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'switching to API Starter');
+  return settleAccountOperation(
+    userId,
+    'switching to API Starter',
+    // Its own action: a Convex deployment that predates the switch has none,
+    // so the call fails and the caller continues to the normal checkout.
+    () => client.action(api.payments.billing.switchToApiStarter, request),
+  );
+}
+
 export interface EnterpriseSeat {
   memberId: string;
   email: string | null;
