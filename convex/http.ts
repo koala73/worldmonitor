@@ -2343,6 +2343,7 @@ http.route({
       discountCode?: string;
       referralCode?: string;
       attributionSource?: string;
+      checkoutChannel?: unknown;
       acquisition?: unknown;
       bypassPendingGuard?: boolean;
     }>(request);
@@ -2372,6 +2373,7 @@ http.route({
           discountCode: body.discountCode,
           referralCode: body.referralCode,
           attributionSource: body.attributionSource,
+          ...(body.checkoutChannel === "mcp" ? { checkoutChannel: "mcp" as const } : {}),
           acquisition: normalizeAcquisitionSource(body.acquisition) ?? undefined,
           bypassPendingGuard: body.bypassPendingGuard,
         },

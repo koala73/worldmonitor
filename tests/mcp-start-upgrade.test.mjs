@@ -416,6 +416,7 @@ describe('production checkout relay', () => {
       userId: 'user_1',
       productId: 'pdt_x',
       attributionSource: MCP_ATTRIBUTION_SOURCE,
+      checkoutChannel: 'mcp',
     });
   });
 

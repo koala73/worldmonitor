@@ -177,6 +177,9 @@ export async function relayMcpCheckout(
         userId: input.userId,
         productId: input.productId,
         attributionSource: MCP_ATTRIBUTION_SOURCE,
+        // Server-set, unlike attributionSource, which the web checkout
+        // forwards from the browser. Convex sells MCP-only plans on this alone.
+        checkoutChannel: 'mcp',
       }),
       signal: AbortSignal.timeout(CHECKOUT_RELAY_TIMEOUT_MS),
     });
