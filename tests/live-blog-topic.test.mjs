@@ -6,13 +6,23 @@ import { describe, it } from 'node:test';
 import { isLiveBlogTopicHeader } from '../shared/live-blog-topic.js';
 
 const TOPIC_HEADERS = [
-  'Live Updates: LIVE: Iran-US war - Business Recorder',
-  'LIVE: Iran-US war',
-  'Live: Russia-Ukraine War',
-  'Israel-Hamas war live updates',
-  'Middle East crisis live',
-  'Live blog: war in Ukraine - The Guardian',
-  'Live updates | Iran-Israel conflict',
+  ['Live Updates: LIVE: Iran-US war - Business Recorder', 'Business Recorder'],
+  ['LIVE: Iran-US war', 'Business Recorder'],
+  ['Live: Russia-Ukraine War', 'Reuters'],
+  ['Israel-Hamas war live updates', 'CNN'],
+  ['Middle East crisis live', 'Guardian World'],
+  ['Live blog: war in Ukraine - The Guardian', 'the guardian'],
+  ['Live updates | Iran-Israel conflict', 'Al Jazeera'],
+];
+
+// A tail after a spaced dash or bar is the publisher only when it names the
+// item's own source. Otherwise it can be the event.
+const EVENT_TAILS = [
+  ['Live: Iran-US war - Tehran hit by strikes', 'Business Recorder'],
+  ['LIVE: Iran-US war | US carrier struck', 'Business Recorder'],
+  ['Live: Iran-US war - Tehran Hit By Strikes', 'Business Recorder'],
+  ['Live Updates: LIVE: Iran-US war - Business Recorder', undefined],
+  ['Live Updates: LIVE: Iran-US war - Business Recorder', 'Strategic Chokepoints'],
 ];
 
 const EVENTS = [
@@ -42,11 +52,14 @@ const EVENTS = [
 ];
 
 describe('isLiveBlogTopicHeader', () => {
-  for (const title of TOPIC_HEADERS) {
-    it(`matches a header with no event: ${title}`, () => assert.equal(isLiveBlogTopicHeader(title), true));
+  for (const [title, source] of TOPIC_HEADERS) {
+    it(`matches a header with no event: ${title}`, () => assert.equal(isLiveBlogTopicHeader(title, source), true));
+  }
+  for (const [title, source] of EVENT_TAILS) {
+    it(`keeps a tail that is not the publisher: ${title} (${source})`, () => assert.equal(isLiveBlogTopicHeader(title, source), false));
   }
   for (const title of EVENTS) {
-    it(`leaves a headline that reports an event: ${title}`, () => assert.equal(isLiveBlogTopicHeader(title), false));
+    it(`leaves a headline that reports an event: ${title}`, () => assert.equal(isLiveBlogTopicHeader(title, 'Business Recorder'), false));
   }
   it('rejects a non-string', () => assert.equal(isLiveBlogTopicHeader(undefined), false));
 });
