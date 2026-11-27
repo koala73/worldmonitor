@@ -43,7 +43,7 @@ gemini mcp add --scope user --transport http worldmonitor https://worldmonitor.a
 ```
 </CodeGroup>
 
-ChatGPT, Grok, Perplexity and other apps take the address `https://worldmonitor.app/mcp` as a custom connector; per-app steps are below.
+ChatGPT lists World Monitor in its plugin directory. Grok, Perplexity and other apps take the address `https://worldmonitor.app/mcp` as a custom connector; per-app steps are below.
 
 <Tip>
 Signed in on the [dashboard](https://www.worldmonitor.app/dashboard)? **Settings → AI Agents** has the same buttons and commands, and lists the agents you have connected.
@@ -107,15 +107,19 @@ On Claude Team and Enterprise, an owner first adds the connector under **Organiz
 ## ChatGPT
 
 <Steps>
-  <Step title="Add the server">
-    Open **Plugins**, click **+**, and choose **Add custom MCP server**. Name it `World Monitor`, paste `https://worldmonitor.app/mcp`, choose **OAuth** for authentication, and confirm.
+  <Step title="Add the plugin">
+    Open [World Monitor in the ChatGPT plugin directory](https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba) and add it.
+
+    <Accordion title="Add it as a custom server instead">
+      Use this when your plan or workspace does not offer the plugin. Open **Plugins**, click **+**, and choose **Add custom MCP server**. Name it `World Monitor`, paste `https://worldmonitor.app/mcp`, choose **OAuth** for authentication, and confirm.
+
+      ChatGPT moves this menu between releases and some plans or workspaces turn custom servers off. If you don't see it, follow [OpenAI's guide to custom MCP servers](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt).
+    </Accordion>
   </Step>
   <Step title="Sign in and ask">
     Sign in with your World Monitor account in the window that opens, then pick World Monitor from the **+** menu in a chat.
   </Step>
 </Steps>
-
-ChatGPT moves this menu between releases and some plans or workspaces turn custom servers off. If you don't see it, follow [OpenAI's guide to custom MCP servers](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt).
 
 ## Codex
 
