@@ -48,6 +48,23 @@ const STOP = new Set((
 ).split(' '));
 const WORD = /[\p{L}\p{N}][\p{L}\p{N}\-+.#]*[\p{L}\p{N}+#]|[\p{L}\p{N}]/gu;
 
+/**
+ * Page slugs in a docs.json language: strings in `pages` arrays, through nested
+ * groups and the tabs' dropdowns. Every other string is a label.
+ */
+export function docsNavigationSlugs(language) {
+  const slugs = new Set();
+  const walk = (node) => {
+    for (const entry of node.pages ?? []) {
+      if (typeof entry === 'string') slugs.add(entry);
+      else walk(entry);
+    }
+    for (const child of [...(node.groups ?? []), ...(node.dropdowns ?? [])]) walk(child);
+  };
+  (language.tabs ?? []).forEach(walk);
+  return slugs;
+}
+
 export function stem(w) {
   for (const [suf, cut] of [['ies', 3], ['sses', 2], ['ing', 3], ['es', 1], ['s', 1]]) {
     if (w.endsWith(suf) && w.length - cut >= 4 && !w.endsWith('ss')) return w.slice(0, -cut) + (suf === 'ies' ? 'y' : '');

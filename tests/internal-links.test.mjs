@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  RUBRIC, LinkIndex, applyLinks, buildJevRequest, buildQueue, canonicalHref, hrefFor, mayLink,
+  RUBRIC, LinkIndex, applyLinks, buildJevRequest, buildQueue, canonicalHref, docsNavigationSlugs, hrefFor, mayLink,
   parseJevAnswers, parseMarkdown, placeLinks, plainSegments,
 } from '../scripts/lib/internal-links.mjs';
 
@@ -175,5 +175,15 @@ describe('applyLinks', () => {
     const twice = applyLinks(once, [link]);
     assert.equal(twice.text, once);
     assert.equal(twice.skipped.length, 1);
+  });
+});
+
+describe('docsNavigationSlugs', () => {
+  it('reads pages through groups and tab dropdowns', () => {
+    const slugs = docsNavigationSlugs({ tabs: [
+      { tab: 'Docs', groups: [{ group: 'Start', pages: ['documentation', { group: 'Nested', pages: ['architecture'] }] }] },
+      { tab: 'API Reference', dropdowns: [{ dropdown: 'Overview', groups: [{ group: 'Overview', pages: ['api-reference', 'api-versioning'] }] }] },
+    ] });
+    assert.deepEqual([...slugs], ['documentation', 'architecture', 'api-reference', 'api-versioning']);
   });
 });

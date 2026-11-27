@@ -417,18 +417,19 @@
           },
           {
             "tab": "API Reference",
-            "openapi": "api/worldmonitor.openapi.yaml",
-            "groups": [
+            "dropdowns": [
               {
-                "group": "Overview",
+                "dropdown": "Overview",
+                "icon": "book-open",
                 "pages": [
                   "api-reference",
                   "api-versioning"
                 ]
               },
               {
-                "group": "Geopolitical",
-                "pages": [
+                "dropdown": "Geopolitical",
+                "icon": "globe",
+                "groups": [
                   {
                     "group": "Conflicts",
                     "openapi": "api/ConflictService.openapi.yaml"
@@ -456,12 +457,21 @@
                   {
                     "group": "Sanctions",
                     "openapi": "api/SanctionsService.openapi.yaml"
+                  },
+                  {
+                    "group": "Safety",
+                    "openapi": "api/SafetyService.openapi.yaml"
+                  },
+                  {
+                    "group": "Scorecards",
+                    "openapi": "api/ScorecardService.openapi.yaml"
                   }
                 ]
               },
               {
-                "group": "Natural Events",
-                "pages": [
+                "dropdown": "Natural Events",
+                "icon": "volcano",
+                "groups": [
                   {
                     "group": "Natural Disasters",
                     "openapi": "api/NaturalService.openapi.yaml"
@@ -489,8 +499,9 @@
                 ]
               },
               {
-                "group": "Economy & Markets",
-                "pages": [
+                "dropdown": "Economy & Markets",
+                "icon": "chart-line",
+                "groups": [
                   {
                     "group": "Economic",
                     "openapi": "api/EconomicService.openapi.yaml"
@@ -526,8 +537,9 @@
                 ]
               },
               {
-                "group": "Infrastructure & Transport",
-                "pages": [
+                "dropdown": "Infrastructure & Transport",
+                "icon": "plane",
+                "groups": [
                   {
                     "group": "Aviation",
                     "openapi": "api/AviationService.openapi.yaml"
@@ -543,12 +555,23 @@
                   {
                     "group": "Resilience",
                     "openapi": "api/ResilienceService.openapi.yaml"
+                  },
+                  {
+                    "group": "Shipping v2",
+                    "openapi": "api/ShippingV2Service.openapi.yaml"
+                  },
+                  {
+                    "group": "Shipping v2 webhooks",
+                    "pages": [
+                      "api-reference/shippingv2service/chokepoint-disruption-alert-outbound-signed"
+                    ]
                   }
                 ]
               },
               {
-                "group": "Health & Environment",
-                "pages": [
+                "dropdown": "Health & Environment",
+                "icon": "heart-pulse",
+                "groups": [
                   {
                     "group": "Public Health",
                     "openapi": "api/HealthService.openapi.yaml"
@@ -560,12 +583,17 @@
                   {
                     "group": "Webcams",
                     "openapi": "api/WebcamService.openapi.yaml"
+                  },
+                  {
+                    "group": "Orbital",
+                    "openapi": "api/OrbitalService.openapi.yaml"
                   }
                 ]
               },
               {
-                "group": "Other",
-                "pages": [
+                "dropdown": "Other",
+                "icon": "layer-group",
+                "groups": [
                   {
                     "group": "News",
                     "openapi": "api/NewsService.openapi.yaml"
@@ -585,6 +613,22 @@
                   {
                     "group": "Batch",
                     "openapi": "api/BatchService.openapi.yaml"
+                  },
+                  {
+                    "group": "Scenarios",
+                    "openapi": "api/ScenarioService.openapi.yaml"
+                  },
+                  {
+                    "group": "Company Monitoring",
+                    "openapi": "api/CompanyMonitoringService.openapi.yaml"
+                  },
+                  {
+                    "group": "Feedback",
+                    "openapi": "api/FeedbackService.openapi.yaml"
+                  },
+                  {
+                    "group": "Leads",
+                    "openapi": "api/LeadsService.openapi.yaml"
                   }
                 ]
               }
@@ -1018,18 +1062,19 @@
           },
           {
             "tab": "API 参考",
-            "openapi": "api/worldmonitor.openapi.yaml",
-            "groups": [
+            "dropdowns": [
               {
-                "group": "概览",
+                "dropdown": "概览",
+                "icon": "book-open",
                 "pages": [
                   "zh/api-reference",
                   "zh/api-versioning"
                 ]
               },
               {
-                "group": "地缘政治",
-                "pages": [
+                "dropdown": "地缘政治",
+                "icon": "globe",
+                "groups": [
                   {
                     "group": "冲突",
                     "openapi": "api/ConflictService.openapi.yaml"
@@ -1057,12 +1102,21 @@
                   {
                     "group": "制裁",
                     "openapi": "api/SanctionsService.openapi.yaml"
+                  },
+                  {
+                    "group": "安全",
+                    "openapi": "api/SafetyService.openapi.yaml"
+                  },
+                  {
+                    "group": "评分卡",
+                    "openapi": "api/ScorecardService.openapi.yaml"
                   }
                 ]
               },
               {
-                "group": "自然事件",
-                "pages": [
+                "dropdown": "自然事件",
+                "icon": "volcano",
+                "groups": [
                   {
                     "group": "自然灾害",
                     "openapi": "api/NaturalService.openapi.yaml"
@@ -1090,8 +1144,9 @@
                 ]
               },
               {
-                "group": "经济与市场",
-                "pages": [
+                "dropdown": "经济与市场",
+                "icon": "chart-line",
+                "groups": [
                   {
                     "group": "经济",
                     "openapi": "api/EconomicService.openapi.yaml"
@@ -1127,8 +1182,9 @@
                 ]
               },
               {
-                "group": "基础设施与交通",
-                "pages": [
+                "dropdown": "基础设施与交通",
+                "icon": "plane",
+                "groups": [
                   {
                     "group": "航空",
                     "openapi": "api/AviationService.openapi.yaml"
@@ -1144,12 +1200,23 @@
                   {
                     "group": "韧性",
                     "openapi": "api/ResilienceService.openapi.yaml"
+                  },
+                  {
+                    "group": "航运 v2",
+                    "openapi": "api/ShippingV2Service.openapi.yaml"
+                  },
+                  {
+                    "group": "航运 v2 Webhook",
+                    "pages": [
+                      "zh/api-reference/shippingv2service/chokepoint-disruption-alert-outbound-signed"
+                    ]
                   }
                 ]
               },
               {
-                "group": "健康与环境",
-                "pages": [
+                "dropdown": "健康与环境",
+                "icon": "heart-pulse",
+                "groups": [
                   {
                     "group": "公共卫生",
                     "openapi": "api/HealthService.openapi.yaml"
@@ -1161,12 +1228,17 @@
                   {
                     "group": "网络摄像头",
                     "openapi": "api/WebcamService.openapi.yaml"
+                  },
+                  {
+                    "group": "轨道",
+                    "openapi": "api/OrbitalService.openapi.yaml"
                   }
                 ]
               },
               {
-                "group": "其他",
-                "pages": [
+                "dropdown": "其他",
+                "icon": "layer-group",
+                "groups": [
                   {
                     "group": "新闻",
                     "openapi": "api/NewsService.openapi.yaml"
@@ -1186,6 +1258,22 @@
                   {
                     "group": "批量",
                     "openapi": "api/BatchService.openapi.yaml"
+                  },
+                  {
+                    "group": "情景",
+                    "openapi": "api/ScenarioService.openapi.yaml"
+                  },
+                  {
+                    "group": "公司监测",
+                    "openapi": "api/CompanyMonitoringService.openapi.yaml"
+                  },
+                  {
+                    "group": "反馈",
+                    "openapi": "api/FeedbackService.openapi.yaml"
+                  },
+                  {
+                    "group": "线索",
+                    "openapi": "api/LeadsService.openapi.yaml"
                   }
                 ]
               }

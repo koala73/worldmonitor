@@ -15,6 +15,9 @@ const aviationFiles = [
 const militaryFiles = [
   resolve(apiDir, 'MilitaryService.openapi.json'),
   resolve(apiDir, 'MilitaryService.openapi.yaml'),
+  // Signal observations embed MilitaryFlight.
+  resolve(apiDir, 'IntelligenceService.openapi.json'),
+  resolve(apiDir, 'IntelligenceService.openapi.yaml'),
   resolve(apiDir, 'worldmonitor.openapi.yaml'),
 ];
 

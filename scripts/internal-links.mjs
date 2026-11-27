@@ -34,6 +34,7 @@ import {
   JEV_ENDPOINT, JEV_MODEL, JEV_USD_PER_INPUT_TOKEN, LinkIndex, RUBRIC, SITE_ORIGIN,
   applyLinks, buildJevRequest, buildQueue, buildRelatedRequest, canonicalHref, hrefFor, parseJevAnswers, parseMarkdown,
   pickRelated, placeLinks, splitCamel,
+  docsNavigationSlugs,
 } from './lib/internal-links.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -63,16 +64,7 @@ function page({ url, kind, file = null, title, name = title, about = '', heading
 function docsPages() {
   const nav = JSON.parse(readFileSync(join(ROOT, 'docs/docs.json'), 'utf8'));
   const en = nav.navigation.languages.find((l) => l.language === 'en');
-  const slugs = new Set();
-  // Page slugs sit in `pages` arrays, nested groups included; every other string is a label.
-  const walk = (node) => {
-    for (const entry of node.pages ?? []) {
-      if (typeof entry === 'string') slugs.add(entry);
-      else walk(entry);
-    }
-    for (const g of node.groups ?? []) walk(g);
-  };
-  en.tabs.forEach(walk);
+  const slugs = docsNavigationSlugs(en);
   const out = [];
   for (const slug of slugs) {
     const file = ['.mdx', '.md'].map((ext) => `docs/${slug}${ext}`).find((f) => existsSync(join(ROOT, f)));
