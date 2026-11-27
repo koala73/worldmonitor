@@ -216,6 +216,22 @@ describe('Climate News translation is a Pro feature', () => {
     expect(summaryText()).toBe(ITEM.summary);
   });
 
+  it('restores the published text when Pro access ends and returns within one render', async () => {
+    await mountPanel();
+    button()!.click();
+    await vi.waitFor(() => expect(titleText()).toBe(`[de] ${ITEM.title}`));
+    setPremium(false);
+    setPremium(true);
+    await vi.waitFor(() => expect(button()?.getAttribute('aria-label')).toBe('Übersetzen'));
+    expect(titleText()).toBe(ITEM.title);
+    expect(summaryText()).toBe(ITEM.summary);
+
+    translator.calls.length = 0;
+    button()!.click();
+    await vi.waitFor(() => expect(translator.calls).toHaveLength(2));
+    expect(translator.calls[0]!.text).toBe(ITEM.title);
+  });
+
   it('discards a translation that completes after Pro access ends', async () => {
     let completeTitle!: (value: string) => void;
     translator.reply = (text) => text === ITEM.title

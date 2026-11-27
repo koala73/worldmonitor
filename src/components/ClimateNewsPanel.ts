@@ -102,7 +102,9 @@ export class ClimateNewsPanel extends Panel {
     if (allowed === this.translationAllowed) return;
     this.translationAllowed = allowed;
     if (!allowed) this.translations.clear();
-    if (this.lastData) this.renderNewsList(this.lastData);
+    // Commit a revocation at once: a debounced one could be cancelled by a
+    // restored render whose HTML matches the translated cards still on screen.
+    if (this.lastData) this.renderNewsList(this.lastData, !allowed);
   }
 
   private async toggleTranslation(card: HTMLElement): Promise<void> {
@@ -166,7 +168,7 @@ export class ClimateNewsPanel extends Panel {
     }
   }
 
-  private renderNewsList(data: ListClimateNewsResponse): void {
+  private renderNewsList(data: ListClimateNewsResponse, immediate = false): void {
     if (!data.items?.length) {
       this.showError(t('components.climateNews.loadError'), () => void this.fetchData());
       return;
@@ -178,7 +180,8 @@ export class ClimateNewsPanel extends Panel {
     const target = getCurrentLanguageTag();
     const translatable = this.translationAllowed && target !== 'en';
     const cards = joinSafeHtml(data.items.map((item) => renderNewsCard(item, target, translatable)));
-    this.setSafeContent(safeHtml`<div class="climate-news-list">${cards}</div>`, () => {
+    const commit = immediate ? this.setSafeContentImmediate.bind(this) : this.setSafeContent.bind(this);
+    commit(safeHtml`<div class="climate-news-list">${cards}</div>`, () => {
       const visibleKeys = new Set<string>();
       for (const card of this.translationCards()) {
         const key = card.dataset.translationKey;
