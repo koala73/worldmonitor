@@ -39,6 +39,7 @@ const MIN_STORY_WORDS = 4;
 let normalizeNewsStoryTitle = () => '';
 let classifyCacheIdentity = (title) => String(title ?? '').toLowerCase();
 let newsPublisherCoverageKey = () => '';
+let newsPublisherReprintsKey = () => '';
 let loadError = null;
 try {
   const identity = require('../shared/story-identity.js');
@@ -46,6 +47,7 @@ try {
   normalizeNewsStoryTitle = identity.normalizeNewsStoryTitle;
   if (typeof identity.classifyCacheIdentity === 'function') classifyCacheIdentity = identity.classifyCacheIdentity;
   if (typeof identity.newsPublisherCoverageKey === 'function') newsPublisherCoverageKey = identity.newsPublisherCoverageKey;
+  if (typeof identity.newsPublisherReprintsKey === 'function') newsPublisherReprintsKey = identity.newsPublisherReprintsKey;
 } catch (err) {
   loadError = err;
 }
@@ -118,6 +120,7 @@ module.exports = {
   normalizeNewsStoryTitle,
   classifyCacheIdentity,
   newsPublisherCoverageKey,
+  newsPublisherReprintsKey,
   newsStoryKey,
   newsAlertClaimKey,
   reachesRealtimeRules,

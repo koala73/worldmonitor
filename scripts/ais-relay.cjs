@@ -87,7 +87,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsAlertClaimKey, newsStoryKeyLoadError, newsPublisherCoverageKey, classifyCacheIdentity, reachesRealtimeRules, reachesLocalRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsAlertClaimKey, newsStoryKeyLoadError, newsPublisherCoverageKey, newsPublisherReprintsKey, classifyCacheIdentity, reachesRealtimeRules, reachesLocalRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -5311,19 +5311,29 @@ function relayEntityCorroborationScore(count) {
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
 // Publisher families the digest saw carry each headline in the last day, over
 // every build and edition (#10977), in one short read. A title without a
-// history falls back to the build's own count.
+// history falls back to the build's own count. Families a wire-aware build
+// folded into a wire on that headline are dropped (#11434): an edition build
+// without the wire copy writes them back. The record lives while builds keep
+// carrying the wire, so it is read whole.
 async function readObservedPublishers(titles) {
   if (titles.length === 0) return new Map();
   const now = Date.now();
   const keyed = titles.map((title) => [title, newsPublisherCoverageKey(title)]).filter(([, key]) => key);
-  const rows = await upstashPipeline(
-    keyed.map(([, key]) => ['ZRANGEBYSCORE', key, `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`, now]),
-    { deadlineMs: 1500 },
-  );
+  const since = `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`;
+  const reprintKeys = keyed.map(([, key]) => newsPublisherReprintsKey(key));
+  const rows = await upstashPipeline([
+    ...keyed.map(([, key]) => ['ZRANGEBYSCORE', key, since, now]),
+    ...reprintKeys.filter(Boolean).map((key) => ['ZRANGEBYSCORE', key, '-inf', '+inf']),
+  ], { deadlineMs: 1500 });
   const observed = new Map();
+  let reprintRow = keyed.length;
   keyed.forEach(([title], i) => {
+    const reprints = reprintKeys[i] ? rows?.[reprintRow++]?.result : null;
+    const folded = new Set(Array.isArray(reprints) ? reprints : []);
     const families = rows?.[i]?.result;
-    if (Array.isArray(families)) observed.set(title, families.filter((family) => typeof family === 'string' && family));
+    if (Array.isArray(families)) {
+      observed.set(title, families.filter((family) => typeof family === 'string' && family && !folded.has(family)));
+    }
   });
   return observed;
 }

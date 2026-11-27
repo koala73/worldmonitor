@@ -16,7 +16,7 @@ import { once } from 'node:events';
 import http from 'node:http';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { newsPublisherCoverageKey } from '../scripts/shared/story-identity.js';
+import { newsPublisherCoverageKey, newsPublisherReprintsKey } from '../scripts/shared/story-identity.js';
 
 const relayScript = fileURLToPath(new URL('../scripts/ais-relay.cjs', import.meta.url));
 const EVENT_QUEUE = 'wm:events:queue';
@@ -73,8 +73,9 @@ async function startUpstash(t) {
     if (name === 'ZRANGEBYSCORE') {
       const exclusive = String(value).startsWith('(');
       const min = value === '-inf' ? -Infinity : Number(exclusive ? String(value).slice(1) : value);
+      const max = rest[0] === '+inf' ? Infinity : Number(rest[0]);
       return (state.coverage.get(key) ?? [])
-        .filter(([, at]) => (exclusive ? at > min : at >= min) && at <= Number(rest[0]))
+        .filter(([, at]) => (exclusive ? at > min : at >= min) && at <= max)
         .map(([family]) => family);
     }
     if (name === 'SET') {
@@ -422,6 +423,23 @@ test('publishers seen carrying the headline in earlier builds and other editions
   // The payload keeps the build's own count; the history is re-read on render.
   assert.equal(alert.payload.corroborationCount, 1);
   assert.ok(alert.payload.importanceScore >= 82, `scored ${alert.payload.importanceScore}`);
+});
+
+test('families the digest folded into a wire do not count toward the score (#11434)', async (t) => {
+  const { upstash, cycle, output } = await startRelay(t);
+  // Two headlines read together, so each record is matched to its own headline.
+  const OTHER = 'Missile strike hits Odesa port as navy scrambles jets along the coast';
+  upstash.state.coverage.set(newsPublisherCoverageKey(OTHER), ['a', 'b', 'c', 'd', 'e'].map((family) => [family, Date.now() - 60_000]));
+  // An edition build without the wire copy wrote four reprints back; the
+  // wire-aware build recorded them as reprints of this headline's wire, a day
+  // ago, and later wire builds kept the record alive.
+  const key = newsPublisherCoverageKey(AGGREGATED_TITLE);
+  upstash.state.coverage.set(key, ['reuters', 'b', 'c', 'd', 'e'].map((family) => [family, Date.now() - 60_000]));
+  upstash.state.coverage.set(newsPublisherReprintsKey(key), ['b', 'c', 'd', 'e'].map((family) => [family, Date.now() - 25 * 3_600_000]));
+  await cycle([{ title: OTHER, source: 'An Unlisted Aggregator' }, { title: AGGREGATED_TITLE, source: 'An Unlisted Aggregator' }]);
+  const scores = Object.fromEntries(upstash.alerts().map((e) => [e.payload.title, e.payload.importanceScore]));
+  assert.ok(scores[OTHER] >= 82, `${OTHER} scored ${scores[OTHER]}; ${output()}`);
+  assert.ok(scores[AGGREGATED_TITLE] < 82, `${AGGREGATED_TITLE} scored ${scores[AGGREGATED_TITLE]}; ${output()}`);
 });
 
 test('a cached copy alerts once the coverage history lifts it over the realtime bar', async (t) => {

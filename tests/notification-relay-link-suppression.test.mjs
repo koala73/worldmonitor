@@ -130,7 +130,8 @@ function installHarness({ smembers = [], smembersOk = true, pipelineOk = true, p
       let body = [];
       try { body = JSON.parse(opts.body); } catch { /* keep empty */ }
       if (body.length && body.every(cmd => cmd[0] === 'ZRANGEBYSCORE')) {
-        return { ok: true, json: async () => body.map(() => ({ result: publisherFamilies })) };
+        // No reprint records: every family the history holds counts.
+        return { ok: true, json: async () => body.map((cmd) => ({ result: String(cmd[1]).startsWith('news:publisher-reprints:') ? [] : publisherFamilies })) };
       }
       if (body.length > 0 && body.every((cmd) => cmd[0] === 'LREM')) {
         calls.lrem.push(...body.map((cmd) => cmd[3]));
