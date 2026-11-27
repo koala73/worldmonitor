@@ -226,6 +226,31 @@ describe('paid country workflow through the MCP handler', () => {
     assert.equal(denied.response.status, 403);
     assert.equal(fetched.length, 1);
   });
+  // ChatGPT opens the country view's global and thread entrypoints with empty arguments.
+  it('opens the country picker without a country and charges nothing on dedicated or API plans', async () => {
+    const api = { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 };
+    for (const getEntitlements of [undefined, async () => api]) {
+      const { deps, pipe } = makeProDeps(getEntitlements ? { getEntitlements } : {});
+      const opened = await invoke(deps, 'open_country_brief', {});
+      assert.equal(opened.body.error, undefined, JSON.stringify(opened.body.error));
+      assert.deepEqual(opened.body.result.structuredContent, { topic: 'overview' });
+      const topic = await invoke(deps, 'open_country_brief', { topic: 'economy' });
+      assert.deepEqual(topic.body.result.structuredContent, { topic: 'economy' });
+      assert.equal(pipe.count, 0);
+      assert.equal(fetched.length, 0);
+    }
+    // The picker is still a paid view: a free account is refused as before.
+    const { deps } = makeProDeps({ getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: true }, validUntil: Date.now() + 86400000 }) });
+    assert.equal((await invoke(deps, 'open_country_brief', {})).body.error.code, -32002);
+  });
+  it('refuses a refresh without a country before charging', async () => {
+    const { deps, pipe } = makeProDeps();
+    const refreshed = await invoke(deps, 'open_country_brief', { refresh: true, request_id: crypto.randomUUID() });
+    assert.equal(refreshed.body.error.code, -32602);
+    const unknown = await invoke(deps, 'open_country_brief', { country_code: 'Atlantis' });
+    assert.equal(unknown.body.error.code, -32602);
+    assert.equal(pipe.count, 0);
+  });
   it('preserves weighted API billing and refuses panel tokens on API allowances', async () => {
     const { deps, pipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
     const opened = await invoke(deps, 'open_country_brief', { country_code: 'US' });

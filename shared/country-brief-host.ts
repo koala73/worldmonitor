@@ -20,6 +20,9 @@ export const countryViewSchema = z.object({
   topic: z.enum(Object.keys(BRIEF_TOPICS) as [keyof typeof BRIEF_TOPICS, ...Array<keyof typeof BRIEF_TOPICS>]).default('overview'),
 }).strict();
 
+/** An open with no country (ChatGPT entrypoints call with {}): the view shows its country picker and nothing is admitted. */
+export const countryPickerViewSchema = z.object({ topic: countryViewSchema.shape.topic }).strict();
+
 const countryDirectControls = {
   country_code: z.string().min(2).max(100),
   refresh: z.boolean().default(false),

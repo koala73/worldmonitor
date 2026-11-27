@@ -62,7 +62,7 @@ let displayHostContext: Record<string, unknown> | undefined;
 // A view tool call the host sends the moment the view reports initialized, while translations still load.
 let callOnInitialized: { name: string; arguments: object } | undefined;
 
-async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false, factorsTiming?: FactorsTimingFixture, imfScenario?: ImfPeriodScenario, recovery?: RecoveryFixture) {
+async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false, factorsTiming?: FactorsTimingFixture, imfScenario?: ImfPeriodScenario, recovery?: RecoveryFixture, pickerOpen = false) {
   const bootTrace: Array<{ event: string; url?: string; method?: string; error?: string }> = [];
   const calls: HostCall[] = [];
   const factorTrace: Array<{ event: string; requestId?: number; section: string; countryCode: string; at: number }> = [];
@@ -162,6 +162,8 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     if (params.name === 'get_country_coverage' && recovery?.coverage === 'unavailable') throw new Error('Controlled coverage outage');
     if (params.name === 'get_country_coverage') return { structuredContent: { countryCode: code, countryName: code, generatedAt: '2026-10-01T15:00:00Z', degraded: false, headlines: [{ title: `Controlled ${code} source article`, source: 'Fixture publisher', url: 'https://example.com/evidence', publishedAtMs: 1790863200000 }], events: [], sources: [{ source: 'news', state: 'ready' }, { source: 'events', state: recovery ? 'empty' : 'unavailable' }] } };
     if (params.name === 'open_country_brief') {
+      // ChatGPT entrypoints open the view with no country; the server returns only the topic and charges nothing.
+      if (!args.country_code) return { structuredContent: { topic: args.topic ?? 'overview' } };
       if (initialOpenError) return { isError: true, content: [{ type: 'text', text: initialOpenError }] };
       if (admissionFailure) return { isError: true, content: [{ type: 'text', text: admissionFailure }] };
       if (code === 'US' && delayAdmission) await admissionDelayed;
@@ -308,7 +310,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
         const result = await (window as unknown as { countryHost: (method: string, params: object, id?: number) => Promise<object> }).countryHost(event.data.method, event.data.params, event.data.id);
         frame.contentWindow!.postMessage({ jsonrpc: '2.0', id: event.data.id, result }, '*');
         if (event.data.method === 'ui/initialize') {
-          const args = { country_code: initialCountry, topic: 'overview' };
+          const args = initialCountry ? { country_code: initialCountry, topic: 'overview' } : { topic: 'overview' };
           frame.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: args }, '*');
           const opened = await (window as unknown as { countryHost: (method: string, params: object) => Promise<object> }).countryHost('tools/call', { name: 'open_country_brief', arguments: args });
           frame.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: opened }, '*');
@@ -318,7 +320,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       }
     });
     frame.srcdoc = html.replace('<head>', `<head><base href="${location.origin}/">`);
-  }, { html, initialCountry: factorsTiming ? 'NO' : 'US', earlyCall: callOnInitialized });
+  }, { html, initialCountry: pickerOpen ? '' : factorsTiming ? 'NO' : 'US', earlyCall: callOnInitialized });
   const action = (name: string, args: object) => page.evaluate(({ name, args }) => new Promise<Record<string, unknown>>(resolve => {
     const id = -Math.random();
     const frame = document.querySelector('iframe')!;
@@ -1082,6 +1084,18 @@ test('country navigation and repeated questions reuse reads and show a quota den
   expect(repeatedAfter(beforeDenied, call => call.name === 'open_country_brief')).toEqual([]);
   const refreshCalls = host.calls.slice(beforeRefresh).filter(call => call.arguments.panel_request === refreshRequest).length + 1;
   await writeFile(info.outputPath('country-request-cost.json'), JSON.stringify({ measuredSurface: 'built opaque iframe, controlled host', initialHostCalls: initialReads, initialDailyUnits: 1, initialMs: Math.round(initialMs), repeatedCountryAndTopicsCalls: 0, navigationBackHostCalls: returnCalls, navigationBackDailyUnits: 0, refreshHostCalls: refreshCalls, refreshDailyUnits: 1, deniedRefreshSectionCalls: 0, deniedRefreshDailyUnits: 0 }, null, 2));
+});
+
+test('an open without a country shows the country picker and loads nothing until a country is chosen', async ({ page }) => {
+  const host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, false, undefined, undefined, undefined, true);
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('#countryStatus')).toContainText('Select a country to open its brief.');
+  await page.waitForTimeout(500);
+  expect(host.calls.map(call => call.name)).toEqual(['open_country_brief']);
+  expect(host.admissions).toBe(0);
+  await host.action('select_country_view', { country_code: 'US' });
+  await expect.poll(() => host.admissions).toBe(1);
+  await expect.poll(() => host.calls.some(call => call.name === 'get_country_brief_section')).toBe(true);
 });
 
 test('an initial host open denial displays its reason without section loads', async ({ page }) => {
