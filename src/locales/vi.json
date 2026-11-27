@@ -2652,7 +2652,13 @@
       "headline": "Tóm tắt AI hàng ngày qua email hoặc Slack",
       "tagline": "cộng với WM Analyst, quy tắc cảnh báo và MCP cho Claude",
       "cta": "Nâng cấp lên Pro →",
-      "dismiss": "Bỏ qua"
+      "dismiss": "Bỏ qua",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "Giảm {{savings}}% cho Pro năm đầu tiên",
+      "promoTagline": "{{perMonth}}/tháng thay vì {{monthly}}, tính phí hàng năm. Hủy bất kỳ lúc nào. Kết thúc {{date}}.",
+      "promoHeadlineYearlyOnly": "Giảm {{percent}}% cho Pro Yearly năm đầu tiên",
+      "promoTaglineYearlyOnly": "Hủy bất cứ lúc nào. Kết thúc {{date}}.",
+      "promoCta": "Nhận ưu đãi"
     },
     "billingState": {
       "onHoldDesc": "Thanh toán không thành công. Cập nhật phương thức thanh toán của bạn để khôi phục quyền truy cập cao cấp.",

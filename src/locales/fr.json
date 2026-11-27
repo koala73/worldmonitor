@@ -2676,7 +2676,13 @@
       "headline": "Briefings IA quotidiens par email ou Slack",
       "tagline": "plus WM Analyst, règles d'alerte et MCP pour Claude",
       "cta": "Passer à Pro →",
-      "dismiss": "Rejeter"
+      "dismiss": "Rejeter",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "{{savings}}% de réduction sur Pro la première année",
+      "promoTagline": "{{perMonth}} par mois au lieu de {{monthly}}, facturé annuellement. Résiliable à tout moment. Expire {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% de réduction sur Pro Annuel la première année",
+      "promoTaglineYearlyOnly": "Annulation possible à tout moment. Expire le {{date}}.",
+      "promoCta": "Profiter de l'offre"
     },
     "billingState": {
       "onHoldDesc": "Le paiement a échoué. Mettez à jour votre moyen de paiement pour rétablir l'accès premium.",

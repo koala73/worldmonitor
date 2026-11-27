@@ -2246,7 +2246,13 @@
       "headline": "Dagelijkse AI-briefings per e-mail of Slack",
       "tagline": "plus WM Analyst, waarschuwingsregels en MCP voor Claude",
       "cta": "Upgrade naar Pro →",
-      "dismiss": "Verwijderen"
+      "dismiss": "Verwijderen",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "{{savings}}% korting op Pro voor je eerste jaar",
+      "promoTagline": "{{perMonth}} per maand in plaats van {{monthly}}, jaarlijks gefactureerd. Opzeggen op elk moment. Eindigt {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% korting op Pro Jaarlijks voor je eerste jaar",
+      "promoTaglineYearlyOnly": "Je kunt altijd annuleren. Eindigt {{date}}.",
+      "promoCta": "Pak de aanbieding"
     },
     "billingState": {
       "onHoldDesc": "Betaling mislukt. Werk je betaalmethode bij om premium toegang te herstellen.",

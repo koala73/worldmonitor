@@ -119,6 +119,25 @@
         ],
         "cta": "Hubungi Tim Penjualan"
       }
+    },
+    "promo": {
+      "stripHeadline": "Black Friday: diskon {{savings}}% untuk Pro. {{perMonth}} per bulan, ditagih tahunan.",
+      "stripDetail": "{{promoPrice}} untuk tahun pertama Anda, bukan {{monthlyTotal}} jika membayar bulanan. Diperpanjang seharga {{listPrice}} per tahun. Batalkan kapan saja sebelum itu dan Anda tidak membayar apa pun lagi.",
+      "stripHeadlineYearlyOnly": "Black Friday: diskon {{percent}}% untuk Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} untuk tahun pertama. Diperpanjang seharga {{listPrice}} per tahun. Batalkan kapan saja sebelum itu dan Anda tidak membayar apa pun lagi.",
+      "suffixFirstYear": "tahun pertama",
+      "payingMonthly": "jika bayar bulanan",
+      "badge": "diskon {{percent}}%",
+      "annualNote": "{{perMonth}}/bln, ditagih tahunan. Kemudian {{listPrice}}/thn. Penawaran berakhir {{date}}.",
+      "annualNoteYearlyOnly": "Kemudian {{listPrice}}/thn. Penawaran berakhir {{date}}.",
+      "monthlyNote": "Black Friday: diskon {{savings}}% dengan paket tahunan",
+      "monthlyNoteYearlyOnly": "Black Friday: diskon {{percent}}% untuk Pro Yearly",
+      "srReferencePrice": "Dibandingkan dengan:",
+      "srOfferPrice": "Harga penawaran:",
+      "stripEnds": "Berakhir {{date}}.",
+      "cancelNote": "Batalkan kapan saja. Batalkan sebelum tahun pertama Anda berakhir dan Anda tidak akan dikenakan biaya lagi.",
+      "annualNoteShort": "{{perMonth}}/bln, ditagih per tahun. Kemudian {{listPrice}}/thn.",
+      "annualNoteShortYearlyOnly": "Kemudian {{listPrice}}/thn."
     }
   },
   "meta": {

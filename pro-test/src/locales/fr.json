@@ -357,7 +357,26 @@
     "axisPersonalNote": "usage personnel",
     "axisCommercial": "Commercial",
     "axisCommercialNote": "travail, clients et produits",
-    "cancelAnytime": "Annulez à tout moment depuis votre compte. Vous conservez l'accès jusqu'à la fin de la période que vous avez payée."
+    "cancelAnytime": "Annulez à tout moment depuis votre compte. Vous conservez l'accès jusqu'à la fin de la période que vous avez payée.",
+    "promo": {
+      "stripHeadline": "Black Friday : {{savings}}% de réduction sur Pro. {{perMonth}} par mois, facturé annuellement.",
+      "stripDetail": "{{promoPrice}} pour votre première année au lieu de {{monthlyTotal}} en paiement mensuel. Renouvellement à {{listPrice}} par an. Annulez à tout moment avant et vous ne payez rien de plus.",
+      "stripHeadlineYearlyOnly": "Black Friday : {{percent}}% de réduction sur Pro Annuel.",
+      "stripDetailYearlyOnly": "{{promoPrice}} pour votre première année. Renouvellement à {{listPrice}} par an. Annulez à tout moment avant et vous ne payez rien de plus.",
+      "suffixFirstYear": "première année",
+      "payingMonthly": "en paiement mensuel",
+      "badge": "{{percent}}% de réduction",
+      "annualNote": "{{perMonth}}/mois, facturé annuellement. Puis {{listPrice}}/an. L'offre se termine le {{date}}.",
+      "annualNoteYearlyOnly": "Puis {{listPrice}}/an. L'offre se termine le {{date}}.",
+      "monthlyNote": "Black Friday : {{savings}}% de réduction avec l'abonnement annuel",
+      "monthlyNoteYearlyOnly": "Black Friday : {{percent}}% de réduction sur Pro Annuel",
+      "srReferencePrice": "Comparé avec :",
+      "srOfferPrice": "Prix de l'offre :",
+      "stripEnds": "Se termine le {{date}}.",
+      "cancelNote": "Annulez à tout moment. Annulez avant la fin de votre première année et vous ne serez pas débité à nouveau.",
+      "annualNoteShort": "{{perMonth}}/mois, facturé annuellement. Puis {{listPrice}}/an.",
+      "annualNoteShortYearlyOnly": "Puis {{listPrice}}/an."
+    }
   },
   "welcome": {
     "meta": {

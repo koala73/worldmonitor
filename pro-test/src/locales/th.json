@@ -357,7 +357,26 @@
     "axisPersonalNote": "การใช้งานส่วนตัว",
     "axisCommercial": "เชิงพาณิชย์",
     "axisCommercialNote": "งาน ลูกค้า และผลิตภัณฑ์",
-    "cancelAnytime": "ยกเลิกได้ตลอดเวลาจากบัญชีของคุณ เมื่อยกเลิกแล้ว คุณยังคงสามารถใช้งานได้จนสิ้นสุดของระยะเวลาที่คุณชำระค่าไปแล้ว"
+    "cancelAnytime": "ยกเลิกได้ตลอดเวลาจากบัญชีของคุณ เมื่อยกเลิกแล้ว คุณยังคงสามารถใช้งานได้จนสิ้นสุดของระยะเวลาที่คุณชำระค่าไปแล้ว",
+    "promo": {
+      "stripHeadline": "Black Friday: ลด {{savings}}% สำหรับ Pro {{perMonth}} ต่อเดือน เรียกเก็บรายปี",
+      "stripHeadlineYearlyOnly": "Black Friday: ลด {{percent}}% สำหรับ Pro Yearly",
+      "stripDetailYearlyOnly": "{{promoPrice}} สำหรับปีแรกของคุณ ต่ออายุในอัตรา {{listPrice}} ต่อปี ยกเลิกได้ตลอดเวลาก่อนหมดปี และคุณจะไม่ต้องชำระเงินเพิ่มเติม",
+      "suffixFirstYear": "ปีแรก",
+      "payingMonthly": "ชำระรายเดือน",
+      "badge": "ลด {{percent}}%",
+      "annualNote": "{{perMonth}}/เดือน เรียกเก็บรายปี จากนั้น {{listPrice}}/ปี ข้อเสนอสิ้นสุด {{date}}",
+      "annualNoteYearlyOnly": "จากนั้น {{listPrice}}/ปี ข้อเสนอสิ้นสุด {{date}}",
+      "monthlyNote": "Black Friday: ลด {{savings}}% เมื่อเลือกรายปี",
+      "monthlyNoteYearlyOnly": "Black Friday: ลด {{percent}}% สำหรับ Pro Yearly",
+      "srReferencePrice": "เปรียบเทียบกับ:",
+      "srOfferPrice": "ราคาข้อเสนอ:",
+      "stripDetail": "{{promoPrice}} สำหรับปีแรกของคุณแทนการชำระเงิน {{monthlyTotal}} รายเดือน ต่ออายุในอัตรา {{listPrice}} ต่อปี ยกเลิกได้ตลอดเวลาก่อนหมดปี และคุณจะไม่ต้องชำระเงินเพิ่มเติม",
+      "stripEnds": "สิ้นสุดในวันที่ {{date}}",
+      "cancelNote": "ยกเลิกได้ตลอดเวลา ยกเลิกก่อนสิ้นสุดปีแรกและคุณจะไม่ถูกเรียกเก็บเงินอีก",
+      "annualNoteShort": "{{perMonth}}/เดือน เรียกเก็บรายปี จากนั้น {{listPrice}}/ปี",
+      "annualNoteShortYearlyOnly": "จากนั้น {{listPrice}}/ปี"
+    }
   },
   "welcome": {
     "meta": {

@@ -357,7 +357,26 @@
     "axisPersonalNote": "sử dụng cá nhân",
     "axisCommercial": "Thương mại",
     "axisCommercialNote": "công việc, khách hàng & sản phẩm",
-    "cancelAnytime": "Hủy bất cứ lúc nào từ tài khoản của bạn. Bạn vẫn có quyền truy cập cho đến hết kỳ thanh toán của mình."
+    "cancelAnytime": "Hủy bất cứ lúc nào từ tài khoản của bạn. Bạn vẫn có quyền truy cập cho đến hết kỳ thanh toán của mình.",
+    "promo": {
+      "stripHeadline": "Black Friday: Giảm {{savings}}% Pro. {{perMonth}}/tháng, tính phí hàng năm.",
+      "stripDetail": "{{promoPrice}} cho năm đầu tiên thay vì {{monthlyTotal}} trả hàng tháng. Gia hạn lại với {{listPrice}}/năm. Hủy bất kỳ lúc nào trước đó và bạn không phải trả thêm.",
+      "stripHeadlineYearlyOnly": "Black Friday: Giảm {{percent}}% Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} cho năm đầu tiên. Gia hạn lại với {{listPrice}}/năm. Hủy bất kỳ lúc nào trước đó và bạn không phải trả thêm.",
+      "suffixFirstYear": "năm đầu tiên",
+      "payingMonthly": "trả hàng tháng",
+      "badge": "Giảm {{percent}}%",
+      "annualNote": "{{perMonth}}/tháng, tính phí hàng năm. Sau đó {{listPrice}}/năm. Ưu đãi kết thúc {{date}}.",
+      "annualNoteYearlyOnly": "Sau đó {{listPrice}}/năm. Ưu đãi kết thúc {{date}}.",
+      "monthlyNote": "Black Friday: Giảm {{savings}}% khi trả theo năm",
+      "monthlyNoteYearlyOnly": "Black Friday: Giảm {{percent}}% Pro Yearly",
+      "srReferencePrice": "So với:",
+      "srOfferPrice": "Giá ưu đãi:",
+      "stripEnds": "Kết thúc {{date}}.",
+      "cancelNote": "Hủy bất kỳ lúc nào. Hủy trước khi năm đầu tiên kết thúc và bạn sẽ không bị tính phí lần nữa.",
+      "annualNoteShort": "{{perMonth}}/tháng, thanh toán hàng năm. Sau đó {{listPrice}}/năm.",
+      "annualNoteShortYearlyOnly": "Sau đó {{listPrice}}/năm."
+    }
   },
   "welcome": {
     "meta": {

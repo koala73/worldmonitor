@@ -357,7 +357,26 @@
     "axisPersonalNote": "uso individual",
     "axisCommercial": "Comercial",
     "axisCommercialNote": "trabajo, clientes y productos",
-    "cancelAnytime": "Cancela en cualquier momento desde tu cuenta. Mantienes acceso hasta el final del período que pagaste."
+    "cancelAnytime": "Cancela en cualquier momento desde tu cuenta. Mantienes acceso hasta el final del período que pagaste.",
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% de descuento en Pro. {{perMonth}} al mes, facturado anualmente.",
+      "stripDetail": "{{promoPrice}} durante tu primer año en lugar de {{monthlyTotal}} pagando mensualmente. Se renueva a {{listPrice}} al año. Cancela en cualquier momento antes de entonces y no pagarás más.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% de descuento en Pro Anual.",
+      "stripDetailYearlyOnly": "{{promoPrice}} durante tu primer año. Se renueva a {{listPrice}} al año. Cancela en cualquier momento antes de entonces y no pagarás más.",
+      "suffixFirstYear": "primer año",
+      "payingMonthly": "pagando mensualmente",
+      "badge": "{{percent}}% de descuento",
+      "annualNote": "{{perMonth}}/mes, facturado anualmente. Después {{listPrice}}/año. La oferta finaliza {{date}}.",
+      "annualNoteYearlyOnly": "Después {{listPrice}}/año. La oferta finaliza {{date}}.",
+      "monthlyNote": "Black Friday: {{savings}}% de descuento con facturación anual",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% de descuento en Pro Anual",
+      "srReferencePrice": "Comparado con:",
+      "srOfferPrice": "Precio de oferta:",
+      "stripEnds": "Finaliza {{date}}.",
+      "cancelNote": "Cancela en cualquier momento. Cancela antes de que finalice tu primer año y no te volveremos a cobrar.",
+      "annualNoteShort": "{{perMonth}}/mes, facturado anualmente. Luego {{listPrice}}/año.",
+      "annualNoteShortYearlyOnly": "Luego {{listPrice}}/año."
+    }
   },
   "welcome": {
     "meta": {

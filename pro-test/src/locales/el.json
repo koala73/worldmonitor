@@ -357,7 +357,26 @@
     "axisPersonalNote": "ατομική χρήση",
     "axisCommercial": "Εμπορική",
     "axisCommercialNote": "εργασία, πελάτες & προϊόντα",
-    "cancelAnytime": "Ακυρώστε ανά πάσα στιγμή από τον λογαριασμό σας. Διατηρείτε την πρόσβαση έως το τέλος της περιόδου που πληρώσατε."
+    "cancelAnytime": "Ακυρώστε ανά πάσα στιγμή από τον λογαριασμό σας. Διατηρείτε την πρόσβαση έως το τέλος της περιόδου που πληρώσατε.",
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% έκπτωση Pro. {{perMonth}} το μήνα, χρέωση ετησίως.",
+      "stripDetail": "{{promoPrice}} για το πρώτο έτος σας αντί {{monthlyTotal}} με μηνιαία χρέωση. Ανανέωση στο {{listPrice}} ετησίως. Ακυρώστε ανά πάσα στιγμή πριν από τότε και δεν θα πληρώσετε τίποτα παραπάνω.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% έκπτωση Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} για το πρώτο έτος. Ανανέωση στο {{listPrice}} ετησίως. Ακυρώστε ανά πάσα στιγμή πριν από τότε και δεν θα πληρώσετε τίποτα παραπάνω.",
+      "suffixFirstYear": "πρώτο έτος",
+      "payingMonthly": "με μηνιαία χρέωση",
+      "badge": "{{percent}}% έκπτωση",
+      "annualNote": "{{perMonth}}/μήνα, χρέωση ετησίως. Στη συνέχεια {{listPrice}}/έτος. Η προσφορά λήγει {{date}}.",
+      "annualNoteYearlyOnly": "Στη συνέχεια {{listPrice}}/έτος. Η προσφορά λήγει {{date}}.",
+      "monthlyNote": "Black Friday: {{savings}}% έκπτωση με ετήσια χρέωση",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% έκπτωση Pro Yearly",
+      "srReferencePrice": "Σε σύγκριση με:",
+      "srOfferPrice": "Τιμή προσφοράς:",
+      "stripEnds": "Λήγει {{date}}.",
+      "cancelNote": "Ακύρωση ανά πάσα στιγμή. Ακυρώστε πριν λήξει το πρώτο έτος σας και δεν θα χρεωθείτε ξανά.",
+      "annualNoteShort": "{{perMonth}}/μήνα, χρέωση ετησίως. Στη συνέχεια {{listPrice}}/έτος.",
+      "annualNoteShortYearlyOnly": "Στη συνέχεια {{listPrice}}/έτος."
+    }
   },
   "welcome": {
     "meta": {

@@ -357,7 +357,26 @@
     "axisPersonalNote": "użytek indywidualny",
     "axisCommercial": "Komercyjne",
     "axisCommercialNote": "praca, klienci i produkty",
-    "cancelAnytime": "Anuluj w dowolnym momencie z poziomu swojego konta. Zachowujesz dostęp do końca okresu, za który zapłaciłeś."
+    "cancelAnytime": "Anuluj w dowolnym momencie z poziomu swojego konta. Zachowujesz dostęp do końca okresu, za który zapłaciłeś.",
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% rabatu na Pro. {{perMonth}} miesięcznie, rozliczane rocznie.",
+      "stripDetail": "{{promoPrice}} przez pierwszy rok zamiast {{monthlyTotal}} płaconego miesięcznie. Odnawia się za {{listPrice}} rocznie. Anuluj w dowolnym momencie przed tą datą, a nie będziesz płacić więcej.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% rabatu na roczny plan Pro.",
+      "stripDetailYearlyOnly": "{{promoPrice}} przez pierwszy rok. Odnawia się za {{listPrice}} rocznie. Anuluj w dowolnym momencie przed tą datą, a nie będziesz płacić więcej.",
+      "suffixFirstYear": "pierwszy rok",
+      "payingMonthly": "płacone miesięcznie",
+      "badge": "{{percent}}% rabatu",
+      "annualNote": "{{perMonth}}/mies., rozliczane rocznie. Potem {{listPrice}}/rok. Oferta kończy się {{date}}.",
+      "annualNoteYearlyOnly": "Potem {{listPrice}}/rok. Oferta kończy się {{date}}.",
+      "monthlyNote": "Black Friday: {{savings}}% rabatu przy rocznym abonamencie",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% rabatu na roczny plan Pro",
+      "srReferencePrice": "W porównaniu z:",
+      "srOfferPrice": "Cena oferty:",
+      "stripEnds": "Kończy się {{date}}.",
+      "cancelNote": "Możesz anulować w dowolnym momencie. Anuluj przed upływem pierwszego roku, a nie obciążymy Cię ponownie.",
+      "annualNoteShort": "{{perMonth}}/mies., rozliczanie roczne. Następnie {{listPrice}}/rok.",
+      "annualNoteShortYearlyOnly": "Następnie {{listPrice}}/rok."
+    }
   },
   "welcome": {
     "meta": {

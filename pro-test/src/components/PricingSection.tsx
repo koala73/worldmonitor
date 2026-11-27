@@ -4,13 +4,15 @@ import { Check, ShieldCheck, ArrowRight, Zap, Loader2 } from 'lucide-react';
 import { startCheckout, subscribeCheckoutPhase, type CheckoutPhase } from '../services/checkout';
 import { createTimeoutSignal } from '../services/timeout-signal';
 import { CheckoutConsent } from './CheckoutConsent';
-import { t, tArray } from '../i18n';
+import { t, tArray, currentLanguageBase } from '../i18n';
 import type { CheckoutAttribution } from '../../../shared/checkout-attribution';
 import type { DesktopCheckoutHandoff } from '../../../shared/desktop-checkout-handoff';
+import { activePromo, formatPromoEnd, type PromoCampaign } from '../../../shared/promo-campaign';
 
 // Static fallback from build-time generation (used while fetching live prices)
 import fallbackTiers from '../generated/tiers.json';
 import { resolveCheckoutProduct } from './pricing-billing-mode';
+import { promoPricingForTier, type PromoPricing } from './pricing-promo';
 
 interface Tier {
   name: string;
@@ -49,6 +51,70 @@ function usePricingData(): Tier[] {
   }, []);
 
   return tiers;
+}
+
+/**
+ * The running promotion, set only after mount so it never reaches prerendered
+ * HTML or structured data, and cleared at its end instant on a page left open.
+ */
+function useActivePromo(): PromoCampaign | null {
+  const [promo, setPromo] = useState<PromoCampaign | null>(null);
+  useEffect(() => {
+    const running = activePromo(Date.now());
+    setPromo(running);
+    if (!running) return;
+    const timer = setTimeout(() => setPromo(null), Math.max(0, running.endsAtMs - Date.now()));
+    return () => clearTimeout(timer);
+  }, []);
+  return promo;
+}
+
+/** The promotion's last minute in the reader's locale and time zone. */
+function promoEndLabel(promo: PromoCampaign): string {
+  return formatPromoEnd(promo.endsAtMs, currentLanguageBase());
+}
+
+/** One line above the tier grid naming the offer, its figures and its end. */
+function PromoStrip({ pricing, endLabel }: { pricing: PromoPricing; endLabel: string }) {
+  const vsMonthly = pricing.savingsVsMonthlyPct !== null && pricing.monthlyTotalLabel !== null;
+  const headline = vsMonthly
+    ? t('pricing.promo.stripHeadline', { savings: pricing.savingsVsMonthlyPct, perMonth: pricing.perMonthLabel })
+    : t('pricing.promo.stripHeadlineYearlyOnly', { percent: pricing.percentOff });
+  const detail = vsMonthly
+    ? t('pricing.promo.stripDetail', {
+      promoPrice: pricing.promoLabel,
+      monthlyTotal: pricing.monthlyTotalLabel,
+      listPrice: pricing.listLabel,
+    })
+    : t('pricing.promo.stripDetailYearlyOnly', {
+      promoPrice: pricing.promoLabel,
+      listPrice: pricing.listLabel,
+    });
+  // Headline and detail are one block: the detail carries the monthly
+  // reference, the first-year qualifier and the renewal price, so it is never
+  // hidden. The offer end is a label on the headline row, away from the
+  // cancel sentence, so it never reads as the date by which to cancel.
+  //
+  // Phones skip the strip, and on laptops it stays two rows: any taller and
+  // the checkout buttons drop below the first screen (#10843). The Pro card
+  // carries the same figures, renewal price, end and cancel terms.
+  return (
+    <div
+      data-promo-strip=""
+      className="hidden md:block mb-5 mx-auto max-w-6xl text-center border border-wm-green/40 bg-wm-green/5 rounded-sm px-4 py-2"
+    >
+      <p className="font-display text-lg font-bold text-wm-green">
+        {headline}
+        <span
+          data-promo-ends=""
+          className="ml-3 align-middle whitespace-nowrap border border-wm-green/40 rounded-sm px-1.5 py-0.5 text-xs font-mono font-normal uppercase tracking-wider text-wm-muted"
+        >
+          {t('pricing.promo.stripEnds', { date: endLabel })}
+        </span>
+      </p>
+      <p className="mt-1 text-sm text-wm-text">{detail}</p>
+    </div>
+  );
 }
 
 /**
@@ -282,6 +348,17 @@ export function PricingSection({
     ? phase.productId : null;
   const rateLimited = phase.kind === 'rate_limited';
   const TIERS = usePricingData();
+  const promo = useActivePromo();
+  // The offer is yearly only, so a monthly default would hide it. A
+  // reactivation link naming a plan still decides the starting mode.
+  useEffect(() => {
+    if (!promo) return;
+    if (new URLSearchParams(window.location.search).get('wm_reactivate_plan')) return;
+    setBilling('annual');
+  }, [promo]);
+  const promoTier = promo ? TIERS.find((tier) => tier.annualProductId === promo.productId) : undefined;
+  const promoStripPricing = promoTier ? promoPricingForTier(promoTier, promo) : null;
+  const promoEnd = promo ? promoEndLabel(promo) : '';
   // Enterprise leaves the card grid and renders as a full-width band below
   // it: it is the only non-self-serve tier, and pulling it out keeps the grid
   // at exactly five columns so the Personal/Commercial axis header can span
@@ -307,8 +384,10 @@ export function PricingSection({
   return (
     <section id="pricing" className="py-24 px-6 border-t border-wm-border bg-[#060606]">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-16">
+        {/* Header. The promotion strip (md and up) sits under it with a
+            tighter gap, so the checkout buttons stay in a 1440x900 first
+            screen with the site's own fonts loaded (#10843). */}
+        <div className={`text-center mb-16 ${promo && promoStripPricing ? 'md:mb-8' : ''}`}>
           <motion.h2
             className="text-3xl md:text-5xl font-display font-bold mb-4"
             initial={{ opacity: 0, y: 20 }}
@@ -384,6 +463,10 @@ export function PricingSection({
           </p>
         </div>
 
+        {promo && promoStripPricing && (
+          <PromoStrip pricing={promoStripPricing} endLabel={promoEnd} />
+        )}
+
         {/* Tier cards grid */}
         {/* 5 self-serve tiers since Pro Business was published (#5604):
             2-up on tablet, 3+2 on laptop, all five across on desktop.
@@ -425,6 +508,7 @@ export function PricingSection({
             // CTA label per locale (link CTAs read tier.cta directly).
             const localizedTier: Tier = { ...tier, cta: localized.cta };
             const cta = getCtaProps(localizedTier, billing);
+            const tierPromo = promoPricingForTier(tier, promo);
 
             return (
               <motion.div
@@ -461,8 +545,79 @@ export function PricingSection({
 
                   {/* Price */}
                   <div>
-                    <span className="text-4xl font-display font-bold break-words hyphens-auto">{price.amount}</span>
-                    <span className="text-sm text-wm-muted ml-1">{price.suffix}</span>
+                    {tierPromo && billing === 'annual' ? (
+                      <div data-promo-price="">
+                        {/* The struck reference is the price the badge's
+                            percentage is measured against: twelve monthly
+                            payments when known, else the yearly list price. */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-wm-muted">
+                          <span className="sr-only">{t('pricing.promo.srReferencePrice')} </span>
+                          {tierPromo.monthlyTotalLabel !== null ? (
+                            <span>
+                              <s className="font-mono">{tierPromo.monthlyTotalLabel}</s>{' '}
+                              {t('pricing.promo.payingMonthly')}
+                            </span>
+                          ) : (
+                            <s className="font-mono">{tierPromo.listLabel}{t('pricing.suffixPerYear')}</s>
+                          )}
+                          <span className="bg-wm-green text-wm-bg px-1.5 py-0.5 rounded-sm text-xs font-mono font-bold uppercase tracking-wider">
+                            {tierPromo.savingsVsMonthlyPct !== null
+                              ? t('pricing.promo.badge', { percent: tierPromo.savingsVsMonthlyPct })
+                              : t('pricing.promo.badge', { percent: tierPromo.percentOff })}
+                          </span>
+                        </div>
+                        <span className="sr-only">{t('pricing.promo.srOfferPrice')} </span>
+                        <span className="text-4xl font-display font-bold break-words hyphens-auto">{tierPromo.promoLabel}</span>
+                        <span className="text-sm text-wm-muted ml-1">{t('pricing.promo.suffixFirstYear')}</span>
+                        {/* Phones carry the offer end here because they skip
+                            the strip; wider screens show it in the strip and
+                            keep this line short so the checkout buttons stay
+                            on the first screen (#10843). */}
+                        <p className="mt-1 text-xs text-wm-green md:hidden">
+                          {tierPromo.savingsVsMonthlyPct !== null
+                            ? t('pricing.promo.annualNote', {
+                              perMonth: tierPromo.perMonthLabel,
+                              listPrice: tierPromo.listLabel,
+                              date: promoEnd,
+                            })
+                            : t('pricing.promo.annualNoteYearlyOnly', {
+                              listPrice: tierPromo.listLabel,
+                              date: promoEnd,
+                            })}
+                        </p>
+                        <p className="mt-1 text-xs text-wm-green hidden md:block">
+                          {tierPromo.savingsVsMonthlyPct !== null
+                            ? t('pricing.promo.annualNoteShort', {
+                              perMonth: tierPromo.perMonthLabel,
+                              listPrice: tierPromo.listLabel,
+                            })
+                            : t('pricing.promo.annualNoteShortYearlyOnly', {
+                              listPrice: tierPromo.listLabel,
+                            })}
+                        </p>
+                        <p data-promo-cancel="" className="mt-1 text-xs text-wm-text">
+                          {t('pricing.promo.cancelNote')}
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-4xl font-display font-bold break-words hyphens-auto">{price.amount}</span>
+                        <span className="text-sm text-wm-muted ml-1">{price.suffix}</span>
+                      </>
+                    )}
+                    {tierPromo && billing === 'monthly' && (
+                      <button
+                        type="button"
+                        data-promo-switch=""
+                        onClick={() => setBilling('annual')}
+                        disabled={loadingProductId !== null}
+                        className="mt-1 block text-left text-xs text-wm-green underline underline-offset-2 hover:text-green-300 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {tierPromo.savingsVsMonthlyPct !== null
+                          ? t('pricing.promo.monthlyNote', { savings: tierPromo.savingsVsMonthlyPct })
+                          : t('pricing.promo.monthlyNoteYearlyOnly', { percent: tierPromo.percentOff })}
+                      </button>
+                    )}
                     {cta.type === 'checkout' && cta.billedMonthlyOnly && (
                       <p className="mt-1 text-xs font-mono uppercase tracking-wider text-wm-muted">
                         {t('pricing.billedMonthlyNote', { defaultValue: 'Billed monthly — no annual plan' })}

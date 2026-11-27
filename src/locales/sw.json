@@ -2736,7 +2736,13 @@
       "headline": "Muhtasari wa AI kila siku kwa barua pepe au Slack",
       "tagline": "pamoja na WM Analyst, sheria za arifa na MCP kwa Claude",
       "cta": "Jiunge na Pro →",
-      "dismiss": "Ondoa"
+      "dismiss": "Ondoa",
+      "promoBadge": "Ijumaa Nyeusi",
+      "promoHeadline": "{{savings}}% punguzo kwenye Pro kwa mwaka wako wa kwanza",
+      "promoTagline": "{{perMonth}} kwa mwezi badala ya {{monthly}}, kulipwa kila mwaka. Futa wakati wowote. Inaishia {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% punguzo kwenye Pro Yearly kwa mwaka wako wa kwanza",
+      "promoTaglineYearlyOnly": "Futa wakati wowote. Inaishia {{date}}.",
+      "promoCta": "Pata ofa"
     },
     "checkoutFailureBanner": {
       "message": "Malipo hayakuweza kukamilika. Hakuna malipo yaliyofanywa.",

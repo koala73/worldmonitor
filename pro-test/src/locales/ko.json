@@ -357,7 +357,26 @@
     "axisPersonalNote": "개인 사용",
     "axisCommercial": "상용",
     "axisCommercialNote": "업무, 클라이언트 및 제품",
-    "cancelAnytime": "언제든지 계정에서 취소할 수 있습니다. 결제한 기간이 끝날 때까지 접근 권한이 유지됩니다."
+    "cancelAnytime": "언제든지 계정에서 취소할 수 있습니다. 결제한 기간이 끝날 때까지 접근 권한이 유지됩니다.",
+    "promo": {
+      "stripHeadline": "블랙프라이데이: Pro {{savings}}% 할인. 월 {{perMonth}}, 연간 청구.",
+      "stripDetail": "첫 해 {{promoPrice}}, 월 결제 시 {{monthlyTotal}}. 이후 연 {{listPrice}}에 갱신됩니다. 그 전에 언제든 취소하면 더 이상 결제되지 않습니다.",
+      "stripHeadlineYearlyOnly": "블랙프라이데이: Pro 연간 {{percent}}% 할인.",
+      "stripDetailYearlyOnly": "첫 해 {{promoPrice}}. 이후 연 {{listPrice}}에 갱신됩니다. 그 전에 언제든 취소하면 더 이상 결제되지 않습니다.",
+      "suffixFirstYear": "첫 해",
+      "payingMonthly": "월간 결제",
+      "badge": "{{percent}}% 할인",
+      "annualNote": "{{perMonth}}/월, 연간 청구. 이후 {{listPrice}}/년. 오퍼 종료 {{date}}.",
+      "annualNoteYearlyOnly": "이후 {{listPrice}}/년. 오퍼 종료 {{date}}.",
+      "monthlyNote": "블랙프라이데이: 연간 결제 시 {{savings}}% 할인",
+      "monthlyNoteYearlyOnly": "블랙프라이데이: Pro 연간 {{percent}}% 할인",
+      "srReferencePrice": "비교 대상:",
+      "srOfferPrice": "오퍼 가격:",
+      "stripEnds": "{{date}}에 종료됩니다.",
+      "cancelNote": "언제든지 취소할 수 있습니다. 첫 해가 끝나기 전에 취소하면 추가 요금이 부과되지 않습니다.",
+      "annualNoteShort": "월 {{perMonth}}, 연간 청구. 이후 연 {{listPrice}}.",
+      "annualNoteShortYearlyOnly": "이후 연 {{listPrice}}."
+    }
   },
   "welcome": {
     "meta": {

@@ -119,7 +119,26 @@
         "cta": "Wasiliana na Bora"
       }
     },
-    "cancelAnytime": "Ghairi wakati wowote kutoka kwa akaunti yako. Utabaki na upatikanaji hadi mwisho wa kipindi ulicholipa."
+    "cancelAnytime": "Ghairi wakati wowote kutoka kwa akaunti yako. Utabaki na upatikanaji hadi mwisho wa kipindi ulicholipa.",
+    "promo": {
+      "stripHeadline": "Black Friday: punguzo la {{savings}}% kwa Pro. {{perMonth}} kwa mwezi, hulipwa kila mwaka.",
+      "stripDetail": "{{promoPrice}} kwa mwaka wako wa kwanza badala ya {{monthlyTotal}} ukilipa kila mwezi. Inasasishwa kwa {{listPrice}} kwa mwaka. Ghairi wakati wowote kabla ya hapo na hutalipa chochote zaidi.",
+      "stripHeadlineYearlyOnly": "Black Friday: punguzo la {{percent}}% kwa Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} kwa mwaka wako wa kwanza. Inasasishwa kwa {{listPrice}} kwa mwaka. Ghairi wakati wowote kabla ya hapo na hutalipa chochote zaidi.",
+      "suffixFirstYear": "mwaka wa kwanza",
+      "payingMonthly": "ukilipa kila mwezi",
+      "badge": "punguzo la {{percent}}%",
+      "annualNote": "{{perMonth}}/mwezi, hulipwa kila mwaka. Kisha {{listPrice}}/mwaka. Ofa inaishia {{date}}.",
+      "annualNoteYearlyOnly": "Kisha {{listPrice}}/mwaka. Ofa inaishia {{date}}.",
+      "monthlyNote": "Black Friday: punguzo la {{savings}}% ukilipa kwa mwaka",
+      "monthlyNoteYearlyOnly": "Black Friday: punguzo la {{percent}}% kwa Pro Yearly",
+      "srReferencePrice": "Linganisha na:",
+      "srOfferPrice": "Bei ya ofa:",
+      "stripEnds": "Inaishia {{date}}.",
+      "cancelNote": "Ghairi wakati wowote. Ukighairi kabla mwaka wako wa kwanza kuisha, hutatozwa tena.",
+      "annualNoteShort": "{{perMonth}}/mwezi, bilashaji kila mwaka. Kisha {{listPrice}}/mwaka.",
+      "annualNoteShortYearlyOnly": "Kisha {{listPrice}}/mwaka."
+    }
   },
   "meta": {
     "title": "World Monitor Pro | Uchambuzi AI & MCP",

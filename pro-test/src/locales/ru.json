@@ -357,7 +357,26 @@
     "axisPersonalNote": "для личного использования",
     "axisCommercial": "Коммерческий",
     "axisCommercialNote": "работа, клиенты и продукты",
-    "cancelAnytime": "Отмените подписку в любой момент из личного кабинета. Доступ сохранится до конца оплаченного периода."
+    "cancelAnytime": "Отмените подписку в любой момент из личного кабинета. Доступ сохранится до конца оплаченного периода.",
+    "promo": {
+      "stripHeadline": "Чёрная пятница: скидка {{savings}}% на Pro. {{perMonth}} в месяц, счёт выставляется ежегодно.",
+      "stripDetail": "{{promoPrice}} за первый год вместо {{monthlyTotal}} при ежемесячной оплате. Продлевается за {{listPrice}} в год. Отмените в любой момент до этого, и больше ничего не платите.",
+      "stripHeadlineYearlyOnly": "Чёрная пятница: скидка {{percent}}% на Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} за первый год. Продлевается за {{listPrice}} в год. Отмените в любой момент до этого, и больше ничего не платите.",
+      "suffixFirstYear": "первый год",
+      "payingMonthly": "при ежемесячной оплате",
+      "badge": "Скидка {{percent}}%",
+      "annualNote": "{{perMonth}}/мес., счёт выставляется ежегодно. Затем {{listPrice}}/год. Предложение завершается {{date}}.",
+      "annualNoteYearlyOnly": "Затем {{listPrice}}/год. Предложение завершается {{date}}.",
+      "monthlyNote": "Чёрная пятница: скидка {{savings}}% при годовой подписке",
+      "monthlyNoteYearlyOnly": "Чёрная пятница: скидка {{percent}}% на Pro Yearly",
+      "srReferencePrice": "Сравнение с:",
+      "srOfferPrice": "Цена предложения:",
+      "stripEnds": "Завершается {{date}}.",
+      "cancelNote": "Отмена в любой момент. Отмените до конца первого года, и повторного списания не будет.",
+      "annualNoteShort": "{{perMonth}}/мес., счёт ежегодно. Затем {{listPrice}}/год.",
+      "annualNoteShortYearlyOnly": "Затем {{listPrice}}/год."
+    }
   },
   "welcome": {
     "meta": {

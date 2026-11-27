@@ -2712,7 +2712,13 @@
       "headline": "ملخصات AI يومية بالبريد أو Slack",
       "tagline": "بالإضافة إلى WM Analyst وقواعد التنبيهات و MCP لـ Claude",
       "cta": "ترقية إلى Pro →",
-      "dismiss": "رفض"
+      "dismiss": "رفض",
+      "promoBadge": "البيع الأسود",
+      "promoHeadline": "خصم {{savings}}% على Pro للسنة الأولى",
+      "promoTagline": "{{perMonth}} في الشهر بدلاً من {{monthly}}، محاسبة سنوية. الإلغاء ممكن في أي وقت. ينتهي {{date}}.",
+      "promoHeadlineYearlyOnly": "خصم {{percent}}% على Pro السنوي للسنة الأولى",
+      "promoTaglineYearlyOnly": "إلغاء في أي وقت. ينتهي {{date}}.",
+      "promoCta": "احصل على العرض"
     },
     "billingState": {
       "onHoldDesc": "فشل الدفع. حدِّث طريقة الدفع لاستعادة الوصول المميز.",

@@ -16,7 +16,10 @@ const COMPONENTS_DIR = 'src/components';
 // "Satellite passes here" item adds 47. The Country Brief Historical
 // Intelligence Memory section title adds 75 bytes (#11244). The Strategic
 // Posture tooltip, corrected to the real thresholds and the vessel cap, adds 128.
-const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492 + 80 + 49 + 10 + 47 + 36 + 75 + 128;
+// The Pro strip's promotion variant (badge, headline, tagline, CTA) adds 381;
+// it renders on first paint, so its strings ship in the shell. Naming the
+// monthly price its saving is measured against adds 23.
+const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492 + 80 + 49 + 10 + 47 + 36 + 75 + 128 + 381 + 23;
 
 function tsFilesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

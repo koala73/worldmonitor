@@ -2652,7 +2652,13 @@
       "headline": "毎日のAIブリーフをメールまたはSlackで受け取る",
       "tagline": "WM Analyst、アラートルール、Claude向けMCP付き",
       "cta": "Pro にアップグレード →",
-      "dismiss": "閉じる"
+      "dismiss": "閉じる",
+      "promoBadge": "ブラックフライデー",
+      "promoHeadline": "初年度Pro料金が{{savings}}%オフ",
+      "promoTagline": "{{perMonth}}/月（年間課金）- 通常{{monthly}}/月。いつでもキャンセル可能。{{date}}まで。",
+      "promoHeadlineYearlyOnly": "初年度Pro年間プランが{{percent}}%オフ",
+      "promoTaglineYearlyOnly": "いつでもキャンセル可能。{{date}}に終了。",
+      "promoCta": "オファーを受け取る"
     },
     "billingState": {
       "onHoldDesc": "お支払いに失敗しました。プレミアムアクセスを復元するには、お支払い方法を更新してください。",

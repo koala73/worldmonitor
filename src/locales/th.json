@@ -2652,7 +2652,13 @@
       "headline": "สรุปข้อมูล AI ประจำวันทางอีเมลหรือ Slack",
       "tagline": "รวมถึง WM Analyst, กฎการแจ้งเตือน และ MCP สำหรับ Claude",
       "cta": "อัปเกรดเป็น Pro →",
-      "dismiss": "ปิด"
+      "dismiss": "ปิด",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "ลด {{savings}}% สำหรับ Pro ในปีแรก",
+      "promoTagline": "{{perMonth}} ต่อเดือน แทนที่จะเป็น {{monthly}} คิดค่าบริการรายปี ยกเลิกได้ตลอดเวลา สิ้นสุด {{date}}",
+      "promoHeadlineYearlyOnly": "ลด {{percent}}% สำหรับ Pro Yearly ในปีแรก",
+      "promoTaglineYearlyOnly": "ยกเลิกได้ตลอดเวลา สิ้นสุดเมื่อ {{date}}",
+      "promoCta": "รับโปรโมชัน"
     },
     "billingState": {
       "onHoldDesc": "การชำระเงินล้มเหลว อัปเดตวิธีการชำระเงินของคุณเพื่อกู้คืนการเข้าถึงระดับพรีเมียม",

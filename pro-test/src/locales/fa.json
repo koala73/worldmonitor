@@ -119,7 +119,26 @@
         "cta": "تماس با فروش"
       }
     },
-    "cancelAnytime": "هر زمان می‌توانید از حسابتان لغو کنید. تا پایان دوره‌ای که پرداخت کردید، دسترسی خود را حفظ می‌کنید."
+    "cancelAnytime": "هر زمان می‌توانید از حسابتان لغو کنید. تا پایان دوره‌ای که پرداخت کردید، دسترسی خود را حفظ می‌کنید.",
+    "promo": {
+      "stripHeadline": "جمعه سیاه: {{savings}}% تخفیف Pro. {{perMonth}} در ماه، با صورت‌حساب سالانه.",
+      "stripDetail": "{{promoPrice}} برای سال اول شما به جای {{monthlyTotal}} با پرداخت ماهانه. با {{listPrice}} در سال تمدید می‌شود. اگر قبل از آن هر زمان لغو کنید، هیچ مبلغ دیگری نمی‌پردازید.",
+      "stripHeadlineYearlyOnly": "جمعه سیاه: {{percent}}% تخفیف Pro سالانه.",
+      "stripDetailYearlyOnly": "{{promoPrice}} برای سال اول. با {{listPrice}} در سال تمدید می‌شود. اگر قبل از آن هر زمان لغو کنید، هیچ مبلغ دیگری نمی‌پردازید.",
+      "suffixFirstYear": "سال اول",
+      "payingMonthly": "با پرداخت ماهانه",
+      "badge": "{{percent}}% تخفیف",
+      "annualNote": "{{perMonth}}/ماه، با صورت‌حساب سالانه. سپس {{listPrice}}/سال. پایان پیشنهاد: {{date}}.",
+      "annualNoteYearlyOnly": "سپس {{listPrice}}/سال. پایان پیشنهاد: {{date}}.",
+      "monthlyNote": "جمعه سیاه: {{savings}}% تخفیف با پرداخت سالانه",
+      "monthlyNoteYearlyOnly": "جمعه سیاه: {{percent}}% تخفیف Pro سالانه",
+      "srReferencePrice": "در مقایسه با:",
+      "srOfferPrice": "قیمت پیشنهادی:",
+      "stripEnds": "پایان: {{date}}.",
+      "cancelNote": "می‌توانید هر زمان لغو کنید. اگر قبل از پایان سال اول لغو کنید، دوباره شارژ نخواهید شد.",
+      "annualNoteShort": "{{perMonth}}/ماه، پرداخت سالانه. سپس {{listPrice}}/سال.",
+      "annualNoteShortYearlyOnly": "سپس {{listPrice}}/سال."
+    }
   },
   "meta": {
     "title": "World Monitor Pro | هوش مصنوعی و MCP",
