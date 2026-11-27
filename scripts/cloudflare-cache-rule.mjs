@@ -258,8 +258,14 @@ export const ENTRY_DOCUMENTS = Object.freeze(['/', '/dashboard', ...INDEXABLE_LA
  */
 export const USER_AGENT_ROUTED_DOCUMENTS = Object.freeze(['/']);
 
-/** The User-Agents middleware.ts routes to markdown, lowercased for `lower(http.user_agent)`. */
-export const AGENT_USER_AGENTS = Object.freeze(agentRequestPolicy.userAgents.map((agent) => agent.toLowerCase()));
+/**
+ * The User-Agents middleware.ts routes to markdown, lowercased for
+ * `lower(http.user_agent)`: the crawlers, plus the person-driven fetchers that
+ * get markdown or HTML by their Accept header. Both bodies vary by UA.
+ */
+export const AGENT_USER_AGENTS = Object.freeze(
+  [...agentRequestPolicy.userAgents, ...agentRequestPolicy.userFetchers].map((agent) => agent.toLowerCase()),
+);
 
 /**
  * User-Agent substrings Mintlify answers on /docs/* with a markdown rendering
@@ -282,6 +288,19 @@ export const DOCS_MARKDOWN_USER_AGENT_TOKENS = Object.freeze([
   'duckassistbot',
   'mistralai-user',
 ]);
+
+/**
+ * Substrings that stand in for every agent token containing them. `contains`
+ * matching makes `perplexity` cover PerplexityBot and Perplexity-User in one
+ * clause, which keeps the expression under the headroom guard below.
+ */
+const USER_AGENT_STEMS = Object.freeze(['perplexity']);
+
+/** The fewest `contains` substrings that still match every agent token. */
+export function userAgentCarveOutTokens(agents) {
+  const tokens = agents.map((agent) => USER_AGENT_STEMS.find((stem) => agent.includes(stem)) ?? agent);
+  return [...new Set(tokens)];
+}
 
 /** Families whose nested documents vary by User-Agent at the origin, with the UA substrings to carve out. */
 const USER_AGENT_ROUTED_FAMILIES = Object.freeze({ docs: DOCS_MARKDOWN_USER_AGENT_TOKENS });
@@ -387,7 +406,7 @@ function buildCorpusCacheExpression({
   // a request only costs a cache hit, admitting one hands a crawler browser HTML.
   const unguardedDocuments = documents.filter((document) => !userAgentRouted.includes(document) || !agents.length);
   const entryDocuments = documents.filter((document) => userAgentRouted.includes(document) && agents.length).map((document) => {
-    const carveOuts = agents.map(
+    const carveOuts = userAgentCarveOutTokens(agents).map(
       (agent, index) => `        ${index ? 'or ' : ''}lower(http.user_agent) contains "${agent}"`,
     );
     return [

@@ -375,9 +375,9 @@ interface HomepageTool {
 
 const HOMEPAGE_VALID_INPUTS: Record<string, Record<string, unknown>> = {
   open_dashboard: { monitor: 'world' },
-  getWorldMonitorMcpEndpoint: {},
-  listCountryScorecards: { countryCodes: ['DE'] },
-  getCountryScorecard: { countryCode: 'DE' },
+  get_worldmonitor_mcp_endpoint: {},
+  list_country_scorecards: { countryCodes: ['DE'] },
+  get_country_scorecard: { countryCode: 'DE' },
 };
 
 const WEBMCP_MAINTAINER_SOURCES = [

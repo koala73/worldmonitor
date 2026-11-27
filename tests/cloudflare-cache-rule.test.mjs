@@ -25,6 +25,7 @@ import { CONTENT_CORPUS_PREFIXES } from '../scripts/discover-content-corpus-page
 import {
   AGENT_TEXT_FILES,
   AGENT_USER_AGENTS,
+  userAgentCarveOutTokens,
   CORPUS_HOST,
   DOCS_MARKDOWN_USER_AGENT_TOKENS,
   EDGE_CACHED_FAMILIES,
@@ -455,8 +456,14 @@ describe('cloudflare corpus cache rule', () => {
     // UA, and AI crawlers are the audience the corpus cache exists for, so the
     // carve-out is scoped to the one URL whose body varies.
     assert.deepEqual([...USER_AGENT_ROUTED_DOCUMENTS], ['/']);
-    assert.deepEqual([...AGENT_USER_AGENTS], agentRequestPolicy.userAgents.map((ua) => ua.toLowerCase()));
+    assert.deepEqual(
+      [...AGENT_USER_AGENTS],
+      [...agentRequestPolicy.userAgents, ...agentRequestPolicy.userFetchers].map((ua) => ua.toLowerCase()),
+    );
     assert.ok(AGENT_USER_AGENTS.includes('gptbot') && AGENT_USER_AGENTS.includes('claudebot'), 'positive control on the policy');
+    // The person-driven fetchers get markdown or HTML by Accept, so a cached
+    // HTML answer would hide the markdown from them the same way.
+    assert.ok(AGENT_USER_AGENTS.includes('claude-user') && AGENT_USER_AGENTS.includes('perplexity-user'));
 
     const lines = rule.expression.split('\n');
     const home = lines.findIndex((line) => line.trim() === 'or (http.request.uri.path eq "/"');
@@ -465,12 +472,15 @@ describe('cloudflare corpus cache rule', () => {
     while (close < lines.length && lines[close] !== '    )') close += 1;
     const clause = lines.slice(home, close + 1).join('\n');
     assert.ok(clause.includes('and not ('), 'the homepage claim must carve the agents out');
+    const homeTokens = [...clause.matchAll(/lower\(http\.user_agent\) contains "([^"]+)"/g)].map((match) => match[1]);
     for (const agent of AGENT_USER_AGENTS) {
-      assert.ok(clause.includes(`lower(http.user_agent) contains "${agent}"`), `${agent} must be carved out of the homepage claim`);
+      assert.ok(homeTokens.some((token) => agent.includes(token)), `${agent} must be carved out of the homepage claim`);
     }
+    assert.ok(homeTokens.includes('perplexity') && !homeTokens.includes('perplexitybot'), 'one stem covers both Perplexity agents');
+    assert.deepEqual(userAgentCarveOutTokens(['perplexitybot', 'gptbot', 'perplexity-user']), ['perplexity', 'gptbot']);
     assert.equal(
       (rule.expression.match(/http\.user_agent/g) ?? []).length,
-      AGENT_USER_AGENTS.length + DOCS_MARKDOWN_USER_AGENT_TOKENS.length,
+      userAgentCarveOutTokens(AGENT_USER_AGENTS).length + DOCS_MARKDOWN_USER_AGENT_TOKENS.length,
       'User-Agent carve-outs belong to the homepage and the docs claims alone: corpus and blog answer one body per UA',
     );
     assert.ok(

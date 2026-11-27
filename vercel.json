@@ -155,6 +155,7 @@
     { "source": "/data/v1/chokepoints/:file([0-9a-z-]+\\.(?:json|csv))", "destination": "/api/open-data-chokepoints?file=:file" },
     { "source": "/docs/mcp", "destination": "/api/docs-mcp" },
     { "source": "/docs/mcp/server-card", "destination": "/.well-known/mcp/docs-server-card.json" },
+    { "source": "/mcp/server-card", "destination": "/.well-known/mcp/server-card.json" },
     { "source": "/", "has": [{ "type": "query", "key": "mode", "value": "agent" }], "destination": "/agent-view.json" },
     { "source": "/", "has": [{ "type": "host", "value": "^(?:www\\.)?worldmonitor\\.app$" }], "destination": "/pro/welcome.html" },
     { "source": "/index.md", "destination": "/pro/home.md" },
@@ -287,6 +288,14 @@
     {
       "source": "/.well-known/(.*)",
       "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/mcp/server-card",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json; charset=utf-8" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]

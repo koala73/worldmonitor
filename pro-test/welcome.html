@@ -25,7 +25,7 @@
          tools read the public, credential-free five-factor scorecard routes
          (PUBLIC_NO_AUTH_RPC_PATHS in server/gateway.ts) on the page's origin. The MCP
          server is the remote HTTP (Streamable HTTP) transport at
-         https://worldmonitor.app/mcp — getWorldMonitorMcpEndpoint hands agents
+         https://worldmonitor.app/mcp — get_worldmonitor_mcp_endpoint hands agents
          that endpoint. The nonce is added by Vite (html.cspNonce) at build time,
          so this inline script needs no CSP script-src hash (deploy-config.test). -->
     <script>
@@ -88,7 +88,7 @@
           }
         };
         var MCP_ENDPOINT_TOOL = {
-          name: 'getWorldMonitorMcpEndpoint',
+          name: 'get_worldmonitor_mcp_endpoint',
           title: 'Get World Monitor MCP Endpoint',
           description: "Return connection details for World Monitor's remote MCP server so an agent can pull live geopolitical, market, maritime, aviation, cyber and economic intelligence directly. Includes the Streamable HTTP endpoint, the discovery server card, and supported auth modes.",
           inputSchema: { type: 'object', properties: {}, additionalProperties: false },
@@ -106,9 +106,9 @@
           }
         };
         var LIST_SCORECARDS_TOOL = {
-          name: 'listCountryScorecards',
+          name: 'list_country_scorecards',
           title: 'List Country Scorecards',
-          description: 'Browse five-factor capability scorecards (food, energy, demographics, technology, defense) for ranked countries, 1-5 per pillar, in pages of up to 15 countries. A null score means too little data. No account needed. Use getCountryScorecard for one country in detail.',
+          description: 'Browse five-factor capability scorecards (food, energy, demographics, technology, defense) for ranked countries, 1-5 per pillar, in pages of up to 15 countries. A null score means too little data. No account needed. Use get_country_scorecard for one country in detail.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -177,7 +177,7 @@
           }
         };
         var GET_SCORECARD_TOOL = {
-          name: 'getCountryScorecard',
+          name: 'get_country_scorecard',
           title: 'Get Country Scorecard',
           description: "Read one country's five-factor capability scorecard: each pillar's 1-5 score, band, input coverage and data sources, plus a link to the full evidence JSON. No account needed.",
           inputSchema: {

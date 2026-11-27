@@ -9,6 +9,10 @@
     "ora-agent",
     "DeepSeekBot"
   ],
+  "userFetchers": [
+    "Claude-User",
+    "Perplexity-User"
+  ],
   "blockedResponse": {
     "error": "Forbidden",
     "code": "agent_request_blocked",
