@@ -10860,6 +10860,9 @@
           "path": "scripts/eval-classify-labels.mjs"
         },
         {
+          "path": "scripts/eval-classify-saudi-posts.mjs"
+        },
+        {
           "path": "scripts/lib/brief-dedup-consts.mjs"
         },
         {
@@ -16002,6 +16005,9 @@
         },
         {
           "path": "scripts/eval-classify-labels.mjs"
+        },
+        {
+          "path": "scripts/eval-classify-saudi-posts.mjs"
         },
         {
           "path": "scripts/lib/brief-embedding.mjs"
