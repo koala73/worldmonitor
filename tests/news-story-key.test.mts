@@ -367,7 +367,7 @@ function coverageStore() {
       return { result: args.includes('WITHSCORES') ? hits.flatMap(([family, seen]) => [family, String(seen)]) : hits.map(([family]) => family) };
     } else {
       assert.equal(op, 'EXPIRE');
-      expired.push(String(key));
+      expired.push(`${key} ${args[0]}`);
     }
     return { result: 1 };
   };
@@ -538,18 +538,35 @@ test('a rewrite merge that copies a wire in renews that wording\'s reprint recor
   t.mock.method(globalThis, 'fetch', async (_url, init) => Response.json(JSON.parse(init.body).map(store.run)));
   useRedisEnv(t);
   const now = Date.now();
-  // NDTV's wording carries only NDTV; the wire's wording carries Reuters.
+  // NDTV's wording holds a folded reprint from an earlier wire build, and now
+  // only NDTV; the wire's wording carries Reuters.
+  const ndtvWire = [{ title: `${NDTV} - Reuters`, source: 'Reuters World' }, { title: NDTV, source: 'Kansas City Star' }];
+  await digest.recordPublisherCoverage(ndtvWire, ndtvWire, now - 20 * 3_600_000, Infinity);
   await digest.recordPublisherCoverage([{ title: NDTV, source: 'NDTV' }], [{ title: NDTV, source: 'NDTV' }], now - 60_000, Infinity);
   const wire = { title: `${EGYPT_INDEPENDENT} - Reuters`, source: 'Reuters World' };
   await digest.recordPublisherCoverage([wire], [wire], now - 60_000, Infinity);
+  const reprints = (title: string) => newsPublisherReprintsKey(newsPublisherCoverageKey(title));
+  assert.deepEqual([...(store.sets.get(reprints(NDTV))?.keys() ?? [])], ['label:kansas city star']);
   const event = { eventType: 'rss_alert', variant: 'full', severity: 'critical', payload: { title: NDTV, importanceScore: 82, corroborationCount: 0 } };
   const anchorId = `full:${newsPublisherCoverageKey(EGYPT_INDEPENDENT).split(':').pop()}`;
   store.expired.length = 0;
   assert.equal(await mergeStoryCoverage(event, anchorId, store.pipeline, now), true);
-  const reprints = (title: string) => newsPublisherReprintsKey(newsPublisherCoverageKey(title));
-  // Reuters reached NDTV's wording; NDTV is no wire, so the wire's record is left alone.
-  assert.ok(store.expired.includes(reprints(NDTV)));
-  assert.ok(!store.expired.includes(reprints(EGYPT_INDEPENDENT)));
+  // Reuters crossed both ways (NDTV's wording still holds the earlier wire
+  // sighting), so each record gets the writer's full day, and none is cleared.
+  const renewed = () => store.expired.filter(entry => entry.startsWith('news:publisher-reprints:')).sort();
+  assert.deepEqual(renewed(), [`${reprints(NDTV)} 86400`, `${reprints(EGYPT_INDEPENDENT)} 86400`].sort());
+  assert.deepEqual([...(store.sets.get(reprints(NDTV))?.keys() ?? [])], ['label:kansas city star']);
+
+  // A merge that copies no wire renews no record.
+  const plain = [{ title: SUN_ONLINE, source: 'SunOnline International' }];
+  await digest.recordPublisherCoverage(plain, plain, now - 60_000, Infinity);
+  const sun = { ...event, payload: { ...event.payload, title: SUN_ONLINE } };
+  const ndtvId = `full:${newsPublisherCoverageKey(NDTV).split(':').pop()}`;
+  store.sets.delete(newsPublisherCoverageKey(NDTV));
+  await digest.recordPublisherCoverage([{ title: NDTV, source: 'NDTV' }], [{ title: NDTV, source: 'NDTV' }], now - 60_000, Infinity);
+  store.expired.length = 0;
+  assert.equal(await mergeStoryCoverage(sun, ndtvId, store.pipeline, now), true);
+  assert.deepEqual(renewed(), []);
 });
 
 test('an expired sighting on the other wording does not clear a current reprint record (#11434)', async (t) => {
