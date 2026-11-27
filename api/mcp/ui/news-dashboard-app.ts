@@ -2,11 +2,13 @@ import { rpcError, rpcOk } from '../rpc';
 import { UI_DOMAIN, UI_RESOURCE_MIME_TYPE } from './shell';
 import { buildPluginShell } from './_plugin-loader';
 
-// v4 carries preferredDisplayMode; hosts cache resource metadata by URI, so a new URI is how installed connectors pick it up.
-export const COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v4.html';
-export const NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v4.html';
-export const PREVIOUS_COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v3.html';
-export const PREVIOUS_NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v3.html';
+// v5 adds ChatGPT's _meta["openai/ui"] display modes; hosts cache resource metadata by URI, so a new URI is how installed connectors pick it up.
+export const COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v5.html';
+export const NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v5.html';
+export const PREVIOUS_COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v4.html';
+export const PREVIOUS_NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v4.html';
+export const LEGACY_COUNTRY_VIEW_V3_UI_URI = 'ui://worldmonitor/country-view-v3.html';
+export const LEGACY_NEWS_DASHBOARD_V3_UI_URI = 'ui://worldmonitor/news-dashboard-v3.html';
 export const LEGACY_COUNTRY_VIEW_V2_UI_URI = 'ui://worldmonitor/country-view-v2.html';
 export const LEGACY_NEWS_DASHBOARD_V2_UI_URI = 'ui://worldmonitor/news-dashboard-v2.html';
 export const LEGACY_COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v1.html';
@@ -24,8 +26,12 @@ const MAP_ASSET_ORIGINS = [
 // (MCP Apps spec, Host Behavior), which covers the inline SVG icons in the view
 // CSS, and a bare scheme here would also widen script-src and style-src.
 // preferredDisplayMode asks Claude to open the view in its side panel; hosts without one render inline.
+// ChatGPT reads display modes from _meta["openai/ui"] on the resource instead, and renders inline when it is absent.
+const CHATGPT_FULLSCREEN = { availableDisplayModes: ['inline', 'fullscreen'], preferredDisplayMode: 'fullscreen' };
+
 export const NEWS_DASHBOARD_META = {
   'openai/widgetDescription': 'Shows WorldMonitor news panels and an interactive hazard map for the requested query, with local topic, filter and layer navigation.',
+  'openai/ui': CHATGPT_FULLSCREEN,
   ui: {
     domain: UI_DOMAIN,
     preferredDisplayMode: 'fullscreen',
@@ -41,6 +47,7 @@ export const NEWS_DASHBOARD_META = {
 
 export const COUNTRY_VIEW_META = {
   'openai/widgetDescription': 'Shows a shared country deep dive whose sections load progressively for signed-in users.',
+  'openai/ui': CHATGPT_FULLSCREEN,
   ui: { domain: UI_DOMAIN, preferredDisplayMode: 'fullscreen', csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
