@@ -4125,15 +4125,51 @@ function selectProAnnualSwitchCandidate(
   };
 }
 
-/** Pure selection for either plan change, exported for tests. */
+/**
+ * Everything that differs between plan changes, in one row per kind, so a new
+ * kind is a compile error until each field is decided rather than silently
+ * taking another kind's path.
+ */
+interface PlanChangeSpec {
+  select: (subs: Parameters<typeof selectProBusinessUpgradeCandidate>[0], now: number) => ProBusinessUpgradeCandidate;
+  /** The running promotion's code rides on the change (shared/promo-campaign.ts). */
+  takesPromo: boolean;
+  /** A confirm must echo the quote's `discounted` flag. */
+  confirmEchoesDiscounted: boolean;
+  /**
+   * The quote says the action takes the quote guards (an accepted charge on
+   * confirm, `listPrice` on preview). The Pro Business action takes only
+   * `confirm`, so its quotes never say so.
+   */
+  advertisesQuoteGuards: boolean;
+  /** Logged once a change is sent. */
+  appliedEvent: string;
+}
+
+const PLAN_CHANGE_SPECS: Readonly<Record<PlanChangeKind, PlanChangeSpec>> = {
+  pro_business: {
+    select: selectProBusinessUpgradeCandidate,
+    takesPromo: false,
+    confirmEchoesDiscounted: false,
+    advertisesQuoteGuards: false,
+    appliedEvent: "pro_business_upgrade_applied",
+  },
+  pro_annual: {
+    select: selectProAnnualSwitchCandidate,
+    takesPromo: true,
+    confirmEchoesDiscounted: true,
+    advertisesQuoteGuards: true,
+    appliedEvent: "pro_annual_switch_applied",
+  },
+};
+
+/** Pure selection for any plan change, exported for tests. */
 export function selectPlanChangeCandidate(
   kind: PlanChangeKind,
   subs: Parameters<typeof selectProBusinessUpgradeCandidate>[0],
   now: number,
 ): ProBusinessUpgradeCandidate {
-  return kind === "pro_annual"
-    ? selectProAnnualSwitchCandidate(subs, now)
-    : selectProBusinessUpgradeCandidate(subs, now);
+  return PLAN_CHANGE_SPECS[kind].select(subs, now);
 }
 
 export const getProBusinessUpgradeCandidate = internalQuery({
@@ -4345,8 +4381,9 @@ export async function runPlanChange(
   },
 ): Promise<ProBusinessUpgradeResult> {
   const { confirm, kind } = args;
+  const spec = PLAN_CHANGE_SPECS[kind];
   const previewDeadline = Date.now() + PLAN_CHANGE_PREVIEW_BUDGET_MS;
-  if (kind === "pro_annual" && confirm && typeof args.discounted !== "boolean") {
+  if (spec.confirmEchoesDiscounted && confirm && typeof args.discounted !== "boolean") {
     // The confirm must say which quote it accepts; guessing could charge a
     // price the user never saw.
     throw new ConvexError({ kind: "PLAN_CHANGE_QUOTE_REQUIRED" });
@@ -4375,7 +4412,7 @@ export async function runPlanChange(
   }
 
   // Read once per call: the preview and the confirm each decide from one instant.
-  const promo = kind === "pro_annual" ? activePromoFor(candidate.toProductId, Date.now()) : null;
+  const promo = spec.takesPromo ? activePromoFor(candidate.toProductId, Date.now()) : null;
   const client = getDodoClient({ timeout: PRO_BUSINESS_UPGRADE_TIMEOUT_MS, maxRetries: 0 });
   const billingPeriod: "monthly" | "annual" =
     PRODUCT_CATALOG[candidate.toPlanKey]?.billingPeriod === "annual" ? "annual" : "monthly";
@@ -4439,8 +4476,7 @@ export async function runPlanChange(
         billingPeriod,
         discounted,
         percentOff: discounted && promo ? promo.percentOff : null,
-        // The Pro Business action takes only `confirm`.
-        ...(kind === "pro_annual" ? { acceptsQuoteGuards: true as const } : {}),
+        ...(spec.advertisesQuoteGuards ? { acceptsQuoteGuards: true as const } : {}),
         // The offer runs but this quote is at list price (code refused, or a
         // list-price re-quote): the client says so above the price.
         ...(promo && !discounted ? { offerNotApplied: true as const } : {}),
@@ -4549,7 +4585,7 @@ export async function runPlanChange(
     throw new ConvexError({ kind: "DODO_PLAN_CHANGE_ERROR" });
   }
   console.log(JSON.stringify({
-    event: kind === "pro_annual" ? "pro_annual_switch_applied" : "pro_business_upgrade_applied",
+    event: spec.appliedEvent,
     fromPlanKey: candidate.fromPlanKey,
     toPlanKey: candidate.toPlanKey,
     ...(sentDiscountCode && promo ? { promo: promo.id } : {}),
