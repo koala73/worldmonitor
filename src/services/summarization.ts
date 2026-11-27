@@ -17,6 +17,8 @@ import { getCurrentLanguage } from './i18n';
 import type { SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { buildSummaryCacheKey } from '@/utils/summary-cache-key';
+import { isFreeAlertTranslation } from '@/utils/free-translation';
+import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { NewsServiceClient } from '@/services/generated-rpc-clients';
 import { premiumFetch } from '@/services/premium-fetch';
 import {
@@ -89,9 +91,9 @@ const premiumNewsClient = new NewsServiceClient(getRpcBaseUrl(), {
 // network attempts — before this gate, every summarize attempt fanned out up
 // to 2 doomed RPCs (ollama→openrouter through the same gated endpoint).
 // panel-gating's hasPremiumAccess is the dual-signal source of truth.
-// translateText is deliberately NOT gated: it uses mode='translate' via the
-// plain newsClient, which the server allows for non-premium callers.
+// translateText has its own gate (below): translation is Pro too.
 configureSummarizeGate(() => hasPremiumAccess());
+
 const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization', cacheTtlMs: 0 });
 
 const summaryResultBreaker = createCircuitBreaker<SummarizationResult | null>({
@@ -427,14 +429,25 @@ export async function translateText(
 ): Promise<string | null> {
   if (!text) return null;
 
+  // Translation requires Pro (summarize-article.ts enforces it). Two requests
+  // stay free and go through the plain client, which carries the anonymous
+  // session: Hebrew OREF alerts into English, and the desktop app's own local
+  // model. Anything else from a free browser is never sent.
+  const pro = hasPremiumAccess();
+  const freeAlert = isFreeAlertTranslation(text, targetLang);
   const totalSteps = API_PROVIDERS.length;
   for (const [i, providerDef] of API_PROVIDERS.entries()) {
     if (!isFeatureAvailable(providerDef.featureId)) continue;
+    const desktopLocal = providerDef.provider === 'ollama' && isDesktopRuntime();
+    if (!pro && !desktopLocal && !freeAlert) continue;
+    // Pro translation carries the caller's credential through the summary
+    // client. Its 429 backoff applies here too: a 429 is the account's limit.
+    const client = pro && !desktopLocal ? premiumNewsClient : newsClient;
 
     onProgress?.(i + 1, totalSteps, `Translating with ${providerDef.label}...`);
     try {
       const resp = await summaryBreaker.execute(async () => {
-        return newsClient.summarizeArticle({
+        return client.summarizeArticle({
           provider: providerDef.provider,
           headlines: [text],
           mode: 'translate',

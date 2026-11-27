@@ -14,8 +14,12 @@
  * per request, from the body (`shouldReserveGatewayDirectLlmQuota` in
  * server/gateway.ts):
  *
- *   - `mode: 'translate'` — free, and REQUIRES the anonymous wms_ cookie
- *     (verified against prod: no cookie ⇒ 401 "API key required").
+ *   - `mode: 'translate'` — Pro, except two free requests: Hebrew alerts
+ *     into English and the desktop's local model. The free alert request
+ *     REQUIRES the anonymous wms_ cookie (verified against prod: no cookie ⇒
+ *     401 "API key required"). Pro translation goes through premiumFetch.
+ *     The handler, not the gateway, refuses a free caller's other
+ *     translations, with a 200 "Pro subscription required" envelope.
  *   - any other mode — spend-bearing, requires a Clerk identity, so an
  *     anonymous caller gets 401 "Pro authentication required" no matter how
  *     fresh their session cookie is.
@@ -23,14 +27,14 @@
  * That is why the path is deliberately kept OUT of `PREMIUM_RPC_PATHS` (see
  * `DIRECT_LLM_PREMIUM_BYPASS_ALLOWLIST` in tests/premium-paths-guard.test.mts):
  * adding it would make the interceptor step aside for translate too, no wms_
- * would be attached, and free translation would break for every anonymous
- * visitor.
+ * would be attached, and free alert translation would break for every
+ * anonymous visitor.
  *
  * ## The bug this closes (#5674)
  *
  * The client already knows which mode it is sending — summarize goes through
- * `premiumFetch(..., { forcePremium: true })`, translate through the plain
- * client — but that intent died inside `premiumFetch`. The interceptor judged
+ * `premiumFetch(..., { forcePremium: true })`, translate (then free) through
+ * the plain client — but that intent died inside `premiumFetch`. The interceptor judged
  * premium-ness from the static path set alone, so when `premiumFetch` could
  * not resolve any credential (anonymous visitor, signed-in free user, or a
  * Clerk boot-window token race) its unauthenticated fallback 401 was read as a

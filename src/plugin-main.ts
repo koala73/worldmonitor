@@ -248,6 +248,8 @@ function mountPlugin(): void {
             return { summary: result.summary, provider: 'openrouter', model: result.model, cached: false };
           },
           translateText: async (text, lang) => (await analyze({ headlines: [text], lang, mode: 'translate' })).summary,
+          // The host's paid plan admits the call; headlineAnalysis hides the control otherwise.
+          canTranslate: () => true,
         });
         panels.set(category, panel);
         grid.appendChild(panel.getElement());

@@ -16,7 +16,7 @@ const ENV_KEYS = [
   'OPENROUTER_API_KEY', 'OLLAMA_API_URL', 'LLM_API_URL', 'LLM_API_KEY', 'LLM_MODEL',
   'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'ANTHROPIC_REASONING_MODEL',
   'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN',
-  'CONVEX_SITE_URL', 'CONVEX_SERVER_SHARED_SECRET',
+  'CONVEX_SITE_URL', 'CONVEX_SERVER_SHARED_SECRET', 'WORLDMONITOR_VALID_KEYS',
   'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL',
 ] as const;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -100,13 +100,20 @@ function hosts(sent: Sent[]): string[] {
   return sent.map((s) => s.host);
 }
 
-const ctxFor = (path: string, userId?: string) => ({
+const ctxFor = (path: string, userId?: string, extraHeaders: Record<string, string> = {}) => ({
   request: new Request(`https://worldmonitor.app${path}`, {
-    headers: userId ? { 'x-user-id': userId } : {},
+    headers: { ...(userId ? { 'x-user-id': userId } : {}), ...extraHeaders },
   }),
   pathParams: {},
   headers: {},
 }) as never;
+
+// Translation requires Pro; an operator key resolves as premium.
+const PRO_KEY_HEADERS = { 'X-WorldMonitor-Key': 'test-operator-key' };
+const proCtxFor = (path: string, userId?: string) => {
+  process.env.WORLDMONITOR_VALID_KEYS = 'test-operator-key';
+  return ctxFor(path, userId, PRO_KEY_HEADERS);
+};
 
 const ANTHROPIC_ONLY: PolicyAnswer = { status: 200, policy: { allowedProviders: ['anthropic'] } };
 
@@ -323,7 +330,7 @@ describe('AI routing policy', () => {
         policies: { [RESTRICTED_USER]: ANTHROPIC_ONLY },
         completionText: 'Les sanctions ont été adoptées par le Sénat.',
       });
-      const res = await summarizeArticle(ctxFor('/api/news/v1/summarize-article', RESTRICTED_USER), {
+      const res = await summarizeArticle(proCtxFor('/api/news/v1/summarize-article', RESTRICTED_USER), {
         provider: 'openrouter',
         headlines: ['Senate passes sanctions package'],
         mode: 'translate',
@@ -343,7 +350,7 @@ describe('AI routing policy', () => {
         policies: { [RESTRICTED_USER]: ANTHROPIC_ONLY },
         completionText: '<<<TEXT>>>\nLe Sénat adopte le paquet de sanctions\n<<<END TEXT>>>',
       });
-      const res = await summarizeArticle(ctxFor('/api/news/v1/summarize-article', RESTRICTED_USER), {
+      const res = await summarizeArticle(proCtxFor('/api/news/v1/summarize-article', RESTRICTED_USER), {
         provider: 'openrouter', headlines: ['Senate passes sanctions package marker test'], mode: 'translate',
         geoContext: '', variant: 'fr', lang: 'en', systemAppend: '', bodies: [],
       } as never);
@@ -365,7 +372,7 @@ describe('AI routing policy', () => {
 
     it('summarize_article: an unrestricted caller cannot name the opt-in anthropic provider', async () => {
       const { sent } = stubUpstreams();
-      const res = await summarizeArticle(ctxFor('/api/news/v1/summarize-article'), {
+      const res = await summarizeArticle(proCtxFor('/api/news/v1/summarize-article'), {
         provider: 'anthropic', headlines: ['Senate passes sanctions package'], mode: 'translate',
         geoContext: '', variant: 'fr', lang: 'en', systemAppend: '', bodies: [],
       } as never);
@@ -379,7 +386,7 @@ describe('AI routing policy', () => {
         anthropicStatus: 529,
         completionText: 'Les sanctions ont été adoptées par le Sénat.',
       });
-      const res = await summarizeArticle(ctxFor('/api/news/v1/summarize-article', RESTRICTED_USER), {
+      const res = await summarizeArticle(proCtxFor('/api/news/v1/summarize-article', RESTRICTED_USER), {
         provider: 'ollama', headlines: ['Senate passes sanctions package'], mode: 'translate',
         geoContext: '', variant: 'fr', lang: 'en', systemAppend: '', bodies: [],
       } as never);
