@@ -104,8 +104,13 @@ purchases, unsubscribes). A large gap means the rules here differ from the
 snapshot's: stop and compare `excluded` reason by reason before sending.
 `segments` lists every `version/locale/recipient` with people to send.
 
-The scan reads every account and every registration. If it times out, run it
-per table: add `"scope":"accounts"` or `"scope":"waitlist"`.
+The scan reads every account and every registration. It loads the small
+tables (suppressions, subscriptions, entitlements, enterprise seats, account
+deletions, customers) once, then walks `users` and `registrations` 1,000
+rows a page with one indexed lookup per row. Expect well under two minutes per
+table at the November sizes (about 50k accounts, 48k registrations). To read
+one table only, add `"scope":"accounts"` or `"scope":"waitlist"`. A wave start
+runs the same scan over its own table only.
 
 ## 2. Send one wave
 
@@ -234,7 +239,7 @@ npx convex run broadcast/blackFriday:clearBlackFridayKillGate '{"reason":"<what 
 | `failed` with `batch-failure-rate-exceeded`, `segment-create-failed` or `persist-failed` | `broadcast/waveRuns:discardWaveRun '{"runId":"...","reason":"..."}'`, then start the segment again with a new `wave` |
 | `failed` with `create-broadcast-failed` | `broadcast/waveRuns:resumeFinalizeWaveRun '{"runId":"..."}'` (it holds again once the draft exists) |
 | `send-broadcast-failed` after a release | Check the broadcast in Resend. Sent: `broadcast/waveRuns:markFinalizeRecovered '{"runId":"...","sentAt":<ms>,"reason":"..."}'`. Not sent: run `blackFridayHealth` first, then `broadcast/waveRuns:resumeFinalizeWaveRun '{"runId":"...","confirmedNotSent":true}'`. The retry sends nothing while the gate is tripped or inside the final 2 hours. |
-| A real start timed out or threw after "claim", leaving a run in `picking` | `broadcast/waveRuns:discardWaveRun '{"runId":"...","reason":"..."}'`, then start again with a new `wave`. If the audience scan itself is what timed out, stop: `"count"` does not shorten the scan, and a retry would time out the same way. The scan needs fixing in code first. |
+| A real start timed out or threw after "claim", leaving a run in `picking` | `broadcast/waveRuns:discardWaveRun '{"runId":"...","reason":"..."}'`, then start again with a new `wave`. `"count"` does not shorten the scan: it always reads the whole table. If the scan itself timed out, run `blackFridayAudience` with that table's `"scope"` and report its duration before retrying. |
 | "another wave holds the lease" | `getBlackFridayStatus` names the run. Release it, discard it or recover it as above. |
 
 ## Definitions used by the counts
