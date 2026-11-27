@@ -59,7 +59,7 @@ describe('agent homepage routing', () => {
     it(`${fetcher} receives Markdown unless it asks for HTML`, async () => {
       const uas = [`${fetcher}/1.0`, `Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ${fetcher}/1.0)`];
       for (const ua of uas) {
-        for (const accept of ['*/*', null, 'text/markdown', 'text/markdown, text/html', 'application/json, */*;q=0.8']) {
+        for (const accept of ['*/*', null, 'text/markdown', 'text/markdown, text/html', 'application/json, */*;q=0.8', 'text/html;q=0.5, */*;q=1']) {
           for (const method of ['GET', 'HEAD']) {
             const headers: Record<string, string> = { 'User-Agent': ua };
             if (accept !== null) headers.Accept = accept;
@@ -72,7 +72,7 @@ describe('agent homepage routing', () => {
             }
           }
         }
-        for (const accept of ['text/html', 'text/html,application/xhtml+xml,*/*;q=0.8', 'text/markdown;q=0.5, text/html']) {
+        for (const accept of ['text/html', 'text/html,application/xhtml+xml,*/*;q=0.8', 'text/markdown;q=0.5, text/html', 'text/markdown;q=0, */*;q=1', 'text/markdown;q=0']) {
           const response = await middleware(new Request('https://www.worldmonitor.app/', {
             headers: { 'User-Agent': ua, Accept: accept },
           }));

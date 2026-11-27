@@ -339,8 +339,11 @@ function route(request: Request) {
   const markdownQuality = acceptQuality(accept, 'text/markdown') ?? 0;
   const wantsHomepageMarkdown = /(?:^|,)\s*text\/markdown\s*(?:;|,|$)/i.test(accept ?? '') &&
     markdownQuality > 0 && markdownQuality >= (acceptQuality(accept, 'text/html', true) ?? 0);
-  const htmlQuality = acceptQuality(accept, 'text/html') ?? 0;
-  const userFetcherWantsMarkdown = USER_FETCHER_UA.test(ua) && !(htmlQuality > 0 && htmlQuality > markdownQuality);
+  // Wildcards count for both types (RFC 9110 §12.5.1): `*/*` alone ties and
+  // picks Markdown, while `text/markdown;q=0` refuses it whatever else follows.
+  const fetcherMarkdownQuality = accept ? (acceptQuality(accept, 'text/markdown', true) ?? 0) : 1;
+  const userFetcherWantsMarkdown = USER_FETCHER_UA.test(ua) && fetcherMarkdownQuality > 0 &&
+    fetcherMarkdownQuality >= (acceptQuality(accept, 'text/html', true) ?? 0);
 
   if (
     path === '/' &&
