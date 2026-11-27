@@ -69,9 +69,10 @@ async function label(texts) {
         const json = await resp.json();
         usd += json.usage?.cost ?? 0;
         const entries = JSON.parse(json.choices?.[0]?.message?.content?.match(/\[[\s\S]*\]/)?.[0] ?? '[]');
+        // As publishSaudiCivilDefenseAlerts: an index answered more than once is discarded.
         return texts.map((_, i) => {
-          const level = entries.find((e) => e?.i === i)?.l;
-          return LEVELS.includes(level) ? level : 'unlabelled';
+          const matches = entries.filter((e) => e?.i === i);
+          return matches.length === 1 && LEVELS.includes(matches[0].l) ? matches[0].l : 'unlabelled';
         });
       }
     } catch { /* retry */ }

@@ -40,7 +40,7 @@
    "batched": false,
    "maxChars": 4096,
    "usd": 0.014,
-   "capturedAt": "2026-11-27T03:51:51.556Z",
+   "capturedAt": "2026-11-27T04:01:07.820Z",
    "labels": {
     "early warning (National Early Warning Platform), Jazan": {
      "info": 40
@@ -66,22 +66,24 @@
    "model": "deepseek/deepseek-v4.1-flash",
    "promptSha": "b610d9e51327d5e3",
    "passes": 40,
+   "batched": false,
    "maxChars": 4096,
-   "usd": 0.0136,
-   "capturedAt": "2026-11-27T03:41:30.605Z",
+   "usd": 0.0135,
+   "capturedAt": "2026-11-27T04:01:27.525Z",
    "labels": {
     "early warning (National Early Warning Platform), Jazan": {
      "info": 40
     },
     "early warning, Riyadh": {
-     "info": 28,
-     "medium": 12
+     "info": 31,
+     "medium": 9
     },
     "all-clear, Jazan": {
      "info": 40
     },
     "Houthi attack on a Riyadh financial-centre tower, 11 injured; critical in production": {
-     "critical": 40
+     "critical": 39,
+     "high": 1
     },
     "house fire put out": {
      "info": 40
@@ -95,9 +97,10 @@
    "model": "deepseek/deepseek-v4.1-flash",
    "promptSha": "379b9d78e43e70cf",
    "passes": 40,
+   "batched": false,
    "maxChars": 4096,
-   "usd": 0.0113,
-   "capturedAt": "2026-11-27T03:41:53.117Z",
+   "usd": 0.0111,
+   "capturedAt": "2026-11-27T04:01:43.272Z",
    "labels": {
     "early warning (National Early Warning Platform), Jazan": {
      "info": 40
@@ -109,8 +112,8 @@
      "info": 40
     },
     "Houthi attack on a Riyadh financial-centre tower, 11 injured; critical in production": {
-     "critical": 11,
-     "high": 29
+     "high": 33,
+     "critical": 7
     },
     "house fire put out": {
      "info": 40
@@ -126,31 +129,32 @@
    "passes": 40,
    "batched": true,
    "maxChars": 4096,
-   "usd": 0.0111,
-   "capturedAt": "2026-11-27T03:51:55.307Z",
+   "usd": 0.0059,
+   "capturedAt": "2026-11-27T04:01:11.349Z",
    "labels": {
     "early warning (National Early Warning Platform), Jazan": {
-     "medium": 21,
+     "info": 8,
      "high": 10,
-     "low": 2,
-     "info": 7
+     "medium": 17,
+     "low": 5
     },
     "early warning, Riyadh": {
-     "medium": 21,
+     "info": 8,
      "high": 10,
-     "low": 2,
-     "info": 7
+     "medium": 17,
+     "low": 5
     },
     "all-clear, Jazan": {
-     "info": 26,
-     "low": 14
+     "info": 25,
+     "low": 14,
+     "medium": 1
     },
     "Houthi attack on a Riyadh financial-centre tower, 11 injured; critical in production": {
      "critical": 40
     },
     "house fire put out": {
-     "low": 11,
-     "info": 29
+     "info": 28,
+     "low": 12
     },
     "fire-safety violation notice": {
      "info": 40
