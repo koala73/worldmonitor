@@ -245,4 +245,15 @@ describe('/pro API Starter switch flow', () => {
     expect(dialog().body).toBe('You switched accounts after this quote. Start the switch again from the account you want to move to API Starter.');
     expect(paths).toHaveLength(1);
   });
+
+  it('asks for no quote when the account changes while the token is read', async () => {
+    replies = [{ status: 200, body: QUOTE }];
+    const outcome = await runApiStarterSwitchFlow({
+      ...options(),
+      getToken: async () => { userId = 'user_b'; return 'token'; },
+    });
+    expect(outcome).toBe('shown');
+    expect(dialog().title).toBe('Account changed');
+    expect(paths).toHaveLength(0);
+  });
 });

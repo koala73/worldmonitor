@@ -26,7 +26,8 @@ interface HarnessState {
   storedReferral: string | null;
   signedIn: boolean;
   /** What the stubbed switch flow resolves; 'throw' rejects, 'fail-load' fails the chunk load. */
-  outcome: 'shown' | 'not-switchable' | 'throw' | 'fail-load';
+  outcome: 'shown' | 'not-switchable' | 'throw' | 'fail-load' | 'switch-account';
+  userId: string;
   flowCalls: Array<{ requestSwitchIsBilling: boolean; hasDismiss: boolean }>;
 }
 
@@ -46,7 +47,7 @@ class MemoryStorage {
 const CHECKOUT_URL = 'https://checkout.dodopayments.com/session/test';
 
 function resetHarness(outcome: HarnessState['outcome'], signedIn = true): void {
-  globalThis.__apiSwitchCheckoutHarness = { fetchBodies: [], assignedUrls: [], storedReferral: null, signedIn, outcome, flowCalls: [] };
+  globalThis.__apiSwitchCheckoutHarness = { fetchBodies: [], assignedUrls: [], storedReferral: null, signedIn, outcome, flowCalls: [], userId: 'user_1' };
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: new MemoryStorage() });
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: new MemoryStorage() });
   Object.defineProperty(globalThis, 'window', {
@@ -101,7 +102,7 @@ const stubSources: Record<string, string> = {
     globalThis.__billingStubRequestApiStarterSwitch = requestApiStarterSwitch;
   `,
   './clerk': `
-    export const getCurrentClerkUser = () => (globalThis.__apiSwitchCheckoutHarness.signedIn ? { id: 'user_1', email: 'pro@example.com' } : null);
+    export const getCurrentClerkUser = () => (globalThis.__apiSwitchCheckoutHarness.signedIn ? { id: globalThis.__apiSwitchCheckoutHarness.userId, email: 'pro@example.com' } : null);
     export const getClerkToken = async () => 'tok_test';
     export const openSignIn = () => {};
   `,
@@ -156,6 +157,7 @@ const stubSources: Record<string, string> = {
         hasDismiss: typeof options.onDismiss === 'function',
       });
       if (h.outcome === 'throw') throw new Error('flow failed');
+      if (h.outcome === 'switch-account') { h.userId = 'user_2'; return 'not-switchable'; }
       return h.outcome;
     };
   `,
@@ -267,6 +269,16 @@ describe('startCheckout asks for the API Starter switch first', () => {
       assert.deepEqual([...results].sort(), [false, true]);
     });
   }
+
+  it('sends no checkout when the account changes while the switch is quoted', async () => {
+    resetHarness('switch-account');
+    const checkout = await loadCheckoutModule();
+    assert.equal(await checkout.startCheckout(DODO_PRODUCTS.API_STARTER_MONTHLY), false);
+    assert.deepEqual(posts(), [], 'the checkout must not run under the other account');
+    globalThis.__apiSwitchCheckoutHarness.outcome = 'not-switchable';
+    await checkout.startCheckout(DODO_PRODUCTS.API_STARTER_MONTHLY);
+    assert.equal(posts().length, 1, 'the guard is released for the next click');
+  });
 
   it('passes the Settings dismissal through', async () => {
     resetHarness('shown');

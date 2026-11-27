@@ -608,6 +608,11 @@ export async function runApiStarterSwitchFlow(options: {
   // account has no Pro the server would switch.
   const fetchQuote = async (): Promise<ApiStarterSwitchPreview | 'shown' | null> => {
     const token = await options.getToken();
+    // The token read can wait on a retry; it must belong to the account the quote is for.
+    if (await options.getUserId() !== previewUserId) {
+      closeOnly('Account changed', API_SWITCH_ACCOUNT_CHANGED_BODY);
+      return 'shown';
+    }
     const result = token
       ? await callUpgrade(options.apiBase, token, false, {}, 'api-starter-switch')
       : { ok: false, data: {}, error: 'no_token' };

@@ -683,6 +683,12 @@ export async function startCheckout(
       if (loadPendingCheckoutIntent()?.productId === productId) clearPendingCheckoutIntent();
       return false;
     }
+    // The quote can take seconds. A checkout started by one account must not
+    // continue under another one's token.
+    if (getCurrentClerkUser()?.id !== user.id) {
+      _checkoutInFlight = false;
+      return false;
+    }
   }
 
   let redirecting = false;
