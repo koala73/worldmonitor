@@ -58,11 +58,12 @@ function defaultStorage(): IntentStorage | null {
 export function createAccountSettingsIntent(deps: AccountSettingsIntentDeps): AccountSettingsIntent {
   const storage = deps.storage === undefined ? defaultStorage() : deps.storage;
   const now = deps.now ?? Date.now;
-  let capturedThisLoad = false;
+  // Capture time on this load: the intent holds without storage, and expires with the same TTL.
+  let capturedAt: number | null = null;
   let promptedSignIn = false;
 
   const clear = (): void => {
-    capturedThisLoad = false;
+    capturedAt = null;
     try {
       storage?.removeItem(PENDING_ACCOUNT_SETTINGS_KEY);
     } catch {
@@ -84,7 +85,14 @@ export function createAccountSettingsIntent(deps: AccountSettingsIntentDeps): Ac
     return false;
   };
 
-  const isPending = (): boolean => capturedThisLoad || storedFresh();
+  const capturedFresh = (): boolean => {
+    if (capturedAt === null) return false;
+    if (now() - capturedAt <= PENDING_ACCOUNT_SETTINGS_TTL_MS) return true;
+    clear();
+    return false;
+  };
+
+  const isPending = (): boolean => capturedFresh() || storedFresh();
 
   return {
     capture(location, replaceUrl) {
@@ -104,9 +112,9 @@ export function createAccountSettingsIntent(deps: AccountSettingsIntentDeps): Ac
       } catch {
         // A refresh would capture again; harmless.
       }
-      capturedThisLoad = true;
+      capturedAt = now();
       try {
-        storage?.setItem(PENDING_ACCOUNT_SETTINGS_KEY, String(now()));
+        storage?.setItem(PENDING_ACCOUNT_SETTINGS_KEY, String(capturedAt));
       } catch {
         // Without storage the intent still holds for this load.
       }

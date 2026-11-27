@@ -1312,6 +1312,8 @@ export class UnifiedSettings {
     replaceRawI18nKeyPlaceholders(this.overlay, t);
     const statusLine = this.overlay.querySelector('.upgrade-pro-status-line');
     if (statusLine) statusLine.textContent = this.planStatusLine(getSubscription());
+    // The healer only knows the offer line's template; rebuild it with its prices.
+    if (this.overlay.querySelector('.upgrade-pro-offer-line')) this.replaceUpgradeSection();
     // The deletion dialog sits on document.body, outside the overlay.
     if (this.deletionDialog) {
       replaceRawI18nKeyPlaceholders(this.deletionDialog, t);

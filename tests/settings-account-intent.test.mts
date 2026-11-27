@@ -135,3 +135,28 @@ it('still opens Account on this load when session storage is unavailable', () =>
   assert.equal(h.intent.resume(), 'opened');
   assert.equal(h.calls.account, 1);
 });
+
+// A visitor who dismisses sign-in and signs in from the header much later,
+// without reloading, must not be ambushed by Settings.
+it('expires an intent captured on this load after the TTL, with or without storage', () => {
+  for (const storage of [memoryStorage(), null]) {
+    const h = harness({ isPending: false, userId: null }, { storage });
+    h.capture();
+    assert.equal(h.intent.resume(), 'sign-in');
+    h.advance(PENDING_ACCOUNT_SETTINGS_TTL_MS + 1);
+    h.setAuth({ isPending: false, userId: 'u1' });
+    assert.equal(h.intent.isPending(), false);
+    assert.equal(h.intent.resume(), 'none');
+    assert.equal(h.calls.account, 0);
+  }
+});
+
+it('still opens Account within the TTL on this load without storage', () => {
+  const h = harness({ isPending: false, userId: null }, { storage: null });
+  h.capture();
+  h.intent.resume();
+  h.advance(PENDING_ACCOUNT_SETTINGS_TTL_MS - 1);
+  h.setAuth({ isPending: false, userId: 'u1' });
+  assert.equal(h.intent.resume(), 'opened');
+  assert.equal(h.calls.account, 1);
+});
