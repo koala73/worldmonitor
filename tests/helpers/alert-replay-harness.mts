@@ -28,6 +28,8 @@ import { mock } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
+import { evalCommand } from './redis-lua.mjs';
+
 // Every Redis client in this process must miss production, whatever the shell exports.
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.invalid';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'replay';
@@ -141,6 +143,7 @@ export class SortedSets {
   }
 
   run(command: unknown[]): unknown {
+    if (String(command[0]).toUpperCase() === 'EVAL') return evalCommand(command, (verb: string, args: string[]) => this.run([verb, ...args]));
     const [verb, key, ...args] = command.map(String) as [string, string, ...string[]];
     switch (verb.toUpperCase()) {
       case 'MULTI': case 'EXEC': return 'OK';
@@ -168,6 +171,10 @@ export class SortedSets {
       case 'ZMSCORE': {
         const set = this.sets.get(key);
         return args.map((member) => (set?.has(member) ? String(set.get(member)) : null));
+      }
+      case 'ZSCORE': {
+        const set = this.sets.get(key);
+        return set?.has(args[0]!) ? String(set.get(args[0]!)) : null;
       }
       case 'ZUNIONSTORE': {
         // ZUNIONSTORE dest numkeys key... AGGREGATE MAX, the only form the repeat check uses.

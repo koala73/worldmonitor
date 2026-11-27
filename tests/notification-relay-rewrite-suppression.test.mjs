@@ -13,6 +13,8 @@ import Module, { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { evalCommand } from './helpers/redis-lua.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
@@ -102,6 +104,11 @@ function installHarness({ users = ['user-1'], verdict = '{"same": 1}', judgeStat
 
   const run = ([cmd, key, ...args]) => {
     switch (cmd) {
+      case 'EVAL': return evalCommand([cmd, key, ...args], (verb, callArgs) => run([verb, ...callArgs]));
+      case 'ZSCORE': {
+        const z = zsets.get(key);
+        return z?.has(args[0]) ? String(z.get(args[0])) : null;
+      }
       case 'ZREVRANGEBYSCORE': {
         const max = Number(args[0]);
         const min = Number(String(args[1]).replace('(', ''));

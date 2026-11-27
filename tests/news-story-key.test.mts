@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 
 import { __testing__ as digest } from '../server/worldmonitor/news/v1/list-feed-digest.ts';
+import { evalCommand } from './helpers/redis-lua.mjs';
 
 const require = createRequire(import.meta.url);
 const {
@@ -345,7 +346,9 @@ function coverageStore() {
   const sets = new Map<string, Map<string, number>>();
   const run = ([op, key, ...args]: (string | number)[]) => {
     if (op === 'MULTI' || op === 'EXEC') return { result: 'OK' };
+    if (op === 'EVAL') return { result: evalCommand([op, key, ...args], (verb: string, callArgs: string[]) => run([verb, ...callArgs]).result) };
     const members = sets.get(String(key)) ?? new Map<string, number>();
+    if (op === 'ZSCORE') return { result: members.has(String(args[0])) ? String(members.get(String(args[0]))) : null };
     if (op === 'ZADD') {
       sets.set(String(key), members);
       assert.equal(args.shift(), 'GT');
@@ -521,6 +524,29 @@ test('a rewrite merge keeps an outlet that also wrote its own wording (#11434)',
   const anchor = { ...event, payload: { ...event.payload, title: EGYPT_INDEPENDENT } };
   await refreshPublisherCounts([anchor], now, store.pipeline);
   assert.equal(anchor.observedPublisherCount, 2);
+});
+
+test('an expired sighting on the other wording does not clear a current reprint record (#11434)', async (t) => {
+  const { mergeStoryCoverage, refreshPublisherCounts } = await import('../scripts/lib/news-alert-coverage.mjs');
+  const store = coverageStore();
+  t.mock.method(globalThis, 'fetch', async (_url, init) => Response.json(JSON.parse(init.body).map(store.run)));
+  useRedisEnv(t);
+  const wire = { title: `${EGYPT_INDEPENDENT} - Reuters`, source: 'Reuters World' };
+  const reprint = { title: EGYPT_INDEPENDENT, source: 'Arab Times' };
+  const now = Date.now();
+  // Arab Times wrote its own wording 25 hours ago; NDTV keeps that key alive.
+  await digest.recordPublisherCoverage([{ title: NDTV, source: 'Arab Times' }], [{ title: NDTV, source: 'Arab Times' }], now - 25 * 3_600_000, Infinity);
+  await digest.recordPublisherCoverage([{ title: NDTV, source: 'NDTV' }], [{ title: NDTV, source: 'NDTV' }], now - 60_000, Infinity);
+  // Today Arab Times reprints Reuters, and an edition without the wire writes it back.
+  await digest.recordPublisherCoverage([wire, reprint], [wire, reprint], now - 120_000, Infinity);
+  await digest.recordPublisherCoverage([reprint], [reprint], now - 60_000, Infinity);
+  const event = { eventType: 'rss_alert', variant: 'full', severity: 'critical', payload: { title: NDTV, importanceScore: 82, corroborationCount: 0 } };
+  const anchorId = `full:${newsPublisherCoverageKey(EGYPT_INDEPENDENT).split(':').pop()}`;
+  assert.equal(await mergeStoryCoverage(event, anchorId, store.pipeline, now), true);
+  const anchor = { ...event, payload: { ...event.payload, title: EGYPT_INDEPENDENT } };
+  await refreshPublisherCounts([anchor, event], now, store.pipeline);
+  // Reuters and NDTV on both wordings: the reprint stays folded.
+  assert.deepEqual([anchor.observedPublisherCount, event.observedPublisherCount], [2, 2]);
 });
 
 test('the coverage ledger write stops waiting at its deadline when Redis stalls', async (t) => {

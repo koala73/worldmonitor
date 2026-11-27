@@ -353,6 +353,41 @@ export async function usersAlertedFor(anchorIds, userIds, { now = Date.now(), pi
   }
 }
 
+// One script, so the copy filters against the records as they are when it
+// writes: a digest build that folds a reprint between a read and a write
+// would otherwise have the merge copy it back. Only members in the readers'
+// window are copied, so an expired sighting cannot clear a current record.
+// KEYS: anchor coverage, own coverage, anchor reprints, own reprints.
+// ARGV: window start (exclusive), now, coverage TTL in seconds.
+export const MERGE_STORY_COVERAGE_SCRIPT = `
+local unpack = unpack or table.unpack
+local function live(source, reprints)
+  local rows = redis.call('ZRANGEBYSCORE', source, '(' .. ARGV[1], ARGV[2], 'WITHSCORES')
+  local copied = {}
+  for i = 1, #rows, 2 do
+    if not redis.call('ZSCORE', reprints, rows[i]) then
+      copied[#copied + 1] = rows[i + 1]
+      copied[#copied + 1] = rows[i]
+    end
+  end
+  return copied
+end
+local function put(target, reprints, copied)
+  if #copied == 0 then return end
+  redis.call('ZADD', target, 'GT', unpack(copied))
+  local members = {}
+  for i = 2, #copied, 2 do members[#members + 1] = copied[i] end
+  redis.call('ZREM', reprints, unpack(members))
+end
+local toAnchor = live(KEYS[2], KEYS[4])
+local toOwn = live(KEYS[1], KEYS[3])
+put(KEYS[1], KEYS[3], toAnchor)
+put(KEYS[2], KEYS[4], toOwn)
+redis.call('EXPIRE', KEYS[1], ARGV[3])
+redis.call('EXPIRE', KEYS[2], ARGV[3])
+return (#toAnchor + #toOwn) / 2
+`;
+
 /**
  * One story told in two wordings: give each wording's publisher history the
  * union of both, so the coverage line counts every outlet that carried it.
@@ -364,38 +399,17 @@ export async function usersAlertedFor(anchorIds, userIds, { now = Date.now(), pi
  * carried the story, so it leaves the other wording's record and counts on
  * both. Best effort.
  */
-export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedisPipeline) {
+export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedisPipeline, now = Date.now()) {
   const own = rewriteCheckApplies(event) ? newsPublisherCoverageKey(event.payload.title) : '';
   if (!own || typeof anchorId !== 'string' || !anchorId.startsWith(`${event.variant}:`)) return false;
   const anchor = `${NEWS_PUBLISHER_COVERAGE_PREFIX}${anchorId.slice(event.variant.length + 1)}`;
   if (anchor === own) return false;
+  const keys = [anchor, own, newsPublisherReprintsKey(anchor), newsPublisherReprintsKey(own)];
   try {
-    const read = await pipeline(
-      [anchor, own, newsPublisherReprintsKey(anchor), newsPublisherReprintsKey(own)]
-        .map(key => ['ZRANGEBYSCORE', key, '-inf', '+inf', 'WITHSCORES']),
-      { timeoutMs: 1_000 },
-    );
-    if (!Array.isArray(read) || !read.every(row => row && !row.error && Array.isArray(row.result))) return false;
-    const [anchorRows, ownRows, anchorReprints, ownReprints] = read.map(row => row.result);
-    // [score, member] pairs of `rows`, without the families `reprints` records.
-    const copy = (rows, reprints) => {
-      const folded = new Set(reprints.filter((_, i) => i % 2 === 0));
-      const pairs = [];
-      for (let i = 0; i + 1 < rows.length; i += 2) {
-        if (!folded.has(rows[i]) && Number.isFinite(Number(rows[i + 1]))) pairs.push(Number(rows[i + 1]), rows[i]);
-      }
-      return pairs;
-    };
-    const toAnchor = copy(ownRows, ownReprints);
-    const toOwn = copy(anchorRows, anchorReprints);
-    const members = pairs => pairs.filter((_, i) => i % 2 === 1);
     const rows = await pipeline([
-      ...(toAnchor.length ? [['ZADD', anchor, 'GT', ...toAnchor], ['ZREM', newsPublisherReprintsKey(anchor), ...members(toAnchor)]] : []),
-      ...(toOwn.length ? [['ZADD', own, 'GT', ...toOwn], ['ZREM', newsPublisherReprintsKey(own), ...members(toOwn)]] : []),
-      ['EXPIRE', anchor, DAY / 1000],
-      ['EXPIRE', own, DAY / 1000],
+      ['EVAL', MERGE_STORY_COVERAGE_SCRIPT, keys.length, ...keys, now - DAY, now, DAY / 1000],
     ], { timeoutMs: 1_000 });
-    return Array.isArray(rows) && rows.every(row => row && !row.error);
+    return Array.isArray(rows) && rows.length === 1 && !!rows[0] && !rows[0].error;
   } catch {
     return false;
   }
