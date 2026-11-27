@@ -214,6 +214,9 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
     }
     // A rename lists the new path; the old one is the Test input that moved.
     assert.deepEqual((await decide({ drift: { H: [{ filename: 'docs/npm-config.txt', previous_filename: '.npmrc' }] } })).reuse, { code: true });
+    // The 300 cap counts file records, not paths: 150 harmless renames are 300 paths but 150 records.
+    const renames = Array.from({ length: 150 }, (_, i) => ({ filename: `src/n${i}.ts`, previous_filename: `src/o${i}.ts` }));
+    assert.deepEqual((await decide({ drift: { H: renames } })).reuse, { code: true, browser: true });
     // An earlier merge in a multi-commit push is checked too.
     assert.deepEqual((await decide({ since: { OLDER: ['C5', 'S'] }, drift: { H5: ['package.json'] } }, { decidedBase: 'OLDER' })).reuse, {});
     // Application drift and other workflows are fine, and a comparison GitHub capped cannot prove the inputs unchanged.

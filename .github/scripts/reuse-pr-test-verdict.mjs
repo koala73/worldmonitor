@@ -162,7 +162,7 @@ async function decideBrowser({ api, repo, sha, base, now }) {
     // Both sides of a rename: moving .npmrc away changes the install as much as editing it.
     const changed = (comparison.files ?? []).flatMap((file) => [file.filename, file.previous_filename].filter(Boolean));
     const pr = settled[i].pr.number;
-    if (changed.length >= 300) return { reason: `browser: main changed too many files since PR #${pr} branched to check its inputs` };
+    if ((comparison.files ?? []).length >= 300) return { reason: `browser: main changed too many files since PR #${pr} branched to check its inputs` };
     const input = changed.find((file) => TEST_INPUT.test(file));
     if (input) return { reason: `browser: main changed ${input} after PR #${pr} branched, so its run used other inputs` };
   }
