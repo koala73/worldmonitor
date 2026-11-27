@@ -17,7 +17,7 @@ const ENV_KEYS = [
   'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'ANTHROPIC_REASONING_MODEL',
   'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN',
   'CONVEX_SITE_URL', 'CONVEX_SERVER_SHARED_SECRET', 'WORLDMONITOR_VALID_KEYS',
-  'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL',
+  'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'LOCAL_API_MODE', 'OLLAMA_MODEL',
 ] as const;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 const originalFetch = globalThis.fetch;
@@ -393,6 +393,30 @@ describe('AI routing policy', () => {
       assert.equal(res.status, 'SUMMARIZE_STATUS_SUCCESS');
       assert.equal(res.provider, 'openrouter');
       assert.deepEqual(hosts(sent), ['api.anthropic.com', 'openrouter.ai']);
+    });
+
+    it('summarize_article: a free desktop translation stays on the local model under a policy', async () => {
+      process.env.LOCAL_API_MODE = 'tauri-sidecar';
+      process.env.OLLAMA_API_URL = 'http://ollama.example.test';
+      process.env.OLLAMA_MODEL = 'qwen3:8b';
+      const { sent } = stubUpstreams({
+        policies: { [RESTRICTED_USER]: { status: 200, policy: { allowedProviders: ['ollama', 'openrouter'] } } },
+      });
+      const stubbed = globalThis.fetch;
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input instanceof Request ? input.url : input));
+        if (url.host === 'ollama.example.test' && init?.method === 'POST') {
+          sent.push({ host: url.host, path: url.pathname, body: null });
+          return new Response('boom', { status: 500 });
+        }
+        return stubbed(input, init);
+      }) as typeof fetch;
+      const res = await summarizeArticle(ctxFor('/api/news/v1/summarize-article', RESTRICTED_USER), {
+        provider: 'ollama', headlines: ['Senate passes sanctions package desktop'], mode: 'translate',
+        geoContext: '', variant: 'fr', lang: 'en', systemAppend: '', bodies: [],
+      } as never);
+      assert.notEqual(res.status, 'SUMMARIZE_STATUS_SUCCESS');
+      assert.ok(!hosts(sent).includes('openrouter.ai'), `free desktop translation reached ${hosts(sent).join(', ')}`);
     });
 
     it('search_intel_history: refuses instead of sending the query to OpenRouter embeddings', async () => {

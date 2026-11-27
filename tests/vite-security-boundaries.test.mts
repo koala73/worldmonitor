@@ -60,7 +60,7 @@ after(async () => {
 });
 
 it('Vite does not trust inbound gateway-only identity stamps', async () => {
-  const key = `summary:${CACHE_VERSION}:translate:fr:${'a'.repeat(32)}`;
+  const key = `summary:${CACHE_VERSION}:brief:fr:${'a'.repeat(32)}`;
   const response = await originalFetch(`${base}/api/news/v1/summarize-article-cache?cache_key=${key}`, {
     headers: {
       'X-WorldMonitor-Key': 'vite-test-operator',

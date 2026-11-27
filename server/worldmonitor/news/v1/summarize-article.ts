@@ -401,14 +401,20 @@ export async function summarizeArticle(
     });
   }
 
-  // Translation is Pro. The prompt translates headlines[0], the first entry
-  // that survived sanitization, so that is the text the free alert rule sees.
-  // Decided before the cache read, so a free caller is not served a cached
-  // Pro translation either.
+  // Translation is Pro. The free alert rule classifies exactly the text the
+  // prompt sends: headlines[0], the first entry that survived light
+  // sanitization, after the prompt's full sanitization (which drops whole
+  // role-prefixed lines, Hebrew included). Decided before the cache read, so
+  // a free caller is not served a cached Pro translation either.
   if (mode === 'translate' && !isPremium && !isDesktopLocalTranslation
-    && !isFreeAlertTranslation(headlines[0] ?? '', variant)) {
+    && !isFreeAlertTranslation(neutralizeTranslateText(sanitizeForPromptLine(headlines[0] ?? '')), variant)) {
     return denyWithoutPremium();
   }
+  // A free caller let through by the desktop exemption stays on the local
+  // model: an account policy chain must not fall through to a cloud provider.
+  const llmRoutingPolicy = routingPolicy && !isPremium && isDesktopLocalTranslation
+    ? { allowedProviders: ['ollama'] }
+    : routingPolicy;
 
   try {
     const cacheKey = `${await getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies)}${aiRoutingCacheSuffix(aiRouting)}`;
@@ -525,7 +531,7 @@ export async function summarizeArticle(
             ],
             maxTokens: 100,
             timeoutMs: 25_000,
-            routingPolicy,
+            routingPolicy: llmRoutingPolicy,
             stage: 'summarize-article',
             validate: (text) => !rejectsSummary(cleanAnswer(text)),
           });
