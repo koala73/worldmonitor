@@ -346,13 +346,6 @@ export async function summarizeArticle(
 
   const headlines = intakePairs.map(p => p.h);
 
-  // The prompt translates headlines[0], the first entry that survived
-  // sanitization, so that is the text the free alert rule must see.
-  if (mode === 'translate' && !isPremium && !isDesktopLocalTranslation
-    && !isFreeAlertTranslation(headlines[0] ?? '', variant)) {
-    return denyWithoutPremium();
-  }
-
   // geoContext gets full injection sanitization — it is free-form user text.
   const sanitizedGeoContext = sanitizeForPrompt(
     typeof geoContext === 'string' ? geoContext.slice(0, MAX_GEO_CONTEXT_LEN) : '',
@@ -406,6 +399,15 @@ export async function summarizeArticle(
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Headlines array required',
     });
+  }
+
+  // Translation is Pro. The prompt translates headlines[0], the first entry
+  // that survived sanitization, so that is the text the free alert rule sees.
+  // Decided before the cache read, so a free caller is not served a cached
+  // Pro translation either.
+  if (mode === 'translate' && !isPremium && !isDesktopLocalTranslation
+    && !isFreeAlertTranslation(headlines[0] ?? '', variant)) {
+    return denyWithoutPremium();
   }
 
   try {

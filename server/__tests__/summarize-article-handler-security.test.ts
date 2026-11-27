@@ -71,15 +71,14 @@ describe("summarizeArticle handler premium mode gate", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  test("translation mode remains outside the premium summary gate", async () => {
-    delete process.env.OPENROUTER_API_KEY;
-
+  test("anonymous headline translation is rejected before provider fetch", async () => {
     const result = await summarizeArticle(makeContext(), request("translate"));
 
     expect(result).toMatchObject({
-      fallback: true,
-      status: "SUMMARIZE_STATUS_SKIPPED",
-      statusDetail: "OPENROUTER_API_KEY not configured",
+      summary: "",
+      error: "Pro subscription required",
+      errorType: "AuthError",
+      status: "SUMMARIZE_STATUS_ERROR",
     });
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
