@@ -7,7 +7,7 @@ Status: packet prepared for the version after 2.11.8. Submission happens in the 
 | Version | Submitted (UTC) | Outcome |
 |---|---|---|
 | 2.10.1 | 2026-11-01 08:30 | Rejected 2026-11-13: commerce in digital services, and summarizing or aggregating third-party news. |
-| 2.11.8 | 2026-11-14 05:57 | Approved 2026-11-27 and published. The dashboard marks the held tools below "This new tool definition needs further review before it can be published." |
+| 2.11.8 | 2026-11-14 05:57 | Approved 2026-11-27 and published. On the published version itself, the dashboard marks the held tools below "This new tool definition needs further review before it can be published." No newer draft was open on 2026-11-27. |
 
 The approval email names no tools. The held tools are `get_market_data`, `get_news_intelligence`, `get_prediction_markets`, `get_sanctions_data`, `get_country_coverage`, `get_intel_timeline`, `get_news_clusters`, `verify_claim`, `get_keyword_spikes` and `open_news_dashboard`.
 
