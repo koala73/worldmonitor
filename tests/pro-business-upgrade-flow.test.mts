@@ -293,6 +293,23 @@ describe('runProAnnualSwitchFlow', () => {
     assert.equal(down.fellBack(), true);
   });
 
+  // Settings returns focus to its switch button; the dialogs do not restore it.
+  it('reports a dismissed dialog to the caller, and never a confirmed one', async () => {
+    let dismissed = 0;
+    const h = switchHarness(async (call) => (call.confirm ? upgraded : SWITCH_QUOTE), { onDismiss: () => { dismissed += 1; } });
+    await runProAnnualSwitchFlow(h.options);
+    h.dialogs[0]!.onDismiss();
+    assert.equal(dismissed, 1);
+    const again = switchHarness(async (call) => (call.confirm ? upgraded : SWITCH_QUOTE), { onDismiss: () => { dismissed += 1; } });
+    await runProAnnualSwitchFlow(again.options);
+    again.dialogs[0]!.onConfirm();
+    await settle();
+    assert.equal(dismissed, 1);
+    // The result dialog's Close is a dismissal too.
+    again.dialogs[1]!.onDismiss();
+    assert.equal(dismissed, 2);
+  });
+
   // The charge grows while a quote stays open. A server that re-checks it says
   // so on the quote; only then does the confirm name the charge it accepts.
   describe('accepted charge', () => {

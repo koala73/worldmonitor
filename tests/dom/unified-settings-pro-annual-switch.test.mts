@@ -137,13 +137,16 @@ vi.mock('@/services/mcp-clients', () => ({
   revokeMcpClient: vi.fn(),
 }));
 
-const startProAnnualSwitch = vi.hoisted(() => vi.fn(async (_planKey: unknown, _fallback: () => void) => {}));
+const startProAnnualSwitch = vi.hoisted(() => vi.fn(
+  async (_planKey: unknown, _fallback: () => void, _onDismiss?: () => void) => {},
+));
 vi.mock('@/services/checkout', () => ({ startProAnnualSwitch }));
 
 const { UnifiedSettings } = await import('@/components/UnifiedSettings');
 
 type SettingsInternals = {
   renderUpgradeSection(): string;
+  replaceUpgradeSection(): void;
   overlay: HTMLElement;
   switchPromoPricesLoad: Promise<void> | null;
   switchPromoExpiryTimer: ReturnType<typeof setTimeout> | null;
@@ -269,5 +272,41 @@ describe('UnifiedSettings Pro Monthly -> Pro Yearly switch', () => {
     internal.overlay.querySelector<HTMLButtonElement>('.switch-to-yearly-btn')!.click();
     await vi.waitFor(() => expect(startProAnnualSwitch).toHaveBeenCalledTimes(1));
     expect(startProAnnualSwitch.mock.calls[0]?.[0]).toBe('pro_monthly');
+  });
+
+  // The dialog takes focus; a keyboard user who dismisses it lands back on
+  // the button that opened it, even after the section re-rendered.
+  it('returns focus to the switch button when the switch dialog is dismissed', async () => {
+    subscriptionLoaded = true;
+    mockSubscription = proSubscription('pro_monthly');
+    settings.open('account');
+    const internal = settings as unknown as SettingsInternals;
+    internal.overlay.querySelector<HTMLButtonElement>('.switch-to-yearly-btn')!.click();
+    await vi.waitFor(() => expect(startProAnnualSwitch).toHaveBeenCalledTimes(1));
+    const onDismiss = startProAnnualSwitch.mock.calls[0]?.[2];
+    expect(typeof onDismiss).toBe('function');
+    const original = internal.overlay.querySelector<HTMLButtonElement>('.switch-to-yearly-btn');
+    (document.activeElement as HTMLElement | null)?.blur();
+    internal.replaceUpgradeSection();
+    onDismiss!();
+    const button = internal.overlay.querySelector<HTMLButtonElement>('.switch-to-yearly-btn');
+    expect(button).not.toBeNull();
+    expect(button).not.toBe(original);
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('leaves focus alone when Settings has closed before the dialog is dismissed', async () => {
+    subscriptionLoaded = true;
+    mockSubscription = proSubscription('pro_monthly');
+    settings.open('account');
+    const internal = settings as unknown as SettingsInternals;
+    internal.overlay.querySelector<HTMLButtonElement>('.switch-to-yearly-btn')!.click();
+    await vi.waitFor(() => expect(startProAnnualSwitch).toHaveBeenCalledTimes(1));
+    settings.close();
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    outside.focus();
+    startProAnnualSwitch.mock.calls[0]?.[2]?.();
+    expect(document.activeElement).toBe(outside);
   });
 });

@@ -366,7 +366,11 @@ export class UnifiedSettings {
       if (target.closest('.switch-to-yearly-btn')) {
         const planKey = getSubscription()?.planKey;
         import('@/services/checkout')
-          .then((m) => m.startProAnnualSwitch(planKey, () => showToast(SWITCH_UNAVAILABLE_BODY)))
+          .then((m) => m.startProAnnualSwitch(
+            planKey,
+            () => showToast(SWITCH_UNAVAILABLE_BODY),
+            () => this.focusSwitchToYearlyButton(),
+          ))
           .catch(() => showToast(SWITCH_UNAVAILABLE_BODY));
         return;
       }
@@ -1665,6 +1669,14 @@ export class UnifiedSettings {
       }
     }
     return `${offerLine}<button type="button" class="switch-to-yearly-btn">${escapeHtml(SWITCH_ENTRY_LABEL)}</button>`;
+  }
+
+  // The switch dialog takes focus. When it is dismissed, focus goes back to
+  // the button that opened it; a re-render may have replaced that button.
+  private focusSwitchToYearlyButton(): void {
+    if (!this.overlay.classList.contains('active')) return;
+    const button = this.overlay.querySelector<HTMLButtonElement>('.switch-to-yearly-btn');
+    if (button?.isConnected) button.focus();
   }
 
   // The switch stops applying the code at the end instant, so an open Settings

@@ -159,6 +159,8 @@ export interface ProAnnualSwitchFlowOptions {
   showDialog: (options: CheckoutConfirmDialogOptions) => void;
   errorKind: (err: unknown) => string | null | undefined;
   reportError: (action: string, err: unknown) => void;
+  /** Runs when the user dismisses one of this flow's dialogs; a confirm never calls it. */
+  onDismiss?: () => void;
 }
 
 /**
@@ -173,6 +175,7 @@ export async function runProAnnualSwitchFlow(options: ProAnnualSwitchFlowOptions
     options.fallback();
     return;
   }
+  const onDismiss = (): void => { options.onDismiss?.(); };
   const showResult = (title: string, body: string, onConfirm: () => void = () => {}, confirmLabel = 'Done'): void => {
     options.showDialog({
       id: RESULT_DIALOG_ID,
@@ -181,7 +184,7 @@ export async function runProAnnualSwitchFlow(options: ProAnnualSwitchFlowOptions
       confirmLabel,
       dismissLabel: 'Close',
       onConfirm,
-      onDismiss: () => {},
+      onDismiss,
     });
   };
 
@@ -256,7 +259,7 @@ export async function runProAnnualSwitchFlow(options: ProAnnualSwitchFlowOptions
           }
         })();
       },
-      onDismiss: () => {},
+      onDismiss,
     });
   };
 

@@ -458,7 +458,12 @@ function reportPlanChangeError(action: string, err: unknown): void {
  * a Pro Monthly subscriber starts a Pro Yearly checkout. `fallback` runs when
  * no quote comes back.
  */
-export async function startProAnnualSwitch(planKey: unknown, fallback: () => void): Promise<void> {
+export async function startProAnnualSwitch(
+  planKey: unknown,
+  fallback: () => void,
+  /** Settings returns focus to its switch button; the checkout 409 path passes nothing. */
+  onDismiss?: () => void,
+): Promise<void> {
   // A failed chunk load (stale deploy, flaky network) still reaches the fallback.
   const flowModule = await import('./pro-business-upgrade-dialog').catch(() => null);
   if (!flowModule) {
@@ -475,6 +480,7 @@ export async function startProAnnualSwitch(planKey: unknown, fallback: () => voi
     showDialog: showCheckoutConfirmDialog,
     errorKind: extractBillingErrorKind,
     reportError: reportPlanChangeError,
+    ...(onDismiss ? { onDismiss } : {}),
   });
 }
 
