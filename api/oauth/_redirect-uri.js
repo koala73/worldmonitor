@@ -113,6 +113,8 @@ export function isAllowedRedirectUri(uri) {
   // Inspector; goose registers [::1]). WHATWG URL keeps the IPv6 brackets.
   try {
     const u = new URL(uri);
+    // RFC 6749 §3.1.2 forbids fragments. URL.hash is empty for a trailing '#'.
+    if (u.href.includes('#') || u.username || u.password) return false;
     return LOOPBACK_HOSTS.has(u.hostname) && u.protocol === 'http:';
   } catch { return false; }
 }
