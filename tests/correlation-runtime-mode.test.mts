@@ -16,6 +16,17 @@ import {
 import { readCorrelationRuntimeMode } from '../scripts/seed-correlation.mjs';
 import correlationRuntimeModeHandler, { __testing__ as apiTesting } from '../api/correlation-runtime-mode.js';
 
+// The route's per-IP limiter shares the Upstash transport; admit it so the stubs below answer only the data reads.
+function admitLimiter(responder: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const body = typeof init?.body === 'string' ? init.body : '';
+    if (!body.includes('"rl:')) return responder(input, init);
+    const parsed = JSON.parse(body);
+    const result = [599, 600];
+    return Response.json(Array.isArray(parsed[0]) ? parsed.map(() => ({ result })) : { result });
+  };
+}
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const MODE_CASES: Array<[unknown, 'legacy' | 'exact' | 'fuzzy']> = [
@@ -172,7 +183,7 @@ describe('#5983 correlation runtime mode contract', () => {
         [null, 'legacy'],
         ['{', 'legacy'],
       ] as const) {
-        globalThis.fetch = async () => redisResponse(result);
+        globalThis.fetch = admitLimiter(async () => redisResponse(result));
         const response = await correlationRuntimeModeHandler(
           new Request('https://api.worldmonitor.app/api/correlation-runtime-mode', {
             headers: { Origin: 'https://worldmonitor.app' },
@@ -184,7 +195,7 @@ describe('#5983 correlation runtime mode contract', () => {
         assert.deepEqual(await response.json(), { mode: expected });
       }
 
-      globalThis.fetch = async () => redisResponse(null, 503);
+      globalThis.fetch = admitLimiter(async () => redisResponse(null, 503));
       const unavailable = await correlationRuntimeModeHandler(
         new Request('https://api.worldmonitor.app/api/correlation-runtime-mode'),
       );
@@ -204,7 +215,7 @@ describe('#5983 correlation runtime mode contract', () => {
     const originalFetch = globalThis.fetch;
     // Any Redis result at all -- these branches must short-circuit before the
     // read, so a successful stub proves the guard rather than masking it.
-    globalThis.fetch = async () => redisResponse(JSON.stringify({ mode: 'exact' }));
+    globalThis.fetch = admitLimiter(async () => redisResponse(JSON.stringify({ mode: 'exact' })));
 
     try {
       const forbidden = await correlationRuntimeModeHandler(

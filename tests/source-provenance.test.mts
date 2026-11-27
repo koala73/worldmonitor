@@ -72,8 +72,9 @@ let renderer: {
   getCorroboratingSourceRiskBadge: (sourceName: string) => { className: string; title: string; label: string } | null;
   renderCredibilityBadge: (
     sourceName: string,
-    item?: { credibilityScore?: number; corroborationCount?: number },
+    item?: { credibilityScore?: number; corroborationCount?: number; credibilityUnassessed?: boolean },
   ) => string;
+  itemAttribution: (item: { source: string; publisher?: string; originPublisher?: string }) => { publisher: string; provenanceName: string; viaFeed: string | null };
 };
 
 before(async () => {
@@ -307,6 +308,41 @@ describe('renderCredibilityBadge (#6597)', () => {
     const html = renderer.renderCredibilityBadge('RT');
     assert.match(html, /CRED \d+/);
     assert.ok(html.includes('band-low'));
+  });
+});
+
+describe('search feed attribution (#11266)', () => {
+  it('credits the named outlet and keeps the search label as a via note', () => {
+    assert.deepEqual(
+      renderer.itemAttribution({ source: 'Bloomberg Crypto', publisher: 'Yahoo Finance' }),
+      { publisher: 'Yahoo Finance', provenanceName: 'Yahoo Finance', viaFeed: 'Bloomberg Crypto' },
+    );
+    assert.deepEqual(
+      renderer.itemAttribution({ source: 'Africa News', publisher: 'IQAir' }),
+      { publisher: 'IQAir', provenanceName: 'IQAir', viaFeed: 'Africa News' },
+    );
+  });
+
+  it('shows the aggregator spelling but looks provenance up under the curated name', () => {
+    assert.deepEqual(
+      renderer.itemAttribution({ source: 'Trade & Tariffs', publisher: 'The New York Times', originPublisher: 'New York Times' }),
+      { publisher: 'The New York Times', provenanceName: 'New York Times', viaFeed: 'Trade & Tariffs' },
+    );
+  });
+
+  it('keeps the feed label when the publisher is the same newsroom or absent', () => {
+    assert.deepEqual(
+      renderer.itemAttribution({ source: 'Bloomberg Markets', publisher: 'Bloomberg' }),
+      { publisher: 'Bloomberg Markets', provenanceName: 'Bloomberg Markets', viaFeed: null },
+    );
+    assert.deepEqual(renderer.itemAttribution({ source: 'Reuters World' }), { publisher: 'Reuters World', provenanceName: 'Reuters World', viaFeed: null });
+  });
+
+  it('shows unknown credibility instead of a fallback score for an unassessed publisher', () => {
+    const html = renderer.renderCredibilityBadge('IQAir', { credibilityScore: 29, credibilityUnassessed: true });
+    assert.ok(html.includes('CRED ?'));
+    assert.ok(!html.includes('CRED 29'));
+    assert.ok(renderer.renderCredibilityBadge('Reuters', { credibilityScore: 80 }).includes('CRED 80'));
   });
 });
 

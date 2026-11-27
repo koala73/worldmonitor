@@ -237,7 +237,11 @@ With none of these, the app uses an anonymous session and the local sidecar. Doc
 
 The desktop app checks for new versions by polling `api.worldmonitor.app/api/version` — once at startup (after a 5-second delay) and then every 6 hours. When a newer version is detected (semver comparison), a non-intrusive update badge appears with a platform-specific download link (`/api/download?platform=…`); unsupported platforms fall back to the GitHub Release page.
 
+Updating is notify-and-download: the app tells you a new version exists and links to its installer. It does not replace itself in place. The app does not include the Tauri updater plugin, so releases publish no `.sig` files and no `latest.json`. Each macOS release also carries a `.app.tar.gz` per architecture. That is the same app bundle the `.dmg` contains, signed the same way, packed as a plain archive for anyone who would rather extract it and move `World Monitor.app` to Applications. Nothing in the app reads it.
+
 Update prompts are dismissable per-version — dismissing v2.5.0 won't suppress v2.6.0 notifications. One World Monitor binary ships and every variant is selected in-app, so the updater resolves the download by OS and architecture alone (`/api/download?platform=…`) rather than by variant.
+
+Linux AppImages also carry AppImage update information pointing at the latest GitHub Release, so [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate), AppImageLauncher and similar tools can update them in place and download only the changed blocks. Each release publishes a `.zsync` file next to each AppImage for this.
 
 A version the updater cannot parse is reported as `version_unparsable` and never treated as "up to date" — silently concluding "no update" from an unreadable version is exactly how a single malformed release tag could stop every client updating (#5908).
 

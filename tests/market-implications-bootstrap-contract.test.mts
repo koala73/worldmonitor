@@ -14,7 +14,7 @@ async function setup(t: TestContext) {
   for (const [name, value] of Object.entries({
     IRAN_EVENTS_ENABLED: 'false', WM_SESSION_SECRET: 'bootstrap-contract-synthetic-secret-32',
     UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'fixture',
-    VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_SHA: 'abcdef123456', BOOTSTRAP_R2_SHADOW_MEASURE: '0',
+    VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_SHA: 'abcdef123456',
   })) {
     const previous = process.env[name]; process.env[name] = value;
     t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
@@ -76,7 +76,7 @@ test('canonical publisher excludes premium cards from both public tier envelopes
   values.set(SEED, fixture);
   for (const tier of ['fast', 'slow']) {
     let written: unknown;
-    await publishBootstrapTier(tier, { resolveStorage: () => ({}), putObject: async (_storage: unknown, _key: string, envelope: unknown) => { written = envelope; return { ok: true }; } });
+    await publishBootstrapTier(tier, { resolveKvStorage: () => ({ accountId: 'a', namespaceId: 'n', token: 't' }), putKv: async (_config: unknown, _key: string, envelope: unknown) => { written = envelope; return { key: _key, bytes: 1 }; } });
     assert.ok(written);
     assert.doesNotMatch(JSON.stringify(written), /marketImplications|premium-fixture-only/);
   }

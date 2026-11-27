@@ -231,6 +231,15 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // `tests/pro-sentry-filter-policy.test.mts` pins that no first-party source
   // on this surface touches `ethereum.selectedAddress`.
   /evaluating 'window\.ethereum\.selectedAddress = undefined'/,
+  // Meta's in-app browser (Instagram / Facebook on iOS) injects a script that
+  // reads `window._META.<flag>` before its own `_META` namespace exists.
+  // WORLDMONITOR-1G0 is the shape: Instagram / iOS on `/`, a TypeError whose
+  // two frames are the welcome document itself, which the frame gates cannot
+  // attribute (see MARKETING_DOCUMENT_FRAME). No first-party source on this
+  // surface names `_META`, and `tests/pro-sentry-filter-policy.test.mts` pins
+  // that. Keyed on WebKit's whole `(evaluating 'window._META.<name>')` tail so a
+  // first-party message that merely mentions the word still reports.
+  /\(evaluating 'window\._META\.[\w$]+'\)$/,
   // A bare `jQuery` global reference from an injected script.
   // WORLDMONITOR-11F is the shape: `ReferenceError: jQuery is not defined` on
   // Firefox 148 / Linux, sent by `sentry.javascript.react` with a null release,

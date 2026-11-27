@@ -78,7 +78,7 @@ function createNavigationHarness({ fetchImpl, offlineResponse = { offline: true 
 }
 
 describe('PWA navigation recovery', () => {
-  it('returns the network response first and clears the navigation deadline', async () => {
+  it('returns the network response without arming a deadline', async () => {
     const networkResponse = { network: true };
     const harness = createNavigationHarness({ fetchImpl: async () => networkResponse });
 
@@ -89,31 +89,45 @@ describe('PWA navigation recovery', () => {
 
     assert.equal(response, networkResponse);
     assert.deepEqual([...harness.timers], []);
-    assert.deepEqual(harness.clearedTimers, [1]);
   });
 
-  it('uses the offline fallback after the five-second navigation deadline', async () => {
+  // A slow server or mobile link is not offline. The old five-second deadline
+  // aborted slow navigations and showed "You're Offline" to connected users.
+  it('waits for a slow navigation instead of showing the offline page', async () => {
+    let resolveFetch;
     let fetchOptions;
-    const offlineResponse = { offline: true };
+    const networkResponse = { network: true };
     const harness = createNavigationHarness({
       fetchImpl: (_request, options) => {
         fetchOptions = options;
-        return new Promise(() => {});
+        return new Promise((resolve) => { resolveFetch = resolve; });
       },
-      offlineResponse,
     });
 
     const responsePromise = harness.dispatchFetch({
       mode: 'navigate',
+      url: 'https://www.worldmonitor.app/dashboard',
+    });
+    for (const { callback } of [...harness.timers.values()]) callback();
+    resolveFetch(networkResponse);
+
+    assert.equal(await responsePromise, networkResponse);
+    assert.notEqual(fetchOptions?.signal?.aborted, true);
+  });
+
+  it('uses the offline fallback when the network request fails', async () => {
+    const offlineResponse = { offline: true };
+    const harness = createNavigationHarness({
+      fetchImpl: async () => { throw new TypeError('Failed to fetch'); },
+      offlineResponse,
+    });
+
+    const response = await harness.dispatchFetch({
+      mode: 'navigate',
       url: 'https://www.worldmonitor.app/briefs',
     });
-    const [{ callback, delay }] = harness.timers.values();
-    assert.equal(delay, 5_000);
-    callback();
 
-    assert.equal(await responsePromise, offlineResponse);
-    assert.equal(fetchOptions.signal.aborted, true);
-    assert.deepEqual([...harness.timers], []);
+    assert.equal(response, offlineResponse);
   });
 
   it('leaves API and cross-origin requests to their own handlers', () => {

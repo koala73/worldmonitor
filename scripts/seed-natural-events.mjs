@@ -19,6 +19,7 @@ import {
   buildWesternPacificCycloneSnapshot,
   fetchHkoWarnings,
 } from './natural/western-pacific-cyclones.mjs';
+import { naturalEventHistoryAfterPublish, withHistoryAfterPublish } from './_intel-history-collectors.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -1294,7 +1295,7 @@ export function runNaturalEventsSeed() {
       await writeExtraKey(SOURCE_SNAPSHOT_KEY, data._sourceSnapshots, CACHE_TTL);
       await writeExtraKey(NHC_SNAPSHOT_KEY, data._nhcSnapshot, CACHE_TTL);
     },
-    afterPublish: naturalEventsAfterPublish,
+    afterPublish: withHistoryAfterPublish(naturalEventsAfterPublish, naturalEventHistoryAfterPublish),
     afterValidationSkip: async (data) => {
       await writeExtraKey(SOURCE_SNAPSHOT_KEY, data._sourceSnapshots, CACHE_TTL);
       await writeExtraKey(NHC_SNAPSHOT_KEY, data._nhcSnapshot, CACHE_TTL);

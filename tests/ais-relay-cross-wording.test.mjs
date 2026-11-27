@@ -20,8 +20,9 @@ function harness({ module: loaded = true } = {}) {
   const lines = [];
   const corroboration = {
     recordSightings: async (sightings) => { recorded.push(...sightings); },
-    crossWordingFamilies: async (candidates) => {
+    crossWordingFamilies: async (candidates, { outcomes } = {}) => {
       checked.push(...candidates);
+      outcomes?.push(...candidates.map(() => ({ result: 'matched' })));
       return new Map(candidates.map((c) => [c.title, { families: ['a', 'b', 'c', 'd', 'e'] }]));
     },
   };
@@ -41,10 +42,15 @@ function harness({ module: loaded = true } = {}) {
     const all = new Map(items.map((item) => [item.title, { source: 'Feed', publishedAt: Date.now(), corroborationCount: 1, ...item.meta }]));
     return vm.runInContext('crossWordingFamilies', context)(chunk, levels, all, observed);
   };
-  return { run, recorded, checked, lines, refill: () => vm.runInContext('crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS', context) };
+  return {
+    run, recorded, checked, lines,
+    refill: () => vm.runInContext('crossWordingChecksLeft = CROSS_WORDING_MAX_CHECKS', context),
+    outcomes: () => vm.runInContext('crossWordingOutcomes', context),
+  };
 }
 
 const titlesOf = (rows) => rows.map((row) => row.title);
+const relayConstant = (name) => Number(relay.match(new RegExp(`const ${name} = (\\d+);`))[1]);
 
 describe('relay cross-wording corroboration (#10977)', () => {
   it('checks only critical copies under the realtime bar; high copies are recorded and never checked', async () => {
@@ -95,6 +101,100 @@ describe('relay cross-wording corroboration (#10977)', () => {
     assert.equal(h.checked.length, 8);
     h.refill();
     assert.equal((await h.run(batch('fourth'))).size, 6);
+  });
+
+  it('collects every check outcome until the cycle writes them (#11426)', async () => {
+    const h = harness();
+    await h.run([{ title: 'first', level: 'critical' }]);
+    await h.run([{ title: 'second', level: 'critical' }, { title: 'third', level: 'critical' }]);
+    assert.equal(h.outcomes().length, 3);
+  });
+
+  it('writes the cycle health payload, then its seed-meta, then the activation marker (#11426)', async () => {
+    const corroboration = await import('../scripts/lib/news-corroboration.mjs');
+    const writeStart = relay.indexOf('async function writeCrossWordingHealth()');
+    const writeEnd = relay.indexOf('\nasync function seedClassify()', writeStart);
+    assert.ok(writeStart > 0 && writeEnd > writeStart);
+    const writes = [];
+    const load = ({ setOk = true, readFails = false, previous = null } = {}) => {
+      const context = {
+        newsCorroborationPromise: Promise.resolve(corroboration),
+        crossWordingOutcomes: [{ result: 'failed', error: 'EMBED_HTTP_402' }, { result: 'failed', error: 'EMBED_HTTP_402' }],
+        upstashGet: async (_key, onFailure) => { if (readFails) { onFailure('timeout'); return null; } return previous; },
+        upstashSet: async (key, value, ttl) => { writes.push(['SET', key, value, ttl]); return setOk; },
+        upstashPipeline: async (commands) => { writes.push(...commands); return commands.map(() => ({ result: 'OK' })); },
+        process: { env: { OPENROUTER_API_KEY: 'stub' } }, console: { warn: () => {} }, Date, JSON, Math,
+        CROSS_WORDING_OUTCOMES_MAX: relayConstant('CROSS_WORDING_OUTCOMES_MAX'),
+      };
+      vm.createContext(context);
+      vm.runInContext(relay.slice(writeStart, writeEnd), context);
+      return context;
+    };
+    const ctx = load();
+    await vm.runInContext('writeCrossWordingHealth()', ctx);
+    assert.deepEqual(writes.map((w) => w[1]), [corroboration.MATCHER_HEALTH_KEY, corroboration.MATCHER_HEALTH_META_KEY, corroboration.MATCHER_ACTIVATION_KEY]);
+    assert.equal(writes[0][3], corroboration.MATCHER_HEALTH_TTL_SECONDS);
+    assert.equal(writes[1][2].sourceState, 'degraded');
+    assert.equal(writes[1][2].errorCode, 'EMBED_HTTP_402');
+    assert.equal(ctx.crossWordingOutcomes.length, 0, 'each outcome counts in one cycle');
+    for (const opts of [{ setOk: false }, { readFails: true }]) {
+      writes.length = 0;
+      const failed = load(opts);
+      await vm.runInContext('writeCrossWordingHealth()', failed);
+      assert.ok(!writes.some((w) => w[1] === corroboration.MATCHER_HEALTH_META_KEY), `no seed-meta without its payload: ${JSON.stringify(opts)}`);
+      assert.equal(failed.crossWordingOutcomes.length, 2, `outcomes wait for a confirmed write: ${JSON.stringify(opts)}`);
+      writes.length = 0;
+      failed.upstashGet = async () => null;
+      failed.upstashSet = async (key, value, ttl) => { writes.push(['SET', key, value, ttl]); return true; };
+      await vm.runInContext('writeCrossWordingHealth()', failed);
+      assert.equal(writes[0][2].failed, 2, `the retry counts each outcome once: ${JSON.stringify(opts)}`);
+      assert.equal(failed.crossWordingOutcomes.length, 0);
+    }
+    const outage = load({ setOk: false });
+    outage.crossWordingOutcomes = Array.from({ length: 100 }, (_, i) => ({ result: 'unmatched', i }));
+    await vm.runInContext('writeCrossWordingHealth()', outage);
+    assert.equal(outage.crossWordingOutcomes.length, relayConstant('CROSS_WORDING_OUTCOMES_MAX'), 'a long outage keeps a bounded queue');
+    assert.equal(outage.crossWordingOutcomes.at(-1).i, 99, 'the newest outcomes stay');
+  });
+
+  it('keeps outcomes a build pass adds while the health write is in flight (#11426)', async () => {
+    const corroboration = await import('../scripts/lib/news-corroboration.mjs');
+    const writeStart = relay.indexOf('async function writeCrossWordingHealth()');
+    const writeEnd = relay.indexOf('\nasync function seedClassify()', writeStart);
+    const context = {
+      newsCorroborationPromise: Promise.resolve(corroboration),
+      crossWordingOutcomes: [{ result: 'matched' }],
+      upstashGet: async () => null,
+      upstashSet: async (key) => {
+        if (key === corroboration.MATCHER_HEALTH_KEY) context.crossWordingOutcomes.push({ result: 'unmatched' });
+        return true;
+      },
+      upstashPipeline: async (commands) => commands.map(() => ({ result: 'OK' })),
+      process: { env: { OPENROUTER_API_KEY: 'stub' } }, console: { warn: () => {} }, Date, JSON, Math,
+        CROSS_WORDING_OUTCOMES_MAX: relayConstant('CROSS_WORDING_OUTCOMES_MAX'),
+    };
+    vm.createContext(context);
+    vm.runInContext(relay.slice(writeStart, writeEnd), context);
+    await vm.runInContext('writeCrossWordingHealth()', context);
+    assert.deepEqual(context.crossWordingOutcomes, [{ result: 'unmatched' }]);
+  });
+
+  it('writes the matcher health on a cycle with no classify provider (#11426)', async () => {
+    const classifyStart = relay.indexOf('async function seedClassify()');
+    const classifyEnd = relay.indexOf('\n}\n', classifyStart) + 3;
+    assert.ok(classifyStart > 0 && classifyEnd > classifyStart);
+    let writes = 0;
+    const context = {
+      classifyInFlight: false, CROSS_WORDING_MAX_CHECKS: 8, crossWordingChecksLeft: 0,
+      CLASSIFY_LLM_PROVIDERS: [{ envKey: 'OPENROUTER_API_KEY' }], process: { env: {} },
+      writeCrossWordingHealth: async () => { writes++; },
+      console: { log: () => {}, warn: () => {} }, Date,
+    };
+    vm.createContext(context);
+    vm.runInContext(relay.slice(classifyStart, classifyEnd), context);
+    await vm.runInContext('seedClassify()', context);
+    assert.equal(writes, 1, 'a keyless relay still reports NOT_CONFIGURED, not a silent probe');
+    assert.equal(context.classifyInFlight, false);
   });
 
   it('adds nothing when the module failed to load', async () => {

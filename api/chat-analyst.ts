@@ -27,7 +27,7 @@ import { runRedisPipeline } from '../server/_shared/redis';
 import { DIRECT_LLM_DAILY_QUOTA_LIMIT, reserveDirectLlmQuota } from '../server/_shared/direct-llm-quota';
 import { reportHighUsageIfCrossed } from '../server/_shared/high-usage-alarm';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context';
-import { buildAnalystMessages } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
+import { buildAnalystMessages, buildAnalystPriceGroundText } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
 import { buildActionEvents } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions';
 import { withPriceGrounding } from '../server/worldmonitor/intelligence/v1/chat-analyst-grounding';
 import { callLlmReasoningStream } from '../server/_shared/llm';
@@ -306,9 +306,10 @@ export default async function handler(req: Request): Promise<Response> {
     // from its allowed providers (ai-routing-policy.ts). The routing lookup
     // reads only the caller, so it runs alongside the context reads instead of
     // adding its round trip before the first streamed token.
+    const routingDecisionPromise = getAiRoutingDecisionForUser(premiumIdentity.userId);
     const [context, routingDecision] = await Promise.all([
-      assembleAnalystContext(geoContext, domainFocus, retrievalQuery, query),
-      getAiRoutingDecisionForUser(premiumIdentity.userId),
+      assembleAnalystContext(geoContext, domainFocus, retrievalQuery, query, { routingDecisionPromise }),
+      routingDecisionPromise,
     ]);
     // Instructions in the system prompt, feed-derived context in the final user
     // turn next to the question: untrusted text never shares the system role.
@@ -343,7 +344,7 @@ export default async function handler(req: Request): Promise<Response> {
     // the terminal event and is reported here so the miss rate is observable.
     // The quota wrapper stays directly on the provider stream: whether answer
     // content was served is judged on the raw bytes, with no stage in between.
-    const groundText = messages.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
+    const groundText = buildAnalystPriceGroundText({ context, domainFocus, history, query });
     const stream = withPriceGrounding(
       prependSseEvents(
         [

@@ -12,8 +12,10 @@ import { t, getCurrentLanguage, getCurrentLanguageTag } from '@/services/i18n';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
+  itemAttribution,
   renderCredibilityBadge,
   renderPrimarySourceProvenance,
+  renderViaFeedLabel,
 } from './news/source-provenance';
 import { describePublisherRoster, renderPublisherRosterHtml } from './news/publisher-roster';
 import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
@@ -647,13 +649,15 @@ export class NewsPanel extends Panel {
 
     const html = sorted
       .map((item) => {
-        const provenance = renderPrimarySourceProvenance(item.source);
+        const attribution = itemAttribution(item);
+        const provenance = renderPrimarySourceProvenance(attribution.provenanceName);
         const titleLink = sanitizeUrl(item.link);
         return `
       <div class="item ${item.isAlert ? 'alert' : ''}" data-news-id="${escapeHtml(item.link)}" data-news-title="${escapeHtml(item.title)}" data-news-source="${escapeHtml(item.source)}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
         <div class="item-source">
-          ${escapeHtml(item.source)}
-          ${renderCredibilityBadge(item.source, item)}
+          ${escapeHtml(attribution.publisher)}
+          ${renderViaFeedLabel(attribution.viaFeed)}
+          ${renderCredibilityBadge(attribution.provenanceName, item)}
           ${provenance.riskBadge}
           ${provenance.facts}
           ${corroborationFlagHtml(assessCorroboration(evidenceFromItem(item)))}
@@ -842,12 +846,17 @@ export class NewsPanel extends Panel {
       ? `<span class="lang-badge">${cluster.lang.toUpperCase()}</span>`
       : '';
 
+    const primaryItem = cluster.allItems.find(item =>
+      item.source === cluster.primarySource && item.link === cluster.primaryLink && item.title === cluster.primaryTitle)
+      ?? cluster.allItems.find(item => item.source === cluster.primarySource)
+      ?? cluster.allItems[0];
+    const attribution = itemAttribution(primaryItem ?? { source: cluster.primarySource });
     // Unknown provenance is always visible; "Wire" is reserved for reviewed wire types.
     const {
       riskBadge: primaryPropBadge,
       tierBadge,
       facts: primaryProvenanceFacts,
-    } = renderPrimarySourceProvenance(cluster.primarySource);
+    } = renderPrimarySourceProvenance(attribution.provenanceName);
 
     const rosterView = describePublisherRoster(corroboration, publisherRoster(evidence));
 
@@ -912,8 +921,9 @@ export class NewsPanel extends Panel {
       <div class="${itemClasses}" ${cluster.monitorColor ? `style="border-inline-start-color: ${escapeHtml(cluster.monitorColor)}"` : ''} data-cluster-id="${escapeHtml(cluster.id)}" data-news-id="${escapeHtml(cluster.primaryLink)}">
         <div class="item-source">
           ${tierBadge}
-          ${escapeHtml(cluster.primarySource)}
-          ${renderCredibilityBadge(cluster.primarySource, cluster.allItems.find(item => item.source === cluster.primarySource) ?? cluster.allItems[0])}
+          ${escapeHtml(attribution.publisher)}
+          ${renderViaFeedLabel(attribution.viaFeed)}
+          ${renderCredibilityBadge(attribution.provenanceName, primaryItem)}
           ${primaryPropBadge}
           ${primaryProvenanceFacts}
           ${langBadge}

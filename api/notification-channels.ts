@@ -23,14 +23,14 @@ import {
 } from './_idempotency.js';
 import { assertNotificationWebhookRegistrationUrlSafe, blockedTeamsWebhookUrlReason } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
-import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+import { getBillingVerificationDenial, getEntitlements, isTerminalBillingStatus } from '../server/_shared/entitlement-check';
 import { hasCurrentEntitlementCoverage } from '../server/_shared/entitlement-coverage';
 import {
   RATE_LIMIT_DEGRADED_HEADERS,
   checkScopedRateLimit,
   scopedTooManyRequestsResponse,
 } from '../server/_shared/rate-limit';
-import { getAlertRuleShapeViolation } from '../shared/alert-rule-shape';
+import { getAlertRuleShapeViolation, isRuleEnabledIntent } from '../shared/alert-rule-shape';
 import { ALERT_UPGRADE_URL, FREE_ALERT_CHANNELS } from '../shared/alert-capabilities';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
@@ -81,10 +81,10 @@ const DENIAL_CAPTURE_DEDUP_WINDOW_MS = 60_000;
 const lastDenialCaptureAtByCode = new Map<string, number>();
 
 function shouldCaptureDenial(code: string | null, now: number): boolean {
-  // `subscription_lapsed` is a confirmed terminal answer already visible in
-  // Convex — eventing it would turn ordinary churn into a permanent Sentry
-  // stream and bury the anomaly.
-  if (!code || code === 'subscription_lapsed') return false;
+  // A lapse or a payment-failed pause is a confirmed terminal answer already
+  // visible in Convex — eventing it would turn ordinary churn into a permanent
+  // Sentry stream and bury the anomaly.
+  if (!code || isTerminalBillingStatus(code)) return false;
   const last = lastDenialCaptureAtByCode.get(code);
   if (last !== undefined && now - last < DENIAL_CAPTURE_DEDUP_WINDOW_MS) return false;
   lastDenialCaptureAtByCode.set(code, now);
@@ -248,6 +248,22 @@ async function relayValidationPassthrough(resp: Response, cors: Record<string, s
   return json(payload, resp.status, cors);
 }
 
+/**
+ * A rule save's result from the relay (#10976): the stored `enabled`, and when
+ * the save added the rule's first channel, whether alerts switched on or stayed
+ * off and why. The settings panel renders the stored state from it.
+ */
+async function ruleSaveResult(resp: Response): Promise<Record<string, unknown>> {
+  const body = await resp.json().catch(() => null) as { enabled?: unknown; firstChannel?: unknown; reason?: { code?: unknown; message?: unknown } } | null;
+  if (typeof body?.enabled !== 'boolean') return {};
+  const { code, message } = body.reason ?? {};
+  return {
+    enabled: body.enabled,
+    ...(body.firstChannel === 'on' || body.firstChannel === 'held' ? { firstChannel: body.firstChannel } : {}),
+    ...(typeof code === 'string' ? { reason: { code, message: typeof message === 'string' ? message : '' } } : {}),
+  };
+}
+
 function json(body: unknown, status: number, cors: Record<string, string>, noCache = false): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -350,6 +366,7 @@ interface PostBody {
   webhookLabel?: string;
   variant?: string;
   enabled?: boolean;
+  enabledIntent?: unknown;
   eventTypes?: string[];
   sensitivity?: string;
   channels?: string[];
@@ -474,13 +491,14 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       // after which the refreshed entitlement restores their paid ladder.
       // Making that state 503 instead would hand every never-subscribed free
       // user a retryable error in place of a working free tier.
-      // A confirmed `subscription_lapsed` is NOT denied here: the provider
-      // says coverage ended, so the account is a free account and gets the
-      // free ladder like any other tier-0 caller. The old terminal 403 left a
-      // churned subscriber unable to disable or delete anything while the
-      // relay (#4273) began delivering their leftover scoped rule.
+      // A confirmed `subscription_lapsed` or `payment_failed` is NOT denied
+      // here: the provider says paid access ended, so the account is a free
+      // account and gets the free ladder like any other tier-0 caller. The
+      // old terminal 403 left a churned subscriber unable to disable or delete
+      // anything while the relay (#4273) began delivering their leftover
+      // scoped rule.
       const rawBillingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
-      const billingDenial = rawBillingDenial?.headers.get('X-Billing-Verification') === 'subscription_lapsed'
+      const billingDenial = isTerminalBillingStatus(rawBillingDenial?.headers.get('X-Billing-Verification'))
         ? null
         : rawBillingDenial;
       if (billingDenial) {
@@ -819,9 +837,12 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       }
 
       if (action === 'set-alert-rules') {
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers, chokepoints, orbitalSites, reservoirAlert } = body;
+        const { variant, enabled, enabledIntent, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers, chokepoints, orbitalSites, reservoirAlert } = body;
         const shapeError = alertRuleShapeError({ variant, eventTypes, channels, orbitalSites, reservoirAlert }, corsHeaders);
         if (shapeError) return finish(shapeError);
+        if (enabledIntent !== undefined && !isRuleEnabledIntent(enabledIntent)) {
+          return finish(json({ error: 'ENABLED_INTENT_INVALID', message: 'enabledIntent must be "keep" or "connect"' }, 400, corsHeaders));
+        }
         if (tickers !== undefined && !Array.isArray(tickers)) {
           return finish(json({ error: 'TICKERS_MUST_BE_ARRAY' }, 400, corsHeaders));
         }
@@ -833,6 +854,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           userId: session.userId,
           variant,
           enabled,
+          enabledIntent,
           eventTypes,
           sensitivity,
           channels,
@@ -854,7 +876,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        return finish(json({ ok: true }, 200, corsHeaders));
+        return finish(json({ ok: true, ...(await ruleSaveResult(resp)) }, 200, corsHeaders));
       }
 
       if (action === 'set-quiet-hours') {
@@ -927,10 +949,13 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       if (action === 'set-notification-config') {
         const VALID_SENSITIVITY = new Set(['all', 'high', 'critical']);
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers, chokepoints, orbitalSites, reservoirAlert, seedCountriesFromFollowed } = body;
+        const { variant, enabled, enabledIntent, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers, chokepoints, orbitalSites, reservoirAlert, seedCountriesFromFollowed } = body;
         if (!variant) return finish(json({ error: 'variant required' }, 400, corsHeaders));
         const shapeError = alertRuleShapeError({ variant, eventTypes, channels, orbitalSites, reservoirAlert }, corsHeaders);
         if (shapeError) return finish(shapeError);
+        if (enabledIntent !== undefined && !isRuleEnabledIntent(enabledIntent)) {
+          return finish(json({ error: 'ENABLED_INTENT_INVALID', message: 'enabledIntent must be "keep" or "connect"' }, 400, corsHeaders));
+        }
         if (sensitivity !== undefined && !VALID_SENSITIVITY.has(sensitivity)) {
           return finish(json({ error: 'invalid sensitivity' }, 400, corsHeaders));
         }
@@ -951,6 +976,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           userId: session.userId,
           variant,
           enabled,
+          enabledIntent,
           eventTypes,
           sensitivity,
           channels,
@@ -976,7 +1002,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           console.error('[notification-channels] POST set-notification-config relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        return finish(json({ ok: true }, 200, corsHeaders));
+        return finish(json({ ok: true, ...(await ruleSaveResult(resp)) }, 200, corsHeaders));
       }
 
       return finish(json({ error: 'Unknown action' }, 400, corsHeaders));

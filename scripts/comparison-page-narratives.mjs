@@ -447,7 +447,7 @@ export const COMPARISON_NARRATIVES = {
       'The other trigger is openness. Security teams that already run MISP, or that need AGPL software they can audit, are not trying to become Recorded Future customers. They are trying to keep sharing infrastructure and add a public watch. Naming that trigger keeps World Monitor in the public-source lane instead of a fake TI-platform lane.',
     ],
     methodologyProse: methodology(
-      'Recorded Future is scored from public product descriptions as a multi-domain intelligence platform, not as a product that stops at cyber. No list price was found. Flare and MISP cells were read from public product and project pages.',
+      'Recorded Future is scored from public product descriptions as a multi-domain intelligence platform, not as a product that stops at cyber. Recorded Future publishes no list price of its own; the price guide that UK G-Cloud 15 resellers attach is cited on the 2026 shortlist page. Flare and MISP cells were read from public product and project pages.',
     ),
     whyWeWinBody: [
       'World Monitor wins the cells a public catalog can win: a free dashboard, published Pro and API prices, AGPL-3.0 software, and multi-domain public-source context including cyber alongside conflict, maritime, and aviation. It does not win indicator scoring, licensed TI depth, or enterprise integrations.',
@@ -455,7 +455,7 @@ export const COMPARISON_NARRATIVES = {
     ],
     extraFaqs: [
       ['Is Recorded Future only a cyber tool?', 'No. Public product copy covers cyber, physical threat, geopolitical, country risk, and travel safety. Reducing it to cyber would be wrong on this page.'],
-      ['How much does Recorded Future cost?', 'It does not publish list pricing. Contracts are enterprise-negotiated. World Monitor publishes catalog prices.'],
+      ['How much does Recorded Future cost?', 'It does not publish list pricing on its own site. UK G-Cloud 15 resellers attach a price guide with annual module prices before discounts, and contracts are enterprise-negotiated. World Monitor publishes catalog prices.'],
       ['Is World Monitor a TI platform?', 'No. It is a multi-domain public-source dashboard and API that includes cyber context. It does not replace per-indicator enterprise TI.'],
       ['Should I use MISP or World Monitor?', 'MISP for sharing indicators with a community you can host. World Monitor for a hosted multi-domain watch. Many teams will run both.'],
       ['Does Flare cover geopolitics?', 'Not as its primary job. Flare is scored here for dark-web exposure. Geopolitical context is World Monitor\'s lane, and Recorded Future\'s platform lane.'],

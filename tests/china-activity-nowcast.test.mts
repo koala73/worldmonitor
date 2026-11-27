@@ -101,39 +101,36 @@ describe('China activity nowcast method contract (#5579)', () => {
     }
   });
 
-  it('keeps the PortWatch freshness boundary at two producer rotations', () => {
+  // #11270: observedAt is PortWatch's asof day, which trails publication by a
+  // varying lag. The adapter ages the content clock against this budget and
+  // marks the observation stale, so the evaluator must not age asof again.
+  it('gates PortWatch on content staleness, not on the age of its asof day', () => {
     const portwatch = CHINA_ACTIVITY_PROXY_REGISTRY.find(
       (definition) => definition.id === 'portwatch_tanker_calls_trend',
     )!;
-    const budgetMs = portwatch.freshnessBudgetMinutes * 60_000;
     const evaluatedAtMs = Date.parse(EVALUATED_AT);
-    const observationAtAge = (ageMs: number) =>
-      new Date(evaluatedAtMs - ageMs).toISOString();
-    const observation = (ageMs: number) => {
-      const observedAt = observationAtAge(ageMs);
-      return proxy(portwatch.id, 1, {
-        observedAt,
-        releasedAt: new Date(Date.parse(observedAt) + 1_000).toISOString(),
-        retrievedAt: new Date(evaluatedAtMs - 1_000).toISOString(),
-      });
-    };
-    const evaluatePortwatch = (ageMs: number) => evaluateChinaActivityNowcast({
+    const observedAt = new Date(
+      evaluatedAtMs - portwatch.freshnessBudgetMinutes * 60_000 - 2 * 86_400_000,
+    ).toISOString();
+    const evaluatePortwatch = (stale: boolean) => evaluateChinaActivityNowcast({
       evaluatedAt: EVALUATED_AT,
       officialObservations: [],
-      proxyObservations: [observation(ageMs)],
+      proxyObservations: [proxy(portwatch.id, 1, {
+        observedAt,
+        releasedAt: observedAt,
+        retrievedAt: new Date(evaluatedAtMs - 1_000).toISOString(),
+        stale,
+      })],
     }).contributions.find((item) => item.seriesId === portwatch.id)!;
 
     assert.equal(
       portwatch.freshnessBudgetMinutes,
       PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
     );
-    assert.equal(evaluatePortwatch(budgetMs - 1).included, true);
-    const justOutside = evaluatePortwatch(budgetMs + 1);
-    assert.equal(justOutside.included, false);
-    assert.equal(
-      justOutside.exclusionReason,
-      'freshness_budget_exceeded',
-    );
+    const lagged = evaluatePortwatch(false);
+    assert.equal(lagged.included, true, 'publication lag alone does not exclude fresh content');
+    assert.equal(lagged.observedAt, observedAt);
+    assert.equal(evaluatePortwatch(true).exclusionReason, 'marked_stale');
   });
 
   it('classifies agreement without emitting an unexplained aggregate score', () => {

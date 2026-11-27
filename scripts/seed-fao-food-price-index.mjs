@@ -4,7 +4,7 @@
  * Seed script: fetches the FAO Food Price Index (FFPI) CSV and writes
  * the past 12 months to Upstash Redis.
  *
- * Source: https://www.fao.org/media/docs/worldfoodsituationlibraries/default-document-library/food_price_indices_data.csv
+ * Source: https://www.fao.org/media/docs/worldfoodsituationlibraries/wfs-library/food_price_indices_data.csv
  * Released: first Friday of each month ~08:30 UTC
  *
  * Railway cron: 45 8 * * *   (daily at 08:45 UTC — over-seeds safely; FAO releases ~first Friday of month)
@@ -16,7 +16,7 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'economic:fao-ffpi:v1';
 const CACHE_TTL = 90 * 24 * 60 * 60; // 90 days — monthly seed, 3x interval per gold standard
-const CSV_URL = 'https://www.fao.org/media/docs/worldfoodsituationlibraries/default-document-library/food_price_indices_data.csv';
+const CSV_URL = 'https://www.fao.org/media/docs/worldfoodsituationlibraries/wfs-library/food_price_indices_data.csv';
 const MONTHS_TO_KEEP = 12;
 
 async function fetchFaoFfpi() {

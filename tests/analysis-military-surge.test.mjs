@@ -15,7 +15,6 @@ import {
   getTheaterForFlight,
   getTheaterPostureSummaries,
   isTransportFlight,
-  recalcPostureWithVessels,
   surgeAlertToSignal,
 } from '../shared/analysis-military-surge.ts';
 import { MILITARY_BASES_EXPANDED } from '../shared/military-bases-data.ts';
@@ -355,62 +354,13 @@ describe('theater posture summaries', () => {
   });
 });
 
-describe('posture recalculation with vessels and CII', () => {
-  function ironTheaterPosture(overrides = {}) {
-    const posture = getTheaterPostureSummaries([]).find((p) => p.theaterId === 'iran-theater');
-    return { ...posture, ...overrides };
-  }
-
-  it('escalates on vessels alone', () => {
-    const postures = [ironTheaterPosture({ totalVessels: 5 })];
-    recalcPostureWithVessels(postures);
-    assert.equal(postures[0].postureLevel, 'critical');
-    assert.equal(postures[0].headline, 'Critical military buildup - Iran Theater (5 vessels)');
-  });
-
-  it('escalates on an injected CII score for the target nation', () => {
-    const asked = [];
-    const getCii = (code) => {
-      asked.push(code);
-      return code === 'IR' ? 90 : null;
-    };
-    const postures = [ironTheaterPosture()];
-    recalcPostureWithVessels(postures, getCii);
-    assert.deepEqual(asked, ['IR']);
-    assert.equal(postures[0].postureLevel, 'critical');
-    assert.equal(postures[0].headline, 'Critical military buildup - Iran Theater (No assets)');
-  });
-
-  it('maps CII bands onto posture levels', () => {
-    for (const [cii, level] of [[90, 'critical'], [75, 'elevated'], [50, 'normal']]) {
-      const postures = [ironTheaterPosture()];
-      recalcPostureWithVessels(postures, () => cii);
-      assert.equal(postures[0].postureLevel, level, `CII ${cii}`);
-    }
-  });
-
-  it('leaves posture untouched when no CII provider is wired', () => {
-    const postures = [ironTheaterPosture()];
-    recalcPostureWithVessels(postures);
-    assert.equal(postures[0].postureLevel, 'normal');
-    assert.equal(postures[0].headline, 'Normal activity - Iran Theater');
-  });
-
-  it('asks for every mapped target nation and skips theaters without one', () => {
-    const asked = [];
-    const postures = getTheaterPostureSummaries([]);
-    recalcPostureWithVessels(postures, (code) => {
-      asked.push(code);
-      return null;
-    });
-    assert.deepEqual(asked.sort(), ['IR', 'KP', 'PS', 'TW', 'YE']);
-  });
-
-  it('routes the engine method through its injected CII provider', () => {
-    const { engine } = makeEngine({ getCii: (code) => (code === 'TW' ? 88 : null) });
-    const postures = getTheaterPostureSummaries([]);
-    engine.recalcPostureWithVessels(postures);
-    const taiwan = postures.find((p) => p.theaterId === 'taiwan-theater');
-    assert.equal(taiwan.postureLevel, 'critical');
+describe('posture level ownership', () => {
+  it('leaves the level to the relay: the engine has no vessel or instability recalculation', async () => {
+    // The published level comes from scripts/shared/theater-posture.js only. A second
+    // rule here (uncapped vessels plus a country-instability boost) once made
+    // the dashboard show theaters CRIT that the API rated normal.
+    const surge = await import('../shared/analysis-military-surge.ts');
+    assert.equal('recalcPostureWithVessels' in surge, false);
+    assert.equal(typeof new MilitarySurgeEngine().recalcPostureWithVessels, 'undefined');
   });
 });

@@ -14,7 +14,7 @@ export { extractDomain };
 // handler already enforces (`server/worldmonitor/leads/v1/submit-contact.ts`,
 // FREE_EMAIL_DOMAINS). The two are NOT wired to a single import on purpose:
 // that handler is bundled for the edge/gateway (esbuild via
-// scripts/build-sidecar-sebuf.mjs) and must NOT pull in `mailchecker`'s ~1MB
+// scripts/build-sidecar-handlers.mjs) and must NOT pull in `mailchecker`'s ~1MB
 // disposable-domain list, which this module depends on. See the U1 report note.
 export const FREE_EMAIL_DOMAINS = new Set<string>([
   "gmail.com", "googlemail.com", "yahoo.com", "yahoo.fr", "yahoo.co.uk", "yahoo.co.jp",

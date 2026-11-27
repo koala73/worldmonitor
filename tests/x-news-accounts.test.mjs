@@ -66,6 +66,21 @@ describe('data/x-accounts.json registry', () => {
     assert.equal(Number(match[1]), accounts.length);
   });
 
+  it('labels @nhk_news as the domestic NHK News service, not NHK World', () => {
+    const account = accounts.find((entry) => entry.handle === 'nhk_news');
+    const item = xNews.normalizeXPost(rawPost(account, '7000000000000000090'), account);
+    assert.equal(item.accountTitle, 'NHK News');
+    assert.equal(item.sourceName, 'NHK News');
+  });
+
+  it('decodes the HTML entities X encodes in post text exactly once', () => {
+    const [account] = accounts;
+    const item = xNews.normalizeXPost(rawPost(account, '7000000000000000091', {
+      text: 'CROP TOPS, JEANS &amp; WITHOUT HEADSCARVES &lt;3 &gt; literal &amp;lt;b&amp;gt;',
+    }), account);
+    assert.equal(item.text, 'CROP TOPS, JEANS & WITHOUT HEADSCARVES <3 > literal &lt;b&gt;');
+  });
+
   it('registers The Iran Watcher by the verified immutable ID', () => {
     const account = accounts.find((entry) => entry.handle === 'TheIranWatcher');
     assert.deepEqual(account, {

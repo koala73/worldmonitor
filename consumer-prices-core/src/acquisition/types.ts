@@ -67,6 +67,9 @@ export interface ExtractResult<T = Record<string, unknown>> {
   /** The product title the page declares about itself (og:title or
    * twitter:title). Category listings and SPA shells declare none. */
   pageTitle?: string;
+  /** The HTML document <title>. Category listings carry one too, so the page
+   * identity gate trusts it only for a segment that states a quantity. */
+  documentTitle?: string;
 }
 
 export interface AcquisitionProvider {

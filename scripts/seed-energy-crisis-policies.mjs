@@ -16,12 +16,24 @@ const VALID_SECTORS = new Set([
   'Transport', 'Cooling', 'Campaign', 'Work from home', 'Government travel',
   'Schools and universities', 'Taxation', 'Price caps', 'Fuel subsidies', 'Other',
 ]);
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const END_DATE_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 
-export function buildPayload() {
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const raw = readFileSync(resolve(__dirname, 'data', 'energy-crisis-policies.json'), 'utf-8');
-  const registry = JSON.parse(raw);
+function isCalendarDate(value, shape) {
+  if (!shape.test(value)) return false;
+  const parsed = new Date(`${value.length === 7 ? `${value}-01` : value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
+}
 
+export function resolveStatus(policy, now = new Date()) {
+  if (policy.endDate !== undefined && !isCalendarDate(policy.endDate, END_DATE_RE)) {
+    throw new Error(`Invalid endDate for ${policy.country}: ${policy.endDate}`);
+  }
+  if (policy.endDate && policy.endDate.localeCompare(now.toISOString().slice(0, policy.endDate.length)) < 0) return 'ended';
+  return policy.status;
+}
+
+export function buildPayload(registry = readRegistry(), now = new Date()) {
   const policies = registry.policies.map((p) => ({
     country: p.country,
     countryCode: p.countryCode,
@@ -29,7 +41,7 @@ export function buildPayload() {
     sector: p.sector,
     measure: p.measure,
     dateAnnounced: p.dateAnnounced,
-    status: p.status,
+    status: resolveStatus(p, now),
   }));
 
   return {
@@ -37,8 +49,13 @@ export function buildPayload() {
     sourceUrl: registry.sourceUrl,
     context: registry.context,
     policies,
-    updatedAt: new Date().toISOString(),
+    updatedAt: `${registry.statusReviewedAt}T12:00:00.000Z`,
   };
+}
+
+function readRegistry() {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  return JSON.parse(readFileSync(resolve(__dirname, 'data', 'energy-crisis-policies.json'), 'utf-8'));
 }
 
 export function validateFn(data) {
@@ -53,7 +70,9 @@ export function validateFn(data) {
     if (!VALID_STATUSES.has(p.status)) return false;
     if (!VALID_SECTORS.has(p.sector)) return false;
     if (typeof p.measure !== 'string' || p.measure.length === 0) return false;
+    if (p.dateAnnounced !== '' && !isCalendarDate(p.dateAnnounced, ISO_DATE_RE)) return false;
   }
+  if (Number.isNaN(Date.parse(data.updatedAt))) return false;
 
   return true;
 }
@@ -64,7 +83,7 @@ export function declareRecords(data) {
 }
 
 if (isMain) {
-  runSeed('energy', 'crisis-policies', CANONICAL_KEY, buildPayload, {
+  runSeed('energy', 'crisis-policies', CANONICAL_KEY, () => buildPayload(), {
     validateFn,
     ttlSeconds: CRISIS_POLICIES_TTL_SECONDS,
     sourceVersion: 'iea-crisis-policies-v1',

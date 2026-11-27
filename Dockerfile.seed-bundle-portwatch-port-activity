@@ -28,4 +28,6 @@ COPY shared/ ./shared/
 
 ENV NODE_OPTIONS="--max-old-space-size=1024 --dns-result-order=ipv4first"
 
+USER node
+
 CMD ["node", "scripts/seed-bundle-portwatch-port-activity.mjs"]

@@ -33,6 +33,8 @@ import { readRawJsonFromUpstash } from './_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from './_rate-limit.js';
 import { checkProEntitlement } from '../server/_shared/pro-entitlement';
 import { signBriefUrl, BriefUrlError } from '../server/_shared/brief-url';
 import { assertBriefEnvelope, selectBriefEnvelope } from '../server/_shared/brief-render.js';
@@ -200,6 +202,15 @@ export default async function handler(
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
   }
 
+  // Verify locally and charge the limit before the plan lookup, which is a Clerk call.
+  const identity = await validateBearerToken(jwt, { resolvePlan: false });
+  if (!identity.valid || !identity.userId) {
+    return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
+  }
+  const limited = await checkRateLimit(req, cors, {
+    scope: 'latest-brief', identifier: `user:${identity.userId}`, limit: 60, window: '60 s',
+  });
+  if (limited) return limited;
   const session = await validateBearerToken(jwt);
   if (!session.valid || !session.userId) {
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);

@@ -81,6 +81,9 @@ const MND_PERSISTENCE_HEADROOM_MS = 40_000;
 export const MND_OUTBOUND_BUDGET_MS = MND_SEED_FETCH_DEADLINE_MS - MND_PERSISTENCE_HEADROOM_MS;
 const MND_REFRESH_ROTATION_INTERVAL_MS = 3 * 60 * 60 * 1_000;
 const DAY_MS = 86_400_000;
+// Joint Staff reports a transit days after it happens; past a week it no longer
+// describes current activity.
+export const JAPAN_REVIEWED_MAX_CONTENT_AGE_DAYS = 7;
 const MAX_PERSISTED_STRING_LENGTH = 2_048;
 const MAX_SOURCE_URL_LENGTH = 512;
 const PROXY_DIAGNOSTIC_MAX_CHARS = 256;
@@ -2138,8 +2141,15 @@ export function buildCrossStraitActivitySnapshot({
         : previousPresence === 'not_covered_by_current_index'
           ? 'not_covered_by_current_index'
           : undefined);
+    const observation = structuredClone(row);
+    const contentAgeMs = Date.parse(generatedAt) - Date.parse(row.reportingPeriod.end);
+    observation.provenance.claims.content_freshness = known({
+      ...row.provenance.claims.content_freshness.value,
+      state: contentAgeMs > JAPAN_REVIEWED_MAX_CONTENT_AGE_DAYS * DAY_MS ? 'stale' : 'current',
+      assessedAt: generatedAt,
+    });
     return {
-      ...structuredClone(row),
+      ...observation,
       indexPresence,
       ...(indexCoverage ? { indexCoverage } : {}),
     };

@@ -40,7 +40,6 @@ function makePublicFastRequest() {
 beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
-  delete process.env.BOOTSTRAP_R2_SHADOW_MEASURE;
 });
 
 afterEach(() => {

@@ -15,7 +15,8 @@ message NationalDebtEntry {
   double gdp_usd = 3;
   // Debt as % of GDP.
   double debt_to_gdp = 4;
-  // Year-over-year debt growth percent (2023->2024).
+  // Percent change in debt_to_gdp versus the prior year. A falling ratio can
+  // coexist with rising debt, so this is not debt-stock growth.
   double annual_growth = 5;
   // Deficit-derived accrual in USD per second.
   double per_second_rate = 6;

@@ -18,6 +18,20 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const SCRIPT = join(REPO_ROOT, 'scripts', 'prepush-admission.mjs');
 const FIXTURES = [];
+
+// Wall-clock budget for the two contention cases, which queue several child
+// processes through the admission cap. Each child spawns the admission script
+// twice (acquire, then release) and one also shells out to git, so the real
+// cost is several Node cold starts, not the short hold each worker sleeps for.
+// At the previous 2s a loaded runner blew the budget, `acquire` threw
+// "Timed out waiting for a pre-push heavy-phase slot", the worker exited
+// non-zero and the suite failed on a machine-speed measurement it never meant
+// to take: unit-shard (5) failed and passed on a rerun of the same commit
+// (#10015). Nothing these cases assert depends on the budget being tight —
+// they check exit statuses, the slot ceiling, the absence of a "changed owner"
+// abort and that every slot is released. The budget only has to bound a
+// genuine deadlock, so it is generous and still fails in under a minute.
+const CONTENTION_WAIT_MS = 60_000;
 const GIT_LOCAL_ENV_VARS = execFileSync('git', ['rev-parse', '--local-env-vars'], {
   encoding: 'utf8',
 })
@@ -110,7 +124,7 @@ describe('pre-push heavy-phase admission', () => {
       ...gitEnv,
       WM_PREPUSH_ADMISSION_MAX: '2',
       WM_PREPUSH_ADMISSION_POLL_MS: '10',
-      WM_PREPUSH_ADMISSION_WAIT_MS: String(2_000),
+      WM_PREPUSH_ADMISSION_WAIT_MS: String(CONTENTION_WAIT_MS),
       WM_PREPUSH_ADMISSION_STALE_MS: '500',
     };
     const children = worktrees.map((worktree) => spawn(process.execPath, [worker, SCRIPT], {
@@ -226,7 +240,7 @@ describe('pre-push heavy-phase admission', () => {
       ...process.env,
       WM_PREPUSH_ADMISSION_MAX: '1',
       WM_PREPUSH_ADMISSION_POLL_MS: '10',
-      WM_PREPUSH_ADMISSION_WAIT_MS: String(2_000),
+      WM_PREPUSH_ADMISSION_WAIT_MS: String(CONTENTION_WAIT_MS),
       WM_PREPUSH_ADMISSION_STALE_MS: '20',
     };
     const worker = join(dir, 'reclaim-worker.mjs');

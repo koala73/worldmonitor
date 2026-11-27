@@ -182,3 +182,44 @@ export function getAlertRuleShapeViolation(input: {
 export function dedupeStrings<T extends string>(values: readonly T[]): T[] {
   return Array.from(new Set(values));
 }
+
+/**
+ * How a rule save from the settings panel asks the server to decide `enabled`
+ * (#10976), when the user did not set the toggle in the panel. "connect": a
+ * channel is being connected, and a rule with no stored channel switches
+ * alerts on. "keep": the stored value stays. The save still carries a boolean
+ * `enabled`, which a server without this field stores as sent.
+ */
+export const RULE_ENABLED_INTENTS = ['keep', 'connect'] as const;
+export type RuleEnabledIntent = (typeof RULE_ENABLED_INTENTS)[number];
+
+export function isRuleEnabledIntent(value: unknown): value is RuleEnabledIntent {
+  return (RULE_ENABLED_INTENTS as readonly unknown[]).includes(value);
+}
+
+export interface ResolvedRuleEnabled<E extends boolean | undefined = boolean> {
+  enabled: E | boolean;
+  /** True when this save switches alerts on because it connects the rule's first channel. */
+  firstChannel: boolean;
+}
+
+/** Without an intent, `enabled` is stored as sent. */
+export function resolveRuleEnabled<E extends boolean | undefined>(
+  requested: E,
+  intent: RuleEnabledIntent | undefined,
+  stored: { enabled: boolean; channels: readonly string[] } | null,
+  channels: readonly string[] | undefined,
+): ResolvedRuleEnabled<E> {
+  if (intent === undefined) return { enabled: requested, firstChannel: false };
+  if (intent === 'connect' && (stored?.channels.length ?? 0) === 0 && (channels?.length ?? 0) > 0) {
+    return { enabled: true, firstChannel: true };
+  }
+  return { enabled: stored?.enabled ?? requested ?? false, firstChannel: false };
+}
+
+/** What a rule save reports back: the stored `enabled`, and the first-channel decision when one was made. */
+export interface RuleSaveResult {
+  enabled: boolean;
+  firstChannel?: 'on' | 'held';
+  reason?: { code: string; message: string };
+}

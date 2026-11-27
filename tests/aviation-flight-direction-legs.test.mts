@@ -349,3 +349,73 @@ describe('list-airport-flights direction legs', () => {
     assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1');
   });
 });
+
+// AviationStack writes every time as the airport's local wall clock with a
+// "+00:00" suffix, and a codeshare row repeats its operating flight under the
+// marketing airline's number, naming the operator in lower case.
+function istanbulToManchester(iata: string, operatedAs?: string) {
+  return {
+    flight: { iata, codeshared: operatedAs ? { airline_iata: operatedAs.slice(0, 2).toLowerCase(), flight_iata: operatedAs.toLowerCase() } : null },
+    airline: { iata: iata.slice(0, 2), name: iata.slice(0, 2) },
+    departure: { iata: 'IST', timezone: 'Europe/Istanbul', scheduled: '2026-11-25T08:15:00+00:00' },
+    arrival: { iata: 'MAN', timezone: 'Europe/London', scheduled: '2026-11-25T10:45:00+00:00' },
+    flight_status: 'scheduled',
+  } as unknown as AVSFlight;
+}
+
+async function departuresBoard(departures: AVSFlight[]) {
+  installFetchMock({ departures });
+  return listAirportFlights(
+    ctxFor(requestFor('/api/aviation/v1/list-airport-flights?airport=IST&direction=FLIGHT_DIRECTION_DEPARTURE')),
+    { airport: 'IST', direction: 'FLIGHT_DIRECTION_DEPARTURE', limit: 30 } as never,
+  );
+}
+
+describe('list-airport-flights physical flights', () => {
+  it('lists a codeshared departure once, under its operating flight', async () => {
+    const response = await departuresBoard([
+      istanbulToManchester('TG9026', 'TK1971'),
+      istanbulToManchester('TK1971'),
+      istanbulToManchester('FI7018', 'TK1971'),
+      istanbulToManchester('6E4079', 'TK1971'),
+    ]);
+
+    assert.equal(response.flights.length, 1);
+    const [flight] = response.flights;
+    assert.equal(flight.flightNumber, 'TK1971');
+    assert.equal(flight.operatingCarrier?.iataCode, 'TK');
+    assert.deepEqual(flight.codeshareFlightNumbers, ['TG9026', 'FI7018', '6E4079']);
+  });
+
+  it('names the operating flight when the page holds only its codeshares', async () => {
+    const response = await departuresBoard([
+      istanbulToManchester('TG9026', 'TK1971'),
+      istanbulToManchester('FI7018', 'TK1971'),
+    ]);
+
+    assert.equal(response.flights.length, 1);
+    assert.equal(response.flights[0].flightNumber, 'TK1971');
+    assert.equal(response.flights[0].operatingCarrier?.iataCode, 'TK');
+    assert.deepEqual(response.flights[0].codeshareFlightNumbers, ['TG9026', 'FI7018']);
+  });
+
+  it('keeps a codeshare under its own number when the provider omits the operating flight', async () => {
+    const row = istanbulToManchester('TG9026', 'TK1971');
+    (row.flight as { codeshared: object }).codeshared = { airline_iata: 'tk' };
+    const response = await departuresBoard([row]);
+
+    assert.equal(response.flights.length, 1);
+    assert.equal(response.flights[0].flightNumber, 'TG9026');
+    assert.equal(response.flights[0].operatingCarrier?.iataCode, 'TG');
+    assert.deepEqual(response.flights[0].codeshareFlightNumbers, []);
+  });
+
+  it('reads each time on the clock of the airport it happens at', async () => {
+    const [flight] = (await departuresBoard([istanbulToManchester('TK1971')])).flights;
+
+    // 08:15 in Istanbul (UTC+3) and 10:45 in Manchester (UTC+0 in November).
+    assert.equal(flight.scheduledDeparture, Date.parse('2026-11-25T05:15:00Z'));
+    assert.equal(flight.scheduledArrival, Date.parse('2026-11-25T10:45:00Z'));
+    assert.equal(flight.origin?.timezone, 'Europe/Istanbul');
+  });
+});

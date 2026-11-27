@@ -78,16 +78,22 @@ export const required = points => {
   return points;
 };
 
-function csv(source, delimiter = ',') {
+// A row with the wrong number of cells fails the file, unless skipRagged is set:
+// then it is dropped and counted in `ragged` so the caller can bound the loss.
+export function csv(source, delimiter = ',', { skipRagged = false } = {}) {
   const parsed = Papa.parse(source.replace(/^\ufeff/, '').replace(/\r\n?/g, '\n'), { delimiter, newline: '\n', skipEmptyLines: 'greedy' });
   if (parsed.errors.length || !parsed.data.length) throw new Error('Invalid energy CSV');
   const records = parsed.data.map(row => row.map(cell => cell.trim()));
   const header = records.shift();
   if (new Set(header).size !== header.length) throw new Error('Duplicate energy CSV columns');
-  return { header, records: records.map(row => {
-    if (row.length !== header.length) throw new Error('Changed energy CSV columns');
-    return Object.fromEntries(header.map((key, i) => [key, row[i]]));
-  }) };
+  let ragged = 0;
+  const rows = records.filter(row => {
+    if (row.length === header.length) return true;
+    if (!skipRagged) throw new Error('Changed energy CSV columns');
+    ragged++;
+    return false;
+  });
+  return { header, ragged, records: rows.map(row => Object.fromEntries(header.map((key, i) => [key, row[i]]))) };
 }
 
 function columns(header, names) {
@@ -97,22 +103,26 @@ function columns(header, names) {
 export function parsePgcb(html) {
   const table = blocks(cleanHtml(html), 'table').find(table => /Generation\(MW\)/.test(table.inner))?.inner;
   if (!table) throw new Error('Changed PGCB fuel table');
+  // A Nuclear column between Wind and India appeared on 2026-11-23.
+  const nuclear = /<th[^>]*>\s*Wind\s*<\/th>\s*<th[^>]*>\s*Nuclear\s*<\/th>/.test(table);
   let headerAt = 0;
-  for (const heading of ['Gas', 'Liquid Fuel', 'Coal', 'Hydro', 'Solar', 'Wind', 'India', 'Nepal']) {
+  for (const heading of ['Gas', 'Liquid Fuel', 'Coal', 'Hydro', 'Solar', 'Wind', ...(nuclear ? ['Nuclear'] : []), 'India', 'Nepal']) {
     const at = table.indexOf(heading, headerAt);
     if (at < 0) throw new Error('Changed PGCB fuel table');
     headerAt = at + heading.length;
   }
+  const metrics = ['generation', 'generation.gas', 'generation.liquid_fuel', 'generation.coal', 'generation.hydro', 'generation.solar', 'generation.wind',
+    ...(nuclear ? ['generation.nuclear'] : [])];
+  const india = metrics.length + 2;
   const points = [];
   for (const row of rows(table)) {
     if (!/^\d{2}-\d{2}-\d{4}$/.test(row[0] ?? '')) continue;
-    if (row.length !== 14) throw new Error('Changed PGCB row');
+    if (row.length !== india + 5) throw new Error('Changed PGCB row');
     const [d, m, y] = row[0].split('-');
     const period = iso(`${y}-${m}-${d}T${row[1]}`, '+06:00');
-    const metrics = ['generation', 'generation.gas', 'generation.liquid_fuel', 'generation.coal', 'generation.hydro', 'generation.solar', 'generation.wind'];
     metrics.forEach((metric, i) => points.push(observation(metric, period, row[i + 2], 'MW')));
-    points.push(observation('imports.india', period, number(row[9]) + number(row[10]) + number(row[11]), 'MW'));
-    points.push(observation('imports.nepal', period, row[12], 'MW'));
+    points.push(observation('imports.india', period, number(row[india]) + number(row[india + 1]) + number(row[india + 2]), 'MW'));
+    points.push(observation('imports.nepal', period, row[india + 3], 'MW'));
   }
   return required(points);
 }
@@ -516,6 +526,191 @@ export function parseCoes(payload) {
     }
   }
   if (!points.some(p => p.metric === 'demand')) throw new Error('No executed COES demand');
+  return required(points);
+}
+
+// ---- Western Balkans: EMS (Serbia), NOS BiH (Bosnia and Herzegovina), MEPSO (North Macedonia) ----
+
+// The three operators publish local clock hours. Central European Time moves
+// between UTC+1 and UTC+2, so hours are placed through the IANA zone. On the
+// DST change days a wall-clock hour that does not exist or occurs twice is
+// dropped; whole-day tables that cannot say which hour shifted (EMS realised
+// load sums or nets it into one slot, MEPSO prints 23 or 25 columns) skip the day.
+const BALKAN_ZONE = 'Europe/Belgrade';
+function zoneOffsetMs(ms, zone) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(ms)).map(p => [p.type, p.value]));
+  return Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second) - Math.floor(ms / 1000) * 1000;
+}
+export function localDay(nowMs, zone = BALKAN_ZONE) {
+  return validDay(new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(nowMs)));
+}
+export const previousDay = (day, n = 1) => addDays(day, -n);
+// UTC start of the day's first local hour, or null when the day is not 24 hours long.
+export function localDayStart(day, zone = BALKAN_ZONE) {
+  const midnight = Date.parse(`${validDay(day)}T00:00:00Z`);
+  const start = midnight - zoneOffsetMs(midnight, zone);
+  const next = midnight + 86400000 - zoneOffsetMs(midnight + 86400000, zone);
+  if (zoneOffsetMs(start, zone) !== zoneOffsetMs(midnight, zone) || next - start !== 86400000) return null;
+  return start;
+}
+const hourStart = (start, index) => new Date(start + index * 3600000).toISOString();
+// UTC instant of a local wall-clock time, or null when the zone skips it or repeats it.
+export function wallClockUtc(day, minutes, zone = BALKAN_ZONE) {
+  const wall = Date.parse(`${validDay(day)}T00:00:00Z`) + minutes * 60000;
+  const matches = [60, 120].map(offsetMin => wall - offsetMin * 60000).filter(utc => zoneOffsetMs(utc, zone) === wall - utc);
+  return matches.length === 1 ? matches[0] : null;
+}
+const gridMw = (raw, source) => {
+  const value = number(raw);
+  if (value < 0 || value > 20000) throw new Error(`Implausible ${source} load`);
+  return value;
+};
+
+// EMS answers with PHP notices ahead of the JSON (and "null" for a day it lacks).
+const EMS_ORIGIN = 'https://transparency.ems.rs/balanceareaprofile';
+export const emsLiveUrl = day => `${EMS_ORIGIN}/aload/get_results.php?day=${validDay(day)}`;
+export const emsRealisedUrl = day => `${EMS_ORIGIN}/dload/get_results.php?day=${validDay(day)}`;
+export function emsJson(body) {
+  const stripped = String(body).replace(/^(?:\s*<br \/>\s*<b>(?:Notice|Warning|Deprecated)<\/b>:[^\n]{0,500}\n?)*/, '').trim();
+  try { return JSON.parse(stripped); } catch { throw new Error('Invalid EMS response'); }
+}
+
+// Today's operational hourly values ("Тренутна потрошња"): hour N of the day,
+// stamped with its local start time.
+export function parseEmsLive(payload, day) {
+  if (payload === null) return [];
+  if (!Array.isArray(payload) || payload.length > 25) throw new Error('Invalid EMS live load');
+  const compact = validDay(day).replaceAll('-', '');
+  let previous = -1;
+  const points = [];
+  payload.forEach((row, i) => {
+    const time = typeof row?.time === 'string' ? row.time.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}):00:00$/) : null;
+    if (row?.DATUMVREME !== `${compact}_${pad2(i + 1)}` || time?.[1] !== day || Number(time[2]) > 23 || Number(time[2]) < previous) throw new Error('Changed EMS live load row');
+    previous = Number(time[2]);
+    const start = wallClockUtc(day, previous * 60);
+    if (start !== null) points.push(observation('demand', new Date(start).toISOString(), gridMw(row.value, 'EMS'), 'MW', 'provisional'));
+  });
+  return points;
+}
+
+// Realised hourly load ("Остварена потрошња"), consolidated about two days
+// later: [D-1 forecast, [realised, unlabelled]]. Only the realised row is read.
+export function parseEmsRealised(payload, day) {
+  if (Array.isArray(payload) && payload.length === 1 && payload[0] === '') return [];
+  const realised = Array.isArray(payload) && Array.isArray(payload[1]) ? payload[1][0] : undefined;
+  if (realised === undefined || realised === null) return [];
+  const keys = Array.from({ length: 24 }, (_, i) => `S${pad2(i + 1)}`);
+  if (typeof realised !== 'object' || Object.keys(realised).join() !== keys.join()) throw new Error('Changed EMS realised load row');
+  const start = localDayStart(day);
+  if (start === null) return [];
+  return keys.map((key, i) => observation('demand', hourStart(start, i), gridMw(realised[key], 'EMS'), 'MW'));
+}
+
+// NOS BiH: the production page's table, returned inside JSON by WordPress AJAX.
+// Hours are labelled by their end: 01:00 is the first hour, 00:00 the last.
+export const NOSBIH_AJAX_URL = 'https://www.nosbih.ba/en/wp-admin/admin-ajax.php';
+export const nosbihForm = day => {
+  const [y, m, d] = validDay(day).split('-');
+  return new URLSearchParams({ action: 'production', production: `date=${d}.${m}.${y}.` }).toString();
+};
+const NOSBIH_HEADER = 'Time|Planned production|Actual production|Planned consumption|Actual consumption';
+export function parseNosbih(payload, day) {
+  if (payload?.success !== true || typeof payload.data !== 'string') throw new Error('Invalid NOS BiH response');
+  const table = blocks(cleanHtml(payload.data), 'table').find(t => /id="productionTable"/.test(t.attrs))?.inner;
+  if (!table) throw new Error('Changed NOS BiH production table');
+  const [header, ...data] = rows(table);
+  if (header?.join('|') !== NOSBIH_HEADER) throw new Error('Changed NOS BiH production columns');
+  // 24 rows, or 23 to 25 on a DST change day.
+  if (data.length < 23 || data.length > 25) throw new Error('Changed NOS BiH hours');
+  const ends = data.map(row => {
+    const label = row.length === 5 ? row[0].match(/^(\d{2}):00$/) : null;
+    if (!label || Number(label[1]) > 23) throw new Error('Changed NOS BiH hour row');
+    return Number(label[1]) === 0 ? 1440 : Number(label[1]) * 60;
+  });
+  if (ends[0] !== 60 || ends.some((end, i) => i && end < ends[i - 1])) throw new Error('Changed NOS BiH hour row');
+  const points = [];
+  data.forEach((row, i) => {
+    // A label repeated by the autumn change cannot say which of its hours it is.
+    if (ends.indexOf(ends[i]) !== ends.lastIndexOf(ends[i])) return;
+    const end = wallClockUtc(day, ends[i]);
+    if (end === null) return;
+    const period = new Date(end - 3600000).toISOString();
+    if (row[2]) points.push(observation('generation', period, gridMw(row[2], 'NOS BiH'), 'MW'));
+    if (row[4]) points.push(observation('demand', period, gridMw(row[4], 'NOS BiH'), 'MW'));
+  });
+  return points;
+}
+
+// MEPSO: daily metered energy report, linked from the home page about three days later.
+const MEPSO_HOST = 'www.mepso.com.mk';
+export const MEPSO_HOME_URL = `https://${MEPSO_HOST}/`;
+const MEPSO_LINK = /href="(\/files\/mk\/dnevni\/Информација за (\d{2})\.(\d{2})\.(20\d{2}) ?\.pdf)"/g;
+// Newest first.
+export function discoverMepsoPdfs(html) {
+  const links = [...String(html).matchAll(/href="(\/files\/mk\/dnevni\/[^"]*)"/g)].length;
+  const found = new Map();
+  for (const m of String(html).matchAll(MEPSO_LINK)) {
+    const day = ymd(m[4], m[3], m[2]);
+    if (!found.has(day)) found.set(day, publicUrl(new URL(m[1], MEPSO_HOME_URL).href, [MEPSO_HOST]));
+  }
+  if (!found.size) throw new Error('Missing MEPSO daily report');
+  if ([...String(html).matchAll(MEPSO_LINK)].length !== links) throw new Error('Changed MEPSO daily report link');
+  return [...found].sort((a, b) => b[0].localeCompare(a[0])).map(([day, url]) => ({ day, url }));
+}
+
+// "4.543,5" is 4543.5 MWh.
+const mkNumber = raw => {
+  if (!/^-?\d{1,3}(?:\.\d{3})*,\d$/.test(raw)) throw new Error(`Changed MEPSO figure ${String(raw).slice(0, 20)}`);
+  return number(raw.replaceAll('.', ''), true);
+};
+const MEPSO_ROWS = {
+  'ВКУПНО ХЕЦ': 'energy.hydro',
+  'ВКУПНО ТЕЦ': 'energy.thermal',
+  'ВКУПНО ГАС': 'energy.gas',
+  'ВКУПНО ВЕЦ': 'energy.wind',
+  'ВКУПНО ФЕЦ': 'energy.solar',
+  'ЗАГУБИ': 'losses',
+  'ВКУПНО ВЛЕЗ ЕЕС': 'inflow',
+  'ВКУПНО ИЗЛЕЗ ЕЕС': 'outflow',
+  // The delivered-energy label wraps over three lines; this is the line its figures sit on.
+  'МРЕЖА НА ДИРЕКТНИ ПОТРОШУВАЧИ И': 'energy.consumed',
+};
+const MEPSO_HOURS = Array.from({ length: 24 }, (_, i) => `${pad2((i + 1) % 24)}:00`);
+
+// Daily totals by source, delivered energy and signed net cross-border flow
+// (inflow minus outflow, so positive is a net import), in MWh. Each row's
+// total must equal its 24 hourly figures.
+export function parseMepso(items, day) {
+  const title = items.find(i => /^ДНЕВНА ИНФОРМАЦИЈА\*? ЗА ДЕН:$/.test(i.text.trim()));
+  const date = title && lineItems(items, title.y).find(i => /^\d{2}\.\d{2}\.20\d{2}$/.test(i.text.trim()));
+  if (!date) throw new Error('Changed MEPSO report title');
+  const [d, m, y] = date.text.trim().split('.');
+  if (ymd(y, m, d) !== validDay(day)) throw new Error('MEPSO report date does not match its link');
+  if (localDayStart(day) === null) throw new Error('MEPSO report covers a DST change day');
+  const hourLabel = items.find(i => i.text.trim() === '01:00');
+  const hours = hourLabel ? lineItems(items, hourLabel.y) : [];
+  if (hours.map(i => i.text.trim()).join() !== MEPSO_HOURS.join()) throw new Error('Changed MEPSO hour columns');
+  const totals = {};
+  for (const [label, key] of Object.entries(MEPSO_ROWS)) {
+    const labels = items.filter(i => i.text.trim() === label);
+    if (labels.length !== 1) throw new Error(`Changed MEPSO row ${label}`);
+    const figures = lineItems(items, labels[0].y).filter(i => i.x > labels[0].x + 40).map(i => mkNumber(i.text.trim()));
+    if (figures.length !== 25) throw new Error(`Changed MEPSO row ${label}`);
+    const [total, ...hourly] = figures;
+    if (Math.abs(hourly.reduce((s, v) => s + v, 0) - total) > 1.5) throw new Error(`MEPSO row ${label} does not add up`);
+    if (total < 0 || total > 100000) throw new Error(`Implausible MEPSO total ${label}`);
+    totals[key] = total;
+  }
+  // Delivered energy is generation plus inflow, less outflow and losses, plus
+  // energy taken from distribution-connected plants (about 4% of it).
+  const balance = totals['energy.consumed'] - (totals['energy.hydro'] + totals['energy.thermal'] + totals['energy.gas'] + totals['energy.wind'] + totals['energy.solar'] + totals.inflow - totals.outflow - totals.losses);
+  if (balance < 0 || balance > 0.15 * totals['energy.consumed']) throw new Error('MEPSO energy balance does not add up');
+  const points = Object.entries(totals)
+    .filter(([key]) => key.startsWith('energy.'))
+    .map(([metric, value]) => observation(metric, day, value, 'MWh'));
+  points.push(observation('energy.exchange.net', day, Number((totals.inflow - totals.outflow).toFixed(1)), 'MWh'));
   return required(points);
 }
 

@@ -480,6 +480,7 @@ describe('api/user/mcp-quota for a member', () => {
     const reads = [];
     const res = await quotaHandler(new Request('https://www.worldmonitor.app/api/user/mcp-quota'), {
       resolveUserId: async () => PRO_USER_ID,
+      rateLimit: async () => null,
       redisGet: async (key) => { reads.push(key); return '11500'; },
       getEntitlements: async () => enterpriseEntitlement(ACCOUNT),
       now: () => new Date(),

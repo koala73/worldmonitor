@@ -306,7 +306,7 @@ test.describe('live media intent gating', () => {
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
   });
 
-  test('tears down live news media on hidden tab and panel close', async ({ page }) => {
+  test('stops muted live news on a hidden tab, restarts it on return, and tears it down on panel close', async ({ page }) => {
     await installCleanLiveMediaPrefs(page);
 
     await page.goto('/dashboard?liveMediaTeardown=1', { waitUntil: 'domcontentloaded' });
@@ -327,7 +327,7 @@ test.describe('live media intent gating', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
 
-    await liveNews.getByRole('button', { name: /play live feed/i }).click();
+    // The viewer started it, so the return brings it back without another click.
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
     await liveNews.locator('.panel-close-btn').dispatchEvent('click');
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 10_000 }).toBe(0);

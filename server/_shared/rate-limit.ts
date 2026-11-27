@@ -1208,6 +1208,40 @@ export const RATE_LIMIT_MUTATION_FALLBACK_EXEMPT: Record<string, RateLimitPolicy
   },
 };
 
+interface StandaloneAdmissionDecision {
+  reason: string;
+  // A route that should get a caller limit and does not have one yet. Fixing it
+  // means adding the limit and deleting the entry; the lint fails on an entry
+  // whose route has gained one.
+  debt?: true;
+}
+
+// Standalone api/ routes that run no caller limiter. scripts/enforce-rate-limit-policies.mjs
+// fails on any other route whose own code does not call one.
+export const STANDALONE_ROUTES_WITHOUT_CALLER_ADMISSION: Record<string, StandaloneAdmissionDecision> = {
+  'api/agent-auth.ts': { reason: 'Returns a fixed auth challenge built from request host metadata; no backend call.' },
+  'api/geo.js': { reason: 'Returns the country from request headers; no backend call.' },
+  'api/http-message-signatures-directory.ts': { reason: 'Returns a hardcoded public key directory; no backend call.' },
+  'api/oauth-authorization-server.ts': { reason: 'OAuth discovery document built from constants; no backend call.' },
+  'api/oauth-protected-resource.ts': { reason: 'OAuth resource metadata built from constants; no backend call.' },
+  'api/og-story.js': { reason: 'Renders an SVG from query values and constants; no backend call.' },
+  'api/story.js': { reason: 'Returns a redirect or locally rendered share HTML; no backend call.' },
+  'api/youtube/embed.js': { reason: 'Returns a local HTML template; the YouTube script loads in the browser.' },
+  'api/cache-purge.js': { reason: 'Requires the RELAY_SHARED_SECRET bearer before any Redis work.' },
+  'api/internal/brief-why-matters.ts': { reason: 'Requires the RELAY_SHARED_SECRET bearer before cache or LLM work.' },
+  'api/seed-contract-probe.ts': { reason: 'Requires x-probe-secret to match RELAY_SHARED_SECRET before any probe runs.' },
+  'api/seed-health.js': { reason: 'Requires an enterprise operator key, checked locally, before any Redis read.' },
+  'api/opensky.js': { reason: 'Requires an enterprise operator key, or the local sidecar key on its loopback hop, before the relay call.' },
+  'api/download.js': { reason: 'CDN-cached release redirect; a cache bypass costs one Redis GET on a fixed key, and GitHub is called only when that key is empty.' },
+  'api/version.js': { reason: 'CDN-cached release version; a cache bypass costs one Redis GET on a fixed key, and GitHub is called only when that key is empty.' },
+  'api/gpsjam.js': { reason: 'CDN-cached seeded data; a cache bypass costs one Redis GET on a fixed key.' },
+  'api/open-data-chokepoints.js': { reason: 'CDN-cached seeded data; dates are bounded, so a cache bypass costs one Redis GET on a bounded key set.' },
+  'api/supply-chain/hormuz-tracker.js': { reason: 'CDN-cached seeded data; a cache bypass costs one Redis GET on a fixed key.' },
+  'api/miit-news.js': { reason: 'CDN-cached feed; a cache bypass costs one Redis GET on a fixed key, and MIIT is fetched only when that key is empty.' },
+  'api/product-catalog.js': { reason: 'CDN-cached catalog; a cache bypass costs one Redis GET on product-catalog:v3, and Dodo is called only when that key is empty. DELETE is secret-gated.' },
+  'api/health.js': { reason: 'Uptime monitors poll it, so a limit would page on-call. It serves the cached verdict first; a refresh takes a Redis SET NX lock, so one sweep runs at a time.' },
+};
+
 const endpointLimiters = new Map<string, Ratelimit>();
 
 function getEndpointRatelimit(pathname: string): Ratelimit | null {

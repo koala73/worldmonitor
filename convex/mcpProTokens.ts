@@ -87,9 +87,10 @@ export const issueProMcpToken = internalMutation({
     // would admit a churned user at the three edge gates and then throw
     // PRO_REQUIRED on the final step.
     //
-    // Dunning does not land here either: `isCoveringAt` keeps an `on_hold` row
-    // covering, so its entitlement `validUntil` is still in the future and it
-    // takes the `isPro` branch above with full access.
+    // Dunning does not land here either while the hold's access grace runs:
+    // its entitlement `validUntil` is still in the future (`accessEndAt`) and
+    // it takes the `isPro` branch above with full access. After the grace the
+    // entitlement has expired and the user is treated as free.
     const coverageEnded = !entitlement || entitlement.validUntil < Date.now();
     const isConfirmedFreeAccount = coverageEnded || Boolean(
       mergedFeatures

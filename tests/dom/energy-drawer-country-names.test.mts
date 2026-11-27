@@ -46,7 +46,7 @@ describe('energy registry drawers show full country names', () => {
     await panel.presentDetail({ shortages: [], classifierVersion: 'v1', fetchedAt: '', upstreamUnavailable: false } as never, 'cu-diesel');
 
     const heading = panel.getElement().querySelector('.fs-drawer h3')?.textContent ?? '';
-    expect(heading).toContain('Cuba · diesel');
+    expect(heading).toContain('Cuba · Diesel');
   });
 
   it('pipeline drawer route names origin, destination and transit countries', async () => {

@@ -110,7 +110,7 @@ beforeEach(() => {
   while (cleanups.length) cleanups.pop()?.();
   document.body.replaceChildren();
   channelMocks.getChannelsData.mockReset();
-  channelMocks.saveAlertRules.mockReset().mockResolvedValue(undefined);
+  channelMocks.saveAlertRules.mockReset().mockResolvedValue({});
   channelMocks.setWebhookChannel.mockReset().mockResolvedValue({ signingSecret: SECRET });
   channelMocks.createPairingToken.mockReset().mockResolvedValue({
     token: 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',

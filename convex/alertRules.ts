@@ -18,10 +18,15 @@ import {
   type AlertRuleShapeCode,
   ORBITAL_SITE_ALERT_EVENT_TYPES,
   RESERVOIR_ALERT_EVENT_TYPE,
+  resolveRuleEnabled,
+  RULE_ENABLED_INTENTS,
+  type ResolvedRuleEnabled,
+  type RuleSaveResult,
 } from "../shared/alert-rule-shape";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
 import { assertAlertCapabilities, freeAccountCountryUnionCount, loadAlertCapabilities } from "./lib/alertCapabilities";
 import { seedCountriesForRule } from "./lib/alertScopeSeed";
+import { ALERT_CAPABILITY_VIOLATION_CODES } from "../shared/alert-capabilities";
 
 type DigestMode = "realtime" | "daily" | "twice_daily" | "weekly";
 type Sensitivity = "all" | "high" | "critical";
@@ -132,6 +137,39 @@ async function assertAlertCapabilitiesFor(
     };
   }
   assertAlertCapabilities(caps, state);
+}
+
+/**
+ * Runs the capability check for the resolved `enabled` (#10976). When the
+ * server switched alerts on for a first channel and the plan refuses the
+ * enabled rule, the rule is stored off instead and the refusal becomes the
+ * reason, so connecting a channel never fails on a rung only an enabled rule
+ * has to pass. Any other refusal still throws.
+ */
+type RuleSaveDecision<E extends boolean | undefined> = Omit<RuleSaveResult, "enabled"> & { enabled: E | boolean };
+
+async function checkResolvedEnabled<E extends boolean | undefined>(
+  resolved: ResolvedRuleEnabled<E>,
+  check: (enabled: E | boolean) => Promise<void>,
+): Promise<RuleSaveDecision<E>> {
+  try {
+    await check(resolved.enabled);
+  } catch (err) {
+    const reason = resolved.firstChannel ? capabilityRefusal(err) : null;
+    if (!reason) throw err;
+    await check(false);
+    return { enabled: false, firstChannel: "held", reason };
+  }
+  return resolved.firstChannel ? { enabled: true, firstChannel: "on" } : { enabled: resolved.enabled };
+}
+
+const enabledIntentValidator = v.union(...RULE_ENABLED_INTENTS.map((intent) => v.literal(intent)));
+
+function capabilityRefusal(err: unknown): { code: string; message: string } | null {
+  if (!(err instanceof ConvexError)) return null;
+  const data = err.data as { code?: unknown; message?: unknown } | null;
+  if (typeof data?.code !== "string" || !(ALERT_CAPABILITY_VIOLATION_CODES as readonly string[]).includes(data.code)) return null;
+  return { code: data.code, message: typeof data.message === "string" ? data.message : "" };
 }
 
 // Cross-field invariant enforcement for (digestMode, sensitivity).
@@ -368,6 +406,7 @@ export const setAlertRulesForUser = internalMutation({
     userId: v.string(),
     variant: v.string(),
     enabled: v.boolean(),
+    enabledIntent: v.optional(enabledIntentValidator),
     eventTypes: v.array(v.string()),
     sensitivity: v.optional(sensitivityValidator),
     channels: v.array(channelTypeValidator),
@@ -407,7 +446,8 @@ export const setAlertRulesForUser = internalMutation({
     const normalizedCountries = rest.countries !== undefined
       ? normalizeCountries(rest.countries)
       : undefined;
-    if (rest.enforceEntitlement) {
+    const result = await checkResolvedEnabled(resolveRuleEnabled(rest.enabled, rest.enabledIntent, existing, channels), async (enabled) => {
+      if (!rest.enforceEntitlement) return;
       // Validate only what this call writes — see the sister comment in
       // setNotificationConfigForUser. `channels` is a required arg here, so
       // it is always judged; sensitivity only when sent (or on insert, where
@@ -419,16 +459,16 @@ export const setAlertRulesForUser = internalMutation({
         ...(rest.aiDigestEnabled !== undefined ? { aiDigestEnabled: rest.aiDigestEnabled } : {}),
         // Whole-rule view for the worldwide-scope check — see
         // setNotificationConfigForUser.
-        enabled: rest.enabled,
+        enabled,
         effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
         // Judge the union when this call writes the scope AND when it
         // re-enables a row carrying a stored scope: staging disabled variant
         // rows and enabling them without resending `countries` must not
         // skip the account-wide rung (Strix review 7).
-      }, normalizedCountries !== undefined || (rest.enabled && existing?.enabled === false)
+      }, normalizedCountries !== undefined || (enabled && existing?.enabled === false)
         ? { variant: rest.variant, countries: normalizedCountries ?? existing?.countries ?? [] }
         : undefined);
-    }
+    });
     const normalizedTickers = rest.tickers !== undefined
       ? normalizeTickers(rest.tickers)
       : undefined;
@@ -439,7 +479,7 @@ export const setAlertRulesForUser = internalMutation({
     const now = Date.now();
     if (existing) {
       const patch: Record<string, unknown> = {
-        enabled: rest.enabled,
+        enabled: result.enabled,
         eventTypes,
         channels,
         updatedAt: now,
@@ -459,7 +499,7 @@ export const setAlertRulesForUser = internalMutation({
       await ctx.db.insert("alertRules", {
         userId,
         variant: rest.variant,
-        enabled: rest.enabled,
+        enabled: result.enabled,
         eventTypes,
         sensitivity: pair.sensitivity,
         channels,
@@ -472,6 +512,7 @@ export const setAlertRulesForUser = internalMutation({
         updatedAt: now,
       });
     }
+    return result;
   },
 });
 
@@ -541,6 +582,10 @@ export const setDigestSettingsForUser = internalMutation({
       existing: existing ?? undefined,
     });
     assertCompatibleDeliveryMode(pair);
+    // A first save in realtime mode has no channel to deliver to, so it must
+    // not create a rule the relay treats as a subscription (#10976). A digest
+    // cadence is not a realtime subscription, so it is still saved enabled.
+    const ruleEnabled = existing?.enabled ?? pair.digestMode !== "realtime";
 
     const now = Date.now();
     const normalizedCountries = countries !== undefined
@@ -557,7 +602,7 @@ export const setDigestSettingsForUser = internalMutation({
         ...(normalizedCountries !== undefined
           ? {
               countriesCount: normalizedCountries.length,
-              enabled: existing?.enabled ?? true,
+              enabled: ruleEnabled,
               effectiveCountriesCount: normalizedCountries.length,
             }
           : {}),
@@ -572,7 +617,7 @@ export const setDigestSettingsForUser = internalMutation({
     } else {
       await assertRuleSlotAvailable(ctx, userId);
       await ctx.db.insert("alertRules", {
-        userId, variant, enabled: true, eventTypes: [], sensitivity: pair.sensitivity, channels: [],
+        userId, variant, enabled: ruleEnabled, eventTypes: [], sensitivity: pair.sensitivity, channels: [],
         ...digest, countries: normalizedCountries, updatedAt: now,
       });
     }
@@ -615,6 +660,9 @@ export const setQuietHoursForUser = internalMutation({
     // rationale. resolveEffectivePair still supplies sensitivity:'critical' on fresh
     // insert (compatible by construction under the tightened rule).
     const pair = resolveEffectivePair({ existing: existing ?? undefined });
+    // A quiet-hours save chooses no channel, so a first save must not create
+    // a rule the relay treats as a realtime subscription (#10976).
+    const ruleEnabled = existing?.enabled ?? false;
 
     const now = Date.now();
     const normalizedCountries = countries !== undefined
@@ -628,7 +676,7 @@ export const setQuietHoursForUser = internalMutation({
       // (CodeRabbit review, 2026-11-14).
       await assertAlertCapabilitiesFor(ctx, userId, {
         countriesCount: normalizedCountries.length,
-        enabled: existing?.enabled ?? true,
+        enabled: ruleEnabled,
         effectiveCountriesCount: normalizedCountries.length,
       }, { variant: rest.variant, countries: normalizedCountries });
     }
@@ -647,7 +695,7 @@ export const setQuietHoursForUser = internalMutation({
     } else {
       await assertRuleSlotAvailable(ctx, userId);
       await ctx.db.insert("alertRules", {
-        userId, variant: rest.variant, enabled: true,
+        userId, variant: rest.variant, enabled: ruleEnabled,
         eventTypes: [], sensitivity: pair.sensitivity, channels: [],
         ...patch,
       });
@@ -672,6 +720,7 @@ export const setNotificationConfigForUser = internalMutation({
     userId: v.string(),
     variant: v.string(),
     enabled: v.optional(v.boolean()),
+    enabledIntent: v.optional(enabledIntentValidator),
     eventTypes: v.optional(v.array(v.string())),
     sensitivity: v.optional(sensitivityValidator),
     channels: v.optional(v.array(channelTypeValidator)),
@@ -761,28 +810,30 @@ export const setNotificationConfigForUser = internalMutation({
     // wider-than-plan row, so untouched stored fields are not re-judged here.
     // Delivery stays clamped to the caller's ladder either way
     // (scripts/notification-relay.cjs).
-    await assertAlertCapabilitiesFor(ctx, userId, {
-      ...(args.sensitivity !== undefined || !existing ? { sensitivity: pair.sensitivity } : {}),
-      ...(args.digestMode !== undefined || !existing ? { digestMode: pair.digestMode } : {}),
-      ...(channels !== undefined ? { channels } : {}),
-      ...(normalizedCountries !== undefined ? { countriesCount: normalizedCountries.length } : {}),
-      ...(args.aiDigestEnabled !== undefined ? { aiDigestEnabled: args.aiDigestEnabled } : {}),
-      // Whole-rule view for the worldwide-scope check (Greptile P1): an
-      // omitted or empty countries list is a worldwide rule, which the free
-      // ladder does not include. Disables stay allowed.
-      enabled: args.enabled ?? existing?.enabled ?? true,
-      effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
-      // Union also judged on a re-enable without countries — see the sister
-      // comment in setAlertRulesForUser (Strix review 7).
-    }, normalizedCountries !== undefined || (args.enabled === true && existing?.enabled === false)
-      ? { variant, countries: normalizedCountries ?? existing?.countries ?? [] }
-      : undefined);
+    const decision = await checkResolvedEnabled(resolveRuleEnabled(args.enabled, args.enabledIntent, existing, channels), (enabled) =>
+      assertAlertCapabilitiesFor(ctx, userId, {
+        ...(args.sensitivity !== undefined || !existing ? { sensitivity: pair.sensitivity } : {}),
+        ...(args.digestMode !== undefined || !existing ? { digestMode: pair.digestMode } : {}),
+        ...(channels !== undefined ? { channels } : {}),
+        ...(normalizedCountries !== undefined ? { countriesCount: normalizedCountries.length } : {}),
+        ...(args.aiDigestEnabled !== undefined ? { aiDigestEnabled: args.aiDigestEnabled } : {}),
+        // Whole-rule view for the worldwide-scope check (Greptile P1): an
+        // omitted or empty countries list is a worldwide rule, which the free
+        // ladder does not include. Disables stay allowed.
+        enabled: enabled ?? existing?.enabled ?? true,
+        effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
+        // Union also judged on a re-enable without countries — see the sister
+        // comment in setAlertRulesForUser (Strix review 7).
+      }, normalizedCountries !== undefined || (enabled === true && existing?.enabled === false)
+        ? { variant, countries: normalizedCountries ?? existing?.countries ?? [] }
+        : undefined));
+    const result: RuleSaveResult = { ...decision, enabled: decision.enabled ?? existing?.enabled ?? true };
 
     const now = Date.now();
 
     if (existing) {
       const patch: Record<string, unknown> = { updatedAt: now };
-      if (args.enabled !== undefined) patch.enabled = args.enabled;
+      if (decision.enabled !== undefined) patch.enabled = decision.enabled;
       if (eventTypes !== undefined) patch.eventTypes = eventTypes;
       // Only patch sensitivity when caller explicitly supplied it.
       if (args.sensitivity !== undefined) patch.sensitivity = args.sensitivity;
@@ -802,7 +853,7 @@ export const setNotificationConfigForUser = internalMutation({
       await ctx.db.insert("alertRules", {
         userId,
         variant,
-        enabled: args.enabled ?? true,
+        enabled: result.enabled,
         eventTypes: eventTypes ?? [],
         sensitivity: pair.sensitivity,
         channels: channels ?? [],
@@ -818,6 +869,7 @@ export const setNotificationConfigForUser = internalMutation({
         updatedAt: now,
       });
     }
+    return result;
   },
 });
 

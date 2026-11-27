@@ -118,4 +118,22 @@ describe('monitor keyword matching', () => {
     expect(matchedTitles(['ai'], ['Train strike ends'])).toEqual([]);
     expect(matchedTitles(['мир'], ['Мирный договор подписан'])).toEqual([]);
   });
+
+  it('matches keywords that appear only in the article description', () => {
+    const panel = createPanel([{ id: 'watch', keywords: ['hormuz'], color: '#ff0000' }]);
+    document.body.append(panel.getElement());
+    panel.notifyConnected();
+    panel.renderResults([
+      {
+        source: 'Test Wire', title: 'Tanker traffic slows', link: 'https://example.com/0', pubDate: new Date(), isAlert: false,
+        snippet: 'Insurers raise war-risk premiums for ships crossing the Strait of Hormuz.',
+      },
+      {
+        source: 'Test Wire', title: 'Port strike ends', link: 'https://example.com/1', pubDate: new Date(), isAlert: false,
+        snippet: 'Dock workers return after a two-day walkout.',
+      },
+    ]);
+    const titles = Array.from(panel.getElement().querySelectorAll('#monitorsResults .item-title'), item => item.textContent ?? '');
+    expect(titles).toEqual(['Tanker traffic slows']);
+  });
 });

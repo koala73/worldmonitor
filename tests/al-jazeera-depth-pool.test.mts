@@ -47,7 +47,9 @@ beforeEach(() => {
   revoked = [];
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // A deadline-cut fetch probes its feed after the response; finish it on this test's fetch.
+  await digest.settleFeedProbes();
   globalThis.fetch = originalFetch;
   for (const key of envKeys) {
     if (oldEnv[key] === undefined) delete process.env[key];
@@ -120,10 +122,11 @@ describe('Al Jazeera claim-pool depth feed', () => {
   it('settles when the build deadline aborts a stalled depth fetch, and never throws', async () => {
     stubFetch({});
     const stalled = globalThis.fetch;
-    globalThis.fetch = async (url, init) => String(url) === DEPTH_URL
+    const deadline = new AbortController();
+    // Stalls only until the deadline; the probe that follows it gets a quick answer.
+    globalThis.fetch = async (url, init) => String(url) === DEPTH_URL && !deadline.signal.aborted
       ? new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
       : stalled(url, init);
-    const deadline = new AbortController();
     let settled = false;
     const warming = digest.warmDepthFeeds([{ attemptId: 'middleeast:0', category: 'middleeast', feed: aljazeera }], 'full', deadline.signal)
       .then(() => { settled = true; });

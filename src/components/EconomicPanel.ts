@@ -533,7 +533,7 @@ export class EconomicPanel extends Panel {
       ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-align:right;margin-top:8px">Updated ${new Date(d.seededAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>`
       : '';
 
-    return `<div style="padding:12px 14px">
+    return `<div style="padding:12px 0">
       <div style="text-align:center;margin-bottom:12px">
         <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Composite Score</div>
         <div style="font-size:calc(38px * var(--wm-panel-effective-scale, 1));font-weight:700;color:${color};line-height:1">${d.compositeScore.toFixed(1)}</div>

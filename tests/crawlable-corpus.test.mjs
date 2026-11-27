@@ -265,8 +265,24 @@ function assertPulseCountryRecords(countries) {
   }
 }
 
+// Top-level keys the freeze writes only when it has something to put in them:
+// pizzaIndex needs a current or carried reading (#10925). Either snapshot may
+// lack one, so the fixture cannot track the rolling capture's choice (#11151);
+// whichever side carries one must carry it well-formed.
+const OPTIONAL_LIVE_PULSE_KEYS = new Set(['pizzaIndex']);
+
 function assertPulseFixtureShape(fixture, live) {
-  assert.deepEqual(Object.keys(fixture).sort(), Object.keys(live).sort());
+  const requiredKeys = (snapshot) => Object.keys(snapshot).filter((key) => !OPTIONAL_LIVE_PULSE_KEYS.has(key)).sort();
+  assert.deepEqual(requiredKeys(fixture), requiredKeys(live));
+  for (const snapshot of [fixture, live]) {
+    if (!Object.hasOwn(snapshot, 'pizzaIndex')) continue;
+    assertPulseRecordFields(snapshot.pizzaIndex, {
+      updatedAt: 'string', level: 'string', label: 'string', venues: 'array', retained: 'boolean',
+    }, 'pizzaIndex');
+    for (const [index, venue] of snapshot.pizzaIndex.venues.entries()) {
+      assertPulseRecordFields(venue, { name: 'string', status: 'string' }, `pizzaIndex.venues[${index}]`);
+    }
+  }
   assert.equal(fixture.schemaVersion, live.schemaVersion);
   for (const section of LIVE_PULSE_SECTIONS) {
     if (section === 'countries') {
@@ -2176,6 +2192,7 @@ describe('crawlable corpus generator', () => {
       'scripts/source-catalog-identity.mjs',
       'shared/source-geography.json',
       'shared/publisher-families.js',
+      'shared/publisher-name.js',
       'shared/crawlable-crises.json',
       'shared/news-catalog.json',
     ]);
@@ -3158,8 +3175,17 @@ describe('crawlable corpus generator', () => {
       // Untagged: `ref=` would be captured as an affiliate referral code, and a
       // utm_* tag is a 308 hop through the middleware index-noise strip (#8603).
       assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/dashboard\?country=NO&amp;expanded=1">Open Norway on the live map/);
-      assert.doesNotMatch(norway, /[?&]ref=/, 'corpus CTAs must never use the affiliate ref= param');
-      assert.doesNotMatch(norway, /utm_source=/, 'corpus CTAs must not carry utm_source; middleware 308s it away');
+      // Only World Monitor's own links: a captured article URL keeps its
+      // publisher's utm_* tags, and which articles land on Norway's page moves
+      // with every weekly capture (#11151).
+      const ownHrefs = [...norway.matchAll(/href="([^"]*)"/g)]
+        .map(([, href]) => href.replaceAll('&amp;', '&'))
+        .filter((href) => href.startsWith('/') || href.startsWith('https://www.worldmonitor.app'));
+      assert.ok(ownHrefs.length > 0);
+      for (const href of ownHrefs) {
+        assert.doesNotMatch(href, /[?&]ref=/, `corpus links must never use the affiliate ref= param: ${href}`);
+        assert.doesNotMatch(href, /[?&]utm_[a-z]+=/, `corpus links must not carry utm_*; middleware 308s it away: ${href}`);
+      }
       // Social preview + trust-link contracts.
       assert.match(norway, /<meta property="og:image" content="https:\/\/www\.worldmonitor\.app\/favico\/og-image\.png">/);
       assert.match(norway, /<meta name="twitter:card" content="summary_large_image">/);
@@ -4702,7 +4728,21 @@ describe('crawlable corpus generator', () => {
 
       const hormuz = read(outDir, 'chokepoints/strait-of-hormuz/index.html');
       assert.match(hormuz, /<h1>Is the Strait of Hormuz open\?<\/h1>/);
-      assert.match(hormuz, /<title>Is the Strait of Hormuz Open\? Live Status \| World Monitor<\/title>/);
+      // The heading keeps the open/closed query; the title and description
+      // carry the other question the reading answers, ships per day against
+      // normal. Search engines returned this page for neither phrasing of the
+      // count question while the title asked only whether the strait is open.
+      assert.match(hormuz, /<title>Strait of Hormuz Ships per Day vs Normal \| World Monitor<\/title>/);
+      assert.match(hormuz, /<meta name="description" content="How many ships cross the Strait of Hormuz today\? IMF PortWatch daily transits against the year-earlier normal/);
+      const babElMandeb = read(outDir, 'chokepoints/bab-el-mandeb/index.html');
+      assert.match(babElMandeb, /<title>Bab el-Mandeb Ship Transits vs a Year Ago \| World Monitor<\/title>/);
+      assert.match(babElMandeb, /<meta name="description" content="How many ships cross Bab el-Mandeb today\? IMF PortWatch daily transits against the year-earlier average/);
+      // Its year-earlier baseline was already depressed, so no authored copy may call it normal (the status band reads Steady for the same reason).
+      assert.doesNotMatch(babElMandeb.match(/<title>[^<]*<\/title>[\s\S]*?<meta name="description" content="[^"]*"/)[0], /\bnormal\b/i);
+      assert.ok(babElMandeb.includes('means steady, not back to normal'), 'the FAQ says the baseline is not a normal level');
+      for (const [page, name] of [[hormuz, 'the Strait of Hormuz'], [babElMandeb, 'Bab el-Mandeb']]) {
+        assert.ok(page.includes(`How many ships pass through ${name} each day?`), `${name} answers the ship-count question in its FAQ`);
+      }
       assert.match(hormuz, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/chokepoints\/strait-of-hormuz\/">/);
       assert.match(hormuz, /about 20% of the world.s seaborne crude oil/);
       assert.doesNotMatch(hormuz, /a very large share of the world.s seaborne crude oil/);
@@ -6148,6 +6188,28 @@ describe('live-pulse snapshot injection (#7533)', () => {
       () => assertPulseFixtureShape(drifted, fixture),
       /nested shape/,
     );
+  });
+
+  it('accepts a Pizza Index reading on either side but rejects a malformed one or an unknown key (#11151)', () => {
+    const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
+    delete fixture.pizzaIndex;
+    const live = structuredClone(fixture);
+    live.pizzaIndex = {
+      updatedAt: new Date(Date.parse(`${fixture.capturedAt}T00:00:00Z`)).toISOString(),
+      level: '5',
+      label: 'Normal Activity',
+      venues: [{ name: 'Test Pizza', status: 'No data' }],
+      retained: false,
+    };
+    assert.doesNotThrow(() => assertPulseFixtureShape(fixture, live));
+    assert.doesNotThrow(() => assertPulseFixtureShape(live, fixture));
+
+    live.pizzaIndex.venues = [{ name: 'Test Pizza' }];
+    assert.throws(() => assertPulseFixtureShape(fixture, live), /nested shape at pizzaIndex\.venues\[0\]/);
+    live.pizzaIndex = { level: '5' };
+    assert.throws(() => assertPulseFixtureShape(live, fixture), /nested shape at pizzaIndex/);
+
+    assert.throws(() => assertPulseFixtureShape({ ...fixture, unexpected: true }, fixture));
   });
 
   it('accepts an empty convergence leader list but rejects malformed leaders', () => {

@@ -145,3 +145,53 @@ describe('gulf-fdi dataset integrity', () => {
     }
   });
 });
+
+describe('gulf-fdi curated corrections (#11272)', () => {
+  const byId = (id) => GULF_INVESTMENTS.find((investment) => investment.id === id);
+  const byAsset = (pattern) => GULF_INVESTMENTS.filter((investment) => pattern.test(investment.assetName));
+
+  it('credits the Telecom Italia NetCo stake to ADIA as a closed deal', () => {
+    const [netco, ...others] = byAsset(/NetCo/);
+    assert.equal(others.length, 0);
+    assert.equal(netco.investingEntity, 'ADIA');
+    assert.equal(netco.investingCountry, 'UAE');
+    assert.equal(netco.status, 'operational');
+    assert.equal(netco.yearOperational, 2024);
+    assert.equal(netco.investmentUSD, undefined, 'ADIA did not disclose its NetCo amount');
+    assert.equal(netco.stakePercent, undefined, 'ADIA did not disclose its NetCo stake');
+  });
+
+  it('keeps the Rongsheng and HAPCO Panjin stakes as separate transactions', () => {
+    const rongsheng = byId('aramco-rongsheng-china');
+    assert.equal(rongsheng.stakePercent, 10);
+    assert.equal(rongsheng.investmentUSD, 3400);
+    assert.equal(rongsheng.status, 'operational');
+    assert.doesNotMatch(rongsheng.assetName, /Panjin/);
+
+    const hapco = byId('aramco-hapco-panjin-china');
+    assert.equal(hapco.stakePercent, 30);
+    assert.equal(hapco.investmentUSD, undefined);
+    assert.equal(hapco.status, 'under-construction');
+    assert.doesNotMatch(hapco.assetName, /Rongsheng/);
+  });
+
+  it('dates the Covestro takeover to its 2024 agreement and 2025 completion', () => {
+    const covestro = byId('adnoc-covestro-germany');
+    assert.equal(covestro.sector, 'manufacturing');
+    assert.equal(covestro.yearAnnounced, 2024);
+    assert.equal(covestro.yearOperational, 2025);
+  });
+
+  it('does not give THE LINE the whole NEOM budget or a railway label', () => {
+    const line = byId('neom-the-line-sa');
+    assert.equal(line.sector, 'real-estate');
+    assert.equal(line.investmentUSD, undefined);
+    assert.doesNotMatch(line.assetType, /Rail/i);
+  });
+
+  it('cites a source for every corrected record', () => {
+    for (const id of ['adia-telecom-italia', 'aramco-rongsheng-china', 'aramco-hapco-panjin-china', 'adnoc-covestro-germany', 'neom-the-line-sa']) {
+      assert.match(byId(id)?.sourceUrl ?? '', /^https:\/\//, `missing sourceUrl for ${id}`);
+    }
+  });
+});

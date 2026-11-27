@@ -4,6 +4,7 @@ import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
 import { isDeliveryError } from "./lib/notificationDelivery";
+import { redactChannelForSettings } from "./notificationChannels";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
@@ -17,6 +18,7 @@ import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
 import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { ALERT_CAPABILITY_VIOLATION_CODES, ALERT_UPGRADE_URL } from "../shared/alert-capabilities";
+import { isRuleEnabledIntent, type RuleSaveResult } from "../shared/alert-rule-shape";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import { normalizeAcquisitionSource } from "../shared/acquisition-source";
 import { briefL10nDeliverableLanguages } from "../shared/ui-languages";
@@ -57,7 +59,7 @@ function allowedOrigin(origin: string | null): string | null {
     url.hostname = url.hostname.replace(/\.+$/, "");
     const candidate = `${url.protocol}//${url.host}`;
     if (TRUSTED_ORIGINS.some(pattern => pattern.test(candidate))) return origin;
-    if (process.env.NODE_ENV !== "production" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
+    if (process.env.CONVEX_IS_DEV === "true" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
     if (url.protocol === "https:" && !url.port && url.hostname.endsWith(".translate.goog")) {
       const encoded = url.hostname.slice(0, -".translate.goog".length);
       const decoded = encoded.replace(/--/g, "\0").replace(/-/g, ".").replace(/\0/g, "-");
@@ -392,6 +394,7 @@ export async function internalEntitlementsHttpHandler(
     );
     let billingStatus:
       | "subscription_lapsed"
+      | "payment_failed"
       | "renewal_verification_pending"
       | "renewal_verification_failed"
       | undefined;
@@ -461,7 +464,11 @@ export async function internalEntitlementsHttpHandler(
             verificationCouldExpandCoverage
           )
         ) {
-          billingStatus = verification.status;
+          billingStatus =
+            verification.status === "subscription_lapsed" &&
+            fallbackState?.paymentFailedHold
+              ? "payment_failed"
+              : verification.status;
           if ("retryAfterSeconds" in verification) {
             retryAfterSeconds = verification.retryAfterSeconds;
           }
@@ -1267,6 +1274,7 @@ http.route({
       email?: string;
       variant?: string;
       enabled?: boolean;
+      enabledIntent?: unknown;
       eventTypes?: string[];
       sensitivity?: string;
       channels?: string[];
@@ -1314,15 +1322,10 @@ http.route({
     try {
       if (action === "get") {
         const [channels, alertRules] = await Promise.all([
-          ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, { userId }),
+          ctx.runQuery(internal.notificationChannels.getChannelsByUserId, { userId }),
           ctx.runQuery((internal as any).alertRules.getAlertRulesByUserId, { userId }),
         ]);
-        // The signing secret is only ever shown once, at registration; the
-        // settings UI needs to know whether a webhook is signed, not the key.
-        const visibleChannels = (channels ?? []).map(
-          ({ webhookSecret, ...channel }: { webhookSecret?: string; [key: string]: unknown }) =>
-            channel.channelType === "webhook" ? { ...channel, webhookSigned: Boolean(webhookSecret) } : channel,
-        );
+        const visibleChannels = channels.map(redactChannelForSettings);
         return new Response(JSON.stringify({ channels: visibleChannels, alertRules: alertRules ?? [] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -1431,6 +1434,7 @@ http.route({
         if (
           typeof body.variant !== "string" || !body.variant ||
           typeof body.enabled !== "boolean" ||
+          (body.enabledIntent !== undefined && !isRuleEnabledIntent(body.enabledIntent)) ||
           !Array.isArray(body.eventTypes) ||
           !Array.isArray(body.channels) ||
           (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) ||
@@ -1442,12 +1446,14 @@ http.route({
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        let saved: RuleSaveResult;
         try {
-          await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
+          saved = await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
             userId,
             enforceEntitlement: true,
             variant: body.variant,
             enabled: body.enabled,
+            enabledIntent: body.enabledIntent,
             eventTypes: body.eventTypes as string[],
             // Pass body.sensitivity through unchanged (may be undefined).
             // setAlertRulesForUser now accepts optional sensitivity and uses
@@ -1493,7 +1499,7 @@ http.route({
           }
           throw err;
         }
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true, ...saved }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "set-quiet-hours") {
@@ -1586,11 +1592,16 @@ http.route({
         if (body.reservoirAlert !== undefined && !isReservoirAlertBody(body.reservoirAlert)) {
           return new Response(JSON.stringify({ error: "RESERVOIR_ALERT_INVALID" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        if (body.enabledIntent !== undefined && !isRuleEnabledIntent(body.enabledIntent)) {
+          return new Response(JSON.stringify({ error: "ENABLED_INTENT_INVALID" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        let saved: RuleSaveResult;
         try {
-          await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
+          saved = await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
             userId,
             variant: body.variant,
             enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+            enabledIntent: body.enabledIntent,
             eventTypes: Array.isArray(body.eventTypes) ? (body.eventTypes as string[]) : undefined,
             sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
             channels: Array.isArray(body.channels) ? (body.channels as Array<"telegram" | "slack" | "email" | "discord" | "teams" | "webhook" | "web_push">) : undefined,
@@ -1636,7 +1647,7 @@ http.route({
           }
           throw err;
         }
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true, ...saved }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: { "Content-Type": "application/json" } });
