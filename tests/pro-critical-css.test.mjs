@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crawlerDocumentSnapshot } from './_lib/crawler-visible-html.mjs';
@@ -165,7 +165,84 @@ describe('pro critical CSS source contract', () => {
     assert.match(prerender, /localizeWelcomeDocument\(injected, page\.locale, page\.copy\)/);
     assert.doesNotMatch(prerender, /file === 'welcome\.html'/);
   });
+
+  // The inline `main .hidden`/`nav[data-wm-nav] .hidden` rules are unlayered and
+  // beat Tailwind's layered `md:block`, so every `hidden <bp>:<display>` element
+  // needs its own reveal in the matching @media block, or it is hidden at every
+  // width. The dev server has no critical CSS, so only a built page shows it:
+  // the Black Friday strip on /pro shipped invisible that way.
+  it('re-shows every hidden <bp>:<display> class pro-test renders, in its region', () => {
+    const missing = missingCriticalCssReveals();
+    assert.deepEqual(missing, [], `critical CSS lacks these reveals:\n${missing.join('\n')}`);
+  });
 });
+
+const BREAKPOINT_MIN_WIDTH = { sm: 640, md: 768, lg: 1024, xl: 1280, '2xl': 1536 };
+const NAV_SCOPE = 'nav[data-wm-nav]';
+
+/** Every string literal in the critical CSS arrays of pro-test/prerender.mjs, joined. */
+function criticalCssSource() {
+  const prerender = src('pro-test/prerender.mjs');
+  const start = prerender.indexOf('const CRITICAL_CSS = [');
+  const end = prerender.indexOf('const PAGE_CRITICAL_CSS');
+  assert.ok(start !== -1 && end > start, 'pro-test/prerender.mjs critical CSS arrays not found');
+  const code = prerender.slice(start, end).split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
+  return [...code.matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map((m) => m[1].replace(/\\\\/g, '\\')).join('');
+}
+
+/** The body of each `@media (min-width:Npx){...}` block, keyed by N. */
+function mediaBlocks(css) {
+  const blocks = new Map();
+  for (const m of css.matchAll(/@media \(min-width:(\d+)px\)\{/g)) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+    const bodyStart = i;
+    while (i < css.length && depth > 0) {
+      if (css[i] === '{') depth += 1;
+      else if (css[i] === '}') depth -= 1;
+      i += 1;
+    }
+    const width = Number(m[1]);
+    blocks.set(width, (blocks.get(width) ?? '') + css.slice(bodyStart, i - 1));
+  }
+  return blocks;
+}
+
+function proTestSources(dir = resolve(repoRoot, 'pro-test/src'), out = []) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const abs = resolve(dir, entry.name);
+    if (entry.isDirectory()) proTestSources(abs, out);
+    else if (entry.name.endsWith('.tsx')) out.push(abs);
+  }
+  return out;
+}
+
+/** Each `hidden <bp>:<display>` literal in pro-test/src, with the region it renders in. */
+function missingCriticalCssReveals() {
+  const blocks = mediaBlocks(criticalCssSource());
+  const missing = [];
+  for (const file of proTestSources()) {
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/(["'`])((?:(?!\1)[^\\\n]|\\.)*)\1/g)) {
+      const tokens = m[2].split(/\s+/);
+      if (!tokens.includes('hidden')) continue;
+      const before = text.slice(0, m.index);
+      const inNav = before.lastIndexOf('<nav') > before.lastIndexOf('</nav>');
+      const scope = inNav ? NAV_SCOPE : 'main';
+      for (const token of tokens) {
+        const reveal = token.match(/^(sm|md|lg|xl|2xl):(block|flex|inline|inline-flex|inline-block|grid)$/);
+        if (!reveal) continue;
+        const rule = `${scope} [class~="${token}"]{display:${reveal[2]}}`;
+        const block = blocks.get(BREAKPOINT_MIN_WIDTH[reveal[1]]) ?? '';
+        if (!block.includes(rule)) {
+          const line = before.split('\n').length;
+          missing.push(`${file.slice(repoRoot.length + 1)}:${line} needs ${rule} in @media (min-width:${BREAKPOINT_MIN_WIDTH[reveal[1]]}px)`);
+        }
+      }
+    }
+  }
+  return missing;
+}
 
 // public/pro/ is built by `npm run build:pro`, not committed (#6898): skip when the
 // checkout has not built it, fail when WM_EXPECT_BUILT_OUTPUT=1 says CI did.
@@ -319,6 +396,9 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
     // A blanket `main p` rule is unlayered, so it would override every
     // paragraph's own margin and max-width on / for the life of the page.
     assert.doesNotMatch(welcomeCritical, /(^|[}])main p\{/, '/ must not ship a blanket main p rule');
+    // Same on /pro: the hero mirrors must stay in the hero, or they restyle the
+    // pricing strip and card notes (a 24px margin and 42rem cap on each p).
+    assert.doesNotMatch(proCritical, /(^|[{}])main (p|h1)\{/, '/pro must not ship a blanket main p or main h1 rule');
   });
 
   it('/ welcome ships its real, user-visible SSR app without a hidden sibling', () => {
