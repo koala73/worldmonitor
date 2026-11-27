@@ -42,3 +42,5 @@ export function normalizeNewsStoryTitle(title: string): string;
 export function classifyCacheIdentity(title: string): string;
 export const NEWS_PUBLISHER_COVERAGE_PREFIX: string;
 export function newsPublisherCoverageKey(title: string): string;
+export const NEWS_PUBLISHER_REPRINTS_PREFIX: string;
+export function newsPublisherReprintsKey(coverageKey: string): string;

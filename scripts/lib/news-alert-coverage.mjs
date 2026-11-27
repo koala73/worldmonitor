@@ -1,7 +1,7 @@
 // Read by the notification worker only. The coverage history changes the
 // coverage line and nothing else; the rewrite check below can skip users who
 // already had an alert for the same development. Neither changes scoring or rules.
-import { NEWS_PUBLISHER_COVERAGE_PREFIX, newsPublisherCoverageKey } from '../shared/story-identity.js';
+import { NEWS_PUBLISHER_COVERAGE_PREFIX, newsPublisherCoverageKey, newsPublisherReprintsKey } from '../shared/story-identity.js';
 import storyKeys from './news-story-key.cjs';
 import coverageText from './corroboration-text.cjs';
 import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
@@ -25,13 +25,18 @@ export async function refreshPublisherCounts(events, now = Date.now(), pipeline 
     reads.get(key).push(event);
   }
   if (!reads.size) return;
-  const commands = [...reads.keys()].map(key => ['ZRANGEBYSCORE', key, `(${now - DAY}`, now]);
+  // Each headline's families, then the families a wire-aware build folded
+  // into a wire there (#11434), which an edition without the wire wrote back.
+  const keys = [...reads.keys()];
+  const commands = [...keys, ...keys.map(newsPublisherReprintsKey)].map(key => ['ZRANGEBYSCORE', key, `(${now - DAY}`, now]);
   const rows = await pipeline(commands, { timeoutMs: 500 });
   let i = 0;
   for (const group of reads.values()) {
+    const reprints = rows?.[keys.length + i]?.result;
+    const folded = new Set(Array.isArray(reprints) ? reprints : []);
     const families = rows?.[i++]?.result;
     if (!Array.isArray(families) || !families.length) continue;
-    const historyCount = countRecordedPublisherFamilies(families);
+    const historyCount = countRecordedPublisherFamilies(families.filter(family => !folded.has(family)));
     // The producer's count spans every wording of the story; the history spans
     // this one headline across builds. Neither contains the other, so keep the
     // larger: one family on this wording must not relabel a covered story.
@@ -356,12 +361,19 @@ export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedi
   if (!own || typeof anchorId !== 'string' || !anchorId.startsWith(`${event.variant}:`)) return false;
   const anchor = `${NEWS_PUBLISHER_COVERAGE_PREFIX}${anchorId.slice(event.variant.length + 1)}`;
   if (anchor === own) return false;
+  // The reprint records travel with the families they fold (#11434), or a
+  // reprint written back on one wording would count on the other.
+  const [anchorReprints, ownReprints] = [newsPublisherReprintsKey(anchor), newsPublisherReprintsKey(own)];
   try {
     const rows = await pipeline([
       ['ZUNIONSTORE', anchor, 2, anchor, own, 'AGGREGATE', 'MAX'],
       ['ZUNIONSTORE', own, 2, anchor, own, 'AGGREGATE', 'MAX'],
       ['EXPIRE', anchor, DAY / 1000],
       ['EXPIRE', own, DAY / 1000],
+      ['ZUNIONSTORE', anchorReprints, 2, anchorReprints, ownReprints, 'AGGREGATE', 'MAX'],
+      ['ZUNIONSTORE', ownReprints, 2, anchorReprints, ownReprints, 'AGGREGATE', 'MAX'],
+      ['EXPIRE', anchorReprints, DAY / 1000],
+      ['EXPIRE', ownReprints, DAY / 1000],
     ], { timeoutMs: 1_000 });
     return Array.isArray(rows) && rows.every(row => row && !row.error);
   } catch {

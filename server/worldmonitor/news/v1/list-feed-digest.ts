@@ -89,7 +89,7 @@ import {
   isPublisherLink,
   linkHostname,
 } from '../../../../shared/publisher-link-gate.js';
-import { newsPublisherCoverageKey, stripAttributionSuffix } from '../../../../shared/story-identity.js';
+import { newsPublisherCoverageKey, newsPublisherReprintsKey, stripAttributionSuffix } from '../../../../shared/story-identity.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
 import { RSS_FEED_RENEW_SCRIPT } from '../../../../shared/rss-feed-renew-script.mjs';
@@ -2995,8 +2995,8 @@ export async function listFeedDigest(
   }
 }
 
-// Up to three commands per key, so 300 keys stay under Upstash's 1,000-command cap.
-const PUBLISHER_COVERAGE_BATCH_KEYS = 300;
+// Up to five commands per key, so 200 keys stay under Upstash's 1,000-command cap.
+const PUBLISHER_COVERAGE_BATCH_KEYS = 200;
 
 // Each exact headline owns one sorted set, shared by every edition. GT keeps a slower build from
 // moving a family's last observation backwards; retries replace the same member.
@@ -3024,7 +3024,9 @@ async function recordPublisherCoverage(
   // member that does not depend on item order. Reprints are found over every
   // accepted item: "<headline> - AFP" and the bare headline have two keys.
   // A reprint's own family is removed, since a build that had not seen the
-  // wire wrote it, and members carry no title for a reader to fold.
+  // wire wrote it, and members carry no title for a reader to fold. An edition
+  // build without the wire copy writes it back, so the removed families are
+  // also recorded on the headline's reprints key, and readers drop them (#11434).
   const familyFor = wireAwareFamilyFor(items);
   const groups = new Map<string, { families: Set<string>; superseded: Set<string> }>();
   for (const [key, sharing] of carriers) {
@@ -3052,11 +3054,18 @@ async function recordPublisherCoverage(
       console.warn(`[digest] publisher coverage write cut short: ${entries.length - start} of ${entries.length} headlines unwritten`);
       return;
     }
-    const commands = entries.slice(start, start + PUBLISHER_COVERAGE_BATCH_KEYS).flatMap(([key, { families, superseded }]) => [
-      ['ZADD', key, 'GT', ...[...families].flatMap(family => [observedAt, family])],
-      ...(superseded.size ? [['ZREM', key, ...superseded]] : []),
-      ['EXPIRE', key, 86_400],
-    ]);
+    const commands = entries.slice(start, start + PUBLISHER_COVERAGE_BATCH_KEYS).flatMap(([key, { families, superseded }]) => {
+      const reprints = superseded.size ? newsPublisherReprintsKey(key) : '';
+      return [
+        ['ZADD', key, 'GT', ...[...families].flatMap(family => [observedAt, family])],
+        ...(superseded.size ? [['ZREM', key, ...superseded]] : []),
+        ['EXPIRE', key, 86_400],
+        ...(reprints ? [
+          ['ZADD', reprints, 'GT', ...[...superseded].flatMap(family => [observedAt, family])],
+          ['EXPIRE', reprints, 86_400],
+        ] : []),
+      ];
+    });
     const rows = await runRedisTransaction(commands, false, timeout);
     if (!redisPipelineConfirmed(rows, commands.length)) {
       console.warn('[digest] publisher coverage write unavailable');

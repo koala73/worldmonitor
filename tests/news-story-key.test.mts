@@ -339,6 +339,124 @@ test('a reprint folds into its wire across coverage keys and across builds', asy
   assert.deepEqual(stored(EGYPT_INDEPENDENT), ['reuters']);
 });
 
+// A sorted-set store for the coverage writer and its readers.
+function coverageStore() {
+  const sets = new Map<string, Map<string, number>>();
+  const run = ([op, key, ...args]: (string | number)[]) => {
+    if (op === 'MULTI' || op === 'EXEC') return { result: 'OK' };
+    const members = sets.get(String(key)) ?? new Map<string, number>();
+    if (op === 'ZADD') {
+      sets.set(String(key), members);
+      assert.equal(args.shift(), 'GT');
+      for (let i = 0; i < args.length; i += 2) {
+        const family = String(args[i + 1]);
+        members.set(family, Math.max(Number(args[i]), members.get(family) ?? 0));
+      }
+    } else if (op === 'ZREM') {
+      for (const family of args) members.delete(String(family));
+    } else if (op === 'ZRANGEBYSCORE') {
+      const after = Number(String(args[0]).slice(1));
+      return { result: [...members].filter(([, seen]) => seen > after && seen <= Number(args[1])).map(([family]) => family) };
+    } else if (op === 'ZUNIONSTORE') {
+      const count = Number(args[0]);
+      const union = new Map<string, number>();
+      for (const source of args.slice(1, 1 + count)) {
+        for (const [member, score] of sets.get(String(source)) ?? []) union.set(member, Math.max(score, union.get(member) ?? -Infinity));
+      }
+      if (union.size) sets.set(String(key), union);
+      else sets.delete(String(key));
+      return { result: union.size };
+    } else assert.equal(op, 'EXPIRE');
+    return { result: 1 };
+  };
+  const pipeline = async (commands: (string | number)[][]) => commands.map(run);
+  return { sets, run, pipeline };
+}
+
+function useRedisEnv(t) {
+  const saved = { ...process.env };
+  t.after(() => {
+    for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV']) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  process.env.VERCEL_ENV = 'production';
+}
+
+test('an edition build without the wire copy does not add a folded reprint back to the count (#11434)', async (t) => {
+  const { refreshPublisherCounts } = await import('../scripts/lib/news-alert-coverage.mjs');
+  const store = coverageStore();
+  t.mock.method(globalThis, 'fetch', async (_url, init) => Response.json(JSON.parse(init.body).map(store.run)));
+  useRedisEnv(t);
+  const wire = { title: `${EGYPT_INDEPENDENT} - Reuters`, source: 'Reuters World' };
+  const outlet = { title: EGYPT_INDEPENDENT, source: 'Arab Times' };
+  const write = (at: number, ...items: object[]) => digest.recordPublisherCoverage(items, items, at, Infinity);
+  const count = async (now: number) => {
+    const event = { eventType: 'rss_alert', variant: 'full', payload: { title: EGYPT_INDEPENDENT, corroborationCount: 0 } };
+    await refreshPublisherCounts([event], now, store.pipeline);
+    return event.observedPublisherCount;
+  };
+  const start = Date.now() - 3_600_000;
+
+  // The wire-aware build first, then an edition that carries only the outlet.
+  await write(start, wire, outlet);
+  await write(start + 60_000, outlet);
+  assert.equal(await count(start + 120_000), 1);
+
+  // The other order: the outlet-only build, then the wire-aware one.
+  store.sets.clear();
+  await write(start, outlet);
+  await write(start + 60_000, wire, outlet);
+  await write(start + 120_000, outlet);
+  assert.equal(await count(start + 180_000), 1);
+
+  // A second outlet that wrote its own copy of no wire still counts.
+  await write(start + 240_000, { title: EGYPT_INDEPENDENT, source: 'Kansas City Star' });
+  assert.equal(await count(start + 300_000), 2);
+
+  // Once the wire and its record leave the window, the outlet counts again,
+  // beside the Kansas City Star.
+  assert.equal(await count(start + 60_000 + 86_400_000 + 1), 2);
+});
+
+test('identical short headlines from two outlets are not taken for a reprint (#11434)', async (t) => {
+  const { refreshPublisherCounts } = await import('../scripts/lib/news-alert-coverage.mjs');
+  const store = coverageStore();
+  t.mock.method(globalThis, 'fetch', async (_url, init) => Response.json(JSON.parse(init.body).map(store.run)));
+  useRedisEnv(t);
+  // Under four words the headline shares a coverage key but never folds.
+  const SHORT = 'Gaza ceasefire collapses';
+  const items = [{ title: SHORT, source: 'Reuters World' }, { title: SHORT, source: 'Arab Times' }];
+  await digest.recordPublisherCoverage(items, items, Date.now() - 60_000, Infinity);
+  await digest.recordPublisherCoverage([items[1]], [items[1]], Date.now() - 30_000, Infinity);
+  const event = { eventType: 'rss_alert', variant: 'full', payload: { title: SHORT, corroborationCount: 0 } };
+  await refreshPublisherCounts([event], Date.now(), store.pipeline);
+  assert.equal(event.observedPublisherCount, 2);
+});
+
+test('a rewrite merge carries the reprint record with the coverage it copies (#11434)', async (t) => {
+  const { mergeStoryCoverage, refreshPublisherCounts } = await import('../scripts/lib/news-alert-coverage.mjs');
+  const store = coverageStore();
+  t.mock.method(globalThis, 'fetch', async (_url, init) => Response.json(JSON.parse(init.body).map(store.run)));
+  useRedisEnv(t);
+  const wire = { title: `${EGYPT_INDEPENDENT} - Reuters`, source: 'Reuters World' };
+  const outlet = { title: EGYPT_INDEPENDENT, source: 'Arab Times' };
+  const now = Date.now();
+  await digest.recordPublisherCoverage([wire, outlet], [wire, outlet], now - 120_000, Infinity);
+  await digest.recordPublisherCoverage([outlet], [outlet], now - 60_000, Infinity);
+  // Another wording, carried by an outlet that wrote its own headline.
+  await digest.recordPublisherCoverage([{ title: NDTV, source: 'NDTV' }], [{ title: NDTV, source: 'NDTV' }], now - 60_000, Infinity);
+  const ndtv = { eventType: 'rss_alert', variant: 'full', severity: 'critical', payload: { title: NDTV, importanceScore: 82, corroborationCount: 0 } };
+  const anchorId = `full:${newsPublisherCoverageKey(EGYPT_INDEPENDENT).split(':').pop()}`;
+  assert.equal(await mergeStoryCoverage(ndtv, anchorId, store.pipeline), true);
+  await refreshPublisherCounts([ndtv], now, store.pipeline);
+  // Reuters and NDTV: the Arab Times reprint stays folded on the merged wording.
+  assert.equal(ndtv.observedPublisherCount, 2);
+});
+
 test('the coverage ledger write stops waiting at its deadline when Redis stalls', async (t) => {
   // The ledger runs after the coverage and history writes join, which may hold
   // until the tracking deadline; a 5 s Redis wait past that loses the digest.
