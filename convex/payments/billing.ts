@@ -883,16 +883,19 @@ export const openProActivationDay0Presentation = mutation({
     const now = Date.now();
     if (
       args.sessionStartedAt !== undefined &&
-      (
-        !Number.isSafeInteger(args.sessionStartedAt) ||
-        args.sessionStartedAt <= 0 ||
-        args.sessionStartedAt > now + MAX_PRO_ACTIVATION_SESSION_FUTURE_SKEW_MS
-      )
+      (!Number.isSafeInteger(args.sessionStartedAt) || args.sessionStartedAt <= 0)
     ) {
-      throw new ConvexError(
-        "activation session start must be a positive safe integer within the allowed future clock skew",
-      );
+      throw new ConvexError("activation session start must be a positive safe integer");
     }
+    // A start time past the skew allowance comes from a device whose clock
+    // runs fast. Throwing would leave that subscriber with no row at all, so
+    // the session is handled as unordered: it can open or replay its own row
+    // but never outranks another session, and the future value is not stored.
+    const sessionStartedAt =
+      args.sessionStartedAt !== undefined &&
+      args.sessionStartedAt <= now + MAX_PRO_ACTIVATION_SESSION_FUTURE_SKEW_MS
+        ? args.sessionStartedAt
+        : undefined;
 
     const existing = await activationPresentationForCohort(ctx, args.activationKey, "day0");
     if (existing === null) {
@@ -902,8 +905,8 @@ export const openProActivationDay0Presentation = mutation({
         cohort: "day0",
         claimNonce: args.claimNonce,
         claimedAt: now,
-        ...(args.sessionStartedAt !== undefined
-          ? { sessionStartedAt: args.sessionStartedAt }
+        ...(sessionStartedAt !== undefined
+          ? { sessionStartedAt }
           : {}),
         // Day-0 has no confirm handshake, so presentation is recorded here —
         // before the interstitial renders — to keep a subscriber who closes
@@ -919,8 +922,8 @@ export const openProActivationDay0Presentation = mutation({
     if (existing.claimNonce === args.claimNonce) {
       if (
         existing.sessionStartedAt !== undefined &&
-        args.sessionStartedAt !== undefined &&
-        existing.sessionStartedAt !== args.sessionStartedAt
+        sessionStartedAt !== undefined &&
+        existing.sessionStartedAt !== sessionStartedAt
       ) {
         throw new ConvexError(
           "activation session nonce cannot change its start order",
@@ -930,10 +933,10 @@ export const openProActivationDay0Presentation = mutation({
       // row opened by this same session before the field was deployed.
       if (
         existing.sessionStartedAt === undefined &&
-        args.sessionStartedAt !== undefined
+        sessionStartedAt !== undefined
       ) {
         await ctx.db.patch(existing._id, {
-          sessionStartedAt: args.sessionStartedAt,
+          sessionStartedAt,
         });
       }
       return { status: "opened" as const };
@@ -945,7 +948,7 @@ export const openProActivationDay0Presentation = mutation({
       // newer than a legacy row; two explicit sessions use nonce only for the
       // deterministic equal-time tie.
       const existingOrder = existing.sessionStartedAt;
-      const incomingOrder = args.sessionStartedAt;
+      const incomingOrder = sessionStartedAt;
       const incomingIsNewer =
         incomingOrder !== undefined &&
         (
@@ -966,7 +969,7 @@ export const openProActivationDay0Presentation = mutation({
       await ctx.db.patch(existing._id, {
         claimNonce: args.claimNonce,
         claimedAt: now,
-        sessionStartedAt: args.sessionStartedAt,
+        sessionStartedAt,
         presentedAt: now,
         confirmedSteps: undefined,
         skippedSteps: undefined,
