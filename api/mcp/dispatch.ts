@@ -1064,7 +1064,7 @@ export async function dispatchToolsCall(
         panelUsage = { used: reservation.newCount, limit, remaining: limit === null ? null : Math.max(0, limit - reservation.newCount), resetsAt: reset.toISOString(), unit: 'requests' };
       }
     }
-  } else if (context.kind === 'env_key' && tool._freeTier !== true && !isMetadataTool) {
+  } else if (context.kind === 'env_key' && tool._freeTier !== true && !isMetadataTool && !countryPickerOpen) {
     // Operator keys carry no account and used to skip the daily counter
     // entirely, so one leaked key had no ceiling. They now reserve on their own
     // per-key dedicated counter (one unit per call, as on Pro's) against a

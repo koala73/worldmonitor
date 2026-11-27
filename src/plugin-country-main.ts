@@ -926,7 +926,13 @@ async function mountPlugin(): Promise<void> {
     window.addEventListener('pagehide', () => resize.disconnect(), { once: true });
     // A host result can arrive while translations load; keep its status instead of the idle prompt.
     if (!hostResultSeen) status.textContent = toolsAvailable ? 'Select a country to open its brief.' : 'This host cannot call the connected country tools.';
-    if (queuedView) await open(queuedView.raw, false, queuedView.receipt, queuedView.fromHost);
+    if (queuedView) {
+      const queued = queuedView;
+      // A country the user chose during startup carries the picker topic; a successful open uses it up.
+      const queuedTopic = !queued.fromHost && queued.raw && typeof queued.raw === 'object' ? (queued.raw as { topic?: unknown }).topic : undefined;
+      const opened = await open(queued.raw, false, queued.receipt, queued.fromHost) as { state?: string };
+      if (queuedTopic !== undefined && pickerTopic === queuedTopic && opened.state !== 'cancelled') pickerTopic = undefined;
+    }
   }
   void start().catch(error => { rejectReady(error); if (negotiationState === 'pending') negotiationState = 'unconfirmed'; renderConnection(); status.textContent = 'The ChatGPT host connection is unavailable. Reload the country view.'; });
 

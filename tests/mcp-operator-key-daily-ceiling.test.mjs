@@ -69,4 +69,22 @@ describe('MCP operator-key daily ceiling', () => {
     assert.equal(body.error, undefined, JSON.stringify(body.error));
     assert.equal(fetches(), 1);
   });
+
+  // ChatGPT opens the country view with no country; that picker open charges nothing on any plan.
+  it('opens the country picker without reserving a unit, even at the ceiling', async () => {
+    const fetches = stubData();
+    const mock = makePipelineMock({ initialCount: OPERATOR_KEY_DAILY_CEILINGS.mcpUnits });
+    const response = await dispatchToolsCall(
+      new Request('https://worldmonitor.app/mcp'),
+      CONTEXT,
+      { redisPipeline: mock.pipeline },
+      { id: 8, params: { name: 'open_country_brief', arguments: { topic: 'economy' } } },
+      {},
+    );
+    const body = await response.json();
+    assert.equal(body.error, undefined, JSON.stringify(body.error));
+    assert.deepEqual(body.result.structuredContent, { topic: 'economy' });
+    assert.equal(mock.ops.flat().filter((cmd) => cmd[0] === 'EVAL').length, 0);
+    assert.equal(fetches(), 0);
+  });
 });

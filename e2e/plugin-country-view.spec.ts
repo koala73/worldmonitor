@@ -62,7 +62,7 @@ let displayHostContext: Record<string, unknown> | undefined;
 // A view tool call the host sends the moment the view reports initialized, while translations still load.
 let callOnInitialized: { name: string; arguments: object } | undefined;
 
-async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false, factorsTiming?: FactorsTimingFixture, imfScenario?: ImfPeriodScenario, recovery?: RecoveryFixture, pickerOpen = false) {
+async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false, factorsTiming?: FactorsTimingFixture, imfScenario?: ImfPeriodScenario, recovery?: RecoveryFixture, pickerOpen = false, holdTranslations = false) {
   const bootTrace: Array<{ event: string; url?: string; method?: string; error?: string }> = [];
   const calls: HostCall[] = [];
   const factorTrace: Array<{ event: string; requestId?: number; section: string; countryCode: string; at: number }> = [];
@@ -112,6 +112,9 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   const panelCountries = new Map<string, string>();
   let delayUS = false;
   let delayAdmission = false;
+  // Holding the English translation chunk keeps the view in startup (not ready).
+  let releaseTranslations: () => void = () => {};
+  const translationsHeld = new Promise<void>(resolve => { releaseTranslations = resolve; });
   let releaseAdmission: () => void = () => {};
   const admissionDelayed = new Promise<void>(resolve => { releaseAdmission = resolve; });
   let releaseUS: () => void = () => {};
@@ -127,6 +130,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     if (imfScenario) bootTrace.push({ event: 'asset-entered', url: route.request().url() });
     if (route.request().url().endsWith('/country-removed.js')) return route.fulfill({ status: 404, contentType: 'text/html', body: 'Removed build asset', headers: { 'Access-Control-Allow-Origin': '*' } });
     const file = join(root, 'dist/plugin/assets', new URL(route.request().url()).pathname.split('/').at(-1)!);
+    if (holdTranslations && /\/en-[\w-]+\.js$/.test(file)) await translationsHeld;
     if (factorsTiming && file.includes('/service_client-') && (await readFile(file, 'utf8')).includes('/api/scorecard/v1/get-five-factor-scorecard')) await blockersStarted;
     try {
       await route.fulfill({ path: file, headers: { 'Access-Control-Allow-Origin': '*' } });
@@ -331,7 +335,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     window.addEventListener('message', receive);
     frame.contentWindow!.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*');
   }), { name, args });
-  return { downloads, hostEvents, bootTrace, factorTrace, cancelledRequests, delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, denyFacts: () => { factsDenied = true; }, recover: () => { failFacts = false; factsDenied = false; }, delay: () => { delayUS = true; }, release: releaseUS };
+  return { downloads, hostEvents, bootTrace, factorTrace, cancelledRequests, delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, releaseTranslations, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, denyFacts: () => { factsDenied = true; }, recover: () => { failFacts = false; factsDenied = false; }, delay: () => { delayUS = true; }, release: releaseUS };
 }
 
 // Export report sits in the More actions disclosure since #10295.
@@ -1103,6 +1107,25 @@ test('an open without a country shows the country picker and loads nothing until
   await expect.poll(() => host.admissions).toBe(1);
   expect(host.calls.filter(call => call.name === 'open_country_brief').at(-1)?.arguments).toMatchObject({ country_code: 'US', topic: 'economy' });
   await expect.poll(() => host.calls.some(call => call.name === 'get_country_brief_section')).toBe(true);
+});
+
+test('a country chosen during startup opens on the picker topic, which is then used up', async ({ page }) => {
+  const host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, false, undefined, undefined, undefined, true, true);
+  const frame = page.frameLocator('iframe');
+  await expect.poll(() => host.calls.filter(call => call.name === 'open_country_brief').length).toBe(1);
+  await page.waitForTimeout(300);
+  await frame.locator('input[name="country"]').fill('US');
+  await frame.locator('#openCountry').click();
+  await page.waitForTimeout(300);
+  expect(host.admissions).toBe(0);
+  host.releaseTranslations();
+  await expect.poll(() => host.admissions).toBe(1);
+  expect(host.calls.filter(call => call.name === 'open_country_brief').at(-1)?.arguments).toMatchObject({ country_code: 'US', topic: 'economy' });
+  // The queued open used the picker topic, so the next choice opens on the default topic.
+  await frame.locator('input[name="country"]').fill('FR');
+  await frame.locator('#openCountry').click();
+  await expect.poll(() => host.calls.filter(call => call.name === 'open_country_brief').at(-1)?.arguments?.country_code).toBe('FR');
+  expect(host.calls.filter(call => call.name === 'open_country_brief').at(-1)?.arguments).toMatchObject({ country_code: 'FR', topic: 'overview' });
 });
 
 test('a countryless host result cancels a country open that is still waiting for admission', async ({ page }) => {
