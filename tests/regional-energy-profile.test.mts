@@ -37,6 +37,13 @@ test('countries without these feeds perform no optional reads', async () => {
   assert.deepEqual(await readRegionalEnergyFeeds('DE', async () => { throw new Error('unexpected read'); }, now), []);
 });
 
+test('a parked feed is not listed or read (searg, #11154)', async () => {
+  const reads: string[] = [];
+  const feeds = await readRegionalEnergyFeeds('AR', async key => { reads.push(key); return null; }, now);
+  assert.deepEqual(reads, ['energy:regional:cammesa:v1']);
+  assert.deepEqual(feeds.map(feed => feed.name), ['CAMMESA SADI']);
+});
+
 test('old source data stays stale after a fresh fetch', async () => {
   const feeds = await readRegionalEnergyFeeds('NG', async () => snapshot('niso', {
     observedAt: '2026-09-01T00:00:00.000Z',

@@ -27,7 +27,10 @@ const json = name => JSON.parse(fixture(name));
 const point = (rows, metric) => rows.find(r => r.metric === metric);
 const BATCH_2 = new Set(['evn', 'korem', 'coes', 'iccc', 'fccc', 'mem']);
 const BATCH_3 = new Set(['qatarenergy', 'erb', 'npa', 'sonabhy', 'zera', 'doe', 'anptl', 'creg', 'ursea', 'ems', 'nosbih', 'mepso']);
-const OWNER_ISSUE = { fuelwatch: 10838, searg: 11154, oil111: 10113 };
+const OWNER_ISSUE = { fuelwatch: 10838, oil111: 10113 };
+// Parked feeds keep their parser and tests but have no bundle section or health entry.
+const liveFeeds = feeds.filter(feed => !feed.parkedIssue);
+const parkedFeeds = feeds.filter(feed => feed.parkedIssue);
 
 describe('regional energy source observations', () => {
   it('rejects large unterminated HTML without blocking the worker', () => {
@@ -45,8 +48,9 @@ describe('regional energy source observations', () => {
   it('runs every regional feed in its own service and gives each a lead turn after persistent timeouts', () => {
     const source = readFileSync(new URL('../scripts/seed-bundle-regional-energy.mjs', import.meta.url), 'utf8');
     const sections = extractBundleSections(source).map(section => ({ ...section, timeoutMs: Number(section.timeoutMsExpr.replaceAll('_', '')) }));
-    assert.deepEqual(sections.map(section => section.label), feeds.map(feed => `Regional-Energy-${feed.id}`));
-    for (const feed of feeds) {
+    assert.deepEqual(sections.map(section => section.label), liveFeeds.map(feed => `Regional-Energy-${feed.id}`));
+    assert.deepEqual(parkedFeeds.map(feed => [feed.id, feed.parkedIssue]), [['searg', 11154]]);
+    for (const feed of liveFeeds) {
       const section = sections.find(s => s.label === `Regional-Energy-${feed.id}`);
       assert.equal(section.script, feed.script);
       assert.equal(Number(section.intervalMsExpr), feed.intervalMin * 60_000);
@@ -63,9 +67,10 @@ describe('regional energy source observations', () => {
     assert.equal(service?.entry, 'scripts/seed-bundle-regional-energy.mjs');
     assert.equal(service.cronSchedule, '*/15 * * * *');
     assert.equal(registry.find(entry => entry.service === 'seed-bundle-energy-sources').cronSchedule, undefined);
-    for (const feed of feeds) assert.ok(service.watchPatterns.includes(`scripts/${feed.script}`));
+    for (const feed of liveFeeds) assert.ok(service.watchPatterns.includes(`scripts/${feed.script}`));
+    for (const feed of parkedFeeds) assert.ok(!service.watchPatterns.includes(`scripts/${feed.script}`));
     // Health tolerates three intervals; the cron must leave room for a late tick.
-    assert.ok(Math.min(...feeds.map(feed => feed.intervalMin)) * 3 >= 3 * 15);
+    assert.ok(Math.min(...liveFeeds.map(feed => feed.intervalMin)) * 3 >= 3 * 15);
 
     const groups = Math.ceil(sections.length / REGIONAL_ENERGY_LEAD_GROUP_SIZE);
     const ledWithin = new Map(sections.map(section => [section.label, Infinity]));
@@ -234,7 +239,12 @@ describe('source discovery and publication boundary', () => {
       calls.push(JSON.parse(options.body));
       return Response.json({ result: 'OK' });
     };
-    for (const feed of feeds) {
+    for (const feed of parkedFeeds) {
+      const name = 'regionalEnergy' + feed.id[0].toUpperCase() + feed.id.slice(1);
+      assert.equal(health.SEED_META[name], undefined, `${name} is parked and must not alarm`);
+      assert.equal(health.STANDALONE_KEYS[name], undefined);
+    }
+    for (const feed of liveFeeds) {
       const name = 'regionalEnergy' + feed.id[0].toUpperCase() + feed.id.slice(1);
       const config = health.SEED_META[name];
       assert.equal(health.STANDALONE_KEYS[name], `energy:regional:${feed.id}:v1`);
@@ -246,7 +256,7 @@ describe('source discovery and publication boundary', () => {
       assert.equal(config.cutover.issue, OWNER_ISSUE[feed.id] ?? (BATCH_3.has(feed.id) ? 10051 : BATCH_2.has(feed.id) ? 9893 : 9842));
       const options = regionalEnergySeedOptions(feed.id);
       assert.equal(options.afterPublish, undefined);
-      assert.equal(calls.length, feeds.indexOf(feed));
+      assert.equal(calls.length, liveFeeds.indexOf(feed));
       await options.afterFreshness();
       assert.deepEqual(calls.at(-1), ['SET', config.activationKey, '1']);
     }
