@@ -1,3 +1,11 @@
+/**
+ * Climate News card translation (#10054). Translation is a Pro feature.
+ *
+ * WM_VERIFY_CLIMATE_ACCESS=free (default pro) drives a free reader: the cards
+ * render with German relative times, offer no translate control, and send no
+ * translate request. Pro answers the tester-key session exchange the way a
+ * deployment answers an accepted `wm-pro-key`.
+ */
 import { seedProfile, waitForBoot } from './_profile.mjs';
 
 const PANEL_KEY = 'climate-news';
@@ -7,9 +15,15 @@ const TRANSLATED_TITLE = 'Arktisches Meereis erreicht ein Rekordtief';
 const TRANSLATED_SUMMARY = 'Forschende berichten vom niedrigsten Wintermaximum der Satellitenaufzeichnung.';
 
 export default async function ({ page, base, shot, log }) {
+  const pro = process.env.WM_VERIFY_CLIMATE_ACCESS !== 'free';
+  if (pro) {
+    await page.route('**/api/wm-session*', (route) => (route.request().method() === 'GET'
+      ? route.fulfill({ json: { widget: false, pro: true }, headers: { 'Cache-Control': 'no-store' } })
+      : route.fulfill({ json: { exp: Date.now() + 3_600_000 } })));
+  }
   await seedProfile(page, {
     localStorage: {
-      'wm-pro-key': 'wm-verify-climate-translate',
+      ...(pro ? { 'wm-pro-key': 'wm-verify-climate-translate' } : {}),
       'wm-locale-explicit': 'de',
     },
   });
@@ -47,10 +61,12 @@ export default async function ({ page, base, shot, log }) {
   // the screenshot shows the real UI path on controlled data rather than
   // whatever a local provider happens to return.
   let providerUnavailable = false;
+  let translateRequests = 0;
   const translations = new Map([[TITLE, TRANSLATED_TITLE], [SUMMARY, TRANSLATED_SUMMARY]]);
   await page.route('**/summarize-article**', async (route) => {
     const request = route.request().postDataJSON();
-    const summary = !providerUnavailable && request.mode === 'translate' && request.variant === 'de'
+    if (request?.mode === 'translate') translateRequests += 1;
+    const summary = !providerUnavailable && request?.mode === 'translate' && request.variant === 'de'
       ? translations.get(request.headlines[0])
       : undefined;
     await route.fulfill({ json: { summary: summary ?? '', fallback: !summary } });
@@ -85,6 +101,20 @@ export default async function ({ page, base, shot, log }) {
 
   const time = await card.locator('.climate-news-card__time').textContent();
   if (time !== 'vor 2 Stunden') throw new Error(`unexpected German relative time: ${time}`);
+
+  if (!pro) {
+    // Give a late entitlement answer time to re-render before asserting absence.
+    await page.waitForTimeout(2_000);
+    const buttons = await panel.locator('.climate-news-card__translate').count();
+    if (buttons !== 0) throw new Error(`free reader was offered ${buttons} translate control(s)`);
+    if (translateRequests !== 0) throw new Error(`free reader sent ${translateRequests} translate request(s)`);
+    await shot('climate-news-de-free-no-translate', { locator: panel });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await panel.scrollIntoViewIfNeeded();
+    await shot('climate-news-de-mobile-free-no-translate', { locator: panel });
+    log('free reader: no translate control, relative time', time);
+    return { access: 'free', time, buttons, translateRequests };
+  }
 
   const title = card.locator('.climate-news-card__title');
   const summary = card.locator('.climate-news-card__summary');
@@ -128,5 +158,5 @@ export default async function ({ page, base, shot, log }) {
   await shot('climate-news-de-mobile-provider-unavailable', { locator: panel });
 
   log('relative time and translated fields:', { time, translated, translatedSummary });
-  return { time, translated, translatedSummary, restored: TITLE, failure: await status.textContent() };
+  return { access: 'pro', time, translated, translatedSummary, restored: TITLE, failure: await status.textContent() };
 }

@@ -5,6 +5,11 @@ import { formatTime } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { translateText } from '@/services/summarization';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { subscribeRuntimeConfig } from '@/services/runtime-config';
+import { subscribeWidgetAccess } from '@/services/widget-store';
 
 import type { ListClimateNewsResponse, ClimateNewsItem } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { ClimateServiceClient } from '@/services/generated-rpc-clients';
@@ -21,11 +26,10 @@ function truncateSummary(text: string, maxLen = 120): string {
   return text.slice(0, maxLen).replace(/\s+\S*$/, '') + '...';
 }
 
-function renderNewsCard(item: ClimateNewsItem, target: string): SafeHtml {
+function renderNewsCard(item: ClimateNewsItem, target: string, translatable: boolean): SafeHtml {
   const timeAgo = item.publishedAt ? formatTime(new Date(item.publishedAt)) : '';
   const summary = truncateSummary(item.summary);
   const safeUrl = safeUrlAttr(item.url);
-  const translatable = target !== 'en';
   const key = translatable
     ? JSON.stringify([item.url, item.sourceName, item.publishedAt, item.title, item.summary, target])
     : '';
@@ -71,6 +75,9 @@ function showTranslation(card: HTMLElement, state: CardTranslation): void {
 
 export class ClimateNewsPanel extends Panel {
   private readonly translations = new Map<string, CardTranslation>();
+  private readonly unsubscribers: Array<() => void> = [];
+  private lastData: ListClimateNewsResponse | null = null;
+  private translationAllowed = false;
 
   constructor() {
     super({ id: 'climate-news', title: t('panels.climateNews'), infoTooltip: t('components.climateNews.infoTooltip') });
@@ -79,11 +86,28 @@ export class ClimateNewsPanel extends Panel {
       const card = button?.closest<HTMLElement>('.climate-news-card');
       if (card) void this.toggleTranslation(card);
     });
+    // Translation is a Pro feature. hasPremiumAccess also counts a tester key
+    // and the desktop API key, so re-check on each of its signals.
+    const recheck = () => this.syncTranslationAccess();
+    this.unsubscribers.push(
+      subscribeAuthState(recheck),
+      onEntitlementChange(recheck),
+      subscribeWidgetAccess(recheck),
+      subscribeRuntimeConfig(recheck),
+    );
+  }
+
+  private syncTranslationAccess(): void {
+    const allowed = hasPremiumAccess(getAuthState());
+    if (allowed === this.translationAllowed) return;
+    this.translationAllowed = allowed;
+    if (!allowed) this.translations.clear();
+    if (this.lastData) this.renderNewsList(this.lastData);
   }
 
   private async toggleTranslation(card: HTMLElement): Promise<void> {
     const key = card.dataset.translationKey;
-    if (!key) return;
+    if (!key || !hasPremiumAccess(getAuthState())) return;
 
     const previous = this.translations.get(key);
     if (previous?.result === 'pending') return;
@@ -148,8 +172,12 @@ export class ClimateNewsPanel extends Panel {
       return;
     }
 
+    this.lastData = data;
+    this.translationAllowed = hasPremiumAccess(getAuthState());
+    if (!this.translationAllowed) this.translations.clear();
     const target = getCurrentLanguageTag();
-    const cards = joinSafeHtml(data.items.map((item) => renderNewsCard(item, target)));
+    const translatable = this.translationAllowed && target !== 'en';
+    const cards = joinSafeHtml(data.items.map((item) => renderNewsCard(item, target, translatable)));
     this.setSafeContent(safeHtml`<div class="climate-news-list">${cards}</div>`, () => {
       const visibleKeys = new Set<string>();
       for (const card of this.translationCards()) {
@@ -163,5 +191,10 @@ export class ClimateNewsPanel extends Panel {
         if (!visibleKeys.has(key)) this.translations.delete(key);
       }
     });
+  }
+
+  public override destroy(): void {
+    for (const unsubscribe of this.unsubscribers.splice(0)) unsubscribe();
+    super.destroy();
   }
 }

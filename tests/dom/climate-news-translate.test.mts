@@ -16,6 +16,29 @@ vi.mock('@/services/summarization', () => ({
 
 vi.mock('@/services/bootstrap', () => ({ getHydratedData: () => undefined }));
 
+// Translation is a Pro control. hasPremiumAccess answers from four signals,
+// so the panel re-checks access whenever any of them fires.
+const access = vi.hoisted(() => ({
+  premium: true,
+  listeners: new Set<() => void>(),
+}));
+function subscribeAccess(listener: () => void) {
+  access.listeners.add(listener);
+  return () => { access.listeners.delete(listener); };
+}
+function setPremium(premium: boolean) {
+  access.premium = premium;
+  for (const listener of access.listeners) listener();
+}
+vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => access.premium }));
+vi.mock('@/services/auth-state', () => ({ getAuthState: () => ({ user: null }), subscribeAuthState: subscribeAccess }));
+vi.mock('@/services/entitlements', () => ({ onEntitlementChange: subscribeAccess }));
+vi.mock('@/services/widget-store', () => ({ subscribeWidgetAccess: subscribeAccess }));
+vi.mock('@/services/runtime-config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/runtime-config')>()),
+  subscribeRuntimeConfig: subscribeAccess,
+}));
+
 const listClimateNews = vi.hoisted(() => vi.fn());
 vi.mock('@/services/generated-rpc-clients', () => ({
   ClimateServiceClient: class { listClimateNews = listClimateNews; },
@@ -56,6 +79,8 @@ beforeEach(async () => {
   await i18next.changeLanguage('de');
   translator.calls.length = 0;
   translator.reply = (text: string) => `[de] ${text}`;
+  access.premium = true;
+  access.listeners.clear();
   document.body.innerHTML = '';
 });
 
@@ -159,5 +184,58 @@ describe('Climate News translate control (#10054)', () => {
   it('renders the exact German relative timestamp', async () => {
     await mountPanel();
     expect(card().querySelector('.climate-news-card__time')?.textContent).toBe('vor 2 Stunden');
+  });
+});
+
+describe('Climate News translation is a Pro feature', () => {
+  it('offers no control to a free reader and never calls the translator', async () => {
+    access.premium = false;
+    await mountPanel();
+    expect(card()).not.toBeNull();
+    expect(button()).toBeNull();
+    expect(card().querySelector('.climate-news-card__time')?.textContent).toBe('vor 2 Stunden');
+    expect(translator.calls).toHaveLength(0);
+  });
+
+  it('offers the control once Pro access resolves after the first render', async () => {
+    access.premium = false;
+    await mountPanel();
+    expect(button()).toBeNull();
+    setPremium(true);
+    await vi.waitFor(() => expect(button()).not.toBeNull());
+    expect(button()!.getAttribute('aria-label')).toBe('Übersetzen');
+  });
+
+  it('removes the control and restores the published text when Pro access ends', async () => {
+    await mountPanel();
+    button()!.click();
+    await vi.waitFor(() => expect(titleText()).toBe(`[de] ${ITEM.title}`));
+    setPremium(false);
+    await vi.waitFor(() => expect(button()).toBeNull());
+    expect(titleText()).toBe(ITEM.title);
+    expect(summaryText()).toBe(ITEM.summary);
+  });
+
+  it('discards a translation that completes after Pro access ends', async () => {
+    let completeTitle!: (value: string) => void;
+    translator.reply = (text) => text === ITEM.title
+      ? new Promise((resolve) => { completeTitle = resolve; })
+      : `[de] ${text}`;
+    await mountPanel();
+    button()!.click();
+    setPremium(false);
+    await vi.waitFor(() => expect(button()).toBeNull());
+    completeTitle(`[de] ${ITEM.title}`);
+    setPremium(true);
+    await vi.waitFor(() => expect(button()?.getAttribute('aria-label')).toBe('Übersetzen'));
+    expect(titleText()).toBe(ITEM.title);
+    expect(summaryText()).toBe(ITEM.summary);
+  });
+
+  it('stops listening for access changes once destroyed', async () => {
+    const panel = await mountPanel();
+    expect(access.listeners.size).toBeGreaterThan(0);
+    panel.destroy();
+    expect(access.listeners.size).toBe(0);
   });
 });
