@@ -100,6 +100,11 @@ import { isImeEnter, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { checkoutConsentHtml, legalLinksHtml, LEGAL_LINK_ATTR } from '@/utils/legal-links';
 import { dashboardSiteLinksHtml } from '@/utils/dashboard-site-links';
 import { resolveDashboardSiteOrigin } from '@/config/dashboard-reference-links';
+import {
+  API_STARTER_SWITCH_SOURCE_PLANS,
+  API_SWITCH_ENTRY_LABEL,
+  API_SWITCH_UNAVAILABLE_BODY,
+} from '@/services/api-starter-switch-copy';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
@@ -337,6 +342,16 @@ export class UnifiedSettings {
 
       if (target.closest('.retry-plan-status-btn')) {
         window.location.reload();
+        return;
+      }
+
+      if (target.closest('.switch-to-api-starter-btn')) {
+        import('@/services/checkout')
+          .then((m) => m.startApiStarterSwitch(() => this.focusSwitchToApiStarterButton()))
+          .then((outcome) => {
+            if (outcome === 'not-switchable') showToast(API_SWITCH_UNAVAILABLE_BODY);
+          })
+          .catch(() => showToast(API_SWITCH_UNAVAILABLE_BODY));
         return;
       }
 
@@ -1730,6 +1745,28 @@ export class UnifiedSettings {
       .then(() => this.replaceUpgradeSection());
   }
 
+  /**
+   * The in-place individual Pro → API Starter switch, for every active owner
+   * of a plan the server switches (a cancel-scheduled one gets the server's
+   * "resume first" answer). English only, like the switch dialog it opens.
+   */
+  private renderApiStarterSwitch(sub: SubscriptionInfo | null): string {
+    if (!this.ownsApiStarterSwitchSource(sub)) return '';
+    return `<button type="button" class="switch-to-api-starter-btn">${escapeHtml(API_SWITCH_ENTRY_LABEL)}</button>`;
+  }
+
+  private ownsApiStarterSwitchSource(sub: SubscriptionInfo | null = getSubscription()): boolean {
+    return sub !== null && API_STARTER_SWITCH_SOURCE_PLANS.has(sub.planKey) && sub.status === 'active';
+  }
+
+  // The switch dialog takes focus; on dismissal it goes back to the button,
+  // which a re-render may have replaced.
+  private focusSwitchToApiStarterButton(): void {
+    if (!this.overlay.classList.contains('active')) return;
+    const button = this.overlay.querySelector<HTMLButtonElement>('.switch-to-api-starter-btn');
+    if (button?.isConnected) button.focus();
+  }
+
   private renderUpgradeSection(): string {
     // Non-Dodo premium (API key / tester key / Clerk pro role without a
     // Convex subscription): neither "Upgrade" nor "Manage Billing" is
@@ -1818,6 +1855,7 @@ export class UnifiedSettings {
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">${escapeHtml(t('settings.account.upgradeToBusiness'))}</button>` : ''}
           ${this.renderProAnnualSwitch(sub, now)}
+          ${this.renderApiStarterSwitch(sub)}
           ${hasOwnSubscription ? `<button class="manage-billing-btn">${escapeHtml(t('components.billingState.manageBilling'))}</button>` : ''}
         </div>
         ${hasOwnSubscription ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
@@ -2529,6 +2567,16 @@ export class UnifiedSettings {
       // precedent as handleUpgradeClick); its no-customer outcome surfaces the
       // support path for a subscription managed outside Dodo.
       if (isEntitled()) {
+        // An individual Pro owner moves to API Starter in place instead.
+        if (notice.upgradeTargetPlanKey === 'api_starter' && this.ownsApiStarterSwitchSource()) {
+          import('@/services/checkout')
+            .then((m) => m.startApiStarterSwitch())
+            .then((outcome) => {
+              if (outcome === 'not-switchable') showToast(API_SWITCH_UNAVAILABLE_BODY);
+            })
+            .catch(() => showToast(API_SWITCH_UNAVAILABLE_BODY));
+          return;
+        }
         const reservedWin = prereserveBillingPortalTab();
         void openBillingPortal(reservedWin).then((result) => {
           // The portal session exists but no window opened (native handoff

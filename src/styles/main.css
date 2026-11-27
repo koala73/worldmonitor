@@ -28203,7 +28203,8 @@ body.map-width-resizing {
 .upgrade-pro-offer-line { color: var(--text); }
 
 .manage-billing-btn,
-.switch-to-yearly-btn {
+.switch-to-yearly-btn,
+.switch-to-api-starter-btn {
   width: 100%;
   padding: 8px 16px;
   background: transparent;
@@ -28218,14 +28219,16 @@ body.map-width-resizing {
 
 .manage-billing-btn:hover { color: var(--text); }
 
-/* Pro Monthly → Pro Yearly: Manage Billing's outline, one step brighter
-   because it is the section's action. */
-.switch-to-yearly-btn {
+/* Pro Monthly → Pro Yearly and Pro → API Starter: Manage Billing's outline,
+   one step brighter because they are the section's actions. */
+.switch-to-yearly-btn,
+.switch-to-api-starter-btn {
   color: var(--text);
   margin-bottom: 8px;
 }
 
-.switch-to-yearly-btn:hover { border-color: var(--text-dim); }
+.switch-to-yearly-btn:hover,
+.switch-to-api-starter-btn:hover { border-color: var(--text-dim); }
 
 /* Paused plan: updating the card is the only way back, so the button takes
    the card's attention tone (the same text-on-surface pairing as the plan
