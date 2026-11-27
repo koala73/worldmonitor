@@ -392,6 +392,8 @@ async function mountPlugin(): Promise<void> {
   let linksAvailable = false;
   let queuedView: { raw: unknown; receipt?: unknown; fromHost: boolean } | undefined;
   let hostInput: unknown;
+  // Topic from a countryless open (ChatGPT entrypoints); the first country the user picks opens on it.
+  let pickerTopic: string | undefined;
   let contextTimer: ReturnType<typeof setTimeout> | undefined;
   let timeline: CountryTimeline | undefined;
   let openRequest: AbortController | undefined;
@@ -817,6 +819,9 @@ async function mountPlugin(): Promise<void> {
         const requested = countryViewSchema.safeParse(hostInput);
         hostInput = undefined;
         void open({ country_code: data.countryCode, topic: data.topic ?? 'overview', refresh: requested.success && requested.data.refresh }, false, data.panelRequest, true).catch(error => { status.textContent = error.message; });
+      } else if (typeof data?.topic === 'string' && Object.prototype.hasOwnProperty.call(BRIEF_TOPICS, data.topic)) {
+        hostInput = undefined;
+        pickerTopic = data.topic;
       }
     }
     if (message.method === 'tools/list') send({ id: message.id, result: { tools: [
@@ -840,7 +845,11 @@ async function mountPlugin(): Promise<void> {
   };
   if (!channel) window.addEventListener('message', onHostMessage);
 
-  const openSelectedCountry = () => { void open({ country_code: input.value }).catch(error => { status.textContent = error.message; }); };
+  const openSelectedCountry = () => {
+    const topic = pickerTopic;
+    pickerTopic = undefined;
+    void open({ country_code: input.value, ...(topic ? { topic } : {}) }).catch(error => { status.textContent = error.message; });
+  };
   document.getElementById('openCountry')!.addEventListener('click', openSelectedCountry);
   form.addEventListener('submit', event => { event.preventDefault(); openSelectedCountry(); });
   input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); if (!isImeEnter(event)) openSelectedCountry(); } });

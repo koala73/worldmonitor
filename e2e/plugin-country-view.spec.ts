@@ -310,7 +310,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
         const result = await (window as unknown as { countryHost: (method: string, params: object, id?: number) => Promise<object> }).countryHost(event.data.method, event.data.params, event.data.id);
         frame.contentWindow!.postMessage({ jsonrpc: '2.0', id: event.data.id, result }, '*');
         if (event.data.method === 'ui/initialize') {
-          const args = initialCountry ? { country_code: initialCountry, topic: 'overview' } : { topic: 'overview' };
+          const args = initialCountry ? { country_code: initialCountry, topic: 'overview' } : { topic: 'economy' };
           frame.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: args }, '*');
           const opened = await (window as unknown as { countryHost: (method: string, params: object) => Promise<object> }).countryHost('tools/call', { name: 'open_country_brief', arguments: args });
           frame.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: opened }, '*');
@@ -1093,8 +1093,11 @@ test('an open without a country shows the country picker and loads nothing until
   await page.waitForTimeout(500);
   expect(host.calls.map(call => call.name)).toEqual(['open_country_brief']);
   expect(host.admissions).toBe(0);
-  await host.action('select_country_view', { country_code: 'US' });
+  // The picker keeps the topic the open asked for (economy) when the user then picks a country.
+  await frame.locator('input[name="country"]').fill('US');
+  await frame.locator('#openCountry').click();
   await expect.poll(() => host.admissions).toBe(1);
+  expect(host.calls.filter(call => call.name === 'open_country_brief').at(-1)?.arguments).toMatchObject({ country_code: 'US', topic: 'economy' });
   await expect.poll(() => host.calls.some(call => call.name === 'get_country_brief_section')).toBe(true);
 });
 

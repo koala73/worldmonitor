@@ -189,7 +189,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS), description: 'Section group the view opens on.' },
       panelRequest: describedPanelReceipt(panelAdmissionSchema, 'Dedicated paid plans only: the paid country request this open admitted or reused.'),
     },
-    required: ['countryCode', 'topic'],
+    required: ['topic'],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   _validateArgs: countryViewArguments,
