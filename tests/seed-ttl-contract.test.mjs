@@ -29,7 +29,6 @@ const TTL_DEBT = new Set([
   'climateNews',
   'co2Monitoring',
   'commodityQuotes',
-  'correlationCards',
   'crossSourceSignals',
   'cryptoSectors',
   'cyberThreats',

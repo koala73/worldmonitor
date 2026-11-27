@@ -1575,7 +1575,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           // Coalesce the permission listener and focus fallback without
           // claiming the state as rendered until the reload actually wins.
           requestedWebPushState = state;
-          reloadNotifSection();
+          reloadNotifSection({ keepWebhookSecret: true });
         });
       }
 
