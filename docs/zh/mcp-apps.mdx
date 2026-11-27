@@ -74,10 +74,10 @@ View -> Host: ui/notifications/size-changed
 
 ## 显示模式
 
-新闻与地图视图（`open_news_dashboard`，`ui://worldmonitor/news-dashboard-v4.html`）和国家视图（`open_country_brief`，`ui://worldmonitor/country-view-v4.html`）可以在对话旁边或全屏打开。其他视图只以内联方式渲染。`-v3`、`-v2` 及原始 URI 仍作为已安装元数据的私有读取别名。
+新闻与地图视图（`open_news_dashboard`，`ui://worldmonitor/news-dashboard-v5.html`）和国家视图（`open_country_brief`，`ui://worldmonitor/country-view-v5.html`）可以在对话旁边或全屏打开。其他视图只以内联方式渲染。`-v4`、`-v3`、`-v2` 及原始 URI 仍作为已安装元数据的私有读取别名。
 
 - 每个视图在 `ui/initialize` 中声明 `appCapabilities.availableDisplayModes: ["inline", "fullscreen"]`。
-- 它们的 `resources/read` 内容项携带 `_meta.ui.preferredDisplayMode: "fullscreen"`，因此 Claude 调用关联工具时会在侧边面板中打开它们。忽略该字段的宿主，以及窄到无法显示侧边面板的窗口，会以内联方式渲染视图。
+- 它们的 `resources/read` 内容项携带 `_meta.ui.preferredDisplayMode: "fullscreen"`，因此 Claude 调用关联工具时会在侧边面板中打开它们。这些内容项还携带 `_meta["openai/ui"]`，其中 `availableDisplayModes: ["inline", "fullscreen"]`、`preferredDisplayMode: "fullscreen"`，ChatGPT 会在视图初始化之前读取它；缺少该字段时 ChatGPT 以内联方式渲染。忽略这两个字段的宿主，以及窄到无法显示侧边面板的窗口，会以内联方式渲染视图。
 - 当 `hostContext.availableDisplayModes` 包含 `fullscreen` 且视图为内联时，视图显示“Expand”按钮。点击会立即发送 `mode: "fullscreen"` 的 `ui/request-display-mode`，因为宿主会拒绝不是由点击或按键触发的显示模式请求。如果宿主返回其他模式，布局保持不变，状态行显示“Claude kept this view in the conversation.”
 - Claude 将侧边面板和全屏都报告为 `displayMode: "fullscreen"`，只有 `containerDimensions` 不同。在该模式下，视图填满报告的高度并在其中滚动，将 `safeAreaInsets` 用作内边距，并停止发送 `ui/notifications/size-changed`。回到内联后，视图重新报告内容高度。布局断点来自 CSS 媒体查询，它们测量的正是宿主报告的 iframe 宽度。
 - 每个视图在加载地图或分区数据之前发送 `ui/notifications/initialized`，并暂存界面构建完成前到达的工具结果。如果 `initialized` 到达过晚，Claude 会将视图移出侧边面板或全屏。

@@ -45,20 +45,20 @@ test('dashboard entry opens the actual feed panels with empty arguments', () => 
   assert.ok(tool, 'news dashboard entry must exist separately from the intelligence summary');
   assert.deepEqual(tool.inputSchema.required, []);
   const publicTool = buildPublicTool(tool, { compressDescriptions: false });
-  assert.equal(publicTool._meta?.ui?.resourceUri, 'ui://worldmonitor/news-dashboard-v4.html');
-  assert.equal(publicTool._meta?.['ui/resourceUri'], 'ui://worldmonitor/news-dashboard-v4.html');
+  assert.equal(publicTool._meta?.ui?.resourceUri, 'ui://worldmonitor/news-dashboard-v5.html');
+  assert.equal(publicTool._meta?.['ui/resourceUri'], 'ui://worldmonitor/news-dashboard-v5.html');
   assert.deepEqual(publicTool._meta?.['openai/ui']?.entrypoints, [{type: 'global'}, {type: 'thread'}]);
 });
 
 import { afterEach } from 'node:test';
 import { readNewsDashboard } from '../api/mcp/ui/news-dashboard-app.ts';
-import { buildUiResourceRead, isUiResourceUri } from '../api/mcp/ui/registry.ts';
+import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
 
 test('legacy installed resource links remain public aliases that return the cache-safe shell', async () => {
   globalThis.fetch = async input => new Response(`<html><head></head><body><main id="${String(input).endsWith('country.html') ? 'countryRoot' : String(input).endsWith('market.html') ? 'marketRoot' : 'pluginRoot'}"></main></body></html>`, { headers: { 'Content-Type': 'text/html' } });
-  for (const uri of ['ui://worldmonitor/country-view-v1.html', 'ui://worldmonitor/news-dashboard.html', 'ui://worldmonitor/country-view-v2.html', 'ui://worldmonitor/news-dashboard-v2.html', 'ui://worldmonitor/country-view-v3.html', 'ui://worldmonitor/news-dashboard-v3.html', 'ui://worldmonitor/market-radar-v2.html']) {
+  for (const uri of ['ui://worldmonitor/country-view-v1.html', 'ui://worldmonitor/news-dashboard.html', 'ui://worldmonitor/country-view-v2.html', 'ui://worldmonitor/news-dashboard-v2.html', 'ui://worldmonitor/country-view-v3.html', 'ui://worldmonitor/news-dashboard-v3.html', 'ui://worldmonitor/country-view-v4.html', 'ui://worldmonitor/news-dashboard-v4.html', 'ui://worldmonitor/market-radar-v2.html']) {
     assert.equal(isUiResourceUri(uri), true);
     const body = await (await buildUiResourceRead(1, uri, {})).json();
     assert.equal(body.result.contents[0].uri, uri);
@@ -66,17 +66,23 @@ test('legacy installed resource links remain public aliases that return the cach
   }
 });
 
-test('the news and country views ask Claude for the side panel; other views do not', async () => {
+test('the news and country views ask Claude and ChatGPT for fullscreen; other views do not', async () => {
   globalThis.fetch = async input => new Response(`<html><head></head><body><main id="${String(input).endsWith('country.html') ? 'countryRoot' : String(input).endsWith('market.html') ? 'marketRoot' : 'pluginRoot'}"></main></body></html>`, { headers: { 'Content-Type': 'text/html' } });
   const read = async (uri: string) => (await (await buildUiResourceRead(1, uri, {})).json()).result.contents[0];
-  for (const uri of ['ui://worldmonitor/news-dashboard-v4.html', 'ui://worldmonitor/country-view-v4.html']) {
+  const listed = new Map(UI_RESOURCE_LIST_RESPONSE.map(r => [r.uri, r]));
+  for (const uri of ['ui://worldmonitor/news-dashboard-v5.html', 'ui://worldmonitor/country-view-v5.html']) {
     const content = await read(uri);
     assert.equal(content.uri, uri);
     assert.equal(content._meta.ui.preferredDisplayMode, 'fullscreen', uri);
+    // ChatGPT reads display modes from _meta["openai/ui"] on the content item and renders inline without it.
+    assert.deepEqual(content._meta['openai/ui'], { availableDisplayModes: ['inline', 'fullscreen'], preferredDisplayMode: 'fullscreen' }, uri);
+    assert.deepEqual(listed.get(uri)?._meta['openai/ui'], content._meta['openai/ui'], `${uri} resources/list`);
     assert.match(content.text, /Retry interface/);
   }
   for (const uri of ['ui://worldmonitor/market-radar-v3.html', 'ui://worldmonitor/country-risk-v3.html']) {
-    assert.equal((await read(uri))._meta?.ui?.preferredDisplayMode, undefined, uri);
+    const content = await read(uri);
+    assert.equal(content._meta?.ui?.preferredDisplayMode, undefined, uri);
+    assert.equal(content._meta?.['openai/ui'], undefined, uri);
   }
 });
 
