@@ -141,6 +141,7 @@
       "shared/chokepoint-transit-tracker.js",
       "shared/chokepoint-transit-window.js",
       "shared/chokepoint-threat-levels.js",
+      "shared/running-tally.js",
       "shared/chokepoint-traffic-anomaly.js",
       "shared/commodities.json",
       "shared/corridor-risk.js",
