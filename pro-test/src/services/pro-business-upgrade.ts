@@ -313,6 +313,10 @@ export async function runProBusinessUpgradeFlow(options: {
     dismissLabel: 'Not now',
     onConfirm: () => {
       void (async () => {
+        // Clerk tokens live ~60 s; the user may have read the dialog longer.
+        const freshToken = await options.getToken();
+        // After the token: its retry reads the active session again, and the
+        // account can change while it waits.
         if (await options.getUserId() !== previewUserId) {
           showDialog({
             title: 'Account changed',
@@ -323,8 +327,6 @@ export async function runProBusinessUpgradeFlow(options: {
           });
           return;
         }
-        // Clerk tokens live ~60 s; the user may have read the dialog longer.
-        const freshToken = await options.getToken();
         const applied = freshToken
           ? await callUpgrade(options.apiBase, freshToken, true)
           : { ok: false, data: {}, error: 'no_token' };
@@ -436,12 +438,14 @@ export async function runProAnnualSwitchFlow(options: {
       dismissLabel: SWITCH_DISMISS_LABEL,
       onConfirm: () => {
         void (async () => {
+          // Clerk tokens live ~60 s; the user may have read the dialog longer.
+          const freshToken = await options.getToken();
+          // After the token: its retry reads the active session again, and the
+          // account can change while it waits.
           if (await options.getUserId() !== previewUserId) {
             closeOnly('Account changed', SWITCH_ACCOUNT_CHANGED_BODY);
             return;
           }
-          // Clerk tokens live ~60 s; the user may have read the dialog longer.
-          const freshToken = await options.getToken();
           const applied = freshToken
             ? await callUpgrade(options.apiBase, freshToken, true, {
               kind: 'pro_annual',

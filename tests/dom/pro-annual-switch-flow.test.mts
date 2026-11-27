@@ -17,8 +17,10 @@ type RunProAnnualSwitchFlow = (options: {
   openPortal: () => void;
   fallback: () => void;
 }) => Promise<void>;
-const { runProAnnualSwitchFlow } = (await import(/* @vite-ignore */ PRO_UPGRADE_MODULE)) as {
+type RunProBusinessUpgradeFlow = (options: Parameters<RunProAnnualSwitchFlow>[0] & { planDisplayName: string }) => Promise<void>;
+const { runProAnnualSwitchFlow, runProBusinessUpgradeFlow } = (await import(/* @vite-ignore */ PRO_UPGRADE_MODULE)) as {
   runProAnnualSwitchFlow: RunProAnnualSwitchFlow;
+  runProBusinessUpgradeFlow: RunProBusinessUpgradeFlow;
 };
 
 const QUOTE = {
@@ -179,6 +181,48 @@ describe('/pro Pro Yearly switch flow', () => {
       dialog().confirm();
       await vi.waitFor(() => expect(dialog().title).toBe('Switch not confirmed'));
       expect(bodies).toHaveLength(4);
+    });
+  });
+
+  // getAuthToken waits 2 s before its retry, which reads the active Clerk
+  // session again: a token for another account can come back. The account
+  // check must run after the token resolves.
+  describe('account switch while the confirm token resolves', () => {
+    function switchingAccountOptions() {
+      let user = 'user_a';
+      let tokenCalls = 0;
+      return {
+        ...options(),
+        getUserId: async () => user,
+        getToken: async () => {
+          tokenCalls += 1;
+          if (tokenCalls > 1) user = 'user_b';
+          return `token_${user}`;
+        },
+      };
+    }
+
+    it('the Pro Yearly switch refuses to confirm for the other account', async () => {
+      replies = [{ status: 200, body: QUOTE }, { status: 200, body: UPGRADED }];
+      await runProAnnualSwitchFlow(switchingAccountOptions());
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().title).toBe('Account changed'));
+      expect(bodies).toEqual([{ confirm: false, kind: 'pro_annual' }]);
+    });
+
+    it('the Pro Business upgrade refuses to confirm for the other account', async () => {
+      replies = [
+        {
+          status: 200,
+          body: { ...LIST_QUOTE, toPlanKey: 'pro_business_monthly', billingPeriod: 'monthly', chargeAmount: 667, renewalAmount: 4999 },
+        },
+        { status: 200, body: { kind: 'upgraded', fromPlanKey: 'pro_monthly', toPlanKey: 'pro_business_monthly' } },
+      ];
+      await runProBusinessUpgradeFlow({ ...switchingAccountOptions(), planDisplayName: 'Pro Monthly' });
+      expect(dialog().title).toBe('Upgrade to Pro Business');
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().title).toBe('Account changed'));
+      expect(bodies).toEqual([{ confirm: false }]);
     });
   });
 
