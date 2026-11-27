@@ -24,7 +24,7 @@
  * hosts the /aviationstack live proxy for user-triggered flight lookups.
  */
 
-import { XMLParser } from 'fast-xml-parser';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -866,13 +866,15 @@ export function buildFaaAlerts(faaDelays) {
   return alerts;
 }
 
-// The whole body must be one AIRPORT_STATUS_INFORMATION element, optionally
-// after an XML declaration. Even a quiet feed has it (with just Update_Time), so
-// an HTML page, or a body cut off before the closing tag, is a failure and not
-// "no delays".
+// The whole body must be one well-formed AIRPORT_STATUS_INFORMATION element,
+// optionally after an XML declaration. Even a quiet feed has it (with just
+// Update_Time), so an HTML page, a body cut off before the closing tag, or one
+// with an unclosed element inside is a failure and not "no delays".
 export function isFaaStatusXml(text) {
   const body = (text || '').trim().replace(/^<\?xml[^>]*\?>\s*/i, '');
-  return /^<AIRPORT_STATUS_INFORMATION[\s>]/.test(body) && body.endsWith('</AIRPORT_STATUS_INFORMATION>');
+  return /^<AIRPORT_STATUS_INFORMATION[\s>]/.test(body)
+    && body.endsWith('</AIRPORT_STATUS_INFORMATION>')
+    && XMLValidator.validate(body) === true;
 }
 
 function describeFetchError(err) {

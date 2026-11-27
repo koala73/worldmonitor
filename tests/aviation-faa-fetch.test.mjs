@@ -91,3 +91,9 @@ test('isFaaStatusXml rejects a truncated document and a tag inside other markup'
   assert.equal(isFaaStatusXml(`<html><body>${FAA_XML}</body></html>`), false);
   assert.equal(isFaaStatusXml('<AIRPORT_STATUS_INFORMATION_X></AIRPORT_STATUS_INFORMATION_X>'), false);
 });
+
+// The right root at both ends does not make a document: an unclosed element
+// inside it hides a delay record from parseFaaXml.
+test('isFaaStatusXml rejects a malformed document with the right root', () => {
+  assert.equal(isFaaStatusXml('<AIRPORT_STATUS_INFORMATION><Ground_Delay><ARPT>JFK</ARPT></AIRPORT_STATUS_INFORMATION>'), false);
+});
