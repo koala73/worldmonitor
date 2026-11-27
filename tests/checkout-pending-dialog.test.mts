@@ -154,6 +154,7 @@ const stubSources: Record<string, string> = {
     export const openBillingPortal = async () => {};
     export const prereserveBillingPortalTab = () => null;
     export const requestProBusinessUpgrade = async () => { throw new Error('stub'); };
+    export const requestProAnnualSwitch = async () => { throw new Error('stub'); };
   `,
   './clerk': `
     export const getCurrentClerkUser = () => ({ id: 'user_1', email: 'pro@example.com' });

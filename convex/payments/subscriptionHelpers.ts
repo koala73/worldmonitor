@@ -73,6 +73,8 @@ interface DodoSubscriptionData {
   currency?: string;
   tax_inclusive?: boolean;
   discount_id?: string | null;
+  /** Billing cycles the discount still covers; while > 0, recurring_pre_tax_amount is the discounted price. */
+  discount_cycles_remaining?: number | null;
   billing?: { country?: string };
 }
 
@@ -2255,6 +2257,10 @@ async function notifyPlanUpgrade(
     ...previousPrice(previous),
     newAmount: data.recurring_pre_tax_amount,
     newCurrency: data.currency,
+    // A promotion's code (e.g. the Pro Yearly switch) discounts the first
+    // period only; the email then names the list renewal beside it. With more
+    // cycles left the next renewal is still discounted, so no list-price claim.
+    newDiscounted: Boolean(data.discount_id) && data.discount_cycles_remaining === 1,
   });
 }
 

@@ -81,6 +81,7 @@ async function deliver(
   planKey: string,
   amount: number,
   timestamp = NOW,
+  extra: Record<string, unknown> = {},
 ) {
   await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
     webhookId: `wh_${Math.random().toString(36).slice(2)}`,
@@ -100,6 +101,7 @@ async function deliver(
         next_billing_date: new Date(NOW + 20 * DAY_MS).toISOString(),
         recurring_pre_tax_amount: amount,
         currency: "USD",
+        ...extra,
       },
     },
     timestamp,
@@ -143,6 +145,90 @@ describe("admin plan-upgrade email", () => {
     expect(email?.subject).toBe("[WM] Plan Upgrade: Pro (Monthly) → Pro (Annual)");
     expect(email?.html).toMatch(/New Price:<\/td><td[^>]*>\$359\.99 USD \/ year</);
     expect(email?.html).toMatch(/Change:<\/td><td[^>]*>-\$119\.89 USD \/ year \(annualized\)</);
+  });
+
+  // Pro Monthly → Pro Yearly with the Black Friday code. Dodo reports the
+  // discounted first year as recurring_pre_tax_amount while a discount cycle
+  // remains (a live Pro Yearly subscription read 28799 against a 35999 list).
+  test("a discounted switch to annual reports the first-year charge and the list renewal", async () => {
+    const sends = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, "pro_monthly", 3999);
+
+    await deliver(t, "subscription.plan_changed", "pro_annual", 14400, NOW, {
+      discount_id: "dsc_test_bf",
+      discount_cycles_remaining: 1,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const [email] = upgradeSends(sends());
+    expect(email?.subject).toBe("[WM] Plan Upgrade: Pro (Monthly) → Pro (Annual)");
+    expect(email?.html).toMatch(/New Price:<\/td><td[^>]*>\$144\.00 USD \/ year \(discounted first year\)</);
+    expect(email?.html).toMatch(/Renews At:<\/td><td[^>]*>\$359\.99 USD \/ year \(list price\)</);
+    // The ongoing change compares list prices, not the one-off first year.
+    expect(email?.html).toMatch(/Change:<\/td><td[^>]*>-\$119\.89 USD \/ year \(annualized\)</);
+    expect(email?.html).not.toMatch(/-\$335\.88/);
+  });
+
+  // A code that covers two cycles keeps the discounted price at the next
+  // renewal, so the email must not say it renews at list.
+  test("a discount covering two cycles makes no list-price renewal claim", async () => {
+    const sends = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, "pro_monthly", 3999);
+
+    await deliver(t, "subscription.plan_changed", "pro_annual", 14400, NOW, {
+      discount_id: "dsc_test_two",
+      discount_cycles_remaining: 2,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const [email] = upgradeSends(sends());
+    expect(email?.html).toMatch(/New Price:<\/td><td[^>]*>\$144\.00 USD \/ year</);
+    expect(email?.html).not.toMatch(/first year/);
+    expect(email?.html).not.toMatch(/Renews At/);
+    expect(email?.html).not.toMatch(/list price/);
+  });
+
+  test("the switch to annual moves the plan, the period and the entitlement", async () => {
+    mockResend();
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, "pro_monthly", 3999);
+    const nextBilling = NOW + 365 * DAY_MS;
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_switch_annual",
+      eventType: "subscription.plan_changed",
+      rawPayload: {
+        type: "subscription.plan_changed",
+        business_id: "biz_test",
+        timestamp: new Date(NOW).toISOString(),
+        data: {
+          payload_type: "Subscription",
+          subscription_id: "sub_up_001",
+          product_id: PRODUCT_CATALOG.pro_annual!.dodoProductId,
+          status: "active",
+          customer: { customer_id: "cust_up_001", email: "upgrader@example.com" },
+          metadata: { wm_user_id: "user_upgrader" },
+          previous_billing_date: new Date(NOW).toISOString(),
+          next_billing_date: new Date(nextBilling).toISOString(),
+          recurring_pre_tax_amount: 14400,
+          currency: "USD",
+          discount_id: "dsc_test_bf",
+          discount_cycles_remaining: 1,
+        },
+      },
+      timestamp: NOW,
+    });
+
+    const sub = await t.run((ctx) => ctx.db.query("subscriptions").first());
+    expect(sub?.planKey).toBe("pro_annual");
+    expect(sub?.dodoProductId).toBe(PRODUCT_CATALOG.pro_annual!.dodoProductId);
+    expect(sub?.currentPeriodStart).toBe(NOW);
+    expect(sub?.currentPeriodEnd).toBe(nextBilling);
+    const entitlement = await t.run((ctx) => ctx.db.query("entitlements").first());
+    expect(entitlement?.planKey).toBe("pro_annual");
+    expect(entitlement?.validUntil).toBeGreaterThanOrEqual(nextBilling);
   });
 
   test("a downgrade sends nothing", async () => {

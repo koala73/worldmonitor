@@ -75,3 +75,98 @@ export const UPGRADE_FAILED_BODY =
 
 export const UPGRADE_ACCOUNT_CHANGED_BODY =
   'You switched accounts after this quote. Start the upgrade again from the account you want to upgrade.';
+
+// ── Pro Monthly → Pro Yearly switch ─────────────────────────────────────────
+
+/** The one plan the server switches to Pro Yearly in place (selectProAnnualSwitchCandidate). */
+export const PRO_ANNUAL_SWITCH_SOURCE_PLAN = 'pro_monthly';
+
+export interface ProAnnualSwitchPreview {
+  chargeAmount: number;
+  currency: string;
+  /** The list renewal: the server quotes the catalog price when the first year is discounted. */
+  renewalAmount: number | null;
+  renewalCurrency: string | null;
+  renewalDate: string | null;
+  /** The quote carries the running offer's code. */
+  discounted: boolean;
+  /** Dodo's whole percent off the first year, only on a discounted quote. */
+  percentOff: number | null;
+}
+
+export function buildSwitchPreviewBody(preview: ProAnnualSwitchPreview): string {
+  const charge = formatMinorAmount(preview.chargeAmount, preview.currency);
+  const date = formatRenewalDate(preview.renewalDate);
+  // The charge currency is the customer's, not the plan's: never borrow it for the renewal.
+  const price = preview.renewalAmount === null || !preview.renewalCurrency
+    ? 'the Pro Yearly price'
+    : `${formatMinorAmount(preview.renewalAmount, preview.renewalCurrency)} a year plus any tax`;
+  const renewal = date ? `It renews at ${price} on ${date}.` : `It renews at ${price}.`;
+  const offer = preview.discounted && typeof preview.percentOff === 'number'
+    ? `your first year at ${preview.percentOff}% off, `
+    : '';
+  return (
+    'Your Pro Monthly subscription moves to Pro Yearly now. ' +
+    `You pay ${charge} today: ${offer}` +
+    'less the unused part of this month. Your billing period restarts today. ' +
+    `${renewal} ` +
+    "Cancel anytime before then and you won't be charged again. If the payment fails, you stay on Pro Monthly."
+  );
+}
+
+/** The PromoDisplayPrices figures the Settings offer line names (USD cents). */
+export interface SwitchPromoLinePrices {
+  listCents: number;
+  perMonthCents: number;
+  monthlyTotalCents: number;
+  savingsVsMonthlyPct: number;
+}
+
+/**
+ * Settings line beside the switch button while the offer runs. The savings
+ * figure is against twelve monthly payments, so it stands beside the monthly
+ * price (the banner's wording), with the renewal and the cancel terms.
+ */
+export function buildSwitchPromoLine(prices: SwitchPromoLinePrices): string {
+  const perMonth = formatMinorAmount(prices.perMonthCents, 'USD');
+  const monthly = formatMinorAmount(Math.round(prices.monthlyTotalCents / 12), 'USD');
+  const renewal = formatMinorAmount(prices.listCents, 'USD');
+  return (
+    `Black Friday: ${perMonth} a month instead of ${monthly}, billed yearly. ` +
+    `That is ${prices.savingsVsMonthlyPct}% less than paying monthly for your first year. ` +
+    `Renews at ${renewal} a year. Cancel anytime.`
+  );
+}
+
+export const SWITCH_TITLE = 'Switch to Pro Yearly';
+export const SWITCH_CONFIRM_LABEL = 'Switch now';
+export const SWITCH_DISMISS_LABEL = 'Not now';
+export const SWITCH_ENTRY_LABEL = 'Switch to yearly';
+export const SWITCH_SUCCESS_TITLE = 'Switched to Pro Yearly';
+export const SWITCH_SUCCESS_BODY =
+  'Your plan changes as soon as the payment confirms, usually within a minute.';
+export const SWITCH_CANCEL_SCHEDULED_TITLE = 'Resume Pro Monthly first';
+export const SWITCH_CANCEL_SCHEDULED_BODY =
+  'Your Pro Monthly subscription is set to cancel at the end of this period. Resume it in the billing portal first, then switch to Pro Yearly.';
+export const SWITCH_FAILED_TITLE = 'Switch not confirmed';
+// A lost response can follow an accepted change, so this never promises "no charge".
+export const SWITCH_FAILED_BODY =
+  'We could not confirm the switch. Check your plan in the billing portal before you try again, or email support@worldmonitor.app.';
+export const SWITCH_ACCOUNT_CHANGED_BODY =
+  'You switched accounts after this quote. Start the switch again from the account you want to move to Pro Yearly.';
+// Shown above the fresh quote after a typed PROMO_ENDED / PROMO_CODE_REJECTED:
+// the server refused before any change, so the plan is known to be unchanged.
+export const SWITCH_QUOTE_CHANGED_NOTICE =
+  'The offer is no longer available and your plan has not changed. Here is the price without it.';
+// Shown above a first quote at list price while the offer runs (Dodo refused
+// the code for this subscription), so nobody reads it as the offer price.
+export const SWITCH_OFFER_NOT_APPLIED_NOTICE =
+  'The offer is not available for this switch. Here is the price without it.';
+// Shown above the fresh quote after a typed CHARGE_CHANGED: the charge grew
+// past the accepted one (the unused-month credit shrinks with time), and the
+// server refused before any change.
+export const SWITCH_CHARGE_CHANGED_NOTICE =
+  'The price changed since your quote and your plan has not changed. Here is the new price.';
+/** Settings toast when no quote comes back. */
+export const SWITCH_UNAVAILABLE_BODY =
+  'We could not price the switch right now. Try again in a few minutes, or email support@worldmonitor.app.';

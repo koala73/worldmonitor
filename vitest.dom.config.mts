@@ -34,6 +34,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // Only pro-test/ installs @sentry/react, and CI's dom-tests job installs
+      // the root dependencies alone. Every run resolves the same stub.
+      '@sentry/react': fileURLToPath(new URL('./tests/dom/helpers/sentry-react-stub.ts', import.meta.url)),
     },
   },
   test: {

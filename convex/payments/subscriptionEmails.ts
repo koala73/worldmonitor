@@ -653,7 +653,11 @@ function signedMoney(amountMinor: number, currency: string): string {
  * differ (no meaningful subtraction).
  */
 function planPriceChange(args: PlanUpgradeEmailArgs): string | null {
-  const { oldAmount, newAmount, oldCurrency, newCurrency } = args;
+  const { oldAmount, oldCurrency } = args;
+  // A discounted first period is a one-off; the ongoing change is against the list renewal.
+  const renewal = discountedRenewal(args);
+  const newAmount = renewal ? renewal.amount : args.newAmount;
+  const newCurrency = renewal ? renewal.currency : args.newCurrency;
   if (typeof oldAmount !== "number" || typeof newAmount !== "number" || !oldCurrency || !newCurrency) return null;
   if (oldCurrency.toUpperCase() !== newCurrency.toUpperCase()) return null;
   const fromPeriod = PRODUCT_CATALOG[args.fromPlanKey]?.billingPeriod;
@@ -667,6 +671,13 @@ function planPriceChange(args: PlanUpgradeEmailArgs): string | null {
   return `${signedMoney(perYear(newAmount, toPeriod) - perYear(oldAmount, fromPeriod), newCurrency)} / year (annualized)`;
 }
 
+/** The target plan's list price when the new amount is a discounted first period, else null. */
+function discountedRenewal(args: PlanUpgradeEmailArgs): { amount: number; currency: string } | null {
+  if (!args.newDiscounted) return null;
+  const list = PRODUCT_CATALOG[args.toPlanKey]?.priceCents;
+  return typeof list === "number" && list > 0 ? { amount: list, currency: "USD" } : null;
+}
+
 const sendPlanUpgradeAdminEmailArgs = {
   userId: v.string(),
   userEmail: v.optional(v.string()),
@@ -677,6 +688,7 @@ const sendPlanUpgradeAdminEmailArgs = {
   oldIsListPrice: v.optional(v.boolean()),
   newAmount: v.optional(v.number()),
   newCurrency: v.optional(v.string()),
+  newDiscounted: v.optional(v.boolean()),
 };
 type PlanUpgradeEmailArgs = ObjectType<typeof sendPlanUpgradeAdminEmailArgs>;
 
@@ -695,7 +707,13 @@ export function adminPlanUpgradeHtml(args: PlanUpgradeEmailArgs): string {
     rows.push(adminRow("Old Price", args.oldIsListPrice ? `${price} (list price)` : price));
   }
   if (typeof args.newAmount === "number") {
-    rows.push(adminRow("New Price", priceWithPeriod(args.newAmount, args.newCurrency ?? "USD", args.toPlanKey)));
+    const price = priceWithPeriod(args.newAmount, args.newCurrency ?? "USD", args.toPlanKey);
+    const period = PERIOD_LABEL[PRODUCT_CATALOG[args.toPlanKey]?.billingPeriod ?? ""] ?? "period";
+    rows.push(adminRow("New Price", args.newDiscounted ? `${price} (discounted first ${period})` : price));
+  }
+  const renewal = discountedRenewal(args);
+  if (renewal) {
+    rows.push(adminRow("Renews At", `${priceWithPeriod(renewal.amount, renewal.currency, args.toPlanKey)} (list price)`));
   }
   const change = planPriceChange(args);
   if (change) rows.push(adminRow("Change", change));

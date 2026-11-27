@@ -33,7 +33,7 @@ import {
 } from './checkout-transport';
 import { createTimeoutSignal } from './timeout-signal';
 import { watchAuthModalDismissal } from './auth-modal-watch';
-import { IN_PLACE_UPGRADE_SOURCE_PLANS, runProBusinessUpgradeFlow } from './pro-business-upgrade';
+import { IN_PLACE_UPGRADE_SOURCE_PLANS, runProAnnualSwitchFlow, runProBusinessUpgradeFlow } from './pro-business-upgrade';
 import {
   checkoutRetryAtMs,
   checkoutRetryRemainingSeconds,
@@ -647,9 +647,26 @@ async function doCheckout(
           },
           onDismiss: () => { /* stay on /pro */ },
         });
+        const openPortalFromDialog = (): void => {
+          const reservedWin = prereserveBillingPortalTab();
+          void getAuthToken().then((freshToken) => {
+            if (freshToken) void openBillingPortal(freshToken, reservedWin);
+            else if (reservedWin && !reservedWin.closed) reservedWin.close();
+          });
+        };
+        // An active Pro Monthly moves to Pro Yearly in place, with the offer
+        // while it runs; the guided dialog stays the fallback.
+        if (!paused && planKey === 'pro_monthly' && productId === PRO_YEARLY_PRODUCT_ID) {
+          void runProAnnualSwitchFlow({
+            apiBase: API_BASE,
+            getToken: getAuthToken,
+            getUserId: async () => (await ensureClerk().catch(() => null))?.user?.id ?? null,
+            openPortal: openPortalFromDialog,
+            fallback: showGuidedDuplicateDialog,
+          });
         // An active Pro moves to Pro Business in place (prorated Dodo plan
         // change); the guided dialog stays the fallback when no preview comes back.
-        if (
+        } else if (
           !paused &&
           PRO_BUSINESS_PRODUCT_IDS.has(productId) &&
           typeof planKey === 'string' &&
@@ -660,13 +677,7 @@ async function doCheckout(
             planDisplayName: resolveProPlanDisplayName(planKey),
             getToken: getAuthToken,
             getUserId: async () => (await ensureClerk().catch(() => null))?.user?.id ?? null,
-            openPortal: () => {
-              const reservedWin = prereserveBillingPortalTab();
-              void getAuthToken().then((freshToken) => {
-                if (freshToken) void openBillingPortal(freshToken, reservedWin);
-                else if (reservedWin && !reservedWin.closed) reservedWin.close();
-              });
-            },
+            openPortal: openPortalFromDialog,
             fallback: showGuidedDuplicateDialog,
           });
         } else {
@@ -1076,6 +1087,11 @@ const PRO_BUSINESS_PRODUCT_IDS: ReadonlySet<string> = new Set(
     .flatMap((tier) => [tier.monthlyProductId, tier.annualProductId])
     .filter((id): id is string => typeof id === 'string' && id.length > 0),
 );
+
+/** Pro Yearly's product id, from the same tier data; the Pro Monthly → Pro Yearly switch target. */
+const PRO_YEARLY_PRODUCT_ID: string | undefined =
+  (fallbackTiers as Array<{ name?: string; annualProductId?: string }>)
+    .find((tier) => tier.name === 'Pro')?.annualProductId;
 
 interface ProDuplicateDialogOptions {
   planDisplayName: string;

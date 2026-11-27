@@ -13,7 +13,7 @@
 
 import type { DodoProductId } from '@/config/products';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { openBillingPortal, prereserveBillingPortalTab, requestProBusinessUpgrade } from './billing';
+import { openBillingPortal, prereserveBillingPortalTab, requestProAnnualSwitch, requestProBusinessUpgrade } from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
@@ -430,6 +430,60 @@ function checkoutRateLimitRemainingSeconds(): number {
  * off that graph — the same reason every other client consumer lazy-loads it.
  * A failed load falls back to the generic copy rather than blocking the dialog.
  */
+async function isProYearlyCheckoutTarget(productId: string): Promise<boolean> {
+  try {
+    const { DODO_PRODUCTS } = await import('@/config/products');
+    return productId === DODO_PRODUCTS.PRO_ANNUAL;
+  } catch {
+    return false;
+  }
+}
+
+function openPortalFromDialog(): void {
+  const reservedWin = prereserveBillingPortalTab();
+  void openBillingPortal(reservedWin);
+}
+
+function reportPlanChangeError(action: string, err: unknown): void {
+  const kind = extractBillingErrorKind(err);
+  enqueueSentryCall((s) => s.captureException(err instanceof Error ? err : new Error(String(err)), {
+    tags: { component: 'dodo-billing', action, ...(kind ? { billing_error_kind: kind } : {}) },
+    level: 'warning',
+  }));
+}
+
+/**
+ * In-place Pro Monthly → Pro Yearly switch, with the running offer applied.
+ * Reached from Settings (an active Pro Monthly) and from the checkout 409 when
+ * a Pro Monthly subscriber starts a Pro Yearly checkout. `fallback` runs when
+ * no quote comes back.
+ */
+export async function startProAnnualSwitch(
+  planKey: unknown,
+  fallback: () => void,
+  /** Settings returns focus to its switch button; the checkout 409 path passes nothing. */
+  onDismiss?: () => void,
+): Promise<void> {
+  // A failed chunk load (stale deploy, flaky network) still reaches the fallback.
+  const flowModule = await import('./pro-business-upgrade-dialog').catch(() => null);
+  if (!flowModule) {
+    fallback();
+    return;
+  }
+  await flowModule.runProAnnualSwitchFlow({
+    planKey,
+    fallback,
+    requestSwitch: requestProAnnualSwitch,
+    currentUserId: () => getCurrentClerkUser()?.id,
+    openPortal: openPortalFromDialog,
+    afterSuccess: () => window.location.reload(),
+    showDialog: showCheckoutConfirmDialog,
+    errorKind: extractBillingErrorKind,
+    reportError: reportPlanChangeError,
+    ...(onDismiss ? { onDismiss } : {}),
+  });
+}
+
 async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> {
   try {
     const { DODO_PRODUCTS } = await import('@/config/products');
@@ -700,6 +754,12 @@ export async function startCheckout(
           },
           onDismiss: () => { /* user stays on the dashboard */ },
         });
+        // An active Pro Monthly moves to Pro Yearly in place, with the offer
+        // while it runs; the guided dialog stays the fallback.
+        if (!paused && planKey === 'pro_monthly' && await isProYearlyCheckoutTarget(productId)) {
+          await startProAnnualSwitch(planKey, showGuidedDuplicateDialog);
+          return false;
+        }
         // An active Pro moves to Pro Business in place (prorated Dodo plan
         // change); the guided dialog stays the fallback when no preview comes back.
         // The plan check lives in the lazy chunk to keep this one small.
@@ -716,19 +776,10 @@ export async function startCheckout(
             fallback: showGuidedDuplicateDialog,
             requestUpgrade: requestProBusinessUpgrade,
             currentUserId: () => getCurrentClerkUser()?.id,
-            openPortal: () => {
-              const reservedWin = prereserveBillingPortalTab();
-              void openBillingPortal(reservedWin);
-            },
+            openPortal: openPortalFromDialog,
             showDialog: showCheckoutConfirmDialog,
             errorKind: extractBillingErrorKind,
-            reportError: (action, err) => {
-              const kind = extractBillingErrorKind(err);
-              enqueueSentryCall((s) => s.captureException(err instanceof Error ? err : new Error(String(err)), {
-                tags: { component: 'dodo-billing', action, ...(kind ? { billing_error_kind: kind } : {}) },
-                level: 'warning',
-              }));
-            },
+            reportError: reportPlanChangeError,
           });
         } else {
           showGuidedDuplicateDialog();

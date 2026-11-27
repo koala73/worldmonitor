@@ -621,6 +621,14 @@ export type ProBusinessUpgradeResponse =
       renewalCurrency: string | null;
       renewalDate: string | null;
       billingPeriod: 'monthly' | 'annual';
+      /** The quote carries the running offer's code; the Pro Yearly confirm echoes it. Optional across a mixed deploy. */
+      discounted?: boolean;
+      /** Dodo's whole percent off the first period on a discounted quote, else null. */
+      percentOff?: number | null;
+      /** Pro Yearly quotes: the server takes listPrice and the accepted charge. */
+      acceptsQuoteGuards?: boolean;
+      /** The offer runs, but this quote is at list price. */
+      offerNotApplied?: boolean;
     }
   | { kind: 'upgraded'; fromPlanKey: string; toPlanKey: string };
 
@@ -640,6 +648,31 @@ export async function requestProBusinessUpgrade(confirm: boolean): Promise<ProBu
     userId,
     'upgrading to Pro Business',
     () => client.action(api.payments.billing.upgradeToProBusiness, { confirm }),
+  );
+}
+
+/**
+ * Preview or apply the in-place Pro Monthly → Pro Yearly switch. The confirm
+ * passes the quote's `discounted` flag, and the quote's charge when the server
+ * checks it; the server refuses with PROMO_ENDED, PROMO_CODE_REJECTED or
+ * CHARGE_CHANGED when that price no longer holds, and with
+ * PLAN_CHANGE_QUOTE_REQUIRED when the flag is missing.
+ */
+export async function requestProAnnualSwitch(
+  request:
+    | { confirm: false; listPrice?: true }
+    | { confirm: true; discounted: boolean; acceptedChargeAmount?: number; acceptedChargeCurrency?: string },
+): Promise<ProBusinessUpgradeResponse> {
+  const userId = requireSignedInUserId('switch to Pro Yearly');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'switching to Pro Yearly');
+  return settleAccountOperation(
+    userId,
+    'switching to Pro Yearly',
+    // Its own action: a Convex deployment that predates the switch has none,
+    // so the call fails instead of running a Pro Business upgrade.
+    () => client.action(api.payments.billing.switchToProAnnual, request),
   );
 }
 

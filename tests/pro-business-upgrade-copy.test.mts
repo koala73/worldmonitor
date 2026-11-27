@@ -18,6 +18,7 @@ import {
   buildUpgradePreviewBody,
   formatMinorAmount,
 } from '../src/services/pro-business-upgrade-copy.ts';
+import * as copy from '../src/services/pro-business-upgrade-copy.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -137,5 +138,99 @@ describe('cross-app copy parity (dashboard vs /pro)', () => {
   }
   it('/pro upgrades the same source plans', () => {
     assert.match(proSource, /new Set\(\['pro_monthly', 'pro_annual'\]\)/);
+  });
+});
+
+describe('Pro Monthly → Pro Yearly switch copy', () => {
+  // Live P2 preview shape with the offer code (2026-11-26): the server quotes
+  // the renewal from the catalog list price, not Dodo's discounted 14400.
+  const DISCOUNTED = {
+    chargeAmount: 10496,
+    currency: 'USD',
+    renewalAmount: 35999,
+    renewalCurrency: 'USD',
+    renewalDate: '2027-11-26T10:00:00Z',
+    discounted: true,
+    percentOff: 60,
+  };
+
+  it('states the discounted first year, the credit, the restart, the list renewal and the failure outcome', () => {
+    assert.equal(
+      copy.buildSwitchPreviewBody(DISCOUNTED),
+      "Your Pro Monthly subscription moves to Pro Yearly now. You pay $104.96 today: your first year at 60% off, less the unused part of this month. Your billing period restarts today. It renews at $359.99 a year plus any tax on November 26, 2027. Cancel anytime before then and you won't be charged again. If the payment fails, you stay on Pro Monthly.",
+    );
+  });
+
+  it('drops only the offer clause from a list-price quote', () => {
+    assert.equal(
+      copy.buildSwitchPreviewBody({ ...DISCOUNTED, chargeAmount: 33503, discounted: false, percentOff: null }),
+      "Your Pro Monthly subscription moves to Pro Yearly now. You pay $335.03 today: less the unused part of this month. Your billing period restarts today. It renews at $359.99 a year plus any tax on November 26, 2027. Cancel anytime before then and you won't be charged again. If the payment fails, you stay on Pro Monthly.",
+    );
+  });
+
+  it('never names a percent the quote does not carry', () => {
+    assert.doesNotMatch(copy.buildSwitchPreviewBody({ ...DISCOUNTED, percentOff: null }), /% off/);
+    assert.doesNotMatch(copy.buildSwitchPreviewBody({ ...DISCOUNTED, discounted: false }), /% off/);
+  });
+
+  it('survives a missing renewal price, currency or date', () => {
+    const body = copy.buildSwitchPreviewBody({ ...DISCOUNTED, renewalAmount: null, renewalCurrency: null, renewalDate: 'not-a-date' });
+    assert.ok(body.includes('It renews at the Pro Yearly price. Cancel anytime before then'));
+    const noCurrency = copy.buildSwitchPreviewBody({ ...DISCOUNTED, currency: 'AED', chargeAmount: 38548, renewalCurrency: null });
+    assert.doesNotMatch(noCurrency, /AED\s?359\.99/);
+  });
+
+  it('pins the dialog labels and states', () => {
+    assert.equal(copy.SWITCH_TITLE, 'Switch to Pro Yearly');
+    assert.equal(copy.SWITCH_CONFIRM_LABEL, 'Switch now');
+    assert.equal(copy.SWITCH_DISMISS_LABEL, 'Not now');
+    assert.equal(copy.SWITCH_SUCCESS_TITLE, 'Switched to Pro Yearly');
+    assert.equal(copy.SWITCH_ENTRY_LABEL, 'Switch to yearly');
+    assert.doesNotMatch(copy.SWITCH_FAILED_BODY, /not been charged|no charge/i);
+    assert.match(copy.SWITCH_FAILED_BODY, /could not confirm/);
+  });
+
+  // PromoDisplayPrices: the savings figure is against twelve monthly payments,
+  // so it is always shown beside its monthly reference.
+  it('builds the Settings offer line with the monthly reference, the renewal and cancel anytime', () => {
+    assert.equal(
+      copy.buildSwitchPromoLine({ listCents: 35999, perMonthCents: 1200, monthlyTotalCents: 47988, savingsVsMonthlyPct: 70 }),
+      'Black Friday: $12.00 a month instead of $39.99, billed yearly. That is 70% less than paying monthly for your first year. Renews at $359.99 a year. Cancel anytime.',
+    );
+  });
+
+  it('switches only Pro Monthly, the plan the server switches', () => {
+    assert.equal(copy.PRO_ANNUAL_SWITCH_SOURCE_PLAN, 'pro_monthly');
+    const billing = readFileSync(resolve(root, 'convex/payments/billing.ts'), 'utf8');
+    assert.match(billing, /function selectProAnnualSwitchCandidate/);
+  });
+
+  describe('/pro mirrors the switch copy', () => {
+    const proSource = readFileSync(resolve(root, 'pro-test/src/services/pro-business-upgrade.ts'), 'utf8');
+    const shared = [
+      'Your Pro Monthly subscription moves to Pro Yearly now. ',
+      'your first year at ${preview.percentOff}% off, ',
+      'less the unused part of this month. Your billing period restarts today. ',
+      "Cancel anytime before then and you won't be charged again. If the payment fails, you stay on Pro Monthly.",
+      'the Pro Yearly price',
+      copy.SWITCH_TITLE,
+      copy.SWITCH_CONFIRM_LABEL,
+      copy.SWITCH_SUCCESS_TITLE,
+      copy.SWITCH_SUCCESS_BODY,
+      copy.SWITCH_CANCEL_SCHEDULED_TITLE,
+      copy.SWITCH_CANCEL_SCHEDULED_BODY,
+      copy.SWITCH_FAILED_TITLE,
+      copy.SWITCH_FAILED_BODY,
+      copy.SWITCH_ACCOUNT_CHANGED_BODY,
+      copy.SWITCH_QUOTE_CHANGED_NOTICE,
+      copy.SWITCH_CHARGE_CHANGED_NOTICE,
+      copy.SWITCH_OFFER_NOT_APPLIED_NOTICE,
+    ];
+    shared.forEach((sentence, index) => {
+      it(`/pro mirrors switch sentence ${index}: ${String(sentence).slice(0, 40)}`, () => {
+        assert.equal(typeof sentence, 'string', 'the src copy defines this sentence');
+        assert.ok(proSource.includes(sentence), `pro-test copy drifted from src copy: ${sentence}`);
+      });
+    });
   });
 });

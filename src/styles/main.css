@@ -28192,14 +28192,18 @@ body.map-width-resizing {
   color: var(--text);
 }
 
-.upgrade-pro-status-line {
+.upgrade-pro-status-line,
+.upgrade-pro-offer-line {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
   margin-bottom: 10px;
   padding-left: 16px;
 }
 
-.manage-billing-btn {
+.upgrade-pro-offer-line { color: var(--text); }
+
+.manage-billing-btn,
+.switch-to-yearly-btn {
   width: 100%;
   padding: 8px 16px;
   background: transparent;
@@ -28213,6 +28217,15 @@ body.map-width-resizing {
 }
 
 .manage-billing-btn:hover { color: var(--text); }
+
+/* Pro Monthly → Pro Yearly: Manage Billing's outline, one step brighter
+   because it is the section's action. */
+.switch-to-yearly-btn {
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.switch-to-yearly-btn:hover { border-color: var(--text-dim); }
 
 /* Paused plan: updating the card is the only way back, so the button takes
    the card's attention tone (the same text-on-surface pairing as the plan
