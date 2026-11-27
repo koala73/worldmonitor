@@ -923,6 +923,10 @@ export default defineSchema({
     // total ownership order. Optional so rows written before the ordered
     // takeover contract deploy without a backfill.
     sessionStartedAt: v.optional(v.number()),
+    // Day-0 only: nonces whose start arrived past the future-skew allowance.
+    // They stay unordered for the life of the row, so a later replay whose
+    // start has entered the window cannot attach an order or take the row.
+    unorderedClaimNonces: v.optional(v.array(v.string())),
     presentedAt: v.optional(v.number()),
     // Set when a presentation is confirmed by an outcome-aware client. This
     // excludes rows created before #5582 without losing post-deploy sessions

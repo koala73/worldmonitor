@@ -837,6 +837,9 @@ export const confirmProActivationPresentation = mutation({
 const MAX_PRO_ACTIVATION_OUTCOME_REVISION =
   proActivationStepIdValidator.members.length + 2;
 const MAX_PRO_ACTIVATION_SESSION_FUTURE_SKEW_MS = 5 * 60 * 1000;
+// Bounds the per-row list of skew-refused nonces; one subscription sees a
+// handful of day-0 sessions, so older entries are dropped first.
+const MAX_PRO_ACTIVATION_UNORDERED_NONCES = 8;
 
 /**
  * Open the day-0 (post-checkout) activation record (#5621).
@@ -883,18 +886,29 @@ export const openProActivationDay0Presentation = mutation({
     const now = Date.now();
     if (
       args.sessionStartedAt !== undefined &&
-      (
-        !Number.isSafeInteger(args.sessionStartedAt) ||
-        args.sessionStartedAt <= 0 ||
-        args.sessionStartedAt > now + MAX_PRO_ACTIVATION_SESSION_FUTURE_SKEW_MS
-      )
+      (!Number.isSafeInteger(args.sessionStartedAt) || args.sessionStartedAt <= 0)
     ) {
-      throw new ConvexError(
-        "activation session start must be a positive safe integer within the allowed future clock skew",
-      );
+      throw new ConvexError("activation session start must be a positive safe integer");
     }
+    // A start time past the skew allowance comes from a device whose clock
+    // runs fast. Throwing would leave that subscriber with no row at all, so
+    // the session is handled as unordered: it can open or replay its own row
+    // but never outranks another session, and the future value is not stored.
+    // The nonce is remembered on the row, because the same start replayed a
+    // few minutes later falls inside the window and would otherwise be
+    // trusted as an order it was refused the first time.
+    const orderDropped =
+      args.sessionStartedAt !== undefined &&
+      args.sessionStartedAt > now + MAX_PRO_ACTIVATION_SESSION_FUTURE_SKEW_MS;
 
     const existing = await activationPresentationForCohort(ctx, args.activationKey, "day0");
+    const knownUnordered = existing?.unorderedClaimNonces ?? [];
+    const unordered = orderDropped || knownUnordered.includes(args.claimNonce);
+    const sessionStartedAt = unordered ? undefined : args.sessionStartedAt;
+    const unorderedClaimNonces = orderDropped && !knownUnordered.includes(args.claimNonce)
+      ? [...knownUnordered, args.claimNonce].slice(-MAX_PRO_ACTIVATION_UNORDERED_NONCES)
+      : undefined;
+
     if (existing === null) {
       await ctx.db.insert("proActivationPresentations", {
         userId,
@@ -902,9 +916,10 @@ export const openProActivationDay0Presentation = mutation({
         cohort: "day0",
         claimNonce: args.claimNonce,
         claimedAt: now,
-        ...(args.sessionStartedAt !== undefined
-          ? { sessionStartedAt: args.sessionStartedAt }
+        ...(sessionStartedAt !== undefined
+          ? { sessionStartedAt }
           : {}),
+        ...(unorderedClaimNonces !== undefined ? { unorderedClaimNonces } : {}),
         // Day-0 has no confirm handshake, so presentation is recorded here —
         // before the interstitial renders — to keep a subscriber who closes
         // the tab immediately inside the cohort instead of invisible.
@@ -916,11 +931,14 @@ export const openProActivationDay0Presentation = mutation({
     if (existing.exitedAt !== undefined) {
       return { status: "already_recorded" as const };
     }
+    if (unorderedClaimNonces !== undefined) {
+      await ctx.db.patch(existing._id, { unorderedClaimNonces });
+    }
     if (existing.claimNonce === args.claimNonce) {
       if (
         existing.sessionStartedAt !== undefined &&
-        args.sessionStartedAt !== undefined &&
-        existing.sessionStartedAt !== args.sessionStartedAt
+        sessionStartedAt !== undefined &&
+        existing.sessionStartedAt !== sessionStartedAt
       ) {
         throw new ConvexError(
           "activation session nonce cannot change its start order",
@@ -930,10 +948,10 @@ export const openProActivationDay0Presentation = mutation({
       // row opened by this same session before the field was deployed.
       if (
         existing.sessionStartedAt === undefined &&
-        args.sessionStartedAt !== undefined
+        sessionStartedAt !== undefined
       ) {
         await ctx.db.patch(existing._id, {
-          sessionStartedAt: args.sessionStartedAt,
+          sessionStartedAt,
         });
       }
       return { status: "opened" as const };
@@ -945,7 +963,7 @@ export const openProActivationDay0Presentation = mutation({
       // newer than a legacy row; two explicit sessions use nonce only for the
       // deterministic equal-time tie.
       const existingOrder = existing.sessionStartedAt;
-      const incomingOrder = args.sessionStartedAt;
+      const incomingOrder = sessionStartedAt;
       const incomingIsNewer =
         incomingOrder !== undefined &&
         (
@@ -966,7 +984,7 @@ export const openProActivationDay0Presentation = mutation({
       await ctx.db.patch(existing._id, {
         claimNonce: args.claimNonce,
         claimedAt: now,
-        sessionStartedAt: args.sessionStartedAt,
+        sessionStartedAt,
         presentedAt: now,
         confirmedSteps: undefined,
         skippedSteps: undefined,
