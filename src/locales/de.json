@@ -5837,6 +5837,36 @@
           "tooMany": "Laden Sie maximal 10 Personen gleichzeitig ein.",
           "rateLimited": "Sie haben die maximale Anzahl von Einladungen pro Tag versendet. Versuchen Sie es morgen erneut."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Auf jährlich umstellen",
+        "offerLine": "Black Friday: {{perMonth}} pro Monat statt {{monthly}}, jährlich abgerechnet. Das sind {{percent}}% weniger als bei monatlicher Zahlung im ersten Jahr. Danach Verlängerung für {{renewal}} pro Jahr. Jederzeit kündbar.",
+        "title": "Zu Pro Yearly wechseln",
+        "confirm": "Jetzt wechseln",
+        "dismiss": "Später",
+        "previewMoves": "Ihr Pro-Monthly-Abo wird jetzt auf Pro Yearly umgestellt.",
+        "previewChargeOffer": "Sie zahlen heute {{charge}}: Ihr erstes Jahr mit {{percent}}% Rabatt, abzüglich des ungenutzten Teils dieses Monats.",
+        "previewCharge": "Sie zahlen heute {{charge}}, abzüglich des ungenutzten Teils dieses Monats.",
+        "previewRestart": "Ihr Abrechnungszeitraum beginnt heute neu.",
+        "renewsPriceDate": "Am {{date}} verlängert es sich für {{price}} pro Jahr zuzüglich etwaiger Steuern.",
+        "renewsPrice": "Es verlängert sich für {{price}} pro Jahr zuzüglich etwaiger Steuern.",
+        "renewsListDate": "Am {{date}} verlängert es sich zum Preis von Pro Yearly.",
+        "renewsList": "Es verlängert sich zum Preis von Pro Yearly.",
+        "previewTerms": "Wenn Sie vorher kündigen, wird Ihnen nichts mehr berechnet. Schlägt die Zahlung fehl, bleiben Sie bei Pro Monthly.",
+        "offerNotApplied": "Das Angebot ist für diesen Wechsel nicht verfügbar. Hier ist der Preis ohne Rabatt.",
+        "quoteChanged": "Das Angebot ist nicht mehr verfügbar, und Ihr Plan wurde nicht geändert. Hier ist der Preis ohne Rabatt.",
+        "chargeChanged": "Der Preis hat sich seit der Berechnung geändert, und Ihr Plan wurde nicht geändert. Hier ist der neue Preis.",
+        "successTitle": "Zu Pro Yearly gewechselt",
+        "successBody": "Ihr Plan wird umgestellt, sobald die Zahlung bestätigt ist, meist innerhalb einer Minute.",
+        "done": "Fertig",
+        "cancelScheduledTitle": "Zuerst Pro Monthly fortsetzen",
+        "cancelScheduledBody": "Für Ihr Pro-Monthly-Abo ist die Kündigung zum Ende dieses Zeitraums geplant. Setzen Sie es zuerst im Abrechnungsportal fort und wechseln Sie dann zu Pro Yearly.",
+        "openPortal": "Abrechnungsportal öffnen",
+        "failedTitle": "Wechsel nicht bestätigt",
+        "failedBody": "Wir konnten den Wechsel nicht bestätigen. Prüfen Sie Ihren Plan im Abrechnungsportal, bevor Sie es erneut versuchen, oder schreiben Sie an support@worldmonitor.app.",
+        "accountChangedTitle": "Konto geändert",
+        "accountChangedBody": "Sie haben nach dieser Preisberechnung das Konto gewechselt. Starten Sie den Wechsel erneut über das Konto, das Sie auf Pro Yearly umstellen möchten.",
+        "unavailable": "Wir können den Preis für den Wechsel gerade nicht berechnen. Versuchen Sie es in ein paar Minuten erneut oder schreiben Sie an support@worldmonitor.app."
       }
     },
     "keywords": {
