@@ -425,6 +425,13 @@ export default defineSchema({
     // at export time.
     proLaunchWave: v.optional(v.string()),
     proLaunchWaveAssignedAt: v.optional(v.number()),
+    // Black Friday 2026 broadcast stamps (convex/broadcast/blackFriday.ts):
+    // the wave label that put this contact in a Resend segment, one pair per
+    // send. Separate from proLaunchWave so the campaigns never block each other.
+    blackFridayLaunchWave: v.optional(v.string()),
+    blackFridayLaunchWaveAssignedAt: v.optional(v.number()),
+    blackFridayLastDayWave: v.optional(v.string()),
+    blackFridayLastDayWaveAssignedAt: v.optional(v.number()),
   })
     .index("by_normalized_email", ["normalizedEmail"])
     .index("by_referral_code", ["referralCode"])
@@ -447,7 +454,7 @@ export default defineSchema({
   // next cron run resumes. Better one extra dashboard click than a
   // silent resumption after a real deliverability incident.
   broadcastRampConfig: defineTable({
-    key: v.string(), // always "current"
+    key: v.string(), // "current" for the PRO-launch ramp; a campaign id for campaign rows
     active: v.boolean(),
     // Wave sizes in order. e.g. [500, 1500, 5000, 15000, 25000].
     // Each cron tick advances `currentTier` by 1 and uses
@@ -607,11 +614,34 @@ export default defineSchema({
     eligiblePoolCount: v.optional(v.number()),
     excludedCount: v.optional(v.number()),
     excludedLocaleCounts: v.optional(v.record(v.string(), v.number())),
+    // Campaign runs (convex/broadcast/blackFriday.ts). Absent on PRO-launch
+    // runs, which use the "current" ramp config and the proLaunchWave stamp.
+    // `configKey` names the broadcastRampConfig row that holds this run's
+    // lease, thresholds and kill gate.
+    configKey: v.optional(v.string()),
+    campaign: v.optional(
+      v.object({
+        id: v.string(),
+        send: v.union(v.literal("launch"), v.literal("last-day")),
+        version: v.string(),
+        locale: v.string(),
+        recipient: v.union(v.literal("account"), v.literal("waitlist")),
+        // Stop after the Resend broadcast is created; an operator releases it.
+        holdBeforeSend: v.boolean(),
+      }),
+    ),
+    // Set when the operator releases a held campaign broadcast. Without it a
+    // held run is never sent, whatever re-enters the finalize step.
+    releaseRequestedAt: v.optional(v.number()),
+    // When the Resend broadcast (draft) was created. Unlike updatedAt, no
+    // recovery command moves it: the held-too-long check reads it.
+    broadcastCreatedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_runId", ["runId"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_configKey", ["configKey"]),
 
   // Per-contact state row written by `_persistPickedBatch` during pick
   // and patched atomically by `_markContactPushed`, `_markContactFailed`,
@@ -1188,6 +1218,13 @@ export default defineSchema({
     // OPTIONAL and not backfilled.
     signupRef: v.optional(v.string()),
     signupSource: v.optional(v.string()),
+    // Black Friday 2026 broadcast stamps (convex/broadcast/blackFriday.ts):
+    // the wave label that put this contact in a Resend segment, one pair per
+    // send. Separate from proLaunchWave so the campaigns never block each other.
+    blackFridayLaunchWave: v.optional(v.string()),
+    blackFridayLaunchWaveAssignedAt: v.optional(v.number()),
+    blackFridayLastDayWave: v.optional(v.string()),
+    blackFridayLastDayWaveAssignedAt: v.optional(v.number()),
     // About-you answers (what the account uses WorldMonitor for, personal or
     // work, who pays, role, and an optional free-text alternative). Option ids
     // come from shared/audience-profile.ts; `convex/audienceProfile.ts` is the

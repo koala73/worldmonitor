@@ -63,6 +63,8 @@ import {
   upsertContactToSegment,
 } from "./_resendContacts";
 import { filterPageForEligibility } from "./_poolSelection";
+import { SEND_CUTOFF_BEFORE_END_MS } from "./_blackFridayAudience";
+import { BLACK_FRIDAY_OFFER } from "./blackFridayEmailContent";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Constants
@@ -111,6 +113,59 @@ const MIN_USABLE_POOL_SIZE = 100;
 // ───────────────────────────────────────────────────────────────────────────
 // Helpers (pure)
 // ───────────────────────────────────────────────────────────────────────────
+
+/** The PRO-launch ramp's `broadcastRampConfig` row. */
+const DEFAULT_RAMP_CONFIG_KEY = "current";
+
+/**
+ * The config row that holds a run's lease, thresholds and kill gate. Campaign
+ * runs (Black Friday) name their own row in `configKey`, so they never advance
+ * the PRO-launch tier, rotate its label offset or deactivate its ramp.
+ */
+function rampConfigKeyFor(run: { configKey?: string } | null | undefined): string {
+  return run?.configKey ?? DEFAULT_RAMP_CONFIG_KEY;
+}
+
+/**
+ * A campaign segment can hold a handful of contacts (one version in one
+ * locale), where a single failed push is already over the 5% ceiling. The
+ * rate only fails a campaign run once this many pushes have failed.
+ */
+const CAMPAIGN_MIN_FAILURES_TO_FAIL_RUN = 5;
+
+function failureRateExceeded(
+  run: { campaign?: unknown },
+  failureRate: number,
+  failedCount: number,
+): boolean {
+  if (failureRate <= FAILURE_RATE_THRESHOLD) return false;
+  return run.campaign === undefined || failedCount >= CAMPAIGN_MIN_FAILURES_TO_FAIL_RUN;
+}
+
+export const campaignValidator = v.object({
+  id: v.string(),
+  send: v.union(v.literal("launch"), v.literal("last-day")),
+  version: v.string(),
+  locale: v.string(),
+  recipient: v.union(v.literal("account"), v.literal("waitlist")),
+  holdBeforeSend: v.boolean(),
+});
+
+type WaveCampaign = {
+  id: string;
+  send: "launch" | "last-day";
+  version: string;
+  locale: string;
+  recipient: "account" | "waitlist";
+  holdBeforeSend: boolean;
+};
+
+/** The stamp fields a campaign send writes on `registrations` and `users`. */
+function campaignStampFields(send: WaveCampaign["send"]) {
+  return send === "launch"
+    ? ({ wave: "blackFridayLaunchWave", at: "blackFridayLaunchWaveAssignedAt" } as const)
+    : ({ wave: "blackFridayLastDayWave", at: "blackFridayLastDayWaveAssignedAt" } as const);
+}
 
 function maskEmail(email: string): string {
   const at = email.indexOf("@");
@@ -513,11 +568,18 @@ export const _claimWaveRunLease = internalMutation({
     runId: v.string(),
     requestedCount: v.number(),
     batchSize: v.number(),
+    // Campaign runs only: the config row holding the lease, and what is sent.
+    configKey: v.optional(v.string()),
+    campaign: v.optional(campaignValidator),
   },
   handler: async (ctx, args): Promise<ClaimLeaseResult> => {
+    if ((args.configKey === undefined) !== (args.campaign === undefined)) {
+      throw new Error("[_claimWaveRunLease] configKey and campaign go together");
+    }
+    const configKey = args.configKey ?? DEFAULT_RAMP_CONFIG_KEY;
     const config = await ctx.db
       .query("broadcastRampConfig")
-      .withIndex("by_key", (q) => q.eq("key", "current"))
+      .withIndex("by_key", (q) => q.eq("key", configKey))
       .unique();
     if (!config) return { ok: false, reason: "no-config" };
     if (config.pendingRunId) {
@@ -536,11 +598,23 @@ export const _claimWaveRunLease = internalMutation({
         return { ok: false, reason: "lease-held", current: existing.runId };
       }
     }
-    const collides = await ctx.db
-      .query("registrations")
-      .withIndex("by_proLaunchWave", (q) => q.eq("proLaunchWave", args.waveLabel))
-      .first();
-    if (collides) return { ok: false, reason: "label-collides" };
+    if (args.campaign) {
+      // A campaign label is the stamp value, so it is never reused, not even
+      // after a discard: a late worker of the old run could still write it.
+      const sameCampaign = await ctx.db
+        .query("waveRuns")
+        .withIndex("by_configKey", (q) => q.eq("configKey", configKey))
+        .collect();
+      if (sameCampaign.some((run) => run.waveLabel === args.waveLabel)) {
+        return { ok: false, reason: "label-collides" };
+      }
+    } else {
+      const collides = await ctx.db
+        .query("registrations")
+        .withIndex("by_proLaunchWave", (q) => q.eq("proLaunchWave", args.waveLabel))
+        .first();
+      if (collides) return { ok: false, reason: "label-collides" };
+    }
 
     const now = Date.now();
     await ctx.db.patch(config._id, {
@@ -559,6 +633,7 @@ export const _claimWaveRunLease = internalMutation({
       failedCount: 0,
       suppressedCount: 0,
       batchSize: args.batchSize,
+      ...(args.campaign ? { configKey, campaign: args.campaign } : {}),
       createdAt: now,
       updatedAt: now,
     });
@@ -656,6 +731,7 @@ export const _markPickFailed = internalMutation({
       .withIndex("by_runId", (q) => q.eq("runId", runId))
       .unique();
     if (!run) return { ok: false as const, reason: "no-run" as const };
+    const configKey = rampConfigKeyFor(run);
     const now = Date.now();
     await ctx.db.patch(run._id, {
       status: "failed",
@@ -675,7 +751,7 @@ export const _markPickFailed = internalMutation({
     if (substatus === "empty-pool" || substatus === "pool-too-small") {
       const config = await ctx.db
         .query("broadcastRampConfig")
-        .withIndex("by_key", (q) => q.eq("key", "current"))
+        .withIndex("by_key", (q) => q.eq("key", configKey))
         .unique();
       if (config && config.pendingRunId === runId) {
         await ctx.db.patch(config._id, {
@@ -945,7 +1021,7 @@ export const _resumeBatchInfo = internalQuery({
     if (!run) return null;
     const config = await ctx.db
       .query("broadcastRampConfig")
-      .withIndex("by_key", (q) => q.eq("key", "current"))
+      .withIndex("by_key", (q) => q.eq("key", rampConfigKeyFor(run)))
       .unique();
     const pending = await ctx.db
       .query("wavePickedContacts")
@@ -963,8 +1039,11 @@ export const _resumeBatchInfo = internalQuery({
         suppressedCount: run.suppressedCount ?? 0,
         batchSize: run.batchSize,
         broadcastId: run.broadcastId,
+        campaign: (run.campaign ?? null) as WaveCampaign | null,
+        releaseRequestedAt: run.releaseRequestedAt,
       },
       configHoldsLease: config?.pendingRunId === runId,
+      configKillGateTripped: config?.killGateTripped ?? false,
       hasPending: pending.length > 0,
     };
   },
@@ -1051,6 +1130,35 @@ export const _markContactPushed = internalMutation({
     const now = Date.now();
     await ctx.db.patch(contact._id, { status: "pushed", pushedAt: now });
 
+    // Campaign runs stamp their own fields, on the table the recipient came
+    // from, and never touch proLaunchWave.
+    if (run.campaign) {
+      const fields = campaignStampFields(run.campaign.send);
+      const rows =
+        run.campaign.recipient === "waitlist"
+          ? await ctx.db
+              .query("registrations")
+              .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
+              .take(10)
+          : await ctx.db
+              .query("users")
+              .withIndex("by_normalizedEmail", (q) => q.eq("normalizedEmail", normalizedEmail))
+              .take(10);
+      let campaignStamp: "stamped" | "alreadyStamped" | "notFound" = rows.length === 0 ? "notFound" : "alreadyStamped";
+      for (const row of rows) {
+        // A late worker must preserve ownership and the original assignment time.
+        if (row[fields.wave] !== undefined) continue;
+        await ctx.db.patch(row._id, { [fields.wave]: waveLabel, [fields.at]: now });
+        campaignStamp = "stamped";
+      }
+      await ctx.db.patch(run._id, {
+        pushedCount: run.pushedCount + 1,
+        lastBatchAt: now,
+        updatedAt: now,
+      });
+      return { ok: true as const, stampResult: campaignStamp };
+    }
+
     // Inline registration stamp (cannot delegate to _stampWaveByNormalizedEmail
     // because Convex mutations cannot call other mutations).
     const reg = await ctx.db
@@ -1128,7 +1236,7 @@ export const _markContactFailed = internalMutation({
       newFailedCount,
       run.suppressedCount ?? 0,
     );
-    const exceeded = failureRate > FAILURE_RATE_THRESHOLD;
+    const exceeded = failureRateExceeded(run, failureRate, newFailedCount);
     await ctx.db.patch(run._id, {
       failedCount: newFailedCount,
       lastBatchAt: now,
@@ -1186,7 +1294,7 @@ export const _markContactSuppressed = internalMutation({
       run.failedCount,
       newSuppressedCount,
     );
-    const exceeded = failureRate > FAILURE_RATE_THRESHOLD;
+    const exceeded = failureRateExceeded(run, failureRate, run.failedCount);
     await ctx.db.patch(run._id, {
       suppressedCount: newSuppressedCount,
       lastBatchAt: now,
@@ -1262,10 +1370,40 @@ export const pushBatchAction = internalAction({
       return { ok: true, reason: "no-pending-finalize-scheduled" };
     }
 
+    // Campaign runs re-check eligibility as each batch is exported: a contact
+    // who bought, unsubscribed or bounced since the pick is not added to the
+    // segment. They end as `suppressed` rows (terminal, not a push failure).
+    const campaign = info.run.campaign;
+    const dropped: Set<string> = campaign
+      ? new Set(
+          await ctx.runQuery(internal.broadcast.blackFriday._ineligibleNow, {
+            send: campaign.send,
+            version: campaign.version,
+            locale: campaign.locale,
+            recipient: campaign.recipient,
+            emails: batch.map((contact) => contact.normalizedEmail),
+          }),
+        )
+      : new Set();
+
     // Push each row with backoff. CAS-guarded mark mutations make the loop
     // safe under overlapping pushBatchAction invocations.
     let runFailed = false;
     for (const contact of batch) {
+      if (dropped.has(contact.normalizedEmail)) {
+        const dropResult = await ctx.runMutation(internal.broadcast.waveRuns._markContactSuppressed, {
+          contactId: contact._id,
+          runId,
+          normalizedEmail: contact.normalizedEmail,
+        });
+        // A smaller denominator can push earlier failures over the ceiling.
+        if (dropResult.ok && dropResult.runFailed) {
+          runFailed = true;
+          console.error(`[pushBatchAction] runId=${runId} batch=${batchN} failure-rate threshold tripped`);
+          break;
+        }
+        continue;
+      }
       const result = await pushWithBackoff(apiKey, contact.normalizedEmail, info.run.segmentId);
       if (result.kind === "unsubscribed") {
         await ctx.runMutation(internal.emailSuppressions.suppress, {
@@ -1401,7 +1539,7 @@ export const _markBroadcastCreated = internalMutation({
 
     const config = await ctx.db
       .query("broadcastRampConfig")
-      .withIndex("by_key", (q) => q.eq("key", "current"))
+      .withIndex("by_key", (q) => q.eq("key", rampConfigKeyFor(run)))
       .unique();
     if (!config || config.pendingRunId !== runId) {
       return { ok: false as const, reason: "lost-lease" as const };
@@ -1411,6 +1549,7 @@ export const _markBroadcastCreated = internalMutation({
     await ctx.db.patch(run._id, {
       status: "broadcast-created",
       broadcastId,
+      broadcastCreatedAt: now,
       lastBatchAt: now, // re-arm in-flight guard for the send phase
       updatedAt: now,
     });
@@ -1532,7 +1671,7 @@ export const _finalizeWaveRun = internalMutation({
 
     const config = await ctx.db
       .query("broadcastRampConfig")
-      .withIndex("by_key", (q) => q.eq("key", "current"))
+      .withIndex("by_key", (q) => q.eq("key", rampConfigKeyFor(run)))
       .unique();
     if (!config) throw new Error("[_finalizeWaveRun] no broadcastRampConfig");
     if (config.pendingRunId !== runId) {
@@ -1577,7 +1716,10 @@ export const _stopUndersizedWave = internalMutation({
   args: { runId: v.string() },
   handler: async (ctx, { runId }) => {
     const run = await ctx.db.query("waveRuns").withIndex("by_runId", q => q.eq("runId", runId)).unique();
-    const config = await ctx.db.query("broadcastRampConfig").withIndex("by_key", q => q.eq("key", "current")).unique();
+    // Campaign segments are small by design (one version in one locale); the
+    // campaign gate reads bounce and complaint rates across all its broadcasts.
+    if (run?.campaign) return false;
+    const config = await ctx.db.query("broadcastRampConfig").withIndex("by_key", q => q.eq("key", rampConfigKeyFor(run))).unique();
     if (!run || config?.pendingRunId !== runId || run.broadcastId ||
         (run.status !== "pushing" && run.status !== "segment-created") ||
         run.pushedCount >= MIN_USABLE_POOL_SIZE) return false;
@@ -1625,14 +1767,27 @@ export const finalizeWaveAction = internalAction({
     // action→action invocation, mirrors rampRunner.ts:886).
     if (info.run.status === "pushing" || info.run.status === "segment-created") {
       let createResult: { broadcastId: string; segmentId: string; subject: string; name: string };
+      const campaign = info.run.campaign;
       try {
-        createResult = await ctx.runAction(
-          internal.broadcast.sendBroadcast.createProLaunchBroadcast,
-          {
-            segmentId: info.run.segmentId,
-            nameSuffix: info.run.waveLabel,
-          },
-        );
+        createResult = campaign
+          ? await ctx.runAction(
+              internal.broadcast.sendBroadcast.createBlackFridayBroadcast,
+              {
+                segmentId: info.run.segmentId,
+                nameSuffix: info.run.waveLabel,
+                campaignId: campaign.id,
+                version: campaign.version,
+                locale: campaign.locale,
+                recipient: campaign.recipient,
+              },
+            )
+          : await ctx.runAction(
+              internal.broadcast.sendBroadcast.createProLaunchBroadcast,
+              {
+                segmentId: info.run.segmentId,
+                nameSuffix: info.run.waveLabel,
+              },
+            );
       } catch (err) {
         await ctx.runMutation(
           internal.broadcast.waveRuns._markFinalizeFailed,
@@ -1661,8 +1816,18 @@ export const finalizeWaveAction = internalAction({
         );
         return { ok: false, reason: `markBroadcastCreated-${markResult.reason}` };
       }
+      // A held campaign run stops here with the broadcast in Resend as a
+      // draft. The operator previews it, then releases it explicitly.
+      if (campaign?.holdBeforeSend) {
+        console.log(`[finalizeWaveAction] runId=${runId} broadcast created and held for release`);
+        return { ok: true, reason: "held-for-release" };
+      }
     } else if (info.run.status !== "broadcast-created") {
       return { ok: false, reason: `wrong-status-${info.run.status}` };
+    } else if (info.run.campaign?.holdBeforeSend && info.run.releaseRequestedAt === undefined) {
+      // A duplicate finalize (overlapping push batches, a generic resume)
+      // must not send a held broadcast: only the release sets this marker.
+      return { ok: false, reason: "held-awaiting-release" };
     }
 
     // Path 2 (and continuation of Path 1): broadcast exists in Resend; send it.
@@ -1688,6 +1853,19 @@ export const finalizeWaveAction = internalAction({
     if (!after.configHoldsLease) {
       console.warn(`[finalizeWaveAction] runId=${runId} lost lease before send — exiting`);
       return { ok: false, reason: "lost-lease-pre-send" };
+    }
+    // Every campaign send passes here, the first attempt and any retry
+    // (resumeFinalizeWaveRun keeps the release marker): a stopped campaign or
+    // an offer about to end sends nothing.
+    if (after.run.campaign) {
+      if (after.configKillGateTripped) {
+        console.warn(`[finalizeWaveAction] runId=${runId} campaign kill gate tripped — not sending`);
+        return { ok: false, reason: "campaign-kill-gate-tripped" };
+      }
+      if (Date.now() >= BLACK_FRIDAY_OFFER.endsAtMs - SEND_CUTOFF_BEFORE_END_MS) {
+        console.warn(`[finalizeWaveAction] runId=${runId} past the campaign send cutoff — not sending`);
+        return { ok: false, reason: "campaign-past-send-cutoff" };
+      }
     }
     try {
       await ctx.runAction(
@@ -1794,7 +1972,7 @@ export const markFinalizeRecovered = internalMutation({
     }
     const config = await ctx.db
       .query("broadcastRampConfig")
-      .withIndex("by_key", (q) => q.eq("key", "current"))
+      .withIndex("by_key", (q) => q.eq("key", rampConfigKeyFor(run)))
       .unique();
     if (!config) throw new Error("[markFinalizeRecovered] no broadcastRampConfig");
     // Lease must still be held by THIS runId — otherwise another run has
@@ -1871,7 +2049,7 @@ export const discardWaveRun = internalMutation({
     }
     const config = await ctx.db
       .query("broadcastRampConfig")
-      .withIndex("by_key", (q) => q.eq("key", "current"))
+      .withIndex("by_key", (q) => q.eq("key", rampConfigKeyFor(run)))
       .unique();
     if (!config) throw new Error("[discardWaveRun] no broadcastRampConfig");
 
@@ -2067,7 +2245,25 @@ export const _cleanupDiscardedWavePickedContacts = internalMutation({
       .take(CLEANUP_CHUNK_SIZE);
     let unstamped = 0;
     for (const row of rows) {
-      if (row.status === "pushed" && waveLabel) {
+      if (row.status === "pushed" && waveLabel && run.campaign) {
+        // Clear this run's campaign stamp only; a stamp from another wave stays.
+        const fields = campaignStampFields(run.campaign.send);
+        const stampedRows =
+          run.campaign.recipient === "waitlist"
+            ? await ctx.db
+                .query("registrations")
+                .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", row.normalizedEmail))
+                .take(10)
+            : await ctx.db
+                .query("users")
+                .withIndex("by_normalizedEmail", (q) => q.eq("normalizedEmail", row.normalizedEmail))
+                .take(10);
+        for (const stamped of stampedRows) {
+          if (stamped[fields.wave] !== waveLabel) continue;
+          await ctx.db.patch(stamped._id, { [fields.wave]: undefined, [fields.at]: undefined });
+          unstamped++;
+        }
+      } else if (row.status === "pushed" && waveLabel) {
         const reg = await ctx.db
           .query("registrations")
           .withIndex("by_normalized_email", (q) =>
@@ -2297,5 +2493,111 @@ export const getWaveRunStatus = internalQuery({
       createdAt: run.createdAt,
       updatedAt: run.updatedAt,
     };
+  },
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Held campaign runs (Black Friday): release or discard
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Release a held campaign broadcast: mark the run released and schedule the
+ * send. Callers check the campaign's kill gate first
+ * (blackFriday.releaseBlackFridayBroadcast); this only moves the state.
+ */
+export const _requestCampaignRelease = internalMutation({
+  args: { runId: v.string() },
+  handler: async (ctx, { runId }) => {
+    const run = await ctx.db
+      .query("waveRuns")
+      .withIndex("by_runId", (q) => q.eq("runId", runId))
+      .unique();
+    if (!run) throw new Error(`[_requestCampaignRelease] no run ${runId}`);
+    if (!run.campaign) throw new Error(`[_requestCampaignRelease] run ${runId} is not a campaign run`);
+    if (run.status !== "broadcast-created" || !run.broadcastId) {
+      throw new Error(`[_requestCampaignRelease] run ${runId} is ${run.status}, expected broadcast-created`);
+    }
+    if (run.failureSubstatus !== undefined) {
+      throw new Error(
+        `[_requestCampaignRelease] run ${runId} has failureSubstatus=${run.failureSubstatus}: a send was attempted. ` +
+        `Check the broadcast in Resend, then use resumeFinalizeWaveRun({confirmedNotSent: true}) or markFinalizeRecovered.`,
+      );
+    }
+    const config = await ctx.db
+      .query("broadcastRampConfig")
+      .withIndex("by_key", (q) => q.eq("key", rampConfigKeyFor(run)))
+      .unique();
+    if (!config || config.pendingRunId !== runId) {
+      throw new Error(`[_requestCampaignRelease] run ${runId} does not hold the lease`);
+    }
+    if (config.killGateTripped) {
+      throw new Error(`[_requestCampaignRelease] kill gate tripped: ${config.killGateReason ?? "<no reason>"}`);
+    }
+    if (run.releaseRequestedAt !== undefined) {
+      return { ok: true as const, alreadyReleased: true as const, broadcastId: run.broadcastId };
+    }
+    const now = Date.now();
+    await ctx.db.patch(run._id, { releaseRequestedAt: now, lastBatchAt: now, updatedAt: now });
+    await ctx.scheduler.runAfter(0, internal.broadcast.waveRuns.finalizeWaveAction, { runId });
+    return { ok: true as const, alreadyReleased: false as const, broadcastId: run.broadcastId };
+  },
+});
+
+/**
+ * Abandon a held campaign broadcast that was never released: the operator
+ * previewed it and decided not to send. Clears the lease and unstamps the
+ * contacts, so they stay eligible. The Resend draft and segment are left for
+ * the operator to delete; the draft's id is kept in the run's `error`.
+ */
+export const discardHeldCampaignRun = internalMutation({
+  args: { runId: v.string(), reason: v.string() },
+  handler: async (ctx, { runId, reason }) => {
+    const run = await ctx.db
+      .query("waveRuns")
+      .withIndex("by_runId", (q) => q.eq("runId", runId))
+      .unique();
+    if (!run) throw new Error(`[discardHeldCampaignRun] no run ${runId}`);
+    if (
+      !run.campaign ||
+      !run.campaign.holdBeforeSend ||
+      run.status !== "broadcast-created" ||
+      run.failureSubstatus !== undefined ||
+      run.releaseRequestedAt !== undefined
+    ) {
+      throw new Error(
+        `[discardHeldCampaignRun] run ${runId} is not a held, unreleased campaign run ` +
+        `(status=${run.status}, released=${run.releaseRequestedAt !== undefined}). ` +
+        `Once released, a send may have gone out: use resumeFinalizeWaveRun or markFinalizeRecovered.`,
+      );
+    }
+    const config = await ctx.db
+      .query("broadcastRampConfig")
+      .withIndex("by_key", (q) => q.eq("key", rampConfigKeyFor(run)))
+      .unique();
+    if (!config) throw new Error("[discardHeldCampaignRun] no broadcastRampConfig");
+    const now = Date.now();
+    await ctx.db.patch(run._id, {
+      status: "failed",
+      failureSubstatus: "discarded-by-operator",
+      // Cleared so the cleanup may unstamp: this broadcast was never sent.
+      broadcastId: undefined,
+      error: `held broadcast ${run.broadcastId ?? "<none>"} discarded: ${reason}`.slice(0, 500),
+      updatedAt: now,
+    });
+    if (config.pendingRunId === runId) {
+      await ctx.db.patch(config._id, {
+        lastRunStatus: `discarded-by-operator: ${reason.slice(0, 200)}`,
+        lastRunAt: now,
+        pendingRunId: undefined,
+        pendingRunStartedAt: undefined,
+        pendingWaveLabel: undefined,
+      });
+    }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.broadcast.waveRuns.cleanupDiscardedWavePickedContactsAction,
+      { runId },
+    );
+    return { ok: true as const, discardedBroadcastId: run.broadcastId };
   },
 });

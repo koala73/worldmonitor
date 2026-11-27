@@ -85,20 +85,20 @@ import {
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 
-const DEFAULT_BOUNCE_KILL_THRESHOLD = 0.04;
-const DEFAULT_COMPLAINT_KILL_THRESHOLD = 0.0008;
+export const DEFAULT_BOUNCE_KILL_THRESHOLD = 0.04;
+export const DEFAULT_COMPLAINT_KILL_THRESHOLD = 0.0008;
 
 // Minimum delivered count before we trust the kill-gate stats. With
 // fewer deliveries the bounce/complaint rates are too noisy. e.g., 1
 // bounce out of 10 delivered = 10% bounce rate which would falsely
 // trip — but that's just sample-size noise.
-const MIN_DELIVERED_FOR_KILLGATE = 100;
+export const MIN_DELIVERED_FOR_KILLGATE = 100;
 
 // Minimum hours since the last wave's send before we'll fire the
 // next one. Gives bounces / complaints time to flow back via the
 // Resend webhook. 18h means we can't accidentally double-send if
 // the cron runs more than once a day.
-const MIN_HOURS_BETWEEN_WAVES = 18;
+export const MIN_HOURS_BETWEEN_WAVES = 18;
 
 // PR 2 (post-launch-stabilization, 2026-04-30) moved underfill handling
 // into pickWaveAction (waveRuns.ts) — the pool-drained branch in
