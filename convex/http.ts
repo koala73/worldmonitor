@@ -2512,6 +2512,8 @@ const PRO_BUSINESS_UPGRADE_REFUSALS = new Set([
   "ALREADY_PRO_ANNUAL",
   "PROMO_ENDED",
   "PROMO_CODE_REJECTED",
+  // The re-checked charge is above the one the user accepted; nothing changed.
+  "CHARGE_CHANGED",
 ]);
 
 http.route({
@@ -2526,6 +2528,8 @@ http.route({
       confirm?: unknown;
       kind?: unknown;
       discounted?: unknown;
+      acceptedChargeAmount?: unknown;
+      acceptedChargeCurrency?: unknown;
     }>(request);
     if (!body) {
       return Response.json({ error: "INVALID_JSON" }, { status: 400 });
@@ -2544,6 +2548,18 @@ http.route({
     if (body.kind === "pro_annual" && body.confirm && body.discounted === undefined) {
       return Response.json({ error: "MISSING_FIELDS", required: ["discounted"] }, { status: 400 });
     }
+    // Optional pair: the quote's immediate charge the user accepted, in minor units.
+    const namesCharge = body.acceptedChargeAmount !== undefined || body.acceptedChargeCurrency !== undefined;
+    if (
+      namesCharge &&
+      (typeof body.acceptedChargeAmount !== "number" ||
+        !Number.isSafeInteger(body.acceptedChargeAmount) ||
+        body.acceptedChargeAmount < 0 ||
+        typeof body.acceptedChargeCurrency !== "string" ||
+        !/^[A-Z]{3}$/.test(body.acceptedChargeCurrency))
+    ) {
+      return Response.json({ error: "INVALID_ACCEPTED_CHARGE" }, { status: 400 });
+    }
 
     try {
       const result = await ctx.runAction(
@@ -2553,6 +2569,12 @@ http.route({
           confirm: body.confirm,
           ...(body.kind !== undefined ? { kind: body.kind } : {}),
           ...(typeof body.discounted === "boolean" ? { discounted: body.discounted } : {}),
+          ...(namesCharge
+            ? {
+              acceptedChargeAmount: body.acceptedChargeAmount as number,
+              acceptedChargeCurrency: body.acceptedChargeCurrency as string,
+            }
+            : {}),
         },
       );
       return Response.json(result, { status: 200 });

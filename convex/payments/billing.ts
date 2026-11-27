@@ -4170,6 +4170,12 @@ export type ProBusinessUpgradeResult =
       discounted: boolean;
       /** The provider-side discount on the first period (the Dodo figure), or null. */
       percentOff: number | null;
+      /**
+       * This server re-checks the immediate charge on a confirm that names it
+       * (acceptedChargeAmount + acceptedChargeCurrency). A client sends those
+       * only when the quote says so: an older Convex rejects unknown arguments.
+       */
+      acceptsQuoteGuards: true;
     }
   | { kind: "upgraded"; fromPlanKey: string; toPlanKey: string };
 
@@ -4190,6 +4196,17 @@ const PRO_BUSINESS_UPGRADE_TIMEOUT_MS = 15_000;
 const PLAN_CHANGE_PREVIEW_BUDGET_MS = 16_000;
 /** A preview with less time than this left is not started. */
 const PLAN_CHANGE_PREVIEW_MIN_ATTEMPT_MS = 3_000;
+/**
+ * How far a confirm's re-checked charge may exceed the charge the user
+ * accepted, in the currency's minor unit. With prorated_immediately the credit
+ * for the unused month shrinks with time (Dodo prorates by time remaining and
+ * does not document the granularity), so the charge creeps up while a quote
+ * stays open: Pro Monthly at $39.99 over a 30-day cycle loses about 0.093
+ * cents of credit a minute. 5 cents covers about 54 minutes of reading. A
+ * larger increase, or any change of currency, is re-quoted for explicit
+ * acceptance; a lower charge always proceeds.
+ */
+export const ACCEPTED_CHARGE_TOLERANCE_MINOR = 5;
 /** Longer than retrieve + changePlan at their timeouts, so a live claim is never stolen. */
 export const PRO_BUSINESS_UPGRADE_CLAIM_TTL_MS = 120_000;
 
@@ -4298,7 +4315,14 @@ function planChangeParams(toProductId: string, discountCode: string | null) {
 export async function runPlanChange(
   ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
   userId: string,
-  args: { confirm: boolean; kind: PlanChangeKind; discounted?: boolean },
+  args: {
+    confirm: boolean;
+    kind: PlanChangeKind;
+    discounted?: boolean;
+    /** The quote's immediate charge the user accepted, in minor units. Optional on the wire. */
+    acceptedChargeAmount?: number;
+    acceptedChargeCurrency?: string;
+  },
 ): Promise<ProBusinessUpgradeResult> {
   const { confirm, kind } = args;
   const previewDeadline = Date.now() + PLAN_CHANGE_PREVIEW_BUDGET_MS;
@@ -4307,6 +4331,14 @@ export async function runPlanChange(
     // price the user never saw.
     throw new ConvexError({ kind: "PLAN_CHANGE_QUOTE_REQUIRED" });
   }
+  const namesCharge = args.acceptedChargeAmount !== undefined || args.acceptedChargeCurrency !== undefined;
+  if (namesCharge && (!isAcceptedChargeAmount(args.acceptedChargeAmount) || !isCurrencyCode(args.acceptedChargeCurrency))) {
+    throw new ConvexError({ kind: "INVALID_ACCEPTED_CHARGE" });
+  }
+  // Absent (an older client): the confirm runs as before, without a re-check.
+  const acceptedCharge = confirm && namesCharge
+    ? { amount: args.acceptedChargeAmount as number, currency: args.acceptedChargeCurrency as string }
+    : null;
   const candidate = await ctx.runQuery(
     internal.payments.billing.getProBusinessUpgradeCandidate,
     { userId, kind },
@@ -4381,6 +4413,7 @@ export async function runPlanChange(
         billingPeriod,
         discounted,
         percentOff: discounted && promo ? promo.percentOff : null,
+        acceptsQuoteGuards: true,
       };
     } catch (err) {
       console.error(
@@ -4409,9 +4442,21 @@ export async function runPlanChange(
 
   let changePlanSent = false;
   try {
+    // The reads before changePlan run side by side, so together they fit the
+    // one 15 s window the retrieve alone used. changePlan keeps its own
+    // timeout: a change in flight is never cut short.
+    const readOptions = { timeout: PRO_BUSINESS_UPGRADE_TIMEOUT_MS };
+    const [remoteRead, recheck] = await Promise.allSettled([
+      client.subscriptions.retrieve(candidate.dodoSubscriptionId, readOptions),
+      // The same body as the changePlan below, so the re-checked charge is the one it would make.
+      acceptedCharge
+        ? client.subscriptions.previewChangePlan(candidate.dodoSubscriptionId, params, readOptions)
+        : Promise.resolve(null),
+    ]);
+    if (remoteRead.status === "rejected") throw remoteRead.reason;
+    const remote = remoteRead.value;
     // A confirm that arrives after an earlier one finished, but before the
     // webhook lands, sees the target product here and skips the change.
-    const remote = await client.subscriptions.retrieve(candidate.dodoSubscriptionId);
     if (remote.product_id === candidate.toProductId) {
       return { kind: "upgraded", fromPlanKey: candidate.fromPlanKey, toPlanKey: candidate.toPlanKey };
     }
@@ -4419,6 +4464,25 @@ export async function runPlanChange(
     // since then (portal, support) means the previewed charge no longer holds.
     if (remote.product_id !== candidate.fromProductId) {
       throw new Error(`subscription product changed since preview: ${remote.product_id}`);
+    }
+    if (acceptedCharge) {
+      // A charge that cannot be checked is not accepted: fail before sending.
+      if (recheck.status === "rejected") throw recheck.reason;
+      const summary = recheck.value!.immediate_charge.summary;
+      if (
+        String(summary.currency) !== acceptedCharge.currency ||
+        summary.total_amount > acceptedCharge.amount + ACCEPTED_CHARGE_TOLERANCE_MINOR
+      ) {
+        console.warn(JSON.stringify({
+          event: "plan_change_charge_changed",
+          kind,
+          accepted: acceptedCharge.amount,
+          acceptedCurrency: acceptedCharge.currency,
+          current: summary.total_amount,
+          currentCurrency: String(summary.currency),
+        }));
+        throw new ConvexError({ kind: "CHARGE_CHANGED" });
+      }
     }
     changePlanSent = true;
     await client.subscriptions.changePlan(candidate.dodoSubscriptionId, params);
@@ -4435,6 +4499,8 @@ export async function runPlanChange(
         dodoSubscriptionId: candidate.dodoSubscriptionId,
       });
     }
+    // CHARGE_CHANGED: nothing was sent, and the client re-quotes the new amount.
+    if (err instanceof ConvexError) throw err;
     console.error(
       `[billing] Dodo change-plan failed for subscription ${candidate.dodoSubscriptionId}:`,
       err instanceof Error ? err.message : String(err),
@@ -4455,6 +4521,14 @@ export async function runPlanChange(
   return { kind: "upgraded", fromPlanKey: candidate.fromPlanKey, toPlanKey: candidate.toPlanKey };
 }
 
+function isAcceptedChargeAmount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isCurrencyCode(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Z]{3}$/.test(value);
+}
+
 /** Dashboard entry point. Auth-gated via requireUserId(ctx). */
 export const upgradeToProBusiness = action({
   args: {
@@ -4462,6 +4536,9 @@ export const upgradeToProBusiness = action({
     kind: v.optional(planChangeKindValidator),
     /** The quote's `discounted` flag, echoed on a Pro Yearly confirm. */
     discounted: v.optional(v.boolean()),
+    /** The quote's immediate charge; a client sends it only when the quote had acceptsQuoteGuards. */
+    acceptedChargeAmount: v.optional(v.number()),
+    acceptedChargeCurrency: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
     const userId = await requireUserId(ctx);
@@ -4469,6 +4546,8 @@ export const upgradeToProBusiness = action({
       confirm: args.confirm,
       kind: args.kind ?? "pro_business",
       discounted: args.discounted,
+      acceptedChargeAmount: args.acceptedChargeAmount,
+      acceptedChargeCurrency: args.acceptedChargeCurrency,
     });
   },
 });
@@ -4480,6 +4559,8 @@ export const internalUpgradeToProBusiness = internalAction({
     confirm: v.boolean(),
     kind: v.optional(planChangeKindValidator),
     discounted: v.optional(v.boolean()),
+    acceptedChargeAmount: v.optional(v.number()),
+    acceptedChargeCurrency: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
     if (!args.userId) {
@@ -4489,6 +4570,8 @@ export const internalUpgradeToProBusiness = internalAction({
       confirm: args.confirm,
       kind: args.kind ?? "pro_business",
       discounted: args.discounted,
+      acceptedChargeAmount: args.acceptedChargeAmount,
+      acceptedChargeCurrency: args.acceptedChargeCurrency,
     });
   },
 });

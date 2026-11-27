@@ -218,6 +218,7 @@ describe('Pro Monthly → Pro Yearly switch copy', () => {
       copy.SWITCH_FAILED_BODY,
       copy.SWITCH_ACCOUNT_CHANGED_BODY,
       copy.SWITCH_QUOTE_CHANGED_NOTICE,
+      copy.SWITCH_CHARGE_CHANGED_NOTICE,
     ];
     shared.forEach((sentence, index) => {
       it(`/pro mirrors switch sentence ${index}: ${String(sentence).slice(0, 40)}`, () => {

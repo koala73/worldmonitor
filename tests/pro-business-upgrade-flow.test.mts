@@ -135,7 +135,7 @@ const SWITCH_QUOTE = {
 };
 const LIST_QUOTE = { ...SWITCH_QUOTE, chargeAmount: 33503, discounted: false, percentOff: null };
 
-type SwitchCall = { confirm: boolean; discounted?: boolean };
+type SwitchCall = Record<string, unknown> & { confirm: boolean };
 
 function switchHarness(
   respond: (call: SwitchCall, index: number) => Promise<ProBusinessUpgradeResponse>,
@@ -148,8 +148,8 @@ function switchHarness(
   const options: ProAnnualSwitchFlowOptions = {
     planKey: 'pro_monthly',
     fallback: () => { fellBack = true; },
-    requestSwitch: (confirm, discounted) => {
-      const call = discounted === undefined ? { confirm } : { confirm, discounted };
+    requestSwitch: (request) => {
+      const call: SwitchCall = { ...request };
       calls.push(call);
       return respond(call, calls.length - 1);
     },
@@ -291,6 +291,64 @@ describe('runProAnnualSwitchFlow', () => {
     const down = switchHarness(async () => { throw new Error('provider down'); });
     await runProAnnualSwitchFlow(down.options);
     assert.equal(down.fellBack(), true);
+  });
+
+  // The charge grows while a quote stays open. A server that re-checks it says
+  // so on the quote; only then does the confirm name the charge it accepts.
+  describe('accepted charge', () => {
+    const GUARDED = { ...SWITCH_QUOTE, acceptsQuoteGuards: true };
+
+    it('confirms with the charge the quote showed when the quote advertises the check', async () => {
+      const h = switchHarness(async (call) => (call.confirm ? upgraded : GUARDED));
+      await runProAnnualSwitchFlow(h.options);
+      h.dialogs[0]!.onConfirm();
+      await settle();
+      assert.deepEqual(h.calls[1], { confirm: true, discounted: true, acceptedChargeAmount: 10496, acceptedChargeCurrency: 'USD' });
+    });
+
+    it('sends no accepted charge to a server whose quote does not advertise the check', async () => {
+      const h = switchHarness(async (call) => (call.confirm ? upgraded : SWITCH_QUOTE));
+      await runProAnnualSwitchFlow(h.options);
+      h.dialogs[0]!.onConfirm();
+      await settle();
+      assert.deepEqual(h.calls[1], { confirm: true, discounted: true });
+    });
+
+    it('after CHARGE_CHANGED shows the new charge for acceptance and confirms only that charge', async () => {
+      const h = switchHarness(async (_call, index) => {
+        if (index === 0) return GUARDED;
+        if (index === 1) throw refusal('CHARGE_CHANGED');
+        if (index === 2) return { ...GUARDED, chargeAmount: 10600 };
+        return upgraded;
+      });
+      await runProAnnualSwitchFlow(h.options);
+      h.dialogs[0]!.onConfirm();
+      await settle();
+      assert.equal(h.dialogs[1]?.title, 'Switch to Pro Yearly');
+      assert.match(h.dialogs[1]!.body, /^The price changed since your quote and your plan has not changed\./);
+      assert.match(h.dialogs[1]!.body, /You pay \$106\.00 today: your first year at 60% off/);
+      h.dialogs[1]!.onConfirm();
+      await settle();
+      assert.deepEqual(h.calls.slice(2), [
+        { confirm: false },
+        { confirm: true, discounted: true, acceptedChargeAmount: 10600, acceptedChargeCurrency: 'USD' },
+      ]);
+      assert.equal(h.dialogs[2]?.title, 'Switched to Pro Yearly');
+    });
+
+    it('re-quotes a changed charge at most once', async () => {
+      const h = switchHarness(async (call) => {
+        if (call.confirm) throw refusal('CHARGE_CHANGED');
+        return GUARDED;
+      });
+      await runProAnnualSwitchFlow(h.options);
+      h.dialogs[0]!.onConfirm();
+      await settle();
+      h.dialogs[1]!.onConfirm();
+      await settle();
+      assert.equal(h.calls.length, 4);
+      assert.equal(h.dialogs[2]?.title, 'Switch not confirmed');
+    });
   });
 
   it('refuses to confirm after the signed-in account changed', async () => {

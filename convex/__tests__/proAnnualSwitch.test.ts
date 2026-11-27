@@ -157,8 +157,15 @@ describe("switch action", () => {
     return t;
   }
 
-  const run = (t: ReturnType<typeof convexTest>, args: { confirm: boolean; discounted?: boolean }) =>
-    t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { kind: "pro_annual", ...args });
+  const run = (
+    t: ReturnType<typeof convexTest>,
+    args: { confirm: boolean; discounted?: boolean; acceptedChargeAmount?: number; acceptedChargeCurrency?: string },
+  ) => t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { kind: "pro_annual", ...args });
+  const claims = (t: ReturnType<typeof convexTest>) => t.run((ctx) => ctx.db.query("proBusinessUpgradeClaims").collect());
+  const withTotal = (preview: ReturnType<typeof discountedPreview>, total: number, currency = "USD") => ({
+    ...preview,
+    immediate_charge: { summary: { total_amount: total, currency } },
+  });
 
   test("a preview during the offer applies the code and quotes the list price as the renewal", async () => {
     const t = await setup(DURING);
@@ -177,6 +184,7 @@ describe("switch action", () => {
       billingPeriod: "annual",
       discounted: true,
       percentOff: PROMO.percentOff,
+      acceptsQuoteGuards: true,
     });
     expect(previewChangePlan).toHaveBeenCalledWith("sub_pm_1", expect.objectContaining({
       product_id: PRO_ANNUAL,
@@ -310,6 +318,133 @@ describe("switch action", () => {
     const result = await t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: false });
     expect(result).toMatchObject({ toPlanKey: "pro_business_monthly", discounted: false, renewalAmount: 4999 });
     expect(previewChangePlan.mock.calls[0]![1]).not.toHaveProperty("discount_code");
+  });
+
+  // The quote's charge grows as the unused part of the month shrinks. A confirm
+  // that names the charge it accepted re-checks it before changePlan.
+  describe("accepted charge", () => {
+    const accepted = { confirm: true, discounted: true, acceptedChargeAmount: 10496, acceptedChargeCurrency: "USD" };
+
+    test("a higher charge than the one accepted is refused before changePlan, and the claim is released", async () => {
+      const t = await setup(DURING);
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
+      previewChangePlan.mockResolvedValue(withTotal(discountedPreview(), 10496 + 6));
+      await expect(run(t, accepted)).rejects.toThrow(/CHARGE_CHANGED/);
+      expect(changePlan).not.toHaveBeenCalled();
+      expect(await claims(t)).toHaveLength(0);
+    });
+
+    test("a charge in another currency is refused before changePlan", async () => {
+      const t = await setup(DURING);
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
+      previewChangePlan.mockResolvedValue(withTotal(discountedPreview(), 10496, "EUR"));
+      await expect(run(t, accepted)).rejects.toThrow(/CHARGE_CHANGED/);
+      expect(changePlan).not.toHaveBeenCalled();
+    });
+
+    test("an equal, lower or within-tolerance charge proceeds, re-checked with the exact changePlan body", async () => {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      for (const total of [10496, 10300, 10496 + 5]) {
+        const t = await setup(DURING);
+        previewChangePlan.mockReset().mockResolvedValue(withTotal(discountedPreview(), total));
+        retrieve.mockReset().mockResolvedValue({ product_id: PRO_MONTHLY });
+        changePlan.mockReset().mockResolvedValue(undefined);
+        await expect(run(t, accepted)).resolves.toMatchObject({ kind: "upgraded" });
+        expect(changePlan).toHaveBeenCalledTimes(1);
+        expect(previewChangePlan.mock.calls[0]!.slice(0, 2)).toEqual(changePlan.mock.calls[0]);
+      }
+    });
+
+    test("a confirm that names no accepted charge does not re-preview (an older client)", async () => {
+      const t = await setup(DURING);
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
+      changePlan.mockResolvedValue(undefined);
+      await expect(run(t, { confirm: true, discounted: true })).resolves.toMatchObject({ kind: "upgraded" });
+      expect(previewChangePlan).not.toHaveBeenCalled();
+      expect(changePlan).toHaveBeenCalledTimes(1);
+    });
+
+    test("a failed re-check fails closed before changePlan", async () => {
+      const t = await setup(DURING);
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
+      previewChangePlan.mockRejectedValue(APIError.generate(500, { message: "boom" }, undefined, new Headers()));
+      await expect(run(t, accepted)).rejects.toThrow(/DODO_PLAN_CHANGE_ERROR/);
+      expect(changePlan).not.toHaveBeenCalled();
+      expect(await claims(t)).toHaveLength(0);
+    });
+
+    test("a subscription already on Pro Yearly reports success even when the re-check errors", async () => {
+      const t = await setup(DURING);
+      retrieve.mockResolvedValue({ product_id: PRO_ANNUAL });
+      previewChangePlan.mockRejectedValue(new Error("already on this plan"));
+      await expect(run(t, accepted)).resolves.toMatchObject({ kind: "upgraded" });
+      expect(changePlan).not.toHaveBeenCalled();
+    });
+
+    test("the re-check and the retrieve share one 15 s deadline; changePlan keeps its own timeout", async () => {
+      const t = await setup(DURING);
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      retrieve.mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + 6_000);
+        return { product_id: PRO_MONTHLY };
+      });
+      previewChangePlan.mockResolvedValue(discountedPreview());
+      changePlan.mockResolvedValue(undefined);
+      await run(t, accepted);
+      const readTimeouts = [retrieve.mock.calls[0]![1], previewChangePlan.mock.calls[0]![2]]
+        .map((opts) => (opts as { timeout?: number } | undefined)?.timeout);
+      for (const ms of readTimeouts) {
+        expect(typeof ms).toBe("number");
+        expect(ms!).toBeLessThanOrEqual(15_000);
+      }
+      // A changePlan in flight is never cut short by the reads' budget.
+      expect(changePlan.mock.calls[0]).toHaveLength(2);
+    });
+
+    test("after a refused higher charge, a confirm of the fresh quote goes through at once", async () => {
+      const t = await setup(DURING);
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
+      previewChangePlan.mockResolvedValue(withTotal(discountedPreview(), 10600));
+      changePlan.mockResolvedValue(undefined);
+      await expect(run(t, accepted)).rejects.toThrow(/CHARGE_CHANGED/);
+      await expect(run(t, { ...accepted, acceptedChargeAmount: 10600 })).resolves.toMatchObject({ kind: "upgraded" });
+      expect(changePlan).toHaveBeenCalledTimes(1);
+    });
+
+    test("the relay forwards the accepted charge, rejects a malformed one, and passes CHARGE_CHANGED through", async () => {
+      vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "synthetic-relay-secret");
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const t = await setup(DURING);
+      const post = (body: unknown) => t.fetch("/relay/pro-business-upgrade", {
+        method: "POST",
+        headers: { Authorization: "Bearer synthetic-relay-secret", "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const base = { userId: USER.subject, confirm: true, kind: "pro_annual", discounted: true };
+      for (const bad of [
+        { acceptedChargeAmount: "10496", acceptedChargeCurrency: "USD" },
+        { acceptedChargeAmount: -1, acceptedChargeCurrency: "USD" },
+        { acceptedChargeAmount: 10.5, acceptedChargeCurrency: "USD" },
+        { acceptedChargeAmount: 10496 },
+        { acceptedChargeCurrency: "USD" },
+        { acceptedChargeAmount: 10496, acceptedChargeCurrency: "" },
+      ]) {
+        expect((await post({ ...base, ...bad })).status).toBe(400);
+      }
+      expect(previewChangePlan).not.toHaveBeenCalled();
+      retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
+      previewChangePlan.mockResolvedValue(withTotal(discountedPreview(), 10700));
+      const res = await post({ ...base, acceptedChargeAmount: 10496, acceptedChargeCurrency: "USD" });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "CHARGE_CHANGED" });
+      expect(changePlan).not.toHaveBeenCalled();
+    });
   });
 
   test("the /pro relay validates kind and the confirm's discount flag, and maps the new refusals", async () => {

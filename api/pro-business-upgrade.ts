@@ -3,7 +3,9 @@
 // "pro_annual", discounted?: boolean }. kind defaults to the Pro → Pro
 // Business upgrade; "pro_annual" moves Pro Monthly to Pro Yearly, and its
 // confirm echoes the quote's `discounted` flag so the change applies the price
-// the user saw or fails closed. confirm=false returns the prorated charge;
+// the user saw or fails closed. A confirm may also name the charge it accepted
+// (acceptedChargeAmount + acceptedChargeCurrency); a higher one is refused with
+// CHARGE_CHANGED. confirm=false returns the prorated charge;
 // confirm=true moves the existing Dodo subscription to the target product. The dashboard calls the
 // Convex action directly; this edge route exists because /pro is a separate
 // build without a Convex client.
@@ -41,6 +43,7 @@ const PASSTHROUGH_ERRORS = new Set([
   'ALREADY_PRO_ANNUAL',
   'PROMO_ENDED',
   'PROMO_CODE_REJECTED',
+  'CHARGE_CHANGED',
 ]);
 
 const PLAN_CHANGE_KINDS = new Set(['pro_business', 'pro_annual']);
@@ -89,10 +92,17 @@ export default async function handler(
   let confirm: boolean;
   let kind: string | undefined;
   let discounted: boolean | undefined;
+  let acceptedCharge: { acceptedChargeAmount: number; acceptedChargeCurrency: string } | null = null;
   try {
     // Read a clone: the idempotency helpers hash the original body, and a
     // consumed body would make them fall back to "disabled" (no replay lock).
-    const body = await req.clone().json() as { confirm?: unknown; kind?: unknown; discounted?: unknown } | null;
+    const body = await req.clone().json() as {
+      confirm?: unknown;
+      kind?: unknown;
+      discounted?: unknown;
+      acceptedChargeAmount?: unknown;
+      acceptedChargeCurrency?: unknown;
+    } | null;
     if (!body || typeof body !== 'object' || typeof body.confirm !== 'boolean') {
       return json({ error: 'INVALID_BODY' }, 400, cors);
     }
@@ -105,6 +115,19 @@ export default async function handler(
     // A Pro Yearly confirm must name the quote it accepts.
     if (body.kind === 'pro_annual' && body.confirm && body.discounted === undefined) {
       return json({ error: 'INVALID_BODY' }, 400, cors);
+    }
+    // Optional pair: the quote's immediate charge the user accepted, in minor
+    // units. The client sends it only when the quote advertised the check.
+    if (body.acceptedChargeAmount !== undefined || body.acceptedChargeCurrency !== undefined) {
+      const amount = body.acceptedChargeAmount;
+      const currency = body.acceptedChargeCurrency;
+      if (
+        typeof amount !== 'number' || !Number.isSafeInteger(amount) || amount < 0 ||
+        typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)
+      ) {
+        return json({ error: 'INVALID_BODY' }, 400, cors);
+      }
+      acceptedCharge = { acceptedChargeAmount: amount, acceptedChargeCurrency: currency };
     }
     confirm = body.confirm;
     kind = body.kind as string | undefined;
@@ -160,6 +183,7 @@ export default async function handler(
         confirm,
         ...(kind !== undefined ? { kind } : {}),
         ...(discounted !== undefined ? { discounted } : {}),
+        ...(acceptedCharge ?? {}),
       }),
       signal: AbortSignal.timeout(20_000),
     });

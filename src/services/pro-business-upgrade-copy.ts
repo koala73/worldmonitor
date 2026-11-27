@@ -139,6 +139,11 @@ export const SWITCH_ACCOUNT_CHANGED_BODY =
 // the server refused before any change, so the plan is known to be unchanged.
 export const SWITCH_QUOTE_CHANGED_NOTICE =
   'The offer is no longer available and your plan has not changed. Here is the price without it.';
+// Shown above the fresh quote after a typed CHARGE_CHANGED: the charge grew
+// past the accepted one (the unused-month credit shrinks with time), and the
+// server refused before any change.
+export const SWITCH_CHARGE_CHANGED_NOTICE =
+  'The price changed since your quote and your plan has not changed. Here is the new price.';
 /** Settings toast when no quote comes back. */
 export const SWITCH_UNAVAILABLE_BODY =
   'We could not price the switch right now. Try again in a few minutes, or email support@worldmonitor.app.';

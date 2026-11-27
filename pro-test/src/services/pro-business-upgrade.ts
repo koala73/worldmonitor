@@ -78,6 +78,8 @@ interface SwitchPreview {
   renewalDate: string | null;
   discounted: boolean;
   percentOff: number | null;
+  /** The server takes the accepted charge on confirm; absent from an older Convex. */
+  acceptsQuoteGuards: boolean;
 }
 
 function buildSwitchPreviewBody(preview: SwitchPreview): string {
@@ -116,13 +118,21 @@ const SWITCH_ACCOUNT_CHANGED_BODY =
   'You switched accounts after this quote. Start the switch again from the account you want to move to Pro Yearly.';
 const SWITCH_QUOTE_CHANGED_NOTICE =
   'The offer is no longer available and your plan has not changed. Here is the price without it.';
+const SWITCH_CHARGE_CHANGED_NOTICE =
+  'The price changed since your quote and your plan has not changed. Here is the new price.';
 /** Typed refusals that mean the quote's price no longer holds and nothing changed. */
 const SWITCH_REQUOTE_ERRORS: ReadonlySet<string> = new Set(['PROMO_ENDED', 'PROMO_CODE_REJECTED']);
 
 // One shape rather than a union: this build's tsconfig does not narrow on `ok`.
 interface UpgradeCallResult {
   ok: boolean;
-  data: { kind?: unknown; toPlanKey?: unknown; discounted?: unknown; percentOff?: unknown } & Partial<Omit<UpgradePreview, 'kind'>>;
+  data: {
+    kind?: unknown;
+    toPlanKey?: unknown;
+    discounted?: unknown;
+    percentOff?: unknown;
+    acceptsQuoteGuards?: unknown;
+  } & Partial<Omit<UpgradePreview, 'kind'>>;
   error: string;
 }
 
@@ -130,7 +140,12 @@ async function callUpgrade(
   apiBase: string,
   token: string,
   confirm: boolean,
-  extra: { kind?: 'pro_annual'; discounted?: boolean } = {},
+  extra: {
+    kind?: 'pro_annual';
+    discounted?: boolean;
+    acceptedChargeAmount?: number;
+    acceptedChargeCurrency?: string;
+  } = {},
 ): Promise<UpgradeCallResult> {
   try {
     const resp = await fetch(`${apiBase}/pro-business-upgrade`, {
@@ -389,6 +404,7 @@ export async function runProAnnualSwitchFlow(options: {
         renewalDate: typeof data.renewalDate === 'string' ? data.renewalDate : null,
         discounted: data.discounted === true,
         percentOff: typeof data.percentOff === 'number' ? data.percentOff : null,
+        acceptsQuoteGuards: data.acceptsQuoteGuards === true,
       };
     }
     if (result.error === 'PRO_CANCEL_SCHEDULED') {
@@ -409,11 +425,13 @@ export async function runProAnnualSwitchFlow(options: {
     return null;
   };
 
-  const showQuote = (quote: SwitchPreview, requoted: boolean): void => {
+  // `notice` is set on a re-quote; a re-quote is never re-quoted again.
+  const showQuote = (quote: SwitchPreview, notice: string | null): void => {
+    const requoted = notice !== null;
     const body = buildSwitchPreviewBody(quote);
     showDialog({
       title: SWITCH_TITLE,
-      body: requoted ? `${SWITCH_QUOTE_CHANGED_NOTICE} ${body}` : body,
+      body: notice ? `${notice} ${body}` : body,
       confirmLabel: SWITCH_CONFIRM_LABEL,
       dismissLabel: SWITCH_DISMISS_LABEL,
       onConfirm: () => {
@@ -425,7 +443,14 @@ export async function runProAnnualSwitchFlow(options: {
           // Clerk tokens live ~60 s; the user may have read the dialog longer.
           const freshToken = await options.getToken();
           const applied = freshToken
-            ? await callUpgrade(options.apiBase, freshToken, true, { kind: 'pro_annual', discounted: quote.discounted })
+            ? await callUpgrade(options.apiBase, freshToken, true, {
+              kind: 'pro_annual',
+              discounted: quote.discounted,
+              // Only to a server whose quote says it checks the charge.
+              ...(quote.acceptsQuoteGuards
+                ? { acceptedChargeAmount: quote.chargeAmount, acceptedChargeCurrency: quote.currency }
+                : {}),
+            })
             : { ok: false, data: {}, error: 'no_token' };
           if (applied.ok) {
             showDialog({
@@ -441,8 +466,14 @@ export async function runProAnnualSwitchFlow(options: {
             const fresh = await fetchQuote(() => closeOnly(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY));
             // The notice says the offer is gone; a fresh quote that still
             // carries it would contradict that, so it ends here instead.
-            if (fresh && !fresh.discounted) showQuote(fresh, true);
+            if (fresh && !fresh.discounted) showQuote(fresh, SWITCH_QUOTE_CHANGED_NOTICE);
             else if (fresh) closeOnly(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY);
+            return;
+          }
+          // The charge grew past the one accepted; the server sent nothing.
+          if (!requoted && applied.error === 'CHARGE_CHANGED') {
+            const fresh = await fetchQuote(() => closeOnly(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY));
+            if (fresh) showQuote(fresh, SWITCH_CHARGE_CHANGED_NOTICE);
             return;
           }
           Sentry.captureMessage('Pro Yearly switch failed', {
@@ -456,5 +487,5 @@ export async function runProAnnualSwitchFlow(options: {
   };
 
   const quote = await fetchQuote(options.fallback);
-  if (quote) showQuote(quote, false);
+  if (quote) showQuote(quote, null);
 }

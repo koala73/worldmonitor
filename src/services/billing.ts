@@ -625,6 +625,8 @@ export type ProBusinessUpgradeResponse =
       discounted?: boolean;
       /** Dodo's whole percent off the first period on a discounted quote, else null. */
       percentOff?: number | null;
+      /** The server takes the accepted charge on confirm. Absent from an older Convex. */
+      acceptsQuoteGuards?: boolean;
     }
   | { kind: 'upgraded'; fromPlanKey: string; toPlanKey: string };
 
@@ -649,11 +651,16 @@ export async function requestProBusinessUpgrade(confirm: boolean): Promise<ProBu
 
 /**
  * Preview or apply the in-place Pro Monthly → Pro Yearly switch. The confirm
- * passes the quote's `discounted` flag; the server refuses with PROMO_ENDED or
- * PROMO_CODE_REJECTED when that price no longer holds, and with
+ * passes the quote's `discounted` flag, and the quote's charge when the server
+ * checks it; the server refuses with PROMO_ENDED, PROMO_CODE_REJECTED or
+ * CHARGE_CHANGED when that price no longer holds, and with
  * PLAN_CHANGE_QUOTE_REQUIRED when the flag is missing.
  */
-export async function requestProAnnualSwitch(confirm: boolean, discounted?: boolean): Promise<ProBusinessUpgradeResponse> {
+export async function requestProAnnualSwitch(
+  request:
+    | { confirm: false }
+    | { confirm: true; discounted: boolean; acceptedChargeAmount?: number; acceptedChargeCurrency?: string },
+): Promise<ProBusinessUpgradeResponse> {
   const userId = requireSignedInUserId('switch to Pro Yearly');
   const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
   if (!client || !api) throw new Error('Convex unavailable');
@@ -661,11 +668,8 @@ export async function requestProAnnualSwitch(confirm: boolean, discounted?: bool
   return settleAccountOperation(
     userId,
     'switching to Pro Yearly',
-    () => client.action(api.payments.billing.upgradeToProBusiness, {
-      confirm,
-      kind: 'pro_annual',
-      ...(discounted !== undefined ? { discounted } : {}),
-    }),
+    // Only the fields the request carries: an older Convex rejects unknown ones.
+    () => client.action(api.payments.billing.upgradeToProBusiness, { ...request, kind: 'pro_annual' }),
   );
 }
 

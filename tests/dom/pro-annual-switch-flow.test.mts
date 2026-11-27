@@ -134,6 +134,54 @@ describe('/pro Pro Yearly switch flow', () => {
     expect(bodies).toEqual([{ confirm: false, kind: 'pro_annual' }]);
   });
 
+  describe('accepted charge', () => {
+    const GUARDED = { ...QUOTE, acceptsQuoteGuards: true };
+
+    it('confirms with the charge the quote showed when the quote advertises the check', async () => {
+      replies = [{ status: 200, body: GUARDED }, { status: 200, body: UPGRADED }];
+      await runProAnnualSwitchFlow(options());
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().title).toBe('Switched to Pro Yearly'));
+      expect(bodies[1]).toEqual({
+        confirm: true, kind: 'pro_annual', discounted: true, acceptedChargeAmount: 10496, acceptedChargeCurrency: 'USD',
+      });
+    });
+
+    it('after CHARGE_CHANGED shows the new charge for acceptance and confirms only that charge', async () => {
+      replies = [
+        { status: 200, body: GUARDED },
+        { status: 409, body: { error: 'CHARGE_CHANGED' } },
+        { status: 200, body: { ...GUARDED, chargeAmount: 10600 } },
+        { status: 200, body: UPGRADED },
+      ];
+      await runProAnnualSwitchFlow(options());
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().body).toMatch(/^The price changed since your quote and your plan has not changed\./));
+      expect(dialog().body).toContain('You pay $106.00 today: your first year at 60% off');
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().title).toBe('Switched to Pro Yearly'));
+      expect(bodies.slice(2)).toEqual([
+        { confirm: false, kind: 'pro_annual' },
+        { confirm: true, kind: 'pro_annual', discounted: true, acceptedChargeAmount: 10600, acceptedChargeCurrency: 'USD' },
+      ]);
+    });
+
+    it('re-quotes a changed charge at most once', async () => {
+      replies = [
+        { status: 200, body: GUARDED },
+        { status: 409, body: { error: 'CHARGE_CHANGED' } },
+        { status: 200, body: GUARDED },
+        { status: 409, body: { error: 'CHARGE_CHANGED' } },
+      ];
+      await runProAnnualSwitchFlow(options());
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().body).toMatch(/^The price changed/));
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().title).toBe('Switch not confirmed'));
+      expect(bodies).toHaveLength(4);
+    });
+  });
+
   it('asks a cancelling Pro Monthly to resume first', async () => {
     replies = [{ status: 409, body: { error: 'PRO_CANCEL_SCHEDULED' } }];
     await runProAnnualSwitchFlow(options());

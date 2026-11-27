@@ -84,3 +84,40 @@ describe('api/pro-business-upgrade kind and discounted', () => {
     }
   });
 });
+
+describe('api/pro-business-upgrade accepted charge', () => {
+  const confirm = { confirm: true, kind: 'pro_annual', discounted: true };
+
+  it('rejects a malformed accepted charge before the relay', async () => {
+    relayBodies = [];
+    for (const bad of [
+      { acceptedChargeAmount: '10496', acceptedChargeCurrency: 'USD' },
+      { acceptedChargeAmount: -1, acceptedChargeCurrency: 'USD' },
+      { acceptedChargeAmount: 10.5, acceptedChargeCurrency: 'USD' },
+      { acceptedChargeAmount: 10496 },
+      { acceptedChargeCurrency: 'USD' },
+      { acceptedChargeAmount: 10496, acceptedChargeCurrency: 'usd' },
+    ]) {
+      assert.equal((await post({ ...confirm, ...bad })).status, 400, JSON.stringify(bad));
+    }
+    assert.deepEqual(relayBodies, []);
+  });
+
+  it('forwards the accepted charge, and omits it when the client sends none', async () => {
+    relayBodies = [];
+    relayResponse = () => Response.json({ kind: 'upgraded', fromPlanKey: 'pro_monthly', toPlanKey: 'pro_annual' });
+    assert.equal((await post({ ...confirm, acceptedChargeAmount: 10496, acceptedChargeCurrency: 'USD' })).status, 200);
+    assert.equal((await post(confirm)).status, 200);
+    assert.deepEqual(relayBodies, [
+      { userId: 'user_switch', ...confirm, acceptedChargeAmount: 10496, acceptedChargeCurrency: 'USD' },
+      { userId: 'user_switch', ...confirm },
+    ]);
+  });
+
+  it('passes CHARGE_CHANGED through as 409', async () => {
+    relayResponse = () => Response.json({ error: 'CHARGE_CHANGED' }, { status: 409 });
+    const res = await post({ ...confirm, acceptedChargeAmount: 10496, acceptedChargeCurrency: 'USD' });
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), { error: 'CHARGE_CHANGED' });
+  });
+});
