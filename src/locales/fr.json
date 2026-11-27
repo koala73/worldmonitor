@@ -5874,6 +5874,36 @@
           "tooMany": "Invitez jusqu'à 10 personnes à la fois.",
           "rateLimited": "Vous avez envoyé le maximum d'invitations autorisées par jour. Réessayez demain."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Passer à l'abonnement annuel",
+        "offerLine": "Black Friday : {{perMonth}} par mois au lieu de {{monthly}}, facturé annuellement. Soit {{percent}}% de moins qu'en paiement mensuel pendant votre première année. Renouvellement à {{renewal}} par an. Résiliable à tout moment.",
+        "title": "Passer à Pro Annuel",
+        "confirm": "Changer maintenant",
+        "dismiss": "Pas maintenant",
+        "previewMoves": "Votre abonnement Pro Mensuel passe dès maintenant à Pro Annuel.",
+        "previewChargeOffer": "Vous payez {{charge}} aujourd'hui : votre première année avec {{percent}}% de réduction, déduction faite de la partie inutilisée de ce mois.",
+        "previewCharge": "Vous payez {{charge}} aujourd'hui, déduction faite de la partie inutilisée de ce mois.",
+        "previewRestart": "Votre période de facturation recommence aujourd'hui.",
+        "renewsPriceDate": "L'abonnement sera renouvelé le {{date}} à {{price}} par an, taxes éventuelles en sus.",
+        "renewsPrice": "L'abonnement sera renouvelé à {{price}} par an, taxes éventuelles en sus.",
+        "renewsListDate": "L'abonnement sera renouvelé le {{date}} au tarif Pro Annuel.",
+        "renewsList": "L'abonnement sera renouvelé au tarif Pro Annuel.",
+        "previewTerms": "Résiliez à tout moment avant le renouvellement et vous ne serez plus débité. Si le paiement échoue, vous restez sur Pro Mensuel.",
+        "offerNotApplied": "L'offre n'est pas disponible pour ce changement. Voici le tarif sans réduction.",
+        "quoteChanged": "L'offre n'est plus disponible et votre plan n'a pas changé. Voici le tarif sans réduction.",
+        "chargeChanged": "Le tarif a changé depuis votre devis et votre plan n'a pas changé. Voici le nouveau tarif.",
+        "successTitle": "Passage à Pro Annuel effectué",
+        "successBody": "Votre plan change dès que le paiement est confirmé, généralement en moins d'une minute.",
+        "done": "Terminé",
+        "cancelScheduledTitle": "Réactivez d'abord Pro Mensuel",
+        "cancelScheduledBody": "L'annulation de votre abonnement Pro Mensuel est programmée à la fin de cette période. Réactivez-le d'abord dans le portail de facturation, puis passez à Pro Annuel.",
+        "openPortal": "Ouvrir le portail de facturation",
+        "failedTitle": "Changement non confirmé",
+        "failedBody": "Nous n'avons pas pu confirmer le changement. Vérifiez votre plan dans le portail de facturation avant de réessayer, ou écrivez à support@worldmonitor.app.",
+        "accountChangedTitle": "Compte modifié",
+        "accountChangedBody": "Vous avez changé de compte après ce devis. Recommencez le changement depuis le compte que vous souhaitez faire passer à Pro Annuel.",
+        "unavailable": "Nous ne pouvons pas calculer le tarif du changement pour le moment. Réessayez dans quelques minutes, ou écrivez à support@worldmonitor.app."
       }
     },
     "keywords": {

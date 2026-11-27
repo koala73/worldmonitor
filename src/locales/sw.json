@@ -5837,6 +5837,36 @@
           "tooMany": "Alika hadi watu 10 kwa wakati mmoja.",
           "rateLimited": "Umetuma idadi ya juu ya mialiko inayoruhusiwa kwa siku. Jaribu tena kesho."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Hamia malipo ya mwaka",
+        "offerLine": "Ijumaa Nyeusi: {{perMonth}} kwa mwezi badala ya {{monthly}}, hulipwa kila mwaka. Hiyo ni punguzo la {{percent}}% ukilinganisha na kulipa kila mwezi katika mwaka wako wa kwanza. Inasasishwa kwa {{renewal}} kwa mwaka. Ghairi wakati wowote.",
+        "title": "Hamia Pro Yearly",
+        "confirm": "Hamia sasa",
+        "dismiss": "Si sasa",
+        "previewMoves": "Usajili wako wa Pro Monthly unahamia Pro Yearly sasa.",
+        "previewChargeOffer": "Unalipa {{charge}} leo: mwaka wako wa kwanza kwa punguzo la {{percent}}%, ukiondoa sehemu ambayo haijatumika ya mwezi huu.",
+        "previewCharge": "Unalipa {{charge}} leo, ukiondoa sehemu ambayo haijatumika ya mwezi huu.",
+        "previewRestart": "Kipindi chako cha malipo kinaanza upya leo.",
+        "renewsPriceDate": "Usajili utasasishwa tarehe {{date}} kwa {{price}} kwa mwaka, pamoja na kodi yoyote inayohusika.",
+        "renewsPrice": "Usajili utasasishwa kwa {{price}} kwa mwaka, pamoja na kodi yoyote inayohusika.",
+        "renewsListDate": "Usajili utasasishwa tarehe {{date}} kwa bei ya Pro Yearly.",
+        "renewsList": "Usajili utasasishwa kwa bei ya Pro Yearly.",
+        "previewTerms": "Ghairi wakati wowote kabla ya hapo na hutatozwa tena. Malipo yakishindwa, utabaki kwenye Pro Monthly.",
+        "offerNotApplied": "Ofa haipatikani kwa mabadiliko haya. Hii ndiyo bei bila ofa.",
+        "quoteChanged": "Ofa haipatikani tena na mpango wako haujabadilika. Hii ndiyo bei bila ofa.",
+        "chargeChanged": "Bei imebadilika tangu ulipoonyeshwa makadirio na mpango wako haujabadilika. Hii ndiyo bei mpya.",
+        "successTitle": "Umehamia Pro Yearly",
+        "successBody": "Mpango wako utabadilika mara malipo yatakapothibitishwa, kwa kawaida ndani ya dakika moja.",
+        "done": "Imekamilika",
+        "cancelScheduledTitle": "Rejesha Pro Monthly kwanza",
+        "cancelScheduledBody": "Usajili wako wa Pro Monthly umepangwa kughairiwa mwisho wa kipindi hiki. Urejeshe kwanza kwenye lango la malipo, kisha uhamie Pro Yearly.",
+        "openPortal": "Fungua lango la malipo",
+        "failedTitle": "Mabadiliko hayajathibitishwa",
+        "failedBody": "Hatukuweza kuthibitisha mabadiliko. Angalia mpango wako kwenye lango la malipo kabla ya kujaribu tena, au tuma barua pepe kwa support@worldmonitor.app.",
+        "accountChangedTitle": "Akaunti imebadilika",
+        "accountChangedBody": "Ulibadilisha akaunti baada ya makadirio haya. Anza mabadiliko upya kutoka kwenye akaunti unayotaka kuihamishia Pro Yearly.",
+        "unavailable": "Hatukuweza kukokotoa bei ya mabadiliko kwa sasa. Jaribu tena baada ya dakika chache, au tuma barua pepe kwa support@worldmonitor.app."
       }
     },
     "keywords": {

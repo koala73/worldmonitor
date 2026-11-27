@@ -117,9 +117,8 @@ import {
 import { showToast } from '@/utils/toast';
 import {
   PRO_ANNUAL_SWITCH_SOURCE_PLAN,
-  SWITCH_ENTRY_LABEL,
-  SWITCH_UNAVAILABLE_BODY,
   buildSwitchPromoLine,
+  switchCopy,
 } from '@/services/pro-business-upgrade-copy';
 import { activePromo, promoDisplayPrices, type PromoCampaign, type PromoDisplayPrices } from '../../shared/promo-campaign';
 import { declareOverlay } from '@/utils/open-modal';
@@ -368,10 +367,10 @@ export class UnifiedSettings {
         import('@/services/checkout')
           .then((m) => m.startProAnnualSwitch(
             planKey,
-            () => showToast(SWITCH_UNAVAILABLE_BODY),
+            () => showToast(switchCopy(t).unavailableBody),
             () => this.focusSwitchToYearlyButton(),
           ))
-          .catch(() => showToast(SWITCH_UNAVAILABLE_BODY));
+          .catch(() => showToast(switchCopy(t).unavailableBody));
         return;
       }
 
@@ -1313,6 +1312,8 @@ export class UnifiedSettings {
     replaceRawI18nKeyPlaceholders(this.overlay, t);
     const statusLine = this.overlay.querySelector('.upgrade-pro-status-line');
     if (statusLine) statusLine.textContent = this.planStatusLine(getSubscription());
+    // The healer only knows the offer line's template; rebuild it with its prices.
+    if (this.overlay.querySelector('.upgrade-pro-offer-line')) this.replaceUpgradeSection();
     // The deletion dialog sits on document.body, outside the overlay.
     if (this.deletionDialog) {
       replaceRawI18nKeyPlaceholders(this.deletionDialog, t);
@@ -1654,7 +1655,7 @@ export class UnifiedSettings {
    * The in-place Pro Monthly → Pro Yearly switch. Shown to every active Pro
    * Monthly owner (a cancel-scheduled one gets the server's "resume first"
    * answer); the offer line only while the promotion runs and its figures
-   * have loaded. English-only, like the switch dialog it opens.
+   * have loaded.
    */
   private renderProAnnualSwitch(sub: SubscriptionInfo | null, now: number): string {
     if (sub?.planKey !== PRO_ANNUAL_SWITCH_SOURCE_PLAN || sub.status !== 'active') return '';
@@ -1672,11 +1673,11 @@ export class UnifiedSettings {
           perMonthCents: prices.perMonthCents,
           monthlyTotalCents: prices.monthlyTotalCents,
           savingsVsMonthlyPct: prices.savingsVsMonthlyPct,
-        });
+        }, t);
         offerLine = `<div class="upgrade-pro-offer-line">${escapeHtml(line)}</div>`;
       }
     }
-    return `${offerLine}<button type="button" class="switch-to-yearly-btn">${escapeHtml(SWITCH_ENTRY_LABEL)}</button>`;
+    return `${offerLine}<button type="button" class="switch-to-yearly-btn">${escapeHtml(switchCopy(t).entryLabel)}</button>`;
   }
 
   // The switch dialog takes focus. When it is dismissed, focus goes back to

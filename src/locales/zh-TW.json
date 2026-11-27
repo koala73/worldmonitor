@@ -5800,6 +5800,36 @@
           "tooMany": "一次最多邀請10個人。",
           "rateLimited": "您今天傳送的邀請已達上限。請明天再試。"
         }
+      },
+      "switchYearly": {
+        "entryLabel": "切換為年付",
+        "offerLine": "黑色星期五：每月{{perMonth}}，而非{{monthly}}，按年計費。首年比按月付費立省{{percent}}%。之後按每年{{renewal}}續費。隨時取消。",
+        "title": "切換到 Pro 年度版",
+        "confirm": "立即切換",
+        "dismiss": "以後再說",
+        "previewMoves": "您的 Pro 月度版訂閱將立即轉為 Pro 年度版。",
+        "previewChargeOffer": "您今天需支付{{charge}}，即首年立省{{percent}}%後的價格，再扣除本月未使用部分的費用。",
+        "previewCharge": "您今天需支付{{charge}}，已扣除本月未使用部分的費用。",
+        "previewRestart": "您的計費週期從今天重新開始。",
+        "renewsPriceDate": "將於{{date}}按每年{{price}}續費，另加適用稅費。",
+        "renewsPrice": "續費價格為每年{{price}}，另加適用稅費。",
+        "renewsListDate": "將於{{date}}按 Pro 年度版價格續費。",
+        "renewsList": "將按 Pro 年度版價格續費。",
+        "previewTerms": "在此之前隨時取消，將不會再次收費。如果付款失敗，您將繼續使用 Pro 月度版。",
+        "offerNotApplied": "此次切換不適用該優惠。以下是不含優惠的價格。",
+        "quoteChanged": "該優惠已不再提供，您的套餐未作更改。以下是不含優惠的價格。",
+        "chargeChanged": "自報價後價格已變動，您的套餐未作更改。以下是新價格。",
+        "successTitle": "已切換到 Pro 年度版",
+        "successBody": "付款確認後，您的套餐即會變更，通常在一分鐘內完成。",
+        "done": "完成",
+        "cancelScheduledTitle": "請先恢復 Pro 月度版",
+        "cancelScheduledBody": "您的 Pro 月度版訂閱已設定為在本計費週期結束時取消。請先在計費門戶中恢復訂閱，再切換到 Pro 年度版。",
+        "openPortal": "開啟計費門戶",
+        "failedTitle": "未能確認切換",
+        "failedBody": "我們無法確認此次切換。重試前請先在計費門戶中檢視您的套餐，或傳送郵件至 support@worldmonitor.app。",
+        "accountChangedTitle": "帳戶已更改",
+        "accountChangedBody": "您在獲取此報價後切換了帳戶。請在要切換到 Pro 年度版的帳戶中重新開始切換。",
+        "unavailable": "我們目前無法計算此次切換的價格。請幾分鐘後重試，或傳送郵件至 support@worldmonitor.app。"
       }
     },
     "keywords": {

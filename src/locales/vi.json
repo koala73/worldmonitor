@@ -5800,6 +5800,36 @@
           "tooMany": "Mời tối đa 10 người cùng một lúc.",
           "rateLimited": "Bạn đã gửi số lượng lời mời tối đa trong một ngày. Hãy thử lại vào ngày mai."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Chuyển sang gói năm",
+        "offerLine": "Black Friday: {{perMonth}}/tháng thay vì {{monthly}}, thanh toán hàng năm. Rẻ hơn {{percent}}% so với trả hàng tháng trong năm đầu tiên. Gia hạn với giá {{renewal}}/năm. Hủy bất cứ lúc nào.",
+        "title": "Chuyển sang Pro Yearly",
+        "confirm": "Chuyển ngay",
+        "dismiss": "Để sau",
+        "previewMoves": "Gói đăng ký Pro Monthly của bạn sẽ chuyển sang Pro Yearly ngay bây giờ.",
+        "previewChargeOffer": "Hôm nay bạn thanh toán {{charge}}: giá năm đầu tiên được giảm {{percent}}%, trừ đi phần chưa sử dụng của tháng này.",
+        "previewCharge": "Hôm nay bạn thanh toán {{charge}}, đã trừ phần chưa sử dụng của tháng này.",
+        "previewRestart": "Chu kỳ thanh toán của bạn bắt đầu lại hôm nay.",
+        "renewsPriceDate": "Gói sẽ gia hạn vào {{date}} với giá {{price}}/năm, cộng thuế (nếu có).",
+        "renewsPrice": "Gói sẽ gia hạn với giá {{price}}/năm, cộng thuế (nếu có).",
+        "renewsListDate": "Gói sẽ gia hạn theo giá Pro Yearly vào {{date}}.",
+        "renewsList": "Gói sẽ gia hạn theo giá Pro Yearly.",
+        "previewTerms": "Hủy bất cứ lúc nào trước thời điểm đó và bạn sẽ không bị tính phí thêm. Nếu thanh toán không thành công, bạn sẽ tiếp tục dùng gói Pro Monthly.",
+        "offerNotApplied": "Ưu đãi không áp dụng cho lần chuyển đổi này. Đây là giá khi không có ưu đãi.",
+        "quoteChanged": "Ưu đãi không còn hiệu lực và gói của bạn chưa thay đổi. Đây là giá khi không có ưu đãi.",
+        "chargeChanged": "Giá đã thay đổi kể từ lúc báo giá và gói của bạn chưa thay đổi. Đây là giá mới.",
+        "successTitle": "Đã chuyển sang Pro Yearly",
+        "successBody": "Gói của bạn sẽ thay đổi ngay khi thanh toán được xác nhận, thường trong vòng một phút.",
+        "done": "Xong",
+        "cancelScheduledTitle": "Hãy khôi phục Pro Monthly trước",
+        "cancelScheduledBody": "Gói đăng ký Pro Monthly của bạn đã được đặt để hủy vào cuối kỳ này. Hãy khôi phục gói trong cổng thông tin thanh toán trước, sau đó chuyển sang Pro Yearly.",
+        "openPortal": "Mở cổng thông tin thanh toán",
+        "failedTitle": "Chưa xác nhận được việc chuyển đổi",
+        "failedBody": "Chúng tôi không thể xác nhận việc chuyển đổi. Hãy kiểm tra gói của bạn trong cổng thông tin thanh toán trước khi thử lại, hoặc gửi email đến support@worldmonitor.app.",
+        "accountChangedTitle": "Tài khoản đã thay đổi",
+        "accountChangedBody": "Bạn đã đổi tài khoản sau khi nhận báo giá này. Hãy bắt đầu lại từ tài khoản bạn muốn chuyển sang Pro Yearly.",
+        "unavailable": "Hiện chúng tôi không thể tính giá cho việc chuyển đổi. Hãy thử lại sau vài phút, hoặc gửi email đến support@worldmonitor.app."
       }
     },
     "keywords": {

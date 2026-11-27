@@ -465,12 +465,18 @@ export async function startProAnnualSwitch(
   onDismiss?: () => void,
 ): Promise<void> {
   // A failed chunk load (stale deploy, flaky network) still reaches the fallback.
-  const flowModule = await import('./pro-business-upgrade-dialog').catch(() => null);
-  if (!flowModule) {
+  const [flowModule, i18n] = await Promise.all([
+    import('./pro-business-upgrade-dialog').catch(() => null),
+    // Already loaded by the app; dynamic so node suites that load checkout skip i18next.
+    import('./i18n').catch(() => null),
+  ]);
+  if (!flowModule || !i18n) {
     fallback();
     return;
   }
   await flowModule.runProAnnualSwitchFlow({
+    translate: i18n.t,
+    locale: i18n.getLocale(),
     planKey,
     fallback,
     requestSwitch: requestProAnnualSwitch,

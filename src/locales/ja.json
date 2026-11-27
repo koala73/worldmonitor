@@ -5800,6 +5800,36 @@
           "tooMany": "1度に最大10人まで招待できます。",
           "rateLimited": "1日の招待数上限に達しました。明日もう一度お試しください。"
         }
+      },
+      "switchYearly": {
+        "entryLabel": "年間プランに切り替え",
+        "offerLine": "ブラックフライデー: 月額{{perMonth}}（通常{{monthly}}）、年間請求。初年度は月額払いより{{percent}}%お得です。その後は年額{{renewal}}で更新されます。いつでもキャンセルできます。",
+        "title": "Pro 年間プランに切り替える",
+        "confirm": "今すぐ切り替える",
+        "dismiss": "後で",
+        "previewMoves": "ご利用中の Pro 月額プランは、今すぐ Pro 年間プランに切り替わります。",
+        "previewChargeOffer": "本日のお支払いは{{charge}}です。初年度の{{percent}}%割引価格から、今月の未使用分を差し引いた金額です。",
+        "previewCharge": "本日のお支払いは、今月の未使用分を差し引いた{{charge}}です。",
+        "previewRestart": "請求期間は本日から新たに始まります。",
+        "renewsPriceDate": "{{date}}に年額{{price}}（税別）で更新されます。",
+        "renewsPrice": "年額{{price}}（税別）で更新されます。",
+        "renewsListDate": "{{date}}に Pro 年間プランの価格で更新されます。",
+        "renewsList": "Pro 年間プランの価格で更新されます。",
+        "previewTerms": "それまでにキャンセルすれば、追加の請求は発生しません。お支払いが完了しなかった場合は、Pro 月額プランのままとなります。",
+        "offerNotApplied": "今回の切り替えにはこのオファーを適用できません。オファーなしの価格を表示しています。",
+        "quoteChanged": "このオファーは終了しました。プランは変更されていません。オファーなしの価格を表示しています。",
+        "chargeChanged": "お見積もり後に価格が変更されました。プランは変更されていません。新しい価格を表示しています。",
+        "successTitle": "Pro 年間プランに切り替えました",
+        "successBody": "お支払いが確認され次第、プランが変更されます。通常1分以内に完了します。",
+        "done": "完了",
+        "cancelScheduledTitle": "先に Pro 月額プランを再開してください",
+        "cancelScheduledBody": "ご利用中の Pro 月額プランは、今回の請求期間の終了時にキャンセルされる予定です。先に課金ポータルでプランを再開してから、Pro 年間プランに切り替えてください。",
+        "openPortal": "課金ポータルを開く",
+        "failedTitle": "切り替えを確認できませんでした",
+        "failedBody": "切り替えを確認できませんでした。もう一度お試しになる前に課金ポータルでプランをご確認いただくか、support@worldmonitor.app までメールでお問い合わせください。",
+        "accountChangedTitle": "アカウントが変更されました",
+        "accountChangedBody": "お見積もりの取得後にアカウントが切り替えられました。Pro 年間プランに移行したいアカウントで、もう一度切り替えを開始してください。",
+        "unavailable": "現在、切り替え価格を算出できません。数分後にもう一度お試しいただくか、support@worldmonitor.app までメールでお問い合わせください。"
       }
     },
     "keywords": {

@@ -5837,6 +5837,36 @@
           "tooMany": "Egyszerre legfeljebb 10 személyt hívhat meg.",
           "rateLimited": "Elérte a napi meghívások maximális számát. Próbálja újra holnap."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Váltás éves csomagra",
+        "offerLine": "Black Friday: {{monthly}} helyett havi {{perMonth}}, éves számlázással. Ez az első évben {{percent}}%-kal kevesebb, mint a havi fizetés. Évi {{renewal}} áron újul meg. Bármikor lemondható.",
+        "title": "Váltás Pro Éves csomagra",
+        "confirm": "Váltás most",
+        "dismiss": "Most nem",
+        "previewMoves": "Pro Havi előfizetése most Pro Éves előfizetésre vált.",
+        "previewChargeOffer": "Ma fizetendő összeg: {{charge}} – az első év {{percent}}%-os kedvezménnyel, az aktuális hónap fel nem használt részével csökkentve.",
+        "previewCharge": "Ma fizetendő összeg: {{charge}} – az aktuális hónap fel nem használt részével csökkentve.",
+        "previewRestart": "Számlázási időszaka ma újraindul.",
+        "renewsPriceDate": "Az előfizetés évi {{price}} áron (plusz az esetleges adó) újul meg ekkor: {{date}}.",
+        "renewsPrice": "Az előfizetés évi {{price}} áron (plusz az esetleges adó) újul meg.",
+        "renewsListDate": "Az előfizetés a Pro Éves csomag árán újul meg ekkor: {{date}}.",
+        "renewsList": "Az előfizetés a Pro Éves csomag árán újul meg.",
+        "previewTerms": "Addig bármikor lemondhatja, és nem terheljük meg újra. Ha a fizetés sikertelen, a Pro Havi csomagban marad.",
+        "offerNotApplied": "Az ajánlat erre a váltásra nem érvényes. Íme az ár az ajánlat nélkül.",
+        "quoteChanged": "Az ajánlat már nem érhető el, és a csomagja nem változott. Íme az ár az ajánlat nélkül.",
+        "chargeChanged": "Az ár megváltozott az árajánlat óta, és a csomagja nem változott. Íme az új ár.",
+        "successTitle": "Sikeres váltás Pro Éves csomagra",
+        "successBody": "Csomagja a fizetés megerősítése után azonnal módosul, általában egy percen belül.",
+        "done": "Kész",
+        "cancelScheduledTitle": "Először aktiválja újra a Pro Havi előfizetést",
+        "cancelScheduledBody": "Pro Havi előfizetése a jelenlegi időszak végén megszűnik. Először aktiválja újra a számlázási portálon, majd váltson Pro Éves csomagra.",
+        "openPortal": "Számlázási portál megnyitása",
+        "failedTitle": "A váltás nincs megerősítve",
+        "failedBody": "Nem tudtuk megerősíteni a váltást. Mielőtt újra próbálkozna, ellenőrizze csomagját a számlázási portálon, vagy írjon a support@worldmonitor.app címre.",
+        "accountChangedTitle": "A fiók megváltozott",
+        "accountChangedBody": "Az árajánlat után fiókot váltott. Indítsa újra a váltást abból a fiókból, amelyet Pro Éves csomagra szeretne váltani.",
+        "unavailable": "Most nem tudtuk kiszámítani a váltás árát. Próbálja újra néhány perc múlva, vagy írjon a support@worldmonitor.app címre."
       }
     },
     "keywords": {

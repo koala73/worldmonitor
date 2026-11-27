@@ -9,6 +9,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
+import { I18N_RESOURCES_LOADED_EVENT } from '@/services/i18n';
 import { ACTIVE_PROMO } from '../../shared/promo-campaign';
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AuthSession } from '@/services/auth-state';
@@ -251,6 +252,25 @@ describe('UnifiedSettings Pro Monthly -> Pro Yearly switch', () => {
 
     expect(internal.overlay.querySelector('.upgrade-pro-offer-line')).toBeNull();
     expect(internal.overlay.querySelector('.switch-to-yearly-btn')).not.toBeNull();
+  });
+
+  // Settings can render before the full catalog arrives: the offer line then
+  // shows its raw key, and the catalog-loaded healer only knows the template.
+  // The line must be rebuilt with its prices, not left with {{placeholders}}.
+  it('rebuilds the offer line with its prices when the catalog finishes loading', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: DURING_OFFER });
+    subscriptionLoaded = true;
+    mockSubscription = proSubscription('pro_monthly');
+    settings.open('account');
+    const internal = settings as unknown as SettingsInternals;
+    await internal.switchPromoPricesLoad;
+    internal.replaceUpgradeSection();
+    const line = internal.overlay.querySelector<HTMLElement>('.upgrade-pro-offer-line')!;
+    line.textContent = 'settings.account.switchYearly.offerLine';
+    window.dispatchEvent(new Event(I18N_RESOURCES_LOADED_EVENT));
+    const healed = internal.overlay.querySelector<HTMLElement>('.upgrade-pro-offer-line')!.textContent ?? '';
+    expect(healed).not.toContain('{{');
+    expect(healed).toContain('$12.00 a month instead of $39.99');
   });
 
   it('clears the offer expiry timer when Settings closes', async () => {

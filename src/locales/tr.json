@@ -5837,6 +5837,36 @@
           "tooMany": "Aynı anda en fazla 10 kişiye davet gönderin.",
           "rateLimited": "Bir gün içinde izin verilen en fazla daveti gönderdiniz. Yarın tekrar deneyin."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Yıllık plana geç",
+        "offerLine": "Kara Cuma: aylık {{monthly}} yerine ayda {{perMonth}}, yıllık faturalandırılır. Bu, ilk yılınızda aylık ödemeye göre %{{percent}} daha az demektir. Yılda {{renewal}} olarak yenilenir. İstediğiniz zaman iptal edebilirsiniz.",
+        "title": "Pro Yıllık'a Geç",
+        "confirm": "Şimdi geç",
+        "dismiss": "Şimdi değil",
+        "previewMoves": "Pro Aylık aboneliğiniz şimdi Pro Yıllık'a geçiyor.",
+        "previewChargeOffer": "Bugün {{charge}} ödersiniz: %{{percent}} indirimli ilk yılınız, bu ayın kullanılmayan kısmı düşülerek.",
+        "previewCharge": "Bugün, bu ayın kullanılmayan kısmı düşülerek {{charge}} ödersiniz.",
+        "previewRestart": "Fatura döneminiz bugün yeniden başlıyor.",
+        "renewsPriceDate": "Aboneliğiniz {{date}} tarihinde yılda {{price}} artı geçerli vergilerle yenilenir.",
+        "renewsPrice": "Aboneliğiniz yılda {{price}} artı geçerli vergilerle yenilenir.",
+        "renewsListDate": "Aboneliğiniz {{date}} tarihinde Pro Yıllık fiyatıyla yenilenir.",
+        "renewsList": "Aboneliğiniz Pro Yıllık fiyatıyla yenilenir.",
+        "previewTerms": "O tarihten önce istediğiniz zaman iptal ederseniz tekrar ücretlendirilmezsiniz. Ödeme başarısız olursa Pro Aylık'ta kalırsınız.",
+        "offerNotApplied": "Teklif bu geçiş için geçerli değil. İndirimsiz fiyatı aşağıda görebilirsiniz.",
+        "quoteChanged": "Teklif artık geçerli değil ve planınız değişmedi. İndirimsiz fiyatı aşağıda görebilirsiniz.",
+        "chargeChanged": "Fiyat, size gösterildiğinden bu yana değişti ve planınız değişmedi. Yeni fiyatı aşağıda görebilirsiniz.",
+        "successTitle": "Pro Yıllık'a Geçildi",
+        "successBody": "Planınız, ödeme onaylanır onaylanmaz değişir; bu genellikle bir dakika içinde olur.",
+        "done": "Tamam",
+        "cancelScheduledTitle": "Önce Pro Aylık'ı Devam Ettirin",
+        "cancelScheduledBody": "Pro Aylık aboneliğiniz bu dönemin sonunda iptal edilecek. Önce faturalama portalında aboneliğinizi devam ettirin, ardından Pro Yıllık'a geçin.",
+        "openPortal": "Faturalama portalını aç",
+        "failedTitle": "Geçiş Onaylanmadı",
+        "failedBody": "Geçişi onaylayamadık. Tekrar denemeden önce planınızı faturalama portalında kontrol edin veya support@worldmonitor.app adresine e-posta gönderin.",
+        "accountChangedTitle": "Hesap Değişti",
+        "accountChangedBody": "Bu fiyat teklifinden sonra hesap değiştirdiniz. Geçişi, Pro Yıllık'a geçirmek istediğiniz hesaptan yeniden başlatın.",
+        "unavailable": "Geçişin fiyatını şu anda hesaplayamadık. Birkaç dakika sonra tekrar deneyin veya support@worldmonitor.app adresine e-posta gönderin."
       }
     },
     "keywords": {

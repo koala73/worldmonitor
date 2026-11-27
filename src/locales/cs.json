@@ -5911,6 +5911,36 @@
           "tooMany": "Najednou můžete pozvat nejvýše 10 lidí.",
           "rateLimited": "Odeslali jste maximální povolený počet pozvání za den. Zkuste to zítra."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Přejít na roční plán",
+        "offerLine": "Black Friday: {{perMonth}} měsíčně místo {{monthly}}, fakturováno ročně. V prvním roce je to o {{percent}}% méně než při měsíčních platbách. Obnovuje se za {{renewal}} ročně. Zrušit lze kdykoli.",
+        "title": "Přejít na Pro Yearly",
+        "confirm": "Přejít nyní",
+        "dismiss": "Později",
+        "previewMoves": "Vaše předplatné Pro Monthly se nyní mění na Pro Yearly.",
+        "previewChargeOffer": "Dnes zaplatíte {{charge}}: první rok se slevou {{percent}}%, po odečtení nevyužité části tohoto měsíce.",
+        "previewCharge": "Dnes zaplatíte {{charge}} po odečtení nevyužité části tohoto měsíce.",
+        "previewRestart": "Vaše fakturační období dnes začíná znovu.",
+        "renewsPriceDate": "Předplatné se dne {{date}} obnoví za {{price}} ročně plus případná daň.",
+        "renewsPrice": "Předplatné se obnoví za {{price}} ročně plus případná daň.",
+        "renewsListDate": "Předplatné se dne {{date}} obnoví za cenu Pro Yearly.",
+        "renewsList": "Předplatné se obnoví za cenu Pro Yearly.",
+        "previewTerms": "Pokud předtím kdykoli zrušíte, nic dalšího vám neúčtujeme. Pokud se platba nezdaří, zůstanete na Pro Monthly.",
+        "offerNotApplied": "Nabídka se na tento přechod nevztahuje. Zde je cena bez ní.",
+        "quoteChanged": "Nabídka již není dostupná a váš plán se nezměnil. Zde je cena bez ní.",
+        "chargeChanged": "Cena se od poslední kalkulace změnila a váš plán se nezměnil. Zde je nová cena.",
+        "successTitle": "Přešli jste na Pro Yearly",
+        "successBody": "Váš plán se změní hned po potvrzení platby, obvykle během minuty.",
+        "done": "Hotovo",
+        "cancelScheduledTitle": "Nejdříve obnovte Pro Monthly",
+        "cancelScheduledBody": "Vaše předplatné Pro Monthly je naplánováno ke zrušení na konci tohoto období. Nejdříve ho obnovte na portálu fakturace a potom přejděte na Pro Yearly.",
+        "openPortal": "Otevřít portál fakturace",
+        "failedTitle": "Přechod nebyl potvrzen",
+        "failedBody": "Přechod se nám nepodařilo potvrdit. Než to zkusíte znovu, zkontrolujte svůj plán na portálu fakturace, nebo napište na support@worldmonitor.app.",
+        "accountChangedTitle": "Účet se změnil",
+        "accountChangedBody": "Po zobrazení této ceny jste přepnuli účet. Zahajte přechod znovu z účtu, který chcete převést na Pro Yearly.",
+        "unavailable": "Cenu přechodu teď nedokážeme spočítat. Zkuste to znovu za pár minut, nebo napište na support@worldmonitor.app."
       }
     },
     "keywords": {

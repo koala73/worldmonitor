@@ -5884,6 +5884,36 @@
           "tooMany": "Pozovite do 10 osoba odjednom.",
           "rateLimited": "Poslali ste najveći dopušteni broj poziva u jednom danu. Pokušajte ponovno sutra."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Prijeđite na godišnji plan",
+        "offerLine": "Crni petak: {{perMonth}} mjesečno umjesto {{monthly}}, naplaćeno godišnje. To je {{percent}}% manje od mjesečnog plaćanja u prvoj godini. Obnavlja se po cijeni od {{renewal}} godišnje. Otkažite bilo kada.",
+        "title": "Prijeđite na Pro Godišnje",
+        "confirm": "Prijeđite sada",
+        "dismiss": "Ne sada",
+        "previewMoves": "Vaša pretplata Pro Mjesečno odmah prelazi na Pro Godišnje.",
+        "previewChargeOffer": "Danas plaćate {{charge}}: prva godina uz {{percent}}% popusta, umanjeno za neiskorišteni dio ovog mjeseca.",
+        "previewCharge": "Danas plaćate {{charge}}, umanjeno za neiskorišteni dio ovog mjeseca.",
+        "previewRestart": "Vaše obračunsko razdoblje danas počinje iznova.",
+        "renewsPriceDate": "Pretplata se obnavlja {{date}} po cijeni od {{price}} godišnje uz eventualni porez.",
+        "renewsPrice": "Pretplata se obnavlja po cijeni od {{price}} godišnje uz eventualni porez.",
+        "renewsListDate": "Pretplata se obnavlja {{date}} po cijeni plana Pro Godišnje.",
+        "renewsList": "Pretplata se obnavlja po cijeni plana Pro Godišnje.",
+        "previewTerms": "Otkažete li bilo kada prije toga, više vam nećemo naplaćivati. Ako plaćanje ne uspije, ostajete na planu Pro Mjesečno.",
+        "offerNotApplied": "Ponuda nije dostupna za ovaj prijelaz. Ovo je cijena bez nje.",
+        "quoteChanged": "Ponuda više nije dostupna, a vaš se plan nije promijenio. Ovo je cijena bez nje.",
+        "chargeChanged": "Cijena se promijenila od izračuna, a vaš se plan nije promijenio. Ovo je nova cijena.",
+        "successTitle": "Prešli ste na Pro Godišnje",
+        "successBody": "Vaš se plan mijenja čim se plaćanje potvrdi, obično u roku od minute.",
+        "done": "Gotovo",
+        "cancelScheduledTitle": "Najprije ponovno aktivirajte Pro Mjesečno",
+        "cancelScheduledBody": "Vaša pretplata Pro Mjesečno otkazat će se na kraju ovog razdoblja. Najprije je ponovno aktivirajte u portalu za naplatu, a zatim prijeđite na Pro Godišnje.",
+        "openPortal": "Otvorite portal za naplatu",
+        "failedTitle": "Prijelaz nije potvrđen",
+        "failedBody": "Nismo mogli potvrditi prijelaz. Prije ponovnog pokušaja provjerite svoj plan u portalu za naplatu ili pošaljite e-poštu na support@worldmonitor.app.",
+        "accountChangedTitle": "Račun je promijenjen",
+        "accountChangedBody": "Nakon ovog izračuna promijenili ste račun. Ponovno započnite prijelaz s računa koji želite prebaciti na Pro Godišnje.",
+        "unavailable": "Trenutačno ne možemo izračunati cijenu prijelaza. Pokušajte ponovno za nekoliko minuta ili pošaljite e-poštu na support@worldmonitor.app."
       }
     },
     "keywords": {

@@ -5874,6 +5874,36 @@
           "tooMany": "Invită până la 10 persoane odată.",
           "rateLimited": "Ai atins numărul maxim de invitații permise pe zi. Încearcă din nou mâine."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Treceți la plata anuală",
+        "offerLine": "Black Friday: {{perMonth}} pe lună în loc de {{monthly}}, facturare anuală. Adică cu {{percent}}% mai puțin decât plata lunară în primul an. Se reînnoiește la {{renewal}} pe an. Anulați oricând.",
+        "title": "Treceți la Pro Yearly",
+        "confirm": "Treceți acum",
+        "dismiss": "Mai târziu",
+        "previewMoves": "Abonamentul dvs. Pro Monthly trece acum la Pro Yearly.",
+        "previewChargeOffer": "Plătiți astăzi {{charge}}: primul an cu {{percent}}% reducere, minus partea neutilizată din această lună.",
+        "previewCharge": "Plătiți astăzi {{charge}}, minus partea neutilizată din această lună.",
+        "previewRestart": "Perioada de facturare reîncepe astăzi.",
+        "renewsPriceDate": "Pe {{date}} se reînnoiește la {{price}} pe an, plus eventualele taxe.",
+        "renewsPrice": "Se reînnoiește la {{price}} pe an, plus eventualele taxe.",
+        "renewsListDate": "Pe {{date}} se reînnoiește la prețul Pro Yearly.",
+        "renewsList": "Se reînnoiește la prețul Pro Yearly.",
+        "previewTerms": "Anulați oricând înainte de atunci și nu veți mai fi taxat. Dacă plata eșuează, rămâneți pe Pro Monthly.",
+        "offerNotApplied": "Oferta nu este disponibilă pentru această schimbare. Iată prețul fără ofertă.",
+        "quoteChanged": "Oferta nu mai este disponibilă, iar planul dvs. nu s-a schimbat. Iată prețul fără ofertă.",
+        "chargeChanged": "Prețul s-a schimbat față de estimarea anterioară, iar planul dvs. nu s-a schimbat. Iată noul preț.",
+        "successTitle": "Ați trecut la Pro Yearly",
+        "successBody": "Planul dvs. se schimbă imediat ce plata este confirmată, de obicei în decurs de un minut.",
+        "done": "Gata",
+        "cancelScheduledTitle": "Reactivați mai întâi Pro Monthly",
+        "cancelScheduledBody": "Abonamentul dvs. Pro Monthly are anularea programată la sfârșitul acestei perioade. Reactivați-l mai întâi în portalul de facturare, apoi treceți la Pro Yearly.",
+        "openPortal": "Deschide portalul de facturare",
+        "failedTitle": "Schimbare neconfirmată",
+        "failedBody": "Nu am putut confirma schimbarea. Verificați planul dvs. în portalul de facturare înainte de a încerca din nou sau trimiteți un email la support@worldmonitor.app.",
+        "accountChangedTitle": "Cont schimbat",
+        "accountChangedBody": "Ați schimbat contul după această estimare. Porniți din nou schimbarea din contul pe care doriți să-l treceți la Pro Yearly.",
+        "unavailable": "Nu putem calcula prețul schimbării în acest moment. Încercați din nou peste câteva minute sau trimiteți un email la support@worldmonitor.app."
       }
     },
     "keywords": {

@@ -279,6 +279,8 @@ import {
   captureBillingPortalIntentFromUrl,
   resumePendingBillingPortal,
 } from '@/services/billing-portal-intent';
+import { createAccountSettingsIntent } from '@/services/settings-account-intent';
+import { isClerkAuthEnabled } from '@/services/clerk';
 import {
   FREE_TIER_FOLLOW_LIMIT,
   WM_FOLLOWED_COUNTRIES_CAP_DROP,
@@ -337,6 +339,19 @@ export class App {
       notify: (message) => showToast(message),
     }, capturedThisLoad);
   }
+
+  // /dashboard?settings=account: opens Settings on Account once the session settles.
+  private readonly accountSettingsIntent = createAccountSettingsIntent({
+    getAuth: () => {
+      const session = getAuthState();
+      return { isPending: session.isPending, userId: session.user?.id ?? null };
+    },
+    canSignIn: () => isClerkAuthEnabled(),
+    openAccount: () => this.state.unifiedSettings?.open('account'),
+    openSettings: () => this.state.unifiedSettings?.open(),
+    openSignIn: () => this.state.authModal?.open(),
+  });
+  private unsubAccountSettingsIntent: (() => void) | null = null;
 
   private pendingDeepLinkCountry: string | null = null;
   private pendingDeepLinkExpanded = false;
@@ -3238,6 +3253,20 @@ export class App {
     if (earlyParams.get('settings') === 'notifications') {
       void this.state.unifiedSettings?.open('notifications');
     }
+    // ?settings=account, or an intent stored before a sign-in redirect. It
+    // waits for the session (Clerk loads on idle), so act on every auth
+    // emission until it opens.
+    this.accountSettingsIntent.capture();
+    if (this.accountSettingsIntent.isPending()) {
+      this.unsubAccountSettingsIntent = subscribeAuthState(() => {
+        if (this.accountSettingsIntent.resume() !== 'opened') return;
+        // subscribeAuthState emits synchronously, before the assignment below.
+        queueMicrotask(() => {
+          this.unsubAccountSettingsIntent?.();
+          this.unsubAccountSettingsIntent = null;
+        });
+      });
+    }
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.pendingDeepLinkSearchQuery = readDashboardSearchQuery(window.location.search);
     this.pendingOrbitalShareLink = ORBITAL_WATCH_ENABLED ? takeOrbitalShareLink() : null;
@@ -3892,6 +3921,7 @@ export class App {
       // Clean up subscriptions, map, AIS, and breaking news
       this.unsubAiFlow?.();
       this.unsubFreeTier?.();
+      this.unsubAccountSettingsIntent?.();
       this.unsubEntitlementPremiumLoaders?.();
       this.unsubWidgetAccessPremiumLoaders?.();
       this.unsubDesktopCloudAccess?.();

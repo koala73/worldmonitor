@@ -5837,6 +5837,36 @@
           "tooMany": "Bjud in högst 10 personer åt gången.",
           "rateLimited": "Du har skickat maximalt antal inbjudningar per dag. Försök igen imorgon."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Byt till årsbetalning",
+        "offerLine": "Black Friday: {{perMonth}} per månad istället för {{monthly}}, faktureras årligen. Det är {{percent}}% mindre än att betala månadsvis under ditt första år. Förnyas sedan till {{renewal}} per år. Avbryt när som helst.",
+        "title": "Byt till Pro Yearly",
+        "confirm": "Byt nu",
+        "dismiss": "Inte nu",
+        "previewMoves": "Ditt Pro Monthly-abonnemang byts nu till Pro Yearly.",
+        "previewChargeOffer": "Du betalar {{charge}} idag: ditt första år med {{percent}}% rabatt, minus den oanvända delen av den här månaden.",
+        "previewCharge": "Du betalar {{charge}} idag, minus den oanvända delen av den här månaden.",
+        "previewRestart": "Din faktureringsperiod startar om idag.",
+        "renewsPriceDate": "Den {{date}} förnyas det till {{price}} per år plus eventuell moms.",
+        "renewsPrice": "Det förnyas till {{price}} per år plus eventuell moms.",
+        "renewsListDate": "Den {{date}} förnyas det till priset för Pro Yearly.",
+        "renewsList": "Det förnyas till priset för Pro Yearly.",
+        "previewTerms": "Avbryt när som helst innan dess, så debiteras du inte igen. Om betalningen misslyckas behåller du Pro Monthly.",
+        "offerNotApplied": "Erbjudandet gäller inte för det här bytet. Här är priset utan erbjudandet.",
+        "quoteChanged": "Erbjudandet är inte längre tillgängligt och din plan har inte ändrats. Här är priset utan erbjudandet.",
+        "chargeChanged": "Priset har ändrats sedan du fick prisuppgiften och din plan har inte ändrats. Här är det nya priset.",
+        "successTitle": "Bytt till Pro Yearly",
+        "successBody": "Din plan ändras så snart betalningen bekräftas, vanligtvis inom en minut.",
+        "done": "Klar",
+        "cancelScheduledTitle": "Återuppta Pro Monthly först",
+        "cancelScheduledBody": "Ditt Pro Monthly-abonnemang är uppsagt och upphör vid slutet av den här perioden. Återuppta det först i faktureringsportalen och byt sedan till Pro Yearly.",
+        "openPortal": "Öppna faktureringsportalen",
+        "failedTitle": "Bytet är inte bekräftat",
+        "failedBody": "Vi kunde inte bekräfta bytet. Kontrollera din plan i faktureringsportalen innan du försöker igen, eller mejla support@worldmonitor.app.",
+        "accountChangedTitle": "Kontot har bytts",
+        "accountChangedBody": "Du bytte konto efter den här prisuppgiften. Starta bytet igen från det konto som du vill flytta till Pro Yearly.",
+        "unavailable": "Vi kan inte räkna ut priset för bytet just nu. Försök igen om några minuter, eller mejla support@worldmonitor.app."
       }
     },
     "keywords": {

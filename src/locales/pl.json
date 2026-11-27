@@ -5911,6 +5911,36 @@
           "tooMany": "Zaproś maksymalnie 10 osób jednocześnie.",
           "rateLimited": "Osiągnięto dzienny limit wysłanych zaproszeń. Spróbuj ponownie jutro."
         }
+      },
+      "switchYearly": {
+        "entryLabel": "Przejdź na plan roczny",
+        "offerLine": "Black Friday: {{perMonth}} miesięcznie zamiast {{monthly}}, rozliczane rocznie. To {{percent}}% mniej niż przy płatności miesięcznej w pierwszym roku. Odnawia się za {{renewal}} rocznie. Możesz anulować w każdej chwili.",
+        "title": "Przejdź na Pro Yearly",
+        "confirm": "Przejdź teraz",
+        "dismiss": "Nie teraz",
+        "previewMoves": "Twoja subskrypcja Pro Monthly od razu przechodzi na Pro Yearly.",
+        "previewChargeOffer": "Dziś płacisz {{charge}}: pierwszy rok ze zniżką {{percent}}%, po odliczeniu niewykorzystanej części tego miesiąca.",
+        "previewCharge": "Dziś płacisz {{charge}} po odliczeniu niewykorzystanej części tego miesiąca.",
+        "previewRestart": "Twój okres rozliczeniowy zaczyna się dziś od nowa.",
+        "renewsPriceDate": "Subskrypcja odnowi się {{date}} za {{price}} rocznie plus ewentualny podatek.",
+        "renewsPrice": "Subskrypcja odnowi się za {{price}} rocznie plus ewentualny podatek.",
+        "renewsListDate": "Subskrypcja odnowi się {{date}} po cenie Pro Yearly.",
+        "renewsList": "Subskrypcja odnowi się po cenie Pro Yearly.",
+        "previewTerms": "Anuluj w dowolnym momencie przed tą datą, a nie obciążymy Cię ponownie. Jeśli płatność się nie powiedzie, pozostaniesz na Pro Monthly.",
+        "offerNotApplied": "Oferta nie jest dostępna dla tego przejścia. Oto cena bez niej.",
+        "quoteChanged": "Oferta nie jest już dostępna, a Twój plan się nie zmienił. Oto cena bez niej.",
+        "chargeChanged": "Cena zmieniła się od czasu wyceny, a Twój plan się nie zmienił. Oto nowa cena.",
+        "successTitle": "Zmieniono plan na Pro Yearly",
+        "successBody": "Twój plan zmienia się natychmiast po potwierdzeniu płatności, zwykle w ciągu minuty.",
+        "done": "Gotowe",
+        "cancelScheduledTitle": "Najpierw wznów Pro Monthly",
+        "cancelScheduledBody": "Twoja subskrypcja Pro Monthly zostanie anulowana na koniec tego okresu. Najpierw wznów ją w portalu rozliczeń, a następnie przejdź na Pro Yearly.",
+        "openPortal": "Otwórz portal rozliczeń",
+        "failedTitle": "Przejście niepotwierdzone",
+        "failedBody": "Nie udało się potwierdzić przejścia. Zanim spróbujesz ponownie, sprawdź swój plan w portalu rozliczeń lub napisz na support@worldmonitor.app.",
+        "accountChangedTitle": "Zmieniono konto",
+        "accountChangedBody": "Konto zostało zmienione po otrzymaniu tej wyceny. Rozpocznij przejście od nowa z konta, które chcesz przenieść na Pro Yearly.",
+        "unavailable": "Nie udało się teraz obliczyć ceny przejścia. Spróbuj ponownie za kilka minut lub napisz na support@worldmonitor.app."
       }
     },
     "keywords": {
