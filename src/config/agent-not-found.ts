@@ -143,6 +143,7 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/ask',
   '/blog',
   '/changelog',
+  '/chatgpt',
   '/chokepoints',
   '/compare',
   '/contact',

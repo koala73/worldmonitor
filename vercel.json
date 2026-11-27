@@ -54,6 +54,8 @@
     { "source": "/id", "destination": "/id/", "permanent": true },
     { "source": "/ja", "destination": "/ja/", "permanent": true },
     { "source": "/pricing", "destination": "/pro#pricing", "permanent": true },
+    { "source": "/chatgpt", "destination": "https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba", "permanent": false },
+    { "source": "/chatgpt/", "destination": "https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba", "permanent": false },
     { "source": "/blog", "destination": "/blog/", "permanent": true },
     { "source": "/blog/posts", "destination": "/blog/", "permanent": true },
     { "source": "/blog/posts/:slug([a-z0-9-]+)", "destination": "/blog/posts/:slug/", "permanent": true },
