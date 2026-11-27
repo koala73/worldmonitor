@@ -3144,6 +3144,9 @@
       "references": [
         {
           "path": "api/oauth/_client-metadata.js"
+        },
+        {
+          "path": "src/config/mcp-agent-clients.ts"
         }
       ]
     },

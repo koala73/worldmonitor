@@ -5139,7 +5139,8 @@
     "current": "Source vérifiée",
     "reportedClaims": "Rapports de l’éditeur. Les affirmations peuvent encore faire l’objet d’une enquête.",
     "occurred": "Incident",
-    "reported": "Publié"
+    "reported": "Publié",
+    "listed": "Enregistré"
   },
   "panelVariants": {
     "finance": {

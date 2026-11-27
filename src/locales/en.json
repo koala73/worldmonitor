@@ -5646,7 +5646,8 @@
     "current": "Source checked",
     "reportedClaims": "Publisher reports. Claims may remain under investigation.",
     "occurred": "Incident",
-    "reported": "Published"
+    "reported": "Published",
+    "listed": "Listed"
   },
   "pwaInstall": {
     "title": "Install app",

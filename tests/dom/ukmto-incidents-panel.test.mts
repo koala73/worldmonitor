@@ -25,7 +25,7 @@ it('separates unavailable, empty and stale states and escapes report text', () =
   panel.setData({ incidents: [], fetchedAt: Date.now(), dataAvailable: true, stale: false });
   expect(document.body.textContent).toContain('ukmto.empty');
   panel.setData({ incidents: [{ id: 'one', incidentNumber: 1, incidentType: 'Attack', place: '<img src=x>',
-    description: '<script>alert(1)</script> suspected', occurredAt: Date.now(), reportedAt: Date.now(),
+    description: '<script>alert(1)</script> suspected', occurredAt: Date.now(), occurredAtStated: false, reportedAt: Date.now(),
     location: { latitude: 26, longitude: 56 } }], fetchedAt: Date.now(), dataAvailable: true, stale: true });
   expect(document.body.textContent).toContain('ukmto.stale');
   expect(document.querySelector('img,script')).toBeNull();
@@ -39,7 +39,7 @@ it('separates unavailable, empty and stale states and escapes report text', () =
 it('credits both publishers and omits a publication time the source does not carry', () => {
   const panel = new UkmtoIncidentsPanel();
   panel.setData({ incidents: [{ id: 'ukmto-186', incidentNumber: 186, incidentType: 'Attack', place: 'Strait of Hormuz',
-    description: 'Tanker struck.', occurredAt: Date.parse('2026-10-29T17:50:00Z'), reportedAt: 0,
+    description: 'Tanker struck.', occurredAt: Date.parse('2026-10-29T17:50:00Z'), occurredAtStated: true, reportedAt: 0,
     location: { latitude: 26.38, longitude: 56.33 } }], fetchedAt: Date.now(), dataAvailable: true, stale: false });
   expect(document.body.textContent).toContain('ukmto.occurred: 2026-10-29 17:50 UTC');
   expect(document.body.textContent).not.toContain('ukmto.reported:');
@@ -51,4 +51,13 @@ it('credits both publishers and omits a publication time the source does not car
     'https://hormuz.data-tracking.net/',
     'https://creativecommons.org/licenses/by/4.0/',
   ]);
+});
+
+it('labels a time UKMTO did not state as the listed time, not the incident time', () => {
+  const panel = new UkmtoIncidentsPanel();
+  panel.setData({ incidents: [{ id: 'ukmto-212', incidentNumber: 212, incidentType: 'Attack', place: 'Strait of Hormuz',
+    description: 'Tanker struck.', occurredAt: Date.parse('2026-11-18T22:25:00Z'), occurredAtStated: false, reportedAt: 0,
+    location: { latitude: 26.32, longitude: 56.27 } }], fetchedAt: Date.now(), dataAvailable: true, stale: false });
+  expect(document.body.textContent).toContain('ukmto.listed: 2026-11-18 22:25 UTC');
+  expect(document.body.textContent).not.toContain('ukmto.occurred:');
 });

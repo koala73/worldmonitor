@@ -15,6 +15,8 @@ message UkmtoIncident {
   worldmonitor.core.v1.GeoCoordinates location = 6;
   int64 occurred_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   int64 reported_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // True when occurred_at is the incident time stated in the report; false when it is the republisher's listed time.
+  bool occurred_at_stated = 9;
 }
 
 // ListUkmtoIncidentsRequest requests the latest publisher snapshot.

@@ -42,6 +42,8 @@ export interface McpAgentClient {
   action: McpAgentAction;
 }
 
+export const CHATGPT_PLUGIN_URL = 'https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba';
+
 export const CLAUDE_CONNECTOR_URL =
   'https://claude.ai/customize/connectors?modal=add-custom-connector'
   + `&connectorName=${encodeURIComponent(DISPLAY_NAME)}`
@@ -65,8 +67,8 @@ export const MCP_AGENT_CLIENTS: readonly McpAgentClient[] = [
   {
     id: 'chatgpt',
     name: 'ChatGPT',
-    hint: 'In ChatGPT, open Plugins, click +, choose Add custom MCP server, paste the URL and pick OAuth.',
-    action: { kind: 'url' },
+    hint: 'Opens World Monitor in ChatGPT. Add it and sign in. Without the plugin, open Plugins, click +, choose Add custom MCP server, paste the server URL and pick OAuth.',
+    action: { kind: 'link', label: 'Add to ChatGPT', href: CHATGPT_PLUGIN_URL },
   },
   {
     id: 'cursor',

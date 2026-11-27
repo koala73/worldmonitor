@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  CHATGPT_PLUGIN_URL,
   CLAUDE_CONNECTOR_URL,
   CURSOR_INSTALL_URL,
   MCP_AGENT_CLIENTS,
@@ -56,7 +57,7 @@ describe('MCP quickstart docs stay in step with the catalog', () => {
   for (const path of ['docs/mcp-quickstart.mdx', 'docs/zh/mcp-quickstart.mdx']) {
     it(`${path} carries every one-click link and command`, () => {
       const doc = read(path);
-      for (const link of [CLAUDE_CONNECTOR_URL, CURSOR_INSTALL_URL, VSCODE_INSTALL_URL]) {
+      for (const link of [CLAUDE_CONNECTOR_URL, CHATGPT_PLUGIN_URL, CURSOR_INSTALL_URL, VSCODE_INSTALL_URL]) {
         assert.ok(doc.includes(`](${link})`), `${path} is missing ${link}`);
       }
       for (const client of MCP_AGENT_CLIENTS) {

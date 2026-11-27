@@ -43,7 +43,7 @@ gemini mcp add --scope user --transport http worldmonitor https://worldmonitor.a
 ```
 </CodeGroup>
 
-ChatGPT、Grok、Perplexity 等应用可将地址 `https://worldmonitor.app/mcp` 添加为自定义连接器，各应用步骤见下文。
+ChatGPT 的插件目录中已收录 World Monitor。Grok、Perplexity 等应用可将地址 `https://worldmonitor.app/mcp` 添加为自定义连接器，各应用步骤见下文。
 
 <Tip>
 已登录[仪表盘](https://www.worldmonitor.app/dashboard)？**Settings → AI Agents** 中有同样的按钮和命令，并列出你已连接的助手。
@@ -107,15 +107,19 @@ ChatGPT、Grok、Perplexity 等应用可将地址 `https://worldmonitor.app/mcp`
 ## ChatGPT
 
 <Steps>
-  <Step title="添加服务器">
-    打开 **Plugins**，点击 **+**，选择 **Add custom MCP server**。名称填 `World Monitor`，粘贴 `https://worldmonitor.app/mcp`，认证方式选择 **OAuth**，然后确认。
+  <Step title="添加插件">
+    打开 [ChatGPT 插件目录中的 World Monitor](https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba)，然后添加它。
+
+    <Accordion title="改为添加自定义服务器">
+      如果你的套餐或工作区没有提供该插件，请使用此方法。打开 **Plugins**，点击 **+**，选择 **Add custom MCP server**。名称填 `World Monitor`，粘贴 `https://worldmonitor.app/mcp`，认证方式选择 **OAuth**，然后确认。
+
+      ChatGPT 的菜单位置会随版本变化，部分套餐或工作区也会关闭自定义服务器。如果找不到该入口，请参阅 [OpenAI 的自定义 MCP 服务器指南](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt)。
+    </Accordion>
   </Step>
   <Step title="登录并提问">
     在弹出的窗口中用 World Monitor 账户登录，然后在对话的 **+** 菜单中选择 World Monitor。
   </Step>
 </Steps>
-
-ChatGPT 的菜单位置会随版本变化，部分套餐或工作区也会关闭自定义服务器。如果找不到该入口，请参阅 [OpenAI 的自定义 MCP 服务器指南](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt)。
 
 ## Codex
 
