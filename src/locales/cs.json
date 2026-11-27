@@ -2690,7 +2690,13 @@
       "headline": "Denní AI briefingy e-mailem nebo Slackem",
       "tagline": "plus WM Analyst, pravidla upozornění a MCP pro Claude",
       "cta": "Upgradovat na Pro →",
-      "dismiss": "Zavřít"
+      "dismiss": "Zavřít",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "{{savings}}% sleva na Pro na první rok",
+      "promoTagline": "{{perMonth}} měsíčně místo {{monthly}}, fakturováno ročně. Zrušit lze kdykoliv. Končí {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% sleva na Pro Yearly na první rok",
+      "promoTaglineYearlyOnly": "Zrušit lze kdykoli. Skončí {{date}}.",
+      "promoCta": "Získat nabídku"
     },
     "billingState": {
       "onHoldDesc": "Platba se nezdařila. Aktualizujte svou platební metodu pro obnovení prémiového přístupu.",

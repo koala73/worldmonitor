@@ -2738,7 +2738,13 @@
       "headline": "خلاصه‌های روزانه هوش مصنوعی از طریق ایمیل یا Slack",
       "tagline": "به‌علاوه WM Analyst، قوانین هشدار و MCP برای Claude",
       "cta": "ارتقا به Pro ←",
-      "dismiss": "نادیده گرفتن"
+      "dismiss": "نادیده گرفتن",
+      "promoBadge": "جمعه سیاه",
+      "promoHeadline": "{{savings}}% تخفیف Pro برای سال اول",
+      "promoTagline": "{{perMonth}} در ماه به جای {{monthly}}، با صورتحساب سالانه. لغو در هر زمان. تا {{date}} پایان می‌یابد.",
+      "promoHeadlineYearlyOnly": "{{percent}}% تخفیف Pro سالانه برای سال اول",
+      "promoTaglineYearlyOnly": "لغو در هر زمان. تاریخ پایان {{date}}.",
+      "promoCta": "دریافت پیشنهاد"
     },
     "billingState": {
       "onHoldDesc": "پرداخت ناموفق بود. روش پرداخت خود را به‌روزرسانی کنید تا دسترسی ویژه بازیابی شود.",

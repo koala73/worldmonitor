@@ -357,7 +357,26 @@
     "axisPersonalNote": "للاستخدام الفردي",
     "axisCommercial": "تجاري",
     "axisCommercialNote": "العمل والعملاء والمنتجات",
-    "cancelAnytime": "يمكنك الإلغاء في أي وقت من حسابك. ستحتفظ بإمكانية الوصول حتى نهاية الفترة التي دفعت مقابلها."
+    "cancelAnytime": "يمكنك الإلغاء في أي وقت من حسابك. ستحتفظ بإمكانية الوصول حتى نهاية الفترة التي دفعت مقابلها.",
+    "promo": {
+      "stripHeadline": "الجمعة السوداء: خصم {{savings}}% على Pro. {{perMonth}} شهريًا، تُدفع سنويًا.",
+      "stripDetail": "{{promoPrice}} للسنة الأولى بدلاً من {{monthlyTotal}} عند الدفع شهريًا. يتجدد بسعر {{listPrice}} سنويًا. ألغِ في أي وقت قبل ذلك ولن تدفع أي مبلغ إضافي.",
+      "stripHeadlineYearlyOnly": "الجمعة السوداء: خصم {{percent}}% على Pro السنوي.",
+      "stripDetailYearlyOnly": "{{promoPrice}} للسنة الأولى. يتجدد بسعر {{listPrice}} سنويًا. ألغِ في أي وقت قبل ذلك ولن تدفع أي مبلغ إضافي.",
+      "suffixFirstYear": "السنة الأولى",
+      "payingMonthly": "عند الدفع شهريًا",
+      "badge": "خصم {{percent}}%",
+      "annualNote": "{{perMonth}}/شهر، تُدفع سنويًا. ثم {{listPrice}}/سنة. ينتهي العرض {{date}}.",
+      "annualNoteYearlyOnly": "ثم {{listPrice}}/سنة. ينتهي العرض {{date}}.",
+      "monthlyNote": "الجمعة السوداء: خصم {{savings}}% مع السنوي",
+      "monthlyNoteYearlyOnly": "الجمعة السوداء: خصم {{percent}}% على Pro السنوي",
+      "srReferencePrice": "بالمقارنة مع:",
+      "srOfferPrice": "سعر العرض:",
+      "stripEnds": "ينتهي {{date}}.",
+      "cancelNote": "يمكنك الإلغاء في أي وقت. إذا ألغيت قبل انتهاء السنة الأولى، لن يتم فرض رسوم عليك مجددًا.",
+      "annualNoteShort": "{{perMonth}}/شهر، تُدفع سنويًا. ثم {{listPrice}}/سنة.",
+      "annualNoteShortYearlyOnly": "ثم {{listPrice}}/سنة."
+    }
   },
   "welcome": {
     "meta": {

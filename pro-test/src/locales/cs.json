@@ -357,7 +357,26 @@
     "axisPersonalNote": "individuální použití",
     "axisCommercial": "Komerční",
     "axisCommercialNote": "práce, klienti a produkty",
-    "cancelAnytime": "Zrušit kdykoli ze svého účtu. Máte přístup až do konce období, které jste zaplatili."
+    "cancelAnytime": "Zrušit kdykoli ze svého účtu. Máte přístup až do konce období, které jste zaplatili.",
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% sleva na Pro. {{perMonth}} měsíčně, fakturováno ročně.",
+      "stripDetail": "{{promoPrice}} za první rok místo {{monthlyTotal}} při měsíčních platbách. Obnovuje se za {{listPrice}} ročně. Pokud předtím kdykoli zrušíte, nic dalšího nezaplatíte.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% sleva na Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} za první rok. Obnovuje se za {{listPrice}} ročně. Pokud předtím kdykoli zrušíte, nic dalšího nezaplatíte.",
+      "suffixFirstYear": "první rok",
+      "payingMonthly": "při měsíčních platbách",
+      "badge": "{{percent}}% sleva",
+      "annualNote": "{{perMonth}}/měs., fakturováno ročně. Poté {{listPrice}}/rok. Nabídka končí {{date}}.",
+      "annualNoteYearlyOnly": "Poté {{listPrice}}/rok. Nabídka končí {{date}}.",
+      "monthlyNote": "Black Friday: {{savings}}% sleva s roční fakturací",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% sleva na Pro Yearly",
+      "srReferencePrice": "V porovnání s:",
+      "srOfferPrice": "Cena nabídky:",
+      "stripEnds": "Končí {{date}}.",
+      "cancelNote": "Zrušit můžete kdykoli. Pokud zrušíte před koncem prvního roku, nic dalšího vám neúčtujeme.",
+      "annualNoteShort": "{{perMonth}}/měsíc, účtováno ročně. Poté {{listPrice}}/rok.",
+      "annualNoteShortYearlyOnly": "Poté {{listPrice}}/rok."
+    }
   },
   "welcome": {
     "meta": {

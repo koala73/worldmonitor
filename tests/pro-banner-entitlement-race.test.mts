@@ -497,6 +497,53 @@ describe('pre-paint reservation honors entitlement hint', () => {
     });
     assert.equal(classes.has('wm-pro-banner-reserved'), false);
   });
+
+  // While a promotion runs, its own dismissal decides, matching ProBanner's
+  // isDismissed: a regular dismissal this week still reserves the promo strip.
+  it('reserves for a running promotion even after the regular banner was dismissed', () => {
+    const classes = runPrepaint({
+      'wm-pro-banner-launched-dismissed': String(Date.now()),
+      'wm-pro-banner-promo-until': String(Date.now() + 60_000),
+    });
+    assert.ok(classes.has('wm-pro-banner-reserved'));
+  });
+
+  it('skips reservation while the promotion banner is dismissed', () => {
+    const classes = runPrepaint({
+      'wm-pro-banner-promo-until': String(Date.now() + 60_000),
+      'wm-pro-banner-promo-dismissed-until': String(Date.now() + 30_000),
+    });
+    assert.equal(classes.has('wm-pro-banner-reserved'), false);
+  });
+
+  // A lapsed subscriber gets the resubscribe strip, so the regular dismissal decides.
+  it('a lapsed subscriber who closed the resubscribe strip gets no reservation during a promotion', () => {
+    const classes = runPrepaint({
+      'wm-pro-banner-launched-dismissed': String(Date.now()),
+      'wm-pro-banner-promo-until': String(Date.now() + 60_000),
+      'wm-pro-banner-lapsed': '1',
+    });
+    assert.equal(classes.has('wm-pro-banner-reserved'), false);
+    const notClosed = runPrepaint({
+      'wm-pro-banner-promo-until': String(Date.now() + 60_000),
+      'wm-pro-banner-promo-dismissed-until': String(Date.now() + 30_000),
+      'wm-pro-banner-lapsed': '1',
+    });
+    assert.ok(notClosed.has('wm-pro-banner-reserved'), 'a closed offer does not hide the resubscribe strip');
+  });
+
+  it('returns to the regular dismissal once the promotion has ended', () => {
+    const classes = runPrepaint({
+      'wm-pro-banner-launched-dismissed': String(Date.now()),
+      'wm-pro-banner-promo-until': String(Date.now() - 1),
+    });
+    assert.equal(classes.has('wm-pro-banner-reserved'), false);
+    const fresh = runPrepaint({
+      'wm-pro-banner-promo-until': String(Date.now() - 1),
+      'wm-pro-banner-promo-dismissed-until': String(Date.now() + 30_000),
+    });
+    assert.ok(fresh.has('wm-pro-banner-reserved'));
+  });
 });
 
 describe('wiring contracts (#5728)', () => {
@@ -512,6 +559,16 @@ describe('wiring contracts (#5728)', () => {
     assert.match(src, /hasLocalUnlockPremium/);
     assert.match(src, /writePremiumHint\(true\)/);
     assert.match(src, /writePremiumHint\(false\)/);
+  });
+
+  it('the pre-paint script reads the same promotion keys ProBanner writes', () => {
+    const src = readFileSync(resolve(root, 'src/components/ProBanner.ts'), 'utf-8');
+    const html = readFileSync(resolve(root, 'index.html'), 'utf-8');
+    for (const name of ['PROMO_LIVE_UNTIL_KEY', 'PROMO_DISMISSED_UNTIL_KEY', 'LAPSED_HINT_KEY']) {
+      const key = src.match(new RegExp(`${name}\\s*=\\s*'([^']+)'`))?.[1];
+      assert.ok(key, `${name} is declared in ProBanner`);
+      assert.ok(html.includes(`localStorage.getItem('${key}')`), `pre-paint reads ${key}`);
+    }
   });
 
   it('Clerk load failure settles pending auth subscribers without dropping the queue', () => {

@@ -94,6 +94,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
       'shared/acquisition-source.ts',
       'shared/audience-profile.ts',
       'shared/email-frame.ts',
+      'shared/promo-campaign.ts',
       'scripts/lib/company-monitoring-classification.mjs',
       'src/utils/country-codes.ts',
     ]),

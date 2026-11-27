@@ -357,7 +357,26 @@
     "axisPersonalNote": "utilizare individuală",
     "axisCommercial": "Comercial",
     "axisCommercialNote": "muncă, clienți și produse",
-    "cancelAnytime": "Anulați oricând din cont. Veți păstra accesul până la sfârșitul perioadei pentru care ați plătit."
+    "cancelAnytime": "Anulați oricând din cont. Veți păstra accesul până la sfârșitul perioadei pentru care ați plătit.",
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% reducere la Pro. {{perMonth}} pe lună, facturat anual.",
+      "stripDetail": "{{promoPrice}} pentru primul an în loc de {{monthlyTotal}} plătit lunar. Se reînnoiește la {{listPrice}} pe an. Anulează oricând înainte și nu mai plătești nimic.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% reducere la Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} pentru primul an. Se reînnoiește la {{listPrice}} pe an. Anulează oricând înainte și nu mai plătești nimic.",
+      "suffixFirstYear": "primul an",
+      "payingMonthly": "plătit lunar",
+      "badge": "{{percent}}% reducere",
+      "annualNote": "{{perMonth}}/lună, facturat anual. Apoi {{listPrice}}/an. Oferta se termină {{date}}.",
+      "annualNoteYearlyOnly": "Apoi {{listPrice}}/an. Oferta se termină {{date}}.",
+      "monthlyNote": "Black Friday: {{savings}}% reducere cu abonament anual",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% reducere la Pro Yearly",
+      "srReferencePrice": "Comparat cu:",
+      "srOfferPrice": "Preț ofertă:",
+      "stripEnds": "Se termină {{date}}.",
+      "cancelNote": "Anulează oricând. Anulează înainte ca primul an să se încheie și nu vei mai fi taxat.",
+      "annualNoteShort": "{{perMonth}}/lună, facturare anuală. Apoi {{listPrice}}/an.",
+      "annualNoteShortYearlyOnly": "Apoi {{listPrice}}/an."
+    }
   },
   "welcome": {
     "meta": {

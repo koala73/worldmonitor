@@ -119,7 +119,26 @@
         "cta": "Зв'язатися з відділом продажу"
       }
     },
-    "cancelAnytime": "Скасуйте будь-коли зі свого облікового запису. Ви матимете доступ до кінця періоду, за який ви сплатили."
+    "cancelAnytime": "Скасуйте будь-коли зі свого облікового запису. Ви матимете доступ до кінця періоду, за який ви сплатили.",
+    "promo": {
+      "stripHeadline": "Чорна п'ятниця: {{savings}}% знижки на Pro. {{perMonth}} на місяць при оплаті за рік.",
+      "stripDetail": "{{promoPrice}} за перший рік замість {{monthlyTotal}} при щомісячній оплаті. Поновлюється за {{listPrice}} на рік. Скасуйте будь-коли до цього, і більше нічого не платите.",
+      "stripHeadlineYearlyOnly": "Чорна п'ятниця: {{percent}}% знижки на річний Pro.",
+      "stripDetailYearlyOnly": "{{promoPrice}} за перший рік. Поновлюється за {{listPrice}} на рік. Скасуйте будь-коли до цього, і більше нічого не платите.",
+      "suffixFirstYear": "перший рік",
+      "payingMonthly": "при щомісячній оплаті",
+      "badge": "{{percent}}% знижки",
+      "annualNote": "{{perMonth}}/міс., оплата щороку. Потім {{listPrice}}/рік. Пропозиція закінчується {{date}}.",
+      "annualNoteYearlyOnly": "Потім {{listPrice}}/рік. Пропозиція закінчується {{date}}.",
+      "monthlyNote": "Чорна п'ятниця: {{savings}}% знижки зі щорічною підпискою",
+      "monthlyNoteYearlyOnly": "Чорна п'ятниця: {{percent}}% знижки на річний Pro",
+      "srReferencePrice": "Порівняно з:",
+      "srOfferPrice": "Ціна пропозиції:",
+      "stripEnds": "Закінчується {{date}}.",
+      "cancelNote": "Скасуйте будь-коли. Скасуйте до кінця першого року, і повторного списання не буде.",
+      "annualNoteShort": "{{perMonth}}/міс., оплата щороку. Потім {{listPrice}}/рік.",
+      "annualNoteShortYearlyOnly": "Потім {{listPrice}}/рік."
+    }
   },
   "meta": {
     "title": "World Monitor Pro | ШІ-аналітика та MCP",

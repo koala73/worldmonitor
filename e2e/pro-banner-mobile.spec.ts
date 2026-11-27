@@ -1,6 +1,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
+import { activePromo } from '../shared/promo-campaign';
+
 // Conversion audit item 10 (2026-11-06): on phones the free-user Pro strip
 // read "Pro is launched — More Signal, Less Nois…", which names nothing a
 // visitor gets. The strip now leads with one concrete Pro feature, and on
@@ -9,6 +11,25 @@ import { expect, test, type Page } from '@playwright/test';
 
 const HEADLINE = 'Daily AI briefs by email or Slack';
 const SLOT_HEIGHT = 40;
+// A running promotion replaces the regular strip. These cases measure the
+// regular strip, so while one runs each page's clock is set to the minute
+// before it started; the promotion has its own cases below, which run only
+// while one is live. Once the offer is over the clock is left alone.
+test.beforeEach(async ({ page }, testInfo) => {
+  if (testInfo.titlePath.some((title) => title.startsWith('Promotion strip'))) return;
+  const running = activePromo(Date.now());
+  if (!running) return;
+  await page.addInitScript((offset) => {
+    const RealDate = Date;
+    const now = () => RealDate.now() + offset;
+    globalThis.Date = class extends RealDate {
+      constructor(...args: unknown[]) {
+        super(...((args.length === 0 ? [now()] : args) as [number]));
+      }
+      static now() { return now(); }
+    } as DateConstructor;
+  }, running.startsAtMs - 60_000 - Date.now());
+});
 
 async function openFreeDashboard(page: Page, path = '/'): Promise<void> {
   await page.addInitScript(() => {
@@ -82,6 +103,44 @@ test.describe('Pro strip at 360px in every language', () => {
       const layout = await bannerLayout(page);
       expect(layout.taglineVisible).toBe(false);
       expect(layout.headlineClipped, `${lang}: "${headline}" is cut off`).toBe(false);
+      expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
+      expect(layout.ctaRight).toBeLessThanOrEqual(layout.viewport);
+    });
+  }
+});
+
+// During a promotion the phone strip shows only its headline, which carries
+// the "first year" qualifier, and it must fit the same 40px slot in every
+// language.
+test.describe('Promotion strip at 360px in every language', () => {
+  test.use({ viewport: { width: 360, height: 800 }, isMobile: true, hasTouch: true });
+  test.skip(activePromo(Date.now()) === null, 'no promotion is running');
+
+  for (const { lang } of localeHeadlines) {
+    test(`${lang} promotion headline fits in full`, async ({ page }) => {
+      await page.route('**/src/services/auth-state.ts*', route => route.fulfill({
+        contentType: 'application/javascript',
+        body: `
+          const signedOut = { user: null, isPending: false };
+          export function getAuthState() { return signedOut; }
+          export function subscribeAuthState(callback) {
+            callback(signedOut);
+            return () => {};
+          }
+        `,
+      }));
+      await page.goto(`/tests/runtime-harness.html?lang=${lang}`);
+      await page.addStyleTag({ url: '/src/styles/main.css' });
+      await page.evaluate(async () => {
+        const { initI18n } = await import('/src/services/i18n.ts');
+        await initI18n({ waitForFullTranslation: true });
+        const { showProBanner } = await import('/src/components/ProBanner.ts');
+        showProBanner(document.body);
+      });
+      await page.locator('.pro-banner[data-promo]').waitFor({ timeout: 20000 });
+      const layout = await bannerLayout(page);
+      expect(layout.taglineVisible).toBe(false);
+      expect(layout.headlineClipped, `${lang}: "${layout.headline}" is cut off`).toBe(false);
       expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
       expect(layout.ctaRight).toBeLessThanOrEqual(layout.viewport);
     });

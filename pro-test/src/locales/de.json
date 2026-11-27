@@ -357,7 +357,26 @@
     "axisPersonalNote": "Individuelle Nutzung",
     "axisCommercial": "Kommerziell",
     "axisCommercialNote": "Arbeit, Kunden & Produkte",
-    "cancelAnytime": "Jederzeit über dein Konto kündbar. Du behältst Zugriff bis zum Ende deines bezahlten Zeitraums."
+    "cancelAnytime": "Jederzeit über dein Konto kündbar. Du behältst Zugriff bis zum Ende deines bezahlten Zeitraums.",
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% Rabatt auf Pro. {{perMonth}}/Monat, jährlich abgerechnet.",
+      "stripDetail": "{{promoPrice}} für das erste Jahr statt {{monthlyTotal}} bei monatlicher Zahlung. Verlängert sich auf {{listPrice}}/Jahr. Kündigen Sie jederzeit vorher und zahlen Sie nichts mehr.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% Rabatt auf Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} für das erste Jahr. Verlängert sich auf {{listPrice}}/Jahr. Kündigen Sie jederzeit vorher und zahlen Sie nichts mehr.",
+      "suffixFirstYear": "erstes Jahr",
+      "payingMonthly": "bei monatlicher Zahlung",
+      "badge": "{{percent}}% Rabatt",
+      "annualNote": "{{perMonth}}/Mo., jährlich abgerechnet. Dann {{listPrice}}/Jahr. Angebot endet am {{date}}.",
+      "annualNoteYearlyOnly": "Dann {{listPrice}}/Jahr. Angebot endet am {{date}}.",
+      "monthlyNote": "Black Friday: {{savings}}% Rabatt mit jährlicher Zahlung",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% Rabatt auf Pro Yearly",
+      "srReferencePrice": "Verglichen mit:",
+      "srOfferPrice": "Angebotspreis:",
+      "stripEnds": "Endet am {{date}}.",
+      "cancelNote": "Jederzeit kündbar. Kündigen Sie vor Ablauf des ersten Jahres, wird Ihnen nichts mehr berechnet.",
+      "annualNoteShort": "{{perMonth}}/Monat, jährliche Abrechnung. Dann {{listPrice}}/Jahr.",
+      "annualNoteShortYearlyOnly": "Dann {{listPrice}}/Jahr."
+    }
   },
   "welcome": {
     "meta": {

@@ -2690,7 +2690,13 @@
       "headline": "Codzienne raporty AI e-mailem lub na Slacku",
       "tagline": "plus WM Analyst, reguły alertów i MCP dla Claude",
       "cta": "Przejdź na Pro →",
-      "dismiss": "Odrzuć"
+      "dismiss": "Odrzuć",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "{{savings}}% taniej Pro przez pierwszy rok",
+      "promoTagline": "{{perMonth}} miesięcznie zamiast {{monthly}}, rozliczane rocznie. Możesz anulować w każdej chwili. Oferta kończy się {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% taniej Pro Yearly przez pierwszy rok",
+      "promoTaglineYearlyOnly": "Anuluj w dowolnym momencie. Wygasa {{date}}.",
+      "promoCta": "Skorzystaj z oferty"
     },
     "billingState": {
       "onHoldDesc": "Płatność nie powiodła się. Zaktualizuj metodę płatności, aby przywrócić dostęp premium.",

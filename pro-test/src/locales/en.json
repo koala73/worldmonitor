@@ -119,6 +119,25 @@
         ],
         "cta": "Contact Sales"
       }
+    },
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% off Pro. {{perMonth}} a month, billed yearly.",
+      "stripDetail": "{{promoPrice}} for your first year instead of {{monthlyTotal}} paying monthly. Renews at {{listPrice}} a year. Cancel anytime before then and you pay nothing more.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% off Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} for your first year. Renews at {{listPrice}} a year. Cancel anytime before then and you pay nothing more.",
+      "stripEnds": "Ends {{date}}.",
+      "suffixFirstYear": "first year",
+      "payingMonthly": "paying monthly",
+      "badge": "{{percent}}% off",
+      "annualNote": "{{perMonth}}/mo, billed yearly. Then {{listPrice}}/yr. Offer ends {{date}}.",
+      "annualNoteYearlyOnly": "Then {{listPrice}}/yr. Offer ends {{date}}.",
+      "annualNoteShort": "{{perMonth}}/mo, billed yearly. Then {{listPrice}}/yr.",
+      "annualNoteShortYearlyOnly": "Then {{listPrice}}/yr.",
+      "cancelNote": "Cancel anytime. Cancel before your first year ends and you won't be charged again.",
+      "monthlyNote": "Black Friday: {{savings}}% off with yearly",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% off Pro Yearly",
+      "srReferencePrice": "Compared with:",
+      "srOfferPrice": "Offer price:"
     }
   },
   "meta": {

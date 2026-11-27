@@ -520,7 +520,13 @@
       "headline": "Daily AI briefs by email or Slack",
       "tagline": "plus WM Analyst, alert rules and MCP for Claude",
       "cta": "Upgrade to Pro →",
-      "dismiss": "Dismiss"
+      "dismiss": "Dismiss",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "{{savings}}% off Pro for your first year",
+      "promoTagline": "{{perMonth}} a month instead of {{monthly}}, billed yearly. Cancel anytime. Ends {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% off Pro Yearly for your first year",
+      "promoTaglineYearlyOnly": "Cancel anytime. Ends {{date}}.",
+      "promoCta": "Get the offer"
     },
     "settings": {
       "exportSettings": "Export Settings",

@@ -357,7 +357,26 @@
     "axisPersonalNote": "individueel gebruik",
     "axisCommercial": "Commercieel",
     "axisCommercialNote": "werk, klanten & producten",
-    "cancelAnytime": "Annuleer op elk moment vanuit je account. Je behoudt toegang tot het einde van de periode waarvoor je hebt betaald."
+    "cancelAnytime": "Annuleer op elk moment vanuit je account. Je behoudt toegang tot het einde van de periode waarvoor je hebt betaald.",
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% korting op Pro. {{perMonth}} per maand, jaarlijks gefactureerd.",
+      "stripDetail": "{{promoPrice}} voor je eerste jaar in plaats van {{monthlyTotal}} bij maandelijkse betaling. Vernieuwt voor {{listPrice}} per jaar. Annuleer voor die tijd en je betaalt niets meer.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% korting op Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} voor je eerste jaar. Vernieuwt voor {{listPrice}} per jaar. Annuleer voor die tijd en je betaalt niets meer.",
+      "suffixFirstYear": "eerste jaar",
+      "payingMonthly": "bij maandelijkse betaling",
+      "badge": "{{percent}}% korting",
+      "annualNote": "{{perMonth}}/mnd, jaarlijks gefactureerd. Daarna {{listPrice}}/jr. Aanbieding eindigt {{date}}.",
+      "annualNoteYearlyOnly": "Daarna {{listPrice}}/jr. Aanbieding eindigt {{date}}.",
+      "monthlyNote": "Black Friday: {{savings}}% korting met een jaarabonnement",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% korting op Pro Yearly",
+      "srReferencePrice": "Vergeleken met:",
+      "srOfferPrice": "Aanbiedingsprijs:",
+      "stripEnds": "Eindigt {{date}}.",
+      "cancelNote": "Annuleer op elk moment. Annuleer voor het einde van je eerste jaar en je wordt niet opnieuw gefactureerd.",
+      "annualNoteShort": "{{perMonth}}/maand, jaarlijks gefactureerd. Daarna {{listPrice}}/jaar.",
+      "annualNoteShortYearlyOnly": "Daarna {{listPrice}}/jaar."
+    }
   },
   "welcome": {
     "meta": {

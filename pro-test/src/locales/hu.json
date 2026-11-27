@@ -357,7 +357,26 @@
     "axisPersonalNote": "egyéni használat",
     "axisCommercial": "Kereskedelmi",
     "axisCommercialNote": "munka, ügyfelek és termékek",
-    "cancelAnytime": "Bármikor lemondhatja fiókjából. A hozzáférés a kifizetett időszak végéig megmarad."
+    "cancelAnytime": "Bármikor lemondhatja fiókjából. A hozzáférés a kifizetett időszak végéig megmarad.",
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% kedvezmény a Pro verzióra. {{perMonth}}/hó, évente számlázva.",
+      "stripDetail": "{{promoPrice}} az első évre a havi fizetés {{monthlyTotal}} összege helyett. Ezután évi {{listPrice}} áron megújul. Addig bármikor lemondhatod, és nem fizetsz többet.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% kedvezmény a Pro Éves verzióra.",
+      "stripDetailYearlyOnly": "{{promoPrice}} az első évre. Ezután évi {{listPrice}} áron megújul. Addig bármikor lemondhatod, és nem fizetsz többet.",
+      "suffixFirstYear": "első év",
+      "payingMonthly": "havi fizetéssel",
+      "badge": "{{percent}}% kedvezmény",
+      "annualNote": "{{perMonth}}/hó, évente számlázva. Majd {{listPrice}}/év. Az ajánlat lejár: {{date}}.",
+      "annualNoteYearlyOnly": "Majd {{listPrice}}/év. Az ajánlat lejár: {{date}}.",
+      "monthlyNote": "Black Friday: {{savings}}% kedvezmény éves előfizetéssel",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% kedvezmény a Pro Éves verzióra",
+      "srReferencePrice": "Összehasonlítva:",
+      "srOfferPrice": "Ajánlati ár:",
+      "stripEnds": "Lejár: {{date}}.",
+      "cancelNote": "Bármikor lemondhatod. Ha az első év vége előtt lemondod, nem terhelünk meg újra.",
+      "annualNoteShort": "{{perMonth}}/hó, éves számlázással. Utána {{listPrice}}/év.",
+      "annualNoteShortYearlyOnly": "Utána {{listPrice}}/év."
+    }
   },
   "welcome": {
     "meta": {

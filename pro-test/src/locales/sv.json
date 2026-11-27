@@ -357,7 +357,26 @@
     "axisPersonalNote": "individuell användning",
     "axisCommercial": "Kommersiell",
     "axisCommercialNote": "arbete, klienter och produkter",
-    "cancelAnytime": "Avbryt när som helst från ditt konto. Du behåller åtkomsten till slutet av den period du betalade för."
+    "cancelAnytime": "Avbryt när som helst från ditt konto. Du behåller åtkomsten till slutet av den period du betalade för.",
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% rabatt på Pro. {{perMonth}} per månad, faktureras årligen.",
+      "stripDetail": "{{promoPrice}} för ditt första år istället för {{monthlyTotal}} vid månadsbetalning. Förnyas till {{listPrice}} per år. Avbryt när som helst innan dess och du betalar inget mer.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% rabatt på Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} för ditt första år. Förnyas till {{listPrice}} per år. Avbryt när som helst innan dess och du betalar inget mer.",
+      "suffixFirstYear": "första året",
+      "payingMonthly": "vid månadsbetalning",
+      "badge": "{{percent}}% rabatt",
+      "annualNote": "{{perMonth}}/mån, faktureras årligen. Sedan {{listPrice}}/år. Erbjudandet slutar {{date}}.",
+      "annualNoteYearlyOnly": "Sedan {{listPrice}}/år. Erbjudandet slutar {{date}}.",
+      "monthlyNote": "Black Friday: {{savings}}% rabatt med årlig prenumeration",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% rabatt på Pro Yearly",
+      "srReferencePrice": "Jämfört med:",
+      "srOfferPrice": "Erbjudandepris:",
+      "stripEnds": "Slutar {{date}}.",
+      "cancelNote": "Avbryt när som helst. Avbryt innan ditt första år är slut så debiteras du inte igen.",
+      "annualNoteShort": "{{perMonth}}/mån, faktureras årligen. Därefter {{listPrice}}/år.",
+      "annualNoteShortYearlyOnly": "Därefter {{listPrice}}/år."
+    }
   },
   "welcome": {
     "meta": {

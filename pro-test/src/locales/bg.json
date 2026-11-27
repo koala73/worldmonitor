@@ -357,7 +357,26 @@
     "axisPersonalNote": "индивидуално използване",
     "axisCommercial": "Търговско",
     "axisCommercialNote": "работа, клиенти и продукти",
-    "cancelAnytime": "Отменете по всяко време от вашия профил. Запазвате достъп до края на периода, за който сте платили."
+    "cancelAnytime": "Отменете по всяко време от вашия профил. Запазвате достъп до края на периода, за който сте платили.",
+    "promo": {
+      "stripHeadline": "Black Friday: {{savings}}% отстъпка на Pro. {{perMonth}} на месец при годишно плащане.",
+      "stripDetail": "{{promoPrice}} за първата година вместо {{monthlyTotal}} при месечно плащане. Подновява се на {{listPrice}} годишно. Отменете по всяко време преди това и не плащате нищо повече.",
+      "stripHeadlineYearlyOnly": "Black Friday: {{percent}}% отстъпка на Pro Yearly.",
+      "stripDetailYearlyOnly": "{{promoPrice}} за първата година. Подновява се на {{listPrice}} годишно. Отменете по всяко време преди това и не плащате нищо повече.",
+      "suffixFirstYear": "първа година",
+      "payingMonthly": "при месечно плащане",
+      "badge": "{{percent}}% отстъпка",
+      "annualNote": "{{perMonth}}/мес, при годишно плащане. След това {{listPrice}}/год. Офертата изтича {{date}}.",
+      "annualNoteYearlyOnly": "След това {{listPrice}}/год. Офертата изтича {{date}}.",
+      "monthlyNote": "Black Friday: {{savings}}% отстъпка с годишен план",
+      "monthlyNoteYearlyOnly": "Black Friday: {{percent}}% отстъпка на Pro Yearly",
+      "srReferencePrice": "В сравнение с:",
+      "srOfferPrice": "Цена на оферта:",
+      "stripEnds": "Изтича {{date}}.",
+      "cancelNote": "Отмяна по всяко време. Отменете преди края на първата година и няма да бъдете таксувани отново.",
+      "annualNoteShort": "{{perMonth}}/месец, фактуриране годишно. След това {{listPrice}}/год.",
+      "annualNoteShortYearlyOnly": "След това {{listPrice}}/год."
+    }
   },
   "welcome": {
     "meta": {

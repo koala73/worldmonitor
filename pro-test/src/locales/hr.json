@@ -357,7 +357,26 @@
     "axisPersonalNote": "individualna upotreba",
     "axisCommercial": "Komercijalno",
     "axisCommercialNote": "rad, klijenti i proizvodi",
-    "cancelAnytime": "Otkaži bilo kada iz svog računa. Zadržavate pristup do kraja razdoblja za koje ste platili."
+    "cancelAnytime": "Otkaži bilo kada iz svog računa. Zadržavate pristup do kraja razdoblja za koje ste platili.",
+    "promo": {
+      "stripHeadline": "Crni petak: {{savings}}% popusta na Pro. {{perMonth}} mjesečno, naplaćeno godišnje.",
+      "stripDetail": "{{promoPrice}} za tvoju prvu godinu umjesto {{monthlyTotal}} ako plaćaš mjesečno. Obnavlja se na {{listPrice}} godišnje. Otkaži bilo kada prije toga i nemaš dodatnih troškova.",
+      "stripHeadlineYearlyOnly": "Crni petak: {{percent}}% popusta na godišnji Pro.",
+      "stripDetailYearlyOnly": "{{promoPrice}} za tvoju prvu godinu. Obnavlja se na {{listPrice}} godišnje. Otkaži bilo kada prije toga i nemaš dodatnih troškova.",
+      "suffixFirstYear": "prva godina",
+      "payingMonthly": "ako plaćaš mjesečno",
+      "badge": "{{percent}}% popusta",
+      "annualNote": "{{perMonth}}/mj, naplaćeno godišnje. Zatim {{listPrice}}/god. Ponuda završava {{date}}.",
+      "annualNoteYearlyOnly": "Zatim {{listPrice}}/god. Ponuda završava {{date}}.",
+      "monthlyNote": "Crni petak: {{savings}}% popusta uz godišnje plaćanje",
+      "monthlyNoteYearlyOnly": "Crni petak: {{percent}}% popusta na godišnji Pro",
+      "srReferencePrice": "Uspoređeno s:",
+      "srOfferPrice": "Cijena ponude:",
+      "stripEnds": "Završava {{date}}.",
+      "cancelNote": "Otkaži bilo kada. Ako otkažeš prije nego što se tvoja prva godina završi, neće te se više naplaćivati.",
+      "annualNoteShort": "{{perMonth}}/mj, naplaćeno godišnje. Zatim {{listPrice}}/god.",
+      "annualNoteShortYearlyOnly": "Zatim {{listPrice}}/god."
+    }
   },
   "welcome": {
     "meta": {

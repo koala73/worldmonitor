@@ -357,7 +357,26 @@
     "axisPersonalNote": "個人使用\t",
     "axisCommercial": "商業\t",
     "axisCommercialNote": "工作、客戶與產品",
-    "cancelAnytime": "隨時從您的帳戶取消。您可以繼續使用至所付費期間的結束。"
+    "cancelAnytime": "隨時從您的帳戶取消。您可以繼續使用至所付費期間的結束。",
+    "promo": {
+      "stripHeadline": "黑色星期五：Pro 立省 {{savings}}%。每月 {{perMonth}}，按年計費。",
+      "stripDetail": "首年僅需 {{promoPrice}}，而非按月支付的 {{monthlyTotal}}。之後按 {{listPrice}}/年續費。隨時在續費前取消，不再產生費用。",
+      "stripHeadlineYearlyOnly": "黑色星期五：Pro 年度版立省 {{percent}}%。",
+      "stripDetailYearlyOnly": "首年僅需 {{promoPrice}}。之後按 {{listPrice}}/年續費。隨時在續費前取消，不再產生費用。",
+      "suffixFirstYear": "首年",
+      "payingMonthly": "按月支付",
+      "badge": "省 {{percent}}%",
+      "annualNote": "{{perMonth}}/月，按年計費。之後 {{listPrice}}/年。優惠截至 {{date}}。",
+      "annualNoteYearlyOnly": "之後 {{listPrice}}/年。優惠截至 {{date}}。",
+      "monthlyNote": "黑色星期五：選年付立省 {{savings}}%",
+      "monthlyNoteYearlyOnly": "黑色星期五：Pro 年度版立省 {{percent}}%",
+      "srReferencePrice": "對比：",
+      "srOfferPrice": "優惠價：",
+      "stripEnds": "截至 {{date}}。",
+      "cancelNote": "隨時可取消。在首年結束前取消，不會再次收費。",
+      "annualNoteShort": "{{perMonth}}/月，按年計費。之後 {{listPrice}}/年。",
+      "annualNoteShortYearlyOnly": "之後 {{listPrice}}/年。"
+    }
   },
   "welcome": {
     "meta": {

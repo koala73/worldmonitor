@@ -2678,7 +2678,13 @@
       "headline": "Resúmenes diarios de IA por email o Slack",
       "tagline": "más WM Analyst, reglas de alertas y MCP para Claude",
       "cta": "Actualiza a Pro →",
-      "dismiss": "Descartar"
+      "dismiss": "Descartar",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "{{savings}}% de descuento en Pro durante tu primer año",
+      "promoTagline": "{{perMonth}} al mes en lugar de {{monthly}}, facturado anualmente. Cancela en cualquier momento. Finaliza {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% de descuento en Pro Anual durante tu primer año",
+      "promoTaglineYearlyOnly": "Cancela en cualquier momento. Finaliza {{date}}.",
+      "promoCta": "Obtener la oferta"
     },
     "billingState": {
       "onHoldDesc": "El pago falló. Actualiza tu método de pago para restaurar el acceso premium.",

@@ -357,7 +357,26 @@
     "axisPersonalNote": "bireysel kullanım",
     "axisCommercial": "Ticari",
     "axisCommercialNote": "iş, müşteriler ve ürünler",
-    "cancelAnytime": "Hesabınızdan istediğiniz zaman iptal edebilirsiniz. Ödediğiniz dönemin sonuna kadar erişiminiz devam eder."
+    "cancelAnytime": "Hesabınızdan istediğiniz zaman iptal edebilirsiniz. Ödediğiniz dönemin sonuna kadar erişiminiz devam eder.",
+    "promo": {
+      "stripHeadline": "Kara Cuma: Pro'da {{savings}}% indirim. Ayda {{perMonth}}, yıllık faturalama.",
+      "stripDetail": "Aylık ödemede {{monthlyTotal}} yerine ilk yılınız için {{promoPrice}}. Yılda {{listPrice}} olarak yenilenir. O zamana kadar istediğiniz an iptal ederseniz başka ödeme yapmazsınız.",
+      "stripHeadlineYearlyOnly": "Kara Cuma: Pro Yıllık'ta {{percent}}% indirim.",
+      "stripDetailYearlyOnly": "İlk yılınız için {{promoPrice}}. Yılda {{listPrice}} olarak yenilenir. O zamana kadar istediğiniz an iptal ederseniz başka ödeme yapmazsınız.",
+      "suffixFirstYear": "ilk yıl",
+      "payingMonthly": "aylık ödemede",
+      "badge": "{{percent}}% indirim",
+      "annualNote": "Ayda {{perMonth}}, yıllık faturalama. Daha sonra {{listPrice}}/yıl. Teklif {{date}} tarihinde sona eriyor.",
+      "annualNoteYearlyOnly": "Daha sonra {{listPrice}}/yıl. Teklif {{date}} tarihinde sona eriyor.",
+      "monthlyNote": "Kara Cuma: yıllık seçenekle {{savings}}% indirim",
+      "monthlyNoteYearlyOnly": "Kara Cuma: Pro Yıllık'ta {{percent}}% indirim",
+      "srReferencePrice": "Karşılaştırma:",
+      "srOfferPrice": "Teklif fiyatı:",
+      "stripEnds": "{{date}} tarihinde sona eriyor.",
+      "cancelNote": "İstediğiniz zaman iptal edebilirsiniz. İlk yılınız bitmeden iptal ederseniz, tekrar ücretlendirilmeyeceksiniz.",
+      "annualNoteShort": "{{perMonth}}/ay, yıllık olarak faturalandırılır. Daha sonra {{listPrice}}/yıl.",
+      "annualNoteShortYearlyOnly": "Daha sonra {{listPrice}}/yıl."
+    }
   },
   "welcome": {
     "meta": {

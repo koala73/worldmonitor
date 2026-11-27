@@ -2666,7 +2666,13 @@
       "headline": "Ежедневни AI справки по имейл или Slack",
       "tagline": "плюс WM Analyst, правила за известяване и MCP за Claude",
       "cta": "Надстройка към Pro →",
-      "dismiss": "Отхвърляне"
+      "dismiss": "Отхвърляне",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "{{savings}}% намаление на Pro за първата година",
+      "promoTagline": "{{perMonth}} на месец вместо {{monthly}}, при годишно плащане. Отмяна по всяко време. Изтича {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% намаление на Pro Yearly за първата година",
+      "promoTaglineYearlyOnly": "Отмяна по всяко време. Изтича {{date}}.",
+      "promoCta": "Вземете офертата"
     },
     "billingState": {
       "onHoldDesc": "Плащането е неуспешно. Актуализирайте начина си на плащане, за да възстановите премиум достъпа.",

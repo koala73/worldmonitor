@@ -357,7 +357,26 @@
     "axisPersonalNote": "व्यक्तिगत उपयोग",
     "axisCommercial": "व्यावसायिक",
     "axisCommercialNote": "कार्य, क्लाइंट और उत्पाद",
-    "cancelAnytime": "किसी भी समय अपने खाते से रद्द करें। आप जो अवधि के लिए भुगतान करते हैं उसके अंत तक आपके पास एक्सेस बना रहता है।"
+    "cancelAnytime": "किसी भी समय अपने खाते से रद्द करें। आप जो अवधि के लिए भुगतान करते हैं उसके अंत तक आपके पास एक्सेस बना रहता है।",
+    "promo": {
+      "stripHeadline": "ब्लैक फ्राइडे: Pro पर {{savings}}% छूट। महीने में {{perMonth}}, सालाना बिल किया जाता है।",
+      "stripDetail": "आपके पहले वर्ष के लिए {{promoPrice}}, हर महीने भुगतान करने पर {{monthlyTotal}} के बजाय। इसके बाद {{listPrice}} प्रति वर्ष पर नवीनीकरण होता है। उससे पहले कभी भी रद्द करें, आपको आगे कुछ नहीं देना होगा।",
+      "stripHeadlineYearlyOnly": "ब्लैक फ्राइडे: Pro वार्षिक पर {{percent}}% छूट।",
+      "stripDetailYearlyOnly": "आपके पहले वर्ष के लिए {{promoPrice}}। इसके बाद {{listPrice}} प्रति वर्ष पर नवीनीकरण होता है। उससे पहले कभी भी रद्द करें, आपको आगे कुछ नहीं देना होगा।",
+      "suffixFirstYear": "पहला वर्ष",
+      "payingMonthly": "मासिक भुगतान पर",
+      "badge": "{{percent}}% छूट",
+      "annualNote": "{{perMonth}}/माह, सालाना बिल किया जाता है। फिर {{listPrice}}/वर्ष। ऑफर {{date}} को समाप्त होता है।",
+      "annualNoteYearlyOnly": "फिर {{listPrice}}/वर्ष। ऑफर {{date}} को समाप्त होता है।",
+      "monthlyNote": "ब्लैक फ्राइडे: वार्षिक के साथ {{savings}}% छूट",
+      "monthlyNoteYearlyOnly": "ब्लैक फ्राइडे: Pro वार्षिक पर {{percent}}% छूट",
+      "srReferencePrice": "तुलना में:",
+      "srOfferPrice": "ऑफर मूल्य:",
+      "stripEnds": "{{date}} को समाप्त होता है।",
+      "cancelNote": "किसी भी समय रद्द करें। अपने पहले वर्ष के समाप्त होने से पहले रद्द करें और आपसे दोबारा शुल्क नहीं लिया जाएगा।",
+      "annualNoteShort": "{{perMonth}}/माह, वार्षिक बिलिंग। फिर {{listPrice}}/वर्ष।",
+      "annualNoteShortYearlyOnly": "फिर {{listPrice}}/वर्ष।"
+    }
   },
   "welcome": {
     "meta": {

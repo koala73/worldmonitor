@@ -1188,7 +1188,7 @@ function sanitizePendingConversionData(
   data: Record<string, unknown>,
 ): Record<string, unknown> {
   if (event === 'pro-banner-click') {
-    return { state: data.state === 'lapsed' ? 'lapsed' : 'upgrade' };
+    return { state: data.state === 'lapsed' || data.state === 'promo' ? data.state : 'upgrade' };
   }
   if (event === 'country-history-upsell-click') {
     return { allowedDays: data.allowedDays === 90 ? 90 : 7 };
@@ -1496,7 +1496,7 @@ const CHECKOUT_FAILED_STATUSES = new Set(['failed', 'declined', 'cancelled', 'ca
  * before the deferred tracker loads, so a durable copy replays on the next
  * dashboard boot until the collector confirms the write.
  */
-export function trackProBannerClick(state: 'upgrade' | 'lapsed'): void {
+export function trackProBannerClick(state: 'upgrade' | 'lapsed' | 'promo'): void {
   const data = { state };
   rememberPendingConversion('pro-banner-click', data);
   track('pro-banner-click', data);

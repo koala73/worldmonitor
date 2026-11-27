@@ -21,8 +21,17 @@ import {
   PRO_BANNER_ENTITLEMENT_HINT_KEY,
   type ProBannerPremiumStabilityState,
 } from '@/services/pro-banner-policy';
-import { t } from '@/services/i18n';
+import { t, getLocale } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
+import {
+  activePromo,
+  formatPromoEnd,
+  formatUsdCentsExact,
+  promoDisplayPrices,
+  type PromoCampaign,
+  type PromoDisplayPrices,
+} from '../../shared/promo-campaign';
 
 
 let bannerEl: HTMLElement | null = null;
@@ -53,6 +62,97 @@ const LEGACY_DISMISS_KEY = 'wm-pro-banner-dismissed';
 const DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
 const RESERVATION_CLASS = 'wm-pro-banner-reserved';
 
+// The promotion banner has its own dismissal, so a user who closed the regular
+// banner this week still sees the offer once, and closing the offer does not
+// hide the regular banner after it ends. Both values are expiry instants, so
+// index.html's pre-paint script can mirror the rule without knowing the dates:
+// PROMO_LIVE_UNTIL_KEY says a promotion runs until then, and
+// PROMO_DISMISSED_UNTIL_KEY says its banner stays closed until then.
+const PROMO_LIVE_UNTIL_KEY = 'wm-pro-banner-promo-until';
+const PROMO_DISMISSED_UNTIL_KEY = 'wm-pro-banner-promo-dismissed-until';
+// A lapsed subscriber gets the resubscribe strip even while a promotion runs,
+// so the regular dismissal decides for them. Pre-paint cannot see billing
+// state, so the last mount records it here.
+const LAPSED_HINT_KEY = 'wm-pro-banner-lapsed';
+
+/** The promotion the free banner advertises now, or null. */
+function bannerPromo(): PromoCampaign | null {
+  return activePromo(Date.now());
+}
+
+function readStoredInstant(key: string): number {
+  const value = Number(safeStorageGet(key) || 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+// Storage is optional; without it the offer shows on each load.
+function writeStoredInstant(key: string, value: number): void {
+  safeStorageSet(key, String(value));
+}
+
+// Catalog prices for the promotion copy. Loaded on demand so the product facts
+// stay out of the dashboard's main chunk; undefined until settled, null when
+// unavailable (the copy then names the yearly discount without figures).
+let promoPrices: PromoDisplayPrices | null | undefined;
+let promoPricesLoad: Promise<void> | null = null;
+
+function loadPromoPrices(promo: PromoCampaign): Promise<void> {
+  promoPricesLoad ??= import('../../shared/product-facts.generated.json')
+    .then((module) => {
+      const plans = (module.default ?? module).plans as Array<{ planKey: string; price: number | null }>;
+      const priceOf = (planKey: string) => plans.find((plan) => plan.planKey === planKey)?.price ?? null;
+      promoPrices = promoDisplayPrices(promo, priceOf(promo.planKey), priceOf(promo.monthlyPlanKey));
+    })
+    .catch(() => {
+      promoPrices = null;
+    });
+  return promoPricesLoad;
+}
+
+function promoBannerCopy(promo: PromoCampaign): { headline: string; tagline: string } {
+  const date = formatPromoEnd(promo.endsAtMs, getLocale());
+  if (promoPrices && promoPrices.savingsVsMonthlyPct !== null && promoPrices.monthlyTotalCents !== null) {
+    return {
+      headline: t('components.proBanner.promoHeadline', { savings: promoPrices.savingsVsMonthlyPct }),
+      // The saving is measured against paying monthly, so the tagline names
+      // that monthly price beside the discounted one.
+      tagline: t('components.proBanner.promoTagline', {
+        perMonth: formatUsdCentsExact(promoPrices.perMonthCents),
+        monthly: formatUsdCentsExact(Math.round(promoPrices.monthlyTotalCents / 12)),
+        date,
+      }),
+    };
+  }
+  return {
+    headline: t('components.proBanner.promoHeadlineYearlyOnly', { percent: promo.percentOff }),
+    tagline: t('components.proBanner.promoTaglineYearlyOnly', { date }),
+  };
+}
+
+// Checkout stops applying the code at the end instant, so an open promotion
+// banner is swapped for the regular strip then instead of selling an offer
+// that no longer exists.
+let promoExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+const MAX_TIMER_MS = 2_147_483_647;
+
+function schedulePromoExpiry(promo: PromoCampaign, banner: HTMLElement): void {
+  if (promoExpiryTimer !== null) clearTimeout(promoExpiryTimer);
+  const delay = Math.min(Math.max(0, promo.endsAtMs - Date.now()), MAX_TIMER_MS);
+  promoExpiryTimer = setTimeout(() => {
+    promoExpiryTimer = null;
+    if (bannerEl !== banner) return;
+    if (Date.now() < promo.endsAtMs) {
+      schedulePromoExpiry(promo, banner);
+      return;
+    }
+    cancelPendingBannerRemoval();
+    banner.remove();
+    bannerEl = null;
+    if (bannerContainer && !dismissedThisSession) showProBanner(bannerContainer);
+    else setReservation(false);
+  }, delay);
+}
+
 function setReservation(active: boolean): void {
   document.documentElement.classList.toggle(RESERVATION_CLASS, active);
 }
@@ -73,8 +173,15 @@ function scheduleBannerRemoval(): void {
   }, 300);
 }
 
-function isDismissed(): boolean {
+/** `lapsed`: the resubscribe strip renders, never the promotion. */
+function isDismissed(lapsed: boolean): boolean {
   if (dismissedThisSession) return true;
+
+  const promo = lapsed ? null : bannerPromo();
+  if (promo) {
+    writeStoredInstant(PROMO_LIVE_UNTIL_KEY, promo.endsAtMs);
+    return Date.now() < readStoredInstant(PROMO_DISMISSED_UNTIL_KEY);
+  }
 
   try {
     localStorage.removeItem(LEGACY_DISMISS_KEY);
@@ -101,6 +208,14 @@ function dismiss(): void {
   dismissedThisSession = true;
   bannerEl.classList.add('pro-banner-out');
   scheduleBannerRemoval();
+  const promo = bannerPromo();
+  if (promo) {
+    // While a promotion runs, its key decides dismissal for every variant
+    // (isDismissed), so record it: closed for the usual week, never past the
+    // offer's end. Closing the offer itself leaves the regular key alone.
+    writeStoredInstant(PROMO_DISMISSED_UNTIL_KEY, Math.min(Date.now() + DISMISS_MS, promo.endsAtMs));
+    if (bannerEl.dataset.promo) return;
+  }
   try {
     localStorage.setItem(DISMISS_KEY, String(Date.now()));
   } catch {
@@ -219,6 +334,9 @@ export function showProBanner(container: HTMLElement): void {
   // regardless of premium state, so caching here covers both "initially
   // free" and "initially premium then downgrade" trajectories.
   bannerContainer = container;
+  // Start the promotion's price load while auth settles.
+  const runningPromo = bannerPromo();
+  if (runningPromo) void loadPromoPrices(runningPromo);
 
   if (bannerEl && !bannerEl.isConnected) {
     bannerEl = null;
@@ -241,9 +359,12 @@ export function showProBanner(container: HTMLElement): void {
     writePremiumHint(false);
   }
 
+  // Decide which strip would render before reading its dismissal.
+  const lapsedNow =
+    deriveBillingUxState(getSubscription(), getEntitlementState(), Date.now()) === 'lapsed';
   const decision = decideProBannerMount({
     inIframe: window.self !== window.top,
-    dismissed: isDismissed(),
+    dismissed: isDismissed(lapsedNow),
     hasPremiumAccess: premium,
     premiumHint: readPremiumHint(),
     authPending: auth.isPending,
@@ -279,15 +400,40 @@ export function showProBanner(container: HTMLElement): void {
     return;
   }
 
+  const returning = billingState === 'lapsed';
+  if (returning) safeStorageSet(LAPSED_HINT_KEY, '1');
+  else safeStorageRemove(LAPSED_HINT_KEY);
+  // Free users see the running promotion instead of the regular upsell. Its
+  // figures come from the lazily loaded catalog; the pre-paint reservation
+  // holds the strip while that settles, then this mount path runs again.
+  const promo = returning ? null : bannerPromo();
+  if (promo && promoPrices === undefined) {
+    void loadPromoPrices(promo).then(() => {
+      if (!bannerEl && bannerContainer && !dismissedThisSession) showProBanner(bannerContainer);
+    });
+    return;
+  }
+
   trackGateHit('pro-banner');
   setReservation(true);
 
-  const returning = billingState === 'lapsed';
   const ctaHref = returning ? getReactivationHref(subscription?.planKey) : '/pro#pricing';
   const banner = document.createElement('div');
   banner.className = 'pro-banner';
   banner.dataset.billingState = returning ? 'lapsed' : 'upgrade';
-  setTrustedHtml(banner, trustedHtml(`
+  if (promo) {
+    banner.dataset.promo = promo.id;
+    const copy = promoBannerCopy(promo);
+    setTrustedHtml(banner, trustedHtml(`
+    <span class="pro-banner-badge">${t('components.proBanner.promoBadge')}</span>
+    <span class="pro-banner-text">
+      <strong>${copy.headline}</strong><span class="pro-banner-tagline"> — ${copy.tagline}</span>
+    </span>
+    <a class="pro-banner-cta" href="${ctaHref}">${t('components.proBanner.promoCta')}</a>
+    <button class="pro-banner-close" aria-label="${t('components.proBanner.dismiss')}">×</button>
+  `, "promotion banner from fixed catalog figures and locale strings"));
+  } else {
+    setTrustedHtml(banner, trustedHtml(`
     <span class="pro-banner-badge">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.badge')}</span>
     <span class="pro-banner-text">
       <strong>${returning ? t('components.billingState.lapsedDesc') : t('components.proBanner.headline')}</strong>${returning ? '' : `<span class="pro-banner-tagline"> — ${t('components.proBanner.tagline')}</span>`}
@@ -295,12 +441,13 @@ export function showProBanner(container: HTMLElement): void {
     <a class="pro-banner-cta" href="${ctaHref}">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.cta')}</a>
     <button class="pro-banner-close" aria-label="${t('components.proBanner.dismiss')}">×</button>
   `, "legacy direct innerHTML migration"));
+  }
 
   // Tracked in-app rather than via data-umami-event: the Umami tracker holds a
   // tagged link's navigation until its send settles, and misses clicks made
   // before it loads.
   banner.querySelector('.pro-banner-cta')!.addEventListener('click', () => {
-    trackProBannerClick(returning ? 'lapsed' : 'upgrade');
+    trackProBannerClick(returning ? 'lapsed' : promo ? 'promo' : 'upgrade');
   });
 
   banner.querySelector('.pro-banner-close')!.addEventListener('click', (e) => {
@@ -319,6 +466,7 @@ export function showProBanner(container: HTMLElement): void {
   }
 
   bannerEl = banner;
+  if (promo) schedulePromoExpiry(promo, banner);
   requestAnimationFrame(() => banner.classList.add('pro-banner-in'));
 }
 

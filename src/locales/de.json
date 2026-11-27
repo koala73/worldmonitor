@@ -2666,7 +2666,13 @@
       "headline": "Tägliche AI-Briefings per E-Mail oder Slack",
       "tagline": "plus WM Analyst, Alert-Regeln und MCP für Claude",
       "cta": "Upgrade auf Pro →",
-      "dismiss": "Ausblenden"
+      "dismiss": "Ausblenden",
+      "promoBadge": "Black Friday",
+      "promoHeadline": "{{savings}}% Rabatt auf Pro im ersten Jahr",
+      "promoTagline": "{{perMonth}} pro Monat statt {{monthly}}, jährliche Abrechnung. Jederzeit kündbar. Endet {{date}}.",
+      "promoHeadlineYearlyOnly": "{{percent}}% Rabatt auf Pro Yearly im ersten Jahr",
+      "promoTaglineYearlyOnly": "Jederzeit kündbar. Endet {{date}}.",
+      "promoCta": "Angebot sichern"
     },
     "billingState": {
       "onHoldDesc": "Zahlung fehlgeschlagen. Aktualisieren Sie Ihre Zahlungsmethode, um den Premium-Zugriff wiederherzustellen.",

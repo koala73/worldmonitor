@@ -357,7 +357,26 @@
     "axisPersonalNote": "個人で使用",
     "axisCommercial": "商用",
     "axisCommercialNote": "仕事、クライアント、製品",
-    "cancelAnytime": "いつでもアカウントからキャンセルできます。お支払いいただいた期間の終了まで、アクセスは継続します。"
+    "cancelAnytime": "いつでもアカウントからキャンセルできます。お支払いいただいた期間の終了まで、アクセスは継続します。",
+    "promo": {
+      "stripHeadline": "ブラックフライデー: Pro が{{savings}}%オフ。月額{{perMonth}}、年間請求。",
+      "stripDetail": "初年度は{{promoPrice}}（月額払いなら{{monthlyTotal}}）。その後は年額{{listPrice}}で更新されます。それまでにいつでもキャンセルすれば、追加の支払いはありません。",
+      "stripHeadlineYearlyOnly": "ブラックフライデー: Pro 年間プランが{{percent}}%オフ。",
+      "stripDetailYearlyOnly": "初年度は{{promoPrice}}。{{listPrice}}/年で自動更新。その前にキャンセルすれば追加請求はありません。",
+      "suffixFirstYear": "初年度",
+      "payingMonthly": "月額払い",
+      "badge": "{{percent}}%オフ",
+      "annualNote": "{{perMonth}}/月、年間請求。その後{{listPrice}}/年。オファー終了{{date}}。",
+      "annualNoteYearlyOnly": "その後{{listPrice}}/年。オファー終了{{date}}。",
+      "monthlyNote": "ブラックフライデー: 年間プランで{{savings}}%オフ",
+      "monthlyNoteYearlyOnly": "ブラックフライデー: Pro 年間プランが{{percent}}%オフ",
+      "srReferencePrice": "比較対象:",
+      "srOfferPrice": "オファー価格:",
+      "stripEnds": "{{date}}に終了します。",
+      "cancelNote": "いつでもキャンセルできます。初年度終了前にキャンセルすると、再度の請求は発生しません。",
+      "annualNoteShort": "{{perMonth}}/月、年間請求。その後 {{listPrice}}/年。",
+      "annualNoteShortYearlyOnly": "その後 {{listPrice}}/年。"
+    }
   },
   "welcome": {
     "meta": {
