@@ -44,6 +44,13 @@ const REQUOTE_DIALOG_ID = 'wm-api-starter-switch-requote-dialog';
  */
 const HOLDER_ERRORS: ReadonlySet<string> = new Set(['UPGRADE_RATE_LIMITED', 'UPGRADE_IN_PROGRESS', 'DODO_PLAN_CHANGE_ERROR']);
 
+/**
+ * How long a quote may take. Every API Starter checkout waits for it, Pro
+ * holder or not, so a Convex call that never settles must not hold the
+ * purchase. The server's Dodo previews share 16 s; the rest is transport.
+ */
+export const API_STARTER_QUOTE_TIMEOUT_MS = 20_000;
+
 /** A preview, or a confirm that names the charge the quote showed. */
 export type ApiStarterSwitchRequest =
   | { confirm: false }
@@ -62,6 +69,19 @@ export interface ApiStarterSwitchFlowOptions {
   reportError: (action: string, err: unknown) => void;
   /** Runs when the user dismisses one of this flow's dialogs; a confirm never calls it. */
   onDismiss?: () => void;
+  /** Overrides API_STARTER_QUOTE_TIMEOUT_MS; tests only. */
+  quoteTimeoutMs?: number;
+}
+
+const QUOTE_TIMED_OUT = Symbol('quote timed out');
+
+/** The request's reply, or QUOTE_TIMED_OUT once `ms` pass; a later reply is dropped. */
+function withinQuoteTimeout<T>(request: Promise<T>, ms: number): Promise<T | typeof QUOTE_TIMED_OUT> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<typeof QUOTE_TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(QUOTE_TIMED_OUT), ms);
+  });
+  return Promise.race([request, timeout]).finally(() => clearTimeout(timer));
 }
 
 /** 'shown': this flow owns the next step. 'not-switchable': no dialog was shown. */
@@ -90,7 +110,14 @@ export async function runApiStarterSwitchFlow(options: ApiStarterSwitchFlowOptio
   // account has no Pro the server would switch.
   const fetchQuote = async (): Promise<Quote | 'shown' | null> => {
     try {
-      const reply = await options.requestSwitch({ confirm: false });
+      const reply = await withinQuoteTimeout(
+        options.requestSwitch({ confirm: false }),
+        options.quoteTimeoutMs ?? API_STARTER_QUOTE_TIMEOUT_MS,
+      );
+      if (reply === QUOTE_TIMED_OUT) {
+        options.reportError('previewApiStarterSwitch', new Error('quote timed out'));
+        return null;
+      }
       if (isApiStarterQuote(reply)) return reply;
     } catch (err) {
       const kind = options.errorKind(err);

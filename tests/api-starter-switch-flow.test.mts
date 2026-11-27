@@ -244,4 +244,34 @@ describe('runApiStarterSwitchFlow', () => {
     h.dialogs[0]!.onDismiss();
     assert.equal(h.dismissed(), 1);
   });
+
+  // Every API Starter checkout waits for this quote, Pro holder or not. A
+  // Convex call that never settles must not leave the purchase dead.
+  it('gives up on a quote that never arrives, and a late quote shows nothing', async () => {
+    let answer: (reply: ProBusinessUpgradeResponse) => void = () => {};
+    const h = harness(() => new Promise((resolve) => { answer = resolve; }), { quoteTimeoutMs: 20 });
+    assert.equal(await runApiStarterSwitchFlow(h.options), 'not-switchable');
+    answer(QUOTE);
+    await settle();
+    assert.equal(h.dialogs.length, 0);
+  });
+
+  it('bounds the quote by default inside the server preview budget plus overhead', () => {
+    assert.equal(flows.API_STARTER_QUOTE_TIMEOUT_MS, 20_000);
+  });
+
+  it('ends a re-quote that never arrives in the failed dialog', async () => {
+    const h = harness(
+      (call, index) => {
+        if (index === 0) return Promise.resolve(QUOTE);
+        if (call.confirm) return Promise.reject(refusal('CHARGE_CHANGED'));
+        return new Promise(() => {});
+      },
+      { quoteTimeoutMs: 20 },
+    );
+    await runApiStarterSwitchFlow(h.options);
+    h.dialogs[0]!.onConfirm();
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(h.dialogs[1]?.title, 'Switch not confirmed');
+  });
 });
