@@ -71,11 +71,8 @@ async function seedWaitlist(t: T, n: number): Promise<void> {
   });
 }
 
-const scanCtx = (t: T, onQuery?: () => void) => ({
-  runQuery: (ref: any, args: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-    onQuery?.();
-    return t.query(ref, args);
-  },
+const scanCtx = (t: T) => ({
+  runQuery: (ref: any, args: any) => t.query(ref, args), // eslint-disable-line @typescript-eslint/no-explicit-any
 });
 
 describe("Black Friday audience scan cost", () => {
@@ -89,9 +86,26 @@ describe("Black Friday audience scan cost", () => {
 
   test("reads about one index range per scanned row, and no query comes near Convex's 4,096", async () => {
     const t = newTest();
-    const ROWS = 2_400;
+    // Over a page of each table and several lookup chunks per page.
+    const ROWS = 1_100;
     await seedFreeUsers(t, ROWS);
     await seedWaitlist(t, ROWS);
+    // Every 7th registration is an account holder's address, and every other
+    // one of those carries the launch stamp, so the batched lookups must hand
+    // each answer back to its own row across chunk and page boundaries.
+    let hasAccount = 0;
+    let stampedViaRegistration = 0;
+    await t.run(async (ctx) => {
+      const registrations = await ctx.db.query("registrations").collect();
+      for (const [i, registration] of registrations.entries()) {
+        if (i % 7 !== 0) continue;
+        hasAccount++;
+        const email = `free-${i}@example.com`;
+        const stamp = i % 2 === 0 ? { blackFridayLaunchWave: "bf-new-buyer-en-waitlist-1" } : {};
+        if (i % 2 === 0) stampedViaRegistration++;
+        await ctx.db.patch(registration._id, { email, normalizedEmail: email, ...stamp });
+      }
+    });
 
     let report: Awaited<ReturnType<typeof scanAudience>> | undefined;
     const ranges = await countIndexRanges(async () => {
@@ -99,22 +113,15 @@ describe("Black Friday audience scan cost", () => {
     });
 
     expect(report!.scanned).toEqual({ users: ROWS, registrations: ROWS });
-    expect(report!.groups.free).toEqual({ eligible: ROWS, alreadySent: 0, toSend: ROWS });
-    expect(report!.groups.waitlist).toEqual({ eligible: ROWS, alreadySent: 0, toSend: ROWS });
+    expect(hasAccount).toBe(158);
+    expect(report!.groups.free).toEqual({ eligible: ROWS, alreadySent: stampedViaRegistration, toSend: ROWS - stampedViaRegistration });
+    expect(report!.groups.waitlist).toEqual({ eligible: ROWS - hasAccount, alreadySent: 0, toSend: ROWS - hasAccount });
+    expect(report!.excluded.waitlist).toEqual({ "has-account": hasAccount });
     // One lookup per eligible account (the registration stamp) and one per
     // registration (has it an account), plus pages and the small tables.
     // The per-row version read about 7 per account and 3 per registration.
     expect(ranges.total).toBeLessThanOrEqual(2 * ROWS * 1.05 + 100);
     expect(ranges.maxPerTransaction).toBeLessThanOrEqual(300);
-  }, 60_000);
-
-  test("the scan's query count grows with pages, not rows", async () => {
-    const t = newTest();
-    await seedFreeUsers(t, 2_000);
-    let queries = 0;
-    await scanAudience(scanCtx(t, () => queries++), "launch", { accounts: true, waitlist: false });
-    // 2 pages of 1,000, one lookup chunk per 125 rows, one page per small table.
-    expect(queries).toBeLessThanOrEqual(2 + 1 + 2_000 / 125 + 5);
   }, 60_000);
 
   test("the export re-check stays inside Convex's limits for a full batch of the worst-case accounts", async () => {

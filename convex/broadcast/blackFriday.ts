@@ -97,17 +97,20 @@ export const WAITLIST_CANARY_MAX = 500;
  *     thousand rows each, and classifies in the action;
  *   - keeps one indexed lookup per row against the other big table (an
  *     account's registration stamp, a registration's account), batched
- *     LOOKUP_CHUNK_SIZE to a query with the chunks of a page run at once;
+ *     LOOKUP_CHUNK_SIZE to a query, LOOKUP_CONCURRENCY chunks at a time;
  *   - fetches the next page while the current page's lookups run.
  *
  * Every query stays far inside Convex's per-transaction limits (4,096 index
  * ranges, 32,000 documents, 16 MiB read): a page is 1 range and
- * SCAN_PAGE_SIZE documents, a lookup chunk is LOOKUP_CHUNK_SIZE ranges.
+ * SCAN_PAGE_SIZE documents, a lookup chunk is LOOKUP_CHUNK_SIZE ranges. At
+ * most LOOKUP_CONCURRENCY + 1 of the scan's queries run at once, a small share
+ * of the deployment's concurrent queries (16 on the smallest class).
  */
 const SCAN_PAGE_SIZE = 1000;
 /** Subscriptions carry the stored Dodo payload, so they come in smaller pages. */
 const SUBSCRIPTIONS_PAGE_SIZE = 200;
-const LOOKUP_CHUNK_SIZE = 125;
+const LOOKUP_CHUNK_SIZE = 250;
+const LOOKUP_CONCURRENCY = 4;
 /**
  * `_ineligibleNow` classifies this many emails at once. Each reads up to 6
  * lookups at a time, so at most 300 are in flight, under Convex's 1,000
@@ -603,7 +606,7 @@ async function walkPages<T>(
   }
 }
 
-/** One boolean per email from a chunked lookup query, all chunks at once. */
+/** One boolean per email from a chunked lookup query, LOOKUP_CONCURRENCY chunks at a time. */
 async function lookupAll(
   ctx: ScanCtx,
   ref: any, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -613,7 +616,9 @@ async function lookupAll(
   const unique = [...new Set(emails)];
   const chunks: string[][] = [];
   for (let i = 0; i < unique.length; i += LOOKUP_CHUNK_SIZE) chunks.push(unique.slice(i, i + LOOKUP_CHUNK_SIZE));
-  const results: boolean[][] = await Promise.all(chunks.map((chunk) => ctx.runQuery(ref, { ...extra, emails: chunk })));
+  const results: boolean[][] = await mapConcurrently(chunks, LOOKUP_CONCURRENCY, (chunk) =>
+    ctx.runQuery(ref, { ...extra, emails: chunk }),
+  );
   const out = new Map<string, boolean>();
   chunks.forEach((chunk, c) => chunk.forEach((email, i) => out.set(email, results[c]![i]!)));
   return out;
