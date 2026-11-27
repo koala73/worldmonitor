@@ -88,6 +88,16 @@ The news-and-maps view (`open_news_dashboard`) and the country view (`open_count
 - Claude replaces tool results larger than about 150,000 characters with a file pointer. When the news-and-maps view receives a result without the feed digest, it calls `open_news_dashboard` once itself with the original view arguments, repeating the billing arguments so the original dashboard request serves it. A plain open reloads without `refresh` and reuses the current window. A refresh reloads with the same `refresh: true` and `request_id`, which retries that allocation. A refresh sent without a `request_id` is not reloaded, because the reload would start a new allocation. If the view does not reload, the call fails, or the host offers no server tools, the status line reads "The news feed could not be loaded. Ask for the dashboard again."
 - App tools registered by these views carry a `title`: `apply_news_view` ("Apply news and map view"), `focus_news_article` ("Focus a news article"), `select_country_view` ("Change the country or topic") and `open_country_atlas_asset` ("Open a country energy asset"). Their names, descriptions and input schemas are unchanged, so hosts do not ask users to approve them again.
 
+## Deep Links
+
+ChatGPT can open the news-and-maps view from a link of the form `https://chatgpt.com/plugins/<plugin-id>/app/open_news_dashboard?path=<encoded-path>`. ChatGPT runs the `open_news_dashboard` entrypoint with empty arguments and passes the decoded path to the view as `hostContext["openai/deepLink"].url`, at `ui/initialize` and again in `ui/notifications/host-context-changed`.
+
+- The path is `/` followed by a query string that uses the `open_news_dashboard` argument names: `query`, `source`, `category`, `country`, `time_range`, `renderer`, `map_layers` (comma-separated), `map_latitude`, `map_longitude` and `map_zoom`. For example, `/?country=IR&category=conflict&time_range=24h` opens the Iran conflict view for the last day.
+- The view applies the link after the first dashboard result that renders, as if the user had chosen the same filters, and reports the new view through `ui/update-model-context`. If the opening result fails, the link waits for a successful Refresh news.
+- A link replaces the whole view. Without `time_range`, the news list and the map both show all time.
+- Each parameter is validated on its own. An invalid or unknown parameter, or a category the dashboard did not load, is dropped and the rest still apply. `map_latitude` and `map_longitude` apply only together. `refresh` and `request_id` are ignored, so a link cannot start a billed refresh.
+- Only app-relative paths without a fragment are accepted. Other paths are reserved and ignored.
+
 ## Forecast List And Original Cases
 
 For paid OAuth users, `get_forecast_predictions` opens a compact list and returns one signed `panelRequest`. The opening consumes one daily panel allocation. The list retains original IDs, generation, source notices and unknown odds. Domain and region filters use the loaded list.

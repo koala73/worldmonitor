@@ -24,6 +24,7 @@ import { LAYER_REGISTRY } from '@/config/map-layer-definitions';
 import { loadPluginHazardSnapshot, type PluginHazardSnapshot } from '@/services/plugin-map-snapshot';
 import { newsPanelAdmissionSchema, type NewsPanelAdmission } from '../shared/panel-admission';
 import { hostContextFromInitialize, layoutFlags, mergeHostContext, type PluginHostContext } from './plugin-host-context';
+import { newsViewFromDeepLink } from './plugin-deep-link';
 import { applyHostLayout, createExpandButton, EXPAND_REFUSED } from './plugin-display-mode';
 import { loaderHostChannel } from './plugin-host-channel';
 import { timeRangeCutoff } from '@/utils/time-range';
@@ -89,6 +90,8 @@ function mountPlugin(): void {
   let queuedResult: { params: unknown } | undefined;
   let digestReloadAttempted = false;
   let openingResultSeen = false;
+  let appliedDeepLink: string | undefined;
+  let applyingDeepLink: string | undefined;
   let resolveMounted!: () => void;
   let rejectMounted!: (error: unknown) => void;
   const whenMounted = new Promise<void>((resolve, reject) => { resolveMounted = resolve; rejectMounted = reject; });
@@ -215,6 +218,7 @@ function mountPlugin(): void {
       const result = await request('tools/call', { name: 'open_news_dashboard', arguments: { ...view, refresh: true, request_id: refreshAttempt!.id } });
       if (!await renderResult(result, true)) throw new Error(status.textContent || 'News refresh failed. Previously loaded news remains visible.');
       refreshAttempt = undefined;
+      applyDeepLink();
     })().finally(() => { refreshing = undefined; });
     return refreshing;
   }
@@ -307,25 +311,31 @@ function mountPlugin(): void {
     return receipt;
   }
 
-  async function applyView(input: unknown, options: { reset?: boolean; keepCurrentView?: boolean; reloadLayers?: boolean; generation?: number } = {}): Promise<object> {
+  async function applyView(input: unknown, options: { reset?: boolean; keepCurrentView?: boolean; reloadLayers?: boolean; generation?: number; dropUnloadedCategory?: boolean } = {}): Promise<object> {
     const next = pluginNewsViewSchema.parse(input);
     const operation = viewQueue.then(() => {
       const desired = options.keepCurrentView ? { ...view } : { ...next };
       if (options.reloadLayers && desired.map_layers === undefined) desired.map_layers = view.map_layers ?? [];
-      return updateView(desired, options.reset ?? false, options.generation, Boolean(options.reset || (!options.keepCurrentView && next.category !== undefined)));
+      return updateView(desired, options.reset ?? false, options.generation, Boolean(options.reset || (!options.keepCurrentView && next.category !== undefined)), options.dropUnloadedCategory);
     });
     viewQueue = operation.catch(() => {});
     return operation;
   }
 
-  async function updateView(next: PluginNewsView, reset: boolean, generation?: number, clearCategoryNotice = false): Promise<object> {
+  // dropUnloadedCategory (deep links): a category the current digest lacks is dropped and the rest applies;
+  // a tool call keeps its category refusal. Checked when the queued update runs, against the digest then.
+  async function updateView(next: PluginNewsView, reset: boolean, generation?: number, clearCategoryNotice = false, dropUnloadedCategory = false): Promise<object> {
     const superseded = () => generation !== undefined && generation !== renderGeneration;
     if (superseded()) return { applied: false, superseded: true };
-    const requestedCategory = next.category;
+    let requestedCategory = next.category;
     if (requestedCategory) {
       const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
-      if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
-      next = { ...next, category: resolution.category };
+      if ('reason' in resolution && !dropUnloadedCategory) return refuseNewsCategory(requestedCategory, resolution.reason);
+      if ('reason' in resolution) {
+        next = { ...next };
+        delete next.category;
+        requestedCategory = undefined;
+      } else next = { ...next, category: resolution.category };
     }
     const intended = { ...(reset ? { map_layers: view.map_layers } : view), ...next };
     const selectedLayers = intended.map_layers ?? [];
@@ -344,8 +354,9 @@ function mountPlugin(): void {
       if (superseded()) return { applied: false, superseded: true };
       if (requestedCategory) {
         const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
-        if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
-        intended.category = resolution.category;
+        if ('reason' in resolution && !dropUnloadedCategory) return refuseNewsCategory(requestedCategory, resolution.reason);
+        if ('reason' in resolution) delete intended.category;
+        else intended.category = resolution.category;
       }
     }
     let renderer: object | undefined;
@@ -518,6 +529,7 @@ function mountPlugin(): void {
     if (message.method === 'ui/notifications/host-context-changed') {
       host = mergeHostContext(host, message.params);
       relayout();
+      applyDeepLink();
     }
   }
 
@@ -527,7 +539,39 @@ function mountPlugin(): void {
     // Later host results can echo the view's own tool calls, whose responses the view already handled.
     // Only a later digest renders; an echoed error or analysis result must not touch the status or panels.
     if (!openingResult && !carriesDigest(params)) return;
-    void renderResult(params, false, openingResult).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
+    void renderResult(params, false, openingResult).then(rendered => {
+      if (rendered) applyDeepLink();
+    }).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
+  }
+
+  // A ChatGPT deep link opens this entrypoint with empty arguments and passes the view in the host context.
+  // Each new link applies once, after the first dashboard result that renders (the opening one, or a refresh
+  // after a failed opening), so that result's empty view cannot overwrite it.
+  // A link that fails (map data or the renderer) stays retryable: the next successful render, such as
+  // Refresh news, applies it again. A link the user interrupted by moving the map counts as applied.
+  function applyDeepLink(): void {
+    const url = host.deepLink;
+    if (!url || url === appliedDeepLink || url === applyingDeepLink || !digest) return;
+    const link = newsViewFromDeepLink(url);
+    if (!link) { appliedDeepLink = url; return; }
+    applyingDeepLink = url;
+    // The view is leaving the last applied link, so a return to it (A, B, then A again) must apply again.
+    appliedDeepLink = undefined;
+    // A finished link counts as applied only while it is still the host's link. When the host moved on and
+    // came back during the wait, the return was queued as a new application, so nothing is skipped.
+    const settle = () => { if (host.deepLink === url) appliedDeepLink = url; };
+    // A link replaces the whole view, so an omitted time range means all time for the news and the map alike.
+    const linked: PluginNewsView = { time_range: 'all', ...link.view };
+    // A category this dashboard did not load is dropped like any other invalid field; the rest still applies.
+    void applyView(linked, { reset: true, dropUnloadedCategory: true }).then(receipt => {
+      const outcome = receipt as { applied?: boolean; viewport?: { interruptedBy?: string } };
+      if (outcome.applied !== false || outcome.viewport?.interruptedBy === 'human') settle();
+    }, error => {
+      // An interrupted map move (the country focus) means the map moved on; repeating it later would undo that.
+      if (error instanceof ViewportTransitionError && error.reason === 'viewport_interrupted') { settle(); return; }
+      status.textContent = 'The linked view could not be applied. Showing news with the previous filters.';
+      mapStatus.textContent = error instanceof Error ? error.message : 'The linked map view is unavailable.';
+    }).then(() => { if (applyingDeepLink === url) applyingDeepLink = undefined; });
   }
 
   function reportSize(): void {
