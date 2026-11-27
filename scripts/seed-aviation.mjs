@@ -40,6 +40,9 @@ import {
   getRedisCredentials,
   readCanonicalValue,
   markPreservableFetchFailure,
+  httpsProxyFetchRaw,
+  resolveProxyForConnect,
+  redactProxyCredentials,
 } from './_seed-utils.mjs';
 import notificationDedup from './shared/notification-dedup.cjs';
 import countryNameMap from './shared/country-name-to-iso2.cjs';
@@ -82,6 +85,9 @@ export const BOOTSTRAP_META_KEY = 'seed-meta:aviation:delays-bootstrap';
 
 const INTL_TTL      = 10_800; // 3h — survives ~5 consecutive missed 30min cron ticks
 const FAA_TTL       = 7_200;  // 2h
+// Must equal api/health.js SEED_META.faaDelays.maxStaleMin: after a failed FAA
+// fetch, last-good delays serve only until health would call them stale.
+const FAA_MAX_STALE_MIN = 90;
 const NOTAM_TTL     = 7_200;  // 2h
 // Must equal api/health.js SEED_META.notamClosures.maxStaleMin: last-good
 // closures stop being retained once health would call them stale.
@@ -859,16 +865,58 @@ export function buildFaaAlerts(faaDelays) {
   return alerts;
 }
 
+// The feed's root element. Even a quiet feed has it (with just Update_Time), so
+// a page without it is a challenge or error page, not "no delays".
+export function isFaaStatusXml(text) {
+  return /<AIRPORT_STATUS_INFORMATION[\s>]/.test(text || '');
+}
+
+function describeFetchError(err) {
+  const cause = err?.cause?.code || err?.cause?.message;
+  return `${err?.message || err}${cause ? ` (${cause})` : ''}`;
+}
+
+// nasstatus.faa.gov sits behind Akamai, which refuses some egress IPs: Railway
+// saw "fetch failed" on 15 of 16 ticks from 2026-11-25 19:33Z to 02:33Z, and a
+// blocked IP can also get the "Access Denied" page as a 403 or a 200. Any
+// direct failure is retried once through the seeders' residential proxy.
+export async function fetchFaaStatusXml({
+  fetchImpl = (...args) => globalThis.fetch(...args),
+  proxyAuth = resolveProxyForConnect(),
+  proxyFetchRaw = httpsProxyFetchRaw,
+} = {}) {
+  let directError;
+  try {
+    const resp = await fetchImpl(FAA_URL, {
+      headers: { Accept: 'application/xml', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const text = await resp.text();
+    if (!resp.ok) directError = `HTTP ${resp.status}`;
+    else if (!isFaaStatusXml(text)) directError = 'not FAA status XML';
+    else return { xml: text, via: 'direct' };
+  } catch (err) {
+    directError = describeFetchError(err);
+  }
+  if (!proxyAuth) throw new Error(`FAA direct: ${directError}; no proxy configured`);
+  let proxyError;
+  try {
+    const { buffer } = await proxyFetchRaw(FAA_URL, proxyAuth, { accept: 'application/xml', timeoutMs: 20_000 });
+    const text = buffer.toString('utf8');
+    if (isFaaStatusXml(text)) return { xml: text, via: 'proxy', directError };
+    proxyError = 'not FAA status XML';
+  } catch (err) {
+    proxyError = redactProxyCredentials(describeFetchError(err));
+  }
+  throw new Error(`FAA direct: ${directError}; proxy: ${proxyError}`);
+}
+
 async function seedFaaDelays() {
   const t0 = Date.now();
-  const resp = await fetch(FAA_URL, {
-    headers: { Accept: 'application/xml', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`FAA HTTP ${resp.status}`);
-  const xml = await resp.text();
+  const { xml, via, directError } = await fetchFaaStatusXml();
+  if (directError) console.warn(`[FAA] direct fetch failed (${directError}) — used proxy`);
   const alerts = buildFaaAlerts(parseFaaXml(xml));
-  console.log(`[FAA] ${alerts.length} alerts in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.log(`[FAA] ${alerts.length} alerts via ${via} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   return { alerts };
 }
 
@@ -1449,10 +1497,30 @@ async function runFaaSideCar() {
         catch (e) { console.warn(`[FAA] notify error: ${e?.message || e}`); }
       }
     } catch (err) {
-      console.warn(`[FAA] fetch/write error: ${err?.message || err} — extending TTL`);
-      try { await extendExistingTtl([FAA_KEY, FAA_META_KEY], FAA_TTL); } catch {}
+      console.warn(`[FAA] fetch/write error: ${err?.message || err}`);
+      await preserveLastGoodFaa();
     }
   });
+}
+
+// Failure path for the FAA side-car. Last-good delays keep serving only for
+// what is left of the health budget: re-extending by the full FAA_TTL on every
+// failed tick showed 2026-11-25's 19:01Z ground delays as live for 7 hours.
+// seed-meta is not touched, so health ages it into STALE_SEED on time.
+async function preserveLastGoodFaa() {
+  let ageMin = null;
+  try {
+    const fetchedAt = (await upstashGet(FAA_META_KEY))?.fetchedAt;
+    if (typeof fetchedAt === 'number' && Number.isFinite(fetchedAt)) ageMin = (Date.now() - fetchedAt) / 60_000;
+  } catch { /* unknown age — treat as out of budget */ }
+  const remainingSec = ageMin === null ? 0 : Math.floor((FAA_MAX_STALE_MIN - ageMin) * 60);
+  if (remainingSec > 0) {
+    try { await extendExistingTtl([FAA_KEY], Math.min(remainingSec, FAA_TTL)); } catch {}
+    console.warn(`[FAA] kept last-good delays (${Math.round(ageMin)}min old) for ${Math.round(remainingSec / 60)}min more; seed-meta not refreshed`);
+  } else {
+    const age = ageMin === null ? 'unknown age' : `${Math.round(ageMin)}min old`;
+    console.warn(`[FAA] last-good delays (${age}) are past maxStaleMin ${FAA_MAX_STALE_MIN}; letting them expire`);
+  }
 }
 
 // Failure path for the NOTAM side-car. seed-meta:aviation:notam.fetchedAt is the
