@@ -2006,6 +2006,19 @@ describe('welcome landing page routing', () => {
     }
   });
 
+  it('sends /chatgpt to the ChatGPT plugin listing with a temporary redirect', () => {
+    const listing = 'https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba';
+    for (const host of ['www.worldmonitor.app', 'worldmonitor.app']) {
+      for (const path of ['/chatgpt', '/chatgpt/']) {
+        const redirect = firstRedirectFor({ host, path });
+        assert.ok(redirect, `expected a redirect for ${host}${path}`);
+        assert.equal(redirect.destination, listing);
+        // Temporary: OpenAI assigns the listing ID, so a cached 308 would outlive a re-listing.
+        assert.equal(redirect.permanent, false);
+      }
+    }
+  });
+
   it('redirects bare /docs to the docs home permanently, with or without a trailing slash', () => {
     for (const source of ['/docs', '/docs/']) {
       const docsRedirect = vercelConfig.redirects.find((r) => r.source === source);
