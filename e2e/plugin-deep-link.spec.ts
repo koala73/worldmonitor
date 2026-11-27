@@ -162,3 +162,15 @@ test('a link that arrives while another applies wins', async ({ page }) => {
   await page.waitForTimeout(1000);
   expect(lastReportedView(host.messages)).toMatchObject({ country: 'TW', category: 'world' });
 });
+
+test('returning to the first link while a second applies shows the first again', async ({ page }) => {
+  const host = await installHost(page, '/?country=IR');
+  await expect.poll(() => lastReportedView(host.messages)).toMatchObject({ country: 'IR' });
+  // Both arrive in one task, so the return to IR lands while TW is still applying.
+  await page.evaluate(() => {
+    const target = document.querySelector('iframe')!.contentWindow!;
+    for (const url of ['/?country=TW', '/?country=IR']) target.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/host-context-changed', params: { 'openai/deepLink': { url } } }, '*');
+  });
+  await page.waitForTimeout(3000);
+  expect(lastReportedView(host.messages)).toMatchObject({ country: 'IR' });
+});

@@ -555,6 +555,8 @@ function mountPlugin(): void {
     const link = newsViewFromDeepLink(url);
     if (!link) { appliedDeepLink = url; return; }
     applyingDeepLink = url;
+    // The view is leaving the last applied link, so a return to it (A, B, then A again) must apply again.
+    appliedDeepLink = undefined;
     // A link replaces the whole view, so an omitted time range means all time for the news and the map alike.
     const linked: PluginNewsView = { time_range: 'all', ...link.view };
     // A category this dashboard did not load is dropped like any other invalid field; the rest still applies.
