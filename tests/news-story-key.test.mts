@@ -430,9 +430,19 @@ test('the reprint record lives while builds keep carrying the wire, without the 
   const start = Date.now() - 30 * hour;
   await digest.recordPublisherCoverage([wire, outlet], [wire, outlet], start, Infinity);
   // One edition carries only the wire, another only the outlet, every hour.
+  const reprints = newsPublisherReprintsKey(newsPublisherCoverageKey(EGYPT_INDEPENDENT));
+  const renewals: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const commands = JSON.parse(init.body);
+    renewals.push(...commands.filter(([op, key]) => op === 'EXPIRE' && key === reprints).map(() => 'renewed'));
+    return Response.json(commands.map(store.run));
+  });
   for (let h = 1; h <= 26; h++) {
+    const before = renewals.length;
     await digest.recordPublisherCoverage([wire], [wire], start + h * hour, Infinity);
+    assert.equal(renewals.length, before + 1, 'a wire-only build renews the record');
     await digest.recordPublisherCoverage([outlet], [outlet], start + h * hour + 60_000, Infinity);
+    assert.equal(renewals.length, before + 1, 'an outlet-only build does not');
   }
   const event = { eventType: 'rss_alert', variant: 'full', payload: { title: EGYPT_INDEPENDENT, corroborationCount: 0 } };
   await refreshPublisherCounts([event], start + 26 * hour + 120_000, store.pipeline);
@@ -506,8 +516,11 @@ test('a rewrite merge keeps an outlet that also wrote its own wording (#11434)',
   const anchorId = `full:${newsPublisherCoverageKey(EGYPT_INDEPENDENT).split(':').pop()}`;
   assert.equal(await mergeStoryCoverage(event, anchorId, store.pipeline), true);
   await refreshPublisherCounts([event], now, store.pipeline);
-  // Reuters, and Arab Times for its own wording.
+  // Reuters, and Arab Times for its own wording, on either headline.
   assert.equal(event.observedPublisherCount, 2);
+  const anchor = { ...event, payload: { ...event.payload, title: EGYPT_INDEPENDENT } };
+  await refreshPublisherCounts([anchor], now, store.pipeline);
+  assert.equal(anchor.observedPublisherCount, 2);
 });
 
 test('the coverage ledger write stops waiting at its deadline when Redis stalls', async (t) => {

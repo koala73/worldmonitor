@@ -360,8 +360,9 @@ export async function usersAlertedFor(anchorIds, userIds, { now = Date.now(), pi
  * digest writes them with ZADD GT), so the copy keeps the latest sighting and
  * the reader's 24-hour window still applies. Each wording's reprint record
  * stays on its own key (#11434): a family the digest folded into the wire on
- * one wording is not copied to the other, and the same family's own wording
- * still counts there. Best effort.
+ * one wording is not copied to the other. A family that wrote its own wording
+ * carried the story, so it leaves the other wording's record and counts on
+ * both. Best effort.
  */
 export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedisPipeline) {
   const own = rewriteCheckApplies(event) ? newsPublisherCoverageKey(event.payload.title) : '';
@@ -387,9 +388,10 @@ export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedi
     };
     const toAnchor = copy(ownRows, ownReprints);
     const toOwn = copy(anchorRows, anchorReprints);
+    const members = pairs => pairs.filter((_, i) => i % 2 === 1);
     const rows = await pipeline([
-      ...(toAnchor.length ? [['ZADD', anchor, 'GT', ...toAnchor]] : []),
-      ...(toOwn.length ? [['ZADD', own, 'GT', ...toOwn]] : []),
+      ...(toAnchor.length ? [['ZADD', anchor, 'GT', ...toAnchor], ['ZREM', newsPublisherReprintsKey(anchor), ...members(toAnchor)]] : []),
+      ...(toOwn.length ? [['ZADD', own, 'GT', ...toOwn], ['ZREM', newsPublisherReprintsKey(own), ...members(toOwn)]] : []),
       ['EXPIRE', anchor, DAY / 1000],
       ['EXPIRE', own, DAY / 1000],
     ], { timeoutMs: 1_000 });
