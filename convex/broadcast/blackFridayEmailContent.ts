@@ -273,7 +273,7 @@ const ZH: BlackFridayLocaleCopy = {
   checkoutNote: "折扣将在结账时自动生效，无需输入优惠码。价格以美元计价；结账时可能另加税费或增值税。",
   waitlistNote: "结账前需要先创建 WorldMonitor 账户。",
   switchNote: "折扣将在切换时自动生效，无需输入优惠码。价格以美元计价；可能另加税费或增值税。",
-  switchPath: "按钮会打开仪表板中的“{settings}”→“{account}”，在那里点击“{switchToYearly}”。",
+  switchPath: "上方按钮会打开仪表板中的“{settings}”→“{account}”页面，请在该页面点击“{switchToYearly}”。",
   stepsTitle: "切换后会发生什么",
   steps: [
     "您的套餐立即变为 Pro 年度版。",
@@ -342,7 +342,7 @@ const FR: BlackFridayLocaleCopy = {
   waitlistNote: "Vous devrez d'abord créer un compte WorldMonitor pour payer.",
   switchNote:
     "La réduction est appliquée automatiquement lors du changement. Aucun code à saisir. Prix en dollars américains\u00a0; des taxes ou la TVA peuvent s'ajouter.",
-  switchPath: "Le bouton ouvre {settings} → {account} dans le tableau de bord. Choisissez-y «\u00a0{switchToYearly}\u00a0».",
+  switchPath: "Ce bouton ouvre {settings} → {account} dans le tableau de bord. Cliquez ensuite sur «\u00a0{switchToYearly}\u00a0».",
   stepsTitle: "Ce qui se passe quand vous passez à l'annuel",
   steps: [
     "Votre abonnement passe immédiatement à Pro Annuel.",
@@ -419,7 +419,7 @@ const TR: BlackFridayLocaleCopy = {
   waitlistNote: "Ödeme için önce bir WorldMonitor hesabı oluşturmanız gerekir.",
   switchNote:
     "İndirim geçiş sırasında otomatik olarak uygulanır. Kod girmeniz gerekmez. Fiyatlar ABD doları cinsindendir; vergi veya KDV eklenebilir.",
-  switchPath: "Düğme, panoda {settings} → {account} bölümünü açar. Orada “{switchToYearly}” düğmesine tıklayın.",
+  switchPath: "Bu düğme, panoda {settings} → {account} bölümünü açar. Ardından “{switchToYearly}” düğmesine tıklayın.",
   stepsTitle: "Geçiş yaptığınızda ne olur",
   steps: [
     "Planınız hemen Pro Yıllık'a geçer.",
@@ -496,7 +496,7 @@ const ES: BlackFridayLocaleCopy = {
   waitlistNote: "Para pagar, primero tendrás que crear una cuenta de WorldMonitor.",
   switchNote:
     "El descuento se aplica automáticamente al cambiar. No hay que introducir ningún código. Precios en dólares estadounidenses; pueden añadirse impuestos o IVA.",
-  switchPath: "El botón abre {settings} → {account} en el panel. Elige allí «{switchToYearly}».",
+  switchPath: "Este botón abre {settings} → {account} en el panel. Después, haz clic en «{switchToYearly}».",
   stepsTitle: "Qué ocurre al cambiar",
   steps: [
     "Tu plan pasa a Pro Anual de inmediato.",
