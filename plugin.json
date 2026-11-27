@@ -25,7 +25,7 @@
       "interface": {
         "displayName": "WorldMonitor",
         "shortDescription": "Global risk and market data",
-        "longDescription": "Explore country risk, conflicts, markets, energy and maritime chokepoints with live WorldMonitor data. Inspect gold positioning and holdings, traffic anomalies and global DDoS observations. Compare dated CPI and rate histories, research stocks and technical backtests, and model energy or import-cost exposure to chokepoint closures. Research and scenario results retain model limitations and do not establish future performance. News results list headlines from publishers' public RSS feeds with the publisher's name, the time and a link to the original article; WorldMonitor does not summarize, rewrite or reproduce articles. Open a headline dashboard and a 2D map or 3D globe of events. Data can be partial, stale or unavailable; answers retain coverage and attribution. Sign in with your WorldMonitor account through OAuth. Research generation may save shared snapshots. The plugin does not trade, publish articles or change account settings. Map controls work in the UI; model control of an already-open map depends on host support.",
+        "longDescription": "Explore country risk, conflicts, markets, energy and maritime chokepoints with live WorldMonitor data. Inspect gold positioning and holdings, traffic anomalies and global DDoS observations. Compare dated CPI and rate histories, research stocks and technical backtests, and model energy or import-cost exposure to chokepoint closures. Check recent and upcoming imaging-satellite passes over a location, and the latest archive images and confirmed change flags at watched sites. Research and scenario results retain model limitations and do not establish future performance. News results list headlines from publishers' public RSS feeds with the publisher's name, the time and a link to the original article; WorldMonitor does not summarize, rewrite or reproduce articles. Open a headline dashboard and a 2D map or 3D globe of events. Data can be partial, stale or unavailable; answers retain coverage and attribution. Sign in with your WorldMonitor account through OAuth. Research generation may save shared snapshots. The plugin does not trade, publish articles or change account settings. Map controls work in the UI; model control of an already-open map depends on host support.",
         "developerName": "WorldMonitor",
         "category": "Data & Analytics",
         "capabilities": [
@@ -34,7 +34,8 @@
           "Inspect events on a map or globe",
           "Compare macro histories",
           "Research stocks and backtests",
-          "Model chokepoint supply and cost exposure"
+          "Model chokepoint supply and cost exposure",
+      "Check satellite passes and imagery changes"
         ],
         "websiteURL": "https://www.worldmonitor.app",
         "supportURL": "https://www.worldmonitor.app/support.md",
