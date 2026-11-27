@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // Rebalances the test:e2e:ci-smoke:<n> spec lists in package.json from the
 // per-test durations Playwright's list reporter prints in recent successful
-// Test runs on main. Usage:
+// pull_request Test runs that ran every shard. Main pushes skip the browser
+// smokes their pull requests already ran, so main runs rarely carry them; the
+// median over several PR runs keeps one PR's own spec edits from moving the
+// split. Usage:
 //   node scripts/balance-smoke-shards.mjs [--runs id,id] [--count 6] [--repo owner/name] [--write]
 import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -251,11 +254,22 @@ async function measureRun(repo, runId, shardCount) {
   return run;
 }
 
+// Many PR runs skip the browser group (no browser path changed), and
+// collectRuns skips those, so the candidate list is far wider than --count:
+// one listing call, and a skipped candidate costs one jobs request.
+export function candidateRunListArgs(repo, count) {
+  return ['run', 'list', '-R', repo, '-w', 'Test', '--event', 'pull_request', '--status', 'success', '-L', String(Math.max(count * 50, 300)), '--json', 'databaseId,headBranch'];
+}
+
+// At most one run per PR branch (the newest, as listed): a PR that grew a
+// spec and re-ran several times must not supply every sample of the median.
+export function distinctBranchRuns(runs) {
+  const seen = new Set();
+  return runs.filter((run) => !seen.has(run.headBranch) && seen.add(run.headBranch)).map((run) => String(run.databaseId));
+}
+
 async function collectRuns(args, shardCount) {
-  const candidates = args.runs ?? JSON.parse(await gh([
-    'run', 'list', '-R', args.repo, '-w', 'Test', '-b', 'main', '--event', 'push', '--status', 'success',
-    '-L', String(args.count * 4), '--json', 'databaseId',
-  ])).map((run) => String(run.databaseId));
+  const candidates = args.runs ?? distinctBranchRuns(JSON.parse(await gh(candidateRunListArgs(args.repo, args.count))));
   const used = [];
   for (const runId of candidates) {
     if (!args.runs && used.length === args.count) break;

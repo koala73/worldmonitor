@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, posix, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { parse } from 'yaml';
-import { decideReuse, GROUPS, main, outputsFor, REUSE_BLOCKER } from '../.github/scripts/reuse-pr-test-verdict.mjs';
+import { browserSettled, decideReuse, GROUPS, MAX_COMMITS, main, outputsFor, REUSE_BLOCKER, TEST_INPUT } from '../.github/scripts/reuse-pr-test-verdict.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const workflow = parse(readFileSync(join(root, '.github/workflows/test.yml'), 'utf8'));
@@ -13,6 +13,14 @@ const OURS = { display_title: 'PR #7 into main: feat: x', head_branch: 'feat/x',
 
 const CODE_JOBS = ['unit-shard (1)', 'unit-shard (2)', 'unit-built-output', 'unit', 'sidecar', 'convex-tests', 'dom-tests'];
 const BROWSER_JOBS = ['variant-smoke (1)', 'variant-smoke (2)', 'variant-smoke-pro-webmcp (webmcp)', 'variant-smoke-full'];
+// What the jobs API lists for a green PR run whose browser group was not
+// selected: each matrix job once, under its unexpanded name (PR #11450 run
+// 45944994296).
+const SKIPPED_BROWSER = [
+  { name: 'variant-smoke-full', conclusion: 'success' },
+  { name: 'variant-smoke (${{ matrix.shard }})', conclusion: 'skipped' },
+  { name: 'variant-smoke-pro-webmcp', conclusion: 'skipped' },
+];
 
 function fixture(overrides = {}) {
   const state = {
@@ -28,7 +36,27 @@ function fixture(overrides = {}) {
     calls.push(path);
     if (state.fail && path.includes(state.fail)) throw new Error('HTTP 502');
     if (path === 'repos/o/r/commits/S/pulls') return state.pulls;
+    if (path === 'repos/o/r/commits/D1/pulls') return [];
     if (path === 'repos/o/r/compare/P...H') return state.compare;
+    // What main changed since a PR head branched, up to the base: nothing unless a case says.
+    const drift = path.match(/^repos\/o\/r\/compare\/(H\d*)\.\.\.(\w+)$/);
+    if (drift) return { files: (state.drift?.[drift[1]] ?? []).map((entry) => (typeof entry === 'string' ? { filename: entry } : entry)) };
+    // The commits main has not tested yet: S alone unless a case adds earlier merges.
+    const since = path.match(/^repos\/o\/r\/compare\/(\w+)\.\.\.S$/);
+    if (since) {
+      const commits = state.since?.[since[1]] ?? ['S'];
+      return { status: 'ahead', total_commits: commits.length, commits: commits.map((c) => ({ sha: c })), ...state.sinceOverride };
+    }
+    // An earlier merge C<n> is PR #<n> with head H<n>, run <n>, and the jobs in state.other.
+    const other = path.match(/^repos\/o\/r\/commits\/C(\d+)\/pulls$/);
+    if (other) return [{ number: Number(other[1]), merge_commit_sha: `C${other[1]}`, merged_at: 'x', base: { ref: 'main' }, head: { sha: `H${other[1]}`, ref: `f/${other[1]}`, repo: { full_name: 'o/r' } } }];
+    const otherRuns = path.match(/^repos\/o\/r\/actions\/workflows\/test\.yml\/runs\?head_sha=H(\d+)&/);
+    if (otherRuns) return { workflow_runs: [{ ...OURS, id: Number(otherRuns[1]), display_title: `PR #${otherRuns[1]} into main: y`, head_branch: `f/${otherRuns[1]}`, status: 'completed', conclusion: 'success', created_at: '2026-11-17T09:00:00Z', updated_at: '2026-11-17T09:07:00Z' }] };
+    const otherJobs = path.match(/^repos\/o\/r\/actions\/runs\/(\d+)\/jobs\?/);
+    if (otherJobs && otherJobs[1] !== '99') {
+      const jobs = state.other?.[otherJobs[1]] ?? BROWSER_JOBS.map((name) => ({ name, conclusion: 'success' }));
+      return { jobs, total_count: jobs.length };
+    }
     const tree = path.match(/^repos\/o\/r\/git\/commits\/(\w+)$/);
     if (tree) return { tree: { sha: state.trees[tree[1]] } };
     if (path.startsWith('repos/o/r/actions/workflows/test.yml/runs?head_sha=H&event=pull_request')) return { workflow_runs: state.runs };
@@ -60,11 +88,13 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
     assert.deepEqual(outputsFor({ browser: true }), { browser: 'false' });
   });
 
-  it('never reuses when main moved under the head or the trees differ', async () => {
-    for (const status of ['diverged', 'behind']) assert.deepEqual((await decide({ compare: { status } })).reuse, {});
+  it('never reuses code when main moved under the head or the trees differ, but still skips browser', async () => {
+    // Browser does not need the tested tree: the PR run settled it, and the
+    // deploy gate already refuses a PR that edits files main changed since.
+    for (const status of ['diverged', 'behind']) assert.deepEqual((await decide({ compare: { status } })).reuse, { browser: true });
     assert.deepEqual((await decide({ compare: { status: 'identical' } })).reuse, { code: true, browser: true });
-    assert.deepEqual((await decide({ trees: { S: 'T1', H: 'T2' } })).reuse, {});
-    assert.deepEqual((await decide({ trees: { S: undefined, H: undefined } })).reuse, {});
+    assert.deepEqual((await decide({ trees: { S: 'T1', H: 'T2' } })).reuse, { browser: true });
+    assert.deepEqual((await decide({ trees: { S: undefined, H: undefined } })).reuse, { browser: true });
   });
 
   it('needs a merged pull request into main whose merge commit is this push', async () => {
@@ -137,13 +167,84 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
   // A cancelled or red main run between the last green one and this push
   // left a commit untested on main (and its health-probe cutovers unchecked);
   // the PR run never covered it, since its base already contained it.
-  it('never reuses while a main commit since the last successful run is untested, and asks GitHub nothing', async () => {
-    for (const decidedBase of ['OLDER', '']) {
-      const d = await decide({}, { decidedBase });
-      assert.deepEqual(d.reuse, {}, JSON.stringify({ decidedBase }));
-      assert.deepEqual(d.calls, []);
-    }
+  it('never reuses code while a main commit since the last successful run is untested', async () => {
+    const d = await decide({ since: { OLDER: ['C5', 'S'] } }, { decidedBase: 'OLDER' });
+    assert.deepEqual(d.reuse, { browser: true });
+    assert.ok(!d.calls.some((path) => path.includes('/git/commits/')), 'code must not be looked up');
+    assert.match(d.reason, /settled by the pull request runs of #5, #7/);
     assert.deepEqual((await decide({}, { decidedBase: 'P' })).reuse, { code: true, browser: true });
+  });
+
+  it('asks GitHub nothing when main has no successful Test run to diff from', async () => {
+    const d = await decide({}, { decidedBase: '' });
+    assert.deepEqual(d.reuse, {});
+    assert.deepEqual(d.calls, []);
+  });
+
+  it('skips browser only when every untested main commit merged a PR that settled it', async () => {
+    const two = { since: { OLDER: ['C5', 'S'] } };
+    const jobs = (conclusion) => BROWSER_JOBS.map((name) => ({ name, conclusion: name === 'variant-smoke-full' ? 'success' : conclusion }));
+    // The earlier PR touched no browser path: its legs skipped and the aggregate passed.
+    assert.deepEqual((await decide({ ...two, other: { 5: SKIPPED_BROWSER } }, { decidedBase: 'OLDER' })).reuse, { browser: true });
+    // The earlier PR's browser run failed, was cancelled, or ran only part of the matrix.
+    for (const other of [jobs('failure'), jobs('cancelled'), BROWSER_JOBS.filter((n) => !n.startsWith('variant-smoke (')).map((name) => ({ name, conclusion: 'success' }))]) {
+      assert.deepEqual((await decide({ ...two, other: { 5: other } }, { decidedBase: 'OLDER' })).reuse, {}, JSON.stringify(other));
+    }
+    // A commit that did not come from a pull request, and a lookup that fails.
+    const direct = await decide({ since: { OLDER: ['D1', 'S'] } }, { decidedBase: 'OLDER' });
+    assert.deepEqual(direct.reuse, {});
+    assert.match(direct.reason, /browser: D1 is not a pull request merge/);
+    await assert.rejects(decide({ since: { OLDER: ['C5', 'S'] }, fail: 'commits/C5/pulls' }, { decidedBase: 'OLDER' }));
+    // Too many commits, a truncated listing, or a listing that does not end at this push.
+    const many = Array.from({ length: MAX_COMMITS }, (_, i) => `C${i + 1}`).concat('S');
+    assert.deepEqual((await decide({ since: { OLDER: many } }, { decidedBase: 'OLDER' })).reuse, {});
+    assert.deepEqual((await decide({ sinceOverride: { total_commits: 300 } })).reuse, { code: true });
+    assert.deepEqual((await decide({ sinceOverride: { status: 'diverged' } })).reuse, { code: true });
+    assert.deepEqual((await decide({ since: { P: ['C5'] } })).reuse, { code: true });
+  });
+
+  // A PR tested before main changed a workflow, lockfile or cache input ran
+  // under the old one; that main commit's full run then became the base, so
+  // the push's own file list no longer shows the change.
+  it('refuses browser when main changed a cache key or workflow input after a PR branched', async () => {
+    for (const file of ['.github/workflows/test.yml', 'package-lock.json', 'e2e/fetch-embeddings-model.ts']) {
+      const d = await decide({ drift: { H: ['src/app/App.ts', file] } });
+      assert.deepEqual(d.reuse, { code: true }, file);
+      assert.match(d.reason, new RegExp(`browser: main changed ${file.replace(/[.]/g, '\\.')} after PR #7 branched`), file);
+    }
+    // A rename lists the new path; the old one is the Test input that moved.
+    assert.deepEqual((await decide({ drift: { H: [{ filename: 'docs/npm-config.txt', previous_filename: '.npmrc' }] } })).reuse, { code: true });
+    // The 300 cap counts file records, not paths: 150 harmless renames are 300 paths but 150 records.
+    const renames = Array.from({ length: 150 }, (_, i) => ({ filename: `src/n${i}.ts`, previous_filename: `src/o${i}.ts` }));
+    assert.deepEqual((await decide({ drift: { H: renames } })).reuse, { code: true, browser: true });
+    // An earlier merge in a multi-commit push is checked too.
+    assert.deepEqual((await decide({ since: { OLDER: ['C5', 'S'] }, drift: { H5: ['package.json'] } }, { decidedBase: 'OLDER' })).reuse, {});
+    // Application drift and other workflows are fine, and a comparison GitHub capped cannot prove the inputs unchanged.
+    assert.deepEqual((await decide({ drift: { H: ['src/app/App.ts', 'e2e/map.spec.ts', '.github/workflows/codeql.yml'] } })).reuse, { code: true, browser: true });
+    assert.deepEqual((await decide({ drift: { H: Array.from({ length: 300 }, (_, i) => `src/f${i}.ts`) } })).reuse, { code: true });
+  });
+
+  it('counts as a Test input every cache key input and every local action or script test.yml uses', () => {
+    const yml = readFileSync(join(root, '.github/workflows/test.yml'), 'utf8');
+    const used = [...new Set([...yml.matchAll(/\.github\/(?:actions|scripts)\/[\w.-]+/g)].map((m) => m[0]))];
+    assert.ok(used.length >= 4, 'expected test.yml to use local actions and scripts');
+    for (const path of [...used, '.github/workflows/test.yml']) assert.match(path, TEST_INPUT, path);
+    // Every Test input still blocks a push that changes it.
+    for (const path of ['package-lock.json', '.npmrc', 'vendor/x.js', 'scripts/download-node.sh', 'e2e/fetch-embeddings-model.ts', ...used]) assert.match(path, REUSE_BLOCKER, path);
+    for (const path of ['.github/workflows/codeql.yml', 'src/app/App.ts']) assert.doesNotMatch(path, TEST_INPUT, path);
+  });
+
+  it('settles browser on a full green matrix or a full skip, nothing in between', () => {
+    const at = (map) => BROWSER_JOBS.map((name) => ({ name, conclusion: map[name] ?? 'success' }));
+    assert.equal(browserSettled(at({})), true);
+    assert.equal(browserSettled(SKIPPED_BROWSER), true);
+    assert.equal(browserSettled([...SKIPPED_BROWSER, { name: 'variant-smoke (1)', conclusion: 'success' }]), false, 'a skip mixed with a run leg is not a full skip');
+    assert.equal(browserSettled(SKIPPED_BROWSER.map((job) => (job.name === 'variant-smoke-full' ? { ...job, conclusion: 'failure' } : job))), false);
+    assert.equal(browserSettled(at({ 'variant-smoke (1)': 'skipped' })), false);
+    assert.equal(browserSettled(at({ 'variant-smoke-full': 'failure' })), false);
+    assert.equal(browserSettled(at({ 'variant-smoke-full': 'skipped' })), false);
+    assert.equal(browserSettled(BROWSER_JOBS.filter((n) => n !== 'variant-smoke-full').map((name) => ({ name, conclusion: 'success' }))), false);
+    assert.equal(browserSettled([{ name: 'variant-smoke-full', conclusion: 'success' }]), false, 'an aggregate with no legs listed proves nothing');
   });
 
   it('propagates API failures so the caller runs every job', async () => {
@@ -178,7 +279,8 @@ describe('step entry point', () => {
   it('writes the overrides for a reusable push', async () => {
     const { out, summary } = await run({ FILES_JSON: '["src/app/App.ts"]' }, fixture().api);
     assert.equal(out, 'code=false\nvalidation=false\nbrowser=false\n');
-    assert.match(summary, /PR #7 run 99 passed code, browser/);
+    assert.match(summary, /code: PR #7 run 99 passed it/);
+    assert.match(summary, /browser: settled by the pull request runs of #7/);
   });
 
   it('writes nothing when a lookup fails, the file list is unreadable, or nothing qualifies', async () => {
