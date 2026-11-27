@@ -1093,7 +1093,11 @@ test('an open without a country shows the country picker and loads nothing until
   await page.waitForTimeout(500);
   expect(host.calls.map(call => call.name)).toEqual(['open_country_brief']);
   expect(host.admissions).toBe(0);
-  // The picker keeps the topic the open asked for (economy) when the user then picks a country.
+  // The picker keeps the topic the open asked for (economy) when the user then picks a country,
+  // including after a rejected entry.
+  await frame.locator('input[name="country"]').fill('Narnia');
+  await frame.locator('#openCountry').click();
+  await expect(frame.locator('#countryStatus')).toContainText('Use a recognized country name');
   await frame.locator('input[name="country"]').fill('US');
   await frame.locator('#openCountry').click();
   await expect.poll(() => host.admissions).toBe(1);

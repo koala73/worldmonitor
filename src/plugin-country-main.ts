@@ -816,6 +816,7 @@ async function mountPlugin(): Promise<void> {
       const data = result?.structuredContent;
       if (data?.countryCode) {
         hostResultSeen = true;
+        pickerTopic = undefined;
         const requested = countryViewSchema.safeParse(hostInput);
         hostInput = undefined;
         void open({ country_code: data.countryCode, topic: data.topic ?? 'overview', refresh: requested.success && requested.data.refresh }, false, data.panelRequest, true).catch(error => { status.textContent = error.message; });
@@ -846,9 +847,9 @@ async function mountPlugin(): Promise<void> {
   if (!channel) window.addEventListener('message', onHostMessage);
 
   const openSelectedCountry = () => {
+    // Consumed only once the open succeeds, so a rejected entry keeps the picker topic for the retry.
     const topic = pickerTopic;
-    pickerTopic = undefined;
-    void open({ country_code: input.value, ...(topic ? { topic } : {}) }).catch(error => { status.textContent = error.message; });
+    void open({ country_code: input.value, ...(topic ? { topic } : {}) }).then(() => { if (pickerTopic === topic) pickerTopic = undefined; }, error => { status.textContent = error.message; });
   };
   document.getElementById('openCountry')!.addEventListener('click', openSelectedCountry);
   form.addEventListener('submit', event => { event.preventDefault(); openSelectedCountry(); });
