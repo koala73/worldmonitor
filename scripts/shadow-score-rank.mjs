@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Human-vs-model score calibration tool for shadow:score-log:v1.
+// Human-vs-model score calibration for the shadow:score-log:v5 bundle that shadow-score-report.mjs writes.
 //
 // Two modes:
 //   1. SAMPLE (default): pulls a stratified sample across score bands and writes a

@@ -12,6 +12,7 @@ import { validationFailure } from './helpers/validation-failure.mts';
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 const PATH = '/api/aviation/v1/list-aviation-news';
+const NEWS_CACHE_KEY = 'aviation:news:feeds:v2';
 const gateway = createDomainGateway(createAviationServiceRoutes(aviationHandler, serverOptions));
 let redis: ReturnType<typeof installRedis>;
 let calls: URL[];
@@ -299,3 +300,61 @@ test('actual native sidecar requires its token before the news gateway', async (
     await app.close();
   }
 });
+
+test('a total RSS outage uses brief Redis backoff and returns no-store on every request', async () => {
+  const transport = globalThis.fetch;
+  let feedRequests = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.hostname === 'redis.example') return transport(input, init);
+    feedRequests += 1;
+    return new Response(null, { status: 503 });
+  }) as typeof fetch;
+
+  for (let i = 0; i < 2; i++) {
+    const response = await gateway(request());
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(result.items, []);
+    assert.equal(result.source, 'error');
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  }
+  assert.equal(feedRequests, 9);
+  assert.equal(redis.expires.get(NEWS_CACHE_KEY), 120);
+});
+
+for (const [label, body] of [
+  ['HTML error page', '<html><body>Service unavailable</body></html>'],
+  ['truncated RSS', '<rss><channel>'],
+]) {
+  test(`an HTTP 200 ${label} does not mask an outage on the other feeds`, async () => {
+    const transport = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'redis.example') return transport(input, init);
+      return url.hostname === 'www.flightglobal.com' ? new Response(body) : new Response(null, { status: 503 });
+    }) as typeof fetch;
+
+    const result = await read([]);
+    assert.equal(result.source, 'error');
+    assert.deepEqual(result.items, []);
+    assert.equal(redis.expires.get(NEWS_CACHE_KEY), 120);
+  });
+}
+
+for (const [label, body] of [['RSS', '<rss><channel/></rss>'], ['Atom', '<feed/>']]) {
+  test(`empty ${label} feeds produce a cacheable empty snapshot`, async () => {
+    const transport = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'redis.example') return transport(input, init);
+      return new Response(body);
+    }) as typeof fetch;
+
+    const result = await read([]);
+    assert.deepEqual(result.items, []);
+    assert.equal(result.source, 'rss');
+    assert.deepEqual(JSON.parse(redis.redis.get(NEWS_CACHE_KEY)!), { items: [] });
+    assert.equal(redis.expires.get(NEWS_CACHE_KEY), 900);
+  });
+}

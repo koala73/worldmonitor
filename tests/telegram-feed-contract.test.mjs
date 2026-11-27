@@ -94,6 +94,20 @@ describe('api/telegram-feed contract normalization', () => {
     assert.deepEqual(data.items[0].mediaUrls, ['https://cdn.example.com/image.jpg']);
   });
 
+  it('passes the relay truncation flag through to the browser contract', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      enabled: true,
+      items: [
+        { id: 'defenderdome:1', channel: 'defenderdome', ts: 1_744_000_000, text: 'The breach f', textTruncated: true },
+        { id: 'defenderdome:2', channel: 'defenderdome', ts: 1_744_000_000, text: 'Complete post' },
+      ],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const data = await (await handler(await makeRequest())).json();
+    assert.deepEqual(data.items.map((item) => item.textTruncated), [true, false]);
+  });
+
   it('synthesises distinct ids for same-second messages sharing a 32-char prefix (#7210)', async () => {
     const sharedPrefix = 'BREAKING: air raid alert issued for';
     globalThis.fetch = async () => new Response(JSON.stringify({
@@ -593,5 +607,31 @@ describe('server listTelegramFeed relay normalization', () => {
     assert.equal(response.count, 1);
     assert.equal(response.messages[0].sourceUrl, '');
     assert.deepEqual(response.messages[0].mediaUrls, ['https://cdn.example.com/photo.jpg']);
+  });
+
+  it('replaces relay fetch exceptions with a fixed error string in the server RPC path', async () => {
+    process.env.WS_RELAY_URL = 'https://relay.example.com';
+    process.env.RELAY_SHARED_SECRET = 'test-secret';
+    globalThis.fetch = async () => {
+      throw new Error('getaddrinfo ENOTFOUND relay.internal.example key=synthetic-secret');
+    };
+
+    const response = await listTelegramFeed(/** @type {any} */ ({}), { limit: 25 });
+    assert.deepEqual(response, { enabled: false, messages: [], count: 0, error: 'Relay request failed' });
+    assert.doesNotMatch(JSON.stringify(response), /synthetic-secret|relay\.internal/);
+  });
+
+  it('reports relay timeouts as Relay timeout without the exception text in the server RPC path', async () => {
+    process.env.WS_RELAY_URL = 'https://relay.example.com';
+    process.env.RELAY_SHARED_SECRET = 'test-secret';
+    globalThis.fetch = async () => {
+      const error = new Error('The operation timed out reaching relay.internal.example');
+      error.name = 'TimeoutError';
+      throw error;
+    };
+
+    const response = await listTelegramFeed(/** @type {any} */ ({}), { limit: 25 });
+    assert.equal(response.error, 'Relay timeout');
+    assert.doesNotMatch(JSON.stringify(response), /relay\.internal/);
   });
 });

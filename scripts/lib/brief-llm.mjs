@@ -128,7 +128,7 @@ const WHY_MATTERS_CONCURRENCY = 5;
 // Pin to openrouter. Ollama isn't deployed in Railway, and pinning keeps the
 // brief's editorial voice on one model across environments instead of drifting
 // to a fallback provider.
-const BRIEF_LLM_ALLOWED_PROVIDERS = ['openrouter'];
+export const BRIEF_LLM_ALLOWED_PROVIDERS = ['openrouter'];
 
 // The brief names its own model rather than inheriting the llm-chain default
 // (still google/gemini-2.5-flash for every other consumer). The #4944 bakeoff
@@ -138,7 +138,7 @@ const BRIEF_LLM_ALLOWED_PROVIDERS = ['openrouter'];
 // #4944 U4 brief-voice cutover moves the brief to DeepSeek by editing this
 // constant. Any change here bumps all three model-fed cache generations below.
 const BRIEF_LLM_OPENROUTER_MODEL = process.env.BRIEF_LLM_OPENROUTER_MODEL || 'google/gemini-3.5-flash-lite';
-const BRIEF_LLM_MODEL_OVERRIDES = { openrouter: BRIEF_LLM_OPENROUTER_MODEL };
+export const BRIEF_LLM_MODEL_OVERRIDES = { openrouter: BRIEF_LLM_OPENROUTER_MODEL };
 
 // ── whyMatters (per story) ─────────────────────────────────────────────────
 // The pure helpers (`WHY_MATTERS_SYSTEM`, `buildWhyMattersUserPrompt` (aliased

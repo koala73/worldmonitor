@@ -53,6 +53,9 @@ const VIEW_STATE_ENTITY_TYPES = new Set([
   'ailab',
 ]);
 
+// Opens the alerted article in a new tab.
+const EXTERNAL_NAVIGATION_ENTITY_TYPES = new Set(['alert']);
+
 const EXTERNAL_NAVIGATION_VIEW_ACTIONS = new Set([
   'settings',
   'refresh',
@@ -81,6 +84,7 @@ export function classifySearchMatchEffect(
 ): SearchResultEffectClass {
   if (match.kind === 'result') {
     if (match.result.type === 'country') return 'quota-consuming';
+    if (EXTERNAL_NAVIGATION_ENTITY_TYPES.has(match.result.type)) return 'external-navigation';
     if (VIEW_STATE_ENTITY_TYPES.has(match.result.type)) return 'view-state';
     if (PERSISTENT_ENTITY_TYPES.has(match.result.type)) return 'persistent';
     return 'persistent';

@@ -105,3 +105,9 @@ export async function resolveVerifiedClerkSession(request: Request): Promise<Cle
   if ('reason' in session) return sessionVerificationUnavailableResponse();
   return session;
 }
+
+/** `resolveVerifiedClerkSession` narrowed to the user id, for handlers whose deps take one. */
+export async function resolveVerifiedSessionUserId(request: Request): Promise<string | Response | null> {
+  const session = await resolveVerifiedClerkSession(request);
+  return session instanceof Response || !session ? session : session.userId;
+}

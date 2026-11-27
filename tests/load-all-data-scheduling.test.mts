@@ -145,6 +145,15 @@ describe('loadAllData scheduler', () => {
     assert.match(text, /return\s+this\.loadAllDataPromise/);
   });
 
+  it('builds premium briefs only after a late news digest lands', () => {
+    // The news task can release the hydration tiers at first paint (#10332);
+    // the daily brief reads newsByCategory and is cached for the day.
+    assert.match(
+      runLoadAllDataMethod.getText(DATA_LOADER_SOURCE),
+      /runOncePerViewport\('premium-briefs'[\s\S]*?await this\.waitForNewsLoad\(\);[\s\S]*?this\.loadDailyMarketBrief\(\)/,
+    );
+  });
+
   it('keeps satellite.js chunk failures local to the satellite layer', () => {
     const text = loadSatellitesMethod.getText(DATA_LOADER_SOURCE);
     assert.match(

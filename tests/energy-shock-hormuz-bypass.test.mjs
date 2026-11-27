@@ -13,14 +13,12 @@ import { readFileSync } from 'node:fs';
 import {
   HORMUZ_BYPASS_AS_OF,
   HORMUZ_BYPASS_BY_EXPORTER,
-  BYPASS_RAMP_DAYS,
   lostShareAfterBypass,
 } from '../server/worldmonitor/intelligence/v1/_hormuz-bypass.ts';
 import {
   computeEffectiveCoverDaysWithRamp,
   computeEffectiveCoverDays,
   computeMonthlyGulfShares,
-  GLOBAL_MEDIAN_REFINERY_YIELD,
   GULF_PARTNER_ISO2,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.ts';
 import { computeEnergyShockScenario } from '../server/worldmonitor/intelligence/v1/compute-energy-shock.ts';
@@ -113,12 +111,13 @@ describe('computeEffectiveCoverDaysWithRamp', () => {
   it('draws the first month at the no-bypass rate, then the steady rate', () => {
     const first = JP_IMPORTS * 0.9275;
     const steady = JP_IMPORTS * 0.4112;
-    const expected = Math.round(BYPASS_RAMP_DAYS + (178 - BYPASS_RAMP_DAYS * 0.9275) / 0.4112);
-    assert.equal(computeEffectiveCoverDaysWithRamp(178, false, first, steady, JP_IMPORTS), expected);
+    // 30 ramp days at the first-month rate use 27.8 days of stock; the other
+    // 150.2 last 365.2 days at the steady rate.
+    assert.equal(computeEffectiveCoverDaysWithRamp(178, false, first, steady, JP_IMPORTS), 395);
   });
 
   it('stocks exhausted inside the ramp month end at the no-bypass rate', () => {
-    assert.equal(computeEffectiveCoverDaysWithRamp(20, false, JP_IMPORTS * 0.9275, JP_IMPORTS * 0.4112, JP_IMPORTS), Math.round(20 / 0.9275));
+    assert.equal(computeEffectiveCoverDaysWithRamp(20, false, JP_IMPORTS * 0.9275, JP_IMPORTS * 0.4112, JP_IMPORTS), 22);
   });
 
   it('keeps the net-exporter sentinel and the 730-day cap', () => {
@@ -157,9 +156,9 @@ describe('handler: Hormuz bypass on the pre-crisis baseline', () => {
     // Products use the steady-state loss through the refinery yield; this JODI row
     // has no country yields, so gasoline takes the global median.
     const gasoline = r.products.find((p) => p.product === 'Gasoline');
-    assert.ok(Math.abs(gasoline.deficitPct - (JP_IMPORTS * 0.4112 * GLOBAL_MEDIAN_REFINERY_YIELD.gasoline / 790.8135) * 100) < 0.3, `${gasoline.deficitPct}`);
-    const expectedCover = Math.round(BYPASS_RAMP_DAYS + (178 - BYPASS_RAMP_DAYS * 0.9275) / 0.4112);
-    assert.ok(Math.abs(r.effectiveCoverDays - expectedCover) <= 1, `cover ${r.effectiveCoverDays} vs ${expectedCover}`);
+    // 979.5 kbd steady loss x 0.242 median gasoline yield / 790.8 kbd demand.
+    assert.ok(Math.abs(gasoline.deficitPct - 29.98) < 0.3, `${gasoline.deficitPct}`);
+    assert.ok(Math.abs(r.effectiveCoverDays - 395) <= 1, `cover ${r.effectiveCoverDays}`);
     // No bypass recovery is applied to current flows.
     assert.equal(r.currentFlows.crudeLossAfterBypassKbd, undefined);
     const bypassNote = r.limitations.find((l) => /^Hormuz bypass/.test(l));

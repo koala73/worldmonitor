@@ -33,12 +33,19 @@ test('scan jobs cover every language with least privilege and stable categories'
   }
 });
 
-test('only the generated @vercel/og bundle is excluded from scanning', () => {
+test('only the generated @vercel/og bundle and test code are excluded from scanning', () => {
   const init = workflow.jobs.analyze.steps.find(step => step.uses?.startsWith('github/codeql-action/init@'));
   const config = YAML.parse(init.with.config ?? '');
   // The bundle is upstream satori/opentype.js output from scripts/vendor-vercel-og.mjs; it
   // re-raised 22 alerts after #9782. Our patched vendor copies and the script stay scanned.
-  assert.deepEqual(config?.['paths-ignore'], ['vendor/vercel-og/dist']);
+  // Test code never ships; it raised 363 of the first 724 dismissed alerts, all false positives.
+  assert.deepEqual(config?.['paths-ignore'], [
+    'vendor/vercel-og/dist',
+    'tests',
+    'e2e',
+    '**/__tests__',
+    '**/*.test.*',
+  ]);
   assert.equal(config.paths, undefined, 'a paths list would narrow every other scan');
 });
 
@@ -51,23 +58,14 @@ test('Dependabot updates all CodeQL actions together', () => {
   assert.equal(group['applies-to'] ?? 'version-updates', 'version-updates');
 });
 
-test('default-branch runs prune stale overlay-base caches with the only actions: write grant', () => {
-  const prune = workflow.jobs['prune-overlay-bases'];
-  assert.ok(prune, 'prune-overlay-bases job exists');
-  assert.equal(prune.needs, 'analyze');
-  assert.match(prune.if, /!cancelled\(\)/);
-  assert.match(prune.if, /github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
-  assert.deepEqual(prune.permissions, { contents: 'read', actions: 'write' });
-  for (const [name, job] of Object.entries(workflow.jobs)) {
-    if (name !== 'prune-overlay-bases') assert.notEqual(job.permissions?.actions, 'write', name);
-  }
+test('scans never build overlay-base databases nobody restores', () => {
+  // Only overlay scans of pull requests restore a base, and this workflow never runs
+  // on them; each default-branch base was ~2 GB of Actions cache evicting what PRs read.
+  assert.equal(workflow.jobs.analyze.env?.CODEQL_OVERLAY_DATABASE_MODE, 'none');
+  // Overlay off turns TRAP caching on, and default-branch runs only ever upload it.
+  const init = workflow.jobs.analyze.steps.find(step => step.uses?.startsWith('github/codeql-action/init@'));
+  assert.equal(init.with['trap-caching'], false);
+  assert.deepEqual(Object.keys(workflow.jobs), ['analyze'], 'no cache-pruning job is needed');
+  for (const job of Object.values(workflow.jobs)) assert.notEqual(job.permissions?.actions, 'write');
   assert.equal(workflow.permissions.actions, undefined);
-  const checkout = prune.steps.find(step => step.uses?.startsWith('actions/checkout@'));
-  assert.equal(checkout.with['persist-credentials'], false);
-  const run = prune.steps.find(step => step.run);
-  assert.match(run.run, /node \.github\/scripts\/prune-codeql-overlay-bases\.mjs --ref "\$GITHUB_REF"/);
-  assert.doesNotMatch(run.run, /--dry-run/);
-  assert.equal(run.env.GH_TOKEN, '${{ github.token }}');
-  assert.equal(run.env.GH_REPO, '${{ github.repository }}');
-  for (const step of prune.steps) if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
 });

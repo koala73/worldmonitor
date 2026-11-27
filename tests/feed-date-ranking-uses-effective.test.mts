@@ -54,7 +54,7 @@ interface AllowEntry {
 const ALLOW_LIST: AllowEntry[] = [
   {
     file: 'src/services/rss.ts',
-    line: 390,
+    line: 395,
     reason: 'mlWorker.vectorStoreIngest stores pubDate as embedding metadata; not used as a freshness comparator.',
   },
   // effectivePubDateMs implementation moved to shared/news-clustering-core.js
@@ -87,17 +87,17 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 112,
+    line: 139,
     reason: 'generateClusterId sort produces a stable identity string from earliest pubDate; not a freshness comparator.',
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 114,
+    line: 141,
     reason: 'generateClusterId uses earliest pubDate.getTime() in the identity string prefix.',
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 211,
+    line: 246,
     reason: 'cluster date aggregation for firstSeen/lastUpdated metadata; not a per-item ranking comparator.',
   },
   {
@@ -107,7 +107,7 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'src/services/trending-keywords.ts',
-    line: 271,
+    line: 245,
     reason: 'headlineKey identity computation — used for dedupe, not freshness ranking.',
   },
 ];

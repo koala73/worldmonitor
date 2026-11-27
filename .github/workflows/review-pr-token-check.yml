@@ -1,0 +1,32 @@
+name: Check Review PR Token
+
+# The bot-PR workflows (crawlable pulse, GitHub stars, resilience snapshot,
+# Search Console) open and auto-merge their PRs with REVIEW_PR_TOKEN. When it
+# expires or is revoked those PRs stop getting CI and wait for a human again.
+# This run goes red three weeks before expiry, or as soon as the token stops
+# working, so the failure email arrives while there is time to rotate it.
+
+on:
+  schedule:
+    - cron: '11 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Check the token and its expiry
+        env:
+          REVIEW_PR_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
+        run: node scripts/check-review-pr-token.mjs

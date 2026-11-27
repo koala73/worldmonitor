@@ -618,7 +618,7 @@ describe('validateBootstrapCacheDocs', () => {
   // Drift from the code side: the docs stand still while api/bootstrap.js moves.
   it('catches a handler-side tier change the docs never followed', () => {
     const drifted = parseBootstrapCacheContract(
-      SYNTHETIC_BOOTSTRAP.replace("fast: 'max-age=60,", "fast: 'max-age=120,"),
+      read('api/bootstrap.js').replace("fast: 'max-age=60,", "fast: 'max-age=120,"),
     );
     const failures = validateBootstrapCacheDocs(
       { bootstrapCache: drifted },

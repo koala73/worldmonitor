@@ -299,3 +299,77 @@ describe('Google Flights passenger normalization', () => {
     }
   });
 });
+
+// Arbitrary exceptions (DNS failures, Redis backoff errors carrying internal
+// cache-key names, JSON parse errors) must not be echoed to clients. Only the
+// crafted relay contract ('relay returned <status>: <reason>', 'no results',
+// 'provider cooldown') passes through — pinned by the boundary suites.
+describe('search error sanitization', () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('searchGoogleFlights hides arbitrary exception text behind "search failed"', async () => {
+    mockFetch(async () => {
+      throw new Error('getaddrinfo ENOTFOUND relay.internal.example key=synthetic-secret');
+    });
+
+    const result = await searchGoogleFlights(mockCtx, {
+      origin: 'ZZA',
+      destination: 'ZZB',
+      departureDate: '2027-01-05',
+      airlines: [],
+      returnDate: '',
+      cabinClass: '',
+      maxStops: '',
+      departureWindow: '',
+      sortBy: '',
+      passengers: 1,
+    });
+
+    assert.deepEqual(result, { flights: [], degraded: true, error: 'search failed' });
+  });
+
+  it('searchGoogleDates hides arbitrary exception text behind "search failed"', async () => {
+    mockFetch(async () => {
+      throw new Error('unexpected pipeline failure for key aviation:gf:synthetic-internal');
+    });
+
+    const result = await searchGoogleDates(mockCtx, {
+      origin: 'ZZC',
+      destination: 'ZZD',
+      startDate: '2027-02-01',
+      endDate: '2027-02-07',
+      tripDuration: 0,
+      isRoundTrip: false,
+      cabinClass: '',
+      maxStops: '',
+      departureWindow: '',
+      airlines: [],
+      sortByPrice: false,
+      passengers: 1,
+    });
+
+    assert.deepEqual(result, { dates: [], degraded: true, error: 'search failed' });
+  });
+
+  it('keeps the crafted relay failure contract intact', async () => {
+    mockFetch(async () => new Response(JSON.stringify({ error: 'Google Flights returned 503' }), { status: 502 }));
+
+    const result = await searchGoogleFlights(mockCtx, {
+      origin: 'ZZE',
+      destination: 'ZZF',
+      departureDate: '2027-03-05',
+      airlines: [],
+      returnDate: '',
+      cabinClass: '',
+      maxStops: '',
+      departureWindow: '',
+      sortBy: '',
+      passengers: 1,
+    });
+
+    assert.equal(result.error, 'relay returned 502: Google Flights returned 503');
+    assert.equal(result.degraded, true);
+  });
+});

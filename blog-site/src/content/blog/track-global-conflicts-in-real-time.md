@@ -1,176 +1,77 @@
 ---
-title: "Track Global Conflicts in Real Time with World Monitor"
-description: "Monitor active conflicts, military movements, and geopolitical escalation in real time with the reviewed base and strategic-theater registries plus live ADS-B data."
+title: "Track Global Conflicts: Sources, Maps and AI Summaries"
+description: "Use World Monitor to follow conflict reporting and map context. Check event dates, source coverage and AI summaries before drawing conclusions."
 metaTitle: "Track Global Conflicts in Real Time | World Monitor"
 keywords: "real-time conflict map, geopolitical intelligence map, military tracking dashboard, conflict monitoring tool, global conflict tracker"
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-02-14"
-modifiedDate: "2026-10-26"
+modifiedDate: "2026-11-17"
 ---
 
-When a military escalation begins, the first 24 hours define the narrative. Analysts who see the signals early, the unusual flight patterns, the naval repositioning, the news velocity spike, have a decisive advantage over those waiting for the morning briefing.
+World Monitor helps you follow global conflict reporting, inspect map context and identify sources for further research. Start with a place and a time window, then distinguish reported events from observed activity, curated geography and generated summaries. No single map provides complete, verified coverage of every conflict.
 
-World Monitor was built to give you those 24 hours back.
+*Cover: an archived dashboard image. Displayed readings and interface details are illustrative, not current observations.*
 
-To compare aircraft observations with conflict reporting, follow the [military flight-tracking workflow](/blog/posts/military-flight-tracking-osint/).
+## What a conflict dashboard can show
 
-## A Situation Room in Your Browser
+A conflict-zone outline describes geographic context. It is not the same as an individual event record or proof of control over every point inside it. A report marker represents what its source supports; its position and timestamp need to be read with that source's limits.
 
-World Monitor's core dashboard (worldmonitor.app) is designed around one question: **what's happening in the world right now, and where is it getting worse?**
+Aircraft and ship observations can add context, but their presence does not establish an operation's purpose. Similarly, a score or generated assessment is an interpretation of inputs, not another independent source confirming the story.
 
-The answer comes from layering multiple intelligence sources onto a single interactive 3D globe:
+## A repeatable regional review
 
-- **[UCDP](https://ucdp.uu.se/) warfare events** for state-based and non-state conflicts
-- **[GDELT](https://www.gdeltproject.org/) event and news data** for reported clashes, protests, and political violence
-- **Live ADS-B tracking** for military aircraft positions
-- **AIS vessel monitoring** merged with USNI fleet reports for naval movements
-- **Curated Telegram OSINT channels** for raw, low-latency intelligence
-- **OREF rocket alerts** with 1,480 Hebrew-to-English siren translations
-- **GPS/GNSS jamming zones** detected from ADS-B anomalies
-- **NASA satellite fire detection** (VIIRS) for ground-truth verification
+1. Open [World Monitor](https://www.worldmonitor.app) and choose the region you are monitoring.
+2. Read the latest attributed reporting relevant to your question. Follow the original links rather than relying only on a headline or summary.
+3. Compare the report's event time with its publication time. Later publication can describe an earlier incident.
+4. Inspect relevant map layers and their observation times. Keep contextual zones separate from dated event records.
+5. Review a country brief or summary, where available, as a way to organize further checks.
+6. Write a short update that separates established observations, reported claims and unresolved questions.
 
-Each layer can be toggled independently. Combine them to build a multi-source picture of any developing situation. For a broader look at what the platform offers, see [What Is World Monitor?](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
+This process can also reveal that there is not enough information to update a conclusion. Missing observations are a result to record, not an invitation to fill the gap with a confident narrative.
 
-## Strategic Theaters Under Continuous Assessment
+## Check whether sources are independent
 
-World Monitor maintains real-time posture assessments for its operational-theater registry:
+Three outlets can carry one agency report. Two datasets can ingest the same original account. The conflict layer draws on [UCDP](https://ucdp.uu.se/) coded events and [GDELT](https://www.gdeltproject.org/) event reporting, so a record in each can still rest on one underlying report. Count source chains, not logos, when assessing corroboration.
 
-1. **[Iran](https://www.worldmonitor.app/countries/iran/) / Persian Gulf:** [Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) chokepoint, IRGC activity, proxy conflict indicators
-2. **[Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/):** PLA military exercises, naval deployments, airspace incursions
-3. **Baltic Region:** NATO-Russia friction, Kaliningrad corridor, submarine activity
-4. **Korean Peninsula:** DMZ incidents, missile tests, force posture changes
-5. **Eastern Mediterranean:** Israel-Hezbollah dynamics, energy disputes, naval presence
-6. **Horn of Africa:** Houthi maritime threats, Red Sea shipping disruption, piracy
-7. **South China Sea:** Island militarization, fishing militia, freedom of navigation operations
-8. **Arctic:** Resource competition, Northern Sea Route, military basing
-9. **Black Sea:** [Ukraine](https://www.worldmonitor.app/countries/ukraine/) conflict, grain corridor, naval mine risk
+For a reported border incident, record who first reported it, whether another source independently observed it, and whether the location and timing are supported. This hypothetical example does not assume a particular event occurred. Conflicting reports should remain visibly conflicting until you have evidence to resolve them.
 
-For dated country-level conflict summaries, open the [Gulf security](https://www.worldmonitor.app/crises/hormuz-gulf-security/), [Red Sea security](https://www.worldmonitor.app/crises/red-sea-security/), and [Ukraine war](https://www.worldmonitor.app/crises/ukraine-war/) trackers. Each states its country coverage and observation period; that scope differs from the broader theaters above.
+The [breaking-news investigation workflow](/blog/posts/verify-breaking-news-osint-workflow-journalists/) gives a practical method for comparing reporting with other observations.
 
-Each theater's posture level is synthesized from news velocity, military movements, CII scores of involved nations, and historical escalation patterns.
+## Use AI to organize, then verify
 
-## The Country Instability Index (CII)
+Generated summaries can help you identify the main claims and find relevant reporting. They can also omit qualifications, combine unlike dates or express a stronger conclusion than a source supports. Check the underlying material before quoting a summary.
 
-Every country monitored by World Monitor receives a **real-time instability score from 0 to 100**, visualized as a choropleth heatmap that turns the globe into a risk map.
+Ask a narrow question: “Which sources support this claim, and when were they published?” Keep reported, alleged and unconfirmed language when those qualifications matter. An absent citation or inaccessible source is a limitation, not confirmation. See [AI intelligence reliability](/blog/posts/ai-intelligence-summary-reliability/) for a review checklist.
 
-The CII is computed from four weighted components:
+Hosted AI actions have separate access requirements from the public map. Consult [current plans](/docs/pricing); do not assume every summary path, integration or historical dataset is free.
 
-- **Baseline risk (40%):** Historical conflict data, governance quality, ethnic fractionalization
-- **Unrest indicators (20%):** Live protest counts, strike activity, civil disorder events
-- **Security events (20%):** Active armed conflicts, terrorism incidents, border clashes
-- **Information velocity (20%):** News volume spikes that often precede or accompany crises
+## What does real time mean here?
 
-Real-time boosters adjust the score based on:
+Different sources update on different schedules. A current browser view can contain delayed reporting, older aircraft observations or cached analysis. Aircraft positions come from [OpenSky Network](https://opensky-network.org/) coverage enriched by [Wingbits](https://wingbits.com/), each with its own reception and update behavior. Check source times and any unavailable/stale state rather than treating the page-load time as the time of the event.
 
-- Proximity to active hotspots
-- OREF rocket alert activity
-- GPS jamming detection in or near the country
-- Government travel advisory changes from 4 nations (US, UK, Australia, New Zealand)
+The dashboard is useful for following changes in available evidence. It is not a guarantee of immediate detection, a complete event census or an archive of every layer. The [freshness guide](/blog/posts/real-time-intelligence-data-freshness/) explains those distinctions.
 
-The result: you can watch instability rise in real time, often before the situation makes international headlines.
+The public [map layer definitions](https://github.com/koala73/worldmonitor/blob/5c50df116c/src/config/map-layer-definitions.ts) documents the behavior behind this guide.
 
-## Hotspot Escalation Detection
-
-World Monitor's escalation algorithm goes beyond showing where events are happening. It identifies **where situations are getting worse** using a composite score:
-
-- **News activity (35%):** Sudden spikes in reporting volume for a geographic area
-- **CII score (25%):** Baseline instability context
-- **Geographic convergence (25%):** Multiple event types (conflict, protest, natural disaster, cyber) co-occurring within the same 1-degree grid cell within 24 hours
-- **Military indicators (15%):** Unusual force movements, exercise activity, weapons tests
-
-[Geographic convergence](https://www.worldmonitor.app/docs/geographic-convergence) is particularly powerful. When you see protests AND military deployments AND a communications outage in the same area within the same day, that pattern has predictive value that individual events don't.
-
-## Military Bases Mapped
-
-The military infrastructure layer maps the authoritative base registry, including:
-
-- US military installations worldwide
-- Russian bases and deployment zones
-- Chinese PLA facilities including South China Sea installations
-- NATO forward-deployed positions
-- Other allied and partner nation facilities
-
-Each base includes facility type, operating nation, and strategic context. Overlay this with the live ADS-B and AIS layers to see how forces relate to current deployments.
-
-## Live ADS-B and AIS Fusion
-
-Two of World Monitor's most operationally significant layers:
-
-**ADS-B (Aircraft):** Military and civilian aircraft transponder data from [OpenSky](https://opensky-network.org/), enriched by [Wingbits](https://wingbits.com/) for aircraft type identification. Filter for military callsigns to track reconnaissance flights, tanker orbits, and transport movements in real time.
-
-**AIS (Maritime):** Ship positions from AISStream.io merged with editorial analysis from USNI Fleet Reports. This fusion gives you both the "where" (transponder position) and the "why" (fleet deployment context). Dark vessel detection flags ships that have gone silent, a common indicator of sanctions evasion or military operations.
-
-## Infrastructure Cascade Analysis
-
-Conflicts don't just affect people. They affect infrastructure that the global economy depends on.
-
-World Monitor maps critical infrastructure alongside conflict data:
-
-- **Undersea cables** carrying 95% of intercontinental internet traffic
-- **Oil and gas pipelines** traversing conflict zones
-- **Nuclear facilities** and their proximity to active hostilities
-- **AI datacenters** (300+ mapped globally)
-- **Strategic ports** (60+) and airports (115)
-
-The Infrastructure Cascade panel shows what happens when a conflict zone overlaps with critical infrastructure. A pipeline through a hotspot, a cable landing station near an escalation zone. These second-order effects drive market moves and policy decisions.
-
-## Telegram Channels: The Raw Feed
-
-For analysts who want unfiltered intelligence, World Monitor integrates curated Telegram channels via MTProto. Learn more about how this fits into the broader OSINT landscape in [OSINT for Everyone](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/).
-
-The channels are tiered by reliability. Tier 1 sources are verified primary reporters. Tier 2 includes established OSINT accounts like Aurora Intel, BNO News, and DeepState. Tier 3 captures secondary aggregators for broader coverage.
-
-Telegram often breaks conflict news 15-30 minutes before traditional media. Having these feeds alongside verified data sources lets you distinguish signal from noise.
-
-## AI Deduction and Forecasting
-
-World Monitor's AI capabilities aren't just summarization. The **AI Deduction panel** provides interactive geopolitical timeline forecasting grounded in live headlines:
-
-- Select a developing situation
-- The AI synthesizes current data into potential escalation/de-escalation paths
-- Each forecast is grounded in cited headlines and data points
-- Cross-reference with Polymarket prediction data for market sentiment
-
-This runs on your choice of LLM: local (Ollama, LM Studio), cloud (Groq, OpenRouter), or entirely in-browser (Transformers.js T5 model). For details on the prediction markets integration, see [Prediction Markets and AI Forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/).
-
-## Real-World Use Cases
-
-**Conflict Monitoring for NGOs:**
-Humanitarian organizations use World Monitor to monitor safety conditions for field staff. The CII and escalation scoring provide early warning for deteriorating situations.
-
-**Defense Research:**
-Academic researchers studying conflict patterns use the integrated data layers to correlate military movements with political developments across multiple theaters simultaneously.
-
-**Journalism:**
-Reporters covering conflict use World Monitor to contextualize breaking events. When a missile strikes, the map immediately shows nearby military infrastructure, recent escalation history, and what OSINT channels are saying.
-
-**Policy Analysis:**
-Think tanks and government analysts use the Strategic Theater Posture assessments to brief decision-makers on multi-theater dynamics.
-
-## 8 Regional Presets
-
-Jump between regions instantly with named preset views: Global, Americas, Europe, MENA, Asia, Africa, Oceania, and Latin America. Each preset adjusts the map view and highlights region-relevant layers.
-
-## Shareable Intelligence
-
-Build a picture, then share it. World Monitor encodes your entire view state (map position, active layers, time range) into a URL. Send it to a colleague, and they see exactly what you see.
-
-For public sharing, the story export feature generates social-ready briefs with Open Graph images for Twitter/X, LinkedIn, WhatsApp, Telegram, and Reddit.
-
-Before relying on a generated brief, use the [AI intelligence summary review workflow](/blog/posts/ai-intelligence-summary-reliability/) to check its sources, timing and inferences.
+To see which countries are at war now, open the [global conflict tracker](https://www.worldmonitor.app/crises/). It ranks the countries where state-based armed conflict killed at least 25 people in the latest month of UCDP data it has published, and links each crisis tracker. For regional research, start with the [Iran](https://www.worldmonitor.app/countries/iran/) or [Ukraine](https://www.worldmonitor.app/countries/ukraine/) profiles and the [Hormuz and Gulf security](https://www.worldmonitor.app/crises/hormuz-gulf-security/), [Red Sea security](https://www.worldmonitor.app/crises/red-sea-security/) or [Ukraine war](https://www.worldmonitor.app/crises/ukraine-war/) pages. The [Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) and [Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/) pages add waterway context. Read each page's dated evidence rather than treating a regional label as a new event.
 
 ## Frequently Asked Questions
 
-**What data sources does World Monitor use for conflict tracking?**
-World Monitor aggregates UCDP warfare data, GDELT event reporting, live ADS-B aircraft transponders, AIS maritime positions merged with USNI fleet reports, curated Telegram OSINT channels, and NASA satellite fire detection. All sources are public and verifiable.
+**Can a conflict map confirm that an event happened?**
 
-**Is World Monitor free to use for conflict monitoring?**
-Yes. World Monitor is completely free and open source under AGPL-3.0. There is no login, paywall, or data collection. You can also self-host it for full control.
+A marker can point to supporting evidence. Confirmation depends on the underlying sources, their provenance, location and timing, not the marker alone.
 
-**How does the Country Instability Index (CII) work?**
-The CII scores each country from 0 to 100 using four weighted components: baseline risk (40%), unrest indicators (20%), security events (20%), and information velocity (20%). Real-time boosters adjust scores based on proximity to hotspots, rocket alerts, GPS jamming, and travel advisory changes.
+**Are conflict zones and conflict events the same thing?**
 
----
+No. Zones provide geographic context; dated event records describe particular reported observations. Read the source and meaning of each layer.
 
-**Monitor developing situations at [worldmonitor.app](https://www.worldmonitor.app). Real-time geopolitical intelligence, free and open source.**
+**Can AI summarize breaking conflict news reliably?**
+
+It can assist review, but important claims and qualifications must be checked against the linked sources. A fluent summary is not independent verification.
+
+**Can an empty map establish that a region is quiet?**
+
+No. Coverage and availability vary. State what evidence was available and what was missing.
+
+Open [the dashboard](https://www.worldmonitor.app) with a specific region and question, and keep source links beside your conclusions.

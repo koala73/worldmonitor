@@ -289,31 +289,31 @@ describe('Umami retention runner check (#6375)', () => {
     assert.match(result.detail, /\(0 were SKIPPED refusals\)/, 'zero refusals must report as zero');
     assert.doesNotMatch(result.detail, /all \d+ records read were SKIPPED/);
   });
-  it('reads the runner history deeply enough to see past push refusals', () => {
-    const readStep = steps.find((step) => /railway deployment list/.test(step.run ?? ''));
+  it('reads the runner history through the refusal-filtered reader', () => {
+    const readStep = steps.find((step) => /read-umami-retention-deployments\.mjs/.test(step.run ?? ''));
 
     assert.ok(readStep, 'the workflow must read the retention runner deployment history');
-    assert.match(readStep.run, new RegExp(`--service ${RETENTION_RUNNER_SERVICE}`));
-    const [, limit] = readStep.run.match(/--limit (\d+)/) ?? [];
-    assert.equal(Number(limit), RETENTION_HISTORY_WINDOW);
+    // A plain `railway deployment list` returns push refusals newest first and
+    // saturates its 1000-record cap after ~34 days (2026-11-22).
+    assert.doesNotMatch(readStep.run, /railway deployment list/);
+    assert.match(readStep.run, /--output \.cache\/railway-retention-deployments\.json/);
     // Without these the Railway CLI call is unauthenticated and the step fails
     // closed on every run — noisy, and it buries the signal it exists to carry.
     assert.deepEqual(Object.keys(readStep.env ?? {}).sort(), ['RAILWAY_PROJECT_ID', 'RAILWAY_TOKEN']);
     assert.equal(readStep.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
     assert.equal(readStep.env.RAILWAY_PROJECT_ID, '${{ vars.RAILWAY_PROJECT_ID }}');
 
-    // The runbook hands the operator the same command to run by hand. A shallower
-    // window there returns push refusals and hides the tick they came to look at.
+    // The runbook hands the operator the same read to run by hand.
     const runbook = readFileSync(
       new URL('../docs/analytics-collector-operations.md', import.meta.url),
       'utf8',
     );
-    const [, documentedLimit] = runbook.match(/--service umami-retention --limit (\d+)/u) ?? [];
-    assert.equal(Number(documentedLimit), RETENTION_HISTORY_WINDOW);
+    assert.match(runbook, /node scripts\/read-umami-retention-deployments\.mjs/u);
+    assert.doesNotMatch(runbook, /--service umami-retention --limit \d+/u);
   });
 
   it('runs the runner alarm even when the capacity step already failed', () => {
-    const readStep = steps.find((step) => /railway deployment list/.test(step.run ?? ''));
+    const readStep = steps.find((step) => /read-umami-retention-deployments\.mjs/.test(step.run ?? ''));
     const checkStep = steps.find((step) => /check-umami-retention-runner\.mjs/.test(step.run ?? ''));
     const capacityStep = steps.find((step) => /check-umami-storage\.mjs/.test(step.run ?? ''));
 

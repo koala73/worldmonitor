@@ -1,0 +1,35 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "kerch strait",
+        "https://www.worldmonitor.app/chokepoints/kerch-strait/"
+      ],
+      "clicks": 0,
+      "impressions": 3000,
+      "ctr": 0.0,
+      "position": 9.0
+    },
+    {
+      "keys": [
+        "kerch strait",
+        "https://www.worldmonitor.app/blog/posts/black-sea-shipping/#kerch"
+      ],
+      "clicks": 0,
+      "impressions": 30,
+      "ctr": 0.0,
+      "position": 12.0
+    },
+    {
+      "keys": [
+        "kerch strait",
+        "https://www.worldmonitor.app/blog/posts/black-sea-shipping/"
+      ],
+      "clicks": 0,
+      "impressions": 10,
+      "ctr": 0.0,
+      "position": 14.0
+    }
+  ],
+  "responseAggregationType": "byPage"
+}

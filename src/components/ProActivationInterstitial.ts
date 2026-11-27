@@ -1655,6 +1655,7 @@ async function confirmAlerts(
       variant: SITE_VARIANT,
       enabled: payload.enabled,
       ...(payload.sensitivity ? { sensitivity: payload.sensitivity } : {}),
+      ...(payload.seedCountriesFromFollowed ? { seedCountriesFromFollowed: true } : {}),
       channels: payload.channels as ChannelType[],
     }, options.accountUserId, signal);
     return isFlowAccountCurrent(options) ? 'verified' : 'failed';

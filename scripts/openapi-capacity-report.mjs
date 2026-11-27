@@ -414,6 +414,11 @@ function transformEngagement(bundle) {
       ...bundle.unreachableStats,
       engaged: engaged(bundle.unreachableStats?.dropped),
     },
+    compactComponentKeys: {
+      renamed: bundle.compactKeyStats?.renamed ?? 0,
+      rewrittenRefs: bundle.compactKeyStats?.rewrittenRefs ?? 0,
+      engaged: engaged(bundle.compactKeyStats?.rewrittenRefs),
+    },
   };
 }
 

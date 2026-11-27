@@ -2,19 +2,16 @@
  * Scrape job: discovers targets and writes price observations to Postgres.
  * Respects per-retailer rate limits and acquisition provider config.
  */
+import { pathToFileURL } from 'node:url';
 import { query, closePool, withTransaction } from '../db/client.js';
 import { insertObservation } from '../db/queries/observations.js';
-import { upsertRetailerProduct } from '../db/queries/products.js';
+import { upsertCanonicalProduct, upsertRetailerProduct } from '../db/queries/products.js';
 import { parseSize, unitPrice as calcUnitPrice } from '../normalizers/size.js';
 import { loadAllRetailerConfigs, loadRetailerConfig } from '../config/loader.js';
-import { initProviders, teardownAll } from '../acquisition/registry.js';
-import { GenericPlaywrightAdapter } from '../adapters/generic.js';
-import { ExaSearchAdapter } from '../adapters/exa-search.js';
 import { SearchAdapter, SearchTargetError } from '../adapters/search.js';
 import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
-import { upsertCanonicalProduct } from '../db/queries/products.js';
 import {
   demoteAutoProductMatchToCandidate,
   getBasketItemId,
@@ -107,9 +104,6 @@ async function updateScrapeRun(
   }
 }
 
-// Pin disable + auto-recovery helpers extracted to ./scrape-pin-recovery.ts
-// for unit-testability (avoids pulling scrape.ts's heavy transitive deps —
-// exa-js, playwright, etc. — into the test environment).
 import { handleStaleOnInStock, handleStaleOnOutOfStock, handlePinError } from './scrape-pin-recovery.js';
 import { completedRetailersStatement, retailersToScrape } from './scrape-resume.js';
 
@@ -129,10 +123,8 @@ export async function scrapeRetailer(slug: string) {
   const exaKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
   const fcKey = process.env.FIRECRAWL_API_KEY ?? '';
 
-  if (config.adapter === 'search') {
-    if (!exaKey) throw new Error(`search adapter requires EXA_API_KEY / EXA_API_KEYS (retailer: ${slug})`);
-    if (!fcKey) throw new Error(`search adapter requires FIRECRAWL_API_KEY (retailer: ${slug})`);
-  }
+  if (!exaKey) throw new Error(`search adapter requires EXA_API_KEY / EXA_API_KEYS (retailer: ${slug})`);
+  if (!fcKey) throw new Error(`search adapter requires FIRECRAWL_API_KEY (retailer: ${slug})`);
 
   const runId = await createScrapeRun(retailerId);
   logger.info(`Run ${runId} started for ${slug}`);
@@ -162,12 +154,7 @@ export async function scrapeRetailer(slug: string) {
   }
   logger.info(`${slug}: ${activePins.size} active pins + ${recoveryAdded} recovery probes (${pinnedUrls.size} total)`);
 
-  const adapter =
-    config.adapter === 'search'
-      ? new SearchAdapter(new ExaProvider(exaKey), new FirecrawlProvider(fcKey))
-      : config.adapter === 'exa-search'
-      ? new ExaSearchAdapter(exaKey, process.env.FIRECRAWL_API_KEY)
-      : new GenericPlaywrightAdapter();
+  const adapter = new SearchAdapter(new ExaProvider(exaKey), new FirecrawlProvider(fcKey));
   const ctx: AdapterContext = { config, runId, logger, retailerId, pinnedUrls };
 
   const targets = await adapter.discoverTargets(ctx);
@@ -255,25 +242,12 @@ export async function scrapeRetailer(slug: string) {
           continue;
         }
 
-        const productId = await upsertRetailerProduct({
-          retailerId,
-          retailerSku: product.retailerSku,
-          sourceUrl: product.sourceUrl,
-          rawTitle: product.rawTitle,
-          rawBrand: product.rawBrand,
-          rawSizeText: product.rawSizeText,
-          imageUrl: product.imageUrl,
-          categoryText: product.categoryText ?? target.category,
-        });
+        let discoveredMatch: Omit<Parameters<typeof upsertProductMatch>[0], 'retailerProductId'> | undefined;
 
-        let discoveredMatch: Parameters<typeof upsertProductMatch>[0] | undefined;
-
-        // For search-based adapters: auto-create product → basket match.
-        // Skip only when the pin URL was used directly — the match already exists.
-        // Allow when this is a fresh Exa discovery (including Exa fallback from a broken pin).
+        // Skip only when the pin URL was used directly. That match row already exists.
+        // A fresh Exa discovery, including fallback from a broken pin, still creates one.
         if (
           !wasDirectHit &&
-          (config.adapter === 'exa-search' || config.adapter === 'search') &&
           product.rawPayload.basketSlug &&
           product.rawPayload.canonicalName
         ) {
@@ -298,7 +272,6 @@ export async function scrapeRetailer(slug: string) {
                 );
               }
               discoveredMatch = {
-                retailerProductId: productId,
                 canonicalProductId: canonicalId,
                 basketItemId,
                 matchScore: matchAdmission.score,
@@ -318,7 +291,6 @@ export async function scrapeRetailer(slug: string) {
         const parsed = product.normalizedSize ?? parseSize(product.rawSizeText);
         const up = parsed ? calcUnitPrice(product.price, parsed) : null;
         const observation = {
-          retailerProductId: productId,
           scrapeRunId: runId,
           price: product.price,
           listPrice: product.listPrice,
@@ -337,40 +309,46 @@ export async function scrapeRetailer(slug: string) {
           Boolean(pinnedMatchId) &&
           matchAdmission.status === 'candidate';
 
-        if (shouldDemoteDirectMatch || discoveredMatch) {
-          let demotedDirectMatch = false;
-          try {
-            // The match write acquires the conflicting row before the
-            // observation is inserted. Keeping both statements in one
-            // transaction prevents aggregate from observing either an old
-            // auto state with new candidate evidence or a new auto state with
-            // older candidate evidence. Concurrent scrape runs serialize on
-            // the match upsert/update row lock.
-            await withTransaction(async (execute) => {
-              if (shouldDemoteDirectMatch && pinnedMatchId) {
-                demotedDirectMatch = await demoteAutoProductMatchToCandidate({
-                  matchId: pinnedMatchId,
-                  matchScore: matchAdmission.score,
-                  evidence: matchAdmission.evidence,
-                }, execute);
-              }
-              if (discoveredMatch) await upsertProductMatch(discoveredMatch, execute);
-              await insertObservation(observation, execute);
-            });
-          } catch (cause) {
+        let demotedDirectMatch = false;
+        try {
+          // The product upsert serializes writes for this URL. Commit its
+          // confirmation timestamp and any match change with the observation
+          // so basket readers see consistent price and admission state.
+          await withTransaction(async (execute) => {
+            const productId = await upsertRetailerProduct({
+              retailerId,
+              retailerSku: product.retailerSku,
+              sourceUrl: product.sourceUrl,
+              rawTitle: product.rawTitle,
+              rawBrand: product.rawBrand,
+              rawSizeText: product.rawSizeText,
+              imageUrl: product.imageUrl,
+              categoryText: product.categoryText ?? target.category,
+            }, execute);
+            if (shouldDemoteDirectMatch && pinnedMatchId) {
+              demotedDirectMatch = await demoteAutoProductMatchToCandidate({
+                matchId: pinnedMatchId,
+                matchScore: matchAdmission.score,
+                evidence: matchAdmission.evidence,
+              }, execute);
+            }
+            if (discoveredMatch) await upsertProductMatch({ ...discoveredMatch, retailerProductId: productId }, execute);
+            await insertObservation({ ...observation, retailerProductId: productId }, execute);
+          });
+        } catch (cause) {
+          if (shouldDemoteDirectMatch || discoveredMatch) {
             logger.warn(`  [${target.id}] match/observation transaction failed: ${cause}`);
             throw new MatchAdmissionPersistenceError(
               `could not persist matched observation for ${target.id}`,
               cause,
             );
           }
-          if (demotedDirectMatch) {
-            logger.warn(
-              `  [${target.id}] direct auto pin downgraded to candidate score=${matchAdmission.score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
-            );
-          }
-        } else {
-          await insertObservation(observation);
+          throw cause;
+        }
+        if (demotedDirectMatch) {
+          logger.warn(
+            `  [${target.id}] direct auto pin downgraded to candidate score=${matchAdmission.score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
+          );
         }
 
         // Stale-pin maintenance — only when the pin URL was actually used (not Exa fallback).
@@ -467,12 +445,7 @@ export async function scrapeRetailer(slug: string) {
 }
 
 export async function scrapeAll() {
-  // initProviders is required for GenericPlaywrightAdapter (playwright/p0 adapters use the
-  // registry via fetchWithFallback). SearchAdapter and ExaSearchAdapter construct their own
-  // provider instances directly from env vars and bypass the registry.
-  initProviders(process.env as Record<string, string>);
-  // Iterate ALL configs (including disabled) so getOrCreateRetailer syncs active=false to DB.
-  // scrapeRetailer() returns early after the upsert for disabled retailers.
+  // Disabled configs stay in the queue so getOrCreateRetailer can set active=false.
   const allConfigs = loadAllRetailerConfigs();
   const completedStatement = completedRetailersStatement();
   const completed = await query<{ slug: string }>(completedStatement.sql, completedStatement.params);
@@ -497,19 +470,12 @@ export async function scrapeAll() {
     }
   });
   await Promise.all(workers);
-
-  await teardownAll();
 }
 
 async function main() {
   try {
     if (process.argv[2]) {
-      initProviders(process.env as Record<string, string>);
-      try {
-        await scrapeRetailer(process.argv[2]);
-      } finally {
-        await teardownAll();
-      }
+      await scrapeRetailer(process.argv[2]);
     } else {
       await scrapeAll();
     }
@@ -517,26 +483,23 @@ async function main() {
     console.error('[scrape] fatal:', err);
     process.exitCode = 1;
   } finally {
-    // Race closePool against a 5s timeout — mirrors the teardown() fix in playwright.ts.
-    // Without a bound, a hung pg pool would keep main() pending indefinitely,
-    // delaying process.exit() and stalling the && chain (aggregate, publish).
+    // Without a bound, a hung pg pool would keep main() pending indefinitely.
     const poolTimeout = new Promise<void>(r => setTimeout(r, 5000));
     await Promise.race([closePool().catch(() => {}), poolTimeout]);
   }
 }
 
-// process.exit() is required to flush lingering Playwright/Chromium handles
-// that would otherwise prevent the process from exiting naturally.
-// process.exitCode preserves failure signaling set in the catch block above.
-const __runStartedAt = Date.now();
-main()
-  .then(() => {
-    // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
-    // diagnostic can tell a clean run from a silent death; without it every run reads as unknown.
-    // main() CATCHES INTERNALLY and signals failure via process.exitCode, so it resolves even when
-    // the run failed — the guard is what stops this vouching for a failed scrape. Plain console.log
-    // rather than the logger: the marker must survive whatever transport/format the logger uses.
-    if (!process.exitCode) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
-  })
-  .catch(() => { process.exitCode = 1; })
-  .then(() => process.exit(process.exitCode ?? 0));
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const __runStartedAt = Date.now();
+  main()
+    .then(() => {
+      // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
+      // diagnostic can tell a clean run from a silent death; without it every run reads as unknown.
+      // main() CATCHES INTERNALLY and signals failure via process.exitCode, so it resolves even when
+      // the run failed — the guard is what stops this vouching for a failed scrape. Plain console.log
+      // rather than the logger: the marker must survive whatever transport/format the logger uses.
+      if (!process.exitCode) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
+    })
+    .catch(() => { process.exitCode = 1; })
+    .then(() => process.exit(process.exitCode ?? 0));
+}

@@ -29,9 +29,25 @@ import {
 import { DEV_USER_ID, isDev } from "../lib/auth";
 import { isChargedEventType, recordUnattributedEvent } from "./unattributedPayments";
 import { normalizeCheckoutAttributionSource } from "../../shared/mcp-attribution";
+import { acquisitionFromCheckoutMetadata } from "../../shared/acquisition-source";
+import type { ConversionContext } from "./subscriptionEmails";
 
 export function isBusinessPlan(planKey: string): boolean {
   return PRODUCT_CATALOG[planKey]?.tierGroup === "api_business";
+}
+
+export type PlanChange = "upgrade" | "downgrade" | "lateral";
+
+/**
+ * Direction of a plan change. PLAN_PRECEDENCE already ranks plans by tier, then
+ * capability, then commitment, for the entitlement recompute; an upgrade is a
+ * move to a higher rank. Unknown keys are "lateral".
+ */
+export function classifyPlanChange(fromPlanKey: string, toPlanKey: string): PlanChange {
+  const from = PLAN_PRECEDENCE[fromPlanKey];
+  const to = PLAN_PRECEDENCE[toPlanKey];
+  if (from === undefined || to === undefined || from === to) return "lateral";
+  return to > from ? "upgrade" : "downgrade";
 }
 
 // ---------------------------------------------------------------------------
@@ -57,6 +73,7 @@ interface DodoSubscriptionData {
   currency?: string;
   tax_inclusive?: boolean;
   discount_id?: string | null;
+  billing?: { country?: string };
 }
 
 interface DodoPaymentData {
@@ -513,10 +530,90 @@ type SubscriptionRow = {
 };
 
 /**
+ * How long a failed renewal keeps paid access while Dodo retries the card.
+ * Dodo advances `next_billing_date` (and so `currentPeriodEnd`) to the unpaid
+ * month when a renewal charge fails, so without this bound an on-hold user
+ * kept a whole unpaid month of access.
+ */
+export const ON_HOLD_ACCESS_GRACE_MS = 7 * 86_400_000;
+
+/**
+ * A charge this long before `currentPeriodStart` still pays for the period.
+ * Dodo charges at the renewal instant, but the two timestamps come from
+ * different events, so this covers clock and event skew only (in production
+ * every renewal charge lands at or within a minute after the start). Charges
+ * carry no billing period, so a wider window would also count a late payment
+ * of the previous period's invoice as paying this one.
+ */
+const PERIOD_PAYMENT_SLACK_MS = 15 * 60_000;
+
+type AccessFields = Pick<SubscriptionRow, "status" | "currentPeriodEnd"> & {
+  accessEndsAt?: number;
+};
+
+/**
+ * When the user's paid access from this subscription ends.
+ *
+ * `accessEndsAt` (a failed renewal's grace end, see
+ * `failedRenewalAccessEndsAt`) bounds an `on_hold` row and a `cancelled` row
+ * that was cancelled during that hold. Every other row, including a hold that
+ * has no stamp (a paid period, or a hold that began before stamping
+ * existed), keeps `currentPeriodEnd`.
+ */
+export function accessEndAt(s: AccessFields): number {
+  if ((s.status === "on_hold" || s.status === "cancelled") && typeof s.accessEndsAt === "number") {
+    return Math.min(s.currentPeriodEnd, s.accessEndsAt);
+  }
+  return s.currentPeriodEnd;
+}
+
+/**
+ * The `accessEndsAt` to stamp when a subscription enters on_hold at `holdAt`,
+ * or `undefined` to keep access to the period end.
+ *
+ * A failed renewal is a hold whose current period has no succeeded charge:
+ * Dodo has already moved the period forward to the month that failed to bill.
+ * A hold during a period the customer did pay for keeps that period. Reads the
+ * user's charges from the period start onward on the time-bounded index.
+ */
+export async function failedRenewalAccessEndsAt(
+  ctx: QueryCtx,
+  sub: { userId: string; dodoSubscriptionId: string },
+  currentPeriodStart: number,
+  holdAt: number,
+): Promise<number | undefined> {
+  const charges = await ctx.db
+    .query("paymentEvents")
+    .withIndex("by_userId_occurredAt", (q) =>
+      q.eq("userId", sub.userId).gte("occurredAt", currentPeriodStart - PERIOD_PAYMENT_SLACK_MS),
+    )
+    .collect();
+  const paid = charges.some((p) =>
+    p.type === "charge" && p.status === "succeeded" && p.dodoSubscriptionId === sub.dodoSubscriptionId,
+  );
+  return paid ? undefined : holdAt + ON_HOLD_ACCESS_GRACE_MS;
+}
+
+/**
+ * Whether this subscription grants paid access at `at`. Use this for
+ * entitlements, Business grants, seats and team dashboards. Use
+ * `isCoveringAt` for the billing relationship (checkout blocking, upgrade
+ * candidates, dunning recipients): a failed renewal past its access grace is
+ * still a live Dodo subscription that is retrying, and buying a second one
+ * would bill the customer twice.
+ */
+export function hasAccessAt(s: AccessFields, at: number): boolean {
+  return s.status === "active" || ((s.status === "on_hold" || s.status === "cancelled") && accessEndAt(s) > at);
+}
+
+/**
  * A subscription is "still covering" the user when it is active, on-hold-
  * but-paid-through (payment retry window — entitlement preserved per business
  * policy, but never past the period the customer actually paid for), or
  * cancelled-but-paid-through (currentPeriodEnd in the future).
+ *
+ * This is the billing-relationship predicate. Paid access for failed renewals
+ * is shorter: see `hasAccessAt` / `accessEndAt`.
  *
  * `on_hold` MUST carry the same `currentPeriodEnd` bound as `cancelled`
  * (GHSA-hw94-8c4h-m9qp): Dodo holds a payment-failed subscription in
@@ -626,9 +723,9 @@ async function pickBestAcceptedBusinessGrant(
     // untouched, so the primary revocation path is the plan_changed handler
     // wiring the grant-revoke call (see handleSubscriptionPlanChanged); this
     // check is the safety net for any lifecycle transition that doesn't.
-    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !isCoveringAt(businessSub, at)) continue;
+    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !hasAccessAt(businessSub, at)) continue;
 
-    const candidate = { planKey: "pro_monthly", currentPeriodEnd: businessSub.currentPeriodEnd };
+    const candidate = { planKey: "pro_monthly", currentPeriodEnd: accessEndAt(businessSub) };
     if (best === null || compareSubscriptionsByCoverage(candidate, best) > 0) {
       best = candidate;
     }
@@ -689,8 +786,8 @@ export async function recomputeEntitlementFromAllSubs(
 
   const subscriptions = await ctx.db.query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId)).collect();
-  const candidates = subscriptions.filter((sub) => isCoveringAt(sub, at))
-    .map(({ planKey, currentPeriodEnd }) => ({ planKey, currentPeriodEnd }));
+  const candidates = subscriptions.filter((sub) => hasAccessAt(sub, at))
+    .map((sub) => ({ planKey: sub.planKey, currentPeriodEnd: accessEndAt(sub) }));
   const bestGrant = await pickBestAcceptedBusinessGrant(ctx, userId, at);
   if (bestGrant) candidates.push(bestGrant);
   // Active membership of a live Enterprise contract (convex/enterpriseAccounts.ts).
@@ -1120,6 +1217,14 @@ function toEpochMs(value: unknown, fieldName?: string, fallback?: number): numbe
   return fb;
 }
 
+/** A payload date in epoch ms, or `undefined` when it is missing or invalid. */
+function payloadEpochMs(value: unknown): number | undefined {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string" && !(value instanceof Date)) return undefined;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? undefined : ms;
+}
+
 // ---------------------------------------------------------------------------
 // Subscription event handlers
 // ---------------------------------------------------------------------------
@@ -1414,6 +1519,7 @@ export async function handleSubscriptionActive(
       ? existing?.cancelScheduledAt
       : undefined;
 
+  let referrerUserId: string | undefined;
   if (existing) {
     await ctx.db.patch(existing._id, {
       userId,
@@ -1441,8 +1547,12 @@ export async function handleSubscriptionActive(
       // next status transition, so wiping them here is safe.
       cancelledAt: undefined,
       onHoldAt: undefined,
+      // A recovered hold's grace must not survive into a later cancel, which
+      // would end a paying customer's access at the old grace date.
+      accessEndsAt: undefined,
       cancelScheduledAt,
     });
+    await notifyPlanUpgrade(ctx, existing, planKey, data);
   } else {
     await ctx.db.insert("subscriptions", {
       userId,
@@ -1488,6 +1598,7 @@ export async function handleSubscriptionActive(
       // for an account being erased. `registerInterest.ts` already guards the
       // identical insert on the waitlist path; this is the same rule.
       if (referrer && !(await isAccountDeleting(ctx, referrer.userId))) {
+        referrerUserId = referrer.userId;
         const refereeEmail = (data.customer?.email ?? "").trim().toLowerCase();
         if (refereeEmail) {
           const existingCredit = await ctx.db
@@ -1659,6 +1770,12 @@ export async function handleSubscriptionActive(
   } else if (existing) {
     console.log(`[subscriptionHelpers] subscription.active: existing non-lapsed subscription — skipping email (subscriptionId=${data.subscription_id})`);
   } else if (process.env.RESEND_API_KEY) {
+    const referrerRow = referrerUserId
+      ? await ctx.db
+          .query("users")
+          .withIndex("by_userId", (q) => q.eq("userId", referrerUserId))
+          .first()
+      : null;
     await ctx.scheduler.runAfter(
       0,
       internal.payments.subscriptionEmails.sendSubscriptionEmails,
@@ -1674,12 +1791,51 @@ export async function handleSubscriptionActive(
         // triggers the sign-in line in the welcome, a pointer email to the
         // checkout inbox, and the Billing Email row in the admin alert.
         checkoutEmail: checkoutEmailDiffers ? email.trim() : undefined,
+        conversion: buildConversionContext({
+          metadata: data.metadata,
+          billingCountry: data.billing?.country,
+          purchasedAt: eventTimestamp,
+          referrerEmail: referrerRow?.email,
+          accountFirstSeenAt: userRow?.firstSeenAt,
+        }),
       },
     );
   }
 }
 
-async function recomputeAcceptedBusinessInvitees(
+const COUNTRY_CODE = /^[A-Z]{2}$/;
+const MAX_REFERRAL_CODE_LENGTH = 64;
+
+/**
+ * The admin email's conversion record for a first activation. Dodo metadata is
+ * buyer-influenced, so each value is re-validated here. The values are only
+ * read for display: acquisition never feeds `affonso_referral` or
+ * `wm_attribution`.
+ */
+export function buildConversionContext(input: {
+  metadata: Record<string, string> | undefined;
+  billingCountry: unknown;
+  purchasedAt: number;
+  referrerEmail?: string;
+  accountFirstSeenAt?: number;
+}): ConversionContext {
+  const referral = input.metadata?.affonso_referral;
+  const referralCode = typeof referral === "string" && referral.trim()
+    ? referral.trim().slice(0, MAX_REFERRAL_CODE_LENGTH)
+    : undefined;
+  const country = typeof input.billingCountry === "string" ? input.billingCountry.trim().toUpperCase() : "";
+  return {
+    purchasedAt: input.purchasedAt,
+    acquisition: acquisitionFromCheckoutMetadata(input.metadata) ?? undefined,
+    mcpAttribution: normalizeCheckoutAttributionSource(input.metadata?.wm_attribution),
+    referralCode,
+    referrerEmail: referralCode ? input.referrerEmail?.trim() || undefined : undefined,
+    billingCountry: COUNTRY_CODE.test(country) ? country : undefined,
+    accountFirstSeenAt: input.accountFirstSeenAt,
+  };
+}
+
+export async function recomputeAcceptedBusinessInvitees(
   ctx: MutationCtx,
   subscriptionId: string,
   observedAt: number,
@@ -1730,6 +1886,8 @@ export async function handleSubscriptionRenewed(
     dodoCustomerId: mergeDodoCustomerId(data, existing),
     rawPayload: data,
     updatedAt: eventTimestamp,
+    // A paid renewal ends any failed-renewal grace (see accessEndAt).
+    accessEndsAt: undefined,
     // Renewal proves the sub exists — clear renewal-reconciliation bookkeeping
     // so a future stale episode starts from a clean slate (esp. the
     // consecutive-404 streak). See payments/billing:reconcileMissedDodoRenewals.
@@ -1751,7 +1909,10 @@ export async function handleSubscriptionRenewed(
 /**
  * Handles `subscription.on_hold` -- payment failed, subscription paused.
  *
- * Entitlements remain valid until `currentPeriodEnd` (no immediate revocation).
+ * A failed renewal keeps paid access for `ON_HOLD_ACCESS_GRACE_MS` after the
+ * hold (stamped as `accessEndsAt`); a hold during a paid period keeps access to
+ * `currentPeriodEnd`. Either way the subscription still blocks a second
+ * checkout while Dodo retries the card.
  */
 export async function handleSubscriptionOnHold(
   ctx: MutationCtx,
@@ -1773,7 +1934,13 @@ export async function handleSubscriptionOnHold(
     return;
   }
 
-  if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
+  const enteringHold = existing.status !== "on_hold";
+  // A hold wins a timestamp tie with the active event before it: a renewal's
+  // charge fails after the period moves. The active and renewed handlers stay
+  // strict, so a same-timestamp active event cannot undo the hold, and a
+  // cancelled or expired row keeps its terminal status.
+  const tiedHoldEntry = existing.status === "active" && eventTimestamp === existing.updatedAt;
+  if (!isNewerEvent(existing.updatedAt, eventTimestamp) && !tiedHoldEntry) return;
 
   // Episode anchor (#4932): only the transition INTO on_hold opens a new
   // dunning episode. Repeated on_hold webhooks (Dodo payment-retry failures,
@@ -1784,12 +1951,35 @@ export async function handleSubscriptionOnHold(
   // dedup stays consistent. Falling back to eventTimestamp would move the
   // anchor on every repeat webhook and re-open the finished sequence
   // (duplicate day-3/day-7 sends — PR #4935 review finding 1).
-  const enteringHold = existing.status !== "on_hold";
   const onHoldAt = enteringHold ? eventTimestamp : (existing.onHoldAt ?? existing.updatedAt);
+  // The payload is a full snapshot and names the period that failed to bill.
+  // The event that moved the row to that period can be processed after this
+  // one and then be dropped as older, so the stored period may still be the
+  // paid one.
+  const currentPeriodStart = payloadEpochMs(data.previous_billing_date) ?? existing.currentPeriodStart;
+  const currentPeriodEnd = payloadEpochMs(data.next_billing_date) ?? existing.currentPeriodEnd;
+  // The access grace is decided on the transition into the hold, and again
+  // only when the period start moves. A repeat on_hold for the same period
+  // (each failed retry) cannot extend or reset it.
+  let accessEndsAt = existing.accessEndsAt;
+  if (enteringHold || currentPeriodStart !== existing.currentPeriodStart) {
+    accessEndsAt = await failedRenewalAccessEndsAt(ctx, existing, currentPeriodStart, onHoldAt);
+  } else if (
+    accessEndsAt === undefined &&
+    currentPeriodEnd > existing.currentPeriodEnd &&
+    (await failedRenewalAccessEndsAt(ctx, existing, currentPeriodStart, onHoldAt)) !== undefined
+  ) {
+    // An unpaid hold from before stamping keeps the end it already had; a
+    // later next_billing_date must not lengthen access to an unpaid period.
+    accessEndsAt = existing.currentPeriodEnd;
+  }
 
   await ctx.db.patch(existing._id, {
     status: "on_hold",
     onHoldAt,
+    accessEndsAt,
+    currentPeriodStart,
+    currentPeriodEnd,
     dodoCustomerId: mergeDodoCustomerId(data, existing),
     rawPayload: data,
     updatedAt: eventTimestamp,
@@ -1804,6 +1994,11 @@ export async function handleSubscriptionOnHold(
   // after its paid-through boundary; recomputing at eventTimestamp would let
   // that expired higher-tier row displace a subscription that covers now.
   await recomputeEntitlementFromAllSubs(ctx, existing.userId, Date.now());
+  // The renewal that preceded this hold pushed accepted invitees' validUntil to
+  // the unpaid period end; re-bound them to the owner's access grace.
+  if (isBusinessPlan(existing.planKey)) {
+    await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, Date.now());
+  }
 
   // Day-0 dunning email (#4932), same non-blocking scheduler pattern as the
   // welcome email. The action re-validates state (still on_hold, same
@@ -1971,9 +2166,15 @@ export async function handleSubscriptionCancelled(
   // plus the effective currentPeriodEnd) rather than `existing`, whose status
   // is still active/on_hold here: `isCoveringAt(existing, ...)` would answer
   // true for a lapsed on_hold row purely on its status and email a subscriber
-  // that their access continues until a date that has already passed.
-  const cancelledCoverage = { status: "cancelled" as const, currentPeriodEnd };
-  const stillPaidThrough = isCoveringAt(cancelledCoverage, eventTimestamp);
+  // that their access continues until a date that has already passed. A
+  // cancel during a failed-renewal hold keeps the hold's `accessEndsAt`, so a
+  // cancel after the grace is silent too.
+  const cancelledCoverage = {
+    status: "cancelled" as const,
+    currentPeriodEnd,
+    accessEndsAt: existing.accessEndsAt,
+  };
+  const stillPaidThrough = hasAccessAt(cancelledCoverage, eventTimestamp);
   if (enteringCancelled && stillPaidThrough && process.env.RESEND_API_KEY) {
     await ctx.scheduler.runAfter(
       0,
@@ -2007,6 +2208,54 @@ export async function handleSubscriptionCancelled(
   // that date hand the row to another subscription that still covers the user
   // (SM-097) instead of leaving it to lapse to free.
   await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
+}
+
+/**
+ * What the subscription cost on its stored plan. `subscription.renewed` can
+ * land first and replace `rawPayload` with the upgraded product while
+ * `planKey` and `dodoProductId` still name the old plan, so the payload's
+ * price counts only when its product matches. Otherwise the catalog list price
+ * stands in, flagged so the email says so.
+ */
+function previousPrice(previous: Doc<"subscriptions">): {
+  oldAmount?: number;
+  oldCurrency?: string;
+  oldIsListPrice?: boolean;
+} {
+  const raw = previous.rawPayload as { product_id?: unknown; recurring_pre_tax_amount?: unknown; currency?: unknown } | null;
+  if (raw?.product_id === previous.dodoProductId && typeof raw.recurring_pre_tax_amount === "number") {
+    return {
+      oldAmount: raw.recurring_pre_tax_amount,
+      oldCurrency: typeof raw.currency === "string" ? raw.currency : undefined,
+    };
+  }
+  const listPrice = PRODUCT_CATALOG[previous.planKey]?.priceCents;
+  return typeof listPrice === "number" ? { oldAmount: listPrice, oldCurrency: "USD", oldIsListPrice: true } : {};
+}
+
+/**
+ * Tell the admin about an upgrade. Callers pass the plan stored BEFORE their
+ * patch, so whichever of `plan_changed` and an active `subscription.updated`
+ * applies the new product first announces it, and the other (or a replay)
+ * sees no change.
+ */
+async function notifyPlanUpgrade(
+  ctx: MutationCtx,
+  previous: Doc<"subscriptions">,
+  toPlanKey: string,
+  data: DodoSubscriptionData,
+): Promise<void> {
+  if (classifyPlanChange(previous.planKey, toPlanKey) !== "upgrade" || !process.env.RESEND_API_KEY) return;
+  const userEmail = data.customer?.email?.trim() || await resolveBillingRecipient(ctx, previous);
+  await ctx.scheduler.runAfter(0, internal.payments.subscriptionEmails.sendPlanUpgradeAdminEmail, {
+    userId: previous.userId,
+    userEmail: userEmail || undefined,
+    fromPlanKey: previous.planKey,
+    toPlanKey,
+    ...previousPrice(previous),
+    newAmount: data.recurring_pre_tax_amount,
+    newCurrency: data.currency,
+  });
 }
 
 /**
@@ -2055,6 +2304,7 @@ export async function handleSubscriptionPlanChanged(
     rawPayload: data,
     updatedAt: eventTimestamp,
   });
+  await notifyPlanUpgrade(ctx, existing, newPlanKey, data);
 
   // Business Pro grants are tied to the owner's dodoSubscriptionId staying on
   // the API Business tier — status/currentPeriodEnd alone don't change on a plan

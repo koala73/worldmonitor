@@ -254,6 +254,7 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
       export function trackGateHit(feature) {
         globalThis.__wmCountryBriefPageTestState.gateHits.push(feature);
       }
+      export function trackCountryHistoryAction() {} export function trackCountryHistoryUpsellClick() {}
     `],
   ]);
 

@@ -96,7 +96,7 @@ Prediction markets are consistently among the best forecasting tools available. 
 
 Here's what makes World Monitor different from every other financial dashboard: the geopolitical layer.
 
-When you see oil prices spiking, you can toggle the military layer and check if there's unusual naval activity in the Strait of Hormuz. When a currency drops, you can check if the country's CII (Country Instability Index) has been rising. When equities sell off, you can look at the Strategic Theater Posture to see if a military theater has escalated.
+When you see oil prices spiking, you can toggle the military layer and check if there's unusual naval activity in the Strait of Hormuz. When a currency drops, you can check if the country's CII (Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/)) has been rising. When equities sell off, you can look at the Strategic Theater Posture to see if a military theater has escalated.
 
 This cross-domain intelligence used to be the province of hedge fund research desks with million-dollar budgets. World Monitor puts it in your browser for free. See how it [compares to traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
 

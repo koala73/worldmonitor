@@ -52,8 +52,8 @@ export async function fetchSupplierSnapshot({
   return buildSnapshot({
     previousSnapshot: previous,
     // One SLICE per tick. The full ~200-importer catalog needs ~800s at the
-    // measured 31.8s/request and Railway kills the container at 600s, so a
-    // whole-catalog pass cannot be made to fit at any deadline.
+    // measured 31.8s/request, exceeding the configured 570s admission budget.
+    // Raising the fetch deadline cannot make a whole-catalog pass fit.
     fetchSipri: (options) => fetchSipri({
       ...options,
       previousSnapshot: previous,

@@ -52,12 +52,13 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
         try {
           requestSignal.throwIfAborted();
           const newFamily = section === 'countrySignals' && 'family' in args && args.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE';
-          if (newFamily && budget.dispatched >= 64) throw new Error('Country read budget reserved for existing sections');
+          const optional = newFamily || section === 'reservoirs';
+          if (optional && budget.dispatched >= 64) throw new Error('Country read budget reserved for existing sections');
           budget.dispatched++;
-          if (!newFamily) mandatoryPending++;
+          if (!optional) mandatoryPending++;
           let raw: unknown;
           try { raw = await call('get_country_brief_section', { section, arguments: args }, requestSignal); }
-          finally { if (!newFamily) mandatoryPending--; }
+          finally { if (!optional) mandatoryPending--; }
           const result = section === 'signalsRaw' ? rawSignalsResultSchema.parse(raw) : countryReadResultSchema.parse(raw);
           if (result.section !== section as CountryReader) throw new Error('Country section identity mismatch');
           requestSignal.throwIfAborted();

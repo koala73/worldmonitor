@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
   test(`shows unknown detection time without hiding a signal at width ${viewport.width}`, async ({ page }, testInfo) => {
@@ -36,7 +37,7 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 
     const panel = page.locator('[data-panel="cross-source-signals"]');
     await expect(panel).toBeVisible();
     await expect(panel).toContainText('Synthetic cached signal with unavailable detection time.');
-    await panel.screenshot({ path: testInfo.outputPath('panel.png') });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath('panel.png') });
     await expect(panel).toContainText('time unknown');
     await expect(panel.getByText(/Global Markets.*time unknown/)).toHaveCount(4);
     await expect(panel).toContainText('5m ago');

@@ -21,7 +21,8 @@ const readJson = (relativePath) => JSON.parse(
   readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8'),
 );
 
-const querySet = readJson('docs/research/seo-ai-visibility/query-set.json');
+// The fixtures and the 2026-07-27 baseline were measured with seo-ai-visibility-v1.
+const querySet = readJson('docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json');
 const template = readJson(
   'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
 );
@@ -156,6 +157,52 @@ describe('SEO/AI visibility collector', () => {
     }]);
     assert.equal(normalized.windows[0].metrics.indexedPages, 0);
     assert.equal('token' in normalized, false);
+  });
+
+  it('keeps an unmeasured query row null with the provider reason, never zero', () => {
+    const metrics = {
+      indexedPages: 0, impressions: 20, clicks: 4, ctr: 0.2, averagePosition: 8,
+    };
+    const reason = 'Not reported by Search Console: below its privacy threshold or no impressions in this window.';
+    const source = searchRows(metrics);
+    source.windows[0].queryRows[0] = {
+      queryId: 'q01',
+      query: querySet.queries[0].query,
+      clicks: null,
+      impressions: null,
+      ctr: null,
+      position: null,
+      reason,
+    };
+    const normalized = normalizeSearchExport(source, {
+      querySet, observedAt, provider: 'googleSearchConsole',
+    });
+    assert.deepEqual(normalized.queryRows, [{
+      windowLabel: '28d',
+      queryId: 'q01',
+      metrics: {
+        impressions: null, clicks: null, ctr: null, averagePosition: null,
+      },
+      reason,
+    }]);
+    assert.equal(normalized.status, 'partial');
+    assert.equal(normalized.windows[0].metrics.impressions, 20, 'a null query row never replaces the stated total');
+
+    const unexplained = searchRows(metrics);
+    unexplained.windows[0].queryRows[0] = {
+      query: querySet.queries[0].query, clicks: null, impressions: null, ctr: null, position: null,
+    };
+    assert.throws(
+      () => normalizeSearchExport(unexplained, { querySet, observedAt, provider: 'googleSearchConsole' }),
+      /query row with no metrics must carry a reason/,
+    );
+
+    const contradictory = searchRows(metrics);
+    contradictory.windows[0].queryRows[0].reason = reason;
+    assert.throws(
+      () => normalizeSearchExport(contradictory, { querySet, observedAt, provider: 'googleSearchConsole' }),
+      /query row with metrics must not carry a reason/,
+    );
   });
 
   it('fails closed when an imported query is not an exact reviewed query', () => {
@@ -668,7 +715,7 @@ describe('SEO/AI visibility collector', () => {
     writeFileSync(sourcesPath, JSON.stringify(sources));
     try {
       await runCli([
-        '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+        '--queries', 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
         '--template', 'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
         '--sources', sourcesPath,
         '--observed-at', observedAt,
@@ -676,12 +723,12 @@ describe('SEO/AI visibility collector', () => {
         '--output', baselinePath,
       ]);
       await runScorecardCli([
-        '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+        '--queries', 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
         '--baseline', baselinePath,
         '--output', scorecardPath,
       ]);
       await runScorecardCli([
-        '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+        '--queries', 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
         '--baseline', baselinePath,
         '--output', scorecardPath,
         '--check',
@@ -799,7 +846,7 @@ describe('SEO/AI visibility collector', () => {
       aiSurfaces: template.aiSurfaces,
     }));
     const args = [
-      '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+      '--queries', 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
       '--template', 'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
       '--sources', sourcesPath,
       '--observed-at', observedAt,
@@ -827,7 +874,7 @@ describe('SEO/AI visibility collector', () => {
     try {
       await assert.rejects(
         runCli([
-          '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+          '--queries', 'docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json',
           '--template', 'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
           '--sources', sourcesPath,
           '--observed-at', observedAt,

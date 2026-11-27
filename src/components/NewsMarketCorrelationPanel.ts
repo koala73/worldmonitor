@@ -103,7 +103,10 @@ export function buildNewsMarketChart(
   const start = Math.max(cutoff, Math.min(news[0]!.timestampMs, market[0]!.timestampMs));
   const end = Math.max(news[news.length - 1]!.timestampMs, market[market.length - 1]!.timestampMs);
   const duration = Math.max(1, end - start);
-  const newsExtent = extent(news.map((point) => point.value));
+  const newsValues = news.map((point) => point.value);
+  const newsExtent = extent(newsValues);
+  // News volume is a count: keep its padded axis from dipping below zero.
+  if (Math.min(...newsValues) >= 0) newsExtent.min = Math.max(0, newsExtent.min);
   const marketExtent = extent(market.map((point) => point.value));
   const x = (timestampMs: number) => MARGIN_LEFT + ((timestampMs - start) / duration) * CHART_WIDTH;
   const newsY = (value: number) => MARGIN_TOP + (1 - (value - newsExtent.min) / (newsExtent.max - newsExtent.min)) * CHART_HEIGHT;

@@ -16,7 +16,7 @@
  * It copies rather than symlinks: Node resolves a symlinked module through its
  * real path, which would find the repository's node_modules and hide the bug.
  *
- * Build the handler bundles first (build-sidecar-sebuf, build-sidecar-handlers).
+ * Build the handler bundles first (build-sidecar-handlers).
  * Run it with the Node the desktop ships, since that is what loads the routes.
  *
  * Run: node scripts/check-sidecar-shipped-routes.mjs [--root <repo-root>]

@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { assertSignedOutAuthHydrationKeepsHeaderStable, HEADER_AUTH_SLOT_WIDTH } from './header-reservation';
 
+// Layout and paint timing are measured with motion on, as users see it;
+// playwright.config.ts turns reduced motion on for every other spec.
+test.use({ reducedMotion: 'no-preference' });
+
 declare global {
   interface Window {
     __wmHeaderClsEntries?: Array<{
@@ -130,9 +134,10 @@ test.describe('header CLS reservations', () => {
     expect(styles.settingsWidth).toBeGreaterThanOrEqual(28);
     expect(styles.settingsHeight).toBeGreaterThanOrEqual(28);
     expect(styles.authDisplay).toMatch(/^(inline-)?flex$/);
-    expect(styles.authMinWidth).toBe(`${HEADER_AUTH_SLOT_WIDTH}px`);
+    expect(styles.authMinWidth).toBe('72px');
     expect(styles.authMinHeight).toBe('32px');
-    expect(styles.authWidth).toBeGreaterThanOrEqual(HEADER_AUTH_SLOT_WIDTH);
+    expect(styles.authWidth).toBeGreaterThanOrEqual(72);
+    expect(styles.authWidth).toBeLessThanOrEqual(HEADER_AUTH_SLOT_WIDTH + 1);
     expect(styles.authHeight).toBeGreaterThanOrEqual(32);
 
     await assertSignedOutAuthHydrationKeepsHeaderStable(page);

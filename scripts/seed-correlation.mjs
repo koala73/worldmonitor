@@ -339,10 +339,21 @@ export function collectMilitarySignals(flights) {
   return signals;
 }
 
-function generateMilitaryTitle(cluster) {
+const REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
+
+function countryName(code) {
+  try { return REGION_NAMES.of(code) ?? code; } catch { return code; }
+}
+
+function formatLatLon({ lat, lon }) {
+  return `${Math.abs(lat).toFixed(1)}\u00b0${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}\u00b0${lon >= 0 ? 'E' : 'W'}`;
+}
+
+export function generateMilitaryTitle(cluster, _entityKey, location) {
   const types = new Set(cluster.map(s => s.type));
   const countries = [...new Set(cluster.map(s => s.country).filter(Boolean))];
-  const countryLabel = countries.slice(0, 2).join('/') || 'Unknown region';
+  const operators = countries.slice(0, 2).join('/') || 'Unknown region';
+  const countryLabel = location ? `${operators} near ${formatLatLon(location)}` : operators;
   const flightTypes = new Set(
     cluster.filter(s => s.type === 'military_flight').map(s => s.aircraftType).filter(Boolean),
   );
@@ -354,14 +365,26 @@ function generateMilitaryTitle(cluster) {
 }
 
 // ── Adapter: Escalation ─────────────────────────────────────
+const UNREST_EVENT_LABELS = {
+  UNREST_EVENT_TYPE_PROTEST: 'Protest',
+  UNREST_EVENT_TYPE_RIOT: 'Riot',
+  UNREST_EVENT_TYPE_STRIKE: 'Strike',
+  UNREST_EVENT_TYPE_DEMONSTRATION: 'Demonstration',
+  UNREST_EVENT_TYPE_CIVIL_UNREST: 'Civil unrest',
+};
+
+// GDELT rows are unverified media mentions of a place, not observed events.
+const isVerifiedUnrestEvent = (p) => p.sourceType !== 'UNREST_SOURCE_TYPE_GDELT';
+
 const ESCALATION_KEYWORDS = /\b((?:military|armed|air)\s*(?:strike|attack|offensive)|invasion|bombing|missile|airstrike|shelling|drone\s+strike|war(?:fare)?|ceasefire|martial\s+law|armed\s+clash(?:es)?|gunfire|coup(?:\s+attempt)?|insurgent|rebel|militia|terror(?:ist|ism)|hostage|siege|blockade|mobiliz(?:ation|e)|escalat(?:ion|ing|e)|retaliat|deploy(?:ment|ed)|incursion|annex(?:ation|ed)|occupation|humanitarian\s+crisis|refugee|evacuat|nuclear|chemical\s+weapon|biological\s+weapon)\b/i;
 
-function collectEscalationSignals(protests, outages, newsClusters) {
+export function collectEscalationSignals(protests, outages, newsClusters) {
   const signals = [];
   const now = Date.now();
   const windowMs = 48 * 60 * 60 * 1000;
 
   for (const p of protests) {
+    if (!isVerifiedUnrestEvent(p)) continue;
     const ts = typeof p.occurredAt === 'number' ? p.occurredAt : (p.occurredAt ? new Date(p.occurredAt).getTime() : now);
     if (now - ts > windowMs) continue;
     const pLat = p.location?.latitude ?? p.lat;
@@ -377,7 +400,7 @@ function collectEscalationSignals(protests, outages, newsClusters) {
       lon: pLon,
       country: code,
       timestamp: ts,
-      label: `${p.eventType || 'event'}: ${p.title || ''}`,
+      label: `${UNREST_EVENT_LABELS[p.eventType] ?? 'Unrest event'}: ${p.title || ''}`,
     });
   }
 
@@ -429,10 +452,10 @@ function collectEscalationSignals(protests, outages, newsClusters) {
   return signals.filter(s => s.type !== 'escalation_outage' || conflictCountries.has(s.country));
 }
 
-function generateEscalationTitle(cluster) {
+export function generateEscalationTitle(cluster) {
   const types = new Set(cluster.map(s => s.type));
   const countries = [...new Set(cluster.map(s => s.country).filter(Boolean))];
-  const countryLabel = countries[0] || 'Unknown';
+  const countryLabel = countries[0] ? countryName(countries[0]) : 'Unknown';
   const parts = [];
   if (types.has('conflict_event')) parts.push('conflict');
   if (types.has('escalation_outage')) parts.push('comms disruption');
@@ -563,6 +586,7 @@ function collectDisasterSignals(earthquakes, outages, protests) {
 
   const conflictCountries = new Set(
     (protests ?? [])
+      .filter(isVerifiedUnrestEvent)
       .filter(p => {
         const ts = typeof p.occurredAt === 'number' ? p.occurredAt : (p.occurredAt ? new Date(p.occurredAt).getTime() : now);
         return (now - ts) <= windowMs;
@@ -594,25 +618,44 @@ function collectDisasterSignals(earthquakes, outages, protests) {
   return signals;
 }
 
-function generateDisasterTitle(cluster) {
+export function generateDisasterTitle(cluster) {
   const types = new Set(cluster.map(s => s.type));
   const parts = [];
-  if (types.has('earthquake')) {
-    const maxMag = Math.max(...cluster.filter(s => s.type === 'earthquake').map(s => s.magnitude ?? 0));
-    parts.push(`M${maxMag.toFixed(1)} seismic`);
-  }
+  const strongestQuake = cluster
+    .filter(s => s.type === 'earthquake')
+    .reduce((max, s) => (!max || (s.magnitude ?? 0) > (max.magnitude ?? 0) ? s : max), undefined);
+  if (strongestQuake) parts.push(`M${(strongestQuake.magnitude ?? 0).toFixed(1)} seismic`);
   if (types.has('infra_outage')) parts.push('infra disruption');
-  const quakePlace = cluster.find(s => s.type === 'earthquake')?.label?.split('\u2014')[1]?.trim();
+  const quakePlace = strongestQuake?.label?.split('\u2014')[1]?.trim();
   return parts.length > 0
     ? `Disaster cascade: ${parts.join(' + ')}${quakePlace ? ` \u2014 ${quakePlace}` : ''}`
     : 'Disaster convergence detected';
 }
 
 // ── Clustering ──────────────────────────────────────────────
-function clusterByProximity(signals, radiusKm) {
-  if (signals.length === 0) return [];
+// Same grid as CorrelationEngine.clusterByProximity (src/services/correlation-engine/engine.ts):
+// cells are cellSizeDeg wide in both axes, and the column scan widens per row because a degree
+// of longitude shrinks toward the poles.
+export function clusterByProximity(signals, radiusKm) {
+  // A non-positive radius would make the column span infinite.
+  if (signals.length === 0 || !(radiusKm > 0)) return [];
   const DEG_PER_KM_LAT = 1 / 111;
-  const cellSizeLat = radiusKm * DEG_PER_KM_LAT;
+  const EARTH_RADIUS_KM = 6371; // the radius haversineKm uses
+  const cellSizeDeg = radiusKm * DEG_PER_KM_LAT;
+  const maxColSpan = Math.ceil(360 / cellSizeDeg);
+  const sinHalfRadius = Math.sin(radiusKm / EARTH_RADIUS_KM / 2);
+  // Neighbours lie in rows row-1..row+1; for two points at |lat| <= maxAbsLat within radiusKm,
+  // haversine gives sin(dLon / 2) <= sin(radiusKm / 2R) / cos(maxAbsLat).
+  const colSpanForRow = (row) => {
+    const maxAbsLat = Math.min(90, Math.max(
+      Math.abs((row - 1) * cellSizeDeg),
+      Math.abs((row + 2) * cellSizeDeg),
+    ));
+    const ratio = sinHalfRadius / Math.cos(maxAbsLat * Math.PI / 180);
+    if (!(ratio < 1)) return maxColSpan;
+    const maxDeltaLonDeg = 2 * Math.asin(ratio) * 180 / Math.PI;
+    return Math.min(maxColSpan, Math.ceil(maxDeltaLonDeg / cellSizeDeg + 1e-9));
+  };
   const parent = signals.map((_, i) => i);
   const find = (i) => {
     while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
@@ -628,10 +671,8 @@ function clusterByProximity(signals, radiusKm) {
     const s = signals[i];
     if (s.lat == null || s.lon == null) continue;
     validIndices.push(i);
-    const cellRow = Math.floor(s.lat / cellSizeLat);
-    const cosLat = Math.cos(s.lat * Math.PI / 180);
-    const cellSizeLon = cosLat > 0.01 ? cellSizeLat / cosLat : cellSizeLat;
-    const cellCol = Math.floor(s.lon / cellSizeLon);
+    const cellRow = Math.floor(s.lat / cellSizeDeg);
+    const cellCol = Math.floor(s.lon / cellSizeDeg);
     const key = `${cellRow}:${cellCol}`;
     const list = grid.get(key);
     if (list) list.push(i); else grid.set(key, [i]);
@@ -640,8 +681,9 @@ function clusterByProximity(signals, radiusKm) {
     const sep = key.indexOf(':');
     const row = Number(key.slice(0, sep));
     const col = Number(key.slice(sep + 1));
+    const colSpan = colSpanForRow(row);
     for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
+      for (let dc = -colSpan; dc <= colSpan; dc++) {
         const neighbors = grid.get(`${row + dr}:${col + dc}`);
         if (!neighbors) continue;
         for (const i of indices) {
@@ -758,10 +800,10 @@ function scoreClusters(clusters, weights, _threshold) {
 
 // ── Card Generation ─────────────────────────────────────────
 function toCard(scored, domain, titleFn) {
-  const title = titleFn(scored.cluster.signals, scored.cluster.entityKey);
   const location = scored.centroidLat != null && scored.centroidLon != null
     ? { lat: scored.centroidLat, lon: scored.centroidLon, label: scored.key }
     : undefined;
+  const title = titleFn(scored.cluster.signals, scored.cluster.entityKey, location);
 
   const signals = scored.cluster.signals.map(s => ({
     type: s.type,

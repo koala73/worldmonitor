@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/tests/sanitizer-harness', (route) => route.fulfill({
@@ -30,7 +31,7 @@ test('panel errors display hostile exception text without creating elements', as
     executed: false,
   });
   await page.addStyleTag({ content: 'body { background: #161b22; color: #e6edf3; font: 16px system-ui; padding: 24px; } .panel { max-width: 620px; padding: 24px; border: 1px solid #6e7681; } .panel-header { margin-bottom: 24px; } .panel-error-msg { white-space: pre-wrap; overflow-wrap: anywhere; }' });
-  await page.screenshot({ path: testInfo.outputPath('exception-text.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('exception-text.png') });
 });
 
 for (const hook of ['afterSanitizeElements', 'afterSanitizeAttributes'] as const) {

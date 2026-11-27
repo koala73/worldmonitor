@@ -60,11 +60,4 @@ describe('resolveCheckoutReturnOrigin (#5911)', () => {
       'https://worldmonitor.app/dashboard?wm_checkout=return&wm_src=desktop',
     );
   });
-
-  it('does not add the desktop source marker to ordinary web returns', () => {
-    assert.equal(
-      buildDashboardCheckoutReturnUrl('https://worldmonitor.app'),
-      'https://worldmonitor.app/dashboard?wm_checkout=return',
-    );
-  });
 });

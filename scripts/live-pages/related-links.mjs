@@ -15,13 +15,21 @@ const LIVE = Object.freeze({
   yieldCurve: { href: '/tools/treasury-yield-curve/', label: 'US Treasury yield curve today' },
   oil: { href: '/tools/crude-oil-inventories/', label: 'US crude oil inventories this week' },
   fearGreed: { href: '/tools/fear-and-greed-index/', label: 'Fear & Greed Index today' },
+  travel: { href: '/tools/travel-advisory-map/', label: 'Travel advisory map: US, UK and Australian warnings by country' },
 });
 
-/** Every country profile: both pages cover all countries. The US adds its own markets data. */
+/**
+ * Every country profile: these pages cover all countries. The travel map links
+ * to the country's own row. The US adds its own markets data.
+ */
 export function countryLiveLinks(countryCode) {
-  const links = [LIVE.debt, LIVE.outages];
-  if (countryCode === 'US') links.push(LIVE.yieldCurve, LIVE.oil, LIVE.fearGreed);
-  return links;
+  // The State Department does not rate the US, so the US profile keeps its
+  // markets pages instead of a travel row that would carry one government.
+  if (countryCode === 'US') return [LIVE.debt, LIVE.outages, LIVE.yieldCurve, LIVE.oil, LIVE.fearGreed];
+  const travel = /^[A-Z]{2}$/.test(countryCode || '')
+    ? { href: `${LIVE.travel.href}#advisory-${countryCode.toLowerCase()}`, label: 'Travel advice from the US and Australia for this country' }
+    : LIVE.travel;
+  return [LIVE.debt, LIVE.outages, travel];
 }
 
 /** A chokepoint with an EIA oil-transit baseline moves crude, so US stocks are context. */
@@ -29,9 +37,9 @@ export function chokepointLiveLinks({ carriesOil }) {
   return carriesOil ? [LIVE.oil] : [];
 }
 
-/** Crisis trackers: markets price their outcomes, and conflicts cut connectivity. */
+/** Crisis trackers: markets price their outcomes, conflicts cut connectivity, and governments warn travellers away. */
 export function crisisLiveLinks({ touchesOilChokepoint }) {
-  const links = [LIVE.markets, LIVE.outages];
+  const links = [LIVE.markets, LIVE.outages, LIVE.travel];
   if (touchesOilChokepoint) links.push(LIVE.oil);
   return links;
 }
@@ -43,6 +51,12 @@ export const LIVE_PAGE_RELATED = Object.freeze({
   'prediction-markets': [LIVE.fearGreed, LIVE.outages, LIVE.situation, { href: '/crises/', label: 'Crisis trackers' }],
   'national-debt-clock': [LIVE.yieldCurve, LIVE.fearGreed, { href: '/countries/united-states/', label: 'United States country profile' }],
   'treasury-yield-curve': [LIVE.debt, LIVE.fearGreed, LIVE.oil],
+  'travel-advisory-map': [
+    LIVE.situation,
+    LIVE.outages,
+    { href: '/crises/', label: 'Crisis trackers' },
+    { href: '/countries/', label: 'Country risk profiles' },
+  ],
   'crude-oil-inventories': [
     { href: '/chokepoints/strait-of-hormuz/', label: 'Strait of Hormuz tracker' },
     { href: '/chokepoints/bab-el-mandeb/', label: 'Bab el-Mandeb tracker' },

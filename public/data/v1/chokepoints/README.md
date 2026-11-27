@@ -18,7 +18,7 @@ All files are served over HTTPS from `https://www.worldmonitor.app/data/v1/choke
 | `index.json` | `{ "schema_version", "dataset", "latest", "dates": [...] }`. Lists every dated file. |
 | `README.md` | This file. |
 
-Caching: `Cache-Control: public, max-age=3600` and a CDN `s-maxage` of 3600 seconds with `stale-while-revalidate=600`. A new snapshot is visible within 70 minutes of deploy: up to an hour of CDN freshness, then up to 10 minutes of stale service while the CDN revalidates. Browsers inherit the response `Age`, so they do not add another hour on top.
+Caching: `Cache-Control: public, max-age=3600` and a CDN `s-maxage` of 3600 seconds with `stale-while-revalidate=600`. A new snapshot is visible within 70 minutes of publication: up to an hour of CDN freshness, then up to 10 minutes of stale service while the CDN revalidates. Browsers inherit the response `Age`, so they do not add another hour on top.
 
 ### Examples
 
@@ -37,13 +37,13 @@ Concatenate dated CSV files to build a time series. Every file starts with the s
 
 ## Update cadence
 
-One snapshot per UTC day, built from the public `GetChokepointStatus` endpoint (`https://www.worldmonitor.app/api/supply-chain/v1/get-chokepoint-status`). The generator is `scripts/build-open-data-chokepoints.mjs` in the [worldmonitor repository](https://github.com/koala73/worldmonitor). The GitHub Actions workflow `open-data-chokepoints.yml` runs daily at 06:23 UTC, builds the files, and opens a review pull request. A maintainer merges it, and the deploy publishes the files. A day whose pull request is not merged has no dated file.
+One snapshot per UTC day, built from the public `GetChokepointStatus` endpoint (`https://www.worldmonitor.app/api/supply-chain/v1/get-chokepoint-status`). The generator is `scripts/build-open-data-chokepoints.mjs` in the [worldmonitor repository](https://github.com/koala73/worldmonitor). The GitHub Actions workflow `open-data-chokepoints.yml` runs daily at 06:23 UTC, builds that day's files, and publishes them to the WorldMonitor open-data archive, which serves every path below `/data/v1/chokepoints/` except `README.md` and `schema.json`. No pull request or deploy sits in between. A day whose run failed has no dated file, and the WorldMonitor health endpoint alarms after 48 hours without a publish.
 
 The first dated file, `2026-09-10.json`, was built from a response captured from the production endpoint on 2026-09-10 (`source_fetched_at` in the file). It was not generated on that day. `2026-10-14.json` and `2026-11-02.json` were built while the dataset was still a proof of concept; `generated_at` in each file is when it was built.
 
 ## Schema
 
-`schema_version` follows semantic versioning. A new column or a new enum value bumps the minor version. A removed or renamed column, a changed type, or a changed meaning bumps the major version and moves the files to a new path (`/data/v2/...`). Patch versions change descriptions only. `schema.json` is regenerated on every run from the same field table that produces the rows, so the schema and the data cannot drift apart.
+`schema_version` follows semantic versioning. A new column or a new enum value bumps the minor version. A removed or renamed column, a changed type, or a changed meaning bumps the major version and moves the files to a new path (`/data/v2/...`). Patch versions change descriptions only. `schema.json` is built from the same field table that produces the rows, and a test fails when the committed copy differs from it, so the schema and the data cannot drift apart.
 
 `schema.json` declares `generated_at` with `format: "date-time"`. Validators that enforce formats need format support loaded (for Ajv, `ajv-formats`).
 
@@ -138,7 +138,7 @@ Upstream providers whose data informs the computed values, with the links WorldM
 - When `transit_today_counts_available` is false the endpoint still reports zeros. This dataset publishes nulls instead. Do not read a null as zero crossings.
 - `source_fetched_at` is when WorldMonitor last rebuilt the status payload, not when each upstream was observed. WorldMonitor reseeds the PortWatch series at least every 6 hours, caches warnings for 1 hour, and rebuilds AIS transit summaries every 10 minutes.
 - Snapshots are taken once per day. Intraday changes are not recorded.
-- Dates can be missing from `index.json`: the first two snapshots predate the daily schedule, and a day whose review pull request was not merged has no file. A missing date means no snapshot, not a quiet day.
+- Dates can be missing from `index.json`: the first two snapshots predate the daily schedule, and a day whose daily run failed has no file. A missing date means no snapshot, not a quiet day.
 - The `/data/*` path also sends `Content-Signal: ai-train=yes, search=yes, ai-input=yes`. That is the site-wide setting; it agrees with the license here, and training on these files is allowed under the same attribution terms.
 
 ## Versioning and contact

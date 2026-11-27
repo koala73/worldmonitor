@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { initTestI18n } from './helpers/i18n.mts';
 
 vi.mock('@/services/storage', () => ({
+  isStorageAvailable: vi.fn(async () => true),
   getSnapshotTimestamps: vi.fn(async () => [1_000, 2_000]),
   getSnapshotAt: vi.fn(),
 }));
@@ -151,7 +152,7 @@ describe('DeductionPanel principal reset', () => {
   });
 });
 
-describe('EnergyCrisisPanel filter binding', () => {
+describe('EnergyCrisisPanel', () => {
   it('binds filter clicks on the stable content node after a debounced render', async () => {
     vi.useFakeTimers();
     const panel = new EnergyCrisisPanel();
@@ -188,6 +189,38 @@ describe('EnergyCrisisPanel filter binding', () => {
     expect(panel.getElement().querySelector('.ecp-filter-active')?.getAttribute('data-filter')).toBe('conservation');
     panel.destroy();
   });
+
+  it('shows the registry review date in UTC+13', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('TZ', 'Pacific/Tongatapu');
+    const panel = new EnergyCrisisPanel();
+    try {
+      const updatedAt = '2026-11-18T12:00:00.000Z';
+      expect(new Date(updatedAt).getTimezoneOffset()).toBe(-13 * 60);
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json({
+        policies: [{
+          category: 'conservation',
+          sector: 'transport',
+          status: 'active',
+          country: 'France',
+          countryCode: 'FR',
+          measure: 'Cap speed',
+          dateAnnounced: '2026-01-01',
+        }],
+        updatedAt,
+      }));
+      document.body.append(panel.getElement());
+      await panel.fetchData();
+      await vi.runOnlyPendingTimersAsync();
+
+      const reviewDate = new Date(2026, 10, 18).toLocaleDateString();
+      expect(panel.getElement().querySelector('.ecp-footer span')?.textContent)
+        .toBe(`Updated ${reviewDate} · Source: IEA`);
+    } finally {
+      panel.destroy();
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe('PlaybackControl stale snapshots', () => {
@@ -201,11 +234,13 @@ describe('PlaybackControl stale snapshots', () => {
     toggle.click();
     toggle.click();
     toggle.click();
-    newer.resolve([3_000, 1_000, 2_000]);
-    await Promise.resolve();
-    older.resolve([1_000]);
-    await Promise.resolve();
     const slider = control.getElement().querySelector<HTMLInputElement>('.playback-slider')!;
+    // Each open first checks storage, so wait for results rather than
+    // counting microtasks.
+    newer.resolve([3_000, 1_000, 2_000]);
+    await vi.waitFor(() => expect(slider.max).toBe('2'));
+    older.resolve([1_000]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(slider.max).toBe('2');
     expect(slider.value).toBe('2');
     vi.mocked(getSnapshotAt).mockResolvedValueOnce(null);

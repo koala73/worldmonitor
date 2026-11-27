@@ -1,6 +1,7 @@
 import { fetchCyberNetworkInfo } from '@/services/cyber-network';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
+import { copyText } from '@/utils/copy-text';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import type { GetNetworkInfoResponse } from '@/generated/client/worldmonitor/cyber/v1/service_client';
 
@@ -63,11 +64,7 @@ export function bindCyberNetworkSection(popup: HTMLElement, ip: string, onResize
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-copy-network]');
     if (!button?.dataset.copyNetwork) return;
     const status = details.querySelector<HTMLElement>('.cyber-copy-status');
-    try {
-      await navigator.clipboard.writeText(button.dataset.copyNetwork);
-      if (status) status.textContent = t('popups.cyberThreat.network.copied');
-    } catch {
-      if (status) status.textContent = t('popups.cyberThreat.network.copyFailed');
-    }
+    const copied = await copyText(button.dataset.copyNetwork);
+    if (status) status.textContent = t(copied ? 'popups.cyberThreat.network.copied' : 'popups.cyberThreat.network.copyFailed');
   });
 }

@@ -11,9 +11,10 @@
 import { createRequire } from 'node:module';
 
 import { countPublisherFamilies } from '../shared/publisher-families.js';
+import { briefPlural, briefT } from '../../shared/brief-strings.js';
 
 const require = createRequire(import.meta.url);
-const { corroborationText, mergeCorroboration } = require('./corroboration-text.cjs');
+const { corroborationText, mergeCorroboration, parseCorroboration } = require('./corroboration-text.cjs');
 
 /** Track-row field for a digest variant; tests/digest-corroboration.test.mts pins it to the server's. */
 export function storyCorroborationField(variant, lang) {
@@ -48,9 +49,32 @@ export function attachDigestCorroboration(reps, stories) {
 }
 
 /** "Coverage: …" for a digest item, or '' when its verdict is unknown. */
-export function digestCoverageText(story) {
-  const text = corroborationText(story?.corroboration);
-  return text ? `Coverage: ${text}` : '';
+export function digestCoverageText(story, lang = 'en') {
+  if (lang === 'en') {
+    const text = corroborationText(story?.corroboration);
+    return text ? `Coverage: ${text}` : '';
+  }
+  const verdict = parseCorroboration(story?.corroboration);
+  if (!verdict) return '';
+  const text = verdict.state === 'single-publisher'
+    ? briefT(lang, 'coverage.single')
+    : briefPlural(lang, verdict.state === 'tier4-only' ? 'coverage.tier4' : 'coverage.independent', verdict.publishers);
+  return briefT(lang, 'coverage.label', { text });
+}
+
+/**
+ * Digest webhook body. Always the canonical English stories and summary, so
+ * `lang` reports the payload language ('en'), not the reader's brief language.
+ */
+export function buildDigestWebhookPayload(stories, summary) {
+  return {
+    version: '1',
+    eventType: 'digest',
+    lang: 'en',
+    stories: stories.map(digestWebhookStory),
+    summary: summary ?? null,
+    storyCount: stories.length,
+  };
 }
 
 /** One story in the digest webhook body; `corroboration` only when known. */

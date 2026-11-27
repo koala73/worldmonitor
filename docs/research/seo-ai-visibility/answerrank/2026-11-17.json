@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-17",
+  "observedAt": "2026-11-17T05:58:20.847Z",
+  "status": "available",
+  "reason": null,
+  "tool": {
+    "name": "answerrank",
+    "revision": "7bcc853840cf05a92eed6926a3d012fef371753a"
+  },
+  "inputsDigest": "sha256:a04181c95de8f11c01ebb1554638729666545dc8dd85906a51ef26845d1d3f1b",
+  "design": {
+    "questions": 13,
+    "repetitions": 3,
+    "judgeModel": "anthropic/claude-sonnet-5-5",
+    "variants": [
+      "claude",
+      "claude +web",
+      "gpt",
+      "gpt +web",
+      "perplexity"
+    ]
+  },
+  "answers": {
+    "planned": 195,
+    "scored": 195,
+    "unscored": 0,
+    "unscoredByVariant": {}
+  },
+  "overall": {
+    "answers": 195,
+    "mentions": 16,
+    "topPicks": 3,
+    "recommendations": 16,
+    "webAnswers": 117,
+    "searchedAnswers": 86,
+    "citations": 24,
+    "aeoScore": 5.7,
+    "shareOfVoice": 0.06808510638297872
+  },
+  "byVariant": {
+    "claude": {
+      "answers": 39,
+      "mentions": 0,
+      "topPicks": 0,
+      "recommendations": 0,
+      "webAnswers": 0,
+      "searchedAnswers": null,
+      "citations": null,
+      "aeoScore": 0,
+      "shareOfVoice": 0
+    },
+    "claude +web": {
+      "answers": 39,
+      "mentions": 5,
+      "topPicks": 0,
+      "recommendations": 5,
+      "webAnswers": 39,
+      "searchedAnswers": 29,
+      "citations": 4,
+      "aeoScore": 5.3,
+      "shareOfVoice": 0.08771929824561403
+    },
+    "gpt": {
+      "answers": 39,
+      "mentions": 0,
+      "topPicks": 0,
+      "recommendations": 0,
+      "webAnswers": 0,
+      "searchedAnswers": null,
+      "citations": null,
+      "aeoScore": 0,
+      "shareOfVoice": 0
+    },
+    "gpt +web": {
+      "answers": 39,
+      "mentions": 0,
+      "topPicks": 0,
+      "recommendations": 0,
+      "webAnswers": 39,
+      "searchedAnswers": 18,
+      "citations": 1,
+      "aeoScore": 0.3,
+      "shareOfVoice": 0
+    },
+    "perplexity": {
+      "answers": 39,
+      "mentions": 11,
+      "topPicks": 3,
+      "recommendations": 11,
+      "webAnswers": 39,
+      "searchedAnswers": 39,
+      "citations": 19,
+      "aeoScore": 18.9,
+      "shareOfVoice": 0.2894736842105263
+    }
+  },
+  "spendUsd": {
+    "answer": 5.3668,
+    "search": 0.655,
+    "judge": 1.5973,
+    "total": 7.6191
+  },
+  "comparison": {
+    "previousDate": "2026-11-11",
+    "comparable": false,
+    "reason": "The questions, profile, config or dependency lock changed since 2026-11-11, so this week starts a new series.",
+    "verdict": "not compared"
+  }
+}

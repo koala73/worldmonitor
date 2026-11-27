@@ -5,11 +5,17 @@ import {
   internalMutation,
   internalQuery,
   type MutationCtx,
+  type QueryCtx,
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import { channelTypeValidator } from "./constants";
-import { requireVerifiedAccountEmail } from "./lib/notificationEmail";
+import { requireVerifiedAccountEmail, lookupVerifiedAccountEmail } from "./lib/notificationEmail";
+import { deliveryResultValidator, isDeliveryError } from "./lib/notificationDelivery";
+import { sendResendEmail } from "./lib/resendEmail";
+import { EMAIL_RED, emailButton, emailCard, emailFactRow, emailFacts, emailFrame, emailHeading, emailParagraph, escapeEmailHtml } from "../shared/email-frame";
+import { assertAlertCapabilities, loadAlertCapabilities } from "./lib/alertCapabilities";
 
 type ChannelType = Infer<typeof channelTypeValidator>;
 
@@ -46,35 +52,29 @@ const ENQUEUE_WELCOME_SCRIPT = [
 ].join("\n");
 
 /**
- * Notifications are a PRO feature. Enforce the entitlement at the public
- * Convex write boundary so callers cannot bypass the edge API gate.
+ * Channel creation is gated by the caller's alert-ladder capabilities
+ * (#4273): free accounts hold the free channel set (web push + email), and
+ * every other channel type throws ALERT_CHANNEL_UPGRADE_REQUIRED with an
+ * upgrade hint — enforced at the Convex write boundary so callers cannot
+ * bypass the edge API gate. The old binary PRO_REQUIRED gate survives only
+ * as the Telegram pairing flow's reason string, which is a bot-facing
+ * contract.
  */
-async function hasProEntitlement(
+async function hasChannelCapability(
   ctx: MutationCtx,
   userId: string,
+  channelType: string,
 ): Promise<boolean> {
-  const entitlement = await ctx.db
-    .query("entitlements")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .first();
-  const tier =
-    entitlement && entitlement.validUntil >= Date.now()
-      ? entitlement.features.tier
-      : 0;
-  return tier >= 1;
+  return (await loadAlertCapabilities(ctx, userId)).channels.has(channelType);
 }
 
-async function assertProEntitlement(
+async function assertChannelCapability(
   ctx: MutationCtx,
   userId: string,
+  channelType: string,
 ): Promise<void> {
-  if (!(await hasProEntitlement(ctx, userId))) {
-    throw new ConvexError({
-      code: "PRO_REQUIRED",
-      message:
-        "Notifications are a PRO feature. Upgrade to enable real-time and digest alerts.",
-    });
-  }
+  const caps = await loadAlertCapabilities(ctx, userId);
+  assertAlertCapabilities(caps, { channels: [channelType] });
 }
 
 /**
@@ -188,14 +188,36 @@ export const queueChannelWelcome = internalAction({
 
 export const getChannelsByUserId = internalQuery({
   args: { userId: v.string() },
-  handler: async (ctx, args) => {
-    const channels = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-    return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
+  handler: (ctx, args) => readChannelsForDelivery(ctx, args.userId),
+});
+
+async function readChannelsForDelivery(ctx: Pick<QueryCtx, "db">, userId: string) {
+  const channels = await ctx.db
+    .query("notificationChannels")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
       || (channel.channelType === "telegram" && channel.telegramOwnership !== "verified_callback")
       ? { ...channel, verified: false } : channel);
+}
+
+export const beginChannelDeliveries = internalMutation({
+  args: { userId: v.string(), channelTypes: v.array(channelTypeValidator) },
+  handler: async (ctx, { userId, channelTypes }) => {
+    const channels = await readChannelsForDelivery(ctx, userId);
+    const selected = new Set(channelTypes);
+    for (const channel of channels) {
+      if (!channel.verified || !selected.has(channel.channelType)
+        || !["webhook", "slack", "discord", "teams", "web_push"].includes(channel.channelType)) continue;
+      // An unfinished attempt may have succeeded. It cannot extend a known failure streak.
+      const deliveryFailure = !channel.deliveryAttempt || channel.deliveryAttempt.pending
+        ? undefined : channel.deliveryFailure;
+      const deliveryAttempt = { sequence: (channel.deliveryAttempt?.sequence ?? 0) + 1, pending: true };
+      await ctx.db.patch(channel._id, { deliveryAttempt, deliveryFailure });
+      channel.deliveryAttempt = deliveryAttempt;
+      channel.deliveryFailure = deliveryFailure;
+    }
+    return channels;
   },
 });
 
@@ -217,6 +239,9 @@ export const setChannelForUser = internalMutation({
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
     const { userId, channelType, webhookEnvelope, email, webhookLabel } = args;
+    // #4273: every branch below gates on the caller's alert-ladder channel
+    // set (free = web push + email), replacing the old email-only PRO gate.
+    await assertChannelCapability(ctx, userId, channelType);
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -233,7 +258,6 @@ export const setChannelForUser = internalMutation({
       const doc = { userId, channelType: "slack" as const, webhookEnvelope, verified: true, linkedAt: now };
       if (existing) { await ctx.db.replace(existing._id, doc); } else { channelId = String(await ctx.db.insert("notificationChannels", doc)); }
     } else if (channelType === "email") {
-      await assertProEntitlement(ctx, userId);
       const recipient = requireVerifiedAccountEmail(email, args.verifiedAccountEmail);
       const doc = { userId, channelType: "email" as const, email: recipient, emailOwnership: "verified_account" as const, verified: true, linkedAt: now };
       if (existing) { await ctx.db.replace(existing._id, doc); } else { channelId = String(await ctx.db.insert("notificationChannels", doc)); }
@@ -365,6 +389,10 @@ export const setSlackOAuthChannelForUser = internalMutation({
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
+    // Layer-2 ladder gate (#4273): the OAuth start endpoints already deny
+    // free callers, but channel creation must not depend on an edge gate
+    // alone — and an entitlement that lapsed mid-OAuth-flow ends here.
+    await assertChannelCapability(ctx, args.userId, "slack");
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -400,6 +428,8 @@ export const setDiscordOAuthChannelForUser = internalMutation({
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
+    // Layer-2 ladder gate (#4273) — see setSlackOAuthChannelForUser.
+    await assertChannelCapability(ctx, args.userId, "discord");
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -502,18 +532,25 @@ export const createPairingTokenForUser = internalMutation({
   },
 });
 
+export function redactChannelForSettings(channel: Doc<"notificationChannels">) {
+  if (channel.channelType === "webhook") {
+    const { webhookSecret, webhookEnvelope: _webhookEnvelope, ...safeChannel } = channel;
+    return { ...safeChannel, webhookSigned: Boolean(webhookSecret) };
+  }
+  if ("webhookEnvelope" in channel) {
+    const { webhookEnvelope: _webhookEnvelope, ...safeChannel } = channel;
+    return safeChannel;
+  }
+  return channel;
+}
+
 export const getChannels = query({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
-    const channels = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
-      .collect();
-    return channels.map(channel => (channel.channelType === "email" && channel.emailOwnership !== "verified_account")
-      || (channel.channelType === "telegram" && channel.telegramOwnership !== "verified_callback")
-      ? { ...channel, verified: false } : channel);
+    const channels = await readChannelsForDelivery(ctx, identity.subject);
+    return channels.map(redactChannelForSettings);
   },
 });
 
@@ -537,7 +574,7 @@ export const setChannel = internalMutation({
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
     await assertAccountWritable(ctx, userId);
-    await assertProEntitlement(ctx, userId);
+    await assertChannelCapability(ctx, userId, args.channelType);
 
     const existing = await ctx.db
       .query("notificationChannels")
@@ -598,6 +635,124 @@ export const deactivateChannelForUser = internalMutation({
   },
 });
 
+export const recordDeliveryResult = internalMutation({
+  args: { results: v.array(v.object({ userId: v.string(), channelType: channelTypeValidator, delivery: deliveryResultValidator })) },
+  handler: async (ctx, { results }) => {
+    if (results.length > 100) throw new Error("DELIVERY_BATCH_TOO_LARGE");
+    for (const result of results) await applyDeliveryResult(ctx, result);
+  },
+});
+
+async function applyDeliveryResult(ctx: MutationCtx, { userId, channelType, delivery }: {
+  userId: string; channelType: ChannelType; delivery: Infer<typeof deliveryResultValidator>;
+}) {
+  if (delivery.error !== null && !isDeliveryError(delivery.error)) throw new Error("INVALID_DELIVERY_ERROR");
+  const channel = await ctx.db.query("notificationChannels")
+    .withIndex("by_user_channel", q => q.eq("userId", userId).eq("channelType", channelType)).unique();
+  if (!channel?.verified || String(channel._id) !== delivery.channelId || channel.linkedAt !== delivery.linkedAt) return;
+  const attempt = channel.deliveryAttempt;
+  if (!attempt?.pending || delivery.sequence !== attempt.sequence) return;
+  const deliveryAttempt = { ...attempt, pending: false };
+  if (delivery.error === null) {
+    await ctx.db.patch(channel._id, { deliveryAttempt, deliveryFailure: undefined });
+    return;
+  }
+  const now = Date.now();
+  const failure = {
+    count: (channel.deliveryFailure?.count ?? 0) + 1,
+    firstFailedAt: channel.deliveryFailure?.firstFailedAt ?? now,
+    lastError: delivery.error,
+  };
+  const terminal = /^HTTP (401|403|404|410)$/.test(delivery.error);
+  const disable = terminal || (failure.count >= 10 && now - failure.firstFailedAt >= 24 * 60 * 60 * 1000);
+  await ctx.db.patch(channel._id, {
+    deliveryAttempt,
+    deliveryFailure: { ...failure, ...(disable ? { disabledAt: now } : {}) },
+    ...(disable ? { verified: false } : {}),
+  });
+  if (disable) {
+    await ctx.scheduler.runAfter(0, internal.notificationChannels.sendDisabledChannelNotice, {
+      userId, channelType, firstFailedAt: failure.firstFailedAt, error: failure.lastError,
+      noticeId: `${channel._id}-${channel.linkedAt}-${now}`,
+    });
+    console.log(JSON.stringify({ metric: "notification_channel_disabled", count: 1, channelType, errorClass: failure.lastError }));
+  }
+}
+
+const NOTIFICATION_SETTINGS_URL = "https://www.worldmonitor.app/dashboard?settings=notifications";
+
+const CHANNEL_LABELS: Record<ChannelType, string> = {
+  telegram: "Telegram", email: "Email", slack: "Slack", discord: "Discord",
+  teams: "Microsoft Teams", webhook: "Webhook", web_push: "Browser Push",
+};
+
+/**
+ * The channel-disabled notice: subject, plain text and HTML. Exported for tests.
+ *
+ * A push service answering 404/410 means the browser ended the subscription
+ * (site data cleared, permission revoked, or the browser expired it). The
+ * settings page cannot repair that row, so that case gets its own copy.
+ */
+export function disabledChannelNotice(args: { channelType: ChannelType; error: string; firstFailedAt: number }): { subject: string; text: string; html: string } {
+  const started = new Date(args.firstFailedAt).toISOString();
+  const label = CHANNEL_LABELS[args.channelType] ?? args.channelType;
+  const expiredPush = args.channelType === "web_push" && /^HTTP (404|410)$/.test(args.error);
+  const subject = expiredPush
+    ? "WorldMonitor browser notifications turned off"
+    : "WorldMonitor notification channel disabled";
+  const headline = expiredPush
+    ? "Your browser ended its notification subscription, so we stopped sending Browser Push alerts."
+    : `Your ${label} notification channel was disabled after delivery failures.`;
+  const action = expiredPush
+    ? "Open World Monitor in the browser where you want alerts and turn on Browser Push again in notification settings."
+    : "Update and save your channel to resume notifications.";
+  const heading = expiredPush ? "Browser notifications turned off" : "Notification channel disabled";
+  const button = expiredPush ? "Turn notifications back on" : "Fix your channel";
+  const text = `${headline}\n\nChannel: ${label}\nError: ${args.error}\nFailures started: ${started}\n\n${action}\n${NOTIFICATION_SETTINGS_URL}`;
+  const html = emailFrame({
+    preheader: headline,
+    kicker: "Alert settings",
+    accent: EMAIL_RED,
+    bodyHtml: `${emailHeading(heading, escapeEmailHtml(headline))}
+      ${emailCard(emailFacts(emailFactRow("Channel", escapeEmailHtml(label)) + emailFactRow("Error", escapeEmailHtml(args.error)) + emailFactRow("Failing since", escapeEmailHtml(started))), { label: "Delivery failures", color: EMAIL_RED })}
+      ${emailParagraph(escapeEmailHtml(action))}
+      ${emailButton(NOTIFICATION_SETTINGS_URL, button)}`,
+    footerNote: "You're receiving this because notifications are on for your account.",
+  });
+  return { subject, text, html };
+}
+
+export const sendDisabledChannelNotice = internalAction({
+  args: {
+    userId: v.string(), channelType: channelTypeValidator, firstFailedAt: v.number(),
+    error: v.string(), noticeId: v.string(), attempt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const attempt = args.attempt ?? 0;
+    try {
+      if (!isDeliveryError(args.error)) throw new Error("INVALID_DELIVERY_ERROR");
+      const email = await lookupVerifiedAccountEmail(args.userId, { allowMissingUser: true });
+      if (!email) return;
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) throw new Error("EMAIL_UNAVAILABLE");
+      const { subject, text, html } = disabledChannelNotice(args);
+      await sendResendEmail(ctx, {
+        apiKey, from: process.env.RESEND_FROM ?? "WorldMonitor <notifications@worldmonitor.app>",
+        to: email, subject,
+        text, html, purpose: "transactional",
+        idempotencyKey: `channel-disabled-${args.noticeId}`,
+      });
+    } catch {
+      if (attempt >= 5) {
+        throw new Error(`[notifications] Channel disable notice failed after retries (${args.channelType})`);
+      }
+      await ctx.scheduler.runAfter(60_000 * 2 ** attempt, internal.notificationChannels.sendDisabledChannelNotice, {
+        ...args, attempt: attempt + 1,
+      });
+    }
+  },
+});
+
 // INTERNAL ONLY — #8430. Formerly public `mutation`s with a Pro gate that
 // contradicted the ungated relay path. Kept as identity-scoped internals so
 // authenticated deploy-key callers and Sentry probe filters still resolve the
@@ -630,7 +785,9 @@ export const createPairingToken = internalMutation({
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
     await assertAccountWritable(ctx, userId);
-    await assertProEntitlement(ctx, userId);
+    // Telegram pairing is reachable only on plans whose ladder includes the
+    // telegram channel (#4273) — today every paid tier, no free plan.
+    await assertChannelCapability(ctx, userId, "telegram");
 
     // Invalidate any existing unused tokens for this user
     const existing = await ctx.db
@@ -678,7 +835,7 @@ export const stagePairingToken = internalMutation({
     await assertAccountWritable(ctx, record.userId);
     if (record.used) return { ok: false, reason: "ALREADY_USED" as const, userId: null };
     if (record.expiresAt < Date.now()) return { ok: false, reason: "EXPIRED" as const, userId: null };
-    if (!(await hasProEntitlement(ctx, record.userId))) {
+    if (!(await hasChannelCapability(ctx, record.userId, "telegram"))) {
       return { ok: false, reason: "PRO_REQUIRED" as const, userId: null };
     }
     await ctx.db.patch(record._id, { pendingChatId: args.chatId });
@@ -700,7 +857,7 @@ export const claimPairingToken = internalMutation({
     if (record.used) return { ok: false, reason: "ALREADY_USED" as const };
     if (record.expiresAt < Date.now()) return { ok: false, reason: "EXPIRED" as const };
     if (record.pendingChatId !== args.chatId) return { ok: false, reason: "NOT_CONFIRMED" as const };
-    if (!(await hasProEntitlement(ctx, record.userId))) {
+    if (!(await hasChannelCapability(ctx, record.userId, "telegram"))) {
       return { ok: false, reason: "PRO_REQUIRED" as const };
     }
 

@@ -3,7 +3,7 @@ import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { proFreshRpcFetch } from '@/services/premium-fetch';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-import { formatPrice, formatChange, getChangeClass } from '@/utils';
+import { formatQuotePrice, formatChange, getChangeClass } from '@/utils';
 import { miniSparkline } from '@/utils/sparkline';
 
 import type { ListGulfQuotesResponse, GulfQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
@@ -12,21 +12,29 @@ import { MarketServiceClient } from '@/services/generated-rpc-clients';
 
 const getMarketClient = createLazyClient(() => new MarketServiceClient(getRpcBaseUrl(), { fetch: proFreshRpcFetch }));
 
+function observationDate(priceAt: number | undefined): string {
+  if (!priceAt || !Number.isFinite(priceAt)) return '';
+  return new Date(priceAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 function renderSection(title: string, quotes: GulfQuote[]): string {
   if (quotes.length === 0) return '';
-  const rows = quotes.map(q => `
+  const rows = quotes.map(q => {
+    const observed = observationDate(q.priceAt);
+    return `
     <div class="market-item">
       <div class="market-info">
         <span class="market-name">${q.flag} ${escapeHtml(q.name)}</span>
-        <span class="market-symbol">${escapeHtml(q.country || q.symbol)}</span>
+        <span class="market-symbol">${escapeHtml(q.country || q.symbol)}${observed ? ` · ${escapeHtml(observed)}` : ''}</span>
       </div>
       <div class="market-data">
         ${miniSparkline(q.sparkline, q.change)}
-        <span class="market-price">${escapeHtml(formatPrice(q.price))}</span>
+        <span class="market-price">${escapeHtml(formatQuotePrice(q.symbol, q.price))}</span>
         <span class="market-change ${getChangeClass(q.change)}">${formatChange(q.change)}</span>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
   return `<div class="gulf-section"><div class="gulf-section-title">${escapeHtml(title)}</div>${rows}</div>`;
 }
 

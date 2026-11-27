@@ -22,8 +22,11 @@ import * as statec from './statec.mjs';
 import { FOAG_CUBES, foagAdapter } from './foag.mjs';
 import * as csblv from './csblv.mjs';
 import * as makstat from './makstat.mjs';
+import * as odepa from './odepa.mjs';
+import * as statcan from './statcan.mjs';
+import * as ibge from './ibge.mjs';
 
 export const FOOD_PRICE_ADAPTERS = { tcb, nabc, nsckg, statkz, statuz, maga, ocpv, sima, mit, ucda, amman, madr, nsomn,
   ...Object.fromEntries(Object.entries(FEWS_COUNTRIES).map(([id, country]) => [id, fewsAdapter(country)])),
   twmoa, geostat, pricecatcher, mcba, cso, statec,
-  ...Object.fromEntries(Object.entries(FOAG_CUBES).map(([id, cube]) => [id, foagAdapter(cube)])), csblv, makstat };
+  ...Object.fromEntries(Object.entries(FOAG_CUBES).map(([id, cube]) => [id, foagAdapter(cube)])), csblv, makstat, odepa, statcan, ibge };

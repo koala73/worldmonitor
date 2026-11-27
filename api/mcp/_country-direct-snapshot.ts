@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 const clockSchema = z.union([z.number().finite().nonnegative(), z.string().min(1)]);
 const provenanceSchema = z.object({

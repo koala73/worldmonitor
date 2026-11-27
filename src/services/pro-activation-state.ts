@@ -704,6 +704,13 @@ export interface CriticalAlertsPayload {
   readonly enabled: true;
   readonly channels: string[];
   readonly sensitivity?: 'critical';
+  /**
+   * Seed path only (#10873): a realtime rule with no countries receives
+   * global critical events only, so the server scopes a rule with no stored
+   * countries to the user's followed countries, in the same transaction as
+   * the write. A stored scope is never overwritten.
+   */
+  readonly seedCountriesFromFollowed?: true;
 }
 
 export function buildCriticalAlertsPayload(
@@ -715,7 +722,7 @@ export function buildCriticalAlertsPayload(
     : [...existingChannels, 'web_push'];
   return hasEnabledRule
     ? { enabled: true, channels }
-    : { enabled: true, channels, sensitivity: 'critical' };
+    : { enabled: true, channels, sensitivity: 'critical', seedCountriesFromFollowed: true };
 }
 
 // ---------------------------------------------------------------------------

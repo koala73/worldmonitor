@@ -71,3 +71,7 @@ export function applyPanelFontScale(element: HTMLElement, panelScale: FontScale 
 export function fontScaleLabel(scale: FontScale): string {
   return `${Math.round(scale * 100)}%`;
 }
+
+export function panelFontScaleSummary(scale: FontScale | undefined): string {
+  return scale === undefined ? 'Aa' : fontScaleLabel(scale);
+}

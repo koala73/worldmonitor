@@ -1,76 +1,81 @@
 ---
-title: "Seven Ways WorldMonitor Reaches You When the World Changes"
-description: "Telegram, Slack, Discord, Teams, email, webhooks, and web push: WorldMonitor alert rules deliver scoped intelligence with digests and quiet hours."
-metaTitle: "Intelligence Alerts: 7 Notification Channels | WorldMonitor"
+title: "Geopolitical Alerts in Slack and Telegram"
+description: "Connect Slack or Telegram to World Monitor, choose supported alerts or digests, and configure scope and quiet hours. Understand access and delivery limits."
+metaTitle: "Geopolitical Alerts in Slack and Telegram | World Monitor"
 keywords: "geopolitical alerts app, telegram news alerts, discord intelligence alerts, microsoft teams alerts, web push breaking news, alert fatigue quiet hours, intelligence notifications"
 audience: "Analysts, ops and security teams, traders, journalists, anyone who can't watch a dashboard all day"
 heroImage: "/blog/images/blog/alerts-notification-channels-worldmonitor.jpg"
 pubDate: "2026-07-21"
-modifiedDate: "2026-10-17"
+modifiedDate: "2026-11-17"
 ---
 
-A dashboard you have to watch is a part-time job. The whole point of monitoring infrastructure is inverted attention: you ignore the world safely because the system knows what you care about and interrupts you only when it happens.
+World Monitor can deliver geopolitical alerts through Slack and Telegram using its notification settings. Connect the destination, choose supported event types and delivery modes, then check scope and quiet hours. Slack and Telegram require paid access; the free alert options shown in the product use a more limited set of channels and rules.
 
-WorldMonitor's alert system is built for that inversion — no code, no webhook glue, unless you want it.
+*Cover: an archived dashboard image. Displayed readings and interface details are illustrative, not current observations.*
 
-## Seven channels, your choice
+## Connect the destination
 
-Alert rules can deliver to **seven channel types**:
+Open the dashboard's notification settings while signed in. For Slack, choose **Add to Slack**, complete the authorization flow and select the permitted destination. Workspace permissions can affect which destination you can connect. The authorization provisions an incoming webhook for the destination you pick, so Slack's [incoming-webhook guide](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks) describes the delivery contract behind it. Return to World Monitor and check the connection state.
 
-- **Telegram** — the de facto channel of the OSINT world.
-- **Slack** — for teams that live there; webhook credentials are stored encrypted.
-- **Discord** — where trading groups and research communities actually are.
-- **Microsoft Teams** — alert cards in a Teams channel, posted through a Workflows webhook you create in Teams; the URL is stored encrypted and must be a Microsoft webhook address.
-- **Email** — for the paper trail and the people who check nothing else.
-- **Webhook** — the escape hatch into your own systems: ticketing, SIEM, home automation, anything with a URL.
-- **Web push** — browser-native notifications with no third-party account at all.
+For Telegram, choose **Connect** and follow the generated pairing link or command. Complete the bot's confirmation step; opening the bot alone does not finish pairing. Return to the dashboard and wait for the connected state.
 
-The same rule can feed different channels for different severities — critical events to the phone, routine matches to email.
+Keep pairing links, QR codes and webhook addresses out of screenshots and shared notes. This guide describes setup; it does not claim that a message was sent to a real Slack workspace or Telegram chat during editorial validation.
 
-## Scoped rules, not firehoses
+## Match sensitivity to the delivery mode
 
-An alert system that forwards everything is just a louder feed. WorldMonitor rules are scoped on three axes:
+| Mode | Supported use |
+| --- | --- |
+| Realtime | Uses critical sensitivity; high/all settings are not supported. Event-specific exceptions are described below. |
+| Scheduled digest | Broader supported sensitivity and a chosen cadence, where enabled. |
 
-- **What**: the event types you care about — not the whole stream.
-- **Where**: rules respect **Country Scope**, so "unrest events" can mean "unrest events in the four countries my team operates in," not the planet.
-- **Which dashboard**: rules are variant-aware, so a finance-focused rule set and a geopolitical one don't contaminate each other.
+Paid users can also receive enabled watched-site and reservoir alerts in realtime at their actual, non-critical severity. Aviation traffic-collapse recovery notices also bypass the critical-only delivery check. These exceptions do not enable high/all realtime sensitivity settings, and quiet hours still apply according to the event's actual severity.
 
-Then the delivery controls do the work that separates a usable system from a muted one:
+Choose a narrower rule first. A digest helps review a collection of material; it is not a guaranteed replay of every individual event. Deployment configuration can affect whether a digest option is enabled. Use the controls actually available in your account.
 
-- **Digest modes** — realtime, daily, twice daily, or weekly. Most intelligence doesn't need to interrupt you; it needs to be waiting, summarized, when you check.
-- **Sensitivity thresholds** — all events, high-priority only, or critical only.
-- **Quiet hours** — with three behaviors: let only critical through, silence everything, or batch alerts for delivery when you wake. That last one is the correct default for most humans: nothing lost, nothing at 3 a.m.
+## Scope the event, not just the country
 
-Alert fatigue is the failure mode that kills every monitoring setup. The [alert-design guide](/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/) goes deep on the principles; the in-product rules implement them without you writing a line.
+Each supported event type belongs to one of three delivery tiers. A global type reaches every rule, scoped or not: a market-wide move, global shipping stress, a national air-traffic collapse, and news that names no single country or clears the critical importance bar. A local type reaches only a rule that lists the event's country, or for a regional event a member country of its region, so a rule with no countries receives none of them and a local event with no resolvable country reaches nobody. An opt-in type uses its own scope instead of a country filter: chokepoint-disruption alerts require explicit event selection, and an empty chokepoint selection matches every chokepoint, so select identifiers to narrow it. These tiers govern realtime delivery. A scheduled digest builds its pool from the variant, language and sensitivity of the rule rather than its country list, so country scope does not narrow digest content.
 
-## Alerts complete the workflows
+Start with the place or corridor you genuinely monitor and the supported event type that answers your question. Do not assume that arbitrary market thresholds, private portfolio rules or every observed map change can trigger a notification.
 
-Every workflow on this blog ends with the same step. The [country-risk routine](/blog/posts/country-risk-monitoring-workflow-for-analysts/) ends with "put the watchlist on continuous watch." The [15-minute briefing](/blog/posts/daily-intelligence-briefing-workflow-15-minutes/) ends with automation carrying the other 23 hours. Alert rules are that step: pin your entities, set your monitors and watchlists, scope the rules, pick the channel you actually read, and the dashboard keeps working when you close it.
+## Set the schedule and quiet hours
 
-Developers who want full control still have it — the API path with your own scheduler and delivery logic is the [Slack/Teams tutorial](/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/). The in-product system is for everyone who wants the outcome without owning the plumbing.
+Review the selected timezone as well as the clock time. A schedule that looks correct in your local browser can still be wrong for the team receiving the briefing. Check the supported quiet-hours behavior in the current settings before assuming that an alert will pass through or be held.
 
-## Limits
+For a daily review, choose a digest cadence where available and retain source links in the resulting research process. An automated delivery saves you a dashboard visit; it does not remove the need to inspect important claims.
 
-Delivery depends on the receiving platform's own reliability and rate limits — Telegram, Slack, Discord, and Teams each have their own weather. Teams delivery may stop if the person who created the workflow leaves your organization and no other owner remains, or if the workflow's Teams connection belonged to that person. Add a second owner and keep its connections valid ([Microsoft: share a cloud flow](https://learn.microsoft.com/en-us/power-automate/create-team-flows)). Web push requires a browser that supports it and permission you can revoke anytime. And no alert system substitutes for judgment about what deserves a rule: start with fewer rules at higher sensitivity, and widen only when you find yourself checking the dashboard for things it should have told you.
+## Other delivery channels
 
-## Sources and implementation references
+Across its seven channels, the settings also support email, browser push, Discord, Microsoft Teams and webhooks, subject to access and channel configuration. Browser push needs browser permission. Teams setup uses its supported Workflows connection, which Microsoft's [webhooks and Workflows guidance](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/what-are-webhooks-and-connectors) documents. A webhook requires a receiving system and is a developer integration, not a prerequisite for native Slack or Telegram setup.
 
-Delivery behavior follows the destination's own transport contract. See the official [Slack incoming-webhook guide](https://api.slack.com/messaging/webhooks) and Microsoft's current [Teams webhook and Workflows guidance](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/what-are-webhooks-and-connectors).
+Use the [notification documentation](/docs/api-notifications) for channel-specific requirements and [current plans](/docs/pricing) for access. Do not assume every channel has the same test control; the documented send-test action is Teams-specific.
+
+## When a notification does not arrive
+
+Check the connection state, whether the rule is enabled, the event type, its scope, the sensitivity/mode combination, and the timezone/quiet hours. Then distinguish “no matching event” from a failed connection or delivery.
+
+Do not reconnect repeatedly or purchase another plan solely because an entitlement check is temporarily unavailable. Record the error and follow its retry guidance. A Teams destination can also fail at the platform level if its workflow is left without a valid owner; Microsoft's [guidance on sharing a cloud flow](https://learn.microsoft.com/en-us/power-automate/create-team-flows) covers adding a second one. A configured rule is not proof that a qualifying event occurred, and a delivered story is not proof its claim is true.
+
+For each important delivered item, open the original source and inspect the timestamp. Coverage labels describe available source coverage, not a verdict of truth. The [AI reliability guide](/blog/posts/ai-intelligence-summary-reliability/) applies to generated digests too.
+
+The public [notification settings implementation](https://github.com/koala73/worldmonitor/blob/760126f7dc/src/services/notifications-settings.ts) documents the behavior behind this guide.
 
 ## Frequently Asked Questions
 
-**Do I need to write code to set up alerts?**
+**Do Slack and Telegram alerts require code?**
 
-No. Rules, scoping, digest modes, quiet hours, and all seven channels are configured in the product. Code is only for the webhook channel's receiving end — or for developers who prefer the raw API.
+The native connection flows do not require writing a webhook receiver. You do need the relevant account access and destination permissions.
 
-**Can I limit alerts to specific countries?**
+**Can I receive every event in realtime?**
 
-Yes — alert rules respect Country Scope, so rules fire only for the countries you've scoped, which is the single most effective alert-fatigue control the system has.
+Realtime uses the critical sensitivity setting. Enabled watched-site and reservoir alerts, and aviation traffic-collapse recovery notices, have event-specific delivery exceptions. Broader high/all sensitivity settings belong in a digest cadence where enabled.
 
-**What happens to alerts during quiet hours?**
+**Does Country Scope filter chokepoint alerts?**
 
-Your choice per rule: critical-only passes through, full silence, or batch-on-wake — everything held and delivered together when quiet hours end.
+No. Chokepoint alerts use their own explicit event selection and chokepoint scope. An empty chokepoint selection matches all chokepoints; select identifiers to narrow it. Country scope gates the local tier only, so it does not apply uniformly to all events.
 
----
+**Does a connected channel guarantee delivery?**
 
-**The dashboard is for when you're looking. The alert rules are for the other 23 hours — set them once, and the world starts reporting to you.**
+No. A matching rule, eligible event, schedule and functioning destination are also necessary. Check each stage when diagnosing a missing notification.
+
+Open [World Monitor](https://www.worldmonitor.app) and configure one destination with a narrow rule before expanding your alert coverage.

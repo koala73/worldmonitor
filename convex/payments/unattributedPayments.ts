@@ -2,6 +2,8 @@ import { internalAction, internalQuery, type MutationCtx } from "../_generated/s
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { ResendSendError, sendResendEmail } from "../lib/resendEmail";
+import type { Doc } from "../_generated/dataModel";
+import { EMAIL_AMBER, EMAIL_RED, emailCard, emailFactRow, emailFacts, emailFrame, emailHeading, emailNote, escapeEmailHtml } from "../../shared/email-frame";
 
 const ADMIN_EMAIL = "elie@worldmonitor.app";
 
@@ -160,17 +162,55 @@ export async function recordUnattributedEvent(
   return { notified: true };
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 function row(label: string, value: string | undefined): string {
   if (!value) return "";
-  return `<tr><td style="color: #888; padding-right: 16px;">${escapeHtml(label)}:</td><td style="color: #fff;">${escapeHtml(value)}</td></tr>`;
+  return emailFactRow(label, escapeEmailHtml(value));
+}
+
+type UnattributedEmailFields = Pick<
+  Doc<"unattributedPaymentEvents">,
+  "charged" | "eventType" | "amount" | "currency" | "customerEmail" | "customerName" | "errorMessage" | "errorCode"
+  | "dodoCustomerId" | "dodoSubscriptionId" | "dodoPaymentId" | "dodoProductId"
+>;
+
+/** Subject and body of the ops alert for one unattributed row. Exported for tests. */
+export function unattributedPaymentEmail(record: UnattributedEmailFields, rowId: string): { subject: string; html: string } {
+  const money = record.amount !== undefined && record.currency
+    ? `${(record.amount / 100).toFixed(2)} ${record.currency}`
+    : undefined;
+
+  const subject = record.charged
+    ? `[WM] ACTION REQUIRED — paid but unattributed (${money ?? record.eventType})`
+    : `[WM] Buyer could not pay — unattributed ${record.eventType}`;
+
+  const headline = record.charged
+    ? "Money settled and we could not attach it to a user. They have paid and hold no access."
+    : "A payment attempt failed for someone we have no account for. Nothing was charged — this is a sales signal, not an outage.";
+
+  const guidance = record.charged
+    ? `Attribute it with <code>attributeUnattributedPayment</code> (rowId + the userId who should own it). That writes the customer mapping and replays the event, granting entitlement.`
+    : `No action is required for billing. Worth a follow-up if this buyer keeps failing — repeat attempts from the same customer are throttled to one alert per 24h.`;
+
+  const color = record.charged ? EMAIL_RED : EMAIL_AMBER;
+  const html = emailFrame({
+    preheader: headline,
+    kicker: "Ops alert",
+    accent: color,
+    bodyHtml: `${emailHeading(record.charged ? "Unattributed PAID event" : "Unattributed failed payment", escapeEmailHtml(headline))}
+      ${emailCard(emailFacts(`${row("Event", record.eventType)}
+          ${row("Amount", money)}
+          ${row("Email", record.customerEmail)}
+          ${row("Name", record.customerName)}
+          ${row("Reason", record.errorMessage ?? record.errorCode)}
+          ${row("Customer", record.dodoCustomerId)}
+          ${row("Subscription", record.dodoSubscriptionId)}
+          ${row("Payment", record.dodoPaymentId)}
+          ${row("Product", record.dodoProductId)}
+          ${row("Row", rowId)}`), { label: "Payment event", color })}
+      ${emailNote(guidance)}`,
+    footerNote: "Sent to the World Monitor ops inbox.",
+  });
+  return { subject, html };
 }
 
 export const getUnattributedRow = internalQuery({
@@ -220,39 +260,7 @@ export const notifyUnattributedPayment = internalAction({
       return;
     }
 
-    const money = record.amount !== undefined && record.currency
-      ? `${(record.amount / 100).toFixed(2)} ${record.currency}`
-      : undefined;
-
-    const subject = record.charged
-      ? `[WM] ACTION REQUIRED — paid but unattributed (${money ?? record.eventType})`
-      : `[WM] Buyer could not pay — unattributed ${record.eventType}`;
-
-    const headline = record.charged
-      ? "Money settled and we could not attach it to a user. They have paid and hold no access."
-      : "A payment attempt failed for someone we have no account for. Nothing was charged — this is a sales signal, not an outage.";
-
-    const guidance = record.charged
-      ? `Attribute it with <code>attributeUnattributedPayment</code> (rowId + the userId who should own it). That writes the customer mapping and replays the event, granting entitlement.`
-      : `No action is required for billing. Worth a follow-up if this buyer keeps failing — repeat attempts from the same customer are throttled to one alert per 24h.`;
-
-    const html = `<div style="font-family: monospace; padding: 20px; background: #0a0a0a; color: #e0e0e0;">
-        <p style="color: ${record.charged ? "#f87171" : "#facc15"}; font-size: 16px; font-weight: bold;">${escapeHtml(record.charged ? "Unattributed PAID event" : "Unattributed failed payment")}</p>
-        <p style="font-size: 13px; color: #ccc;">${escapeHtml(headline)}</p>
-        <table style="font-size: 14px; line-height: 1.8;">
-          ${row("Event", record.eventType)}
-          ${row("Amount", money)}
-          ${row("Email", record.customerEmail)}
-          ${row("Name", record.customerName)}
-          ${row("Reason", record.errorMessage ?? record.errorCode)}
-          ${row("Customer", record.dodoCustomerId)}
-          ${row("Subscription", record.dodoSubscriptionId)}
-          ${row("Payment", record.dodoPaymentId)}
-          ${row("Product", record.dodoProductId)}
-          ${row("Row", rowId)}
-        </table>
-        <p style="font-size: 12px; color: #999; margin-top: 16px;">${guidance}</p>
-      </div>`;
+    const { subject, html } = unattributedPaymentEmail(record, rowId);
 
     // Ops alert to our own inbox: shared helper still checks suppression,
     // but sends no Reply-To so a reply does not loop back to ADMIN_EMAIL.

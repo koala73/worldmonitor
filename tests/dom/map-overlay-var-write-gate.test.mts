@@ -12,6 +12,7 @@ describe('map overlay counter-scale writes', () => {
     const wrapper = document.createElement('div');
     const map = Object.assign(Object.create(MapComponent.prototype), {
       wrapper,
+      naturalEventTexts: [],
       state: { zoom: 2, pan: { x: 0, y: 0 } },
       getKnownContainerSize: () => ({ width: 800, height: 600 }),
       overlayBudgetPlanIsStale: () => false,

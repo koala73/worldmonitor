@@ -1,4 +1,4 @@
-import { query } from '../client.js';
+import { query, type QueryExecutor } from '../client.js';
 
 export async function upsertRetailerProduct(input: {
   retailerId: string;
@@ -9,8 +9,8 @@ export async function upsertRetailerProduct(input: {
   rawSizeText?: string | null;
   imageUrl?: string | null;
   categoryText?: string | null;
-}): Promise<string> {
-  const result = await query<{ id: string }>(
+}, execute: QueryExecutor): Promise<string> {
+  const result = await execute<{ id: string }>(
     `INSERT INTO retailer_products
        (retailer_id, retailer_sku, source_url, raw_title, raw_brand, raw_size_text,
         image_url, category_text, first_seen_at, last_seen_at)
@@ -21,7 +21,7 @@ export async function upsertRetailerProduct(input: {
            raw_size_text = EXCLUDED.raw_size_text,
            image_url = EXCLUDED.image_url,
            category_text = EXCLUDED.category_text,
-           last_seen_at = NOW()
+           last_seen_at = clock_timestamp()
      RETURNING id`,
     [
       input.retailerId,

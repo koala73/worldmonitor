@@ -26,6 +26,10 @@ async function setupDashboard(page: Page, viewport: { width: number; height: num
 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
+  // These tests assert the drop zone's layout state. Its 0.2s height transition
+  // runs on the animation clock, which a CPU-starved CI browser can stall, so
+  // the height lagged the class change past the 2s poll (shard 6, twice).
+  await page.addStyleTag({ content: '.map-bottom-grid, .map-bottom-grid::after { transition: none !important; }' });
 }
 
 async function readWideLayoutMetrics(page: Page): Promise<WideLayoutMetrics> {
@@ -68,7 +72,11 @@ function emptyPlaceholderOpacity(page: Page): Promise<number> {
 // can assert mid-drag state. The cursor stays in the top-of-grid region, well away from
 // the below-map drop zone, so a subsequent mouse.up() does not populate the bottom grid.
 async function beginPanelDragInUpperGrid(page: Page): Promise<void> {
-  const header = page.locator('#panelsGrid > .panel[data-panel]:not(.hidden) > .panel-header').first();
+  // A deferred shell carries data-panel and a header but has pointer-events: none and no
+  // drag listeners, so a mousedown on it never starts a drag.
+  const header = page
+    .locator('#panelsGrid > .panel[data-panel]:not(.hidden):not([data-deferred-panel]) > .panel-header')
+    .first();
   await expect(header).toBeVisible();
   const box = await header.boundingBox();
   expect(box, 'first panel header should have a rendered bounding box').not.toBeNull();

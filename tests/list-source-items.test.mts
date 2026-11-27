@@ -5,13 +5,16 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { newsHandler } from '../server/worldmonitor/news/v1/handler';
-import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
+import { REVOKED_URLS_KEY, __resetRevocationMemoForTest } from '../server/_shared/digest-revocations';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 import { drainResponseHeaders } from '../server/_shared/response-headers';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
 import { INTEL_SOURCES, VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
 import { createNewsServiceRoutes, type ListSourceItemsResponse } from '../src/generated/server/worldmonitor/news/v1/service_server';
 import { validateGeneratedRequest } from '../server/request-validator';
+
+// Each test sets its own revocations; drop the previous test's memoized read.
+beforeEach(__resetRevocationMemoForTest);
 
 const route = createNewsServiceRoutes(newsHandler, { validateRequest: validateGeneratedRequest })
   .find(entry => entry.path.endsWith('/list-source-items'))!;

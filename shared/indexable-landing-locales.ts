@@ -7,8 +7,9 @@
  * xhtml:link alternates, slash redirects, and 404 passthrough prefixes.
  *
  * x-default always points at the English root. Portuguese stays `/pt/` (the
- * app locale id) with hreflang `pt-BR`. Indonesian is omitted: there is no
- * `id.json` dictionary.
+ * app locale id) with hreflang `pt-BR`. Indonesian (`id`) has a `pro-test`
+ * dictionary only: the dashboard ships no `id.json`, so `/id/` is localized
+ * and the dashboard it links to stays English.
  */
 
 export const INDEXABLE_LANDING_ORIGIN = 'https://www.worldmonitor.app' as const;
@@ -136,6 +137,26 @@ export const INDEXABLE_LANDING_LOCALES: readonly IndexableLandingLocale[] = Obje
     htmlLang: 'ar',
     ogLocale: 'ar_SA',
     dir: 'rtl',
+    isDefault: false,
+  }),
+  landing({
+    id: 'id',
+    pathSegment: 'id',
+    canonicalPath: '/id/',
+    hreflang: 'id',
+    htmlLang: 'id',
+    ogLocale: 'id_ID',
+    dir: 'ltr',
+    isDefault: false,
+  }),
+  landing({
+    id: 'ja',
+    pathSegment: 'ja',
+    canonicalPath: '/ja/',
+    hreflang: 'ja',
+    htmlLang: 'ja',
+    ogLocale: 'ja_JP',
+    dir: 'ltr',
     isDefault: false,
   }),
 ]);

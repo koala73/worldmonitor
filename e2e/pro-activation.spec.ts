@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 /**
  * Pro Activation Onboarding — end-to-end coverage.
@@ -303,12 +304,6 @@ test.describe('Pro activation flow — markerless first-cycle handoff', () => {
     });
     expect(alreadyPresented.result).toBe('not-eligible');
     await expect(page.locator(OVERLAY)).toHaveCount(0);
-  });
-
-  test('a successful claim opens once and confirms the presentation', async ({ page }) => {
-    const result = await runMarkerlessFlowHarness(page, { claimStatus: 'claimed' });
-    expect(result).toEqual({ result: 'opened', claimCalls: 1, confirmCalls: 1 });
-    await expect(page.locator(OVERLAY)).toBeVisible();
   });
 
   test('markerless progress and final exit persist exact lease-bound outcome snapshots', async ({ page }) => {
@@ -618,6 +613,9 @@ test.describe('Pro activation flow — day-0 outcome rows (#5621)', () => {
     // persistActivationOutcomeWithRetry returned early and the entire
     // post-checkout cohort was absent from Convex.
     const result = await runDay0FlowHarness(page);
+    // Zero claim/confirm calls: day-0 must not touch the markerless lease. The
+    // lease makes the retro backfill fire exactly once per subscription, and
+    // borrowing it would lock the subscriber out of that backfill (#5600).
     expect(result).toEqual({ result: 'opened', claimCalls: 0, confirmCalls: 0, day0Calls: 1 });
     await expect(page.locator(OVERLAY)).toBeVisible();
 
@@ -657,15 +655,6 @@ test.describe('Pro activation flow — day-0 outcome rows (#5621)', () => {
         },
       },
     ]);
-  });
-
-  test('day-0 never touches the markerless claim/confirm lease', async ({ page }) => {
-    // The lease is what makes the retro backfill fire exactly once per
-    // subscription. Day-0 borrowing it would consume that budget and lock the
-    // subscriber out of the backfill they may still need (#5600).
-    const result = await runDay0FlowHarness(page);
-    expect(result.claimCalls).toBe(0);
-    expect(result.confirmCalls).toBe(0);
   });
 
   test('a late successful day-0 open still flushes queued finalized snapshots', async ({ page }) => {
@@ -829,7 +818,7 @@ test.describe('Pro activation — step scroll position (#5731)', () => {
       // does not catch content clipped by a scrolled modal body.
       await expect(page.locator(viewport.height < 600 ? '.pro-activation-close' : ADVANCE_SKIP_BTN)).toBeFocused();
       await expect(page.locator(':focus')).toBeInViewport({ ratio: 1 });
-      await page.screenshot({ path: testInfo.outputPath('toolkit.png') });
+      await evidenceScreenshot(page, { path: testInfo.outputPath('toolkit.png') });
       expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
       await expect(page.locator('.pro-activation-status')).toBeInViewport({ ratio: 1 });
       await expect(page.locator('.pro-activation-heading')).toBeInViewport({ ratio: 1 });

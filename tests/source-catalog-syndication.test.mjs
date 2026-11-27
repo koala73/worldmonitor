@@ -88,6 +88,7 @@ test('feed declaration parsing works in the dependency-free docs-stats checkout'
       'scripts/source-catalog-identity.mjs',
       'scripts/source-origin.mjs',
       'shared/publisher-families.js',
+      'shared/publisher-name.js',
     ]) {
       const destination = join(fixtureRoot, relativePath);
       mkdirSync(dirname(destination), { recursive: true });
@@ -211,6 +212,7 @@ test('catalog cards distinguish origin from coverage for BBC, NDTV, and Reuters'
   assert.ok(!catalog.some((row) => row.displayName === 'Google News'));
   assert.ok(!catalog.some((row) => /FeedBurner/i.test(row.displayName)));
 
+  assert.ok(byName.has('Scroll.in'), 'a dotted publisher name must not become its transport name');
   const ndtv = byName.get('NDTV');
   assert.ok(ndtv, 'NDTV must appear as its own catalog provider');
   assert.equal(ndtv.originCountry, 'IN');

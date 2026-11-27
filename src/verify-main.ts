@@ -6,6 +6,8 @@
  * tool returns, in the browser. It works signed out. The claim lives in
  * `?claim=` so a result can be shared as a link.
  */
+import './bootstrap/abort-signal-fallbacks';
+import './bootstrap/dom-fallbacks';
 import { renderClaimCardHtml, renderFactChecksHtml } from '@/components/claim-card';
 import {
   CLAIM_MAX_CHARS,
@@ -15,7 +17,7 @@ import {
   normalizeClaim,
   type ClaimSearch,
 } from '@/services/verify-claim';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { isImeEnter, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { safeStorageGet } from '@/utils/safe-storage';
 
 if (safeStorageGet('worldmonitor-theme') === 'light') document.documentElement.dataset.theme = 'light';
@@ -112,6 +114,7 @@ form.addEventListener('submit', (event) => {
 input.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
+    if (isImeEnter(event)) return;
     form.requestSubmit();
   }
 });

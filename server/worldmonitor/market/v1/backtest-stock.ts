@@ -124,7 +124,7 @@ function compareByAnalysisAtDesc<T extends { analysisAt: number }>(a: T, b: T): 
   return (b.analysisAt || 0) - (a.analysisAt || 0);
 }
 
-function simulateEvaluation(
+export function simulateEvaluation(
   analysis: AnalyzeStockResponse,
   forwardBars: Candle[],
 ): BacktestStockEvaluation | null {
@@ -136,7 +136,8 @@ function simulateEvaluation(
   const takeProfit = analysis.takeProfit;
   if (!entryPrice || !stopLoss || !takeProfit) return null;
 
-  let exitPrice = forwardBars[forwardBars.length - 1]?.close ?? entryPrice;
+  const windowClose = forwardBars[forwardBars.length - 1]?.close ?? entryPrice;
+  let exitPrice = windowClose;
   let outcome = 'window_close';
 
   for (const bar of forwardBars) {
@@ -178,7 +179,7 @@ function simulateEvaluation(
     entryPrice: round(entryPrice),
     exitPrice: round(exitPrice),
     simulatedReturnPct: round(simulatedReturnPct),
-    directionCorrect: simulatedReturnPct > 0,
+    directionCorrect: direction === 'long' ? round(windowClose) > entryPrice : round(windowClose) < entryPrice,
     outcome,
     stopLoss: round(stopLoss),
     takeProfit: round(takeProfit),
@@ -331,7 +332,7 @@ export const backtestStock: MarketServiceHandler['backtestStock'] = async (
       cumulativeSimulatedReturnPct: round(cumulativeSimulatedReturnPct),
       latestSignal: latest.signal,
       latestSignalScore: round(latest.signalScore),
-      summary: `Validated ${actionableEvaluations} technical-only signal records over ${evalWindowDays} trading days with ${round(winRate)}% win rate and ${round(avgSimulatedReturnPct)}% average simulated return. Point-in-time fundamentals are not included.`,
+      summary: `Validated ${actionableEvaluations} technical-only signal records, each scored over the next ${evalWindowDays} trading days, with ${round(winRate)}% win rate and ${round(avgSimulatedReturnPct)}% average simulated return. Point-in-time fundamentals are not included.`,
       generatedAt: new Date().toISOString(),
       evaluations: evaluations.slice(0, MAX_EVALUATIONS),
       engineVersion: STOCK_BACKTEST_ENGINE_VERSION,

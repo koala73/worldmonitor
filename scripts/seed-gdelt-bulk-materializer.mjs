@@ -23,6 +23,7 @@ import {
 
 import {
   loadEnvFile,
+  markPreservableFetchFailure,
   readSeedSnapshot,
   runSeed,
   writeExtraKey,
@@ -205,6 +206,7 @@ function validateCurrentFeedCohort(values, nowMs) {
 
 async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, discardRangePrefix = false, signal, ...options } = {}) {
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  // A rejection here means GDELT never answered (connect timeout, reset, DNS).
   const response = await fetchImpl(url, {
     ...options,
     headers: {
@@ -216,7 +218,7 @@ async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, di
     // runs Node 24 (.nvmrc). Without it only the caller's signal is honored.
     signal: !signal ? timeout
       : typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal,
-  });
+  }).catch((error) => { throw markPreservableFetchFailure(error); });
   if (!response.ok) throw new Error(`GDELT bulk HTTP ${response.status} for ${url}`);
   if (expectedStatus && response.status !== expectedStatus) {
     throw new Error(`GDELT bulk expected HTTP ${expectedStatus}, got ${response.status}`);
@@ -228,11 +230,21 @@ async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, di
   if (!response.body) throw new Error('GDELT bulk response has no body');
   const chunks = [];
   let total = 0;
-  for await (const chunk of response.body) {
-    total += chunk.byteLength;
-    if (total > maxBytes) throw new Error(`GDELT bulk response exceeds ${maxBytes} bytes`);
-    chunks.push(Buffer.from(chunk));
+  let oversized = false;
+  try {
+    for await (const chunk of response.body) {
+      total += chunk.byteLength;
+      if (total > maxBytes) { oversized = true; break; }
+      chunks.push(Buffer.from(chunk));
+    }
+  } catch (error) {
+    // Leaving the loop cancels the stream; a failed cancel must not hide the size error.
+    if (oversized) throw new Error(`GDELT bulk response exceeds ${maxBytes} bytes`);
+    // A body that stops arriving (stalled socket, reset, the request timeout
+    // firing mid-read) is the same outage as no answer at all.
+    throw markPreservableFetchFailure(error);
   }
+  if (oversized) throw new Error(`GDELT bulk response exceeds ${maxBytes} bytes`);
   const buffer = Buffer.concat(chunks, total);
   if (!discardRangePrefix) return buffer;
   const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('content-range') ?? '');
@@ -972,6 +984,10 @@ export const RUN_SEED_OPTS = {
   declareRecords,
   schemaVersion: 1,
   maxStaleMin: 45,
+  // The 15-minute worker exits 0 on a tick GDELT never answered, or stopped
+  // sending a body mid-download, while the last publish is inside maxStaleMin,
+  // so one blip does not crash the service.
+  allowPreservedFetchFailure: true,
   contentMeta: gdeltBulkContentMeta,
   // The fetch boundary accepts a source cohort up to two hours old. One more
   // hour lets the 15-minute worker recover without flapping at that boundary.

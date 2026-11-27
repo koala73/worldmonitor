@@ -120,6 +120,39 @@ describe('lookupClerkPlan', () => {
       else process.env.CLERK_SECRET_KEY = originalSecret;
     }
   });
+
+  it('encodes the user id in the Clerk URL and bounds the plan cache at 1,000 users', async () => {
+    const originalSecret = process.env.CLERK_SECRET_KEY;
+    const originalFetch = globalThis.fetch;
+    process.env.CLERK_SECRET_KEY = 'sk_test_plan_cache_bound';
+    try {
+      const mod = await import(`../server/auth-session.ts?plan-cache=${Date.now()}`);
+      const urls: string[] = [];
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        urls.push(String(input));
+        return new Response(JSON.stringify({ public_metadata: { plan: 'free' } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      };
+
+      await mod.lookupClerkPlan('user_a/../b?x=1');
+      assert.equal(urls[0], 'https://api.clerk.com/v1/users/user_a%2F..%2Fb%3Fx%3D1');
+
+      urls.length = 0;
+      for (let i = 0; i < 1_001; i++) await mod.lookupClerkPlan(`user_bound_${i}`);
+      assert.equal(urls.length, 1_001);
+      // The newest entry is still cached; the oldest was evicted to make room.
+      await mod.lookupClerkPlan('user_bound_1000');
+      assert.equal(urls.length, 1_001);
+      await mod.lookupClerkPlan('user_a/../b?x=1');
+      assert.equal(urls.length, 1_002);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalSecret === undefined) delete process.env.CLERK_SECRET_KEY;
+      else process.env.CLERK_SECRET_KEY = originalSecret;
+    }
+  });
 });
 
 describe('verifyClerkSessionActive', () => {
@@ -772,16 +805,29 @@ describe('validateBearerToken (with JWKS)', () => {
   });
 
   it('accepts desktop and preview azp values surveyed in #8178', async () => {
-    for (const azp of [
-      'tauri://localhost',
-      'asset://localhost',
-      'https://tauri.localhost',
-      'https://worldmonitor-git-feat-azp-eliewm.vercel.app',
-      'https://worldmonitor-r6q9o-eliewm.vercel.app',
-    ]) {
-      const token = await signToken({ sub: 'user_azp_desktop_preview', plan: 'free', azp });
-      const result = await validateBearerToken(token);
-      assert.equal(result.valid, true, `expected surveyed azp accepted: ${azp}`);
+    // Previews are trusted only as their own deployment (server/cors.ts).
+    const saved = [process.env.VERCEL_ENV, process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL];
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_URL = 'worldmonitor-r6q9o-eliewm.vercel.app';
+    process.env.VERCEL_BRANCH_URL = 'worldmonitor-git-feat-azp-eliewm.vercel.app';
+    try {
+      for (const azp of [
+        'tauri://localhost',
+        'asset://localhost',
+        'https://tauri.localhost',
+        'https://worldmonitor-git-feat-azp-eliewm.vercel.app',
+        'https://worldmonitor-r6q9o-eliewm.vercel.app',
+      ]) {
+        const token = await signToken({ sub: 'user_azp_desktop_preview', plan: 'free', azp });
+        const result = await validateBearerToken(token);
+        assert.equal(result.valid, true, `expected surveyed azp accepted: ${azp}`);
+      }
+    } finally {
+      const keys = ['VERCEL_ENV', 'VERCEL_URL', 'VERCEL_BRANCH_URL'];
+      keys.forEach((k, i) => {
+        if (saved[i] === undefined) delete process.env[k];
+        else process.env[k] = saved[i];
+      });
     }
   });
 
@@ -808,6 +854,7 @@ describe('validateBearerToken (with JWKS)', () => {
       'https://clerk.worldmonitor.app',
       'https://abacus.worldmonitor.app',
       'https://worldmonitor-feat-x-attacker.vercel.app',
+      'https://worldmonitor-attacker-eliewm.vercel.app',
       'https://some-other-app-eliewm.vercel.app',
     ]) {
       const token = await signToken({ sub: 'user_azp_foreign', plan: 'pro', azp });
@@ -883,12 +930,28 @@ describe('userPrefsOptionsHttpHandler CORS', () => {
     for (const origin of [
       'https://worldmonitor.app',
       'https://worldmonitor-git-preview-xyz-eliewm.vercel.app',
-      'http://localhost:3000',
     ]) {
       const response = await invokePreflight(origin);
       assert.equal(response.status, 204);
       assert.equal(response.headers.get('access-control-allow-origin'), origin);
       assert.equal(response.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
+    }
+
+    const prevConvexIsDev = process.env.CONVEX_IS_DEV;
+    try {
+      delete process.env.CONVEX_IS_DEV;
+      const deniedLocal = await invokePreflight('http://localhost:3000');
+      assert.equal(deniedLocal.status, 204);
+      assert.equal(deniedLocal.headers.get('access-control-allow-origin'), null);
+
+      process.env.CONVEX_IS_DEV = 'true';
+      const allowedLocal = await invokePreflight('http://localhost:3000');
+      assert.equal(allowedLocal.status, 204);
+      assert.equal(allowedLocal.headers.get('access-control-allow-origin'), 'http://localhost:3000');
+      assert.equal(allowedLocal.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
+    } finally {
+      if (prevConvexIsDev === undefined) delete process.env.CONVEX_IS_DEV;
+      else process.env.CONVEX_IS_DEV = prevConvexIsDev;
     }
   });
 

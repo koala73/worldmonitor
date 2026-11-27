@@ -26,7 +26,7 @@ import {
   downstreamErrorTags,
 } from './downstream';
 import { mcpErrorFingerprint } from './error-fingerprint';
-import { argBool, summarizeData } from './filters';
+import { argBool, argStrList, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
 import { admitChokepointPanel, admitConflictPanel, admitCountryPanel, admitDisasterPanel, admitForecastPanel, admitMarketPanel, admitNewsIntelligencePanel, admitNewsPanel, admitPredictionPanel, admitWorldBriefPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
@@ -37,6 +37,7 @@ import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimi
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
 import { CHATGPT_HIDDEN_TOOLS, isChatGptHost } from './host-policy';
+import { pointerOnlyNewsResult } from './chatgpt-news';
 import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
 import {
   checkoutProductIdForPlan,
@@ -114,6 +115,16 @@ export async function executeChokepointPanelRead(params: Record<string, unknown>
 
 type CachePanelDomain = 'natural-disasters' | 'news-intelligence' | 'chokepoints';
 
+// Keeps a key unless only unselected datasets own it (see CacheToolDef._datasetKeys).
+function datasetKeyFilter(tool: CacheToolDef, params: Record<string, unknown>): (key: string) => boolean {
+  const owners = tool._datasetKeys;
+  const selected = argStrList(params.dataset);
+  if (!owners || selected.length === 0) return () => true;
+  const wanted = new Set(selected.flatMap(dataset => owners[dataset] ?? []));
+  const owned = new Set(Object.values(owners).flat());
+  return key => !owned.has(key) || wanted.has(key);
+}
+
 async function executeCacheTool(
   tool: CacheToolDef,
   params: Record<string, unknown>,
@@ -141,6 +152,7 @@ async function executeCacheTool(
     : key.includes('displacement:idmc-idu') ? 'events' : key.includes('displacement:dtm') ? 'regions' : 'movements';
   const movementMode = displacementView && selectedView === 'movements';
   const selectedKeys = displacementView ? tool._cacheKeys.filter(key => viewOfKey(key) === selectedView) : tool._cacheKeys;
+  const datasetScoped = datasetKeyFilter(tool, params);
   // A free account never reads a subscription dataset or its seed-meta (#7433
   // exception closed); the withheld sections are named in `locked` below.
   const subscriptionKeys = execution?.freeAccountAllowance === true ? tool._subscriptionCacheKeys : undefined;
@@ -148,12 +160,13 @@ async function executeCacheTool(
   const lockedFreshnessKeys = new Set(lockedKeys.map(key => `seed-meta:${key.replace(/:v\d+$/, '')}`));
   const cacheKeys = (tool.name === 'get_sanctions_data'
     ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : selectedKeys)
+    .filter(datasetScoped)
     .filter(key => !lockedKeys.includes(key));
   const reads = cacheKeys.map((k) => settleRead((panel !== undefined || movementMode ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
   const selectedChecks = displacementView ? tool._freshnessChecks.filter(check => viewOfKey(check.key) === selectedView) : tool._freshnessChecks;
   const freshnessChecks = (tool.name === 'get_sanctions_data'
     ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:sanctions:changes') === historyMode) : selectedChecks)
-    .filter(check => !lockedFreshnessKeys.has(check.key));
+    .filter(check => datasetScoped(check.key) && !lockedFreshnessKeys.has(check.key));
   const metaReads = freshnessChecks.map((check) => settleRead(readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key))));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
   // for this read, so it is one extra command on get_chokepoint_status and
@@ -357,7 +370,10 @@ async function executeCacheTool(
     ...(freshnessUnknown || intelligenceFreshness?.freshnessUnknown || chokepointPolicy?.freshnessUnknown ? { freshnessUnknown: true } : {}),
     ...(unreadable.length > 0 ? { unreadable } : {}),
     ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
-    ...(lockedKeys.length > 0 ? { locked: lockedKeys.map(key => cacheKeyLabel(tool, key)), upgradeUrl: MCP_UPGRADE_URL } : {}),
+    // An inform-only host (ChatGPT) gets the locked list without the plans link.
+    ...(lockedKeys.length > 0
+      ? { locked: lockedKeys.map(key => cacheKeyLabel(tool, key)), ...(execution?.informOnly ? {} : { upgradeUrl: MCP_UPGRADE_URL }) }
+      : {}),
     data: result,
   };
   recordStaleFreshnessKeys(value, staleCheckKeys);
@@ -521,6 +537,12 @@ export async function dispatchToolsCall(
   // execution error the model can read and correct, instead of -32602. Only
   // tools/call on 2025-11-25+ opts in; resources/read re-wraps JSON-RPC errors.
   inputErrorsAsToolResults?: boolean,
+  // The pre-check read `travelRiskAssessment: true` off the caller's
+  // entitlement (#10451). Omitted → tools that require it are refused.
+  travelRiskAssessment?: boolean,
+  // The free-allowance owner is paused after a failed renewal (#11213).
+  // Denials then name the billing portal and carry no checkout hint.
+  paymentFailed?: boolean,
 ): Promise<Response> {
   const id = body.id ?? null;
   // Every argument-validation failure goes through here. Protocol errors (a
@@ -533,10 +555,14 @@ export async function dispatchToolsCall(
     : rpcError(id, -32602, message, corsHeaders, data);
   // Only a user-bound caller can call start_upgrade, so only they get a
   // checkout hint. The free allowance is upgraded as free even when a lapsed
-  // paid row still carries its old plan key.
-  const upgradeFrom = context.kind === 'pro' || context.kind === 'user_key'
-    ? (freeAccountAllowance ? 'free' : planKey)
-    : undefined;
+  // paid row still carries its old plan key. A paused owner gets none:
+  // checkout is blocked until the card is fixed.
+  const pausedAfterPaymentFailure = freeAccountAllowance === true && paymentFailed === true;
+  const upgradeFrom = pausedAfterPaymentFailure
+    ? undefined
+    : context.kind === 'pro' || context.kind === 'user_key'
+      ? (freeAccountAllowance ? 'free' : planKey)
+      : undefined;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
   const dedicatedPanel = !freeAccountAllowance && budget?.allowance !== 'api'
     && (context.kind === 'pro' || context.kind === 'user_key');
@@ -664,8 +690,19 @@ export async function dispatchToolsCall(
   // from metering below: `describe_tool` has an `_execute`, but it is a purely
   // local registry read that never reaches the gateway, and it is the tool an
   // agent needs most while deciding what it may call.
+  //
+  // A plan-feature tool (#10451) is refused first, so a free account is told
+  // which plans include it rather than the generic Pro copy below.
+  if (tool._planFeature === 'travelRiskAssessment' && context.kind !== 'env_key' && travelRiskAssessment !== true) {
+    if (deferredBurst) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
+    if (pausedAfterPaymentFailure) return mcpDenialResponse({ reason: 'payment-failed' }, -32002, 403, id, corsHeaders);
+    return mcpDenialResponse({ reason: 'upgrade-required', planFeature: tool._planFeature, upgradeFrom }, -32002, 403, id, corsHeaders);
+  }
   if (freeAccountAllowance && toolAccess(tool) === 'subscription') {
-    return mcpDenialResponse({ reason: 'upgrade-required', upgradeFrom }, -32002, 403, id, corsHeaders);
+    return mcpDenialResponse(pausedAfterPaymentFailure ? { reason: 'payment-failed' } : { reason: 'upgrade-required', upgradeFrom }, -32002, 403, id, corsHeaders);
   }
 
   // Panel allocation can also spend quota, so reject caller-input errors
@@ -941,7 +978,10 @@ export async function dispatchToolsCall(
           // It must never be -32001/401: docs/mcp-error-catalog.mdx documents that
           // pair as "re-authenticate via OAuth", so an RFC-9728 client would loop
           // (OAuth succeeds, retry, 401 again) on a condition re-auth cannot fix.
-          return mcpDenialResponse({ reason: 'allowance-exhausted', upgradeFrom }, -32029, 429, id, corsHeaders, {
+          const exhausted = pausedAfterPaymentFailure
+            ? { reason: 'allowance-exhausted' as const, paymentFailed: true as const }
+            : { reason: 'allowance-exhausted' as const, upgradeFrom };
+          return mcpDenialResponse(exhausted, -32029, 429, id, corsHeaders, {
             retryAfter: String(secondsUntilUtcMidnight()),
           });
         }
@@ -1176,6 +1216,10 @@ export async function dispatchToolsCall(
     // presentation step and before the projection, so `jmespath` projects
     // the envelope (`jmespath: "spoken"` returns only the sentence) and the
     // attribution rider below is still built from the full payload.
+    // ChatGPT gets news as pointers: no snippets, briefs or publisher body
+    // text (chatgpt-news.ts). Before the spoken envelope and the attribution
+    // rider, so neither is built from the removed text.
+    if (chatGptHost) result = pointerOnlyNewsResult(tool.name, result);
     const narratedFrom = result;
     if (spokenRequested && tool._spoken && result && typeof result === 'object' && !Array.isArray(result)) {
       result = buildSpokenEnvelope(tool, result as Record<string, unknown>, callArguments, Date.now(), spokenLanguage);

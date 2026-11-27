@@ -21,7 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { GLOSSARY_TERMS } from '../blog-site/src/data/glossary.ts';
 import { getRootlessDocsDestination } from '../src/config/docs-root-redirects.ts';
-import { COMPARISON_MATRIX_COLUMNS, comparisonDiscoveryEntries } from './build-comparison-pages.mjs';
+import { comparisonDiscoveryEntries } from './build-comparison-pages.mjs';
 import { renderAccuracyLlmsSection } from './build-accuracy-page.mjs';
 import {
   RESILIENCE_COVERAGE_PATTERN,
@@ -283,10 +283,15 @@ function renderSnapshotTable(rootDir) {
  */
 export function renderComparisons() {
   const entries = comparisonDiscoveryEntries(SITE_ORIGIN);
+  const [hub, ...pages] = entries;
+  const common = hub.matrixColumns;
+  const shortlist = pages.find(({ matrixColumns }) => matrixColumns.length > common.length);
+  const extra = shortlist?.matrixColumns.slice(common.length) ?? [];
+  const shortlistSummary = extra.length ? ` The shortlist adds ${extra.length} columns (${extra.join(', ')}).` : '';
   return [
     COMPARISONS_HEADING,
     '',
-    `A comparison hub plus ${entries.length - 1} head-to-head and category pages. Every page uses the same ${COMPARISON_MATRIX_COLUMNS.length}-column matrix (${COMPARISON_MATRIX_COLUMNS.join(', ')}), states what each competitor wins, and answers the questions engines lift verbatim. Prices were checked at publication and can change.`,
+    `A comparison hub plus ${pages.length} head-to-head and category pages. Each comparison matrix starts with ${common.length} common columns (${common.join(', ')}).${shortlistSummary} The pages explain where competitors excel and answer common questions. Prices were checked at publication and can change.`,
     '',
     ...entries.map((entry) => `- [${entry.title}](${entry.url}): ${entry.description}`),
   ].join('\n');

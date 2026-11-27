@@ -29,7 +29,7 @@
 #   AI_DIGEST_ENABLED=0           (kill switch for AI summary LLM call)
 # =============================================================================
 
-FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5
 
 WORKDIR /app
 ENV npm_config_install_links=true
@@ -105,9 +105,14 @@ COPY scripts/shared/notify-fields.cjs ./scripts/shared/
 # (the cooldown source-evolution bypass) as scripts/shared/publisher-families.js
 # — the same module reached through two roots, so BOTH copies must ship.
 # Guarded by tests/dockerfile-digest-notifications-imports.test.mjs.
-COPY shared/publisher-families.js shared/publisher-families.d.ts ./shared/
-COPY scripts/shared/publisher-families.js ./scripts/shared/
+COPY shared/publisher-families.js shared/publisher-families.d.ts shared/publisher-name.js shared/publisher-name.d.ts ./shared/
+COPY scripts/shared/publisher-families.js scripts/shared/publisher-name.js ./scripts/shared/
 COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
+# Brief localization (scripts/lib/brief-l10n.mjs) names the target language.
+COPY shared/ui-languages.js shared/ui-languages.d.ts ./shared/
+# Fixed brief chrome strings (magazine, email, chat, Teams, subjects).
+COPY shared/brief-strings.js shared/brief-strings.d.ts shared/brief-strings.data.js ./shared/
+COPY shared/brief-text.js shared/brief-text.d.ts ./shared/
 COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts server/_shared/brief-fonts.generated.js ./server/_shared/
 # llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback
 # path (legacy whyMatters generator) to strip prompt-injection patterns
@@ -131,5 +136,7 @@ COPY server/_shared/feelgood-classifier.js server/_shared/feelgood-classifier.d.
 # Upstash REST helper (brief compose uses redisPipeline + readRawJson).
 COPY api/_upstash-json.js ./api/
 COPY api/_seed-envelope.js ./api/
+
+USER node
 
 CMD ["node", "scripts/seed-digest-notifications.mjs"]

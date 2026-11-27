@@ -55,9 +55,9 @@ const DEFAULT_RETRY_AFTER_SECONDS = 60;
  *         already showing; blanking a customer's wall display over a
  *         transient billing lookup is a worse outcome than stale data.
  *
- * `subscription_lapsed` is the only billing state that lands in the first
- * bucket (`classifyBillingVerification`); every other one is a lookup we owe
- * the customer another attempt at.
+ * `subscription_lapsed` and `payment_failed` are the only billing states that
+ * land in the first bucket (`classifyBillingVerification`); every other one is
+ * a lookup we owe the customer another attempt at.
  */
 export async function evaluateEmbedSession(
   panelParam: string | null,

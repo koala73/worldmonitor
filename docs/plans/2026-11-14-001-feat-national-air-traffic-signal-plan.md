@@ -1,0 +1,253 @@
+# National air traffic signal plan
+
+On 2026-11-13 the FAA stopped every departure in the US for four hours. WorldMonitor sent no US alert and kept no record of the traffic collapse.
+This program gives analysts a 5-minute national civil traffic series and an alert when US departures collapse.
+The rule it enforces is that a traffic alert fires only on a measured drop against a same-weekday baseline, while a control region shows the feed is healthy.
+PR A records the series in the relay. PR B adds the departure-collapse detector and its notification. B is stacked on A.
+FAA ground-stop notifications shipped separately in https://github.com/koala73/worldmonitor/pull/10718.
+
+## How to read this
+
+One box is one unit of work. Every box names the evidence that checks it. A nested box is a sub-step of the box above it. Check a box only when its evidence exists, a file, a log line, a screenshot, a test run, or a SHA. The body is a how-to. The appendices explain and record.
+
+The program runs `pstack/skills/poteto-mode/playbooks/autopilot-stack.md`. The operator merges. PR A and PR B both stop at STACK-READY, and the operator lands them bottom-up.
+
+Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+## Program checklist
+
+### Arm the program
+
+- [ ] State the protocol and this plan to the operator, then stop. Start execution only on the operator's explicit go.
+- [ ] Read these from trunk at program start. Re-read them at every tick.
+  - [ ] `git show origin/main:pstack/skills/poteto-mode/playbooks/autopilot-stack.md`
+  - [ ] `git show origin/main:pstack/skills/swarm/SKILL.md`
+  - [ ] `git show origin/main:pstack/skills/poteto-mode/playbooks/opening-a-pr.md`
+  - [ ] `git show origin/main:AGENTS.md`
+  - [ ] `git show origin/main:docs/solutions/integration-issues/opensky-bbox-area-billing-flat-top-tier.md`
+- [ ] On the operator's go, arm the audit tick as `/loop 1h` with the tick prompt below. Never leave the cadence to memory.
+- [ ] Use this tick prompt, verbatim. "Re-read the execution playbook from trunk. Audit the operation against it and fix drift in this tick. Probe every active lane and judge progress by side effects only. Stand down a stuck lane and dispatch its replacement now. Then post a short status message to the operator in chat only when the audit found a tracked change that no earlier status message reported, such as a PR opened, a code-ready head, a round launched or closed, a verdict, a merge, a stuck agent and the action taken, a blocker added or cleared, or a decision only the operator can make. Name every such change and nothing else. Do not repeat a table, the merged list, or an unchanged blocker. If the audit found none, end the turn with no reply text. Either way, log this tick's row in your decision trail. The row names the items reported, or none."
+- [ ] On the operator's hold or stand-down, send every owner a zero-writes order at once.
+
+### Spawn owners
+
+- [ ] Spawn one owner per PR with the full lifecycle the execution playbook names.
+- [ ] Follow this dependency graph. Start dependent work only after its parent merges, or base it on the parent branch when the execution playbook stacks.
+  - [ ] PR A is first. It branches from `main`.
+  - [ ] PR B after PR A. It branches from the PR A branch.
+- [ ] Hold the file boundaries. PR A touches only `scripts/shared/air-traffic-*.cjs`, `scripts/ais-relay.cjs`, `scripts/ais-relay-test-preload.cjs`, `scripts/ais-relay-air-traffic.test.cjs`, `Dockerfile.relay`, `api/health.js`, `package.json`, and `tests/air-traffic-*`. PR B touches only `scripts/shared/air-traffic-detector.cjs`, `scripts/ais-relay.cjs`, `scripts/ais-relay-test-preload.cjs`, `Dockerfile.relay`, `tests/air-traffic-detector*`, `tests/notification-relay-payload-audit.test.mjs`, and `tests/notification-relay-country-scope-5359.test.mjs`.
+- [ ] Hold the review gate. Neither PR changes an interaction. The operator still lands both.
+
+### PR mechanics, for every PR
+
+- [ ] Resolve the forge once. Default to `gh`; if `command -v origin` succeeds and Origin can resolve the repository, use `origin pr` for every PR operation. Record any fallback to `gh`. Never require `gt`.
+- [ ] Open the PR ready, never draft, per **Opening a PR**. Use `gh pr create --base <base-branch>`. PR B targets the PR A branch.
+- [ ] Run `npm run typecheck`, `npm run typecheck:api`, and `npm run lint:boundaries` once before the PR-facing push. Push with hooks on.
+- [ ] Run `/deslop` before each commit and `/no-comments` before review.
+- [ ] Triage every review comment per `../references/bugbot-triage.md`. Bugbot does not run in this repository, so record that.
+- [ ] Rebase onto current trunk before the code-ready report and babysit. Keep that merge base in fix rounds. Rebase again only at merge prep, on a `git merge-tree` conflict with trunk, or on a CI failure that comes from a change on trunk.
+
+### Verdict and merge, for every PR
+
+- [ ] A full swarm runs once, at the code-ready head. Another full swarm runs only for new behavior, a redesign, or a large new diff. A rebase, a merge-conflict resolution, or a minor fix gets a single verifier at the new head. Run each full swarm per `pstack/skills/swarm/SKILL.md`. One gates lane. The ten live lanes from the PR's **Verify, live** block. The perf lane from its **Verify, perf** block. Two or more audit lanes, each with its own focus, that read the diff and the receipts and distrust the PR body. The root audits the receipts in the merge-ready report before the verdict.
+- [ ] Clean only when every lane is `PASS`. Findings go back to the owner, including a defect that a lane filed as a note. A new head gets a fresh verdict, except for results that stay valid under the patch-id rule in `playbooks/shipping.md`.
+- [ ] Append each verified PR to the base-branch stack. The operator lands the stack bottom-up. A rebased head keeps its verdict only when its patch-id is unchanged per `playbooks/shipping.md`.
+
+### Boot recipe, for every live lane
+
+Each live lane runs in its own worktree at the PR head. The relay has no control skill, so each lane drives the real relay process through `node` with the fixture preload and reads the fixture Redis.
+
+- [ ] `git fetch origin <head-branch> && git checkout <head SHA>`.
+- [ ] Run `npm run worktree:bootstrap`.
+- [ ] Start the fixture Redis with `node --test --test-name-pattern=<lane> scripts/ais-relay-air-traffic.test.cjs`. The harness serves Upstash REST on `127.0.0.1` and spawns the relay with `UPSTASH_ALLOW_INSECURE_HTTP=true`, `NODE_OPTIONS=--require=./scripts/ais-relay-test-preload.cjs`, `RELAY_TEST_OPENSKY_STATES_FILE`, and `RELAY_TEST_CLOCK_START_MS`, as `scripts/ais-relay-opensky-shared-cooldown.test.cjs` does. Wait for the log line `[Relay] WebSocket relay on port`, which trunk also prints. At a head that has the loop, also wait for `[AirTraffic] loop starting`.
+- [ ] Deliver input only through fixture OpenSky responses and fixture clock offsets. Read state only through fixture Redis dumps and relay stdout.
+- [ ] Save every artifact to `/tmp/swarm-<pr-id>/worker-<n>/<slug>` and return the paths with the report.
+
+## Record the national traffic series in the relay (PR A)
+
+**Depends on.** None.
+
+**Files.**
+
+- [ ] Create `scripts/shared/air-traffic-regions.cjs` with the US hub table (IATA, lat, lon) and the CONUS and Europe boxes.
+- [ ] Create `scripts/shared/air-traffic-aggregate.cjs` with `aggregateStates(states, fetchedAt)`.
+- [ ] Create `scripts/shared/air-traffic-history.cjs` with `recordTrafficPoint(point, upstashEval)`.
+- [ ] Edit `scripts/ais-relay.cjs` to add the `[AirTraffic]` loop.
+- [ ] Edit `scripts/ais-relay-test-preload.cjs` to serve OpenSky states from `RELAY_TEST_OPENSKY_STATES_FILE` and to start the clock at `RELAY_TEST_CLOCK_START_MS`. Add `RELAY_TEST_OPENSKY_TIMEOUT_SEQUENCE`, a comma list read one entry per OpenSky request, such as `1,1,1,0`. Today `req.setTimeout` is a no-op and the response delay is fixed for the process. For a `1` entry, the preload records the duration and callback passed to `req.setTimeout`, never responds, and fires the timeout after that duration. A `0` entry, or an exhausted list, responds normally.
+- [ ] Create `scripts/ais-relay-air-traffic.test.cjs` as the live-lane harness and add it to the `test:sidecar` list in `package.json`.
+- [ ] Edit `Dockerfile.relay` to COPY the three shared files.
+- [ ] Edit `api/health.js` to register `airTrafficHistory`.
+- [ ] Create `tests/air-traffic-aggregate.test.mjs` and `tests/air-traffic-history-redis.test.mjs`.
+
+**Build.**
+
+- [ ] Open the owner issue for the new health probe before the first push. `scripts/check-health-probe-cutovers.mts` rejects a new `SEED_META` entry without `cutover.issue`.
+- [ ] Define the point shape in `air-traffic-aggregate.cjs`. A point is `{ t, status, usSeen, usAirborne, usLowClimbing, euAirborne, hubs }`. `t` is the 5-minute bin start. `status` is `ok` or `gap` and describes the fetch only. `usSeen` counts every CONUS state with a position, on the ground or airborne, and measures US receiver coverage. `usLowClimbing` counts airborne CONUS states below 3,000 m with a positive vertical rate. `hubs` maps each IATA to `{ air, ground }` within 48 km.
+- [ ] Add one relay loop with `startBootSeedLoop` at a 300,000 ms interval. Each tick requests the bare global `/states/all` through the existing `/opensky` proxy, so the account cooldown and cache stay in one place.
+- [ ] On an OpenSky failure, write a point with `status` set to `gap` and no counts. Never write zeros for a failed fetch.
+- [ ] Store points in one hash per UTC day, `aviation:traffic:history:v1:<YYYY-MM-DD>`, field `t`, with `EXPIREAT` at day end plus 35 days. Follow `scripts/shared/pizzint-history.cjs`, which does the same in one Lua call.
+- [ ] Write `seed-meta:aviation:traffic-history` and `seed-activated:aviation:traffic-history` in the same Lua call.
+- [ ] Register `airTrafficHistory` in `api/health.js` the way `pizzintHistory` is registered. The `STANDALONE_KEYS` entry is the stable heartbeat `seed-meta:aviation:traffic-history`, never a day hash, because health reads data keys with `STRLEN`. Add `SEED_META` with `maxStaleMin` 20 and an activation-marker cutover, `ON_DEMAND_KEYS`, and `ACTIVATION_MARKERS`.
+- [ ] Add the new tests to `test:data` discovery. They live in `tests/`, so no `package.json` list change is needed. Record that check.
+
+**You see.**
+
+- [ ] Relay stdout prints `[AirTraffic] t=<bin> status=ok us=<n> usLowClimbing=<n> eu=<n> hubs=20` every 5 minutes.
+- [ ] `HGETALL aviation:traffic:history:v1:<today>` returns one field per bin since deploy.
+- [ ] `/api/health` lists `airTrafficHistory` as OK within 20 minutes of the first point.
+
+**Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] `tests/air-traffic-aggregate.test.mjs` gains cases for CONUS and Europe box edges, the hub radius, on-ground rows, rows without position, and a null vertical rate. Run `node --test tests/air-traffic-aggregate.test.mjs`.
+- [ ] `tests/air-traffic-history-redis.test.mjs` gains cases for one hash per UTC day, an idempotent rewrite of the same bin, the `EXPIREAT` value, and a `gap` point. Run `node --test tests/air-traffic-history-redis.test.mjs`.
+- [ ] `tests/activation-marker-unknown-state.test.mjs` and `npx tsx scripts/check-health-probe-cutovers.mts` pass. Run both.
+
+**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `opus` at the PR head, per the boot recipe.
+
+- [ ] Lane 1. Regression lane against trunk. Run the relay at trunk and head with the same 10,000-state global fixture. Trunk lacks the feature, so record that and gate the head writing one `ok` point with the fixture's counts. Save `lane1-trunk-vs-head.txt`. Pass when trunk writes no traffic key and head writes exactly one point that matches the fixture's hand-counted totals.
+- [ ] Lane 2. Replay six snapshots sampled from the adsb.lol archive for 2026-11-13 between 20:30Z and 21:00Z. Save `lane2-onset.json`. Pass when `usLowClimbing` falls by more than half between the 20:30Z and 20:50Z points.
+- [ ] Lane 3. Fixture OpenSky answers HTTP 429. Save `lane3-gap.json`. Pass when the stored point has `status` set to `gap` and no count fields.
+- [ ] Lane 4. Set `RELAY_TEST_OPENSKY_TIMEOUT_SEQUENCE=1,1,1,0` so fixture OpenSky times out for three ticks, then recovers. Save `lane4-recovery.json`. Pass when three `gap` points are followed by an `ok` point and the relay keeps serving other routes.
+- [ ] Lane 5. Advance the fixture clock across 23:55Z to 00:05Z. Save `lane5-day-roll.json`. Pass when the two points land in two day hashes with the correct `EXPIREAT`.
+- [ ] Lane 6. Run two relay replicas against one fixture Redis for three ticks. Save `lane6-replicas.json`. Pass when each bin holds one point and no bin is double counted.
+- [ ] Lane 7. Request `/opensky` with no bbox from a client while the loop runs. Save `lane7-cache.txt`. Pass when the client and the loop share one upstream fetch per cache window.
+- [ ] Lane 8. Read `/api/health` from `vercel dev` against the fixture Redis before and after the first point. Save `lane8-health.json`. Pass when the probe moves from the activation-pending state to OK.
+- [ ] Lane 9. Feed a snapshot with no US states and a normal Europe count. Save `lane9-empty-us.json`. Pass when the point is `ok` with `usAirborne` 0 and `euAirborne` above 0.
+- [ ] Lane 10. Feed a malformed OpenSky body (`states` is null). Save `lane10-malformed.json`. Pass when the point is `gap` and the relay logs one warning.
+
+**Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] Metric. Aggregation time per snapshot, relay RSS, OpenSky credits per day, and Redis bytes per day. Trunk lacks the loop, so the diff-added work gets absolute budgets.
+- [ ] Probe. Time `aggregateStates` over the archive-derived 10,000-state fixture 50 times, interleaved with trunk relay RSS samples over the same 10 minutes. Read `X-Rate-Limit-Remaining` from proxy logs for credits.
+- [ ] Baseline. Record trunk relay RSS and daily OpenSky credit use from Railway logs first.
+- [ ] Rule. Fail when median aggregation exceeds 200 ms, relay RSS rises more than 25 MB over trunk, added credits exceed 1,200 per day, or a day hash exceeds 1.5 MB.
+
+**Review gate.** None. PR A is not review-gated.
+
+**Merge.**
+
+- [ ] Root's clean verdict at the exact head SHA.
+- [ ] Bugbot triage done.
+- [ ] Rebased onto current trunk after the verdict, patch-id unchanged.
+- [ ] The root appends PR A to the base-branch stack and the operator lands it bottom-up.
+
+## Alert on a US departure collapse (PR B)
+
+**Depends on.** PR A and #10764, which records the airline-only counts the detector reads. The validation gate is the archive replay in Appendix A, not a live ground stop.
+
+**Files.**
+
+- [ ] Create `scripts/shared/air-traffic-detector.cjs` with `evaluateCollapse(points, baselines)`.
+- [ ] Edit `scripts/ais-relay.cjs` to call the detector after each recorded point.
+- [ ] Edit `Dockerfile.relay` to COPY `scripts/shared/air-traffic-detector.cjs`. `tests/dockerfile-relay-imports.test.mjs` fails without it.
+- [ ] Edit `tests/notification-relay-payload-audit.test.mjs` and `tests/notification-relay-country-scope-5359.test.mjs` for the new event type.
+- [ ] Create `tests/air-traffic-detector.test.mjs` and `tests/air-traffic-detector-replay.test.mjs`.
+
+**Build.**
+
+- [ ] Model the detector as a state machine with states `normal` and `collapsed`, and per-bin verdicts `gap`, `quiet`, `insufficient-baseline`, `blocked-feed` and `blocked-coverage`. Persist the state in `aviation:traffic:detector:v1`.
+- [ ] Signal `usLowClimbingAirline`. The all-aircraft count fell only to 0.58 an hour into the 2026-11-13 stop, because general aviation keeps flying.
+- [ ] Baseline each bin as the median at the same local wall-clock time on the last four same weekdays, US time for the signal and coverage and Paris time for Europe. The same UTC bin raised ten false collapses after the 2026-11-01 DST change. Fewer than two usable weeks means `insufficient-baseline`, which never alerts.
+- [ ] Bins whose baseline is under 25% of the local day's peak baseline are `quiet`. They neither count toward nor break a run.
+- [ ] Enter `collapsed` when two consecutive evaluated bins read below 0.40, with Europe at least 0.30 of its baseline (the feed is alive) and coverage holding. Coverage is OpenSky `usSeen` at least 0.80 of Wingbits `usSeen` for the same bin, or, without a Wingbits point, at least 0.60 of its own baseline. The feed checks guard entry only, because parked aircraft switch transponders off and the national count falls during a real stop.
+- [ ] Leave it when two consecutive bins read above 0.70.
+- [ ] On entry, publish `aviation_traffic_collapse` with severity `critical`. On exit, publish the same type with severity `high` and a recovery title. A `shouldNotify` bypass delivers it to the realtime rules that got the alert, and quiet hours silence or hold it because it is not critical. Both payloads carry `countryCode` `US`, the ratio, and the onset bin. The state moves only after the event is queued.
+- [ ] Cover the new type in the payload audit and the country-scope test.
+
+**You see.**
+
+- [ ] On the archive replay the detector raises one collapse, at 2026-11-13 21:10Z with onset 21:05Z, and one recovery, at 2026-11-14 12:25Z. No other day raises anything.
+- [ ] The relay logs `[AirTraffic] collapse entered ratio=<r> onset=<HH:MM>Z` and queues one critical event.
+
+**Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] `tests/air-traffic-detector.test.mjs` gains cases for each transition, a `gap` point inside the window, a Europe-control drop that blocks the alert, a `usSeen` drop that blocks the alert, a hub-coverage drop with `usSeen` above 50% that blocks the alert, and fewer than two baseline days. Run `node --test tests/air-traffic-detector.test.mjs`.
+- [ ] `tests/air-traffic-detector-replay.test.mjs` replays every bin of the committed archive fixture (`tests/fixtures/air-traffic-archive-series.json.gz`, built by `scripts/air-traffic-archive-extract.py`). Run `node --test tests/air-traffic-detector-replay.test.mjs`.
+
+**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `opus` at the PR head, per the boot recipe.
+
+- [ ] Lane 1. Regression lane against trunk. Replay the 2026-11-13 series at trunk and head. Trunk lacks the detector, so record that and gate the head queueing one critical event by 21:10Z. Save `lane1-trunk-vs-head.txt`. Pass when trunk queues no traffic event and head queues one with onset 21:05Z.
+- [ ] Lane 2. Replay the 2026-11-06 series. Save `lane2-normal-friday.json`. Pass when no event is queued.
+- [ ] Lane 3. Replay 2026-11-13 through 12:30Z on 2026-11-14. Save `lane3-recovery.json`. Pass when one recovery event follows the stop's lift at 01:15Z and lands at 12:25Z.
+- [ ] Lane 4. Replay with a fresh Redis and one baseline day. Save `lane4-cold-start.json`. Pass when the state is `insufficient-baseline` and nothing is queued.
+- [ ] Lane 5. Replay 2026-11-13 with Europe counts scaled to 50%. Save `lane5-feed-loss.json`. Pass when nothing is queued and the log names the control-region block.
+- [ ] Lane 6. Replay with three `gap` points at 20:40Z to 20:50Z. Save `lane6-gaps.json`. Pass when the detector waits for two `ok` points before it enters `collapsed`.
+- [ ] Lane 7. Restart the relay at 20:45Z mid-replay. Save `lane7-restart.json`. Pass when exactly one critical event is queued across the restart.
+- [ ] Lane 8. Run the notification relay against the queued event with a US-scoped rule and a Europe-scoped rule. Save `lane8-delivery.json`. Pass when only the US-scoped rule matches.
+- [ ] Lane 9. Replay 2026-11-06 twice with Europe unchanged. First remove every US state for 30 minutes. Then remove only the states within 48 km of the 20 hubs for 30 minutes, which drops `usLowClimbing` below 30% while `usSeen` stays above 50%. Save `lane9-us-receiver-loss.json` with both runs. Pass when neither run queues anything and the log names the national coverage block for the first and the hub coverage block for the second.
+- [ ] Lane 10. Replay a single-bin dip to 10% that recovers in the next bin. Save `lane10-blip.json`. Pass when nothing is queued.
+
+**Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] Metric. Detector time per tick, including the baseline reads, and Redis commands per tick. Trunk lacks the detector, so the diff-added work gets absolute budgets.
+- [ ] Probe. Time 288 ticks of the 2026-11-13 replay at head, interleaved with the same replay at the PR A head.
+- [ ] Baseline. Record the PR A head tick time first.
+- [ ] Rule. Fail when the detector adds more than 50 ms median per tick or more than 6 Redis commands per tick.
+
+**Review gate.** None. PR B is not review-gated.
+
+**Merge.**
+
+- [ ] Root's clean verdict at the exact head SHA.
+- [ ] Bugbot triage done.
+- [ ] Rebased onto current trunk after the verdict, patch-id unchanged.
+- [ ] The root appends PR B to the base-branch stack and the operator lands it bottom-up.
+
+## Alert on a European departure collapse (PR C, stacked on PR B)
+
+Goal. The same alert for the UK, France, Germany, Spain and Italy, validated on adsb.lol archive days before it ships. A market the archive cannot validate does not ship.
+
+- [x] Count each aircraft once per market when it is within 48 km of any of the market's main airports, inside the Europe box: `markets.<code>.seen` and `markets.<code>.dep` (airline callsign, under 3,000 m, climbing). Wingbits has no vertical rate, so its series stores `seen` only.
+- [x] Generalize the detector to a market table. Each market names its signal, coverage and control reads, time zone, window, entry ratio and floors. The US market is unchanged. A European market's control is the US airborne count in New York time.
+- [x] Keep every market's state in one key, `aviation:traffic:detector:v2`, keyed by market code. A failed publish keeps that market's old state, so the next bin retries.
+- [x] Extract 60 or more archive days from 2026-08-10, the 2026-09-08 NATS failure and the 2026-09-30 Italian ATC strike included, into the shared fixture.
+- [x] Tune from the replay. A market has 4 to 17 departures per bin, so the ratio is summed over a 4-bin (20-minute) window. Entry is 0.30. The NATS failure reads 0.24 at entry and ordinary windows reach 0.42 at the lowest. A window under 30 departures is quiet. Coverage needs 0.40 of the market's own baseline, because the UK read 0.62 at entry and 0.42 at the lowest.
+- [x] Drop the Netherlands. About 4 departures a bin never fill the window floor, so it was never evaluated.
+- [x] `tests/air-traffic-detector-replay.test.mjs` asserts one GB collapse at 12:10Z on 2026-09-08, one recovery at 18:35Z, and no event in France, Germany, Spain or Italy. Relay lane 30 queues one GB critical event while the US stays normal.
+
+Evidence. With a 3-bin window and entry at 0.40, the UK flapped (recovered at 12:50Z and re-entered at 13:05Z) and Spain fired on the NATS day, probably because flights to the UK were held at Spanish airports. With a 6-bin window, Italy fired on a 2026-09-10 afternoon dip with no reported cause. Italy's 2026-09-30 strike kept protected flights and read 0.47: a partial strike is not a collapse.
+
+## Close the program
+
+- [ ] Every box above is checked with its evidence.
+- [ ] Reply to the operator with the report the execution playbook names.
+
+## Appendix A. Prototype evidence
+
+The adsb.lol archive analysis on 2026-11-14 is the evidence for the signal. It ran over `adsblol/globe_history_2026` releases `v2026.11.13-planes-readsb-prod-0` and `v2026.11.06-planes-readsb-prod-0`.
+
+- Airline departures over CONUS fell from 106 to 20 per 5 minutes at 20:40Z on 2026-11-13. The previous Friday held between 102 and 136 for the same bins. The official ground stop started at 20:54Z.
+- Airline aircraft airborne over CONUS fell to 0.14 of the previous Friday by 23:45Z, while the Europe control region stayed between 0.85 and 1.0.
+
+The detector was validated on the archive instead of waiting for a live stop (2026-11-15). The extractor replays each archive day through `aggregateStates` semantics and matched `aggregateStates` field for field on 2026-11-13 20:30Z. The replay covers May to November 2026, including July 4, Memorial Day, Labor Day, the 2026-11-01 DST change, the 2026-08-06 Minneapolis Center outage and the 2026-09-21 East Coast outage.
+
+- The fixture holds 111 days, 93 of them with enough baseline to evaluate. 2026-05-04 was dropped after its download stalled twice. It only adds baseline for 2026-05-18 and 2026-05-25.
+- No ordinary day crosses 0.40 for two evaluated bins. The lowest ordinary two-bin ratio was 0.49, on July 4 evening (22:40Z) and Halloween evening (2026-11-01 02:40Z). Single bins dipped to 0.44 on Halloween and 0.47 on July 4.
+- The 2026-11-13 stop enters at 21:10Z, 16 minutes after the official 20:54Z stop. A 0.45 threshold entered at 20:55Z, but a single Halloween bin already read under it.
+- An archive hole (2026-08-13, 7.5 hours with zero states) is blocked by the Europe check.
+- The regional outages stay above 0.80 nationally. A national detector should not fire on them, and a hub-level detector is a separate question.
+- Live OpenSky against Wingbits on 2026-11-15 read 0.91 to 1.02 for `usSeen` over 79 bins, which sets the 0.80 coverage floor. Per-hub totals read 0.72 to 1.09, too noisy to gate on.
+
+The archive measures adsb.lol receivers, not OpenSky. The ratios are within one source, so the thresholds carry over, but absolute counts do not, which is why every threshold is a ratio or a share of the day's peak.
+
+## Appendix B. Alternatives rejected
+
+- Counting departures from aircraft state across snapshots. It needs the previous snapshot in memory and breaks on relay restarts. The stateless low-and-climbing count needs neither.
+- Backfilling the live baseline from adsb.lol archives. Their coverage differs from OpenSky, so a ratio across the two sources is not valid. The archive validates thresholds, which are ratios within one source.
+- Using adsb.lol or Wingbits as the national fallback. adsb.lol `/v2/mil` is military only and Wingbits answers regional boxes. A gap point is more honest than a partial count.
+- Reviving the disabled OpenSky path in `scripts/seed-military-flights.mjs`. That path was turned off on purpose in #6224, and the relay already owns the account cooldown.
+
+## Appendix C. Risks
+
+- OpenSky credits. The loop adds about 1,152 credits per day against a 4,000 per day account limit, shared with on-demand map requests. PR A measures the remaining credits first.
+- OpenSky reliability. On 2026-11-13 the relay's OpenSky login failed from 23:03Z to 23:36Z and from 00:07Z to 00:31Z. PR A records those windows as `gap`, and PR B never treats a gap as a drop.
+- Relay surface. No control skill drives the Railway relay, so live lanes run the real relay locally with fixture upstreams. Production evidence arrives only after the operator deploys.
+- Health probe gate. PR A needs an owner issue before its first push.
+
+## Appendix D. Links and reading list
+
+- `scripts/shared/pizzint-history.cjs` and `tests/pizzint-history-redis.test.mjs` for the day-hash pattern.
+- `docs/solutions/integration-issues/opensky-bbox-area-billing-flat-top-tier.md` for OpenSky credit billing.
+- `scripts/check-health-probe-cutovers.mts` for the cutover rule.
+- https://github.com/koala73/worldmonitor/pull/10718 for the FAA notification fix.
+- Run `pstack/skills/how/SKILL.md` and `pstack/skills/interrogate/SKILL.md` on PR B. The detector thresholds are the contested design.

@@ -256,7 +256,7 @@ export class MarketBreadthPanel extends Panel {
     }).join('');
 
     const html = `
-      <div style="padding:12px 14px">
+      <div style="padding:12px 0">
         <div style="margin-bottom:8px">${legend}</div>
         <div style="border-radius:6px;background:rgba(255,255,255,0.02);padding:4px 0">${chart}</div>
         ${d.updatedAt ? `<div style="text-align:right;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:4px">${escapeHtml(new Date(d.updatedAt).toLocaleString())}</div>` : ''}

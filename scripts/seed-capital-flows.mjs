@@ -823,8 +823,27 @@ export function declareRecords(data) {
   return Object.keys(data?.countries || {}).length;
 }
 
-export function capitalFlowsContentMeta(data) {
-  return tokensToContentMeta(data?.latest?.bopNewestQuarter ?? data?.latest?.bopQuarter);
+// This key is assembled from upstreams that can freeze independently, so the
+// clock reduces with min, not max: every quarterly source must be current for
+// the payload to read as fresh. Reading only the IMF BOP quarter meant a
+// frozen BIS leg — HTTP 200 forever with an unchanging vintage, which
+// `emptyUpstreams` cannot catch because it only rejects a zero-row leg — kept
+// the key green while countries[*].bank served a dead vintage. See
+// docs/solutions/design-patterns/multi-source-freshness-clock-must-reduce-with-min.md.
+//
+// The annual IMF CPIS (pipYear) and CDIS (fdiYear) legs stay OUT of the
+// reduction on purpose: both publish with a 12-24 month lag, so folding them
+// into the 12-month budget would park this key at STALE_CONTENT permanently.
+// Covering them needs its own budget and belongs in its own change.
+export function capitalFlowsContentMeta(data, nowMs = Date.now()) {
+  const bop = tokensToContentMeta(data?.latest?.bopNewestQuarter ?? data?.latest?.bopQuarter, nowMs);
+  const bis = tokensToContentMeta(data?.latest?.bisQuarter, nowMs);
+  // Fail closed: an undatable half is indistinguishable from a dead one.
+  if (bop == null || bis == null) return null;
+  return {
+    newestItemAt: Math.min(bop.newestItemAt, bis.newestItemAt),
+    oldestItemAt: Math.min(bop.oldestItemAt, bis.oldestItemAt),
+  };
 }
 
 // Best-effort: a missed marker costs one more cycle of on-demand softening.

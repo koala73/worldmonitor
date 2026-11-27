@@ -93,4 +93,14 @@ describe('cross-app copy parity (dashboard dialog vs /pro dialog)', () => {
       assert.ok(proSrc.includes(sentence), `/pro dialog lost: "${sentence}"`);
     }
   });
+
+  it('tells a paused subscriber to fix the card, even when they tried the Pro Business checkout', () => {
+    for (const isProBusinessUpgrade of [false, true]) {
+      const body = buildDuplicateSubscriptionBody({ planDisplayName: 'Pro Monthly', paused: true, isProBusinessUpgrade });
+      assert.ok(body.includes('Pro Monthly'));
+      assert.ok(body.includes('last payment failed'));
+      assert.ok(body.includes('Update your payment method'));
+      assert.ok(!body.includes('already has an active'));
+    }
+  });
 });

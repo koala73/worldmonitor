@@ -38,7 +38,7 @@ const MENU_FILE_SETTINGS_ID: &str = "file.settings";
 const MENU_HELP_GITHUB_ID: &str = "help.github";
 #[cfg(feature = "devtools")]
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
-const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
+const TRUSTED_WINDOWS: [&str; 2] = ["main", "settings"];
 const SECRET_MANAGEMENT_WINDOWS: [&str; 2] = ["main", "settings"];
 const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 1] = ["CONVEX_URL"];
 const SUPPORTED_SECRET_KEYS: [&str; 28] = [
@@ -1324,77 +1324,6 @@ fn close_settings_window(webview: Webview, app: AppHandle) -> Result<(), String>
     Ok(())
 }
 
-#[tauri::command]
-async fn open_live_channels_window_command(
-    webview: Webview,
-    app: AppHandle,
-    base_url: Option<String>,
-) -> Result<(), String> {
-    require_trusted_window(webview.label())?;
-    if let Some(ref url) = base_url {
-        if !url.is_empty() {
-            let parsed = Url::parse(url).map_err(|_| "Invalid base URL".to_string())?;
-            // The live-channels webview holds trusted-window IPC privileges
-            // (persistent-cache read/write, port discovery, open_url), so its
-            // origin must be first-party — "any https" would hand those to a
-            // remote page if the main window is ever compromised.
-            let allowed = match parsed.scheme() {
-                "http" => matches!(parsed.host_str(), Some("localhost") | Some("127.0.0.1")),
-                "https" => match parsed.host_str() {
-                    Some(host) => {
-                        host == "worldmonitor.app" || host.ends_with(".worldmonitor.app")
-                    }
-                    None => false,
-                },
-                _ => false,
-            };
-            if !allowed {
-                return Err(
-                    "base_url must be worldmonitor.app (or localhost over http)".to_string(),
-                );
-            }
-        }
-    }
-    open_live_channels_window(&app, base_url)
-}
-
-#[tauri::command]
-fn close_live_channels_window(webview: Webview, app: AppHandle) -> Result<(), String> {
-    require_trusted_window(webview.label())?;
-    if let Some(window) = app.get_webview_window("live-channels") {
-        window
-            .close()
-            .map_err(|e| format!("Failed to close live channels window: {e}"))?;
-    }
-    Ok(())
-}
-
-/// Fetch JSON from Polymarket Gamma API using native TLS (bypasses Cloudflare JA3 blocking).
-/// Called from frontend when browser CORS and sidecar Node.js TLS both fail.
-#[tauri::command]
-async fn fetch_polymarket(webview: Webview, state: tauri::State<'_, LocalApiState>, path: String, params: String) -> Result<String, String> {
-    require_trusted_window(webview.label())?;
-    let allowed = ["events", "markets", "tags"];
-    let segment = path.trim_start_matches('/');
-    if !allowed.iter().any(|a| segment.starts_with(a)) {
-        return Err("Invalid Polymarket path".into());
-    }
-    let url = format!("https://gamma-api.polymarket.com/{}?{}", segment, params);
-    let resp = state.http_client
-        .get(&url)
-        .header("Accept", "application/json")
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-        .map_err(|e| format!("Polymarket fetch failed: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("Polymarket HTTP {}", resp.status()));
-    }
-    resp.text()
-        .await
-        .map_err(|e| format!("Read body failed: {e}"))
-}
-
 fn open_settings_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
         let _ = window.show();
@@ -1420,44 +1349,6 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
     // from the settings window (macOS uses a shared app-wide menu bar instead).
     #[cfg(not(target_os = "macos"))]
     let _ = _settings_window.remove_menu();
-
-    Ok(())
-}
-
-fn open_live_channels_window(app: &AppHandle, base_url: Option<String>) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("live-channels") {
-        let _ = window.show();
-        window
-            .set_focus()
-            .map_err(|e| format!("Failed to focus live channels window: {e}"))?;
-        return Ok(());
-    }
-
-    // In dev, use the same origin as the main window (e.g. http://localhost:3001) so we don't
-    // get "connection refused" when Vite runs on a different port than devUrl.
-    let url = match base_url {
-        Some(ref origin) if !origin.is_empty() => {
-            let path = origin.trim_end_matches('/');
-            let full_url = format!("{}/live-channels.html", path);
-            WebviewUrl::External(Url::parse(&full_url).map_err(|_| "Invalid base URL".to_string())?)
-        }
-        _ => WebviewUrl::App("live-channels.html".into()),
-    };
-
-    #[allow(unused_mut)]
-    let mut channels_builder = WebviewWindowBuilder::new(app, "live-channels", url)
-        .title("Channel management - World Monitor")
-        .inner_size(680.0, 760.0)
-        .min_inner_size(520.0, 600.0)
-        .resizable(true)
-        .background_color(tauri::webview::Color(26, 28, 30, 255));
-    #[cfg(target_os = "macos")]
-    { channels_builder = channels_builder.title_bar_style(tauri::TitleBarStyle::Overlay); }
-    let _live_channels_window = channels_builder.build()
-        .map_err(|e| format!("Failed to create live channels window: {e}"))?;
-
-    #[cfg(not(target_os = "macos"))]
-    let _ = _live_channels_window.remove_menu();
 
     Ok(())
 }
@@ -1522,7 +1413,7 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let about_metadata = AboutMetadata {
         name: Some("World Monitor".into()),
         version: Some(env!("CARGO_PKG_VERSION").into()),
-        copyright: Some("\u{00a9} 2024-2026 Elie Habib".into()),
+        copyright: Some("\u{00a9} 2026 Elie Habib".into()),
         license: Some("AGPL-3.0-only".into()),
         credits: Some(
             "Licensed under AGPL-3.0-only.\nThird-party notices: resources/notices/THIRD-PARTY-NOTICES.md\nSource: https://github.com/koala73/worldmonitor"
@@ -1880,9 +1771,10 @@ mod secret_vault_tests {
 mod sanitize_path_tests {
     use super::{
         build_time_sidecar_env_value, can_manage_renderer_secrets, configured_renderer_secret_keys,
-        is_renderer_managed_secret_key, local_api_proxy_path_is_allowed, sanitize_path_for_node,
-        read_port_file, watch_for_late_sidecar_port, LocalApiState, SidecarReadinessOutcome,
-        BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT, SUPPORTED_SECRET_KEYS,
+        is_renderer_managed_secret_key, local_api_proxy_path_is_allowed, node_not_found_message,
+        read_port_file, sanitize_path_for_node, watch_for_late_sidecar_port, LocalApiState,
+        SidecarReadinessOutcome, BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT,
+        SUPPORTED_SECRET_KEYS,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -1910,6 +1802,16 @@ mod sanitize_path_tests {
                 .expect("system time after epoch")
                 .as_nanos()
         ))
+    }
+
+    #[test]
+    fn node_not_found_message_names_the_override_only_where_it_works() {
+        // Release builds ignore LOCAL_API_NODE_BIN (resolve_node_binary).
+        assert_eq!(
+            node_not_found_message().contains("LOCAL_API_NODE_BIN"),
+            cfg!(debug_assertions)
+        );
+        assert!(node_not_found_message().contains("Node 18+"));
     }
 
     #[test]
@@ -2129,7 +2031,18 @@ fn local_api_paths(app: &AppHandle) -> (PathBuf, PathBuf) {
     (sidecar_script, api_dir_root)
 }
 
+/// Release builds ignore LOCAL_API_NODE_BIN and ship their own runtime, so
+/// only development builds may point the user at that override.
+fn node_not_found_message() -> &'static str {
+    if cfg!(debug_assertions) {
+        "Node.js executable not found. Install Node 18+ or set LOCAL_API_NODE_BIN"
+    } else {
+        "Node.js executable not found. The bundled runtime is missing: reinstall World Monitor or install Node 18+"
+    }
+}
+
 fn resolve_node_binary(app: &AppHandle) -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
     if let Ok(explicit) = env::var("LOCAL_API_NODE_BIN") {
         let explicit_path = PathBuf::from(explicit);
         if explicit_path.is_file() {
@@ -2381,9 +2294,8 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
             script.display()
         ));
     }
-    let node_binary = resolve_node_binary(app).ok_or_else(|| {
-        "Node.js executable not found. Install Node 18+ or set LOCAL_API_NODE_BIN".to_string()
-    })?;
+    let node_binary =
+        resolve_node_binary(app).ok_or_else(|| node_not_found_message().to_string())?;
 
     let port_file = logs_dir_path(app)?.join("sidecar.port");
     let _ = fs::remove_file(&port_file);
@@ -2435,6 +2347,17 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     drop(token_slot);
 
     let mut cmd = Command::new(&node_binary);
+    // Scrub inherited Node loader / override env vars so an unprivileged local
+    // caller cannot inject code into the sidecar and read keychain secrets.
+    cmd.env_remove("NODE_OPTIONS")
+        .env_remove("NODE_PATH")
+        .env_remove("NODE_EXTRA_CA_CERTS")
+        .env_remove("NODE_TLS_REJECT_UNAUTHORIZED")
+        .env_remove("SSL_CERT_FILE")
+        .env_remove("SSL_CERT_DIR")
+        .env_remove("LOCAL_API_NODE_BIN");
+    #[cfg(not(debug_assertions))]
+    cmd.env_remove("LOCAL_API_REMOTE_BASE");
     #[cfg(windows)]
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW — hide the node.exe console
                                     // Sanitize paths for Node.js on Windows: strip \\?\ UNC prefix and set
@@ -2752,11 +2675,8 @@ fn main() {
             open_sidecar_log_file,
             open_settings_window_command,
             close_settings_window,
-            open_live_channels_window_command,
-            close_live_channels_window,
             open_url,
             open_youtube_login,
-            fetch_polymarket,
             clerk_fapi_request,
             start_desktop_browser_sign_in,
             finish_desktop_browser_sign_in,

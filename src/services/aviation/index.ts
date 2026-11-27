@@ -54,8 +54,11 @@ export interface FlightInstance {
   flightNumber: string;
   date: string;
   carrier: { iata: string; name: string };
-  origin: { iata: string; name: string };
-  destination: { iata: string; name: string };
+  /** `timezone` is the airport's IANA zone. */
+  origin: { iata: string; name: string; timezone: string };
+  destination: { iata: string; name: string; timezone: string };
+  /** Marketing numbers sold on this flight, besides `flightNumber`. */
+  codeshares: string[];
   scheduledDeparture: Date | null;
   scheduledArrival: Date | null;
   estimatedDeparture: Date | null;
@@ -112,11 +115,6 @@ export interface PriceQuote {
   provider: string;          // 'travelpayouts_data' | 'demo'
   expiresAt: Date | null;   // null means no known expiry
   checkoutRef: string;       // empty for cached/demo
-}
-
-/** Returns true if a quote has a known expiry that has passed. */
-export function isPriceExpired(q: PriceQuote): boolean {
-  return q.expiresAt !== null && q.expiresAt.getTime() < Date.now();
 }
 
 export interface AviationNewsItem {
@@ -247,8 +245,9 @@ function toDisplayFlight(p: ProtoFlight): FlightInstance {
   return {
     flightNumber: p.flightNumber, date: p.date,
     carrier: { iata: p.operatingCarrier?.iataCode ?? '', name: p.operatingCarrier?.name ?? '' },
-    origin: { iata: p.origin?.iata ?? '', name: p.origin?.name ?? '' },
-    destination: { iata: p.destination?.iata ?? '', name: p.destination?.name ?? '' },
+    origin: { iata: p.origin?.iata ?? '', name: p.origin?.name ?? '', timezone: p.origin?.timezone || 'UTC' },
+    destination: { iata: p.destination?.iata ?? '', name: p.destination?.name ?? '', timezone: p.destination?.timezone || 'UTC' },
+    codeshares: p.codeshareFlightNumbers ?? [],
     scheduledDeparture: msToDt(p.scheduledDeparture), scheduledArrival: msToDt(p.scheduledArrival),
     estimatedDeparture: msToDt(p.estimatedDeparture || p.scheduledDeparture),
     estimatedArrival: msToDt(p.estimatedArrival || p.scheduledArrival),
@@ -504,6 +503,7 @@ export async function fetchAviationNews(entities: string[], windowHours = 24, ma
   const cacheKey = `${entities.join(',')}:${windowHours}:${maxItems}`;
   return breakerNews.execute(async () => {
     const r = await client.listAviationNews({ entities, windowHours, maxItems });
+    if (r.source === 'error') throw new Error('Aviation news feeds unavailable');
     return r.items.map(toDisplayNewsItem);
   }, [], { cacheKey });
 }

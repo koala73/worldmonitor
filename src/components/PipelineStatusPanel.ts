@@ -49,6 +49,8 @@ const BADGE_COLOR: Record<string, string> = {
   reduced:  '#af601a',
   offline:  '#c0392b',
   disputed: '#9b59b6',
+  cancelled: '#5d6d7e',
+  closed:   '#5d6d7e',
 };
 
 function badgeLabel(badge: string): string {
@@ -119,6 +121,7 @@ function projectRawPipeline(raw: unknown): PipelineEntry | null {
         lastEvidenceUpdate: str(evRaw.lastEvidenceUpdate),
         classifierVersion: str(evRaw.classifierVersion, 'v1'),
         classifierConfidence: num(evRaw.classifierConfidence, 0),
+        lifecycleState: str(evRaw.lifecycleState),
       }
     : undefined;
 

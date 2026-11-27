@@ -25,19 +25,29 @@ describe('indexable landing locale registry', () => {
     assert.equal(english.canonicalUrl, 'https://www.worldmonitor.app/');
     assert.deepEqual(
       nonDefaultLandingLocales().map((locale) => locale.id),
-      ['es', 'pt', 'ru', 'fr', 'de', 'ar'],
+      ['es', 'pt', 'ru', 'fr', 'de', 'ar', 'id', 'ja'],
     );
     const portuguese = INDEXABLE_LANDING_LOCALES.find((locale) => locale.id === 'pt');
     assert.equal(portuguese?.canonicalPath, '/pt/');
     assert.equal(portuguese?.hreflang, 'pt-BR');
     assert.equal(portuguese?.ogLocale, 'pt_BR');
     assert.equal(INDEXABLE_LANDING_LOCALES.find((locale) => locale.id === 'ar')?.dir, 'rtl');
+    const indonesian = INDEXABLE_LANDING_LOCALES.find((locale) => locale.id === 'id');
+    assert.equal(indonesian?.canonicalUrl, 'https://www.worldmonitor.app/id/');
+    assert.equal(indonesian?.htmlLang, 'id');
+    assert.equal(indonesian?.ogLocale, 'id_ID');
+    const japanese = INDEXABLE_LANDING_LOCALES.find((locale) => locale.id === 'ja');
+    assert.equal(japanese?.canonicalUrl, 'https://www.worldmonitor.app/ja/');
+    assert.equal(japanese?.htmlLang, 'ja');
+    assert.equal(japanese?.ogLocale, 'ja_JP');
   });
 
   it('matches only the landing path itself', () => {
     assert.equal(landingByPath('/')?.id, 'en');
     assert.equal(landingByPath('/es')?.id, 'es');
     assert.equal(landingByPath('/es/')?.id, 'es');
+    assert.equal(landingByPath('/id/')?.id, 'id');
+    assert.equal(landingByPath('/ja')?.id, 'ja');
     assert.equal(landingByPath('/pt-br/'), undefined);
     assert.equal(landingByPath('/es/dashboard'), undefined);
     assert.equal(landingByPath('/zh'), undefined);
@@ -48,7 +58,7 @@ describe('indexable landing locale registry', () => {
     assert.equal(cluster[0]?.hreflang, 'x-default');
     assert.equal(cluster[0]?.href, 'https://www.worldmonitor.app/');
     const codes = cluster.map((entry) => entry.hreflang);
-    assert.deepEqual(codes, ['x-default', 'en', 'es', 'pt-BR', 'ru', 'fr', 'de', 'ar']);
+    assert.deepEqual(codes, ['x-default', 'en', 'es', 'pt-BR', 'ru', 'fr', 'de', 'ar', 'id', 'ja']);
     assert.equal(new Set(codes).size, codes.length);
     for (const entry of cluster) {
       assert.equal(new URL(entry.href).search, '');
@@ -56,7 +66,7 @@ describe('indexable landing locale registry', () => {
     }
     assert.deepEqual(
       indexableLandingPassthroughPrefixes(),
-      ['/es', '/pt', '/ru', '/fr', '/de', '/ar'],
+      ['/es', '/pt', '/ru', '/fr', '/de', '/ar', '/id', '/ja'],
     );
   });
 

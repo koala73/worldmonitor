@@ -33,8 +33,8 @@ describe('get_news_intelligence credibility discovery (#6597)', () => {
     assert.match(tool.description, new RegExp(`With no story filter, topStories is the ${selected} the dashboard selects worldwide`));
     assert.match(tool.description, /search every scored story of the latest run/);
     assert.match(tool.inputSchema.properties.country.description, new RegExp(`not only the top ${selected}`));
-    const { SERVER_INSTRUCTIONS } = await import('../api/mcp/constants.ts');
-    assert.match(SERVER_INSTRUCTIONS, /get_news_intelligence story filters \(country, query, category\) search every scored story of the latest run/);
+    const { AGENT_GUIDE } = await import('../api/mcp/constants.ts');
+    assert.match(AGENT_GUIDE, /get_news_intelligence story filters \(country, query, category\) search every scored story of the latest run/);
   });
 
   it('honors GDELT observation age as well as its seeder clock', () => {

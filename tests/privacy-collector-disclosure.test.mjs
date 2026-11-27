@@ -57,7 +57,7 @@ function collectorHosts() {
   const hosts = new Set();
   for (const relativePath of COLLECTOR_CALL_SITES) {
     const text = read(relativePath);
-    for (const [, host] of text.matchAll(/https:\/\/([a-z0-9.-]+)\/(?:script\.js|[A-Za-z0-9]+\.js)/g)) {
+    for (const [, host] of text.matchAll(/https:\/\/([a-z0-9.-]+)\/(?:script\.js|[A-Za-z0-9][A-Za-z0-9.-]*\.js)/g)) {
       hosts.add(host);
     }
   }
@@ -138,8 +138,8 @@ const SERVER_SUBPROCESSORS = [
   },
   {
     name: /Mintlify/,
-    proof: 'vercel.json',
-    pattern: /worldmonitor\.mintlify\.dev/,
+    proof: 'src/config/docs-locale-seo.ts',
+    pattern: /^export const DOCS_UPSTREAM_ORIGIN = ['"]https:\/\/worldmonitor\.mintlify\.dev['"]/m,
     why: 'serves worldmonitor.app/docs, including the privacy policy itself',
   },
 ];

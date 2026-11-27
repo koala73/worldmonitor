@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { normalizeFlagRegistries, splitSanctionsAttribution } from '../../../../shared/sanctions-attribution';
 
 const REDIS_CACHE_KEY = 'sanctions:pressure:v1';
 const DEFAULT_MAX_ITEMS = 25;
@@ -24,6 +25,8 @@ function emptyResponse(): ListSanctionsPressureResponse {
   return {
     entries: [],
     countries: [],
+    flagRegistries: [],
+    regulationTargets: [],
     programs: [],
     fetchedAt: '0',
     datasetDate: '0',
@@ -48,6 +51,9 @@ export const listSanctionsPressure: SanctionsServiceHandler['listSanctionsPressu
     const { _state: _discarded, semaError, ...rest } = data;
     return {
       ...rest,
+      ...splitSanctionsAttribution(data.countries ?? [], data.unattributed),
+      flagRegistries: normalizeFlagRegistries(data.flagRegistries),
+      regulationTargets: data.regulationTargets ?? [],
       entries: (data.entries ?? []).slice(0, maxItems),
       semaCount: data.semaCount ?? 0,
       ...(typeof semaError === 'string' && semaError ? { semaError } : {}),

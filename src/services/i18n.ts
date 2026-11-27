@@ -3,7 +3,7 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { resolveLanguageTag } from '@/shared/language-tags';
-import { readQueryLanguage, stripQueryLanguage } from '@/utils/i18n-url';
+import { EXPLICIT_LOCALE_KEY, readQueryLanguage, stripQueryLanguage } from '@/utils/i18n-url';
 import { LatestRequestGuard } from '@/utils/latest-request-guard';
 
 // Keep only first-paint English strings in the entry chunk. The full English
@@ -16,7 +16,6 @@ import enShellTranslation from '../locales/en.shell.json';
 // longer poison localStorage and override the user's actual browser locale on
 // future visits. Anyone whose browser is French now sees French automatically;
 // the moment they pick another language explicitly, that choice persists here.
-const EXPLICIT_LOCALE_KEY = 'wm-locale-explicit';
 
 const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
@@ -271,10 +270,6 @@ export function getCurrentLanguage(): string {
  */
 export function getCurrentLanguageTag(): string {
   return normalizeLanguage(i18next.language || 'en');
-}
-
-export function isRTL(): boolean {
-  return RTL_LANGUAGES.has(getCurrentLanguage());
 }
 
 export function getLocale(): string {

@@ -114,10 +114,12 @@ const API_REWRITE_PAGE_PATHS = new Set([
   '/.well-known/mcp',
   '/.well-known/mcp.json',
   '/.well-known/http-message-signatures-directory',
+  '/data/v1/chokepoints',
 ]);
 const API_REWRITE_PAGE_PREFIXES = [
   '/.well-known/oauth-protected-resource/',
   '/.well-known/oauth-authorization-server/',
+  '/data/v1/chokepoints/',
 ] as const;
 
 function namesApiFunction(path: string): boolean {

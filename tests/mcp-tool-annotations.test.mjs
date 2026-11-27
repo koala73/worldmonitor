@@ -1,18 +1,3 @@
-// Parity test for the per-tool spec `Tool.annotations` object (v1.7.0).
-//
-// Covers:
-//   1. Every tool in TOOL_REGISTRY declares an `annotations` object with all
-//      four spec hints (readOnlyHint, destructiveHint, idempotentHint,
-//      openWorldHint), each typed strictly as boolean. Failures name the
-//      tool + missing field so a future PR adding a tool without an
-//      explicit per-hint choice fails loudly.
-//   2. tools/list emits the full four-field annotations object on every
-//      advertised tool — surfacing the field at the wire boundary in
-//      addition to the in-process registry.
-//   3. buildPublicTool deep-clones annotations. Mutating the returned
-//      object must not corrupt the registry's source-of-truth literal —
-//      same isolation guarantee as inputSchema.properties + outputSchema.
-
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 

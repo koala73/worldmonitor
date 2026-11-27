@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const fixture = {
   status: 'available', ip: '2.249.90.120',
@@ -27,7 +28,7 @@ for (const language of ['en', 'de']) {
         const details = popup.locator('.cyber-network-info');
         await expect(details).toBeVisible();
         expect(requests).toBe(0);
-        await popup.screenshot({ path: testInfo.outputPath(`cyber-collapsed-${language}-${width}.png`) });
+        await evidenceScreenshot(popup, { path: testInfo.outputPath(`cyber-collapsed-${language}-${width}.png`) });
         await details.locator('summary').click();
         await expect(details).toContainText('AS3301');
         await expect(details).toContainText('Telia Company AB');
@@ -45,9 +46,9 @@ for (const language of ['en', 'de']) {
         await details.locator('summary').click();
         expect(requests).toBe(1);
         await details.locator('summary').scrollIntoViewIfNeeded();
-        await popup.screenshot({ path: testInfo.outputPath(`cyber-network-${language}-${width}.png`) });
+        await evidenceScreenshot(popup, { path: testInfo.outputPath(`cyber-network-${language}-${width}.png`) });
         await details.locator('.popup-link').scrollIntoViewIfNeeded();
-        await popup.screenshot({ path: testInfo.outputPath(`cyber-network-details-${language}-${width}.png`) });
+        await evidenceScreenshot(popup, { path: testInfo.outputPath(`cyber-network-details-${language}-${width}.png`) });
         if (width === 390) {
           expect(await popup.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
           const scrollGesture = await details.evaluate(target => {
@@ -79,11 +80,11 @@ test('shows provider failure and recovers when the popup is reopened', async ({ 
   await marker.click();
   await page.locator('.cyber-network-info summary').click();
   await expect(page.locator('.cyber-network-result')).toContainText('Network lookup failed');
-  await page.locator('.map-popup').screenshot({ path: testInfo.outputPath('cyber-network-error.png') });
+  await evidenceScreenshot(page.locator('.map-popup'), { path: testInfo.outputPath('cyber-network-error.png') });
   await page.locator('.popup-close').click();
   failed = false;
   await marker.click();
   await page.locator('.cyber-network-info summary').click();
   await expect(page.locator('.cyber-network-result')).toContainText('AS3301');
-  await page.locator('.map-popup').screenshot({ path: testInfo.outputPath('cyber-network-recovered.png') });
+  await evidenceScreenshot(page.locator('.map-popup'), { path: testInfo.outputPath('cyber-network-recovered.png') });
 });

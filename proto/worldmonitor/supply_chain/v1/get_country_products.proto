@@ -59,7 +59,8 @@ message CountryProduct {
   // values). Absent on legacy rows, whose denominator is unverified.
   optional string denominator_basis = 6;
   // ISO timestamp this heading alone was fetched at. Present only on a heading
-  // recovered on demand, whose fetch time differs from the payload's.
+  // recovered on demand or an extended heading, whose fetch time differs from
+  // the payload's.
   optional string fetched_at = 7;
   // How top_exporters was selected: "share_threshold" (every origin at or above
   // 1% of the denominator, padded to 5 and capped at 25; served only for the
@@ -81,7 +82,10 @@ message GetCountryProductsRequest {
     (buf.validate.field).string.pattern = "^[A-Z]{2}$",
     (sebuf.http.query) = {name: "iso2"}
   ];
-  // Optional requested heading; permits bounded recovery of a missing product.
+  // Optional requested heading; permits bounded recovery of a missing core
+  // product. Extended headings (rubber, cocoa, fish and seafood, fruit,
+  // processed food, oleochemicals) are accepted too and served from their
+  // separately seeded cache only, never recovered on demand.
   optional string hs4 = 2 [(sebuf.http.query) = {name: "hs4"}];
 }
 
@@ -107,7 +111,8 @@ message CountryProductEvidence {
   string source = 2;
   // HS4 headings the producing request asked for; empty when unknown (legacy cache).
   repeated string requested_hs4s = 3;
-  // Catalogue headings with no usable product row.
+  // Core catalogue headings with no usable product row. Extended headings are
+  // never listed here; an absent extended row adds no product.
   repeated string missing_hs4s = 4;
   // ISO timestamp of the last refresh attempt; empty when unknown.
   string last_attempt_at = 5;

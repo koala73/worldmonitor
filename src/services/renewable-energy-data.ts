@@ -190,10 +190,6 @@ export function createRenewableEnergyService(options: RenewableEnergyServiceOpti
 
 const renewableEnergyService = createRenewableEnergyService();
 
-export async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
-  return renewableEnergyService.fetchFresh();
-}
-
 /**
  * Fetch renewable energy data with bounded persistent last-known-good caching.
  */

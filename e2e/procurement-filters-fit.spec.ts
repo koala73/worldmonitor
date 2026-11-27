@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
 import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // The Global Procurement filter bar has eight controls. It must keep every
 // control inside the panel at the default 375px dashboard column, at the
@@ -73,7 +74,7 @@ test('procurement filters fit the panel at every column width', async ({ browser
         return panel.locator('.global-procurement-controls > *').count();
       }, { message: `procurement controls at ${viewport.width}px`, timeout: 90_000 })
       .toBe(8);
-    await panel.screenshot({ path: testInfo.outputPath(`procurement-${viewport.width}.png`) });
+    await evidenceScreenshot(panel, { path: testInfo.outputPath(`procurement-${viewport.width}.png`) });
     const m = await measure(page);
     const label = `procurement at ${viewport.width}px (panel ${m.panel}px)`;
     expect.soft(m.pastEdge, `${label}: controls past the panel edge`).toEqual([]);

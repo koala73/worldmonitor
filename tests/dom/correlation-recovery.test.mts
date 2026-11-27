@@ -507,6 +507,20 @@ describe('CorrelationPanel presentation', () => {
     expect(element.textContent).toContain('Last known update');
   });
 
+  it('labels expanded evidence by signal kind instead of internal keys', async () => {
+    const signal = (type: string, label: string) => ({ type, source: 'fixture', severity: 60, timestamp: NOW - MINUTE, label });
+    mocks.fetch.mockResolvedValue(payload([{
+      ...card('economic', 'conflict + news escalation \u2014 France'),
+      signals: [signal('conflict_event', 'Protest: Dockworkers march on parliament'), signal('news_severity', 'Paris strike talks collapse')],
+    }]));
+    const result = await panel();
+    result.getElement().querySelector<HTMLElement>('.correlation-card-header')!.click();
+    const detail = result.getElement().querySelector<HTMLElement>('.correlation-card-detail')!.textContent;
+    expect(detail).toContain('Conflict event');
+    expect(detail).toContain('Severe news');
+    expect(detail).not.toMatch(/conflict_event|news_severity/);
+  });
+
   it('assesses displayed seed evidence and does not buy assessments for discarded local cards', async () => {
     const seed = { ...card(), score: 75 };
     mocks.fetch.mockResolvedValue(payload([seed]));
@@ -554,6 +568,7 @@ describe('CorrelationPanel presentation', () => {
     mount.call({
       ctx: { correlationEngine: engine, panelSettings: {} },
       observePanelForHydration: vi.fn(),
+      bindPanelFilterChoice: vi.fn(),
     }, 'economic-correlation', result);
     await settle();
     result.getElement().querySelector<HTMLElement>('.correlation-card-header')!.click();

@@ -22,6 +22,8 @@ message EarningsEntry {
   double revenue_actual = 8;
   bool has_actuals = 9;
   string surprise_direction = 10;
+  // ISO 4217 code of the revenue figures. Empty when the provider did not report one.
+  string revenue_currency = 11;
 }
 
 message ListEarningsCalendarResponse {

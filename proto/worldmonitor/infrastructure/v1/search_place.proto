@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// SearchPlaceRequest is a place name typed by the user and submitted once.
+message SearchPlaceRequest {
+  // Place name to look up, e.g. "Port of Rotterdam". Coordinates are resolved in the browser and never sent here.
+  string q = 1 [
+    (buf.validate.field).string.min_len = 2,
+    (buf.validate.field).string.max_len = 200,
+    (sebuf.http.query) = {name: "q"}
+  ];
+}
+
+// PlaceMatch is one place OpenStreetMap's Nominatim search returned for the name.
+message PlaceMatch {
+  // Full display name, e.g. "Rotterdam, South Holland, Netherlands".
+  string name = 1;
+  // Latitude of the place, degrees.
+  double lat = 2;
+  // Longitude of the place, degrees.
+  double lon = 3;
+  // OpenStreetMap feature kind, e.g. "city" or "aerodrome".
+  string kind = 4;
+}
+
+// SearchPlaceResponse lists up to five matches, best first.
+message SearchPlaceResponse {
+  repeated PlaceMatch places = 1;
+  // Set when the geocoder could not be reached; places is then empty.
+  string error = 2;
+}

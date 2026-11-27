@@ -149,8 +149,10 @@ function mountProWidget(iframe: HTMLIFrameElement): void {
     const storedHtml = iframeHtmlStore.get(iframe);
     if (!storedHtml) return;
     const now = performance.now();
-    const last = iframeLastDeliveryMs.get(iframe) ?? 0;
-    if (now - last < MIN_DELIVERY_INTERVAL_MS) return;
+    // The sandbox asks once on load, so the first request is always answered,
+    // even when it arrives in the page's first second.
+    const last = iframeLastDeliveryMs.get(iframe);
+    if (last !== undefined && now - last < MIN_DELIVERY_INTERVAL_MS) return;
     iframeLastDeliveryMs.set(iframe, now);
     // The iframe deliberately uses sandbox="allow-scripts" without
     // allow-same-origin, so its origin is opaque. A concrete targetOrigin

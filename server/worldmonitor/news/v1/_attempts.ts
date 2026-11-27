@@ -74,7 +74,9 @@ export interface TerminalFetchFailureInput {
 
 /**
  * Choose the terminal fetch failure without losing which leg ended last.
- * A global deadline always wins because it invalidates both fetch legs.
+ * A global deadline wins because it invalidates both fetch legs, unless the
+ * direct leg had already used its whole per-feed budget. That feed failed on
+ * its own clock, and the deadline only cut the relay's leftover time.
  */
 export function resolveTerminalFetchFailure({
   directFailure,
@@ -83,6 +85,9 @@ export function resolveTerminalFetchFailure({
   deadlineAborted,
 }: TerminalFetchFailureInput,
 ): FeedFetchFailure {
+  if (directFailure === 'per-feed-timeout') {
+    if (deadlineAborted || relayFailure === 'deadline-abort') return 'per-feed-timeout';
+  }
   if (deadlineAborted || directFailure === 'deadline-abort' || relayFailure === 'deadline-abort') {
     return 'deadline-abort';
   }
@@ -322,6 +327,9 @@ export interface DigestCoverageBlock {
   attemptedAt: string;
   itemsServed: number;
   publisherCount: number;
+  /** Items that reached ranking before the category cap, and their publishers. */
+  itemsConsidered: number;
+  publishersConsidered: number;
   feedTotal: number;
   feedCompleted: number;
   categoryTotal: number;
@@ -347,6 +355,8 @@ export interface DigestCoverageInput {
   itemsServed: number;
   /** Normalized publisher family of every served item. */
   publisherSources: readonly string[];
+  /** Normalized publisher family of every item that reached ranking. */
+  consideredPublisherSources: readonly string[];
   /** True when the global deadline aborted the build. */
   deadlineAborted: boolean;
   drops: {
@@ -398,6 +408,8 @@ export function buildDigestCoverage(input: DigestCoverageInput): DigestCoverageB
     attemptedAt: new Date(input.buildStartMs).toISOString(),
     itemsServed: input.itemsServed,
     publisherCount: new Set(input.publisherSources).size,
+    itemsConsidered: input.consideredPublisherSources.length,
+    publishersConsidered: new Set(input.consideredPublisherSources).size,
     feedTotal: input.entries.length,
     feedCompleted,
     categoryTotal: configuredCategories.length,

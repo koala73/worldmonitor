@@ -89,6 +89,25 @@ describe('parseChartSeries: Power BI date hierarchy to ISO series', () => {
     assert.throws(() => parseChartSeries(unnamed, cutoff), /date hierarchy/);
   });
 
+  it('drops a day with no usable value instead of reporting it as zero shipments', () => {
+    // The panel reads an all-zero window as "No shipments recorded"; a day
+    // Power BI sent without a value must not count as a measured zero.
+    const withGaps = {
+      descriptor: yearMonthDay.descriptor,
+      dsr: { DS: [{ PH: [{ DM0: [
+        { S: yearMonthDay.dsr.DS[0].PH[0].DM0[0].S, C: [2026, 'November', 1, 0] },
+        { C: [2, null], R: 3 },
+        { C: [3, ''], R: 3 },
+        { C: [4, 'n/a'], R: 3 },
+        { C: [5, '0'], R: 3 },
+      ] }] }] },
+    };
+    assert.deepEqual(parseChartSeries(withGaps, cutoff), [
+      { date: '2026-11-01', value: 0 },
+      { date: '2026-11-05', value: 0 },
+    ]);
+  });
+
   it('returns no points for a visual with no rows', () => {
     assert.deepEqual(parseChartSeries({ descriptor: yearMonthDay.descriptor, dsr: { DS: [{ PH: [{ DM0: [] }] }] } }, cutoff), []);
   });

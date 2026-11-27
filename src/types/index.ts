@@ -161,6 +161,12 @@ export interface NewsItem {
    * not newsworthiness. 0 is a real low score and must not be treated as absent.
    */
   credibilityScore?: number;
+  /** True when credibilityScore rests on no reviewed tier or risk entry for the publisher. */
+  credibilityUnassessed?: boolean;
+  /** Outlet a search feed's aggregator names for this item; `source` is then the search label. */
+  publisher?: string;
+  /** Curated tier spelling of `publisher`, for provenance lookups; absent when it has no tier. */
+  originPublisher?: string;
   corroborationCount?: number;
   storyMeta?: StoryMeta;
   /**
@@ -238,10 +244,14 @@ export interface Sector {
   name: string;
 }
 
+/** Yahoo Finance quote currency of a contract that is not quoted in US dollars. USX is US cents. */
+export type CommodityQuoteCurrency = 'USX' | 'EUR';
+
 export interface Commodity {
   symbol: string;
   name: string;
   display: string;
+  currency?: CommodityQuoteCurrency;
 }
 
 export interface MarketSymbol {
@@ -257,6 +267,13 @@ export interface MarketData {
   price: number | null;
   change: number | null;
   sparkline?: number[];
+  priceSource?: string;
+  priceBasis?: string;
+  priceAt?: number;
+  /** Width of each sparkline bar in seconds (300 intraday, 86400 daily closes). */
+  sparklineIntervalSeconds?: number;
+  /** Start of the first sparkline bar in epoch ms; closed periods are left out after it. */
+  sparklineStartAt?: number;
 }
 
 export interface CryptoData {
@@ -424,6 +441,8 @@ export interface UcdpGeoEvent {
   date_end: string;
   latitude: number;
   longitude: number;
+  hasPreciseLocation?: boolean;
+  locationName?: string;
   country: string;
   side_a: string;
   side_b: string;
@@ -434,7 +453,7 @@ export interface UcdpGeoEvent {
   source_original: string;
 }
 
-// WorldPop Population Exposure
+// Population Exposure
 export interface CountryPopulation {
   code: string;
   name: string;
@@ -450,6 +469,18 @@ export interface PopulationExposure {
   lon: number;
   exposedPopulation: number;
   exposureRadiusKm: number;
+  eventCount: number;
+  locationPending?: boolean;
+}
+
+// Every feed event lands in exactly one bucket: a shown row or one of the three left-out reasons.
+export interface ExposureCoverage {
+  totalEvents: number;
+  withoutPreciseLocation: number;
+  withoutEstimate: number;
+  atOtherPlaces: number;
+  // When true, these counts cover unrest only, not the older UCDP projection.
+  ucdpPending?: boolean;
 }
 
 // Military base operator types
@@ -567,21 +598,6 @@ export interface CableHealthResponse {
   cables: Record<string, CableHealthRecord>;
 }
 
-export interface ShippingChokepoint {
-  id: string;
-  name: string;
-  lat: number;
-  lon: number;
-  desc: string;
-}
-
-export interface CyberRegion {
-  id: string;
-  group: string;
-  aka: string;
-  sponsor: string;
-}
-
 // Nuclear facility types
 export type NuclearFacilityType =
   | 'plant'        // Power reactors
@@ -696,6 +712,8 @@ export interface MapLayers {
   sanctions: boolean;
   /** Sentinel-5P NO2 activity direction per country and industrial cluster. */
   no2Activity?: boolean;
+  /** ICESat-2 water-surface level status of strategic reservoirs and lakes. */
+  reservoirLevels?: boolean;
   weather: boolean;
   /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
   canadaRoads: boolean;
@@ -856,8 +874,6 @@ export interface AppState {
   isLoading: boolean;
 }
 
-export type FeedCategory = 'politics' | 'tech' | 'finance' | 'gov' | 'intel';
-
 // Social Unrest / Protest Types
 export type ProtestSeverity = 'low' | 'medium' | 'high';
 export type ProtestSource = 'acled' | 'gdelt' | 'rss';
@@ -869,6 +885,7 @@ export interface SocialUnrestEvent {
   summary?: string;
   eventType: ProtestEventType;
   city?: string;
+  hasPreciseLocation?: boolean;
   country: string;
   region?: string;
   lat: number;

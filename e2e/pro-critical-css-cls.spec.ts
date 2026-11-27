@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 // prerender.mjs inlines a hand-maintained critical CSS block and demotes the
 // real stylesheet to `rel=preload` + a JS swap, so /pro and / paint from that
@@ -192,7 +193,7 @@ test.describe('welcome safe areas', () => {
         };
       });
       try {
-        await page.screenshot({ path: testInfo.outputPath('critical.png') });
+        await evidenceScreenshot(page, { path: testInfo.outputPath('critical.png') });
         expect(await page.locator('meta[name="viewport"]').getAttribute('content')).toContain('viewport-fit=cover');
         const before = await measure();
         expect(before.navPadding).toBe(`${device.top}px`);
@@ -208,7 +209,7 @@ test.describe('welcome safe areas', () => {
         const skip = await page.getByRole('link', { name: 'Skip to content', exact: true }).boundingBox();
         expect(skip!.x).toBeGreaterThanOrEqual(device.left);
         expect(skip!.y).toBeGreaterThanOrEqual(device.top);
-        await page.screenshot({ path: testInfo.outputPath('styled.png') });
+        await evidenceScreenshot(page, { path: testInfo.outputPath('styled.png') });
       } finally {
         releaseStyle();
       }

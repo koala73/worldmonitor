@@ -193,10 +193,26 @@ const lngReporterIso2 = (code) => ISO2_BY_REPORTER_OVERRIDE[code] ?? normalizeCo
 /** @param {string} code */
 const lngPartnerKind = (code) => normalizeComtradePartner(code).kind;
 
+// Shared with the extended-headings seeder, which fetches the same reporters
+// over the same route and must pace and label its requests the same way.
+export const COMTRADE_ROUTE = Object.freeze({
+  usePublicApi,
+  interRequestDelayMs: INTER_REQUEST_DELAY_MS,
+  source: usePublicApi ? 'UN Comtrade public preview' : 'UN Comtrade data API',
+});
+/** Every reporter in the registry, [iso2, cluster], in registry order. */
+export function reporterRoster() {
+  return Object.entries(COUNTRY_PORT_CLUSTERS).filter(([k]) => k !== '_comment' && k.length === 2);
+}
+/** @param {string} iso2 */
+export function reporterUnCode(iso2) {
+  return COMTRADE_REPORTER_OVERRIDES[iso2] ?? ISO2_TO_UN[iso2];
+}
+
 /**
  * @param {Array<string[]>} commands
  */
-async function redisPipeline(commands) {
+export async function redisPipeline(commands) {
   const { url, token } = getRedisCredentials();
   const resp = await fetch(`${url}/pipeline`, {
     method: 'POST',
@@ -320,6 +336,8 @@ export function isQuotaRefusal(status) {
 let consecutiveRateLimited = 0;
 /** Reset at the start of every run; also lets tests isolate module state. */
 export function resetRateLimitStreak() { consecutiveRateLimited = 0; }
+/** The current refused-fetch streak, for a sibling seeder sharing fetchBilateral. */
+export function rateLimitStreak() { return consecutiveRateLimited; }
 
 // Retry sleep is indirected through a module-local binding so unit tests can
 // swap in a no-op without changing production cadence. Production defaults

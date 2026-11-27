@@ -32,3 +32,23 @@ export function stripQueryLanguage(href: string): string {
     return href;
   }
 }
+
+/** localStorage key written only by `changeLanguage` (Settings → Language). */
+export const EXPLICIT_LOCALE_KEY = 'wm-locale-explicit';
+
+/**
+ * The stored explicit language choice if it is in `allowed`, else null.
+ * Never reads the URL, i18next or navigator: `?lang=` and the browser
+ * locale are not choices. A throwing storage (private mode) reads as null.
+ */
+export function readExplicitLanguage(
+  storage: Pick<Storage, 'getItem'> | null | undefined,
+  allowed: ReadonlySet<string>,
+): string | null {
+  try {
+    const value = storage?.getItem(EXPLICIT_LOCALE_KEY);
+    return value && allowed.has(value) ? value : null;
+  } catch {
+    return null;
+  }
+}

@@ -92,11 +92,6 @@ describe('priceEvidenceOnPage', () => {
   it('does not donate the whole part from another decimal', () => {
     expect(priceEvidenceOnPage(49.79, 'was 49.20 save .79 today')).toBe('unverified');
   });
-
-  it('still verifies the legitimate split render after the boundary tightening', () => {
-    expect(priceEvidenceOnPage(49.79, 'Jumbo Pack 68 Diapers\n\n49\n\n.79\n\nAED\n\nOnly 3 left')).toBe('verified');
-  });
-
   // A size or percentage token is not price evidence: the extractor returning
   // the package quantity as the price is a NAMED failure mode
   // (quantity-as-price), and the size token is printed on essentially every

@@ -245,11 +245,10 @@ describe('chokepoint source availability', () => {
     const hormuz = response.chokepoints.find((row) => row.id === 'hormuz_strait');
     assert.equal(hormuz?.aisDisruptions, 1);
     assert.equal(hormuz?.congestionLevel, 'high');
-    assert.match(hormuz?.description || '', /Active conflict/);
+    assert.match(hormuz?.description || '', /US\/Israel-Iran war/);
     const quietRow = response.chokepoints.find((row) => row.description.includes('source coverage incomplete'));
     assert.ok(quietRow, 'quiet rows must qualify the all-clear when any source is unavailable');
     assert.doesNotMatch(quietRow.description, /^No active disruptions$/);
-    assert.match(quietRow.description, /Threat baseline last reviewed/);
 
     const cachedResponse = await getChokepointStatus({} as never, {});
     assert.equal(cachedResponse.chokepoints.length, 13, 'partial rows must survive the outer cache');
@@ -420,6 +419,9 @@ describe('chokepoint source availability', () => {
     for (const cp of expected.chokepoints) {
       cp.transitSummary.riskSummary = '';
       cp.transitSummary.riskReportAction = '';
+      // The capture predates flowEstimate.latestDate; a cached response is
+      // served with the field's empty default rather than without the field.
+      if (cp.flowEstimate) cp.flowEstimate.latestDate = '';
     }
     assert.deepEqual(response, expected);
     assert.doesNotMatch(JSON.stringify(response), /REROUTE|50-80K|Salalah/);

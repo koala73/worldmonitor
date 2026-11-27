@@ -30,6 +30,30 @@
   var URL_DIGEST_PREFIX = 'sha256:';
   var FALLBACK_BODY = 'This link was blocked by WorldMonitor after delivery. Open the dashboard for the latest safe update.';
 
+  // The relay tags an alert's article link with a referrer at delivery
+  // (withAlertReferrer in scripts/shared/notify-fields.cjs), so the URL a push
+  // carries differs from the one an operator blocked. The tag is not part of
+  // the link's identity and is dropped before the digest. Same list as the
+  // relay matcher and api/notification-suppressions.js.
+  var ALERT_REFERRER_PARAMS = [
+    'utm_source=worldmonitor',
+    'utm_medium=alert',
+    'utm_campaign=email',
+    'utm_campaign=telegram',
+    'utm_campaign=slack',
+    'utm_campaign=discord',
+    'utm_campaign=teams',
+    'utm_campaign=web_push',
+  ];
+
+  function withoutAlertReferrer(search) {
+    if (search.length < 2) return search;
+    var kept = search.slice(1).split('&').filter(function (part) {
+      return ALERT_REFERRER_PARAMS.indexOf(part) === -1;
+    });
+    return kept.length > 0 ? '?' + kept.join('&') : '';
+  }
+
   function normalizeUrl(raw, origin) {
     if (typeof raw !== 'string') return null;
     var trimmed = raw.trim();
@@ -54,7 +78,7 @@
     } catch (_e2) {
       // Malformed % sequences stay encoded — still comparable.
     }
-    return { href: protocol + '//' + host + path + parsed.search + parsed.hash, host: parsed.hostname.toLowerCase().replace(/\.+$/, '') };
+    return { href: protocol + '//' + host + path + withoutAlertReferrer(parsed.search) + parsed.hash, host: parsed.hostname.toLowerCase().replace(/\.+$/, '') };
   }
 
   function digestUrl(url) {

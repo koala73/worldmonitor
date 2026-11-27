@@ -41,7 +41,12 @@ import ISO3_TO_ISO2 from './iso3-to-iso2.json';
  * module's MERGED export rather than the raw JSON (enumerating the JSON is
  * blind to exactly this table, which is how the divergence went unnoticed).
  */
-const EXTRA_ALIASES: Record<string, string> = { 'bosnia herzegovina': 'BA' };
+const EXTRA_ALIASES: Record<string, string> = {
+  'bosnia herzegovina': 'BA',
+  'democratic people s republic of korea': 'KP',
+  'republic of palau': 'PW',
+  'st vincent and grenadines': 'VC',
+};
 
 const NAME_TO_ISO2: Record<string, string> =
   Object.assign(Object.create(null), COUNTRY_NAMES, EXTRA_ALIASES);

@@ -16,6 +16,8 @@ interface LoadedUtils {
   formatChange: (p: number | null | undefined) => string;
   getChangeClass: (p: number | null | undefined) => string;
   getHeatmapClass: (p: number | null | undefined) => string;
+  formatQuotePrice: (symbol: string, p: number | null | undefined) => string;
+  formatUsdBillions: (billions: number) => string;
 }
 
 async function loadUtils(): Promise<LoadedUtils> {
@@ -135,5 +137,38 @@ describe('change formatting unavailable-state consistency', () => {
     assert.equal(getHeatmapClass(-1), 'down-2');
     assert.equal(getHeatmapClass(1.99), 'up-2');
     assert.equal(getHeatmapClass(-2), 'down-3');
+  });
+});
+
+// Dogfood: the Markets panel showed index levels and local-currency listings
+// with a dollar sign ("$6,712" for the S&P 500, "$3,350" for Shanghai, "$3.75"
+// for the riyal rate). Only US tickers, US ETFs and dollar futures are dollars.
+describe('formatQuotePrice', () => {
+  // Expected text comes from formatPrice, so separators follow the host locale.
+  it('drops the dollar sign for indices, exchange-suffixed listings and FX pairs', async () => {
+    const { formatQuotePrice, formatPrice } = await loadUtils();
+    for (const [symbol, price] of [['^GSPC', 6712.4], ['000001.SS', 3350.2], ['^TASI.SR', 11250], ['7203.T', 2875.5], ['AAL.L', 2410], ['SARUSD=X', 0.2666]] as const) {
+      assert.equal(formatQuotePrice(symbol, price), formatPrice(price).replace('$', ''), symbol);
+    }
+  });
+
+  it('keeps the dollar sign for US tickers, share classes, ETFs and futures', async () => {
+    const { formatQuotePrice, formatPrice } = await loadUtils();
+    for (const [symbol, price] of [['AAPL', 212.5], ['BRK-B', 1500], ['BRK.B', 1500], ['BF.A', 41.2], ['QAT', 18.2], ['BZ=F', 82.1]] as const) {
+      assert.equal(formatQuotePrice(symbol, price), formatPrice(price), symbol);
+      assert.match(formatQuotePrice(symbol, price), /\$/, symbol);
+    }
+    assert.equal(formatQuotePrice('^GSPC', null), '--');
+  });
+});
+
+describe('formatUsdBillions (TradePolicyPanel customs revenue)', () => {
+  it('shows small negative months with a leading sign instead of "$-0.0B"', async () => {
+    const { formatUsdBillions } = await loadUtils();
+    assert.equal(formatUsdBillions(-0.04), '-$0.04B');
+    assert.equal(formatUsdBillions(-0.001), '$0.00B');
+    assert.equal(formatUsdBillions(-1.24), '-$1.2B');
+    assert.equal(formatUsdBillions(188.57), '$188.6B');
+    assert.equal(formatUsdBillions(0), '$0.00B');
   });
 });

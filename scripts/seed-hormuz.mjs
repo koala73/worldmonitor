@@ -92,8 +92,12 @@ export function parseChartSeries(data, cutoff) {
     .map(row => {
       const date = isoDate(row[cols.year], row[cols.month], row[cols.day]);
       if (!date || Date.parse(date) < cutoff.getTime()) return null;
+      // A missing or unreadable value is no measurement, not zero shipments:
+      // the panel reads an all-zero window as "No shipments recorded".
       const val = row[cols.value];
-      return { date, value: typeof val === 'number' ? val : (Number(val) || 0) };
+      const value = typeof val === 'number' ? val : (typeof val === 'string' && val.trim() !== '' ? Number(val) : NaN);
+      if (!Number.isFinite(value)) return null;
+      return { date, value };
     })
     .filter(Boolean)
     .sort((a, b) => a.date.localeCompare(b.date));

@@ -225,8 +225,8 @@ describe('country brief open', () => {
 describe('app boot', () => {
   it('starts loading i18n before it waits for IndexedDB', () => {
     const body = functionContaining(read('src/App.ts'), "markLcpDebug('wm:boot:app-init-start');");
-    assertStartsBefore(body, 'const i18nReady = initI18n();', 'await initDB();', 'the locale load must not wait for IndexedDB');
-    assertStartsBefore(body, 'await initDB();', 'await i18nReady;', 'boot still waits for i18n after the database opens');
+    assertStartsBefore(body, 'const i18nReady = initI18n();', 'await openStorageForBoot();', 'the locale load must not wait for IndexedDB');
+    assertStartsBefore(body, 'await openStorageForBoot();', 'await i18nReady;', 'boot still waits for i18n after the database opens');
     assert.doesNotMatch(body, /await initI18n\(\)/);
   });
 });
@@ -238,14 +238,14 @@ describe('request handlers', () => {
     assert.doesNotMatch(source, /await getAiRoutingDecisionForUser\(/, 'the routing lookup must not be awaited alone');
     assert.match(
       source,
-      /Promise\.all\(\[\s*assembleAnalystContext\([^)]*\),\s*getAiRoutingDecisionForUser\(premiumIdentity\.userId\),?\s*\]\)/,
+      /const routingDecisionPromise = getAiRoutingDecisionForUser\(premiumIdentity\.userId\);\s*const \[context, routingDecision\] = await Promise\.all\(\[\s*assembleAnalystContext\([^)]*\{\s*routingDecisionPromise\s*\}[^)]*\),\s*routingDecisionPromise,?\s*\]\)/,
     );
   });
 
   it('classify-event hashes the title alongside the routing lookup', () => {
     const source = read('server/worldmonitor/intelligence/v1/classify-event.ts');
     assert.doesNotMatch(source, /const aiRouting = await resolveAiRouting\(ctx\.request\);\s*\n\s*const cacheKey = `\$\{await buildClassifyCacheKey/);
-    assert.match(source, /Promise\.all\(\[\s*resolveAiRouting\(ctx\.request\),\s*buildClassifyCacheKey\(title\)/);
+    assert.match(source, /Promise\.all\(\[\s*resolveAiRouting\(ctx\.request\),\s*buildClassifyCacheKey\(title, \{ callerTitle: true \}\)/);
   });
 
   it('get-risk-scores reads its auxiliary fallbacks together', () => {

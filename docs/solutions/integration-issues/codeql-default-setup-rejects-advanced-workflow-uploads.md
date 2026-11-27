@@ -97,8 +97,9 @@ The on.push warning is codeql-action's lint for a workflow that cannot populate 
 - **Keep the query suite the same.** The default-setup state reported `query_suite: default`, and the advanced workflow sets no `queries:`, so it also runs the default suite. Compare `results_count` per category after the switch. A drop is a signal to diff the two analyses' SARIF, not proof of lost coverage on its own.
 - **Budget the overlay-base caches.** Both setups save a CodeQL overlay-base database to the Actions cache on every default-branch run: about 1.37 GB for JavaScript, under a key that includes the commit SHA, run ID and attempt. The action never deletes them (codeql-action `src/trap-caching.ts:228` is its only cache deletion, and it handles TRAP caches).
   - The key's hash comes from the workflow path, job and matrix values. So after the switch, default setup's bases can never be restored again. #8717 deleted 12 of them, about 4.2 GB.
-  - The `prune-overlay-bases` job (#8718) now keeps only the newest base per group after each default-branch scan. On its first run, on the #8718 merge, it logged `kept 4, deleted 4, freed 1392298522 bytes`.
+  - The `prune-overlay-bases` job (#8718) then kept only the newest base per group after each default-branch scan. On its first run, on the #8718 merge, it logged `kept 4, deleted 4, freed 1392298522 bytes`.
   - Without it, eviction by last access lets each fresh base push out idle dependency caches first.
+  - Once scans left pull requests (#9669), no run restored a base at all, yet each daily scan still saved about 2 GB and the cache store sat over its 10 GB limit. The `analyze` job now sets `CODEQL_OVERLAY_DATABASE_MODE: none` (read in codeql-action `src/config-utils.ts`, `checkOverlayEnablement`), which skips both the build and the save, and the prune job was removed. Overlay bases are worth their space only when a pull request scan restores them.
 
 ## Related
 

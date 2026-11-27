@@ -33,6 +33,53 @@ describe('thermal escalation model', () => {
     assert.equal(clusters[1].detections.length, 1);
   });
 
+  it('takes cluster country and context from the detection country label', () => {
+    const nowMs = Date.UTC(2026, 2, 17, 12, 0, 0);
+    const result = computeThermalEscalationWatch([
+      makeDetection('iq', 30.2813, 47.3688, nowMs - 60 * 60 * 1000, { region: 'Iraq' }),
+      makeDetection('ae', 24.45, 54.38, nowMs - 60 * 60 * 1000, { region: 'United Arab Emirates' }),
+      makeDetection('sea', 24.85722, 53.71148, nowMs - 60 * 60 * 1000, { region: 'Other' }),
+    ], emptyThermalEscalationWatch(), { nowMs });
+    const byRegion = Object.fromEntries(result.watch.clusters.map((c) => [c.regionLabel, c]));
+    assert.equal(byRegion.Iraq.countryCode, 'IQ');
+    assert.equal(byRegion.Iraq.countryName, 'Iraq');
+    assert.equal(byRegion.Iraq.context, 'THERMAL_CONTEXT_CONFLICT_ADJACENT');
+    assert.equal(byRegion['United Arab Emirates'].countryCode, 'AE');
+    assert.equal(byRegion['United Arab Emirates'].context, 'THERMAL_CONTEXT_WILDLAND');
+    assert.equal(byRegion.Other.countryCode, 'XX');
+    assert.equal(byRegion.Other.context, 'THERMAL_CONTEXT_WILDLAND');
+  });
+
+  it('keeps a separate baseline for each country when clusters on both sides of a border share a cell', () => {
+    const hour = 60 * 60 * 1000;
+    const run1Ms = Date.UTC(2026, 2, 17, 12, 0, 0);
+    const run2Ms = run1Ms + 3 * hour;
+    const side = (prefix, region, lat, lon, count, frp, atMs) => Array.from({ length: count }, (_, i) =>
+      makeDetection(`${prefix}${i}`, lat + i * 0.001, lon, atMs - hour, { region, frp }));
+    const run1 = computeThermalEscalationWatch([
+      ...side('iq', 'Iraq', 30.25, 47.4, 4, 20, run1Ms),
+      ...side('ir', 'Iran', 30.3, 47.6, 4, 20, run1Ms),
+    ], emptyThermalEscalationWatch(), { nowMs: run1Ms });
+    const run2 = computeThermalEscalationWatch(
+      side('iq2-', 'Iraq', 30.25, 47.4, 6, 140 / 6, run2Ms),
+      run1.history,
+      { nowMs: run2Ms },
+    );
+    const [iraq] = run2.watch.clusters;
+    assert.equal(iraq.baselineExpectedCount, 4);
+    assert.equal(iraq.baselineExpectedFrp, 80);
+    assert.equal(iraq.frpDelta, 60);
+  });
+
+  it('takes the Lebanon context as conflict-adjacent', () => {
+    const nowMs = Date.UTC(2026, 2, 17, 12, 0, 0);
+    const result = computeThermalEscalationWatch([
+      makeDetection('lb', 33.27, 35.4, nowMs - 60 * 60 * 1000, { region: 'Lebanon' }),
+    ], emptyThermalEscalationWatch(), { nowMs });
+    assert.equal(result.watch.clusters[0].countryCode, 'LB');
+    assert.equal(result.watch.clusters[0].context, 'THERMAL_CONTEXT_CONFLICT_ADJACENT');
+  });
+
   it('builds an elevated or stronger conflict-adjacent cluster from raw detections', () => {
     const nowMs = Date.UTC(2026, 2, 17, 12, 0, 0);
     const detections = [

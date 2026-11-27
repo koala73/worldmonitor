@@ -102,6 +102,16 @@ describe('QatarEnergy monthly fuel prices', () => {
     assert.throws(() => parseQatarFuel(items.filter(i => !(i.text === '95' && i.y > 479))), /Invalid energy measurement|Missing QatarEnergy/);
   });
 
+  it('tolerates the history table running one month behind the current price', () => {
+    // The current month's prices are only an image on page 1. The PDF archived
+    // 2026-10-02 showed October there and ended its table at September; the
+    // one modified 2026-10-31 showed November and ended at October. So the
+    // newest parsed month stays newest for two months before the next PDF.
+    const twoMonthsDohaMin = (Date.parse('2026-09-01T00:00:00+03:00') - Date.parse('2026-07-01T00:00:00+03:00')) / 60_000;
+    assert.ok(feed('qatarenergy').maxContentAgeMin > twoMonthsDohaMin + 3 * 24 * 60,
+      `maxContentAgeMin ${feed('qatarenergy').maxContentAgeMin} must cover the ${twoMonthsDohaMin}-minute table lag plus a late PDF`);
+  });
+
   it('serves a month from its first day, Doha time, and keeps eight months per product', async () => {
     const pdf = { [QATARENERGY_PDF_URL]: items };
     const { data, calls } = await fetchWithPdf('qatarenergy', { [QATARENERGY_PDF_URL]: 'pdf' }, pdf, Date.parse('2026-10-31T12:00:00Z'));
@@ -269,6 +279,20 @@ describe('Burkina Faso SONABHY tariffs', () => {
 });
 
 describe('Zimbabwe ZERA energy prices', () => {
+  // Since 2026-11-16 the homepage is minified: single-token class attributes lose their quotes.
+  it('reads the widget when class attributes are unquoted', () => {
+    const quoted = fixture('zera-home.html');
+    const minified = quoted.replace(/class="([^"\s]+)"/g, 'class=$1');
+    assert.match(minified, /class=bdt-price-table-heading>/);
+    assert.deepEqual(parseZeraPrices(minified), parseZeraPrices(quoted));
+    const tokenClass = /class=("?)(bdt-price-table-(?:heading|integer-part|period)[^"<>]*)\1(?=[\s>])/g;
+    for (const html of [quoted, minified]) {
+      const withAttribute = html.replace(tokenClass, 'class=$1$2$1 data-x="1"');
+      assert.notEqual(withAttribute, html);
+      assert.deepEqual(parseZeraPrices(withAttribute), parseZeraPrices(quoted), 'an attribute after the class');
+    }
+  });
+
   it('reads the USD and ZWG price of each product from the homepage widget', async () => {
     const points = parseZeraPrices(fixture('zera-home.html'));
     assertUnique(points);

@@ -35,6 +35,10 @@ message UcdpViolenceEvent {
   UcdpViolenceType violence_type = 11;
   // Original source of the event report.
   string source_original = 12;
+  // True when UCDP identifies a specific event location (where_prec 1).
+  optional bool has_precise_location = 13;
+  // Name of the location represented by the event coordinates.
+  optional string location_name = 14;
 }
 
 // UcdpViolenceType represents the UCDP violence classification.

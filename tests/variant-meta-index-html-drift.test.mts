@@ -44,3 +44,8 @@ for (const { label, pattern, expected } of cases) {
     assert.equal(extract(label, pattern), expected);
   });
 }
+
+test("the full dashboard title targets live-map searches, not the homepage brand title", () => {
+  assert.equal(full.title, "Live World Map: Conflicts, Flights and Ships | World Monitor");
+  assert.ok([...full.title].length <= 60, full.title);
+});

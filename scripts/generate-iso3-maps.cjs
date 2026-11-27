@@ -38,7 +38,7 @@ if (!iso3ToIso2['XKX']) {
 
 // Sort by key
 const sorted3to2 = Object.fromEntries(
-  Object.entries(iso3ToIso2).sort(([a], [b]) => a.localeCompare(b))
+  Object.entries(iso3ToIso2).sort(([a], [b]) => a.localeCompare(b, 'en-US'))
 );
 
 // Invert: ISO2 → ISO3
@@ -49,7 +49,7 @@ for (const [iso3, iso2] of Object.entries(sorted3to2)) {
   }
 }
 const sorted2to3 = Object.fromEntries(
-  Object.entries(iso2ToIso3).sort(([a], [b]) => a.localeCompare(b))
+  Object.entries(iso2ToIso3).sort(([a], [b]) => a.localeCompare(b, 'en-US'))
 );
 
 // Write files

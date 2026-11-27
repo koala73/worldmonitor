@@ -347,16 +347,20 @@ test('a single retained GDACS or EONET miss is pending; the second consecutive m
   }
 });
 
-test('a single retained miss stays pending until the next bundle run can publish', async () => {
-  // The climate bundle reruns Natural-Events once 0.8 x 3h = 144 min have
-  // passed, on its next */5 tick, and the section may run for its 180 s
-  // timeout: the next verdict lands up to 152 min after the miss.
-  const nextVerdictAt = NOW + HOUR + 152 * 60_000;
+test('a single retained miss stays pending until the next */30 run can publish', async () => {
+  // seed-natural-events is the sole producer, every 30 min. Railway starts it
+  // up to ~3 min late and a run takes well under a minute.
+  const RUN = 30 * 60_000;
+  const missAt = NOW + RUN;
   const first = await run();
-  const second = await run({ previousSources: first._sourceSnapshots, now: NOW + HOUR, failures: ['gdacs:FL'] });
+  const second = await run({ previousSources: first._sourceSnapshots, now: missAt, failures: ['gdacs:FL'] });
+  const nextVerdictAt = missAt + RUN + 4 * 60_000;
   const waiting = classify(second, nextVerdictAt);
   assert.equal(typeof waiting.sourceFailurePendingUntil, 'string');
   assert.equal(isIncident(waiting, nextVerdictAt), false);
+  // No verdict an hour after the miss means the producer stopped: alarm.
+  const silent = missAt + 61 * 60_000;
+  assert.equal(isIncident(classify(second, silent), silent), true);
 });
 
 test('a failed source with no retained records alarms on the first miss', async () => {

@@ -93,7 +93,7 @@ These panels visualise cross-domain correlation over a rolling window — useful
 |---|---|---|
 | `geo-hubs` | Geopolitical Hubs | Hotspot concentration map. |
 | `social-velocity` | Social Velocity | Reddit r/worldnews + r/geopolitics velocity; same feed as the MCP `get_social_velocity` tool. |
-| `population-exposure` | Population Exposure | Population within a buffer of active events. |
+| `population-exposure` | Population Exposure | Estimated residents within 50 km of precisely located ACLED and UCDP events in countries with density data. Each estimate uses the country's average population density. The panel shows individual estimates because circles can overlap. Events at the same location share one row with their event count. Each source lists up to 10 places. A footer counts the events shown and the events left out, by reason: no precise location, no density data for the country, or past the first 10 places. |
 | `satellite-fires` | Fires | FIRMS/VIIRS thermal detections on the map. See [Thermal Escalation](/panels/thermal-escalation) for the clustered + baseline-aware view. |
 | `ucdp-events` | UCDP Conflict Events | UCDP georeferenced conflict event dataset. |
 | `internet-disruptions` | Internet Disruptions | Cloudflare Radar outages + service status. |

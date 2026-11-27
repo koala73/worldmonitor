@@ -12,7 +12,7 @@ import {
   type OverlayCloseOrigin,
   type OverlayId,
 } from '@/utils/overlay-history';
-import { reconcileOverlayForTab } from '@/app/mobile-overlay-reconcile';
+import { overlayTab, reconcileOverlayForTab } from '@/app/mobile-overlay-reconcile';
 
 type MobilePrimaryNavCallbacks = {
   openSearch(options: { replaceOverlayId?: OverlayId; historyPending: true }): void;
@@ -31,6 +31,7 @@ export class MobilePrimaryNav {
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeHistory: (() => void) | null = null;
   private activeTab = 'today';
+  private mapFullscreen = false;
 
   constructor(
     private readonly ctx: AppContext,
@@ -41,9 +42,9 @@ export class MobilePrimaryNav {
     this.setupTabBar();
     this.setupMenu();
     this.unsubscribeHistory = overlayHistory.subscribe((top) => {
-      if (top === 'search' || top === 'search-pending') this.setActive('search');
-      else if (top === 'menu' || top === 'region' || top === 'settings' || top === 'settings-pending') this.setActive('more');
-      else if (!top && (this.activeTab === 'search' || this.activeTab === 'more')) this.setActive('today');
+      const tab = overlayTab(top);
+      if (tab) this.setActive(tab);
+      else if (!top && (this.activeTab === 'search' || this.activeTab === 'more')) this.setActive(this.restingTab());
     });
   }
 
@@ -65,6 +66,13 @@ export class MobilePrimaryNav {
     };
     renderPending(getAuthState().isPending);
     this.unsubscribeAuth = subscribeAuthState((state) => renderPending(state.isPending));
+  }
+
+  /** Follows map fullscreen however it was toggled (tab, map button or Escape). */
+  syncMapFullscreen(isFullscreen: boolean): void {
+    this.mapFullscreen = isFullscreen;
+    if (isFullscreen) this.setActive('map');
+    else if (this.activeTab === 'map') this.setActive('today');
   }
 
   updateThemeItem(): void {
@@ -298,7 +306,9 @@ export class MobilePrimaryNav {
       dismiss: (id) => overlayHistory.dismiss(id),
       settingsHasPendingChanges: () => this.ctx.unifiedSettings?.hasPendingChanges() ?? false,
       closeSettings: () => this.ctx.unifiedSettings?.close(),
-      setActive: (nextTab) => this.setActive(nextTab),
+      // Closing Search or More by re-tapping its tab lands on the screen still
+      // showing: Map while the map is fullscreen, otherwise Today.
+      setActive: (nextTab) => this.setActive(nextTab === 'today' ? this.restingTab() : nextTab),
     });
   }
 
@@ -313,6 +323,11 @@ export class MobilePrimaryNav {
     if (mapSection && !mapSection.classList.contains('collapsed')) {
       document.querySelector<HTMLButtonElement>('.map-collapse-btn')?.click();
     }
+  }
+
+  /** The tab for the screen left showing once an overlay closes. */
+  private restingTab(): 'map' | 'today' {
+    return this.mapFullscreen ? 'map' : 'today';
   }
 
   private setActive(tab: string): void {

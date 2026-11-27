@@ -66,6 +66,8 @@ const ALLOWED_REDIRECT_URIS = new Set([
   // MCPJam production hosts (https://www.mcpjam.com/.well-known/oauth/client-metadata.json)
   'https://app.mcpjam.com/oauth/callback',
   'https://score.mcpjam.com/oauth/callback',
+  // Manufact Cloud (https://manufact.com/oauth/client-metadata.json)
+  'https://manufact.com/inspector/oauth/callback',
 ]);
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -100,9 +102,10 @@ function isGoogleConnectedAppsRedirect(uri) {
     && GOOGLE_CONNECTED_APPS_PATH.test(u.pathname);
 }
 
-// Enforced at registration (api/oauth/register.js) and re-checked before a Pro
-// grant is minted (api/internal/mcp-grant-mint.ts), so tightening the list
-// also fails closed for clients registered under the old one.
+// Enforced at registration (api/oauth/register.js) and re-checked for
+// registered clients before any code is issued (api/oauth/authorize.js,
+// api/oauth/authorize-pro.ts, api/internal/mcp-grant-mint.ts), so tightening
+// the list also fails closed for clients registered under the old one.
 export function isAllowedRedirectUri(uri) {
   if (ALLOWED_REDIRECT_URIS.has(uri)) return true;
   if (isGoogleConnectedAppsRedirect(uri)) return true;
@@ -110,6 +113,8 @@ export function isAllowedRedirectUri(uri) {
   // Inspector; goose registers [::1]). WHATWG URL keeps the IPv6 brackets.
   try {
     const u = new URL(uri);
+    // RFC 6749 §3.1.2 forbids fragments. URL.hash is empty for a trailing '#'.
+    if (u.href.includes('#') || u.username || u.password) return false;
     return LOOPBACK_HOSTS.has(u.hostname) && u.protocol === 'http:';
   } catch { return false; }
 }

@@ -155,7 +155,7 @@ describe('pulse freshness thresholds', () => {
     );
     assert.ok(
       PULSE_SNAPSHOT_WARN_AGE_DAYS < MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
-      'the warning must land before the ceiling that fails the corpus build, or it warns about a broken build',
+      'the warning must land before the ceiling that blocks publishing, or it warns about a blocked deploy',
     );
   });
 

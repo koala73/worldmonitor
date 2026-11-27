@@ -15,6 +15,7 @@ const callSiteFiles = [
   'src/settings-main.ts',
   'src/components/RuntimeConfigPanel.ts',
   'src/App.ts', // followed-countries cap-drop toast upgrade action (#5911)
+  'src/app/search-alert-wiring.ts', // Cmd+K "Alerts sent to you" article link (#10920)
 ];
 
 describe('external navigation call-site contract (#6120)', () => {
@@ -61,6 +62,7 @@ describe('external navigation call-site contract (#6120)', () => {
       ['src/settings-main.ts', 0],
       ['src/components/RuntimeConfigPanel.ts', 0],
       ['src/App.ts', 0],
+      ['src/app/search-alert-wiring.ts', 1], //     non-desktop alert article link
     ]);
 
     const unaccounted = [];

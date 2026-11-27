@@ -409,6 +409,7 @@ components:
                     type: string
                 phone:
                     type: string
+                    description: 'Optional: an empty phone is accepted; a non-empty one must look like a phone number.'
                 message:
                     type: string
                 source:
@@ -423,7 +424,6 @@ components:
                 - email
                 - name
                 - organization
-                - phone
                 - turnstileToken
             description: SubmitContactRequest carries an enterprise contact form submission.
         SubmitContactResponse:

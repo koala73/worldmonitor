@@ -36,6 +36,7 @@ import { trackGateHit, track, type UmamiEvent } from '@/services/analytics';
 import { TRADE_ROUTES } from '@/config/trade-routes';
 import { buildLane } from '@/config/trade-route-lanes';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { copyText } from '@/utils/copy-text';
 
 
 const TAB_LABELS: Record<ExplorerTab, string> = { 1: 'Current', 2: 'Alternatives', 3: 'Land', 4: 'Impact' };
@@ -736,10 +737,9 @@ export class RouteExplorer {
     const url = new URL(window.location.href);
     const serialized = serializeExplorerUrl(this.state);
     if (serialized) url.searchParams.set('explorer', serialized);
-    if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(url.toString());
-      this.trackEvent('route-explorer:share-copied');
-    }
+    void copyText(url.toString()).then((copied) => {
+      if (copied) this.trackEvent('route-explorer:share-copied');
+    });
   }
 
   // ─── Analytics ─────────────────────────────────────────────────────────

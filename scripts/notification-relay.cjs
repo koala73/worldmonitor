@@ -1,10 +1,16 @@
 'use strict';
 
+const { createDeliveryReporter, deliveryErrorClass } = require('./lib/notification-delivery.cjs');
+const { createSentAlertLog } = require('./lib/sent-alert-history.cjs');
+const { execFile } = require('node:child_process');
 const { createHash, randomUUID } = require('node:crypto');
+const path = require('node:path');
 const { Resend } = require('resend');
-const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
+const { appendUnsubscribeText, injectUnsubscribeFooterHtml, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
+const { buildAlertEmailHtml, buildHeldAlertsEmailHtml, buildWelcomeEmailHtml } = require('./lib/notification-email-html.cjs');
 const { sendResendEmail } = require('./lib/resend-send.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
+const { freeTierAllowsEvent, freeTierAllowsEventType, freeTierAllowsChannel, freeTierCountryScope } = require('./lib/free-tier-delivery.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
   postJsonWithPinnedAddress,
@@ -25,7 +31,7 @@ const {
   allowedProvidersFor,
   createAiRoutingPolicyResolver,
 } = require('./lib/ai-routing-policy.cjs');
-const { corroborationFromItemCount, corroborationText } = require('./lib/corroboration-text.cjs');
+const { countRecordedPublisherFamilies, corroborationFromItemCount, corroborationText } = require('./lib/corroboration-text.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 const ISO2_TO_REGION = require('./shared/iso2-to-region.json');
@@ -36,6 +42,9 @@ const {
   releaseFailOpenFallback,
 } = require('./shared/notification-dedup.cjs');
 const { COMPARE_AND_DELETE_SCRIPT } = require('./shared/compare-and-delete-script.cjs');
+const { ORBITAL_SITE_EVENT_TYPES } = require('./lib/orbital-site-alerts.cjs');
+const { RESERVOIR_ALERT_EVENT_TYPE, reservoirAlertDecision } = require('./lib/reservoir-level-alerts.cjs');
+const { TIER_GLOBAL, TIER_LOCAL, TIER_OPT_IN, NEWS_LOCAL_IMPORTANCE_SCORE, resolveDeliveryTier } = require('./lib/notification-delivery-tiers.cjs');
 const {
   parseSuppressionEntries,
   isLinkSuppressed,
@@ -52,6 +61,7 @@ const {
   sanitizeUserNotificationDescription,
   sanitizeUserNotificationLinkUrl,
   sanitizeUserNotificationSource,
+  withAlertReferrer,
 } = require('./shared/notify-fields.cjs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -347,6 +357,12 @@ async function deactivateChannel(userId, channelType) {
   }
 }
 
+// ── Delivery results ──────────────────────────────────────────────────────
+
+const { recordDelivery, withDeliveryReports } = createDeliveryReporter({ siteUrl: CONVEX_SITE_URL, secret: RELAY_SECRET, source: 'relay' });
+// Per-user record of delivered alerts, read by the dashboard search (ListSentAlerts).
+const { noteSentAlert, withSentAlertLog } = createSentAlertLog({ upstashUrl: UPSTASH_URL, upstashToken: UPSTASH_TOKEN });
+
 // ── Entitlement check (PRO gate for delivery) ───────────────────────────────
 
 const ENTITLEMENT_CACHE_TTL = 900; // 15 min — success-path cache
@@ -382,11 +398,21 @@ const ENTITLEMENT_FAILCLOSED_CACHE_TTL = 60;
  * legitimate PRO users for up to 60s after each cache miss. Pair with
  * monitoring on `[relay][entitlement-fail-closed]` log lines.
  */
-async function isUserPro(userId) {
+// Never throws: a failed cache write inside getUserTier's try would take the
+// fail-closed path and clamp a paying user to free tier.
+async function cacheUserTier(cacheKey, tier, ttlSeconds) {
+  await upstashRest('SET', cacheKey, String(tier), 'EX', String(ttlSeconds)).catch(() => null);
+}
+
+async function getUserTier(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
   try {
     const cached = await upstashRest('GET', cacheKey);
-    if (cached !== null) return Number(cached) >= 1;
+    // A non-numeric cached value is a miss, never a tier: NaN would slip
+    // through the free-ladder rungs inconsistently (tier >= 1 and tier < 1
+    // are both false), skipping the free country-scope drop.
+    const cachedTier = Number(cached);
+    if (cached !== null && Number.isFinite(cachedTier)) return cachedTier;
   } catch { /* miss */ }
   try {
     const res = await fetch(`${CONVEX_SITE_URL}/relay/entitlement`, {
@@ -401,19 +427,19 @@ async function isUserPro(userId) {
       // Cache "0" with short TTL so subsequent events for this user during
       // the same outage skip the 5-sec fetch. Logged with stable prefix
       // for alerting on volume.
-      console.error(`[relay][entitlement-fail-closed] HTTP ${res.status} for ${userId}; dropping delivery`);
-      try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
-      return false;
+      console.error(`[relay][entitlement-fail-closed] HTTP ${res.status} for ${userId}; clamping to free-tier delivery`);
+      await cacheUserTier(cacheKey, 0, ENTITLEMENT_FAILCLOSED_CACHE_TTL);
+      return 0;
     }
     const { tier } = await res.json();
-    await upstashRest('SET', cacheKey, String(tier ?? 0), 'EX', String(ENTITLEMENT_CACHE_TTL));
-    return (tier ?? 0) >= 1;
+    await cacheUserTier(cacheKey, tier ?? 0, ENTITLEMENT_CACHE_TTL);
+    return tier ?? 0;
   } catch (err) {
     // Same fail-CLOSED policy on transport error / timeout. Same short-TTL
     // cache write so we don't re-attempt the 5-sec fetch for every event.
-    console.error(`[relay][entitlement-fail-closed] error for ${userId}: ${err && err.message ? err.message : err}; dropping delivery`);
-    try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
-    return false;
+    console.error(`[relay][entitlement-fail-closed] error for ${userId}: ${err && err.message ? err.message : err}; clamping to free-tier delivery`);
+    await cacheUserTier(cacheKey, 0, ENTITLEMENT_FAILCLOSED_CACHE_TTL);
+    return 0;
   }
 }
 
@@ -440,11 +466,13 @@ const QUIET_HELD_TTL = 86400; // 24h — held events expire if never drained
 // The newest events win; a batch message never lists more than this anyway.
 const QUIET_HELD_MAX = 100;
 
+// False when Upstash refused the push, so nothing was held.
 async function holdEvent(userId, variant, eventJson) {
   const key = `digest:quiet-held:${userId}:${variant}`;
-  await upstashRest('RPUSH', key, eventJson);
+  if ((await upstashRest('RPUSH', key, eventJson)) === null) return false;
   await upstashRest('LTRIM', key, String(-QUIET_HELD_MAX), '-1');
   await upstashRest('EXPIRE', key, String(QUIET_HELD_TTL));
+  return true;
 }
 
 /**
@@ -461,10 +489,129 @@ function formatHeldAlertLines(events) {
   });
 }
 
+// Message limits of the text channels. Telegram refuses a sendMessage over 4096 characters (the whole
+// message is rejected). Discord content is capped at 2000 after escaping. Slack accepts far more, but
+// its own guidance is 4000 characters; 3900 leaves room for the escaping.
+const TELEGRAM_MAX_TEXT = 4096;
+const SLACK_MAX_TEXT = 3900;
+const TEAMS_HELD_LINES_PER_CARD_GROUP = 15;
+
+function chunkArray(items, size) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Packs held alert lines into message parts that each fit `limit` after the channel's escaping
+ * (`measure`). Every line stays whole inside one part; a line too long for any part is shortened with
+ * an ellipsis rather than dropped. More than one part gets a "(part i of m)" label, and the last part
+ * ends with the dashboard link. Returns [{ text, count }], `count` being the alerts in that part.
+ */
+function buildHeldTextParts(heldLines, { limit, measure }) {
+  const total = heldLines.length;
+  const first = (suffix) => `WorldMonitor — ${total} held alert${total !== 1 ? 's' : ''} from quiet hours${suffix}`;
+  const later = (suffix) => `WorldMonitor — held alerts from quiet hours${suffix}`;
+  const footer = '\n\nView full dashboard → worldmonitor.app';
+  const widest = ` (part ${total} of ${total})`;
+  const overhead = Math.max(measure(first(widest)), measure(later(widest))) + measure('\n\n') + measure(footer);
+  const room = Math.max(1, limit - overhead - 1);
+  const fit = (line) => {
+    if (measure(line) <= room) return line;
+    let cut = line.length;
+    while (cut > 1 && measure(`${line.slice(0, cut)}…`) > room) cut -= 1;
+    return `${line.slice(0, cut)}…`;
+  };
+  const groups = [];
+  let current = [];
+  let used = 0;
+  for (const raw of heldLines) {
+    const line = fit(raw);
+    const cost = measure(line) + 1;
+    if (current.length > 0 && used + cost > room) { groups.push(current); current = []; used = 0; }
+    current.push(line);
+    used += cost;
+  }
+  if (current.length > 0 || groups.length === 0) groups.push(current);
+  return groups.map((group, i) => {
+    const suffix = groups.length > 1 ? ` (part ${i + 1} of ${groups.length})` : '';
+    const head = i === 0 ? first(suffix) : later(suffix);
+    return { text: `${head}\n\n${group.join('\n')}${i === groups.length - 1 ? footer : ''}`, count: group.length };
+  });
+}
+
+// Removes the items this drain read, each by its own value (LREM, count 1), and leaves the rest. DEL
+// would also discard an alert held while the sends were in flight, and a position-based trim shifts
+// when a hold at QUIET_HELD_MAX drops the head. The commands go through /pipeline in bounded chunks.
+// Upstash /pipeline is not transactional, so nothing here relies on atomicity: every command's own
+// result is read, an item that is already gone is simply not removed, and only failed ones are retried.
+const HELD_REMOVE_CHUNK = 50;
+
+async function lremPipeline(key, rawItems) {
+  // One outcome per item: 'removed', 'already-gone', 'failed-non-ok' or 'failed-timed-out'.
+  let res;
+  try {
+    res = await fetch(`${UPSTASH_URL}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+      body: JSON.stringify(rawItems.map((raw) => ['LREM', key, '1', raw])),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    // The request itself rejected (timeout or network), which is not the same as a refusal.
+    return rawItems.map(() => 'failed-timed-out');
+  }
+  if (!res.ok) return rawItems.map(() => 'failed-non-ok');
+  let results;
+  try {
+    results = await res.json();
+  } catch (err) {
+    // Reading the body can hit the same timeout; only a body that parsed badly is a refusal.
+    if (!(err instanceof SyntaxError)) return rawItems.map(() => 'failed-timed-out');
+    results = null;
+  }
+  if (!Array.isArray(results) || results.length !== rawItems.length) return rawItems.map(() => 'failed-non-ok');
+  return results.map((entry) => {
+    const removed = entry && typeof entry === 'object' && !entry.error ? entry.result : null;
+    if (typeof removed !== 'number') return 'failed-non-ok';
+    return removed > 0 ? 'removed' : 'already-gone';
+  });
+}
+
+async function removeHeldItems(key, rawItems) {
+  const result = { removed: 0, alreadyGone: 0, failedNonOk: 0, failedTimedOut: 0 };
+  for (let start = 0; start < rawItems.length; start += HELD_REMOVE_CHUNK) {
+    let pending = rawItems.slice(start, start + HELD_REMOVE_CHUNK);
+    let outcomes = [];
+    // One retry, of the failed commands only: a failed removal means a delivered alert stays held and is sent again.
+    for (let attempt = 0; attempt < 2 && pending.length > 0; attempt += 1) {
+      outcomes = await lremPipeline(key, pending);
+      const retry = [];
+      outcomes.forEach((outcome, i) => {
+        if (outcome === 'removed') result.removed += 1;
+        else if (outcome === 'already-gone') result.alreadyGone += 1;
+        else retry.push(i);
+      });
+      outcomes = retry.map((i) => outcomes[i]);
+      pending = retry.map((i) => pending[i]);
+    }
+    for (const outcome of outcomes) {
+      if (outcome === 'failed-timed-out') result.failedTimedOut += 1;
+      else result.failedNonOk += 1;
+    }
+  }
+  const failed = result.failedNonOk + result.failedTimedOut;
+  if (failed > 0) {
+    console.warn(`[relay] drainHeldForUser: could not remove ${failed} delivered held alert${failed === 1 ? '' : 's'} (${result.failedNonOk} non-OK, ${result.failedTimedOut} timed out); they may be sent again`);
+  }
+  return { ...result, failed };
+}
+
 // Delivers (or discards) the held queue for a single user+variant.
 // Used by both drainBatchOnWake (wake-up) and processFlushQuietHeld (settings change).
 // allowedChannelTypes: which channels to attempt delivery on; null = use rule's channels.
-async function drainHeldForUser(userId, variant, allowedChannelTypes) {
+// ruleCountries: the holding rule's country scope, re-clamped at drain time for free tiers.
+async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountries) {
   const key = `digest:quiet-held:${userId}:${variant}`;
   const len = await upstashRest('LLEN', key);
   if (!len || len === 0) return;
@@ -472,15 +619,47 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   const items = await upstashRest('LRANGE', key, String(-QUIET_HELD_MAX), '-1');
   if (!Array.isArray(items) || items.length === 0) return;
 
-  const parsedEvents = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
+  const parsedEvents = [];
+  const itemIndex = new Map(); // parsed event -> its position in `items`
+  items.forEach((raw, index) => {
+    try {
+      const ev = JSON.parse(raw);
+      if (ev) { parsedEvents.push(ev); itemIndex.set(ev, index); }
+    } catch { /* an unreadable held item is skipped */ }
+  });
+  // #4273: held entries were severity/scope-clamped at HOLD time, against the
+  // tier the account had then. An account that downgrades while events sit in
+  // the queue must not receive past-the-ladder alerts at drain time, so the
+  // severity and country rungs are re-applied per entry here against the tier
+  // the account has NOW (Strix review 4); the channel rung is applied below.
+  // Paid tiers pass through unchanged.
+  const drainTier = (await getUserTier(userId)) ?? 0;
+  const drainScope = freeTierCountryScope(drainTier, ruleCountries);
   // Re-check the operator set: a link blocked while the event sat in the
   // queue must not go out in the batch (#8401).
   const events = [];
+  // Raw items the tier clamp refused stay HELD rather than removed:
+  // getUserTier fails CLOSED to 0, so a transient entitlement outage must
+  // not erase a paid account's held batch — the entries wait for a later
+  // drain once the tier resolves (Greptile review 3). On a genuinely
+  // downgraded account they are never delivered and the key's TTL retires
+  // them. Suppressed-link and unreadable entries are still removed below.
+  const clampHeld = new Set();
   for (const ev of parsedEvents) {
+    const pastLadder = !freeTierAllowsEvent(drainTier, ev.severity ?? 'high')
+      || !freeTierAllowsEventType(drainTier, ev.eventType)
+      || (drainTier < 1 && (!drainScope.ok || !eventMatchesDeliveryScope(ev, { countries: drainScope.countries })));
+    if (pastLadder) { clampHeld.add(items[itemIndex.get(ev)]); continue; }
     if ((await suppressedLinksFor(ev, 1, 'stage=quiet-hours-drain')).length === 0) events.push(ev);
   }
-  if (events.length === 0) { await upstashRest('DEL', key); return; }
+  // What a successful drain may remove: everything except clamp-held entries.
+  const removable = items.filter((raw) => !clampHeld.has(raw));
+  if (events.length === 0) {
+    if (removable.length > 0) await removeHeldItems(key, removable);
+    return;
+  }
 
+  await refreshAlertCoverage(events);
   const heldLines = formatHeldAlertLines(events);
   const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, '', ...heldLines];
   lines.push('', 'View full dashboard → worldmonitor.app');
@@ -492,7 +671,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, deliveryChannels: allowedChannelTypes ?? ['webhook', 'slack', 'discord', 'teams', 'web_push'] }),
       signal: AbortSignal.timeout(10000),
     });
     if (chRes.ok) channels = await chRes.json();
@@ -501,32 +680,69 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     return;
   }
 
+  // #4273: the held-queue flush delivers like the realtime path — the
+  // severity and country rungs are re-applied per held entry above, and the
+  // same free-ladder channel clamp here.
   const verifiedChannels = channels.filter(c =>
     c.verified &&
+    freeTierAllowsChannel(drainTier, c.channelType) &&
     (c.channelType !== 'email' || c.emailOwnership === 'verified_account') &&
     (c.channelType !== 'telegram' || c.telegramOwnership === 'verified_callback') &&
     (allowedChannelTypes == null || allowedChannelTypes.includes(c.channelType)),
   );
+  // Text channels refuse a message over their own limit, and a long batch (a reservoir sweep alone can
+  // hold dozens of alerts) goes out as numbered parts that each keep every alert whole. `delivered`
+  // counts the alerts of the parts that went out, so a failed later part leaves only the unsent alerts
+  // held and a retry never repeats a part that already arrived.
+  const textLimits = {
+    telegram: { limit: TELEGRAM_MAX_TEXT, measure: (t) => t.length },
+    slack: { limit: SLACK_MAX_TEXT, measure: (t) => escapeSlackText(t).length },
+    discord: { limit: DISCORD_MAX_CONTENT, measure: (t) => escapeDiscordText(t).length },
+  };
+  const sendTextPart = (ch, part) => {
+    if (ch.channelType === 'telegram' && ch.chatId) return sendTelegram(userId, ch.chatId, part);
+    if (ch.channelType === 'slack' && ch.webhookEnvelope) return sendSlack(userId, ch.webhookEnvelope, part, ch);
+    if (ch.channelType === 'discord' && ch.webhookEnvelope) return sendDiscord(userId, ch.webhookEnvelope, part, 0, ch);
+    return false;
+  };
   let anyDelivered = false;
+  let mostDelivered = 0;
+  // Per channel, how many of the batch's alerts it delivered, counted from the first.
+  const deliveredByChannel = [];
   for (const ch of verifiedChannels) {
+    // Declared outside the try: a request that rejects after earlier parts went out must still count them.
+    let ok = false;
+    let delivered = 0;
     try {
-      let ok = false;
-      if (ch.channelType === 'telegram' && ch.chatId) ok = await sendTelegram(userId, ch.chatId, text);
-      else if (ch.channelType === 'slack' && ch.webhookEnvelope) ok = await sendSlack(userId, ch.webhookEnvelope, text);
-      else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(userId, ch.webhookEnvelope, text);
-      else if (ch.channelType === 'teams' && ch.webhookEnvelope) ok = await sendTeamsCards(userId, ch.webhookEnvelope, buildTeamsNoticePayloads({
-        title: lines[0],
-        lines: heldLines,
-        link: NOTIFY_DASHBOARD_URL,
-        linkTitle: 'Open dashboard',
-      }));
+      if (textLimits[ch.channelType]) {
+        const parts = buildHeldTextParts(heldLines, textLimits[ch.channelType]);
+        // `ok` is set only after the loop: a part whose request rejects must leave it false.
+        let allSent = true;
+        for (const part of parts) {
+          if (!(await sendTextPart(ch, part.text))) { allSent = false; break; }
+          delivered += part.count;
+        }
+        ok = allSent;
+      }
+      else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
+        const groups = chunkArray(heldLines, TEAMS_HELD_LINES_PER_CARD_GROUP);
+        let allSent = true;
+        for (let i = 0; i < groups.length; i += 1) {
+          const title = groups.length > 1 ? `${lines[0]} (part ${i + 1} of ${groups.length})` : lines[0];
+          const payloads = buildTeamsNoticePayloads({ title, lines: groups[i], link: NOTIFY_DASHBOARD_URL, linkTitle: 'Open dashboard' });
+          if (!(await sendTeamsCards(userId, ch.webhookEnvelope, payloads, ch))) { allSent = false; break; }
+          delivered += groups[i].length;
+        }
+        ok = allSent;
+      }
       else if (ch.channelType === 'email' && ch.email) {
         // Key the exact email Resend receives: a drain that filters out a
         // newly blocked link changes `text`, and reusing the key with a
         // different payload would be rejected as an idempotency conflict.
         const unsubscribeUrl = unsubscribeUrlFor(ch, 'alerts');
-        const batchKey = createHash('sha256').update(JSON.stringify([userId, variant, ch.email, subject, text, unsubscribeUrl])).digest('hex');
-        ok = await sendEmail(ch.email, subject, text, unsubscribeUrl, `quiet-held-${batchKey}`);
+        const html = buildHeldAlertsEmailHtml(heldEmailItems(events));
+        const batchKey = createHash('sha256').update(JSON.stringify([userId, variant, ch.email, subject, text, html, unsubscribeUrl])).digest('hex');
+        ok = await sendEmail(ch.email, subject, text, unsubscribeUrl, `quiet-held-${batchKey}`, html);
       }
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
         eventType: 'quiet_hours_batch',
@@ -547,7 +763,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
             ...(eventCorroboration(ev) ? { corroboration: eventCorroboration(ev) } : {}),
           })),
         },
-      }, ch.webhookSecret);
+      }, ch.webhookSecret, ch);
       else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
         ok = await sendWebPush(userId, ch, {
           title: `WorldMonitor · ${events.length} held alert${events.length === 1 ? '' : 's'}`,
@@ -557,14 +773,33 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
           eventType: 'quiet_hours_batch',
         });
       }
-      if (ok) anyDelivered = true;
     } catch (err) {
       console.warn(`[relay] drainHeldForUser: delivery error for ${userId}/${ch.channelType}:`, err.message);
     }
+    if (ok) anyDelivered = true;
+    else mostDelivered = Math.max(mostDelivered, delivered);
+    deliveredByChannel.push([ch.channelType, ok ? events.length : delivered]);
   }
   if (anyDelivered) {
-    await upstashRest('DEL', key);
-    console.log(`[relay] drainHeldForUser: delivered ${events.length} held events to ${userId} (${variant})`);
+    const cleared = await removeHeldItems(key, removable);
+    console.log(`[relay] drainHeldForUser: delivered ${events.length} held events to ${userId} (${variant})${cleared.failed > 0 ? `; ${cleared.failed} not removed` : ''}`);
+  } else if (mostDelivered > 0) {
+    // No channel took the whole batch, but some alerts already arrived: keep only the rest, so the
+    // next drain does not send them again.
+    const remaining = events.length - mostDelivered;
+    // Remove each delivered alert by its own value (LREM, count 1), not by a position taken before the
+    // sends: a hold that arrives at QUIET_HELD_MAX meanwhile drops the oldest entry from the head and
+    // shifts every index. Upstash /pipeline is not transactional, so nothing here relies on atomicity;
+    // an entry that is already gone is simply not removed.
+    const cleared = await removeHeldItems(key, events.slice(0, mostDelivered).map((ev) => items[itemIndex.get(ev)]));
+    console.log(`[relay] drainHeldForUser: delivered ${mostDelivered} of ${events.length} held events to ${userId} (${variant}); ${remaining} stay held${cleared.failed > 0 ? `, ${cleared.failed} delivered but not removed` : ''}`);
+  }
+  // Recorded after the held queue is updated: the alerts removed above are the ones that arrived.
+  // Each alert lists only the channels whose delivered parts reached it.
+  const arrived = anyDelivered ? events : events.slice(0, mostDelivered);
+  for (const [index, ev] of arrived.entries()) {
+    const channels = deliveredByChannel.filter(([, count]) => count > index).map(([channelType]) => channelType);
+    await noteSentAlertForEvent(userId, ev, channels);
   }
 }
 
@@ -572,6 +807,10 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
 // whose quiet hours have ended. Self-contained — fetches its own rules.
 // No-op when QUIET_HOURS_BATCH_ENABLED=0 — held events will expire via TTL.
 async function drainBatchOnWake() {
+  return withDeliveryReports(() => withSentAlertLog(drainBatchOnWakeDelivery));
+}
+
+async function drainBatchOnWakeDelivery() {
   if (!QUIET_HOURS_BATCH_ENABLED) return;
   let allRules;
   try {
@@ -585,7 +824,7 @@ async function drainBatchOnWake() {
     r.quietHoursEnabled && r.quietHoursOverride === 'batch_on_wake' && !isInQuietHours(r),
   );
   for (const rule of batchRules) {
-    await drainHeldForUser(rule.userId, rule.variant ?? 'full', rule.channels ?? null);
+    await drainHeldForUser(rule.userId, rule.variant ?? 'full', rule.channels ?? null, rule.countries ?? null);
   }
 }
 
@@ -599,6 +838,7 @@ async function processFlushQuietHeld(event) {
   // getByEnabled is an internalQuery (GHSA-r649-4cqj-w93h), unreachable via
   // ConvexHttpClient.
   let allowedChannels = null;
+  let ruleCountries = null;
   try {
     const allRules = await fetchEnabledRules(true);
     const rule = Array.isArray(allRules)
@@ -606,6 +846,7 @@ async function processFlushQuietHeld(event) {
       : null;
     if (rule && Array.isArray(rule.channels) && rule.channels.length > 0) {
       allowedChannels = rule.channels;
+      ruleCountries = Array.isArray(rule.countries) ? rule.countries : null;
     }
   } catch (err) {
     // If the lookup fails, deliver nothing rather than fan out to wrong channels.
@@ -617,7 +858,7 @@ async function processFlushQuietHeld(event) {
     console.log(`[relay] flush_quiet_held: no active rule with channels for ${userId} (${variant}) — held alerts preserved`);
     return;
   }
-  await drainHeldForUser(userId, variant, allowedChannels);
+  await drainHeldForUser(userId, variant, allowedChannels, ruleCountries);
 }
 
 // ── Delivery: Telegram ────────────────────────────────────────────────────────
@@ -670,25 +911,22 @@ async function sendTelegram(userId, chatId, text, _retryCount = 0) {
 const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
 const DISCORD_RE = /^https:\/\/discord\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+\/?$/;
 
-async function sendSlack(userId, webhookEnvelope, text) {
+async function sendSlack(userId, webhookEnvelope, text, channel) {
   let webhookUrl;
   try {
     webhookUrl = decrypt(webhookEnvelope);
   } catch (err) {
-    console.warn(`[relay] Slack decrypt failed for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'slack', channel, 'Decrypt failed');
   }
   if (!SLACK_RE.test(webhookUrl)) {
-    console.warn(`[relay] Slack URL invalid for ${userId}`);
-    return false;
+    return recordDelivery(userId, 'slack', channel, 'URL rejected');
   }
   let safeUrl;
   let resolvedAddresses;
   try {
     ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
   } catch (err) {
-    console.warn(`[relay] Slack URL rejected for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'slack', channel, deliveryErrorClass(err, 'URL rejected'));
   }
   let res;
   try {
@@ -699,18 +937,9 @@ async function sendSlack(userId, webhookEnvelope, text) {
       resolvedAddresses,
     );
   } catch (err) {
-    console.warn(`[relay] Slack send error for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'slack', channel, deliveryErrorClass(err));
   }
-  if (res.status === 404 || res.status === 410) {
-    console.warn(`[relay] Slack webhook gone for ${userId} — deactivating`);
-    await deactivateChannel(userId, 'slack');
-    return false;
-  } else if (!res.ok) {
-    console.warn(`[relay] Slack send failed: ${res.status}`);
-    return false;
-  }
-  return true;
+  return recordDelivery(userId, 'slack', channel, res.ok ? null : `HTTP ${res.status}`);
 }
 
 // ── Delivery: Discord ─────────────────────────────────────────────────────────
@@ -755,25 +984,22 @@ function buildDiscordMessagePayload(text) {
   return { content, allowed_mentions: { parse: [] }, flags: DISCORD_SUPPRESS_EMBEDS };
 }
 
-async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
+async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0, channel) {
   let webhookUrl;
   try {
     webhookUrl = decrypt(webhookEnvelope);
   } catch (err) {
-    console.warn(`[relay] Discord decrypt failed for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'discord', channel, 'Decrypt failed');
   }
   if (!DISCORD_RE.test(webhookUrl)) {
-    console.warn(`[relay] Discord URL invalid for ${userId}`);
-    return false;
+    return recordDelivery(userId, 'discord', channel, 'URL rejected');
   }
   let safeUrl;
   let resolvedAddresses;
   try {
     ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
   } catch (err) {
-    console.warn(`[relay] Discord URL rejected for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'discord', channel, deliveryErrorClass(err, 'URL rejected'));
   }
   let res;
   try {
@@ -784,52 +1010,32 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
       resolvedAddresses,
     );
   } catch (err) {
-    console.warn(`[relay] Discord send error for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'discord', channel, deliveryErrorClass(err));
   }
-  if (res.status === 404 || res.status === 410) {
-    console.warn(`[relay] Discord webhook gone for ${userId} — deactivating`);
-    await deactivateChannel(userId, 'discord');
-    return false;
-  } else if (res.status === 429) {
+  if (res.status === 429) {
     if (retryCount >= 1) {
-      console.warn(`[relay] Discord 429 retry limit reached for ${userId}`);
-      return false;
+      return recordDelivery(userId, 'discord', channel, 'HTTP 429');
     }
     const body = await res.json().catch(() => ({}));
     const wait = ((body.retry_after ?? 1) + 0.5) * 1000;
     await new Promise(r => setTimeout(r, wait));
-    return sendDiscord(userId, webhookEnvelope, text, retryCount + 1);
-  } else if (!res.ok) {
-    console.warn(`[relay] Discord send failed: ${res.status}`);
-    return false;
+    return sendDiscord(userId, webhookEnvelope, text, retryCount + 1, channel);
   }
-  console.log(`[relay] Discord delivered to ${userId}`);
-  return true;
+  return recordDelivery(userId, 'discord', channel, res.ok ? null : `HTTP ${res.status}`);
 }
 
 // ── Delivery: Microsoft Teams ─────────────────────────────────────────────────
 
-async function sendTeams(userId, webhookEnvelope, payload) {
+async function sendTeams(userId, webhookEnvelope, payload, channel) {
   let webhookUrl;
   try {
     webhookUrl = decrypt(webhookEnvelope);
   } catch (err) {
-    console.warn(`[relay] Teams decrypt failed for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'teams', channel, 'Decrypt failed');
   }
   const result = await sendTeamsPayload(webhookUrl, payload, { userAgent: 'worldmonitor-relay/1.0' });
-  if (result.gone) {
-    console.warn(`[relay] Teams workflow gone (${result.status}) for ${userId} — deactivating`);
-    await deactivateChannel(userId, 'teams');
-    return false;
-  }
-  if (!result.ok) {
-    console.warn(`[relay] Teams send failed for ${userId}: ${result.error}`);
-    return false;
-  }
-  console.log(`[relay] Teams delivered to ${userId}`);
-  return true;
+  return recordDelivery(userId, 'teams', channel, result.ok ? null
+    : result.status ? `HTTP ${result.status}` : deliveryErrorClass(result.error, 'URL rejected'));
 }
 
 /**
@@ -837,50 +1043,77 @@ async function sendTeams(userId, webhookEnvelope, payload) {
  * them are: a partly delivered quiet-hours batch keeps its held queue, so a
  * retry may repeat earlier cards but never drops an alert.
  */
-async function sendTeamsCards(userId, webhookEnvelope, payloads) {
+async function sendTeamsCards(userId, webhookEnvelope, payloads, channel) {
   for (const payload of payloads) {
-    if (!(await sendTeams(userId, webhookEnvelope, payload))) return false;
+    if (!(await sendTeams(userId, webhookEnvelope, payload, channel))) return false;
   }
   return payloads.length > 0;
 }
 
 /** Adaptive Card for a realtime event, shaped by the same field helpers as the text sinks. */
 function buildTeamsAlertForEvent(event, impact) {
+  return buildTeamsAlertPayload(alertFieldsForEvent(event, impact, 'teams'));
+}
+
+/** Email body for a realtime event: the same shaped fields as the Teams card. */
+function buildAlertEmailForEvent(event, impact) {
+  return buildAlertEmailHtml(alertFieldsForEvent(event, impact, 'email'));
+}
+
+/** Held alerts for the quiet-hours email, shaped like the held text lines. */
+function heldEmailItems(events) {
+  return events.map((ev) => ({
+    title: formatEventTitle(ev),
+    severity: ev.severity ?? 'high',
+    coverage: formatEventCoverage(ev),
+    link: eventLinkFor(ev, 'email'),
+  }));
+}
+
+/** The shaped fields every rich sink (Teams card, email) lays out for a realtime event. */
+function alertFieldsForEvent(event, impact, channel) {
   const rawCountry = event.payload?.countryCode ?? event.payload?.country ?? event.country;
-  return buildTeamsAlertPayload({
+  return {
     title: formatEventTitle(event),
     severity: event.severity ?? 'high',
     countryCode: typeof rawCountry === 'string' && rawCountry.trim() ? normalizeEventCountryCode(rawCountry) : null,
     source: formatEventSource(event),
     coverage: corroborationText(eventCorroboration(event)),
     description: NOTIFY_RELAY_INCLUDE_SNIPPET ? truncateForDisplay(formatEventDescription(event), SNIPPET_TELEGRAM_MAX) : '',
-    link: event.payload?.link ?? event.payload?.url,
+    link: eventLinkFor(event, channel),
     eventType: sanitizeNotificationTitle(event.eventType),
     impact,
-  });
+  };
 }
 
 // ── Delivery: Email ───────────────────────────────────────────────────────────
 
-async function sendEmail(email, subject, text, unsubscribeUrl, idempotencyKey) {
+/**
+ * `html` is the designed body (scripts/lib/notification-email-html.cjs);
+ * `text` stays as the plain-text part. The footer of the HTML always gets a
+ * visible unsubscribe link, or a Settings link when there is no one-click URL.
+ */
+async function sendEmail(email, subject, text, unsubscribeUrl, idempotencyKey, html) {
   const payload = { from: RESEND_FROM, to: email, subject, text };
   if (unsubscribeUrl !== undefined) {
     payload.text = appendUnsubscribeText(text, unsubscribeUrl, 'Unsubscribe from alert emails');
     payload.headers = listUnsubscribeHeaders(unsubscribeUrl);
   }
+  if (typeof html === 'string' && html) {
+    payload.html = injectUnsubscribeFooterHtml(html, unsubscribeUrl, 'Unsubscribe from alert emails');
+  }
   const result = await sendResendEmail(resend, payload, { logPrefix: '[relay]', idempotencyKey });
   return result.ok;
 }
 
-async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope) {
+async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope, channel) {
   let url;
   let signingSecret;
   try {
     url = decrypt(webhookEnvelope);
     signingSecret = resolveWebhookSigningSecret(decrypt, webhookSecretEnvelope);
   } catch (err) {
-    console.warn(`[relay] Webhook decrypt failed for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'webhook', channel, 'Decrypt failed');
   }
 
   let safeUrl;
@@ -888,8 +1121,7 @@ async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope
   try {
     ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(url));
   } catch (err) {
-    console.warn(`[relay] Webhook URL rejected for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'webhook', channel, deliveryErrorClass(err, 'URL rejected'));
   }
 
   // Envelope version stays at '1'. Payload gained optional `corroborationCount`
@@ -918,19 +1150,9 @@ async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope
       },
       resolvedAddresses,
     );
-    if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
-      console.warn(`[relay] Webhook ${resp.status} for ${userId} — deactivating`);
-      await deactivateChannel(userId, 'webhook');
-      return false;
-    }
-    if (!resp.ok) {
-      console.warn(`[relay] Webhook delivery failed for ${userId}: HTTP ${resp.status}`);
-      return false;
-    }
-    return true;
+    return recordDelivery(userId, 'webhook', channel, resp.ok ? null : `HTTP ${resp.status}`);
   } catch (err) {
-    console.warn(`[relay] Webhook delivery error for ${userId}:`, err.message);
-    return false;
+    return recordDelivery(userId, 'webhook', channel, deliveryErrorClass(err));
   }
 }
 
@@ -1123,16 +1345,10 @@ async function sendWebPush(userId, subscription, payload) {
       body,
       { TTL: ttlSec },
     );
-    return true;
+    return recordDelivery(userId, 'web_push', subscription);
   } catch (err) {
-    const code = err?.statusCode;
-    if (code === 404 || code === 410) {
-      console.warn(`[relay] web_push ${code} for ${userId} — deactivating`);
-      await deactivateChannel(userId, 'web_push');
-      return false;
-    }
-    console.warn(`[relay] web_push delivery error for ${userId}:`, err?.message ?? String(err));
-    return false;
+    return recordDelivery(userId, 'web_push', subscription,
+      err?.statusCode ? `HTTP ${err.statusCode}` : deliveryErrorClass(err));
   }
 }
 
@@ -1162,6 +1378,10 @@ function normalizeEventCountryCode(raw) {
 //    by country — an explicit per-rule opt-in that country scope must not veto.
 //  - chokepoint_disruption: same reasoning, scoped by chokepoint
 //    (eventMatchesChokepointScope) and opt-in only (#9217).
+//  - orbital_imaging_window, orbital_site_change: scoped by watched site
+//    (eventMatchesOrbitalSiteScope) and opt-in only.
+//  - reservoir_level_alert: scoped by the rule's own reservoir list and
+//    threshold (eventMatchesReservoirScope) and opt-in only.
 const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
   'rss_alert',
   'keyword_spike',
@@ -1169,6 +1389,8 @@ const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
   'military_surge',
   'watchlist_story_alert',
   'chokepoint_disruption',
+  ...ORBITAL_SITE_EVENT_TYPES,
+  RESERVOIR_ALERT_EVENT_TYPE,
 ]);
 
 function isPermissiveUnattributedEvent(event) {
@@ -1265,6 +1487,36 @@ function eventMatchesCountryScope(event, rule) {
   return rule.countries.includes(normalized);
 }
 
+/**
+ * Whether a rule's scope admits the event under its delivery tier (#10873,
+ * scripts/lib/notification-delivery-tiers.cjs):
+ *
+ *  - global: every rule, scoped or not, so a scoped rule now also receives a
+ *    market-wide crash or global shipping stress it used to drop as
+ *    unattributed.
+ *  - opt_in: country scope does not apply; the type's own scope gates
+ *    (tickers, chokepoints, watched sites, reservoirs) decide.
+ *  - local: only a rule that lists the event's country (or a member country
+ *    of its region). A rule with no countries no longer receives every local
+ *    event in the world, and an unattributed local event goes nowhere.
+ *
+ * Browser-submitted events (event.userId) are delivered only to their own
+ * submitter's rules and keep the legacy country semantics.
+ */
+function eventMatchesDeliveryScope(event, rule) {
+  if (event?.userId) return eventMatchesCountryScope(event, rule);
+  const { tier, country } = resolveDeliveryTier(event);
+  if (tier === TIER_GLOBAL || tier === TIER_OPT_IN) return true;
+  if (!Array.isArray(rule.countries) || rule.countries.length === 0) return false;
+  if (typeof event?.eventType === 'string' && event.eventType.startsWith('regional_')) {
+    return regionalEventMatchesCountryScope(event, rule);
+  }
+  const raw = country ?? event?.payload?.countryCode ?? event?.payload?.country ?? event?.country ?? null;
+  if (typeof raw !== 'string' || raw.trim().length === 0) return false;
+  const normalized = normalizeEventCountryCode(raw);
+  return normalized !== null && rule.countries.includes(normalized);
+}
+
 // ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
 
 const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
@@ -1287,17 +1539,18 @@ const CHOKEPOINT_DISRUPTION_EVENT_TYPE = 'chokepoint_disruption';
  *    UI toggling the watchlist row ON would silently unsubscribe the user
  *    from every other alert.
  */
+const OPT_IN_EVENT_TYPES = new Set([
+  WATCHLIST_STORY_EVENT_TYPE,
+  // Same opt-in contract as the watchlist row (#9217).
+  CHOKEPOINT_DISRUPTION_EVENT_TYPE,
+  ...ORBITAL_SITE_EVENT_TYPES,
+  // Same opt-in contract: the rule lists the type, its reservoirs and its criterion.
+  RESERVOIR_ALERT_EVENT_TYPE,
+]);
+
 function ruleMatchesEventType(rule, event) {
-  if (event?.eventType === WATCHLIST_STORY_EVENT_TYPE) {
-    return rule.eventTypes.includes(WATCHLIST_STORY_EVENT_TYPE);
-  }
-  // Same opt-in contract as the watchlist row (#9217): a wildcard rule never
-  // receives it, and opting in does not narrow the rule's other alerts.
-  if (event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE) {
-    return rule.eventTypes.includes(CHOKEPOINT_DISRUPTION_EVENT_TYPE);
-  }
-  const broadcastTypes = rule.eventTypes.filter((t) => t !== WATCHLIST_STORY_EVENT_TYPE)
-    .filter((t) => t !== CHOKEPOINT_DISRUPTION_EVENT_TYPE);
+  if (OPT_IN_EVENT_TYPES.has(event?.eventType)) return rule.eventTypes.includes(event.eventType);
+  const broadcastTypes = rule.eventTypes.filter((t) => !OPT_IN_EVENT_TYPES.has(t));
   return broadcastTypes.length === 0 || broadcastTypes.includes(event.eventType);
 }
 
@@ -1341,18 +1594,62 @@ function eventMatchesChokepointScope(event, rule) {
 }
 
 /**
+ * Narrows the watched-site alerts to the sites the rule lists. Like tickers, an
+ * empty/absent list means none: the sites are the user's own watch list, and
+ * there is no "every site" firehose. Every other event type passes through.
+ */
+function eventMatchesOrbitalSiteScope(event, rule) {
+  if (!ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType)) return true;
+  if (!Array.isArray(rule.orbitalSites) || rule.orbitalSites.length === 0) return false;
+  const siteId = event?.payload?.siteId;
+  return typeof siteId === 'string' && rule.orbitalSites.includes(siteId);
+}
+
+/**
+ * Narrows `reservoir_level_alert` to what the rule chose: its reservoirs, and a level below
+ * its threshold or a drop beyond the seasonal baseline. An absent or empty reservoir list
+ * means none, and an event without a dated measurement matches no rule. Every other event
+ * type passes through untouched.
+ */
+function eventMatchesReservoirScope(event, rule) {
+  if (event?.eventType !== RESERVOIR_ALERT_EVENT_TYPE) return true;
+  return reservoirAlertDecision(rule.reservoirAlert, event.payload).fire;
+}
+
+/**
  * Web push tag: a later push with the same tag replaces the earlier one in the
- * tray. Chokepoint alerts carry the chokepoint so two crossings in one tick
- * both stay visible.
+ * tray. Chokepoint and watched-site alerts carry their subject so two alerts in
+ * one tick both stay visible.
  */
 function webPushTagFor(event, userId) {
-  const chokepointId = event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE ? event?.payload?.chokepointId : null;
-  return typeof chokepointId === 'string' && chokepointId
-    ? `${event.eventType}:${chokepointId}:${userId}`
+  const subject = event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE ? event?.payload?.chokepointId
+    : ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType) ? event?.payload?.siteId
+      : event?.eventType === RESERVOIR_ALERT_EVENT_TYPE ? event?.payload?.reservoirId
+        : null;
+  return typeof subject === 'string' && subject
+    ? `${event.eventType}:${subject}:${userId}`
     : `${event.eventType}:${userId}`;
 }
 
+// A local news story reaches only rules scoped to its country
+// (eventMatchesDeliveryScope), and those rules get their own bar.
+function isLocalNewsForRule(rule, event) {
+  const { tier, country } = resolveDeliveryTier(event);
+  return tier === TIER_LOCAL && country != null && !event.userId && eventMatchesDeliveryScope(event, rule);
+}
+
 function shouldNotify(rule, event) {
+  return notifyBlockReason(rule, event) === null;
+}
+
+// Why a rule's sensitivity refuses the event: its severity, or its score under
+// the rule's bar while IMPORTANCE_SCORE_LIVE is on. null when the rule accepts it.
+function notifyBlockReason(rule, event) {
+  // Reservoir level alerts are scoped by the rule's own reservoir list, threshold and event-type
+  // opt-in, so the realtime critical-only gate does not apply. They are not critical, so quiet
+  // hours still silence them, or hold them under Batch (resolveQuietAction).
+  if (event?.eventType === RESERVOIR_ALERT_EVENT_TYPE) return null;
+
   // Coerce (effective realtime + non-critical) → 'critical' before consulting
   // sensitivity in either branch. The mutation validators + migration make this
   // state unreachable for new traffic; this catches in-flight rows during
@@ -1372,20 +1669,30 @@ function shouldNotify(rule, event) {
       ? 'critical'
       : rule.sensitivity;
 
+  // Watched-site alerts are scoped by the rule's own site list and event-type
+  // opt-in, so the realtime critical-only gate does not apply; quiet hours still
+  // treat them by their real (non-critical) severity.
+  if (ORBITAL_SITE_EVENT_TYPES.includes(event?.eventType)) return null;
+
+  // The all-clear for a national air traffic collapse (scripts/shared/
+  // air-traffic-detector.cjs) goes to the realtime rules that got the critical
+  // alert. It stays high, so quiet hours silence it or hold it for Batch.
+  if (event?.eventType === 'aviation_traffic_collapse' && event?.payload?.kind === 'recovery') return null;
+
   const passesLegacy = matchesSensitivity(effectiveSensitivity, event.severity ?? 'high');
-  if (!passesLegacy) return false;
+  if (!passesLegacy) return 'severity';
 
   if (process.env.IMPORTANCE_SCORE_LIVE === '1' && event.payload?.importanceScore != null) {
     // Calibrated from v5 shadow-log recalibration (2026-04-20).
     // IMPORTANCE_SCORE_MIN env var controls the 'all' floor at both the
     // relay ingress gate AND per-rule sensitivity — single tuning surface.
-    const threshold = effectiveSensitivity === 'critical' ? 82
+    const threshold = effectiveSensitivity === 'critical' ? (isLocalNewsForRule(rule, event) ? NEWS_LOCAL_IMPORTANCE_SCORE : 82)
                     : effectiveSensitivity === 'high' ? 69
                     : IMPORTANCE_SCORE_MIN;
-    return event.payload.importanceScore >= threshold;
+    return event.payload.importanceScore >= threshold ? null : 'score_bar';
   }
 
-  return true;
+  return null;
 }
 
 // ── RSS-origin event contract (audit codified in
@@ -1412,7 +1719,7 @@ function truncateForDisplay(str, maxLen) {
   return (cutAtWord.length > 0 ? cutAtWord : str.slice(0, maxLen)) + '…';
 }
 
-function formatMessage(event) {
+function formatMessage(event, channel) {
   // Defence in depth for relay-originated events that never pass through
   // /api/notify (ais-relay, seed-aviation, alert-emitter,
   // seed-digest-notifications): apply the same title/source/link shaping the
@@ -1433,9 +1740,20 @@ function formatMessage(event) {
   const coverage = formatEventCoverage(event);
   if (source) parts.push(`Source: ${source}${coverage ? ` · ${coverage}` : ''}`);
   else if (coverage) parts.push(coverage);
-  const link = formatEventLinkForText(event);
+  const link = formatEventLinkForText(event, channel);
   if (link) parts.push(link);
   return parts.join('\n');
+}
+
+async function refreshAlertCoverage(events) {
+  try {
+    const { refreshPublisherCounts } = await import('./lib/news-alert-coverage.mjs');
+    await refreshPublisherCounts(events);
+  } catch (err) {
+    // A held event can carry an old snapshot even if the reader never loaded.
+    for (const event of events) delete event.observedPublisherCount;
+    console.warn('[relay] publisher coverage unavailable:', err?.name);
+  }
 }
 
 /**
@@ -1446,7 +1764,11 @@ function formatMessage(event) {
  */
 function eventCorroboration(event) {
   if (event.userId) return null;
-  return corroborationFromItemCount(event.payload?.corroborationCount);
+  const count = event.observedPublisherCount ?? event.payload?.corroborationCount;
+  const matched = event.payload?.corroboratedBy;
+  if (event.eventType !== 'rss_alert' || !Array.isArray(matched)) return corroborationFromItemCount(count);
+  const matchedCount = countRecordedPublisherFamilies(matched);
+  return corroborationFromItemCount(matchedCount > (count ?? 0) ? matchedCount : count);
 }
 
 /**
@@ -1502,9 +1824,27 @@ function formatEventDescription(event) {
  * article link survive instead of collapsing to the dashboard — collapsing it
  * destroyed the article link on the platform's own RSS alerts (review
  * finding).
+ *
  */
-function formatEventLinkForText(event) {
-  return renderNotificationLinkForText(event.payload?.link ?? event.payload?.url);
+function formatEventLinkForText(event, channel) {
+  return renderNotificationLinkForText(eventLinkFor(event, channel));
+}
+
+/**
+ * The event's link as a rendered sink shows it. A relay-originated article
+ * link carries the alert referrer tag (utm_source=worldmonitor,
+ * utm_medium=alert, utm_campaign=<channel>), so the publisher can attribute
+ * the visit. The tag is added at render time: link suppression has already
+ * matched the untagged payload link, and the webhook sink ships that link
+ * untouched.
+ *
+ * A caller-submitted link (/api/notify) is never tagged: the platform did not
+ * source it, and the tag would put the WorldMonitor name into a URL the caller
+ * chose (#8397).
+ */
+function eventLinkFor(event, channel) {
+  const link = event.payload?.link ?? event.payload?.url;
+  return event.userId ? link : withAlertReferrer(link, channel);
 }
 
 /**
@@ -1552,12 +1892,19 @@ function shapeEventForWebhook(event) {
 /**
  * Click target for web push. Unlike a text sink there is no room to disclose
  * the destination host, so caller-submitted events stay first-party here.
+ * The webhook sink ships this same value as data, so it stays untagged.
  */
 function formatEventLinkForPush(event) {
   const linkValue = event.payload?.link ?? event.payload?.url;
   return (event.userId
     ? sanitizeUserNotificationLinkUrl(linkValue)
     : sanitizeNotificationLinkUrl(linkValue)) || NOTIFY_DASHBOARD_URL;
+}
+
+/** The URL a web push opens: the click target, with the alert referrer tag on a relay-originated article link. */
+function formatPushClickUrl(event) {
+  const target = formatEventLinkForPush(event);
+  return event.userId ? target : withAlertReferrer(target, 'web_push');
 }
 
 /**
@@ -1571,7 +1918,30 @@ function formatSubject(event) {
   return event.userId ? title : `WorldMonitor Alert: ${title}`;
 }
 
+/**
+ * Record that `userId` received this alert on `channels`, with the title,
+ * publisher and link those channels showed. The link uses the web-push policy
+ * (a caller-submitted event keeps first-party links only), because the
+ * dashboard search opens it in one click; the dashboard fallback is not a
+ * story link, so it is stored as none.
+ */
+function noteSentAlertForEvent(userId, event, channels) {
+  const link = formatEventLinkForPush(event);
+  return noteSentAlert(userId, {
+    title: formatEventTitle(event),
+    source: formatEventSource(event),
+    link: link === NOTIFY_DASHBOARD_URL ? '' : link,
+    eventType: sanitizeNotificationTitle(event.eventType),
+    severity: sanitizeNotificationTitle(event.severity ?? 'high'),
+    channels,
+  });
+}
+
 async function processWelcome(event) {
+  return withDeliveryReports(() => processWelcomeDelivery(event));
+}
+
+async function processWelcomeDelivery(event) {
   const { userId, channelType, welcomeId } = event;
   if (!userId || !channelType) return;
   // Telegram welcome is sent directly by Convex; no relay send needed.
@@ -1581,7 +1951,7 @@ async function processWelcome(event) {
     const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, deliveryChannels: [channelType] }),
       signal: AbortSignal.timeout(10000),
     });
     if (chRes.ok) channels = (await chRes.json()) ?? [];
@@ -1600,18 +1970,18 @@ async function processWelcome(event) {
   // Telegram welcome is sent directly by convex/http.ts after claimPairingToken succeeds.
   const text = `✅ WorldMonitor connected! You'll receive breaking news alerts here.`;
   if (channelType === 'slack' && ch.webhookEnvelope) {
-    await sendSlack(userId, ch.webhookEnvelope, text);
+    await sendSlack(userId, ch.webhookEnvelope, text, ch);
   } else if (channelType === 'discord' && ch.webhookEnvelope) {
-    await sendDiscord(userId, ch.webhookEnvelope, text);
+    await sendDiscord(userId, ch.webhookEnvelope, text, 0, ch);
   } else if (channelType === 'teams' && ch.webhookEnvelope) {
     await sendTeams(userId, ch.webhookEnvelope, buildTeamsNoticePayload({
       title: '✅ WorldMonitor connected',
       lines: ["You'll receive alerts here when events match your alert rules."],
       link: NOTIFY_DASHBOARD_URL,
       linkTitle: 'Open WorldMonitor',
-    }));
+    }), ch);
   } else if (channelType === 'email' && ch.email) {
-    await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
+    await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text, undefined, undefined, buildWelcomeEmailHtml());
   } else if (channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
     // Welcome push on first web_push connect. Short body — Chrome's
     // notification shelf clips past ~80 chars on most OSes. Click
@@ -1638,28 +2008,12 @@ const IMPORTANCE_SCORE_MIN = Number(process.env.IMPORTANCE_SCORE_MIN ?? 40);
 const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v5';
 const SHADOW_LOG_TTL = 7 * 24 * 3600; // 7 days
 
-async function shadowLogScore(event) {
-  const importanceScore = event.payload?.importanceScore ?? 0;
-  if (!UPSTASH_URL || !UPSTASH_TOKEN || importanceScore === 0) return;
-  const now = Date.now();
-  const record = {
-    ts: now,
-    importanceScore,
-    severity: event.severity ?? 'high',
-    eventType: event.eventType,
-    title: String(event.payload?.title ?? '').slice(0, 160),
-    source: event.payload?.source ?? '',
-    publishedAt: event.payload?.publishedAt ?? null,
-    corroborationCount: event.payload?.corroborationCount ?? null,
-    variant: event.variant ?? '',
-  };
-  const member = JSON.stringify(record);
-  const cutoff = String(now - SHADOW_LOG_TTL * 1000); // prune entries older than 7 days
-  // One pipelined HTTP request: ZADD + ZREMRANGEBYSCORE prune + 30-day
-  // belt-and-suspenders EXPIRE. Saves ~50% round-trips vs sequential calls
-  // and bounds growth even if writes stop and the rolling prune stalls.
+// Score-log write; reports failures and never throws. Activation depends on
+// v5 filling with clean data, so a silent write failure would leave operators
+// staring at an empty ZSET with no signal.
+async function shadowLogRequest(route, commands) {
   try {
-    const res = await fetch(`${UPSTASH_URL}/pipeline`, {
+    const res = await fetch(`${UPSTASH_URL}/${route}`, {
       signal: AbortSignal.timeout(30_000),
       method: 'POST',
       headers: {
@@ -1667,27 +2021,89 @@ async function shadowLogScore(event) {
         'Content-Type': 'application/json',
         'User-Agent': 'worldmonitor-relay/1.0',
       },
-      body: JSON.stringify([
-        ['ZADD', SHADOW_SCORE_LOG_KEY, String(now), member],
-        ['ZREMRANGEBYSCORE', SHADOW_SCORE_LOG_KEY, '-inf', cutoff],
-        ['EXPIRE', SHADOW_SCORE_LOG_KEY, '2592000'],
-      ]),
+      body: JSON.stringify(commands),
     });
-    // Surface HTTP failures and per-command errors. Activation depends on v2
-    // filling with clean data; a silent write-failure would leave operators
-    // staring at an empty ZSET with no signal.
     if (!res.ok) {
-      console.warn(`[relay] shadow-log pipeline HTTP ${res.status}`);
+      console.warn(`[relay] shadow-log ${route} HTTP ${res.status}`);
       return;
     }
     const body = await res.json().catch(() => null);
     if (Array.isArray(body)) {
       const failures = body.map((cmd, i) => (cmd?.error ? `cmd[${i}] ${cmd.error}` : null)).filter(Boolean);
-      if (failures.length > 0) console.warn(`[relay] shadow-log pipeline partial failure: ${failures.join('; ')}`);
+      if (failures.length > 0) console.warn(`[relay] shadow-log ${route} partial failure: ${failures.join('; ')}`);
+    } else if (body?.error) {
+      console.warn(`[relay] shadow-log ${route} failed: ${body.error}`);
     }
   } catch (err) {
-    console.warn(`[relay] shadow-log pipeline threw: ${err?.message ?? err}`);
+    console.warn(`[relay] shadow-log ${route} threw: ${err?.message ?? err}`);
   }
+}
+
+// Score-log writes still in flight, so SIGTERM can let them land before exit.
+const shadowLogWrites = new Set();
+function trackShadowLog(request) {
+  shadowLogWrites.add(request);
+  request.finally(() => shadowLogWrites.delete(request));
+  return request;
+}
+
+// True when every score-log write in flight, including any started while it
+// waits, settled within timeoutMs.
+async function drainShadowLog(timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (shadowLogWrites.size > 0) {
+    const left = deadline - Date.now();
+    if (left <= 0) return false;
+    let timer;
+    const timedOut = new Promise((done) => { timer = setTimeout(done, left); });
+    try {
+      await Promise.race([Promise.allSettled([...shadowLogWrites]), timedOut]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return true;
+}
+
+// One row per dequeued rss_alert. It is written at dequeue with outcome
+// { stopped: 'pending' }, because the queue pop already removed the event and
+// a relay killed mid-delivery must still leave it for the daily miss audit
+// (#10976). The returned function swaps it, in one transaction, for the row
+// carrying the outcome the relay reached. `ts` and the zset score stay the
+// dequeue time, which the latency report measures publish-to-queue with.
+function startShadowLog(event) {
+  const importanceScore = event.payload?.importanceScore ?? 0;
+  if (!UPSTASH_URL || !UPSTASH_TOKEN || importanceScore === 0) return () => {};
+  const dequeuedAt = Date.now();
+  const member = (outcome) => JSON.stringify({
+    ts: dequeuedAt,
+    importanceScore,
+    severity: event.severity ?? 'high',
+    eventType: event.eventType,
+    title: String(event.payload?.title ?? '').slice(0, 160),
+    source: event.payload?.source ?? '',
+    publishedAt: event.payload?.publishedAt ?? null,
+    corroborationCount: event.payload?.corroborationCount ?? null,
+    ...(Array.isArray(event.payload?.corroboratedBy) ? { corroboratedBy: event.payload.corroboratedBy.slice(0, 10) } : {}),
+    variant: event.variant ?? '',
+    outcome,
+  });
+  const pending = member({ stopped: 'pending' });
+  // The prune and the 30-day EXPIRE bound growth even if the rolling prune stalls.
+  const written = trackShadowLog(shadowLogRequest('pipeline', [
+    ['ZADD', SHADOW_SCORE_LOG_KEY, String(dequeuedAt), pending],
+    ['ZREMRANGEBYSCORE', SHADOW_SCORE_LOG_KEY, '-inf', String(dequeuedAt - SHADOW_LOG_TTL * 1000)],
+    ['EXPIRE', SHADOW_SCORE_LOG_KEY, '2592000'],
+  ]));
+  // Sent only after the pending write settles, so its ZREM cannot land first
+  // and leave two rows. Not awaited, so a stalled write never holds the queue;
+  // shutdown waits for it through shadowLogWrites.
+  return (outcome) => {
+    trackShadowLog(written.then(() => shadowLogRequest('multi-exec', [
+      ['ZREM', SHADOW_SCORE_LOG_KEY, pending],
+      ['ZADD', SHADOW_SCORE_LOG_KEY, String(dequeuedAt), member(outcome)],
+    ])));
+  };
 }
 
 // ── AI impact analysis ───────────────────────────────────────────────────────
@@ -1848,18 +2264,130 @@ async function releaseRealtimeClaim(dedupDecision, claim) {
   return false;
 }
 
+// #10916: a deliverable news alert that rewords one the user already had is
+// skipped for that user. lib/news-alert-coverage.mjs finds the earlier alert
+// (embeddings, then a language model on the closest few). Without the
+// OpenRouter key, or on any failure, nobody is skipped.
+const NO_REWRITE = { applies: false, decision: null, alreadyAlerted: new Set(), lib: null };
+
+function matchedAnchorId(decision) {
+  return decision?.anchor && decision.anchorIds?.length === 1 ? decision.anchor.id : null;
+}
+
+async function checkAlertRewrite(event, matching) {
+  if (!process.env.OPENROUTER_API_KEY) return NO_REWRITE;
+  try {
+    const lib = await import('./lib/news-alert-coverage.mjs');
+    if (!lib.rewriteCheckApplies(event)) return NO_REWRITE;
+    const decision = await lib.findRewriteAnchor(event);
+    const userIds = [...new Set(matching.map(r => r.userId))];
+    const alreadyAlerted = decision.anchor ? await lib.usersAlertedFor(decision.anchorIds ?? decision.anchor.id, userIds) : new Set();
+    // Only a match both replies agree on joins the two stories' receipts and
+    // publisher history; a split names two alerts that may be separate.
+    const coverageMerged = matchedAnchorId(decision) ? await lib.mergeStoryCoverage(event, matchedAnchorId(decision)) : false;
+    return { applies: true, decision, alreadyAlerted, coverageMerged, lib };
+  } catch (err) {
+    console.warn('[news-alert-rewrite] unavailable:', err?.name);
+    return NO_REWRITE;
+  }
+}
+
+// The alert becomes an anchor for the users it reached (delivered or held),
+// so a suppressed rewrite, which reached nobody new, never becomes one.
+async function finishAlertRewrite(event, rewrite, reachedUsers, skippedUsers) {
+  if (!rewrite.applies) return;
+  const anchored = reachedUsers.size > 0 && await rewrite.lib.recordAlertAnchor(event, [...reachedUsers], {
+    matchedAnchorId: matchedAnchorId(rewrite.decision),
+  });
+  const { decision } = rewrite;
+  console.info('[news-alert-rewrite]', JSON.stringify({
+    at: Date.now(),
+    edition: event.variant,
+    id: decision.id,
+    // Titles let a skip be audited after the anchors expire.
+    title: formatEventTitle(event).slice(0, 300),
+    model: decision.model,
+    judgeModel: decision.judgeModel,
+    importanceScore: event.payload?.importanceScore ?? null,
+    candidates: decision.candidates,
+    // 'embedding', or 'words' when the embeddings failed (embedError says how).
+    retrieval: decision.retrieval,
+    embedError: decision.embedError,
+    best: decision.best,
+    judged: decision.judged,
+    verdict: decision.verdict,
+    anchor: decision.anchor ? { id: decision.anchor.id, score: decision.anchor.score, title: String(decision.anchor.title).slice(0, 300) } : null,
+    anchorIds: decision.anchorIds,
+    error: decision.error,
+    ms: decision.ms,
+    coverageMerged: rewrite.coverageMerged,
+    skippedUsers,
+    reachedUsers: reachedUsers.size,
+    anchored,
+  }));
+}
+
+// Realtime rule gates in evaluation order; each returns why it drops the rule,
+// or null. delivery_scope is last so its count is the rules that passed every
+// other gate (the #5359 country-scope line).
+const gate = (reason, passes) => (rule, event) => (passes(rule, event) ? null : reason);
+const RULE_GATES = [
+  gate('digest_mode', (rule) => !rule.digestMode || rule.digestMode === 'realtime'),
+  gate('other_user', (rule, event) => !event.userId || rule.userId === event.userId),
+  gate('edition', (rule, event) => !event.variant || !rule.variant || rule.variant === event.variant),
+  gate('event_type', ruleMatchesEventType),
+  notifyBlockReason,
+  gate('ticker_scope', (rule, event) => eventMatchesTickerScope(event, rule)),
+  gate('chokepoint_scope', (rule, event) => eventMatchesChokepointScope(event, rule)),
+  gate('orbital_site_scope', (rule, event) => eventMatchesOrbitalSiteScope(event, rule)),
+  gate('reservoir_scope', (rule, event) => eventMatchesReservoirScope(event, rule)),
+  gate('delivery_scope', (rule, event) => eventMatchesDeliveryScope(event, rule)),
+];
+
+function ruleDropReason(rule, event) {
+  for (const check of RULE_GATES) {
+    const reason = check(rule, event);
+    if (reason) return reason;
+  }
+  return null;
+}
+
 async function processEvent(event) {
+  return withDeliveryReports(() => withSentAlertLog(() => processEventDelivery(event)));
+}
+
+async function processEventDelivery(event) {
   if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   if (event.eventType === 'flush_quiet_held') { await processFlushQuietHeld(event); return; }
   const eventLog = JSON.stringify({ eventType: event.eventType, severity: event.severity ?? 'high' })
     .replace(/[\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
   console.log('[relay] Processing event:', eventLog);
 
-  // Shadow log importanceScore for comparison. Gate at caller: only rss_alert
-  // events carry importanceScore; for everything else shadowLogScore would
-  // short-circuit, but we still pay the promise/microtask cost unless gated here.
-  if (event.eventType === 'rss_alert') shadowLogScore(event).catch(() => {});
+  // Only rss_alert events carry importanceScore, so only they get a score-log
+  // row. Its outcome is filled in on every exit.
+  if (event.eventType !== 'rss_alert') return deliverToRules(event, {});
+  const finishShadowLog = startShadowLog(event);
+  const outcome = {};
+  try {
+    await deliverToRules(event, outcome);
+  } catch (err) {
+    outcome.stopped = 'error';
+    throw err;
+  } finally {
+    finishShadowLog(outcome);
+  }
+}
 
+/**
+ * Deliver one event to every matching realtime rule. `outcome` gets where the
+ * event stopped (`stopped`), or `matched` and one count per rule under the
+ * branch that ended it: sent, held, holdFailed, repeat, quietHours, dedup,
+ * channelsRequeued (the channel read failed and the event went back on the
+ * queue for that user), channelsFailed, noChannelListed, noChannelVerified,
+ * sendFailed, freeSeverity, freeEventType, freeScope. Zero counts are left out.
+ */
+async function deliverToRules(event, outcome) {
+  const bump = (bucket) => { outcome[bucket] = (outcome[bucket] ?? 0) + 1; };
   // Score gate — only for relay-emitted rss_alert (no userId). Browser-submitted
   // events (with userId) have importanceScore stripped at ingestion and no server-
   // computed score; gating them would drop every browser notification once
@@ -1869,6 +2397,7 @@ async function processEvent(event) {
     const score = event.payload?.importanceScore ?? 0;
     if (score < IMPORTANCE_SCORE_MIN) {
       console.log(`[relay] Score gate: dropped ${event.eventType} score=${score} < ${IMPORTANCE_SCORE_MIN}`);
+      outcome.stopped = 'score_gate';
       return;
     }
   }
@@ -1877,7 +2406,7 @@ async function processEvent(event) {
   try {
     enabledRules = await fetchEnabledRules(true);
   } catch (err) {
-    await requeueAfterRulesFailure(event, err);
+    outcome.stopped = (await requeueAfterRulesFailure(event, err)) ? 'rules_requeued' : 'rules_unavailable';
     return;
   }
 
@@ -1886,35 +2415,26 @@ async function processEvent(event) {
   // regional-snapshot) have no userId and fan out to all matching Pro users.
   // Without this guard, a Pro user can POST arbitrary rss_alert events that
   // fan out to every other Pro subscriber — see todo #196.
-  const matching = enabledRules.filter(r =>
-    (!r.digestMode || r.digestMode === 'realtime') &&
-    ruleMatchesEventType(r, event) &&
-    shouldNotify(r, event) &&
-    eventMatchesCountryScope(event, r) &&
-    eventMatchesTickerScope(event, r) &&
-    eventMatchesChokepointScope(event, r) &&
-    (!event.variant || !r.variant || r.variant === event.variant) &&
-    (!event.userId || r.userId === event.userId)
-  );
+  const dropReasons = {};
+  const matching = enabledRules.filter((rule) => {
+    const reason = ruleDropReason(rule, event);
+    if (reason) dropReasons[reason] = (dropReasons[reason] ?? 0) + 1;
+    return reason === null;
+  });
+  outcome.matched = matching.length;
 
-  // Deploy observability for the #5359 default-DROP change: count rules that
-  // passed every OTHER gate but were excluded by country scope, so support can
+  // Deploy observability for the #5359 default-DROP change: rules that passed
+  // every OTHER gate but were excluded by country scope, so support can
   // distinguish "working as intended" from "delivery bug" for scoped users.
   // No userIds in the line — event identity + count is enough to correlate.
-  const countryScopeDrops = enabledRules.filter(r =>
-    (!r.digestMode || r.digestMode === 'realtime') &&
-    ruleMatchesEventType(r, event) &&
-    shouldNotify(r, event) &&
-    !eventMatchesCountryScope(event, r) &&
-    eventMatchesTickerScope(event, r) &&
-    eventMatchesChokepointScope(event, r) &&
-    (!event.variant || !r.variant || r.variant === event.variant) &&
-    (!event.userId || r.userId === event.userId)
-  ).length;
-  if (countryScopeDrops > 0) {
+  if (dropReasons.delivery_scope > 0) {
     const rawAttribution = event?.payload?.countryCode ?? event?.payload?.country ?? event?.country ?? '(unattributed)';
     const attribution = String(rawAttribution).replace(/[\r\n]/g, ' ').slice(0, 60);
-    console.log(`[relay] Country-scope drop: ${event.eventType} attribution=${attribution} excluded ${countryScopeDrops} scoped rule(s)`);
+    console.log(`[relay] Country-scope drop: ${event.eventType} attribution=${attribution} excluded ${dropReasons.delivery_scope} scoped rule(s)`);
+  }
+  if (matching.length === 0) {
+    outcome.noRule = dropReasons;
+    console.log(`[relay] No rule matched: ${JSON.stringify(event.eventType)} severity=${JSON.stringify(event.severity ?? 'high')} score=${JSON.stringify(event.payload?.importanceScore ?? 'n/a')} edition=${JSON.stringify(event.variant || 'any')} rules=${enabledRules.length} drops=${JSON.stringify(dropReasons)}`);
   }
 
   // Operator link suppression (#8401): consult the blocked set BEFORE any
@@ -1924,32 +2444,68 @@ async function processEvent(event) {
   // Suppression count is derived from the pre-PRO rule match so the log line
   // scopes the incident even when some rules would later drop on entitlement.
   if (matching.length > 0 && (await suppressedLinksFor(event, matching.length, 'stage=deliver')).length > 0) {
+    outcome.stopped = 'link_suppressed';
     return;
   }
 
   if (matching.length === 0) return;
+  // Before the coverage read: a matched rewrite merges both wordings' publishers.
+  const rewrite = await checkAlertRewrite(event, matching);
+  await refreshAlertCoverage([event]);
+  const reachedUsers = new Set();
 
-  // Batch PRO check: resolve all unique userIds in parallel instead of one-by-one.
-  // isUserPro() has a 15-min Redis cache, so this is cheap after the first call.
+  // Batch tier check: resolve all unique userIds in parallel instead of
+  // one-by-one. getUserTier() has a 15-min Redis cache, so this is cheap
+  // after the first call. #4273: free users (tier 0, including the
+  // fail-closed entitlement-outage value) now DELIVER, clamped to the free
+  // ladder — critical events only, web push + email only — instead of being
+  // skipped outright. The clamp also covers legacy wider-than-plan free rows
+  // the 2026-04-28 audit found, whatever their stored settings say.
   const uniqueUserIds = [...new Set(matching.map(r => r.userId))];
-  const proResults = await Promise.all(uniqueUserIds.map(async uid => [uid, await isUserPro(uid)]));
-  const proSet = new Set(proResults.filter(([, isPro]) => isPro).map(([uid]) => uid));
-  const skippedCount = uniqueUserIds.length - proSet.size;
-  if (skippedCount > 0) console.log(`[relay] Skipping ${skippedCount} non-PRO user(s)`);
+  const tierResults = await Promise.all(uniqueUserIds.map(async uid => [uid, await getUserTier(uid)]));
+  const tierByUser = new Map(tierResults);
 
-  const text = formatMessage(event);
   const subject = formatSubject(event);
   const eventSeverity = event.severity ?? 'high';
   let channelsFailedUsers = 0;
   let channelsFetchError = null;
 
   for (const rule of matching) {
-    if (!proSet.has(rule.userId)) continue;
+    const userTier = tierByUser.get(rule.userId) ?? 0;
+    if (!freeTierAllowsEvent(userTier, eventSeverity)) {
+      bump('freeSeverity');
+      continue;
+    }
+    // Orbital watched-site alerts are Pro-only outright, whatever the ladder
+    // admits (convex/alertRules.ts assertOrbitalAlertEntitlement). That gate
+    // runs only at write time, so delivery re-applies it here or a
+    // downgraded account keeps the paid stream on its leftover rule.
+    if (!freeTierAllowsEventType(userTier, event.eventType)) {
+      bump('freeEventType');
+      continue;
+    }
+    // Free rules must carry an explicit country scope; a legacy worldwide
+    // free row delivers nothing, and an over-cap one delivers only within
+    // its first entries — mirroring the write-path ladder. Runs before the
+    // quiet-hours hold so held batches are scope-clamped at hold time too.
+    const scope = freeTierCountryScope(userTier, rule.countries);
+    if (!scope.ok || (userTier < 1 && !eventMatchesDeliveryScope(event, { ...rule, countries: scope.countries }))) {
+      bump('freeScope');
+      continue;
+    }
+
+    // #10916: this user already had an alert for the same development under
+    // another outlet's wording. Users the earlier alert did not reach still get it.
+    if (rewrite.alreadyAlerted.has(rule.userId)) {
+      bump('repeat');
+      continue;
+    }
 
     const quietAction = resolveQuietAction(rule, eventSeverity);
 
     if (quietAction === 'suppress') {
       console.log(`[relay] Quiet hours suppress for ${rule.userId} (severity=${eventSeverity}, override=${rule.quietHoursOverride ?? 'critical_only'})`);
+      bump('quietHours');
       continue;
     }
 
@@ -1970,10 +2526,17 @@ async function processEvent(event) {
       });
       if (!dedupDecision.shouldPublish) {
         if (dedupDecision.isDuplicate) console.log(`[relay] Dedup hit (held) for ${rule.userId}`);
+        bump('dedup');
         continue;
       }
       console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
-      await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
+      if (!(await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event)))) {
+        console.warn(`[relay] Quiet hours hold failed for ${rule.userId}: the held queue refused the event`);
+        bump('holdFailed');
+        continue;
+      }
+      reachedUsers.add(rule.userId);
+      bump('held');
       continue;
     }
 
@@ -1993,6 +2556,7 @@ async function processEvent(event) {
     });
     if (!dedupDecision.shouldPublish) {
       if (dedupDecision.isDuplicate) console.log(`[relay] Dedup hit for ${rule.userId}`);
+      bump('dedup');
       continue;
     }
 
@@ -2005,7 +2569,7 @@ async function processEvent(event) {
           'Authorization': `Bearer ${RELAY_SECRET}`,
           'User-Agent': 'worldmonitor-relay/1.0',
         },
-        body: JSON.stringify({ userId: rule.userId }),
+        body: JSON.stringify({ userId: rule.userId, deliveryChannels: rule.channels ?? [] }),
         signal: AbortSignal.timeout(10000),
       });
       if (!chRes.ok) throw new Error(`HTTP ${chRes.status}`);
@@ -2020,41 +2584,52 @@ async function processEvent(event) {
         channelsFetchError = err;
       } else {
         console.warn(`[relay] Could not release the dedup claim for ${rule.userId}; this event stays suppressed for them until it expires`);
+        bump('channelsFailed');
       }
       continue;
     }
 
     const verifiedChannels = channels.filter(c =>
       c.verified &&
+      freeTierAllowsChannel(userTier, c.channelType) &&
       (c.channelType !== 'email' || c.emailOwnership === 'verified_account') &&
       (c.channelType !== 'telegram' || c.telegramOwnership === 'verified_callback') &&
       rule.channels.includes(c.channelType));
-    if (verifiedChannels.length === 0) continue;
-
-    let deliveryText = text;
-    let impactText = '';
-    if (AI_IMPACT_ENABLED) {
-      const impact = sanitizeImpactText(await generateEventImpact(event, rule));
-      if (impact) {
-        impactText = impact;
-        deliveryText = `${text}\n\n— Impact —\n${impact}`;
-      }
+    if (verifiedChannels.length === 0) {
+      bump(rule.channels.length === 0 ? 'noChannelListed' : 'noChannelVerified');
+      continue;
     }
 
+    let impactText = '';
+    // #4273: the AI-composed impact block is paid output — the free catalog
+    // grants no AI allowance, so tier-0 delivery must not trigger LLM
+    // inference now that free rules reach this loop (Strix review 6).
+    if (AI_IMPACT_ENABLED && userTier >= 1) {
+      impactText = sanitizeImpactText(await generateEventImpact(event, rule));
+    }
+    // One text per channel: the article link names the channel in its
+    // referrer tag, and nothing else differs.
+    const deliveryTextFor = (channel) => {
+      const text = formatMessage(event, channel);
+      return impactText ? `${text}\n\n— Impact —\n${impactText}` : text;
+    };
+
+    const deliveredChannels = [];
     for (const ch of verifiedChannels) {
       try {
+        let sent = false;
         if (ch.channelType === 'telegram' && ch.chatId) {
-          await sendTelegram(rule.userId, ch.chatId, deliveryText);
+          sent = await sendTelegram(rule.userId, ch.chatId, deliveryTextFor('telegram'));
         } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
-          await sendSlack(rule.userId, ch.webhookEnvelope, deliveryText);
+          sent = await sendSlack(rule.userId, ch.webhookEnvelope, deliveryTextFor('slack'), ch);
         } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
-          await sendDiscord(rule.userId, ch.webhookEnvelope, deliveryText);
+          sent = await sendDiscord(rule.userId, ch.webhookEnvelope, deliveryTextFor('discord'), 0, ch);
         } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
-          await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsAlertForEvent(event, impactText));
+          sent = await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsAlertForEvent(event, impactText), ch);
         } else if (ch.channelType === 'email' && ch.email) {
-          await sendEmail(ch.email, subject, deliveryText, unsubscribeUrlFor(ch, 'alerts'));
+          sent = await sendEmail(ch.email, subject, deliveryTextFor('email'), unsubscribeUrlFor(ch, 'alerts'), undefined, buildAlertEmailForEvent(event, impactText));
         } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
-          await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret);
+          sent = await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret, ch);
         } else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
           // Web push carries short payloads (Chrome caps at ~4KB and
           // auto-truncates longer ones anyway). Use title + first line
@@ -2064,21 +2639,39 @@ async function processEvent(event) {
           // (review finding: raw title/link bypassed the new sanitizers;
           // `payload.url` is a second, edge-unvalidated link field, so the
           // link wins and url is only a fallback before classification).
-          await sendWebPush(rule.userId, ch, {
+          sent = await sendWebPush(rule.userId, ch, {
             title: formatEventTitle(event, 'WorldMonitor'),
-            body: formatPushBody(deliveryText, event),
-            url: formatEventLinkForPush(event),
+            body: formatPushBody(deliveryTextFor('web_push'), event),
+            url: formatPushClickUrl(event),
             tag: webPushTagFor(event, rule.userId),
             eventType: event.eventType,
           });
         }
+        if (sent) deliveredChannels.push(ch.channelType);
       } catch (err) {
         console.warn(`[relay] Delivery error for ${rule.userId}/${ch.channelType}:`, err instanceof Error ? err.message : String(err));
       }
     }
+    if (deliveredChannels.length > 0) {
+      reachedUsers.add(rule.userId);
+      bump('sent');
+      await noteSentAlertForEvent(rule.userId, event, deliveredChannels);
+    } else {
+      bump('sendFailed');
+    }
   }
+  await finishAlertRewrite(event, rewrite, reachedUsers, outcome.repeat ?? 0);
+  if (outcome.repeat) outcome.repeatOf = { id: rewrite.decision.anchor.id, title: String(rewrite.decision.anchor.title).slice(0, 160) };
 
-  if (channelsFailedUsers > 0) await requeueAfterChannelsFailure(event, channelsFetchError, channelsFailedUsers);
+  if (outcome.freeSeverity) console.log(`[relay] Free-ladder severity clamp: dropped ${outcome.freeSeverity} rule(s) for non-critical event (severity=${eventSeverity})`);
+  if (outcome.freeEventType) console.log(`[relay] Free-ladder event-type clamp: dropped ${outcome.freeEventType} rule(s) for Pro-only event type (${String(event.eventType ?? 'unknown').replace(/[\r\n]/g, ' ').slice(0, 80)})`);
+  if (outcome.freeScope) console.log(`[relay] Free-ladder country-scope clamp: dropped ${outcome.freeScope} rule(s) without a matching explicit country scope`);
+  const noChannel = (outcome.noChannelListed ?? 0) + (outcome.noChannelVerified ?? 0);
+  if (noChannel > 0) console.log(`[relay] No usable channel: dropped ${noChannel} rule(s) for edition=${JSON.stringify(event.variant || 'any')} (${outcome.noChannelListed ?? 0} list no channel, ${outcome.noChannelVerified ?? 0} list no verified channel)`);
+  if (channelsFailedUsers > 0) {
+    const bucket = (await requeueAfterChannelsFailure(event, channelsFetchError, channelsFailedUsers)) ? 'channelsRequeued' : 'channelsFailed';
+    outcome[bucket] = (outcome[bucket] ?? 0) + channelsFailedUsers;
+  }
 }
 
 async function popNextEvent(pollNumber) {
@@ -2098,6 +2691,11 @@ async function popNextEvent(pollNumber) {
 // The relay polls RPOP every 1s when idle; processes immediately when messages exist.
 // Advantage over pub/sub: messages survive relay restarts and are not lost.
 
+// Set on SIGTERM so the loop pops nothing it could not log.
+let shuttingDown = false;
+// Bounded, so a stalled Upstash cannot hold a deploy's shutdown.
+const SHUTDOWN_LOG_WAIT_MS = 2000;
+
 async function subscribe() {
   console.log('[relay] Starting notification relay...');
   console.log('[relay] UPSTASH_URL set:', !!UPSTASH_URL, '| CONVEX_URL set:', !!CONVEX_URL, '| RELAY_SECRET set:', !!RELAY_SECRET);
@@ -2106,7 +2704,7 @@ async function subscribe() {
   let lastDrainMs = 0;
   let pollNumber = 0;
   const DRAIN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-  while (true) {
+  while (!shuttingDown) {
     try {
       // Periodically flush batch_on_wake held events regardless of queue activity
       const nowMs = Date.now();
@@ -2140,9 +2738,23 @@ async function subscribe() {
   }
 }
 
+// #10976: once a day, list the critical stories that reached nobody.
+const MISS_AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+function runMissAudit() {
+  execFile(process.execPath, [path.join(__dirname, 'audit-alert-misses.mjs')], { timeout: 5 * 60_000 }, (err, stdout) => {
+    for (const line of String(stdout).split('\n')) if (line.trim()) console.log(`[relay][miss-audit] ${line}`);
+    if (err) console.warn(`[relay][miss-audit] failed: ${err.message}`);
+  });
+}
+
 if (require.main === module) {
-  process.on('SIGTERM', () => {
+  // Also once shortly after boot, so redeploys cannot keep pushing the run out.
+  setTimeout(runMissAudit, 10 * 60_000).unref();
+  setInterval(runMissAudit, MISS_AUDIT_INTERVAL_MS);
+  process.on('SIGTERM', async () => {
     console.log('[relay] SIGTERM received — shutting down');
+    shuttingDown = true;
+    if (!(await drainShadowLog(SHUTDOWN_LOG_WAIT_MS))) console.warn('[relay] Exiting with score-log writes still in flight');
     process.exit(0);
   });
 
@@ -2163,6 +2775,7 @@ module.exports = {
   checkDedup,
   upstashDedupSetNx,
   eventMatchesCountryScope,
+  eventMatchesDeliveryScope,
   // Exported for tests: the link-suppression suite drives the real helpers
   // (not mirrors) so matcher drift fails the suite instead of the incident.
   eventLinks,
@@ -2178,11 +2791,13 @@ module.exports = {
   // the real ones change.
   eventMatchesTickerScope,
   eventMatchesChokepointScope,
+  eventMatchesOrbitalSiteScope,
   webPushTagFor,
   ruleMatchesEventType,
   // Exported so the effective-sensitivity coercion and the importance-score
   // threshold ladder are exercised directly rather than grepped from source.
   shouldNotify,
+  ruleDropReason,
   // Exported for the same reason as eventMatchesCountryScope: the
   // notify-field-validation tests must exercise the real formatter, not a
   // hand-copied mirror that cannot fail when the real one changes.
@@ -2193,6 +2808,7 @@ module.exports = {
   formatEventDescription,
   formatEventLinkForText,
   formatEventLinkForPush,
+  formatPushClickUrl,
   formatEventCoverage,
   formatPushBody,
   shapeEventForWebhook,
@@ -2202,12 +2818,16 @@ module.exports = {
   buildSlackMessagePayload,
   buildDiscordMessagePayload,
   buildTeamsAlertForEvent,
+  heldEmailItems,
   formatHeldAlertLines,
+  buildHeldTextParts,
+  removeHeldItems,
   sendTeams,
   processWelcome,
   popNextEvent,
   holdEvent,
   QUIET_HELD_MAX,
+  drainShadowLog,
   // Exported so the re-queue suite drives the real retry path.
   requeueAfterRulesFailure,
   requeueAfterChannelsFailure,

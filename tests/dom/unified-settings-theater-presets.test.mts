@@ -77,7 +77,7 @@ vi.mock('@/services/widget-store', () => ({
 }));
 
 vi.mock('@/services/preferences-content', () => ({
-  renderPreferences: () => ({
+  renderPreferenceSection: () => ({
     html: '',
     attach: () => () => {},
   }),
@@ -158,7 +158,7 @@ const { getTheaterPreset } = await import('@/config/theater-presets');
 
 type SettingsInternals = {
   overlay: HTMLElement;
-  render(loadAccountData?: boolean): void;
+  rebuild(runEnter: boolean): void;
 };
 
 // The 'ukraine-war' preset lists 11 sources; the stub catalog knows all of
@@ -235,8 +235,7 @@ beforeEach(() => {
 
   settings = new UnifiedSettings(config);
   internal = settings as unknown as SettingsInternals;
-  internal.overlay.classList.add('active');
-  internal.render(false);
+  settings.open('sources');
 });
 
 afterEach(() => {
@@ -331,7 +330,7 @@ describe('UnifiedSettings theater coverage presets', () => {
 
   it('(f) no presets row renders when zero presets resolve', () => {
     config.getAllSourceNames = () => [UNRELATED_SOURCE];
-    internal.render(false);
+    internal.rebuild(false);
 
     const chips = internal.overlay.querySelectorAll('.unified-settings-preset-chip');
     expect(chips.length).toBe(0);

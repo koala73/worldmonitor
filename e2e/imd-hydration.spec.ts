@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 test('IMD hydration reaches both natural and weather layers without a failed refetch', async ({ page }, testInfo) => {
   await seedAnonymousDashboard(page, 'full', { localStorage: { 'worldmonitor-layers': JSON.stringify({ natural: true, weather: true }) } });
@@ -32,5 +33,5 @@ test('IMD hydration reaches both natural and weather layers without a failed ref
   await page.locator('.nat-event-marker').click();
   await expect(page.getByText('IMD Fixture Storm', { exact: true }).last()).toBeVisible();
   await expect(page.getByText('IMD', { exact: true }).last()).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('imd-hydrated-both-layers.png') });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('imd-hydrated-both-layers.png') });
 });

@@ -160,18 +160,22 @@ test('every unit shard reads the one durations entry the run looked up, and one 
   assert.equal(save.with.path, path);
 });
 
-test('the shards and the built-output job together execute the complete data inventory exactly once, including new files', () => {
+test('the shards, built-output and docs jobs together execute the complete data inventory exactly once, including new files', () => {
   assert.ok(ciShardCount >= 2, `unit-shards matrix must list at least two shards, got ${JSON.stringify(ciShards)}`);
   assert.deepEqual(ciShards, Array.from({ length: ciShardCount }, (_, i) => i + 1), 'shard indices must be 1..N');
+  const shardCommand = workflow.jobs['unit-shards'].steps.find(step => step.run?.includes('npm run test:data')).run;
+  const exclusions = shardCommand.split(/\s+/).filter(arg => arg.startsWith('--exclude='));
+  const docsFiles = workflow.jobs['docs-stats'].steps.flatMap(step =>
+    [...(step.run ?? '').matchAll(/--test (tests\/[^\s]+\.test\.mjs)/g)].map(match => match[1]));
   const shards = ciShards.map((index) => {
-    const result = run([...patterns, '--built-output=exclude', `--shard=${index}/${ciShardCount}`, '--list']);
+    const result = run([...patterns, ...exclusions, '--built-output=exclude', `--shard=${index}/${ciShardCount}`, '--list']);
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
   });
   const builtRun = run([...patterns, '--built-output=only', '--list']);
   assert.equal(builtRun.status, 0, builtRun.stderr);
   const built = JSON.parse(builtRun.stdout);
-  const all = [...shards.flat(), ...built];
+  const all = [...shards.flat(), ...built, ...docsFiles];
   assert.deepEqual(all.sort(), [...inventory].sort());
   assert.equal(new Set(all).size, inventory.length);
   assert.ok(shards.every((files) => files.length > 0), 'no CI shard may be empty');

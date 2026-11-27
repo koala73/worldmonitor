@@ -253,7 +253,7 @@ describe('start_upgrade tool', () => {
     assert.equal(called.body.error.code, -32002);
     assert.equal(called.body.error.data.reason, 'already-subscribed');
     assert.deepEqual(called.body.error.data.subscription, subscription);
-    assert.match(called.body.error.data.nextStep, /cancel Pro/);
+    assert.match(called.body.error.data.nextStep, /prorated upgrade on the same subscription/);
 
     const starter = fixture({ outcome: { kind: 'already-subscribed', message: 'exists', subscription: { ...subscription, planKey: 'api_starter' } } });
     const api = await invoke(starter.deps, upgrade({ plan: 'api_business' }));

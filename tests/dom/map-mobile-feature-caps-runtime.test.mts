@@ -13,6 +13,7 @@
  * signed-off constants.
  */
 import { describe, expect, it, vi } from 'vitest';
+import { MOBILE_MAX_IRAN_EVENTS, MOBILE_MIN_EARTHQUAKE_MAGNITUDE } from '@/config/map-density-caps';
 
 import { MapComponent } from '@/components/Map';
 
@@ -47,8 +48,11 @@ type Surface = {
   zoomOut: () => void;
 };
 
-const MIN_MAG = (MapComponent as unknown as { MOBILE_MIN_EARTHQUAKE_MAGNITUDE: number }).MOBILE_MIN_EARTHQUAKE_MAGNITUDE;
-const MAX_IRAN = (MapComponent as unknown as { MOBILE_MAX_IRAN_EVENTS: number }).MOBILE_MAX_IRAN_EVENTS;
+// The caps moved out of MapComponent's private statics into shared config, so
+// every renderer applies one definition (#4545). This suite keeps reading the
+// real values rather than literals.
+const MIN_MAG = MOBILE_MIN_EARTHQUAKE_MAGNITUDE;
+const MAX_IRAN = MOBILE_MAX_IRAN_EVENTS;
 
 function createMap(isMobile: boolean): Surface {
   const map = Object.create(MapComponent.prototype) as unknown as Surface;
@@ -78,7 +82,7 @@ const quake = (magnitude: number, ageMs = 0) => ({ magnitude, occurredAt: Date.n
 const iranEvent = (i: number) => ({ id: `ir-${i}`, occurredAt: Date.now() - i });
 
 describe('mobile feed caps are applied at runtime (#4546)', () => {
-  it('reads real cap constants off the class', () => {
+  it('reads the real cap constants from shared config', () => {
     expect(MIN_MAG).toBe(5);
     expect(MAX_IRAN).toBe(50);
   });

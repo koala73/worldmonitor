@@ -61,6 +61,22 @@ export interface ServerInsights {
     sourcesConsidered: number;
     selectionDrops?: { admissibility: number; sourceCap: number; overflow: number };
   };
+  /** Seven-day threat-level history (stories counted once, on the UTC day
+   * first seen). Absent on payloads seeded before the history existed. */
+  threatTimeline?: ServerThreatTimeline;
+}
+
+export interface ServerThreatTimeline {
+  version: number;
+  /** First UTC day (YYYY-MM-DD) the history was written; earlier days are partial. */
+  recordingSince: string | null;
+  updatedAt: string;
+  /** Days inside the window a seeder outage left incomplete. */
+  partialDays?: string[];
+  days: Array<{
+    date: string;
+    counts: { critical: number; high: number; medium: number; low: number; info: number };
+  }>;
 }
 
 let cached: ServerInsights | null = null;
@@ -223,11 +239,6 @@ export async function fetchServerInsights(timeoutMs = 5_000): Promise<ServerInsi
     }
   })();
   return inFlight;
-}
-
-export function setServerInsights(data: ServerInsights): void {
-  cached = data;
-  rejectedHydration = false;
 }
 
 /** Test-only: reset module-local cache so suites can exercise the drain-once behavior. */

@@ -531,8 +531,12 @@ for (const failure of ['silent', 'trickle', 'refused']) {
         res.once('close', () => { clearInterval(timer); timers.delete(timer); });
       }
     });
-    const remotePort = await listen(remote);
-    if (failure === 'refused') await new Promise(resolve => remote.close(resolve));
+    // A refused upstream must stay refused. Closing a listener and reusing its
+    // port raced the other suites `node --test` runs at the same time: one of
+    // them could bind the freed port and answer 401 (PR #10785 run
+    // 43738172975). Port 1 is outside every ephemeral range, so no port-0
+    // listener can ever receive it.
+    const remotePort = failure === 'refused' ? 1 : await listen(remote);
     const localApi = await setupApiDir({
       'displacement/v1/get-displacement-summary.js': `export default async function handler(req) {
         return Response.json({ source: 'local-empty', dataAvailable: false, body: await req.json() });
@@ -2952,6 +2956,143 @@ test('validates OLLAMA_API_URL via /api/local-validate-secret (reachable endpoin
   }
 });
 
+test('desktop Settings can save a new private Ollama URL without a live probe', async (t) => {
+  const localApi = await setupApiDir({});
+  const previousMode = process.env.LOCAL_API_MODE;
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  const request = http.request;
+  const host = '192.168.1.24';
+  t.mock.method(http, 'request', (options, ...args) => {
+    assert.notEqual(options.hostname, host, 'unconfigured private origins are not probed');
+    return request(options, ...args);
+  });
+  const app = await createLocalApiServer({ port: 0, apiDir: localApi.apiDir });
+  try {
+    const { port } = await app.start();
+    const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'OLLAMA_API_URL', value: `http://${host}:11434` }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      valid: true,
+      message: 'Private Ollama URL accepted for configuration without a connection check',
+    });
+  } finally {
+    if (previousMode === undefined) delete process.env.LOCAL_API_MODE;
+    else process.env.LOCAL_API_MODE = previousMode;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('desktop Settings accepts Tailscale and system-resolved LAN Ollama hosts without a probe', async (t) => {
+  const localApi = await setupApiDir({});
+  const previousMode = process.env.LOCAL_API_MODE;
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  // Public DNS cannot see mDNS or /etc/hosts names; the system resolver can.
+  const systemHosts = new Map([
+    ['ollama-box.local', [{ address: '192.168.1.30', family: 4 }]],
+    ['metadata.local', [{ address: '169.254.169.254', family: 4 }]],
+  ]);
+  const notFound = async (hostname) => {
+    if (systemHosts.has(hostname)) throw Object.assign(new Error(`queryA ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' });
+    return [];
+  };
+  t.mock.method(dns, 'resolve4', notFound);
+  t.mock.method(dns, 'resolve6', notFound);
+  t.mock.method(dns, 'lookup', async (hostname) => {
+    const records = systemHosts.get(hostname);
+    if (!records) throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' });
+    return records;
+  });
+  const request = http.request;
+  t.mock.method(http, 'request', (options, ...args) => {
+    assert.ok(
+      !['100.101.102.103', 'ollama-box.local', 'metadata.local', '192.168.1.30', '169.254.169.254'].includes(options?.hostname),
+      `no request to ${options?.hostname}`,
+    );
+    return request(options, ...args);
+  });
+  const app = await createLocalApiServer({ port: 0, apiDir: localApi.apiDir, logger: { log() { }, warn() { }, error() { } } });
+  try {
+    const { port } = await app.start();
+    const validate = async (value) => {
+      const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'OLLAMA_API_URL', value }),
+      });
+      return response.json();
+    };
+    for (const value of ['http://100.101.102.103:11434', 'http://ollama-box.local:11434']) {
+      assert.deepEqual(await validate(value), {
+        valid: true,
+        message: 'Private Ollama URL accepted for configuration without a connection check',
+      }, value);
+    }
+    const metadata = await validate('http://metadata.local');
+    assert.equal(metadata.valid, false);
+    assert.match(metadata.message, /^Ollama URL blocked: /);
+  } finally {
+    if (previousMode === undefined) delete process.env.LOCAL_API_MODE;
+    else process.env.LOCAL_API_MODE = previousMode;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('secret validation refuses private relay and Ollama targets before any request', async (t) => {
+  const localApi = await setupApiDir({});
+  const previousMode = process.env.LOCAL_API_MODE;
+  delete process.env.LOCAL_API_MODE;
+  const blockedHosts = new Set(['169.254.169.254', '10.0.0.5', '100.64.1.2']);
+  const request = http.request;
+  t.mock.method(http, 'request', (options, ...args) => {
+    assert.ok(!blockedHosts.has(options?.hostname), `no request to ${options?.hostname}`);
+    return request(options, ...args);
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  try {
+    const { port } = await app.start();
+    const validate = async (key, value) => {
+      const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value }),
+      });
+      return response.json();
+    };
+    for (const [key, value] of [
+      ['WS_RELAY_URL', 'ws://169.254.169.254'],
+      ['VITE_WS_RELAY_URL', 'wss://10.0.0.5'],
+      ['VITE_OPENSKY_RELAY_URL', 'http://169.254.169.254/latest/meta-data'],
+    ]) {
+      const body = await validate(key, value);
+      assert.equal(body.valid, false, `${key}=${value}`);
+      assert.match(body.message, /^Relay URL blocked: /);
+    }
+    for (const value of ['http://169.254.169.254', 'http://10.0.0.5:11434', 'http://100.64.1.2:11434']) {
+      const body = await validate('OLLAMA_API_URL', value);
+      assert.equal(body.valid, false, value);
+      assert.match(body.message, /^Ollama URL blocked: /);
+    }
+    const withCredentials = await validate('OLLAMA_API_URL', 'http://user:pass@127.0.0.1:11434');
+    assert.equal(withCredentials.valid, false);
+    assert.equal(withCredentials.message, 'URLs with credentials are not allowed');
+  } finally {
+    if (previousMode === undefined) delete process.env.LOCAL_API_MODE;
+    else process.env.LOCAL_API_MODE = previousMode;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('validates LM Studio style /v1 base URL via /api/local-validate-secret', async () => {
   const mockOpenAiCompatible = createServer((req, res) => {
     if (req.url === '/v1/models') {
@@ -3732,6 +3873,307 @@ test('rss-proxy escapes control characters from the blocked url before logging i
     }
     assert.ok(blocked[0].includes(JSON.stringify(feedUrl)), blocked[0]);
   } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+// Stubs DNS and https.request for rss-proxy tests. `respond(res, req)` drives
+// the fake upstream response; every outbound request is recorded.
+function stubRssUpstream(respond) {
+  const originalResolve4 = dns.resolve4;
+  const originalResolve6 = dns.resolve6;
+  const originalHttpsRequest = https.request;
+  const outbound = [];
+  dns.resolve4 = async () => ['93.184.216.34'];
+  dns.resolve6 = async () => {
+    const error = new Error('No AAAA records');
+    error.code = 'ENODATA';
+    throw error;
+  };
+  https.request = (options, onResponse) => {
+    const req = new EventEmitter();
+    req.destroyed = false;
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = (error) => {
+      req.destroyed = true;
+      if (error) req.emit('error', error);
+    };
+    req.end = () => {
+      queueMicrotask(() => {
+        const res = new EventEmitter();
+        res.statusCode = 200;
+        res.statusMessage = 'OK';
+        res.headers = { 'content-type': 'application/rss+xml' };
+        onResponse(res);
+        respond(res, req);
+      });
+    };
+    options.signal?.addEventListener('abort', () => {
+      const error = new Error('The operation was aborted');
+      error.name = 'AbortError';
+      req.destroy(error);
+    }, { once: true });
+    outbound.push({ options, req });
+    return req;
+  };
+  return {
+    outbound,
+    restore() {
+      dns.resolve4 = originalResolve4;
+      dns.resolve6 = originalResolve6;
+      https.request = originalHttpsRequest;
+    },
+  };
+}
+
+test('docker-mode rss-proxy refuses hosts outside the feed allowlist and non-default ports', async () => {
+  const localApi = await setupApiDir({});
+  const upstream = stubRssUpstream((res) => {
+    res.emit('data', Buffer.from('<rss />'));
+    res.emit('end');
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'docker',
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const proxy = (feedUrl) => authFetch(
+    `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`,
+  );
+
+  try {
+    for (const feedUrl of [
+      'https://unlisted.example/',
+      'https://news.google.com:8443/rss',
+      'http://news.google.com:8080/rss',
+      'https://news.google.com.attacker.example/rss',
+    ]) {
+      const response = await proxy(feedUrl);
+      assert.equal(response.status, 403, feedUrl);
+      assert.equal((await response.json()).error, 'Domain not allowed', feedUrl);
+    }
+    assert.equal(upstream.outbound.length, 0);
+
+    const allowed = await proxy('https://news.google.com/rss?hl=en');
+    assert.equal(allowed.status, 200);
+    assert.equal(await allowed.text(), '<rss />');
+    assert.equal(upstream.outbound.length, 1);
+    assert.equal(upstream.outbound[0].options.hostname, 'news.google.com');
+  } finally {
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('docker-mode rss-proxy rate-limits each client IP', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'docker',
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const proxy = (clientIp) => authFetch(
+    `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://unlisted.example/')}`,
+    { headers: { 'X-Real-IP': clientIp } },
+  );
+
+  try {
+    for (let i = 0; i < 300; i += 1) {
+      const response = await proxy('203.0.113.7');
+      assert.equal(response.status, 403);
+      await response.body?.cancel();
+    }
+    const limited = await proxy('203.0.113.7');
+    assert.equal(limited.status, 429);
+    assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+    assert.equal((await proxy('203.0.113.8')).status, 403);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy stops reading a feed body past the size cap', async () => {
+  const localApi = await setupApiDir({});
+  const chunk = Buffer.alloc(1024 * 1024, 0x61);
+  let emitted = 0;
+  const upstream = stubRssUpstream((res, req) => {
+    // A hostile upstream that would stream 64 MiB if the proxy kept reading.
+    for (let i = 0; i < 64 && !req.destroyed; i += 1) {
+      emitted += 1;
+      res.emit('data', chunk);
+    }
+    if (!req.destroyed) res.emit('end');
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://huge.example/feed.xml')}`,
+    );
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).error, 'Feed too large');
+    assert.equal(upstream.outbound[0].req.destroyed, true);
+    assert.equal(emitted, 6);
+  } finally {
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy rejects a declared Content-Length over the size cap before reading', async () => {
+  const localApi = await setupApiDir({});
+  let dataListeners = null;
+  const upstream = stubRssUpstream((res) => {
+    dataListeners = res.listenerCount('data');
+  });
+  const originalRequest = https.request;
+  https.request = (options, onResponse) => originalRequest(options, (res) => {
+    res.headers['content-length'] = String(50 * 1024 * 1024);
+    onResponse(res);
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://huge.example/feed.xml')}`,
+    );
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).error, 'Feed too large');
+    assert.equal(dataListeners, 0);
+    assert.equal(upstream.outbound[0].req.destroyed, true);
+  } finally {
+    https.request = originalRequest;
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+function stubHeldRssUpstream() {
+  const held = [];
+  let holding = true;
+  const upstream = stubRssUpstream((res) => {
+    if (holding) {
+      held.push(res);
+    } else {
+      res.emit('data', Buffer.from('<rss/>'));
+      res.emit('end');
+    }
+  });
+  return {
+    ...upstream,
+    releaseAll() {
+      holding = false;
+      for (const res of held.splice(0)) {
+        res.emit('data', Buffer.from('<rss/>'));
+        res.emit('end');
+      }
+    },
+  };
+}
+
+async function waitForCondition(check, label) {
+  for (let i = 0; i < 200; i += 1) {
+    if (check()) return;
+    await sleep(10);
+  }
+  throw new Error(`timed out waiting for ${label}`);
+}
+
+test('rss-proxy bounds its wait queue and skips clients that disconnected while queued', async () => {
+  const localApi = await setupApiDir({});
+  const upstream = stubHeldRssUpstream();
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const feed = (signal) => authFetch(
+    `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://slow.example/feed.xml')}`,
+    { signal },
+  );
+  const pending = [];
+
+  try {
+    for (let i = 0; i < 12; i += 1) pending.push(feed());
+    await waitForCondition(() => upstream.outbound.length === 12, '12 active fetches');
+
+    const abandoned = new AbortController();
+    const abandonedRequest = feed(abandoned.signal).catch(() => null);
+    for (let i = 0; i < 47; i += 1) pending.push(feed());
+    await sleep(300);
+    abandoned.abort();
+    await abandonedRequest;
+
+    const rejected = await feed();
+    assert.equal(rejected.status, 503);
+    assert.ok(Number(rejected.headers.get('retry-after')) >= 1);
+    assert.equal(upstream.outbound.length, 12);
+
+    upstream.releaseAll();
+    const responses = await Promise.all(pending);
+    assert.deepEqual([...new Set(responses.map((r) => r.status))], [200]);
+    await Promise.all(responses.map((r) => r.text()));
+    // 12 active + 47 queued; the disconnected waiter never reached the upstream.
+    assert.equal(upstream.outbound.length, 59);
+  } finally {
+    upstream.releaseAll();
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy times out a queued request instead of fetching it late', async () => {
+  const localApi = await setupApiDir({});
+  const upstream = stubHeldRssUpstream();
+  __testing__.setRssProxyQueueWaitMs(100);
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const feed = () => authFetch(
+    `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://slow.example/feed.xml')}`,
+  );
+  const active = [];
+
+  try {
+    for (let i = 0; i < 12; i += 1) active.push(feed());
+    await waitForCondition(() => upstream.outbound.length === 12, '12 active fetches');
+
+    const queued = await feed();
+    assert.equal(queued.status, 504);
+    assert.equal((await queued.json()).error, 'Feed timeout');
+
+    upstream.releaseAll();
+    await Promise.all((await Promise.all(active)).map((r) => r.text()));
+    assert.equal(upstream.outbound.length, 12);
+  } finally {
+    __testing__.setRssProxyQueueWaitMs(10_000);
+    upstream.releaseAll();
+    upstream.restore();
     await app.close();
     await localApi.cleanup();
   }
@@ -4852,6 +5294,19 @@ test('selfhost-key: a malformed key is refused with no cloud call; a repeated in
   });
 });
 
+test('selfhost-key: a body over the 4096-byte cap is refused with no cloud call', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const response = await selfHostRequest(port, '/api/selfhost-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+      body: { key: SELFHOST_ACTIVE_KEY, padding: 'x'.repeat(5000) },
+    });
+    assert.equal(response.status, 400);
+    assert.equal(response.json.status, 'invalid');
+    assert.equal(cloud.statusCalls.length, 0);
+  });
+});
+
 test('selfhost-key: POSTs past the per-client limit get 429', async () => {
   await withSelfHostSidecar(async ({ port }) => {
     const client = { 'X-Real-IP': '203.0.113.7' };
@@ -5459,5 +5914,122 @@ test('fetchWithTimeout hands https.request a signal that aborts with the caller 
     assert.ok(seen.every((signal) => signal instanceof AbortSignal));
   } finally {
     https.request = original;
+  }
+});
+
+test('rate-limit keys stay bounded and group each IPv6 /64', () => {
+  const limits = new Map();
+  const hit = (ip) => __testing__.clientWithinLimit({ headers: { 'x-real-ip': ip } }, limits, 2, 60_000);
+
+  assert.equal(hit('2001:db8:1:2::1').ok, true);
+  assert.equal(hit('2001:db8:1:2:ffff:ffff:ffff:ffff').ok, true);
+  assert.equal(hit('2001:db8:1:2::abcd').ok, false);
+  assert.equal(hit('2001:db8:1:3::1').ok, true);
+  assert.equal(hit('::ffff:203.0.113.7').ok, true);
+  assert.ok(limits.has('203.0.113.7'));
+
+  for (let i = 0; i < 20_000; i += 1) hit(`198.51.${i >> 8}.${i & 0xff}`);
+  assert.equal(limits.size, 10_000);
+});
+
+test('docker-mode rss-proxy lets one client hold at most half the fetch slots', async () => {
+  const localApi = await setupApiDir({});
+  const upstream = stubHeldRssUpstream();
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'docker',
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const feed = (clientIp) => authFetch(
+    `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://news.google.com/rss')}`,
+    { headers: { 'X-Real-IP': clientIp } },
+  );
+  const pending = [];
+
+  try {
+    for (let i = 0; i < 12; i += 1) pending.push(feed('203.0.113.7'));
+    await waitForCondition(() => upstream.outbound.length === 6, '6 active fetches');
+    await sleep(100);
+    assert.equal(upstream.outbound.length, 6);
+
+    pending.push(feed('203.0.113.8'));
+    await waitForCondition(() => upstream.outbound.length === 7, 'second client fetch');
+
+    upstream.releaseAll();
+    const responses = await Promise.all(pending);
+    assert.deepEqual([...new Set(responses.map((r) => r.status))], [200]);
+    await Promise.all(responses.map((r) => r.text()));
+    assert.equal(upstream.outbound.length, 13);
+  } finally {
+    upstream.releaseAll();
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy aborts the upstream fetch when the client disconnects', async () => {
+  const localApi = await setupApiDir({});
+  const upstream = stubHeldRssUpstream();
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const abandoned = new AbortController();
+
+  try {
+    const request = authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent('https://slow.example/feed.xml')}`,
+      { signal: abandoned.signal },
+    ).catch(() => null);
+    await waitForCondition(() => upstream.outbound.length === 1, 'active fetch');
+    abandoned.abort();
+    await request;
+    await waitForCondition(() => upstream.outbound[0].req.destroyed, 'upstream abort');
+  } finally {
+    upstream.releaseAll();
+    upstream.restore();
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('cloud fallback logs a timestamp, duration and upstream load for each failed cloud request', async () => {
+  const remote = createServer((req, res) => {
+    if (answerSessionMint(req, res)) return;
+    if (req.url.startsWith('/api/test/v1/unavailable')) {
+      res.writeHead(502, { 'content-type': 'application/json' });
+      res.end('{}');
+      return;
+    }
+    req.socket.destroy();
+  });
+  const remotePort = await listen(remote);
+  const localApi = await setupApiDir({});
+  const lines = [];
+  const capture = (...args) => lines.push(args.map(String).join(' '));
+  const app = await createLocalApiServer({
+    port: 0, apiDir: localApi.apiDir,
+    remoteBase: `http://127.0.0.1:${remotePort}`, cloudFallback: 'true', allowPrivateRemoteBase: true,
+    logger: { log() {}, warn: capture, error: capture },
+  });
+  const { port } = await app.start();
+  try {
+    await authFetch(`http://127.0.0.1:${port}/api/test/v1/unavailable`);
+    await authFetch(`http://127.0.0.1:${port}/api/test/v1/dropped`);
+    const timed = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z`;
+    const load = String.raw`in \d+ms \(upstream \d+\/6 active, \d+ queued\)`;
+    assert.ok(lines.some(line => new RegExp(`^\\[local-api\\] ${timed} /api/test/v1/unavailable → cloud \\(handler missing\\)$`).test(line)), lines.join('\n'));
+    assert.ok(lines.some(line => new RegExp(`^\\[local-api\\] ${timed} cloud returned 502 for /api/test/v1/unavailable ${load}$`).test(line)), lines.join('\n'));
+    assert.ok(lines.some(line => new RegExp(`^\\[local-api\\] ${timed} cloud fallback failed for /api/test/v1/dropped ${load} `).test(line)), lines.join('\n'));
+  } finally {
+    remote.closeAllConnections();
+    await new Promise(resolve => remote.close(resolve));
+    await app.close();
+    await localApi.cleanup();
   }
 });

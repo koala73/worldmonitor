@@ -41,4 +41,5 @@ coverage. Classify errors from the actual response and handler path.
 - [Panel settings](./panel-settings.md) — the Settings overlay applies a panel toggle to the live dashboard and persists it.
 - [Country brief](./country-brief.md) — the `?country=` deep link opens the country intelligence panel and round-trips through the URL.
 - [Global search](./global-search.md) — the command palette opens from the header and ⌘K, returns ranked matches, and closes.
+- [Satellite passes here](./orbital-watch.md) — the map context menu opens the satellite lookup sheet for any point, with tiered passes, archive images, and the point kept in the browser.
 - [Map layers](./map-layers.md) — a layer toggle changes the map, the shareable URL, and the persisted preference, in both renderers.

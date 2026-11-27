@@ -252,7 +252,22 @@ describe('target-size — small map controls', () => {
     assert.match(block[1], /min-width:\s*48px/);
   });
 
-  it('layer-help "?" button is 48x48', () => {
+  it('layer-help circle paints behind the "i" glyph, not over it', () => {
+    // The visible circle is an absolutely positioned ::before with an opaque
+    // background. Positioned boxes paint above in-flow text, so without a
+    // negative z-index inside an isolated button the glyph is hidden and the
+    // button renders as an empty circle.
+    const btn = css.match(/\.layer-help-btn\s*\{([^}]*)\}/);
+    assert.ok(btn, '.layer-help-btn rule must exist');
+    assert.match(btn[1], /isolation:\s*isolate/);
+    const circle = css.match(/\.layer-help-btn::before\s*\{([^}]*)\}/);
+    assert.ok(circle, '.layer-help-btn::before rule must exist');
+    assert.match(circle[1], /z-index:\s*-1/);
+    const deckglLine = deckglMap.split('\n').find((l) => l.includes('class="layer-help-btn"'));
+    assert.match(deckglLine, />i<\/button>/, 'DeckGL layer guide button shows an "i" glyph');
+  });
+
+  it('layer-help button is 48x48', () => {
     const block = css.match(/\.layer-help-btn\s*\{([^}]*)\}/);
     assert.ok(block, '.layer-help-btn rule must exist');
     assert.match(block[1], /width:\s*48px/);

@@ -13,10 +13,6 @@ function sanitizeVideoId(value) {
 const ALLOWED_ORIGINS = [
   // App hosts only: clerk and abacus are vendor CNAMEs, not trusted parents.
   /^https:\/\/(www\.|app\.|api\.|tech\.|finance\.|commodity\.|happy\.|energy\.)?worldmonitor\.app$/,
-  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
-  // Team-pinned only (mirrors public/wm-widget-sandbox.html): the unprefixed
-  // worldmonitor-[a-z0-9-].vercel.app pattern matched ANY Vercel team's
-  // look-alike project preview.
   /^https?:\/\/localhost(:\d+)?$/,
   /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
   /^tauri:\/\/localhost$/,
@@ -29,6 +25,18 @@ const ALLOWED_PARENT_ORIGINS = [
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost$/,
 ];
 
+/**
+ * A Vercel preview deployment trusts only its own hostnames (VERCEL_URL,
+ * VERCEL_BRANCH_URL). Never match previews by name pattern: any Vercel account
+ * can claim `worldmonitor-<x>-eliewm.vercel.app` by naming its project so.
+ * Read at call time; production never matches. Mirrors api/_cors.js.
+ */
+function isOwnPreviewDeploymentOrigin(origin) {
+  if (process.env.VERCEL_ENV !== 'preview') return false;
+  return [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL]
+    .some((host) => Boolean(host) && origin === `https://${host}`);
+}
+
 function sanitizeAllowedOrigin(raw, fallback, allowList = ALLOWED_ORIGINS) {
   if (!raw) return fallback;
   try {
@@ -37,7 +45,7 @@ function sanitizeAllowedOrigin(raw, fallback, allowList = ALLOWED_ORIGINS) {
       return fallback;
     }
     const origin = parsed.origin !== 'null' ? parsed.origin : raw;
-    if (allowList.some(p => p.test(origin))) return origin;
+    if (isOwnPreviewDeploymentOrigin(origin) || allowList.some(p => p.test(origin))) return origin;
   } catch { /* invalid URL */ }
   return fallback;
 }

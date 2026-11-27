@@ -1,11 +1,14 @@
 import { rpcError, rpcOk } from '../rpc';
-import { UI_RESOURCE_MIME_TYPE } from './shell';
+import { UI_DOMAIN, UI_RESOURCE_MIME_TYPE } from './shell';
 import { buildPluginShell } from './_plugin-loader';
 
-export const COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v3.html';
-export const NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v3.html';
-export const PREVIOUS_COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v2.html';
-export const PREVIOUS_NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v2.html';
+// v4 carries preferredDisplayMode; hosts cache resource metadata by URI, so a new URI is how installed connectors pick it up.
+export const COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v4.html';
+export const NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v4.html';
+export const PREVIOUS_COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v3.html';
+export const PREVIOUS_NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v3.html';
+export const LEGACY_COUNTRY_VIEW_V2_UI_URI = 'ui://worldmonitor/country-view-v2.html';
+export const LEGACY_NEWS_DASHBOARD_V2_UI_URI = 'ui://worldmonitor/news-dashboard-v2.html';
 export const LEGACY_COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v1.html';
 export const LEGACY_NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard.html';
 const previewHost = process.env.VERCEL_ENV === 'preview' ? process.env.VERCEL_URL : undefined;
@@ -17,11 +20,18 @@ const MAP_ASSET_ORIGINS = [
   'https://basemaps.cartocdn.com',
   'https://*.basemaps.cartocdn.com',
 ];
+// No `data:` in resourceDomains: hosts already grant `img-src 'self' data:`
+// (MCP Apps spec, Host Behavior), which covers the inline SVG icons in the view
+// CSS, and a bare scheme here would also widen script-src and style-src.
+// preferredDisplayMode asks Claude to open the view in its side panel; hosts without one render inline.
 export const NEWS_DASHBOARD_META = {
+  'openai/widgetDescription': 'Shows WorldMonitor news panels and an interactive hazard map for the requested query, with local topic, filter and layer navigation.',
   ui: {
+    domain: UI_DOMAIN,
+    preferredDisplayMode: 'fullscreen',
     csp: {
       connectDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS],
-      resourceDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS, 'data:'],
+      resourceDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS],
       frameDomains: [],
       baseUriDomains: [ASSET_ORIGIN],
     },
@@ -30,11 +40,13 @@ export const NEWS_DASHBOARD_META = {
 };
 
 export const COUNTRY_VIEW_META = {
-  ui: { csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org', 'data:'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
+  'openai/widgetDescription': 'Shows a shared country deep dive whose sections load progressively for signed-in users.',
+  ui: { domain: UI_DOMAIN, preferredDisplayMode: 'fullscreen', csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
 export const MARKET_RADAR_META = {
-  ui: { csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
+  'openai/widgetDescription': 'Shows the Fear & Greed composite and quote tables for equities, commodities, crypto, Gulf markets and sectors, with signed change and expandable intraday charts.',
+  ui: { domain: UI_DOMAIN, csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
 export async function readNewsDashboard(id: unknown, corsHeaders: Record<string, string>, uri = NEWS_DASHBOARD_UI_URI): Promise<Response> {

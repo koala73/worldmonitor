@@ -194,6 +194,8 @@ export interface RequestEvent {
   // 'modern' when /mcp served the request on the 2026-07-28 per-request path,
   // 'legacy' otherwise; null on REST rows.
   mcp_era: string | null;
+  // clientInfo.name the MCP request declared (bounded token), authenticated callers only; null on REST rows.
+  mcp_client_name: string | null;
   // Enterprise contract account whose pooled daily allowance this request
   // was counted on; null for everyone else.
   account_id: string | null;
@@ -328,6 +330,8 @@ export function buildRequestEvent(p: {
   mcpProtocolVersion?: string | null;
   /** MCP protocol era of the request ('modern' | 'legacy'); null on REST. */
   mcpEra?: string | null;
+  /** clientInfo.name an authenticated MCP request declared; null otherwise. */
+  mcpClientName?: string | null;
   /** Enterprise contract account the request was pooled on; null otherwise. */
   accountId?: string | null;
   /** Served past the contract allowance (pooled requests only); null otherwise. */
@@ -372,6 +376,7 @@ export function buildRequestEvent(p: {
     tool_jmespath: p.toolJmespath ?? null,
     mcp_protocol_version: p.mcpProtocolVersion ?? null,
     mcp_era: p.mcpEra ?? null,
+    mcp_client_name: p.mcpClientName ?? null,
     account_id: p.accountId ?? null,
     overage: p.overage ?? null,
   };

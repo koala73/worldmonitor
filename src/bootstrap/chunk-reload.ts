@@ -18,12 +18,21 @@
 // A tab that stays open across a later deploy is recovered by
 // stale-bundle-check.ts instead.
 //
-// A listener that calls `preventDefault()` on the event claims the failure as
-// not deploy skew (sentry-defer.ts does this for its own chunk). The guard
-// decides after every listener has run, so registration order does not matter.
+// A listener may mark the event as a Sentry-chunk failure (sentry-defer.ts).
+// The guard skips that failure: a blocked Sentry chunk fails on every load, so
+// it is not deploy skew. The mark is not `preventDefault()`. Vite treats
+// `preventDefault()` as "handled" and resolves the import to `undefined`, and
+// the caller then throws while destructuring the module. The guard decides
+// after every listener has run, so registration order does not matter.
+//
+// A dynamic import can still fulfill with `undefined` when some other listener
+// does call `preventDefault()`. `readChunkModule` spends the same one reload
+// for that result, and for a rejection the guard stood down from.
 //
 // The reload does not wait for an open modal: see RELOAD_GUARD_EXEMPT in
 // scripts/enforce-overlay-reload-policy.mjs (#8662).
+
+import { markPageUnloading } from '@/bootstrap/page-unload-signal';
 
 interface EventTargetLike {
   addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
@@ -48,6 +57,27 @@ interface ChunkReloadGuardOptions {
 
 /** Holds the build hash whose one reload has been spent. */
 export const CHUNK_RELOAD_STORAGE_KEY = 'wm-chunk-reload';
+
+interface ChunkPreloadEvent extends Event {
+  wmSentryChunkClaim?: boolean;
+}
+
+interface InstalledChunkReloadGuard {
+  version: string;
+  storages: readonly StorageLike[];
+  reload: () => void;
+}
+
+let installed: InstalledChunkReloadGuard | null = null;
+
+/** Tell the chunk-reload guard this preload failure is the Sentry chunk. */
+export function markSentryChunkClaim(event: Event): void {
+  (event as ChunkPreloadEvent).wmSentryChunkClaim = true;
+}
+
+function isMarkedSentryChunkClaim(event: Event): boolean {
+  return (event as ChunkPreloadEvent).wmSentryChunkClaim === true;
+}
 
 function browserStorages(): StorageLike[] {
   const out: StorageLike[] = [];
@@ -81,17 +111,46 @@ function claimReload(storages: readonly StorageLike[], version: string): boolean
   return false;
 }
 
+function reloadForMissingChunkModule(): void {
+  if (!installed) return;
+  if (!claimReload(installed.storages, installed.version)) return;
+  markPageUnloading();
+  installed.reload();
+}
+
+/**
+ * Await a lazy chunk. A rejection, or a fulfilled `null`/`undefined` (what
+ * Vite's preload helper yields after `preventDefault()`), spends the same one
+ * reload as `vite:preloadError`. A module that loaded is returned as-is.
+ */
+export async function readChunkModule<T>(load: Promise<T>): Promise<T> {
+  let value: T;
+  try {
+    value = await load;
+  } catch (error) {
+    reloadForMissingChunkModule();
+    throw error;
+  }
+  if (value != null) return value;
+  reloadForMissingChunkModule();
+  throw new Error('Chunk module failed to load');
+}
+
 export function installChunkReloadGuard(version: string, options: ChunkReloadGuardOptions = {}): void {
   const eventName = options.eventName ?? 'vite:preloadError';
   const eventTarget = options.eventTarget ?? window;
   const reload = options.reload ?? (() => window.location.reload());
+  const storages = options.storages ?? browserStorages();
+  installed = { version, storages, reload };
 
   eventTarget.addEventListener(eventName, (event) => {
     // Vite reads `defaultPrevented` synchronously after dispatch, so a
     // microtask runs after every listener had its chance to claim the event.
     queueMicrotask(() => {
       if (event.defaultPrevented) return;
-      if (!claimReload(options.storages ?? browserStorages(), version)) return;
+      if (isMarkedSentryChunkClaim(event)) return;
+      if (!claimReload(storages, version)) return;
+      markPageUnloading();
       reload();
     });
   });

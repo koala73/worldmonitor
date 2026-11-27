@@ -62,7 +62,7 @@ describe('welcome a11y invariants (#7382)', () => {
     // the hash and stayed on /pro (confirmed against production).
     // Unwrapping without forwarding the handler would silently send that
     // click off-site to worldmonitor.app, so Logo takes the destination.
-    assert.match(logo, /href = 'https:\/\/worldmonitor\.app'/, 'Logo keeps the home default');
+    assert.match(logo, /href = '\/'/, 'Logo keeps the canonical root-relative home default');
     assert.match(logo, /href=\{href\}/);
     assert.match(logo, /onClick=\{onClick\}/);
     assert.match(

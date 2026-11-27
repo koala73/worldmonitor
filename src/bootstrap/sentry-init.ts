@@ -208,6 +208,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // WKScriptMessageHandler ourselves; this is browser-native and unactionable
       // (WORLDMONITOR-KJ — 15 events / 14 users in DuckDuckGo 26.3 on macOS).
       /WKWebView API client did not respond to this postMessage/,
+      // The same host bridge failing before any reply: DuckDuckGo rejects with
+      // this exact sentence when the page-side messaging shim finds no native
+      // WKScriptMessageHandler registered. The phrase appears nowhere in src/,
+      // api/ or our dependencies, and we never register or call a script
+      // message handler; anchored so a longer first-party message still
+      // surfaces (WORLDMONITOR-1EH — DuckDuckGo 26.3 on macOS, unhandled
+      // rejection with no stack).
+      /^Script message handler is unavailable$/,
       // Apple's native WKWebView find-on-page bridge: the host app evaluates
       // `WKWebView_RemoveAllHighlights()` in the page when the user dismisses
       // the in-app find bar, and it is undefined in web content the host never
@@ -584,8 +592,12 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // the allowlist itself is the load-bearing safety (#6746).
       const isHostScopedFetchFailure = excType === 'TypeError'
         && /^(?:TypeError: )?(?:Failed to fetch|NetworkError when attempting to fetch resource\.?) \([^)]+\)$/.test(msg);
+      // `Uncaught TypeError: ...` typed as a plain `Error` is how WebKit forwards an
+      // uncaught throw from a Worker to the page's onerror. WORLDMONITOR-19D: a
+      // NetCast TV browser without `String.prototype.replaceAll` crashing inside
+      // the maplibre-gl worker chunk. The vendor-frame gate below still decides.
       if (!isHostScopedFetchFailure
-          && (excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg))
+          && (excType === 'TypeError' || excType === 'RangeError' || /^(?:Uncaught )?(?:TypeError|RangeError):/.test(msg))
           && frames.length > 0) {
         if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
       }
@@ -1223,6 +1235,17 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // frames). Left deliberately phrasing-agnostic after `Unexpected ` so
           // every engine's token/identifier/keyword/EOF wording is covered.
           || /appendChild.*Unexpected /.test(msg)
+          // Same insertion path, other parse-time failure: an injected script
+          // inserted twice redeclares its own top-level binding (WORLDMONITOR-1F5:
+          // `Identifier 'API_URL' has already been declared`, two `<anonymous>`
+          // frames, Chrome 157). Our bundle is ES modules, so no first-party
+          // top-level binding enters the global lexical scope. Identifier-agnostic
+          // because the same `!hasFirstParty` gate keeps a first-party loader's
+          // failure visible; the bare form without the prefix stays on the named
+          // ignoreErrors list. `\s` after `has`: the test harness strips
+          // `as <word>` from this body as a TS assertion, which would gut a
+          // literal space here.
+          || /appendChild.*Identifier '[^']+' has\salready been declared/.test(msg)
           // Platform-authenticator failure raised by the browser's WebAuthn /
           // Credential Management layer — `NotReadableError: An unknown error
           // occurred while talking to the credential manager.` The phrasing is

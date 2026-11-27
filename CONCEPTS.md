@@ -100,6 +100,10 @@ Running a candidate read path against real production traffic while continuing t
 
 Two rules make a shadow comparable rather than merely reassuring. The candidate must be measured entirely off the response path, so enabling it on live traffic cannot change what any client receives. And the incumbent must be measured on the *same* traffic over the *same* window, because a candidate's latency means nothing against a baseline drawn from different requests or a different hour. A shadow that clears its gate answers only "is the candidate faster here"; the serving path's own failure and slowness handling still has to be proven separately, since a shadow never exercises them. See also: The Lever Test, Bootstrap Tier.
 
+### Held-Out Judged Set
+
+A human-labelled sample of headlines, judged blind to any model output and after the prompt, model and criteria under test were fixed. It scores fixed labellers against a decision rule set in advance; it is never read to adjust a labeller or the rule. Each title carries a judged level and a borderline flag, which separates the clear-cut slice from titles the annotator placed between two levels. The set is single-use for tuning: once any prompt, threshold or criterion is chosen by reading its results, it becomes a tuning set and a fresh held-out sample is owed. A replacement decision on it is therefore pre-registered: the rule, the runs and the inputs are frozen before the candidate answers. See also: Shadow Measurement.
+
 ## Notifications & Alert Delivery
 
 ### Alert Rule
@@ -119,6 +123,8 @@ The country identity a notification publisher attaches to an event at publish ti
 The destination a delivered notification opens when its recipient clicks it, carried on the published event's payload beside the title and body. It is untrusted at both of its sources — a subscriber-authored publish call supplies it directly, and feed ingestion copies it verbatim from external publishers — so it is attacker-influenceable on every channel that renders it.
 
 Its trust question is not which destination is permitted but which surface acting on it consumes. An off-origin target is delivered intact, because the linked article is the point of a news alert and the same link already appears in the message body on every text channel; what must never happen is the already-open, authenticated dashboard being navigated to it, since that replaces a trusted surface in place rather than adding one beside it. Off-origin targets therefore open in their own window, and only a target that resolves to the serving origin of the worker handling the click may reuse the open one.
+
+A target the platform sourced itself, when it points off-origin, is delivered with a referrer tag naming the product and the delivering channel, so the publisher can attribute the visit; a subscriber-authored target is never tagged. The tag is attribution, not identity: anything that compares Click Targets as strings, operator link suppression included, must treat the tagged and untagged forms as the same target.
 
 The dispatcher must not encode an origin in a Click Target. The product is served from several first-party hosts — a canonical host plus the themed Variant Hosts — so any absolute first-party URL is right for exactly one of them and cross-origin to all the rest; a strict origin comparison downstream then classifies genuinely first-party traffic as foreign and opens a duplicate tab. Naming one host as canonical inside the target is the defect, not a detail of it. So a target meaning "the dashboard" generically is emitted as a bare path and each worker resolves it against whichever host is serving it: normalization is not removed, it moves to the only party that knows the answer. The worker half is also the only half that can repair a target already displayed, because a shown notification does not expire and its click is dispatched to whichever worker is active by then, long after the dispatcher can reach it. Two kinds of target stay absolute: a Variant Host's own, since the variants are distinct surfaces and relativizing one would let another resolve it onto itself, and the paths the edge serves on the canonical apex, which break if detached from that origin.
 
@@ -376,6 +382,10 @@ A news category a session resolves that the active variant's preset does not dec
 
 The rolling corpus of recently-tracked news stories, ordered by when each story was last seen, that downstream consumers read to answer "what has been in the feed lately?". It is a *retention window*, not a queue: entries age out on a fixed horizon rather than being consumed, and several unrelated consumers — the digest cron, trend detection — sample the same corpus independently for different spans. Its retention horizon states how far back entries *may* reach; it says nothing about how many are there, and on a busy feed the corpus holds far more stories than any single consumer intends to read at once. See also: Sampled Span, Seed-Owned Key.
 
+### Headline History
+
+The record of every headline an edition's Feed Digest served, kept per edition and language for a week so that search can find a headline after it has left the dashboard. It exists because the dashboard holds only the current digest and the alert relay titles a news alert with the served digest item's title, verbatim: a headline that alerted a few hours ago has usually aged out of the dashboard. Alerts the relay raises from X accounts are not digest items and are not in it. Three properties separate it from its neighbours. It records each served *item*, not one representative per story as the Story Accumulator's track rows do, because an alert carries the wording of the item it came from and that wording has to be findable. For the same reason an article the publisher retitled keeps a row for each wording it was served under, not only the latest. Its window is measured from when a headline was last *served*, not when it was published, since an article can be days old when it is served and alerted. And it holds only headlines whose link passed the publisher gate, because a search result nobody can open is not a result. How far back a caller may search is decided by which route they can reach, not by a parameter. See also: Feed Digest, Story Accumulator.
+
 ### Keyword Spike
 
 A term — an ordinary word, a vulnerability identifier, or a threat-group designator — appearing materially more often in a recent window than its own recent history predicts. A spike is deliberately harder to earn than "appeared a lot": the term must clear a floor of distinct mentions, exceed its baseline rate by a strict multiplier, and be carried by more than one outlet, so a single prolific source cannot manufacture one. When no baseline exists yet the decision falls back to the floor alone, which is why a corpus that yields no usable baseline silently converts spike detection into simple frequency counting. See also: Sampled Span.
@@ -573,11 +583,11 @@ Two rules follow. Plan-to-capability mappings drift while the destination's own 
 
 ### Covering Subscription
 
-A subscription that currently grants paid coverage. Coverage is decided per status, not by the status name's plain-English reading: an active subscription covers; an on-hold subscription (payment failed, provider retrying) still covers through its retry window; a cancelled subscription covers until the end of the period already paid for; an expired subscription never covers regardless of its recorded period end. The server owns these rules; any client-side derivation must mirror them rather than re-deriving from status-string intuition.
+A subscription that currently grants paid coverage. Coverage is decided per status, not by the status name's plain-English reading: an active subscription covers; an on-hold subscription (payment failed, provider retrying) still covers through its retry window, so it keeps blocking a duplicate checkout; a cancelled subscription covers until the end of the period already paid for; an expired subscription never covers regardless of its recorded period end. The server owns these rules; any client-side derivation must mirror them rather than re-deriving from status-string intuition.
 
 The mirror is exact except at one boundary, and the exception is deliberate: the server treats the paid window as open while `currentPeriodEnd > at`, the client while `currentPeriodEnd >= at`. The client is the more permissive of the two for the single instant they differ, which is safe precisely because a Billing UX State changes copy and actions only and never grants access the server would deny — while the reverse rounding would blink a covered plan into looking lapsed between snapshots. Anything that later deduplicates the two implementations must preserve each side's boundary rather than picking one, since the comparison is load-bearing in opposite directions.
 
-Answering "does this row cover?" is also not the same as answering "does this user have access". An `active` row reports covering on its fields alone whatever its period end, so a row whose renewal webhook was missed still looks covering; `on_hold` and `cancelled` rows cover only through their paid-through end. Only the full Billing UX State derivation combines that row evidence with the current entitlement and renewal-verification verdict. Coverage predicates are therefore safe for choosing copy and never safe as an entitlement gate. See also: Cancelled-But-Paid-Through, Billing UX State, Renewal Verification.
+Answering "does this row cover?" is also not the same as answering "does this user have access". An `active` row reports covering on its fields alone whatever its period end, so a row whose renewal webhook was missed still looks covering; `on_hold` and `cancelled` rows cover only through their paid-through end. Only the full Billing UX State derivation combines that row evidence with the current entitlement and renewal-verification verdict. Coverage predicates are therefore safe for choosing copy and never safe as an entitlement gate. Paid access from an on-hold row can also be shorter than its coverage: a failed renewal (a hold whose current period has no succeeded charge) keeps access for a 7-day grace after the hold, stamped as `accessEndsAt`, while Dodo goes on retrying for the rest of the window. The grace is decided when the row enters the hold and again only if the hold payload moves the period start. It is always counted from the original hold time and read from the period the hold payload names, so the result does not depend on webhook arrival order. Repeat holds for the same period cannot extend it. A cancel during that hold keeps the grace end; a return to active clears it (`accessEndAt` / `hasAccessAt` in convex/payments/subscriptionHelpers.ts). See also: Cancelled-But-Paid-Through, Billing UX State, Renewal Verification.
 
 ### Cancelled-But-Paid-Through
 
@@ -943,7 +953,10 @@ on a later one.
 Deferral is load-shedding, not failure — but it only pays for itself if the
 member eventually runs. A member deferred on every tick is a stall wearing
 deferral's clothing, and telling those two apart is the whole reason this
-vocabulary exists.
+vocabulary exists. The stall check judges only how old the member's data is,
+so a member that runs every tick but fails as a Graceful Skip also reads as
+stalled the first time it is deferred. Check whether the member ran on earlier
+ticks before you treat a stall as starvation.
 
 ### Graceful Skip
 
@@ -1093,7 +1106,7 @@ An input must be published with enough precision to identify the metric behind i
 
 ### Context Metric
 
-A value a chokepoint page displays that never enters the Disruption Score — event counts, observed transit counts, and period-over-period movement. Publishing the exclusion is as load-bearing as publishing the inputs, since a number rendered next to a score reads as a cause of it by default.
+A value displayed beside a score that never enters it: on a chokepoint page, event counts, observed transit counts, and period-over-period movement beside the Disruption Score; beside the Country Instability Index, advisories and confirmed satellite imagery change flags, which carry the input register's **context** verdict. Publishing the exclusion is as load-bearing as publishing the inputs, since a number rendered next to a score reads as a cause of it by default.
 
 One upstream feed can supply both a Score Input and a Context Metric, so the split is per-metric and never per-source: the same provider's daily series can drive an input while its summarised movement figure stays presentational. Excluding a source wholesale is therefore the easy way to publish a false exclusion. See also: Score Input, Transit Anomaly.
 
@@ -1121,7 +1134,7 @@ A Fallback Stream decays with no code change. The provider ends the broadcast, r
 
 The resource-saving stop of live video after a viewer-chosen stretch with no pointer, keyboard, scroll, wheel, click, or touch input, which the viewer can also set to never. Every live panel that was playing ends at once and shows a notice naming inactivity as the cause, with a way to resume and a way to stop pausing. Input alone never restarts video; only the notice or a Play action does.
 
-The pause keys on input, not on whether anyone is watching, so input inside an embedded player does not count. A panel in fullscreen and a video the viewer paused are left alone. A separate, shorter, fixed stretch freezes page animation and is not governed by this preference. See also: Always-On Playback.
+The pause keys on input, not on whether anyone is watching, so input inside an embedded player does not count, with one exception: muting from the player's own controls counts as input, so the stretch starts again from the mute. Live News playing with sound is exempt, since someone listening gives no input. A panel in fullscreen and a video the viewer paused are left alone. A separate, shorter, fixed stretch freezes page animation and is not governed by this preference. See also: Always-On Playback.
 
 ### Always-On Playback
 

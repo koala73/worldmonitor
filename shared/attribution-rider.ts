@@ -76,8 +76,7 @@ export const ATTRIBUTION_RIDER_NOTICE =
  *
  * Keyed on the path rather than the tool because the REST shapes are not the
  * MCP shapes: `/api/safety/v1/get-toronto-safety` serves BOTH Toronto datasets
- * from one flat response (the two MCP tools each read one cache key under a
- * cache envelope), and `get_imd_cyclone_marine` has no REST path at all
+ * from one flat response (no MCP tool serves them), and `get_imd_cyclone_marine` has no REST path at all
  * (`_apiPaths: []`).
  */
 /**

@@ -28,6 +28,7 @@
  */
 
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { hasNativeAbortSignalAny, hasNativeAbortSignalTimeout } from '@/services/timeout-signal';
 import {
   extractCollectorFailureMetadata,
   isBotFilteredBody,
@@ -1072,17 +1073,18 @@ function withManualAbort(
 function getIntendedCollectorTimeoutMechanism(
   init: RequestInit | undefined,
 ): CollectorTimeoutMechanism {
-  if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') {
-    return 'manual';
-  }
-  return init?.signal && typeof AbortSignal.any !== 'function' ? 'manual' : 'native';
+  if (!hasNativeAbortSignalTimeout()) return 'manual';
+  return init?.signal && !hasNativeAbortSignalAny() ? 'manual' : 'native';
 }
 
 function withRequestAbort(
   init: RequestInit | undefined,
   timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): AbortBoundInit {
-  if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') {
+  // The dashboard installs fallbacks for both on old engines
+  // (bootstrap/abort-signal-fallbacks.ts); those take the manual path here
+  // so the timeout marker keeps reporting what the engine supports.
+  if (!hasNativeAbortSignalTimeout()) {
     return withManualAbort(init, timeoutMs);
   }
   const existing = init?.signal;
@@ -1093,7 +1095,7 @@ function withRequestAbort(
       timeoutMechanism: 'native',
     };
   }
-  if (typeof AbortSignal.any === 'function') {
+  if (hasNativeAbortSignalAny()) {
     return {
       init: { ...init, signal: AbortSignal.any([existing, AbortSignal.timeout(timeoutMs)]) },
       cleanup: () => {},

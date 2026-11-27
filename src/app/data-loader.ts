@@ -1,5 +1,9 @@
 import type { AppContext, AppModule } from '@/app/app-context';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { isAnalyticsHost, track } from '@/services/analytics';
+import { isPageUnloading } from '@/bootstrap/page-unload-signal';
 import { fetchUkmtoIncidents } from '@/services/ukmto-incidents';
+import { holdsViewportRequests, onViewportRequestsResumed } from '@/services/orbital/lookup-host';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { isReportableCanadaRoad } from '@/services/canada-road-report';
 import { enqueuePanelCall, invokePanelMethod } from '@/app/pending-panel-data';
@@ -9,9 +13,10 @@ import { ViewportHydrationLedger, type LoadAllDataTrigger } from '@/app/viewport
 import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
-import type { ClusteredEvent, Feed, NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
+import type { ClusteredEvent, Feed, NewsItem, MapLayers, MilitaryFlight } from '@/types';
 import type { MarketData, InternetOutage } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
+import { TIME_RANGE_MS } from '@/utils/time-range';
 import {
   FEEDS,
   CANONICAL_FEEDS,
@@ -112,18 +117,18 @@ import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid, clusterNewsWithWorkerFallback } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
 import { consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
-import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
+import { fetchAllFires, flattenFires, summarizeFires, toMapFires } from '@/services/wildfires';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
 import { ingestConflictsForCountryData, ingestDisplacementForCountryData, ingestClimateForCountryData, ingestGpsJammingForCountryData, isInLearningMode, type CountryScore } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
-import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLoop } from '@/services/satellites';
+import { fetchSatelliteTLEs, initSatRecs, propagatePositions, setTrackedSatelliteTles, startPropagationLoop } from '@/services/satellites';
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
-import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents } from '@/services/conflict';
+import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents, type UcdpExposureInput } from '@/services/conflict';
 import { fetchCrossBorderArrivals, fetchDisplacementEvents, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
-import { fetchClimateAnomalies } from '@/services/climate';
+import { fetchClimateAnomalies, fetchReservoirLevels } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchThermalEscalations } from '@/services/thermal-escalation';
@@ -134,7 +139,7 @@ import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate,
 import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { getNo2ActivityData } from '@/services/no2-activity';
-import { enrichEventsWithExposure } from '@/services/population-exposure';
+import { addExposureCoverage, enrichEventsWithExposure, ucdpExposureEvents } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { addLocalDays, localYmd } from '@/utils/local-date';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
@@ -163,9 +168,9 @@ import type {
 import type { ChinaCorporateDisclosureSnapshot } from '@/components/market-disclosures';
 
 import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
+import type { DigestCoverageSummary } from '@/components/StatusPanel';
 import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
 import type { PredictionPanel } from '@/components/PredictionPanel';
-import type { InsightsPanel } from '@/components/InsightsPanel';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 
 import type { EconomicPanel } from '@/components/EconomicPanel';
@@ -195,6 +200,7 @@ import { checkMilestones } from '@/services/celebration';
 import { fetchHappinessScores } from '@/services/happiness-data';
 import { fetchRenewableInstallations } from '@/services/renewable-installations';
 import { filterBySentiment } from '@/services/sentiment-gate';
+import { dedupeHappyItems, isBreakthroughStory, isHeroStory, selectCuratedHappyItems } from '@/services/happy-selection';
 import { fetchAllPositiveTopicIntelligence } from '@/services/gdelt-intel';
 import { fetchPositiveGeoEvents, geocodePositiveNewsItems, type PositiveGeoEvent } from '@/services/positive-events-geo';
 import type { HappyContentCategory } from '@/services/positive-classifier';
@@ -463,9 +469,12 @@ export class DataLoaderManager implements AppModule {
   private activeGlobalTenderScopedGeneration: number | null = null;
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
+  private stopViewportResume: (() => void) | null = null;
   private orefUnsubscribe: (() => void) | null = null;
   private orefDisposed = false;
   private cachedSatRecs: SatRecEntry[] | null = null;
+  // The scheduled refresh replaces intelligenceCache before fetching new data.
+  private ucdpExposure?: UcdpExposureInput;
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
   private loadAllDataQueuedForceAll = false;
@@ -485,9 +494,21 @@ export class DataLoaderManager implements AppModule {
   private fullEditionIntel: { generation: number; selection: Promise<SelectedNewsDigest | null> } | null = null;
   private committedNewsGeneration = 0;
   private committedNewsServedStale = false;
-  private readonly digestRequestTimeoutMs = 8000;
+  // Must outlast the server's own response deadline (RESPONSE_DEADLINE_MS,
+  // 22 s, in list-feed-digest.ts) plus the body download. At 8 s the browser
+  // abandoned digests the server was still delivering (Sentry WORLDMONITOR-1D4).
+  // First paint does not wait on this: it renders after digestFirstPaintGraceMs.
+  private readonly digestRequestTimeoutMs = 25_000;
   private readonly digestFirstPaintGraceMs = 1500;
+  /** A news hydration request that arrived while a news load was still running. */
+  private newsHydrationReplay: { forceAll: boolean } | null = null;
+  /** The running news hydration load, including the part after first paint. */
+  private activeNewsLoad: Promise<void> | null = null;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
+  /** Failure kinds already sent to Sentry this page load (one event per kind). */
+  private readonly reportedDigestFailures = new Set<DigestFetchFailureKind>();
+  /** Same bound for the analytics count, kept apart so a degraded outcome cannot use up the Sentry slot of a later empty one. */
+  private readonly countedDigestDegradations = new Set<DigestFetchFailureKind>();
   private readonly persistedDigestMaxAgeMs = 6 * 60 * 60 * 1000;
   private readonly outageFallbackCategoryFeedLimit = 3;
   private readonly outageFallbackIntelFeedLimit = 6;
@@ -603,6 +624,11 @@ export class DataLoaderManager implements AppModule {
     this.marketImplicationsFrameworkUnsubscribe = subscribeFrameworkChange('market-implications', () => {
       void this.loadMarketImplications();
     });
+    // Webcams held while the satellite pass lookup was open load for where the map is now.
+    // The maps refetch their own imagery footprints.
+    this.stopViewportResume = onViewportRequestsResumed(() => {
+      if (this.ctx.mapLayers.webcams) void this.loadWebcams();
+    });
   }
 
   destroy(): void {
@@ -630,6 +656,8 @@ export class DataLoaderManager implements AppModule {
     this.dailyBriefFrameworkUnsubscribe = null;
     this.marketImplicationsFrameworkUnsubscribe?.();
     this.marketImplicationsFrameworkUnsubscribe = null;
+    this.stopViewportResume?.();
+    this.stopViewportResume = null;
   }
 
   private getAuthoritativeCachedRiskScores(): CachedRiskScores | null {
@@ -652,9 +680,11 @@ export class DataLoaderManager implements AppModule {
     if (transition.render === 'cached' && cached) {
       this.callPanel('cii', 'renderFromCached', cached);
       this.applyCiiScoresToMap(cached.cii.map(toCountryScore));
+      this.callPanel('strategic-posture', 'refreshInstabilityNotes');
     } else if (transition.render === 'unavailable') {
       this.callPanel('cii', 'renderUnavailable');
       this.applyCiiScoresToMap([]);
+      this.callPanel('strategic-posture', 'refreshInstabilityNotes');
     }
 
     if (transition.refreshBrief) this.callbacks.refreshOpenCountryBrief();
@@ -790,7 +820,13 @@ export class DataLoaderManager implements AppModule {
     };
   }
 
-  private async tryFetchDigest(): Promise<SelectedNewsDigest | null> {
+  /**
+   * `firstFailure` is set only on the one retry below: the failure that earned
+   * it, so this load's single report names what happened and how the retry went.
+   */
+  private async tryFetchDigest(
+    firstFailure: { error: unknown; deadlineExpired: boolean } | null = null,
+  ): Promise<SelectedNewsDigest | null> {
     const now = Date.now();
     // Capture request and persistence scope together. Sampling the language again
     // after the response would let an old-language request populate the new
@@ -807,13 +843,17 @@ export class DataLoaderManager implements AppModule {
       this.digestBreaker.state = 'half-open';
     }
 
+    // Kept so the catch can tell our deadline from other aborts: WebKit rejects
+    // a timed-out fetch with AbortError, not TimeoutError (Sentry WORLDMONITOR-1D5).
+    let deadline: AbortSignal | null = null;
     try {
       markLcpDebug('wm:data:feed-digest-start');
+      deadline = AbortSignal.timeout(this.digestRequestTimeoutMs);
       const resp = await publicRpcFetch(
         toApiUrl(`/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${requestLanguage}`),
-        { signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
+        { signal: deadline },
       );
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      if (!resp.ok) throw new DigestHttpError(resp);
       const data = await resp.json() as ListFeedDigestResponse;
       const catCount = countDigestCategories(data);
       // A 200 carrying no categories is an outage wearing a success status: every
@@ -850,13 +890,19 @@ export class DataLoaderManager implements AppModule {
         // scope's persistent cache, but it must not become live data or an
         // in-memory fallback for the language now active.
         const fallback = this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
-        this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
+        this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable', 'switching');
         return fallback ? { digest: fallback, servedStale: true } : null;
       }
       this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, requestKey, data);
+      // A retry that answered with no stories left the panels as empty as the
+      // failure did, so it is not a recovery.
+      if (firstFailure) this.reportDigestFetchFailure(firstFailure.error, 'none', firstFailure.deadlineExpired, digestHasItems(data) ? 'recovered' : 'failed');
       this.reportDigestCoverage(data);
       return { digest: data, servedStale: data.coverage?.servedStale === true };
     } catch (e) {
+      // Read before any await: a slow fallback read below can outlast the
+      // deadline and would turn an unrelated abort into a "timeout".
+      const deadlineExpired = deadline?.aborted === true;
       markLcpDebug('wm:data:feed-digest-error');
       console.warn('[News] Digest fetch failed, using fallback:', e);
       this.digestBreaker.failures++;
@@ -865,10 +911,95 @@ export class DataLoaderManager implements AppModule {
         this.digestBreaker.cooldownUntil = now + this.digestBreakerCooldownMs;
       }
       const currentKey = this.digestCacheKey();
-      const fallback = this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+      const retained = this.getRetainedDigest(currentKey);
+      const fallback = retained ?? await this.loadPersistedDigest(currentKey);
+      // Nothing to show and a failure a second request can clear: try once more
+      // now rather than leave the news panels empty until the next refresh
+      // (Sentry WORLDMONITOR-1D4: the CDN serves this route, and requests that
+      // timed out had mostly never reached the origin).
+      if (
+        !firstFailure
+        && !fallback
+        && currentKey === requestKey
+        && this.digestBreaker.state === 'closed'
+        && isRetryableDigestFailure(classifyDigestFetchFailure(e, deadlineExpired))
+        && !(typeof navigator !== 'undefined' && navigator.onLine === false)
+        && !isPageUnloading()
+      ) {
+        console.info('[News] Retrying the digest once: no saved copy to show');
+        return this.tryFetchDigest({ error: e, deadlineExpired });
+      }
+      const reported = firstFailure ?? { error: e, deadlineExpired };
+      // A copy with no items puts nothing on screen, so it is not a fallback.
+      const shownFallback = digestHasItems(fallback) ? (retained ? 'retained' : 'saved') : 'none';
+      this.reportDigestFetchFailure(
+        reported.error,
+        shownFallback,
+        reported.deadlineExpired,
+        firstFailure ? 'failed' : 'none',
+        firstFailure ? classifyDigestFetchFailure(e, deadlineExpired) : undefined,
+      );
       this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
       return fallback ? { digest: fallback, servedStale: true } : null;
     }
+  }
+
+  /**
+   * The footer tells the user when this browser fell back to an old copy, but
+   * nothing told us. One warning per failure kind per page load: enough to
+   * measure how often users see stale news and why, without a burst per
+   * refresh. Offline browsers and page teardown are not service failures.
+   */
+  private reportDigestFetchFailure(
+    error: unknown,
+    fallback: 'retained' | 'saved' | 'none',
+    deadlineExpired: boolean,
+    retry: 'none' | 'recovered' | 'failed',
+    retryFailure?: DigestFetchFailureKind,
+  ): void {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if (isPageUnloading()) return;
+    const kind = classifyDigestFetchFailure(error, deadlineExpired);
+    // Sentry WORLDMONITOR-1D4: only a failure that left the panels empty is an
+    // incident. Every other outcome had news on screen, so it is a rate to
+    // watch, not an issue to triage: counted in analytics instead. Hosts the
+    // analytics tracker is disabled on (tech, commodity, energy, self-host)
+    // keep reporting to Sentry, because the count would be dropped there.
+    const outcome = digestFailureOutcome(fallback, retry);
+    if (outcome !== 'empty' && isAnalyticsHost()) {
+      if (this.countedDigestDegradations.has(kind)) return;
+      this.countedDigestDegradations.add(kind);
+      track('news-digest-degraded', { outcome, failure: kind, variant: SITE_VARIANT });
+      return;
+    }
+    if (this.reportedDigestFailures.has(kind)) return;
+    this.reportedDigestFailures.add(kind);
+    enqueueSentryCall((s) => s.captureMessage('News digest fetch failed', {
+      level: 'warning',
+      tags: {
+        surface: 'news',
+        'digest.failure': kind,
+        'digest.fallback': fallback,
+        'digest.variant': SITE_VARIANT,
+        // The error's name only: messages can carry URLs. Without it an
+        // "other" failure says nothing about what went wrong.
+        'digest.error': digestErrorName(error),
+        // Whether the one retry ran: 'recovered' rendered fresh news after a
+        // delay, 'failed' left the panels empty, 'none' was not attempted.
+        'digest.retry': retry,
+        // How the retry itself failed, which can differ from the first failure.
+        ...(retryFailure ? { 'digest.retry.failure': retryFailure } : {}),
+        // The exact status, and whether Vercel answered at all: a 4xx with no
+        // gateway telemetry came from in front of it (Sentry WORLDMONITOR-1DE).
+        ...(error instanceof DigestHttpError
+          ? { 'digest.status': String(error.status), 'digest.responder': error.responder }
+          : {}),
+      },
+      extra: { timeoutMs: this.digestRequestTimeoutMs },
+      // Tags do not split issues; one group per kind keeps timeouts, 5xx and
+      // ad-blocked requests readable as separate rates.
+      fingerprint: ['news-digest-fetch', kind],
+    }));
   }
 
   /**
@@ -919,15 +1050,32 @@ export class DataLoaderManager implements AppModule {
    * guards throughout — persisted last-good digests from before the coverage
    * rollout carry no coverage field at all.
    */
+  private publishDigestCoverage(summary: DigestCoverageSummary): void {
+    this.ctx.digestCoverage = summary;
+    this.ctx.statusPanel?.updateDigestCoverage(summary);
+  }
+
   private reportDigestCoverage(
     digest: ListFeedDigestResponse | null,
     stateOverride?: 'stale' | 'unavailable',
+    // Why this browser is showing its own copy: its request failed, or the
+    // request answered for a language the user has since left.
+    deviceCause: 'device' | 'switching' = 'device',
   ): void {
     const cov = digest?.coverage;
+    const generatedMs = digest ? Date.parse(digest.generatedAt) : NaN;
+    const contentAgeFromGeneratedAt = Number.isFinite(generatedMs)
+      ? Math.max(0, Math.round((Date.now() - generatedMs) / 1000))
+      : null;
+    // A client override means THIS browser fell back to a retained or saved
+    // copy; the server may be perfectly healthy.
+    const deviceStale = stateOverride === 'stale'
+      ? { staleCause: deviceCause, staleReason: '', contentAgeSeconds: contentAgeFromGeneratedAt }
+      : null;
     if (!cov || typeof cov.state !== 'string') {
       const categoryEntries = digest ? Object.entries(digest.categories) : [];
       const items = categoryEntries.flatMap(([, bucket]) => bucket.items);
-      this.ctx.statusPanel?.updateDigestCoverage({
+      this.publishDigestCoverage({
         state: stateOverride ?? 'unknown',
         itemsServed: items.length,
         publisherCount: new Set(items.map(item => item.source).filter(Boolean)).size,
@@ -938,13 +1086,18 @@ export class DataLoaderManager implements AppModule {
         missingCategories: categoryEntries
           .filter(([, bucket]) => bucket.items.length === 0)
           .map(([category]) => category),
+        itemsConsidered: 0,
+        publishersConsidered: 0,
+        staleCause: deviceStale?.staleCause ?? null,
+        staleReason: '',
+        contentAgeSeconds: deviceStale?.contentAgeSeconds ?? null,
       });
       return;
     }
     const state = stateOverride ?? (cov.state === 'complete' || cov.state === 'partial' || cov.state === 'stale' || cov.state === 'unavailable'
       ? cov.state
       : 'unknown');
-    this.ctx.statusPanel?.updateDigestCoverage({
+    this.publishDigestCoverage({
       state,
       itemsServed: Number(cov.itemsServed) || 0,
       publisherCount: Number(cov.publisherCount) || 0,
@@ -955,6 +1108,15 @@ export class DataLoaderManager implements AppModule {
       missingCategories: Object.entries(cov.categoryStates ?? {})
         .filter(([, v]) => v === 'missing')
         .map(([k]) => k),
+      itemsConsidered: Number(cov.itemsConsidered) || 0,
+      publishersConsidered: Number(cov.publishersConsidered) || 0,
+      ...(deviceStale ?? (state === 'stale'
+        ? {
+          staleCause: 'server' as const,
+          staleReason: typeof cov.staleReason === 'string' ? cov.staleReason : '',
+          contentAgeSeconds: Number(cov.staleAgeSeconds) || contentAgeFromGeneratedAt,
+        }
+        : { staleCause: null, staleReason: '', contentAgeSeconds: null })),
     });
   }
 
@@ -1104,8 +1266,8 @@ export class DataLoaderManager implements AppModule {
     };
 
     const tasks: HydrationTask[] = [];
-    if (this.shouldHydrateNews(forceAll)) {
-      tasks.push({ name: 'news', task: () => runGuarded('news', () => this.loadNews()) });
+    if (this.wantsNewsHydration(forceAll)) {
+      tasks.push({ name: 'news', task: () => this.newsHydrationTask(forceAll) });
     }
 
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
@@ -1275,6 +1437,9 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'sanctions', task: () => runGuarded('sanctions', () => this.loadSanctionsPressure()) });
     }
     if (this.ctx.mapLayers.no2Activity) tasks.push({ name: 'no2Activity', task: () => runGuarded('no2Activity', () => this.loadNo2Activity()) });
+    if (this.ctx.mapLayers.reservoirLevels || (this.ctx.panelSettings['reservoir-levels']?.enabled && shouldLoad('reservoir-levels'))) {
+      tasks.push({ name: 'reservoirLevels', task: () => runGuarded('reservoirLevels', () => this.loadReservoirLevels()) });
+    }
     if (this.ctx.mapLayers.resilienceScore) {
       if (hasPremiumAccess()) {
         tasks.push({ name: 'resilienceRanking', task: () => runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
@@ -1310,6 +1475,10 @@ export class DataLoaderManager implements AppModule {
     this.updateSearchIndex();
 
     if (hasPremiumAccess() && runOncePerViewport('premium-briefs', ['daily-market-brief', 'market-implications'])) {
+      // The news task may have released the tiers at first paint. The brief is
+      // built from the headlines and cached for the day, so wait for the late
+      // digest instead of building it from the fallback.
+      await this.waitForNewsLoad();
       await Promise.allSettled([
         this.loadDailyMarketBrief(),
         this.loadMarketImplications(),
@@ -1423,6 +1592,9 @@ export class DataLoaderManager implements AppModule {
         case 'no2Activity':
           await this.loadNo2Activity();
           break;
+        case 'reservoirLevels':
+          await this.loadReservoirLevels();
+          break;
       }
     } finally {
       this.ctx.inFlight.delete(layer);
@@ -1437,14 +1609,18 @@ export class DataLoaderManager implements AppModule {
       // Confirmed empty, expired, or unavailable without last-good data:
       // clear the layer instead of leaving the previous orbits on the map.
       this.cachedSatRecs = [];
+      setTrackedSatelliteTles([]);
       this.ctx.map?.setSatellites([]);
       return;
     }
     try {
       this.cachedSatRecs = await initSatRecs(data);
+      // The card's element-set lookup follows the records the layer draws, not the last fetch.
+      setTrackedSatelliteTles(data, this.cachedSatRecs);
     } catch (err) {
       console.error('[satellites] failed to initialize satellite propagation', err);
       this.cachedSatRecs = [];
+      setTrackedSatelliteTles([]);
       this.ctx.map?.setSatellites([]);
       return;
     }
@@ -1464,6 +1640,8 @@ export class DataLoaderManager implements AppModule {
 
   private loadImageryFootprints(retries = 2): void {
     if (!this.ctx.mapLayers.satellites) return;
+    // The satellite pass lookup has the map on its point; the map refetches once it closes.
+    if (holdsViewportRequests()) return;
     if (this.ctx.map?.isGlobeMode()) return;
     const bbox = this.ctx.map?.getBbox();
     if (!bbox) {
@@ -1549,15 +1727,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   getTimeRangeWindowMs(range: TimeRange): number {
-    const ranges: Record<TimeRange, number> = {
-      '1h': 60 * 60 * 1000,
-      '6h': 6 * 60 * 60 * 1000,
-      '24h': 24 * 60 * 60 * 1000,
-      '48h': 48 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000,
-      'all': Infinity,
-    };
-    return ranges[range];
+    return TIME_RANGE_MS[range];
   }
 
   filterItemsByTimeRange(items: NewsItem[], range: TimeRange = this.ctx.currentTimeRange): NewsItem[] {
@@ -2176,7 +2346,64 @@ export class DataLoaderManager implements AppModule {
     return generation === this.committedNewsGeneration && !servedStale;
   }
 
-  async loadNews(): Promise<void> {
+  /**
+   * The `news` hydration task. It resolves at the category first paint, not
+   * when a slow digest finally lands: the digest may take up to
+   * digestRequestTimeoutMs (25 s), and every later hydration tier — on mobile,
+   * every later task — would wait behind it. The load keeps running after the
+   * task resolves. A pass that asks for news meanwhile is replayed when the
+   * load ends, so a category change made during the wait is not dropped.
+   */
+  private newsHydrationTask(forceAll: boolean): Promise<void> {
+    if (this.ctx.isDestroyed) return Promise.resolve();
+    if (this.ctx.inFlight.has('news')) {
+      this.newsHydrationReplay = { forceAll: (this.newsHydrationReplay?.forceAll ?? false) || forceAll };
+      return Promise.resolve();
+    }
+    this.ctx.inFlight.add('news');
+    let releasedAtFirstPaint = false;
+    let markFirstPaint!: () => void;
+    const firstPaint = new Promise<void>((resolve) => {
+      markFirstPaint = () => { releasedAtFirstPaint = true; resolve(); };
+    });
+    const load = (async () => {
+      try {
+        await this.loadNews({ onFirstPaint: markFirstPaint });
+        // runLoadAllData indexed search when the task resolved, before these
+        // headlines were committed.
+        if (releasedAtFirstPaint && !this.ctx.isDestroyed) this.updateSearchIndex();
+      } catch (e) {
+        if (!this.ctx.isDestroyed) console.error('[App] news failed:', e);
+      } finally {
+        this.ctx.inFlight.delete('news');
+        this.activeNewsLoad = null;
+        const replay = this.newsHydrationReplay;
+        this.newsHydrationReplay = null;
+        if (replay && !this.ctx.isDestroyed && this.shouldHydrateNews(replay.forceAll)) {
+          void this.newsHydrationTask(replay.forceAll);
+        }
+      }
+    })();
+    this.activeNewsLoad = load;
+    return Promise.race([load, firstPaint]);
+  }
+
+  /**
+   * Whether a loadAllData() pass should run the news task. While a news load
+   * is running, the pass always does, so newsHydrationTask can record a
+   * replay: `loadedNewsSignature` still describes the PREVIOUS load, and a
+   * user returning to it mid-load would otherwise be skipped.
+   */
+  private wantsNewsHydration(forceAll: boolean): boolean {
+    return this.ctx.inFlight.has('news') || this.shouldHydrateNews(forceAll);
+  }
+
+  /** Resolves once no news hydration load (or its replay) is running. */
+  private async waitForNewsLoad(): Promise<void> {
+    while (this.activeNewsLoad) await this.activeNewsLoad;
+  }
+
+  async loadNews(options: { onFirstPaint?: () => void } = {}): Promise<void> {
     const generation = this.beginNewsLoad();
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
@@ -2214,6 +2441,7 @@ export class DataLoaderManager implements AppModule {
         digestPromise,
         fallbackDigest: fallbackSelection,
         digestGraceMs: this.digestFirstPaintGraceMs,
+        onFirstPaint: options.onFirstPaint,
         loadCategory: ({ key, feeds, isCustom }, selection, options) => (
           this.loadNewsCategory(
             key,
@@ -2364,7 +2592,8 @@ export class DataLoaderManager implements AppModule {
 
     // Happy variant: run multi-stage positive news pipeline + map layers
     if (SITE_VARIANT === 'happy') {
-      await this.loadHappySupplementaryAndRender();
+      await this.loadHappySupplementaryAndRender(generation);
+      if (!this.isCurrentNewsLoad(generation)) return;
       await Promise.allSettled([
         this.ctx.mapLayers.positiveEvents ? this.loadPositiveEvents() : Promise.resolve(),
         this.ctx.mapLayers.kindness ? Promise.resolve(this.loadKindnessData()) : Promise.resolve(),
@@ -2706,7 +2935,10 @@ export class DataLoaderManager implements AppModule {
 
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
       const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
-      const mapCommodity = (c: MarketData) => ({ symbol: c.symbol, display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
+      const mapCommodity = (c: MarketData) => ({
+        symbol: c.symbol, display: c.display, price: c.price, change: c.change, sparkline: c.sparkline,
+        sparklineIntervalSeconds: c.sparklineIntervalSeconds, sparklineStartAt: c.sparklineStartAt,
+      });
       const energySymbols = new Set(['CL=F', 'BZ=F', 'NG=F']);
       const filterCommodityTape = (data: MarketData[]) => data.filter((item) => item.symbol !== '^VIX' && !energySymbols.has(item.symbol));
       const filterEnergyTape = (data: MarketData[]) => data.filter((item) => energySymbols.has(item.symbol));
@@ -2730,6 +2962,11 @@ export class DataLoaderManager implements AppModule {
             price: q.price != null ? q.price : null,
             change: q.change ?? null,
             sparkline: q.sparkline?.length > 0 ? q.sparkline : undefined,
+            sparklineIntervalSeconds: q.sparklineIntervalSeconds,
+            sparklineStartAt: q.sparklineStartAt,
+            priceSource: q.priceSource,
+            priceBasis: q.priceBasis,
+            priceAt: q.priceAt,
           }));
           const commodityMapped = filterCommodityTape(data).map(mapCommodity);
           const energyMapped = filterEnergyTape(data);
@@ -3487,6 +3724,7 @@ export class DataLoaderManager implements AppModule {
   async loadIntelligenceSignals(): Promise<void> {
     const _desktopLocked = isDesktopRuntime() && !hasPremiumAccess();
     const tasks: Promise<void>[] = [];
+    let protestsUpdated = false;
 
     tasks.push((async () => {
       try {
@@ -3506,9 +3744,10 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    const protestsTask = (async (): Promise<SocialUnrestEvent[]> => {
+    tasks.push((async () => {
       try {
         const protestData = await fetchProtestEvents();
+        protestsUpdated = true;
         this.ctx.intelligenceCache.protests = protestData;
         this.callbacks.refreshOpenCountryTimeline?.();
         ingestProtests(protestData.events);
@@ -3527,14 +3766,11 @@ export class DataLoaderManager implements AppModule {
             errorMessage: status.acledConfigured === false ? 'ACLED not configured - using GDELT only' : undefined,
           });
         }
-        return protestData.events;
       } catch (error) {
         console.error('[Intelligence] Protests fetch failed:', error);
         dataFreshness.recordError('acled', String(error));
-        return [];
       }
-    })();
-    tasks.push(protestsTask.then(() => undefined));
+    })());
 
     const conflictsTask = (async () => {
       try {
@@ -3553,6 +3789,8 @@ export class DataLoaderManager implements AppModule {
     tasks.push(conflictsTask.then(() => undefined));
 
     const hydratedUcdp = getHydratedData('ucdpEvents') as import('@/services/conflict').HydratedUcdpPayload | undefined;
+    let ucdpReceived = false;
+    let ucdpFromCache = false;
 
     tasks.push((async () => {
       try {
@@ -3626,6 +3864,9 @@ export class DataLoaderManager implements AppModule {
         }
         // Keep each source's claims intact, even when ACLED reports an overlapping event.
         const events = result.data;
+        this.ucdpExposure = result.exposure;
+        ucdpReceived = true;
+        ucdpFromCache = result.fromCache;
         const aggregates = !wantsFullUcdpSet ? hydratedUcdp?.aggregates : undefined;
         (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(
           events,
@@ -3774,21 +4015,37 @@ export class DataLoaderManager implements AppModule {
     await Promise.allSettled(tasks);
 
     try {
-      const ucdpEvts = (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.getEvents?.() || [];
-      const events = [
-        ...(this.ctx.intelligenceCache.protests?.events || []).slice(0, 10).map(e => ({
-          id: e.id, lat: e.lat, lon: e.lon, type: 'conflict' as const, name: e.title || 'Protest',
-        })),
-        ...ucdpEvts.slice(0, 10).map(e => ({
-          id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence as string, name: `${e.side_a} vs ${e.side_b}`,
-        })),
-      ];
-      if (events.length > 0) {
-        const exposures = await enrichEventsWithExposure(events);
-        this.callPanel('population-exposure', 'setExposures', exposures);
-        if (exposures.length > 0) dataFreshness.recordUpdate('worldpop', exposures.length);
+      const { protests } = this.ctx.intelligenceCache;
+      const ucdpInput = this.ucdpExposure;
+      const perSourceLimit = 10;
+      // Older UCDP snapshots have no precision field. Keep their usable points
+      // visible as pending; unrest still requires confirmed provider precision.
+      const ucdpEvents = ucdpExposureEvents(ucdpInput?.events ?? []);
+      const unrestEvents = (protests?.events ?? []).map(e => ({
+        id: e.id, lat: e.lat, lon: e.lon, type: 'conflict',
+        name: e.city ? `${e.city}, ${e.country}` : e.title,
+        country: e.country, hasPreciseLocation: e.hasPreciseLocation,
+      }));
+      const ucdp = enrichEventsWithExposure(ucdpEvents, perSourceLimit, true);
+      const unrest = enrichEventsWithExposure(unrestEvents, perSourceLimit);
+      const exposures = [...unrest.exposures, ...ucdp.exposures]
+        .sort((a, b) => b.exposedPopulation - a.exposedPopulation);
+      const ucdpCoverage = ucdpInput?.source === 'full-feed' ? ucdp.coverage : ucdpInput?.coverage;
+      const coverage = ucdpCoverage
+        ? (protests ? addExposureCoverage(unrest.coverage, ucdpCoverage) : ucdpCoverage)
+        : (protests ? { ...unrest.coverage, ucdpPending: true } : undefined);
+      if (exposures.length === 0 && (!protests || !ucdpInput)) {
+        this.callPanel('population-exposure', 'showError', t('common.unavailable'));
       } else {
-        this.callPanel('population-exposure', 'setExposures', []);
+        const hasCachedUcdp = ucdp.exposures.length > 0 && (!ucdpReceived || ucdpFromCache);
+        this.callPanel('population-exposure', 'setExposures', exposures, hasCachedUcdp, coverage, {
+          unrest: unrestEvents, ucdp: ucdpEvents, ucdpIsProjection: ucdpInput?.source !== 'full-feed',
+        });
+      }
+      if (!protestsUpdated || !ucdpReceived) {
+        dataFreshness.recordError('worldpop', 'Exposure source data unavailable');
+      } else if (!ucdpFromCache) {
+        dataFreshness.recordUpdate('worldpop', exposures.length);
       }
     } catch (error) {
       console.error('[Intelligence] Population exposure fetch failed:', error);
@@ -3934,10 +4191,17 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadUkmtoIncidents(): Promise<void> {
+  async loadUkmtoIncidents(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return;
     if (SITE_VARIANT !== 'full' && !this.ctx.panelSettings['ukmto-incidents']?.enabled) return;
-    const snapshot = await fetchUkmtoIncidents();
-    if (this.ctx.isDestroyed) return;
+    let snapshot;
+    try {
+      snapshot = await fetchUkmtoIncidents(signal);
+    } catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) return;
+      throw error;
+    }
+    if (this.ctx.isDestroyed || signal?.aborted) return;
     this.callPanel('ukmto-incidents', 'setData', snapshot);
     this.ctx.map?.setUkmtoSnapshot(snapshot);
   }
@@ -4056,7 +4320,8 @@ export class DataLoaderManager implements AppModule {
   private lastWebcamFetchAt = 0;
 
   async loadWebcams(): Promise<void> {
-    if (!this.ctx.map) return;
+    // The satellite pass lookup has the map on its point; the webcams already drawn stay.
+    if (!this.ctx.map || holdsViewportRequests()) return;
     try {
       const map = this.ctx.map;
       const zoom = Math.max(2, map.getState().zoom ?? 3);
@@ -4121,8 +4386,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setMilitaryVessels(vessels, vesselClusters);
       this.ctx.map?.updateMilitaryForEscalation(flights, vessels);
       this.loadCachedPosturesForBanner();
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.setMilitaryFlights(flights);
       const hasData = flights.length > 0 || vessels.length > 0;
       this.ctx.map?.setLayerReady('military', hasData);
       const militaryCount = flights.length + vessels.length;
@@ -4172,8 +4435,6 @@ export class DataLoaderManager implements AppModule {
       }
 
       this.loadCachedPosturesForBanner();
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.setMilitaryFlights(flightData.flights);
 
       const hasData = flightData.flights.length > 0 || vesselData.vessels.length > 0;
       this.ctx.map?.setLayerReady('military', hasData);
@@ -4352,17 +4613,18 @@ export class DataLoaderManager implements AppModule {
     if (signal?.aborted) return;
     const procurementPanel = this.ctx.panels['global-procurement'] as GlobalProcurementPanel | undefined;
     if (!procurementPanel) return;
+    const isScopedFilterRequest = filters !== undefined && signal !== undefined;
     if (
       filters === undefined
-      && signal === undefined
       && this.activeGlobalTenderScopedGeneration !== null
     ) return;
     const requestGeneration = ++this.globalTenderGeneration;
-    this.activeGlobalTenderScopedGeneration = signal ? requestGeneration : null;
+    this.activeGlobalTenderScopedGeneration = isScopedFilterRequest ? requestGeneration : null;
     const previousGlobalTenderFilters = { ...this.globalTenderFilters };
     const requestFilters = filters ?? this.globalTenderFilters;
     this.globalTenderFilters = { ...requestFilters, cursor: '' };
     let canceledFiltersRestored = false;
+    let markedLoading = false;
     const releaseScopedRequest = () => {
       if (this.activeGlobalTenderScopedGeneration === requestGeneration) {
         this.activeGlobalTenderScopedGeneration = null;
@@ -4377,10 +4639,11 @@ export class DataLoaderManager implements AppModule {
       canceledFiltersRestored = true;
       this.globalTenderFilters = previousGlobalTenderFilters;
     };
-    signal?.addEventListener('abort', () => {
+    const onAbort = () => {
       restoreCanceledFilters();
       releaseScopedRequest();
-    }, { once: true });
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
     const isCanceledOrStale = () => {
       restoreCanceledFilters();
       return signal?.aborted === true || requestGeneration !== this.globalTenderGeneration;
@@ -4397,6 +4660,7 @@ export class DataLoaderManager implements AppModule {
       }
       if (isCanceledOrStale()) return;
       procurementPanel.setLoading(true, append);
+      markedLoading = true;
       try {
         const { fetchGlobalTenders } = await import('@/services/global-tenders');
         if (isCanceledOrStale()) return;
@@ -4405,10 +4669,12 @@ export class DataLoaderManager implements AppModule {
         if (!hasPremiumAccess()) {
           if (isCanceledOrStale()) return;
           procurementPanel.clear();
+          markedLoading = false;
           return;
         }
         if (isCanceledOrStale()) return;
         procurementPanel.update(data, append);
+        markedLoading = false;
         if (isCanceledOrStale()) return;
         this.ctx.statusPanel?.updateApi('Global Procurement', {
           status: !data.dataAvailable ? 'error' : ['partial', 'stale'].includes(data.availability) ? 'warning' : 'ok',
@@ -4418,11 +4684,22 @@ export class DataLoaderManager implements AppModule {
         console.warn('[App] Global tenders failed:', error);
         if (isCanceledOrStale()) return;
         procurementPanel.showUnavailable();
+        markedLoading = false;
         if (isCanceledOrStale()) return;
         this.ctx.statusPanel?.updateApi('Global Procurement', { status: 'error' });
       }
     } finally {
+      signal?.removeEventListener('abort', onAbort);
       releaseScopedRequest();
+      if (
+        markedLoading
+        && !isScopedFilterRequest
+        && signal?.aborted === true
+        && requestGeneration === this.globalTenderGeneration
+        && !this.ctx.isDestroyed
+      ) {
+        procurementPanel.setLoading(false);
+      }
     }
   }
 
@@ -4822,7 +5099,7 @@ export class DataLoaderManager implements AppModule {
       if (fireResult.skipped) {
         this.ctx.intelligenceCache.satelliteFires = [];
         this.ctx.map?.setFires([]);
-        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
+        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(summarizeFires({}), 0);
         await runSignalAggregator(this.ctx.statusPanel, 'satellite fires', (aggregator) => aggregator.ingestSatelliteFires([]));
         dataFreshness.recordError('firms', fireResult.reason ?? 'no_data');
         // en.json carries panels.satelliteFires as a flat title string, so the
@@ -4834,7 +5111,6 @@ export class DataLoaderManager implements AppModule {
       const { regions, totalCount } = fireResult;
       if (totalCount > 0) {
         const flat = flattenFires(regions);
-        const stats = computeRegionStats(regions);
         const satelliteFires = flat.map(f => ({
           lat: f.location?.latitude ?? 0,
           lon: f.location?.longitude ?? 0,
@@ -4849,12 +5125,12 @@ export class DataLoaderManager implements AppModule {
 
         this.ctx.map?.setFires(toMapFires(flat));
 
-        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(stats, totalCount);
+        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(summarizeFires(regions), totalCount);
 
         dataFreshness.recordUpdate('firms', totalCount);
       } else {
         this.ctx.intelligenceCache.satelliteFires = [];
-        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
+        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(summarizeFires({}), 0);
       }
       this.ctx.statusPanel?.updateApi('FIRMS', { status: 'ok' });
     } catch (e) {
@@ -4910,7 +5186,7 @@ export class DataLoaderManager implements AppModule {
   // synthesized `Date.now()` stamps would fraudulently claim freshness
   // for the 24h gate window. Pre-v2 entries are left to TTL out (no
   // explicit invalidation needed).
-  private static readonly HAPPY_ITEMS_CACHE_KEY = 'happy-all-items:v2';
+  private static readonly HAPPY_ITEMS_CACHE_KEY = 'happy-all-items:v3';
 
   async hydrateHappyPanelsFromCache(): Promise<void> {
     try {
@@ -4924,25 +5200,27 @@ export class DataLoaderManager implements AppModule {
         pubDate: new Date(displayPubDateMs(item)),
       }));
 
-      const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
-      this.callPanel('breakthroughs', 'setItems',
-        items.filter(item => scienceSources.includes(item.source) || item.happyCategory === 'science-health')
-      );
-      this.callPanel('spotlight', 'setHeroStory',
-        items.filter(item => item.happyCategory === 'humanity-kindness')
-          .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))[0]
-      );
-      this.callPanel('digest', 'setStories',
-        [...items].sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a)).slice(0, 5)
-      );
+      this.renderHappyStoryPanels(items);
       this.callPanel('positive-feed', 'renderPositiveNews', items);
     } catch (err) {
       console.warn('[App] Happy panel cache hydration failed:', err);
     }
   }
 
-  private async loadHappySupplementaryAndRender(): Promise<void> {
-    const curated = [...this.ctx.happyAllItems];
+  private renderHappyStoryPanels(items: NewsItem[]): void {
+    this.callPanel('breakthroughs', 'setItems', items.filter(isBreakthroughStory));
+    this.callPanel('spotlight', 'setHeroStory',
+      items.filter(isHeroStory).sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))[0]
+    );
+    this.callPanel('digest', 'setStories',
+      [...items].sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a)).slice(0, 5)
+    );
+  }
+
+  private async loadHappySupplementaryAndRender(generation: number): Promise<void> {
+    const curated = await selectCuratedHappyItems(this.ctx.happyAllItems, filterBySentiment);
+    if (!this.isCurrentNewsLoad(generation)) return;
+    this.ctx.happyAllItems = curated;
     this.callPanel('positive-feed', 'renderPositiveNews', curated);
 
     let supplementary: NewsItem[] = [];
@@ -4960,32 +5238,19 @@ export class DataLoaderManager implements AppModule {
         }))
       );
 
-      supplementary = await filterBySentiment(gdeltItems);
+      supplementary = await selectCuratedHappyItems(gdeltItems, filterBySentiment);
     } catch (err) {
       console.warn('[App] Happy supplementary pipeline failed, using curated only:', err);
     }
+    if (!this.isCurrentNewsLoad(generation)) return;
 
     if (supplementary.length > 0) {
-      const merged = [...curated, ...supplementary];
+      const merged = dedupeHappyItems([...curated, ...supplementary]);
       merged.sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a));
       this.callPanel('positive-feed', 'renderPositiveNews', merged);
     }
 
-    const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
-    const scienceItems = this.ctx.happyAllItems.filter(item =>
-      scienceSources.includes(item.source) || item.happyCategory === 'science-health'
-    );
-    this.callPanel('breakthroughs', 'setItems', scienceItems);
-
-    const heroItem = this.ctx.happyAllItems
-      .filter(item => item.happyCategory === 'humanity-kindness')
-      .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))[0];
-    this.callPanel('spotlight', 'setHeroStory', heroItem);
-
-    const digestItems = [...this.ctx.happyAllItems]
-      .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))
-      .slice(0, 5);
-    this.callPanel('digest', 'setStories', digestItems);
+    this.renderHappyStoryPanels(curated);
 
     setPersistentCache(
       DataLoaderManager.HAPPY_ITEMS_CACHE_KEY,
@@ -5104,6 +5369,20 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  /**
+   * Strategic Water Levels. Opt-in panel and layer: the RPC is read only while
+   * either is on, never at bootstrap. An unseeded dataset is an empty state;
+   * a failed request with nothing cached is an error.
+   */
+  async loadReservoirLevels(): Promise<void> {
+    const result = await fetchReservoirLevels();
+    if (this.ctx.isDestroyed) return;
+    this.callPanel('reservoir-levels', 'setResult', result);
+    const reservoirs = result.snapshot?.reservoirs ?? [];
+    if (result.ok || reservoirs.length > 0) this.ctx.map?.setReservoirLevels(reservoirs);
+    this.ctx.map?.setLayerReady('reservoirLevels', reservoirs.length > 0);
+  }
+
   /** Opt-in layer: the route is read only while the layer is on, never at bootstrap. */
   async loadNo2Activity(): Promise<void> {
     if (!this.ctx.map?.isDeckGLActive?.()) {
@@ -5158,18 +5437,20 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadTelegramIntel(): Promise<void> {
+  async loadTelegramIntel(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return;
     if (isDesktopRuntime() && !hasPremiumAccess()) return;
     const generation = getTelegramIntelGeneration();
     const isCurrent = () => !this.ctx.isDestroyed
+      && !signal?.aborted
       && generation === getTelegramIntelGeneration()
       && (!isDesktopRuntime() || hasPremiumAccess());
     try {
-      const result = await fetchTelegramFeed();
+      const result = await fetchTelegramFeed(50, signal);
       if (!isCurrent()) return;
       this.callPanel('telegram-intel', 'setData', result, generation);
     } catch (error) {
-      if (!isCurrent()) return;
+      if (!isCurrent() || (error instanceof DOMException && error.name === 'AbortError')) return;
       console.error('[App] Telegram intel fetch failed:', error);
       this.callPanel('telegram-intel', 'setData', {
         source: 'telegram', enabled: false, count: 0, updatedAt: null, items: [],
@@ -5269,4 +5550,87 @@ export class DataLoaderManager implements AppModule {
       this.callPanel('cross-source-signals', 'showFetchError');
     }
   }
+}
+
+export type DigestFetchFailureKind = 'timeout' | 'http-5xx' | 'http-4xx' | 'empty-body' | 'network' | 'other';
+
+/**
+ * Bucket a digest fetch failure into a closed, low-cardinality kind.
+ *
+ * `deadlineExpired` is whether the request's own timeout signal fired. Chrome
+ * and Firefox reject with `TimeoutError` then, but Safari and every iOS browser
+ * reject with `AbortError: Fetch is aborted`, so the name alone filed WebKit
+ * timeouts under "other" (Sentry WORLDMONITOR-1D5).
+ */
+export function classifyDigestFetchFailure(error: unknown, deadlineExpired = false): DigestFetchFailureKind {
+  const name = error instanceof Error || error instanceof DOMException ? error.name : '';
+  const message = error instanceof Error || error instanceof DOMException ? error.message : String(error);
+  if (name === 'TimeoutError') return 'timeout';
+  if (name === 'AbortError' && deadlineExpired) return 'timeout';
+  const status = /^HTTP (\d{3})$/.exec(message)?.[1];
+  if (status) return status.startsWith('5') ? 'http-5xx' : 'http-4xx';
+  if (message === 'digest returned 0 categories') return 'empty-body';
+  if (error instanceof TypeError) return 'network';
+  return 'other';
+}
+
+/** Whether a digest carries at least one story. A copy without one shows nothing. */
+export function digestHasItems(digest: ListFeedDigestResponse | null): boolean {
+  if (!digest || typeof digest.categories !== 'object' || digest.categories === null) return false;
+  return Object.values(digest.categories).some(bucket => Array.isArray(bucket?.items) && bucket.items.length > 0);
+}
+
+/**
+ * What the user was left with after a failed digest request. `empty` is the
+ * only outcome with no news on screen: no retained or saved copy, and no retry
+ * that recovered.
+ */
+export function digestFailureOutcome(
+  fallback: 'retained' | 'saved' | 'none',
+  retry: 'none' | 'recovered' | 'failed',
+): 'retained' | 'saved' | 'recovered' | 'empty' {
+  if (fallback !== 'none') return fallback;
+  return retry === 'recovered' ? 'recovered' : 'empty';
+}
+
+/**
+ * Failures a second request can clear: a stalled or dropped connection, or a
+ * 5xx from the CDN or origin. A 4xx, a malformed body or an empty digest would
+ * come back the same.
+ */
+function isRetryableDigestFailure(kind: DigestFetchFailureKind): boolean {
+  return kind === 'timeout' || kind === 'network' || kind === 'http-5xx';
+}
+
+/**
+ * Who sent a digest error response, read from what the browser can see.
+ * A same-origin response shows every header: Vercel adds `x-vercel-id`, and
+ * a Cloudflare challenge adds `cf-mitigated`. A cross-origin response from
+ * the API host hides `x-vercel-id`, but it was readable only because it
+ * carried our CORS headers.
+ */
+type DigestResponder = 'vercel' | 'cloudflare-challenge' | 'not-vercel' | 'cross-origin';
+
+function digestResponder(resp: Response): DigestResponder {
+  if (resp.headers.get('cf-mitigated')) return 'cloudflare-challenge';
+  if (resp.type === 'cors') return 'cross-origin';
+  return resp.headers.get('x-vercel-id') ? 'vercel' : 'not-vercel';
+}
+
+/** A non-2xx digest response. The message keeps the `HTTP <status>` shape the classifier reads. */
+class DigestHttpError extends Error {
+  readonly status: number;
+  readonly responder: DigestResponder;
+
+  constructor(resp: Response) {
+    super(`HTTP ${resp.status}`);
+    this.status = resp.status;
+    this.responder = digestResponder(resp);
+  }
+}
+
+/** A short, PII-free label for a digest failure: the error's name, or its type. */
+function digestErrorName(error: unknown): string {
+  const name = error instanceof Error || error instanceof DOMException ? error.name : typeof error;
+  return (name || 'unknown').slice(0, 64);
 }

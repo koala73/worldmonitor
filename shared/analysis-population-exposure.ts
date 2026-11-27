@@ -1,15 +1,20 @@
 /**
- * Population exposure core — shared between the dashboard
- * (src/services/population-exposure.ts) and the server RPC handler
- * (server/worldmonitor/displacement/v1/get-population-exposure.ts).
+ * Population density reference data and the event exposure model.
  *
- * Country-density approximation: nearest priority-country centroid supplies a
- * pop/area density, multiplied by the event radius disc. Deliberately coarse —
- * there is no city-level population dataset in the repo.
+ * An estimate is one country's average density (population / land area)
+ * multiplied by the area of the event-radius disc. Deliberately coarse:
+ * there is no city-level population dataset in the repo. Places outside the
+ * density table get no estimate. Borrowing a neighbour's density gave
+ * Santiago Burkina Faso's figure (#10388, #10408).
  *
- * Dependency-free: importable from Vite client code, Vercel Edge bundles,
- * server handlers, and tsx tests alike.
+ * The dashboard, the REST RPC and the MCP tool all call `estimateExposure`.
+ * Callers holding only a point resolve its country with
+ * `shared/population-density-country-at.ts`.
  */
+
+import { resolveCountryCode } from './country-code-resolve';
+import PALESTINE from './population-density-palestine.json';
+import { inRing, type Ring } from './population-density-geometry';
 
 export interface PriorityCountryInfo {
   name: string;
@@ -20,7 +25,8 @@ export interface PriorityCountryInfo {
 export interface ExposureEstimate {
   exposedPopulation: number;
   exposureRadiusKm: number;
-  nearestCountry: string;
+  /** ISO3 code of the country whose density was used. */
+  country: string;
   densityPerKm2: number;
 }
 
@@ -54,15 +60,9 @@ export const PRIORITY_COUNTRIES: Record<string, PriorityCountryInfo> = {
   BFA: { name: 'Burkina Faso', pop: 22700000, area: 274200 },
 };
 
-export const EXPOSURE_CENTROIDS: Record<string, [number, number]> = {
-  UKR: [48.4, 31.2], RUS: [61.5, 105.3], ISR: [31.0, 34.8], PSE: [31.9, 35.2],
-  SYR: [35.0, 38.0], IRN: [32.4, 53.7], TWN: [23.7, 121.0], ETH: [9.1, 40.5],
-  SDN: [15.5, 32.5], SSD: [6.9, 31.3], SOM: [5.2, 46.2], YEM: [15.6, 48.5],
-  AFG: [33.9, 67.7], PAK: [30.4, 69.3], IND: [20.6, 79.0], MMR: [19.8, 96.7],
-  COD: [-4.0, 21.8], NGA: [9.1, 7.5], MLI: [17.6, -4.0], BFA: [12.3, -1.6],
-};
-
-const FALLBACK_INFO: PriorityCountryInfo = { name: '', pop: 50_000_000, area: 500_000 };
+const DENSITY_BY_ISO2 = new Map(Object.entries(PRIORITY_COUNTRIES).map(([iso3, { pop, area }]) =>
+  [resolveCountryCode(iso3), { iso3, density: pop / area }] as const,
+));
 
 /**
  * Ceiling for new agent-facing exposure requests.
@@ -76,46 +76,41 @@ const FALLBACK_INFO: PriorityCountryInfo = { name: '', pop: 50_000_000, area: 50
  * than refusing, because it looks like an answer.
  *
  * The existing v1 REST RPC predates this ceiling and keeps its unbounded
- * contract. New callers that accept free-form radii use
- * `computeBoundedExposure`; callers with already-bounded domain radii use
- * `computeExposure`.
+ * contract. Callers that accept free-form radii clamp to this value first.
  */
 export const MAX_EXPOSURE_RADIUS_KM = 1000;
 
-export function computeExposure(lat: number, lon: number, radiusKm: number): ExposureEstimate {
-  const effectiveRadiusKm = Math.max(0, Number.isFinite(radiusKm) ? radiusKm : 0);
-  let bestMatch: string | null = null;
-  let bestDist = Infinity;
-
-  for (const [code, [cLat, cLon]] of Object.entries(EXPOSURE_CENTROIDS)) {
-    const dist = Math.sqrt((lat - cLat) ** 2 + (lon - cLon) ** 2);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestMatch = code;
-    }
-  }
-
-  const info = bestMatch ? PRIORITY_COUNTRIES[bestMatch] ?? FALLBACK_INFO : FALLBACK_INFO;
-  const density = info.pop / info.area;
-  const areaKm2 = Math.PI * effectiveRadiusKm * effectiveRadiusKm;
-
-  return {
-    exposedPopulation: Math.round(density * areaKm2),
-    exposureRadiusKm: effectiveRadiusKm,
-    nearestCountry: bestMatch || '',
-    densityPerKm2: Math.round(density),
-  };
+function isUsableEventPoint(lat: number, lon: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lon)
+    && Math.abs(lat) <= 90 && Math.abs(lon) <= 180
+    && !(lat === 0 && lon === 0);
 }
 
-export function computeBoundedExposure(
+/**
+ * `country` may be ISO2, ISO3 or a name. Returns null for an unusable point or
+ * a country outside the density table.
+ */
+export function estimateExposure(
   lat: number,
   lon: number,
+  country: string,
   radiusKm: number,
-): ExposureEstimate {
-  const boundedRadiusKm = Number.isFinite(radiusKm)
-    ? Math.min(MAX_EXPOSURE_RADIUS_KM, Math.max(0, radiusKm))
-    : 0;
-  return computeExposure(lat, lon, boundedRadiusKm);
+): ExposureEstimate | null {
+  if (!isUsableEventPoint(lat, lon)) return null;
+  let code = resolveCountryCode(country);
+  // UCDP labels Gaza and West Bank events as Israel. Correct only points
+  // actually inside PS; coastal snapping must not widen this override.
+  if (code === 'IL' && (PALESTINE as Ring[][]).some(([outer, ...holes]) => outer
+    && inRing(lon, lat, outer) && !holes.some((hole) => inRing(lon, lat, hole)))) code = 'PS';
+  const entry = code ? DENSITY_BY_ISO2.get(code) : undefined;
+  if (!entry) return null;
+  const effectiveRadiusKm = Math.max(0, Number.isFinite(radiusKm) ? radiusKm : 0);
+  return {
+    exposedPopulation: Math.round(entry.density * Math.PI * effectiveRadiusKm ** 2),
+    exposureRadiusKm: effectiveRadiusKm,
+    country: entry.iso3,
+    densityPerKm2: Math.round(entry.density),
+  };
 }
 
 export function getRadiusForEventType(type: string): number {

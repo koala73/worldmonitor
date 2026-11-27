@@ -16,11 +16,10 @@ import {
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'infra:toronto-roads:v1';
-// 6h ≥ 3× the 2h seed-bundle-canada member interval. This MUST stay above that
-// interval, not merely above the old */15 cron: at the previous 5400 (90 min)
-// the key expired 30 minutes before the next write, so the layer went blank for
-// a quarter of every cycle. The cadence and this TTL have to move together.
-const CACHE_TTL = 21600;
+// Twice the 360-minute health budget, which is 3× the 2h seed-bundle-canada member
+// interval. At the old 5400 (90 min) the key expired 30 minutes before the next
+// write, so the layer went blank for a quarter of every cycle.
+const CACHE_TTL = 43200;
 
 async function fetchTorontoRoads({ runStartedAtMs }) {
   const startedAt = Date.now();

@@ -1,0 +1,105 @@
+---
+title: "种子管道与边缘函数"
+description: "World Monitor 的 Railway 种子数据管道、按领域拆分的边缘函数架构、冷启动优化以及单一部署变体合并，说明数据如何写入 Redis 并经由边缘函数提供给仪表盘，以及各环节的失败处理方式，面向评估平台的工程师与希望参与贡献的开发者阅读。"
+---
+
+本页属于[设计哲学](/zh/architecture)指南，该页索引全部主题。部署拓扑、目录结构与 CI/CD 请参阅 [`ARCHITECTURE.md`](https://github.com/koala73/worldmonitor/blob/main/ARCHITECTURE.md)。
+
+---
+
+## Railway 种子数据管道
+
+Railway 定时服务持续用从外部 API 预计算的数据刷新 Redis 缓存。下表每一行是一个种子脚本，而非单独的定时任务：捆绑服务会在同一计划中运行多个种子（例如，流离失所和边境种子都在 `seed-bundle-health` 中运行）。种子按可配置计划运行（从数分钟到每日），同时写入规范域名键（用于 RPC 处理器查找）和引导键（用于页面加载水合）。这种双键策略确保引导水合和 RPC 处理器在数据格式和新鲜度上始终一致。
+
+| 种子脚本 | 数据来源 | 更新频率 | 引导键 |
+| --- | --- | --- | --- |
+| `seed-earthquakes` | USGS M4.5+ 与加拿大地震（NRCan）Atom | 5 分钟 | `seismology:earthquakes:v1` |
+| `seed-market-quotes` | Yahoo Finance（错峰批量） | 5 分钟 | `market:stocks-bootstrap:v1` |
+| `seed-commodity-quotes` | Yahoo Finance（WTI、Brent、金属） | 5 分钟 | `market:commodities-bootstrap:v1` |
+| `seed-crypto-quotes` | CoinGecko（BTC、ETH、SOL、XRP+） | 5 分钟 | `market:crypto:v1` |
+| `seed-cyber-threats` | Feodo、URLhaus、C2Intel、OTX、AbuseIPDB | 2 小时 | `cyber:threats-bootstrap:v2` |
+| `seed-internet-outages` | Cloudflare Radar | 5 分钟 | `infra:outages:v1` |
+| `seed-fire-detections` | NASA FIRMS VIIRS、CWFIS 全国在燃/计划火（CWFIF WFS）与 BC 当前火点（OpenMaps KML） | 10 分钟 | `wildfire:fires:v1` |
+| `seed-climate-anomalies` | Open-Meteo ERA5 | 15 分钟 | `climate:anomalies:v2` |
+| `seed-natural-events` | USGS + GDACS + NASA EONET | 2 小时 | `natural:events:v1` |
+| `seed-airport-delays` | FAA + AviationStack + ICAO NOTAM | 10 分钟 | `aviation:delays-bootstrap:v1` |
+| `seed-insights` | LLM 世界简报 + 头条（先 Ollama，后 OpenRouter） | 10 分钟 | `news:insights:v1` |
+| `seed-prediction-markets` | Polymarket Gamma API | 10 分钟 | `prediction:markets-bootstrap:v1` |
+| `seed-etf-flows` | Yahoo Finance（IBIT、FBTC、GBTC+） | 15 分钟 | `market:etf-flows:v1` |
+| `seed-stablecoin-markets` | CoinGecko（USDT、USDC、DAI+） | 10 分钟 | `market:stablecoins:v1` |
+| `seed-gulf-quotes` | Yahoo Finance（Tadawul、DFM、ADX） | 10 分钟 | `market:gulf-quotes:v1` |
+| `seed-unrest-events` | ACLED 抗议 + GDELT | 45 分钟 | `unrest:events:v1` |
+| `seed-ucdp-events` | UCDP GED API | 6 小时 | `conflict:ucdp-events:v1` |
+| `ais-relay`（中东打击循环） | Telegram 频道 + GDELT 事件导出 | 10 分钟 | `conflict:iran-events:v1`、`conflict:strike-pressure:v1`（供 CII 使用的 30 天按国家计数） |
+| `seed-displacement-summary` | UNHCR Population API | 每日 | N/A |
+| `seed-idmc-idu-displacement` | IDMC 境内流离失所更新（HDX） | 每日 | `displacement:idmc-idu:v1` |
+| `seed-dtm-displacement` | IOM 流离失所追踪矩阵 API | 每日 | N/A |
+| `seed-cross-border-arrivals` | UNHCR 业务数据门户 | 每日 | `displacement:cross-border:v1` |
+| `seed-border-{uk,cbp,frontex,panama}` | 英国内政部、美国 CBP、Frontex、巴拿马移民统计 | 每日 | N/A |
+| `seed-military-bases` | 经审核的军事基地注册表 | 每日 | N/A |
+| `seed-wb-indicators` | World Bank 技术准备度 | 每日 | `economic:worldbank-techreadiness:v1` |
+| `seed-forecasts` | OpenRouter LLM + 多领域信号 | 15 分钟 | `forecast:predictions:v2` |
+| `seed-conflict-intel` | ACLED + HAPI + PizzINT + GDELT | 15 分钟 | `conflict:acled:v1:all:0:0` |
+| `seed-economy` | EIA 能源 + FRED 宏观 + 支出 | 15 分钟 | N/A（额外键） |
+| `seed-supply-chain-trade` | FRED 航运 + WTO + US Treasury | 6 小时 | `supply_chain:shipping:v2` |
+| `seed-security-advisories` | 通过中继代理的 24 个咨询类 RSS/Atom 源 | 1 小时 | `intelligence:advisories-bootstrap:v1` |
+| `seed-usni-fleet` | USNI News WP-JSON（curl 绕过 JA3） | 6 小时 | `usni-fleet:sebuf:v1` |
+| `seed-gdelt-intel` | GDELT 2.0 Doc API（8 个主题） | 1 小时 | `intelligence:gdelt-intel:v1` |
+| `seed-research` | arXiv + HN + 科技事件 + GitHub | 6 小时 | N/A（额外键） |
+| `seed-correlation` | 跨领域关联引擎 | 5 分钟 | `correlation:cards-bootstrap:v1` |
+| `seed-gpsjam` | GPSJam.org H3 干扰六边形 | 6 小时 | N/A |
+| `seed-aviation` | 机场运营摘要 + 航空新闻 | 30 分钟 | N/A（warm-ping） |
+
+种子使用 `cachedFetchJson` 配合进行中 Promise 合并 — 如果种子运行与前一次仍在写入的运行重叠，并发写入会被去重。每个种子脚本都是自包含的（单个 `.mjs` 文件，无构建步骤），在 Node.js 20+ 上运行，并通过 REST API 连接到 Upstash Redis。失败的种子运行会记录错误但绝不破坏现有缓存数据 — 之前的缓存条目会保留直到成功运行替换它。
+
+---
+
+## 边缘函数与部署
+
+### 边缘函数架构
+
+World Monitor 使用 Vercel Edge Functions 作为轻量 API 层，分为两代。`api/*.js` 中的遗留端点各自处理单一数据源问题 — 代理、缓存或转换外部 API。较新的 proto 优先端点使用**每领域薄入口点**，每个仅导入其自身的处理器模块。这取代了原来在每次冷启动时加载全部领域的单体网关。每个领域的函数经 tree-shaking 仅包含其依赖，将冷启动时间减少约 85%（大多数端点低于 100ms，而单体处理器需 500ms+）。共享的 `server/gateway.ts` 提供通用路由逻辑。两代共存，新功能以 proto 优先方式构建。此架构避免了单体后端同时保持 API 密钥服务端：
+
+- **RSS 代理** — 域名白名单代理，支持完整的订阅源目录，防止 CORS 问题并隐藏源服务器。Edge 代理和 Railway 中继都保持重定向为手动，并在每一跳前重新检查 RSS 域名白名单。来自屏蔽 Vercel IP 的域名的订阅源自动通过 Railway 中继路由。
+- **AI 管道** — Ollama 和 OpenRouter 摘要边缘函数配 Redis 去重，使并发用户间的相同标题仅触发一次 LLM 调用。classify-event 端点在 500 错误时暂停其队列以避免浪费 API 配额。
+- **数据适配器** — GDELT、ACLED、OpenSky、USGS、NASA FIRMS、FRED、Yahoo Finance、CoinGecko、mempool.space、BIS、WTO 等各自有专用边缘函数将响应归一化为一致 schema
+- **市场情报** — 宏观信号、ETF 资金流和稳定币监控在服务端计算衍生分析（VWAP、SMA、peg 偏差、资金流估算）并将结果缓存到 Redis
+- **时间基线** — Welford 算法状态在跨请求间持久化到 Redis，无需传统数据库即可构建统计基线
+- **自定义抓取器** — 没有 RSS 订阅源的来源（工信部新闻、GitHub Trending、科技事件）被抓取并转换为 RSS 兼容格式
+- **金融地理数据** — 证券交易所（29 个）、金融中心（19 个）、央行和超国家金融机构（14 个）和大宗商品枢纽（10 个）作为带类型的静态数据集提供，含市值、GFCI 排名、交易时间和大宗商品专长
+- **BIS 集成** — 来自国际清算银行的政策利率、实际有效汇率和信贷/GDP 比率，缓存 30 分钟 TTL
+- **WTO 贸易政策** — 来自世界贸易组织的贸易限制、关税趋势、双边贸易流和 SPS/TBT 壁垒
+- **供应链情报** — 海运咽喉点中断评分（交叉引用 NGA 警告 + AIS 数据）、带激增检测的 FRED 航运货运指数，以及通过 Herfindahl-Hirschman 指数分析的关键矿产供应集中度
+- **企业情报** — `IntelligenceService.GetCompanyEnrichment` 通过 SEC 股票代码→CIK 注册表（每日从 `company_tickers.json` 播种）解析公司身份，并将 EDGAR 身份与近期申报文件（10-K、10-Q、含条目代码的 8-K）、Finnhub 市场概况与盈利意外、以及近期新闻提及聚合到单一响应中。`IntelligenceService.ListCompanySignals` 仅对具备权威时间戳的 SEC 8-K 重大事件（第 1 层）与新闻提及（第 3 层）进行分类；Finnhub 财政期末仍作为丰富化事实，不会被误标为财报发布时间。`SearchSecFilings` 代理 EDGAR 全文搜索；`ListMaterialEvents` 提供播种的全市场重大 8-K 申报流。不做猜测性归因：未能在 SEC 注册表中解析的公司返回空响应（其启发式前身见 issue #3754/#3755）
+
+所有边缘函数均包含熔断器逻辑，在上游 API 不可用时返回缓存过期数据，确保仪表盘从不显示空白面板。
+
+### 冷启动优化 — 每领域边缘函数拆分
+
+原来的单体边缘网关（`api/[domain]/v1/[rpc].ts`）将每个服务领域处理器导入到单个函数中。调用任何 RPC 时，边缘运行时加载整个处理器图 — 即使只需要 1 个领域，也要为每个领域初始化 Redis 客户端、解析配置和导入工具模块。
+
+这被拆分为每领域薄入口点 — 每个服务领域一个 — 每个仅导入其自身的处理器模块。共享网关（`server/gateway.ts`）提供通用路由逻辑，但每个领域的边缘函数经 tree-shaking 仅包含其依赖。
+
+**影响**：冷启动时间下降约 85% — 行情报价请求不再加载网络威胁情报解析器、OREF 告警处理器或气候异常检测器。在 Vercel 边缘运行时上，这转化为大多数端点低于 100ms 的冷启动，而单体处理器需 500ms+。
+
+### 单一部署变体合并
+
+所有六个仪表盘变体（World Monitor、Tech Monitor、Finance Monitor、Commodity Monitor、Happy Monitor、Energy Monitor）从**单一 Vercel 部署**提供服务。变体在运行时通过主机名检测确定：
+
+| 主机名 | 变体 |
+| --- | --- |
+| `tech.worldmonitor.app` | `tech` |
+| `finance.worldmonitor.app` | `finance` |
+| `commodity.worldmonitor.app` | `commodity` |
+| `happy.worldmonitor.app` | `happy` |
+| `energy.worldmonitor.app` | `energy` |
+| `worldmonitor.app`（默认） | `full` |
+
+在桌面应用上，变体存储在 `localStorage['worldmonitor-variant']` 中，可在不重新构建的情况下切换。标题栏中的变体选择器在 Web 上在已部署域名间导航，或在桌面端切换 localStorage 值。
+
+此架构取代了原来的多部署方式（每个变体一个独立 Vercel 项目），并提供以下优势：
+
+- **即时切换** — 用户在标题栏切换变体，无需整页导航或 DNS 查询
+- **共享 CDN 缓存** — 静态 SPA 资源在各变体间相同；只有运行时配置不同。CDN 缓存命中率比独立部署高 4 倍
+- **单一 CI 管道** — 一次构建、一次部署、一套边缘函数。无跨部署配置漂移
+- **社交机器人路由** — OG 图片端点根据请求主机名生成变体专属预览卡片，因此分享 Tech Monitor 链接会生成科技品牌社交预览

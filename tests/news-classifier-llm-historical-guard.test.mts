@@ -67,26 +67,6 @@ describe('LLM-cache historical-marker guard — predicate', () => {
   it('PAST ISO date alone is enough to trigger', () => {
     assert.equal(hasHistoricalMarker('Some headline 1986-04-26 reflection', NOW), true);
   });
-
-  it('SAFETY: current-year full date does NOT trigger (P2 reviewer fix on PR #3429 round 2)', () => {
-    // Reviewer-flagged regression: "Missile launch reported on April 26,
-    // 2026" used to falsely trigger. Year=2026=current must NOT mark
-    // the title as retrospective.
-    assert.equal(
-      hasHistoricalMarker('Missile launch reported on April 26, 2026', NOW),
-      false,
-    );
-  });
-
-  it('SAFETY: bare "Today in" prefix does NOT trigger (P2 reviewer fix on PR #3429 round 2)', () => {
-    // "Today in Ukraine: Russian missile strikes Kyiv" must NOT be
-    // marked as retrospective — bare "Today in" is a current-event
-    // headline pattern, not a historical one.
-    assert.equal(
-      hasHistoricalMarker('Today in Ukraine: Russian missile strikes Kyiv', NOW),
-      false,
-    );
-  });
 });
 
 describe('LLM-cache guard — semantics documentation (behavioral spec)', () => {

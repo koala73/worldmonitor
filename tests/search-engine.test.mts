@@ -320,4 +320,78 @@ describe('querySearchIndex', () => {
     ]);
     assert.equal(entityTypes(result).includes('country'), false);
   });
+  describe('alerts sent to the user', () => {
+    const alerts = source('alert', [
+      { id: 'alert-contains', title: 'Markets react as Iran closes Hormuz strait to tankers' },
+      { id: 'alert-prefix', title: 'Iran closes Hormuz strait to tankers after strike' },
+      { id: 'alert-exact', title: 'Iran closes Hormuz strait to tankers' },
+      { id: 'alert-exact-older', title: 'Iran closes Hormuz strait to tankers' },
+    ]);
+
+    it('finds an alerted headline that no loaded news item carries', () => {
+      const result = search({
+        rawInput: 'Iran closes Hormuz strait to tankers',
+        sources: [alerts, source('news', [{ id: 'news-other', title: 'Unrelated loaded headline' }])],
+      });
+      assert.deepEqual(entityTypes(result), ['alert', 'alert', 'alert', 'alert']);
+    });
+
+    it('ranks an exact title match first, then a prefix match, then the rest, newest first on a tie', () => {
+      const result = search({ rawInput: '  IRAN closes hormuz strait to tankers ', sources: [alerts] });
+      // The source lists alerts newest first; equal scores keep that order.
+      assert.deepEqual(entityIds(result), ['alert-exact', 'alert-exact-older', 'alert-prefix', 'alert-contains']);
+      assert.deepEqual(result.entityMatches.map((match) => match.score), [3, 3, 2, 1]);
+    });
+
+    it('finds the headline when the email subject or a message line is pasted whole', () => {
+      const news = source('news', [{ id: 'news-same', title: 'Iran closes Hormuz strait to tankers' }]);
+      for (const pasted of [
+        'WorldMonitor Alert: Iran closes Hormuz strait to tankers',
+        '[CRITICAL] Iran closes Hormuz strait to tankers',
+        '[high]   Iran closes Hormuz strait to tankers',
+      ]) {
+        const result = search({ rawInput: pasted, sources: [alerts, news] });
+        assert.deepEqual(entityIds(result).slice(0, 2), ['alert-exact', 'alert-exact-older'], pasted);
+        assert.equal(result.entityMatches[0]!.score, 3, 'the stripped query is an exact title match');
+        assert.ok(entityIds(result).includes('news-same'), 'the loaded story is found by the same paste');
+      }
+    });
+
+    it('does not let the alert wording alone match every alert', () => {
+      for (const word of ['critical', 'high', 'info', 'worldmonitor alert', '[critical]', 'worldmonitor alert:']) {
+        assert.deepEqual(entityIds(search({ rawInput: word, sources: [alerts] })), [], word);
+      }
+    });
+
+    it('lists alerts ahead of loaded news that matches the same words', () => {
+      const result = search({
+        rawInput: 'hormuz',
+        sources: [
+          source('news', [{ id: 'news-hormuz', title: 'Hormuz traffic resumes' }]),
+          alerts,
+        ],
+      });
+      assert.deepEqual(entityTypes(result), ['alert', 'alert', 'alert', 'alert', 'news']);
+    });
+
+    it('keeps alerts on a phone, where only five results fit', () => {
+      const result = search({
+        rawInput: 'match',
+        isMobile: true,
+        sources: [repeatedSource('market', 3), repeatedSource('news', 3), repeatedSource('alert', 3)],
+      });
+      assert.deepEqual(entityTypes(result), ['alert', 'alert', 'news', 'news', 'market']);
+    });
+
+    it('caps desktop alerts at five', () => {
+      const result = search({ rawInput: 'match', sources: [repeatedSource('alert', 9)] });
+      assert.equal(result.entityMatches.length, 5);
+    });
+
+    it('is a signal, not a map target', () => {
+      assert.deepEqual(entityTypes(search({ rawInput: 'hormuz', scope: 'signals', sources: [alerts] })).length, 4);
+      assert.deepEqual(entityIds(search({ rawInput: 'hormuz', scope: 'map', sources: [alerts] })), []);
+      assert.deepEqual(entityIds(search({ rawInput: 'hormuz', scope: 'panels', sources: [alerts] })), []);
+    });
+  });
 });

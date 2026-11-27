@@ -40,6 +40,22 @@ import {
   ENERGY_SPINE_KEY_PREFIX,
   CII_RISK_SCORE_CACHE_KEYS,
 } from '../../../_shared/cache-keys';
+import { isOrbitalWatchEnabled } from '../../orbital/v1/dark-launch';
+import { buildWatchedSiteImagery } from './chat-analyst-site-imagery';
+import { hasGeoScope, matchPlaces, resolveGeoScope } from './chat-analyst-geo-scope';
+import type { AiRoutingDecision } from '../../../_shared/ai-routing-policy';
+import {
+  intelHistorySearch,
+  intelHistoryTimeline,
+  type IntelHistoryRecordView,
+} from '../../../_shared/intel-history-client';
+import {
+  embedQueryText,
+  normalizeQueryText,
+  queryEmbeddingDenial,
+} from '../../../_shared/intel-history-embed';
+import { cacheSuccessfulHistoryRead } from '../../../_shared/intel-history-contract';
+import { PRECEDENT_MIN_SCORE } from './get-similar-events';
 
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
 // When multi-language digests are available, fan out to news:digest:v1:full:<lang>
@@ -71,6 +87,8 @@ export interface AnalystContext {
   gasFlows?: string;
   oilStocksCover?: string;
   electricityMix?: string;
+  watchedSiteImagery?: string;
+  intelHistory?: string;
 }
 
 function safeStr(v: unknown): string {
@@ -745,6 +763,9 @@ const STOPWORDS = new Set([
   'you','he','she','it','they','them','their','our','your','its',
   'tell','list','give','show','explain','describe','many','some',
   'any','all','more','most','than','then','just','also','now',
+  // Question filler, not topic (#10863): "news" matched every "- AP News"
+  // source suffix.
+  'news','recent','recently','latest','headline','headlines','update','updates',
 ]);
 
 const MAX_KEYWORDS = 8;
@@ -980,9 +1001,11 @@ interface DigestItem {
   link?: string;
   publishedAt?: number;
   importanceScore?: number;
+  /** Digest bucket the item came from (`latam`, `finance`, …), when known. */
+  category?: string;
 }
 
-function flattenDigest(digest: unknown): DigestItem[] {
+export function flattenDigest(digest: unknown): DigestItem[] {
   if (!digest || typeof digest !== 'object') return [];
   const d = digest as Record<string, unknown>;
 
@@ -990,9 +1013,12 @@ function flattenDigest(digest: unknown): DigestItem[] {
 
   if (d.categories && typeof d.categories === 'object') {
     const items: DigestItem[] = [];
-    for (const bucket of Object.values(d.categories as Record<string, unknown>)) {
+    for (const [category, bucket] of Object.entries(d.categories as Record<string, unknown>)) {
       const b = bucket as Record<string, unknown>;
-      if (Array.isArray(b.items)) items.push(...(b.items as DigestItem[]));
+      if (!Array.isArray(b?.items)) continue;
+      for (const raw of b.items as DigestItem[]) {
+        if (raw && typeof raw === 'object') items.push({ ...raw, category });
+      }
     }
     return items;
   }
@@ -1015,9 +1041,118 @@ function scoreArticle(title: string, keywords: string[]): number {
   return (hasAdjacentPair ? 3 : 1) * hits;
 }
 
-async function searchDigestByKeywords(keywords: string[]): Promise<string> {
-  if (keywords.length === 0) return '';
+// "… grows to 22 - AP News": Google News appends the outlet after a spaced
+// hyphen (or a bar). Strip that tail for keyword scoring only, and only when
+// it reads as a name: up to five words, each capitalized or a joining word
+// ("Times of India"). "Markets rally - Brazil cuts rates" keeps its tail.
+// Places are matched on the full title, so a stripped tail can never hide one.
+// Hand-scanned rather than a regex: a title is untrusted feed text, and an
+// anchored whitespace pattern backtracks quadratically on long runs.
+const SOURCE_SEPARATORS = [' - ', ' | '];
+const SOURCE_JOINING_WORDS = new Set(['of', 'the', 'and', 'de', 'la', 'el', 'du', 'des', '&']);
 
+function stripSourceSuffix(title: string): string {
+  let cut = -1;
+  let sepLength = 0;
+  for (const sep of SOURCE_SEPARATORS) {
+    const at = title.lastIndexOf(sep);
+    if (at > cut) {
+      cut = at;
+      sepLength = sep.length;
+    }
+  }
+  if (cut <= 0) return title;
+  const words = title.slice(cut + sepLength).trim().split(' ').filter(Boolean);
+  if (words.length === 0 || words.length > 5) return title;
+  const nameLike = words.every((word) => SOURCE_JOINING_WORDS.has(word) || /^[\p{Lu}\p{N}]/u.test(word));
+  return nameLike ? title.slice(0, cut) : title;
+}
+
+// Slots kept for topic-only headlines when a question names places, so
+// "China and oil prices" still sees oil stories that do not mention China.
+const TOPIC_ONLY_SLOTS = 2;
+
+/**
+ * The "Matched News Articles" block for a question (#10863).
+ *
+ * A question that names places (`resolveGeoScope`) fills the block with
+ * headlines covering them — by country name/demonym or by digest region
+ * bucket — ranked by place and topic-word matches times importance; up to
+ * TOPIC_ONLY_SLOTS headlines that match only a topic word follow. Each named
+ * place with no headline at all gets a coverage line, so the model can say
+ * the digest has nothing on it instead of blaming the live context. A
+ * question with no place ranks by keyword alone.
+ */
+export function selectRelevantArticles(items: DigestItem[], query: string, currentTurn?: string): string {
+  // Places come from the current turn, so "What about Germany?" after a
+  // question on Brazil pivots; a turn naming no place ("and oil prices?")
+  // inherits the prior turn's. Topic words come from both, places removed.
+  const currentScope = currentTurn ? resolveGeoScope(currentTurn) : null;
+  const fullScope = resolveGeoScope(query);
+  const scope = currentScope && hasGeoScope(currentScope) ? currentScope : fullScope;
+  const scoped = hasGeoScope(scope);
+  const keywords = extractKeywords(scoped ? fullScope.residualQuery : query);
+  if (!scoped && keywords.length === 0) return '';
+
+  type Scored = { item: DigestItem; inScope: boolean; total: number };
+  const coveredCountries = new Set<string>();
+  const coveredRegions = new Set<string>();
+  const scored = items
+    .map((item): Scored | null => {
+      const title = safeStr(item.title);
+      if (!title) return null;
+      const scoringTitle = stripSourceSuffix(title);
+      const kwScore = keywords.length > 0 ? scoreArticle(scoringTitle, keywords) : 0;
+      let placeScore = 0;
+      if (scoped) {
+        const places = matchPlaces(scope, title, safeStr(item.category) || undefined);
+        for (const code of places.countries) coveredCountries.add(code);
+        for (const label of places.regions) coveredRegions.add(label);
+        placeScore = places.score;
+      }
+      if (placeScore === 0 && kwScore === 0) return null;
+      const importance = Math.log1p(Math.max(safeNum(item.importanceScore), 1));
+      return { item, inScope: placeScore > 0, total: (placeScore + kwScore) * importance };
+    })
+    .filter((x): x is Scored => x !== null)
+    .sort((a, b) => b.total - a.total)
+    // The same wire story arrives through several feeds and buckets; after
+    // ranking, so the copy filed under the asked region is the one kept.
+    .filter(((seen) => (s: Scored) => {
+      const key = safeStr(s.item.title).trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })(new Set<string>()));
+
+  const inScope = scored.filter((s) => s.inScope);
+  const topicOnly = scored.filter((s) => !s.inScope);
+  let selected = scored.slice(0, MAX_RELEVANT_ARTICLES);
+  if (scoped) {
+    const placeTaken = inScope.slice(0, MAX_RELEVANT_ARTICLES - Math.min(TOPIC_ONLY_SLOTS, topicOnly.length));
+    selected = [...placeTaken, ...topicOnly.slice(0, MAX_RELEVANT_ARTICLES - placeTaken.length)];
+  }
+
+  const lines = selected.map(({ item }) => {
+    const title = sanitizeForPromptLine(safeStr(item.title));
+    const source = sanitizeForPromptLine(safeStr(item.source)).slice(0, 40);
+    const ts = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    const meta = [source, ts].filter(Boolean).join(', ');
+    return `- ${title}${meta ? ` (${meta})` : ''}`;
+  });
+
+  const missing = [
+    ...scope.countries.filter((c) => !coveredCountries.has(c.code)).map((c) => c.label),
+    ...scope.regions.filter((r) => !coveredRegions.has(r.label)).map((r) => r.label),
+  ];
+  for (const place of missing) {
+    lines.push(`Coverage gap: no headline in the current news digest mentions ${place}.`);
+  }
+
+  return lines.join('\n');
+}
+
+async function searchDigest(query: string, currentTurn?: string): Promise<string> {
   let digest: unknown;
   let revoked: RevocationRead;
   try {
@@ -1037,31 +1172,197 @@ async function searchDigestByKeywords(keywords: string[]): Promise<string> {
 
   const items = filterRevokedUrls(flattenDigest(digest), revoked.urls).kept;
   if (items.length === 0) return '';
+  return selectRelevantArticles(items, query, currentTurn);
+}
 
-  const scored = items
-    .map((item) => {
-      const title = safeStr(item.title);
-      if (!title) return null;
-      const kwScore = scoreArticle(title, keywords);
-      if (kwScore === 0) return null;
-      const importance = safeNum(item.importanceScore);
-      return { item, total: kwScore * Math.log1p(importance > 0 ? importance : 1) };
-    })
-    .filter((x): x is { item: DigestItem; total: number } => x !== null)
-    .sort((a, b) => b.total - a.total)
-    .slice(0, MAX_RELEVANT_ARTICLES);
+// ── Historical Intelligence Memory ───────────────────────────────────────────
 
-  if (scored.length === 0) return '';
+const INTEL_HISTORY_LIMIT = 5;
+const INTEL_HISTORY_MAX_SUMMARY_CHARS = 220;
+const INTEL_HISTORY_MAX_QUERY_LEN = 500;
 
-  const lines = scored.map(({ item }) => {
-    const title = sanitizeForPromptLine(safeStr(item.title));
-    const source = sanitizeForPromptLine(safeStr(item.source)).slice(0, 40);
-    const ts = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-    const meta = [source, ts].filter(Boolean).join(', ');
-    return `- ${title}${meta ? ` (${meta})` : ''}`;
-  });
+export interface IntelHistoryFetcher {
+  embedQueryText?: (text: string) => Promise<number[] | null>;
+  search?: (params: {
+    embedding: number[];
+    domain?: string;
+    country?: string;
+    limit: number;
+    minScore: number;
+  }) => Promise<{ records: IntelHistoryRecordView[]; partial: boolean } | null>;
+  timeline?: (params: {
+    domain?: string;
+    country?: string;
+    limit: number;
+  }) => Promise<{ records: IntelHistoryRecordView[]; partial: boolean; nextCursor?: string } | null>;
+}
 
+export interface AssembleAnalystContextOptions {
+  routingDecisionPromise?: Promise<AiRoutingDecision>;
+  /** Injectable test hook to bypass live OpenRouter/Convex/Redis calls. */
+  intelHistoryFetcher?: IntelHistoryFetcher;
+}
+
+function mapDomainFocusToHistoryDomain(domainFocus: string): 'conflict' | 'military' | 'energy' | undefined {
+  if (domainFocus === 'military') return 'military';
+  return undefined;
+}
+
+function formatUtcDate(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return 'undated';
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return 'undated';
+  return d.toISOString().slice(0, 10);
+}
+
+function truncateHistorySummary(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
+/**
+ * Pure formatter for Historical Intelligence Memory records.
+ * Every untrusted field passes through `sanitizeForPromptLine` so embedded
+ * newlines, control characters, or delimiter lines cannot forge prompt structure.
+ */
+export function buildIntelHistory(records: readonly IntelHistoryRecordView[]): string {
+  if (!Array.isArray(records) || records.length === 0) return '';
+  const lines: string[] = [];
+  for (const rec of records.slice(0, INTEL_HISTORY_LIMIT)) {
+    if (!rec || typeof rec !== 'object') continue;
+    const title = sanitizeForPromptLine(safeStr(rec.title));
+    const rawSummary = sanitizeForPromptLine(safeStr(rec.summary));
+    const summary = rawSummary ? truncateHistorySummary(rawSummary, INTEL_HISTORY_MAX_SUMMARY_CHARS) : '';
+    if (!title && !summary) continue;
+
+    const date = formatUtcDate(safeNum(rec.occurredAt));
+    const domain = sanitizeForPromptLine(safeStr(rec.domain));
+    const country = sanitizeForPromptLine(safeStr(rec.country));
+    const category = sanitizeForPromptLine(safeStr(rec.category));
+    const metaParts = [date, domain, country, category && category !== domain ? category : ''].filter(Boolean);
+    const meta = `[${metaParts.join(' | ')}]`;
+    const body = title && summary && summary !== title
+      ? `${title} — ${summary}`
+      : (title || summary);
+    lines.push(`- ${meta} ${body}`);
+  }
   return lines.join('\n');
+}
+
+async function retrieveIntelHistory(
+  iso2: string | null,
+  domainFocus: string,
+  userQuery: string | undefined,
+  currentTurn: string | undefined,
+  options?: AssembleAnalystContextOptions,
+): Promise<string | undefined> {
+  // Omitted options (legacy callers and unit tests without OpenRouter/Convex
+  // credentials) skip gracefully without touching Redis or logging missing env.
+  if (!options?.routingDecisionPromise && !options?.intelHistoryFetcher) {
+    return undefined;
+  }
+
+  try {
+    let routingDecision: AiRoutingDecision | null = null;
+    if (options.routingDecisionPromise) {
+      try {
+        routingDecision = await options.routingDecisionPromise;
+      } catch {
+        routingDecision = null;
+      }
+    }
+
+    const historyDomain = mapDomainFocusToHistoryDomain(domainFocus);
+    const rawQuery = (currentTurn || userQuery || '').trim().slice(0, INTEL_HISTORY_MAX_QUERY_LEN);
+    const normalizedQuery = normalizeQueryText(rawQuery);
+    const canEmbed = routingDecision !== null && queryEmbeddingDenial(routingDecision) === null;
+    const fetcher = options.intelHistoryFetcher;
+
+    if (canEmbed && normalizedQuery.length >= 2) {
+      const searchResult = fetcher
+        ? await (async () => {
+            const embed = fetcher.embedQueryText ?? embedQueryText;
+            const search = fetcher.search ?? intelHistorySearch;
+            const embedding = await embed(rawQuery);
+            if (!embedding) return null;
+            return search({
+              embedding,
+              ...(historyDomain ? { domain: historyDomain } : {}),
+              ...(iso2 ? { country: iso2 } : {}),
+              limit: INTEL_HISTORY_LIMIT,
+              minScore: PRECEDENT_MIN_SCORE,
+            });
+          })()
+        : await cacheSuccessfulHistoryRead(
+            'analyst-search',
+            {
+              query: normalizedQuery,
+              domain: historyDomain ?? '',
+              country: iso2 ?? '',
+              limit: INTEL_HISTORY_LIMIT,
+              minScore: PRECEDENT_MIN_SCORE,
+            },
+            async () => {
+              const embedding = await embedQueryText(rawQuery);
+              if (!embedding) return null;
+              return intelHistorySearch({
+                embedding,
+                ...(historyDomain ? { domain: historyDomain } : {}),
+                ...(iso2 ? { country: iso2 } : {}),
+                limit: INTEL_HISTORY_LIMIT,
+                minScore: PRECEDENT_MIN_SCORE,
+              });
+            },
+          );
+
+      if (!searchResult || searchResult.records.length === 0) return undefined;
+      const filtered = searchResult.records.filter((r) => safeNum(r.score) >= PRECEDENT_MIN_SCORE);
+      const block = buildIntelHistory(filtered);
+      return block || undefined;
+    }
+
+    // OpenRouter embeddings disallowed (e.g. restricted AI routing policy) or
+    // query too short: fall back to chronological country timeline (zero OpenRouter call).
+    if (!iso2) return undefined;
+
+    const timelineResult = fetcher
+      ? await (fetcher.timeline ?? intelHistoryTimeline)({
+          ...(historyDomain ? { domain: historyDomain } : {}),
+          country: iso2,
+          limit: INTEL_HISTORY_LIMIT,
+        })
+      : await cacheSuccessfulHistoryRead(
+          'timeline-page',
+          {
+            domain: historyDomain ?? '',
+            country: iso2,
+            from: 0,
+            to: 0,
+            limit: INTEL_HISTORY_LIMIT,
+            cursor: '',
+          },
+          () => intelHistoryTimeline({
+            ...(historyDomain ? { domain: historyDomain } : {}),
+            country: iso2,
+            limit: INTEL_HISTORY_LIMIT,
+            cursor: '',
+          }),
+        );
+
+    if (!timelineResult || timelineResult.records.length === 0) return undefined;
+    const block = buildIntelHistory(timelineResult.records);
+    return block || undefined;
+  } catch (err) {
+    console.warn(
+      '[chat-analyst] intelHistory retrieval failed, continuing without history:',
+      err instanceof Error ? err.message : String(err),
+    );
+    void captureSilentError(err, {
+      tags: { route: 'api/chat-analyst', step: 'intel-history' },
+      fingerprint: ['chat-analyst', 'intel-history'],
+    });
+    return undefined;
+  }
 }
 
 // ── Source labels ─────────────────────────────────────────────────────────────
@@ -1089,12 +1390,17 @@ const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' 
   ['gasFlows', 'JODIGas'],
   ['oilStocksCover', 'IEAStocks'],
   ['electricityMix', 'ElecMix'],
+  ['watchedSiteImagery', 'Imagery'],
+  ['intelHistory', 'History'],
 ];
 
 export async function assembleAnalystContext(
   geoContext?: string,
   domainFocus?: string,
   userQuery?: string,
+  /** The current turn alone; `userQuery` also carries the prior user turn. */
+  currentTurn?: string,
+  options?: AssembleAnalystContextOptions,
 ): Promise<AnalystContext> {
   const keys = {
     insights: 'news:insights:v1',
@@ -1135,6 +1441,7 @@ export async function assembleAnalystContext(
   const needsGasFlows = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
   const needsOilStocksCover = iso2 != null && new Set(['economic', 'all']).has(resolvedDomain);
   const needsElectricityMix = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
+  const needsSiteImagery = isOrbitalWatchEnabled() && new Set(['geo', 'military', 'all']).has(resolvedDomain);
 
   const [
     insightsResult,
@@ -1158,6 +1465,8 @@ export async function assembleAnalystContext(
     gasFlowsResult,
     oilStocksCoverResult,
     electricityMixResult,
+    siteImageryResult,
+    intelHistoryResult,
   ] = await Promise.allSettled([
     getCachedJson(keys.insights, true),
     getCachedJson(keys.riskScores, true),
@@ -1170,7 +1479,7 @@ export async function assembleAnalystContext(
     needsEnergyExposure ? getCachedJson(keys.energyExposure, true) : Promise.resolve(null),
     countryKey ? getCachedJson(countryKey, true) : Promise.resolve(null),
     buildLiveHeadlines(resolvedDomain, keywords),
-    keywords.length > 0 ? searchDigestByKeywords(keywords) : Promise.resolve(''),
+    userQuery ? searchDigest(userQuery, currentTurn) : Promise.resolve(''),
     needsGasStorage ? buildGasStorage() : Promise.resolve(undefined),
     needsElectricity ? buildElectricityPrices() : Promise.resolve(undefined),
     needsEnergyIntel ? buildEnergyIntelligence() : Promise.resolve(undefined),
@@ -1180,6 +1489,8 @@ export async function assembleAnalystContext(
     needsGasFlows ? buildGasFlows(iso2!) : Promise.resolve(undefined),
     needsOilStocksCover ? buildOilStocksCover(iso2!) : Promise.resolve(undefined),
     needsElectricityMix ? buildElectricityMix(iso2!) : Promise.resolve(undefined),
+    needsSiteImagery ? buildWatchedSiteImagery(iso2, userQuery ?? '', instrumentTerms) : Promise.resolve(undefined),
+    retrieveIntelHistory(iso2, resolvedDomain, userQuery, currentTurn, options),
   ]);
 
   const get = (r: PromiseSettledResult<unknown>) =>
@@ -1228,6 +1539,8 @@ export async function assembleAnalystContext(
     gasFlows: getOptStr(gasFlowsResult),
     oilStocksCover: getOptStr(oilStocksCoverResult),
     electricityMix: getOptStr(electricityMixResult),
+    watchedSiteImagery: getOptStr(siteImageryResult),
+    intelHistory: getOptStr(intelHistoryResult),
   };
 
   ctx.activeSources = SOURCE_LABELS

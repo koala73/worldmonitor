@@ -90,7 +90,7 @@ export function isCriticalContentRefreshDue({
   return ageMs >= Math.max(0, budgetMs - leadMs);
 }
 
-// Cold-fetch slot order, in four tiers:
+// Cold-fetch slot order, in five tiers:
 //
 //   0 decision-critical (CN/HK) — bounded at two countries, so reserving them
 //     costs the rest of the queue almost nothing;
@@ -105,11 +105,17 @@ export function isCriticalContentRefreshDue({
 //     cache expiry, ordered closest-to-the-cliff first. Losing a country is
 //     irreversible; serving it a window stale is not, so the cliff outranks
 //     rotation fairness (#8501);
-//   3 everything else — oldest-ATTEMPT-first, the durable rotation cursor.
+//   3 failed last attempt — still published, but its persisted refreshFailure
+//     blocks publication until a fetch succeeds (rotation_incomplete). On
+//     2026-11-10 one ArcGIS `Token Required` window failed 30 countries; their
+//     fresh attempt time sorted them behind 144 others, six runs away, and
+//     every run until then exited publish-blocked. Ordered oldest-attempt-first
+//     so a country that keeps failing does not hold the head of the tier;
+//   4 everything else — oldest-ATTEMPT-first, the durable rotation cursor.
 //
-// An expired payload used to fall to tier 3 on the theory that it was
+// An expired payload used to fall to the last tier on the theory that it was
 // "unpublishable whatever we do this run". A fresh fetch makes it publishable.
-// In tier 3 its recent failed attempts sorted it behind countries that were
+// There its recent failed attempts sorted it behind countries that were
 // still being published: on 2026-11-01 none of 10 expired countries got one of
 // the 30 slots, 15 slots went to published countries, and the run exited 1 at
 // 164/174 coverage.
@@ -154,7 +160,8 @@ export function orderColdFetchQueue(
   const priority = (item) => {
     if (critical.has(item?.iso2)) return 0;
     if (cachedAt(item) === null || isExpired(item) || isOutOfCoverage?.(item)) return 1;
-    return isExpiring(item) ? 2 : 3;
+    if (isExpiring(item)) return 2;
+    return typeof item?.prevPayload?.refreshFailure?.code === 'string' ? 3 : 4;
   };
   return [...needsFetch].sort((a, b) => {
     const priorityOrder = priority(a) - priority(b);

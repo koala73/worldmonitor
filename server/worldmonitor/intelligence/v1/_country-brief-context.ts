@@ -18,6 +18,7 @@ import { filterRevokedUrls, readRevokedUrlSet } from '../../../_shared/digest-re
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
 import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
+import { headlineWithoutPublisher } from '../../../../shared/headline-publisher.js';
 
 const DIGEST_KEY_EN = 'news:digest:v1:full:en';
 const MAX_GROUNDING_ITEMS = 15;
@@ -52,6 +53,8 @@ export interface CountryIntelCacheKeyOpts {
   energyImportYear: string;
   /** NOTAM-closed or -restricted monitored airports, e.g. 'OEJN:closed'; '' when none. */
   airportTag?: string;
+  /** Digest of the country's confirmed watched-site change flags; '' when none. */
+  imageryTag?: string;
 }
 
 export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): string {
@@ -62,18 +65,21 @@ export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): stri
   // A closure that starts or ends re-keys the brief instead of waiting out
   // the 6h cache; countries with no NOTAM keep their existing key.
   const airportTag = opts.airportTag ? `:a${opts.airportTag}` : '';
-  const version = opts.lang === 'en' ? 'v12' : 'v9';
+  // Likewise a newly confirmed satellite imagery change re-keys the brief.
+  const imageryTag = opts.imageryTag ? `:o${opts.imageryTag}` : '';
+  // English v13 and non-English v10 (#11217): prompt titles no longer carry the publisher byline.
+  const version = opts.lang === 'en' ? 'v13' : 'v10';
   if (!opts.isPremium) {
     // Anonymous tier: caller inputs must not reach the key, or the shared
     // cache degenerates back into a per-caller one (and one caller's
     // context could mint entries served to everyone).
-    return `ci-sebuf:${version}:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}${airportTag}`;
+    return `ci-sebuf:${version}:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}${airportTag}${imageryTag}`;
   }
   // Retire premium entries whose parsed sources could differ from their hashed context.
-  const premiumVersion = opts.lang === 'en' ? 'v13' : 'v10';
+  const premiumVersion = opts.lang === 'en' ? 'v14' : 'v11';
   const fw = opts.frameworkHash ? `:${opts.frameworkHash}` : '';
   const context = opts.lang === 'en' && !opts.frameworkHash ? `sources:${opts.contextHash}` : opts.contextHash;
-  return `ci-sebuf:${premiumVersion}:${opts.countryCode}:${opts.lang}:${context}${fw}${energyTag}${energyImportTag}${airportTag}`;
+  return `ci-sebuf:${premiumVersion}:${opts.countryCode}:${opts.lang}:${context}${fw}${energyTag}${energyImportTag}${airportTag}${imageryTag}`;
 }
 
 interface DigestItemForBrief {
@@ -194,7 +200,9 @@ export function buildSharedCountryContext(
   // sibling source lines above are accidentally safe only because
   // JSON.stringify escapes the newline.)
   const headlineLines = groundingItems
-    .map((item) => (typeof item.title === 'string' ? sanitizeForPromptLine(item.title) : ''))
+    .map((item) => (typeof item.title === 'string'
+      ? sanitizeForPromptLine(headlineWithoutPublisher(item.title, String(item.link ?? item.url ?? ''), String(item.source ?? '')))
+      : ''))
     .filter(Boolean);
   const contextSnapshot = [...sourceLines, 'Headlines:', ...headlineLines].join('\n').slice(0, MAX_CONTEXT_CHARS);
   return { contextSnapshot, sources };
@@ -205,7 +213,9 @@ export async function fetchSharedCountryContext(countryCode: string): Promise<Sh
   try {
     const [digest, revoked] = await Promise.all([
       getCachedJson(DIGEST_KEY_EN, true),
-      readRevokedUrlSet(),
+      // Fresh, not memoized: the brief is cached for 6h and never re-checks
+      // its sources, so a set from before a new SADD would outlive the memo.
+      readRevokedUrlSet({ fresh: true }),
     ]);
     // Fail CLOSED on an unreadable suppression set, matching the digest
     // endpoint's own replay tiers: this brief is cached for 6h, so grounding it

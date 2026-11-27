@@ -32,6 +32,8 @@ import {
   WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
 } from '../src/services/webmcp.ts';
 import { withTimeout } from '../src/utils/with-timeout.ts';
+import { HeadlineHistorySearch } from '../src/app/headline-history-search.ts';
+import { headlineTitleKey } from '../src/shared/headline-title-key.ts';
 
 type Variant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy';
 
@@ -104,6 +106,7 @@ interface Runtime {
   deferTimers: boolean;
   nextTimerId: number;
   pendingTimers: Map<number, () => void>;
+  openedArticles: string[];
 }
 
 interface ModalDouble {
@@ -116,7 +119,7 @@ interface ModalDouble {
   clearedSources: string[];
   flightCallsign: string | null;
   humanInteractionCallback: (() => void) | null;
-  search(query: string, scope: string): {
+  search(query: string, scope: string, options?: { excludeTypes?: readonly string[] }): {
     orderedMatches: SearchMatch[];
     flightCallsign: string | null;
   };
@@ -124,6 +127,7 @@ interface ModalDouble {
   resolveMatchByIdentity(identity: string): SearchMatch | undefined;
   registerSource(type: string, items: unknown[]): void;
   refreshSearch(): void;
+  setResultsPending(pending: boolean): void;
   open(): void;
   closeForProgrammaticSelection(): void;
   cancelPendingWork(): void;
@@ -213,6 +217,15 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     'isSearchResultEffectHostExecutable',
     'searchResultEffectRequiresCancellation',
     'WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE',
+    // Headline history (Cmd+K server search).
+    'HeadlineHistorySearch',
+    'searchHeadlineHistory',
+    'resetHeadlineHistoryAccess',
+    'isOpenableExternalUrl',
+    'openExternalUrl',
+    'headlineTitleKey',
+    'getCurrentLanguage',
+    'formatTime',
   ];
   // Regular `function`s, not arrow functions: the receiver check below only
   // reflects how the caller invoked us (arrow functions ignore call-site
@@ -334,6 +347,17 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     isSearchResultEffectHostExecutable,
     searchResultEffectRequiresCancellation,
     WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
+    HeadlineHistorySearch,
+    async () => [],
+    () => {},
+    (url: string) => /^https?:\/\//i.test(url),
+    (url: string) => {
+      runtime.openedArticles.push(url);
+      return Promise.resolve('popup');
+    },
+    headlineTitleKey,
+    () => 'en',
+    () => '1h ago',
   ];
 
   // eslint-disable-next-line no-new-func
@@ -396,6 +420,7 @@ function makeScenario(
     deferTimers: false,
     nextTimerId: 1,
     pendingTimers: new Map(),
+    openedArticles: [],
   };
   const calls: Scenario['calls'] = {
     views: [],
@@ -424,8 +449,11 @@ function makeScenario(
     clearedSources: [],
     flightCallsign: null,
     humanInteractionCallback: null,
-    search: () => ({
-      orderedMatches: [...modal.matches],
+    // Like SearchModal.search: an excluded source is never ranked.
+    search: (_query, _scope, options) => ({
+      orderedMatches: modal.matches.filter((match) => !(
+        match.kind === 'result' && options?.excludeTypes?.includes(match.result.type)
+      )),
       flightCallsign: modal.flightCallsign,
     }),
     getSearchIndexRevision: () => modal.revision,
@@ -444,6 +472,7 @@ function makeScenario(
       }
     },
     refreshSearch: () => {},
+    setResultsPending: () => {},
     open: () => {
       modal.openCalls += 1;
       modal.isOpen = true;
@@ -1989,6 +2018,28 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     assert.deepEqual(scenario.calls.timeRanges, []);
   });
 
+  it('never issues a history headline to an agent as something it can run', async () => {
+    const headline = resultMatch('headline', 'https://www.reuters.com/hormuz', 'Needle tanker seized', {
+      link: 'https://www.reuters.com/hormuz', source: 'Reuters World', publishedAt: 1,
+    });
+    const scenario = makeScenario([headline]);
+    assert.equal(scenario.manager.isSearchResultExecutable(headline.result), false);
+    const { opened } = await searchThenOpen(scenario);
+    assert.equal(opened.ok, false);
+    assert.deepEqual(scenario.runtime.openedArticles, []);
+  });
+
+  it('opens the article when a person selects a history headline, and refuses a non-web link', () => {
+    const scenario = makeScenario([]);
+    const select = (link: string) => scenario.manager.searchSelection.handleSearchResult({
+      type: 'headline', id: link, title: 'Needle tanker seized', data: { link, source: 'Reuters World', publishedAt: 1 },
+    });
+    assert.equal(select('https://www.reuters.com/hormuz'), true);
+    assert.equal(select('javascript:alert(1)'), false);
+    assert.deepEqual(scenario.runtime.openedArticles, ['https://www.reuters.com/hormuz']);
+    assert.deepEqual(scenario.runtime.selectedResultTypes, ['headline', 'headline']);
+  });
+
   it('denies news retained only by a disabled hidden panel', () => {
     const news = resultMatch('news', 'story', 'Needle story', { link: 'https://example.test/story' });
     const scenario = makeScenario([news]);
@@ -2025,6 +2076,37 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     assert.deepEqual(opened, { ok: true, status: 'opened', type: 'news' });
     assert.deepEqual(scenario.calls.scrolledPanels, ['enabled']);
     assert.deepEqual(itemScrolls, ['enabled']);
+  });
+
+  it('keeps alerts sent to the user out of agent search, and opens the article for a human', async () => {
+    const link = 'https://www.reuters.com/world/needle-story';
+    const alert = resultMatch('alert', '1763370000000:needle', 'Needle alert headline', {
+      title: 'Needle alert headline', source: 'Reuters', link, sentAt: 1_763_370_000_000,
+    });
+    const scenario = makeScenario([alert]);
+
+    // An in-page agent is never issued the user's alert history.
+    assert.equal(scenario.manager.isSearchResultExecutable(alert.result), false);
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    assert.deepEqual(response.results, []);
+
+    // A human selection opens the article in a new tab, whether or not a news panel holds it.
+    const opened: string[] = [];
+    scenario.manager.searchSelection.bindings.openExternalLink = (url: string) => { opened.push(url); };
+    assert.equal(scenario.manager.searchSelection.handleSearchResult(alert.result), true);
+    assert.deepEqual(opened, [link]);
+    assert.deepEqual(scenario.calls.scrolledPanels, []);
+  });
+
+  it('does not open an alert whose link is missing or not http', () => {
+    const scenario = makeScenario([]);
+    const opened: string[] = [];
+    scenario.manager.searchSelection.bindings.openExternalLink = (url: string) => { opened.push(url); };
+    for (const link of ['', 'javascript:alert(1)', 'data:text/html,x', undefined]) {
+      const alert = resultMatch('alert', 'a', 'Needle alert headline', { link });
+      assert.equal(scenario.manager.searchSelection.handleSearchResult(alert.result), false);
+    }
+    assert.deepEqual(opened, []);
   });
 
   it('does not report a country opened when the lazy brief surface fails', async () => {
@@ -2117,6 +2199,10 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     const unloadedCountryMap = commandMatch('country-map:US', 'country-map', 'United States').command;
     assert.equal(scenario.manager.isModalCommandVisible(unloadedCountryMap), false);
     assert.equal(scenario.manager.isCommandExecutable(unloadedCountryMap), false);
+
+    const satellitePasses = commandMatch('orbital:search', 'actions', 'Satellite passes: find a place').command;
+    assert.equal(scenario.manager.isModalCommandVisible(satellitePasses), true);
+    assert.equal(scenario.manager.isCommandExecutable(satellitePasses), false);
   });
 
   it('reports successful synchronous healing of stale locked resilience state for free users', async () => {
@@ -2307,6 +2393,27 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
 
     assert.ok(scenario.modal.clearedSources.includes('flight'));
     assert.equal(scenario.manager.flightSourceExpiresAt, 0);
+  });
+
+  it('tells the headline history when the loaded news changes, after the loaded index is replaced', () => {
+    const scenario = makeScenario([]);
+    scenario.manager.updateSearchIndex = undefined;
+    scenario.manager.syncPanelSearchIndex = () => {};
+    scenario.manager.buildCountrySearchItems = () => [];
+    scenario.ctx.latestPredictions = [];
+    scenario.ctx.latestMarkets = [];
+    const loadedAtNotification: boolean[] = [];
+    scenario.manager.headlineHistory.onLoadedNewsChange = () => {
+      loadedAtNotification.push(scenario.manager.loadedNewsSearchText.has('iran talks resume in vienna'));
+    };
+    const productionUpdate = Object.getPrototypeOf(scenario.manager).updateSearchIndex;
+
+    scenario.ctx.allNews = [{ link: 'https://www.reuters.com/vienna', title: 'Iran talks resume in Vienna', source: 'Reuters World' }];
+    productionUpdate.call(scenario.manager, { updateVisibleMetrics: false });
+    scenario.ctx.allNews = [];
+    productionUpdate.call(scenario.manager, { updateVisibleMetrics: false });
+
+    assert.deepEqual(loadedAtNotification, [true, false], 'the history re-lists against the news just indexed');
   });
 
   it('populates flight search for every premium access path, including runtime API keys', () => {

@@ -50,13 +50,49 @@ function rawPost(account, id, overrides = {}) {
 }
 
 describe('data/x-accounts.json registry', () => {
-  it('contains exactly 64 unique enabled immutable account IDs', () => {
-    assert.equal(accounts.length, 64);
-    assert.equal(new Set(accounts.map((account) => account.accountId)).size, 64);
+  it('contains exactly 65 unique enabled immutable account IDs', () => {
+    assert.equal(accounts.length, 65);
+    assert.equal(new Set(accounts.map((account) => account.accountId)).size, 65);
     for (const account of accounts) {
       assert.match(account.accountId, /^[1-9]\d{0,18}$/);
       assert.match(account.handle, /^[A-Za-z0-9_]{1,15}$/);
     }
+  });
+
+  it('keeps the reviewed account ceiling on the fixed List-page budget', () => {
+    const relay = readFileSync(join(__dirname, '../scripts/ais-relay.cjs'), 'utf8');
+    const match = relay.match(/const X_TRACK_A_ACCOUNT_BUDGET = (\d+);/);
+    assert.ok(match);
+    assert.equal(Number(match[1]), accounts.length);
+  });
+
+  it('labels @nhk_news as the domestic NHK News service, not NHK World', () => {
+    const account = accounts.find((entry) => entry.handle === 'nhk_news');
+    const item = xNews.normalizeXPost(rawPost(account, '7000000000000000090'), account);
+    assert.equal(item.accountTitle, 'NHK News');
+    assert.equal(item.sourceName, 'NHK News');
+  });
+
+  it('decodes the HTML entities X encodes in post text exactly once', () => {
+    const [account] = accounts;
+    const item = xNews.normalizeXPost(rawPost(account, '7000000000000000091', {
+      text: 'CROP TOPS, JEANS &amp; WITHOUT HEADSCARVES &lt;3 &gt; literal &amp;lt;b&amp;gt;',
+    }), account);
+    assert.equal(item.text, 'CROP TOPS, JEANS & WITHOUT HEADSCARVES <3 > literal &lt;b&gt;');
+  });
+
+  it('registers The Iran Watcher by the verified immutable ID', () => {
+    const account = accounts.find((entry) => entry.handle === 'TheIranWatcher');
+    assert.deepEqual(account, {
+      handle: 'TheIranWatcher',
+      accountId: '91163520',
+      label: 'The Iran Watcher',
+      sourceName: 'The Iran Watcher',
+      topic: 'osint',
+      region: 'iran',
+      tier: 3,
+      enabled: true,
+    });
   });
 
   it('reserves 96 five-Post List slots and one 25-Post deletion audit', () => {
@@ -198,7 +234,7 @@ describe('exact X List membership gate', () => {
     name: xNews.X_CURATED_LIST_NAME,
     description: xNews.X_CURATED_LIST_DESCRIPTION,
     private: false,
-    member_count: 64,
+    member_count: 65,
   };
   const matchingMembers = accounts.map((account) => ({
     id: account.accountId,
@@ -207,17 +243,17 @@ describe('exact X List membership gate', () => {
     protected: false,
   }));
 
-  it('accepts one public, unpaginated page with the exact 64 immutable IDs', () => {
+  it('accepts one public, unpaginated page with the exact 65 immutable IDs', () => {
     const result = xNews.verifyXListMembership({
       listId,
       accounts,
       listBody: { data: validList },
-      membersBody: { data: matchingMembers, meta: { result_count: 64 } },
+      membersBody: { data: matchingMembers, meta: { result_count: 65 } },
     });
 
     assert.equal(result.ok, true);
-    assert.equal(result.expectedCount, 64);
-    assert.equal(result.actualCount, 64);
+    assert.equal(result.expectedCount, 65);
+    assert.equal(result.actualCount, 65);
     assert.deepEqual(result.findings, []);
   });
 
@@ -234,7 +270,7 @@ describe('exact X List membership gate', () => {
         name: 'Wrong name',
         description: 'Wrong description',
         private: true,
-        member_count: 65,
+        member_count: 66,
       } },
       membersBody: {
         data: [
@@ -244,7 +280,7 @@ describe('exact X List membership gate', () => {
           duplicate,
           { id: extraId, username: 'unexpected', name: 'Unexpected', protected: false },
         ],
-        meta: { result_count: 65, next_token: 'another-page' },
+        meta: { result_count: 66, next_token: 'another-page' },
       },
     });
 

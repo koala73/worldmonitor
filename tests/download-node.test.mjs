@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
 const script = readFileSync(new URL('../scripts/download-node.sh', import.meta.url), 'utf8');
-const archive = 'node-v22.23.4-linux-x64.tar.gz';
+const archive = 'node-v22.23.5-linux-x64.tar.gz';
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
 let fixture;
 let keyHome;
@@ -28,11 +28,11 @@ before(() => {
     gpg(['--pinentry-mode', 'loopback', '--passphrase', '', '--quick-generate-key', `${name}@example.test`, 'ed25519', 'sign', '0']);
   }
   trustedKeyring = gpg(['--export', 'trusted@example.test']);
-  const payload = join(fixture, 'node-v22.23.4-linux-x64');
+  const payload = join(fixture, 'node-v22.23.5-linux-x64');
   mkdirSync(join(payload, 'bin'), { recursive: true });
   writeFileSync(join(payload, 'bin/node'), '#!/bin/sh\necho fixture-node\n', { mode: 0o755 });
   writeFileSync(join(payload, 'LICENSE'), 'Fixture license\n');
-  execFileSync('tar', ['-czf', join(fixture, archive), '-C', fixture, 'node-v22.23.4-linux-x64']);
+  execFileSync('tar', ['-czf', join(fixture, archive), '-C', fixture, 'node-v22.23.5-linux-x64']);
   checksum = `${sha256(readFileSync(join(fixture, archive)))}  ${archive}\n`;
   const sums = join(fixture, 'sums');
   writeFileSync(sums, checksum);
@@ -70,7 +70,7 @@ fs.copyFileSync(path.join(process.env.DOWNLOAD_FIXTURE, path.basename(url)), arg
   writeFileSync(dest, 'previous node');
   const result = spawnSync('bash', [join(dir, 'scripts/download-node.sh'), '--target', 'x86_64-unknown-linux-gnu'], {
     encoding: 'utf8',
-    env: { ...process.env, GNUPGHOME: keyHome, NODE_VERSION: '22.23.4', PATH: `${join(dir, 'bin')}:${process.env.PATH}`, DOWNLOAD_FIXTURE: join(dir, 'downloads'), DOWNLOAD_LOG: join(dir, 'requests.log') },
+    env: { ...process.env, GNUPGHOME: keyHome, NODE_VERSION: '', PATH: `${join(dir, 'bin')}:${process.env.PATH}`, DOWNLOAD_FIXTURE: join(dir, 'downloads'), DOWNLOAD_LOG: join(dir, 'requests.log') },
   });
   return { ...result, dest, requests: readFileSync(join(dir, 'requests.log'), 'utf8') };
 }

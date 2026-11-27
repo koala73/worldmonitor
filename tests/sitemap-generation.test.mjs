@@ -56,6 +56,8 @@ describe('root sitemap generator', () => {
     assert.ok(locations.includes(`${SITE_ORIGIN}/dashboard`));
     assert.ok(locations.includes(`${SITE_ORIGIN}/pro`));
     assert.ok(locations.includes('https://worldmonitor.app/mcp'));
+    assert.ok(locations.includes(`${SITE_ORIGIN}/trust/`), 'the indexable /trust/ page must be in the root sitemap');
+    assert.ok(!locations.includes(`${SITE_ORIGIN}/trust`), '/trust 308s to /trust/, so only the slash form is canonical');
     // Markdown twins and llms manifests are files, not pages: a sitemap entry
     // asks Google to index them, and it indexed none of the twelve (#8608).
     assert.equal(MACHINE_READABLE_URLS.length, 12);

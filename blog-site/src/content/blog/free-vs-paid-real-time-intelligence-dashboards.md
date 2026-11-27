@@ -1,7 +1,7 @@
 ---
 title: "Free vs. Paid Real-Time Intelligence Dashboards: What to Compare"
 description: "Compare free and paid intelligence dashboards using seven buying criteria and 2026 price anchors ranging from $0 to $24,000 per year."
-metaTitle: "Free vs Paid Intelligence Dashboards: Buyer's Comparison 2026"
+metaTitle: "Free vs Paid Intelligence Dashboards: 2026 Buyer's Guide"
 keywords: "free vs paid intelligence dashboard, real-time intelligence dashboard comparison, free OSINT dashboard, intelligence platform pricing, geopolitical dashboard cost, situational awareness tools comparison, free intelligence tools 2026"
 audience: "Buyers evaluating intelligence tooling, analysts justifying budget, procurement teams, researchers deciding whether to upgrade"
 heroImage: "/blog/images/blog/free-vs-paid-real-time-intelligence-dashboards.jpg"
@@ -20,7 +20,7 @@ More than most buyers expect. Using [World Monitor's free tier](https://www.worl
 - **Map layer types** across conflicts, military activity, natural disasters, cyber incidents, infrastructure, shipping, and markets
 - **Curated news feeds** aggregated and deduplicated in real time
 - **Country briefs and instability scores** for situational context worldwide
-- **Maritime chokepoint monitoring** (Hormuz, Suez, Malacca, Bab el-Mandeb) and undersea cable status
+- **Maritime [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) monitoring** (Hormuz, Suez, Malacca, [Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/)) and undersea cable status
 - **Cascade analysis, hotspots, breaking-alert pipeline, and watchlists**
 - Coverage through [localized interfaces](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/)
 

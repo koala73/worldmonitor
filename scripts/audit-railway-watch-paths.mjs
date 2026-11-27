@@ -219,6 +219,22 @@ export function managedRailwayServices(registry) {
     throw new Error('Railway service registry must be an array');
   }
   registry.forEach(assertRegistryEntry);
+  const seenServices = new Set();
+  const seenEntries = new Set();
+  for (const item of registry) {
+    if (typeof item.service === 'string') {
+      if (seenServices.has(item.service)) {
+        throw new Error(`Railway service registry has duplicate service ${JSON.stringify(item.service)}`);
+      }
+      seenServices.add(item.service);
+    }
+    if (typeof item.entry === 'string') {
+      if (seenEntries.has(item.entry)) {
+        throw new Error(`Railway service registry has duplicate entry ${JSON.stringify(item.entry)}`);
+      }
+      seenEntries.add(item.entry);
+    }
+  }
   // Planned entries remain in the registry so Dockerfile/source coverage and
   // field validation run before provisioning. They must not participate in a
   // live audit or --apply until an explicit lifecycle activation; otherwise a

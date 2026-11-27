@@ -153,6 +153,8 @@ PRO subscribers get a key from [worldmonitor.app/pro](https://www.worldmonitor.a
 
 ### Drop-in agent skills
 
+MCP `skills/list` returns a bounded catalog in one complete response, with no continuation cursor, to meet the platform publishing limit across the entire catalog. Existing skill URIs remain readable through `skills/get` and `resources/read`. The well-known index below and the plugin package contain the full recipe collection.
+
 `/.well-known/agent-skills/index.json` lists pre-packaged skills — each is a self-contained recipe an agent can ingest without reading the OpenAPI. Useful for narrow tasks where you'd rather hand the agent "fetch a country brief" than "read the OpenAPI specs and figure it out." See the [Agent Skills Catalog](/agent-skills) for a human-readable list of every recipe. The catalog spans country briefs, risk and resilience, chokepoints, markets, cyber, sanctions, aviation, military flights, maritime traffic, energy shocks, trade flows, unrest, webcams, climate hazards, health alerts, and forecasts.
 
 ## Why this matters

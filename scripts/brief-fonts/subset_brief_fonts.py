@@ -78,9 +78,10 @@ FAMILIES = {
 }
 
 # Features Chromium applies to horizontal text without being asked. HarfBuzz turns on `frac`,
-# `numr` and `dnom` by itself around U+2044 FRACTION SLASH, so "1⁄2" needs them. `locl` is left out:
-# the brief is always lang="en", so language-specific forms never apply (the shaping check confirms it).
-DEFAULT_FEATURES = {'ccmp', 'rlig', 'rvrn', 'mark', 'mkmk', 'kern', 'calt', 'clig', 'liga', 'rclt',
+# `numr` and `dnom` by itself around U+2044 FRACTION SLASH, so "1⁄2" needs them. `locl` is kept:
+# localized briefs set <html lang>, so Bulgarian, Romanian, Turkish and other language-specific forms
+# apply. The shaping check shapes each fixture run with the language it was laid out in.
+DEFAULT_FEATURES = {'ccmp', 'locl', 'rlig', 'rvrn', 'mark', 'mkmk', 'kern', 'calt', 'clig', 'liga', 'rclt',
                     'curs', 'dist', 'abvm', 'blwm', 'abvs', 'blws', 'psts', 'pres', 'frac', 'numr', 'dnom'}
 STYLE_ITALIC = {'normal': False, 'italic': True}
 
@@ -247,10 +248,10 @@ class Shaper:
         self.order = tt.getGlyphOrder()
         self.sig = {}
 
-    def shape(self, text: str):
+    def shape(self, text: str, lang: str = 'en'):
         buf = self.hb.Buffer()
         buf.add_str(text)
-        buf.language = 'en'
+        buf.language = lang
         buf.guess_segment_properties()
         self.hb.shape(self.font, buf, {})
         out = []
@@ -261,11 +262,11 @@ class Shaper:
         return out
 
 
-def shaping_differences(runs: list[str], partition: dict[int, str], old: dict, new: dict) -> list[str]:
-    """Split each run the way Chrome would (by which file draws each character) and shape every
-    piece with Google's file and with ours."""
+def shaping_differences(runs: list[tuple[str, str]], partition: dict[int, str], old: dict, new: dict) -> list[str]:
+    """Split each (lang, text) run the way Chrome would (by which file draws each character) and
+    shape every piece, in its language, with Google's file and with ours."""
     bad = []
-    for text in runs:
+    for lang, text in runs:
         pieces, cur, part = [], '', None
         for ch in text:
             p = partition.get(ord(ch))
@@ -276,8 +277,8 @@ def shaping_differences(runs: list[str], partition: dict[int, str], old: dict, n
         if cur:
             pieces.append((part, cur))
         for p, seg in pieces:
-            if p is not None and old[p].shape(seg) != new[p].shape(seg):
-                bad.append(seg[:80])
+            if p is not None and old[p].shape(seg, lang) != new[p].shape(seg, lang):
+                bad.append(f'[{lang}] {seg[:80]}')
     return bad
 
 
@@ -289,7 +290,9 @@ def build(usage_path: Path, verify: bool):
     used_faces = {(f['family'], f['style'], f['weight']) for f in usage['faces']}
     runs_by_face = collections.defaultdict(set)
     for f in usage['faces']:
-        runs_by_face[(f['family'], f['style'], f['weight'])].update(f['runs'])
+        runs_by_face[(f['family'], f['style'], f['weight'])].update(('en', t) for t in f['runs'])
+        for lang, texts in f.get('lang_runs', {}).items():
+            runs_by_face[(f['family'], f['style'], f['weight'])].update((lang, t) for t in texts)
     preload_faces = {(f['family'], f['style'], f['weight']) for f in usage['faces'] if f['on_first_page']}
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -357,7 +360,7 @@ def build(usage_path: Path, verify: bool):
             if verify:
                 runs = sorted(runs_by_face[key])
                 # Every character each file draws, in order, so every glyph and adjacent pair is shaped.
-                runs += [''.join(chr(c) for c in sorted(cps)) for cps in draws.values()]
+                runs += [('en', ''.join(chr(c) for c in sorted(cps))) for cps in draws.values()]
                 old = {k: v() for k, v in old_shapers.items()}
                 new = {k: v() for k, v in new_shapers.items()}
                 bad = shaping_differences(runs, partition, old, new)

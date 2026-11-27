@@ -49,13 +49,13 @@ test.each(denied)("does not grant preference CORS to %s", async origin => {
 });
 
 test.each(["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"])(
-  "allows local development but not production for %s", async origin => {
-    for (const environment of ["development", "production"]) {
-      vi.stubEnv("NODE_ENV", environment);
+  "allows local development only when CONVEX_IS_DEV=true for %s", async origin => {
+    for (const devFlag of ["true", "false", ""]) {
+      vi.stubEnv("CONVEX_IS_DEV", devFlag);
       const response = await convexTest(schema, modules).fetch("/api/user-prefs", {
         method: "OPTIONS", headers: { Origin: origin },
       });
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(environment === "development" ? origin : null);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(devFlag === "true" ? origin : null);
     }
   },
 );

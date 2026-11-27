@@ -208,6 +208,25 @@ describe('marketing ignoreErrors', () => {
     assert.deepEqual(hits, [], 'the marketing surface now touches ethereum.selectedAddress — re-derive the WORLDMONITOR-16Z rule');
   });
 
+  it("drops Meta's in-app browser _META namespace read (WORLDMONITOR-1G0)", () => {
+    // Synthetic value in WebKit's shape: Instagram / iOS on `/`, frames on the
+    // welcome document only.
+    assert.equal(isIgnored('TypeError', "undefined is not an object (evaluating 'window._META.SomeFlag')"), true);
+    // A first-party message that merely names the word survives, as does a
+    // different global read in the same envelope.
+    assert.equal(isIgnored('Error', 'Pricing load failed: window._META missing'), false);
+    assert.equal(isIgnored('TypeError', "undefined is not an object (evaluating 'window.META.SomeFlag')"), false);
+    assert.equal(isIgnored('TypeError', "undefined is not an object (evaluating 'window.wmPricing.plans')"), false);
+  });
+
+  it('pins the marketing surface as _META-free, which is what licenses the rule', () => {
+    const hits = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /\b_META\b/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(hits, [], 'the marketing surface now names _META — re-derive the WORLDMONITOR-1G0 rule');
+  });
+
   // Positive control for the `\b` bounds on the Zalo entry: the pattern must
   // key on the identifier, not on a substring that a longer word contains.
   it('keeps an error that merely mentions a similar word', () => {
@@ -279,6 +298,10 @@ describe('marketing Sentry request URL privacy', () => {
     assert.equal(
       sanitizeMarketingRequestUrl('https://www.worldmonitor.app/?ref=private#enterprise-contact'),
       'https://www.worldmonitor.app/#enterprise-contact',
+    );
+    assert.equal(
+      sanitizeMarketingRequestUrl('https://www.worldmonitor.app/pro?utm_source=mcp#plan-proBusiness'),
+      'https://www.worldmonitor.app/pro#plan-proBusiness',
     );
     assert.equal(
       sanitizeMarketingRequestUrl('https://www.worldmonitor.app/dashboard?token=private'),
@@ -757,6 +780,59 @@ describe('marketingBeforeSend — Safari-masked injected script (WORLDMONITOR-11
   });
 });
 
+describe('marketingBeforeSend — injected screen capture blocked by permission policy (WORLDMONITOR-121)', () => {
+  // Verbatim production event: Chrome 124 / Windows on `/`, an unhandled
+  // rejection whose only frames are `<anonymous>:1` and an injected
+  // `window.__wpxTakeSnapshot` at `<anonymous>:183`. No first-party code calls
+  // getDisplayMedia, and the page's permission policy refuses display-capture.
+  const DISPLAY_CAPTURE_MESSAGE = 'Failed to execute \'getDisplayMedia\' on \'MediaDevices\': Access to the feature "display-capture" is disallowed by permission policy.';
+  const captureEvent = (value: string, frames: { filename?: string; function?: string }[]): PolicyEvent => ({
+    exception: { values: [{ type: 'NotAllowedError', value, stacktrace: { frames } }] },
+  });
+
+  it('drops the refusal raised from an injected snapshot script', () => {
+    const event = captureEvent(DISPLAY_CAPTURE_MESSAGE, [
+      { filename: '<anonymous>' },
+      { filename: '<anonymous>', function: 'window.__wpxTakeSnapshot' },
+    ]);
+    assert.equal(marketingBeforeSend(event), null);
+    // Some captures carry the DOMException name inside the value.
+    const prefixed = captureEvent(`NotAllowedError: ${DISPLAY_CAPTURE_MESSAGE}`, [{ filename: '<anonymous>' }]);
+    assert.equal(marketingBeforeSend(prefixed), null);
+  });
+
+  // Positive control: if this bundle ever asks for screen capture, a refusal
+  // breaks that feature and must page. It would ride a `/pro/assets/*.js` frame.
+  it('keeps the refusal when a marketing-bundle frame is on the stack', () => {
+    const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, [{ filename: '<anonymous>' }, { filename: '/pro/assets/index-a1b2c3.js' }]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps the refusal when the caller is an inline script on the marketing document', () => {
+    const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, [{ filename: '<anonymous>' }, { filename: 'https://www.worldmonitor.app/' }]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps a frameless refusal', () => {
+    const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, []);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  // A frame with no filename could be the one that attributes the call to us,
+  // so an otherwise-anonymous stack containing one still reports.
+  it('keeps a refusal when a frame has no usable filename', () => {
+    for (const unnamed of [{}, { filename: '' }, { filename: '   ' }]) {
+      const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, [{ filename: '<anonymous>' }, unnamed]);
+      assert.equal(marketingBeforeSend(kept), kept, JSON.stringify(unnamed));
+    }
+  });
+
+  it('keeps an unrelated permission-policy refusal from an evaluated script', () => {
+    const kept = captureEvent('Failed to execute \'getUserMedia\' on \'MediaDevices\': Access to the feature "camera" is disallowed by permission policy.', [{ filename: '<anonymous>' }]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+});
+
 describe('marketingBeforeSend — injected eval blocked by CSP (WORLDMONITOR-129)', () => {
   // Verbatim production event: Edge 150 / Windows on `/pro`, an `onerror`
   // capture whose only frames are two `<anonymous>:1` entries — a script
@@ -1009,11 +1085,12 @@ describe('policy wiring', () => {
     // moves by one, in the same commit as the entry that needs the slot, and
     // only once that entry carries its own licence scan and suppression tests
     // (WORLDMONITOR-127 took it from 19 to 20, WORLDMONITOR-11B from 20 to 21,
-    // WORLDMONITOR-185 from 21 to 22, WORLDMONITOR-10B from 22 to 23).
+    // WORLDMONITOR-185 from 21 to 22, WORLDMONITOR-10B from 22 to 23,
+    // WORLDMONITOR-1G0 from 26 to 27).
     // Raising it by more than one per entry, or ahead of an entry, defeats
     // the deliberation this red is here to force.
     assert.ok(
-      MARKETING_IGNORE_ERRORS.length < 26,
+      MARKETING_IGNORE_ERRORS.length < 27,
       `marketing array must stay a vetted subset, got ${MARKETING_IGNORE_ERRORS.length}`,
     );
   });
@@ -1819,5 +1896,151 @@ describe('marketingBeforeSend — Firefox bare-primitive throw (WORLDMONITOR-1CH
       .filter((f) => BARE_PRIMITIVE_THROW_SOURCE.test(stripComments(f.code)))
       .map((f) => f.rel);
     assert.deepEqual(offenders, [], 'a first-party bare-primitive throw — re-derive the WORLDMONITOR-1CH rule');
+  });
+});
+
+describe('marketingBeforeSend — injected numeric-literal parse failure on document line 1 (WORLDMONITOR-10B)', () => {
+  const MSG = 'No identifiers allowed directly after numeric literal';
+  const parseEvent = (
+    frames: { filename: string; lineno?: number }[],
+    value = MSG,
+    type: string | undefined = 'SyntaxError',
+  ): PolicyEvent => ({
+    exception: { values: [{ type, value, stacktrace: { frames } }] },
+  });
+
+  it('drops the production shape: one frame, the document URL at line 1', () => {
+    assert.equal(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }])), null);
+  });
+
+  it('drops the same shape on /pro', () => {
+    assert.equal(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/pro', lineno: 1 }])), null);
+  });
+
+  it('uses the message prefix when Sentry omits the type', () => {
+    const missingTypeEvent = {
+      exception: { values: [{
+        value: `SyntaxError: ${MSG}`,
+        stacktrace: { frames: [{ filename: 'https://www.worldmonitor.app/', lineno: 1 }] },
+      }] },
+    } satisfies PolicyEvent;
+    assert.equal(Object.hasOwn(missingTypeEvent.exception.values[0]!, 'type'), false);
+    assert.equal(marketingBeforeSend(missingTypeEvent), null);
+  });
+
+  it('keeps the parse failure when it sits below line 1, where our inline scripts live', () => {
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 40 }])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/' }])), null);
+  });
+
+  it('keeps it with a first-party asset frame, an unnamed frame, an empty stack, or another message', () => {
+    assert.notEqual(marketingBeforeSend(parseEvent([
+      { filename: 'https://www.worldmonitor.app/', lineno: 1 },
+      { filename: 'https://www.worldmonitor.app/pro/assets/index-a1b2c3.js', lineno: 1 },
+    ])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }, {} as { filename: string }])), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], `${MSG} in config`)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], 'Unexpected end of input')), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], MSG, 'TypeError')), null);
+  });
+
+  it('drops the V8 quoted-token shapes at document line 1', () => {
+    for (const value of ["Unexpected identifier 'href'", "Unexpected token 'else'", "SyntaxError: Unexpected token 'for'"]) {
+      assert.equal(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], value)), null, value);
+    }
+  });
+
+  it('keeps the quoted-token shapes below line 1, beside a first-party frame, or with extra text', () => {
+    const value = "Unexpected identifier 'href'";
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 40 }], value)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([
+      { filename: 'https://www.worldmonitor.app/', lineno: 1 },
+      { filename: 'https://www.worldmonitor.app/pro/assets/index-a1b2c3.js', lineno: 1 },
+    ], value)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([], value)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], `${value}. Expected ';'`)), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], 'Unexpected token')), null);
+    assert.notEqual(marketingBeforeSend(parseEvent([{ filename: 'https://www.worldmonitor.app/', lineno: 1 }], value, 'TypeError')), null);
+  });
+
+  it('pins line 1 of every marketing document to the doctype alone, which is what licenses the rule', () => {
+    for (const rel of ['pro-test/welcome.html', 'pro-test/index.html']) {
+      const firstLine = readFileSync(resolve(root, rel), 'utf-8').split('\n', 1)[0]!.trim();
+      assert.equal(firstLine.toLowerCase(), '<!doctype html>', rel);
+    }
+  });
+});
+
+describe('marketingBeforeSend — ReferenceError with only <anonymous> frames (WORLDMONITOR-1E7, -1E8)', () => {
+  // The production shape: an `onerror` capture whose only frame is the
+  // `<anonymous>:1:1` slot an engine gives code evaluated from a string.
+  const anon = () => ({ filename: '<anonymous>', lineno: 1, colno: 1, function: '?' });
+  const refError = (frames: Record<string, unknown>[], type = 'ReferenceError'): PolicyEvent => ({
+    exception: { values: [{ type, value: 'injectedGlobal is not defined', stacktrace: { frames } }] },
+  });
+
+  it('drops the single <anonymous> frame shape', () => {
+    assert.equal(marketingBeforeSend(refError([anon()])), null);
+  });
+
+  it('drops several <anonymous> frames', () => {
+    assert.equal(marketingBeforeSend(refError([anon(), anon()])), null);
+  });
+
+  it('keeps a ReferenceError raised beside a first-party asset frame', () => {
+    assert.notEqual(marketingBeforeSend(refError([anon(), { filename: 'https://www.worldmonitor.app/pro/assets/index-a1b2c3.js', lineno: 1 }])), null);
+  });
+
+  it('keeps a ReferenceError from an inline document script', () => {
+    assert.notEqual(marketingBeforeSend(refError([{ filename: 'https://www.worldmonitor.app/', lineno: 12 }])), null);
+  });
+
+  it('keeps a ReferenceError with a blob: frame beside an <anonymous> one', () => {
+    assert.notEqual(marketingBeforeSend(refError([anon(), { filename: 'blob:https://www.worldmonitor.app/3f2a', lineno: 1 }])), null);
+  });
+
+  it('keeps a ReferenceError with a filename-less frame beside an <anonymous> one', () => {
+    assert.notEqual(marketingBeforeSend(refError([anon(), { lineno: 1 }])), null);
+  });
+
+  it('keeps a ReferenceError with no frames at all', () => {
+    assert.notEqual(marketingBeforeSend(refError([])), null);
+  });
+
+  it('keeps an anonymous-only error that is not a ReferenceError', () => {
+    assert.notEqual(marketingBeforeSend(refError([anon()], 'Error')), null);
+  });
+
+  // Code evaluated from a string is what produces an `<anonymous>` frame.
+  const STRING_EVAL_SOURCE = /(?<![\w$.])(?:(?:(?:window|globalThis)\s*\.\s*)?eval|Function)\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
+
+  it('the source scan catches common string-evaluation spellings', () => {
+    for (const src of [
+      'eval(code)', 'eval (x)', 'new Function("a", body)',
+      'Function(body)', 'Function ("a", body)',
+      'window.eval(code)', 'globalThis.eval(code)',
+      'window . eval (code)', 'globalThis\n. eval(code)',
+      "setTimeout('run()', 10)", 'setInterval(`tick()`, 5)',
+    ]) {
+      assert.ok(STRING_EVAL_SOURCE.test(src), src);
+    }
+    for (const src of [
+      'setTimeout(run, 10)', 'evaluate(x)', 'retrieval(x)', 'node.eval(x)', 'typeof Function',
+      'node.Function(body)', 'makeFunction(body)', '$Function(body)',
+      'mywindow.eval(code)', 'object.window.eval(code)', '$globalThis.eval(code)',
+    ]) {
+      assert.ok(!STRING_EVAL_SOURCE.test(src), src);
+    }
+  });
+
+  it('pins the marketing surface free of string evaluation, which is what licenses the rule', () => {
+    const stripComments = (src: string) => src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    const offenders = marketingFirstPartySources()
+      .filter((f) => STRING_EVAL_SOURCE.test(stripComments(f.code)))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [], 'first-party string evaluation — re-derive the WORLDMONITOR-1E7 rule');
   });
 });

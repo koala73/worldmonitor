@@ -545,11 +545,16 @@ export function resolveGivingHydration(
   };
 }
 
-export function formatCurrency(n: number): string {
-  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
+export function formatCurrency(n: number, rounding: 'nearest' | 'down' = 'nearest'): string {
+  const round = (value: number, decimals: number): string => {
+    if (rounding === 'nearest') return value.toFixed(decimals);
+    const factor = 10 ** decimals;
+    return (Math.floor(value * factor) / factor).toFixed(decimals);
+  };
+  if (n >= 1_000_000_000) return `$${round(n / 1_000_000_000, 1)}B`;
+  if (n >= 1_000_000) return `$${round(n / 1_000_000, 1)}M`;
+  if (n >= 1_000) return `$${round(n / 1_000, 0)}K`;
+  return `$${round(n, 0)}`;
 }
 
 export const __testing__ = {

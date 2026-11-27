@@ -9,17 +9,17 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
 import {
-  applyVesselCountsToPostures,
+  applyPublishedPostures,
   crossSourceSignalsToSignalSummary,
   CROSS_SOURCE_TO_FOCAL_SIGNAL,
   filterFocalPointsByCountry,
   insightsToFocalClusters,
   MCP_CASCADE_WATERWAYS,
   militaryFlightsToSurgeInputs,
+  publishedTheaterPostures,
   riskScoresToCiiLookup,
   submarineCablesToCableInputs,
   surgeHistoryToActivityHistory,
-  theaterPostureVesselCounts,
 } from '../shared/analysis-mcp-adapters.ts';
 import { buildEntityIndex } from '../shared/entity-extraction-core.js';
 import { ENTITY_REGISTRY } from '../shared/entity-registry.js';
@@ -128,7 +128,7 @@ function analysisPayloads() {
     id: `fire-${i}`,
     frp: i + 1,
     region: 'Sahel',
-    location: { latitude: 14 + i / 100, longitude: 1 },
+    location: { latitude: 12 + i / 100, longitude: -1.5 },
   }));
   return {
     'unrest:events:v1': {
@@ -228,7 +228,7 @@ function analysisPayloads() {
     },
     'theater-posture:sebuf:v1': {
       provider: 'wingbits',
-      theaters: [{ theater: 'iran-theater', trackedVessels: 2 }],
+      theaters: [{ theater: 'iran-theater', postureLevel: 'elevated', activeFlights: 3, trackedVessels: 2 }],
     },
     'military:surges:v1': {
       sourceVersion: 'wingbits',
@@ -243,7 +243,7 @@ function analysisPayloads() {
     },
     'wildfire:fires:v1': { fireDetections: fires },
     'conflict:ucdp-events:v1': {
-      events: [{ id: 1, country: 'Sudan', dateStart: '2026-07-28', location: { latitude: 15.5, longitude: 32.5 } }],
+      events: [{ id: 1, country: 'Sudan', dateStart: '2026-07-28', location: { latitude: 15.5, longitude: 32.5 }, hasPreciseLocation: true }],
     },
     'cable-health-v1': structuredClone(PRODUCER_PAYLOADS.cableHealth),
     'infra:outages:v1': structuredClone(PRODUCER_PAYLOADS.internetOutages),
@@ -575,36 +575,41 @@ describe('military-surge seed adapters', () => {
     }).map((flight) => flight.id), ['wingbits']);
   });
 
-  it('reads per-theater vessel counts out of the theater-posture payload', () => {
-    const counts = theaterPostureVesselCounts({
+  it('reads the published level and vessel count out of the theater-posture payload', () => {
+    const published = publishedTheaterPostures({
       provider: 'wingbits',
       theaters: [
         { theater: 'iran-theater', postureLevel: 'elevated', activeFlights: 9, trackedVessels: 6 },
         { theater: 'taiwan-theater', postureLevel: 'normal', activeFlights: 2, trackedVessels: 0 },
-        { theater: 'bogus', trackedVessels: 'nope' },
+        { theater: 'korea-theater', postureLevel: 'normal', activeFlights: 1, trackedVessels: 'nope' },
+        { theater: 'bogus', postureLevel: 'extreme', trackedVessels: 1 },
         null,
       ],
     });
-    assert.equal(counts.get('iran-theater'), 6);
-    assert.equal(counts.get('taiwan-theater'), 0);
-    assert.equal(counts.get('bogus'), undefined);
-    assert.equal(theaterPostureVesselCounts(null).size, 0);
-    assert.equal(theaterPostureVesselCounts({ theaters: 'nope' }).size, 0);
-    assert.equal(theaterPostureVesselCounts({ provider: 'opensky', theaters: [{ theater: 'iran-theater', trackedVessels: 6 }] }).size, 0);
-    assert.equal(theaterPostureVesselCounts({ theaters: [{ theater: 'iran-theater', trackedVessels: 6 }] }).size, 0);
+    assert.deepEqual(published.get('iran-theater'), { postureLevel: 'elevated', trackedVessels: 6 });
+    assert.deepEqual(published.get('taiwan-theater'), { postureLevel: 'normal', trackedVessels: 0 });
+    assert.deepEqual(published.get('korea-theater'), { postureLevel: 'normal', trackedVessels: 0 });
+    assert.equal(published.get('bogus'), undefined, 'an unknown level is left out, not guessed');
+    assert.equal(publishedTheaterPostures(null).size, 0);
+    assert.equal(publishedTheaterPostures({ theaters: 'nope' }).size, 0);
+    assert.equal(publishedTheaterPostures({ provider: 'opensky', theaters: [{ theater: 'iran-theater', postureLevel: 'critical' }] }).size, 0);
+    assert.equal(publishedTheaterPostures({ theaters: [{ theater: 'iran-theater', postureLevel: 'critical' }] }).size, 0);
   });
 
-  it('applies vessel counts and lets naval strength drive the posture level', () => {
+  it('replaces the flight-derived level with the published one', () => {
     const postures = getTheaterPostureSummaries(militaryFlightsToSurgeInputs(flights()));
     const iran = postures.find((p) => p.theaterId === 'iran-theater');
+    const taiwan = postures.find((p) => p.theaterId === 'taiwan-theater');
     assert.equal(iran.totalAircraft, 3);
     assert.equal(iran.postureLevel, 'normal', '3 aircraft is below the iran-theater elevated floor of 8');
+    const taiwanBefore = taiwan.postureLevel;
 
-    applyVesselCountsToPostures(postures, new Map([['iran-theater', 6]]));
+    applyPublishedPostures(postures, new Map([['iran-theater', { postureLevel: 'elevated', trackedVessels: 6 }]]));
     assert.equal(iran.totalVessels, 6);
-    // recalcPostureWithVessels is the core's job; the adapter only sets the
-    // count. Verify it set the field the recalc reads, not the level itself.
-    assert.equal(iran.postureLevel, 'normal');
+    assert.equal(iran.postureLevel, 'elevated');
+    assert.equal(iran.headline, 'Elevated military activity - Iran Theater (3 aircraft + 6 vessels)');
+    assert.equal(iran.totalAircraft, 3, 'the aircraft breakdown stays as computed from the flights');
+    assert.equal(taiwan.postureLevel, taiwanBefore, 'a theater the relay did not publish keeps its flight level');
   });
 
   it('rebuilds the theater activity history the trend calculation needs', () => {
@@ -777,11 +782,11 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     const military = await findTool('get_military_surge')._execute({}, '', {}, {});
     assert.equal(military.data.history_available, true);
     assert.equal(military.data.seeded_surges_available, true);
-    assert.equal(military.data.cii_available, true);
+    assert.equal(military.data.posture_available, true);
     assert.equal(
       military.data.postures.find((posture) => posture.theaterId === 'iran-theater').postureLevel,
-      'critical',
-      'the server posture must include the same CII elevation as the dashboard',
+      'elevated',
+      'the tool reports the level the relay published, the one the dashboard shows; Iran instability does not raise it',
     );
     assert.deepEqual(military.unavailable_inputs, []);
 
@@ -1160,6 +1165,19 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     }
   });
 
+  it('leaves out a theater the relay did not publish instead of reporting an aircraft-only level as published', async () => {
+    const payloads = analysisPayloads();
+    payloads['military:flights:v1'].flights.push(...Array.from({ length: 12 }, (_, i) => ({
+      id: `baltic-${i}`, callsign: `BALT${i}`, lat: 58, lon: 20, lastSeenMs: Date.now(),
+      operator: 'usaf', aircraftType: 'transport', sourceMeta: { source: 'wingbits' },
+    })));
+    installUpstashStub(payloads);
+    const result = await findTool('get_military_surge')._execute({}, '', {}, {});
+
+    assert.equal(result.data.posture_available, true);
+    assert.deepEqual(result.data.postures.map((p) => p.theaterId), ['iran-theater']);
+  });
+
   it('does not synthesize CII-only military postures when both asset feeds are unavailable', async () => {
     installUpstashStub(analysisPayloads(), {
       misses: ['military:flights:v1', 'theater-posture:sebuf:v1'],
@@ -1169,7 +1187,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(result.stale, true);
     assert.deepEqual(result.data.postures, []);
     assert.ok(result.data.seeded_surges.length > 0, 'the independent seeded surge feed remains usable');
-    assert.equal(result.data.cii_available, true);
+    assert.equal(result.data.posture_available, false);
   });
 
   for (const [theater, regionId, lat, lon] of [
@@ -1237,6 +1255,82 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
 
     assert.equal(result.data.events.length, 1);
     assert.equal(result.data.events[0].id, 'palestine-quake');
+    assert.equal(result.data.events[0].country, 'PSE');
+  });
+
+  it('keeps a supported wildfire after a full feed of misses before applying the result limit', async () => {
+    const payloads = analysisPayloads();
+    payloads['wildfire:fires:v1'].fireDetections = [
+      ...Array.from({ length: 15000 }, (_, i) => ({
+        id: `unsupported-${i}`, frp: 100,
+        location: { latitude: 45 + (i % 10) / 100, longitude: 75 + (i % 10) / 100 },
+      })),
+      { id: 'supported', frp: 1, location: { latitude: 31.52, longitude: 34.45 } },
+    ];
+    installUpstashStub(payloads);
+    for (const limit of [1, 0]) {
+      const result = await findTool('get_population_exposure')._execute(
+        { mode: 'events', event_source: 'wildfires', limit }, '', {}, {},
+      );
+      assert.deepEqual(result.data.events.map(event => event.id), ['supported']);
+      assert.equal(result.data.events[0].country, 'PSE');
+      assert.equal(result.data.events[0].nearestCountry, 'PSE');
+    }
+  });
+
+  it('returns folded conflict locations with current country names in events mode', async () => {
+    const payloads = analysisPayloads();
+    payloads['conflict:ucdp-events:v1'].events = [
+      { id: 643820, country: 'Ukraine', locationName: 'Kyiv city', location: { latitude: 50.45, longitude: 30.52 } },
+      { id: 643824, country: 'Ukraine', locationName: 'Kyiv city', location: { latitude: 50.45, longitude: 30.52 } },
+      { id: 'gaza', country: 'Israel', locationName: 'Gaza town', location: { latitude: 31.52, longitude: 34.45 } },
+      { id: 'yemen', country: 'Yemen (North Yemen)', location: { latitude: 15.35, longitude: 44.2 } },
+    ].map(event => ({ ...event, dateStart: '2026-07-28', hasPreciseLocation: true }));
+    installUpstashStub(payloads);
+
+    const result = await findTool('get_population_exposure')._execute(
+      { mode: 'events', event_source: 'conflicts', limit: 0 }, '', {}, {},
+    );
+    assert.deepEqual(result.data.events.map(({ name, eventCount, reportedCountry, country }) =>
+      [name, eventCount, reportedCountry, country]).sort(), [
+      ['Conflict event — Yemen', 1, 'Yemen', 'YEM'],
+      ['Gaza town, Palestine', 1, 'Israel', 'PSE'],
+      ['Kyiv city, Ukraine', 2, 'Ukraine', 'UKR'],
+    ]);
+  });
+
+  it('estimates each event from its own country and drops what the density table cannot cover', async () => {
+    const payloads = analysisPayloads();
+    const at = (latitude, longitude) => ({ location: { latitude, longitude } });
+    payloads['seismology:earthquakes:v1'].earthquakes = [
+      { id: 'santiago', place: 'Santiago', magnitude: 6, ...at(-33.45, -70.67), occurredAt: Date.now() },
+      { id: 'kyiv', place: 'Kyiv', magnitude: 4, ...at(50.45, 30.52), occurredAt: Date.now() },
+    ];
+    payloads['conflict:ucdp-events:v1'].events = [
+      { id: 'gaza', country: 'Israel', dateStart: '2026-07-28', ...at(31.52, 34.45), hasPreciseLocation: true },
+      { id: 'precise', country: 'Sudan', dateStart: '2026-07-28', ...at(15.5, 32.5), hasPreciseLocation: true },
+      { id: 'country-level', country: 'Sudan', dateStart: '2026-07-29', ...at(15.5, 32.5), hasPreciseLocation: false },
+      { id: 'unknown-precision', country: 'Sudan', dateStart: '2026-07-29', ...at(15.5, 32.5) },
+      { id: 'reported-elsewhere', country: 'Chile', dateStart: '2026-07-29', ...at(15.5, 32.5), hasPreciseLocation: true },
+    ];
+    installUpstashStub(payloads);
+
+    const result = await findTool('get_population_exposure')._execute(
+      { mode: 'events', event_source: 'all', limit: 0 },
+      '',
+      {},
+      {},
+    );
+    const byId = Object.fromEntries(result.data.events.map((event) => [event.id, event.country]));
+    assert.equal(byId.kyiv, 'UKR');
+    assert.equal(byId.precise, 'SDN');
+    assert.equal(byId.gaza, 'PSE');
+    for (const event of result.data.events) assert.equal(event.nearestCountry, event.country);
+    assert.equal(result.data.events.find(event => event.id === 'precise').eventCount, 1,
+      'an event without an estimate must neither hide nor count toward a supported location');
+    for (const id of ['santiago', 'country-level', 'unknown-precision', 'reported-elsewhere']) {
+      assert.equal(id in byId, false, `${id} must not get an estimate`);
+    }
   });
 
   for (const view of ['today', 'weekly']) {

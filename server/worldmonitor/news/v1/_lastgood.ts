@@ -18,6 +18,7 @@ import {
   isAcceptableDigest,
   type DigestLike,
 } from '../../../../scripts/shared/digest-acceptance.mjs';
+import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 
 export { countDigestItems, isAcceptableDigest, type DigestLike };
 
@@ -87,9 +88,12 @@ export function attemptMetaKey(variant: string, lang: string): string {
  * OPERATOR RUNBOOK — revoking a URL:
  *   1. SADD news:digest:revoked-urls:v1 <url>
  *      Suppression happens on read, so this alone removes the item from every
- *      Redis-served path immediately: fresh build, digest cache hit, durable
+ *      Redis-served path within REVOCATION_MEMO_TTL_MS (10 s), the time each
+ *      instance reuses its last read: fresh build, digest cache hit, durable
  *      snapshot, and warm-isolate replay.
- *   2. PURGE THE CDN for /api/news/v1/list-feed-digest.
+ *   2. Wait one minute, then PURGE THE CDN for /api/news/v1/list-feed-digest.
+ *      That covers the 10 s memo plus a 25 s request that started before the
+ *      SADD; an earlier purge can be refilled by such a request.
  *      The endpoint is the gateway's `slow` tier (s-maxage=1800,
  *      CDN-Cache-Control s-maxage=3600), so copies already in shared caches
  *      survive step 1. Once a revocation is live the handler stops feeding
@@ -109,10 +113,9 @@ export {
   type RevocationRead,
 } from '../../../_shared/digest-revocations';
 
-/** Key-cardinality clamp: variant/lang are request-supplied — only write
- *  scope keys for known variants and well-formed 2-letter languages. */
+/** Persist only supported digest languages and well-formed variant names. */
 export function isEligibleScope(variant: string, lang: string): boolean {
-  return /^[a-z]{2}$/.test(lang) && /^[a-z0-9-]+$/.test(variant);
+  return NEWS_LANGUAGES.has(lang) && /^[a-z0-9-]+$/.test(variant);
 }
 
 export interface AcceptedSnapshotMeta {

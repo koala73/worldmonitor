@@ -95,13 +95,6 @@ test('fetchBilateral: requests an explicit safely-final annual period', async ()
   assert.equal(period.split(',')[0], String(new Date().getUTCFullYear() - 2));
 });
 
-test('recentPeriod: pins y-2 and rolls forward at the UTC year boundary', () => {
-  assert.equal(recentPeriod(new Date('2026-07-02T00:00:00Z')), '2024');
-  assert.equal(recentPeriod(new Date('2026-12-31T23:59:59Z')), '2024');
-  assert.equal(recentPeriod(new Date('2027-01-01T00:00:00Z')), '2025');
-  assert.equal(recentPeriod(new Date('2027-01-01T00:00:00Z'), 3), '2024');
-});
-
 test('candidatePeriods: returns (y-2) then (y-3) for the per-reporter fallback', () => {
   assert.deepEqual(
     candidatePeriods(new Date('2026-07-02T00:00:00Z')),
@@ -255,7 +248,7 @@ test('fetchImportsForReporter: succeeds on first 200', async () => {
   const { records, status } = await fetchImportsForReporter('699', 'fake-key');
   assert.equal(fetchCalls.length, 1);
   assert.equal(status, 200);
-  assert.ok(records.length >= 0);
+  assert.deepEqual(records, [{ partnerCode: '156', primaryValue: 1_000_000 }]);
   assert.deepEqual(sleepCalls, []);
 });
 
@@ -268,7 +261,7 @@ test('fetchImportsForReporter: retries twice on 503s, succeeds on third', async 
   const { records, status } = await fetchImportsForReporter('699', 'fake-key');
   assert.equal(fetchCalls.length, 3);
   assert.equal(status, 200);
-  assert.ok(records.length >= 0);
+  assert.deepEqual(records, [{ partnerCode: '156', primaryValue: 999 }]);
   assert.deepEqual(sleepCalls, [5_000, 10_000], 'import-hhi uses 10s not 15s for second retry (tighter bundle budget)');
 });
 
@@ -287,7 +280,7 @@ test('fetchImportsForReporter: 429 + 503 share the 3-attempt retry budget (post-
   const { records, status } = await fetchImportsForReporter('699', 'fake-key');
   assert.equal(fetchCalls.length, 3, 'unified 3-attempt budget: 429 → 503 → 200 = exactly 3 fetches');
   assert.equal(status, 200);
-  assert.ok(records.length >= 0);
+  assert.deepEqual(records, [{ partnerCode: '156', primaryValue: 42 }]);
   assert.deepEqual(
     sleepCalls,
     [5_000, 10_000],

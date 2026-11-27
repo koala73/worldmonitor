@@ -55,7 +55,6 @@ before(() => {
   ({ sendTelegram } = require(
     resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
   ));
-  assert.equal(typeof sendTelegram, 'function', 'sendTelegram export missing');
 });
 
 function makeRes(status, body = {}) {

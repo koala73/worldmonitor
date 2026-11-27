@@ -18,7 +18,12 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
+import type { ReservoirLevel } from '@/services/climate';
+import { reservoirCard, reservoirSummaryLine, sortReservoirCards } from './reservoir-card';
+import type { ReservoirNextPass } from '@/services/orbital/reservoir-next-pass-expiry';
+import { STRATEGIC_RESERVOIR_SITES } from '@/services/climate/reservoir-context';
 import { CountryHistory } from './CountryHistory';
+import { CountryIntelMemory } from './CountryIntelMemory';
 import { getCountryInfrastructure } from '@/services/related-assets';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
@@ -95,8 +100,12 @@ const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_DIVERSIFIABLE:            { text: 'Diversifiable',   cls: 'cdp-dep-ok' },
 };
 import { toApiUrl } from '@/services/runtime';
-import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ProductImpact, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ImageryChangeContext, ProductImpact, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { IMAGERY_CONTEXT_EXCLUSION, IMAGERY_CONTEXT_METHODOLOGY_HREF, imageryChangeSummary } from './_risk-imagery-context';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { renderCollapseIconSvg, renderExpandIconSvg } from '@/utils/ui-icons';
+import { confirmShareLinkCopied, createShareLinkButton } from './share-link-button';
+import { copyText } from '@/utils/copy-text';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
 import { regionalFeedStatusNote, regionalFeedTitle, regionalLatestPeriod, regionalSeriesRows } from './regional-energy-presentation';
@@ -150,7 +159,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
-  private currentBriefIsFallback = false;
+  private currentBriefIsSignalRows = false;
   private historyRegistered = false;
   private currentHeadlines: NewsItem[] = [];
   private isMaximizedState = false;
@@ -189,10 +198,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private marketsBody: HTMLElement | null = null;
   private briefBody: HTMLElement | null = null;
   private timelineBody: HTMLElement | null = null;
+  private intelMemoryBody: HTMLElement | null = null;
+  private intelMemory: CountryIntelMemory | null = null;
+  private intelMemorySignalCleanup: (() => void) | null = null;
   private scoreCard: HTMLElement | null = null;
   private factsBody: HTMLElement | null = null;
   private resilienceWidget: import('@/components/ResilienceWidget').ResilienceWidget | null = null;
   private pendingResilienceEnergyMix: CountryEnergyProfileData | null = null;
+  private reservoirContext: { code: string; reservoirs: ReservoirLevel[] } | null = null;
+  private reservoirContextEl: HTMLElement | null = null;
+  private reservoirNextPasses: Map<string, ReservoirNextPass> | null = null;
+  private reservoirNextPassesInFlight = false;
   private resilienceWidgetRequestId = 0;
   private foodStocksRequestId = 0;
   private foodStocksBody: HTMLElement | null = null;
@@ -212,6 +228,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private commodityVulnerabilityBody: HTMLElement | null = null;
   private debtBody: HTMLElement | null = null;
   private sanctionsBody: HTMLElement | null = null;
+  private readonly imageryContext = this.el('div', 'cdp-imagery-context');
   private no2ActivityBody: HTMLElement | null = null;
   private comtradeBody: HTMLElement | null = null;
   private tariffBody: HTMLElement | null = null;
@@ -293,7 +310,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private canRequestPremium(): boolean {
-    return this.source?.canRequestPremium() ?? hasPremiumAccess(getAuthState());
+    return typeof this.source?.canRequestPremium === 'function'
+      ? this.source.canRequestPremium()
+      : hasPremiumAccess(getAuthState());
   }
 
   public selectTopic(topic: BriefTopic): void {
@@ -309,6 +328,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     const section = this.sections.find(section => section.id === id);
     if (!section) return;
+    if (id === 'intelMemory') this.destroyIntelMemory();
     if (state === 'locked') {
       this.setSectionCoverage(id, []);
       this.outputClose?.();
@@ -359,9 +379,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public showLoading(): void {
+    const focusWasInside = this.panel.contains(document.activeElement);
     this.currentCode = '__loading__';
     this.currentName = null;
     this.renderLoading();
+    this.keepFocusInside(focusWasInside);
     this.open();
   }
 
@@ -392,6 +414,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public show(country: string, code: string, score: CountryScore | null, signals: CountrySignalCounts | null): void {
+    const focusWasInside = this.panel.contains(document.activeElement);
     this.qualifiedCountrySignals = null;
     this.abortController.abort();
     this.abortController = new AbortController();
@@ -403,7 +426,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = null;
     this.currentBriefGeneratedAt = null;
     this.currentBriefCached = null;
-    this.currentBriefIsFallback = false;
+    this.currentBriefIsSignalRows = false;
     this.currentHeadlines = [];
     this.currentHeadlineCount = 0;
     this.economicIndicators = [];
@@ -416,6 +439,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     if (this.source?.mode === 'host') this.renderAtlasExposure(true);
     this.content.scrollTop = 0;
+    this.keepFocusInside(focusWasInside);
     // open() reports only a closed-to-open change. Opened by showLoading(),
     // the panel now has its real country, so report that too.
     if (!this.open()) this.onStateChangeCallback?.({ visible: true, maximized: this.isMaximizedState });
@@ -427,6 +451,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (origin === 'control' && this.historyRegistered) overlayHistory.close('deep-dive');
     this.historyRegistered = false;
     this.destroyResilienceWidget();
+    this.destroyIntelMemory();
     this.foodStocksRequestId += 1;
     this.demographicsCapabilityRequestId += 1;
     this.tearDownFiveFactorScorecard();
@@ -434,7 +459,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (this.isMaximizedState) {
       this.isMaximizedState = false;
       this.panel.classList.remove('maximized');
-      if (this.maximizeButton) this.maximizeButton.textContent = '\u26F6';
+      if (this.maximizeButton) {
+        setTrustedHtml(this.maximizeButton, trustedHtml(renderExpandIconSvg(16), 'country deep dive maximize icon'));
+      }
     }
     this.abortController.abort();
     this.close();
@@ -463,7 +490,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (this.isMaximizedState) return;
     this.isMaximizedState = true;
     this.panel.classList.add('maximized');
-    if (this.maximizeButton) this.maximizeButton.textContent = '\u229F';
+    if (this.maximizeButton) {
+      setTrustedHtml(this.maximizeButton, trustedHtml(renderCollapseIconSvg(16), 'country deep dive minimize icon'));
+    }
     this.onStateChangeCallback?.({ visible: true, maximized: true });
   }
 
@@ -471,7 +500,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.isMaximizedState) return;
     this.isMaximizedState = false;
     this.panel.classList.remove('maximized');
-    if (this.maximizeButton) this.maximizeButton.textContent = '\u26F6';
+    if (this.maximizeButton) {
+      setTrustedHtml(this.maximizeButton, trustedHtml(renderExpandIconSvg(16), 'country deep dive maximize icon'));
+    }
     this.onStateChangeCallback?.({ visible: true, maximized: false });
   }
 
@@ -530,6 +561,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.signalBreakdownBody?.replaceChildren(this.makeEmpty('Qualified country observations are unavailable.'));
     this.signalRecentBody?.replaceChildren();
     this.signalsBody?.querySelector('.cdp-qualified-coverage')?.remove();
+    this.signalsBody?.querySelector('.cdp-imagery-evidence')?.remove();
+    this.signalsBody?.querySelector('.cdp-water-evidence')?.remove();
   }
 
   public updateQualifiedCountrySignals(value: import('../../shared/country-signal-observations').QualifiedCountrySignals): void {
@@ -541,15 +574,100 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.signalBreakdownBody?.replaceChildren(this.makeEmpty('Qualified country observations are unavailable. This is not zero activity.'));
       this.signalRecentBody?.replaceChildren();
     }
-    const notes = this.el('div', 'cdp-qualified-coverage');
-    notes.append(this.el('p', 'cdp-economic-source', 'Included country observations. Source windows vary; this is not a 24-hour total.'));
-    for (const family of value.families) {
-      const sampling = family.sampledRows === null ? '' : ` Included source rows: ${family.sampledRows}; omitted by local bounds: ${family.omittedRows ?? 'unknown'}.`;
-      const upstream = family.sampleBeforeCountryFilter ? ' The upstream sample was selected before country filtering.' : '';
-      notes.append(this.el('p', 'cdp-economic-source', `${family.family}: ${family.state}${family.partial ? ' (partial)' : ''}. ${family.scope}. ${family.attribution}. Source time: ${family.snapshotAt ?? 'unknown'}.${family.observationWindow ? ` ${family.observationWindow}.` : ''}${sampling}${upstream} ${family.reason ?? ''}`));
+    for (const stale of this.signalsBody?.querySelectorAll('.cdp-qualified-coverage, .cdp-imagery-evidence, .cdp-water-evidence, .cdp-signals-footer') ?? []) stale.remove();
+    const imagery = this.buildImageryEvidence(value.families.find(family => family.family === 'imagery'));
+    if (imagery) this.signalsBody?.append(imagery);
+    const water = this.buildWaterEvidence(value.families.find(family => family.family === 'water'));
+    if (water) this.signalsBody?.append(water);
+    this.signalsBody?.append(this.buildSourcesDisclosure(value.families), this.el('p', 'cdp-economic-source cdp-signals-footer', t('components.countryBrief.sources.footer')));
+  }
+
+  // "Sources and windows": one row per family with its state, source and fetch time; closed by default.
+  private buildSourcesDisclosure(families: import('../../shared/country-signal-observations').CountrySignalOutcome[]): HTMLElement {
+    const box = document.createElement('details');
+    box.className = 'cdp-qualified-coverage cdp-sources';
+    const summary = document.createElement('summary');
+    summary.className = 'cdp-sources-summary';
+    summary.textContent = t('components.countryBrief.sources.summary', { count: families.length });
+    box.append(summary, this.el('p', 'cdp-sources-note', t('components.countryBrief.sources.note')));
+    for (const family of families) {
+      const row = this.el('div', 'cdp-sources-row');
+      row.dataset.family = family.family;
+      // snapshotAt is when WorldMonitor fetched the source (imagery: when its rollup was computed), not when anything was measured.
+      const timeLabel = family.family === 'imagery' ? 'Computed' : 'Fetched';
+      const time = family.snapshotAt ? `${timeLabel} ${family.snapshotAt.slice(0, 16).replace('T', ' ')} UTC` : `${timeLabel}: unknown`;
+      row.append(
+        this.el('span', 'cdp-sources-family', family.family),
+        this.el('span', `cdp-sources-pill cdp-sources-pill-${family.state}`, `${family.state}${family.partial ? ' · partial' : ''}`),
+        this.el('span', 'cdp-sources-time', time),
+        this.el('span', 'cdp-sources-source', family.attribution),
+      );
+      const sampling = family.sampledRows === null ? '' : `Included source rows: ${family.sampledRows}; omitted by local bounds: ${family.omittedRows ?? 'unknown'}`;
+      const upstream = family.sampleBeforeCountryFilter ? 'The upstream sample was selected before country filtering' : '';
+      const detail = [family.scope, family.observationWindow, sampling, upstream, family.reason].filter(Boolean).join('. ');
+      if (detail) row.append(this.el('span', 'cdp-sources-detail', detail));
+      box.append(row);
     }
-    this.signalsBody?.querySelector('.cdp-qualified-coverage')?.remove();
-    this.signalsBody?.append(notes);
+    return box;
+  }
+
+  private buildImageryEvidence(family: import('../../shared/country-signal-observations').CountrySignalOutcome | undefined): HTMLElement | null {
+    if (family?.state !== 'observed') return null;
+    const block = this.el('div', 'cdp-imagery-evidence');
+    block.append(this.el('div', 'cdp-imagery-title', 'Satellite imagery'));
+    if (family.observations.length === 0) block.append(this.makeEmpty('No confirmed imagery statistics changes at this country\'s watched sites.'));
+    for (const row of family.observations) {
+      const item = this.el('div', 'cdp-imagery-item');
+      item.append(this.el('div', 'cdp-signal-desc', row.title));
+      if (row.eventAt) item.append(this.el('div', 'cdp-signal-time', `Confirmed ${row.eventAt.slice(0, 10)}`));
+      block.append(item);
+    }
+    block.append(this.el('p', 'cdp-economic-source', `${family.attribution}. Radar statistics changed at the site; this does not say what changed.`));
+    return block;
+  }
+
+  private buildWaterEvidence(family: import('../../shared/country-signal-observations').CountrySignalOutcome | undefined): HTMLElement | null {
+    if (family?.state !== 'observed') return null;
+    const block = this.el('div', 'cdp-water-evidence');
+    block.append(this.el('div', 'cdp-imagery-title', t('components.reservoirLevels.countryEvidence.heading')));
+    const reservoirs = this.currentReservoirs();
+    if (reservoirs) {
+      block.append(reservoirSummaryLine(reservoirs, this.reservoirFormatContext()), this.reservoirCards(reservoirs));
+    } else {
+      if (family.observations.length === 0) block.append(this.makeEmpty(t('components.reservoirLevels.countryEvidence.empty')));
+      for (const row of family.observations) {
+        const item = this.el('div', 'cdp-imagery-item');
+        item.append(this.el('div', 'cdp-signal-desc', row.title));
+        if (row.eventAt) item.append(this.el('div', 'cdp-signal-time', t('components.reservoirLevels.countryEvidence.measured', { date: row.eventAt.slice(0, 10) })));
+        block.append(item);
+      }
+    }
+    block.append(this.el('p', 'cdp-economic-source', t('components.reservoirLevels.card.source')));
+    return block;
+  }
+
+  private currentReservoirs(): ReservoirLevel[] | null {
+    const context = this.reservoirContext;
+    return context && context.code === this.currentCode && context.reservoirs.length > 0 ? context.reservoirs : null;
+  }
+
+  private reservoirFormatContext() {
+    return { t, locale: document.documentElement.lang || 'en', nowMs: Date.now() };
+  }
+
+  private reservoirCards(reservoirs: readonly ReservoirLevel[]): HTMLElement {
+    const ctx = this.reservoirFormatContext();
+    const list = this.el('div', 'wl-cards');
+    for (const r of sortReservoirCards(reservoirs)) list.append(reservoirCard(r, ctx, { nextPass: this.reservoirNextPasses?.get(r.id) ?? null }));
+    return list;
+  }
+
+  private rerenderWaterEvidence(): void {
+    const old = this.signalsBody?.querySelector('.cdp-water-evidence');
+    const value = this.qualifiedCountrySignals;
+    if (!old || value?.countryCode !== this.currentCode) return;
+    const water = this.buildWaterEvidence(value.families.find(family => family.family === 'water'));
+    if (water) old.replaceWith(water);
   }
 
   public updateNews(headlines: NewsItem[]): void {
@@ -706,6 +824,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   public syncCountryPremiumSectionsAccess(hasAccess: boolean): void {
     this.outputClose?.();
+    this.destroyIntelMemory();
     this.costShockCalcAbort?.abort();
     if (this.costShockCalcDebounceTimer) clearTimeout(this.costShockCalcDebounceTimer);
     this.foodStocksRequestId++;
@@ -716,6 +835,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       if (section) section.body.replaceChildren(hasAccess
         ? this.makeLoading(`Loading ${section.title.toLowerCase()}…`)
         : this.makeProLocked(`Upgrade to PRO for ${section.title.toLowerCase()}`));
+    }
+    if (this.intelMemoryBody) {
+      this.intelMemoryBody.replaceChildren(hasAccess
+        ? this.makeLoading(t('countryBrief.intelMemory.loading'))
+        : this.makeProLocked(t('countryBrief.intelMemory.proLocked')));
     }
     if (hasAccess && this.currentCode) {
       if (this.foodStocksBody) void this.renderFoodStocks(this.currentCode, this.foodStocksBody);
@@ -732,6 +856,35 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.commodityVulnerabilityBody.replaceChildren(hasAccess
       ? this.makeLoading(t('components.supplyVulnerability.loading'))
       : this.makeProLocked(t('components.supplyVulnerability.proLocked')));
+  }
+
+  public mountIntelMemory(code: string, signal: AbortSignal): void {
+    if (this.source?.mode === 'host' || !this.canRequestPremium() || !this.intelMemoryBody) return;
+    if (this.currentCode?.toUpperCase() !== code.toUpperCase()) return;
+    if (this.signal.aborted || signal.aborted) return;
+    this.destroyIntelMemory();
+    const panelSignal = this.signal;
+    const mountController = new AbortController();
+    const onPanelAbort = (): void => mountController.abort(panelSignal.reason);
+    const onCallerAbort = (): void => mountController.abort(signal.reason);
+    panelSignal.addEventListener('abort', onPanelAbort, { once: true });
+    signal.addEventListener('abort', onCallerAbort, { once: true });
+    this.intelMemorySignalCleanup = () => {
+      panelSignal.removeEventListener('abort', onPanelAbort);
+      signal.removeEventListener('abort', onCallerAbort);
+    };
+    this.intelMemory = new CountryIntelMemory(
+      this.intelMemoryBody,
+      code,
+      mountController.signal,
+    );
+  }
+
+  private destroyIntelMemory(): void {
+    this.intelMemorySignalCleanup?.();
+    this.intelMemorySignalCleanup = null;
+    this.intelMemory?.destroy();
+    this.intelMemory = null;
   }
 
   private renderMilitaryActivity(): void {
@@ -1408,9 +1561,46 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   public updateEnergyProfile(data: CountryEnergyProfileData): void {
     if (!this.energyBody) return;
-    this.renderEnergyProfile(data);
     this.pendingResilienceEnergyMix = data;
+    this.renderEnergyProfile(data);
+    this.renderReservoirContext();
     this.resilienceWidget?.setEnergyMix(data);
+  }
+
+  public updateReservoirContext(code: string, reservoirs: ReservoirLevel[]): void {
+    if (code !== this.currentCode) return;
+    this.reservoirContext = { code, reservoirs };
+    this.renderReservoirContext();
+    this.rerenderWaterEvidence();
+    // Asked on every update: the loader reuses its predictions for an hour and recomputes once one has elapsed.
+    if (!this.reservoirNextPassesInFlight) {
+      this.reservoirNextPassesInFlight = true;
+      // Lazy: the loader returns null unless ORBITAL_WATCH_ENABLED, and keeps orbit code out of the brief's chunk.
+      const signal = this.signal;
+      void import('@/services/climate/reservoir-context-loader').then(({ loadReservoirNextPasses }) => loadReservoirNextPasses(STRATEGIC_RESERVOIR_SITES, { signal })).then((passes) => {
+        // An aborted wait resolves null for a country or panel that is gone, not an answer to store.
+        if (signal.aborted) return;
+        const changed = passes !== this.reservoirNextPasses;
+        this.reservoirNextPasses = passes;
+        if (!changed || !passes || this.currentReservoirs() == null) return;
+        this.renderReservoirContext();
+        this.rerenderWaterEvidence();
+      }).finally(() => { this.reservoirNextPassesInFlight = false; });
+    }
+  }
+
+  // Strategic Water Levels beside the hydro share: one card per reservoir, hydro share in the header.
+  private renderReservoirContext(): void {
+    const reservoirs = this.currentReservoirs();
+    if (!reservoirs || !this.energyBody) { this.reservoirContextEl?.remove(); return; }
+    const el = this.reservoirContextEl ??= this.el('div', 'cdp-reservoir-context');
+    el.replaceChildren();
+    const hydro = this.pendingResilienceEnergyMix?.mixAvailable ? this.pendingResilienceEnergyMix.hydroShare : null;
+    const head = this.el('div', 'cdp-reservoir-context-head');
+    head.append(this.el('span', 'cdp-imagery-title', t('components.reservoirLevels.energyContext.heading')));
+    if (hydro != null && hydro > 0) head.append(this.el('span', 'cdp-reservoir-context-hydro', t('components.reservoirLevels.energyContext.hydro', { share: Math.round(hydro) })));
+    el.append(head, this.reservoirCards(reservoirs), this.el('p', 'cdp-economic-source', t('components.reservoirLevels.card.source')));
+    if (!el.isConnected) this.energyBody.append(el);
   }
 
   private renderEnergyProfile(data: CountryEnergyProfileData): void {
@@ -3227,8 +3417,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return wrapper;
   }
 
-  public isFallbackBrief(): boolean {
-    return this.currentBriefIsFallback;
+  public isSignalRowsBrief(): boolean {
+    // Closing the page clears currentBrief but not the flag.
+    return this.currentBriefIsSignalRows && this.currentBrief !== null;
   }
 
   public updateScore(score: CountryScore | null, _signals: CountrySignalCounts | null): void {
@@ -3260,6 +3451,23 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     } else {
       this.scoreCard.append(this.makeEmpty(t('countryBrief.ciiUnavailable')));
     }
+    this.scoreCard.append(this.imageryContext);
+  }
+
+  public updateImageryChange(context: ImageryChangeContext | null): void {
+    const summary = imageryChangeSummary(context);
+    if (!summary) {
+      this.imageryContext.replaceChildren();
+      return;
+    }
+    const link = this.el('a', '', 'Methodology');
+    link.setAttribute('href', IMAGERY_CONTEXT_METHODOLOGY_HREF);
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener noreferrer');
+    const exclusion = this.el('p', 'cdp-imagery-exclusion', `${IMAGERY_CONTEXT_EXCLUSION} `);
+    exclusion.append(link);
+    this.imageryContext.replaceChildren(this.el('p', 'cdp-imagery-summary', summary), exclusion);
+    if (this.scoreCard && !this.imageryContext.isConnected) this.scoreCard.append(this.imageryContext);
   }
 
   public updateStock(data: StockIndexData): void {
@@ -3354,29 +3562,54 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateBrief(data: CountryIntelData): void {
     if (!this.briefBody || data.code !== this.currentCode) return;
     this.briefBody.replaceChildren();
+    if (data.accessNotice) {
+      const notice = this.el('div', 'cdp-brief-access');
+      const message = data.accessNotice === 'sign-in' ? 'premium.signInToUnlock'
+        : data.accessNotice === 'pro' ? 'premium.upgradeDesc' : 'countryBrief.briefUnavailable';
+      notice.append(this.el('p', 'panel-locked-desc', t(message)));
+      if (data.accessNotice === 'sign-in') {
+        const button = this.el('button', 'panel-locked-cta', t('auth.signIn'));
+        button.type = 'button';
+        button.addEventListener('click', () => {
+          void import('@/services/clerk')
+            .then(({ openSignIn }) => openSignIn())
+            .catch(() => showToast(t('countryBrief.briefUnavailable')));
+        });
+        notice.append(button);
+      } else if (data.accessNotice === 'pro') {
+        const link = this.el('a', 'panel-locked-cta', t('premium.upgradeToPro'));
+        link.href = '/pro#pricing';
+        notice.append(link);
+      }
+      this.briefBody.append(notice);
+    }
 
     if (data.error || data.skipped || !data.brief) {
       this.currentBrief = null;
       this.currentBriefGeneratedAt = null;
       this.currentBriefCached = null;
-      this.currentBriefIsFallback = false;
-      this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
+      this.currentBriefIsSignalRows = false;
+      if (!data.accessNotice) this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
       return;
     }
 
     this.currentBrief = data.brief;
     this.currentBriefGeneratedAt = data.generatedAt ?? null;
     this.currentBriefCached = data.cached === true;
-    this.currentBriefIsFallback = data.fallback === true;
+    this.currentBriefIsSignalRows = data.signalRows === true;
 
     const briefSources = collectBriefSources(data.sources ?? [], 6);
-    const summaryHtml = this.formatBrief(summarizeCountryBrief(data.brief), briefSources, 0, data.evidence);
+    // Signal rows have no sentence punctuation; summarizing them joined every
+    // line into a single run-on paragraph.
+    const signalRows = data.signalRows ? data.brief.split('\n') : null;
+    const summary = signalRows ? signalRows.slice(0, 5).join('\n') : summarizeCountryBrief(data.brief);
+    const summaryHtml = this.formatBrief(summary, briefSources, 0, data.evidence);
     const text = this.el('div', 'cdp-assessment-text cdp-summary-only');
     setTrustedHtml(text, trustedHtml(summaryHtml, "legacy direct innerHTML migration"));
 
     const metaTokens: string[] = [];
     if (data.cached) metaTokens.push('Cached');
-    if (data.fallback) metaTokens.push('Fallback');
+    if (data.fallback && !data.accessNotice) metaTokens.push('Fallback');
     if (data.generatedAt) metaTokens.push(`Updated ${new Date(data.generatedAt).toLocaleTimeString()}`);
     const meta = this.el('div', 'cdp-assessment-meta', metaTokens.join(' • '));
     this.briefBody.append(text, meta);
@@ -3398,10 +3631,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       expandedBrief.append(sources);
     }
     this.briefBody.append(expandedBrief);
-    const readFull = this.el('button', 'cdp-inline-action cdp-summary-only', 'Read the full brief and sources ↗');
-    readFull.type = 'button';
-    readFull.addEventListener('click', () => this.presentation?.selectTopic('sources'));
-    this.briefBody.append(readFull);
+    if (!data.accessNotice || !signalRows || signalRows.length > 5 || sourcesFooter) {
+      const readFull = this.el('button', 'cdp-inline-action cdp-summary-only', 'Read the full brief and sources ↗');
+      readFull.type = 'button';
+      readFull.addEventListener('click', () => this.presentation?.selectTopic('sources'));
+      this.briefBody.append(readFull);
+    }
   }
 
   /**
@@ -3503,27 +3738,29 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const right = this.el('div', 'cdp-header-right');
 
-    const maxBtn = this.el('button', 'cdp-maximize-btn', '\u26F6') as HTMLButtonElement;
+    const maxBtn = this.el('button', 'cdp-maximize-btn') as HTMLButtonElement;
     maxBtn.setAttribute('type', 'button');
     maxBtn.setAttribute('aria-label', 'Toggle maximize');
+    setTrustedHtml(
+      maxBtn,
+      trustedHtml(
+        this.isMaximizedState ? renderCollapseIconSvg(16) : renderExpandIconSvg(16),
+        'country deep dive maximize icon',
+      ),
+    );
     maxBtn.addEventListener('click', () => {
       if (this.isMaximizedState) this.minimize();
       else this.maximize();
     });
     this.maximizeButton = maxBtn;
 
-    const shareBtn = this.el('button', 'cdp-action-btn cdp-share-btn') as HTMLButtonElement;
-    shareBtn.setAttribute('type', 'button');
-    shareBtn.setAttribute('aria-label', t('components.countryBrief.shareLink'));
-    setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>', "legacy direct innerHTML migration"));
+    const shareBtn = createShareLinkButton(t('components.countryBrief.shareLink'));
     shareBtn.addEventListener('click', () => {
       if (!this.currentCode || !this.currentName) return;
       const url = `${this.source?.mode === 'host' ? 'https://www.worldmonitor.app' : window.location.origin}/dashboard?c=${encodeURIComponent(this.currentCode)}`;
-      navigator.clipboard.writeText(url).then(() => {
-        const orig = shareBtn.innerHTML;
-        setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>', "legacy direct innerHTML migration"));
-        setTimeout(() => { setTrustedHtml(shareBtn, trustedHtml(orig, "legacy direct innerHTML migration")); }, 1500);
-      }).catch(() => {});
+      void copyText(url).then((copied) => {
+        if (copied) confirmShareLinkCopied(shareBtn);
+      });
     });
 
     const storyButton = this.el('button', 'cdp-action-btn', 'Create story') as HTMLButtonElement;
@@ -3532,7 +3769,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       void this.openOutput('story', storyButton);
     });
 
-    const exportButton = this.el('button', 'cdp-action-btn cdp-export-primary', 'Export report ↗') as HTMLButtonElement;
+    const exportButton = this.el('button', 'cdp-action-btn', 'Export report ↗') as HTMLButtonElement;
     exportButton.setAttribute('type', 'button');
     exportButton.addEventListener('click', () => {
       void this.openOutput('report', exportButton);
@@ -3573,7 +3810,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       if (!this.canRequestPremium()) { trackGateHit('decision-brief'); showToast(t('components.decisionBrief.locked')); return; }
       void this.openDecisionBrief(commodityButton, true);
     });
-    right.append(shareBtn, maxBtn, storyButton, exportButton, decisionButton, commodityButton, evidenceButton);
+    const moreActions = this.el('details', 'cdp-more-actions');
+    const moreSummary = this.el('summary', 'cdp-action-btn', t('components.countryBrief.moreActions', { defaultValue: 'More actions' }));
+    const secondaryActions = this.el('div', 'cdp-secondary-actions');
+    secondaryActions.append(storyButton, exportButton, decisionButton, commodityButton);
+    moreActions.append(moreSummary, secondaryActions);
+    right.append(shareBtn, evidenceButton, maxBtn, moreActions);
     header.append(left, right);
 
     const scoreCard = this.el('section', 'cdp-card cdp-score-card');
@@ -3601,13 +3843,26 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     summaryGrid.append(scoreCard, this.renderResilienceWidgetSlot(code));
 
     const bodyGrid = this.el('div', 'cdp-grid');
+    const isPro = this.canRequestPremium();
     const [signalsCard, signalBody] = this.sectionCard('signals', t('countryBrief.activeSignals'));
     const [timelineCard, timelineBody] = this.sectionCard('timeline', t('countryBrief.timeline'));
     let historyCard: HTMLElement | undefined;
+    let intelMemoryCard: HTMLElement | undefined;
     if (this.source?.mode !== 'host') {
       const [card, body] = this.sectionCard('history', t('countryHistory.title'));
       historyCard = card;
       new CountryHistory(body, code, this.signal);
+
+      const [memoryCard, memoryBody] = this.sectionCard(
+        'intelMemory',
+        t('countryBrief.intelMemory.title'),
+        t('countryBrief.intelMemory.help'),
+      );
+      intelMemoryCard = memoryCard;
+      this.intelMemoryBody = memoryBody;
+      memoryBody.append(isPro
+        ? this.makeLoading(t('countryBrief.intelMemory.loading'))
+        : this.makeProLocked(t('countryBrief.intelMemory.proLocked')));
     }
     const [newsCard, newsBody] = this.sectionCard('news', t('countryBrief.topNews'));
     const [militaryCard, militaryBody] = this.sectionCard('military', t('countryBrief.militaryActivity'));
@@ -3646,7 +3901,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // premium RPCs for a free user cost two guaranteed 401s per deep-dive open
     // and painted a dead "unavailable" card where the sibling cards show the
     // upgrade prompt.
-    const isPro = this.canRequestPremium();
     if (isPro) {
       foodStocksBody.append(this.makeLoading(t('countryBrief.loadingFoodStocks')));
       void this.renderFoodStocks(code, foodStocksBody);
@@ -3761,7 +4015,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(fiveFactorScorecardCard, factsCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), signalsCard, timelineCard, ...(historyCard ? [historyCard] : []), newsCard, militaryCard, sanctionsCard, economicCard, no2ActivityCard, housingCard, debtCard, comtradeCard, tariffCard, tradeCard, costShockCalcCard, productImportsCard, marketsCard, energyCard, maritimeCard, commodityVulnerabilityCard, foodStocksCard, infraCard, demographicsCard);
+    bodyGrid.append(fiveFactorScorecardCard, factsCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), signalsCard, timelineCard, ...(historyCard ? [historyCard] : []), ...(intelMemoryCard ? [intelMemoryCard] : []), newsCard, militaryCard, sanctionsCard, economicCard, no2ActivityCard, housingCard, debtCard, comtradeCard, tariffCard, tradeCard, costShockCalcCard, productImportsCard, marketsCard, energyCard, maritimeCard, commodityVulnerabilityCard, foodStocksCard, infraCard, demographicsCard);
     const lead = this.el('div', 'cdp-overview-lead');
     lead.append(briefCard, summaryGrid);
     shell.append(header, lead, bodyGrid);
@@ -4111,6 +4365,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.demographicsBody = null;
     this.tearDownFiveFactorScorecard();
     this.destroyResilienceWidget();
+    this.destroyIntelMemory();
+    this.intelMemoryBody = null;
     this.tearDownFollowButton();
     this.selectedSectorHs2 = null;
     this.sectorBypassAbort?.abort();
@@ -4119,6 +4375,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.cachedSectors = [];
     this.map?.clearHighlightedRoute();
     this.scoreCard = null;
+    this.imageryContext.replaceChildren();
+    this.reservoirContext = null;
+    this.reservoirContextEl?.remove();
     this.currentMilitarySummary = null;
     this.defenseIndustrialFailure = null;
     this.currentDefenseIndustrial = null;
@@ -4444,6 +4703,31 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.map.flashAssets(type, assets.map((asset) => asset.id));
   }
 
+  /**
+   * A rebuild of a visible brief removes its controls. If one of them had
+   * focus, focus would drop to the page, so it moves to the close button.
+   * Focus on a control that survives, or outside the brief, stays put.
+   */
+  private keepFocusInside(focusWasInside: boolean): void {
+    if (!focusWasInside || !this.panel.classList.contains('active')) return;
+    if (!this.panel.contains(document.activeElement)) this.closeButton.focus();
+  }
+
+  /**
+   * A map click or map menu is opening this brief. A closed brief saves its
+   * return target when it opens (the map, which the caller has just focused).
+   * A visible brief reloads in place without reopening, so it takes the map
+   * as its return target now, and focus moves into the brief as on a first
+   * open. Background refreshes don't call this, so they never move focus.
+   */
+  public returnFocusTo(target: HTMLElement): void {
+    if (!this.panel.classList.contains('active')) return;
+    this.lastFocusedElement = target;
+    requestAnimationFrame(() => {
+      if (this.panel.classList.contains('active') && !this.panel.contains(document.activeElement)) this.closeButton.focus();
+    });
+  }
+
   /** Returns true when the panel was closed and is now open. */
   private open(): boolean {
     if (this.panel.classList.contains('active')) return false;
@@ -4569,6 +4853,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     );
   }
 
+  private restoreActionFocus(trigger: HTMLButtonElement): void {
+    const disclosure = trigger.closest<HTMLDetailsElement>('.cdp-more-actions');
+    const target = disclosure && !disclosure.open ? disclosure.querySelector<HTMLElement>('summary') : trigger;
+    target?.focus({ preventScroll: true });
+  }
+
   private async openDecisionBrief(trigger: HTMLButtonElement, commodity = false): Promise<void> {
     const code = this.currentCode;
     const name = this.currentName;
@@ -4593,7 +4883,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.outputClose = () => {
         outputController.abort();
         output.remove(); shell.hidden = false; this.outputClose = null;
-        this.content.scrollTop = scrollTop; trigger.focus({ preventScroll: true });
+        this.content.scrollTop = scrollTop; this.restoreActionFocus(trigger);
       };
       shell.hidden = true; this.content.append(output); this.content.scrollTop = 0;
       output.querySelector<HTMLButtonElement>('button')?.focus();
@@ -4651,7 +4941,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         shell.hidden = false;
         this.outputClose = null;
         this.content.scrollTop = scrollTop;
-        trigger.focus({ preventScroll: true });
+        this.restoreActionFocus(trigger);
       };
       shell.hidden = true;
       this.content.append(output);

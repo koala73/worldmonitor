@@ -5,6 +5,7 @@ import type {
   ListFuelShortagesResponse,
   FuelShortageEntry,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
+import { newestShortageConfirmation } from '../../../../src/shared/shortage-evidence';
 
 /**
  * Raw Redis payload shape emitted by scripts/seed-fuel-shortages.mjs.
@@ -104,7 +105,7 @@ export async function listFuelShortages(
 
   return {
     shortages,
-    fetchedAt: raw.updatedAt ?? new Date().toISOString(),
+    fetchedAt: newestShortageConfirmation(shortages) || raw.updatedAt || new Date().toISOString(),
     classifierVersion: raw.classifierVersion ?? 'v1',
     upstreamUnavailable: false,
   };

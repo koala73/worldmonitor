@@ -20,7 +20,9 @@
 *Could not find public function for 'accountDeletion/sideEffects:beginExternalAttempt'*
 *Could not find public function for 'accountDeletion/sideEffects:recordExternalFailure'*
 *Could not find public function for 'accountDeletion/sideEffects:runExternalErase'*
+*Could not find public function for 'accountDeletion/sideEffects:sweepBriefEnvelopes'*
 *Could not find public function for 'agentFeedback:findRetry'*
+*Could not find public function for 'agentFeedback:getFeedbackDigestText'*
 *Could not find public function for 'agentFeedback:getForTriage'*
 *Could not find public function for 'agentFeedback:getSecurityNotice'*
 *Could not find public function for 'agentFeedback:listForTriage'*
@@ -46,6 +48,10 @@
 *Could not find public function for 'alertRules:setDigestSettingsForUser'*
 *Could not find public function for 'alertRules:setNotificationConfigForUser'*
 *Could not find public function for 'alertRules:setQuietHoursForUser'*
+*Could not find public function for 'alertScopeMigration:listPendingNotices'*
+*Could not find public function for 'alertScopeMigration:markNoticeStatus'*
+*Could not find public function for 'alertScopeMigration:migrateUnscopedRealtimeRules'*
+*Could not find public function for 'alertScopeMigration:sendAlertScopeNotices'*
 *Could not find public function for 'apiKeys:createApiKeyForUser'*
 *Could not find public function for 'apiKeys:getKeyOwner'*
 *Could not find public function for 'apiKeys:touchKeyLastUsed'*
@@ -204,6 +210,7 @@
 *Could not find public function for 'mcpProTokens:issueProMcpToken'*
 *Could not find public function for 'mcpProTokens:touchProMcpTokenLastUsed'*
 *Could not find public function for 'mcpProTokens:validateProMcpToken'*
+*Could not find public function for 'notificationChannels:beginChannelDeliveries'*
 *Could not find public function for 'notificationChannels:claimPairingToken'*
 *Could not find public function for 'notificationChannels:createPairingToken'*
 *Could not find public function for 'notificationChannels:createPairingTokenForUser'*
@@ -213,6 +220,8 @@
 *Could not find public function for 'notificationChannels:deleteChannelForUser'*
 *Could not find public function for 'notificationChannels:getChannelsByUserId'*
 *Could not find public function for 'notificationChannels:queueChannelWelcome'*
+*Could not find public function for 'notificationChannels:recordDeliveryResult'*
+*Could not find public function for 'notificationChannels:sendDisabledChannelNotice'*
 *Could not find public function for 'notificationChannels:setChannel'*
 *Could not find public function for 'notificationChannels:setChannelForUser'*
 *Could not find public function for 'notificationChannels:setDiscordOAuthChannelForUser'*
@@ -221,11 +230,14 @@
 *Could not find public function for 'notificationChannels:stagePairingToken'*
 *Could not find public function for 'payments/backfillCustomerNormalizedEmail:backfill'*
 *Could not find public function for 'payments/backfillCustomerNormalizedEmail:countPending'*
+*Could not find public function for 'payments/billing:admitProBusinessUpgrade'*
 *Could not find public function for 'payments/billing:applyBillingEmailUpdate'*
 *Could not find public function for 'payments/billing:applyDodoSubscriptionReconciliation'*
+*Could not find public function for 'payments/billing:applyOnHoldRecovery'*
 *Could not find public function for 'payments/billing:backfillMissingCustomers'*
 *Could not find public function for 'payments/billing:backfillSubscriptionDodoCustomerId'*
 *Could not find public function for 'payments/billing:claimBillingEmailUpdate'*
+*Could not find public function for 'payments/billing:claimProBusinessUpgrade'*
 *Could not find public function for 'payments/billing:claimRecentlyStaleSubscriptionForVerification'*
 *Could not find public function for 'payments/billing:claimStuckPaymentReconciliation'*
 *Could not find public function for 'payments/billing:deleteSubscriptionByDodoId'*
@@ -240,14 +252,19 @@
 *Could not find public function for 'payments/billing:getDodoCustomerIdForUserPortal'*
 *Could not find public function for 'payments/billing:getOnDemandRenewalFallbackState'*
 *Could not find public function for 'payments/billing:getOnDemandRenewalResolution'*
+*Could not find public function for 'payments/billing:getProBusinessUpgradeCandidate'*
 *Could not find public function for 'payments/billing:grantComplimentaryEntitlement'*
 *Could not find public function for 'payments/billing:inspectCustomerOwnership'*
 *Could not find public function for 'payments/billing:internalGetCustomerPortalUrl'*
+*Could not find public function for 'payments/billing:internalUpgradeToProBusiness'*
+*Could not find public function for 'payments/billing:listLockedOnHoldForRecovery'*
 *Could not find public function for 'payments/billing:listStaleActiveSubscriptionsForRenewalReconciliation'*
 *Could not find public function for 'payments/billing:listStuckPendingPaymentCandidates'*
 *Could not find public function for 'payments/billing:markDodoReconcileAttempt'*
+*Could not find public function for 'payments/billing:reconcileLockedOnHoldSubscriptions'*
 *Could not find public function for 'payments/billing:reconcileMissedDodoRenewals'*
 *Could not find public function for 'payments/billing:reconcileStuckPendingPayments'*
+*Could not find public function for 'payments/billing:releaseProBusinessUpgrade'*
 *Could not find public function for 'payments/billing:repairCustomerFromSubscriptionPayload'*
 *Could not find public function for 'payments/billing:reportPaymentReconciliationFailure'*
 *Could not find public function for 'payments/billing:revokeComplimentaryEntitlement'*
@@ -276,6 +293,7 @@
 *Could not find public function for 'payments/subscriptionEmails:reserveResendSlot'*
 *Could not find public function for 'payments/subscriptionEmails:runDunningScan'*
 *Could not find public function for 'payments/subscriptionEmails:sendDunningEmail'*
+*Could not find public function for 'payments/subscriptionEmails:sendPlanUpgradeAdminEmail'*
 *Could not find public function for 'payments/subscriptionEmails:sendReactivationEmail'*
 *Could not find public function for 'payments/subscriptionEmails:sendSubscriptionEmails'*
 *Could not find public function for 'payments/subscriptionEmails:wasDunningStepSent'*
@@ -302,4 +320,5 @@
 *Could not find public function for 'telegramPairingTokens:cleanupExpired'*
 *Could not find public function for 'userPreferences:getPreferencesByUserId'*
 *Could not find public function for 'userPreferences:pruneStaleWriteRateLimits'*
+*Could not find public function for 'users:getBriefLanguageForUser'*
 *Could not find public function for 'users:recordTermsAcceptance'*

@@ -19,7 +19,7 @@ The root inventory lives in `STATIC_ROUTE_MANIFEST` in
 that materially determine its content:
 
 - The welcome landing cluster (`/` plus `/es/`, `/pt/`, `/ru/`, `/fr/`, `/de/`,
-  `/ar/`) and the Pro page use their `pro-test` page/component, generated
+  `/ar/`, `/id/`, `/ja/`) and the Pro page use their `pro-test` page/component, generated
   product-fact, style, locale, and product-catalog sources. Landing URLs carry
   `xhtml:link` hreflang alternates; other root sitemap URLs do not.
 - Dashboard entries use the app shell, orchestration, components, configuration,

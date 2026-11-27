@@ -606,7 +606,7 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   ucdp_events: 'UCDP event-level conflict data unavailable',
   unhcr: 'UNHCR displacement data unavailable—refugee flows unknown',
   climate: 'Climate anomaly data unavailable—extreme weather patterns undetected',
-  worldpop: 'Population exposure data unavailable—affected population unknown',
+  worldpop: 'Population exposure estimates unavailable',
   giving: 'Global giving activity data unavailable',
   bis: 'Central bank policy data may be stale—BIS feed unavailable',
   bls: 'Labor market data unavailable—BLS feed not yet seeded',
@@ -639,22 +639,4 @@ export function getIntelligenceGaps(): { source: DataSourceId; message: string; 
     if (a.severity !== b.severity) return a.severity === 'critical' ? -1 : 1;
     return 0;
   });
-}
-
-/**
- * Get a formatted intelligence gap summary for display.
- */
-export function getIntelligenceGapSummary(): string[] {
-  const gaps = getIntelligenceGaps();
-  return gaps.map(gap => {
-    const icon = gap.severity === 'critical' ? '⚠️ CRITICAL' : '⚡';
-    return `${icon}: ${gap.message}`;
-  });
-}
-
-/**
- * Check if there are any critical intelligence gaps.
- */
-export function hasCriticalGaps(): boolean {
-  return getIntelligenceGaps().some(gap => gap.severity === 'critical');
 }

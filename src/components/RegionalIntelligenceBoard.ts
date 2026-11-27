@@ -115,13 +115,6 @@ export class RegionalIntelligenceBoard extends Panel {
     this.entitlementUnsubscribe = onEntitlementChange(() => this.handlePremiumAccessChange());
   }
 
-  /** Public API for tests and agent tools: force-load a region directly. */
-  public async loadRegion(regionId: string): Promise<void> {
-    this.currentRegion = regionId;
-    this.selector.value = regionId;
-    await this.loadCurrent();
-  }
-
   override destroy(): void {
     this.authUnsubscribe?.();
     this.authUnsubscribe = null;

@@ -26,8 +26,6 @@ import {
   EDGE_PROOF_TRANSFORM_EXPRESSION,
   EDGE_PROOF_PATH_PREFIXES,
   EDGE_PROOF_PATH_ALTERNATIVES,
-  EDGE_PROOF_PATH_MATCHER,
-  EDGE_PROOF_PATH_MATCHER_SOURCE,
   pathCoveredByExpression,
 } from '../scripts/cloudflare-edge-proof-rule.mjs';
 
@@ -203,29 +201,63 @@ describe('IP-scoped endpoint rate limits reject unproven CF client IP (#8402)', 
 
 describe('Cloudflare edge-proof Transform Rule coverage (#8402)', () => {
   it('documents path prefixes that must receive x-wm-edge-proof', () => {
-    assert.equal(
-      EDGE_PROOF_TRANSFORM_EXPRESSION,
-      `(http.request.uri.path matches "${EDGE_PROOF_PATH_MATCHER_SOURCE}")`,
-    );
     assert.deepEqual([...EDGE_PROOF_PATH_ALTERNATIVES], ['api', 'mcp', 'ask', 'oauth', 'a2a', 'docs/mcp']);
     assert.deepEqual(EDGE_PROOF_PATH_PREFIXES, ['/api/', '/mcp', '/ask', '/oauth/', '/a2a', '/docs/mcp']);
   });
 
+  it('uses no regex operator, which the zone plan rejects', () => {
+    assert.doesNotMatch(EDGE_PROOF_TRANSFORM_EXPRESSION, /\bmatches\b|~/);
+  });
+
   it('covers every ENDPOINT_RATE_POLICIES path with the published expression', () => {
-    // Re-parse the matcher from the published expression so a drifted
-    // EDGE_PROOF_TRANSFORM_EXPRESSION cannot pass while pathCoveredByExpression
-    // still uses the old source.
-    const embedded = EDGE_PROOF_TRANSFORM_EXPRESSION.match(/matches "([^"]+)"/)?.[1];
-    assert.equal(embedded, EDGE_PROOF_PATH_MATCHER_SOURCE);
-    const fromExpression = new RegExp(embedded!);
-    assert.equal(fromExpression.source, EDGE_PROOF_PATH_MATCHER.source);
+    // Evaluate the published text itself, so a drifted expression cannot pass
+    // while pathCoveredByExpression still uses the old logic.
+    const expr = EDGE_PROOF_TRANSFORM_EXPRESSION;
+    const shape = /^\(http\.request\.uri\.path in \{([^}]*)\}((?: or starts_with\(http\.request\.uri\.path, "[^"]+"\))*) or ends_with\(http\.request\.uri\.path, "([^"]+)"\)\) and \(not starts_with\(http\.request\.uri\.path, "([^"]+)"\) or http\.request\.uri\.path eq "([^"]+)"\)$/;
+    const m = expr.match(shape);
+    assert.ok(m, `unexpected expression shape: ${expr}`);
+    const exact = [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+    const prefixes = [...m![2].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+    const [suffix, offsite, exception] = [m![3], m![4], m![5]];
+    const fromExpression = (p: string) =>
+      (exact.includes(p) || prefixes.some((x) => p.startsWith(x)) || p.endsWith(suffix))
+      && (!p.startsWith(offsite) || p === exception);
     for (const pathname of [...Object.keys(ENDPOINT_RATE_POLICIES), ...EDGE_PROOF_PATH_PREFIXES]) {
-      const matched = fromExpression.test(pathname);
-      assert.ok(
-        matched,
-        `${pathname} must match the Transform Rule expression ${EDGE_PROOF_TRANSFORM_EXPRESSION}`,
-      );
-      assert.equal(pathCoveredByExpression(pathname), matched);
+      assert.ok(fromExpression(pathname), `${pathname} must match the Transform Rule expression ${expr}`);
     }
+    for (const pathname of [...Object.keys(ENDPOINT_RATE_POLICIES), ...EDGE_PROOF_PATH_PREFIXES,
+      '/pro.md', '/docs/x.md', '/docs/mcp/x', '/docs/intro', '/install.sh', '/apix', '/mcpx', '/oauth']) {
+      assert.equal(pathCoveredByExpression(pathname), fromExpression(pathname), pathname);
+    }
+  });
+
+  it('covers public .md pages, which vercel.json rewrites to the per-IP md-twin limit', () => {
+    for (const pathname of ['/pro.md', '/country/LB.md', '/index.md']) {
+      assert.ok(pathCoveredByExpression(pathname), `${pathname} must receive x-wm-edge-proof`);
+    }
+    for (const pathname of ['/pro', '/md', '/notes.mdx']) {
+      assert.equal(pathCoveredByExpression(pathname), false, `${pathname} is not a markdown twin`);
+    }
+  });
+
+  it('never sends the proof to a path vercel.json proxies to another host', async () => {
+    // The proof is a shared secret: a host that receives it can forge Cloudflare
+    // transit on direct requests. /docs/* goes to Mintlify, so even
+    // /docs/x.md and /docs/mcp/x must not match.
+    const { readFileSync } = await import('node:fs');
+    const { rewrites } = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+    const external = rewrites.filter((r: { destination: string }) => /^https?:\/\//.test(r.destination));
+    assert.ok(external.length > 0);
+    for (const { source } of external) {
+      const sample = source.replace(/:[A-Za-z]+(\([^)]*\))?[*+?]?/g, 'page');
+      const wildcard = sample !== source;
+      for (const pathname of wildcard ? [sample, `${sample}.md`, `${sample}/x.md`] : [sample]) {
+        assert.equal(pathCoveredByExpression(pathname), false, `${pathname} is proxied off-site by ${source}`);
+      }
+    }
+    for (const pathname of ['/docs/getting-started.md', '/docs/mcp/x', '/docs/mcp/x.md']) {
+      assert.equal(pathCoveredByExpression(pathname), false, `${pathname} is proxied to Mintlify`);
+    }
+    assert.ok(pathCoveredByExpression('/docs/mcp'), '/docs/mcp rewrites to /api/docs-mcp before the Mintlify proxy');
   });
 });

@@ -16,7 +16,7 @@
     "predictionMarkets": "Prognosemärkte",
     "loadingMarkets": "Prognosemärkte werden geladen...",
     "infrastructure": "Infrastrukturexposition",
-    "briefUnavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen.",
+    "briefUnavailable": "KI-Briefing momentan nicht verfügbar.",
     "cached": "Zwischengespeichert",
     "fresh": "Aktuell",
     "noMarkets": "Keine aktiven Märkte für dieses Land.",
@@ -68,13 +68,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Instabilitätsindex: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktive Proteste erkannt",
-      "aircraftTracked": "{{count}} Militärflugzeuge verfolgt",
-      "vesselsTracked": "{{count}} Militärschiffe verfolgt",
-      "internetOutages": "{{count}} Internetausfälle",
-      "recentEarthquakes": "{{count}} jüngste Erdbeben",
+      "protestsDetected": "Aktive Proteste: {{count}}",
+      "aircraftTracked": "Militärflugzeuge überwacht: {{count}}",
+      "vesselsTracked": "Kriegsschiffe überwacht: {{count}}",
+      "internetOutages": "Internetstörungen: {{count}}",
+      "recentEarthquakes": "Jüngste Erdbeben: {{count}}",
       "stockIndex": "Aktienindex: {{value}}",
-      "activeStrikes": "{{count}} aktive Angriffe erkannt"
+      "activeStrikes": "Angriffe und Abfangeinsätze: {{count}}"
     },
     "militaryActivity": "Militärische Aktivität",
     "defenseIndustrial": {
@@ -301,6 +301,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Upgraden Sie auf PRO für Waffenlieferanten-Abhängigkeiten und militärische Kapazität"
+    },
+    "intelMemory": {
+      "title": "Historisches Geheimdienst-Gedächtnis",
+      "help": "180-Tage-Archiv mit bemerkenswerten Konflikt-, Militär-, Energie-, Unruhe-, Cyber-, See-, Naturkatastrophen- und Luftfahrtereignissen, mit bedarfsgesteuerten semantischen Treffer-Vergleichen.",
+      "loading": "Historisches Geheimdienst-Gedächtnis wird geladen…",
+      "proLocked": "Upgrade auf PRO für 180-Tage-Geheimdienst-Gedächtnis und Präzedenzsuche",
+      "unavailable": "Historisches Geheimdienst-Gedächtnis ist vorübergehend nicht verfügbar.",
+      "retry": "Erneut versuchen",
+      "empty": "Keine archivierten Geheimdienst-Ereignisse entsprechen diesem Land und dieser Domäne im 180-Tage-Fenster.",
+      "partial": "Die Archivabdeckung für diese Abfrage ist teilweise; verfügbare Datensätze bleiben sichtbar.",
+      "domainFilterLabel": "Historisches Geheimdienst-Gedächtnis nach Domäne filtern",
+      "domains": {
+        "all": "Alle",
+        "conflict": "Konflikt",
+        "military": "Militär",
+        "energy": "Energie",
+        "unrest": "Unruhen",
+        "cyber": "Cyber",
+        "maritime": "Maritim",
+        "natural": "Naturgefahren",
+        "aviation": "Luftfahrt"
+      },
+      "loadMore": "Mehr laden",
+      "loadingMore": "Wird geladen…",
+      "loadMoreError": "Zusätzliche Ereignisse konnten nicht geladen werden. Versuchen Sie es erneut.",
+      "sourceLink": "Quelle ↗",
+      "similarTitle": "Ähnliche vergangene Ereignisse suchen",
+      "useLatestHeadline": "Neueste Schlagzeile verwenden",
+      "similarPlaceholder": "Beschreiben Sie eine sich entwickelnde Situation (mindestens 10 Zeichen)…",
+      "findSimilar": "Ähnliche Ereignisse suchen",
+      "similarMinLength": "Geben Sie mindestens 10 Zeichen ein, um historische Präzedenzfälle zu durchsuchen.",
+      "similarLoading": "Suche in historischen Präzedenzfällen…",
+      "similarEmpty": "Keine ähnlichen vergangenen Ereignisse haben die Ähnlichkeitsschwelle überschritten.",
+      "similarUnavailable": "Die Präzedenzsuche ist vorübergehend nicht verfügbar. Versuchen Sie es erneut."
     }
   },
   "header": {
@@ -492,7 +526,9 @@
     "marketBreadth": "Marktbreite",
     "climateNews": "Klimanachrichten",
     "fx": "Devisenkurse",
-    "ukmtoIncidents": "UKMTO-Vorfälle"
+    "ukmtoIncidents": "UKMTO-Vorfälle",
+    "reservoirLevels": "Strategische Wasserstände",
+    "gridDisruptionClock": "Stromausfall-Uhr für US-Bundesstaaten"
   },
   "commands": {
     "prefixes": {
@@ -624,7 +660,8 @@
         "techevent": "Tech-Event",
         "techhq": "Tech-Zentrale",
         "accelerator": "Accelerator",
-        "flight": "Flug"
+        "flight": "Flug",
+        "alert": "Benachrichtigung"
       },
       "placeholderTech": "Suchen oder Befehl eingeben...",
       "placeholderFinance": "Suchen oder Befehl eingeben...",
@@ -638,7 +675,9 @@
       "flightMilitaryOnGround": "Militär · {{type}} · am Boden",
       "flightSearchHint": "Drücken Sie die Eingabetaste oder klicken Sie, um die aktuelle Position nachzuschlagen",
       "flightNotFound": "Keine aktuelle Position für {{callsign}} gefunden",
-      "addPanel": "Hinzufügen"
+      "addPanel": "Hinzufügen",
+      "sentAlerts": "An dich gesendete Benachrichtigungen",
+      "sentAlertTime": "Gesendet {{time}}"
     },
     "signal": {
       "title": "NACHRICHTENDIENSTLICHE ERKENNTNIS",
@@ -763,7 +802,7 @@
       "fresh": "Aktuell",
       "noMarkets": "Keine Prognosemärkte gefunden",
       "predictionMarkets": "Prognosemärkte",
-      "unavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen."
+      "unavailable": "KI-Briefing momentan nicht verfügbar."
     },
     "countryBrief": {
       "components": {
@@ -799,7 +838,7 @@
       "predictionMarkets": "Prognosemärkte",
       "loadingMarkets": "Prognosemärkte werden geladen...",
       "infrastructure": "Infrastrukturexposition",
-      "briefUnavailable": "KI-Lagebericht nicht verfügbar – konfigurieren Sie OPENROUTER_API_KEY in den Einstellungen.",
+      "briefUnavailable": "KI-Briefing momentan nicht verfügbar.",
       "cached": "Zwischengespeichert",
       "fresh": "Aktuell",
       "noMarkets": "Keine Prognosemärkte gefunden",
@@ -972,8 +1011,10 @@
       "mineral": "Rohstoff",
       "topProducers": "Top-Produzenten",
       "risk": "Risiko",
-      "aisDisruptions": "Schiffsverfolgungsstörungen",
+      "aisDisruptions_one": "{{count}} Störung der Schiffsverfolgung",
+      "aisDisruptions_other": "{{count}} Störungen der Schiffsverfolgung",
       "wowChange": "Woche-über-Woche Veränderung",
+      "asOf": "Stand: {{date}}",
       "riskLevel": "Risikostufe",
       "flowUnavailable": "Flussdaten nicht verfügbar",
       "containerRates": "Containerraten",
@@ -1153,7 +1194,8 @@
         "canadaRoads": "Kanada-Straßen",
         "canadaAlerts": "Kanada-Warnungen",
         "notamAirspace": "NOTAM-Luftraumbeschränkungen",
-        "no2Activity": "Industrielle Aktivität"
+        "no2Activity": "Industrielle Aktivität",
+        "reservoirLevels": "Wasserstände"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -1277,7 +1319,8 @@
           "canadaRoads": "Offizielle Straßenvorkommnisse, Warnungen, Bedingungen, Sperrungen, Bauarbeiten und Gefahren in unterstützten Jurisdiktionen in Kanada",
           "canadaAlerts": "Provinzielle öffentliche Sicherheitswarnungen von Alberta Emergency Alert, B.C. Evacuation Orders and Alerts und SaskAlert",
           "notamAirspace": "Temporäre Flugbeschränkungen und beschränkter, Gefahren- und verbotener Luftraum aus FAA-NOTAMs, derzeit gültig oder innerhalb von 24 Stunden beginnend",
-          "no2Activity": "NO2-Aktivitätsrichtung aus Sentinel-5P für 167 Länder und 32 Industriecluster: das jüngste 56-Tage-Fenster gegenüber denselben Daten der Vorjahre, nach einem Totband von 10 %. Enthält modifizierte Copernicus-Sentinel-Daten."
+          "no2Activity": "NO2-Aktivitätsrichtung aus Sentinel-5P für 167 Länder und 32 Industriecluster: das jüngste 56-Tage-Fenster gegenüber denselben Daten der Vorjahre, nach einem Totband von 10 %. Enthält modifizierte Copernicus-Sentinel-Daten.",
+          "reservoirLevels": "Wasserspiegel strategischer Stauseen und Seen aus dem NASA-Satellitenlidar ICESat-2, verglichen mit dem üblichen Stand für den Monat. Die NASA veröffentlicht jeden Überflug etwa zwei Monate nach der Messung."
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
@@ -1314,7 +1357,13 @@
       "shareStory": "Story teilen",
       "printPdf": "Drucken / PDF",
       "exportData": "Daten exportieren",
-      "shareLink": "Link teilen"
+      "moreActions": "Weitere Aktionen",
+      "shareLink": "Link teilen",
+      "sources": {
+        "summary": "Quellen und Zeitfenster · {{count}} Gruppen",
+        "note": "Die Zeitfenster der Quellen unterscheiden sich; dies ist keine 24-Stunden-Summe.",
+        "footer": "Kein Eingangswert für CII/CRI."
+      }
     },
     "relatedAssets": {
       "pipeline": "Pipeline",
@@ -1380,7 +1429,8 @@
       "skipToStart": "Zum Anfang springen",
       "previous": "Zurück",
       "next": "Weiter",
-      "skipToEnd": "Zum Ende springen"
+      "skipToEnd": "Zum Ende springen",
+      "storageUnavailable": "Die Wiedergabe ist nicht verfügbar, da dieser Browser die Website-Speicherung blockiert. Erlauben Sie Website-Daten für diese Website, um Snapshots zu speichern."
     },
     "stablecoins": {
       "pegHealth": "Peg-Stabilität",
@@ -1416,7 +1466,7 @@
       },
       "clickToViewMap": "Klicken, um es auf der Karte anzuzeigen",
       "refresh": "Aktualisieren",
-      "infoTooltip": "<strong>Methodik</strong><p>Aggregiert Militärflugzeuge und Kriegsschiffe nach Einsatzgebiet.</p><ul><li><strong>Normal:</strong> Baseline-Aktivität</li><li><strong>Erhöht:</strong> Über Schwellenwert (50+ Flugzeuge)</li><li><strong>Kritisch:</strong> Hohe Konzentration (100+ Flugzeuge)</li></ul><p><strong>Angriffsbereit:</strong> Tankflugzeuge + Frühwarnradar + Jagdflugzeuge in ausreichender Anzahl für anhaltende Operationen.</p>",
+      "infoTooltip": "<strong>Methodik</strong><p>Zählt Militärflugzeuge und überwachte Kriegsschiffe in jedem Einsatzgebiet.</p><ul><li><strong>Normal:</strong> Unter der Schwelle des Einsatzgebiets</li><li><strong>Erhöht:</strong> Anzahl erreicht 3 bis 8, je Einsatzgebiet</li><li><strong>Kritisch:</strong> Anzahl erreicht 8 bis 20, je Einsatzgebiet</li></ul><p>Schiffe zählen bis zur Hälfte der erhöhten Schwelle, daher können Schiffe allein ein Level nicht erhöhen.</p><p><strong>Luftschlagfähig:</strong> Tankflugzeuge + Frühwarnflugzeuge + Jagdflugzeuge in ausreichender Anzahl für anhaltende Operationen.</p>",
       "scanningTheaters": "Schauplätze werden gescannt",
       "positions": "Flugzeugpositionen",
       "navalVesselsLoading": "Marineschiffe",
@@ -1458,7 +1508,9 @@
       },
       "emojiKeyLabel": "Emoji-Legende",
       "emojiKeyAir": "Luftstreitkräfte",
-      "emojiKeyNaval": "Seestreitkräfte"
+      "emojiKeyNaval": "Seestreitkräfte",
+      "instabilityChip": "Instabilität {{score}}",
+      "instabilityNote": "{{nation}}-Instabilitätswert: {{score}} von 100. Nur zur Information angezeigt. Dieser beeinflusst nicht die Stufe, die sich nach der Anzahl der Flugzeuge und Schiffe im Einsatzgebiet richtet."
     },
     "techEvents": {
       "loading": "Tech-Events werden geladen...",
@@ -1477,6 +1529,10 @@
       "infoTooltip": "<strong>Tech-Veranstaltungen</strong> Bevorstehende und aktuelle Technologieveranstaltungen: Konferenzen, Produkteinführungen, regulatorische Anhörungen und Earnings Calls. Aggregiert aus offiziellen Veranstaltungskalendern und Branchenquellen."
     },
     "techReadiness": {
+      "ranked": "Platziert",
+      "unranked": "Ohne Platzierung",
+      "coverageRequirement": "Mindestabdeckung für die Rangliste",
+      "coverageLabel": "Verfügbare Indikatoren",
       "internetUsers": "Internetnutzer",
       "mobileSubscriptions": "Mobilfunkverträge",
       "rdSpending": "Ausgaben für Forschung und Entwicklung",
@@ -1565,7 +1621,8 @@
         "hoursAgo": "Vor {{count}}h",
         "daysAgo": "Vor {{count}}d"
       },
-      "hideFindings": "Erkenntnisse ausblenden"
+      "hideFindings": "Erkenntnisse ausblenden",
+      "breakingAlertsNotSaved": "Speichern fehlgeschlagen. Erlauben Sie Websitedaten für diese Website oder geben Sie Browserspeicher frei und versuchen Sie es dann erneut."
     },
     "satelliteFires": {
       "region": "Region",
@@ -1580,7 +1637,10 @@
       },
       "infoTooltip": "Die NASA FIRST die thermischen Erkennungen von VIIRS-Satelliten in überwachten Konfliktregionen. Hohe Intensität = Helligkeit >360K und Zuverlässigkeit >80 %.",
       "possibleExplosions": "{{count}} mögliche Explosion(en) erkannt",
-      "explosionTooltip": "Thermische Signatur vereinbar mit Explosion (Feuer-Strahlungsleistung >80 MW, Helligkeit >380 K)"
+      "explosionTooltip": "Thermische Signatur vereinbar mit Explosion (Feuer-Strahlungsleistung >80 MW, Helligkeit >380 K)",
+      "agencyReports": "Von Behörden gemeldete Brände",
+      "agencyDates": "Behördendatum",
+      "shownOfTotal": "{{shown}} von {{total}} Branddatensätzen angezeigt"
     },
     "giving": {
       "activityIndex": "Aktivitätsindex",
@@ -1633,6 +1693,7 @@
       "refugees": "Flüchtlinge",
       "asylumSeekers": "Asylbewerber",
       "idps": "Binnenvertriebene",
+      "stateless": "Staatenlose",
       "total": "Gesamt",
       "origins": "Herkunftsländer",
       "hosts": "Aufnahmeländer",
@@ -1670,10 +1731,17 @@
       "recentMissing": "Diesmal keine Daten für {{countries}}: Ihre Dateien konnten nicht geladen werden. Das heißt nicht, dass niemand vertrieben wurde."
     },
     "populationExposure": {
-      "totalAffected": "Insgesamt betroffen",
-      "affectedCount": "{{count}} betroffen",
-      "radiusKm": "{{km}}km Radius",
-      "infoTooltip": "<strong>Bevölkerungsexpositionsschätzungen</strong> Geschätzte Bevölkerung innerhalb des Ereignisauswirkungsradius. Basierend auf WorldPop-Länderdichtedaten.<ul><li>Konflikt: 50 km-Radius</li><li>Erdbeben: 100 km-Radius</li><li>Überschwemmung: 100 km-Radius</li><li>Wildbrand: 30 km-Radius</li></ul>"
+      "estimateWithin": "Etwa {{count}} Menschen im Umkreis von {{km}} km",
+      "method": "Die Schätzungen verwenden die durchschnittliche Bevölkerungsdichte des Landes.",
+      "empty": "Keine geeigneten Ereignisorte",
+      "infoTooltip": "Ereignisse mit Daten zur Bevölkerungsdichte des Landes werden angezeigt. Orte von UCDP-Ereignissen ohne Angaben zur Genauigkeit werden als ausstehend markiert. Die geschätzten Gebiete können sich überschneiden. Unruhen benötigen einen genauen Standort; als ungenau markierte UCDP-Ereignisse werden ausgeschlossen. Ein Ort aus zwei Quellen (Unruhen und UCDP) erscheint in zwei Zeilen.",
+      "eventCount_one": "{{count}} Ereignis",
+      "eventCount_other": "{{count}} Ereignisse",
+      "locationPending": "Ortsgenauigkeit wartet auf Aktualisierung",
+      "unrestCoverage": "Abdeckung der Unruhen",
+      "ucdpPending": "UCDP-Abdeckung wartet auf Aktualisierung",
+      "coverageShown": "Angezeigte Ereignisse: {{shown}} von {{total}}",
+      "coverageLeftOut": "Nicht angezeigt: {{imprecise}} ohne genauen Ort, {{noEstimate}} in Ländern ohne Dichtedaten, {{otherPlaces}} nach den ersten 10 Orten je Quelle"
     },
     "countryTimeline": {
       "now": "Jetzt",
@@ -1811,7 +1879,7 @@
       "noData": "keine Daten",
       "enable": "Aktivieren",
       "convergenceMetric": "Konvergenz",
-      "ciiDeviation": "Länderinstabilitätsindex-Abweichung",
+      "topCiiScore": "Höchster Länderinstabilitätswert",
       "infraEvents": "Infra-Ereignisse",
       "highAlerts": "Hohe Warnstufen",
       "topRisks": "Top-Risiken",
@@ -1909,7 +1977,7 @@
       "briefFreshness": "Generiert vor {{minutes}}m · neueste Quelle {{hours}}h alt",
       "briefStoryDetails": "Details zur Meldung ({{count}})",
       "streamIdleStopLabel": "Live-Video bei Inaktivität stoppen",
-      "streamIdleStopDesc": "Stoppt Live News und Live Webcams nach dieser Zeit ohne Aktivität und zeigt einen Hinweis im Panel an.",
+      "streamIdleStopDesc": "Stoppt Live News und Live Webcams nach dieser Zeit ohne Aktivität und zeigt einen Hinweis im Panel an. Live News läuft weiter, solange der Ton eingeschaltet ist.",
       "streamIdleStopNever": "Nie",
       "liveNewsAutoplayLabel": "Live-News automatisch abspielen",
       "liveNewsAutoplayDesc": "Startet das Live-News-Video automatisch und stummgeschaltet, sobald es auf dem Bildschirm angezeigt wird. Deaktivieren Sie dies, um das Video nur zu laden, wenn Sie es selbst starten."
@@ -2046,7 +2114,8 @@
       "channelUrlHint": "Kanal-URL (youtube.com/channel/UC…) oder Live-Video-URL einfügen",
       "youtubeChannel": "YouTube-Kanal",
       "insecureStream": "{{name}} verwendet einen unsicheren (http) Stream, den Browser blockieren. Fügen Sie ihn mit einer sicheren (https) Stream-URL erneut hinzu",
-      "httpsStreamHint": "Browser blockieren unsichere (http) Streams. Fügen Sie eine sichere (https) Stream-URL ein"
+      "httpsStreamHint": "Browser blockieren unsichere (http) Streams. Fügen Sie eine sichere (https) Stream-URL ein",
+      "tapToPlay": "Zum Abspielen antippen"
     },
     "securityAdvisories": {
       "loading": "Reisehinweise werden geladen...",
@@ -2083,7 +2152,14 @@
     "map": {
       "showMap": "Karte anzeigen",
       "hideMap": "Karte ausblenden",
-      "clearTrails": "Spuren löschen"
+      "clearTrails": "Spuren löschen",
+      "locate": "Meinen Standort anzeigen"
+    },
+    "mapLocate": {
+      "locating": "Standort wird ermittelt…",
+      "denied": "Standortzugriff verweigert. Nutzen Sie die Suche, um einen Ort zu finden.",
+      "unavailable": "Standort nicht gefunden. Nutzen Sie die Suche, um einen Ort zu finden.",
+      "noCountry": "An Ihrem Standort liegt kein Land. Nutzen Sie die Suche, um einen Ort zu finden."
     },
     "positiveNewsFeed": {
       "noStories": "Noch keine Beiträge in dieser Kategorie"
@@ -2261,6 +2337,7 @@
       "infoTooltip": "<strong>Finanzstressindikator</strong> World Monitor-Verhältnis von High-Yield-Kredit zu Long Treasuries, angepasst für Aktienvolatilität und High-Yield-Spread: (HYG / TLT) / (VIX × High-Yield-Spread / 100). Dies ist nicht der Kansas City Fed Financial Stress Index. Ein Wert von 1,5 oder höher ist niedriger Stress; unter 0,3 ist hoher Stress.",
       "title": "Finanzstress-Indikator",
       "usFsiValue": "US Financial Stress Indicator-Wert",
+      "asOf": "Stand: {{date}}",
       "cissTitle": "EU CISS (systemischer Stressindikator Euroraum)",
       "notAvailable": "N/V",
       "interpretation": {
@@ -2320,7 +2397,7 @@
       "proLocked": "Upgraden Sie auf PRO für Rohstoff-Anfälligkeitsbewertung"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> – tägliche Versandindizes der WTO DataLab für die Straße von Hormuz: Rohöl, LNG und Düngemittel, das den Golf verlässt, sowie landwirtschaftliche Waren, die ankommen. Nach Volumen, Durchschnitt Januar–März 2025 = 100, nur AIS-sichtbare Schiffe. Status und Datum stammen aus der neuesten Analyse der WTO.",
+      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> – tägliche Versandindizes der WTO DataLab für die Straße von Hormuz: Rohöl, LNG und Düngemittel, das den Golf verlässt, sowie landwirtschaftliche Waren, die ankommen. Nach Volumen, Durchschnitt Januar–März 2025 = 100, nur AIS-sichtbare Schiffe. Charts sind täglich; Status basiert auf WTO-Kommentaren.",
       "title": "Hormuz-Handels-Tracker",
       "noData": "Keine Daten",
       "notAvailable": "N/V",
@@ -2333,8 +2410,10 @@
         "unavailable": "Hormuz-Daten nicht verfügbar",
         "failedToLoad": "Fehler beim Laden"
       },
-      "analysisDate": "WTO-Analyse {{date}}",
-      "indexNote": "Versandindex nach Volumen, Durchschnitt Januar–März 2025 = 100"
+      "analysisDate": "WTO-Kommentar {{date}}",
+      "indexNote": "Versandindex nach Volumen, Durchschnitt Januar–März 2025 = 100",
+      "dataThrough": "Tägliche Daten bis {{date}}",
+      "noShipments": "Keine Lieferungen erfasst {{from}} bis {{to}}"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live-Webcams</strong> Liveübertragungen von geopolitisch bedeutsamen Orten weltweit: Konfliktzonen, Hauptstädte, Grenzübergänge und strategische Engpässe. Streams von YouTube und öffentlichen Netzwerken."
@@ -2373,7 +2452,15 @@
       "noData": "Energiedaten vorübergehend nicht verfügbar – wird erneut versucht",
       "liveTape": "Live-Daten",
       "liveTapeSource": "Marktnotierungen",
-      "infoTooltip": "<strong>Energiekomplex</strong> Physische und handelbare Energiesignale an einem Ort:<ul><li><strong>US Energy Information Administration Metriken</strong>: WTI, Brent, US-Produktion und Bestände</li><li><strong>Live Tape</strong>: Handelbare Energiepreise wie Rohöl und Erdgas</li><li><strong>Zweck</strong>: Physische Energiespannungen von breiteren Makro- und Rohstoff-Panels trennen</li></ul>"
+      "infoTooltip": "<strong>Energiekomplex</strong> Physische und handelbare Energiesignale an einem Ort:<ul><li><strong>US Energy Information Administration Metriken</strong>: WTI, Brent, US-Produktion und Bestände</li><li><strong>Live Tape</strong>: Handelbare Energiepreise wie Rohöl und Erdgas</li><li><strong>Zweck</strong>: Physische Energiespannungen von breiteren Makro- und Rohstoff-Panels trennen</li></ul>",
+      "marketTape": "Marktkurse",
+      "futures": "Terminkontrakte",
+      "dailySpot": "Täglicher Kassapreis",
+      "eiaWeeklySpot": "EIA-Kassapreis · Wochendurchschnitt",
+      "weekEnding": "Woche bis {{date}}",
+      "unknownPriceDate": "Beobachtungszeit unbekannt",
+      "unknownQuoteSource": "Kursquelle unbekannt",
+      "stalePrice": "Veraltet"
     },
     "consumerPrices": {
       "tabs": {
@@ -2522,7 +2609,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Kraftstoffpreise</strong> Einzelhandelstankstellen-Preise für Benzin und Diesel in über 30 Ländern, normalisiert auf USD/Liter zum Vergleich. Die Preise stammen aus offiziellen staatlichen Open-Data-Programmen und werden wöchentlich aktualisiert. Billigste und teuerste Länder sind hervorgehoben. Veränderung Woche-für-Woche wird angezeigt, wenn Daten der Vorwoche verfügbar sind.",
-      "countries": "Länder"
+      "countries": "Länder",
+      "observedStale": "{{date}}, {{days}} Tage alt",
+      "monthlyMean": "Ø {{month}}"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO-Lebensmittelpreisindex</strong> Der Lebensmittelpreisindex der UN-Ernährungs- und Landwirtschaftsorganisation verfolgt internationale Exportpreise für einen Lebensmittelkorb (Getreide, Milchprodukte, Fleisch, Öle, Zucker) mit Basis 2014–2016=100. Wird jeden ersten Freitag des Monats aktualisiert.",
@@ -2698,7 +2787,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanktionen & Listungen",
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists plus Global Affairs Canada SEMA/JVCFOA-Eintragungen. Zeigt, welche Länder dem höchsten Eintragungs-Druck ausgesetzt sind, welche Programme ihn antreiben und was seit der letzten Aktualisierung neu hinzugekommen ist.",
+      "infoTooltip": "OFAC-SDN- und konsolidierte Listen sowie kanadische SEMA/JVCFOA-Sanktionen. Länderzeilen verwenden direkte Zuordnungen. Schiffsflaggen und Flugzeugregister werden unter Registern separat gezählt; null Vermögenswerte bei einem Land bedeutet nicht, dass keine sanktionierten Vermögenswerte existieren.",
       "loading": "Sanktionsdaten werden geladen...",
       "unavailable": "Sanktionsdaten nicht verfügbar.",
       "summary": {
@@ -2710,7 +2799,9 @@
       "sections": {
         "countries": "Sanktionierte Länder",
         "entries": "Aktuelle Listungen",
-        "programs": "Programme"
+        "programs": "Programme",
+        "flagRegistries": "Flaggen- und Luftfahrzeugregister",
+        "regulationTargets": "Zielstaaten der SEMA-Verordnungen"
       },
       "empty": {
         "countries": "Keine Landzuordnung verfügbar.",
@@ -2733,7 +2824,8 @@
         "unattributed": "Nicht zugeordnet",
         "program": "Programm",
         "undated": "ohne Datum"
-      }
+      },
+      "targetExplanation": "Zielstaaten der Verordnungen sind kein Nachweis für Staatsangehörigkeit oder Adresse. Sie werden bei Länderrisikobewertungen und Lageberichten nicht berücksichtigt."
     },
     "radiationWatch": {
       "title": "Strahlungsüberwachung",
@@ -2807,7 +2899,21 @@
       "saved": "Letzte bekannte Aktualisierung {{time}} · Suche nach Aktualisierungen",
       "savedOffline": "Letzte bekannte Aktualisierung {{time}} · Offline",
       "localSignals": "Basierend auf geladenen Dashboard-Signalen",
-      "emptySaved": "Keine Konvergenz in der letzten bekannten Aktualisierung."
+      "emptySaved": "Keine Konvergenz in der letzten bekannten Aktualisierung.",
+      "signalTypes": {
+        "militaryFlight": "Militärflug",
+        "militaryVessel": "Militärschiff",
+        "aisGap": "AIS-Lücke",
+        "conflictEvent": "Konfliktereignis",
+        "escalationOutage": "Kommunikationsausfall",
+        "newsSeverity": "Schwere Nachrichten",
+        "sanctionsNews": "Sanktionsnachrichten",
+        "marketMove": "Marktbewegung",
+        "commoditySpike": "Rohstoffsprung",
+        "earthquake": "Erdbeben",
+        "infraOutage": "Infrastrukturausfall",
+        "other": "Signalereignis"
+      }
     },
     "thermalEscalation": {
       "title": "Thermische Eskalation",
@@ -3109,6 +3215,151 @@
           "placeholder": "Freiwillige Angabe"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Gefällt dir World Monitor?",
+      "body": "Ein Stern auf GitHub hilft anderen, es zu finden.",
+      "star": "Auf GitHub mit Stern versehen",
+      "dismiss": "Verwerfen und nicht mehr fragen"
+    },
+    "reservoirLevels": {
+      "note": "Wasserspiegel aus dem NASA-Satellitenlidar ICESat-2. Die NASA veröffentlicht jeden Überflug etwa zwei Monate nach der Messung, daher zeigt dies Veränderungen über Wochen und Jahreszeiten, nicht über Tage. Nur Wasserstand, kein Volumen.",
+      "source": "Quelle:",
+      "processedWith": "verarbeitet mit",
+      "empty": "Noch keine Messwerte",
+      "filterEmpty": "Keine Gewässer entsprechen diesem Filter",
+      "unavailable": "Wasserstandsdaten sind derzeit nicht verfügbar",
+      "filterLabel": "Gewässer filtern",
+      "filter": {
+        "all": "Alle",
+        "attention": "Auffällig",
+        "transboundary": "Grenzüberschreitend"
+      },
+      "status": {
+        "record_low": "Rekordtief",
+        "record_high": "Rekordhoch",
+        "falling_fast": "Fällt schnell",
+        "rising_fast": "Steigt schnell",
+        "low": "Niedrig für die Jahreszeit",
+        "high": "Hoch für die Jahreszeit",
+        "normal": "Im üblichen Bereich",
+        "insufficient_history": "Zu kurze Messreihe",
+        "no_recent_data": "Kein aktueller Überflug",
+        "lowInRange": "Niedrig in seiner Spanne",
+        "highInRange": "Hoch in seiner Spanne"
+      },
+      "vsUsual": "{{value}} gegenüber üblich im {{month}}",
+      "in12Months": "{{value}} in 12 Monaten",
+      "noComparison": "Noch kein Vergleich",
+      "measured": "gemessen am {{date}} ({{age}})",
+      "noPass": "Noch kein verwertbarer Überflug",
+      "popup": {
+        "level": "Wasserstand",
+        "levelValue": "{{value}} über dem Meeresspiegel (EGM2008)",
+        "anomaly": "Gegenüber üblich im {{month}}",
+        "anomalyPlain": "Gegenüber üblich im Monat",
+        "changePrev": "Seit dem letzten Überflug",
+        "change90": "In 90 Tagen",
+        "change365": "In 12 Monaten",
+        "measured": "Gemessen",
+        "sparkline": "Wasserstand über 36 Monate"
+      },
+      "nextPass": {
+        "label": "Nächster ICESat-2-Überflug",
+        "loading": "Wird geladen…",
+        "at": "{{date}} (vorhergesagt aus Bahndaten vom {{epoch}}; Wolken können das Lidar blockieren)",
+        "none": "Keine Messung in diesem Zeitraum (bis {{date}}); Bahndaten vom {{epoch}}",
+        "unavailable": "Bahndaten nicht verfügbar"
+      },
+      "siteContext": {
+        "label": "Strategischer Stausee an diesem Ort"
+      },
+      "energyContext": {
+        "heading": "Strategische Stauseen",
+        "hydro": "Wasserkraft {{share}} % der Primärenergie"
+      },
+      "countryEvidence": {
+        "heading": "Wasserstände",
+        "empty": "Kein strategischer Stausee in diesem Land liegt beim letzten Überflug außerhalb seiner saisonalen Basislinie.",
+        "measured": "Gemessen am {{date}}"
+      },
+      "card": {
+        "measured": "Gemessen {{date}} · {{age}}",
+        "noCrossing": "keiner in diesem Zeitraum (bis {{date}})",
+        "crossing": "Vorhergesagter ICESat-2-Überflug",
+        "summary": "{{beyond}} von {{total}} Stauseen außerhalb der saisonalen Basis",
+        "latestPass": "letzter ICESat-2-Überflug {{date}}",
+        "sparkline": "Pegel über 36 Monate, saisonale Basis als gestrichelte Linie",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Lidar-Wasserspiegel aus datierten Überflügen, keine Live-Werte oder Speichervolumen."
+      },
+      "water": {
+        "heading": "Wasser am {{name}}",
+        "level": "Lidar-Pegel",
+        "extent": "Radar-Wasserfläche",
+        "extentValue": "{{percent}} % offenes Wasser ({{area}} km²) am {{date}}",
+        "extentChange": "{{delta}} Punkte seit {{date}} auf demselben Orbit",
+        "extentNoComparison": "Keine frühere Messung auf demselben Orbit zum Vergleich",
+        "extentNone": "Noch keine Radarmessung",
+        "unavailable": "Laden fehlgeschlagen; zum erneuten Versuch erneut öffnen",
+        "optical": "Neuestes optisches Bild",
+        "opticalNone": "Kein optisches Bild innerhalb von 30 Tagen",
+        "note": "Jede Zeile ist eine datierte Messung eines eigenen Überflugs, kein Live-Wert. Das Radar erfasst offenes Wasser im Kernbereich des Stausees; vom Wind aufgeraute Wasserflächen können als Land erscheinen."
+      }
+    },
+    "gridDisruptionClock": {
+      "region": "Bundesstaat auswählen",
+      "unknown": "Unbekannt",
+      "customers": "Laut Meldungen von Stromausfällen betroffene Kunden",
+      "lastCustomers": "Kunden ohne Strom bei der letzten Meldung",
+      "denominatorUnknown": "Gesamtzahl der erfassten Kunden unbekannt",
+      "tracked": "Erfasste Kunden: {{amount}}",
+      "dataAge": "Seit der Meldung",
+      "minutes": "{{amount}} Min.",
+      "hours": "{{amount}} Std.",
+      "warnings": "Warnungen",
+      "recovery": "Gemeldete Änderungen",
+      "decreased": "Laut Meldungen {{amount}} Kunden weniger ohne Strom",
+      "increased": "Laut Meldungen {{amount}} Kunden mehr ohne Strom",
+      "unchanged": "Gemeldete Zahl unverändert",
+      "since": "seit",
+      "peakLoad": "{{percent}} % der üblichen Spitzenlast wieder gedeckt",
+      "noComparison": "Vergleichbare Zahlen zu Kunden ohne Strom fehlen.",
+      "history": "Letzte Meldungen zur Zahl der Kunden ohne Strom ({{total}})",
+      "priorNotice": "Frühere Warnung",
+      "sources": "Abdeckung der Warnquellen",
+      "operatorLink": "Netzmeldungen finden Sie bei",
+      "issued": "Ausgegeben am",
+      "until": "gültig bis",
+      "noActive": "Keine aktive Warnung in den überwachten Quellen.",
+      "unknownWarnings": "Die Warnquellen sind derzeit nur teilweise erfasst.",
+      "noObservation": "Aktuelle Zahl und Erfassungsumfang unbekannt.",
+      "loadError": "Für die Stromausfall-Uhr sind keine Daten verfügbar.",
+      "retained": "Aktualisierung fehlgeschlagen. Die letzte empfangene Meldung wird angezeigt.",
+      "phase": {
+        "unknown": "Auswirkungen unbekannt",
+        "monitoring": "Beobachtung",
+        "watch": "Vorwarnung",
+        "disrupted": "Ausfälle gemeldet",
+        "recovering": "Wiederherstellung laut Meldung im Gange",
+        "restored": "Versorgung laut Meldung wiederhergestellt"
+      },
+      "kind": {
+        "grid": "Netzmeldung",
+        "weather": "Wetterwarnung",
+        "space-weather": "Weltraumwetter"
+      },
+      "checks": {
+        "available": "Geprüft",
+        "unavailable": "Nicht verfügbar",
+        "not_monitored": "Direkt beim Netzbetreiber prüfen",
+        "stale": "Letzte Prüfung veraltet"
+      },
+      "warningAge": "Seit der ersten noch gültigen Warnung",
+      "days": "{{amount}} T."
+    },
+    "externalNavigation": {
+      "blocked": "Ihr Browser hat den neuen Tab blockiert.",
+      "openLink": "{{host}} öffnen"
     }
   },
   "popups": {
@@ -3145,7 +3396,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED (verifiziert)",
       "gdelt": "GDELT",
       "records": "Einträge",
       "mediaSignal": "Unbestätigter Medienhinweis",
@@ -4085,6 +4335,21 @@
       "yellowWarning": "Gelbe Warnung",
       "orangeWarning": "Orange Warnung",
       "redWarning": "Rote Warnung"
+    },
+    "displacement": {
+      "event": "Ereignis",
+      "cause": "Ursache",
+      "date": "Datum",
+      "operation": "Einsatz",
+      "reportDate": "Berichtsdatum",
+      "measure": "Messgröße",
+      "kinds": {
+        "outflow": "Abwanderungen",
+        "return": "Rückkehrer",
+        "arrival": "Ankünfte",
+        "death": "Todesfälle",
+        "encounter": "Grenzkontakte"
+      }
     }
   },
   "signals": {
@@ -4178,7 +4443,13 @@
     "alert": "Warnung: {{location}}",
     "multipleRegions": "Mehrere Regionen",
     "trending": "\"{{term}}\" im Trend — {{count}} Erwähnungen in {{hours}}h",
-    "eventsDetected": "{{count}} Ereignisse in der Region erkannt ({{lat}}°, {{lon}}°)"
+    "eventsDetected": "{{count}} Ereignisse erkannt: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "Proteste",
+      "military_flight": "Militärflüge",
+      "military_vessel": "Marineschiffe",
+      "earthquake": "seismische Aktivität"
+    }
   },
   "intel": {
     "topics": {
@@ -4275,7 +4546,6 @@
     "dataAndCommunity": "Daten & Community",
     "theme": "Design",
     "themeDesc": "Automatisch folgt Ihrer Systemeinstellung.",
-    "themeAuto": "Automatisch (System folgen)",
     "themeDark": "Dunkel",
     "themeLight": "Hell",
     "mapProvider": "Karten-Tile-Anbieter",
@@ -4334,7 +4604,9 @@
   },
   "contextMenu": {
     "openCountryBrief": "Länderübersicht öffnen",
-    "copyCoordinates": "Koordinaten kopieren"
+    "copyCoordinates": "Koordinaten kopieren",
+    "satellitePasses": "Satellitenüberflüge hier",
+    "imageryEvidenceHere": "Bildbelege hier"
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard für globale Echtzeitinformationen",
@@ -4429,7 +4701,9 @@
   "auth": {
     "signIn": "Anmelden",
     "createAccount": "Konto erstellen",
+    "freeReason": "Gratis: Layout speichern, Ländern folgen, Alarme",
     "settings": "Einstellungen",
+    "planBilling": "Plan & Abrechnung",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -4473,7 +4747,17 @@
     "renameHint": "{{name}} — Doppelklick zum Umbenennen",
     "deleteTab": "Tab löschen",
     "deleteTabAria": "Tab {{name}} löschen",
-    "tabNameAria": "Tab-Name"
+    "tabNameAria": "Tab-Name",
+    "addTabTitleSaved": "Neuer Tab (startet mit den gespeicherten Panels)",
+    "newTabOptions": "Optionen für neue Tabs",
+    "newTabStartsDefault": "Neue Tabs starten mit den Standard-Panels.",
+    "newTabStartsSaved": "Neue Tabs starten mit den gespeicherten Panels.",
+    "newTabOptionsHint": "Bereits vorhandene Tabs ändern sich nicht.",
+    "useThisTabPanels": "Panels dieses Tabs verwenden",
+    "useDefaultPanels": "Standard-Panels verwenden",
+    "newTabPanelsNotSaved": "Speichern fehlgeschlagen. Dieser Browser blockiert Website-Speicherung.",
+    "team": "Team",
+    "teamDashboards": "Team-Dashboards"
   },
   "theaterPresets": {
     "label": "Abdeckungs-Voreinstellungen",
@@ -4566,6 +4850,21 @@
         "related": {
           "0": "China-Aktivitäts-Nowcast",
           "1": "Länderbrief"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Klima",
+        "purpose": "Markiert strategische Stauseen und Seen danach, wie ihr Wasserspiegel im Vergleich zum üblichen Stand zur selben Jahreszeit liegt und wie schnell er sich ändert.",
+        "source": "Wasseroberflächenhöhe von Binnengewässern aus NASA ICESat-2 ATL13 über NSIDC, verarbeitet mit SlideRule Earth und je Satellitenüberflug vom Dienst seed-reservoir-levels zusammengefasst.",
+        "freshness": "Tägliche Aktualisierung. Die NASA veröffentlicht jeden Überflug 50 bis 70 Tage nach der Messung, und ein Stausee wird alle paar Tage bis etwa einmal im Monat erneut erfasst.",
+        "confidence": "Ein Überflug zählt nur, wenn mindestens 5 Wassersegmente innerhalb von 0,25 m übereinstimmen. Ein saisonaler Vergleich braucht Überflüge aus mindestens 3 früheren Jahren zur selben Jahreszeit.",
+        "limitations": {
+          "0": "Nur Wasserstand, kein Volumen: Derselbe Rückgang bedeutet in jedem Stausee einen anderen Speicherverlust.",
+          "1": "Ein Gewässer ohne Überflug seit 150 Tagen wird als ohne aktuellen Überflug markiert; sein letzter Wert, die Veränderungen und das Datum werden weiter angezeigt."
+        },
+        "related": {
+          "0": "Panel „Strategische Wasserstände“",
+          "1": "Klimaanomalien"
         }
       },
       "conflicts": {
@@ -4742,7 +5041,7 @@
         "category": "Naturkatastrophen",
         "purpose": "Zeigt Erdbeben, schwere Katastrophenwarnungen und aktive Erdbeobachtungsereignisse für das Lagebild.",
         "source": "USGS-Erdbeben, GDACS-Warnungen und NASA-EONET-Ereignisse, zusammengeführt im Dienst für Naturereignisse.",
-        "freshness": "Naturereignisse werden alle 3 Stunden geseedet; die Erwartung für USGS-Erdbeben ist eine Quelltaktung von etwa 5 Minuten.",
+        "freshness": "Naturereignisse werden alle 30 Minuten geseedet; die Erwartung für USGS-Erdbeben ist eine Quelltaktung von etwa 5 Minuten.",
         "confidence": "Belastbar für erkannte öffentliche Katastrophensignale; die Konfidenz hängt von der Gefahrenart und der Meldelatenz der Quelle ab.",
         "limitations": {
           "0": "GDACS-Warnungen geringer Schwere werden herausgefiltert, damit die Karte lesbar bleibt.",
@@ -4835,6 +5134,812 @@
     },
     "happy": {
       "map": "Karte der guten Nachrichten"
+    }
+  },
+  "pwaInstall": {
+    "title": "App installieren",
+    "share": "Tippen Sie in Safari auf Teilen (das Quadrat mit dem Pfeil nach oben). Öffnen Sie bei Bedarf zuerst das Menü Mehr.",
+    "add": "Wählen Sie Zum Home-Bildschirm.",
+    "confirm": "Tippen Sie auf Hinzufügen und öffnen Sie World Monitor über den Home-Bildschirm.",
+    "close": "Schließen",
+    "alertsHint": "Installieren Sie World Monitor auf dem Home-Bildschirm, um auf diesem iPhone oder iPad Warnungen zu erhalten.",
+    "how": "Installationsanleitung"
+  },
+  "teamDashboards": {
+    "desc": "Dashboards, die dein Team teilt. Öffne eines, um es als neuen Tab hinzuzufügen.",
+    "empty": "Dein Team hat noch kein Dashboard geteilt. Teile diesen Tab, um alle Panels, Größen und die Karte mit deinem Team zu teilen.",
+    "open": "{{name}} als neuen Tab öffnen",
+    "stopSharing": "Sharing von {{name}} beenden",
+    "confirmStop": "Sharing von {{name}} mit deinem Team beenden? Tabs, die Personen bereits geöffnet haben, bleiben unverändert.",
+    "shareTab": "Diesen Tab mit deinem Team teilen",
+    "shareChanges": "Änderungen an diesem Tab mit deinem Team teilen",
+    "behind": "Dein Team hat dieses Dashboard nach dem Öffnen geändert.",
+    "getLatest": "Aktuelle Version abrufen",
+    "opened": "{{name}} von deinem Team geöffnet.",
+    "shared": "{{name}} mit deinem Team geteilt.",
+    "updated": "Dieser Tab hat jetzt die aktuelle Version deines Teams.",
+    "stopped": "Sharing von {{name}} beendet.",
+    "failed": "Konnte Team-Dashboards nicht erreichen. Versuche es erneut.",
+    "limit": "Dein Team teilt bereits {{limit}} Dashboards. Beende das Sharing von einem zuerst.",
+    "focusNotEntitled": "Ihr Plan beinhaltet keine gemeinsamen fokussierten Dashboards. Löschen Sie den Fokus dieses Tabs, um seine Panels zu teilen.",
+    "focusUnreadable": "{{name}} hat einen Fokus, den diese Version nicht anzeigen kann. Laden Sie neu, um zu aktualisieren, und öffnen Sie ihn dann erneut."
+  },
+  "focus": {
+    "barLabel": "Fokus",
+    "summary": "Fokussiert auf {{countries}}",
+    "neighboursOff": "Nachbarländer nicht einbezogen",
+    "chosenLabel": "Ausgewählt",
+    "neighboursLabel": "Nachbarländer",
+    "neighbourItem": "Nachbarland: {{name}}",
+    "range": "{{start}} bis {{end}}",
+    "windowEnded": "Zeitraum endete {{date}}",
+    "windowStarts": "Startet {{date}}",
+    "windowUntil": "Bis {{date}}",
+    "windowFrom": "Von {{date}}",
+    "edit": "Bearbeiten",
+    "clear": "Löschen",
+    "clearAria": "Fokus aufheben und ganze Welt anzeigen",
+    "clearFocus": "Fokus löschen",
+    "notFiltered": "Nicht gefiltert",
+    "notFilteredGlobal": "Globale Daten: nicht nach Land gefiltert",
+    "notFilteredYet": "Nach Land noch nicht gefiltert",
+    "gateSignedOutDesc": "Melden Sie sich an, um einen Dashboard-Tab auf die Länder zu fokussieren, die Sie überwachen.",
+    "gateUpgradeDesc": "Das Fokussieren eines Tabs auf ausgewählte Länder ist in Pro Business, API Business und Enterprise enthalten.",
+    "gateUpgradeCta": "Upgrade",
+    "tabButton": "Fokus",
+    "tabButtonTitle": "Fokussieren Sie diesen Tab auf ausgewählte Länder",
+    "tabButtonTitleActive": "Bearbeiten Sie den Fokus dieses Tabs",
+    "newTitle": "Diesen Tab fokussieren",
+    "editTitle": "Fokus bearbeiten",
+    "intro": "Panels, die nach Land filtern können, zeigen nur diese Länder an. Die anderen zeigen „Nicht gefiltert\".",
+    "countriesLabel": "Länder",
+    "count": "{{n}} von {{max}}",
+    "searchPlaceholder": "Länder durchsuchen",
+    "resultsLabel": "Gefilterte Länder",
+    "limitReached": "Sie haben {{max}} Länder ausgewählt, das Maximum für einen Fokus.",
+    "removeCountry": "{{name}} entfernen",
+    "includeNeighbours": "Nachbarländer einbeziehen",
+    "neighboursHint": "Risiken kennen keine Grenzen. Nachbarländer sind als solche gekennzeichnet und zählen nicht zu den {{max}}.",
+    "startLabel": "Von (optional)",
+    "endLabel": "Bis (optional)",
+    "datesHint": "Für eine Reise oder Aufgabe. Nach Ende des Zeitraums bleibt der Fokus erhalten und die Leiste zeigt dies an.",
+    "errorNoCountries": "Wählen Sie mindestens ein Land.",
+    "errorTooMany": "Ein Fokus kann bis zu {{max}} Länder enthalten.",
+    "errorDates": "Das Enddatum liegt vor dem Startdatum.",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "saved": "Dieser Tab ist auf {{countries}} fokussiert.",
+    "cleared": "Fokus gelöscht. Dieser Tab zeigt die ganze Welt.",
+    "notSaved": "Konnte nicht gespeichert werden. Dieser Browser blockiert die Webspeicherung.",
+    "plusNeighbours_one": "+ {{count}} Nachbarland",
+    "plusNeighbours_other": "+ {{count}} Nachbarländer",
+    "filter": {
+      "showing": "Zeigt {{countries}}",
+      "showingNeighbours": "Zeigt {{countries}} + Nachbarländer",
+      "showAll": "Alle anzeigen",
+      "focusOff": "Fokus in diesem Panel deaktiviert: zeigt alles",
+      "applyFocus": "Fokus anwenden",
+      "applyFocusAria": "Dieses Panel erneut auf den Fokus filtern",
+      "show": "Anzeigen",
+      "hide": "Verbergen",
+      "noCountryTag": "Kein Land",
+      "emptyHint": "Alles andere ist oben gezählt.",
+      "emptyNews": "Nichts für diese Länder in den aktuellen Schlagzeilen",
+      "emptyAdvisories": "Keine Reisewarnungen für diese Länder",
+      "emptyConflict": "Keine UCDP-Konfliktereignisse für diese Länder",
+      "emptyConflictPartial": "Keine Konfliktereignisse für diese Länder unter den neuesten Ereignissen. Die vollständige Liste wurde nicht geladen.",
+      "loadingConflict": "Lade alle Konfliktereignisse für diese Länder…",
+      "emptyAirports": "Keiner Ihrer überwachten Flughäfen liegt in diesen Ländern",
+      "emptyFlights": "Keine Flüge zu oder von diesen Ländern auf diesem Board",
+      "emptyAviationNews": "Keine Luftfahrtnachrichten für diese Länder in den letzten 24 Stunden",
+      "tabNotFiltered": "Diese Registerkarte wird nicht nach Land gefiltert",
+      "hidden_one": "{{count}} durch Fokus verborgen",
+      "hidden_other": "{{count}} durch Fokus verborgen",
+      "showAllAria_one": "Alles in diesem Panel anzeigen, einschließlich {{count}} Element außerhalb des Fokus",
+      "showAllAria_other": "Alles in diesem Panel anzeigen, einschließlich {{count}} Elemente außerhalb des Fokus",
+      "unattributed_one": "{{count}} Element ohne Land",
+      "unattributed_other": "{{count}} Elemente ohne Land",
+      "showUnattributedAria_one": "Das {{count}} Element ohne Land anzeigen",
+      "showUnattributedAria_other": "Die {{count}} Elemente ohne Land anzeigen",
+      "hideUnattributedAria_one": "Das {{count}} Element ohne Land verbergen",
+      "hideUnattributedAria_other": "Die {{count}} Elemente ohne Land verbergen",
+      "partialConflict": "Zeigt Konfliktereignisse nur aus den letzten 150 an. Die vollständige Liste konnte nicht geladen werden.",
+      "partialConflictLoading": "Zeige Konfliktereignisse aus den letzten 150, während die vollständige Liste geladen wird.",
+      "emptyInstability": "Keine Instabilitätswerte für diese Länder",
+      "emptyOutbreaks": "Keine Krankheitsausbrüche für diese Länder",
+      "emptyOutages": "Keine Internetunterbrechungen für diese Länder",
+      "emptyRadiation": "Keine Strahlungswerte für diese Länder",
+      "emptyFuelShortages": "Keine Treibstoffknappheit für diese Länder",
+      "emptyEnergyDisruptions": "Keine Energieunterbrechungen für diese Länder",
+      "emptyDisplacement": "Keine Fluchtlingsdaten für diese Länder",
+      "emptyCorrelation": "Keine Signale für diese Länder",
+      "emptyExposure": "Keine Orte mit Bevölkerungsexposition für diese Länder",
+      "emptyExposurePartial": "Die verfügbaren Daten enthalten keine Expositionsorte für diese Länder. Die vollständige UCDP-Abdeckung steht noch aus.",
+      "partialExposureLoading": "Alle UCDP-Orte werden vor der Filterung der Exposition geladen. Die Abdeckungszahlen enthalten nur Unruhen.",
+      "partialExposure": "Die vollständigen UCDP-Orte konnten nicht geladen werden. Die Expositionsdaten sind unvollständig; die Abdeckungszahlen enthalten nur Unruhen."
+    },
+    "draftAssessment": "Reisebewertung",
+    "draftAssessmentAria": "Reisebewertung öffnen, vorgefüllt mit diesem Focus",
+    "draftCopied": "Anfrage kopiert. Füge sie in deinen KI-Assistenten ein.",
+    "draftCopiedPartial": "Anfrage für die ersten {{count}} Länder kopiert. Eine Bewertung umfasst höchstens {{max}} Länder. Ausgelassen: {{omitted}}.",
+    "draftCopyFailed": "Die Anfrage konnte nicht kopiert werden."
+  },
+  "tripAssessment": {
+    "heading": "Reisebewertung",
+    "intro": "Ein quellengestützter Entwurf einer Reiserisikobewertung für einen Analyst zur Fertigstellung. Er berichtet, was die Daten zeigen, und gibt keine Empfehlungen.",
+    "privacy": "Nur Länder, Städte und Daten. Geben Sie keine Reisendennamen, Hotels oder Straßenadressen ein. Nichts von dem, was Sie eingeben, wird gespeichert.",
+    "taskLabel": "Aufgabenkennzeichnung (optional)",
+    "taskLabelPlaceholder": "Regionale Standortbesuche",
+    "windowStart": "Reise beginnt",
+    "windowEnd": "Reise endet",
+    "countriesLabel": "Länder, in Reisereihenfolge",
+    "count": "{{n}} von {{max}}",
+    "searchPlaceholder": "Land hinzufügen",
+    "addCountry": "Land zur Reise hinzufügen",
+    "limit": "Eine Reise umfasst maximal {{max}} Länder.",
+    "omitted": "Ausgelassen, da eine Reise maximal {{max}} Länder umfasst: {{names}}.",
+    "cities": "Städte, kommagetrennt (bis zu {{max}})",
+    "arrive": "Ankunft",
+    "depart": "Abreise",
+    "moveEarlier": "{{name}} früher in der Reise verschieben",
+    "moveLater": "{{name}} später in der Reise verschieben",
+    "remove": "{{name}} aus der Reise entfernen",
+    "downloadMarkdown": "Markdown herunterladen",
+    "downloadWord": "Für Word herunterladen",
+    "print": "Drucken oder als PDF speichern",
+    "copyRequest": "Anfrage für einen KI-Assistenten kopieren",
+    "close": "Schließen",
+    "building": "Entwurf aus den neuesten Daten wird erstellt …",
+    "downloaded": "{{file}} heruntergeladen. Jeder Download wird neu erstellt und mit seiner eigenen Erfassungszeit versehen.",
+    "printOpened": "Druckdialog geöffnet. Wählen Sie „Als PDF speichern\", um eine Kopie zu behalten.",
+    "errNoCountries": "Fügen Sie mindestens ein Land hinzu.",
+    "errTooMany": "Eine Reise umfasst maximal {{max}} Länder.",
+    "errWindow": "Die Reise muss am selben Tag oder später enden, an dem sie beginnt.",
+    "errCities": "{{name}}: maximal {{max}} Städte.",
+    "errCountryDates": "{{name}}: Abreise muss am selben Tag oder später sein wie Ankunft.",
+    "errOutsideWindow": "{{name}}: Daten müssen im Reisezeitraum liegen.",
+    "errInvalid": "Der Entwurf konnte nicht aus dieser Reise erstellt werden:",
+    "errAuth": "Melden Sie sich erneut an, um den Entwurf zu erstellen.",
+    "errUpgrade": "Die Reisebewertung ist in den Plänen Pro Business, API Business und Enterprise enthalten.",
+    "errBusy": "Zu viele Anfragen. Versuchen Sie es in einer Minute erneut.",
+    "errUnavailable": "Die Daten hinter dem Entwurf sind gerade nicht verfügbar. Versuchen Sie es in einer Minute erneut.",
+    "errGeneric": "Der Entwurf konnte nicht erstellt werden. Versuchen Sie es erneut.",
+    "errDownload": "Die Datei konnte hier nicht heruntergeladen werden. Verwenden Sie stattdessen „Drucken\" oder „Als PDF speichern\".",
+    "errLoad": "Die Reisebewertung konnte nicht geöffnet werden. Laden Sie die Seite neu und versuchen Sie es erneut."
+  },
+  "orbitalWatch": {
+    "track": {},
+    "replay": {},
+    "counts": {},
+    "tier": {
+      "checking": "Archiv wird geprüft",
+      "notInArchive": "nicht im Archiv",
+      "confirmed": "bestätigt",
+      "likely": "wahrscheinlich",
+      "unmatchedImage": "Bild ohne berechneten Überflug",
+      "weatherFrame": "Wetterbild",
+      "unavailable": "nicht verfügbar",
+      "inReach": "in Reichweite",
+      "capability": "könnte abbilden",
+      "inRange": "im Bereich",
+      "mosaic": "Mosaik",
+      "upcoming": "bevorstehend"
+    },
+    "row": {
+      "offNadir": "{{deg}}° außerhalb des Nadirs",
+      "distance": "{{km}} km zur Bodenspur",
+      "orbitAge": "Bahndaten",
+      "imageLoading": "Szene wird geladen…",
+      "satellite": "Satellit",
+      "sensor": "Sensor",
+      "time": "Zeit",
+      "in": "In",
+      "tier": "Status",
+      "elevation": "Höhenw.",
+      "point": "Ort",
+      "pixel": "Pixel",
+      "credit": "Archiv",
+      "orbitAgeValue": "{{age}} alt"
+    },
+    "ui": {
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
+    },
+    "viewer": {
+      "open": "Szene öffnen: {{image}}",
+      "imageAlt": "{{name}}-Szene, {{time}}",
+      "close": "Szenenansicht schließen",
+      "northUp": "Norden oben",
+      "unreferenced": "Archivausrichtung; Norden nicht gekennzeichnet",
+      "compareDates": "Aufnahmetage in dieser Sammlung",
+      "compareNone": "Keine zweite Szene in dieser Sammlung.",
+      "divider": "Referenz-Trennlinie",
+      "searching": "Archivszenen der letzten {{days}} Tage werden durchsucht",
+      "historyFailed": "{{archive}} hat einen Fehler zurückgegeben; ältere Szenen fehlen.",
+      "historyTimeout": "{{archive}} hat das Zeitlimit überschritten; ältere Szenen fehlen.",
+      "loading": "Bilder geladen: {{loaded}} von {{total}}",
+      "closeLabel": "Schließen",
+      "agoNow": "Jetzt",
+      "agoHours": "vor {{count}} Std.",
+      "agoDays": "vor {{count}} T.",
+      "clear": "Klar",
+      "clouded": "Bewölkung {{pct}}%",
+      "tabImage": "Szene",
+      "tabChange": "Vergleich",
+      "metaAcquired": "Aufgenommen",
+      "metaDate": "Datum",
+      "metaPixel": "Pixel",
+      "metaSpot": "Bewölkung am Punkt",
+      "metaScene": "Wolken der Szene",
+      "metaSun": "Sonnenhöhe",
+      "showCloudy": "Bewölkte Tage einbeziehen ({{count}})",
+      "eventMark": "Ereignis {{date}}"
+    },
+    "timelapse": {},
+    "passDetail": {
+      "dir": {},
+      "heading": {}
+    },
+    "search": {
+      "label": "Ort oder Koordinaten",
+      "placeholder": "Ort oder 25.11, 55.14",
+      "submit": "Suchen",
+      "locate": "Mein Standort",
+      "hint": "Eingegebene Koordinaten und Ihr Standort werden nie an WorldMonitor gesendet. Eingegebene Ortsnamen werden an WorldMonitor und OpenStreetMap Nominatim übermittelt.",
+      "results": "Orte",
+      "searching": "Suche läuft…",
+      "tooShort": "Mindestens zwei Zeichen eingeben oder Koordinaten wie 25.11, 55.14.",
+      "invalidCoordinates": "Breitengrad muss zwischen -90 und 90, Längengrad zwischen -180 und 180 liegen.",
+      "failed": "Ortssuche fehlgeschlagen. Koordinaten und Kartenklicks funktionieren weiterhin.",
+      "noResults": "Kein passender Ort gefunden.",
+      "locating": "Standort wird ermittelt…",
+      "locationDenied": "Standortzugriff verweigert. Geben Sie einen Ortsnamen ein oder klicken Sie mit der rechten Maustaste auf die Karte.",
+      "locationUnavailable": "Standort nicht gefunden. Geben Sie einen Ortsnamen ein oder klicken Sie mit der rechten Maustaste auf die Karte.",
+      "idle": "Geben Sie einen Ortsnamen ein, nutzen Sie den Gerätestandort oder klicken Sie mit der rechten Maustaste auf die Karte, um die Bildbelege für diesen Ort zu öffnen."
+    },
+    "share": {
+      "copied": "Link kopiert",
+      "copyManually": "Diesen Link kopieren",
+      "link": "Freigabelink",
+      "dismiss": "Schließen",
+      "passOutsideWindow": "Der verlinkte Überflug liegt außerhalb dieses Fensters; keiner ausgewählt.",
+      "passNotFound": "Der verlinkte Überflug fehlt in der neu berechneten Liste; keiner ausgewählt."
+    },
+    "timeline": {
+      "now": "jetzt",
+      "nowAt": "Jetzt: {{time}}",
+      "density": "{{label}}, {{start}} bis {{end}}: {{count}}",
+      "daylight": "Tageslicht hier: {{start}}–{{end}}",
+      "unavailable": "nicht verfügbar",
+      "notRetained": "Feed speichert keinen Verlauf",
+      "notRetainedSpan": "{{label}}: Feed hat keinen Verlauf von {{start}} bis {{end}}",
+      "countryWide": "ganzes Land",
+      "source": {
+        "conflict": "Konflikte",
+        "fires": "Brand",
+        "unrest": "Unruhen",
+        "outages": "Ausfall"
+      },
+      "live": {
+        "vessels": "Schifffahrt",
+        "militaryFlights": "Militärluftfahrt",
+        "gpsJamming": "GPS-Störungen"
+      },
+      "name": "Zeitachse",
+      "span": "{{days}} T zurück · {{hours}} h voraus",
+      "daylightHere": "Tageslicht am Punkt",
+      "row": {
+        "images": "Bilder",
+        "events": "Ereignisse",
+        "passes": "Überflüge"
+      },
+      "retained": "Verlauf von {{start}} bis {{end}}",
+      "retainedDay": "Verlauf nur {{day}}",
+      "geoLine": "Geostationäre Ansicht: {{names}}",
+      "away": "{{km}} km",
+      "densityTip_one": "{{count}} Überflug ab {{start}} · {{names}}",
+      "densityTip_other": "{{count}} Überflüge ab {{start}} · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "Überwachte Orte · nächste {{hours}} h",
+      "projecting": "Überflüge werden berechnet…",
+      "notLoaded": "Klicken Sie erneut auf den Satelliten; seine Bahndaten sind nicht geladen.",
+      "failed": "Klicken Sie erneut auf den Satelliten, um es erneut zu versuchen; die Berechnung ist fehlgeschlagen.",
+      "viewFailed": "Klicken Sie erneut auf den Satelliten, um es erneut zu versuchen; die Ortsliste konnte nicht geladen werden.",
+      "unavailable": "Klicken Sie erneut auf den Satelliten, um es erneut zu versuchen; die Überfluggeometrie hat diese Bahndaten abgelehnt.",
+      "signals": "Signalaufklärungssatellit. Kein Bildsensor, daher wird keine Bodenabdeckung modelliert.",
+      "noProfile": "Kein Sensorprofil für diesen Satelliten, daher wird seine Bodenabdeckung nicht modelliert.",
+      "geostationary": "Geostationär: steht fest über einem Längengrad, daher gibt es keine Überflüge aufzulisten.",
+      "badElements": "Bahndaten sind nicht lesbar.",
+      "none": "Kein überwachter Ort innerhalb des Footprints in den nächsten {{hours}} h.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "in {{minutes}} Min",
+      "inHours": "in {{hours}} h {{minutes}} Min",
+      "offTrack": "{{km}} km neben der Bodenspur",
+      "swathEdge": "am Rand des Aufnahmestreifens",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Typ",
+        "operator": "Betreiber",
+        "over": "Über",
+        "ocean": "Ozean",
+        "altBand": "Höhenband",
+        "inclination": "Inklination",
+        "velocity": "Geschwindigkeit",
+        "types": {
+          "sar": "SAR-Bildgebung",
+          "optical": "Optische Bildgebung",
+          "military": "Militärisch",
+          "sigint": "SIGINT",
+          "signals": "Signalaufklärung"
+        }
+      },
+      "tooOld_one": "Bahndaten sind {{count}} Tag alt, zu alt für die Überflugberechnung.",
+      "tooOld_other": "Bahndaten sind {{count}} Tage alt, zu alt für die Überflugberechnung.",
+      "count_one": "{{count}} Ort innerhalb des {{family}}-Footprints",
+      "count_other": "{{count}} Orte innerhalb des {{family}}-Footprints",
+      "passes_one": "{{count}} Überflug",
+      "passes_other": "{{count}} Überflüge"
+    },
+    "siteSatellites": {
+      "heading": "Verfolgte Satelliten über diesem Ort · nächste {{hours}} h",
+      "none": "Kein verfolgter Bildsatellit erfasst diesen Ort innerhalb von {{hours}} h.",
+      "notLoaded": "Öffnen Sie den Ort erneut, um es erneut zu versuchen; die Bahnelemente wurden nicht geladen.",
+      "failed": "Öffnen Sie den Ort erneut, um es erneut zu versuchen; die Überflugberechnung ist fehlgeschlagen."
+    },
+    "sheet": {
+      "heading": "Bildbelege",
+      "window": "Letzte {{days}} Tage, nächste {{hours}} h",
+      "apart": "Nicht gezählt:",
+      "newest": "neueste {{when}}",
+      "newestNoPreview": "Neueste Aufnahme {{when}} hat keine Vorschau; ältere Szene wird angezeigt.",
+      "noneConfirmed": "Keine bestätigten Aufnahmen in diesem Zeitraum",
+      "noneYet": "Archive antworten noch",
+      "latest": "Neueste Aufnahme",
+      "latestNone": "Archive haben für diesen Ort und Zeitraum nichts zurückgegeben.",
+      "latestChecking": "Archivsuche läuft. Berechnete Überflüge sind unten aufgelistet.",
+      "compareWith": "Vergleichen mit",
+      "compareDate": "Referenzdatum",
+      "moreImages": "Weitere bestätigte Aufnahmen",
+      "imageAlt": "{{sensor}}-Szene, {{time}}",
+      "dailyMosaic": "Tagesmosaik",
+      "weatherFrame": "Wetterbild",
+      "change": "Ort ändern",
+      "showUtc": "UTC",
+      "showLocal": "Ortszeit",
+      "alert": "Warnung vor jedem offenen Überflug über dem Punkt und bei jeder neuen wolkenfreien Aufnahme.",
+      "alertCta": "Warnung aktivieren · Pro",
+      "height": {
+        "collapsed": "Panel eingeklappt. Auf halbe Höhe ausklappen",
+        "half": "Panel auf halber Höhe. Auf volle Höhe ausklappen",
+        "full": "Panel ausgeklappt. Einklappen"
+      },
+      "apartMosaics_one": "{{count}} Tagesmosaik",
+      "apartMosaics_other": "{{count}} Tagesmosaike",
+      "apartFrames_one": "{{count}} Wettersatelliten-Aufnahme",
+      "apartFrames_other": "{{count}} Wettersatelliten-Aufnahmen",
+      "apartInRange_one": "{{count}} Überflug im Bereich",
+      "apartInRange_other": "{{count}} Überflüge im Bereich",
+      "confirmedCount_one": "{{count}} bestätigtes Bild",
+      "confirmedCount_other": "{{count}} bestätigte Bilder"
+    },
+    "tierDef": {
+      "confirmed": "Ein Archiv enthält eine Szene, die den Punkt abdeckt.",
+      "likely": "Ein fester Aufnahmestreifen deckte den Punkt ab; noch keine archivierte Szene.",
+      "inReach": "Ein schwenkbarer Sensor könnte hierher ausgerichtet werden. Die Aufnahmeplanung ist nicht öffentlich.",
+      "capability": "Eine Sensorklasse ohne öffentliches Archiv war über dem Punkt."
+    },
+    "events": {
+      "heading": "Ereignisse an diesem Ort",
+      "kindLabel": "Typ",
+      "detail": "Details",
+      "now": "jetzt",
+      "loading": "Ereignis-Feeds werden geladen…",
+      "none": "Keine Ereignisse innerhalb von {{km}} km in den letzten {{days}} Tagen.",
+      "unavailable": "Nicht verfügbar: {{sources}}",
+      "kind": {
+        "conflict": "Konflikt",
+        "fires": "Brand",
+        "unrest": "Unruhen",
+        "outages": "Ausfall",
+        "vessels": "Schifffahrt",
+        "military-flights": "Militärflug",
+        "gps-jamming": "GPS-Störung"
+      }
+    },
+    "capability": {
+      "heading": "Wer kann diesen Punkt abbilden",
+      "none": "Keine Sensorüberflüge in diesem Zeitraum.",
+      "tooOld": "Bahndaten zu alt zum Berechnen: {{names}}",
+      "showAll": "Alle {{count}} anzeigen",
+      "showFewer": "Weniger anzeigen",
+      "group": {
+        "open": "Open Data",
+        "commercial": "Kommerziell",
+        "government": "Behörde",
+        "military": "Militär",
+        "other": "Sonstiges"
+      }
+    },
+    "windows": {
+      "heading": "Nächste Erfassungsfenster",
+      "optical": "Optisch (offen)",
+      "radar": "Radar (offen)",
+      "none": "Kein offener optischer oder Radar-Überflug in den nächsten {{hours}} h."
+    },
+    "status": {
+      "catalog": "Satellitenkatalog wird geladen…",
+      "computing": "Überflüge werden berechnet · Satellit {{done}} von {{total}}",
+      "checking": "Archive geantwortet: {{done}} von {{total}}",
+      "partial": "Keine Antwort von {{sources}}. Zahlen können niedrig ausfallen.",
+      "staleCatalog": "Katalog ist {{age}} alt; vorhergesagte Zeiten können abweichen.",
+      "empty": "Kein Satellit kam diesem Punkt während dieses Zeitraums in Reichweite.",
+      "unavailable": "Überflugdaten sind nicht verfügbar. Versuchen Sie es später erneut."
+    },
+    "privacy": {
+      "line": "Ihr Punkt geht nur an die Bildarchive.",
+      "more": "Details",
+      "body": "Überflüge werden auf diesem Gerät berechnet. Um Bilder zu finden, sendet Ihr Browser den Punkt direkt an Earth Search, Planetary Computer, NASA GIBS und EUMETSAT; WorldMonitor erhält ihn nicht. Bei einem beobachteten Ort wird WorldMonitor nach dem Tagesprotokoll dieses Orts anhand seiner ID gefragt, nicht anhand Ihres Punkts. Ein eingegebener Ortsname wird an WorldMonitor und OpenStreetMap Nominatim gesendet, um ihn zu finden. Geteilte Links behalten zwei Dezimalstellen (0,01°)."
+    },
+    "sources": {
+      "heading": "Quellen ({{count}})",
+      "docs": "Methode und Abdeckung",
+      "conflict": "Konflikt- und Unruheereignisse",
+      "fires": "Branderkennungen",
+      "outages": "Feed zu Internetausfällen",
+      "vessels": "Schiffspositionen"
+    },
+    "caption": {
+      "clear": "Keine Wolken am Punkt",
+      "clearSceneCloud": "Keine Wolken am Punkt · Szene {{pct}}% Wolkenbedeckung",
+      "clouded": "Wolken am Punkt · {{pct}}%",
+      "cloudShadow": "Schatten am Punkt",
+      "spotNotChecked": "Bewölkung am Punkt unbekannt",
+      "sceneCloud": "Szene {{pct}}% Wolkenbedeckung · Punkt unbekannt",
+      "radar": "Radar · unbeeinflusst durch Wolken"
+    },
+    "tile": {
+      "failed": "Szene konnte nicht geladen werden · {{archive}}",
+      "noPreview": "Noch keine Vorschau für diese Szene veröffentlicht",
+      "processing": "Szene wird noch verarbeitet. Später erneut versuchen.",
+      "radar": "Radar"
+    },
+    "target": {
+      "acquired": "ERFASST {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Satellitenbilder",
+      "loading": "Satellitenarchive werden geprüft…",
+      "latest": "Neueste Aufnahme",
+      "nextPass": "Nächster Überflug",
+      "noImage": "Keine aktuelle Aufnahme gefunden",
+      "noPass": "Kein Überflug in den nächsten 72 Stunden",
+      "openEvidence": "Belege öffnen",
+      "compareEvent": "Vorher / nachher",
+      "compareEventLocked": "Vorher / nachher · Pro",
+      "compareSearching": "Suche Aufnahmen vor und nach dem {{date}}…",
+      "compareNoAfter": "Seit dem {{date}} noch keine klare Aufnahme.",
+      "compareNoAfterWindow": "Keine klare Aufnahme in den {{days}} Tagen nach dem {{date}}.",
+      "compareNoBefore": "Keine klare Aufnahme vor dem {{date}} im Archivzeitraum.",
+      "compareFailed": "Archivsuche fehlgeschlagen. Erneut versuchen.",
+      "imageAlt": "Satellitenansicht von {{source}}",
+      "unavailable": "Satellitenbilder konnten nicht geladen werden.",
+      "fire": {
+        "title": "Satellitenerkennung von Bränden",
+        "detected": "Erkannt",
+        "satellite": "Satellit",
+        "confidence": "Zuverlässigkeit",
+        "confidenceHigh": "Hoch",
+        "confidenceNominal": "Mittel",
+        "confidenceLow": "Niedrig",
+        "power": "Brandleistung",
+        "powerValue": "{{value}} MW",
+        "region": "Region",
+        "source": "Quelle",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Tägliches Mosaik",
+        "mosaicLoading": "NASA GIBS wird überprüft…",
+        "mosaicCaption": "Zusammengesetztes Bild der {{source}}-Überflüge des Tages ({{date}}); das Feuer kann durch Wolken oder Rauch verdeckt sein.",
+        "mosaicNone": "NASA GIBS hat kein {{source}}-Mosaik für {{date}}.",
+        "mosaicNoLayer": "Für diesen Satelliten ist kein tägliches Mosaik verfügbar.",
+        "mosaicUnavailable": "Das tägliche Mosaik konnte nicht geladen werden.",
+        "mosaicAlt": "Tägliches NASA-GIBS-Mosaik ({{source}}) für {{date}}"
+      }
+    },
+    "site": {
+      "heading": "Beobachteter Ort",
+      "loading": "Tagesprotokoll des Orts wird geladen…",
+      "failed": "Das Tagesprotokoll des Orts wurde nicht geladen; öffnen Sie den Punkt erneut, um es noch einmal zu versuchen.",
+      "stale": "Für diesen Ort liegt keine aktuelle tägliche Prüfung vor.",
+      "checked": "Geprüft",
+      "noPass": "Kein bevorstehender Überflug erfasst",
+      "list": {
+        "hotspot": "Brennpunkt",
+        "conflictZone": "Konfliktzone",
+        "militaryBase": "Militärbasis",
+        "nuclearFacility": "Nuklearanlage",
+        "port": "Hafen",
+        "chokepoint": "Meerenge",
+        "reservoir": "Stausee"
+      }
+    }
+  },
+  "settings": {
+    "back": "Zurück zu Einstellungen",
+    "signIn": {
+      "label": "Anmelden",
+      "desc": "Einstellungen synchronisieren und Plan verwalten"
+    },
+    "summary": {
+      "themeAuto": "Automatisch",
+      "count": "{{on}} von {{total}}"
+    },
+    "groups": {
+      "dashboard": "Dashboard",
+      "preferences": "Präferenzen",
+      "developer": "Entwickler",
+      "app": "App"
+    },
+    "sections": {
+      "account": "Konto",
+      "map": "Karte",
+      "ai": "KI & Analyse",
+      "video": "Video & Streams",
+      "apiKeys": "API-Schlüssel",
+      "embeds": "Einbettungen",
+      "aiAgents": "KI-Agenten (MCP)",
+      "sync": "Synchronisierung, Import & Export",
+      "about": "Über"
+    },
+    "descriptions": {
+      "panels": "Anzeigen, ausblenden und neu anordnen",
+      "sources": "Regionen und Feeds",
+      "notifications": "Kanäle und Benachrichtigungsregeln",
+      "display": "Design, Schriftart und Sprache",
+      "map": "Anbieter, Design und Globus",
+      "ai": "Modelle, Speicher und Frameworks",
+      "video": "Qualität und automatische Wiedergabe",
+      "apiKeys": "Schlüssel für die World Monitor API",
+      "embeds": "Widgets für deine Website",
+      "aiAgents": "Verbundene MCP-Clients",
+      "about": "Website-Links, Bedingungen und Datenschutz"
+    },
+    "signOut": "Abmelden",
+    "signOutFailed": "Abmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+    "search": {
+      "empty": "Keine passenden Einstellungen"
+    },
+    "account": {
+      "intro": "Sehen Sie Ihren aktuellen Plan und verwalten Sie Zahlungsdetails, Rechnungen oder die Kündigung.",
+      "planFree": "Kostenlos",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium-Zugriff",
+        "desc": "Dieser Zugriff wird nicht über Ihr WorldMonitor-Konto abgerechnet. Hier sind keine Zahlungsmethode oder Rechnungen verfügbar."
+      },
+      "checking": {
+        "heading": "Plan wird überprüft…",
+        "desc": "Dies dauert normalerweise nur einen Moment."
+      },
+      "status": {
+        "cancelScheduled": "Kündigung geplant – Zugriff bis {{date}}",
+        "renews": "Verlängert sich am: {{date}}",
+        "onHold": "Ausgesetzt – bitte aktualisieren Sie die Zahlungsmethode",
+        "cancelled": "Gekündigt – Zugriff bis {{date}}",
+        "expired": "Abgelaufen",
+        "unknown": "Weitere Informationen zu Ihrem aktuellen Plan finden Sie unter „Abrechnung verwalten\".",
+        "ownerManaged": "Die Abrechnung wird von Ihrem Plan-Inhaber verwaltet."
+      },
+      "upgradeToBusiness": "Auf Business upgraden",
+      "unavailable": {
+        "heading": "Planstatus nicht verfügbar",
+        "desc": "Wir konnten Ihren aktuellen Plan nicht überprüfen. Versuchen Sie es erneut oder öffnen Sie Pläne in einem neuen Tab."
+      },
+      "free": {
+        "heading": "WorldMonitor Free",
+        "desc": "Ihr aktueller Plan ist Free. Upgraden Sie für alle Panels, KI-Analyse und bevorzugte Datenaktualisierung."
+      },
+      "portal": {
+        "openFailed": "Das Abrechnungsportal konnte nicht geöffnet werden. Bitte aktivieren Sie Pop-ups und versuchen Sie es erneut.",
+        "unavailable": "Abrechnungsportal nicht verfügbar. Schreiben Sie an support@worldmonitor.app, um Hilfe zu erhalten."
+      },
+      "deletion": {
+        "heading": "Konto löschen",
+        "desc": "Löschen Sie dieses World Monitor-Konto dauerhaft. Abos werden sofort gekündigt, ohne Rückerstattung der verbleibenden vorausbezahlten Laufzeit. API-Schlüssel, Embed-Schlüssel und MCP-Tokens funktionieren nicht mehr. Abrechnungsunterlagen, die für Buchhaltung, Streitfälle und gesetzlich zulässige Anfragen erforderlich sind, werden mit den darin enthaltenen Kundenkontaktdaten aufbewahrt; sie nennen Ihr Login-Konto nicht mehr, Webhook-Protokolle des Zahlungsanbieters, die vor der Löschung geschrieben wurden, behalten jedoch die Kennungen, mit denen sie zugestellt wurden. Dashboard-Einstellungen und Geheimnisse der Desktop-App im Schlüsselbund dieses Geräts werden nicht aus der Ferne gelöscht.",
+        "dialogTitle": "Dieses Konto löschen?",
+        "dialogCopy": "Dies kann nicht rückgängig gemacht werden. Abos werden gekündigt, Schlüssel funktionieren sofort nicht mehr, und Abrechnungsunterlagen werden für Buchhaltung, Streitigkeiten und gesetzliche Anfragen aufbewahrt – einschließlich der Kontaktdetails, die sie enthalten. Melden Sie sich auf anderen Geräten ab und löschen Sie danach die Website-Daten dieses Geräts – diese sind außerhalb der Reichweite des Servers.",
+        "phraseLabel": "Geben Sie {{phrase}} ein, um zu bestätigen",
+        "deleted": "Konto gelöscht. Melden Sie sich auf anderen Geräten ab und löschen Sie die Website-Daten dieses Geräts.",
+        "failed": "Kontolöschung fehlgeschlagen. Versuchen Sie es erneut."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} verwendet",
+        "invite": "Einladung senden",
+        "inviting": "Wird eingeladen...",
+        "remove": "Entfernen",
+        "removing": "Wird entfernt...",
+        "inviteSent": "Einladung gesendet",
+        "alreadyInvited": "Bereits eingeladen"
+      },
+      "businessSeats": {
+        "heading": "Business-Plätze",
+        "statusAccepted": "Akzeptiert",
+        "statusExpired": "Abgelaufen",
+        "statusPending": "Ausstehend",
+        "expires": "Verfällt {{date}}",
+        "hintCorporate": "Laden Sie Teamkollegen von jeder Unternehmensdomäne ein.",
+        "hintPersonal": "Fügen Sie eine Unternehmens-E-Mail hinzu, um Teamkollegen einzuladen.",
+        "personalDomain": "Kostenlose oder Wegwerf-E-Mail-Domänen können keine Teamkollegen einladen. Fügen Sie eine Unternehmens-E-Mail hinzu, um diese Funktion zu nutzen.",
+        "empty": "Noch keine Teamkollegen eingeladen.",
+        "confirmRemove": "Diesen Platz entfernen? Der Eingeladene verliert sofort Pro-Zugriff.",
+        "removed": "Platz entfernt",
+        "alreadyInactive": "Platz war bereits inaktiv",
+        "loadFailed": "Plätze konnten nicht geladen werden",
+        "inviteFailed": "Einladung konnte nicht gesendet werden",
+        "removeFailed": "Platz konnte nicht entfernt werden",
+        "errors": {
+          "seatCap": "Alle 4 Plätze sind belegt. Entfernen Sie zuerst einen Platz.",
+          "ownerDomain": "Ihre Konto-E-Mail muss eine Unternehmensdomäne sein, um Teamkollegen einzuladen.",
+          "self": "Sie können sich nicht selbst einladen.",
+          "inviteeDomain": "Die E-Mail des Eingeladenen muss eine Unternehmensdomäne sein.",
+          "rateLimited": "Sie haben das Maximum von 20 Einladungen innerhalb eines rollierenden 24-Stunden-Zeitraums erreicht. Bitte warten Sie, bevor Sie weitere Teammitglieder einladen."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "Enterprise-Plätze für {{account}}",
+        "memberHint": "Der Kontoadministrator fügt Personen auf diesem Konto hinzu und entfernt sie.",
+        "hintFull": "Alle Plätze sind in Gebrauch. Entfernen Sie jemanden oder ziehen Sie eine Einladung zurück, um einen Platz freizugeben.",
+        "hintOpen": "Laden Sie Personen per Unternehmens-E-Mail ein. Sie erhalten einen Link, der 14 Tage lang gültig ist, und teilen sich das Kontingent dieses Kontos.",
+        "emailLabel": "E-Mail-Adresse zum Einladen",
+        "statusActive": "Aktiv",
+        "statusExpired": "Einladung abgelaufen",
+        "statusInvited": "Eingeladen",
+        "emailFailed": "Die Einladungs-E-Mail konnte nicht gesendet werden. Überprüfen Sie die Adresse, ziehen Sie dann die Einladung zurück und laden Sie erneut ein.",
+        "inviteExpires": "Einladung verfällt {{date}}",
+        "roleAdmin": "Administrator",
+        "you": "Sie",
+        "withdraw": "Zurückziehen",
+        "unknownEmail": "Unbekannte E-Mail",
+        "alreadyMember": "Bereits Mitglied",
+        "confirmRemove": "{{email}} entfernen? Diese Person verliert sofort Enterprise-Zugriff.",
+        "confirmRemoveUnknown": "Diese Person entfernen? Sie verliert sofort Enterprise-Zugriff.",
+        "confirmWithdraw": "Einladung an {{email}} zurückziehen?",
+        "confirmWithdrawUnknown": "Einladung an diese Adresse zurückziehen?",
+        "removed": "Mitglied entfernt",
+        "withdrawn": "Einladung zurückgezogen",
+        "loadFailed": "Plätze konnten nicht geladen werden. Versuchen Sie es erneut.",
+        "inviteFailed": "Einladung konnte nicht gesendet werden. Versuchen Sie es erneut.",
+        "removeFailed": "Entfernen fehlgeschlagen. Versuchen Sie es erneut.",
+        "errors": {
+          "seatCap": "Alle Plätze sind belegt. Entfernen Sie zuerst jemanden oder ziehen Sie eine Einladung zurück.",
+          "inviteeDomain": "Laden Sie eine Unternehmens-E-Mail-Adresse ein. Kostenlose und Wegwerf-E-Mail-Domänen werden nicht akzeptiert.",
+          "self": "Sie haben bereits einen Platz.",
+          "contractEnded": "Ihr Enterprise-Vertrag ist abgelaufen. Kontaktieren Sie den Support, um ihn zu erneuern.",
+          "notAdmin": "Nur der Kontoadministrator kann Plätze verwalten.",
+          "removeSelf": "Sie können Ihren eigenen Platz nicht entfernen. Kontaktieren Sie den Support, um den Administrator zu ändern.",
+          "tooMany": "Laden Sie maximal 10 Personen gleichzeitig ein.",
+          "rateLimited": "Sie haben die maximale Anzahl von Einladungen pro Tag versendet. Versuchen Sie es morgen erneut."
+        }
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "Layout",
+        "1": "Widgets",
+        "2": "Textgröße",
+        "3": "Layout zurücksetzen"
+      },
+      "sources": {
+        "0": "Nachrichten",
+        "1": "Feeds",
+        "2": "RSS",
+        "3": "Regionen",
+        "4": "Berichterstattung"
+      },
+      "notifications": {
+        "0": "Benachrichtigungen",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "E-Mail",
+        "4": "Discord",
+        "5": "Webhook",
+        "6": "Push"
+      },
+      "display": {
+        "0": "Design",
+        "1": "Dunkel",
+        "2": "Hell",
+        "3": "Schriftart",
+        "4": "Sprache",
+        "5": "Textgröße"
+      },
+      "map": {
+        "0": "Globus",
+        "1": "Anbieter",
+        "2": "Kacheln",
+        "3": "Basiskarte"
+      },
+      "ai": {
+        "0": "KI",
+        "1": "Ollama",
+        "2": "Frameworks",
+        "3": "Überschriftenspeicher",
+        "4": "Browser-Modell"
+      },
+      "video": {
+        "0": "Stream",
+        "1": "Automatische Wiedergabe",
+        "2": "Qualität",
+        "3": "Live"
+      },
+      "apiKeys": {
+        "0": "Schlüssel",
+        "1": "Token",
+        "2": "Desktop-Schlüssel"
+      },
+      "embeds": {
+        "0": "Widget",
+        "1": "iframe",
+        "2": "Einbettungsschlüssel"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "Agenten",
+        "3": "ChatGPT",
+        "4": "Clients"
+      },
+      "sync": {
+        "0": "Importieren",
+        "1": "Exportieren",
+        "2": "Sicherung",
+        "3": "Cloud"
+      },
+      "about": {
+        "0": "Bedingungen",
+        "1": "Datenschutz",
+        "2": "Lizenz",
+        "3": "Rechtliches"
+      },
+      "account": {
+        "0": "Plan",
+        "1": "Abrechnung",
+        "2": "Abonnement",
+        "3": "Rechnung",
+        "4": "Plätze",
+        "5": "Abmelden",
+        "6": "Konto löschen"
+      }
+    },
+    "reservoirAlert": {
+      "title": "Wasserstands-Warnungen",
+      "description": "Warnung, wenn der Lidar-Wasserstand eines strategischen Stausees niedrig ist. Die NASA veröffentlicht jeden Satellitenpass etwa zwei Monate nach der Messung, daher enthält jede Warnung das Messdatum.",
+      "scopeHint": "Wählen Sie bis zu {{max}} Stauseen. Warnungen gelten nur für die hier aufgeführten Stauseen.",
+      "searchPlaceholder": "Stausee nach Name hinzufügen",
+      "searchLabel": "Stausee hinzufügen",
+      "removeLabel": "{{name}} entfernen",
+      "thresholdLabel": "Pegelschwelle",
+      "thresholdHint": "Warnung, wenn der zuletzt gemessene Pegel unter diesem Prozentsatz der gemessenen Spannweite des Stausees liegt, wobei 0 der niedrigste gemessene Pegel und 100 der höchste ist. Lassen Sie das Feld leer, um keine Schwelle zu setzen.",
+      "thresholdInputLabel": "Pegelschwelle, Prozent der gemessenen Spannweite",
+      "seasonalLabel": "Rückgang unter die saisonale Basislinie",
+      "seasonalHint": "Warnung, wenn der zuletzt gemessene Pegel deutlich unter dem liegt, was dieser Stausee normalerweise zu dieser Jahreszeit aufweist.",
+      "quietNote": "Diese Benachrichtigungen treffen ein, auch wenn Echtzeit-Benachrichtigungen nur auf kritisch eingestellt sind. Ruhezeiten stellen sie stumm.",
+      "quietNoteBatch": "Diese Benachrichtigungen treffen ein, auch wenn Echtzeit-Benachrichtigungen nur auf kritisch eingestellt sind. Ruhezeiten stellen sie stumm oder halten sie bis zum Ende der Ruhezeiten zurück, wenn Sie Batch wählen."
+    },
+    "briefLanguage": {
+      "label": "Sprache des Briefings",
+      "hint": "Ihr tägliches Briefing wird auf {{language}} verfasst.",
+      "sameAsApp": "Wie die App-Sprache",
+      "loadFailed": "Fehler beim Laden",
+      "saveFailed": "Das konnte nicht gespeichert werden. Versuche es nochmal."
     }
   }
 }
