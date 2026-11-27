@@ -837,6 +837,9 @@ export const confirmProActivationPresentation = mutation({
 const MAX_PRO_ACTIVATION_OUTCOME_REVISION =
   proActivationStepIdValidator.members.length + 2;
 const MAX_PRO_ACTIVATION_SESSION_FUTURE_SKEW_MS = 5 * 60 * 1000;
+// Bounds the per-row list of skew-refused nonces; one subscription sees a
+// handful of day-0 sessions, so older entries are dropped first.
+const MAX_PRO_ACTIVATION_UNORDERED_NONCES = 8;
 
 /**
  * Open the day-0 (post-checkout) activation record (#5621).
@@ -891,13 +894,21 @@ export const openProActivationDay0Presentation = mutation({
     // runs fast. Throwing would leave that subscriber with no row at all, so
     // the session is handled as unordered: it can open or replay its own row
     // but never outranks another session, and the future value is not stored.
-    const sessionStartedAt =
+    // The nonce is remembered on the row, because the same start replayed a
+    // few minutes later falls inside the window and would otherwise be
+    // trusted as an order it was refused the first time.
+    const orderDropped =
       args.sessionStartedAt !== undefined &&
-      args.sessionStartedAt <= now + MAX_PRO_ACTIVATION_SESSION_FUTURE_SKEW_MS
-        ? args.sessionStartedAt
-        : undefined;
+      args.sessionStartedAt > now + MAX_PRO_ACTIVATION_SESSION_FUTURE_SKEW_MS;
 
     const existing = await activationPresentationForCohort(ctx, args.activationKey, "day0");
+    const knownUnordered = existing?.unorderedClaimNonces ?? [];
+    const unordered = orderDropped || knownUnordered.includes(args.claimNonce);
+    const sessionStartedAt = unordered ? undefined : args.sessionStartedAt;
+    const unorderedClaimNonces = orderDropped && !knownUnordered.includes(args.claimNonce)
+      ? [...knownUnordered, args.claimNonce].slice(-MAX_PRO_ACTIVATION_UNORDERED_NONCES)
+      : undefined;
+
     if (existing === null) {
       await ctx.db.insert("proActivationPresentations", {
         userId,
@@ -908,6 +919,7 @@ export const openProActivationDay0Presentation = mutation({
         ...(sessionStartedAt !== undefined
           ? { sessionStartedAt }
           : {}),
+        ...(unorderedClaimNonces !== undefined ? { unorderedClaimNonces } : {}),
         // Day-0 has no confirm handshake, so presentation is recorded here —
         // before the interstitial renders — to keep a subscriber who closes
         // the tab immediately inside the cohort instead of invisible.
@@ -918,6 +930,9 @@ export const openProActivationDay0Presentation = mutation({
     }
     if (existing.exitedAt !== undefined) {
       return { status: "already_recorded" as const };
+    }
+    if (unorderedClaimNonces !== undefined) {
+      await ctx.db.patch(existing._id, { unorderedClaimNonces });
     }
     if (existing.claimNonce === args.claimNonce) {
       if (

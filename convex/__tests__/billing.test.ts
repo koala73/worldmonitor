@@ -6916,6 +6916,85 @@ describe("Pro activation — day-0 outcome rows (#5621)", () => {
 
       const [row] = await readCohort(t, activationKey, "day0");
       expect(row?.claimNonce).toBe("fast-tab");
+      // The replay must not attach the future value it was refused earlier.
+      expect(row?.sessionStartedAt).toBeUndefined();
+
+      // So an honest session that started after the server clock moved on
+      // still takes the row.
+      const honest = await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        { activationKey, claimNonce: "honest-tab", sessionStartedAt: NOW + 3 * 60 * 1000 },
+      );
+      expect(honest.status).toBe("opened");
+    });
+
+    test("cannot take a row back from an honest owner once its start enters the window", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(NOW);
+      const t = convexTest(schema, modules);
+      const activationKey = await seedProSubscription(t, "activation_day0_fast_take_back");
+      const fastStart = NOW + FAST;
+
+      await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        { activationKey, claimNonce: "fast-tab", sessionStartedAt: fastStart },
+      );
+      vi.setSystemTime(NOW + 60 * 1000);
+      await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        { activationKey, claimNonce: "honest-tab", sessionStartedAt: NOW + 60 * 1000 },
+      );
+      await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.recordProActivationOutcome,
+        {
+          activationKey,
+          claimNonce: "honest-tab",
+          cohort: "day0" as const,
+          confirmedSteps: ["brief"],
+          skippedSteps: [],
+          failedSteps: [],
+          revision: 1,
+          finalized: false,
+        },
+      );
+
+      vi.setSystemTime(NOW + 2 * 60 * 1000);
+      const takeBack = await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        { activationKey, claimNonce: "fast-tab", sessionStartedAt: fastStart },
+      );
+      expect(takeBack.status).toBe("superseded");
+
+      const [row] = await readCohort(t, activationKey, "day0");
+      expect(row?.claimNonce).toBe("honest-tab");
+      expect(row?.confirmedSteps).toEqual(["brief"]);
+    });
+
+    test("a superseded fast-clock session stays unordered when it later enters the window", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(NOW);
+      const t = convexTest(schema, modules);
+      const activationKey = await seedProSubscription(t, "activation_day0_fast_superseded");
+
+      await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        { activationKey, claimNonce: "honest-tab", sessionStartedAt: NOW },
+      );
+      const first = await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        { activationKey, claimNonce: "fast-tab", sessionStartedAt: NOW + FAST },
+      );
+      expect(first.status).toBe("superseded");
+
+      vi.setSystemTime(NOW + 2 * 60 * 1000);
+      const replay = await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        { activationKey, claimNonce: "fast-tab", sessionStartedAt: NOW + FAST },
+      );
+      expect(replay.status).toBe("superseded");
+
+      const [row] = await readCohort(t, activationKey, "day0");
+      expect(row?.claimNonce).toBe("honest-tab");
     });
   });
 
