@@ -79,11 +79,14 @@
 *Could not find public function for 'broadcast/audienceWaveExport:assignAndExportWave'*
 *Could not find public function for 'broadcast/backfillCanaryWaveStamps:_stampWaveByNormalizedEmail'*
 *Could not find public function for 'broadcast/backfillCanaryWaveStamps:backfillCanary250'*
-*Could not find public function for 'broadcast/blackFriday:_accountsPage'*
+*Could not find public function for 'broadcast/blackFriday:_accountsExist'*
 *Could not find public function for 'broadcast/blackFriday:_campaignState'*
 *Could not find public function for 'broadcast/blackFriday:_ineligibleNow'*
+*Could not find public function for 'broadcast/blackFriday:_registrationStamps'*
+*Could not find public function for 'broadcast/blackFriday:_scanRegistrationsPage'*
+*Could not find public function for 'broadcast/blackFriday:_scanUsersPage'*
 *Could not find public function for 'broadcast/blackFriday:_setKillGate'*
-*Could not find public function for 'broadcast/blackFriday:_waitlistPage'*
+*Could not find public function for 'broadcast/blackFriday:_smallTablePage'*
 *Could not find public function for 'broadcast/blackFriday:blackFridayAudience'*
 *Could not find public function for 'broadcast/blackFriday:blackFridayHealth'*
 *Could not find public function for 'broadcast/blackFriday:clearBlackFridayKillGate'*

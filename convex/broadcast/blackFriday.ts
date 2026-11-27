@@ -86,8 +86,37 @@ export const MAX_HOLD_MS = 6 * 60 * 60 * 1000;
 /** The first waitlist wave is a canary: these addresses have not been emailed in months. */
 export const WAITLIST_CANARY_MAX = 500;
 
-const USERS_PAGE_SIZE = 200;
-const REGISTRATIONS_PAGE_SIZE = 300;
+/**
+ * Scan cost. The audience scan reads every account and every registration,
+ * about 50k and 48k in November 2026, from one action. Reading each row's
+ * facts with its own indexed lookups, one after another, took about 7
+ * sequential reads per account and 15 minutes in all, so the scan now:
+ *
+ *   - loads the small tables (suppressions, enterprise seats, subscriptions,
+ *     entitlements, account deletions, customers) once per scan, a few
+ *     thousand rows each, and classifies in the action;
+ *   - keeps one indexed lookup per row against the other big table (an
+ *     account's registration stamp, a registration's account), batched
+ *     LOOKUP_CHUNK_SIZE to a query, LOOKUP_CONCURRENCY chunks at a time;
+ *   - fetches the next page while the current page's lookups run.
+ *
+ * Every query stays far inside Convex's per-transaction limits (4,096 index
+ * ranges, 32,000 documents, 16 MiB read): a page is 1 range and
+ * SCAN_PAGE_SIZE documents, a lookup chunk is LOOKUP_CHUNK_SIZE ranges. At
+ * most LOOKUP_CONCURRENCY + 1 of the scan's queries run at once, a small share
+ * of the deployment's concurrent queries (16 on the smallest class).
+ */
+const SCAN_PAGE_SIZE = 1000;
+/** Subscriptions carry the stored Dodo payload, so they come in smaller pages. */
+const SUBSCRIPTIONS_PAGE_SIZE = 200;
+const LOOKUP_CHUNK_SIZE = 250;
+const LOOKUP_CONCURRENCY = 4;
+/**
+ * `_ineligibleNow` classifies this many emails at once. Each reads up to 6
+ * lookups at a time, so at most 300 are in flight, under Convex's 1,000
+ * concurrent IO operations per function.
+ */
+const RECHECK_CONCURRENCY = 50;
 const PERSIST_CHUNK_SIZE = 500;
 const DEFAULT_BATCH_SIZE = 250;
 
@@ -97,7 +126,7 @@ const recipientValidator = v.union(v.literal("account"), v.literal("waitlist"));
 type RampConfigRow = Doc<"broadcastRampConfig">;
 
 // ───────────────────────────────────────────────────────────────────────────
-// Audience pages (read-only)
+// Audience rules over rows (shared by the scan and the export re-check)
 // ───────────────────────────────────────────────────────────────────────────
 
 /** One scanned row: an email, where it landed, and whether the send is already stamped. */
@@ -111,61 +140,143 @@ type AudienceRow = {
   launchStamped: boolean;
 };
 
-type AudiencePage = { rows: AudienceRow[]; isDone: boolean; continueCursor: string; scanned: number };
+/** The fields of a `users` row the rules read. */
+type ScanUser = Pick<
+  Doc<"users">,
+  "userId" | "normalizedEmail" | "localeTag" | "localePrimary" | "blackFridayLaunchWave" | "blackFridayLastDayWave"
+>;
+/** The fields of a `registrations` row the rules read. */
+type ScanRegistration = Pick<Doc<"registrations">, "normalizedEmail" | "blackFridayLaunchWave" | "blackFridayLastDayWave">;
 
-/** Classify one `users` row from the live tables. */
-async function classifyUserRow(ctx: QueryCtx, user: Doc<"users">, send: BlackFridaySend, now: number): Promise<AudienceRow> {
+/** What the small tables say about one account. */
+type AccountReads = {
+  suppressed: boolean;
+  deleting: boolean;
+  enterpriseMemberActive: boolean;
+  subscriptions: Doc<"subscriptions">[];
+  entitlement: Doc<"entitlements"> | null;
+};
+
+/**
+ * An account's outcome before the registration-stamp check. `checkRegistration`
+ * is set when that check can still change `stamped`: an eligible account
+ * whose own row carries no stamp.
+ */
+function accountOutcome(
+  user: ScanUser,
+  send: BlackFridaySend,
+  now: number,
+  reads: AccountReads,
+): { row: AudienceRow; checkRegistration: boolean } {
   const field = stampFieldFor(send);
   const email = user.normalizedEmail;
   const locale = accountLocale(user);
-  if (!email) return { email: "", outcome: "x:no-email", locale, stamped: false, launchStamped: false };
-  const suppression = await ctx.db
-    .query("emailSuppressions")
-    .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
-    .first();
+  if (!email) {
+    return { row: { email: "", outcome: "x:no-email", locale, stamped: false, launchStamped: false }, checkRegistration: false };
+  }
   // Every suppression reason excludes: bounce, complaint, manual, unsubscribe.
-  if (suppression !== null) return { email, outcome: "x:suppressed", locale, stamped: false, launchStamped: false };
-  const memberByUser = await ctx.db
-    .query("enterpriseMembers")
-    .withIndex("by_userId", (q) => q.eq("userId", user.userId))
-    .collect();
-  const memberByEmail = await ctx.db
-    .query("enterpriseMembers")
-    .withIndex("by_email", (q) => q.eq("email", email))
-    .collect();
-  const subscriptions = await ctx.db
-    .query("subscriptions")
-    .withIndex("by_userId", (q) => q.eq("userId", user.userId))
-    // Every row: an on-hold or covering subscription must never fall outside a cap.
-    .collect();
-  const entitlement = await ctx.db
-    .query("entitlements")
-    .withIndex("by_userId", (q) => q.eq("userId", user.userId))
-    .first();
+  // Checked before the rules, so a suppressed row is "suppressed" even when its
+  // address would fail the rules' own email check.
+  if (reads.suppressed) {
+    return { row: { email, outcome: "x:suppressed", locale, stamped: false, launchStamped: false }, checkRegistration: false };
+  }
   const result = classifyAccount(
     {
       normalizedEmail: email,
       suppressed: false,
-      deleting: await isAccountDeleting(ctx, user.userId),
-      enterpriseMemberActive: [...memberByUser, ...memberByEmail].some((m) => m.status === "active"),
-      subscriptions,
-      entitlement,
+      deleting: reads.deleting,
+      enterpriseMemberActive: reads.enterpriseMemberActive,
+      subscriptions: reads.subscriptions,
+      entitlement: reads.entitlement,
     },
     now,
     OFFER_STARTS_AT_MS,
   );
   const outcome = result.eligible ? result.group : `x:${result.reason}`;
-  let stamped = user[field] !== undefined;
-  if (!stamped && result.eligible) {
+  const stamped = user[field] !== undefined;
+  return {
+    row: { email, outcome, locale, stamped, launchStamped: false },
     // A waitlist contact who signed up mid-campaign carries the stamp on
     // the registration, not on the new account.
-    const registration = await ctx.db
-      .query("registrations")
+    checkRegistration: !stamped && result.eligible,
+  };
+}
+
+/** What the other tables say about one registration's email. */
+type WaitlistReads = { suppressed: boolean; hasAccount: boolean; isCustomer: boolean };
+
+function waitlistOutcome(registration: ScanRegistration, send: BlackFridaySend, reads: WaitlistReads): AudienceRow {
+  const field = stampFieldFor(send);
+  const email = registration.normalizedEmail;
+  if (!email) return { email: "", outcome: "x:no-email", locale: "en", stamped: false, launchStamped: false };
+  const result = classifyWaitlist({ normalizedEmail: email, ...reads });
+  return {
+    email,
+    outcome: result.eligible ? "waitlist" : `x:${result.reason}`,
+    locale: waitlistLocale(email),
+    stamped: registration[field] !== undefined,
+    launchStamped: registration.blackFridayLaunchWave !== undefined,
+  };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Export re-check: one row at a time, from indexed lookups
+// ───────────────────────────────────────────────────────────────────────────
+
+async function registrationStamped(ctx: QueryCtx, email: string, send: BlackFridaySend): Promise<boolean> {
+  const registration = await ctx.db
+    .query("registrations")
+    .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
+    .first();
+  return registration !== null && registration[stampFieldFor(send)] !== undefined;
+}
+
+async function accountExists(ctx: QueryCtx, email: string): Promise<boolean> {
+  const account = await ctx.db
+    .query("users")
+    .withIndex("by_normalizedEmail", (q) => q.eq("normalizedEmail", email))
+    .first();
+  return account !== null;
+}
+
+/** Classify one `users` row from the live tables. */
+async function classifyUserRow(ctx: QueryCtx, user: Doc<"users">, send: BlackFridaySend, now: number): Promise<AudienceRow> {
+  const email = user.normalizedEmail;
+  const noReads: AccountReads = { suppressed: false, deleting: false, enterpriseMemberActive: false, subscriptions: [], entitlement: null };
+  if (!email) return accountOutcome(user, send, now, noReads).row;
+  const [suppression, memberByUser, memberByEmail, subscriptions, entitlement, deleting] = await Promise.all([
+    ctx.db
+      .query("emailSuppressions")
       .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
-      .first();
-    stamped = registration !== null && registration[field] !== undefined;
-  }
-  return { email, outcome, locale, stamped, launchStamped: false };
+      .first(),
+    ctx.db
+      .query("enterpriseMembers")
+      .withIndex("by_userId", (q) => q.eq("userId", user.userId))
+      .collect(),
+    ctx.db
+      .query("enterpriseMembers")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .collect(),
+    ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", user.userId))
+      // Every row: an on-hold or covering subscription must never fall outside a cap.
+      .collect(),
+    ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", user.userId))
+      .first(),
+    isAccountDeleting(ctx, user.userId),
+  ]);
+  const { row, checkRegistration } = accountOutcome(user, send, now, {
+    suppressed: suppression !== null,
+    deleting,
+    enterpriseMemberActive: [...memberByUser, ...memberByEmail].some((m) => m.status === "active"),
+    subscriptions,
+    entitlement,
+  });
+  if (checkRegistration) row.stamped = await registrationStamped(ctx, email, send);
+  return row;
 }
 
 /**
@@ -178,7 +289,16 @@ async function legacyCustomerEmailSet(ctx: QueryCtx): Promise<ReadonlySet<string
     .query("customers")
     .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", undefined))
     .collect();
-  return new Set(rows.map((row) => (row.email ?? "").trim().toLowerCase()).filter((email) => email.length > 0));
+  return legacyCustomerEmails(rows);
+}
+
+function legacyCustomerEmails(rows: ReadonlyArray<Pick<Doc<"customers">, "email" | "normalizedEmail">>): Set<string> {
+  return new Set(
+    rows
+      .filter((row) => row.normalizedEmail === undefined)
+      .map((row) => (row.email ?? "").trim().toLowerCase())
+      .filter((email) => email.length > 0),
+  );
 }
 
 /** Classify one `registrations` row as a waitlist contact, or excluded. */
@@ -186,70 +306,117 @@ async function classifyRegistrationRow(
   ctx: QueryCtx,
   registration: Doc<"registrations">,
   send: BlackFridaySend,
-  legacyCustomerEmails: ReadonlySet<string>,
+  legacyEmails: ReadonlySet<string>,
 ): Promise<AudienceRow> {
-  const field = stampFieldFor(send);
   const email = registration.normalizedEmail;
-  if (!email) return { email: "", outcome: "x:no-email", locale: "en", stamped: false, launchStamped: false };
+  if (!email) return waitlistOutcome(registration, send, { suppressed: false, hasAccount: false, isCustomer: false });
   const suppression = await ctx.db
     .query("emailSuppressions")
     .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
     .first();
-  const account = suppression
-    ? null
-    : await ctx.db
-        .query("users")
-        .withIndex("by_normalizedEmail", (q) => q.eq("normalizedEmail", email))
-        .first();
+  const hasAccount = suppression ? false : await accountExists(ctx, email);
   const customer =
-    suppression || account
+    suppression || hasAccount
       ? null
       : await ctx.db
           .query("customers")
           .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
           .first();
-  // `customers` rows written before normalizedEmail existed carry only `email`.
-  // The table is small next to the waitlist, so the action passes those in.
-  const legacyCustomer = legacyCustomerEmails.has(email);
-  const result = classifyWaitlist({
-    normalizedEmail: email,
+  return waitlistOutcome(registration, send, {
     suppressed: suppression !== null,
-    hasAccount: account !== null,
-    isCustomer: customer !== null || legacyCustomer,
+    hasAccount,
+    // `customers` rows written before normalizedEmail existed carry only `email`.
+    isCustomer: customer !== null || legacyEmails.has(email),
   });
-  return {
-    email,
-    outcome: result.eligible ? "waitlist" : `x:${result.reason}`,
-    locale: waitlistLocale(email),
-    stamped: registration[field] !== undefined,
-    launchStamped: registration.blackFridayLaunchWave !== undefined,
-  };
 }
 
-/**
- * One page of `users`, each classified with the rules in
- * _blackFridayAudience.ts from the live tables.
- */
-export const _accountsPage = internalQuery({
-  args: { cursor: v.union(v.string(), v.null()), send: sendValidator },
-  handler: async (ctx, { cursor, send }): Promise<AudiencePage> => {
-    const now = Date.now();
-    const page = await ctx.db.query("users").paginate({ cursor, numItems: USERS_PAGE_SIZE });
-    const rows: AudienceRow[] = [];
-    for (const user of page.page) rows.push(await classifyUserRow(ctx, user, send, now));
-    return { rows, isDone: page.isDone, continueCursor: page.continueCursor, scanned: page.page.length };
+/** `fn` over `items`, at most `concurrency` at a time, results in order. */
+async function mapConcurrently<T, R>(items: readonly T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += concurrency) {
+    out.push(...(await Promise.all(items.slice(i, i + concurrency).map(fn))));
+  }
+  return out;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Scan queries (read-only)
+// ───────────────────────────────────────────────────────────────────────────
+
+const smallTableValidator = v.union(
+  v.literal("emailSuppressions"),
+  v.literal("enterpriseMembers"),
+  v.literal("subscriptions"),
+  v.literal("entitlements"),
+  v.literal("accountDeletions"),
+  v.literal("customers"),
+);
+type SmallTable = "emailSuppressions" | "enterpriseMembers" | "subscriptions" | "entitlements" | "accountDeletions" | "customers";
+
+type TablePage<T> = { page: T[]; isDone: boolean; continueCursor: string };
+
+/** One page of a small table, in creation order. */
+export const _smallTablePage = internalQuery({
+  args: { table: smallTableValidator, cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { table, cursor }): Promise<TablePage<Doc<SmallTable>>> => {
+    const numItems = table === "subscriptions" ? SUBSCRIPTIONS_PAGE_SIZE : SCAN_PAGE_SIZE;
+    const page = await ctx.db.query(table).paginate({ cursor, numItems });
+    return { page: page.page, isDone: page.isDone, continueCursor: page.continueCursor };
   },
 });
 
-/** One page of `registrations`, each classified as a waitlist contact or excluded. */
-export const _waitlistPage = internalQuery({
-  args: { cursor: v.union(v.string(), v.null()), send: sendValidator },
-  handler: async (ctx, { cursor, send }): Promise<AudiencePage> => {
-    const page = await ctx.db.query("registrations").paginate({ cursor, numItems: REGISTRATIONS_PAGE_SIZE });
-    const rows: AudienceRow[] = [];
-    const legacy = await legacyCustomerEmailSet(ctx);
-    for (const registration of page.page) rows.push(await classifyRegistrationRow(ctx, registration, send, legacy));
-    return { rows, isDone: page.isDone, continueCursor: page.continueCursor, scanned: page.page.length };
+/** One page of `users`, only the fields the rules read. */
+export const _scanUsersPage = internalQuery({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { cursor }): Promise<TablePage<ScanUser>> => {
+    const page = await ctx.db.query("users").paginate({ cursor, numItems: SCAN_PAGE_SIZE });
+    return {
+      page: page.page.map((user) => ({
+        userId: user.userId,
+        normalizedEmail: user.normalizedEmail,
+        localeTag: user.localeTag,
+        localePrimary: user.localePrimary,
+        blackFridayLaunchWave: user.blackFridayLaunchWave,
+        blackFridayLastDayWave: user.blackFridayLastDayWave,
+      })),
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+/** One page of `registrations`, only the fields the rules read. */
+export const _scanRegistrationsPage = internalQuery({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { cursor }): Promise<TablePage<ScanRegistration>> => {
+    const page = await ctx.db.query("registrations").paginate({ cursor, numItems: SCAN_PAGE_SIZE });
+    return {
+      page: page.page.map((registration) => ({
+        normalizedEmail: registration.normalizedEmail,
+        blackFridayLaunchWave: registration.blackFridayLaunchWave,
+        blackFridayLastDayWave: registration.blackFridayLastDayWave,
+      })),
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+/** For each email, whether its registration carries this send's stamp. In order. */
+export const _registrationStamps = internalQuery({
+  args: { send: sendValidator, emails: v.array(v.string()) },
+  handler: async (ctx, { send, emails }): Promise<boolean[]> => {
+    if (emails.length > LOOKUP_CHUNK_SIZE) throw new Error(`[_registrationStamps] at most ${LOOKUP_CHUNK_SIZE} emails`);
+    return Promise.all(emails.map((email) => registrationStamped(ctx, email, send)));
+  },
+});
+
+/** For each email, whether a `users` row has it. In order. */
+export const _accountsExist = internalQuery({
+  args: { emails: v.array(v.string()) },
+  handler: async (ctx, { emails }): Promise<boolean[]> => {
+    if (emails.length > LOOKUP_CHUNK_SIZE) throw new Error(`[_accountsExist] at most ${LOOKUP_CHUNK_SIZE} emails`);
+    return Promise.all(emails.map((email) => accountExists(ctx, email)));
   },
 });
 
@@ -259,6 +426,8 @@ export const _waitlistPage = internalQuery({
  * returns the emails that are no longer in this run's segment. A large wave
  * takes hours to push, and someone who bought, switched, unsubscribed or
  * bounced since the pick must not be added.
+ *
+ * Reads at most 8 index ranges per email (2,000 for a 250-contact batch).
  */
 export const _ineligibleNow = internalQuery({
   args: {
@@ -271,33 +440,31 @@ export const _ineligibleNow = internalQuery({
   handler: async (ctx, args): Promise<string[]> => {
     const now = Date.now();
     const groups = groupsFor(args.version as BlackFridayVersion, args.recipient) ?? [];
-    const dropped: string[] = [];
-    let legacy: ReadonlySet<string> | undefined;
-    for (const email of args.emails) {
-      let row: AudienceRow | null = null;
+    const legacy = args.recipient === "waitlist" ? await legacyCustomerEmailSet(ctx) : new Set<string>();
+    const rows = await mapConcurrently(args.emails, RECHECK_CONCURRENCY, async (email): Promise<AudienceRow | null> => {
       if (args.recipient === "account") {
         const user = await ctx.db
           .query("users")
           .withIndex("by_normalizedEmail", (q) => q.eq("normalizedEmail", email))
           .first();
-        row = user ? await classifyUserRow(ctx, user, args.send, now) : null;
-      } else {
-        const registration = await ctx.db
-          .query("registrations")
-          .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
-          .first();
-        legacy ??= await legacyCustomerEmailSet(ctx);
-        row = registration ? await classifyRegistrationRow(ctx, registration, args.send, legacy) : null;
+        return user ? classifyUserRow(ctx, user, args.send, now) : null;
       }
+      const registration = await ctx.db
+        .query("registrations")
+        .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
+        .first();
+      return registration ? classifyRegistrationRow(ctx, registration, args.send, legacy) : null;
+    });
+    return args.emails.filter((_email, i) => {
+      const row = rows[i]!;
       const stillInSegment =
         row !== null &&
         (groups as readonly string[]).includes(row.outcome) &&
         row.locale === args.locale &&
         // Stamped by another wave of this send since the pick.
         !row.stamped;
-      if (!stillInSegment) dropped.push(email);
-    }
-    return dropped;
+      return !stillInSegment;
+    });
   },
 });
 
@@ -320,7 +487,7 @@ export type BlackFridayAudienceReport = {
 };
 
 /** Uniform sample of at most `size` items from a stream (Algorithm R, as in waveRuns.ts). */
-class Reservoir<T> {
+export class Reservoir<T> {
   private readonly buf: T[] = [];
   private seen = 0;
   constructor(private readonly size: number) {}
@@ -349,11 +516,119 @@ type ScanCtx = {
   runQuery: (ref: any, args: any) => Promise<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 };
 
+/** Every row of a small table, in creation order. */
+async function loadSmallTable<T extends SmallTable>(ctx: ScanCtx, table: T): Promise<Doc<T>[]> {
+  const rows: Doc<T>[] = [];
+  let cursor: string | null = null;
+  while (true) {
+    const page: TablePage<Doc<T>> = await ctx.runQuery(internal.broadcast.blackFriday._smallTablePage, { table, cursor });
+    rows.push(...page.page);
+    if (page.isDone) return rows;
+    cursor = page.continueCursor;
+  }
+}
+
+/**
+ * The small tables as the indexed lookups would answer them: each map is
+ * keyed on the exact field its index uses, and rows keep creation order (an
+ * index's order within one key), so "first" is the same row.
+ */
+type AccountTables = {
+  suppressed: ReadonlySet<string>;
+  deleting: ReadonlySet<string>;
+  activeMemberUserIds: ReadonlySet<string>;
+  activeMemberEmails: ReadonlySet<string>;
+  subscriptions: ReadonlyMap<string, Doc<"subscriptions">[]>;
+  entitlements: ReadonlyMap<string, Doc<"entitlements">>;
+};
+type WaitlistTables = {
+  suppressed: ReadonlySet<string>;
+  customerEmails: ReadonlySet<string>;
+  legacyCustomerEmails: ReadonlySet<string>;
+};
+
+async function loadAccountTables(ctx: ScanCtx, suppressions: Promise<Doc<"emailSuppressions">[]>): Promise<AccountTables> {
+  const [suppressionRows, members, subscriptionRows, entitlementRows, deletions] = await Promise.all([
+    suppressions,
+    loadSmallTable(ctx, "enterpriseMembers"),
+    loadSmallTable(ctx, "subscriptions"),
+    loadSmallTable(ctx, "entitlements"),
+    loadSmallTable(ctx, "accountDeletions"),
+  ]);
+  const active = members.filter((m) => m.status === "active");
+  const subscriptions = new Map<string, Doc<"subscriptions">[]>();
+  for (const sub of subscriptionRows) {
+    const list = subscriptions.get(sub.userId);
+    if (list) list.push(sub);
+    else subscriptions.set(sub.userId, [sub]);
+  }
+  const entitlements = new Map<string, Doc<"entitlements">>();
+  for (const row of entitlementRows) if (!entitlements.has(row.userId)) entitlements.set(row.userId, row);
+  return {
+    suppressed: new Set(suppressionRows.map((row) => row.normalizedEmail)),
+    deleting: new Set(deletions.map((row) => row.userId)),
+    activeMemberUserIds: new Set(active.flatMap((m) => (m.userId === undefined ? [] : [m.userId]))),
+    activeMemberEmails: new Set(active.flatMap((m) => (m.email === undefined ? [] : [m.email]))),
+    subscriptions,
+    entitlements,
+  };
+}
+
+async function loadWaitlistTables(ctx: ScanCtx, suppressions: Promise<Doc<"emailSuppressions">[]>): Promise<WaitlistTables> {
+  const [suppressionRows, customers] = await Promise.all([suppressions, loadSmallTable(ctx, "customers")]);
+  return {
+    suppressed: new Set(suppressionRows.map((row) => row.normalizedEmail)),
+    customerEmails: new Set(customers.flatMap((row) => (row.normalizedEmail === undefined ? [] : [row.normalizedEmail]))),
+    legacyCustomerEmails: legacyCustomerEmails(customers),
+  };
+}
+
+/**
+ * Walk a big table page by page, fetching the next page while `process`
+ * handles the current one. Pages reach `process` in order.
+ */
+async function walkPages<T>(
+  ctx: ScanCtx,
+  ref: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  process: (rows: T[]) => Promise<void>,
+): Promise<void> {
+  const fetchPage = (cursor: string | null): Promise<TablePage<T>> => ctx.runQuery(ref, { cursor });
+  let next = fetchPage(null);
+  while (true) {
+    const page = await next;
+    if (!page.isDone) {
+      next = fetchPage(page.continueCursor);
+      // Surfaces on the next await; never as an unhandled rejection if `process` throws first.
+      next.catch(() => {});
+    }
+    await process(page.page);
+    if (page.isDone) return;
+  }
+}
+
+/** One boolean per email from a chunked lookup query, LOOKUP_CONCURRENCY chunks at a time. */
+async function lookupAll(
+  ctx: ScanCtx,
+  ref: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  emails: readonly string[],
+  extra: Record<string, unknown> = {},
+): Promise<Map<string, boolean>> {
+  const unique = [...new Set(emails)];
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += LOOKUP_CHUNK_SIZE) chunks.push(unique.slice(i, i + LOOKUP_CHUNK_SIZE));
+  const results: boolean[][] = await mapConcurrently(chunks, LOOKUP_CONCURRENCY, (chunk) =>
+    ctx.runQuery(ref, { ...extra, emails: chunk }),
+  );
+  const out = new Map<string, boolean>();
+  chunks.forEach((chunk, c) => chunk.forEach((email, i) => out.set(email, results[c]![i]!)));
+  return out;
+}
+
 /**
  * Walk the audience tables once. `collect` gathers the emails of one segment
  * that have not had this send, through a reservoir of the requested size.
  */
-async function scanAudience(
+export async function scanAudience(
   ctx: ScanCtx,
   send: BlackFridaySend,
   scope: { accounts: boolean; waitlist: boolean },
@@ -393,25 +668,62 @@ async function scanAudience(
     if (collect && collect.key === key && !row.stamped) collect.reservoir.offer(row.email);
   };
 
-  if (scope.accounts) {
-    let cursor: string | null = null;
-    while (true) {
-      const page: AudiencePage = await ctx.runQuery(internal.broadcast.blackFriday._accountsPage, { cursor, send });
-      report.scanned.users += page.scanned;
-      for (const row of page.rows) take(row, "account", report.excluded.accounts);
-      if (page.isDone) break;
-      cursor = page.continueCursor;
-    }
+  // The small tables, once per scan. Suppressions serve both walks.
+  const suppressions = loadSmallTable(ctx, "emailSuppressions");
+  suppressions.catch(() => {});
+  const accountTables = scope.accounts ? loadAccountTables(ctx, suppressions) : null;
+  accountTables?.catch(() => {});
+  const waitlistTables = scope.waitlist ? loadWaitlistTables(ctx, suppressions) : null;
+  waitlistTables?.catch(() => {});
+
+  if (accountTables) {
+    const tables = await accountTables;
+    const now = Date.now();
+    await walkPages<ScanUser>(ctx, internal.broadcast.blackFriday._scanUsersPage, async (users) => {
+      report.scanned.users += users.length;
+      const classified = users.map((user) => {
+        const email = user.normalizedEmail ?? "";
+        return accountOutcome(user, send, now, {
+          suppressed: tables.suppressed.has(email),
+          deleting: tables.deleting.has(user.userId),
+          enterpriseMemberActive: tables.activeMemberUserIds.has(user.userId) || tables.activeMemberEmails.has(email),
+          subscriptions: tables.subscriptions.get(user.userId) ?? [],
+          entitlement: tables.entitlements.get(user.userId) ?? null,
+        });
+      });
+      const stamps = await lookupAll(
+        ctx,
+        internal.broadcast.blackFriday._registrationStamps,
+        classified.filter((c) => c.checkRegistration).map((c) => c.row.email),
+        { send },
+      );
+      for (const { row, checkRegistration } of classified) {
+        if (checkRegistration) row.stamped = stamps.get(row.email) === true;
+        take(row, "account", report.excluded.accounts);
+      }
+    });
   }
-  if (scope.waitlist) {
-    let cursor: string | null = null;
-    while (true) {
-      const page: AudiencePage = await ctx.runQuery(internal.broadcast.blackFriday._waitlistPage, { cursor, send });
-      report.scanned.registrations += page.scanned;
-      for (const row of page.rows) take(row, "waitlist", report.excluded.waitlist);
-      if (page.isDone) break;
-      cursor = page.continueCursor;
-    }
+  if (waitlistTables) {
+    const tables = await waitlistTables;
+    await walkPages<ScanRegistration>(ctx, internal.broadcast.blackFriday._scanRegistrationsPage, async (registrations) => {
+      report.scanned.registrations += registrations.length;
+      // Only a registration that is not suppressed needs the account lookup.
+      const needsAccount = registrations
+        .map((registration) => registration.normalizedEmail)
+        .filter((email) => email && !tables.suppressed.has(email));
+      const accounts = await lookupAll(ctx, internal.broadcast.blackFriday._accountsExist, needsAccount);
+      for (const registration of registrations) {
+        const email = registration.normalizedEmail;
+        const suppressed = !!email && tables.suppressed.has(email);
+        const hasAccount = !!email && !suppressed && accounts.get(email) === true;
+        const row = waitlistOutcome(registration, send, {
+          suppressed,
+          hasAccount,
+          isCustomer: !!email && (tables.customerEmails.has(email) || tables.legacyCustomerEmails.has(email)),
+        });
+        take(row, "waitlist", report.excluded.waitlist);
+      }
+    });
   }
   return report;
 }
@@ -427,7 +739,7 @@ async function scanAudience(
 export const blackFridayAudience = internalAction({
   args: {
     send: sendValidator,
-    /** Scan one table only; each is a few hundred page reads. Default: both. */
+    /** Scan one table only. Default: both. */
     scope: v.optional(v.union(v.literal("accounts"), v.literal("waitlist"))),
   },
   handler: async (ctx, { send, scope }): Promise<BlackFridayAudienceReport> => {
