@@ -2,6 +2,8 @@
 
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
+<iframe src="https://www.worldmonitor.app/embed?layers=conflicts%2Cpipelines%2Cwaterways%2Ceconomic&amp;center=0.119%2C56.003&amp;zoom=3.38&amp;theme=dark&amp;variant=full" title="World Monitor live map" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="width:100%;height:420px;border:0;display:block" allowfullscreen></iframe>
+
 [![GitHub stars](https://img.shields.io/github/stars/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/network/members)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
