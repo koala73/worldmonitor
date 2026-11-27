@@ -79,6 +79,7 @@ Start with the short [llms.txt briefing](https://www.worldmonitor.app/llms.txt),
 - [Agent-mode homepage](https://www.worldmonitor.app/?mode=agent): a compact JSON summary of endpoints, authentication, capabilities, and discovery files.
 - [Agent Skills](https://worldmonitor.app/.well-known/agent-skills/index.json): task-focused instructions for common country, resilience, and intelligence workflows.
 - [Agent Plugin metadata](https://www.worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files).
+- [ChatGPT app](https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba): the WorldMonitor app in the ChatGPT app directory, with the news and country views.
 - [A2A agent card](https://worldmonitor.app/.well-known/agent-card.json): service identity and protocol discovery for agent-to-agent clients.
 - [SDK guide](https://www.worldmonitor.app/docs/sdks) and [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): supported clients for applications and shell workflows.
 
