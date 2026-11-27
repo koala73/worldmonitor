@@ -45,7 +45,7 @@ import {
   type SubscriptionStatus,
 } from "./subscriptionHelpers";
 import { isDiscountRejection } from "./checkout";
-import { activePromoFor } from "../../shared/promo-campaign";
+import { activePromoFor, promoPriceCents } from "../../shared/promo-campaign";
 
 // ---------------------------------------------------------------------------
 // Billing REST SDK client
@@ -4389,23 +4389,28 @@ export async function runPlanChange(
       }
       const summary = preview.immediate_charge.summary;
       const listCents = PRODUCT_CATALOG[candidate.toPlanKey]?.priceCents;
+      const recurringCents = preview.new_plan?.recurring_pre_tax_amount;
       // With a discount code, Dodo reports the discounted first period as the
       // new plan's recurring amount (P2: 14400 on Pro Yearly). The renewal is
-      // the list price, so a discounted quote takes it from the catalog.
-      const renewalFromCatalog = discounted && typeof listCents === "number";
+      // the list price, so a discounted quote takes it from the catalog, but
+      // only when Dodo's first period is the promotion's price on that catalog
+      // figure. Otherwise the renewal is unknown and the copy says "the Pro
+      // Yearly price" rather than name a number Dodo may not charge.
+      const catalogMatchesDodo = discounted && promo !== null && typeof listCents === "number" &&
+        String(preview.new_plan?.currency ?? "") === "USD" &&
+        recurringCents === promoPriceCents(listCents, promo.percentOff);
+      const renewalAmount = discounted
+        ? catalogMatchesDodo ? listCents! : null
+        : typeof recurringCents === "number" ? recurringCents : null;
       return {
         kind: "preview",
         fromPlanKey: candidate.fromPlanKey,
         toPlanKey: candidate.toPlanKey,
         chargeAmount: summary.total_amount,
         currency: String(summary.currency),
-        renewalAmount: renewalFromCatalog
-          ? listCents
-          : typeof preview.new_plan?.recurring_pre_tax_amount === "number"
-            ? preview.new_plan.recurring_pre_tax_amount
-            : null,
-        renewalCurrency: renewalFromCatalog
-          ? "USD"
+        renewalAmount,
+        renewalCurrency: discounted
+          ? catalogMatchesDodo ? "USD" : null
           : preview.new_plan?.currency ? String(preview.new_plan.currency) : null,
         renewalDate: typeof preview.new_plan?.next_billing_date === "string"
           ? preview.new_plan.next_billing_date

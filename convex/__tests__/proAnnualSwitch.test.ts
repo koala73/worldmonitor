@@ -196,6 +196,21 @@ describe("switch action", () => {
     expect(changePlan).not.toHaveBeenCalled();
   });
 
+  // The catalog renewal is claimed only when Dodo's discounted first period is
+  // the promotion's price on that catalog figure; otherwise the copy says
+  // "the Pro Yearly price" instead of naming a number Dodo may not charge.
+  test("a discounted quote names the catalog renewal only when Dodo's first period matches the promotion", async () => {
+    for (const recurring of [{ recurring_pre_tax_amount: 15000, currency: "USD" }, { recurring_pre_tax_amount: 14400, currency: "EUR" }]) {
+      const t = await setup(DURING);
+      previewChangePlan.mockReset().mockResolvedValue({
+        ...discountedPreview(),
+        new_plan: { ...discountedPreview().new_plan, ...recurring },
+      });
+      const result = await run(t, { confirm: false });
+      expect(result).toMatchObject({ kind: "preview", discounted: true, renewalAmount: null, renewalCurrency: null });
+    }
+  });
+
   test("after the offer the switch still works at list price, without a code", async () => {
     const t = await setup(AFTER);
     previewChangePlan.mockResolvedValue(listPreview());
