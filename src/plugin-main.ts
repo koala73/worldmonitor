@@ -24,6 +24,7 @@ import { LAYER_REGISTRY } from '@/config/map-layer-definitions';
 import { loadPluginHazardSnapshot, type PluginHazardSnapshot } from '@/services/plugin-map-snapshot';
 import { newsPanelAdmissionSchema, type NewsPanelAdmission } from '../shared/panel-admission';
 import { hostContextFromInitialize, layoutFlags, mergeHostContext, type PluginHostContext } from './plugin-host-context';
+import { newsViewFromDeepLink } from './plugin-deep-link';
 import { applyHostLayout, createExpandButton, EXPAND_REFUSED } from './plugin-display-mode';
 import { loaderHostChannel } from './plugin-host-channel';
 import { timeRangeCutoff } from '@/utils/time-range';
@@ -89,6 +90,8 @@ function mountPlugin(): void {
   let queuedResult: { params: unknown } | undefined;
   let digestReloadAttempted = false;
   let openingResultSeen = false;
+  let openingResultRendered = false;
+  let appliedDeepLink: string | undefined;
   let resolveMounted!: () => void;
   let rejectMounted!: (error: unknown) => void;
   const whenMounted = new Promise<void>((resolve, reject) => { resolveMounted = resolve; rejectMounted = reject; });
@@ -518,6 +521,7 @@ function mountPlugin(): void {
     if (message.method === 'ui/notifications/host-context-changed') {
       host = mergeHostContext(host, message.params);
       relayout();
+      applyDeepLink();
     }
   }
 
@@ -527,7 +531,25 @@ function mountPlugin(): void {
     // Later host results can echo the view's own tool calls, whose responses the view already handled.
     // Only a later digest renders; an echoed error or analysis result must not touch the status or panels.
     if (!openingResult && !carriesDigest(params)) return;
-    void renderResult(params, false, openingResult).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
+    void renderResult(params, false, openingResult).then(() => {
+      if (!openingResult) return;
+      openingResultRendered = true;
+      applyDeepLink();
+    }).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
+  }
+
+  // A ChatGPT deep link opens this entrypoint with empty arguments and passes the view in the host context.
+  // Each new link applies once, after the opening result, so that result's empty view cannot overwrite it.
+  function applyDeepLink(): void {
+    const url = host.deepLink;
+    if (!url || url === appliedDeepLink || !openingResultRendered) return;
+    appliedDeepLink = url;
+    const link = newsViewFromDeepLink(url);
+    if (!link) return;
+    void applyView(link.view, { reset: true }).catch(error => {
+      status.textContent = 'The linked view could not be applied. Showing news with the previous filters.';
+      mapStatus.textContent = error instanceof Error ? error.message : 'The linked map view is unavailable.';
+    });
   }
 
   function reportSize(): void {

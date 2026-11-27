@@ -16,6 +16,8 @@ export interface PluginHostContext {
   availableDisplayModes: string[];
   containerDimensions?: PluginContainerDimensions;
   safeAreaInsets?: PluginSafeAreaInsets;
+  /** ChatGPT deep link: the app-relative URL from hostContext["openai/deepLink"].url. */
+  deepLink?: string;
 }
 
 export interface PluginLayoutFlags {
@@ -40,6 +42,12 @@ function finiteFields<K extends string>(value: unknown, keys: readonly K[]): Par
   return Object.keys(result).length ? result : undefined;
 }
 
+// OpenAI MCP extensions, Deep Links: the URL is app-relative, starts with "/" and has no fragment.
+function deepLinkUrl(value: unknown): string | undefined {
+  const url = record(value)?.url;
+  return typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') && !url.includes('#') && url.length <= 2048 ? url : undefined;
+}
+
 function applyUpdate(state: PluginHostContext, update: Record<string, unknown>): PluginHostContext {
   const next: PluginHostContext = { ...state };
   if (update.theme === 'light' || update.theme === 'dark') next.theme = update.theme;
@@ -54,6 +62,7 @@ function applyUpdate(state: PluginHostContext, update: Record<string, unknown>):
   if (dimensions) next.containerDimensions = dimensions;
   const insets = finiteFields(update.safeAreaInsets, ['top', 'right', 'bottom', 'left'] as const);
   if (insets) next.safeAreaInsets = insets;
+  if ('openai/deepLink' in update) next.deepLink = deepLinkUrl(update['openai/deepLink']);
   return next;
 }
 
