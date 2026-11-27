@@ -161,6 +161,10 @@ export class SortedSets {
         }
         return added;
       }
+      case 'ZREM': {
+        const set = this.sets.get(key);
+        return args.filter((member) => set?.delete(member)).length;
+      }
       case 'ZMSCORE': {
         const set = this.sets.get(key);
         return args.map((member) => (set?.has(member) ? String(set.get(member)) : null));

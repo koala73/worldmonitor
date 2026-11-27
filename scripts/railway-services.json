@@ -167,6 +167,7 @@
       "scripts/lib/llm-chain.cjs",
       "scripts/shared/publisher-families.js",
       "scripts/shared/publisher-name.js",
+      "scripts/shared/wire-reprints.js",
       "scripts/_intel-history-collectors.mjs",
       "scripts/_seed-history.mjs",
       "scripts/lib/intel-history-cost.mjs",

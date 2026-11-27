@@ -7,6 +7,7 @@
 import { cosineSimilarity, embedBatch, normalizeForEmbedding } from './brief-embedding.mjs';
 import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
 import { publisherFamilyFor } from '../shared/publisher-families.js';
+import { foldWireReprints } from '../shared/wire-reprints.js';
 
 export const SIGHTINGS_KEY = 'news:story-sightings:v1';
 const DAY = 86_400_000;
@@ -143,16 +144,19 @@ async function readSightings(now, pipeline) {
 // publisher's wording is there to compare.
 async function match(candidate, sightings, { now, embed, judge, deadlineAt }) {
   if (!fits(candidate.title)) return null;
-  const own = new Set(familiesOf(candidate));
+  // A copy under a wire's headline counts as the wire, the candidate's own included.
+  const ownFamilies = familiesOf(candidate);
+  const folded = foldWireReprints([...ownFamilies.map(family => ({ title: candidate.title, family })), ...sightings]);
+  const own = new Set(folded.slice(0, ownFamilies.length));
   const key = normalizeForEmbedding(candidate.title);
   // One copy per wording: the judge sees each wording once.
   const wordings = new Map();
-  for (const s of sightings) {
+  for (const [i, s] of sightings.entries()) {
     const k = normalizeForEmbedding(s.title);
     if (k === key) continue;
     if (!wordings.has(k)) wordings.set(k, { title: s.title, at: s.at, families: new Set() });
     const w = wordings.get(k);
-    w.families.add(s.family);
+    w.families.add(folded[ownFamilies.length + i]);
     w.at = Math.min(w.at, s.at);
   }
   const pool = [...wordings.values()].filter(w => [...w.families].some(f => !own.has(f)));

@@ -86,7 +86,8 @@ describe('news cross-wording corroboration (#10977)', () => {
     // Four outlets through one topic feed are four publishers.
     await recordSightings([
       { title: 'ADNOC says one of its vessels attacked in Strait of Hormuz', source: 'Shipping & Freight', level: 'critical', families: ['label:wana news agency'] },
-      { title: 'ADNOC L&S says crew member missing after attack on vessel', source: 'Shipping & Freight', level: 'high', families: ['reuters', 'label:arab times'] },
+      { title: 'ADNOC L&S says crew member missing after attack on vessel', source: 'Shipping & Freight', level: 'high', families: ['reuters'] },
+      { title: 'Crew member missing after ADNOC vessel attacked near Hormuz', source: 'Shipping & Freight', level: 'high', families: ['label:arab times'] },
     ], { now: NOW - 60_000, pipeline });
     const four = await crossWordingFamilies(
       [{ title: 'ADNOC ship attacked in Hormuz as risks rise', source: 'Shipping & Freight', families: ['label:oilprice.com'] }],
@@ -192,6 +193,64 @@ describe('news cross-wording corroboration (#10977)', () => {
     await recordSightings([{ title: 'Drone strikes LPG tanker in Gulf of Oman', source: 'Reuters', level: 'critical' }],
       { now: NOW, pipeline: async () => { throw new Error('down'); }, log: (l) => lines.push(l) });
     assert.match(lines.join('\n'), /sightings write failed/);
+  });
+
+  describe('a wire reprint counts with the wire', () => {
+    const yes = async () => '{"same":true}';
+    const HEADLINE = "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz";
+    const OILPRICE = { title: 'ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise', source: 'OilPrice.com' };
+    const familiesFor = async (sightings, candidate = OILPRICE) => {
+      const { pipeline } = memoryPipeline();
+      await recordSightings(sightings, { now: NOW - 60_000, pipeline });
+      const found = await crossWordingFamilies([candidate], { now: NOW, pipeline, embed, judge: yes, log: () => {} });
+      return found.get(candidate.title)?.families.sort() ?? [];
+    };
+
+    for (const [wire, credit] of [['reuters', 'Reuters'], ['ap-news', 'AP News'], ['afp', 'AFP']]) {
+      it(`a copy under the ${credit} headline is ${credit}'s copy`, async () => {
+        assert.deepEqual(await familiesFor([
+          { title: `${HEADLINE} - ${credit}`, source: 'Tanker & Shipping', level: 'high', families: [wire] },
+          { title: `${HEADLINE} - Rock Hill Herald`, source: 'Tanker & Shipping', level: 'high', families: ['label:rock hill herald'] },
+        ]), ['label:oilprice.com', wire].sort());
+      });
+    }
+
+    it('a reprinter carrying the wire headline is the wire, whichever copy is the candidate', async () => {
+      const herald = { title: `${HEADLINE} - Rock Hill Herald`, source: 'Tanker & Shipping', families: ['label:rock hill herald'] };
+      assert.deepEqual(await familiesFor([
+        { title: `${HEADLINE} - Reuters`, source: 'Tanker & Shipping', level: 'high', families: ['reuters'] },
+        { ...OILPRICE, level: 'critical' },
+      ], herald), ['label:oilprice.com', 'reuters']);
+    });
+
+    for (const [wire, credit] of [['reuters', 'Reuters'], ['ap-news', 'AP News'], ['afp', 'AFP']]) {
+      it(`an outlet the digest saw carry the ${credit} headline is ${credit}`, async () => {
+        assert.deepEqual(await familiesFor([
+          { title: `${HEADLINE} - ${credit}`, source: 'Tanker & Shipping', level: 'high', families: [wire, 'label:arab times'] },
+        ]), ['label:oilprice.com', wire].sort());
+      });
+    }
+
+    it('a hyphenated masthead running the wire headline is the wire', async () => {
+      assert.deepEqual(await familiesFor([
+        { title: `${HEADLINE} - Reuters`, source: 'Tanker & Shipping', level: 'high', families: ['reuters'] },
+        { title: `${HEADLINE} - Lexington Herald-Leader`, source: 'Tanker & Shipping', level: 'high', families: ['label:lexington herald-leader'] },
+      ]), ['label:oilprice.com', 'reuters']);
+    });
+
+    it('two outlets with one headline and no wire carrying it stay two publishers', async () => {
+      assert.deepEqual(await familiesFor([
+        { title: `${HEADLINE} - Rock Hill Herald`, source: 'Tanker & Shipping', level: 'high', families: ['label:rock hill herald'] },
+        { title: `${HEADLINE} - Kansas City Star`, source: 'Tanker & Shipping', level: 'high', families: ['label:kansas city star'] },
+      ]), ['label:kansas city star', 'label:oilprice.com', 'label:rock hill herald']);
+    });
+
+    it('a reprinter writing its own headline is its own publisher', async () => {
+      assert.deepEqual(await familiesFor([
+        { title: `${HEADLINE} - Reuters`, source: 'Tanker & Shipping', level: 'high', families: ['reuters'] },
+        { title: 'ADNOC crew member missing after Hormuz vessel attack, company says - Rock Hill Herald', source: 'Tanker & Shipping', level: 'high', families: ['label:rock hill herald'] },
+      ]), ['label:oilprice.com', 'label:rock hill herald', 'reuters']);
+    });
   });
 
   it('does not judge a copy against wordings only its own publisher carried', async () => {

@@ -252,6 +252,8 @@ describe('publisher-families map data', () => {
       'nos',
       'the-hacker-news',
       'kalkine',
+      // A wire no feed is named after: Google News names it in <source>.
+      'afp',
     ]);
     for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILIES)) {
       assert.equal(typeof entry.publisher, 'string', `${familyId} has no publisher name`);

@@ -78,6 +78,8 @@ const PUBLISHER_FAMILY_DATA = {
   'a16z': { publisher: "Andreessen Horowitz", labels: ["a16z Blog", "a16z Insights", "a16z Podcast"] },
   'abc-news': { publisher: "ABC News", labels: [] },
   'acquired': { publisher: "Acquired", labels: ["Acquired Episodes", "Acquired Podcast"] },
+  // No feed carries AFP under its own name; Google News names it in <source>.
+  'afp': { publisher: "AFP", aliases: ["Agence France-Presse"], labels: [] },
   'ap-news': { publisher: "Associated Press", labels: ["AP Mexico", "AP News", "AP — Bahrain", "AP — Comoros", "AP — Denmark", "AP — Dominica", "AP — El Salvador", "AP — Equatorial Guinea", "AP — Eritrea", "AP — Eswatini", "AP — Guinea-Bissau", "AP — Kiribati", "AP — Liechtenstein", "AP — Marshall Islands", "AP — Micronesia", "AP — Montenegro", "AP — Myanmar (Burma)", "AP — Nauru", "AP — North Macedonia", "AP — Palau", "AP — Panama", "AP — Paraguay", "AP — Seychelles", "AP — St. Kitts & Nevis", "AP — St. Vincent & Grenadines", "AP — Suriname", "AP — Tonga", "AP — Trinidad & Tobago", "AP — Tuvalu", "AP — Vanuatu", "AP — Vatican City", "AP — Zambia"] },
   'ars-technica': { publisher: "Ars Technica", labels: [] },
   'arxiv': { publisher: "arXiv", labels: ["ArXiv AI", "ArXiv ML"] },
@@ -243,6 +245,12 @@ const PUBLISHER_FAMILY_DATA = {
 };
 
 export const PUBLISHER_FAMILIES = Object.freeze(PUBLISHER_FAMILY_DATA);
+
+/**
+ * The wire services. Another outlet running a wire story under the wire's own
+ * headline is the wire's copy, not a second publisher (shared/wire-reprints.js).
+ */
+export const WIRE_FAMILIES = Object.freeze(['reuters', 'ap-news', 'afp']);
 
 /**
  * Curated family -> the registrable domains that newsroom publishes on.
