@@ -81,4 +81,13 @@ describe('translateText Pro gate', () => {
     expect(sentProviders(plainFetch)).toEqual(['ollama']);
     expect(premiumFetch).not.toHaveBeenCalled();
   });
+
+  it('honours the 429 cooldown: no second provider and no later Pro request', async () => {
+    Object.assign(access, { premium: true, ollama: true });
+    premiumFetch.mockImplementation(async () => new Response('{}', { status: 429, headers: { 'Retry-After': '60' } }));
+    expect(await translateText(unique('Parliament passes the budget'), 'de')).toBeNull();
+    expect(premiumFetch).toHaveBeenCalledTimes(1);
+    expect(await translateText(unique('Parliament passes the budget'), 'de')).toBeNull();
+    expect(premiumFetch).toHaveBeenCalledTimes(1);
+  });
 });

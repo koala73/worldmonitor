@@ -441,8 +441,10 @@ export async function translateText(
     const desktopLocal = providerDef.provider === 'ollama' && isDesktopRuntime();
     if (!pro && !desktopLocal && !freeAlert) continue;
     // Pro translation carries the caller's credential through the summary
-    // client. Its 429 backoff applies here too: a 429 is the account's limit.
+    // client. Its 429 backoff applies here too: a 429 is the account's limit,
+    // so a cooldown skips further Pro requests, never the free ones.
     const client = pro && !desktopLocal ? premiumNewsClient : newsClient;
+    if (client === premiumNewsClient && isServerSummarizationSuppressed()) continue;
 
     onProgress?.(i + 1, totalSteps, `Translating with ${providerDef.label}...`);
     try {

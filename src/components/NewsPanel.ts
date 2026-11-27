@@ -26,7 +26,8 @@ import { effectivePubDateMs } from '@/services/feed-date';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { subscribeRuntimeConfig } from '@/services/runtime-config';
+import { isFeatureAvailable, subscribeRuntimeConfig } from '@/services/runtime-config';
+import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { subscribeWidgetAccess } from '@/services/widget-store';
 
 
@@ -129,7 +130,9 @@ export class NewsPanel extends Panel {
       clusterNews: items => analysisWorker.clusterNews(items),
       generateSummary,
       translateText,
-      canTranslate: () => hasPremiumAccess(getAuthState()),
+      // Pro, or the desktop app's own local model (free, like translateText).
+      canTranslate: () => hasPremiumAccess(getAuthState())
+        || (isDesktopRuntime() && isFeatureAvailable('aiOllama')),
       ...services,
     };
     // hasPremiumAccess answers from four signals; re-render the headlines when

@@ -362,8 +362,9 @@ describe('translate input and output bounds', () => {
 
   it('does not serve an answer far longer than any translation of the input', async () => {
     installLimiter(() => ALLOW);
-    installProvider(`def quicksort(xs):\n${'    return xs\n'.repeat(30)}`);
-    const response = await summarizeArticle(anonymousContext(), translateRequest(uniqueHeadline('Hi')));
+    const bodies = installProvider(`def quicksort(xs):\n${'    return xs\n'.repeat(30)}`);
+    const response = await summarizeArticle(premiumContext(), translateRequest(uniqueHeadline('Hi'), { variant: 'fr' }));
+    assert.equal(bodies.length, 1, 'the provider answered; the limit refused it');
     assert.equal(response.summary, '');
     assert.equal(response.status, 'SUMMARIZE_STATUS_ERROR');
   });

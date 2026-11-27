@@ -51,7 +51,7 @@ vi.mock('@/services', () => ({
 }));
 
 // Translation is Pro; the panel re-checks access on these four signals.
-const access = vi.hoisted(() => ({ premium: false, listeners: new Set<() => void>() }));
+const access = vi.hoisted(() => ({ premium: false, desktop: false, ollama: false, listeners: new Set<() => void>() }));
 function subscribeAccess(listener: () => void) {
   access.listeners.add(listener);
   return () => { access.listeners.delete(listener); };
@@ -63,6 +63,11 @@ vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => access.premi
 vi.mock('@/services/runtime-config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/runtime-config')>()),
   subscribeRuntimeConfig: subscribeAccess,
+  isFeatureAvailable: (id: string) => id === 'aiOllama' && access.ollama,
+}));
+vi.mock('@/services/desktop-runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/desktop-runtime')>()),
+  isDesktopRuntime: () => access.desktop,
 }));
 
 /** The private methods under test, reached without widening the public API. */
@@ -88,6 +93,8 @@ beforeEach(() => {
   translateText.mockClear();
   generateSummary.mockClear();
   access.premium = true;
+  access.desktop = false;
+  access.ollama = false;
   access.listeners.clear();
 });
 
@@ -250,6 +257,12 @@ describe('headline translation is a Pro control', () => {
     await vi.waitFor(() => expect(button()).not.toBeNull());
     setPremium(false);
     await vi.waitFor(() => expect(button()).toBeNull());
+  });
+
+  it('offers the control to a free desktop reader with a local model', async () => {
+    Object.assign(access, { premium: false, desktop: true, ollama: true });
+    renderFlat();
+    await vi.waitFor(() => expect(button()).not.toBeNull());
   });
 
   it('sends no translation for a free reader even from a stale control', async () => {
