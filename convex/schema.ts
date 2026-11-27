@@ -633,6 +633,9 @@ export default defineSchema({
     // Set when the operator releases a held campaign broadcast. Without it a
     // held run is never sent, whatever re-enters the finalize step.
     releaseRequestedAt: v.optional(v.number()),
+    // When the Resend broadcast (draft) was created. Unlike updatedAt, no
+    // recovery command moves it: the held-too-long check reads it.
+    broadcastCreatedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

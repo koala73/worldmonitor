@@ -42,6 +42,7 @@ import {
   accountLocale,
   classifyAccount,
   classifyWaitlist,
+  SEND_CUTOFF_BEFORE_END_MS,
   groupsFor,
   segmentKey,
   sendFor,
@@ -73,8 +74,7 @@ export const BLACK_FRIDAY_CONFIG_KEY = BLACK_FRIDAY_OFFER.campaignId;
 const OFFER_STARTS_AT_MS =
   ACTIVE_PROMO?.id === BLACK_FRIDAY_OFFER.campaignId ? ACTIVE_PROMO.startsAtMs : Date.UTC(2026, 10, 26, 0, 0, 0);
 
-/** No wave starts or is released this close to the end: the email must arrive in time to act on. */
-export const SEND_CUTOFF_BEFORE_END_MS = 2 * 60 * 60 * 1000;
+export { SEND_CUTOFF_BEFORE_END_MS };
 /** The last-day emails say "ends today": they go out in the offer's final 24 hours only. */
 export const LAST_DAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /**
@@ -128,15 +128,16 @@ async function classifyUserRow(ctx: QueryCtx, user: Doc<"users">, send: BlackFri
   const memberByUser = await ctx.db
     .query("enterpriseMembers")
     .withIndex("by_userId", (q) => q.eq("userId", user.userId))
-    .take(20);
+    .collect();
   const memberByEmail = await ctx.db
     .query("enterpriseMembers")
     .withIndex("by_email", (q) => q.eq("email", email))
-    .take(20);
+    .collect();
   const subscriptions = await ctx.db
     .query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", user.userId))
-    .take(50);
+    // Every row: an on-hold or covering subscription must never fall outside a cap.
+    .collect();
   const entitlement = await ctx.db
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", user.userId))
@@ -483,6 +484,8 @@ type CampaignRun = {
   failedCount: number;
   suppressedCount: number;
   held: boolean;
+  /** When the Resend draft was created; no recovery command moves it. */
+  broadcastCreatedAt?: number;
   updatedAt: number;
 };
 
@@ -518,6 +521,7 @@ async function loadCampaignState(ctx: QueryCtx): Promise<CampaignState> {
         run.status === "broadcast-created" &&
         run.campaign.holdBeforeSend &&
         run.releaseRequestedAt === undefined,
+      broadcastCreatedAt: run.broadcastCreatedAt,
       updatedAt: run.updatedAt,
     });
   }
@@ -726,7 +730,7 @@ export function waveRefusal(args: {
   killGateReason?: string;
   leaseHeldBy?: string;
   health: Pick<BlackFridayHealth, "tripReason" | "waitlist">;
-  runs: ReadonlyArray<Pick<CampaignRun, "status" | "campaign" | "updatedAt">>;
+  runs: ReadonlyArray<Pick<CampaignRun, "status" | "campaign" | "updatedAt" | "pushedCount">>;
 }): string | null {
   if (!args.configured) return "not initialised: run initBlackFriday first";
   if (args.killGateTripped) return `kill gate tripped: ${args.killGateReason ?? "<no reason>"}`;
@@ -758,18 +762,26 @@ export function waveRefusal(args: {
       ? `the first waitlist wave is a canary: count must be ${WAITLIST_CANARY_MAX} or less`
       : null;
   }
-  if (!args.health.waitlist.trusted) {
-    return (
-      `the waitlist canary has ${args.health.waitlist.delivered} delivered so far; ` +
-      `${MIN_DELIVERED_FOR_KILLGATE} are needed before its bounce and complaint rates are trusted`
-    );
-  }
   const lastSentAt = Math.max(...waitlistSent.map((run) => run.updatedAt));
   const hours = (args.now - lastSentAt) / 3_600_000;
   if (hours < args.settleHours) {
     return (
       `only ${hours.toFixed(1)}h since the last waitlist wave; bounces and complaints need ` +
-      `${args.settleHours}h to come back before a larger one`
+      `${args.settleHours}h to come back before the next one`
+    );
+  }
+  if (!args.health.waitlist.trusted) {
+    // A canary that exported too few contacts can never reach the delivery
+    // floor. More may go out, but only inside the canary allowance in total.
+    const exported = waitlistSent.reduce((sum, run) => sum + run.pushedCount, 0);
+    const allowance = WAITLIST_CANARY_MAX - exported;
+    if (args.count <= allowance) return null;
+    return (
+      `the waitlist canary has ${args.health.waitlist.delivered} delivered so far; ` +
+      `${MIN_DELIVERED_FOR_KILLGATE} are needed before its bounce and complaint rates are trusted. ` +
+      (allowance > 0
+        ? `Until then a wave may hold at most ${allowance} (the rest of the ${WAITLIST_CANARY_MAX} canary allowance)`
+        : `The ${WAITLIST_CANARY_MAX} canary allowance is used up`)
     );
   }
   return null;
@@ -1018,7 +1030,7 @@ export const releaseBlackFridayBroadcast = internalAction({
       wouldRefuse = `kill gate: ${health.tripReason}`;
     } else if (now >= BLACK_FRIDAY_OFFER.endsAtMs - SEND_CUTOFF_BEFORE_END_MS) {
       wouldRefuse = "too close to the end of the offer (or past it): discard this run instead";
-    } else if (now - run.updatedAt > MAX_HOLD_MS) {
+    } else if (now - (run.broadcastCreatedAt ?? run.updatedAt) > MAX_HOLD_MS) {
       wouldRefuse =
         "held too long: the segment was picked hours ago and may hold people who have since bought. " +
         "Discard it (waveRuns:discardHeldCampaignRun) and start the wave again";

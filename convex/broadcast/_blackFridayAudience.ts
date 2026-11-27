@@ -29,6 +29,9 @@ import {
 } from "./blackFridayEmailContent";
 
 export type BlackFridaySend = "launch" | "last-day";
+
+/** No wave starts, is released or is retried this close to the end: the email must arrive in time to act on. */
+export const SEND_CUTOFF_BEFORE_END_MS = 2 * 60 * 60 * 1000;
 export type AccountGroup = "free" | "lapsed" | "monthly";
 
 export type AccountExclusion =

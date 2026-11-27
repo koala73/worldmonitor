@@ -149,8 +149,15 @@ run shows `toSend: 0`.
 3. `new-buyer` for `account`, each locale, `en` last (the largest).
 4. Check health before touching the waitlist (section 5).
 
+The order above is yours to keep. The code checks one thing: an account wave
+of the send must be `sent` before any waitlist wave starts. It does not wait
+for every account segment.
+
 Then the waitlist, which has not been emailed in months, in ramped waves.
-The code enforces each rule:
+The checks the code enforces are shared by the whole waitlist, not kept per
+locale: the first waitlist wave of all is capped at 500, and every later one
+needs the settle window and trusted rates below. Sending `en` first, and the
+wave sizes, are manual:
 
 1. The canary: at most 500, `en`.
 
@@ -159,14 +166,17 @@ The code enforces each rule:
      '{"version":"new-buyer","locale":"en","recipient":"waitlist","count":500,"dryRun":false}'
    ```
 
-2. Wait. The next waitlist wave is refused until the waitlist broadcasts have
-   100 delivered and 18 hours have passed since the last one (bounces and
-   complaints arrive late). `"settleHours"` lowers the wait, to 2 at the least;
-   use it only after reading the health numbers.
+2. Wait. The next waitlist wave is refused until 18 hours have passed since
+   the last one (bounces and complaints arrive late) and the waitlist
+   broadcasts have 100 delivered. `"settleHours"` lowers the wait, to 2 at the
+   least; use it only after reading the health numbers. If the canary exported
+   too few contacts to ever reach 100 delivered, a follow-up may go out inside
+   what is left of the 500 allowance; the refusal message gives the number.
 3. Larger waves, each after the same check:
    `"count":2000,"wave":2`, then `"count":10000,"wave":3`, then the rest
    (`"count":50000,"wave":4`).
-4. `zh` waitlist the same way once `en` is healthy.
+4. `zh` waitlist once `en` is healthy. Start it small by hand (`"count":500`):
+   the code's canary cap was already spent on `en`.
 
 Launch waves stop 24 hours before the end. After that only the last-day
 versions start.
@@ -223,8 +233,8 @@ npx convex run broadcast/blackFriday:clearBlackFridayKillGate '{"reason":"<what 
 | Run stuck in `pushing` with no progress for 15 minutes | `broadcast/waveRuns:resumeStalledWaveRun '{"runId":"..."}'` |
 | `failed` with `batch-failure-rate-exceeded`, `segment-create-failed` or `persist-failed` | `broadcast/waveRuns:discardWaveRun '{"runId":"...","reason":"..."}'`, then start the segment again with a new `wave` |
 | `failed` with `create-broadcast-failed` | `broadcast/waveRuns:resumeFinalizeWaveRun '{"runId":"..."}'` (it holds again once the draft exists) |
-| `send-broadcast-failed` after a release | Check the broadcast in Resend. Sent: `broadcast/waveRuns:markFinalizeRecovered '{"runId":"...","sentAt":<ms>,"reason":"..."}'`. Not sent: `broadcast/waveRuns:resumeFinalizeWaveRun '{"runId":"...","confirmedNotSent":true}'` |
-| A real start timed out or threw after "claim", leaving a run in `picking` | `broadcast/waveRuns:discardWaveRun '{"runId":"...","reason":"..."}'`, then start again with a new `wave`. Cap the wave with `"count"` if the scan is what timed out. |
+| `send-broadcast-failed` after a release | Check the broadcast in Resend. Sent: `broadcast/waveRuns:markFinalizeRecovered '{"runId":"...","sentAt":<ms>,"reason":"..."}'`. Not sent: run `blackFridayHealth` first, then `broadcast/waveRuns:resumeFinalizeWaveRun '{"runId":"...","confirmedNotSent":true}'`. The retry sends nothing while the gate is tripped or inside the final 2 hours. |
+| A real start timed out or threw after "claim", leaving a run in `picking` | `broadcast/waveRuns:discardWaveRun '{"runId":"...","reason":"..."}'`, then start again with a new `wave`. If the audience scan itself is what timed out, stop: `"count"` does not shorten the scan, and a retry would time out the same way. The scan needs fixing in code first. |
 | "another wave holds the lease" | `getBlackFridayStatus` names the run. Release it, discard it or recover it as above. |
 
 ## Definitions used by the counts

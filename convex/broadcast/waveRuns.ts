@@ -63,6 +63,8 @@ import {
   upsertContactToSegment,
 } from "./_resendContacts";
 import { filterPageForEligibility } from "./_poolSelection";
+import { SEND_CUTOFF_BEFORE_END_MS } from "./_blackFridayAudience";
+import { BLACK_FRIDAY_OFFER } from "./blackFridayEmailContent";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Constants
@@ -1041,6 +1043,7 @@ export const _resumeBatchInfo = internalQuery({
         releaseRequestedAt: run.releaseRequestedAt,
       },
       configHoldsLease: config?.pendingRunId === runId,
+      configKillGateTripped: config?.killGateTripped ?? false,
       hasPending: pending.length > 0,
     };
   },
@@ -1388,11 +1391,17 @@ export const pushBatchAction = internalAction({
     let runFailed = false;
     for (const contact of batch) {
       if (dropped.has(contact.normalizedEmail)) {
-        await ctx.runMutation(internal.broadcast.waveRuns._markContactSuppressed, {
+        const dropResult = await ctx.runMutation(internal.broadcast.waveRuns._markContactSuppressed, {
           contactId: contact._id,
           runId,
           normalizedEmail: contact.normalizedEmail,
         });
+        // A smaller denominator can push earlier failures over the ceiling.
+        if (dropResult.ok && dropResult.runFailed) {
+          runFailed = true;
+          console.error(`[pushBatchAction] runId=${runId} batch=${batchN} failure-rate threshold tripped`);
+          break;
+        }
         continue;
       }
       const result = await pushWithBackoff(apiKey, contact.normalizedEmail, info.run.segmentId);
@@ -1540,6 +1549,7 @@ export const _markBroadcastCreated = internalMutation({
     await ctx.db.patch(run._id, {
       status: "broadcast-created",
       broadcastId,
+      broadcastCreatedAt: now,
       lastBatchAt: now, // re-arm in-flight guard for the send phase
       updatedAt: now,
     });
@@ -1843,6 +1853,19 @@ export const finalizeWaveAction = internalAction({
     if (!after.configHoldsLease) {
       console.warn(`[finalizeWaveAction] runId=${runId} lost lease before send — exiting`);
       return { ok: false, reason: "lost-lease-pre-send" };
+    }
+    // Every campaign send passes here, the first attempt and any retry
+    // (resumeFinalizeWaveRun keeps the release marker): a stopped campaign or
+    // an offer about to end sends nothing.
+    if (after.run.campaign) {
+      if (after.configKillGateTripped) {
+        console.warn(`[finalizeWaveAction] runId=${runId} campaign kill gate tripped — not sending`);
+        return { ok: false, reason: "campaign-kill-gate-tripped" };
+      }
+      if (Date.now() >= BLACK_FRIDAY_OFFER.endsAtMs - SEND_CUTOFF_BEFORE_END_MS) {
+        console.warn(`[finalizeWaveAction] runId=${runId} past the campaign send cutoff — not sending`);
+        return { ok: false, reason: "campaign-past-send-cutoff" };
+      }
     }
     try {
       await ctx.runAction(

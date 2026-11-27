@@ -205,9 +205,10 @@ describe("when a wave may start", () => {
     tripReason: null,
     waitlist: { broadcasts: 0, delivered: 0, bounced: 0, complained: 0, bounceRate: null, complaintRate: null, trusted: false, overThreshold: false },
   };
-  const sentRun = (recipient: "account" | "waitlist", send: "launch" | "last-day", updatedAt = NOW - 30 * 60 * 60 * 1000) => ({
+  const sentRun = (recipient: "account" | "waitlist", send: "launch" | "last-day", updatedAt = NOW - 30 * 60 * 60 * 1000, pushedCount = 500) => ({
     status: "sent" as const,
     updatedAt,
+    pushedCount,
     campaign: { id: BLACK_FRIDAY_CONFIG_KEY, send, version: "new-buyer", locale: "en", recipient, holdBeforeSend: true },
   });
   const base = {
@@ -251,7 +252,14 @@ describe("when a wave may start", () => {
     expect(waveRefusal({ ...afterAccounts, count: WAITLIST_CANARY_MAX + 1 })).toMatch(/canary/);
 
     const afterCanary = { ...afterAccounts, count: 5000, runs: [sentRun("account", "launch"), sentRun("waitlist", "launch")] };
-    expect(waveRefusal(afterCanary)).toMatch(/100 are needed/);
+    expect(waveRefusal(afterCanary)).toMatch(/100 are needed.*allowance is used up/);
+    // A canary that exported only 80 can be topped up inside the 500 allowance, never beyond it.
+    const smallCanary = { ...afterAccounts, runs: [sentRun("account", "launch"), sentRun("waitlist", "launch", NOW - 30 * 60 * 60 * 1000, 80)] };
+    expect(waveRefusal({ ...smallCanary, count: 420 })).toBeNull();
+    expect(waveRefusal({ ...smallCanary, count: 421 })).toMatch(/at most 420/);
+    expect(
+      waveRefusal({ ...smallCanary, count: 100, runs: [sentRun("account", "launch"), sentRun("waitlist", "launch", NOW - 60 * 60 * 1000, 80)] }),
+    ).toMatch(/only 1\.0h since the last waitlist wave/);
     const trusted = { ...healthy, waitlist: { ...healthy.waitlist, delivered: 380, trusted: true } };
     expect(waveRefusal({ ...afterCanary, health: trusted })).toBeNull();
     expect(
@@ -665,6 +673,8 @@ describe("Black Friday send against the database", () => {
     const started = await startReal(t, { version: "lapsed", locale: "en", recipient: "account" });
     await driveToHold(t, started.runId);
     vi.setSystemTime(NOW + 7 * 60 * 60 * 1000);
+    // A generic recovery command touches the run but must not make the draft look fresh.
+    await t.mutation(internal.broadcast.waveRuns.resumeFinalizeWaveRun, { runId: started.runId, confirmedNotSent: true });
     await expect(
       t.action(internal.broadcast.blackFriday.releaseBlackFridayBroadcast, { runId: started.runId, dryRun: false }),
     ).rejects.toThrow(/held too long/);
@@ -714,6 +724,46 @@ describe("Black Friday send against the database", () => {
     await t.mutation(internal.broadcast.blackFriday.stopBlackFriday, { reason: "pause for review" });
     const stopped = await t.action(internal.broadcast.blackFriday.releaseBlackFridayBroadcast, { runId: held.runId });
     expect(stopped.wouldRefuse).toMatch(/stopped by operator: pause for review/);
+  });
+
+  test("a retry after a failed send obeys the stop and the cutoff", async () => {
+    const t = newTest();
+    await seedAudience(t);
+    await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
+    vi.stubEnv("RESEND_API_KEY", "synthetic-key");
+    let sendAttempts = 0;
+    vi.stubGlobal("fetch", async (input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith("/segments")) return Response.json({ id: "seg_1" });
+      if (url.endsWith("/broadcasts")) return Response.json({ id: "bro_1" });
+      if (url.endsWith("/send")) {
+        sendAttempts += 1;
+        return sendAttempts === 1 ? new Response("upstream", { status: 500 }) : Response.json({ id: "bro_1" });
+      }
+      return Response.json({ id: "c" });
+    });
+    const started = await startReal(t, { version: "lapsed", locale: "en", recipient: "account" });
+    await driveToHold(t, started.runId);
+    await t.action(internal.broadcast.blackFriday.releaseBlackFridayBroadcast, { runId: started.runId, dryRun: false });
+    await expect(t.action(internal.broadcast.waveRuns.finalizeWaveAction, { runId: started.runId })).rejects.toThrow();
+    expect(sendAttempts).toBe(1);
+
+    // Stopped: the documented retry sends nothing.
+    await t.mutation(internal.broadcast.blackFriday.stopBlackFriday, { reason: "bad copy" });
+    await t.mutation(internal.broadcast.waveRuns.resumeFinalizeWaveRun, { runId: started.runId, confirmedNotSent: true });
+    expect(await t.action(internal.broadcast.waveRuns.finalizeWaveAction, { runId: started.runId })).toEqual({ ok: false, reason: "campaign-kill-gate-tripped" });
+    expect(sendAttempts).toBe(1);
+
+    // Cleared, but now past the cutoff: still nothing.
+    await t.mutation(internal.broadcast.blackFriday.clearBlackFridayKillGate, { reason: "fixed" });
+    vi.setSystemTime(BLACK_FRIDAY_OFFER.endsAtMs - 60 * 60 * 1000);
+    expect(await t.action(internal.broadcast.waveRuns.finalizeWaveAction, { runId: started.runId })).toEqual({ ok: false, reason: "campaign-past-send-cutoff" });
+    expect(sendAttempts).toBe(1);
+
+    // Inside the window with the gate clear, the retry goes out.
+    vi.setSystemTime(NOW + 60 * 60 * 1000);
+    expect(await t.action(internal.broadcast.waveRuns.finalizeWaveAction, { runId: started.runId })).toEqual({ ok: true });
+    expect(sendAttempts).toBe(2);
   });
 
   test("a few delivered emails are too few to trip the gate", async () => {
@@ -766,6 +816,8 @@ describe("Black Friday send against the database", () => {
     await t.action(internal.broadcast.blackFriday.releaseBlackFridayBroadcast, { runId: canary.runId, dryRun: false });
     await t.action(internal.broadcast.waveRuns.finalizeWaveAction, { runId: canary.runId });
     // The next waitlist wave waits for trusted canary stats.
+    await expect(startReal(t, { version: "new-buyer", locale: "en", recipient: "waitlist", count: 5000, wave: 2 })).rejects.toThrow(/since the last waitlist wave/);
+    vi.setSystemTime(NOW + 19 * 60 * 60 * 1000);
     await expect(startReal(t, { version: "new-buyer", locale: "en", recipient: "waitlist", count: 5000, wave: 2 })).rejects.toThrow(/100 are needed/);
 
     // The emailed waitlist contact signs up: the account pick sees the registration's stamp.
