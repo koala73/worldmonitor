@@ -164,12 +164,14 @@ const PRO_CRITICAL_CSS = [
 // hero's classes, or the swap reflows the first viewport.
 //
 // /pro: the original rules in their original cascade order. The h1 and p
-// rules are scoped to the hero with :where(), which keeps their (0,0,2)
-// specificity; unscoped, they restyled every paragraph on the page.
+// rules are scoped with :where(), which keeps their (0,0,2) specificity: h1 to
+// the hero, p to the hero and the no-script #pro-overview fallback, whose
+// classless paragraphs need the spacing. Unscoped, they restyled every
+// paragraph on the page, the pricing strip and card notes included.
 const PRO_HERO_CRITICAL_CSS = [
-  'main>section:first-child{position:relative;overflow:hidden;padding:7rem 1rem 4rem}main>section:first-child>div:first-child{position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(74,222,128,.10) 0%,transparent 55%);pointer-events:none}main>section:first-child>div:nth-child(2){position:relative;z-index:10;max-width:64rem;margin-inline:auto;text-align:center}main>:where(section:first-child) h1{font-family:var(--font-display);font-weight:700;font-size:2.25rem;line-height:1.08;letter-spacing:-.025em}main>:where(section:first-child) p{margin:1.5rem auto 0;max-width:42rem;color:#9ca3af;font-size:1rem;line-height:1.5}',
+  'main>section:first-child{position:relative;overflow:hidden;padding:7rem 1rem 4rem}main>section:first-child>div:first-child{position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(74,222,128,.10) 0%,transparent 55%);pointer-events:none}main>section:first-child>div:nth-child(2){position:relative;z-index:10;max-width:64rem;margin-inline:auto;text-align:center}main>:where(section:first-child) h1{font-family:var(--font-display);font-weight:700;font-size:2.25rem;line-height:1.08;letter-spacing:-.025em}main>:where(section:first-child,#pro-overview) p{margin:1.5rem auto 0;max-width:42rem;color:#9ca3af;font-size:1rem;line-height:1.5}',
   '@media (min-width:640px){main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main>:where(section:first-child) h1{font-size:3rem;line-height:1.05}}',
-  '@media (min-width:768px){main>:where(section:first-child) h1{font-size:4.5rem}main>:where(section:first-child) p{font-size:1.125rem;line-height:1.75rem}}',
+  '@media (min-width:768px){main>:where(section:first-child) h1{font-size:4.5rem}main>:where(section:first-child,#pro-overview) p{font-size:1.125rem;line-height:1.75rem}}',
 ].join('');
 
 // / (welcome/Hero.tsx): no wash layer and no blanket `main p` rule; every hero
