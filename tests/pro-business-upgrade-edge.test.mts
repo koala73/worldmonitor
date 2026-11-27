@@ -9,6 +9,8 @@
  * - /api/pro-annual-switch relays to /relay/pro-annual-switch. It validates the
  *   confirm's `discounted` flag, the accepted charge and listPrice, and passes
  *   the switch's typed refusals through for the client copy.
+ * - /api/api-starter-switch relays to /relay/api-starter-switch. Every confirm
+ *   names the charge it accepted.
  */
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
@@ -21,6 +23,7 @@ process.env.UPSTASH_REDIS_REST_URL = 'https://upgrade-redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-redis-token';
 const { default: upgradeHandler } = await import('../api/pro-business-upgrade.ts');
 const { default: switchHandler } = await import('../api/pro-annual-switch.ts');
+const { default: apiStarterHandler } = await import('../api/api-starter-switch.ts');
 const { PLAN_CHANGE_RELAY_ABORT_MS } = await import('../api/_plan-change-relay.ts');
 const originalFetch = globalThis.fetch;
 
@@ -73,6 +76,14 @@ async function postUpgrade(body: unknown): Promise<Response> {
 
 async function postSwitch(body: unknown): Promise<Response> {
   return switchHandler(new Request('https://worldmonitor.app/api/pro-annual-switch', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await bearer()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }));
+}
+
+async function postApiStarter(body: unknown): Promise<Response> {
+  return apiStarterHandler(new Request('https://worldmonitor.app/api/api-starter-switch', {
     method: 'POST',
     headers: { Authorization: `Bearer ${await bearer()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -204,5 +215,78 @@ describe('api/pro-annual-switch', () => {
       assert.equal((await postSwitch({ confirm: false, listPrice: true })).status, 200);
       assert.deepEqual(relayBodies(), [{ userId: 'user_switch', confirm: false, listPrice: true }]);
     });
+  });
+});
+
+// A request for one plan change can never run as another: each route refuses a
+// body naming another kind before the limiter and the relay.
+describe('the Pro Business and Pro Yearly routes refuse an API Starter request', () => {
+  it('answers 400 before the limiter and the relay', async () => {
+    for (const body of [
+      { confirm: false, kind: 'api_starter' },
+      { confirm: true, kind: 'api_starter', discounted: false, acceptedChargeAmount: 6012, acceptedChargeCurrency: 'USD' },
+    ]) {
+      assert.equal((await postUpgrade(body)).status, 400, `pro-business-upgrade ${JSON.stringify(body)}`);
+      assert.equal((await postSwitch(body)).status, 400, `pro-annual-switch ${JSON.stringify(body)}`);
+    }
+    assert.deepEqual(relayCalls, []);
+    assert.equal(limiterCalls, 0);
+  });
+
+  it('the Pro Yearly route still takes a body that names its own kind', async () => {
+    assert.equal((await postSwitch({ confirm: false, kind: 'pro_annual' })).status, 200);
+    assert.deepEqual(relayBodies(), [{ userId: 'user_switch', confirm: false }]);
+  });
+});
+
+describe('api/api-starter-switch', () => {
+  const accepted = { acceptedChargeAmount: 6012, acceptedChargeCurrency: 'USD' };
+
+  it('relays a preview and a confirm to its own relay, with the accepted charge', async () => {
+    relayResponse = () => Response.json({ kind: 'upgraded', fromPlanKey: 'pro_monthly', toPlanKey: 'api_starter' });
+    assert.equal((await postApiStarter({ confirm: false })).status, 200);
+    assert.equal((await postApiStarter({ confirm: true, ...accepted })).status, 200);
+    assert.deepEqual(relayCalls, [
+      { path: '/relay/api-starter-switch', body: { userId: 'user_switch', confirm: false } },
+      { path: '/relay/api-starter-switch', body: { userId: 'user_switch', confirm: true, ...accepted } },
+    ]);
+    assert.equal(limiterCalls, 2);
+  });
+
+  it('rejects a confirm without a well-formed accepted charge, and another kind, before the limiter', async () => {
+    for (const bad of [
+      {},
+      { confirm: 'yes' },
+      { confirm: true },
+      { confirm: true, acceptedChargeAmount: 6012 },
+      { confirm: true, acceptedChargeCurrency: 'USD' },
+      { confirm: true, acceptedChargeAmount: -1, acceptedChargeCurrency: 'USD' },
+      { confirm: true, acceptedChargeAmount: 60.12, acceptedChargeCurrency: 'USD' },
+      { confirm: true, acceptedChargeAmount: 6012, acceptedChargeCurrency: 'usd' },
+      { confirm: false, kind: 'pro_annual' },
+      { confirm: false, kind: 'pro_business' },
+    ]) {
+      assert.equal((await postApiStarter(bad)).status, 400, JSON.stringify(bad));
+    }
+    assert.deepEqual(relayCalls, []);
+    assert.equal(limiterCalls, 0);
+  });
+
+  it('passes the switch refusals through as 409', async () => {
+    for (const code of ['ALREADY_API_PLAN', 'NO_UPGRADEABLE_PRO', 'PRO_CANCEL_SCHEDULED', 'CHARGE_CHANGED', 'UPGRADE_RATE_LIMITED']) {
+      relayResponse = () => Response.json({ error: code }, { status: 409 });
+      const res = await postApiStarter({ confirm: false });
+      assert.equal(res.status, 409);
+      assert.deepEqual(await res.json(), { error: code });
+    }
+  });
+
+  // New Vercel, old Convex: the relay route does not exist yet.
+  it('fails closed when the Convex deployment predates the switch relay', async () => {
+    relayResponse = () => new Response('No matching routes found', { status: 404 });
+    const res = await postApiStarter({ confirm: false });
+    assert.equal(res.status, 502);
+    assert.deepEqual(await res.json(), { error: 'Upgrade unavailable' });
+    assert.deepEqual(relayCalls.map((call) => call.path), ['/relay/api-starter-switch']);
   });
 });

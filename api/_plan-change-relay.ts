@@ -1,8 +1,9 @@
 // Shared edge handler for the /pro in-place plan changes. Each plan change has
 // its own route at both hops (api/pro-business-upgrade.ts →
 // /relay/pro-business-upgrade, api/pro-annual-switch.ts →
-// /relay/pro-annual-switch), so a deployment that predates a change answers 404
-// for it instead of running another one. The routes differ only in the body
+// /relay/pro-annual-switch, api/api-starter-switch.ts →
+// /relay/api-starter-switch), so a deployment that predates a change answers
+// 404 for it instead of running another one. The routes differ only in the body
 // they accept and where they relay; auth, idempotency, the limiter call, the
 // relay abort and the refusal passthrough are the same.
 
@@ -30,7 +31,7 @@ const CONVEX_TENANT_RELAY_SECRET = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
  */
 export const PLAN_CHANGE_RELAY_ABORT_MS = 23_000;
 
-/** One budget per user across both plan changes, as when one route served both. */
+/** One budget per user across every plan change, as when one route served them all. */
 export const PLAN_CHANGE_RATE_LIMIT = {
   scope: 'pro-business-upgrade',
   limit: 5,
@@ -51,6 +52,7 @@ const PASSTHROUGH_ERRORS = new Set([
   'PROMO_ENDED',
   'PROMO_CODE_REJECTED',
   'CHARGE_CHANGED',
+  'ALREADY_API_PLAN',
 ]);
 
 type EdgeCtx = { waitUntil: (p: Promise<unknown>) => void };

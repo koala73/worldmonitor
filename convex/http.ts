@@ -2518,6 +2518,8 @@ const PRO_BUSINESS_UPGRADE_REFUSALS = new Set([
   "PROMO_CODE_REJECTED",
   // The re-checked charge is above the one the user accepted; nothing changed.
   "CHARGE_CHANGED",
+  // Pro → API Starter: the account already has an API plan.
+  "ALREADY_API_PLAN",
 ]);
 
 /** Runs one plan change and maps its typed refusals for the edge route. */
@@ -2579,12 +2581,18 @@ http.route({
       acceptedChargeAmount?: unknown;
       acceptedChargeCurrency?: unknown;
       listPrice?: unknown;
+      kind?: unknown;
     }>(request);
     if (!body) {
       return Response.json({ error: "INVALID_JSON" }, { status: 400 });
     }
     if (typeof body.userId !== "string" || body.userId.length === 0 || typeof body.confirm !== "boolean") {
       return Response.json({ error: "MISSING_FIELDS", required: ["userId", "confirm"] }, { status: 400 });
+    }
+    // Pro Monthly → Pro Yearly only. Another plan change has its own route; a
+    // request naming one is refused here, never run as this switch.
+    if (body.kind !== undefined && body.kind !== "pro_annual") {
+      return Response.json({ error: "INVALID_KIND" }, { status: 400 });
     }
     if (body.discounted !== undefined && typeof body.discounted !== "boolean") {
       return Response.json({ error: "INVALID_DISCOUNTED" }, { status: 400 });
@@ -2623,6 +2631,62 @@ http.route({
     };
     return planChangeRelayResponse("pro-annual-switch", () => ctx.runAction(
       internal.payments.billing.internalSwitchToProAnnual,
+      args,
+    ));
+  }),
+});
+
+http.route({
+  path: "/relay/api-starter-switch",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
+
+    const body = await parseJsonObjectBody<{
+      userId?: unknown;
+      confirm?: unknown;
+      acceptedChargeAmount?: unknown;
+      acceptedChargeCurrency?: unknown;
+      kind?: unknown;
+    }>(request);
+    if (!body) {
+      return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+    }
+    if (typeof body.userId !== "string" || body.userId.length === 0 || typeof body.confirm !== "boolean") {
+      return Response.json({ error: "MISSING_FIELDS", required: ["userId", "confirm"] }, { status: 400 });
+    }
+    if (body.kind !== undefined && body.kind !== "api_starter") {
+      return Response.json({ error: "INVALID_KIND" }, { status: 400 });
+    }
+    // A confirm names the charge it accepted, in minor units (see runPlanChange).
+    const namesCharge = body.acceptedChargeAmount !== undefined || body.acceptedChargeCurrency !== undefined;
+    if (body.confirm && !namesCharge) {
+      return Response.json({ error: "MISSING_FIELDS", required: ["acceptedChargeAmount", "acceptedChargeCurrency"] }, { status: 400 });
+    }
+    if (
+      namesCharge &&
+      (typeof body.acceptedChargeAmount !== "number" ||
+        !Number.isSafeInteger(body.acceptedChargeAmount) ||
+        body.acceptedChargeAmount < 0 ||
+        typeof body.acceptedChargeCurrency !== "string" ||
+        !/^[A-Z]{3}$/.test(body.acceptedChargeCurrency))
+    ) {
+      return Response.json({ error: "INVALID_ACCEPTED_CHARGE" }, { status: 400 });
+    }
+
+    const args = {
+      userId: body.userId,
+      confirm: body.confirm,
+      ...(namesCharge
+        ? {
+          acceptedChargeAmount: body.acceptedChargeAmount as number,
+          acceptedChargeCurrency: body.acceptedChargeCurrency as string,
+        }
+        : {}),
+    };
+    return planChangeRelayResponse("api-starter-switch", () => ctx.runAction(
+      internal.payments.billing.internalSwitchToApiStarter,
       args,
     ));
   }),
