@@ -125,9 +125,9 @@ const CRITICAL_CSS = [
   // reveal variants, so each reveal the nav uses is mirrored here.
   '@media (min-width:375px){nav[data-wm-nav] [class~="min-[375px]:not-sr-only"]{clip-path:none;white-space:normal;width:auto;height:auto;margin:0;padding:0;position:static;overflow:visible}}',
   '@media (min-width:640px){nav[data-wm-nav] [class~="sm:not-sr-only"]{clip-path:none;white-space:normal;width:auto;height:auto;margin:0;padding:0;position:static;overflow:visible}nav[data-wm-nav] [class~="sm:block"]{display:block}nav[data-wm-nav] #welcome-tablet-navigation>summary{padding-inline:.75rem}nav[data-wm-nav]>div{padding-inline:1.5rem}nav[data-wm-nav] a[data-umami-event-target="welcome-nav"]{flex-shrink:0;padding-inline:1rem;font-size:.875rem;line-height:1.25rem}main [class~="sm:flex-row"]{flex-direction:row}main [class~="sm:items-center"]{align-items:center}main [class~="sm:w-auto"]{width:auto}main [class~="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class~="sm:max-w-3xl"]{max-width:48rem}main [class~="sm:max-w-none"]{max-width:none}main [class~="sm:px-4"]{padding-inline:1rem}main [class~="sm:px-6"]{padding-inline:1.5rem}main [class~="sm:px-8"]{padding-inline:2rem}main [class~="sm:tracking-wider"]{letter-spacing:.05em}main [class~="sm:block"]{display:block}}',
-  '@media (min-width:768px){main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav[data-wm-nav] [class~="md:block"]{display:block}nav[data-wm-nav] [class~="md:flex"]{display:flex}}',
+  '@media (min-width:768px){main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}main [class~="md:block"]{display:block}nav[data-wm-nav] [class~="md:block"]{display:block}nav[data-wm-nav] [class~="md:flex"]{display:flex}}',
   '@media (min-width:1024px){nav[data-wm-nav] [class~="lg:flex"]{display:flex}nav[data-wm-nav] [class~="lg:hidden"]{display:none}nav[data-wm-nav] [class~="lg:ms-0"]{margin-inline-start:0}}',
-  '@media (min-width:1280px){nav[data-wm-nav] [class~="xl:inline"]{display:inline}nav[data-wm-nav] [class~="xl:hidden"]{display:none}}',
+  '@media (min-width:1280px){main [class~="xl:block"]{display:block}nav[data-wm-nav] [class~="xl:inline"]{display:inline}nav[data-wm-nav] [class~="xl:hidden"]{display:none}}',
 ].join('');
 
 // /pro-only mirrors for the prerendered nav + hero (pro-first-viewport-prerender.tsx),
@@ -163,11 +163,15 @@ const PRO_CRITICAL_CSS = [
 // deferred sheet lands: each value must equal what Tailwind resolves for the
 // hero's classes, or the swap reflows the first viewport.
 //
-// /pro: the original rules, byte-for-byte, in their original cascade order.
+// /pro: the original rules in their original cascade order. The h1 and p
+// rules are scoped with :where(), which keeps their (0,0,2) specificity: h1 to
+// the hero, p to the hero and the no-script #pro-overview fallback, whose
+// classless paragraphs need the spacing. Unscoped, they restyled every
+// paragraph on the page, the pricing strip and card notes included.
 const PRO_HERO_CRITICAL_CSS = [
-  'main>section:first-child{position:relative;overflow:hidden;padding:7rem 1rem 4rem}main>section:first-child>div:first-child{position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(74,222,128,.10) 0%,transparent 55%);pointer-events:none}main>section:first-child>div:nth-child(2){position:relative;z-index:10;max-width:64rem;margin-inline:auto;text-align:center}main h1{font-family:var(--font-display);font-weight:700;font-size:2.25rem;line-height:1.08;letter-spacing:-.025em}main p{margin:1.5rem auto 0;max-width:42rem;color:#9ca3af;font-size:1rem;line-height:1.5}',
-  '@media (min-width:640px){main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}}',
-  '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}}',
+  'main>section:first-child{position:relative;overflow:hidden;padding:7rem 1rem 4rem}main>section:first-child>div:first-child{position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(74,222,128,.10) 0%,transparent 55%);pointer-events:none}main>section:first-child>div:nth-child(2){position:relative;z-index:10;max-width:64rem;margin-inline:auto;text-align:center}main>:where(section:first-child) h1{font-family:var(--font-display);font-weight:700;font-size:2.25rem;line-height:1.08;letter-spacing:-.025em}main>:where(section:first-child,#pro-overview) p{margin:1.5rem auto 0;max-width:42rem;color:#9ca3af;font-size:1rem;line-height:1.5}',
+  '@media (min-width:640px){main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main>:where(section:first-child) h1{font-size:3rem;line-height:1.05}}',
+  '@media (min-width:768px){main>:where(section:first-child) h1{font-size:4.5rem}main>:where(section:first-child,#pro-overview) p{font-size:1.125rem;line-height:1.75rem}}',
 ].join('');
 
 // / (welcome/Hero.tsx): no wash layer and no blanket `main p` rule; every hero
