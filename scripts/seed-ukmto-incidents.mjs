@@ -50,6 +50,7 @@ const isRepresentableTime = ms => typeof ms === 'number' && Number.isSafeInteger
 
 export function normalizeIncidents(value) {
   const incidents = new Map();
+  const listedAt = new Map();
   for (const row of decodeRows(value)) {
     const number = /^UKMTO-([1-9]\d{0,9})$/.exec(typeof row.id === 'string' ? row.id : '')?.[1];
     if (!number || Number(number) > 2 ** 31 - 1
@@ -71,12 +72,14 @@ export function normalizeIncidents(value) {
     const existing = incidents.get(incident.id);
     if (existing && JSON.stringify(existing) !== JSON.stringify(incident)) throw new Error('Conflicting UKMTO incident ID');
     incidents.set(incident.id, incident);
+    listedAt.set(incident.id, row.ts);
   }
   // The publisher repeats some reports under a second, non-UKMTO number (UKMTO-28082035 is warning 179-26).
-  // Reports at the same time and position are one incident; keep its UKMTO number.
+  // Reports at the same listed time and position are one incident; keep its UKMTO number.
+  // A repeat may omit the stated time, so the listed time is the shared key.
   const byEvent = new Map();
   for (const incident of [...incidents.values()].sort((a, b) => a.incidentNumber - b.incidentNumber)) {
-    const event = `${incident.occurredAt}:${incident.location.latitude}:${incident.location.longitude}`;
+    const event = `${listedAt.get(incident.id)}:${incident.location.latitude}:${incident.location.longitude}`;
     if (!byEvent.has(event)) byEvent.set(event, incident);
   }
   return [...byEvent.values()].sort((a, b) => b.occurredAt - a.occurredAt || a.id.localeCompare(b.id));

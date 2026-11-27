@@ -40,6 +40,9 @@ test('decodes the captured publisher table and keeps one entry per incident', ()
 test('folds a repeated report at the same time and position into its UKMTO number', () => {
   const repeat = { ...report, id: 'UKMTO-28082035', text: 'UKMTO WARNING 143-26 - repeated record.' };
   assert.deepEqual(normalizeIncidents(table([repeat, report])).map(item => item.id), ['ukmto-143']);
+  const stated = { ...report, text: 'Incident Date: 28 Sep 2026 Incident Time: 1900UTC UKMTO has received a report.' };
+  assert.deepEqual(normalizeIncidents(table([repeat, stated])).map(item => [item.id, item.occurredAt]),
+    [['ukmto-143', Date.parse('2026-09-28T19:00:00Z')]]);
   const moved = { ...repeat, lat: 25 };
   assert.equal(normalizeIncidents(table([moved, report])).length, 2);
 });
