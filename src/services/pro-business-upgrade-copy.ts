@@ -114,9 +114,28 @@ export function buildSwitchPreviewBody(preview: ProAnnualSwitchPreview): string 
   );
 }
 
-/** Settings line beside the switch button while the offer runs. */
-export function buildSwitchPromoLine(savingsVsMonthlyPct: number): string {
-  return `Black Friday: switch to yearly and save ${savingsVsMonthlyPct}% on your first year.`;
+/** The PromoDisplayPrices figures the Settings offer line names (USD cents). */
+export interface SwitchPromoLinePrices {
+  listCents: number;
+  perMonthCents: number;
+  monthlyTotalCents: number;
+  savingsVsMonthlyPct: number;
+}
+
+/**
+ * Settings line beside the switch button while the offer runs. The savings
+ * figure is against twelve monthly payments, so it stands beside the monthly
+ * price (the banner's wording), with the renewal and the cancel terms.
+ */
+export function buildSwitchPromoLine(prices: SwitchPromoLinePrices): string {
+  const perMonth = formatMinorAmount(prices.perMonthCents, 'USD');
+  const monthly = formatMinorAmount(Math.round(prices.monthlyTotalCents / 12), 'USD');
+  const renewal = formatMinorAmount(prices.listCents, 'USD');
+  return (
+    `Black Friday: ${perMonth} a month instead of ${monthly}, billed yearly. ` +
+    `That is ${prices.savingsVsMonthlyPct}% less than paying monthly for your first year. ` +
+    `Renews at ${renewal} a year. Cancel anytime.`
+  );
 }
 
 export const SWITCH_TITLE = 'Switch to Pro Yearly';

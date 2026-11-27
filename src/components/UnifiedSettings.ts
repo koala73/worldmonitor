@@ -1663,9 +1663,17 @@ export class UnifiedSettings {
     if (promo) {
       this.scheduleSwitchPromoExpiry(promo);
       if (this.switchPromoPrices === undefined) this.loadSwitchPromoPrices(promo);
-      const savings = this.switchPromoPrices?.savingsVsMonthlyPct;
-      if (typeof savings === 'number') {
-        offerLine = `<div class="upgrade-pro-offer-line">${escapeHtml(buildSwitchPromoLine(savings))}</div>`;
+      const prices = this.switchPromoPrices;
+      // Both go null together when the monthly comparison is unknown or weaker
+      // than the direct discount; the line is then left out.
+      if (prices && prices.savingsVsMonthlyPct !== null && prices.monthlyTotalCents !== null) {
+        const line = buildSwitchPromoLine({
+          listCents: prices.listCents,
+          perMonthCents: prices.perMonthCents,
+          monthlyTotalCents: prices.monthlyTotalCents,
+          savingsVsMonthlyPct: prices.savingsVsMonthlyPct,
+        });
+        offerLine = `<div class="upgrade-pro-offer-line">${escapeHtml(line)}</div>`;
       }
     }
     return `${offerLine}<button type="button" class="switch-to-yearly-btn">${escapeHtml(SWITCH_ENTRY_LABEL)}</button>`;

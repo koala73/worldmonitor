@@ -190,8 +190,13 @@ describe('Pro Monthly → Pro Yearly switch copy', () => {
     assert.match(copy.SWITCH_FAILED_BODY, /could not confirm/);
   });
 
-  it('builds the Settings offer line from the PR 1 savings figure', () => {
-    assert.equal(copy.buildSwitchPromoLine(70), 'Black Friday: switch to yearly and save 70% on your first year.');
+  // PromoDisplayPrices: the savings figure is against twelve monthly payments,
+  // so it is always shown beside its monthly reference.
+  it('builds the Settings offer line with the monthly reference, the renewal and cancel anytime', () => {
+    assert.equal(
+      copy.buildSwitchPromoLine({ listCents: 35999, perMonthCents: 1200, monthlyTotalCents: 47988, savingsVsMonthlyPct: 70 }),
+      'Black Friday: $12.00 a month instead of $39.99, billed yearly. That is 70% less than paying monthly for your first year. Renews at $359.99 a year. Cancel anytime.',
+    );
   });
 
   it('switches only Pro Monthly, the plan the server switches', () => {

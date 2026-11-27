@@ -211,7 +211,8 @@ describe('UnifiedSettings Pro Monthly -> Pro Yearly switch', () => {
     mockSubscription = proSubscription('pro_monthly');
     const html = await renderSettled();
     expect(html).toContain('<button type="button" class="switch-to-yearly-btn">Switch to yearly</button>');
-    expect(html).toContain('Black Friday: switch to yearly and save 70% on your first year.');
+    // The 70% is against twelve monthly payments, so the monthly price sits beside it.
+    expect(html).toContain('Black Friday: $12.00 a month instead of $39.99, billed yearly. That is 70% less than paying monthly for your first year. Renews at $359.99 a year. Cancel anytime.');
   });
 
   it('keeps the switch at list price after the promotion, without the offer line', async () => {
