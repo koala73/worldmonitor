@@ -29,6 +29,7 @@ const guardedPaths = [
   '/relay/customer-portal',
   '/relay/pro-business-upgrade',
   '/relay/pro-annual-switch',
+  '/relay/api-starter-switch',
   '/relay/bulk-suppress-emails',
 ];
 

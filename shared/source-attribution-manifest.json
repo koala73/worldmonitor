@@ -22763,6 +22763,9 @@
           "path": "api/mcp/auth.ts"
         },
         {
+          "path": "api/mcp/checkout.ts"
+        },
+        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {

@@ -245,6 +245,10 @@ Content-Type: application/json
 
 - `reason: "already-subscribed"` — the account already holds a plan in the same family. `data.subscription` gives `{planKey, displayName, status, currentPeriodEnd}`. Pro to Pro Business is a prorated in-place upgrade the user confirms on worldmonitor.app/pro; API Starter to API Business is a prorated change in the billing portal.
 - `reason: "payment-in-progress"` — a payment for the same tier group is still pending. Finish it in the browser, or call again later: this one clears on its own.
+- `reason: "switch-in-place"` — the account holds an individual Pro plan and asked for API Starter. Pro moves to API Starter as a prorated change on the same subscription, so no checkout is created and nothing is charged. The user opens `data.switchUrl` (`https://www.worldmonitor.app/dashboard?settings=account`, which opens Settings, Account), chooses **Switch to API Starter**, and confirms the prorated charge there.
+- `reason: "pro-cancel-scheduled"` — as above, but that Pro subscription is set to cancel. The user resumes it in the billing portal first, then switches.
+
+When the switch state cannot be read for a caller entitled through an individual Pro plan, an API Starter request returns the retryable `-32603` at HTTP 503 with `Retry-After` instead of a checkout link.
 
 An operator key calling `start_upgrade` also gets `-32002` at HTTP 200, with message `Starting an upgrade requires a user-bound credential.` and no `data`.
 

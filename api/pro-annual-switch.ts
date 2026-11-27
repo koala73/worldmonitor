@@ -22,8 +22,10 @@ export default createPlanChangeHandler({
   routeName: 'pro-annual-switch',
   userAgent: 'worldmonitor-pro-annual-switch-edge/1.0',
   parseBody: (body) => {
-    const { confirm, discounted, acceptedChargeAmount: amount, acceptedChargeCurrency: currency, listPrice } = body;
+    const { confirm, discounted, acceptedChargeAmount: amount, acceptedChargeCurrency: currency, listPrice, kind } = body;
     if (typeof confirm !== 'boolean') return null;
+    // Another plan change has its own route; it never runs as this switch.
+    if (kind !== undefined && kind !== 'pro_annual') return null;
     if (discounted !== undefined && typeof discounted !== 'boolean') return null;
     // A confirm must name the quote it accepts.
     if (confirm && discounted === undefined) return null;

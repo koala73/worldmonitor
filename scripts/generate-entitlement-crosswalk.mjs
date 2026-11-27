@@ -362,6 +362,7 @@ const SITE_BASELINE = {
   "convex/http.ts::mcpAccess": 1,
   "convex/http.ts::tier": 3,
   "convex/mcpProTokens.ts::tier": 1,
+  "convex/payments/billing.ts::apiAccess": 1,
   "convex/payments/billing.ts::tier": 1,
   "convex/teamDashboards.ts::tabFocus": 2,
   "server/_shared/country-history-access.ts::tier": 1,

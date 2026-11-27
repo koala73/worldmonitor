@@ -54,7 +54,7 @@ import {
   buildMcpStructuredDenial,
   type McpStaticDenialReason,
 } from './upgrade';
-import { relayMcpCheckout } from './checkout';
+import { relayApiStarterSwitchPreview, relayMcpCheckout } from './checkout';
 import { connectInstruction } from './host-policy';
 
 // ---------------------------------------------------------------------------
@@ -224,6 +224,7 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
   // must send them verbatim rather than prefixing again (#7674).
   redisPipeline: (commands, timeoutMs, raw = true) => rawRedisPipeline(commands, timeoutMs, raw),
   createCheckout: (input) => relayMcpCheckout(input),
+  previewApiStarterSwitch: (input) => relayApiStarterSwitchPreview(input),
 };
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
+import { API_STARTER_SWITCH_TARGETS } from "../payments/billing";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { classifyPlanChange } from "../payments/subscriptionHelpers";
 
@@ -28,6 +29,9 @@ describe("classifyPlanChange", () => {
     ["pro_business_annual", "pro_monthly", "downgrade"],
     ["pro_annual", "pro_business_monthly", "upgrade"],
     ["pro_monthly", "api_starter", "upgrade"],
+    // The three in-place Pro → API Starter switches (API_STARTER_SWITCH_TARGETS).
+    ["pro_monthly_mcp", "api_starter", "upgrade"],
+    ["pro_annual", "api_starter_annual", "upgrade"],
     ["api_starter", "pro_annual", "downgrade"],
     ["api_starter_annual", "api_business", "upgrade"],
     ["api_business_annual", "api_starter", "downgrade"],
@@ -52,7 +56,7 @@ function mockResend() {
 
 async function seedSubscription(t: ReturnType<typeof convexTest>, planKey: string, amount: number) {
   await t.run(async (ctx) => {
-    for (const key of ["pro_monthly", "pro_annual", "pro_business_monthly"]) {
+    for (const key of ["pro_monthly", "pro_monthly_mcp", "pro_annual", "pro_business_monthly", "api_starter", "api_starter_annual"]) {
       await ctx.db.insert("productPlans", {
         dodoProductId: PRODUCT_CATALOG[key]!.dodoProductId!,
         planKey: key,
@@ -282,5 +286,58 @@ describe("admin plan-upgrade email", () => {
     const upgrades = upgradeSends(sends());
     expect(upgrades).toHaveLength(1);
     expect(upgrades[0]?.html).toMatch(/Old Price:<\/td><td[^>]*>\$39\.99 USD \/ month</);
+  });
+});
+
+// The in-place Pro → API Starter switch (runPlanChange kind "api_starter")
+// reaches the webhook as subscription.plan_changed, never as a new purchase.
+// These pin what that path gives an API Starter buyer that a fresh checkout's
+// subscription.active would: the API entitlement and key issuance, and the
+// admin alert naming both plans.
+describe("Pro → API Starter plan change", () => {
+  const keyArgs = (n: number) => ({
+    userId: "user_upgrader",
+    name: `key ${n}`,
+    keyPrefix: `wm_0000${n}`,
+    keyHash: String(n).repeat(64).slice(0, 64),
+  });
+
+  test("every switch source is announced as an upgrade, with both plan names", async () => {
+    const expected: Record<string, [string, number, string]> = {
+      pro_monthly: ["Pro (Monthly)", 3999, "API Starter (Monthly)"],
+      pro_monthly_mcp: ["Pro (Monthly)", 1499, "API Starter (Monthly)"],
+      pro_annual: ["Pro (Annual)", 35999, "API Starter (Annual)"],
+    };
+    expect(Object.keys(API_STARTER_SWITCH_TARGETS).sort()).toEqual(Object.keys(expected).sort());
+    for (const [from, to] of Object.entries(API_STARTER_SWITCH_TARGETS)) {
+      const [fromName, amount, toName] = expected[from]!;
+      expect(classifyPlanChange(from, to), from).toBe("upgrade");
+      const sends = mockResend();
+      const t = convexTest(schema, modules);
+      await seedSubscription(t, from, amount);
+      await deliver(t, "subscription.plan_changed", to, PRODUCT_CATALOG[to]!.priceCents!);
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      const upgrades = upgradeSends(sends());
+      expect(upgrades, from).toHaveLength(1);
+      expect(upgrades[0]?.subject).toBe(`[WM] Plan Upgrade: ${fromName} → ${toName}`);
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
+  });
+
+  test("the switch grants API access, so the account can create an API key", async () => {
+    mockResend();
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, "pro_monthly", 3999);
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, { userId: "user_upgrader", eventTimestamp: NOW });
+    vi.setSystemTime(NOW);
+    await expect(t.mutation(internal.apiKeys.createApiKeyForUser, keyArgs(1))).rejects.toThrow(/API_ACCESS_REQUIRED/);
+
+    await deliver(t, "subscription.plan_changed", "api_starter", 9999);
+    const entitlement = await t.run((ctx) => ctx.db.query("entitlements").first());
+    expect(entitlement?.planKey).toBe("api_starter");
+    expect(entitlement?.features.apiAccess).toBe(true);
+    expect(entitlement?.features.planLimits).toEqual(PRODUCT_CATALOG.api_starter!.features.planLimits);
+    await expect(t.mutation(internal.apiKeys.createApiKeyForUser, keyArgs(2))).resolves.toBeDefined();
   });
 });

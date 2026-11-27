@@ -20,6 +20,7 @@ const routes: [string, 'POST' | 'GET', Role[]][] = [
   ['customer-portal', 'POST', ['gateway']],
   ['pro-business-upgrade', 'POST', ['gateway']],
   ['pro-annual-switch', 'POST', ['gateway']],
+  ['api-starter-switch', 'POST', ['gateway']],
   ['register-referral-code', 'POST', ['gateway']],
   ['channels', 'POST', ['delivery']],
   ['deactivate', 'POST', ['delivery']],

@@ -4025,19 +4025,32 @@ export const PRO_BUSINESS_UPGRADE_TARGETS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * API Starter includes the Pro dashboard for one user, so an individual Pro
+ * holder who wants the API moves the existing subscription here instead of
+ * buying a second one. The billing period is kept, as for Pro Business.
+ */
+export const API_STARTER_SWITCH_TARGETS: Readonly<Record<string, string>> = {
+  pro_monthly: "api_starter",
+  pro_monthly_mcp: "api_starter",
+  pro_annual: "api_starter_annual",
+};
+
+/**
  * In-place plan changes this runner performs. "pro_business" is the Pro → Pro
  * Business upgrade above; "pro_annual" moves an active Pro Monthly to Pro
  * Yearly, with the running promotion's code while it lasts. The switch is a
- * permanent feature; only the discount is time-boxed.
+ * permanent feature; only the discount is time-boxed. "api_starter" moves an
+ * individual Pro to API Starter.
  */
-export type PlanChangeKind = "pro_business" | "pro_annual";
-export const PLAN_CHANGE_KINDS: ReadonlySet<string> = new Set<PlanChangeKind>(["pro_business", "pro_annual"]);
-export const planChangeKindValidator = v.union(v.literal("pro_business"), v.literal("pro_annual"));
+export type PlanChangeKind = "pro_business" | "pro_annual" | "api_starter";
+export const PLAN_CHANGE_KINDS: ReadonlySet<string> = new Set<PlanChangeKind>(["pro_business", "pro_annual", "api_starter"]);
+export const planChangeKindValidator = v.union(v.literal("pro_business"), v.literal("pro_annual"), v.literal("api_starter"));
 
 export type ProBusinessUpgradeRefusal =
   | "NO_UPGRADEABLE_PRO"
   | "ALREADY_PRO_BUSINESS"
   | "ALREADY_PRO_ANNUAL"
+  | "ALREADY_API_PLAN"
   | "PRO_CANCEL_SCHEDULED"
   | "ACCOUNT_DELETION_IN_PROGRESS";
 
@@ -4125,15 +4138,107 @@ function selectProAnnualSwitchCandidate(
   };
 }
 
-/** Pure selection for either plan change, exported for tests. */
+/**
+ * Individual Pro → API Starter. An account that already covers an API plan
+ * (API Starter, API Business or Enterprise) has the API already, so it needs
+ * to cancel Pro, not switch it. Pro Business is not a source, and an account
+ * holding it alongside Pro is left alone. Otherwise the Pro Business rules
+ * apply: only an ACTIVE, non-cancelling individual Pro qualifies.
+ */
+function selectApiStarterSwitchCandidate(
+  subs: Parameters<typeof selectProBusinessUpgradeCandidate>[0],
+  now: number,
+): ProBusinessUpgradeCandidate {
+  const covering = subs.filter((sub) => isCoveringAt(sub, now));
+  if (covering.some((sub) => PRODUCT_CATALOG[sub.planKey]?.features.apiAccess === true)) {
+    return { ok: false, reason: "ALREADY_API_PLAN" };
+  }
+  if (covering.some((sub) => PRODUCT_CATALOG[sub.planKey]?.tierGroup === "pro_business")) {
+    return { ok: false, reason: "NO_UPGRADEABLE_PRO" };
+  }
+  const activePro = covering.filter(
+    (sub) => sub.status === "active" && API_STARTER_SWITCH_TARGETS[sub.planKey] !== undefined,
+  );
+  const switchable = activePro.find((sub) => !isCancellationScheduled(sub));
+  if (!switchable) {
+    return { ok: false, reason: activePro.length > 0 ? "PRO_CANCEL_SCHEDULED" : "NO_UPGRADEABLE_PRO" };
+  }
+  const toPlanKey = API_STARTER_SWITCH_TARGETS[switchable.planKey]!;
+  const target = PRODUCT_CATALOG[toPlanKey];
+  if (!target || !target.currentForCheckout || !target.dodoProductId) {
+    return { ok: false, reason: "NO_UPGRADEABLE_PRO" };
+  }
+  return {
+    ok: true,
+    dodoSubscriptionId: switchable.dodoSubscriptionId,
+    fromPlanKey: switchable.planKey,
+    toPlanKey,
+    fromProductId: switchable.dodoProductId,
+    toProductId: target.dodoProductId,
+  };
+}
+
+/**
+ * Everything that differs between plan changes, in one row per kind, so a new
+ * kind is a compile error until each field is decided rather than silently
+ * taking another kind's path.
+ */
+interface PlanChangeSpec {
+  select: (subs: Parameters<typeof selectProBusinessUpgradeCandidate>[0], now: number) => ProBusinessUpgradeCandidate;
+  /** The running promotion's code rides on the change (shared/promo-campaign.ts). */
+  takesPromo: boolean;
+  /** A confirm must echo the quote's `discounted` flag. */
+  confirmEchoesDiscounted: boolean;
+  /**
+   * The quote says the action takes the quote guards (an accepted charge on
+   * confirm, `listPrice` on preview). The Pro Business action takes only
+   * `confirm`, so its quotes never say so.
+   */
+  advertisesQuoteGuards: boolean;
+  /**
+   * A confirm must name the charge it accepted. Optional for Pro Yearly,
+   * whose older clients predate the guard; required for a kind that never
+   * had clients without it.
+   */
+  confirmNamesCharge: boolean;
+  /** Logged once a change is sent. */
+  appliedEvent: string;
+}
+
+const PLAN_CHANGE_SPECS: Readonly<Record<PlanChangeKind, PlanChangeSpec>> = {
+  pro_business: {
+    select: selectProBusinessUpgradeCandidate,
+    takesPromo: false,
+    confirmEchoesDiscounted: false,
+    advertisesQuoteGuards: false,
+    confirmNamesCharge: false,
+    appliedEvent: "pro_business_upgrade_applied",
+  },
+  pro_annual: {
+    select: selectProAnnualSwitchCandidate,
+    takesPromo: true,
+    confirmEchoesDiscounted: true,
+    advertisesQuoteGuards: true,
+    confirmNamesCharge: false,
+    appliedEvent: "pro_annual_switch_applied",
+  },
+  api_starter: {
+    select: selectApiStarterSwitchCandidate,
+    takesPromo: false,
+    confirmEchoesDiscounted: false,
+    advertisesQuoteGuards: true,
+    confirmNamesCharge: true,
+    appliedEvent: "api_starter_switch_applied",
+  },
+};
+
+/** Pure selection for any plan change, exported for tests. */
 export function selectPlanChangeCandidate(
   kind: PlanChangeKind,
   subs: Parameters<typeof selectProBusinessUpgradeCandidate>[0],
   now: number,
 ): ProBusinessUpgradeCandidate {
-  return kind === "pro_annual"
-    ? selectProAnnualSwitchCandidate(subs, now)
-    : selectProBusinessUpgradeCandidate(subs, now);
+  return PLAN_CHANGE_SPECS[kind].select(subs, now);
 }
 
 export const getProBusinessUpgradeCandidate = internalQuery({
@@ -4345,8 +4450,9 @@ export async function runPlanChange(
   },
 ): Promise<ProBusinessUpgradeResult> {
   const { confirm, kind } = args;
+  const spec = PLAN_CHANGE_SPECS[kind];
   const previewDeadline = Date.now() + PLAN_CHANGE_PREVIEW_BUDGET_MS;
-  if (kind === "pro_annual" && confirm && typeof args.discounted !== "boolean") {
+  if (spec.confirmEchoesDiscounted && confirm && typeof args.discounted !== "boolean") {
     // The confirm must say which quote it accepts; guessing could charge a
     // price the user never saw.
     throw new ConvexError({ kind: "PLAN_CHANGE_QUOTE_REQUIRED" });
@@ -4354,6 +4460,9 @@ export async function runPlanChange(
   const namesCharge = args.acceptedChargeAmount !== undefined || args.acceptedChargeCurrency !== undefined;
   if (namesCharge && (!isAcceptedChargeAmount(args.acceptedChargeAmount) || !isCurrencyCode(args.acceptedChargeCurrency))) {
     throw new ConvexError({ kind: "INVALID_ACCEPTED_CHARGE" });
+  }
+  if (spec.confirmNamesCharge && confirm && !namesCharge) {
+    throw new ConvexError({ kind: "PLAN_CHANGE_QUOTE_REQUIRED" });
   }
   // Absent (an older client): the confirm runs as before, without a re-check.
   const acceptedCharge = confirm && namesCharge
@@ -4375,7 +4484,7 @@ export async function runPlanChange(
   }
 
   // Read once per call: the preview and the confirm each decide from one instant.
-  const promo = kind === "pro_annual" ? activePromoFor(candidate.toProductId, Date.now()) : null;
+  const promo = spec.takesPromo ? activePromoFor(candidate.toProductId, Date.now()) : null;
   const client = getDodoClient({ timeout: PRO_BUSINESS_UPGRADE_TIMEOUT_MS, maxRetries: 0 });
   const billingPeriod: "monthly" | "annual" =
     PRODUCT_CATALOG[candidate.toPlanKey]?.billingPeriod === "annual" ? "annual" : "monthly";
@@ -4439,8 +4548,7 @@ export async function runPlanChange(
         billingPeriod,
         discounted,
         percentOff: discounted && promo ? promo.percentOff : null,
-        // The Pro Business action takes only `confirm`.
-        ...(kind === "pro_annual" ? { acceptsQuoteGuards: true as const } : {}),
+        ...(spec.advertisesQuoteGuards ? { acceptsQuoteGuards: true as const } : {}),
         // The offer runs but this quote is at list price (code refused, or a
         // list-price re-quote): the client says so above the price.
         ...(promo && !discounted ? { offerNotApplied: true as const } : {}),
@@ -4549,7 +4657,7 @@ export async function runPlanChange(
     throw new ConvexError({ kind: "DODO_PLAN_CHANGE_ERROR" });
   }
   console.log(JSON.stringify({
-    event: kind === "pro_annual" ? "pro_annual_switch_applied" : "pro_business_upgrade_applied",
+    event: spec.appliedEvent,
     fromPlanKey: candidate.fromPlanKey,
     toPlanKey: candidate.toPlanKey,
     ...(sentDiscountCode && promo ? { promo: promo.id } : {}),
@@ -4620,6 +4728,33 @@ export const internalSwitchToProAnnual = internalAction({
       throw new ConvexError({ kind: "USER_ID_REQUIRED" });
     }
     return runPlanChange(ctx, userId, { ...args, kind: "pro_annual" });
+  },
+});
+
+const apiStarterSwitchArgs = {
+  confirm: v.boolean(),
+  /** The quote's immediate charge; every confirm names it. */
+  acceptedChargeAmount: v.optional(v.number()),
+  acceptedChargeCurrency: v.optional(v.string()),
+};
+
+/** Dashboard entry point for individual Pro → API Starter. Auth-gated via requireUserId(ctx). */
+export const switchToApiStarter = action({
+  args: apiStarterSwitchArgs,
+  handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
+    const userId = await requireUserId(ctx);
+    return runPlanChange(ctx, userId, { ...args, kind: "api_starter" });
+  },
+});
+
+/** /pro and MCP entry point for the switch, reached through its own edge relay after verification. */
+export const internalSwitchToApiStarter = internalAction({
+  args: { userId: v.string(), ...apiStarterSwitchArgs },
+  handler: async (ctx, { userId, ...args }): Promise<ProBusinessUpgradeResult> => {
+    if (!userId) {
+      throw new ConvexError({ kind: "USER_ID_REQUIRED" });
+    }
+    return runPlanChange(ctx, userId, { ...args, kind: "api_starter" });
   },
 });
 

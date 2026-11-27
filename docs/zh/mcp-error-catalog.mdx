@@ -183,7 +183,7 @@ Content-Type: application/json
 }
 ```
 
-**`start_upgrade` 拒绝。** 以下情况不会创建结账会话，均为 **HTTP 200** 内的 `-32002`，带 `data.reason` 和 `data.nextStep`：账户已持有同一系列套餐时为 `already-subscribed`（附 `data.subscription`）；存在待处理付款时为 `payment-in-progress`，待付款完成或失效后会自行解除，稍后可再次调用。触发结账限流时返回 HTTP 429 的 `-32029`，`data.reason` 为 `checkout-rate-limited`，并带 `Retry-After`。
+**`start_upgrade` 拒绝。** 以下情况不会创建结账会话，均为 **HTTP 200** 内的 `-32002`，带 `data.reason` 和 `data.nextStep`：账户已持有同一系列套餐时为 `already-subscribed`（附 `data.subscription`）；存在待处理付款时为 `payment-in-progress`，待付款完成或失效后会自行解除，稍后可再次调用；持有个人 Pro 套餐的账户请求 API Starter 时为 `switch-in-place`：Pro 会在同一订阅上按比例变更为 API Starter，不会创建结账会话，也不会扣费，用户打开 `data.switchUrl`（`https://www.worldmonitor.app/dashboard?settings=account`，会打开“设置 → 账户”），选择 **Switch to API Starter** 并确认按比例费用；该 Pro 订阅已设定取消时为 `pro-cancel-scheduled`，用户需先在账单门户中恢复订阅再切换。若无法读取个人 Pro 账户的切换状态，API Starter 请求会返回可重试的 HTTP 503 `-32603`（带 `Retry-After`），而不是结账链接。触发结账限流时返回 HTTP 429 的 `-32029`，`data.reason` 为 `checkout-rate-limited`，并带 `Retry-After`。
 
 一个例外是：使用非用户绑定凭证读取 `worldmonitor://account/mcp-allowance` 时，`-32002` 位于 **HTTP 200** 的普通 JSON-RPC 错误中，不带 `data` 负载。
 

@@ -16,6 +16,7 @@ import {
   MCP_CHECKOUT_PLANS,
   checkoutProductIdForPlan,
   recommendedPlanFor,
+  relayApiStarterSwitchPreview,
   relayMcpCheckout,
 } from '../api/mcp/checkout.ts';
 import { buildMcpStructuredDenial } from '../api/mcp/upgrade.ts';
@@ -447,6 +448,169 @@ describe('production checkout relay', () => {
     delete process.env.CONVEX_URL;
     const { requests, fetchImpl } = relayFixture(Response.json({}));
     assert.deepEqual(await relayMcpCheckout({ userId: 'u', productId: 'p' }, fetchImpl), { kind: 'unavailable', cause: 'relay-unconfigured' });
+    assert.equal(requests.length, 0);
+  });
+});
+
+// A Pro holder asking for API Starter is quoted the in-place switch, never
+// sold a second subscription, and nothing is charged by the tool call.
+describe('start_upgrade for API Starter', () => {
+  function switchFixture({ planKey = 'pro_monthly', verdict = { kind: 'switch-in-place' } } = {}) {
+    const f = fixture({ planKey });
+    const previews = [];
+    f.deps.previewApiStarterSwitch = async (input) => {
+      previews.push(input);
+      if (verdict instanceof Error) throw verdict;
+      return verdict;
+    };
+    return { ...f, previews };
+  }
+
+  for (const plan of ['api_starter', 'api_starter_annual']) {
+    it(`refuses a Pro holder a second subscription and names the switch (${plan})`, async () => {
+      const { deps, checkouts, previews, pipe } = switchFixture();
+      const called = await invoke(deps, upgrade({ plan }));
+      assert.equal(called.response.status, 200);
+      assert.equal(called.body.error.code, -32002);
+      assert.equal(called.body.error.data.reason, 'switch-in-place');
+      assert.equal(called.body.error.data.switchUrl, 'https://www.worldmonitor.app/dashboard?settings=account');
+      assert.match(called.body.error.data.nextStep, /https:\/\/www\.worldmonitor\.app\/dashboard/);
+      assert.match(called.body.error.data.nextStep, /Settings, Account/);
+      assert.match(called.body.error.data.nextStep, /Switch to API Starter/);
+      assert.match(called.body.error.data.nextStep, /this tool does not charge/);
+      assert.equal(called.body.result, undefined);
+      assert.deepEqual(previews, [{ userId: PRO_USER_ID }]);
+      assert.deepEqual(checkouts, [], 'no checkout session is created');
+      assert.deepEqual(pipe.ops, []);
+    });
+  }
+
+  it('sends a cancel-scheduled Pro to the billing portal first', async () => {
+    const { deps, checkouts } = switchFixture({ verdict: { kind: 'resume-first' } });
+    const called = await invoke(deps, upgrade({ plan: 'api_starter' }));
+    assert.equal(called.body.error.code, -32002);
+    assert.equal(called.body.error.data.reason, 'pro-cancel-scheduled');
+    assert.match(called.body.error.data.nextStep, /Manage Billing/);
+    assert.match(called.body.error.data.nextStep, /then switch to API Starter/);
+    assert.deepEqual(checkouts, []);
+  });
+
+  it('sells API Starter as before to an account with no Pro to switch', async () => {
+    for (const planKey of ['free', 'pro_business_monthly', 'pro_monthly']) {
+      const { deps, checkouts } = switchFixture({ planKey, verdict: { kind: 'not-switchable' } });
+      const called = await invoke(deps, upgrade({ plan: 'api_starter' }));
+      assert.equal(called.body.error, undefined, planKey);
+      assert.equal(called.body.result.structuredContent.plan, 'api_starter');
+      assert.deepEqual(checkouts, [{ userId: PRO_USER_ID, productId: PRODUCT_CATALOG.api_starter.dodoProductId }]);
+    }
+  });
+
+  // An older Convex has no relay (404), or the relay is down. A caller whose
+  // entitlement names an individual Pro may hold one, so the tool refuses to
+  // sell a second subscription and asks to retry; anyone else buys as before.
+  it('answers an unknown switch state with a retryable 503 for a Pro-entitled caller', async () => {
+    for (const planKey of ['pro_monthly', 'pro_monthly_mcp', 'pro_annual']) {
+      for (const verdict of [{ kind: 'unknown', cause: 'relay-404' }, new Error('boom')]) {
+        const { deps, checkouts } = switchFixture({ planKey, verdict });
+        const called = await invoke(deps, upgrade({ plan: 'api_starter' }));
+        assert.equal(called.response.status, 503, planKey);
+        assert.equal(called.response.headers.get('Retry-After'), '5');
+        assert.equal(called.body.error.code, -32603);
+        assert.deepEqual(checkouts, []);
+      }
+    }
+  });
+
+  it('sells API Starter on an unknown switch state to a caller with no Pro entitlement', async () => {
+    for (const planKey of ['free', 'pro_business_monthly']) {
+      const { deps, checkouts } = switchFixture({ planKey, verdict: { kind: 'unknown', cause: 'relay-404' } });
+      const called = await invoke(deps, upgrade({ plan: 'api_starter' }));
+      assert.equal(called.body.error, undefined, planKey);
+      assert.equal(checkouts.length, 1);
+    }
+  });
+
+  it('never asks about the switch for other plans', async () => {
+    const { deps, previews, checkouts } = switchFixture();
+    await invoke(deps, upgrade({ plan: 'pro_business_monthly' }));
+    await invoke(deps, upgrade({ plan: 'api_business' }));
+    assert.deepEqual(previews, []);
+    assert.equal(checkouts.length, 2);
+  });
+});
+
+describe('production API Starter switch preview relay', () => {
+  beforeEach(() => {
+    process.env.CONVEX_SITE_URL = 'https://convex.example.site';
+    process.env.CONVEX_TENANT_RELAY_SECRET = 'relay-secret';
+  });
+
+  const relay = (response) => {
+    const requests = [];
+    const fetchImpl = async (url, init) => {
+      requests.push({ url: String(url), init });
+      if (response instanceof Error) throw response;
+      return response;
+    };
+    return { requests, fetchImpl };
+  };
+
+  it('asks the switch relay for a quote only, as the verified user', async () => {
+    const { requests, fetchImpl } = relay(Response.json({ kind: 'preview', toPlanKey: 'api_starter', chargeAmount: 6012, currency: 'USD' }));
+    assert.deepEqual(await relayApiStarterSwitchPreview({ userId: 'user_1' }, fetchImpl), { kind: 'switch-in-place' });
+    assert.equal(requests[0].url, 'https://convex.example.site/relay/api-starter-switch');
+    assert.equal(requests[0].init.headers.Authorization, 'Bearer relay-secret');
+    assert.ok(requests[0].init.headers['User-Agent']);
+    assert.deepEqual(JSON.parse(requests[0].init.body), { userId: 'user_1', confirm: false });
+  });
+
+  it('classifies every relay answer', async () => {
+    const refusal = (error, status = 409) => Response.json({ error }, { status });
+    const cases = [
+      [refusal('NO_UPGRADEABLE_PRO'), 'not-switchable'],
+      [refusal('ALREADY_API_PLAN'), 'not-switchable'],
+      [refusal('ACCOUNT_DELETION_IN_PROGRESS'), 'not-switchable'],
+      [refusal('PRO_CANCEL_SCHEDULED'), 'resume-first'],
+      [refusal('UPGRADE_RATE_LIMITED'), 'switch-in-place'],
+      [refusal('UPGRADE_IN_PROGRESS'), 'switch-in-place'],
+      [refusal('DODO_PLAN_CHANGE_ERROR', 502), 'switch-in-place'],
+      [Response.json({ kind: 'preview', toPlanKey: 'pro_business_monthly' }), 'unknown'],
+      [Response.json({ kind: 'upgraded', toPlanKey: 'api_starter' }), 'unknown'],
+      [new Response('No matching routes found', { status: 404 }), 'unknown'],
+      [refusal('Operation failed', 500), 'unknown'],
+      [refusal('UNAUTHORIZED', 401), 'unknown'],
+      [new Response('not json', { status: 200 }), 'unknown'],
+      [new Error('network down'), 'unknown'],
+    ];
+    for (const [response, kind] of cases) {
+      const { fetchImpl } = relay(response);
+      const verdict = await relayApiStarterSwitchPreview({ userId: 'u' }, fetchImpl);
+      assert.equal(verdict.kind, kind, JSON.stringify(verdict));
+    }
+  });
+
+  // The quote and a following checkout (15 s) share an edge response that
+  // must start within 25 s.
+  it('gives up on the quote in time for a checkout to fit the edge budget', async () => {
+    const seen = [];
+    const fetchImpl = async (_url, init) => {
+      seen.push(init.signal);
+      throw new DOMException('The operation timed out.', 'TimeoutError');
+    };
+    const verdict = await relayApiStarterSwitchPreview({ userId: 'u' }, fetchImpl);
+    assert.deepEqual(verdict, { kind: 'unknown', cause: 'TimeoutError' });
+    assert.ok(seen[0] instanceof AbortSignal);
+    const source = readFileSync(new URL('../api/mcp/checkout.ts', import.meta.url), 'utf8');
+    const preview = Number(source.match(/SWITCH_PREVIEW_RELAY_TIMEOUT_MS = ([\d_]+)/)[1].replace(/_/g, ''));
+    const checkout = Number(source.match(/CHECKOUT_RELAY_TIMEOUT_MS = ([\d_]+)/)[1].replace(/_/g, ''));
+    assert.ok(preview + checkout < 25_000, `${preview} + ${checkout}`);
+  });
+
+  it('does not call out when the relay is unconfigured', async () => {
+    delete process.env.CONVEX_SITE_URL;
+    delete process.env.CONVEX_URL;
+    const { requests, fetchImpl } = relay(Response.json({}));
+    assert.deepEqual(await relayApiStarterSwitchPreview({ userId: 'u' }, fetchImpl), { kind: 'unknown', cause: 'relay-unconfigured' });
     assert.equal(requests.length, 0);
   });
 });
