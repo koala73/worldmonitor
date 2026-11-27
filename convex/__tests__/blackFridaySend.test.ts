@@ -73,10 +73,6 @@ describe("account eligibility", () => {
         classify({ subscriptions: [sub({ planKey: "pro_monthly", status, currentPeriodEnd: NOW - DAY })] }),
       ).toEqual({ eligible: true, group: "lapsed" });
     }
-    // A hold whose paid period ended no longer covers.
-    expect(
-      classify({ subscriptions: [sub({ planKey: "pro_monthly", status: "on_hold", currentPeriodEnd: NOW - DAY })] }),
-    ).toEqual({ eligible: true, group: "lapsed" });
   });
 
   test("an active, non-cancelling Pro Monthly gets the switch email", () => {
@@ -107,7 +103,18 @@ describe("account eligibility", () => {
       { subscriptions: [sub({ planKey: "pro_monthly", rawPayload: { cancel_at_next_billing_date: true } })] },
       "monthly-cancel-scheduled",
     ],
-    ["Pro Monthly on hold", { subscriptions: [sub({ planKey: "pro_monthly", status: "on_hold" })] }, "monthly-on-hold"],
+    [
+      "Pro Monthly with only cancelScheduledAt set",
+      { subscriptions: [{ ...sub({ planKey: "pro_monthly" }), cancelScheduledAt: NOW - DAY }] },
+      "monthly-cancel-scheduled",
+    ],
+    ["Pro Monthly on hold", { subscriptions: [sub({ planKey: "pro_monthly", status: "on_hold" })] }, "on-hold"],
+    [
+      "Pro Monthly on hold past its paid period",
+      { subscriptions: [sub({ planKey: "pro_monthly", status: "on_hold", currentPeriodEnd: NOW - DAY })] },
+      "on-hold",
+    ],
+    ["Pro at the MCP-only monthly price", { subscriptions: [sub({ planKey: "pro_monthly_mcp" })] }, "pro-monthly-mcp"],
     [
       "Pro Monthly cancelled but still inside the paid period",
       { subscriptions: [sub({ planKey: "pro_monthly", status: "cancelled" })] },
@@ -263,7 +270,8 @@ describe("when a wave may start", () => {
 // Against the database
 // ───────────────────────────────────────────────────────────────────────────
 
-type T = ReturnType<typeof convexTest>;
+const newTest = () => convexTest(schema, modules);
+type T = ReturnType<typeof newTest>;
 
 async function seedUser(
   t: T,
@@ -371,9 +379,12 @@ async function seedAudience(t: T): Promise<void> {
   await seedRegistration(t, "free-en-1@example.com");
   await seedRegistration(t, "wait-suppressed@example.com");
   await seedRegistration(t, "wait-customer@example.com");
+  await seedRegistration(t, "wait-old-customer@example.com");
   await t.run(async (ctx) => {
     await ctx.db.insert("emailSuppressions", { normalizedEmail: "wait-suppressed@example.com", reason: "unsubscribe", suppressedAt: NOW });
     await ctx.db.insert("customers", { userId: "gone", email: "wait-customer@example.com", normalizedEmail: "wait-customer@example.com", createdAt: NOW, updatedAt: NOW });
+    // A customer row from before normalizedEmail existed.
+    await ctx.db.insert("customers", { userId: "gone-2", email: "Wait-Old-Customer@example.com", createdAt: NOW, updatedAt: NOW });
     // The PRO-launch ramp's row: nothing in this campaign may touch it.
     await ctx.db.insert("broadcastRampConfig", {
       key: "current", active: true, rampCurve: [500, 1500], currentTier: 0,
@@ -446,7 +457,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("the audience report counts every group, segment and exclusion, and calls nothing", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     const calls = stubResend();
     const report = await t.action(internal.broadcast.blackFriday.blackFridayAudience, { send: "launch" });
@@ -469,7 +480,7 @@ describe("Black Friday send against the database", () => {
     });
     expect(report.excluded.accounts).toEqual({
       "monthly-cancel-scheduled": 1,
-      "monthly-on-hold": 1,
+      "on-hold": 1,
       "pro-yearly": 1,
       "converted-during-offer": 1,
       "api-plan": 1,
@@ -478,15 +489,19 @@ describe("Black Friday send against the database", () => {
       suppressed: 1,
       "enterprise-member": 1,
     });
-    expect(report.excluded.waitlist).toEqual({ "has-account": 1, suppressed: 1, customer: 1 });
-    expect(report.scanned).toEqual({ users: 16, registrations: 6 });
+    expect(report.excluded.waitlist).toEqual({ "has-account": 1, suppressed: 1, customer: 2 });
+    expect(report.scanned).toEqual({ users: 16, registrations: 7 });
+    const accountsOnly = await t.action(internal.broadcast.blackFriday.blackFridayAudience, { send: "launch", scope: "accounts" });
+    expect(accountsOnly.scanned).toEqual({ users: 16, registrations: 0 });
+    expect(accountsOnly.groups.free).toEqual(report.groups.free);
+    expect(accountsOnly.groups.waitlist.eligible).toBe(0);
     // Counts only: no address leaves the action.
     expect(JSON.stringify(report)).not.toContain("@");
     expect(calls).toEqual([]);
   });
 
   test("a wave is a dry run unless dryRun is exactly false: no Resend call, no lease, no row", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     const calls = stubResend();
@@ -520,7 +535,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("a real wave refuses before initBlackFriday, and for a version the recipient type does not get", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     const calls = stubResend();
     await expect(
@@ -536,7 +551,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("a real wave stamps its contacts, holds the broadcast, and sends only on release", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     const calls = stubResend();
@@ -613,7 +628,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("a discarded held wave unstamps its contacts and frees the lease", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     const calls = stubResend();
@@ -643,7 +658,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("a held broadcast that sat too long is refused: its segment may hold people who have since bought", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     const calls = stubResend();
@@ -657,7 +672,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("the kill gate reads all the campaign's broadcasts, trips on a bad rate, and blocks starts and releases", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     const calls = stubResend();
@@ -702,7 +717,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("a few delivered emails are too few to trip the gate", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     stubResend();
@@ -720,7 +735,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("the waitlist follows the accounts, stamps registrations, and a new account carries the stamp", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     const calls = stubResend();
@@ -762,7 +777,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("the last-day send has its own stamp, skips converters, and only reminds waitlist contacts the ramp reached", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     stubResend();
@@ -806,7 +821,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("eligibility is re-checked as contacts are exported: a buyer or unsubscriber since the pick is left out", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     const calls = stubResend();
@@ -831,7 +846,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("a wave whose every contact became ineligible is not released", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     const calls = stubResend();
@@ -848,7 +863,7 @@ describe("Black Friday send against the database", () => {
   });
 
   test("one failed push does not fail a small campaign wave", async () => {
-    const t = convexTest(schema, modules);
+    const t = newTest();
     await seedAudience(t);
     await t.mutation(internal.broadcast.blackFriday.initBlackFriday, {});
     vi.stubEnv("RESEND_API_KEY", "synthetic-key");

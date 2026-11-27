@@ -3,9 +3,10 @@
  * unit-tested without a database; blackFriday.ts feeds it rows.
  *
  * Accounts (`users` rows) fall into one group or one exclusion:
- *   - monthly  an active Pro Monthly the in-place switch accepts today
- *              (the same selection Settings uses), so the email only reaches
- *              people the "Switch to yearly" button works for
+ *   - monthly  an active Pro Monthly ($39.99) the in-place switch accepts
+ *              today (the same selection Settings uses), with no cancellation
+ *              scheduled, so the email only reaches people the "Switch to
+ *              yearly" button works for
  *   - lapsed   has subscription history, none of it covering now, and no
  *              remaining entitlement
  *   - free     no subscription history and no paid or comped entitlement
@@ -41,7 +42,8 @@ export type AccountExclusion =
   | "api-plan"
   | "enterprise-plan"
   | "monthly-cancel-scheduled"
-  | "monthly-on-hold"
+  | "on-hold"
+  | "pro-monthly-mcp"
   | "monthly-cancelled-still-covered"
   | "other-covering-plan"
   | "entitled-without-subscription";
@@ -50,7 +52,20 @@ export type WaitlistExclusion = "no-email" | "suppressed" | "has-account" | "cus
 
 type SubscriptionFacts = Parameters<typeof selectPlanChangeCandidate>[1][number] & {
   currentPeriodStart: number;
+  cancelScheduledAt?: number;
 };
+
+/**
+ * A scheduled cancellation is recorded twice: Dodo's flag in the stored
+ * payload, which the switch selection reads, and `cancelScheduledAt`, stamped
+ * when the cancel was scheduled. Either one excludes, so the selection sees
+ * the flag whenever the stamp is set.
+ */
+function withCancelStamp(sub: SubscriptionFacts): SubscriptionFacts {
+  if (sub.status !== "active" || sub.cancelScheduledAt === undefined) return sub;
+  const payload = (sub.rawPayload ?? {}) as Record<string, unknown>;
+  return { ...sub, rawPayload: { ...payload, cancel_at_next_billing_date: true } };
+}
 
 export interface AccountFacts {
   normalizedEmail: string | undefined;
@@ -74,8 +89,10 @@ function coveringExclusion(covering: readonly SubscriptionFacts[], offerStartsAt
   if (groups.has("enterprise")) return "enterprise-plan";
   if (groups.has("pro_business")) return "pro-business";
   if (groups.has("api_starter") || groups.has("api_business")) return "api-plan";
+  // Pro at the MCP-only price: not the $39.99 plan the switch email describes,
+  // and the in-place switch does not take it.
+  if (covering.some((sub) => sub.planKey === "pro_monthly_mcp")) return "pro-monthly-mcp";
   const monthly = covering.filter((sub) => sub.planKey === "pro_monthly");
-  if (monthly.some((sub) => sub.status === "on_hold")) return "monthly-on-hold";
   if (monthly.some((sub) => sub.status === "active")) return "monthly-cancel-scheduled";
   if (monthly.length > 0) return "monthly-cancelled-still-covered";
   return "other-covering-plan";
@@ -87,11 +104,17 @@ export function classifyAccount(facts: AccountFacts, now: number, offerStartsAtM
   if (facts.deleting) return { eligible: false, reason: "account-deleting" };
   if (facts.enterpriseMemberActive) return { eligible: false, reason: "enterprise-member" };
 
-  const covering = facts.subscriptions.filter((sub) => isCoveringAt(sub, now));
+  // A failed payment Dodo may still retry, whether or not the paid period has
+  // ended: the dunning emails own that conversation, and a second purchase
+  // could bill twice.
+  if (facts.subscriptions.some((sub) => sub.status === "on_hold")) return { eligible: false, reason: "on-hold" };
+
+  const subscriptions = facts.subscriptions.map(withCancelStamp);
+  const covering = subscriptions.filter((sub) => isCoveringAt(sub, now));
   if (covering.length > 0) {
     // Settings' own rule for who may switch: an active, non-cancelling Pro
     // Monthly with nothing at or above Pro Yearly.
-    if (selectPlanChangeCandidate("pro_annual", facts.subscriptions, now).ok) {
+    if (selectPlanChangeCandidate("pro_annual", subscriptions, now).ok) {
       return { eligible: true, group: "monthly" };
     }
     return { eligible: false, reason: coveringExclusion(covering, offerStartsAtMs) };

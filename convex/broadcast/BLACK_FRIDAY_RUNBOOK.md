@@ -45,13 +45,19 @@ to `zh`, and everyone else gets `en`. So the waitlist is `en` and `zh` only.
 
 Excluded from every send: any `emailSuppressions` row (bounce, complaint,
 manual, unsubscribe), API plans, Pro Yearly (paid or comped), Pro Business,
-Enterprise and active enterprise members, Pro Monthly on hold or with a
-cancellation scheduled, comped or still-entitled accounts with no live
+Enterprise and active enterprise members, any account with a subscription on
+hold, Pro Monthly with a cancellation scheduled (Dodo's
+`cancel_at_next_billing_date` flag or `cancelScheduledAt`), Pro at the
+MCP-only monthly price, comped or still-entitled accounts with no live
 subscription, accounts being deleted, and anyone whose Pro Yearly period
 started during the offer.
 
+That re-check happens at export, not at send. A large segment takes hours to
+load and a draft can then wait up to 6 hours, so someone who buys after their
+batch was exported still gets the email.
+
 Eligibility is read from the live tables when the wave is picked, and again
-for each batch as it is exported to Resend. Each contact is stamped as it
+for each batch as it is exported to Resend (see the note below the exclusions). Each contact is stamped as it
 lands (`blackFridayLaunchWave` or `blackFridayLastDayWave`, on `users` or
 `registrations`), so nobody gets the same send twice and re-running a segment
 only picks up people who have not had it.
@@ -97,6 +103,9 @@ lapsed 361, monthly 191, waitlist 42,596. Small drift is expected (sign-ups,
 purchases, unsubscribes). A large gap means the rules here differ from the
 snapshot's: stop and compare `excluded` reason by reason before sending.
 `segments` lists every `version/locale/recipient` with people to send.
+
+The scan reads every account and every registration. If it times out, run it
+per table: add `"scope":"accounts"` or `"scope":"waitlist"`.
 
 ## 2. Send one wave
 
@@ -171,6 +180,10 @@ Last-day waves start no earlier than 24 hours before the end (3 December
 npx convex run broadcast/blackFriday:blackFridayAudience '{"send":"last-day"}'
 ```
 
+The window is about 22 hours and one wave runs at a time, and the English
+account wave alone loads for hours. Start when the window opens, largest
+segments first once the small ones have proved the template.
+
 Order: `last-day-switch` per locale, then `last-day` for `account` per locale,
 then `last-day` for `waitlist`. Anyone who bought or switched since the first
 send is excluded by the same rules. The waitlist reminder only goes to
@@ -211,17 +224,18 @@ npx convex run broadcast/blackFriday:clearBlackFridayKillGate '{"reason":"<what 
 | `failed` with `batch-failure-rate-exceeded`, `segment-create-failed` or `persist-failed` | `broadcast/waveRuns:discardWaveRun '{"runId":"...","reason":"..."}'`, then start the segment again with a new `wave` |
 | `failed` with `create-broadcast-failed` | `broadcast/waveRuns:resumeFinalizeWaveRun '{"runId":"..."}'` (it holds again once the draft exists) |
 | `send-broadcast-failed` after a release | Check the broadcast in Resend. Sent: `broadcast/waveRuns:markFinalizeRecovered '{"runId":"...","sentAt":<ms>,"reason":"..."}'`. Not sent: `broadcast/waveRuns:resumeFinalizeWaveRun '{"runId":"...","confirmedNotSent":true}'` |
+| A real start timed out or threw after "claim", leaving a run in `picking` | `broadcast/waveRuns:discardWaveRun '{"runId":"...","reason":"..."}'`, then start again with a new `wave`. Cap the wave with `"count"` if the scan is what timed out. |
 | "another wave holds the lease" | `getBlackFridayStatus` names the run. Release it, discard it or recover it as above. |
 
 ## Definitions used by the counts
 
 - **free**: a `users` row with an email, no subscription rows, and no paid or
   comped entitlement.
-- **lapsed**: a `users` row with subscription rows, none covering now, and no
-  remaining entitlement. Former subscribers of any plan count.
+- **lapsed**: a `users` row with subscription rows, none covering now, none on
+  hold, and no remaining entitlement. Former subscribers of any plan count.
 - **monthly**: the account passes the same check Settings uses for the switch
-  (`selectPlanChangeCandidate("pro_annual", …)`): an active Pro Monthly with
-  no cancellation scheduled and nothing at or above Pro Yearly.
+  (`selectPlanChangeCandidate("pro_annual", …)`): an active Pro Monthly at
+  $39.99 with no cancellation scheduled and nothing at or above Pro Yearly.
 - **waitlist**: a `registrations` row whose email has no `users` row, no
   `customers` row and no suppression.
 

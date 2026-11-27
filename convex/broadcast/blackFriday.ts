@@ -167,8 +167,26 @@ async function classifyUserRow(ctx: QueryCtx, user: Doc<"users">, send: BlackFri
   return { email, outcome, locale, stamped, launchStamped: false };
 }
 
+/**
+ * Emails of `customers` rows that predate `normalizedEmail` (absent from the
+ * by_normalized_email index under their address). Mirrors the `email`
+ * fallback in waveRuns._getPaidEmails.
+ */
+async function legacyCustomerEmailSet(ctx: QueryCtx): Promise<ReadonlySet<string>> {
+  const rows = await ctx.db
+    .query("customers")
+    .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", undefined))
+    .collect();
+  return new Set(rows.map((row) => (row.email ?? "").trim().toLowerCase()).filter((email) => email.length > 0));
+}
+
 /** Classify one `registrations` row as a waitlist contact, or excluded. */
-async function classifyRegistrationRow(ctx: QueryCtx, registration: Doc<"registrations">, send: BlackFridaySend): Promise<AudienceRow> {
+async function classifyRegistrationRow(
+  ctx: QueryCtx,
+  registration: Doc<"registrations">,
+  send: BlackFridaySend,
+  legacyCustomerEmails: ReadonlySet<string>,
+): Promise<AudienceRow> {
   const field = stampFieldFor(send);
   const email = registration.normalizedEmail;
   if (!email) return { email: "", outcome: "x:no-email", locale: "en", stamped: false, launchStamped: false };
@@ -189,11 +207,14 @@ async function classifyRegistrationRow(ctx: QueryCtx, registration: Doc<"registr
           .query("customers")
           .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
           .first();
+  // `customers` rows written before normalizedEmail existed carry only `email`.
+  // The table is small next to the waitlist, so the action passes those in.
+  const legacyCustomer = legacyCustomerEmails.has(email);
   const result = classifyWaitlist({
     normalizedEmail: email,
     suppressed: suppression !== null,
     hasAccount: account !== null,
-    isCustomer: customer !== null,
+    isCustomer: customer !== null || legacyCustomer,
   });
   return {
     email,
@@ -225,7 +246,8 @@ export const _waitlistPage = internalQuery({
   handler: async (ctx, { cursor, send }): Promise<AudiencePage> => {
     const page = await ctx.db.query("registrations").paginate({ cursor, numItems: REGISTRATIONS_PAGE_SIZE });
     const rows: AudienceRow[] = [];
-    for (const registration of page.page) rows.push(await classifyRegistrationRow(ctx, registration, send));
+    const legacy = await legacyCustomerEmailSet(ctx);
+    for (const registration of page.page) rows.push(await classifyRegistrationRow(ctx, registration, send, legacy));
     return { rows, isDone: page.isDone, continueCursor: page.continueCursor, scanned: page.page.length };
   },
 });
@@ -249,6 +271,7 @@ export const _ineligibleNow = internalQuery({
     const now = Date.now();
     const groups = groupsFor(args.version as BlackFridayVersion, args.recipient) ?? [];
     const dropped: string[] = [];
+    let legacy: ReadonlySet<string> | undefined;
     for (const email of args.emails) {
       let row: AudienceRow | null = null;
       if (args.recipient === "account") {
@@ -262,7 +285,8 @@ export const _ineligibleNow = internalQuery({
           .query("registrations")
           .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
           .first();
-        row = registration ? await classifyRegistrationRow(ctx, registration, args.send) : null;
+        legacy ??= await legacyCustomerEmailSet(ctx);
+        row = registration ? await classifyRegistrationRow(ctx, registration, args.send, legacy) : null;
       }
       const stillInSegment =
         row !== null &&
@@ -397,11 +421,16 @@ async function scanAudience(
  * the result or the logs.
  *
  *   npx convex run broadcast/blackFriday:blackFridayAudience '{"send":"launch"}'
+ *   npx convex run broadcast/blackFriday:blackFridayAudience '{"send":"launch","scope":"accounts"}'
  */
 export const blackFridayAudience = internalAction({
-  args: { send: sendValidator },
-  handler: async (ctx, { send }): Promise<BlackFridayAudienceReport> => {
-    return scanAudience(ctx, send, { accounts: true, waitlist: true });
+  args: {
+    send: sendValidator,
+    /** Scan one table only; each is a few hundred page reads. Default: both. */
+    scope: v.optional(v.union(v.literal("accounts"), v.literal("waitlist"))),
+  },
+  handler: async (ctx, { send, scope }): Promise<BlackFridayAudienceReport> => {
+    return scanAudience(ctx, send, { accounts: scope !== "waitlist", waitlist: scope !== "accounts" });
   },
 });
 
