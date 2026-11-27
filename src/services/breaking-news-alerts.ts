@@ -295,7 +295,7 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
     if (!item.threat) continue;
     if (!isRecent(item)) continue;
 
-    const notNewEvent = isRunningTally(item.title) || isLiveBlogTopicHeader(item.title);
+    const notNewEvent = isRunningTally(item.title) || isLiveBlogTopicHeader(item.title, item.source);
     const level = item.threat.level === 'critical' && notNewEvent ? 'high' : item.threat.level;
     if (level !== 'critical' && level !== 'high') continue;
     if (settings.sensitivity === 'critical-only' && level !== 'critical') continue;

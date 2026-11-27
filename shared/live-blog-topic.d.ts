@@ -1,1 +1,1 @@
-export function isLiveBlogTopicHeader(title: unknown): boolean;
+export function isLiveBlogTopicHeader(title: unknown, publisher?: unknown): boolean;

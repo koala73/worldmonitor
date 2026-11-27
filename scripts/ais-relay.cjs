@@ -5954,7 +5954,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
     // A running total ("16 killed so far this month") and a live blog's standing
     // header ("LIVE: Iran-US war") are not new events, so they never page
     // realtime subscribers. The label keeps the classifier's call.
-    const level = label === 'critical' && (isRunningTally(title) || isLiveBlogTopicHeader(title)) ? 'high' : label;
+    const known = allTitles.get(title);
+    const notNewEvent = isRunningTally(title) || isLiveBlogTopicHeader(title, known?.sourceLabel || known?.source);
+    const level = label === 'critical' && notNewEvent ? 'high' : label;
     if (level !== label && !cached) console.log(`[Classify] not a new event, alerts as high: ${title.slice(0, 120)}`);
     const meta = allTitles.get(title) ?? {
       source: variant,
