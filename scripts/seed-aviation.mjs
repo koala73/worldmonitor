@@ -33,6 +33,7 @@ import {
   CHROME_UA,
   runSeed,
   writeExtraKeyWithMeta,
+  writeExtraKeyWithMetaAtomically,
   writeSeedMeta,
   extendExistingTtl,
   acquireLockSafely,
@@ -865,10 +866,13 @@ export function buildFaaAlerts(faaDelays) {
   return alerts;
 }
 
-// The feed's root element. Even a quiet feed has it (with just Update_Time), so
-// a page without it is a challenge or error page, not "no delays".
+// The whole body must be one AIRPORT_STATUS_INFORMATION element, optionally
+// after an XML declaration. Even a quiet feed has it (with just Update_Time), so
+// an HTML page, or a body cut off before the closing tag, is a failure and not
+// "no delays".
 export function isFaaStatusXml(text) {
-  return /<AIRPORT_STATUS_INFORMATION[\s>]/.test(text || '');
+  const body = (text || '').trim().replace(/^<\?xml[^>]*\?>\s*/i, '');
+  return /^<AIRPORT_STATUS_INFORMATION[\s>]/.test(body) && body.endsWith('</AIRPORT_STATUS_INFORMATION>');
 }
 
 function describeFetchError(err) {
@@ -1491,7 +1495,11 @@ async function runFaaSideCar() {
     try {
       const faa = await seedFaaDelays();
       if (faa?.alerts) {
-        await writeExtraKeyWithMeta(FAA_KEY, faa, FAA_TTL, faa.alerts.length, FAA_META_KEY);
+        // One transaction: a failed seed-meta write must not leave the new data
+        // behind for the failure path to treat as the previous snapshot.
+        await writeExtraKeyWithMetaAtomically({
+          key: FAA_KEY, data: faa, ttlSeconds: FAA_TTL, recordCount: faa.alerts.length, metaKey: FAA_META_KEY,
+        });
         console.log(`[FAA] wrote ${faa.alerts.length} alerts to ${FAA_KEY}`);
         try { await dispatchAviationNotifications(faa.alerts, AVIATION_NOTIFY_SOURCES.faa); }
         catch (e) { console.warn(`[FAA] notify error: ${e?.message || e}`); }

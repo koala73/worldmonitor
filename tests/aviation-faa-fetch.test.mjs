@@ -79,6 +79,15 @@ test('a proxy answer that is not FAA XML is a failure, not an empty observation'
 
 test('isFaaStatusXml accepts the quiet feed and rejects HTML', () => {
   assert.equal(isFaaStatusXml(FAA_XML), true);
+  assert.equal(isFaaStatusXml(`<?xml version="1.0" encoding="UTF-8"?>\n${FAA_XML}\n`), true);
   assert.equal(isFaaStatusXml(AKAMAI_DENIED), false);
   assert.equal(isFaaStatusXml(''), false);
+});
+
+// A body cut off mid-stream still contains the opening tag but parses as "no
+// delays", which would replace the real snapshot with an empty one.
+test('isFaaStatusXml rejects a truncated document and a tag inside other markup', () => {
+  assert.equal(isFaaStatusXml(FAA_XML.slice(0, 60)), false);
+  assert.equal(isFaaStatusXml(`<html><body>${FAA_XML}</body></html>`), false);
+  assert.equal(isFaaStatusXml('<AIRPORT_STATUS_INFORMATION_X></AIRPORT_STATUS_INFORMATION_X>'), false);
 });

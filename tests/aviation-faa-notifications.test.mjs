@@ -58,7 +58,8 @@ globalThis.fetch = async (input, options = {}) => {
       return Response.json({ result: values.get(decodeURIComponent(url.pathname.slice(5))) ?? null });
     }
     const body = JSON.parse(options.body);
-    if (url.pathname === '/pipeline') return Response.json(body.map(item => ({ result: command(item) })));
+    // FAA delays and their seed-meta publish as one /multi-exec transaction.
+    if (url.pathname === '/pipeline' || url.pathname === '/multi-exec') return Response.json(body.map(item => ({ result: command(item) })));
     return Response.json({ result: command(body) });
   }
   if (url.hostname === 'nasstatus.faa.gov') {

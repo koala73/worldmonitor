@@ -57,7 +57,10 @@ globalThis.fetch = async (input, options = {}) => {
       return Response.json({ result: values.get(decodeURIComponent(url.pathname.slice(5))) ?? null });
     }
     const body = JSON.parse(options.body);
-    if (url.pathname === '/pipeline') return Response.json(body.map(item => ({ result: command(item) })));
+    // TEST_META_WRITE_FAIL: any request that writes FAA seed-meta answers HTTP 500.
+    const touchesMeta = (Array.isArray(body[0]) ? body : [body]).some(([verb, key]) => verb === 'SET' && key === metaKey);
+    if (process.env.TEST_META_WRITE_FAIL && touchesMeta) return new Response('upstream error', { status: 500 });
+    if (url.pathname === '/pipeline' || url.pathname === '/multi-exec') return Response.json(body.map(item => ({ result: command(item) })));
     return Response.json({ result: command(body) });
   }
   if (url.hostname === 'nasstatus.faa.gov') {
@@ -159,6 +162,18 @@ test('FAA success publishes delays and fresh seed-meta', () => {
   assert.ok(state.writes.includes(FAA_META_KEY));
   assert.ok(state.meta.fetchedAt > state.initialFetchedAt);
   assert.match(stdout + stderr, /\[FAA\] 1 alerts via direct/);
+});
+
+// Data and seed-meta are published together. Writing the data first and then
+// failing on seed-meta left the new delays in place, and the failure path then
+// cut their TTL to the old snapshot's remaining budget (about a minute at 89).
+test('a failed seed-meta write leaves neither half of the new FAA publish', () => {
+  const { state, stdout, stderr } = runAviation({ TEST_FAA_MODE: 'ok', TEST_META_WRITE_FAIL: '1', TEST_META_AGE_MIN: '89' });
+  const log = stdout + stderr;
+  assert.equal(state.faaCalls, 1, log);
+  assert.deepEqual(state.faa?.alerts?.map(a => a.iata), ['MIA'], 'the previous snapshot must stay intact');
+  assert.equal(state.meta.fetchedAt, state.initialFetchedAt);
+  assert.match(log, /\[FAA\] fetch\/write error: /);
 });
 
 test('the seeder FAA retention budget equals the health budget for faaDelays', async () => {
