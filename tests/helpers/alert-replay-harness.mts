@@ -242,6 +242,7 @@ function loadRelay(store: SortedSets, bound: { recordSightings: unknown; crossWo
     SAUDI_CIVIL_DEFENSE: relayRequire('./lib/saudi-civil-defense-alerts.cjs').SAUDI_CIVIL_DEFENSE,
     notifyPolicy: relayRequire('./lib/notification-publish-policy.cjs'),
     isRunningTally: relayRequire('../shared/running-tally.js').isRunningTally,
+    isLiveBlogTopicHeader: relayRequire('../shared/live-blog-topic.js').isLiveBlogTopicHeader,
     alertLatency: relayRequire('./lib/classify-digest-request.cjs').alertLatency,
     ...storyKey,
     upstashPipeline: store.pipeline,
