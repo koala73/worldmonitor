@@ -344,6 +344,7 @@ test('a reprint folds into its wire across coverage keys and across builds', asy
 // A sorted-set store for the coverage writer and its readers.
 function coverageStore() {
   const sets = new Map<string, Map<string, number>>();
+  const expired: string[] = [];
   const run = ([op, key, ...args]: (string | number)[]) => {
     if (op === 'MULTI' || op === 'EXEC') return { result: 'OK' };
     if (op === 'EVAL') return { result: evalCommand([op, key, ...args], (verb: string, callArgs: string[]) => run([verb, ...callArgs]).result) };
@@ -364,11 +365,14 @@ function coverageStore() {
       const until = whole ? Infinity : Number(args[1]);
       const hits = [...members].filter(([, seen]) => seen > after && seen <= until);
       return { result: args.includes('WITHSCORES') ? hits.flatMap(([family, seen]) => [family, String(seen)]) : hits.map(([family]) => family) };
-    } else assert.equal(op, 'EXPIRE');
+    } else {
+      assert.equal(op, 'EXPIRE');
+      expired.push(String(key));
+    }
     return { result: 1 };
   };
   const pipeline = async (commands: (string | number)[][]) => commands.map(run);
-  return { sets, run, pipeline };
+  return { sets, run, pipeline, expired };
 }
 
 function useRedisEnv(t) {
@@ -504,7 +508,7 @@ test('a rewrite merge carries the reprint record with the coverage it copies (#1
   assert.equal(ndtv.observedPublisherCount, 2);
 });
 
-test('a rewrite merge keeps an outlet that also wrote its own wording (#11434)', async (t) => {
+test('a rewrite merge counts an outlet where it wrote its own wording, never where it reprinted (#11434)', async (t) => {
   const { mergeStoryCoverage, refreshPublisherCounts } = await import('../scripts/lib/news-alert-coverage.mjs');
   const store = coverageStore();
   t.mock.method(globalThis, 'fetch', async (_url, init) => Response.json(JSON.parse(init.body).map(store.run)));
@@ -519,11 +523,33 @@ test('a rewrite merge keeps an outlet that also wrote its own wording (#11434)',
   const anchorId = `full:${newsPublisherCoverageKey(EGYPT_INDEPENDENT).split(':').pop()}`;
   assert.equal(await mergeStoryCoverage(event, anchorId, store.pipeline), true);
   await refreshPublisherCounts([event], now, store.pipeline);
-  // Reuters, and Arab Times for its own wording, on either headline.
+  // Reuters, and Arab Times for its own wording.
   assert.equal(event.observedPublisherCount, 2);
+  // On the wire's headline Arab Times stays folded: its score there may come
+  // from a reprint, which must never count once its own wording expires.
   const anchor = { ...event, payload: { ...event.payload, title: EGYPT_INDEPENDENT } };
   await refreshPublisherCounts([anchor], now, store.pipeline);
-  assert.equal(anchor.observedPublisherCount, 2);
+  assert.equal(anchor.observedPublisherCount, 1);
+});
+
+test('a rewrite merge that copies a wire in renews that wording\'s reprint record (#11434)', async (t) => {
+  const { mergeStoryCoverage } = await import('../scripts/lib/news-alert-coverage.mjs');
+  const store = coverageStore();
+  t.mock.method(globalThis, 'fetch', async (_url, init) => Response.json(JSON.parse(init.body).map(store.run)));
+  useRedisEnv(t);
+  const now = Date.now();
+  // NDTV's wording carries only NDTV; the wire's wording carries Reuters.
+  await digest.recordPublisherCoverage([{ title: NDTV, source: 'NDTV' }], [{ title: NDTV, source: 'NDTV' }], now - 60_000, Infinity);
+  const wire = { title: `${EGYPT_INDEPENDENT} - Reuters`, source: 'Reuters World' };
+  await digest.recordPublisherCoverage([wire], [wire], now - 60_000, Infinity);
+  const event = { eventType: 'rss_alert', variant: 'full', severity: 'critical', payload: { title: NDTV, importanceScore: 82, corroborationCount: 0 } };
+  const anchorId = `full:${newsPublisherCoverageKey(EGYPT_INDEPENDENT).split(':').pop()}`;
+  store.expired.length = 0;
+  assert.equal(await mergeStoryCoverage(event, anchorId, store.pipeline, now), true);
+  const reprints = (title: string) => newsPublisherReprintsKey(newsPublisherCoverageKey(title));
+  // Reuters reached NDTV's wording; NDTV is no wire, so the wire's record is left alone.
+  assert.ok(store.expired.includes(reprints(NDTV)));
+  assert.ok(!store.expired.includes(reprints(EGYPT_INDEPENDENT)));
 });
 
 test('an expired sighting on the other wording does not clear a current reprint record (#11434)', async (t) => {

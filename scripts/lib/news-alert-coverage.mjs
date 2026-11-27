@@ -2,6 +2,7 @@
 // coverage line and nothing else; the rewrite check below can skip users who
 // already had an alert for the same development. Neither changes scoring or rules.
 import { NEWS_PUBLISHER_COVERAGE_PREFIX, newsPublisherCoverageKey, newsPublisherReprintsKey } from '../shared/story-identity.js';
+import { WIRE_FAMILIES } from '../shared/publisher-families.js';
 import storyKeys from './news-story-key.cjs';
 import coverageText from './corroboration-text.cjs';
 import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
@@ -356,9 +357,12 @@ export async function usersAlertedFor(anchorIds, userIds, { now = Date.now(), pi
 // One script, so the copy filters against the records as they are when it
 // writes: a digest build that folds a reprint between a read and a write
 // would otherwise have the merge copy it back. Only members in the readers'
-// window are copied, so an expired sighting cannot clear a current record.
+// window are copied. A wire copied in renews the target's record, which must
+// outlive the wire sighting it excludes. The target's record is never
+// cleared: a family it holds counts there only through a reprint, so it
+// stays folded there even when it wrote the other wording itself.
 // KEYS: anchor coverage, own coverage, anchor reprints, own reprints.
-// ARGV: window start (exclusive), now, coverage TTL in seconds.
+// ARGV: window start (exclusive), now, coverage TTL in seconds, then the wire families.
 export const MERGE_STORY_COVERAGE_SCRIPT = `
 local unpack = unpack or table.unpack
 local function live(source, reprints)
@@ -372,12 +376,17 @@ local function live(source, reprints)
   end
   return copied
 end
+local wires = {}
+for i = 4, #ARGV do wires[ARGV[i]] = true end
 local function put(target, reprints, copied)
   if #copied == 0 then return end
   redis.call('ZADD', target, 'GT', unpack(copied))
-  local members = {}
-  for i = 2, #copied, 2 do members[#members + 1] = copied[i] end
-  redis.call('ZREM', reprints, unpack(members))
+  for i = 2, #copied, 2 do
+    if wires[copied[i]] then
+      redis.call('EXPIRE', reprints, ARGV[3])
+      return
+    end
+  end
 end
 local toAnchor = live(KEYS[2], KEYS[4])
 local toOwn = live(KEYS[1], KEYS[3])
@@ -395,9 +404,9 @@ return (#toAnchor + #toOwn) / 2
  * digest writes them with ZADD GT), so the copy keeps the latest sighting and
  * the reader's 24-hour window still applies. Each wording's reprint record
  * stays on its own key (#11434): a family the digest folded into the wire on
- * one wording is not copied to the other. A family that wrote its own wording
- * carried the story, so it leaves the other wording's record and counts on
- * both. Best effort.
+ * one wording is not copied to the other, and stays folded on its own. An
+ * outlet that also wrote the other wording counts there, from its own
+ * sighting. Best effort.
  */
 export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedisPipeline, now = Date.now()) {
   const own = rewriteCheckApplies(event) ? newsPublisherCoverageKey(event.payload.title) : '';
@@ -407,7 +416,7 @@ export async function mergeStoryCoverage(event, anchorId, pipeline = defaultRedi
   const keys = [anchor, own, newsPublisherReprintsKey(anchor), newsPublisherReprintsKey(own)];
   try {
     const rows = await pipeline([
-      ['EVAL', MERGE_STORY_COVERAGE_SCRIPT, keys.length, ...keys, now - DAY, now, DAY / 1000],
+      ['EVAL', MERGE_STORY_COVERAGE_SCRIPT, keys.length, ...keys, now - DAY, now, DAY / 1000, ...WIRE_FAMILIES],
     ], { timeoutMs: 1_000 });
     return Array.isArray(rows) && rows.length === 1 && !!rows[0] && !rows[0].error;
   } catch {
