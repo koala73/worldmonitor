@@ -61,7 +61,7 @@ test('panel resize strips never cover the headline translate button (#9729)', as
 
     const measure = async (clustered: boolean) => {
       grid.replaceChildren();
-      const panel = new NewsPanel(clustered ? 'probe-clustered' : 'probe-flat', 'Probe');
+      const panel = new NewsPanel(clustered ? 'probe-clustered' : 'probe-flat', 'Probe', undefined, { canTranslate: () => true });
       const el = panel.getElement();
       grid.appendChild(el);
       (panel as unknown as { clusteredMode: boolean }).clusteredMode = clustered;
@@ -131,7 +131,7 @@ test('the right part of the translate button clicks, and the strip still resizes
     grid.className = 'panels-grid';
     grid.id = 'panelsGrid';
     document.body.appendChild(grid);
-    const panel = new NewsPanel('probe-click', 'Probe');
+    const panel = new NewsPanel('probe-click', 'Probe', undefined, { canTranslate: () => true });
     grid.appendChild(panel.getElement());
     panel.renderNews(headlines.map((title, i) => ({
       source: `Quelle ${i}`,

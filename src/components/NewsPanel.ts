@@ -23,6 +23,12 @@ import { getPanelScopeBehaviour } from '@/config/panel-scope';
 import { headlineCountries, MAX_ATTRIBUTION_CHARS, withoutOwnSourceSuffix } from '@/services/scope-attribution';
 import type { ResolvedScope } from '@/services/tab-focus';
 import { effectivePubDateMs } from '@/services/feed-date';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { isFeatureAvailable, subscribeRuntimeConfig } from '@/services/runtime-config';
+import { isDesktopRuntime } from '@/services/desktop-runtime';
+import { subscribeWidgetAccess } from '@/services/widget-store';
 
 
 type SortMode = 'relevance' | 'newest';
@@ -55,6 +61,8 @@ export interface NewsPanelServices {
   clusterNews: (items: NewsItem[]) => Promise<ClusteredEvent[]>;
   generateSummary: typeof generateSummary;
   translateText: typeof translateText;
+  /** Whether the reader may translate headlines. Translation is Pro. */
+  canTranslate: () => boolean;
 }
 
 export class NewsPanel extends Panel {
@@ -66,6 +74,8 @@ export class NewsPanel extends Panel {
   private onRelatedAssetsFocus?: (assets: RelatedAsset[], originLabel: string) => void;
   private onRelatedAssetsClear?: () => void;
   private isFirstRender = true;
+  private translateAllowed = false;
+  private readonly accessUnsubscribers: Array<() => void> = [];
   /** Cluster ids that arrived while the user was away (#4923) — their NEW
    * ribbons persist until seen instead of expiring with the 2-min window. */
   private newSinceAwayIds = new Set<string>();
@@ -120,8 +130,26 @@ export class NewsPanel extends Panel {
       clusterNews: items => analysisWorker.clusterNews(items),
       generateSummary,
       translateText,
+      // Pro, or the desktop app's own local model (free, like translateText).
+      canTranslate: () => hasPremiumAccess(getAuthState())
+        || (isDesktopRuntime() && isFeatureAvailable('aiOllama')),
       ...services,
     };
+    // hasPremiumAccess answers from four signals; re-render the headlines when
+    // the answer changes so the translate control follows the reader's access.
+    this.translateAllowed = this.newsServices.canTranslate();
+    const recheck = () => {
+      const allowed = this.newsServices.canTranslate();
+      if (allowed === this.translateAllowed) return;
+      this.translateAllowed = allowed;
+      this.renderScopedNews();
+    };
+    this.accessUnsubscribers.push(
+      subscribeAuthState(recheck),
+      onEntitlementChange(recheck),
+      subscribeWidgetAccess(recheck),
+      subscribeRuntimeConfig(recheck),
+    );
     this.sortMode = this.loadSortMode();
     this.createDeviationIndicator();
     this.createSortToggle();
@@ -339,8 +367,13 @@ export class NewsPanel extends Panel {
     }
   }
 
+  /** The translate control renders for a reader with access whose UI is not English. */
+  private showTranslate(): boolean {
+    return getCurrentLanguage() !== 'en' && this.translateAllowed;
+  }
+
   private async handleTranslate(element: HTMLElement, text: string): Promise<void> {
-    if (element.hasAttribute('disabled')) return;
+    if (element.hasAttribute('disabled') || !this.newsServices.canTranslate()) return;
     // Target language for the translation, so the full tag — same reason as
     // handleSummarize above. The `en` short-circuit is unaffected: no tag that
     // resolves to a Chinese catalogue equals 'en'.
@@ -672,7 +705,7 @@ export class NewsPanel extends Panel {
         ${item.snippet ? `<div class="item-snippet">${escapeHtml(item.snippet.length > 200 ? item.snippet.slice(0, 200).replace(/\s+\S*$/, '') + '…' : item.snippet)}</div>` : ''}
         <div class="item-time">
           ${formatTime(item.pubDate)}
-          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
+          ${this.showTranslate() ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
         </div>
       </div>
     `;
@@ -941,7 +974,7 @@ export class NewsPanel extends Panel {
         <div class="cluster-meta">
           <div class="cluster-roster">${rosterView ? renderPublisherRosterHtml(rosterView) : ''}</div>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>
-          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(cluster.primaryTitle)}">文</button>` : ''}
+          ${this.showTranslate() ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(cluster.primaryTitle)}">文</button>` : ''}
         </div>
         ${relatedAssetsHtml}
       </div>
@@ -1102,6 +1135,7 @@ export class NewsPanel extends Panel {
 
     // Unregister from activity tracker
     activityTracker.unregister(this.panelId);
+    for (const unsubscribe of this.accessUnsubscribers.splice(0)) unsubscribe();
 
     // Call parent destroy
     super.destroy();

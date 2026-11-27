@@ -51,6 +51,14 @@ export async function getSummarizeArticleCache(
     return EMPTY_MISS;
   }
 
+  // Translation is Pro (summarize-article.ts) and never reads this route, which
+  // is public and CDN-cached. Serving a translate key here would hand any
+  // caller a translation a Pro reader already paid for.
+  if (cacheKey.startsWith(`${CURRENT_NAMESPACE}translate:`)) {
+    markNoCacheResponse(ctx.request);
+    return EMPTY_MISS;
+  }
+
   try {
     // A restricted caller reads only summaries written under its own policy
     // namespace (summarize-article.ts appends the same suffix).

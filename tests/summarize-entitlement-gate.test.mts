@@ -228,15 +228,22 @@ describe('summarization.ts wiring (source-grep — module not loadable under nod
     assert.equal(matches.length, 1, 'premiumNewsClient.summarizeArticle must have exactly one call site (inside tryApiProvider)');
   });
 
-  it('translateText stays ungated — mode=translate is the server-allowed anon path', () => {
+  it('translateText is Pro, with only the free alert and desktop-model requests on the plain client', () => {
     const fn = src.slice(src.indexOf('export async function translateText'));
     assert.ok(fn.indexOf("mode: 'translate'") > -1, 'translateText must use mode=translate');
-    assert.ok(
-      fn.indexOf('newsClient.summarizeArticle') > -1,
-      'translateText must use the plain newsClient (anon-allowed), not the premium client',
+    assert.match(fn, /const pro = hasPremiumAccess\(\)/, 'translateText must read Pro access');
+    assert.match(fn, /isFreeAlertTranslation\(text, targetLang\)/, 'the free alert rule must be the shared one');
+    assert.match(
+      fn,
+      /if \(!pro && !desktopLocal && !freeAlert\) continue;/,
+      'a free browser must send nothing but the free alert and desktop-model requests',
     );
-    const nextFnIdx = fn.indexOf('canAttemptServerSummarization');
-    assert.equal(nextFnIdx, -1, 'translateText must not consult the premium gate');
+    assert.match(
+      fn,
+      /const client = pro && !desktopLocal \? premiumNewsClient : newsClient;/,
+      'Pro translation must carry the credential; the free requests use the plain client',
+    );
+    assert.ok(fn.indexOf('client.summarizeArticle') > -1, 'translateText must dispatch through the chosen client');
   });
 
   // #5377: a gated/declined chain must not log the outage-shaped
