@@ -4020,6 +4020,7 @@ export const internalGetCustomerPortalUrl = internalAction({
  */
 export const PRO_BUSINESS_UPGRADE_TARGETS: Readonly<Record<string, string>> = {
   pro_monthly: "pro_business_monthly",
+  pro_monthly_mcp: "pro_business_monthly",
   pro_annual: "pro_business_annual",
 };
 

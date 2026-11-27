@@ -223,7 +223,7 @@ const BILLING_PORTAL_HINT = 'worldmonitor.app → Settings → Manage Billing';
 function alreadySubscribedNextStep(subscription: McpCheckoutSubscription | null, plan: string): string {
   const target = plan.startsWith('pro_business') ? 'pro_business' : plan.startsWith('api_business') ? 'api_business' : null;
   const existing = subscription?.planKey ?? '';
-  if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_annual')) {
+  if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_monthly_mcp' || existing === 'pro_annual')) {
     return 'Pro moves to Pro Business as a prorated upgrade on the same subscription, not through a new checkout. '
       + 'Ask the user to open worldmonitor.app/pro and choose Pro Business while signed in; they confirm the prorated charge there.';
   }

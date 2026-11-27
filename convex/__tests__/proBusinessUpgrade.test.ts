@@ -57,6 +57,14 @@ describe("selectProBusinessUpgradeCandidate", () => {
     expect(result).toMatchObject({ ok: true, toPlanKey: "pro_business_annual" });
   });
 
+  test("upgrades the MCP-priced Pro plan to Pro Business monthly in place", () => {
+    const result = selectProBusinessUpgradeCandidate(
+      [row({ planKey: "pro_monthly_mcp", dodoProductId: PRODUCT_CATALOG.pro_monthly_mcp!.dodoProductId })],
+      NOW,
+    );
+    expect(result).toMatchObject({ ok: true, fromPlanKey: "pro_monthly_mcp", toPlanKey: "pro_business_monthly" });
+  });
+
   test("refuses when Pro Business is already covering", () => {
     const result = selectProBusinessUpgradeCandidate(
       [row({}), row({ planKey: "pro_business_monthly", dodoSubscriptionId: "sub_pb" })],

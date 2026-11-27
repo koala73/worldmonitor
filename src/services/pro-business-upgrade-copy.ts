@@ -11,7 +11,7 @@
  */
 
 /** Plans the server can upgrade in place (see PRO_BUSINESS_UPGRADE_TARGETS). */
-export const IN_PLACE_UPGRADE_SOURCE_PLANS: ReadonlySet<string> = new Set(['pro_monthly', 'pro_annual']);
+export const IN_PLACE_UPGRADE_SOURCE_PLANS: ReadonlySet<string> = new Set(['pro_monthly', 'pro_monthly_mcp', 'pro_annual']);
 
 export interface ProBusinessUpgradePreview {
   /** Amount charged now, lowest unit of `currency` (the customer's billing currency). */

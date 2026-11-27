@@ -12,7 +12,7 @@
 import * as Sentry from '@sentry/react';
 import { createTimeoutSignal } from './timeout-signal';
 
-export const IN_PLACE_UPGRADE_SOURCE_PLANS: ReadonlySet<string> = new Set(['pro_monthly', 'pro_annual']);
+export const IN_PLACE_UPGRADE_SOURCE_PLANS: ReadonlySet<string> = new Set(['pro_monthly', 'pro_monthly_mcp', 'pro_annual']);
 
 interface UpgradePreview {
   kind: 'preview';
