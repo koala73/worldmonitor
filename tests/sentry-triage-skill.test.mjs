@@ -76,7 +76,10 @@ describe('cursor skill: sentry-triage', () => {
     const done = markdown.slice(markdown.indexOf('## What "done" looks like'));
     assert.match(product, /Do not put a resolving keyword next to a short ID/);
     assert.match(product, /Sentry WORLDMONITOR-12A/);
-    assert.match(product, /Before creating or updating the PR, scan the proposed PR body/);
+    assert.match(product, /Before creating or updating the PR, scan the proposed PR title and body/);
+    assert.match(product, /scripts\/check-sentry-resolve-markers\.mjs --text-file/);
+    assert.match(product, /post-fix events of Sentry WORLDMONITOR-1AY/);
+    assert.doesNotMatch(product, /grep -Eio '\(fix\|fixes/, 'the keyword-adjacent grep misses run-captured markers');
     for (const section of [product, done]) {
       assert.match(section, /read(?:ing)?(?: `status` and)? `statusDetails` back|reading back `status: resolved`/);
       for (const key of ['inRelease', 'inNextRelease', 'inCommit']) {

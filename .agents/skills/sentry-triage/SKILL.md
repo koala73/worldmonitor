@@ -120,13 +120,12 @@ State one class before touching code or Sentry status:
 
 - Cross-check frames against the codebase. If Sentry Releases exist, diff the event's release, not an assumed `main`.
 - Fix the cause. Add a test that reproduces the failure with synthetic data when the surface has a test suite.
-- Do not put a resolving keyword next to a short ID in a commit message or PR body during the release migration. The Sentry GitHub integration can create a commit/release pin from that marker; hosted compatibility remains unverified as described above. It fires even when the text only quotes the marker while discussing the bug, and backticks do not escape it. File content is never scanned; only commit messages and PR bodies are.
-- Link the work by naming the short ID with no resolving keyword beside it, such as `Sentry WORLDMONITOR-12A`, then, when resolution is authorized and the fix is verified, resolve the issue **plainly** and read `status` and `statusDetails` back to confirm `resolved` with no `inRelease`, `inNextRelease`, or `inCommit` key.
-- Scan commit messages before pushing. Before creating or updating the PR, scan the proposed PR body with the same resolving-keyword pattern below, including quoted text and code fences. Any hit means rewrite the commit message or PR body before submitting it.
+- Do not put a resolving keyword next to a short ID in a commit message or PR body during the release migration. The Sentry GitHub integration can create a commit/release pin from that marker; hosted compatibility remains unverified as described above. "Next to" is wider than it looks. After `fix`, `close` or `resolve` (any tense), Sentry captures the whole following run of words, digits, hyphens, commas and line breaks, and every short ID in that run resolves. `post-fix events of Sentry WORLDMONITOR-1AY` and `Fixes Sentry WORLDMONITOR-1FR and WORLDMONITOR-1FS` both pinned live issues in 2026-11. A period, colon, parenthesis or other punctuation ends the run. It fires even when the text only quotes the marker while discussing the bug. Treat backticks as no escape. File content is never scanned; only commit messages and PR bodies are.
+- Link the work by naming the short ID in a sentence with no resolving keyword anywhere before it in the same run, such as `Sentry WORLDMONITOR-12A.` on its own line, then, when resolution is authorized and the fix is verified, resolve the issue **plainly** and read `status` and `statusDetails` back to confirm `resolved` with no `inRelease`, `inNextRelease`, or `inCommit` key.
+- Scan commit messages before pushing; the pre-push hook runs the same check. Before creating or updating the PR, scan the proposed PR title and body with the same script, including quoted text and code fences. The `Sentry Resolve Markers` PR check repeats it. Any hit means rewrite the commit message or PR body before submitting it.
 
   ```bash
-  git log <base>..HEAD --format=%B \
-    | grep -Eio '(fix|fixes|fixed|close|closes|closed|resolve|resolves|resolved)[[:space:]]+WORLDMONITOR-[A-Z0-9]+'
+  node scripts/check-sentry-resolve-markers.mjs --text-file /path/to/pr-body.md
   ```
 
 - Follow WorldMonitor delivery rules (preflight, no `--no-verify`, no merge unless asked).
