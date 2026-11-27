@@ -126,30 +126,6 @@ webhooks:
   assert.doesNotThrow(() => generate(root, ['--check']));
 }));
 
-it('dates a group with listed OpenAPI pages from those operations only', () => withDateFixture((root) => {
-  const commit = (message, date) => {
-    execFileSync('git', ['add', 'docs'], { cwd: root, env: isolatedGitEnv() });
-    execFileSync('git', ['commit', '--quiet', '-m', message], {
-      cwd: root,
-      env: isolatedGitEnv({ GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date }),
-    });
-  };
-  const operation = (tag, summary) => `    get:\n      tags: [${tag}]\n      summary: ${summary}\n`;
-  writeFileSync(join(root, 'docs/docs.json'), JSON.stringify({ navigation: { groups: [
-    { group: 'Example', openapi: 'example.yaml' },
-    { group: 'Shipping', openapi: 'bundle.yaml', pages: ['GET /shipping'] },
-  ] } }));
-  writeFileSync(join(root, 'docs/example.yaml'), `openapi: 3.1.0\npaths:\n  /example:\n${operation('ExampleService', 'GetExample')}`);
-  commit('docs: add service spec', '2026-08-02T12:00:00Z');
-  writeFileSync(join(root, 'docs/bundle.yaml'), `openapi: 3.1.0\npaths:\n  /example:\n${operation('ExampleService', 'GetExample')}  /shipping:\n${operation('ShippingService', 'GetShipping')}`);
-  commit('docs: add bundle', '2026-08-09T12:00:00Z');
-  generate(root);
-  const output = readFileSync(join(root, OUTPUT), 'utf8');
-  // The bundle lists only /shipping, so the Example page keeps its own spec's date.
-  assert.ok(output.includes('"api-reference/exampleservice/getexample": {"datePublished":"2026-08-02","dateModified":"2026-08-02"}'), output);
-  assert.ok(output.includes('"api-reference/shippingservice/getshipping": {"datePublished":"2026-08-09","dateModified":"2026-08-09"}'), output);
-}));
-
 it('replaces pre-merge dates with the final commit date across a UTC day boundary', () => withDateFixture((root) => {
   generate(root);
   execFileSync('git', ['add', OUTPUT], { cwd: root, env: isolatedGitEnv() });

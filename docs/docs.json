@@ -558,12 +558,12 @@
                   },
                   {
                     "group": "Shipping v2",
-                    "openapi": "api/worldmonitor.openapi.yaml",
+                    "openapi": "api/ShippingV2Service.openapi.yaml"
+                  },
+                  {
+                    "group": "Shipping v2 webhooks",
                     "pages": [
-                      "GET /api/v2/shipping/route-intelligence",
-                      "GET /api/v2/shipping/webhooks",
-                      "POST /api/v2/shipping/webhooks",
-                      "webhook chokepoint.disruption"
+                      "api-reference/shippingv2service/chokepoint-disruption-alert-outbound-signed"
                     ]
                   }
                 ]
@@ -1203,12 +1203,12 @@
                   },
                   {
                     "group": "航运 v2",
-                    "openapi": "api/worldmonitor.openapi.yaml",
+                    "openapi": "api/ShippingV2Service.openapi.yaml"
+                  },
+                  {
+                    "group": "航运 v2 Webhook",
                     "pages": [
-                      "GET /api/v2/shipping/route-intelligence",
-                      "GET /api/v2/shipping/webhooks",
-                      "POST /api/v2/shipping/webhooks",
-                      "webhook chokepoint.disruption"
+                      "zh/api-reference/shippingv2service/chokepoint-disruption-alert-outbound-signed"
                     ]
                   }
                 ]

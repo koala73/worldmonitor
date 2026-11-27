@@ -54,24 +54,32 @@ describe('Mintlify OpenAPI download contract', () => {
   });
 
   it('publishes every bundle operation through a service group', () => {
+    // A group with a spec renders every operation in it. The one operation
+    // only the bundle carries, the chokepoint.disruption webhook, gets an MDX
+    // page whose `openapi:` frontmatter names it. Navigation entries such as
+    // "GET /path" or "webhook name" are not allowed: the docs-lint export runs
+    // with --disable-openapi and fetches them as literal paths, which 404.
     const bundle = loadYaml(readFileSync(bundlePath, 'utf8'));
     const tab = findTab('en', 'API Reference');
     const bound = new Set();
     const walk = (node) => {
       if (Array.isArray(node)) return node.forEach(walk);
+      if (typeof node === 'string') {
+        assert.doesNotMatch(node, /^(?:(?:GET|POST|PUT|PATCH|DELETE) \/|webhook )/, `${node}: bind a spec or use an MDX page`);
+        const mdx = readFileSync(resolve(root, 'docs', `${node}.mdx`), 'utf8');
+        const reference = mdx.match(/^openapi:\s*"?[^\s"]+\s+([^"\n]+?)"?\s*$/m)?.[1];
+        if (reference) bound.add(reference.startsWith('webhook ') ? reference : reference.toLowerCase());
+        return;
+      }
       if (!node || typeof node !== 'object') return;
       if (node.openapi) {
+        assert.equal(node.pages, undefined, `${node.group}: a group with a spec renders all of its operations`);
         const spec = loadYaml(readFileSync(resolve(root, 'docs', node.openapi), 'utf8'));
-        const pages = (node.pages ?? []).filter((page) => typeof page === 'string');
-        if (pages.length) {
-          for (const page of pages) bound.add(page.startsWith('webhook ') ? page : page.toLowerCase());
-        } else {
-          for (const [path, item] of Object.entries(spec.paths ?? {})) {
-            for (const method of Object.keys(item)) bound.add(`${method} ${path}`);
-          }
+        for (const [path, item] of Object.entries(spec.paths ?? {})) {
+          for (const method of Object.keys(item)) bound.add(`${method} ${path}`);
         }
       }
-      Object.values(node).forEach(walk);
+      for (const key of ['pages', 'groups', 'dropdowns']) if (node[key]) walk(node[key]);
     };
     walk(tab.dropdowns);
     for (const [path, item] of Object.entries(bundle.paths)) {

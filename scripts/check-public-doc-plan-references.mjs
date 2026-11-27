@@ -9,8 +9,6 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const OPENAPI_PAGE_REFERENCE = /^(?:(?:GET|POST|PUT|PATCH|DELETE) \/|webhook )/;
-
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DOCS_DIR = join(SCRIPT_DIR, '..', 'docs');
 const MINTLIFY_IGNORE_FILE = '.mintignore';
@@ -130,9 +128,7 @@ export function inspectDocumentationPublication(docsDir = DOCS_DIR) {
     } else if (node && typeof node === 'object') {
       const visible = indexed && (node.hidden !== true || node.searchable === true);
       for (const page of node.pages ?? []) {
-        // `GET /api/...` and `webhook <name>` name an operation in the
-        // group's OpenAPI spec, which Mintlify renders; there is no Markdown.
-        if (typeof page === 'string' && !OPENAPI_PAGE_REFERENCE.test(page)) navigation.set(page, visible);
+        if (typeof page === 'string') navigation.set(page, visible);
       }
       for (const child of Object.values(node)) collectPages(child, visible);
     }
