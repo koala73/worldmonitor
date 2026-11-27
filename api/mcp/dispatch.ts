@@ -660,7 +660,10 @@ export async function dispatchToolsCall(
         { plans: MCP_CHECKOUT_PLANS },
       );
     }
-    const upgrade = await startUpgradeCheckout(deps.createCheckout, context.userId, plan, productId, id, corsHeaders, ctx);
+    const upgrade = await startUpgradeCheckout(deps.createCheckout, context.userId, plan, productId, id, corsHeaders, ctx, {
+      previewSwitch: deps.previewApiStarterSwitch,
+      callerPlanKey: planKey,
+    });
     if (upgrade instanceof Response) return upgrade;
     startUpgradeResult = upgrade;
   }

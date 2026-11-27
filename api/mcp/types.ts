@@ -565,6 +565,9 @@ export interface McpHandlerDeps {
   // `start_upgrade` checkout relay (#9144). Optional so existing fixtures keep
   // compiling; dispatch falls back to the production Convex relay.
   createCheckout?: import('./checkout').McpCreateCheckout;
+  // `start_upgrade` API Starter switch quote. Optional for the same reason;
+  // dispatch falls back to the production Convex relay.
+  previewApiStarterSwitch?: import('./checkout').McpPreviewApiStarterSwitch;
 }
 
 export interface AuthResolution {
