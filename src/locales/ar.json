@@ -2677,7 +2677,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>أخبار المناخ</strong> أحدث معلومات البيئة والمناخ من Carbon Brief و UNEP و NASA و The Guardian ومصادر موثوقة أخرى. يتم التحديث كل 30 دقيقة.",
-      "loadError": "أخبار المناخ غير متاحة مؤقتاً"
+      "loadError": "أخبار المناخ غير متاحة مؤقتاً",
+      "restoreOriginal": "استعادة النص الأصلي",
+      "translate": "ترجمة"
     },
     "liquidityShifts": {
       "title": "تحولات السيولة",

@@ -298,6 +298,8 @@
   "components.climate.zone": "Zone",
   "components.climateNews.infoTooltip": "<strong>Climate News</strong> Latest environment and climate intelligence from Carbon Brief, UNEP, NASA, The Guardian, and other authoritative sources. Updated every 30 minutes.",
   "components.climateNews.loadError": "Climate news temporarily unavailable",
+  "components.climateNews.restoreOriginal": "Restore original text",
+  "components.climateNews.translate": "Translate",
   "components.commodities.asOf": "As of {{date}}",
   "components.commodities.commodities": "Commodities",
   "components.commodities.divergence.compositeValue": "Physical stress index: {{value}} / 100",

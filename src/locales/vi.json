@@ -2617,7 +2617,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Tin tức Khí hậu</strong> Thông tin môi trường và khí hậu mới nhất từ Carbon Brief, UNEP, NASA, The Guardian và các nguồn đáng tin cậy khác. Cập nhật mỗi 30 phút.",
-      "loadError": "Tin tức khí hậu tạm thời không khả dụng"
+      "loadError": "Tin tức khí hậu tạm thời không khả dụng",
+      "restoreOriginal": "Khôi phục văn bản gốc",
+      "translate": "Dịch"
     },
     "liquidityShifts": {
       "title": "Thay đổi Thanh khoản",

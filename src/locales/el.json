@@ -2629,7 +2629,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Τελευταίες πληροφορίες περιβάλλοντος και κλίματος από το Carbon Brief, UNEP, NASA, The Guardian και άλλες αξιόπιστες πηγές. Ενημέρωση κάθε 30 λεπτά.",
-      "loadError": "Το Climate News δεν είναι προσωρινά διαθέσιμο"
+      "loadError": "Το Climate News δεν είναι προσωρινά διαθέσιμο",
+      "restoreOriginal": "Επαναφορά αρχικού κειμένου",
+      "translate": "Μετάφραση"
     },
     "liquidityShifts": {
       "title": "Μετατοπίσεις Ρευστότητας",

@@ -2617,7 +2617,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>气候新闻</strong>来自Carbon Brief、UNEP、NASA、The Guardian等权威来源的最新环境和气候资讯。每30分钟更新一次。",
-      "loadError": "气候新闻暂时无法获取"
+      "loadError": "气候新闻暂时无法获取",
+      "restoreOriginal": "恢复原文",
+      "translate": "翻译"
     },
     "liquidityShifts": {
       "title": "流动性变化",

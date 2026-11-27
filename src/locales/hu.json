@@ -2529,7 +2529,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> A legfrissebb környezeti és éghajlati intelligencia a Carbon Brief, az UNEP, a NASA, a The Guardian és más megbízható forrásokból. 30 percenként frissítve.",
-      "loadError": "Éghajlat hírek átmenetileg nem érhetőek el"
+      "loadError": "Éghajlat hírek átmenetileg nem érhetőek el",
+      "restoreOriginal": "Eredeti szöveg visszaállítása",
+      "translate": "Fordítás"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>WM Analyst</strong> AI-elemző élő kontextussal a geopolitikai, piaci, katonai és gazdasági területeken. A Claude által működtetett, valós idejű adatok az aktív WorldMonitor feedekből."

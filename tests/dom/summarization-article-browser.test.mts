@@ -7,7 +7,18 @@ vi.mock('@/services/ml-worker', () => ({
 vi.mock('@/config/beta', () => ({ BETA_MODE: false }));
 vi.mock('@/services/analytics', () => ({ trackLLMUsage: vi.fn(), trackLLMFailure: vi.fn() }));
 vi.mock('@/services/i18n', () => ({ getCurrentLanguage: () => 'en', t: (key: string) => key }));
-import { generateSummary } from '@/services/summarization';
+vi.mock('@/services/runtime-config', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/runtime-config')>(),
+  isFeatureAvailable: (feature: string) => feature === 'aiOpenRouter',
+}));
+// Translation is Pro and goes through the credentialed client; route it to the
+// stubbed fetch so the circuit-recovery test counts every provider request.
+vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => true }));
+vi.mock('@/services/premium-fetch', () => ({
+  premiumFetch: (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init),
+}));
+
+import { generateSummary, translateText } from '@/services/summarization';
 
 const story = ['Artist shares 5 things he sees differently after 50'];
 const options = { mode: 'article' as const, bodies: ['A painter reflects on patience and curiosity.'], skipCloudProviders: true };
@@ -30,4 +41,28 @@ it('keeps a browser-model summary of the article itself', async () => {
     summary: 'A painter says turning 50 taught him patience and curiosity.',
     provider: 'browser',
   });
+});
+
+
+it('keeps concurrent translations distinct during circuit recovery', async () => {
+  const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const { headlines: [text] } = JSON.parse(String(init?.body));
+    return Response.json({ summary: `[de] ${text}` });
+  });
+  fetch.mockRejectedValueOnce(new Error('Provider offline')).mockRejectedValueOnce(new Error('Provider offline'));
+  vi.stubGlobal('fetch', fetch);
+  try {
+    expect(await translateText('first failure', 'de')).toBeNull();
+    expect(await translateText('second failure', 'de')).toBeNull();
+    expect(await translateText('cooldown', 'de')).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    vi.setSystemTime(Date.now() + 5 * 60_000);
+    await expect(Promise.all([translateText('headline', 'de'), translateText('summary', 'de')]))
+      .resolves.toEqual(['[de] headline', '[de] summary']);
+    expect(fetch).toHaveBeenCalledTimes(4);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
 });

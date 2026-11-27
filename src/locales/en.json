@@ -2659,7 +2659,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Latest environment and climate intelligence from Carbon Brief, UNEP, NASA, The Guardian, and other authoritative sources. Updated every 30 minutes.",
-      "loadError": "Climate news temporarily unavailable"
+      "loadError": "Climate news temporarily unavailable",
+      "restoreOriginal": "Restore original text",
+      "translate": "Translate"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>WM Analyst</strong> AI analyst with live context across geopolitical, market, military, and economic domains. Powered by Claude with real-time data injected from active WorldMonitor feeds."

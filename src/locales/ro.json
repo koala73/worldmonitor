@@ -2641,7 +2641,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Cele mai recente informații despre mediu și climat de la Carbon Brief, UNEP, NASA, The Guardian și alte surse de autoritate. Actualizat la fiecare 30 de minute.",
-      "loadError": "Știrile climatice sunt temporar indisponibile"
+      "loadError": "Știrile climatice sunt temporar indisponibile",
+      "restoreOriginal": "Restabilește textul original",
+      "translate": "Tradu"
     },
     "liquidityShifts": {
       "title": "Schimbări de lichiditate",

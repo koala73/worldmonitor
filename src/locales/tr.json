@@ -2629,7 +2629,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>İklim Haberleri</strong> Carbon Brief, UNEP, NASA, The Guardian ve diğer güvenilir kaynaklardan en son çevre ve iklim istihbaratı. Her 30 dakikada güncellenir.",
-      "loadError": "İklim haberleri geçici olarak kullanılamıyor"
+      "loadError": "İklim haberleri geçici olarak kullanılamıyor",
+      "restoreOriginal": "Özgün metni geri yükle",
+      "translate": "Çevir"
     },
     "liquidityShifts": {
       "title": "Likidite Kaymalar",

@@ -3389,15 +3389,23 @@ a.hub-top-story {
 }
 
 .climate-news-card {
-  display: block;
-  padding: 8px 10px;
-  text-decoration: none;
-  color: inherit;
+  position: relative;
   border-bottom: 1px solid var(--border-subtle);
   transition: background 0.15s;
 }
 .climate-news-card:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+
+.climate-news-card__content {
+  display: block;
+  padding: 8px 10px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.climate-news-card[data-translation-key]:not([data-translation-key=""]) .climate-news-card__header {
+  padding-inline-end: 24px;
 }
 
 .climate-news-card__header {
@@ -3419,6 +3427,41 @@ a.hub-top-story {
 .climate-news-card__time {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   color: var(--text-faint);
+}
+
+.climate-news-card__translate {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-end: 10px;
+  padding: 0 3px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.climate-news-card__translate:hover,
+.climate-news-card__translate:focus-visible {
+  color: var(--text);
+  background: var(--bg-hover, rgb(255 255 255 / 8%));
+}
+
+.climate-news-card__translate.translated {
+  color: var(--accent-green, #22c55e);
+}
+
+.climate-news-card__translate[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.climate-news-card__translation-status:not(:empty) {
+  padding: 0 10px 8px;
+  color: var(--text-muted);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
 }
 
 .climate-news-card__title {

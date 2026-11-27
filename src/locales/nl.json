@@ -2211,7 +2211,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Klimaatnieuws</strong> Laatste milieu- en klimaatintelligentie van Carbon Brief, UNEP, NASA, The Guardian en andere betrouwbare bronnen. Elke 30 minuten bijgewerkt.",
-      "loadError": "Klimaatnieuws tijdelijk niet beschikbaar"
+      "loadError": "Klimaatnieuws tijdelijk niet beschikbaar",
+      "restoreOriginal": "Oorspronkelijke tekst herstellen",
+      "translate": "Vertalen"
     },
     "liquidityShifts": {
       "title": "Liquiditeitsshifts",

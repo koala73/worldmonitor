@@ -459,7 +459,9 @@ export async function translateText(
           systemAppend: '',
           bodies: [],
         });
-      }, emptySummaryFallback);
+      }, emptySummaryFallback, {
+        cacheKey: JSON.stringify(['translate', providerDef.provider, targetLang, text]),
+      });
 
       if (resp.fallback || resp.status === 'SUMMARIZE_STATUS_SKIPPED') continue;
       const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';

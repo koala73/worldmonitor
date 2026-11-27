@@ -2629,7 +2629,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Klima-Nachrichten</strong> Aktuelle Umwelt- und Klimainformationen von Carbon Brief, UNEP, NASA, The Guardian und anderen vertrauenswürdigen Quellen. Alle 30 Minuten aktualisiert.",
-      "loadError": "Klima-Nachrichten vorübergehend nicht verfügbar"
+      "loadError": "Klima-Nachrichten vorübergehend nicht verfügbar",
+      "restoreOriginal": "Originaltext wiederherstellen",
+      "translate": "Übersetzen"
     },
     "liquidityShifts": {
       "title": "Liquiditätsverlagerungen",

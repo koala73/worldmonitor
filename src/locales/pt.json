@@ -2221,7 +2221,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Inteligência ambiental e climática mais recente da Carbon Brief, UNEP, NASA, The Guardian e outras fontes confiáveis. Atualizado a cada 30 minutos.",
-      "loadError": "Climate News temporariamente indisponível"
+      "loadError": "Climate News temporariamente indisponível",
+      "restoreOriginal": "Restaurar o texto original",
+      "translate": "Traduzir"
     },
     "liquidityShifts": {
       "title": "Shifts de Liquidez",

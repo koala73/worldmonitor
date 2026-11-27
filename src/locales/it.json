@@ -2641,7 +2641,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Notizie sul clima</strong> Ultime notizie su ambiente e clima da Carbon Brief, UNEP, NASA, The Guardian e altre fonti autorevoli. Aggiornato ogni 30 minuti.",
-      "loadError": "Notizie sul clima temporaneamente non disponibili"
+      "loadError": "Notizie sul clima temporaneamente non disponibili",
+      "restoreOriginal": "Ripristina il testo originale",
+      "translate": "Traduci"
     },
     "liquidityShifts": {
       "title": "Spostamenti di liquidità",
