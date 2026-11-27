@@ -666,18 +666,18 @@ export async function startCheckout(
   }
 
   // An individual Pro holder moves to API Starter in place instead of buying
-  // a second subscription. Every other account continues to checkout.
+  // a second subscription. Every other account continues to checkout. The
+  // guard is taken before the first await and held into the checkout below.
+  _checkoutInFlight = true;
   if (await isApiStarterCheckoutTarget(productId)) {
-    _checkoutInFlight = true;
     let switchOutcome: 'shown' | 'not-switchable' = 'not-switchable';
     try {
       switchOutcome = await startApiStarterSwitch();
     } catch {
       // Treated as not switchable: the checkout runs exactly as before.
-    } finally {
-      _checkoutInFlight = false;
     }
     if (switchOutcome === 'shown') {
+      _checkoutInFlight = false;
       // The switch dialog answers this purchase. A stored intent for it would
       // reopen the dialog on the next sign-in in this tab.
       if (loadPendingCheckoutIntent()?.productId === productId) clearPendingCheckoutIntent();
@@ -685,7 +685,6 @@ export async function startCheckout(
     }
   }
 
-  _checkoutInFlight = true;
   let redirecting = false;
   // Fall back to the stored referral when the caller doesn't pass one.
   // A dashboard-origin upgrade click has no ref in hand — it arrives

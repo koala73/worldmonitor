@@ -255,6 +255,19 @@ describe('startCheckout asks for the API Starter switch first', () => {
     assert.equal(flowCalls().length, 2, 'the in-flight guard is released after the preview');
   });
 
+  for (const [label, productId, outcome] of [
+    ['another product', DODO_PRODUCTS.PRO_MONTHLY, 'shown'],
+    ['API Starter with no Pro to switch', DODO_PRODUCTS.API_STARTER_MONTHLY, 'not-switchable'],
+  ] as const) {
+    it(`sends one checkout for two clicks made at once (${label})`, async () => {
+      resetHarness(outcome);
+      const checkout = await loadCheckoutModule();
+      const results = await Promise.all([checkout.startCheckout(productId), checkout.startCheckout(productId)]);
+      assert.equal(posts().length, 1, 'the second click must hit the in-flight guard');
+      assert.deepEqual([...results].sort(), [false, true]);
+    });
+  }
+
   it('passes the Settings dismissal through', async () => {
     resetHarness('shown');
     const checkout = await loadCheckoutModule();
