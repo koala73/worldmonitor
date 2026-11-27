@@ -212,7 +212,7 @@ describe('seeder departure boards', () => {
       [{ iata: 'LHR', fetchedAt: NOW, rows: [] }, { iata: 'HND', fetchedAt: NOW, rows: [] }],
       async (_url: string, init: RequestInit) => {
         bodies.push(JSON.parse(String(init.body)));
-        return new Response('[]');
+        return Response.json([{ result: 'OK' }]);
       },
     );
 
@@ -221,5 +221,18 @@ describe('seeder departure boards', () => {
       ['SET', 'aviation:avstack:departures:v1:LHR', 'EX', 10_800],
     ]);
     assert.deepEqual(JSON.parse(String(bodies[0][0][2])), { fetchedAt: NOW, rows: [] });
+  });
+
+  it('counts a SET that Redis rejected inside an HTTP 200 as not written', async () => {
+    const logs: string[] = [];
+    mock.method(console, 'log', (line: string) => logs.push(line));
+    await writeDepartureBoards(
+      [{ iata: 'LHR', fetchedAt: NOW, rows: [] }, { iata: 'HND', fetchedAt: NOW, rows: [] }],
+      async (_url: string, init: RequestInit) => String(init.body).includes(':HND')
+        ? Response.json([{ error: 'OOM command not allowed' }])
+        : Response.json([{ result: 'OK' }]),
+    );
+
+    assert.deepEqual(logs, ['[Intl] departure boards written: 1/2']);
   });
 });

@@ -516,11 +516,14 @@ export async function writeDepartureBoards(boards, fetchFn = (...args) => global
   const results = await Promise.allSettled(boards.map(async ({ iata, fetchedAt, rows }) => {
     const resp = await fetchFn(`${url}/pipeline`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
       body: JSON.stringify([['SET', departureBoardKey(iata), JSON.stringify({ fetchedAt, rows }), 'EX', DEPARTURE_BOARD_TTL]]),
       signal: AbortSignal.timeout(10_000),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // Upstash reports a rejected command inside an HTTP 200 body.
+    const [reply] = await resp.json();
+    if (reply?.result !== 'OK') throw new Error(reply?.error || 'SET not acknowledged');
   }));
   const failed = results.filter((r) => r.status === 'rejected').length;
   console.log(`[Intl] departure boards written: ${boards.length - failed}/${boards.length}`);

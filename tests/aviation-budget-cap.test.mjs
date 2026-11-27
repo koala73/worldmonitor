@@ -48,21 +48,22 @@ describe('aviation budget: reserveAviationStackCalls enforces ceilings', () => {
   beforeEach(() => {
     counter = 0;
     store = new Map();
-    const sharedKey = serverAvstackBudgetKey();
-    mock.method(globalThis, 'fetch', async (_url, opts) => {
-      const cmds = JSON.parse(opts.body); // [[ 'INCRBY', key, n ], [ 'EXPIRE', ... ]]
-      const results = cmds.map((cmd) => {
-        const [verb, key, n] = cmd;
-        const delta = verb === 'INCRBY' ? Number(n) : verb === 'DECRBY' ? -Number(n) : null;
-        if (delta === null) return { result: 1 }; // EXPIRE
-        const value = (store.get(key) ?? 0) + delta;
-        store.set(key, value);
-        if (key === sharedKey) counter = value;
-        return { result: value };
-      });
-      return { ok: true, json: async () => results };
-    });
+    mock.method(globalThis, 'fetch', async (_url, opts) => ({ ok: true, json: async () => applyCommands(opts) }));
   });
+
+  function applyCommands(opts) {
+    const sharedKey = serverAvstackBudgetKey();
+    const cmds = JSON.parse(opts.body); // [[ 'INCRBY', key, n ], [ 'EXPIRE', ... ]]
+    return cmds.map((cmd) => {
+      const [verb, key, n] = cmd;
+      const delta = verb === 'INCRBY' ? Number(n) : verb === 'DECRBY' ? -Number(n) : null;
+      if (delta === null) return { result: 1 }; // EXPIRE
+      const value = (store.get(key) ?? 0) + delta;
+      store.set(key, value);
+      if (key === sharedKey) counter = value;
+      return { result: value };
+    });
+  }
 
   afterEach(() => {
     mock.restoreAll();
@@ -120,6 +121,23 @@ describe('aviation budget: reserveAviationStackCalls enforces ceilings', () => {
     assert.equal(await reserveAviationStackCalls(1, 'request'), false);
     assert.equal(counter, 10, 'a denied request is refunded from the shared counter');
     assert.equal(await reserveAviationStackCalls(1, 'seed'), false);
+  });
+
+  it('still blocks at the plan-wide cap when only the request counter errors', async () => {
+    process.env.AVIATIONSTACK_MONTHLY_BUDGET = '10';
+    process.env.AVIATIONSTACK_REQUEST_BUDGET = '5';
+    const sharedKey = serverAvstackBudgetKey();
+    store.set(sharedKey, 10);
+    counter = 10;
+    mock.restoreAll();
+    mock.method(globalThis, 'fetch', async (_url, opts) => {
+      const cmds = JSON.parse(opts.body);
+      const results = applyCommands(opts).map((r, i) => (cmds[i][1] === sharedKey ? r : { error: 'WRONGTYPE' }));
+      return { ok: true, json: async () => results };
+    });
+
+    assert.equal(await reserveAviationStackCalls(1, 'request'), false, 'a known breach is not failed open');
+    assert.equal(counter, 10, 'the shared reservation is refunded');
   });
 
   it('treats a zero MONTHLY budget as disabled (always allow, no Redis I/O)', async () => {

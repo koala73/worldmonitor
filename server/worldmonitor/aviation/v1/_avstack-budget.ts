@@ -120,12 +120,15 @@ export async function reserveAviationStackCalls(
       ['EXPIRE', key, AVSTACK_BUDGET_TTL],
     ]));
     const totals = counters.map((_, i) => Number(res?.[i * 2]?.result));
-    if (!totals.every(Number.isFinite)) return true; // redis unavailable → fail-open
-    const breached = counters.findIndex(({ ceiling }, i) => totals[i]! > ceiling);
+    // A counter that did answer and is over its ceiling blocks the call even
+    // when the other one errored; fail-open covers only an unknown total.
+    const breached = counters.findIndex(({ ceiling }, i) => Number.isFinite(totals[i]) && totals[i]! > ceiling);
+    if (breached < 0 && !totals.every(Number.isFinite)) return true; // redis unavailable → fail-open
     if (breached >= 0) {
       // Give the reservation back so the counters reflect calls actually made.
-      const refund = await runRedisPipeline(counters.map(({ key }) => ['DECRBY', key, count]));
-      if (!counters.every((_, i) => Number.isFinite(Number(refund?.[i]?.result)))) {
+      const reserved = counters.filter((_, i) => Number.isFinite(totals[i]));
+      const refund = await runRedisPipeline(reserved.map(({ key }) => ['DECRBY', key, count]));
+      if (!reserved.every((_, i) => Number.isFinite(Number(refund?.[i]?.result)))) {
         console.warn(`[Aviation] AviationStack ${kind} budget refund failed for ${count} call(s); counter may be inflated`);
       }
       const { ceiling } = counters[breached]!;
