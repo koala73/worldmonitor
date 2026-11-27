@@ -1105,6 +1105,22 @@ test('an open without a country shows the country picker and loads nothing until
   await expect.poll(() => host.calls.some(call => call.name === 'get_country_brief_section')).toBe(true);
 });
 
+test('a countryless host result cancels a country open that is still waiting for admission', async ({ page }) => {
+  const host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, false, undefined, undefined, undefined, true);
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('#countryStatus')).toContainText('Select a country to open its brief.');
+  host.delayAdmission();
+  await frame.locator('input[name="country"]').fill('US');
+  await frame.locator('#openCountry').click();
+  await expect.poll(() => host.calls.filter(call => call.name === 'open_country_brief').length).toBe(2);
+  // The host opens the view again without a country while US admission is pending.
+  await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { structuredContent: { topic: 'security' } } }, '*'));
+  await page.waitForTimeout(200);
+  host.releaseAdmission();
+  await page.waitForTimeout(800);
+  expect(host.calls.some(call => call.name === 'get_country_brief_section')).toBe(false);
+});
+
 test('an initial host open denial displays its reason without section loads', async ({ page }) => {
   const host = await installCountryHost(page, false, 'Daily MCP quota exceeded (50 requests/day). Resets at next UTC midnight.');
   const frame = page.frameLocator('iframe');

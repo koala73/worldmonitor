@@ -823,6 +823,9 @@ async function mountPlugin(): Promise<void> {
       } else if (typeof data?.topic === 'string' && Object.prototype.hasOwnProperty.call(BRIEF_TOPICS, data.topic)) {
         hostInput = undefined;
         pickerTopic = data.topic;
+        // A newer countryless open wins over a country open still waiting for admission.
+        revision++;
+        openRequest?.abort();
       }
     }
     if (message.method === 'tools/list') send({ id: message.id, result: { tools: [
@@ -849,7 +852,10 @@ async function mountPlugin(): Promise<void> {
   const openSelectedCountry = () => {
     // Consumed only once the open succeeds, so a rejected entry keeps the picker topic for the retry.
     const topic = pickerTopic;
-    void open({ country_code: input.value, ...(topic ? { topic } : {}) }).then(() => { if (pickerTopic === topic) pickerTopic = undefined; }, error => { status.textContent = error.message; });
+    void open({ country_code: input.value, ...(topic ? { topic } : {}) }).then(result => {
+      // A queued open (before startup) has not been validated yet, so it keeps the topic too.
+      if ((result as { state?: string }).state !== 'connecting' && pickerTopic === topic) pickerTopic = undefined;
+    }, error => { status.textContent = error.message; });
   };
   document.getElementById('openCountry')!.addEventListener('click', openSelectedCountry);
   form.addEventListener('submit', event => { event.preventDefault(); openSelectedCountry(); });
