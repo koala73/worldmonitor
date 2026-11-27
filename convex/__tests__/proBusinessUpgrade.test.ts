@@ -128,13 +128,15 @@ describe("upgradeToProBusiness action", () => {
       renewalCurrency: "USD",
       renewalDate: "2026-12-07T11:03:06Z",
       billingPeriod: "monthly",
+      discounted: false,
+      percentOff: null,
     });
     expect(previewChangePlan).toHaveBeenCalledWith("sub_pro_1", expect.objectContaining({
       product_id: PRO_BUSINESS_MONTHLY,
       quantity: 1,
       proration_billing_mode: "prorated_immediately",
       on_payment_failure: "prevent_change",
-    }));
+    }), expect.objectContaining({ timeout: expect.any(Number) }));
     expect(changePlan).not.toHaveBeenCalled();
   });
 

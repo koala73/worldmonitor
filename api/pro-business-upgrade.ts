@@ -1,7 +1,10 @@
-// POST: a signed-in /pro visitor (Clerk bearer) previews or applies the
-// in-place Pro → Pro Business upgrade. Body: { confirm: boolean }.
-// confirm=false returns the prorated charge; confirm=true moves the existing
-// Dodo subscription to the Pro Business product. The dashboard calls the
+// POST: a signed-in /pro visitor (Clerk bearer) previews or applies an
+// in-place plan change. Body: { confirm: boolean, kind?: "pro_business" |
+// "pro_annual", discounted?: boolean }. kind defaults to the Pro → Pro
+// Business upgrade; "pro_annual" moves Pro Monthly to Pro Yearly, and its
+// confirm echoes the quote's `discounted` flag so the change applies the price
+// the user saw or fails closed. confirm=false returns the prorated charge;
+// confirm=true moves the existing Dodo subscription to the target product. The dashboard calls the
 // Convex action directly; this edge route exists because /pro is a separate
 // build without a Convex client.
 export const config = { runtime: 'edge' };
@@ -35,7 +38,12 @@ const PASSTHROUGH_ERRORS = new Set([
   'UPGRADE_RATE_LIMITED',
   'ACCOUNT_DELETION_IN_PROGRESS',
   'DODO_PLAN_CHANGE_ERROR',
+  'ALREADY_PRO_ANNUAL',
+  'PROMO_ENDED',
+  'PROMO_CODE_REJECTED',
 ]);
+
+const PLAN_CHANGE_KINDS = new Set(['pro_business', 'pro_annual']);
 
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -79,14 +87,28 @@ export default async function handler(
   }
 
   let confirm: boolean;
+  let kind: string | undefined;
+  let discounted: boolean | undefined;
   try {
     // Read a clone: the idempotency helpers hash the original body, and a
     // consumed body would make them fall back to "disabled" (no replay lock).
-    const body = await req.clone().json() as { confirm?: unknown } | null;
+    const body = await req.clone().json() as { confirm?: unknown; kind?: unknown; discounted?: unknown } | null;
     if (!body || typeof body !== 'object' || typeof body.confirm !== 'boolean') {
       return json({ error: 'INVALID_BODY' }, 400, cors);
     }
+    if (body.kind !== undefined && (typeof body.kind !== 'string' || !PLAN_CHANGE_KINDS.has(body.kind))) {
+      return json({ error: 'INVALID_BODY' }, 400, cors);
+    }
+    if (body.discounted !== undefined && typeof body.discounted !== 'boolean') {
+      return json({ error: 'INVALID_BODY' }, 400, cors);
+    }
+    // A Pro Yearly confirm must name the quote it accepts.
+    if (body.kind === 'pro_annual' && body.confirm && body.discounted === undefined) {
+      return json({ error: 'INVALID_BODY' }, 400, cors);
+    }
     confirm = body.confirm;
+    kind = body.kind as string | undefined;
+    discounted = body.discounted as boolean | undefined;
   } catch {
     return json({ error: 'INVALID_JSON' }, 400, cors);
   }
@@ -133,7 +155,12 @@ export default async function handler(
         'User-Agent': UPGRADE_RELAY_USER_AGENT,
         Authorization: `Bearer ${CONVEX_TENANT_RELAY_SECRET}`,
       },
-      body: JSON.stringify({ userId: session.userId, confirm }),
+      body: JSON.stringify({
+        userId: session.userId,
+        confirm,
+        ...(kind !== undefined ? { kind } : {}),
+        ...(discounted !== undefined ? { discounted } : {}),
+      }),
       signal: AbortSignal.timeout(20_000),
     });
 

@@ -2508,6 +2508,10 @@ const PRO_BUSINESS_UPGRADE_REFUSALS = new Set([
   "UPGRADE_IN_PROGRESS",
   "UPGRADE_RATE_LIMITED",
   "ACCOUNT_DELETION_IN_PROGRESS",
+  // Pro Monthly → Pro Yearly (kind "pro_annual").
+  "ALREADY_PRO_ANNUAL",
+  "PROMO_ENDED",
+  "PROMO_CODE_REJECTED",
 ]);
 
 http.route({
@@ -2517,18 +2521,39 @@ http.route({
     const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
     if (unauthorized) return unauthorized;
 
-    const body = await parseJsonObjectBody<{ userId?: unknown; confirm?: unknown }>(request);
+    const body = await parseJsonObjectBody<{
+      userId?: unknown;
+      confirm?: unknown;
+      kind?: unknown;
+      discounted?: unknown;
+    }>(request);
     if (!body) {
       return Response.json({ error: "INVALID_JSON" }, { status: 400 });
     }
     if (typeof body.userId !== "string" || body.userId.length === 0 || typeof body.confirm !== "boolean") {
       return Response.json({ error: "MISSING_FIELDS", required: ["userId", "confirm"] }, { status: 400 });
     }
+    // Optional; absent means the original Pro → Pro Business upgrade.
+    if (body.kind !== undefined && body.kind !== "pro_business" && body.kind !== "pro_annual") {
+      return Response.json({ error: "INVALID_KIND" }, { status: 400 });
+    }
+    if (body.discounted !== undefined && typeof body.discounted !== "boolean") {
+      return Response.json({ error: "INVALID_DISCOUNTED" }, { status: 400 });
+    }
+    // A Pro Yearly confirm names the quote it accepts (see runPlanChange).
+    if (body.kind === "pro_annual" && body.confirm && body.discounted === undefined) {
+      return Response.json({ error: "MISSING_FIELDS", required: ["discounted"] }, { status: 400 });
+    }
 
     try {
       const result = await ctx.runAction(
         internal.payments.billing.internalUpgradeToProBusiness,
-        { userId: body.userId, confirm: body.confirm },
+        {
+          userId: body.userId,
+          confirm: body.confirm,
+          ...(body.kind !== undefined ? { kind: body.kind } : {}),
+          ...(typeof body.discounted === "boolean" ? { discounted: body.discounted } : {}),
+        },
       );
       return Response.json(result, { status: 200 });
     } catch (err) {

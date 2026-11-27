@@ -621,6 +621,10 @@ export type ProBusinessUpgradeResponse =
       renewalCurrency: string | null;
       renewalDate: string | null;
       billingPeriod: 'monthly' | 'annual';
+      /** The quote carries the running offer's code; the Pro Yearly confirm echoes it. Optional across a mixed deploy. */
+      discounted?: boolean;
+      /** Dodo's whole percent off the first period on a discounted quote, else null. */
+      percentOff?: number | null;
     }
   | { kind: 'upgraded'; fromPlanKey: string; toPlanKey: string };
 
@@ -640,6 +644,28 @@ export async function requestProBusinessUpgrade(confirm: boolean): Promise<ProBu
     userId,
     'upgrading to Pro Business',
     () => client.action(api.payments.billing.upgradeToProBusiness, { confirm }),
+  );
+}
+
+/**
+ * Preview or apply the in-place Pro Monthly → Pro Yearly switch. The confirm
+ * passes the quote's `discounted` flag; the server refuses with PROMO_ENDED or
+ * PROMO_CODE_REJECTED when that price no longer holds, and with
+ * PLAN_CHANGE_QUOTE_REQUIRED when the flag is missing.
+ */
+export async function requestProAnnualSwitch(confirm: boolean, discounted?: boolean): Promise<ProBusinessUpgradeResponse> {
+  const userId = requireSignedInUserId('switch to Pro Yearly');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'switching to Pro Yearly');
+  return settleAccountOperation(
+    userId,
+    'switching to Pro Yearly',
+    () => client.action(api.payments.billing.upgradeToProBusiness, {
+      confirm,
+      kind: 'pro_annual',
+      ...(discounted !== undefined ? { discounted } : {}),
+    }),
   );
 }
 

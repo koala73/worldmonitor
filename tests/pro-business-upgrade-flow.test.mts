@@ -6,8 +6,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runProBusinessUpgradeFlow, type ProBusinessUpgradeFlowOptions } from '../src/services/pro-business-upgrade-dialog.ts';
+import * as flows from '../src/services/pro-business-upgrade-dialog.ts';
+import type { ProAnnualSwitchFlowOptions, ProBusinessUpgradeFlowOptions } from '../src/services/pro-business-upgrade-dialog.ts';
 import type { CheckoutConfirmDialogOptions } from '../src/services/checkout-dialog-factory.ts';
+import type { ProBusinessUpgradeResponse } from '../src/services/billing.ts';
+
+const { runProBusinessUpgradeFlow } = flows;
+// A namespace read, so the suite still loads (and fails per test) without the switch flow.
+const runProAnnualSwitchFlow = (options: ProAnnualSwitchFlowOptions) => flows.runProAnnualSwitchFlow(options);
 
 const PREVIEW = {
   kind: 'preview' as const,
@@ -111,5 +117,190 @@ describe('runProBusinessUpgradeFlow', () => {
     await runProBusinessUpgradeFlow(anon.options);
     assert.equal(anon.fellBack(), true);
     assert.deepEqual(anon.calls, []);
+  });
+});
+
+const SWITCH_QUOTE = {
+  kind: 'preview' as const,
+  fromPlanKey: 'pro_monthly',
+  toPlanKey: 'pro_annual',
+  chargeAmount: 10496,
+  currency: 'USD',
+  renewalAmount: 35999,
+  renewalCurrency: 'USD',
+  renewalDate: '2027-11-26T10:00:00Z',
+  billingPeriod: 'annual' as const,
+  discounted: true,
+  percentOff: 60,
+};
+const LIST_QUOTE = { ...SWITCH_QUOTE, chargeAmount: 33503, discounted: false, percentOff: null };
+
+type SwitchCall = { confirm: boolean; discounted?: boolean };
+
+function switchHarness(
+  respond: (call: SwitchCall, index: number) => Promise<ProBusinessUpgradeResponse>,
+  overrides: Partial<ProAnnualSwitchFlowOptions> = {},
+) {
+  const dialogs: CheckoutConfirmDialogOptions[] = [];
+  const calls: SwitchCall[] = [];
+  let fellBack = false;
+  let succeeded = false;
+  const options: ProAnnualSwitchFlowOptions = {
+    planKey: 'pro_monthly',
+    fallback: () => { fellBack = true; },
+    requestSwitch: (confirm, discounted) => {
+      const call = discounted === undefined ? { confirm } : { confirm, discounted };
+      calls.push(call);
+      return respond(call, calls.length - 1);
+    },
+    currentUserId: () => 'user_a',
+    openPortal: () => {},
+    afterSuccess: () => { succeeded = true; },
+    showDialog: (d) => { dialogs.push(d); },
+    errorKind: (err) => (err as { data?: { kind?: string } })?.data?.kind ?? null,
+    reportError: () => {},
+    ...overrides,
+  };
+  return { options, dialogs, calls, fellBack: () => fellBack, succeeded: () => succeeded };
+}
+
+const refusal = (kind: string) => Object.assign(new Error(kind), { data: { kind } });
+const upgraded = { kind: 'upgraded' as const, fromPlanKey: 'pro_monthly', toPlanKey: 'pro_annual' };
+
+describe('runProAnnualSwitchFlow', () => {
+  it('shows the discounted quote and confirms with the quote it showed', async () => {
+    const h = switchHarness(async (call) => (call.confirm ? upgraded : SWITCH_QUOTE));
+    await runProAnnualSwitchFlow(h.options);
+    assert.equal(h.dialogs[0]?.title, 'Switch to Pro Yearly');
+    assert.equal(h.dialogs[0]?.confirmLabel, 'Switch now');
+    assert.equal(h.dialogs[0]?.dismissLabel, 'Not now');
+    assert.match(h.dialogs[0]!.body, /You pay \$104\.96 today: your first year at 60% off/);
+    assert.match(h.dialogs[0]!.body, /It renews at \$359\.99 a year/);
+    h.dialogs[0]!.onConfirm();
+    await settle();
+    assert.deepEqual(h.calls, [{ confirm: false }, { confirm: true, discounted: true }]);
+    assert.equal(h.dialogs[1]?.title, 'Switched to Pro Yearly');
+    h.dialogs[1]!.onConfirm();
+    assert.equal(h.succeeded(), true);
+  });
+
+  it('confirms a list-price quote as not discounted', async () => {
+    const h = switchHarness(async (call) => (call.confirm ? upgraded : LIST_QUOTE));
+    await runProAnnualSwitchFlow(h.options);
+    assert.doesNotMatch(h.dialogs[0]!.body, /% off/);
+    h.dialogs[0]!.onConfirm();
+    await settle();
+    assert.deepEqual(h.calls[1], { confirm: true, discounted: false });
+  });
+
+  for (const kind of ['PROMO_ENDED', 'PROMO_CODE_REJECTED']) {
+    it(`re-quotes once after ${kind} and confirms only the new price`, async () => {
+      const h = switchHarness(async (call, index) => {
+        if (index === 0) return SWITCH_QUOTE;
+        if (index === 1) throw refusal(kind);
+        if (index === 2) return LIST_QUOTE;
+        return upgraded;
+      });
+      await runProAnnualSwitchFlow(h.options);
+      h.dialogs[0]!.onConfirm();
+      await settle();
+      assert.equal(h.dialogs[1]?.title, 'Switch to Pro Yearly');
+      assert.match(h.dialogs[1]!.body, /^The offer is no longer available and your plan has not changed\./);
+      assert.match(h.dialogs[1]!.body, /You pay \$335\.03 today: less the unused part/);
+      h.dialogs[1]!.onConfirm();
+      await settle();
+      assert.deepEqual(h.calls, [
+        { confirm: false },
+        { confirm: true, discounted: true },
+        { confirm: false },
+        { confirm: true, discounted: false },
+      ]);
+      assert.equal(h.dialogs[2]?.title, 'Switched to Pro Yearly');
+    });
+  }
+
+  it('re-quotes at most once', async () => {
+    const h = switchHarness(async (call, index) => {
+      if (call.confirm) throw refusal('PROMO_ENDED');
+      return index === 0 ? SWITCH_QUOTE : LIST_QUOTE;
+    });
+    await runProAnnualSwitchFlow(h.options);
+    h.dialogs[0]!.onConfirm();
+    await settle();
+    h.dialogs[1]!.onConfirm();
+    await settle();
+    assert.equal(h.calls.length, 4);
+    assert.equal(h.dialogs[2]?.title, 'Switch not confirmed');
+  });
+
+  // After PROMO_CODE_REJECTED the fresh preview resends the code; if Dodo's
+  // preview accepts it, "the offer is no longer available" would sit above a
+  // discounted price.
+  it('ends with the failed dialog when the fresh quote still carries the offer', async () => {
+    const h = switchHarness(async (call) => {
+      if (call.confirm) throw refusal('PROMO_CODE_REJECTED');
+      return SWITCH_QUOTE;
+    });
+    await runProAnnualSwitchFlow(h.options);
+    h.dialogs[0]!.onConfirm();
+    await settle();
+    assert.deepEqual(h.calls, [{ confirm: false }, { confirm: true, discounted: true }, { confirm: false }]);
+    assert.equal(h.dialogs[1]?.title, 'Switch not confirmed');
+    assert.equal(h.dialogs.length, 2);
+  });
+
+  // A server that predates the switch ignores `kind` and quotes Pro Business.
+  it('falls back instead of showing a quote for another plan', async () => {
+    const h = switchHarness(async () => ({ ...LIST_QUOTE, toPlanKey: 'pro_business_monthly', billingPeriod: 'monthly' as const }));
+    await runProAnnualSwitchFlow(h.options);
+    assert.equal(h.fellBack(), true);
+    assert.equal(h.dialogs.length, 0);
+    assert.deepEqual(h.calls, [{ confirm: false }]);
+  });
+
+  it('treats an unknown confirm outcome as unconfirmed, never as a re-quote', async () => {
+    const h = switchHarness(async (call) => {
+      if (call.confirm) throw new Error('timeout');
+      return SWITCH_QUOTE;
+    });
+    await runProAnnualSwitchFlow(h.options);
+    h.dialogs[0]!.onConfirm();
+    await settle();
+    assert.equal(h.calls.length, 2);
+    assert.equal(h.dialogs[1]?.title, 'Switch not confirmed');
+    assert.doesNotMatch(h.dialogs[1]!.body, /no charge|not been charged/i);
+  });
+
+  it('asks a cancelling Pro Monthly to resume first', async () => {
+    const h = switchHarness(async () => { throw refusal('PRO_CANCEL_SCHEDULED'); });
+    await runProAnnualSwitchFlow(h.options);
+    assert.equal(h.dialogs[0]?.title, 'Resume Pro Monthly first');
+    assert.equal(h.dialogs[0]?.confirmLabel, 'Open billing portal');
+    assert.equal(h.fellBack(), false);
+  });
+
+  it('falls back for any plan but Pro Monthly, a missing user, or no quote', async () => {
+    const annual = switchHarness(async () => SWITCH_QUOTE, { planKey: 'pro_annual' });
+    await runProAnnualSwitchFlow(annual.options);
+    assert.equal(annual.fellBack(), true);
+    assert.deepEqual(annual.calls, []);
+    const anon = switchHarness(async () => SWITCH_QUOTE, { currentUserId: () => undefined });
+    await runProAnnualSwitchFlow(anon.options);
+    assert.equal(anon.fellBack(), true);
+    assert.deepEqual(anon.calls, []);
+    const down = switchHarness(async () => { throw new Error('provider down'); });
+    await runProAnnualSwitchFlow(down.options);
+    assert.equal(down.fellBack(), true);
+  });
+
+  it('refuses to confirm after the signed-in account changed', async () => {
+    let user = 'user_a';
+    const h = switchHarness(async (call) => (call.confirm ? upgraded : SWITCH_QUOTE), { currentUserId: () => user });
+    await runProAnnualSwitchFlow(h.options);
+    user = 'user_b';
+    h.dialogs[0]!.onConfirm();
+    await settle();
+    assert.deepEqual(h.calls, [{ confirm: false }]);
+    assert.equal(h.dialogs[1]?.title, 'Account changed');
   });
 });

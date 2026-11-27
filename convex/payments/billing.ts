@@ -14,7 +14,7 @@ import { redactBillingPayload, tombstoneUserId } from "../accountDeletion/regist
 import { ConvexError, v } from "convex/values";
 import { action, mutation, query, internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { DodoPayments } from "dodopayments";
+import { APIConnectionTimeoutError, DodoPayments } from "dodopayments";
 import type { Subscription as DodoSubscription } from "dodopayments/resources/subscriptions";
 import type { Doc, Id } from "../_generated/dataModel";
 import { resolveUserId, requireUserId } from "../lib/auth";
@@ -44,6 +44,8 @@ import {
   revokeBusinessProGrantsForSubscription,
   type SubscriptionStatus,
 } from "./subscriptionHelpers";
+import { isDiscountRejection } from "./checkout";
+import { activePromoFor } from "../../shared/promo-campaign";
 
 // ---------------------------------------------------------------------------
 // Billing REST SDK client
@@ -4020,9 +4022,20 @@ export const PRO_BUSINESS_UPGRADE_TARGETS: Readonly<Record<string, string>> = {
   pro_annual: "pro_business_annual",
 };
 
+/**
+ * In-place plan changes this runner performs. "pro_business" is the Pro → Pro
+ * Business upgrade above; "pro_annual" moves an active Pro Monthly to Pro
+ * Yearly, with the running promotion's code while it lasts. The switch is a
+ * permanent feature; only the discount is time-boxed.
+ */
+export type PlanChangeKind = "pro_business" | "pro_annual";
+export const PLAN_CHANGE_KINDS: ReadonlySet<string> = new Set<PlanChangeKind>(["pro_business", "pro_annual"]);
+export const planChangeKindValidator = v.union(v.literal("pro_business"), v.literal("pro_annual"));
+
 export type ProBusinessUpgradeRefusal =
   | "NO_UPGRADEABLE_PRO"
   | "ALREADY_PRO_BUSINESS"
+  | "ALREADY_PRO_ANNUAL"
   | "PRO_CANCEL_SCHEDULED"
   | "ACCOUNT_DELETION_IN_PROGRESS";
 
@@ -4074,8 +4087,55 @@ export function selectProBusinessUpgradeCandidate(
   };
 }
 
+/**
+ * Pro Monthly → Pro Yearly. Same refusals as the Pro Business upgrade: only an
+ * ACTIVE, non-cancelling Pro Monthly qualifies, and an account that already
+ * holds Pro Yearly or anything above it has nothing to switch to.
+ */
+function selectProAnnualSwitchCandidate(
+  subs: Parameters<typeof selectProBusinessUpgradeCandidate>[0],
+  now: number,
+): ProBusinessUpgradeCandidate {
+  const covering = subs.filter((sub) => isCoveringAt(sub, now));
+  const annualRank = PLAN_PRECEDENCE.pro_annual!;
+  if (covering.some((sub) => sub.planKey === "pro_annual")) {
+    return { ok: false, reason: "ALREADY_PRO_ANNUAL" };
+  }
+  if (covering.some((sub) => (PLAN_PRECEDENCE[sub.planKey] ?? 0) > annualRank)) {
+    return { ok: false, reason: "NO_UPGRADEABLE_PRO" };
+  }
+  const activeMonthly = covering.filter((sub) => sub.status === "active" && sub.planKey === "pro_monthly");
+  const switchable = activeMonthly.find((sub) => !isCancellationScheduled(sub));
+  if (!switchable) {
+    return { ok: false, reason: activeMonthly.length > 0 ? "PRO_CANCEL_SCHEDULED" : "NO_UPGRADEABLE_PRO" };
+  }
+  const target = PRODUCT_CATALOG.pro_annual;
+  if (!target || !target.currentForCheckout || !target.dodoProductId) {
+    return { ok: false, reason: "NO_UPGRADEABLE_PRO" };
+  }
+  return {
+    ok: true,
+    dodoSubscriptionId: switchable.dodoSubscriptionId,
+    fromPlanKey: switchable.planKey,
+    toPlanKey: "pro_annual",
+    fromProductId: switchable.dodoProductId,
+    toProductId: target.dodoProductId,
+  };
+}
+
+/** Pure selection for either plan change, exported for tests. */
+export function selectPlanChangeCandidate(
+  kind: PlanChangeKind,
+  subs: Parameters<typeof selectProBusinessUpgradeCandidate>[0],
+  now: number,
+): ProBusinessUpgradeCandidate {
+  return kind === "pro_annual"
+    ? selectProAnnualSwitchCandidate(subs, now)
+    : selectProBusinessUpgradeCandidate(subs, now);
+}
+
 export const getProBusinessUpgradeCandidate = internalQuery({
-  args: { userId: v.string() },
+  args: { userId: v.string(), kind: v.optional(planChangeKindValidator) },
   handler: async (ctx, args): Promise<ProBusinessUpgradeCandidate> => {
     if (await isAccountDeleting(ctx, args.userId)) {
       return { ok: false, reason: "ACCOUNT_DELETION_IN_PROGRESS" };
@@ -4084,7 +4144,7 @@ export const getProBusinessUpgradeCandidate = internalQuery({
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .take(50);
-    return selectProBusinessUpgradeCandidate(subs, Date.now());
+    return selectPlanChangeCandidate(args.kind ?? "pro_business", subs, Date.now());
   },
 });
 
@@ -4103,6 +4163,13 @@ export type ProBusinessUpgradeResult =
       /** First renewal on the new plan, ISO 8601. The change restarts the billing period. */
       renewalDate: string | null;
       billingPeriod: "monthly" | "annual";
+      /**
+       * The quote carries the running promotion's code. The confirm must echo
+       * it, so the change applies the price the user saw or fails closed.
+       */
+      discounted: boolean;
+      /** The provider-side discount on the first period (the Dodo figure), or null. */
+      percentOff: number | null;
     }
   | { kind: "upgraded"; fromPlanKey: string; toPlanKey: string };
 
@@ -4115,6 +4182,14 @@ const PRO_BUSINESS_CHANGE_PARAMS = {
 } as const;
 
 const PRO_BUSINESS_UPGRADE_TIMEOUT_MS = 15_000;
+/**
+ * One budget for a preview, measured from the action's start: the coded
+ * preview and its list-price fallback both fit in it, inside the /pro relay's
+ * 20 s abort (api/pro-business-upgrade.ts) with room for the edge hop.
+ */
+const PLAN_CHANGE_PREVIEW_BUDGET_MS = 16_000;
+/** A preview with less time than this left is not started. */
+const PLAN_CHANGE_PREVIEW_MIN_ATTEMPT_MS = 3_000;
 /** Longer than retrieve + changePlan at their timeouts, so a live claim is never stolen. */
 export const PRO_BUSINESS_UPGRADE_CLAIM_TTL_MS = 120_000;
 
@@ -4195,9 +4270,46 @@ export async function runProBusinessUpgrade(
   userId: string,
   confirm: boolean,
 ): Promise<ProBusinessUpgradeResult> {
+  return runPlanChange(ctx, userId, { confirm, kind: "pro_business" });
+}
+
+/** Change-plan body: the shared params, plus the promotion's code when the quote carries it. */
+function planChangeParams(toProductId: string, discountCode: string | null) {
+  return {
+    product_id: toProductId,
+    ...PRO_BUSINESS_CHANGE_PARAMS,
+    ...(discountCode ? { discount_code: discountCode } : {}),
+  };
+}
+
+/**
+ * Preview or apply one in-place plan change. For "pro_annual" the running
+ * promotion (shared/promo-campaign.ts) adds its Dodo code:
+ *
+ * - A preview sends the code while the offer runs. If Dodo rejects it, the
+ *   preview falls back to a list-price quote and says `discounted: false`.
+ * - A confirm echoes the quote's `discounted` flag and sends exactly the
+ *   parameters that quote used. A discounted quote confirmed after the offer
+ *   ended, or whose code Dodo rejects, fails closed with a typed error
+ *   (PROMO_ENDED, PROMO_CODE_REJECTED) and the client re-previews. It is
+ *   never retried without the code, so a discounted quote is never charged
+ *   at list price.
+ */
+export async function runPlanChange(
+  ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
+  userId: string,
+  args: { confirm: boolean; kind: PlanChangeKind; discounted?: boolean },
+): Promise<ProBusinessUpgradeResult> {
+  const { confirm, kind } = args;
+  const previewDeadline = Date.now() + PLAN_CHANGE_PREVIEW_BUDGET_MS;
+  if (kind === "pro_annual" && confirm && typeof args.discounted !== "boolean") {
+    // The confirm must say which quote it accepts; guessing could charge a
+    // price the user never saw.
+    throw new ConvexError({ kind: "PLAN_CHANGE_QUOTE_REQUIRED" });
+  }
   const candidate = await ctx.runQuery(
     internal.payments.billing.getProBusinessUpgradeCandidate,
-    { userId },
+    { userId, kind },
   );
   if (!candidate.ok) {
     throw new ConvexError({ kind: candidate.reason });
@@ -4210,27 +4322,65 @@ export async function runProBusinessUpgrade(
     throw new ConvexError({ kind: "UPGRADE_RATE_LIMITED" });
   }
 
+  // Read once per call: the preview and the confirm each decide from one instant.
+  const promo = kind === "pro_annual" ? activePromoFor(candidate.toProductId, Date.now()) : null;
   const client = getDodoClient({ timeout: PRO_BUSINESS_UPGRADE_TIMEOUT_MS, maxRetries: 0 });
-  const params = { product_id: candidate.toProductId, ...PRO_BUSINESS_CHANGE_PARAMS };
+  const billingPeriod: "monthly" | "annual" =
+    PRODUCT_CATALOG[candidate.toPlanKey]?.billingPeriod === "annual" ? "annual" : "monthly";
 
   if (!confirm) {
+    // Each attempt gets what is left of the shared budget, capped at the usual
+    // per-call timeout. One that no longer fits fails as a Dodo timeout would.
+    const requestPreview = (discountCode: string | null) => {
+      const remainingMs = previewDeadline - Date.now();
+      if (remainingMs < PLAN_CHANGE_PREVIEW_MIN_ATTEMPT_MS) {
+        throw new APIConnectionTimeoutError({ message: "change-plan preview budget spent" });
+      }
+      return client.subscriptions.previewChangePlan(
+        candidate.dodoSubscriptionId,
+        planChangeParams(candidate.toProductId, discountCode),
+        { timeout: Math.min(PRO_BUSINESS_UPGRADE_TIMEOUT_MS, remainingMs) },
+      );
+    };
     try {
-      const preview = await client.subscriptions.previewChangePlan(candidate.dodoSubscriptionId, params);
+      let discounted = promo !== null;
+      let preview: Awaited<ReturnType<typeof requestPreview>>;
+      try {
+        preview = await requestPreview(promo?.discountCode ?? null);
+      } catch (err) {
+        if (!promo || !isDiscountRejection(err)) throw err;
+        console.warn(
+          `[billing] promo_code_rejected on change-plan preview promo=${promo.id} subscription=${candidate.dodoSubscriptionId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        discounted = false;
+        preview = await requestPreview(null);
+      }
       const summary = preview.immediate_charge.summary;
+      const listCents = PRODUCT_CATALOG[candidate.toPlanKey]?.priceCents;
+      // With a discount code, Dodo reports the discounted first period as the
+      // new plan's recurring amount (P2: 14400 on Pro Yearly). The renewal is
+      // the list price, so a discounted quote takes it from the catalog.
+      const renewalFromCatalog = discounted && typeof listCents === "number";
       return {
         kind: "preview",
         fromPlanKey: candidate.fromPlanKey,
         toPlanKey: candidate.toPlanKey,
         chargeAmount: summary.total_amount,
         currency: String(summary.currency),
-        renewalAmount: typeof preview.new_plan?.recurring_pre_tax_amount === "number"
-          ? preview.new_plan.recurring_pre_tax_amount
-          : null,
-        renewalCurrency: preview.new_plan?.currency ? String(preview.new_plan.currency) : null,
+        renewalAmount: renewalFromCatalog
+          ? listCents
+          : typeof preview.new_plan?.recurring_pre_tax_amount === "number"
+            ? preview.new_plan.recurring_pre_tax_amount
+            : null,
+        renewalCurrency: renewalFromCatalog
+          ? "USD"
+          : preview.new_plan?.currency ? String(preview.new_plan.currency) : null,
         renewalDate: typeof preview.new_plan?.next_billing_date === "string"
           ? preview.new_plan.next_billing_date
           : null,
-        billingPeriod: PRODUCT_CATALOG[candidate.toPlanKey]?.billingPeriod === "annual" ? "annual" : "monthly",
+        billingPeriod,
+        discounted,
+        percentOff: discounted && promo ? promo.percentOff : null,
       };
     } catch (err) {
       console.error(
@@ -4240,6 +4390,13 @@ export async function runProBusinessUpgrade(
       throw new ConvexError({ kind: "DODO_PLAN_CHANGE_ERROR" });
     }
   }
+
+  if (args.discounted === true && !promo) {
+    // The offer ended between the quote and the click.
+    throw new ConvexError({ kind: "PROMO_ENDED" });
+  }
+  const sentDiscountCode = args.discounted === true && promo ? promo.discountCode : null;
+  const params = planChangeParams(candidate.toProductId, sentDiscountCode);
 
   const claimed = await ctx.runMutation(internal.payments.billing.claimProBusinessUpgrade, {
     dodoSubscriptionId: candidate.dodoSubscriptionId,
@@ -4282,33 +4439,57 @@ export async function runProBusinessUpgrade(
       `[billing] Dodo change-plan failed for subscription ${candidate.dodoSubscriptionId}:`,
       err instanceof Error ? err.message : String(err),
     );
+    // A discounted quote whose code Dodo refuses is not retried without it:
+    // the user re-previews and sees the real price first.
+    if (sentDiscountCode && isDiscountRejection(err)) {
+      throw new ConvexError({ kind: "PROMO_CODE_REJECTED" });
+    }
     throw new ConvexError({ kind: "DODO_PLAN_CHANGE_ERROR" });
   }
   console.log(JSON.stringify({
-    event: "pro_business_upgrade_applied",
+    event: kind === "pro_annual" ? "pro_annual_switch_applied" : "pro_business_upgrade_applied",
     fromPlanKey: candidate.fromPlanKey,
     toPlanKey: candidate.toPlanKey,
+    ...(sentDiscountCode && promo ? { promo: promo.id } : {}),
   }));
   return { kind: "upgraded", fromPlanKey: candidate.fromPlanKey, toPlanKey: candidate.toPlanKey };
 }
 
 /** Dashboard entry point. Auth-gated via requireUserId(ctx). */
 export const upgradeToProBusiness = action({
-  args: { confirm: v.boolean() },
+  args: {
+    confirm: v.boolean(),
+    kind: v.optional(planChangeKindValidator),
+    /** The quote's `discounted` flag, echoed on a Pro Yearly confirm. */
+    discounted: v.optional(v.boolean()),
+  },
   handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
     const userId = await requireUserId(ctx);
-    return runProBusinessUpgrade(ctx, userId, args.confirm);
+    return runPlanChange(ctx, userId, {
+      confirm: args.confirm,
+      kind: args.kind ?? "pro_business",
+      discounted: args.discounted,
+    });
   },
 });
 
 /** /pro entry point, reached through the edge relay after Clerk verification. */
 export const internalUpgradeToProBusiness = internalAction({
-  args: { userId: v.string(), confirm: v.boolean() },
+  args: {
+    userId: v.string(),
+    confirm: v.boolean(),
+    kind: v.optional(planChangeKindValidator),
+    discounted: v.optional(v.boolean()),
+  },
   handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
     if (!args.userId) {
       throw new ConvexError({ kind: "USER_ID_REQUIRED" });
     }
-    return runProBusinessUpgrade(ctx, args.userId, args.confirm);
+    return runPlanChange(ctx, args.userId, {
+      confirm: args.confirm,
+      kind: args.kind ?? "pro_business",
+      discounted: args.discounted,
+    });
   },
 });
 

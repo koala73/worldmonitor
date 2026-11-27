@@ -165,7 +165,8 @@ function checkoutCustomerPrefill(
  * is not discount-specific, so the 4xx message naming a discount is what
  * matches it. The expired and exhausted shapes were not probed; the
  * `DISCOUNT_*` / `INVALID_DISCOUNT*` code match is kept for them.
- * Rate limits and server errors are never discount rejections.
+ * Rate limits and server errors are never discount rejections. The in-place
+ * Pro Yearly switch (billing.ts) uses the same test for change-plan calls.
  */
 export function isDiscountRejection(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;

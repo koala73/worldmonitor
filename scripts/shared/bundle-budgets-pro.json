@@ -1,5 +1,5 @@
 {
-  "comment": "/pro subapp bundle-size budgets (#7119). Gated on raw bytes: per chunk ±max(2048 B, 2%), total ±max(16384 B, 0.25%). Tolerance fields here are informational — the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets:pro",
+  "comment": "/pro subapp bundle-size budgets (#7119). Gated on raw bytes: per chunk \u00b1max(2048 B, 2%), total \u00b1max(16384 B, 0.25%). Tolerance fields here are informational \u2014 the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets:pro",
   "surface": "pro",
   "variant": "pro",
   "tolerancePct": 2,
@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 5204650
+    "raw": 5216583
   },
   "chunks": {
     "LiveBriefCard": {
@@ -71,7 +71,7 @@
       "files": 1
     },
     "index": {
-      "raw": 557158,
+      "raw": 569091,
       "files": 2
     },
     "it": {

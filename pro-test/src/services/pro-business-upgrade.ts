@@ -68,14 +68,70 @@ const UPGRADE_FAILED_BODY =
 const UPGRADE_ACCOUNT_CHANGED_BODY =
   'You switched accounts after this quote. Start the upgrade again from the account you want to upgrade.';
 
+// ── Pro Monthly → Pro Yearly switch (mirrors src/services/pro-business-upgrade-copy.ts) ──
+
+interface SwitchPreview {
+  chargeAmount: number;
+  currency: string;
+  renewalAmount: number | null;
+  renewalCurrency: string | null;
+  renewalDate: string | null;
+  discounted: boolean;
+  percentOff: number | null;
+}
+
+function buildSwitchPreviewBody(preview: SwitchPreview): string {
+  const charge = formatMinorAmount(preview.chargeAmount, preview.currency);
+  const date = formatRenewalDate(preview.renewalDate);
+  // The charge currency is the customer's, not the plan's: never borrow it for the renewal.
+  const price = preview.renewalAmount === null || !preview.renewalCurrency
+    ? 'the Pro Yearly price'
+    : `${formatMinorAmount(preview.renewalAmount, preview.renewalCurrency)} a year plus any tax`;
+  const renewal = date ? `It renews at ${price} on ${date}.` : `It renews at ${price}.`;
+  const offer = preview.discounted && typeof preview.percentOff === 'number'
+    ? `your first year at ${preview.percentOff}% off, `
+    : '';
+  return (
+    'Your Pro Monthly subscription moves to Pro Yearly now. ' +
+    `You pay ${charge} today: ${offer}` +
+    'less the unused part of this month. Your billing period restarts today. ' +
+    `${renewal} ` +
+    "Cancel anytime before then and you won't be charged again. If the payment fails, you stay on Pro Monthly."
+  );
+}
+
+const SWITCH_TITLE = 'Switch to Pro Yearly';
+const SWITCH_CONFIRM_LABEL = 'Switch now';
+const SWITCH_DISMISS_LABEL = 'Not now';
+const SWITCH_SUCCESS_TITLE = 'Switched to Pro Yearly';
+const SWITCH_SUCCESS_BODY =
+  'Your plan changes as soon as the payment confirms, usually within a minute.';
+const SWITCH_CANCEL_SCHEDULED_TITLE = 'Resume Pro Monthly first';
+const SWITCH_CANCEL_SCHEDULED_BODY =
+  'Your Pro Monthly subscription is set to cancel at the end of this period. Resume it in the billing portal first, then switch to Pro Yearly.';
+const SWITCH_FAILED_TITLE = 'Switch not confirmed';
+const SWITCH_FAILED_BODY =
+  'We could not confirm the switch. Check your plan in the billing portal before you try again, or email support@worldmonitor.app.';
+const SWITCH_ACCOUNT_CHANGED_BODY =
+  'You switched accounts after this quote. Start the switch again from the account you want to move to Pro Yearly.';
+const SWITCH_QUOTE_CHANGED_NOTICE =
+  'The offer is no longer available and your plan has not changed. Here is the price without it.';
+/** Typed refusals that mean the quote's price no longer holds and nothing changed. */
+const SWITCH_REQUOTE_ERRORS: ReadonlySet<string> = new Set(['PROMO_ENDED', 'PROMO_CODE_REJECTED']);
+
 // One shape rather than a union: this build's tsconfig does not narrow on `ok`.
 interface UpgradeCallResult {
   ok: boolean;
-  data: { kind?: unknown } & Partial<UpgradePreview>;
+  data: { kind?: unknown; toPlanKey?: unknown; discounted?: unknown; percentOff?: unknown } & Partial<Omit<UpgradePreview, 'kind'>>;
   error: string;
 }
 
-async function callUpgrade(apiBase: string, token: string, confirm: boolean): Promise<UpgradeCallResult> {
+async function callUpgrade(
+  apiBase: string,
+  token: string,
+  confirm: boolean,
+  extra: { kind?: 'pro_annual'; discounted?: boolean } = {},
+): Promise<UpgradeCallResult> {
   try {
     const resp = await fetch(`${apiBase}/pro-business-upgrade`, {
       method: 'POST',
@@ -84,7 +140,7 @@ async function callUpgrade(apiBase: string, token: string, confirm: boolean): Pr
         'Content-Type': 'application/json',
         ...(confirm ? { 'Idempotency-Key': crypto.randomUUID() } : {}),
       },
-      body: JSON.stringify({ confirm }),
+      body: JSON.stringify({ confirm, ...extra }),
       signal: createTimeoutSignal(25_000),
     });
     const data = await resp.json().catch(() => ({}));
@@ -281,4 +337,124 @@ export async function runProBusinessUpgradeFlow(options: {
       })();
     },
   });
+}
+
+/**
+ * In-place Pro Monthly → Pro Yearly switch, mirroring runProAnnualSwitchFlow
+ * in src/services/pro-business-upgrade-dialog.ts. The confirm echoes the
+ * quote's `discounted` flag; on PROMO_ENDED / PROMO_CODE_REJECTED (the server
+ * refused before any change) it fetches one fresh quote and shows it.
+ */
+export async function runProAnnualSwitchFlow(options: {
+  apiBase: string;
+  getToken: () => Promise<string | null>;
+  getUserId: () => Promise<string | null>;
+  openPortal: () => void;
+  fallback: () => void;
+}): Promise<void> {
+  const previewUserId = await options.getUserId();
+  if (!previewUserId) {
+    options.fallback();
+    return;
+  }
+  const closeOnly = (title: string, body: string): void => showDialog({
+    title,
+    body,
+    confirmLabel: 'Close',
+    dismissLabel: 'Dismiss',
+    onConfirm: () => {},
+  });
+
+  // Resolves to a quote, or null after it handled the failure itself.
+  const fetchQuote = async (onFailure: () => void): Promise<SwitchPreview | null> => {
+    const token = await options.getToken();
+    const result = token
+      ? await callUpgrade(options.apiBase, token, false, { kind: 'pro_annual' })
+      : { ok: false, data: {}, error: 'no_token' };
+    const data = result.data;
+    // A server that predates the switch ignores `kind` and quotes Pro
+    // Business; only a quote for Pro Yearly may reach this dialog.
+    if (
+      result.ok &&
+      data.kind === 'preview' &&
+      data.toPlanKey === 'pro_annual' &&
+      typeof data.chargeAmount === 'number' &&
+      typeof data.currency === 'string'
+    ) {
+      return {
+        chargeAmount: data.chargeAmount,
+        currency: data.currency,
+        renewalAmount: typeof data.renewalAmount === 'number' ? data.renewalAmount : null,
+        renewalCurrency: typeof data.renewalCurrency === 'string' ? data.renewalCurrency : null,
+        renewalDate: typeof data.renewalDate === 'string' ? data.renewalDate : null,
+        discounted: data.discounted === true,
+        percentOff: typeof data.percentOff === 'number' ? data.percentOff : null,
+      };
+    }
+    if (result.error === 'PRO_CANCEL_SCHEDULED') {
+      showDialog({
+        title: SWITCH_CANCEL_SCHEDULED_TITLE,
+        body: SWITCH_CANCEL_SCHEDULED_BODY,
+        confirmLabel: 'Open billing portal',
+        dismissLabel: 'Close',
+        onConfirm: options.openPortal,
+      });
+      return null;
+    }
+    Sentry.captureMessage('Pro Yearly switch preview unavailable', {
+      level: 'warning',
+      tags: { surface: 'pro-marketing', code: result.error || 'unexpected_shape' },
+    });
+    onFailure();
+    return null;
+  };
+
+  const showQuote = (quote: SwitchPreview, requoted: boolean): void => {
+    const body = buildSwitchPreviewBody(quote);
+    showDialog({
+      title: SWITCH_TITLE,
+      body: requoted ? `${SWITCH_QUOTE_CHANGED_NOTICE} ${body}` : body,
+      confirmLabel: SWITCH_CONFIRM_LABEL,
+      dismissLabel: SWITCH_DISMISS_LABEL,
+      onConfirm: () => {
+        void (async () => {
+          if (await options.getUserId() !== previewUserId) {
+            closeOnly('Account changed', SWITCH_ACCOUNT_CHANGED_BODY);
+            return;
+          }
+          // Clerk tokens live ~60 s; the user may have read the dialog longer.
+          const freshToken = await options.getToken();
+          const applied = freshToken
+            ? await callUpgrade(options.apiBase, freshToken, true, { kind: 'pro_annual', discounted: quote.discounted })
+            : { ok: false, data: {}, error: 'no_token' };
+          if (applied.ok) {
+            showDialog({
+              title: SWITCH_SUCCESS_TITLE,
+              body: SWITCH_SUCCESS_BODY,
+              confirmLabel: 'Go to dashboard',
+              dismissLabel: 'Close',
+              onConfirm: () => { window.location.assign('https://www.worldmonitor.app/dashboard'); },
+            });
+            return;
+          }
+          if (!requoted && SWITCH_REQUOTE_ERRORS.has(applied.error)) {
+            const fresh = await fetchQuote(() => closeOnly(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY));
+            // The notice says the offer is gone; a fresh quote that still
+            // carries it would contradict that, so it ends here instead.
+            if (fresh && !fresh.discounted) showQuote(fresh, true);
+            else if (fresh) closeOnly(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY);
+            return;
+          }
+          Sentry.captureMessage('Pro Yearly switch failed', {
+            level: 'warning',
+            tags: { surface: 'pro-marketing', code: applied.error },
+          });
+          closeOnly(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY);
+        })();
+      },
+    });
+  };
+
+  const quote = await fetchQuote(options.fallback);
+  if (quote) showQuote(quote, false);
 }
