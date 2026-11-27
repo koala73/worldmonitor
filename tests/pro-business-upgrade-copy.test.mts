@@ -110,9 +110,10 @@ describe('buildUpgradePreviewBody', () => {
   });
 
   it('upgrades only the plans the server maps', () => {
-    assert.deepEqual([...IN_PLACE_UPGRADE_SOURCE_PLANS].sort(), ['pro_annual', 'pro_monthly']);
+    assert.deepEqual([...IN_PLACE_UPGRADE_SOURCE_PLANS].sort(), ['pro_annual', 'pro_monthly', 'pro_monthly_mcp']);
     const billing = readFileSync(resolve(root, 'convex/payments/billing.ts'), 'utf8');
     assert.match(billing, /pro_monthly: "pro_business_monthly"/);
+    assert.match(billing, /pro_monthly_mcp: "pro_business_monthly"/);
     assert.match(billing, /pro_annual: "pro_business_annual"/);
   });
 });
@@ -137,7 +138,7 @@ describe('cross-app copy parity (dashboard vs /pro)', () => {
     });
   }
   it('/pro upgrades the same source plans', () => {
-    assert.match(proSource, /new Set\(\['pro_monthly', 'pro_annual'\]\)/);
+    assert.match(proSource, /new Set\(\['pro_monthly', 'pro_monthly_mcp', 'pro_annual'\]\)/);
   });
 });
 

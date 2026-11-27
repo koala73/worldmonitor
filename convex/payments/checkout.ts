@@ -84,11 +84,16 @@ export const admitCheckout = internalMutation({
   },
 });
 
-function requireCheckoutProduct(productId: string): void {
-  const allowed = Object.values(PRODUCT_CATALOG).some(
-    (entry) => entry.dodoProductId === productId && entry.currentForCheckout && entry.selfServe,
+export function requireCheckoutProduct(productId: string, checkoutChannel?: "mcp"): void {
+  const entry = Object.values(PRODUCT_CATALOG).find(
+    (candidate) => candidate.dodoProductId === productId && candidate.currentForCheckout && candidate.selfServe,
   );
-  if (!allowed) {
+  // A channel-only plan is sold only through that channel's checkout. The
+  // channel is set by the MCP edge's relay call, never by the browser:
+  // attributionSource cannot decide this, because the web checkout forwards
+  // it from the /pro page's UTM parameters.
+  const channelAllowed = entry?.offerChannel === undefined || entry.offerChannel === checkoutChannel;
+  if (!entry || !channelAllowed) {
     throw new ConvexError({
       code: "INVALID_CHECKOUT_PRODUCT",
       message: "This product is not available for checkout.",
@@ -584,6 +589,8 @@ export const internalCreateCheckout = internalAction({
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
     attributionSource: v.optional(v.string()),
+    /** Set only by the MCP edge relay; unlocks `offerChannel: "mcp"` plans. */
+    checkoutChannel: v.optional(v.literal("mcp")),
     acquisition: v.optional(acquisitionValidator),
     // "Start a new checkout anyway" — skips ONLY the pending-payment guard
     // (#4438). The subscription guard still applies.
@@ -593,7 +600,7 @@ export const internalCreateCheckout = internalAction({
     if (!args.userId) {
       throw new ConvexError("userId is required");
     }
-    requireCheckoutProduct(args.productId);
+    requireCheckoutProduct(args.productId, args.checkoutChannel);
     if (args.bypassPendingGuard) {
       // Audit trail: the user confirmed "start a new checkout anyway" past a
       // pending-payment block. Logged server-side so a future double-charge

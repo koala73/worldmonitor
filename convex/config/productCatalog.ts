@@ -287,6 +287,13 @@ export interface CatalogEntry {
   // portal that can't upgrade anyone.
   canChangePlanSelfServe?: boolean;
   publicVisible: boolean;
+  /**
+   * Set on a plan sold only inside one channel and never listed publicly.
+   * `"mcp"`: offered in MCP upgrade denials and `start_upgrade`, and accepted
+   * at checkout only with MCP attribution. Such a plan keeps
+   * `publicVisible: false`, so no pricing page or generated public file names it.
+   */
+  offerChannel?: "mcp";
 }
 
 // ---------------------------------------------------------------------------
@@ -570,6 +577,25 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     publicVisible: true,
   },
 
+  // Pro sold at $14.99/month only to free accounts that an MCP client refused
+  // (owner decision 2026-11-27: a price test for agent-first users). Same
+  // features as Pro Monthly; never listed on /pro or any public catalog.
+  pro_monthly_mcp: {
+    dodoProductId: "pdt_0NsrAhTS4KiZl1LQy8DbS",
+    planKey: "pro_monthly_mcp",
+    displayName: "Pro Monthly (MCP)",
+    priceCents: 1499,
+    billingPeriod: "monthly",
+    tierGroup: "pro",
+    features: PRO_FEATURES,
+    marketingFeatures: [],
+    selfServe: true,
+    highlighted: false,
+    currentForCheckout: true,
+    publicVisible: false,
+    offerChannel: "mcp",
+  },
+
   pro_annual: {
     dodoProductId: "pdt_0NbttMIfjLWC10jHQWYgJ",
     planKey: "pro_annual",
@@ -811,6 +837,7 @@ export const LEGACY_PRODUCT_ALIASES: Record<string, string> = {
  */
 export const PLAN_PRECEDENCE: Record<string, number> = {
   free: 0,
+  pro_monthly_mcp: 9, // same features as pro_monthly; the list-price plan wins a tie
   pro_monthly: 10,
   pro_annual: 11, // longer commitment outranks monthly at same tier
   // Pro Business shares tier 1 with Pro, so these entries are the ONLY thing

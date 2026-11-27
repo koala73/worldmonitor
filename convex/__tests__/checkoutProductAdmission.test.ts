@@ -22,15 +22,44 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-const allowed = Object.values(PRODUCT_CATALOG).filter((p) => p.dodoProductId && p.currentForCheckout && p.selfServe);
+const sellable = Object.values(PRODUCT_CATALOG).filter((p) => p.dodoProductId && p.currentForCheckout && p.selfServe);
+const allowed = sellable.filter((p) => p.offerChannel === undefined);
+const mcpOnly = sellable.filter((p) => p.offerChannel === "mcp");
 const rejected = [
   ...Object.values(PRODUCT_CATALOG).filter((p) => p.dodoProductId && (!p.currentForCheckout || !p.selfServe)).map((p) => p.dodoProductId!),
   ...Object.keys(LEGACY_PRODUCT_ALIASES),
   "pdt_unmapped_investigation", "not-a-product-id", "pro_monthly", "", "constructor", "__proto__",
 ];
 
-const invoke = (t: ReturnType<typeof convexTest>, productId: string, bypassPendingGuard = false) =>
-  t.action(internal.payments.checkout.internalCreateCheckout, { userId: buyer.subject, productId, bypassPendingGuard });
+const invoke = (
+  t: ReturnType<typeof convexTest>,
+  productId: string,
+  bypassPendingGuard = false,
+  extra: { attributionSource?: string; checkoutChannel?: "mcp" } = {},
+) => t.action(internal.payments.checkout.internalCreateCheckout, { userId: buyer.subject, productId, bypassPendingGuard, ...extra });
+
+test("the catalog has an MCP-only plan to guard", () => {
+  expect(mcpOnly.length).toBeGreaterThan(0);
+});
+
+test.each(mcpOnly)("rejects MCP-only $planKey without the MCP checkout channel", async (plan) => {
+  const t = convexTest(schema, modules);
+  // The MCP campaign marker alone is what a crafted web checkout can send.
+  for (const attributionSource of [undefined, "web", "mcp-paid-funnel"]) {
+    await expect(invoke(t, plan.dodoProductId!, false, { attributionSource })).rejects.toThrow("INVALID_CHECKOUT_PRODUCT");
+  }
+  expect(createDodoCheckoutSession).not.toHaveBeenCalled();
+});
+
+test.each(mcpOnly)("admits MCP-only $planKey from the MCP funnel and tags it", async (plan) => {
+  const t = convexTest(schema, modules);
+  vi.mocked(createDodoCheckoutSession).mockResolvedValue({ checkout_url: "https://checkout.example/session" });
+  await expect(invoke(t, plan.dodoProductId!, false, { attributionSource: "mcp-paid-funnel", checkoutChannel: "mcp" })).resolves.toEqual({ checkout_url: "https://checkout.example/session" });
+  const payload = vi.mocked(createDodoCheckoutSession).mock.calls[0][0];
+  expect(payload.product_cart).toEqual([{ product_id: plan.dodoProductId, quantity: 1 }]);
+  expect(payload.metadata?.wm_plan_key).toBe(plan.planKey);
+  expect(payload.metadata?.wm_attribution).toBe("mcp-paid-funnel");
+});
 
 test.each(allowed)("admits $planKey", async (plan) => {
   const t = convexTest(schema, modules);

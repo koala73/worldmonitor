@@ -16,7 +16,7 @@ async function importFreshCreateCheckout() {
   return import(`../api/create-checkout.ts?test=${Date.now()}-${Math.random()}`);
 }
 
-async function relayedBody(acquisition: unknown): Promise<Record<string, unknown>> {
+async function relayedBody(acquisition: unknown, extra: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
   const mod = await importFreshCreateCheckout();
   const relayFetch = mock.fn(async () => Response.json({ checkout_url: 'https://checkout.example/s' }));
   mod.__setCreateCheckoutDepsForTests({
@@ -31,7 +31,7 @@ async function relayedBody(acquisition: unknown): Promise<Record<string, unknown
       Authorization: 'Bearer clerk-token',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ productId: 'pdt_pro_monthly', acquisition }),
+    body: JSON.stringify({ productId: 'pdt_pro_monthly', acquisition, ...extra }),
   }));
   assert.equal(relayFetch.mock.calls.length, 1);
   const init = relayFetch.mock.calls[0].arguments[1] as RequestInit;
@@ -57,6 +57,12 @@ describe('/api/create-checkout acquisition relay', () => {
   it('drops an unsafe landing path and still forwards the rest', async () => {
     const body = await relayedBody({ landing: 'countries', path: '/countries/iran/?q=<x>' });
     assert.deepEqual(body.acquisition, { landing: 'countries' });
+  });
+
+  it('never forwards a browser-supplied checkout channel, so web checkout cannot buy an MCP-only plan', async () => {
+    const body = await relayedBody(undefined, { checkoutChannel: 'mcp', attributionSource: 'mcp-paid-funnel' });
+    assert.equal('checkoutChannel' in body, false);
+    assert.equal(body.attributionSource, 'mcp-paid-funnel', 'the campaign tag still rides along for attribution');
   });
 
   it('omits the field when the value is missing or unusable', async () => {

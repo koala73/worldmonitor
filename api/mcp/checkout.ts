@@ -11,6 +11,7 @@
  */
 
 import catalog from '../../shared/product-catalog.generated.json';
+import mcpOffers from '../../shared/mcp-offer-plans.generated.json';
 import { MCP_ATTRIBUTION_SOURCE } from '../../shared/mcp-attribution';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
@@ -29,10 +30,20 @@ interface CatalogPlan {
   currentForCheckout: boolean;
 }
 
-const PLANS = catalog.facts.plans as CatalogPlan[];
-const PRODUCTS = catalog.products as Record<string, { planKey: string }>;
+interface McpOfferPlan extends CatalogPlan {
+  dodoProductId: string;
+  priceCents: number;
+}
 
-/** The plans `start_upgrade` accepts: every self-serve plan currently sold. */
+/** Plans sold only through MCP (catalog `offerChannel: "mcp"`), never listed publicly. */
+const MCP_OFFER_PLANS = mcpOffers.plans as McpOfferPlan[];
+const PLANS: CatalogPlan[] = [...(catalog.facts.plans as CatalogPlan[]), ...MCP_OFFER_PLANS];
+const PRODUCTS: Record<string, { planKey: string }> = {
+  ...(catalog.products as Record<string, { planKey: string }>),
+  ...Object.fromEntries(MCP_OFFER_PLANS.map((plan) => [plan.dodoProductId, { planKey: plan.planKey }])),
+};
+
+/** The plans `start_upgrade` accepts: every self-serve plan currently sold, MCP-only plans included. */
 export const MCP_CHECKOUT_PLANS: readonly string[] = PLANS
   .filter((plan) => plan.selfServe && plan.currentForCheckout)
   .map((plan) => plan.planKey);
@@ -46,8 +57,9 @@ export function checkoutProductIdForPlan(plan: string): string | undefined {
 // One step up within the same product line. Pro Business, API Business and
 // Enterprise have no self-serve step above them, so they get no
 // recommendation; in-place plan changes stay with the billing portal.
+// A free account is offered the MCP-only Pro price when one is on sale.
 const NEXT_PLAN_BY_TIER_GROUP: Record<string, string> = {
-  free: 'pro_monthly',
+  free: MCP_OFFER_PLANS.find((plan) => plan.tierGroup === 'pro' && plan.currentForCheckout)?.planKey ?? 'pro_monthly',
   pro: 'pro_business_monthly',
   api_starter: 'api_business',
 };
@@ -79,6 +91,19 @@ export function recommendedPlanForFeature(planKey: string | undefined, feature: 
   const tierGroup = PLANS.find((plan) => plan.planKey === planKey)?.tierGroup;
   const next = tierGroup === undefined ? undefined : FEATURE_PLAN_BY_TIER_GROUP[feature][tierGroup];
   return next !== undefined && MCP_CHECKOUT_PLANS.includes(next) ? next : undefined;
+}
+
+/**
+ * The sentence that names an MCP-only plan's price in a denial, or undefined
+ * for any other plan. ChatGPT replaces `nextStep` wholesale (host-policy.ts),
+ * so the price never reaches an inform-only host.
+ */
+export function mcpOfferSentence(plan: string | undefined): string | undefined {
+  const offer = MCP_OFFER_PLANS.find((candidate) => candidate.planKey === plan);
+  if (!offer) return undefined;
+  const price = (offer.priceCents / 100).toFixed(2);
+  return `Pro is $${price} a month for accounts that connect through MCP: `
+    + `call ${START_UPGRADE_TOOL} with plan "${offer.planKey}" to get a checkout link.`;
 }
 
 export interface StartUpgradeResult {
@@ -152,6 +177,9 @@ export async function relayMcpCheckout(
         userId: input.userId,
         productId: input.productId,
         attributionSource: MCP_ATTRIBUTION_SOURCE,
+        // Server-set, unlike attributionSource, which the web checkout
+        // forwards from the browser. Convex sells MCP-only plans on this alone.
+        checkoutChannel: 'mcp',
       }),
       signal: AbortSignal.timeout(CHECKOUT_RELAY_TIMEOUT_MS),
     });
@@ -195,7 +223,7 @@ const BILLING_PORTAL_HINT = 'worldmonitor.app → Settings → Manage Billing';
 function alreadySubscribedNextStep(subscription: McpCheckoutSubscription | null, plan: string): string {
   const target = plan.startsWith('pro_business') ? 'pro_business' : plan.startsWith('api_business') ? 'api_business' : null;
   const existing = subscription?.planKey ?? '';
-  if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_annual')) {
+  if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_monthly_mcp' || existing === 'pro_annual')) {
     return 'Pro moves to Pro Business as a prorated upgrade on the same subscription, not through a new checkout. '
       + 'Ask the user to open worldmonitor.app/pro and choose Pro Business while signed in; they confirm the prorated charge there.';
   }

@@ -1,0 +1,15 @@
+{
+  "_generated": "scripts/generate-public-product-facts.mjs — do not edit by hand; run `npm run product:facts`",
+  "plans": [
+    {
+      "planKey": "pro_monthly_mcp",
+      "dodoProductId": "pdt_0NsrAhTS4KiZl1LQy8DbS",
+      "displayName": "Pro Monthly (MCP)",
+      "tierGroup": "pro",
+      "billingPeriod": "monthly",
+      "priceCents": 1499,
+      "selfServe": true,
+      "currentForCheckout": true
+    }
+  ]
+}

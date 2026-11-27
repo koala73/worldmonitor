@@ -84,7 +84,8 @@ describe('plan mapping', () => {
 
   it('recommends one step up the same product line, and nothing above the top', () => {
     const expected = {
-      free: 'pro_monthly',
+      free: 'pro_monthly_mcp',
+      pro_monthly_mcp: 'pro_business_monthly',
       pro_monthly: 'pro_business_monthly',
       pro_annual: 'pro_business_monthly',
       api_starter: 'api_business',
@@ -107,10 +108,25 @@ describe('denial checkout hints', () => {
   it('names the plan and tool on the three upgradeable denials for a free account', () => {
     for (const reason of ['allowance-exhausted', 'upgrade-required', 'quota-exceeded']) {
       const { data } = buildMcpStructuredDenial({ reason, limit: 5, sharedWithRestApi: false, upgradeFrom: 'free' });
-      assert.equal(data.recommendedPlan, 'pro_monthly', reason);
+      assert.equal(data.recommendedPlan, 'pro_monthly_mcp', reason);
       assert.equal(data.checkoutTool, 'start_upgrade', reason);
       assert.equal(data.upgradeUrl, MCP_UPGRADE_URL, 'the static link stays for clients that cannot call tools');
     }
+  });
+
+  it('states the MCP-only Pro price and how to buy it on the free-account denials', () => {
+    const price = (PRODUCT_CATALOG.pro_monthly_mcp.priceCents / 100).toFixed(2);
+    for (const reason of ['allowance-exhausted', 'upgrade-required']) {
+      const { data } = buildMcpStructuredDenial({ reason, upgradeFrom: 'free' });
+      assert.match(data.nextStep, new RegExp(`\\$${price.replace('.', '\\.')} a month`), reason);
+      assert.match(data.nextStep, /start_upgrade with plan "pro_monthly_mcp"/, reason);
+    }
+    assert.equal(checkoutProductIdForPlan('pro_monthly_mcp'), PRODUCT_CATALOG.pro_monthly_mcp.dodoProductId);
+  });
+
+  it('names no MCP price to a paid caller', () => {
+    const { data } = buildMcpStructuredDenial({ reason: 'quota-exceeded', limit: 50, sharedWithRestApi: false, upgradeFrom: 'pro_monthly' });
+    assert.doesNotMatch(data.nextStep, /pro_monthly_mcp|a month for accounts/);
   });
 
   it('names the plan but not the tool for a paid caller, whose step up the checkout guard refuses', () => {
@@ -191,7 +207,7 @@ describe('start_upgrade tool', () => {
     const { deps, pipe, checkouts } = fixture({ planKey: 'free', pipelineOpts: { initialCount: 5 } });
     const denied = await invoke(deps, callBody(FREE_ACCOUNT_CACHE_TOOL.name, {}));
     assert.equal(denied.body.error?.code, -32029);
-    assert.equal(denied.body.error.data.recommendedPlan, 'pro_monthly');
+    assert.equal(denied.body.error.data.recommendedPlan, 'pro_monthly_mcp');
     const opsBefore = pipe.ops.length;
     const called = await invoke(deps, upgrade({ plan: denied.body.error.data.recommendedPlan }));
     assert.equal(called.body.error, undefined);
@@ -307,12 +323,12 @@ describe('denials raised by dispatch carry the hint', () => {
       const exhausted = await invoke(deps, callBody(FREE_ACCOUNT_CACHE_TOOL.name, {}));
       assert.equal(exhausted.body.error.data.reason, 'allowance-exhausted');
       assert.equal(exhausted.body.error.message, 'Free-account MCP allowance exhausted for today.');
-      assert.equal(exhausted.body.error.data.recommendedPlan, 'pro_monthly');
+      assert.equal(exhausted.body.error.data.recommendedPlan, 'pro_monthly_mcp');
       assert.equal(exhausted.body.error.data.checkoutTool, 'start_upgrade');
 
       const gated = await invoke(fixture({ planKey: 'free', kind }).deps, callBody(SUBSCRIPTION_TOOL.name, {}));
       assert.equal(gated.body.error.data.reason, 'upgrade-required');
-      assert.equal(gated.body.error.data.recommendedPlan, 'pro_monthly');
+      assert.equal(gated.body.error.data.recommendedPlan, 'pro_monthly_mcp');
     }
   });
 
@@ -323,7 +339,7 @@ describe('denials raised by dispatch carry the hint', () => {
     });
     const exhausted = await invoke(deps, callBody(FREE_ACCOUNT_CACHE_TOOL.name, {}));
     assert.equal(exhausted.body.error.data.reason, 'allowance-exhausted', JSON.stringify(exhausted.body.error));
-    assert.equal(exhausted.body.error.data.recommendedPlan, 'pro_monthly');
+    assert.equal(exhausted.body.error.data.recommendedPlan, 'pro_monthly_mcp');
     assert.ok(pipe.ops.length > 0);
   });
 
@@ -347,7 +363,7 @@ describe('denials raised by dispatch carry the hint', () => {
     const { deps } = fixture({ planKey: 'free' });
     const read = await invoke(deps, { jsonrpc: '2.0', id: 4, method: 'resources/read', params: { uri: 'worldmonitor://countries/us/risk' } });
     assert.equal(read.body.error?.data?.reason, 'upgrade-required', JSON.stringify(read.body.error));
-    assert.equal(read.body.error.data.recommendedPlan, 'pro_monthly');
+    assert.equal(read.body.error.data.recommendedPlan, 'pro_monthly_mcp');
     assert.equal(read.body.error.data.checkoutTool, 'start_upgrade');
 
     const capped = fixture({ planKey: 'pro_monthly', pipelineOpts: { initialCount: 50 } });
@@ -400,6 +416,7 @@ describe('production checkout relay', () => {
       userId: 'user_1',
       productId: 'pdt_x',
       attributionSource: MCP_ATTRIBUTION_SOURCE,
+      checkoutChannel: 'mcp',
     });
   });
 

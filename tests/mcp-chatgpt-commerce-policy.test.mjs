@@ -77,6 +77,7 @@ function assertInformsOnly(error, label) {
   assert.equal('checkoutTool' in error.data, false, `${label}: no checkout tool`);
   assert.doesNotMatch(error.data.nextStep, SELLING, `${label}: nextStep`);
   assert.doesNotMatch(error.message, SELLING, `${label}: message`);
+  assert.doesNotMatch(JSON.stringify(error), /\$\d|pro_monthly_mcp/, `${label}: no price or MCP-only plan`);
 }
 
 describe('ChatGPT host detection', () => {
@@ -206,6 +207,7 @@ describe('denials sent to ChatGPT inform without selling', () => {
     // The same request from Claude keeps the #9144 hint.
     const claude = await invoke(fixture().deps, callBody(SUBSCRIPTION_TOOL.name, {}), 'Claude-User');
     assert.equal(claude.body.error.data.checkoutTool, 'start_upgrade');
+    assert.match(claude.body.error.data.nextStep, /pro_monthly_mcp/);
   });
 
   it('quota-exceeded keeps its documented message and limit', async () => {
