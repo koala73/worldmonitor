@@ -1506,7 +1506,9 @@ async function runFaaSideCar() {
 // Failure path for the FAA side-car. Last-good delays keep serving only for
 // what is left of the health budget: re-extending by the full FAA_TTL on every
 // failed tick showed 2026-11-25's 19:01Z ground delays as live for 7 hours.
-// seed-meta is not touched, so health ages it into STALE_SEED on time.
+// seed-meta is not touched, so health ages it into STALE_SEED on time. Past the
+// budget the key is deleted: it may still hold up to FAA_TTL from its last
+// write, and the bootstrap aggregate would keep re-dating those delays.
 async function preserveLastGoodFaa() {
   let ageMin = null;
   try {
@@ -1519,7 +1521,9 @@ async function preserveLastGoodFaa() {
     console.warn(`[FAA] kept last-good delays (${Math.round(ageMin)}min old) for ${Math.round(remainingSec / 60)}min more; seed-meta not refreshed`);
   } else {
     const age = ageMin === null ? 'unknown age' : `${Math.round(ageMin)}min old`;
-    console.warn(`[FAA] last-good delays (${age}) are past maxStaleMin ${FAA_MAX_STALE_MIN}; letting them expire`);
+    // upstashDel answers false for both an absent key and a failed command.
+    const deleted = await upstashDel(FAA_KEY);
+    console.warn(`[FAA] last-good delays (${age}) are past maxStaleMin ${FAA_MAX_STALE_MIN}; ${deleted ? 'deleted them' : 'none deleted (absent or DEL failed)'}`);
   }
 }
 

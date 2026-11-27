@@ -31,6 +31,7 @@ const values = new Map([
   [faaKey, JSON.stringify(lastGood)],
   [metaKey, JSON.stringify({ fetchedAt, recordCount: 1 })],
 ]);
+if (process.env.TEST_META_MISSING) values.delete(metaKey);
 const writes = [];
 const expires = [];
 let faaCalls = 0;
@@ -132,12 +133,23 @@ for (const mode of ['fetchError', 'denied', 'html200']) {
   });
 }
 
-test('FAA failure past the health budget lets last-good delays expire', () => {
+// The key still carries up to two hours of its last write TTL, so leaving it to
+// expire would let a 91-minute-old snapshot feed the freshly dated bootstrap
+// aggregate for another half hour. Past the budget it is deleted.
+test('FAA failure past the health budget deletes last-good delays', () => {
   const { state, stdout, stderr } = runAviation({ TEST_FAA_MODE: 'fetchError', TEST_META_AGE_MIN: '91' });
   const log = stdout + stderr;
-  assert.match(log, /\[FAA\] .*past maxStaleMin 90; letting them expire/);
+  assert.match(log, /\[FAA\] .*past maxStaleMin 90; deleted them/);
   assert.equal(state.writes.includes(FAA_KEY), false);
   assert.equal(state.expires.some(([key]) => key === FAA_KEY), false, log);
+  assert.equal(state.faa, null, 'stale FAA delays must not keep serving on their old TTL');
+  assert.equal(state.meta.fetchedAt, state.initialFetchedAt, 'seed-meta stays so health reports STALE_SEED');
+});
+
+test('FAA failure with unknown seed-meta age deletes last-good delays', () => {
+  const { state, stdout, stderr } = runAviation({ TEST_FAA_MODE: 'fetchError', TEST_META_MISSING: '1' });
+  assert.match(stdout + stderr, /\[FAA\] last-good delays \(unknown age\) are past maxStaleMin 90; deleted them/);
+  assert.equal(state.faa, null);
 });
 
 test('FAA success publishes delays and fresh seed-meta', () => {
