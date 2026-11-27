@@ -73,4 +73,11 @@ The rule's "reported, not happened" logic made the model hedge on first-party re
 - Before changing `CLASSIFY_SYSTEM_PROMPT`, list every caller of `classifyFetchLlm` that passes no `systemPrompt` and how it delivers. `grep -n "classifyFetchLlm(" scripts/ais-relay.cjs` finds them. Each one needs a measurement in its own batch shape and text clip.
 - Probe with the caller's real inputs, not hand-written ones. For a Telegram producer, read the public `t.me/s/<channel>` page and use those posts at the producer's character limit.
 - Before adding a trigger-word rule ("sirens", "take shelter"), grep the score-log dump for the trigger words. If it matches news headlines currently labelled high, the rule will page users.
-- Re-capture the Saudi fixture with any relay prompt or model change. Its test fails on the prompt hash until you do. See `classify-prompt-change-recapture-rules` (auto memory [claude]) for the full list of fixtures to re-capture.
+- A relay prompt or model change fails every suite that pins the prompt hash until the runs it names are re-captured:
+  - `tests/fixtures/classify-judged-headlines.json`: `relay-after`, `relay-after-rerun` and `relay-after-run3`.
+  - `tests/fixtures/classify-judged-statements.json` and `tests/fixtures/classify-judged-shipping-energy.json`: `relay-after` and `relay-after-rerun`.
+  - The held-out set, `tests/fixtures/classify-judged-headlines-heldout.json`: capture only `relay-current` and `relay-current-rerun`. Its `relay-after` runs are frozen by `FROZEN.fixtureSha` in `scripts/lib/jev-heldout.mjs`.
+  - Each of those is captured with `node --env-file=.env.local scripts/eval-classify-labels.mjs --path relay --fixture <fixture> --capture <run> --force`.
+  - `tests/fixtures/classify-batch-boundary.json`: `relay-current`, via `scripts/eval-classify-labels.mjs --batch-boundary --capture relay-current --force`. Never re-capture `relay-baseline`.
+  - `tests/fixtures/classify-saudi-civil-defense-posts.json`: `relay-current` and, with `--batched`, `relay-current-batched`, via `scripts/eval-classify-saudi-posts.mjs`.
+- Run `node --test tests/classify-*.test.mjs tests/jev-heldout-*.test.mjs` before pushing. The jev-heldout suites run only in CI shards.
