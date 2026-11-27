@@ -7,15 +7,15 @@ Status: packet prepared for the version after 2.11.8. Submission happens in the 
 | Version | Submitted (UTC) | Outcome |
 |---|---|---|
 | 2.10.1 | 2026-11-01 08:30 | Rejected 2026-11-13: commerce in digital services, and summarizing or aggregating third-party news. |
-| 2.11.8 | 2026-11-14 05:57 | Approved 2026-11-27 and published. The dashboard lists 10 tools as "This new tool definition needs further review before it can be published." |
+| 2.11.8 | 2026-11-14 05:57 | Approved 2026-11-27 and published. The dashboard marks the held tools below "This new tool definition needs further review before it can be published." |
 
-The approval email names no tools. The 10 held tools are `get_market_data`, `get_news_intelligence`, `get_prediction_markets`, `get_sanctions_data`, `get_country_coverage`, `get_intel_timeline`, `get_news_clusters`, `verify_claim`, `get_keyword_spikes` and `open_news_dashboard`.
+The approval email names no tools. The held tools are `get_market_data`, `get_news_intelligence`, `get_prediction_markets`, `get_sanctions_data`, `get_country_coverage`, `get_intel_timeline`, `get_news_clusters`, `verify_claim`, `get_keyword_spikes` and `open_news_dashboard`.
 
 ## What the held tools are not explained by
 
 Checked on 2026-11-27. None of these reproduces the set of 10:
 
-- **Change since submission.** Seven of the 10 have the same definition today as at the submitted commit, and seven tools that did change are not held.
+- **Change since submission.** Most held tools have the same definition today as at the submitted commit, and other definitions that did change are not held.
 - **Runtime difference.** Production `tools/list` sent with the ChatGPT user agent matches `CHATGPT_TOOL_LIST_RESPONSE` field for field.
 - **Wrong policy for the reviewer.** Review traffic used `openai-mcp/1.0.0`, which `isChatGptHost` matches, so the reviewer saw the ChatGPT tool list.
 - **Failures.** ChatGPT error rates in `wm_api_usage` from 2026-11-14 to 2026-11-27 do not single these tools out.
