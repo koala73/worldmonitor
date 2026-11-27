@@ -580,9 +580,8 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
   // Pro sold at $14.99/month only to free accounts that an MCP client refused
   // (owner decision 2026-11-27: a price test for agent-first users). Same
   // features as Pro Monthly; never listed on /pro or any public catalog.
-  // TODO(owner): replace the placeholder with the live Dodo product id.
   pro_monthly_mcp: {
-    dodoProductId: "pdt_PLACEHOLDER_PRO_MONTHLY_MCP",
+    dodoProductId: "pdt_0NsrAhTS4KiZl1LQy8DbS",
     planKey: "pro_monthly_mcp",
     displayName: "Pro Monthly (MCP)",
     priceCents: 1499,
