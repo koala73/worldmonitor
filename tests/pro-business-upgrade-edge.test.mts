@@ -114,6 +114,15 @@ describe('api/pro-business-upgrade accepted charge', () => {
     ]);
   });
 
+  it('validates and forwards a list-price preview', async () => {
+    relayBodies = [];
+    assert.equal((await post({ confirm: false, kind: 'pro_annual', listPrice: 'yes' })).status, 400);
+    assert.deepEqual(relayBodies, []);
+    relayResponse = () => Response.json({ kind: 'preview' });
+    assert.equal((await post({ confirm: false, kind: 'pro_annual', listPrice: true })).status, 200);
+    assert.deepEqual(relayBodies, [{ userId: 'user_switch', confirm: false, kind: 'pro_annual', listPrice: true }]);
+  });
+
   it('passes CHARGE_CHANGED through as 409', async () => {
     relayResponse = () => Response.json({ error: 'CHARGE_CHANGED' }, { status: 409 });
     const res = await post({ ...confirm, acceptedChargeAmount: 10496, acceptedChargeCurrency: 'USD' });

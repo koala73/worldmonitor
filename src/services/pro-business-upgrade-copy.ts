@@ -158,6 +158,10 @@ export const SWITCH_ACCOUNT_CHANGED_BODY =
 // the server refused before any change, so the plan is known to be unchanged.
 export const SWITCH_QUOTE_CHANGED_NOTICE =
   'The offer is no longer available and your plan has not changed. Here is the price without it.';
+// Shown above a first quote at list price while the offer runs (Dodo refused
+// the code for this subscription), so nobody reads it as the offer price.
+export const SWITCH_OFFER_NOT_APPLIED_NOTICE =
+  'The offer is not available for this switch. Here is the price without it.';
 // Shown above the fresh quote after a typed CHARGE_CHANGED: the charge grew
 // past the accepted one (the unused-month credit shrinks with time), and the
 // server refused before any change.

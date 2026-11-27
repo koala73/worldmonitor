@@ -2530,6 +2530,7 @@ http.route({
       discounted?: unknown;
       acceptedChargeAmount?: unknown;
       acceptedChargeCurrency?: unknown;
+      listPrice?: unknown;
     }>(request);
     if (!body) {
       return Response.json({ error: "INVALID_JSON" }, { status: 400 });
@@ -2560,6 +2561,9 @@ http.route({
     ) {
       return Response.json({ error: "INVALID_ACCEPTED_CHARGE" }, { status: 400 });
     }
+    if (body.listPrice !== undefined && typeof body.listPrice !== "boolean") {
+      return Response.json({ error: "INVALID_LIST_PRICE" }, { status: 400 });
+    }
 
     try {
       const result = await ctx.runAction(
@@ -2575,6 +2579,7 @@ http.route({
               acceptedChargeCurrency: body.acceptedChargeCurrency as string,
             }
             : {}),
+          ...(typeof body.listPrice === "boolean" ? { listPrice: body.listPrice } : {}),
         },
       );
       return Response.json(result, { status: 200 });

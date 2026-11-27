@@ -4171,11 +4171,14 @@ export type ProBusinessUpgradeResult =
       /** The provider-side discount on the first period (the Dodo figure), or null. */
       percentOff: number | null;
       /**
-       * This server re-checks the immediate charge on a confirm that names it
-       * (acceptedChargeAmount + acceptedChargeCurrency). A client sends those
+       * This server takes the quote guards: a confirm may name the charge it
+       * accepted (acceptedChargeAmount + acceptedChargeCurrency), and a
+       * preview may ask for the list price (listPrice). A client sends those
        * only when the quote says so: an older Convex rejects unknown arguments.
        */
       acceptsQuoteGuards: true;
+      /** The offer is running, but this quote is at list price. */
+      offerNotApplied?: true;
     }
   | { kind: "upgraded"; fromPlanKey: string; toPlanKey: string };
 
@@ -4322,6 +4325,8 @@ export async function runPlanChange(
     /** The quote's immediate charge the user accepted, in minor units. Optional on the wire. */
     acceptedChargeAmount?: number;
     acceptedChargeCurrency?: string;
+    /** A preview at list price while the offer runs: the re-quote after a refused code. */
+    listPrice?: boolean;
   },
 ): Promise<ProBusinessUpgradeResult> {
   const { confirm, kind } = args;
@@ -4377,10 +4382,11 @@ export async function runPlanChange(
     try {
       let discounted = promo !== null;
       let preview: Awaited<ReturnType<typeof requestPreview>>;
+      if (args.listPrice === true) discounted = false;
       try {
-        preview = await requestPreview(promo?.discountCode ?? null);
+        preview = await requestPreview(discounted ? promo!.discountCode : null);
       } catch (err) {
-        if (!promo || !isDiscountRejection(err)) throw err;
+        if (!discounted || !promo || !isDiscountRejection(err)) throw err;
         console.warn(
           `[billing] promo_code_rejected on change-plan preview promo=${promo.id} subscription=${candidate.dodoSubscriptionId}: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -4419,6 +4425,9 @@ export async function runPlanChange(
         discounted,
         percentOff: discounted && promo ? promo.percentOff : null,
         acceptsQuoteGuards: true,
+        // The offer runs but this quote is at list price (code refused, or a
+        // list-price re-quote): the client says so above the price.
+        ...(promo && !discounted ? { offerNotApplied: true as const } : {}),
       };
     } catch (err) {
       console.error(
@@ -4544,6 +4553,8 @@ export const upgradeToProBusiness = action({
     /** The quote's immediate charge; a client sends it only when the quote had acceptsQuoteGuards. */
     acceptedChargeAmount: v.optional(v.number()),
     acceptedChargeCurrency: v.optional(v.string()),
+    /** Preview at list price; sent only to a server whose quote had acceptsQuoteGuards. */
+    listPrice: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
     const userId = await requireUserId(ctx);
@@ -4553,6 +4564,7 @@ export const upgradeToProBusiness = action({
       discounted: args.discounted,
       acceptedChargeAmount: args.acceptedChargeAmount,
       acceptedChargeCurrency: args.acceptedChargeCurrency,
+      listPrice: args.listPrice,
     });
   },
 });
@@ -4566,6 +4578,7 @@ export const internalUpgradeToProBusiness = internalAction({
     discounted: v.optional(v.boolean()),
     acceptedChargeAmount: v.optional(v.number()),
     acceptedChargeCurrency: v.optional(v.string()),
+    listPrice: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
     if (!args.userId) {
@@ -4577,6 +4590,7 @@ export const internalUpgradeToProBusiness = internalAction({
       discounted: args.discounted,
       acceptedChargeAmount: args.acceptedChargeAmount,
       acceptedChargeCurrency: args.acceptedChargeCurrency,
+      listPrice: args.listPrice,
     });
   },
 });

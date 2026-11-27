@@ -224,9 +224,49 @@ describe("switch action", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     previewChangePlan.mockRejectedValueOnce(discountRejection()).mockResolvedValueOnce(listPreview());
     const result = await run(t, { confirm: false });
-    expect(result).toMatchObject({ kind: "preview", chargeAmount: 32096, discounted: false, percentOff: null });
+    // The offer runs but this quote lost it: the client must say so.
+    expect(result).toMatchObject({ kind: "preview", chargeAmount: 32096, discounted: false, percentOff: null, offerNotApplied: true });
     expect(previewChangePlan).toHaveBeenCalledTimes(2);
     expect(previewChangePlan.mock.calls[1]![1]).not.toHaveProperty("discount_code");
+  });
+
+  test("only a quote that lost a running offer says the offer was not applied", async () => {
+    const during = await setup(DURING);
+    previewChangePlan.mockResolvedValue(discountedPreview());
+    expect(await run(during, { confirm: false })).not.toHaveProperty("offerNotApplied");
+    const after = await setup(AFTER);
+    previewChangePlan.mockReset().mockResolvedValue(listPreview());
+    expect(await run(after, { confirm: false })).not.toHaveProperty("offerNotApplied");
+  });
+
+  // After a confirm's code is refused, the re-quote must not send the code
+  // again: a preview that accepts it would bring back a quote the confirm
+  // refuses, and the user could never switch.
+  test("a list-price preview during the offer sends no code and says the offer was not applied", async () => {
+    const t = await setup(DURING);
+    previewChangePlan.mockResolvedValue(listPreview());
+    const result = await t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, {
+      kind: "pro_annual", confirm: false, listPrice: true,
+    });
+    expect(result).toMatchObject({ kind: "preview", discounted: false, percentOff: null, offerNotApplied: true, chargeAmount: 32096 });
+    expect(previewChangePlan).toHaveBeenCalledTimes(1);
+    expect(previewChangePlan.mock.calls[0]![1]).not.toHaveProperty("discount_code");
+  });
+
+  test("the relay validates and forwards a list-price preview", async () => {
+    vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "synthetic-relay-secret");
+    const t = await setup(DURING);
+    const post = (body: unknown) => t.fetch("/relay/pro-business-upgrade", {
+      method: "POST",
+      headers: { Authorization: "Bearer synthetic-relay-secret", "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect((await post({ userId: USER.subject, confirm: false, kind: "pro_annual", listPrice: "yes" })).status).toBe(400);
+    previewChangePlan.mockResolvedValue(listPreview());
+    const res = await post({ userId: USER.subject, confirm: false, kind: "pro_annual", listPrice: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ discounted: false, offerNotApplied: true });
+    expect(previewChangePlan.mock.calls[0]![1]).not.toHaveProperty("discount_code");
   });
 
   // The /pro relay aborts at 20 s (api/pro-business-upgrade.ts). Both preview

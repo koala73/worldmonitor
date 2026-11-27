@@ -93,6 +93,7 @@ export default async function handler(
   let kind: string | undefined;
   let discounted: boolean | undefined;
   let acceptedCharge: { acceptedChargeAmount: number; acceptedChargeCurrency: string } | null = null;
+  let listPrice: boolean | undefined;
   try {
     // Read a clone: the idempotency helpers hash the original body, and a
     // consumed body would make them fall back to "disabled" (no replay lock).
@@ -102,6 +103,7 @@ export default async function handler(
       discounted?: unknown;
       acceptedChargeAmount?: unknown;
       acceptedChargeCurrency?: unknown;
+      listPrice?: unknown;
     } | null;
     if (!body || typeof body !== 'object' || typeof body.confirm !== 'boolean') {
       return json({ error: 'INVALID_BODY' }, 400, cors);
@@ -129,6 +131,11 @@ export default async function handler(
       }
       acceptedCharge = { acceptedChargeAmount: amount, acceptedChargeCurrency: currency };
     }
+    // Optional: a preview at list price, the re-quote after a refused code.
+    if (body.listPrice !== undefined && typeof body.listPrice !== 'boolean') {
+      return json({ error: 'INVALID_BODY' }, 400, cors);
+    }
+    listPrice = body.listPrice as boolean | undefined;
     confirm = body.confirm;
     kind = body.kind as string | undefined;
     discounted = body.discounted as boolean | undefined;
@@ -184,6 +191,7 @@ export default async function handler(
         ...(kind !== undefined ? { kind } : {}),
         ...(discounted !== undefined ? { discounted } : {}),
         ...(acceptedCharge ?? {}),
+        ...(listPrice !== undefined ? { listPrice } : {}),
       }),
       signal: AbortSignal.timeout(20_000),
     });

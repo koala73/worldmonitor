@@ -353,6 +353,51 @@ describe('runProAnnualSwitchFlow', () => {
       assert.equal(h.dialogs[2]?.title, 'Switched to Pro Yearly');
     });
 
+    const LOST_OFFER = { ...LIST_QUOTE, acceptsQuoteGuards: true, offerNotApplied: true };
+
+    it('says so on a first quote that lost the running offer', async () => {
+      const h = switchHarness(async (call) => (call.confirm ? upgraded : LOST_OFFER));
+      await runProAnnualSwitchFlow(h.options);
+      assert.match(h.dialogs[0]!.body, /^The offer is not available for this switch\. Here is the price without it\. Your Pro Monthly/);
+      h.dialogs[0]!.onConfirm();
+      await settle();
+      assert.deepEqual(h.calls[1], { confirm: true, discounted: false, acceptedChargeAmount: 33503, acceptedChargeCurrency: 'USD' });
+    });
+
+    // Re-sending the code could bring back a discounted quote the confirm
+    // refuses again, and the user could never switch.
+    it('after PROMO_CODE_REJECTED asks for a list-price quote and confirms only that', async () => {
+      const h = switchHarness(async (_call, index) => {
+        if (index === 0) return GUARDED;
+        if (index === 1) throw refusal('PROMO_CODE_REJECTED');
+        if (index === 2) return LOST_OFFER;
+        return upgraded;
+      });
+      await runProAnnualSwitchFlow(h.options);
+      h.dialogs[0]!.onConfirm();
+      await settle();
+      assert.match(h.dialogs[1]!.body, /^The offer is no longer available and your plan has not changed\. Here is the price without it\. Your Pro Monthly/);
+      h.dialogs[1]!.onConfirm();
+      await settle();
+      assert.deepEqual(h.calls.slice(2), [
+        { confirm: false, listPrice: true },
+        { confirm: true, discounted: false, acceptedChargeAmount: 33503, acceptedChargeCurrency: 'USD' },
+      ]);
+      assert.equal(h.dialogs[2]?.title, 'Switched to Pro Yearly');
+    });
+
+    it('a changed-charge re-quote that lost the offer says the offer is gone', async () => {
+      const h = switchHarness(async (_call, index) => {
+        if (index === 0) return GUARDED;
+        if (index === 1) throw refusal('CHARGE_CHANGED');
+        return LOST_OFFER;
+      });
+      await runProAnnualSwitchFlow(h.options);
+      h.dialogs[0]!.onConfirm();
+      await settle();
+      assert.match(h.dialogs[1]!.body, /^The offer is no longer available and your plan has not changed\. Here is the price without it\. Your Pro Monthly/);
+    });
+
     it('re-quotes a changed charge at most once', async () => {
       const h = switchHarness(async (call) => {
         if (call.confirm) throw refusal('CHARGE_CHANGED');

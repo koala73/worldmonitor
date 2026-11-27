@@ -168,6 +168,32 @@ describe('/pro Pro Yearly switch flow', () => {
       ]);
     });
 
+    const LOST_OFFER = { ...LIST_QUOTE, acceptsQuoteGuards: true, offerNotApplied: true };
+
+    it('says so on a first quote that lost the running offer', async () => {
+      replies = [{ status: 200, body: LOST_OFFER }];
+      await runProAnnualSwitchFlow(options());
+      expect(dialog().body).toMatch(/^The offer is not available for this switch\. Here is the price without it\. Your Pro Monthly/);
+    });
+
+    it('after PROMO_CODE_REJECTED asks for a list-price quote and confirms only that', async () => {
+      replies = [
+        { status: 200, body: GUARDED },
+        { status: 409, body: { error: 'PROMO_CODE_REJECTED' } },
+        { status: 200, body: LOST_OFFER },
+        { status: 200, body: UPGRADED },
+      ];
+      await runProAnnualSwitchFlow(options());
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().body).toMatch(/^The offer is no longer available and your plan has not changed\. Here is the price without it\. Your Pro Monthly/));
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().title).toBe('Switched to Pro Yearly'));
+      expect(bodies.slice(2)).toEqual([
+        { confirm: false, kind: 'pro_annual', listPrice: true },
+        { confirm: true, kind: 'pro_annual', discounted: false, acceptedChargeAmount: 33503, acceptedChargeCurrency: 'USD' },
+      ]);
+    });
+
     it('re-quotes a changed charge at most once', async () => {
       replies = [
         { status: 200, body: GUARDED },

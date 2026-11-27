@@ -625,8 +625,10 @@ export type ProBusinessUpgradeResponse =
       discounted?: boolean;
       /** Dodo's whole percent off the first period on a discounted quote, else null. */
       percentOff?: number | null;
-      /** The server takes the accepted charge on confirm. Absent from an older Convex. */
+      /** The server takes listPrice and the accepted charge. Absent from an older Convex. */
       acceptsQuoteGuards?: boolean;
+      /** The offer runs, but this quote is at list price. */
+      offerNotApplied?: boolean;
     }
   | { kind: 'upgraded'; fromPlanKey: string; toPlanKey: string };
 
@@ -658,7 +660,7 @@ export async function requestProBusinessUpgrade(confirm: boolean): Promise<ProBu
  */
 export async function requestProAnnualSwitch(
   request:
-    | { confirm: false }
+    | { confirm: false; listPrice?: true }
     | { confirm: true; discounted: boolean; acceptedChargeAmount?: number; acceptedChargeCurrency?: string },
 ): Promise<ProBusinessUpgradeResponse> {
   const userId = requireSignedInUserId('switch to Pro Yearly');
