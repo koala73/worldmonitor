@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { COUNTRY_SIGNAL_BYTES, countrySignalResponseSchema, countrySignalOutcomeSchema } from '../../../shared/country-signal-observations';
 import { RAW_SIGNAL_READS, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_BODY_BYTES, RAW_SIGNAL_ENVELOPE_BYTES, failedRawSignal, validateRawSignal, assembleRawSignals, type RawSignalsValue } from '../../../shared/country-raw-signals';
-import { COUNTRY_READERS, countryReaderSchema, countryViewSchema, panelAdmissionSchema, type CountryReader } from '../../../shared/country-brief-host';
+import { COUNTRY_READERS, countryPickerViewSchema, countryReaderSchema, countryViewSchema, panelAdmissionSchema, type CountryReader } from '../../../shared/country-brief-host';
 import { BRIEF_TOPICS } from '../../../shared/country-brief-sections';
 import { resolveCountryArg } from '../_country-args';
 import { normalizeFoodStocksCommodity } from '../../../server/worldmonitor/resilience/v1/_food-stocks-query';
@@ -15,8 +15,12 @@ import { describedPanelReceipt } from './news-dashboard';
 
 const COUNTRY_SECTION_BUDGET_BYTES = 524288;
 
-function countryViewArguments(params: Record<string, unknown>) {
-  const parsed = countryViewSchema.safeParse(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath')));
+function countryViewArguments(params: Record<string, unknown>): { countryCode?: string; topic: string } {
+  const args = Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath'));
+  // No country: the view opens on its country picker. A refresh still needs a country.
+  const picker = countryPickerViewSchema.safeParse(args);
+  if (picker.success) return { topic: picker.data.topic };
+  const parsed = countryViewSchema.safeParse(args);
   const countryCode = parsed.success ? resolveCountryArg(parsed.data.country_code) : null;
   if (!parsed.success || !countryCode) throw new RpcValidationError('open_country_brief', [{ field: 'country_code', description: 'Supply a recognized country and topic.' }]);
   return { countryCode, topic: parsed.data.topic };
@@ -163,7 +167,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   name: 'open_country_brief',
   title: 'Open the interactive country brief view',
   _subscriptionOnly: true,
-  description: 'Open the interactive WorldMonitor country brief for one country and return {countryCode, topic, panelRequest}; the host renders the embedded view, which then loads its assessment, source evidence, resilience, security, economy, resources and society sections progressively over the authenticated connection. The tool itself returns only the resolved country and topic: no assessment text, scores or section data reach the caller. topic (default overview) selects which section group the view opens on. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one country request covers the view\'s internal section loads, same-country opens reuse it for five minutes, and refresh with request_id starts a new request. Read-only.',
+  description: 'Open the interactive WorldMonitor country brief for one country and return {countryCode, topic, panelRequest}; the host renders the embedded view, which then loads its assessment, source evidence, resilience, security, economy, resources and society sections progressively over the authenticated connection. The tool itself returns only the resolved country and topic: no assessment text, scores or section data reach the caller. topic (default overview) selects which section group the view opens on. Without country_code the view opens on its country picker, the result carries only topic, and nothing is charged; the user then picks a country in the view. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one country request covers the view\'s internal section loads, same-country opens reuse it for five minutes, and refresh with request_id starts a new request. Read-only.',
   _uiResourceUri: COUNTRY_VIEW_UI_URI,
   _openaiEntrypoints: [{ type: 'global' }, { type: 'thread' }],
   _outputBudgetBytes: 4096,
@@ -171,21 +175,21 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   inputSchema: {
     type: 'object',
     properties: {
-      country_code: { type: 'string', minLength: 2, maxLength: 100, description: 'Country to open, as an ISO alpha-2 or alpha-3 code or a country name, such as "DE", "DEU" or "Germany".' },
+      country_code: { type: 'string', minLength: 2, maxLength: 100, description: 'Country to open, as an ISO alpha-2 or alpha-3 code or a country name, such as "DE", "DEU" or "Germany". Omitted: the view opens on its country picker; refresh and request_id then are not accepted.' },
       topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS), description: 'Section group the view opens on: economy covers economy and trade, resources covers resources and infrastructure, sources lists the source evidence, all shows every group. Omitted: overview.' },
       request_id: { type: 'string', format: 'uuid', description: 'Stable ID for an explicit refresh. Retries with the same ID share one paid admission.' },
       refresh: { type: 'boolean', description: 'Start a new paid panel request and refresh loaded observations. Default false reuses the current same-country request.' },
     },
-    required: ['country_code'],
+    required: [],
   },
   outputSchema: {
     type: 'object',
     properties: {
-      countryCode: { type: 'string', description: 'Resolved country, ISO alpha-2.' },
+      countryCode: { type: 'string', description: 'Resolved country, ISO alpha-2. Absent when the view opened on its country picker.' },
       topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS), description: 'Section group the view opens on.' },
       panelRequest: describedPanelReceipt(panelAdmissionSchema, 'Dedicated paid plans only: the paid country request this open admitted or reused.'),
     },
-    required: ['countryCode', 'topic'],
+    required: ['topic'],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   _validateArgs: countryViewArguments,

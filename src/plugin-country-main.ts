@@ -392,6 +392,8 @@ async function mountPlugin(): Promise<void> {
   let linksAvailable = false;
   let queuedView: { raw: unknown; receipt?: unknown; fromHost: boolean } | undefined;
   let hostInput: unknown;
+  // Topic from a countryless open (ChatGPT entrypoints); the first country the user picks opens on it.
+  let pickerTopic: string | undefined;
   let contextTimer: ReturnType<typeof setTimeout> | undefined;
   let timeline: CountryTimeline | undefined;
   let openRequest: AbortController | undefined;
@@ -814,9 +816,17 @@ async function mountPlugin(): Promise<void> {
       const data = result?.structuredContent;
       if (data?.countryCode) {
         hostResultSeen = true;
+        pickerTopic = undefined;
         const requested = countryViewSchema.safeParse(hostInput);
         hostInput = undefined;
         void open({ country_code: data.countryCode, topic: data.topic ?? 'overview', refresh: requested.success && requested.data.refresh }, false, data.panelRequest, true).catch(error => { status.textContent = error.message; });
+      } else if (typeof data?.topic === 'string' && Object.prototype.hasOwnProperty.call(BRIEF_TOPICS, data.topic)) {
+        hostInput = undefined;
+        pickerTopic = data.topic;
+        // A newer countryless open wins over a country open still waiting for admission.
+        revision++;
+        openRequest?.abort();
+        queuedView = undefined;
       }
     }
     if (message.method === 'tools/list') send({ id: message.id, result: { tools: [
@@ -840,7 +850,14 @@ async function mountPlugin(): Promise<void> {
   };
   if (!channel) window.addEventListener('message', onHostMessage);
 
-  const openSelectedCountry = () => { void open({ country_code: input.value }).catch(error => { status.textContent = error.message; }); };
+  const openSelectedCountry = () => {
+    // Consumed only once the open succeeds, so a rejected entry keeps the picker topic for the retry.
+    const topic = pickerTopic;
+    void open({ country_code: input.value, ...(topic ? { topic } : {}) }).then(result => {
+      // A queued open (before startup) has not been validated yet, so it keeps the topic too.
+      if ((result as { state?: string }).state !== 'connecting' && pickerTopic === topic) pickerTopic = undefined;
+    }, error => { status.textContent = error.message; });
+  };
   document.getElementById('openCountry')!.addEventListener('click', openSelectedCountry);
   form.addEventListener('submit', event => { event.preventDefault(); openSelectedCountry(); });
   input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); if (!isImeEnter(event)) openSelectedCountry(); } });
@@ -909,7 +926,13 @@ async function mountPlugin(): Promise<void> {
     window.addEventListener('pagehide', () => resize.disconnect(), { once: true });
     // A host result can arrive while translations load; keep its status instead of the idle prompt.
     if (!hostResultSeen) status.textContent = toolsAvailable ? 'Select a country to open its brief.' : 'This host cannot call the connected country tools.';
-    if (queuedView) await open(queuedView.raw, false, queuedView.receipt, queuedView.fromHost);
+    if (queuedView) {
+      const queued = queuedView;
+      // A country the user chose during startup carries the picker topic; a successful open uses it up.
+      const queuedTopic = !queued.fromHost && queued.raw && typeof queued.raw === 'object' ? (queued.raw as { topic?: unknown }).topic : undefined;
+      const opened = await open(queued.raw, false, queued.receipt, queued.fromHost) as { state?: string };
+      if (queuedTopic !== undefined && pickerTopic === queuedTopic && opened.state !== 'cancelled') pickerTopic = undefined;
+    }
   }
   void start().catch(error => { rejectReady(error); if (negotiationState === 'pending') negotiationState = 'unconfirmed'; renderConnection(); status.textContent = 'The ChatGPT host connection is unavailable. Reload the country view.'; });
 

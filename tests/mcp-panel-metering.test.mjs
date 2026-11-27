@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Ratelimit } from '@upstash/ratelimit';
+import Ajv2020 from 'ajv/dist/2020.js';
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 import { admitCountryPanel, authorizePanelRead, PANEL_READ_LIMIT } from '../api/mcp/panel-requests.ts';
 import { countryActivityQueries } from '../shared/country-activity-query.ts';
@@ -225,6 +227,35 @@ describe('paid country workflow through the MCP handler', () => {
     const denied = await invoke(deps, 'get_country_brief_section', args);
     assert.equal(denied.response.status, 403);
     assert.equal(fetched.length, 1);
+  });
+  // ChatGPT opens the country view's global and thread entrypoints with empty arguments.
+  it('opens the country picker without a country and charges nothing on dedicated or API plans', async () => {
+    const api = { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 };
+    for (const getEntitlements of [undefined, async () => api]) {
+      const { deps, pipe } = makeProDeps(getEntitlements ? { getEntitlements } : {});
+      const opened = await invoke(deps, 'open_country_brief', {});
+      assert.equal(opened.body.error, undefined, JSON.stringify(opened.body.error));
+      assert.deepEqual(opened.body.result.structuredContent, { topic: 'overview' });
+      // Strict clients check the result against the advertised outputSchema.
+      const outputSchema = TOOL_REGISTRY.find(tool => tool.name === 'open_country_brief').outputSchema;
+      const validOutput = new Ajv2020({ allErrors: true, allowUnionTypes: true, strict: true, strictRequired: false, validateFormats: false }).compile(outputSchema);
+      assert.ok(validOutput(opened.body.result.structuredContent), JSON.stringify(validOutput.errors));
+      const topic = await invoke(deps, 'open_country_brief', { topic: 'economy' });
+      assert.deepEqual(topic.body.result.structuredContent, { topic: 'economy' });
+      assert.equal(pipe.count, 0);
+      assert.equal(fetched.length, 0);
+    }
+    // The picker is still a paid view: a free account is refused as before.
+    const { deps } = makeProDeps({ getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: true }, validUntil: Date.now() + 86400000 }) });
+    assert.equal((await invoke(deps, 'open_country_brief', {})).body.error.code, -32002);
+  });
+  it('refuses a refresh without a country before charging', async () => {
+    const { deps, pipe } = makeProDeps();
+    const refreshed = await invoke(deps, 'open_country_brief', { refresh: true, request_id: crypto.randomUUID() });
+    assert.equal(refreshed.body.error.code, -32602);
+    const unknown = await invoke(deps, 'open_country_brief', { country_code: 'Atlantis' });
+    assert.equal(unknown.body.error.code, -32602);
+    assert.equal(pipe.count, 0);
   });
   it('preserves weighted API billing and refuses panel tokens on API allowances', async () => {
     const { deps, pipe } = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: Date.now() + 86400000 }) });
