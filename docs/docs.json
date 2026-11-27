@@ -420,243 +420,215 @@
             "dropdowns": [
               {
                 "dropdown": "Overview",
-                "groups": [
-                  {
-                    "group": "Overview",
-                    "pages": [
-                      "api-reference",
-                      "api-versioning"
-                    ]
-                  }
+                "icon": "book-open",
+                "pages": [
+                  "api-reference",
+                  "api-versioning"
                 ]
               },
               {
                 "dropdown": "Geopolitical",
+                "icon": "globe",
                 "groups": [
                   {
-                    "group": "Geopolitical",
-                    "pages": [
-                      {
-                        "group": "Conflicts",
-                        "openapi": "api/ConflictService.openapi.yaml"
-                      },
-                      {
-                        "group": "Military",
-                        "openapi": "api/MilitaryService.openapi.yaml"
-                      },
-                      {
-                        "group": "Unrest",
-                        "openapi": "api/UnrestService.openapi.yaml"
-                      },
-                      {
-                        "group": "Intelligence",
-                        "openapi": "api/IntelligenceService.openapi.yaml"
-                      },
-                      {
-                        "group": "Displacement",
-                        "openapi": "api/DisplacementService.openapi.yaml"
-                      },
-                      {
-                        "group": "Cyber",
-                        "openapi": "api/CyberService.openapi.yaml"
-                      },
-                      {
-                        "group": "Sanctions",
-                        "openapi": "api/SanctionsService.openapi.yaml"
-                      },
-                      {
-                        "group": "Safety",
-                        "openapi": "api/SafetyService.openapi.yaml"
-                      },
-                      {
-                        "group": "Scorecards",
-                        "openapi": "api/ScorecardService.openapi.yaml"
-                      }
-                    ]
+                    "group": "Conflicts",
+                    "openapi": "api/ConflictService.openapi.yaml"
+                  },
+                  {
+                    "group": "Military",
+                    "openapi": "api/MilitaryService.openapi.yaml"
+                  },
+                  {
+                    "group": "Unrest",
+                    "openapi": "api/UnrestService.openapi.yaml"
+                  },
+                  {
+                    "group": "Intelligence",
+                    "openapi": "api/IntelligenceService.openapi.yaml"
+                  },
+                  {
+                    "group": "Displacement",
+                    "openapi": "api/DisplacementService.openapi.yaml"
+                  },
+                  {
+                    "group": "Cyber",
+                    "openapi": "api/CyberService.openapi.yaml"
+                  },
+                  {
+                    "group": "Sanctions",
+                    "openapi": "api/SanctionsService.openapi.yaml"
+                  },
+                  {
+                    "group": "Safety",
+                    "openapi": "api/SafetyService.openapi.yaml"
+                  },
+                  {
+                    "group": "Scorecards",
+                    "openapi": "api/ScorecardService.openapi.yaml"
                   }
                 ]
               },
               {
                 "dropdown": "Natural Events",
+                "icon": "volcano",
                 "groups": [
                   {
-                    "group": "Natural Events",
-                    "pages": [
-                      {
-                        "group": "Natural Disasters",
-                        "openapi": "api/NaturalService.openapi.yaml"
-                      },
-                      {
-                        "group": "Seismology",
-                        "openapi": "api/SeismologyService.openapi.yaml"
-                      },
-                      {
-                        "group": "Climate",
-                        "openapi": "api/ClimateService.openapi.yaml"
-                      },
-                      {
-                        "group": "Wildfires",
-                        "openapi": "api/WildfireService.openapi.yaml"
-                      },
-                      {
-                        "group": "Radiation",
-                        "openapi": "api/RadiationService.openapi.yaml"
-                      },
-                      {
-                        "group": "Thermal",
-                        "openapi": "api/ThermalService.openapi.yaml"
-                      }
-                    ]
+                    "group": "Natural Disasters",
+                    "openapi": "api/NaturalService.openapi.yaml"
+                  },
+                  {
+                    "group": "Seismology",
+                    "openapi": "api/SeismologyService.openapi.yaml"
+                  },
+                  {
+                    "group": "Climate",
+                    "openapi": "api/ClimateService.openapi.yaml"
+                  },
+                  {
+                    "group": "Wildfires",
+                    "openapi": "api/WildfireService.openapi.yaml"
+                  },
+                  {
+                    "group": "Radiation",
+                    "openapi": "api/RadiationService.openapi.yaml"
+                  },
+                  {
+                    "group": "Thermal",
+                    "openapi": "api/ThermalService.openapi.yaml"
                   }
                 ]
               },
               {
                 "dropdown": "Economy & Markets",
+                "icon": "chart-line",
                 "groups": [
                   {
-                    "group": "Economy & Markets",
-                    "pages": [
-                      {
-                        "group": "Economic",
-                        "openapi": "api/EconomicService.openapi.yaml"
-                      },
-                      {
-                        "group": "Markets",
-                        "openapi": "api/MarketService.openapi.yaml"
-                      },
-                      {
-                        "group": "Trade",
-                        "openapi": "api/TradeService.openapi.yaml"
-                      },
-                      {
-                        "group": "Supply Chain",
-                        "openapi": "api/SupplyChainService.openapi.yaml"
-                      },
-                      {
-                        "group": "Consumer Prices",
-                        "openapi": "api/ConsumerPricesService.openapi.yaml"
-                      },
-                      {
-                        "group": "Predictions",
-                        "openapi": "api/PredictionService.openapi.yaml"
-                      },
-                      {
-                        "group": "Forecasts",
-                        "openapi": "api/ForecastService.openapi.yaml"
-                      },
-                      {
-                        "group": "Commerce",
-                        "openapi": "openapi/CommerceService.openapi.yaml"
-                      }
-                    ]
+                    "group": "Economic",
+                    "openapi": "api/EconomicService.openapi.yaml"
+                  },
+                  {
+                    "group": "Markets",
+                    "openapi": "api/MarketService.openapi.yaml"
+                  },
+                  {
+                    "group": "Trade",
+                    "openapi": "api/TradeService.openapi.yaml"
+                  },
+                  {
+                    "group": "Supply Chain",
+                    "openapi": "api/SupplyChainService.openapi.yaml"
+                  },
+                  {
+                    "group": "Consumer Prices",
+                    "openapi": "api/ConsumerPricesService.openapi.yaml"
+                  },
+                  {
+                    "group": "Predictions",
+                    "openapi": "api/PredictionService.openapi.yaml"
+                  },
+                  {
+                    "group": "Forecasts",
+                    "openapi": "api/ForecastService.openapi.yaml"
+                  },
+                  {
+                    "group": "Commerce",
+                    "openapi": "openapi/CommerceService.openapi.yaml"
                   }
                 ]
               },
               {
                 "dropdown": "Infrastructure & Transport",
+                "icon": "plane",
                 "groups": [
                   {
-                    "group": "Infrastructure & Transport",
+                    "group": "Aviation",
+                    "openapi": "api/AviationService.openapi.yaml"
+                  },
+                  {
+                    "group": "Maritime",
+                    "openapi": "api/MaritimeService.openapi.yaml"
+                  },
+                  {
+                    "group": "Infrastructure",
+                    "openapi": "api/InfrastructureService.openapi.yaml"
+                  },
+                  {
+                    "group": "Resilience",
+                    "openapi": "api/ResilienceService.openapi.yaml"
+                  },
+                  {
+                    "group": "Shipping v2",
+                    "openapi": "api/worldmonitor.openapi.yaml",
                     "pages": [
-                      {
-                        "group": "Aviation",
-                        "openapi": "api/AviationService.openapi.yaml"
-                      },
-                      {
-                        "group": "Maritime",
-                        "openapi": "api/MaritimeService.openapi.yaml"
-                      },
-                      {
-                        "group": "Infrastructure",
-                        "openapi": "api/InfrastructureService.openapi.yaml"
-                      },
-                      {
-                        "group": "Resilience",
-                        "openapi": "api/ResilienceService.openapi.yaml"
-                      },
-                      {
-                        "group": "Shipping v2",
-                        "openapi": "api/worldmonitor.openapi.yaml",
-                        "pages": [
-                          "GET /api/v2/shipping/route-intelligence",
-                          "GET /api/v2/shipping/webhooks",
-                          "POST /api/v2/shipping/webhooks",
-                          "webhook chokepoint.disruption"
-                        ]
-                      }
+                      "GET /api/v2/shipping/route-intelligence",
+                      "GET /api/v2/shipping/webhooks",
+                      "POST /api/v2/shipping/webhooks",
+                      "webhook chokepoint.disruption"
                     ]
                   }
                 ]
               },
               {
                 "dropdown": "Health & Environment",
+                "icon": "heart-pulse",
                 "groups": [
                   {
-                    "group": "Health & Environment",
-                    "pages": [
-                      {
-                        "group": "Public Health",
-                        "openapi": "api/HealthService.openapi.yaml"
-                      },
-                      {
-                        "group": "Imagery",
-                        "openapi": "api/ImageryService.openapi.yaml"
-                      },
-                      {
-                        "group": "Webcams",
-                        "openapi": "api/WebcamService.openapi.yaml"
-                      },
-                      {
-                        "group": "Orbital",
-                        "openapi": "api/OrbitalService.openapi.yaml"
-                      }
-                    ]
+                    "group": "Public Health",
+                    "openapi": "api/HealthService.openapi.yaml"
+                  },
+                  {
+                    "group": "Imagery",
+                    "openapi": "api/ImageryService.openapi.yaml"
+                  },
+                  {
+                    "group": "Webcams",
+                    "openapi": "api/WebcamService.openapi.yaml"
+                  },
+                  {
+                    "group": "Orbital",
+                    "openapi": "api/OrbitalService.openapi.yaml"
                   }
                 ]
               },
               {
                 "dropdown": "Other",
+                "icon": "layer-group",
                 "groups": [
                   {
-                    "group": "Other",
-                    "pages": [
-                      {
-                        "group": "News",
-                        "openapi": "api/NewsService.openapi.yaml"
-                      },
-                      {
-                        "group": "Research",
-                        "openapi": "api/ResearchService.openapi.yaml"
-                      },
-                      {
-                        "group": "Positive Events",
-                        "openapi": "api/PositiveEventsService.openapi.yaml"
-                      },
-                      {
-                        "group": "Giving",
-                        "openapi": "api/GivingService.openapi.yaml"
-                      },
-                      {
-                        "group": "Batch",
-                        "openapi": "api/BatchService.openapi.yaml"
-                      },
-                      {
-                        "group": "Scenarios",
-                        "openapi": "api/ScenarioService.openapi.yaml"
-                      },
-                      {
-                        "group": "Company Monitoring",
-                        "openapi": "api/CompanyMonitoringService.openapi.yaml"
-                      },
-                      {
-                        "group": "Feedback",
-                        "openapi": "api/FeedbackService.openapi.yaml"
-                      },
-                      {
-                        "group": "Leads",
-                        "openapi": "api/LeadsService.openapi.yaml"
-                      }
-                    ]
+                    "group": "News",
+                    "openapi": "api/NewsService.openapi.yaml"
+                  },
+                  {
+                    "group": "Research",
+                    "openapi": "api/ResearchService.openapi.yaml"
+                  },
+                  {
+                    "group": "Positive Events",
+                    "openapi": "api/PositiveEventsService.openapi.yaml"
+                  },
+                  {
+                    "group": "Giving",
+                    "openapi": "api/GivingService.openapi.yaml"
+                  },
+                  {
+                    "group": "Batch",
+                    "openapi": "api/BatchService.openapi.yaml"
+                  },
+                  {
+                    "group": "Scenarios",
+                    "openapi": "api/ScenarioService.openapi.yaml"
+                  },
+                  {
+                    "group": "Company Monitoring",
+                    "openapi": "api/CompanyMonitoringService.openapi.yaml"
+                  },
+                  {
+                    "group": "Feedback",
+                    "openapi": "api/FeedbackService.openapi.yaml"
+                  },
+                  {
+                    "group": "Leads",
+                    "openapi": "api/LeadsService.openapi.yaml"
                   }
                 ]
               }
@@ -1093,243 +1065,215 @@
             "dropdowns": [
               {
                 "dropdown": "概览",
-                "groups": [
-                  {
-                    "group": "概览",
-                    "pages": [
-                      "zh/api-reference",
-                      "zh/api-versioning"
-                    ]
-                  }
+                "icon": "book-open",
+                "pages": [
+                  "zh/api-reference",
+                  "zh/api-versioning"
                 ]
               },
               {
                 "dropdown": "地缘政治",
+                "icon": "globe",
                 "groups": [
                   {
-                    "group": "地缘政治",
-                    "pages": [
-                      {
-                        "group": "冲突",
-                        "openapi": "api/ConflictService.openapi.yaml"
-                      },
-                      {
-                        "group": "军事",
-                        "openapi": "api/MilitaryService.openapi.yaml"
-                      },
-                      {
-                        "group": "动乱",
-                        "openapi": "api/UnrestService.openapi.yaml"
-                      },
-                      {
-                        "group": "情报",
-                        "openapi": "api/IntelligenceService.openapi.yaml"
-                      },
-                      {
-                        "group": "流离失所",
-                        "openapi": "api/DisplacementService.openapi.yaml"
-                      },
-                      {
-                        "group": "网络",
-                        "openapi": "api/CyberService.openapi.yaml"
-                      },
-                      {
-                        "group": "制裁",
-                        "openapi": "api/SanctionsService.openapi.yaml"
-                      },
-                      {
-                        "group": "安全",
-                        "openapi": "api/SafetyService.openapi.yaml"
-                      },
-                      {
-                        "group": "评分卡",
-                        "openapi": "api/ScorecardService.openapi.yaml"
-                      }
-                    ]
+                    "group": "冲突",
+                    "openapi": "api/ConflictService.openapi.yaml"
+                  },
+                  {
+                    "group": "军事",
+                    "openapi": "api/MilitaryService.openapi.yaml"
+                  },
+                  {
+                    "group": "动乱",
+                    "openapi": "api/UnrestService.openapi.yaml"
+                  },
+                  {
+                    "group": "情报",
+                    "openapi": "api/IntelligenceService.openapi.yaml"
+                  },
+                  {
+                    "group": "流离失所",
+                    "openapi": "api/DisplacementService.openapi.yaml"
+                  },
+                  {
+                    "group": "网络",
+                    "openapi": "api/CyberService.openapi.yaml"
+                  },
+                  {
+                    "group": "制裁",
+                    "openapi": "api/SanctionsService.openapi.yaml"
+                  },
+                  {
+                    "group": "安全",
+                    "openapi": "api/SafetyService.openapi.yaml"
+                  },
+                  {
+                    "group": "评分卡",
+                    "openapi": "api/ScorecardService.openapi.yaml"
                   }
                 ]
               },
               {
                 "dropdown": "自然事件",
+                "icon": "volcano",
                 "groups": [
                   {
-                    "group": "自然事件",
-                    "pages": [
-                      {
-                        "group": "自然灾害",
-                        "openapi": "api/NaturalService.openapi.yaml"
-                      },
-                      {
-                        "group": "地震学",
-                        "openapi": "api/SeismologyService.openapi.yaml"
-                      },
-                      {
-                        "group": "气候",
-                        "openapi": "api/ClimateService.openapi.yaml"
-                      },
-                      {
-                        "group": "野火",
-                        "openapi": "api/WildfireService.openapi.yaml"
-                      },
-                      {
-                        "group": "辐射",
-                        "openapi": "api/RadiationService.openapi.yaml"
-                      },
-                      {
-                        "group": "热力",
-                        "openapi": "api/ThermalService.openapi.yaml"
-                      }
-                    ]
+                    "group": "自然灾害",
+                    "openapi": "api/NaturalService.openapi.yaml"
+                  },
+                  {
+                    "group": "地震学",
+                    "openapi": "api/SeismologyService.openapi.yaml"
+                  },
+                  {
+                    "group": "气候",
+                    "openapi": "api/ClimateService.openapi.yaml"
+                  },
+                  {
+                    "group": "野火",
+                    "openapi": "api/WildfireService.openapi.yaml"
+                  },
+                  {
+                    "group": "辐射",
+                    "openapi": "api/RadiationService.openapi.yaml"
+                  },
+                  {
+                    "group": "热力",
+                    "openapi": "api/ThermalService.openapi.yaml"
                   }
                 ]
               },
               {
                 "dropdown": "经济与市场",
+                "icon": "chart-line",
                 "groups": [
                   {
-                    "group": "经济与市场",
-                    "pages": [
-                      {
-                        "group": "经济",
-                        "openapi": "api/EconomicService.openapi.yaml"
-                      },
-                      {
-                        "group": "市场",
-                        "openapi": "api/MarketService.openapi.yaml"
-                      },
-                      {
-                        "group": "贸易",
-                        "openapi": "api/TradeService.openapi.yaml"
-                      },
-                      {
-                        "group": "供应链",
-                        "openapi": "api/SupplyChainService.openapi.yaml"
-                      },
-                      {
-                        "group": "消费者价格",
-                        "openapi": "api/ConsumerPricesService.openapi.yaml"
-                      },
-                      {
-                        "group": "预测",
-                        "openapi": "api/PredictionService.openapi.yaml"
-                      },
-                      {
-                        "group": "预报",
-                        "openapi": "api/ForecastService.openapi.yaml"
-                      },
-                      {
-                        "group": "商业",
-                        "openapi": "openapi/CommerceService.openapi.yaml"
-                      }
-                    ]
+                    "group": "经济",
+                    "openapi": "api/EconomicService.openapi.yaml"
+                  },
+                  {
+                    "group": "市场",
+                    "openapi": "api/MarketService.openapi.yaml"
+                  },
+                  {
+                    "group": "贸易",
+                    "openapi": "api/TradeService.openapi.yaml"
+                  },
+                  {
+                    "group": "供应链",
+                    "openapi": "api/SupplyChainService.openapi.yaml"
+                  },
+                  {
+                    "group": "消费者价格",
+                    "openapi": "api/ConsumerPricesService.openapi.yaml"
+                  },
+                  {
+                    "group": "预测",
+                    "openapi": "api/PredictionService.openapi.yaml"
+                  },
+                  {
+                    "group": "预报",
+                    "openapi": "api/ForecastService.openapi.yaml"
+                  },
+                  {
+                    "group": "商业",
+                    "openapi": "openapi/CommerceService.openapi.yaml"
                   }
                 ]
               },
               {
                 "dropdown": "基础设施与交通",
+                "icon": "plane",
                 "groups": [
                   {
-                    "group": "基础设施与交通",
+                    "group": "航空",
+                    "openapi": "api/AviationService.openapi.yaml"
+                  },
+                  {
+                    "group": "海事",
+                    "openapi": "api/MaritimeService.openapi.yaml"
+                  },
+                  {
+                    "group": "基础设施",
+                    "openapi": "api/InfrastructureService.openapi.yaml"
+                  },
+                  {
+                    "group": "韧性",
+                    "openapi": "api/ResilienceService.openapi.yaml"
+                  },
+                  {
+                    "group": "航运 v2",
+                    "openapi": "api/worldmonitor.openapi.yaml",
                     "pages": [
-                      {
-                        "group": "航空",
-                        "openapi": "api/AviationService.openapi.yaml"
-                      },
-                      {
-                        "group": "海事",
-                        "openapi": "api/MaritimeService.openapi.yaml"
-                      },
-                      {
-                        "group": "基础设施",
-                        "openapi": "api/InfrastructureService.openapi.yaml"
-                      },
-                      {
-                        "group": "韧性",
-                        "openapi": "api/ResilienceService.openapi.yaml"
-                      },
-                      {
-                        "group": "航运 v2",
-                        "openapi": "api/worldmonitor.openapi.yaml",
-                        "pages": [
-                          "GET /api/v2/shipping/route-intelligence",
-                          "GET /api/v2/shipping/webhooks",
-                          "POST /api/v2/shipping/webhooks",
-                          "webhook chokepoint.disruption"
-                        ]
-                      }
+                      "GET /api/v2/shipping/route-intelligence",
+                      "GET /api/v2/shipping/webhooks",
+                      "POST /api/v2/shipping/webhooks",
+                      "webhook chokepoint.disruption"
                     ]
                   }
                 ]
               },
               {
                 "dropdown": "健康与环境",
+                "icon": "heart-pulse",
                 "groups": [
                   {
-                    "group": "健康与环境",
-                    "pages": [
-                      {
-                        "group": "公共卫生",
-                        "openapi": "api/HealthService.openapi.yaml"
-                      },
-                      {
-                        "group": "影像",
-                        "openapi": "api/ImageryService.openapi.yaml"
-                      },
-                      {
-                        "group": "网络摄像头",
-                        "openapi": "api/WebcamService.openapi.yaml"
-                      },
-                      {
-                        "group": "轨道",
-                        "openapi": "api/OrbitalService.openapi.yaml"
-                      }
-                    ]
+                    "group": "公共卫生",
+                    "openapi": "api/HealthService.openapi.yaml"
+                  },
+                  {
+                    "group": "影像",
+                    "openapi": "api/ImageryService.openapi.yaml"
+                  },
+                  {
+                    "group": "网络摄像头",
+                    "openapi": "api/WebcamService.openapi.yaml"
+                  },
+                  {
+                    "group": "轨道",
+                    "openapi": "api/OrbitalService.openapi.yaml"
                   }
                 ]
               },
               {
                 "dropdown": "其他",
+                "icon": "layer-group",
                 "groups": [
                   {
-                    "group": "其他",
-                    "pages": [
-                      {
-                        "group": "新闻",
-                        "openapi": "api/NewsService.openapi.yaml"
-                      },
-                      {
-                        "group": "研究",
-                        "openapi": "api/ResearchService.openapi.yaml"
-                      },
-                      {
-                        "group": "正面事件",
-                        "openapi": "api/PositiveEventsService.openapi.yaml"
-                      },
-                      {
-                        "group": "捐赠",
-                        "openapi": "api/GivingService.openapi.yaml"
-                      },
-                      {
-                        "group": "批量",
-                        "openapi": "api/BatchService.openapi.yaml"
-                      },
-                      {
-                        "group": "情景",
-                        "openapi": "api/ScenarioService.openapi.yaml"
-                      },
-                      {
-                        "group": "公司监测",
-                        "openapi": "api/CompanyMonitoringService.openapi.yaml"
-                      },
-                      {
-                        "group": "反馈",
-                        "openapi": "api/FeedbackService.openapi.yaml"
-                      },
-                      {
-                        "group": "线索",
-                        "openapi": "api/LeadsService.openapi.yaml"
-                      }
-                    ]
+                    "group": "新闻",
+                    "openapi": "api/NewsService.openapi.yaml"
+                  },
+                  {
+                    "group": "研究",
+                    "openapi": "api/ResearchService.openapi.yaml"
+                  },
+                  {
+                    "group": "正面事件",
+                    "openapi": "api/PositiveEventsService.openapi.yaml"
+                  },
+                  {
+                    "group": "捐赠",
+                    "openapi": "api/GivingService.openapi.yaml"
+                  },
+                  {
+                    "group": "批量",
+                    "openapi": "api/BatchService.openapi.yaml"
+                  },
+                  {
+                    "group": "情景",
+                    "openapi": "api/ScenarioService.openapi.yaml"
+                  },
+                  {
+                    "group": "公司监测",
+                    "openapi": "api/CompanyMonitoringService.openapi.yaml"
+                  },
+                  {
+                    "group": "反馈",
+                    "openapi": "api/FeedbackService.openapi.yaml"
+                  },
+                  {
+                    "group": "线索",
+                    "openapi": "api/LeadsService.openapi.yaml"
                   }
                 ]
               }
