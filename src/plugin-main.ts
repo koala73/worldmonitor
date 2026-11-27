@@ -557,20 +557,20 @@ function mountPlugin(): void {
     applyingDeepLink = url;
     // The view is leaving the last applied link, so a return to it (A, B, then A again) must apply again.
     appliedDeepLink = undefined;
+    // A finished link counts as applied only while it is still the host's link. When the host moved on and
+    // came back during the wait, the return was queued as a new application, so nothing is skipped.
+    const settle = () => { if (host.deepLink === url) appliedDeepLink = url; };
     // A link replaces the whole view, so an omitted time range means all time for the news and the map alike.
     const linked: PluginNewsView = { time_range: 'all', ...link.view };
     // A category this dashboard did not load is dropped like any other invalid field; the rest still applies.
     void applyView(linked, { reset: true, dropUnloadedCategory: true }).then(receipt => {
       const outcome = receipt as { applied?: boolean; viewport?: { interruptedBy?: string } };
-      if (outcome.applied === false && outcome.viewport?.interruptedBy !== 'human') return false;
-      appliedDeepLink = url;
-      return true;
+      if (outcome.applied !== false || outcome.viewport?.interruptedBy === 'human') settle();
     }, error => {
       // An interrupted map move (the country focus) means the map moved on; repeating it later would undo that.
-      if (error instanceof ViewportTransitionError && error.reason === 'viewport_interrupted') { appliedDeepLink = url; return true; }
+      if (error instanceof ViewportTransitionError && error.reason === 'viewport_interrupted') { settle(); return; }
       status.textContent = 'The linked view could not be applied. Showing news with the previous filters.';
       mapStatus.textContent = error instanceof Error ? error.message : 'The linked map view is unavailable.';
-      return false;
     }).then(() => { if (applyingDeepLink === url) applyingDeepLink = undefined; });
   }
 

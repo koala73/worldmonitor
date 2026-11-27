@@ -13,8 +13,11 @@ type Message = { method?: string; params?: Record<string, unknown> };
 
 const ARTICLE = { title: 'Controlled report', source: 'Fixture publisher', link: 'https://example.com/news', publishedAt: Date.now(), location: { latitude: 35, longitude: 139 }, isAlert: false };
 
-async function installHost(page: Page, deepLink?: string, options: { openingError?: boolean; hazardFailures?: number } = {}) {
+async function installHost(page: Page, deepLink?: string, options: { openingError?: boolean; hazardFailures?: number; holdHazards?: boolean } = {}) {
   let hazardFailures = options.hazardFailures ?? 0;
+  // With holdHazards, each map-data request waits until the test releases it, in order.
+  const heldHazards: Array<() => void> = [];
+  let hazardCalls = 0;
   const messages: Message[] = [];
   const toolCalls: Array<Record<string, unknown>> = [];
   const serve = (route: Parameters<Parameters<Page['route']>[1]>[0], path: string) => route.fulfill({ path, headers: { 'Access-Control-Allow-Origin': '*' } });
@@ -34,6 +37,8 @@ async function installHost(page: Page, deepLink?: string, options: { openingErro
     }
     if (method !== 'tools/call') return {};
     if (params.name === 'get_natural_disasters') {
+      hazardCalls++;
+      if (options.holdHazards) await new Promise<void>(release => heldHazards.push(release));
       if (hazardFailures-- > 0) return { __rpcError: 'Hazard request failed' };
       return { structuredContent: { data: { earthquakes: { earthquakes: [] }, events: { dataAvailable: true, events: [] }, fires: { dataAvailable: true, fireDetections: [] } } } };
     }
@@ -63,7 +68,11 @@ async function installHost(page: Page, deepLink?: string, options: { openingErro
     });
     frame.srcdoc = html.replace('<head>', `<head><base href="${location.origin}/">`);
   }, { html });
-  return { messages, toolCalls, frame: page.frameLocator('iframe') };
+  return {
+    messages, toolCalls, frame: page.frameLocator('iframe'),
+    hazardCalls: () => hazardCalls,
+    releaseHazard: async () => { await expect.poll(() => heldHazards.length).toBeGreaterThan(0); heldHazards.shift()!(); },
+  };
 }
 
 type Receipt = { view?: Record<string, unknown>; map?: { timeRange?: string } };
@@ -173,4 +182,25 @@ test('returning to the first link while a second applies shows the first again',
   });
   await page.waitForTimeout(3000);
   expect(lastReportedView(host.messages)).toMatchObject({ country: 'IR' });
+});
+
+test('a host that returns to a link after it finished, while the next one applies, ends on that link', async ({ page }) => {
+  const host = await installHost(page, undefined, { holdHazards: true });
+  await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
+  await changeHostContext(page, { 'openai/deepLink': { url: '/?country=IR&map_layers=natural' } });
+  await expect.poll(() => host.hazardCalls()).toBe(1);
+  await changeHostContext(page, { 'openai/deepLink': { url: '/?country=TW&map_layers=fires' } });
+  // IR finishes while TW waits in the queue; TW then starts and asks for its own map data.
+  await host.releaseHazard();
+  await expect.poll(() => lastReportedView(host.messages)?.country).toBe('IR');
+  await expect.poll(() => host.hazardCalls()).toBe(2);
+  // The host goes back to IR before TW finishes.
+  await changeHostContext(page, { 'openai/deepLink': { url: '/?country=IR&map_layers=natural' } });
+  const reportsBeforeTw = contextUpdates(host.messages).length;
+  await host.releaseHazard();
+  // TW applies, then the queued return to IR replaces it.
+  await expect.poll(() => contextUpdates(host.messages).slice(reportsBeforeTw).some(update => update.view?.country === 'TW')).toBe(true);
+  await expect.poll(() => lastReportedView(host.messages)?.country).toBe('IR');
+  await page.waitForTimeout(1000);
+  expect(lastReportedView(host.messages)?.country).toBe('IR');
 });
