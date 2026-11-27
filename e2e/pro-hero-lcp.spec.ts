@@ -148,6 +148,7 @@ test.describe('/pro hero is the LCP element before React mounts', () => {
     // Its paragraphs are classless, so their spacing comes from critical CSS.
     const gap = await overview.evaluate((section) => {
       const [first, second] = [...section.querySelectorAll(':scope > p')];
+      if (!first || !second) return null;
       return second.getBoundingClientRect().top - first.getBoundingClientRect().bottom;
     });
     expect(gap, 'the fallback paragraphs must not run together').toBeGreaterThanOrEqual(16);
