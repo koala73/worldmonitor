@@ -165,6 +165,7 @@ const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs')
 // why it lives in shared/ rather than beside the other scoring helpers.
 const { detectTrafficAnomaly, summarizePortwatchHistory } = require('../shared/chokepoint-traffic-anomaly.js');
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
+const { isRunningTally } = require('../shared/running-tally.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
 const {
   POSTURE_THEATERS,
@@ -5935,7 +5936,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // observed: the publisher families the coverage history holds for the title
   // (#10977). crossWording: the families other wordings added, checked when a
   // label is fresh and kept on the label for its cached republish.
-  const publishAlert = (title, level, category, { cached = false, observed, crossWording } = {}) => {
+  const publishAlert = (title, label, category, { cached = false, observed, crossWording } = {}) => {
+    // A running total ("16 killed so far this month") is not a new event, so it
+    // never pages realtime subscribers. The label keeps the classifier's call.
+    const level = label === 'critical' && isRunningTally(title) ? 'high' : label;
+    if (level !== label && !cached) console.log(`[Classify] running total alerts as high: ${title.slice(0, 120)}`);
     const meta = allTitles.get(title) ?? {
       source: variant,
       publishedAt: Date.now(),
