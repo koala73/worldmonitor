@@ -5093,7 +5093,8 @@
     "current": "Đã kiểm tra nguồn",
     "reportedClaims": "Báo cáo của bên xuất bản. Các tuyên bố có thể vẫn đang được điều tra.",
     "occurred": "Sự cố",
-    "reported": "Đã xuất bản"
+    "reported": "Đã xuất bản",
+    "listed": "Đã ghi nhận"
   },
   "panelVariants": {
     "finance": {

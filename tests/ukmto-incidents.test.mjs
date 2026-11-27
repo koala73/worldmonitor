@@ -40,6 +40,9 @@ test('decodes the captured publisher table and keeps one entry per incident', ()
 test('folds a repeated report at the same time and position into its UKMTO number', () => {
   const repeat = { ...report, id: 'UKMTO-28082035', text: 'UKMTO WARNING 143-26 - repeated record.' };
   assert.deepEqual(normalizeIncidents(table([repeat, report])).map(item => item.id), ['ukmto-143']);
+  const stated = { ...report, text: 'Incident Date: 28 Sep 2026 Incident Time: 1900UTC UKMTO has received a report.' };
+  assert.deepEqual(normalizeIncidents(table([repeat, stated])).map(item => [item.id, item.occurredAt]),
+    [['ukmto-143', Date.parse('2026-09-28T19:00:00Z')]]);
   const moved = { ...repeat, lat: 25 };
   assert.equal(normalizeIncidents(table([moved, report])).length, 2);
 });
@@ -48,6 +51,40 @@ test('leaves the publication time unset because the source does not carry it', (
   const [item] = normalizeIncidents(table([report]));
   assert.equal(item.reportedAt, 0);
   assert.equal('severity' in item, false);
+});
+
+test('takes the incident time UKMTO states in its report over the listed time', () => {
+  const listed = Math.floor(Date.parse('2026-12-01T00:00:00Z') / 1000);
+  const cases = [
+    ['UKMTO WARNING 102-26 ATTACK Incident Date: 31 Jul 2026 Incident Time 2206UTC UKMTO has received a report.', '2026-07-31T22:06:00Z'],
+    ['UKMTO WARNING 105-26 - ATTACK Incident date: 04 Aug 2026. Incident time: 0730UTC UKMTO has received a time-late report.', '2026-08-04T07:30:00Z'],
+    ['UKMTO 117-26 - ATTACK Incident Date: 17 Aug 26 Incident Time: 1100UTC UKMTO has received a report.', '2026-08-17T11:00:00Z'],
+    ['Incident Date:21 Oct 2026 Incident Time:0145UTC Local Authorities report.', '2026-10-21T01:45:00Z'],
+    ['UKMTO WARNING 215-26 - ATTACK Incident Date 21 Nov 2026 Incident Time: 0500UTC UKMTO has received a report.', '2026-11-21T05:00:00Z'],
+    ['Incident Date: 29 OCT 2026 Incident Time: 2212 UTC. UKMTO has received a report.', '2026-10-29T22:12:00Z'],
+    ['UKMTO WARNING 158-26 Incident Date: 07 OCT 2026 Incident Time: 1900 UKMTO has received a report.', '2026-10-07T19:00:00Z'],
+  ];
+  for (const [text, stated] of cases) {
+    const [item] = normalizeIncidents(table([{ ...report, ts: listed, text }]));
+    assert.equal(item.occurredAt, Date.parse(stated), text);
+    assert.equal(item.occurredAtStated, true, text);
+  }
+});
+
+test('keeps the listed time, marked as not stated, when the report gives no valid incident time', () => {
+  for (const text of [
+    report.text,
+    'UKMTO WARNING 203-26 - ATTACK Incident Date: 10 Nov 2026 Incident Time: TBC UKMTO has received a time-late report.',
+    'UKMTO WARNING 208-226. UPDATE 001-170745Z: UKMTO has received reports of a second strike.',
+    'Incident Date: 31 Feb 2026 Incident Time: 1200UTC UKMTO has received a report.',
+    'Incident Date: 01 Mar 2026 Incident Time: 2460UTC UKMTO has received a report.',
+    'Incident Date: 01 Mar 2026 Incident Time: 123456 UKMTO has received a report.',
+    'Incident Date: 01 Jan 1970 Incident Time: 0000UTC UKMTO has received a report.',
+  ]) {
+    const [item] = normalizeIncidents(table([{ ...report, text }]));
+    assert.equal(item.occurredAt, report.ts * 1000, text);
+    assert.equal(item.occurredAtStated, false, text);
+  }
 });
 
 test('deduplicates identical reports but rejects conflicting identities', () => {

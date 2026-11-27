@@ -37,7 +37,7 @@ export class UkmtoIncidentsPanel extends Panel {
       <div class="ukmto-list">${joinSafeHtml(snapshot.incidents.map(item => safeHtml`
         <article class="ukmto-incident">
           <button type="button" data-id="${item.id}" class="ukmto-location">UKMTO ${item.incidentNumber} · ${item.incidentType} · ${item.place}</button>
-          <div class="ukmto-dates">${t('ukmto.occurred')}: ${date(item.occurredAt)}${item.reportedAt > 0 ? safeHtml`<br>${t('ukmto.reported')}: ${date(item.reportedAt)}` : ''}</div>
+          <div class="ukmto-dates">${t(item.occurredAtStated ? 'ukmto.occurred' : 'ukmto.listed')}: ${date(item.occurredAt)}${item.reportedAt > 0 ? safeHtml`<br>${t('ukmto.reported')}: ${date(item.reportedAt)}` : ''}</div>
           <p>${item.description}</p>
         </article>`))}</div>`);
   }

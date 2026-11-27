@@ -5208,7 +5208,8 @@
     "current": "تم التحقق من المصدر",
     "reportedClaims": "تقارير الناشر. قد تظل الادعاءات قيد التحقيق.",
     "occurred": "الحادث",
-    "reported": "النشر"
+    "reported": "النشر",
+    "listed": "الإدراج"
   },
   "panelVariants": {
     "finance": {

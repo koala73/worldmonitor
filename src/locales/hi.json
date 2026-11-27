@@ -5116,7 +5116,8 @@
     "current": "स्रोत की जाँच की गई",
     "reportedClaims": "प्रकाशक की रिपोर्ट। दावों की जाँच अभी जारी हो सकती है।",
     "occurred": "घटना",
-    "reported": "प्रकाशित"
+    "reported": "प्रकाशित",
+    "listed": "सूचीबद्ध"
   },
   "panelVariants": {
     "finance": {

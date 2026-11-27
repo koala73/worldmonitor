@@ -4664,6 +4664,7 @@
   "tripAssessment.windowStart": "Trip starts",
   "ukmto.current": "Source checked",
   "ukmto.empty": "No incidents returned by UKMTO.",
+  "ukmto.listed": "Listed",
   "ukmto.occurred": "Incident",
   "ukmto.reported": "Published",
   "ukmto.reportedClaims": "Publisher reports. Claims may remain under investigation.",

@@ -5162,7 +5162,8 @@
     "current": "Źródło sprawdzone",
     "reportedClaims": "Raporty wydawcy. Twierdzenia mogą nadal być badane.",
     "occurred": "Incydent",
-    "reported": "Opublikowano"
+    "reported": "Opublikowano",
+    "listed": "Odnotowano"
   },
   "panelVariants": {
     "finance": {
