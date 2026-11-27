@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { getCurrentLanguage, getCurrentLanguageTag, t } from '@/services/i18n';
+import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { joinSafeHtml, safeHtml, safeUrlAttr, type SafeHtml } from '@/utils/sanitize';
 import { formatTime } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
@@ -11,114 +11,115 @@ import { ClimateServiceClient } from '@/services/generated-rpc-clients';
 
 const getClimateClient = createLazyClient(() => new ClimateServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
-// The same labels NewsPanel's translate control uses. Deliberately not new
-// locale keys: the app catalogues are translated in a separate pass
-// (scripts/translate-locales.mjs) and tests/app-locale-freshness.test.mjs
-// rejects bulk English placeholder copies, so shipping 28 of them to add one
-// tooltip would be worse than matching the control the reader already knows.
 const TRANSLATE_LABEL = 'Translate';
-const ORIGINAL_LABEL_PREFIX = 'Original: ';
+const RESTORE_LABEL = 'Restore original text';
+
+interface CardTranslation {
+  originals: string[];
+  result: 'pending' | 'unavailable' | string[] | null;
+}
 
 function truncateSummary(text: string, maxLen = 120): string {
   if (!text || text.length <= maxLen) return text || '';
   return text.slice(0, maxLen).replace(/\s+\S*$/, '') + '...';
 }
 
-function renderNewsCard(item: ClimateNewsItem): SafeHtml {
-  // Localized relative time through the shared formatter, which the news
-  // panels already use. The hand-rolled version here emitted English
-  // ("2h ago") into every locale.
+function renderNewsCard(item: ClimateNewsItem, target: string): SafeHtml {
   const timeAgo = item.publishedAt ? formatTime(new Date(item.publishedAt)) : '';
   const summary = truncateSummary(item.summary);
   const safeUrl = safeUrlAttr(item.url);
-  // Same rule as NewsPanel: offer the control only when the reader's UI is not
-  // English, because these feeds publish in English.
-  const translatable = getCurrentLanguage() !== 'en';
+  const translatable = target !== 'en';
+  const key = translatable
+    ? JSON.stringify([item.url, item.sourceName, item.publishedAt, item.title, item.summary, target])
+    : '';
 
   const inner = safeHtml`<div class="climate-news-card__header">
       <span class="climate-news-card__source">${item.sourceName}</span>
       <span class="climate-news-card__time">${timeAgo}</span>
-      ${translatable
-        ? safeHtml`<button type="button" class="climate-news-card__translate" title="${TRANSLATE_LABEL}" aria-label="${TRANSLATE_LABEL}">文</button>`
-        : ''}
     </div>
     <div class="climate-news-card__title">${item.title}</div>
     ${summary ? safeHtml`<div class="climate-news-card__summary">${summary}</div>` : ''}`;
+  const content = safeUrl.toString()
+    ? safeHtml`<a class="climate-news-card__content" href="${safeUrl}" target="_blank" rel="noopener noreferrer">${inner}</a>`
+    : safeHtml`<div class="climate-news-card__content">${inner}</div>`;
 
-  if (!safeUrl.toString()) return safeHtml`<div class="climate-news-card">${inner}</div>`;
-  return safeHtml`<a class="climate-news-card" href="${safeUrl}" target="_blank" rel="noopener noreferrer">${inner}</a>`;
+  return safeHtml`<div class="climate-news-card" data-translation-key="${key}">${content}${translatable
+    ? safeHtml`<button type="button" class="climate-news-card__translate" title="${TRANSLATE_LABEL}" aria-label="${TRANSLATE_LABEL}">文</button>
+      <div class="climate-news-card__translation-status" role="status"></div>`
+    : ''}</div>`;
+}
+
+function cardTextElements(card: HTMLElement): NodeListOf<HTMLElement> {
+  return card.querySelectorAll('.climate-news-card__title, .climate-news-card__summary');
+}
+
+function showTranslation(card: HTMLElement, state: CardTranslation): void {
+  const button = card.querySelector<HTMLButtonElement>('.climate-news-card__translate');
+  const status = card.querySelector('.climate-news-card__translation-status');
+  if (!button || !status) return;
+
+  const translated = Array.isArray(state.result);
+  const pending = state.result === 'pending';
+  const label = translated ? RESTORE_LABEL : TRANSLATE_LABEL;
+  const text = Array.isArray(state.result) ? state.result : state.originals;
+  cardTextElements(card).forEach((el, index) => { el.textContent = text[index] ?? ''; });
+  button.classList.toggle('translated', translated);
+  button.setAttribute('aria-disabled', String(pending));
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  button.textContent = translated ? '✓' : pending ? '…' : '文';
+  status.textContent = state.result === 'unavailable' ? t('components.newsPanel.translationUnavailable') : '';
 }
 
 export class ClimateNewsPanel extends Panel {
+  private readonly translations = new Map<string, CardTranslation>();
+
   constructor() {
     super({ id: 'climate-news', title: t('panels.climateNews'), infoTooltip: t('components.climateNews.infoTooltip') });
     this.content.addEventListener('click', (event) => {
-      const button = (event.target as HTMLElement | null)?.closest<HTMLElement>('.climate-news-card__translate');
-      if (!button) return;
-      // The card is an <a> when the item has a URL, so the click must not
-      // follow the link or bubble into the card's own handling.
-      event.preventDefault();
-      event.stopPropagation();
-      void this.toggleTranslation(button);
+      const button = (event.target as HTMLElement | null)?.closest('.climate-news-card__translate');
+      const card = button?.closest<HTMLElement>('.climate-news-card');
+      if (card) void this.toggleTranslation(card);
     });
   }
 
-  /**
-   * Translate a card's title and summary on demand, and put the originals back
-   * on a second press. Nothing is translated up front: these feeds are
-   * English, the reader may not want a machine rendering, and each call spends
-   * a provider request.
-   */
-  private async toggleTranslation(button: HTMLElement): Promise<void> {
-    const card = button.closest('.climate-news-card');
-    if (!card || button.hasAttribute('disabled')) return;
+  private async toggleTranslation(card: HTMLElement): Promise<void> {
+    const key = card.dataset.translationKey;
+    if (!key) return;
 
-    const parts = ['title', 'summary']
-      .map((part) => card.querySelector<HTMLElement>(`.climate-news-card__${part}`))
-      .filter((el): el is HTMLElement => el !== null);
-    if (!parts.length) return;
-
-    // Second press: restore what the source published.
-    if (button.classList.contains('translated')) {
-      for (const el of parts) {
-        if (el.dataset.original !== undefined) el.textContent = el.dataset.original;
-        delete el.dataset.original;
-      }
-      button.classList.remove('translated');
-      button.textContent = '文';
-      button.title = TRANSLATE_LABEL;
+    const previous = this.translations.get(key);
+    if (previous?.result === 'pending') return;
+    if (previous && Array.isArray(previous.result)) {
+      this.updateTranslationCards(key, { ...previous, result: null });
+      this.translations.delete(key);
       return;
     }
 
-    // Region matters: zh renders as Simplified unless the full tag is passed.
     const target = getCurrentLanguageTag();
-    button.setAttribute('disabled', '');
-    button.textContent = '…';
+    const originals = Array.from(cardTextElements(card), (el) => el.textContent ?? '');
+    const state: CardTranslation = { originals, result: 'pending' };
+    this.translations.set(key, state);
+    this.updateTranslationCards(key, state);
+
     try {
-      const originals = parts.map((el) => el.textContent ?? '');
       const translations = await Promise.all(originals.map((text) => translateText(text, target)));
-      if (!this.element?.isConnected || !card.isConnected) return;
-      // All or nothing: a half-translated card reads as a source that mixed
-      // languages rather than a translation that partly failed.
-      if (translations.some((value) => !value)) {
-        button.textContent = '文';
-        button.title = t('components.newsPanel.translationUnavailable');
-        return;
-      }
-      parts.forEach((el, index) => {
-        el.dataset.original = originals[index];
-        el.textContent = translations[index] as string;
-      });
-      button.classList.add('translated');
-      button.textContent = '✓';
-      button.title = ORIGINAL_LABEL_PREFIX + originals[0];
+      state.result = translations.every((text): text is string => !!text) ? translations : 'unavailable';
     } catch {
-      if (!this.element?.isConnected) return;
-      button.textContent = '文';
-      button.title = t('components.newsPanel.translationUnavailable');
-    } finally {
-      button.removeAttribute('disabled');
+      state.result = 'unavailable';
     }
+    if (this.translations.get(key) !== state || !this.element.isConnected) return;
+
+    this.updateTranslationCards(key, state);
+  }
+
+  private updateTranslationCards(key: string, state: CardTranslation): void {
+    for (const card of this.translationCards()) {
+      if (card.dataset.translationKey === key) showTranslation(card, state);
+    }
+  }
+
+  private translationCards(): NodeListOf<HTMLElement> {
+    return this.content.querySelectorAll('.climate-news-card[data-translation-key]:not([data-translation-key=""])');
   }
 
   public async fetchData(): Promise<void> {
@@ -149,7 +150,20 @@ export class ClimateNewsPanel extends Panel {
       return;
     }
 
-    const cards = joinSafeHtml(data.items.map(renderNewsCard));
-    this.setSafeContent(safeHtml`<div class="climate-news-list">${cards}</div>`);
+    const target = getCurrentLanguageTag();
+    const cards = joinSafeHtml(data.items.map((item) => renderNewsCard(item, target)));
+    this.setSafeContent(safeHtml`<div class="climate-news-list">${cards}</div>`, () => {
+      const visibleKeys = new Set<string>();
+      for (const card of this.translationCards()) {
+        const key = card.dataset.translationKey;
+        if (!key) continue;
+        visibleKeys.add(key);
+        const state = this.translations.get(key);
+        if (state) showTranslation(card, state);
+      }
+      for (const key of this.translations.keys()) {
+        if (!visibleKeys.has(key)) this.translations.delete(key);
+      }
+    });
   }
 }

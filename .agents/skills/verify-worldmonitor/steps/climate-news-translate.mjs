@@ -1,13 +1,12 @@
 import { seedProfile, waitForBoot } from './_profile.mjs';
 
-/**
- * #10054: the Climate News card's on-demand translate control, and its
- * localized relative time. Drives the real user path: pick German in
- * Settings -> Language, enable the panel, then press the card's 文 button.
- */
 const PANEL_KEY = 'climate-news';
+const TITLE = 'Arctic sea ice hits a record winter low';
+const SUMMARY = 'Researchers report the lowest winter maximum in the satellite record.';
+const TRANSLATED_TITLE = 'Arktisches Meereis erreicht ein Rekordtief';
+const TRANSLATED_SUMMARY = 'Forschende berichten vom niedrigsten Wintermaximum der Satellitenaufzeichnung.';
 
-export default async function ({ page, base, shot, log, expectVisible }) {
+export default async function ({ page, base, shot, log }) {
   await seedProfile(page, {
     localStorage: {
       'wm-pro-key': 'wm-verify-climate-translate',
@@ -26,8 +25,8 @@ export default async function ({ page, base, shot, log, expectVisible }) {
       body: JSON.stringify({
         items: [
           {
-            title: 'Arctic sea ice hits a record winter low',
-            summary: 'Researchers report the lowest winter maximum in the satellite record.',
+            title: TITLE,
+            summary: SUMMARY,
             sourceName: 'Carbon Brief',
             url: 'https://example.org/arctic',
             publishedAt: PUBLISHED_AT,
@@ -47,16 +46,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   // The provider call behind translateText. Stubbed with fixed German text so
   // the screenshot shows the real UI path on controlled data rather than
   // whatever a local provider happens to return.
+  let providerUnavailable = false;
+  const translations = new Map([[TITLE, TRANSLATED_TITLE], [SUMMARY, TRANSLATED_SUMMARY]]);
   await page.route('**/summarize-article**', async (route) => {
-    const body = route.request().postData() ?? '';
-    const german = body.includes('ice') || body.includes('Arctic') || body.includes('sea')
-      ? 'Arktisches Meereis erreicht ein Rekordtief'
-      : 'Forschende berichten vom niedrigsten Wintermaximum der Satellitenaufzeichnung.';
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ summary: german, text: german, translation: german }),
-    });
+    const request = route.request().postDataJSON();
+    const summary = !providerUnavailable && request.mode === 'translate' && request.variant === 'de'
+      ? translations.get(request.headlines[0])
+      : undefined;
+    await route.fulfill({ json: { summary: summary ?? '', fallback: !summary } });
   });
 
   await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded' });
@@ -86,31 +83,49 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   const card = panel.locator('.climate-news-card').first();
   await card.waitFor({ state: 'visible', timeout: 60_000 });
 
-  const time = await card.locator('.climate-news-card__time').first().textContent();
-  const title = await card.locator('.climate-news-card__title').first().textContent();
-  log('relative time as rendered:', JSON.stringify(time));
-  log('published title:', JSON.stringify(title));
-  if (/\d+[mhd] ago|just now/.test(time ?? '')) {
-    throw new Error(`relative time is still an English literal: ${time}`);
+  const time = await card.locator('.climate-news-card__time').textContent();
+  if (time !== 'vor 2 Stunden') throw new Error(`unexpected German relative time: ${time}`);
+
+  const title = card.locator('.climate-news-card__title');
+  const summary = card.locator('.climate-news-card__summary');
+  const link = card.getByRole('link');
+  const button = card.locator('button');
+  await shot('climate-news-de-before-translate', { locator: panel });
+
+  await link.focus();
+  await page.keyboard.press('Tab');
+  if (!await button.evaluate((el) => el === document.activeElement)) {
+    throw new Error('Tab did not move from the article link to the translate button');
   }
+  await page.keyboard.press('Enter');
+  await card.getByRole('button', { name: 'Restore original text' }).waitFor();
+  const translated = await title.textContent();
+  const translatedSummary = await summary.textContent();
+  if (translated !== TRANSLATED_TITLE || translatedSummary !== TRANSLATED_SUMMARY) {
+    throw new Error(`unexpected translations: ${translated}, ${translatedSummary}`);
+  }
+  await shot('climate-news-de-after-translate', { locator: panel });
 
-  const button = card.locator('.climate-news-card__translate').first();
-  await button.waitFor({ state: 'visible', timeout: 30_000 });
-  await shot('climate-news-de-before-translate');
+  await page.keyboard.press('Enter');
+  await card.getByRole('button', { name: 'Translate', exact: true }).waitFor();
+  if (await title.textContent() !== TITLE || await summary.textContent() !== SUMMARY) {
+    throw new Error('original title and summary were not restored');
+  }
+  await shot('climate-news-de-restored', { locator: panel });
 
+  providerUnavailable = true;
   await button.click();
-  await card.locator('.climate-news-card__translate.translated').waitFor({ state: 'visible', timeout: 30_000 });
-  const translated = await card.locator('.climate-news-card__title').first().textContent();
-  log('title after translate:', JSON.stringify(translated));
-  if (translated === title) throw new Error('title did not change after translate');
-  await shot('climate-news-de-after-translate');
+  const status = card.getByRole('status');
+  await status.filter({ hasText: /\S/ }).waitFor();
+  if (await title.textContent() !== TITLE || await summary.textContent() !== SUMMARY) {
+    throw new Error('failed translation changed the published text');
+  }
+  await shot('climate-news-de-provider-unavailable', { locator: panel });
 
-  // Second press restores exactly what the source published.
-  await button.click();
-  const restored = await card.locator('.climate-news-card__title').first().textContent();
-  log('title after second press:', JSON.stringify(restored));
-  if (restored !== title) throw new Error(`original not restored: ${restored}`);
-  await shot('climate-news-de-restored');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await panel.scrollIntoViewIfNeeded();
+  await shot('climate-news-de-mobile-provider-unavailable', { locator: panel });
 
-  return { time, title, translated, restored };
+  log('relative time and translated fields:', { time, translated, translatedSummary });
+  return { time, translated, translatedSummary, restored: TITLE, failure: await status.textContent() };
 }
