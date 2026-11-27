@@ -43,9 +43,67 @@ import {
   PRO_LAUNCH_SUBJECT,
   PRO_LAUNCH_TEXT,
 } from "./proLaunchEmailContent";
+import {
+  BLACK_FRIDAY_FROM,
+  BLACK_FRIDAY_LOCALES,
+  BLACK_FRIDAY_OFFER,
+  BLACK_FRIDAY_REPLY_TO,
+  BLACK_FRIDAY_VERSIONS,
+  RESEND_UNSUBSCRIBE_TOKEN,
+  renderBlackFridayEmail,
+  type BlackFridayVersion,
+} from "./blackFridayEmailContent";
 
 const RESEND_API_BASE = "https://api.resend.com";
 const USER_AGENT = "WorldMonitor-PROLaunchSender/1.0 (+https://worldmonitor.app)";
+
+/**
+ * Create a Resend Broadcast (a draft: nothing is sent) and return its id.
+ * The one `POST /broadcasts` call site, shared by every campaign's content.
+ */
+async function createResendBroadcast(
+  apiKey: string,
+  caller: string,
+  content: {
+    name: string;
+    segmentId: string;
+    from: string;
+    replyTo: string;
+    subject: string;
+    html: string;
+    text: string;
+  },
+): Promise<string> {
+  const res = await fetch(`${RESEND_API_BASE}/broadcasts`, {
+    signal: AbortSignal.timeout(10_000),
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "User-Agent": USER_AGENT,
+    },
+    body: JSON.stringify({
+      name: content.name,
+      segment_id: content.segmentId,
+      from: content.from,
+      reply_to: content.replyTo,
+      subject: content.subject,
+      html: content.html,
+      text: content.text,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "<no body>");
+    throw new Error(`[${caller}] Resend ${res.status}: ${body}`);
+  }
+
+  const json = (await res.json().catch(() => null)) as { id?: string } | null;
+  if (!json?.id) {
+    throw new Error(`[${caller}] Resend response missing id: ${JSON.stringify(json)}`);
+  }
+  return json.id;
+}
 
 /**
  * Create a Resend Broadcast from the locked launch content. Does NOT
@@ -89,48 +147,83 @@ export const createProLaunchBroadcast = internalAction({
         ? `PRO Launch — ${nameSuffix}`
         : `PRO Launch — ${new Date().toISOString().slice(0, 10)}`;
 
-    const res = await fetch(`${RESEND_API_BASE}/broadcasts`, {
-
-      signal: AbortSignal.timeout(10_000),
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "User-Agent": USER_AGENT,
-      },
-      body: JSON.stringify({
-        name,
-        segment_id: segmentId,
-        from: PRO_LAUNCH_FROM,
-        reply_to: PRO_LAUNCH_REPLY_TO,
-        subject: PRO_LAUNCH_SUBJECT,
-        html: PRO_LAUNCH_HTML,
-        text: PRO_LAUNCH_TEXT,
-      }),
+    const broadcastId = await createResendBroadcast(apiKey, "createProLaunchBroadcast", {
+      name,
+      segmentId,
+      from: PRO_LAUNCH_FROM,
+      replyTo: PRO_LAUNCH_REPLY_TO,
+      subject: PRO_LAUNCH_SUBJECT,
+      html: PRO_LAUNCH_HTML,
+      text: PRO_LAUNCH_TEXT,
     });
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => "<no body>");
-      throw new Error(
-        `[createProLaunchBroadcast] Resend ${res.status}: ${body}`,
-      );
-    }
-
-    const json = (await res.json().catch(() => null)) as {
-      id?: string;
-    } | null;
-    if (!json?.id) {
-      throw new Error(
-        `[createProLaunchBroadcast] Resend response missing id: ${JSON.stringify(json)}`,
-      );
-    }
-
     return {
-      broadcastId: json.id,
+      broadcastId,
       name,
       segmentId,
       subject: PRO_LAUNCH_SUBJECT,
     };
+  },
+});
+
+/**
+ * Create the Resend Broadcast for one Black Friday segment: one version, in
+ * one locale, for one recipient type. Does NOT send. Called by
+ * `finalizeWaveAction` for campaign runs; the run is then held until an
+ * operator releases it (see blackFriday.ts and the runbook beside it).
+ *
+ * The unsubscribe link is Resend's per-contact token, which Resend fills for
+ * every contact in the segment, account or waitlist, and backs with its own
+ * List-Unsubscribe headers. The webhook turns that unsubscribe into an
+ * `emailSuppressions` row (resendWebhookHandler.ts).
+ */
+export const createBlackFridayBroadcast = internalAction({
+  args: {
+    segmentId: v.string(),
+    nameSuffix: v.string(),
+    campaignId: v.string(),
+    version: v.string(),
+    locale: v.string(),
+    recipient: v.union(v.literal("account"), v.literal("waitlist")),
+  },
+  handler: async (_ctx, args) => {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      throw new Error("[createBlackFridayBroadcast] RESEND_API_KEY not set");
+    }
+    if (args.campaignId !== BLACK_FRIDAY_OFFER.campaignId) {
+      throw new Error(`[createBlackFridayBroadcast] unknown campaign ${args.campaignId}`);
+    }
+    if (!(BLACK_FRIDAY_VERSIONS as readonly string[]).includes(args.version)) {
+      throw new Error(`[createBlackFridayBroadcast] unknown version ${args.version}`);
+    }
+    if (!(BLACK_FRIDAY_LOCALES as readonly string[]).includes(args.locale)) {
+      throw new Error(`[createBlackFridayBroadcast] unknown locale ${args.locale}`);
+    }
+    // The offer ends by clock. A broadcast created after it would promise a
+    // price checkout no longer gives.
+    if (Date.now() >= BLACK_FRIDAY_OFFER.endsAtMs) {
+      throw new Error("[createBlackFridayBroadcast] the offer has ended");
+    }
+    const email = renderBlackFridayEmail({
+      version: args.version as BlackFridayVersion,
+      locale: args.locale,
+      recipient: args.recipient,
+    });
+    if (!email.html.includes(RESEND_UNSUBSCRIBE_TOKEN) || !email.text.includes(RESEND_UNSUBSCRIBE_TOKEN)) {
+      throw new Error("[createBlackFridayBroadcast] content is missing the unsubscribe token");
+    }
+    const name = `Black Friday 2026 — ${args.nameSuffix}`;
+    const broadcastId = await createResendBroadcast(apiKey, "createBlackFridayBroadcast", {
+      name,
+      segmentId: args.segmentId,
+      from: BLACK_FRIDAY_FROM,
+      replyTo: BLACK_FRIDAY_REPLY_TO,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+    });
+    return { broadcastId, name, segmentId: args.segmentId, subject: email.subject };
   },
 });
 

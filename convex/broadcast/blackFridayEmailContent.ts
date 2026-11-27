@@ -83,12 +83,45 @@ export function isSwitchVersion(version: BlackFridayVersion): boolean {
 /**
  * The primary CTA. Buyers land on the /pro pricing cards, which open on
  * yearly billing while the offer runs. Pro Monthly subscribers land on the
- * dashboard: no URL opens Settings on the account page, so the email names
- * the path (Settings, Account, "Switch to yearly").
+ * dashboard with Settings open on Account (`?settings=account`), where the
+ * switch button is; the email also names that path as a fallback.
  */
 export function blackFridayCtaUrl(version: BlackFridayVersion): string {
   const query = `${UTM}&utm_content=${version}`;
-  return isSwitchVersion(version) ? `${SITE}/dashboard?${query}` : `${SITE}/pro?${query}#pricing`;
+  return isSwitchVersion(version)
+    ? `${SITE}/dashboard?settings=account&${query}`
+    : `${SITE}/pro?${query}#pricing`;
+}
+
+/**
+ * APP LABELS: the dashboard's own strings, quoted in the switch emails so the
+ * reader looks for the words the app shows. Keep these byte-identical to
+ * src/locales/<locale>.json:
+ *   switchToYearly  settings.account.switchYearly.entryLabel
+ *   settings        header.tabSettings
+ *   account         settings.sections.account
+ * Values are from PR #11463 at 43e266ca42. If the app's strings change, change
+ * them here and nowhere else.
+ */
+export const BLACK_FRIDAY_APP_LABELS: Record<
+  BlackFridayLocale,
+  { switchToYearly: string; settings: string; account: string }
+> = {
+  en: { switchToYearly: "Switch to yearly", settings: "Settings", account: "Account" },
+  zh: { switchToYearly: "切换为年付", settings: "设置", account: "账户" },
+  fr: { switchToYearly: "Passer à l'abonnement annuel", settings: "Paramètres", account: "Compte" },
+  tr: { switchToYearly: "Yıllık plana geç", settings: "Ayarlar", account: "Hesap" },
+  es: { switchToYearly: "Cambiar a facturación anual", settings: "Ajustes", account: "Cuenta" },
+  de: { switchToYearly: "Auf jährlich umstellen", settings: "Einstellungen", account: "Konto" },
+};
+
+/** The fallback line naming where the switch button is, with the app's labels. */
+export function blackFridaySwitchPath(locale: BlackFridayLocale): string {
+  const labels = BLACK_FRIDAY_APP_LABELS[locale];
+  return BLACK_FRIDAY_COPY[locale].switchPath
+    .replace("{settings}", labels.settings)
+    .replace("{account}", labels.account)
+    .replace("{switchToYearly}", labels.switchToYearly);
 }
 
 /**
@@ -134,7 +167,11 @@ export interface BlackFridayLocaleCopy {
   waitlistNote: string;
   /** Under the button, for the in-place switch. */
   switchNote: string;
-  /** Where the switch button is. The button label itself is English in the app. */
+  /**
+   * Where the switch button is, as a fallback when the deep link does not
+   * open Settings. `{settings}`, `{account}` and `{switchToYearly}` are filled
+   * from BLACK_FRIDAY_APP_LABELS.
+   */
   switchPath: string;
   stepsTitle: string;
   steps: readonly [string, string, string];
@@ -162,7 +199,7 @@ const EN: BlackFridayLocaleCopy = {
   waitlistNote: "Checkout asks you to create a WorldMonitor account first.",
   switchNote:
     "The discount is applied when you switch. There is no code to enter. Prices are in US dollars; taxes or VAT may be added.",
-  switchPath: "In the dashboard, open Settings → Account, then choose “Switch to yearly”.",
+  switchPath: "The button opens {settings} → {account} in the dashboard. Choose “{switchToYearly}” there.",
   stepsTitle: "What happens when you switch",
   steps: [
     "Your plan changes to Pro Yearly immediately.",
@@ -236,7 +273,7 @@ const ZH: BlackFridayLocaleCopy = {
   checkoutNote: "折扣将在结账时自动生效，无需输入优惠码。价格以美元计价；结账时可能另加税费或增值税。",
   waitlistNote: "结账前需要先创建 WorldMonitor 账户。",
   switchNote: "折扣将在切换时自动生效，无需输入优惠码。价格以美元计价；可能另加税费或增值税。",
-  switchPath: "在仪表板中打开“设置”→“账户”，然后点击“Switch to yearly”。",
+  switchPath: "按钮会打开仪表板中的“{settings}”→“{account}”，在那里点击“{switchToYearly}”。",
   stepsTitle: "切换后会发生什么",
   steps: [
     "您的套餐立即变为 Pro 年度版。",
@@ -305,7 +342,7 @@ const FR: BlackFridayLocaleCopy = {
   waitlistNote: "Vous devrez d'abord créer un compte WorldMonitor pour payer.",
   switchNote:
     "La réduction est appliquée automatiquement lors du changement. Aucun code à saisir. Prix en dollars américains\u00a0; des taxes ou la TVA peuvent s'ajouter.",
-  switchPath: "Dans le tableau de bord, ouvrez Paramètres → Compte, puis choisissez «\u00a0Switch to yearly\u00a0».",
+  switchPath: "Le bouton ouvre {settings} → {account} dans le tableau de bord. Choisissez-y «\u00a0{switchToYearly}\u00a0».",
   stepsTitle: "Ce qui se passe quand vous passez à l'annuel",
   steps: [
     "Votre abonnement passe immédiatement à Pro Annuel.",
@@ -346,7 +383,7 @@ const FR: BlackFridayLocaleCopy = {
       headline: "70\u00a0% de réduction sur Pro",
       intro:
         "Vous payez actuellement $39.99 par mois pour Pro. Passez à Pro Annuel d'ici le 4 décembre\u00a0: la première année vous coûtera $144, soit $12 par mois.",
-      cta: "Passer à l'annuel",
+      cta: "Passer à l'abonnement annuel",
     },
     "last-day": {
       subject: "Dernier jour\u00a0: 70\u00a0% de réduction sur WorldMonitor Pro, jusqu'à 23\u00a0h\u00a045 UTC aujourd'hui",
@@ -363,7 +400,7 @@ const FR: BlackFridayLocaleCopy = {
       headline: "Dernier jour\u00a0: 70\u00a0% de réduction sur Pro",
       intro:
         "Le prix Black Friday prend fin aujourd'hui, le 4 décembre 2026, à 23\u00a0h\u00a045 UTC. Vous payez actuellement $39.99 par mois pour Pro\u00a0; avec Pro Annuel, la première année est à $144, soit $12 par mois.",
-      cta: "Passer à l'annuel",
+      cta: "Passer à l'abonnement annuel",
     },
   },
 };
@@ -382,7 +419,7 @@ const TR: BlackFridayLocaleCopy = {
   waitlistNote: "Ödeme için önce bir WorldMonitor hesabı oluşturmanız gerekir.",
   switchNote:
     "İndirim geçiş sırasında otomatik olarak uygulanır. Kod girmeniz gerekmez. Fiyatlar ABD doları cinsindendir; vergi veya KDV eklenebilir.",
-  switchPath: "Panoda Ayarlar → Hesap bölümünü açın, ardından “Switch to yearly” düğmesine tıklayın.",
+  switchPath: "Düğme, panoda {settings} → {account} bölümünü açar. Orada “{switchToYearly}” düğmesine tıklayın.",
   stepsTitle: "Geçiş yaptığınızda ne olur",
   steps: [
     "Planınız hemen Pro Yıllık'a geçer.",
@@ -459,7 +496,7 @@ const ES: BlackFridayLocaleCopy = {
   waitlistNote: "Para pagar, primero tendrás que crear una cuenta de WorldMonitor.",
   switchNote:
     "El descuento se aplica automáticamente al cambiar. No hay que introducir ningún código. Precios en dólares estadounidenses; pueden añadirse impuestos o IVA.",
-  switchPath: "En el panel, abre Configuración → Cuenta y elige «Switch to yearly».",
+  switchPath: "El botón abre {settings} → {account} en el panel. Elige allí «{switchToYearly}».",
   stepsTitle: "Qué ocurre al cambiar",
   steps: [
     "Tu plan pasa a Pro Anual de inmediato.",
@@ -499,7 +536,7 @@ const ES: BlackFridayLocaleCopy = {
       headline: "70\u00a0% de descuento en Pro",
       intro:
         "Pagas $39.99 al mes por Pro. Si te cambias a Pro Anual a más tardar el 4 de diciembre, el primer año cuesta $144, es decir, $12 al mes.",
-      cta: "Cambiar a anual",
+      cta: "Cambiar a facturación anual",
     },
     "last-day": {
       subject: "Último día: 70\u00a0% de descuento en WorldMonitor Pro, hasta hoy a las 23:45 UTC",
@@ -516,7 +553,7 @@ const ES: BlackFridayLocaleCopy = {
       headline: "Último día: 70\u00a0% de descuento en Pro",
       intro:
         "El precio de Black Friday termina hoy, 4 de diciembre de 2026, a las 23:45 UTC. Pagas $39.99 al mes por Pro; con Pro Anual, el primer año cuesta $144, es decir, $12 al mes.",
-      cta: "Cambiar a anual",
+      cta: "Cambiar a facturación anual",
     },
   },
 };
@@ -535,7 +572,7 @@ const DE: BlackFridayLocaleCopy = {
   waitlistNote: "Vor der Zahlung legen Sie ein WorldMonitor-Konto an.",
   switchNote:
     "Der Rabatt wird beim Wechsel automatisch abgezogen. Sie müssen keinen Code eingeben. Preise in US-Dollar; Steuern oder Mehrwertsteuer können hinzukommen.",
-  switchPath: "Öffnen Sie im Dashboard Einstellungen → Konto und wählen Sie „Switch to yearly“.",
+  switchPath: "Die Schaltfläche öffnet im Dashboard {settings} → {account}. Wählen Sie dort „{switchToYearly}“.",
   stepsTitle: "Was beim Wechsel passiert",
   steps: [
     "Ihr Abo wechselt sofort zu Pro Yearly.",
@@ -576,7 +613,7 @@ const DE: BlackFridayLocaleCopy = {
       headline: "70\u00a0% Rabatt auf Pro",
       intro:
         "Sie zahlen $39.99 pro Monat für Pro. Wenn Sie bis zum 4. Dezember zu Pro Yearly wechseln, kostet das erste Jahr $144, also $12 pro Monat.",
-      cta: "Auf jährliche Zahlung umstellen",
+      cta: "Auf jährlich umstellen",
     },
     "last-day": {
       subject: "Letzter Tag: 70\u00a0% Rabatt auf WorldMonitor Pro endet heute um 23:45 Uhr UTC",
@@ -593,7 +630,7 @@ const DE: BlackFridayLocaleCopy = {
       headline: "Letzter Tag: 70\u00a0% Rabatt auf Pro",
       intro:
         "Der Black-Friday-Preis endet heute, am 4. Dezember 2026, um 23:45 Uhr UTC. Sie zahlen $39.99 pro Monat für Pro; mit Pro Yearly kostet das erste Jahr $144, also $12 pro Monat.",
-      cta: "Auf jährliche Zahlung umstellen",
+      cta: "Auf jährlich umstellen",
     },
   },
 };
@@ -689,19 +726,25 @@ export interface BlackFridayEmail {
   ctaUrl: string;
 }
 
-function notesFor(copy: BlackFridayLocaleCopy, version: BlackFridayVersion, recipient: BlackFridayRecipient): string[] {
-  if (isSwitchVersion(version)) return [copy.switchPath, copy.switchNote];
+function notesFor(
+  copy: BlackFridayLocaleCopy,
+  locale: BlackFridayLocale,
+  version: BlackFridayVersion,
+  recipient: BlackFridayRecipient,
+): string[] {
+  if (isSwitchVersion(version)) return [blackFridaySwitchPath(locale), copy.switchNote];
   return recipient === "waitlist" ? [copy.checkoutNote, copy.waitlistNote] : [copy.checkoutNote];
 }
 
 function renderText(args: {
   copy: BlackFridayLocaleCopy;
+  locale: BlackFridayLocale;
   version: BlackFridayVersion;
   recipient: BlackFridayRecipient;
   ctaUrl: string;
   unsubscribeUrl: string;
 }): string {
-  const { copy, version, recipient, ctaUrl, unsubscribeUrl } = args;
+  const { copy, locale, version, recipient, ctaUrl, unsubscribeUrl } = args;
   const v = copy.versions[version];
   const lines: string[] = [
     v.headline,
@@ -715,7 +758,7 @@ function renderText(args: {
     "",
     `${v.cta}${copy.colon}${ctaUrl}`,
     "",
-    ...notesFor(copy, version, recipient),
+    ...notesFor(copy, locale, version, recipient),
   ];
   if (version === "monthly-switch") {
     lines.push("", `${copy.stepsTitle}${copy.colon.trimEnd()}`, ...copy.steps.map((step, index) => `${index + 1}. ${step}`));
@@ -750,7 +793,7 @@ function renderHtml(args: {
   // Resend's token is substituted before delivery and must stay byte-exact.
   const unsubscribeHref =
     unsubscribeUrl === RESEND_UNSUBSCRIBE_TOKEN ? unsubscribeUrl : escapeEmailHtml(unsubscribeUrl);
-  const notes = notesFor(copy, version, recipient)
+  const notes = notesFor(copy, locale, version, recipient)
     .map((note) => `<p style="margin: 0 0 6px; font-size: 13px; line-height: 1.55; color: ${MUTED};">${escapeEmailHtml(note)}</p>`)
     .join("");
 
@@ -820,7 +863,7 @@ export function renderBlackFridayEmail(args: BlackFridayEmailArgs): BlackFridayE
     subject: v.subject,
     preheader: v.preheader,
     html: renderHtml({ copy, locale, version: args.version, recipient, ctaUrl, unsubscribeUrl }),
-    text: renderText({ copy, version: args.version, recipient, ctaUrl, unsubscribeUrl }),
+    text: renderText({ copy, locale, version: args.version, recipient, ctaUrl, unsubscribeUrl }),
     ctaUrl,
   };
 }

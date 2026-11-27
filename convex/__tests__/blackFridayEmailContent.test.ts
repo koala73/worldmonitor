@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  BLACK_FRIDAY_APP_LABELS,
   BLACK_FRIDAY_COPY,
   BLACK_FRIDAY_LOCALES,
   BLACK_FRIDAY_OFFER,
@@ -7,6 +8,7 @@ import {
   BLACK_FRIDAY_VERSIONS,
   RESEND_UNSUBSCRIBE_TOKEN,
   blackFridayCtaUrl,
+  blackFridaySwitchPath,
   isSwitchVersion,
   pickBlackFridayLocale,
   renderBlackFridayEmail,
@@ -227,8 +229,13 @@ describe.each(CASES)("%s in %s", (version, locale) => {
     const copy = BLACK_FRIDAY_COPY[locale];
     const html = visibleText(email.html);
     if (isSwitchVersion(version)) {
-      expect(html).toContain("Switch to yearly");
-      expect(email.text).toContain(copy.switchPath);
+      const labels = BLACK_FRIDAY_APP_LABELS[locale];
+      const path = blackFridaySwitchPath(locale);
+      expect(path).not.toMatch(/[{}]/);
+      for (const label of [labels.switchToYearly, labels.settings, labels.account]) expect(path).toContain(label);
+      expect(html).toContain(path);
+      expect(email.text).toContain(path);
+      expect(new URL(email.ctaUrl).searchParams.get("settings")).toBe("account");
       const detail = version === "monthly-switch" ? copy.steps.join(" ") : copy.switchSummary;
       for (const sentence of version === "monthly-switch" ? copy.steps : [copy.switchSummary]) {
         expect(html).toContain(sentence);
@@ -237,19 +244,18 @@ describe.each(CASES)("%s in %s", (version, locale) => {
       // The prorated charge is named with its base price.
       expect(detail).toContain("$144");
     } else {
-      expect(email.html).not.toContain("Switch to yearly");
-      expect(email.text).not.toContain(copy.switchPath);
+      expect(visibleText(email.html)).not.toContain(blackFridaySwitchPath(locale));
+      expect(email.text).not.toContain(blackFridaySwitchPath(locale));
+      expect(new URL(email.ctaUrl).searchParams.has("settings")).toBe(false);
       expect(email.text).toContain(copy.checkoutNote);
     }
   });
 });
 
 describe("non-English copy is fully translated", () => {
-  // Brand and product names, the legal address, and the one English UI label
-  // the email must quote (the Settings button is English-only in the app).
+  // Brand and product names and the legal address.
   const ALLOWED = [
     BLACK_FRIDAY_PHYSICAL_ADDRESS,
-    "Switch to yearly",
     "WorldMonitor",
     "WORLD MONITOR",
     "worldmonitor.app",
@@ -358,5 +364,27 @@ describe("recipient and locale selection", () => {
     expect(renderBlackFridayEmail({ version: "lapsed", locale: "ja" }).subject).toBe(
       BLACK_FRIDAY_COPY.en.versions.lapsed.subject,
     );
+  });
+});
+
+describe("app labels quoted in the switch emails", () => {
+  test("are the dashboard's strings, translated in every non-English locale", () => {
+    expect(BLACK_FRIDAY_APP_LABELS).toEqual({
+      en: { switchToYearly: "Switch to yearly", settings: "Settings", account: "Account" },
+      zh: { switchToYearly: "切换为年付", settings: "设置", account: "账户" },
+      fr: { switchToYearly: "Passer à l'abonnement annuel", settings: "Paramètres", account: "Compte" },
+      tr: { switchToYearly: "Yıllık plana geç", settings: "Ayarlar", account: "Hesap" },
+      es: { switchToYearly: "Cambiar a facturación anual", settings: "Ajustes", account: "Cuenta" },
+      de: { switchToYearly: "Auf jährlich umstellen", settings: "Einstellungen", account: "Konto" },
+    });
+  });
+
+  test("the email takes them from the constants, not from its own copy", () => {
+    for (const locale of BLACK_FRIDAY_LOCALES) {
+      const template = BLACK_FRIDAY_COPY[locale].switchPath;
+      for (const token of ["{settings}", "{account}", "{switchToYearly}"]) expect(template).toContain(token);
+      const labels = BLACK_FRIDAY_APP_LABELS[locale];
+      for (const label of Object.values(labels)) expect(template).not.toContain(label);
+    }
   });
 });
