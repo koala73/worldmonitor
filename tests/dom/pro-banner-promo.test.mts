@@ -21,8 +21,10 @@ const storage: Storage = {
 };
 
 vi.mock('@/services/analytics', () => ({ trackGateHit: vi.fn(), trackProBannerClick: vi.fn() }));
+// A lapsed subscriber gets the resubscribe strip, never the offer.
+const billing = vi.hoisted(() => ({ subscription: null as Record<string, unknown> | null }));
 vi.mock('@/services/billing', () => ({
-  getSubscription: () => null,
+  getSubscription: () => billing.subscription,
   onSubscriptionChange: () => () => {},
 }));
 vi.mock('@/services/auth-state', () => ({
@@ -63,9 +65,20 @@ beforeEach(() => {
   vi.useRealTimers();
   vi.useFakeTimers({ toFake: ['Date'] });
   storage.clear();
+  billing.subscription = null;
   document.body.replaceChildren();
   vi.resetModules();
 });
+
+function lapsedSubscription(): Record<string, unknown> {
+  return {
+    planKey: 'pro_monthly',
+    displayName: 'Pro',
+    status: 'cancelled',
+    currentPeriodEnd: DURING - 10 * 24 * 60 * 60 * 1000,
+    renewalVerificationState: null,
+  };
+}
 
 function mountContainer(): HTMLElement {
   const container = document.createElement('main');
@@ -134,6 +147,27 @@ describe('dashboard Pro strip during the promotion', () => {
     const banner = container.querySelector<HTMLElement>('.pro-banner');
     expect(banner?.dataset.promo).toBeUndefined();
     expect(banner?.textContent).toContain('components.proBanner.headline');
+  });
+
+  it('a lapsed subscriber gets the resubscribe strip during the offer', async () => {
+    billing.subscription = lapsedSubscription();
+    const container = await showAt(DURING);
+    const banner = container.querySelector<HTMLElement>('.pro-banner')!;
+    expect(banner.dataset.billingState).toBe('lapsed');
+    expect(banner.dataset.promo).toBeUndefined();
+    expect(storage.getItem('wm-pro-banner-lapsed')).toBe('1');
+  });
+
+  // The resubscribe strip is the one that renders, so its own dismissal decides.
+  it('a lapsed subscriber who closed the resubscribe strip does not see it again during the offer', async () => {
+    billing.subscription = lapsedSubscription();
+    storage.setItem(REGULAR_DISMISS_KEY, String(DURING - 60_000));
+    vi.setSystemTime(DURING);
+    const { showProBanner } = await import('@/components/ProBanner');
+    const container = mountContainer();
+    showProBanner(container);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(container.querySelector('.pro-banner')).toBeNull();
   });
 
   it('shows the regular strip once the offer has ended', async () => {

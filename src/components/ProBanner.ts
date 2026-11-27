@@ -23,7 +23,7 @@ import {
 } from '@/services/pro-banner-policy';
 import { t, getLocale } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { safeStorageGet, safeStorageSet } from '@/utils/safe-storage';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import {
   activePromo,
   formatPromoEnd,
@@ -70,6 +70,10 @@ const RESERVATION_CLASS = 'wm-pro-banner-reserved';
 // PROMO_DISMISSED_UNTIL_KEY says its banner stays closed until then.
 const PROMO_LIVE_UNTIL_KEY = 'wm-pro-banner-promo-until';
 const PROMO_DISMISSED_UNTIL_KEY = 'wm-pro-banner-promo-dismissed-until';
+// A lapsed subscriber gets the resubscribe strip even while a promotion runs,
+// so the regular dismissal decides for them. Pre-paint cannot see billing
+// state, so the last mount records it here.
+const LAPSED_HINT_KEY = 'wm-pro-banner-lapsed';
 
 /** The promotion the free banner advertises now, or null. */
 function bannerPromo(): PromoCampaign | null {
@@ -169,10 +173,11 @@ function scheduleBannerRemoval(): void {
   }, 300);
 }
 
-function isDismissed(): boolean {
+/** `lapsed`: the resubscribe strip renders, never the promotion. */
+function isDismissed(lapsed: boolean): boolean {
   if (dismissedThisSession) return true;
 
-  const promo = bannerPromo();
+  const promo = lapsed ? null : bannerPromo();
   if (promo) {
     writeStoredInstant(PROMO_LIVE_UNTIL_KEY, promo.endsAtMs);
     return Date.now() < readStoredInstant(PROMO_DISMISSED_UNTIL_KEY);
@@ -354,9 +359,12 @@ export function showProBanner(container: HTMLElement): void {
     writePremiumHint(false);
   }
 
+  // Decide which strip would render before reading its dismissal.
+  const lapsedNow =
+    deriveBillingUxState(getSubscription(), getEntitlementState(), Date.now()) === 'lapsed';
   const decision = decideProBannerMount({
     inIframe: window.self !== window.top,
-    dismissed: isDismissed(),
+    dismissed: isDismissed(lapsedNow),
     hasPremiumAccess: premium,
     premiumHint: readPremiumHint(),
     authPending: auth.isPending,
@@ -393,6 +401,8 @@ export function showProBanner(container: HTMLElement): void {
   }
 
   const returning = billingState === 'lapsed';
+  if (returning) safeStorageSet(LAPSED_HINT_KEY, '1');
+  else safeStorageRemove(LAPSED_HINT_KEY);
   // Free users see the running promotion instead of the regular upsell. Its
   // figures come from the lazily loaded catalog; the pre-paint reservation
   // holds the strip while that settles, then this mount path runs again.
