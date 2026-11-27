@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  candidateRunListArgs,
   estimateSpecs,
   median,
   packShards,
@@ -172,5 +173,18 @@ describe('rewriteShardScripts', () => {
     expected.scripts['test:e2e:ci-smoke:1'] = `${PREFIX} e2e/b.spec.ts`;
     expected.scripts['test:e2e:ci-smoke:2'] = `${PREFIX} e2e/a.spec.ts e2e/c.spec.ts --retries=1`;
     assert.equal(text, `${JSON.stringify(expected, null, 2)}\n`);
+  });
+});
+
+describe('candidateRunListArgs', () => {
+  it('reads successful pull_request Test runs, because main pushes skip the browser smokes', () => {
+    const args = candidateRunListArgs('o/r', 6);
+    const flag = (name) => args[args.indexOf(name) + 1];
+    assert.equal(flag('--event'), 'pull_request');
+    assert.equal(flag('--status'), 'success');
+    assert.equal(flag('-w'), 'Test');
+    assert.equal(flag('-R'), 'o/r');
+    assert.ok(!args.includes('-b'), 'PR runs are on their head branches, not main');
+    assert.ok(Number(flag('-L')) >= 6 * 8, 'most PR runs carry no browser shards, so look wider than --count');
   });
 });
