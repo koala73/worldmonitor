@@ -79,6 +79,7 @@ test('keeps the listed time, marked as not stated, when the report gives no vali
     'Incident Date: 31 Feb 2026 Incident Time: 1200UTC UKMTO has received a report.',
     'Incident Date: 01 Mar 2026 Incident Time: 2460UTC UKMTO has received a report.',
     'Incident Date: 01 Mar 2026 Incident Time: 123456 UKMTO has received a report.',
+    'Incident Date: 01 Jan 1970 Incident Time: 0000UTC UKMTO has received a report.',
   ]) {
     const [item] = normalizeIncidents(table([{ ...report, text }]));
     assert.equal(item.occurredAt, report.ts * 1000, text);

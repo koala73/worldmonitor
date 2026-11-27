@@ -42,7 +42,7 @@ function statedIncidentTime(text) {
     match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3]), Number(match[4]), Number(match[5])];
   if (month < 0 || hour > 23 || minute > 59) return null;
   const ms = Date.UTC(year, month, day, hour, minute);
-  return new Date(ms).getUTCDate() === day ? ms : null;
+  return new Date(ms).getUTCDate() === day && isRepresentableTime(ms) ? ms : null;
 }
 
 // The reader drops a whole snapshot when any incident date is not a representable Date.
