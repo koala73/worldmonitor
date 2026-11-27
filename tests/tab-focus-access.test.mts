@@ -11,7 +11,7 @@ import { hasTabFocus } from '../shared/tab-focus-access.ts';
 
 const NOW = 1_800_000_000_000;
 const FOCUS_PLANS = ['pro_business_monthly', 'pro_business_annual', 'api_business', 'api_business_annual', 'enterprise'];
-const NO_FOCUS_PLANS = ['free', 'pro_monthly', 'pro_annual', 'api_starter', 'api_starter_annual'];
+const NO_FOCUS_PLANS = ['free', 'pro_monthly', 'pro_monthly_mcp', 'pro_annual', 'api_starter', 'api_starter_annual'];
 
 describe('tabFocus catalog', () => {
   it('every plan is classified here', () => {

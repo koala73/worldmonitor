@@ -84,11 +84,15 @@ export const admitCheckout = internalMutation({
   },
 });
 
-function requireCheckoutProduct(productId: string): void {
-  const allowed = Object.values(PRODUCT_CATALOG).some(
-    (entry) => entry.dodoProductId === productId && entry.currentForCheckout && entry.selfServe,
+export function requireCheckoutProduct(productId: string, attributionSource?: string): void {
+  const entry = Object.values(PRODUCT_CATALOG).find(
+    (candidate) => candidate.dodoProductId === productId && candidate.currentForCheckout && candidate.selfServe,
   );
-  if (!allowed) {
+  // A channel-only plan is sold only through that channel's checkout. The
+  // normalizer returns a value only for the MCP campaign marker.
+  const channelAllowed = entry?.offerChannel !== "mcp"
+    || normalizeAttributionSource(attributionSource) !== undefined;
+  if (!entry || !channelAllowed) {
     throw new ConvexError({
       code: "INVALID_CHECKOUT_PRODUCT",
       message: "This product is not available for checkout.",
@@ -593,7 +597,7 @@ export const internalCreateCheckout = internalAction({
     if (!args.userId) {
       throw new ConvexError("userId is required");
     }
-    requireCheckoutProduct(args.productId);
+    requireCheckoutProduct(args.productId, args.attributionSource);
     if (args.bypassPendingGuard) {
       // Audit trail: the user confirmed "start a new checkout anyway" past a
       // pending-payment block. Logged server-side so a future double-charge

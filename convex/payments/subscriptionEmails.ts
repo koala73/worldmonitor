@@ -35,6 +35,7 @@ const ADMIN_EMAIL = "elie@worldmonitor.app";
 const PLAN_DISPLAY: Record<string, string> = {
   free: "Free",
   pro_monthly: "Pro (Monthly)",
+  pro_monthly_mcp: "Pro (Monthly)",
   pro_annual: "Pro (Annual)",
   pro_business_monthly: "Pro Business (Monthly)",
   pro_business_annual: "Pro Business (Annual)",
@@ -52,6 +53,7 @@ const PLAN_DISPLAY: Record<string, string> = {
 // See `featureCardsHtml` and `userWelcomeHtml` for the parallel gates.
 const PRO_PLANS = new Set([
   "pro_monthly",
+  "pro_monthly_mcp",
   "pro_annual",
   "pro_business_monthly",
   "pro_business_annual",

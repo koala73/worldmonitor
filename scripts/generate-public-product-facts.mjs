@@ -245,6 +245,25 @@ const catalogBundle = {
 };
 
 emit('shared/product-facts.generated.json', json(facts));
+// Plans sold only inside the MCP upgrade flow. Kept out of every public bundle
+// above; api/mcp/checkout.ts is the one reader.
+const mcpOfferPlans = json({
+  _generated: facts._generated,
+  plans: Object.entries(PRODUCT_CATALOG)
+    .filter(([, entry]) => entry.offerChannel === 'mcp' && !entry.publicVisible && entry.dodoProductId)
+    .map(([planKey, entry]) => ({
+      planKey,
+      dodoProductId: entry.dodoProductId,
+      displayName: entry.displayName,
+      tierGroup: entry.tierGroup,
+      billingPeriod: entry.billingPeriod,
+      priceCents: entry.priceCents,
+      selfServe: entry.selfServe,
+      currentForCheckout: entry.currentForCheckout,
+    })),
+});
+emit('shared/mcp-offer-plans.generated.json', mcpOfferPlans);
+emit('scripts/shared/mcp-offer-plans.generated.json', mcpOfferPlans);
 emit('scripts/shared/product-facts.generated.json', json(facts));
 // Slim homepage proof numerals. Hero.tsx imports this file — not the full
 // facts bundle — so the welcome JS payload grows by bytes, not kilobytes.

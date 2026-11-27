@@ -541,6 +541,7 @@ function compareSubscriptionsForSelection(
 function isProActivationPlan(planKey: string): boolean {
   return (
     planKey === "pro_monthly" ||
+    planKey === "pro_monthly_mcp" ||
     planKey === "pro_annual" ||
     planKey === "pro_business_monthly" ||
     planKey === "pro_business_annual"

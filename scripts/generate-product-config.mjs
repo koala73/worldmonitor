@@ -65,8 +65,10 @@ const KEY_MAP = {
   enterprise: 'ENTERPRISE',
 };
 
+// Client bundles carry public plans only: a channel-only plan (offerChannel)
+// is sold by the server and must not ship its product id to the browser.
 const productEntries = Object.entries(PRODUCT_CATALOG)
-  .filter(([, e]) => e.dodoProductId)
+  .filter(([, e]) => e.dodoProductId && e.publicVisible)
   .map(([key, e]) => {
     const exportKey = KEY_MAP[key] || key.toUpperCase();
     return `  ${exportKey}: '${e.dodoProductId}',`;
@@ -102,7 +104,7 @@ const productIdsTs = `// AUTO-GENERATED from convex/config/productCatalog.ts
 /** Product IDs accepted by client-side analytics without loading checkout config. */
 export const DODO_PRODUCT_IDS: ReadonlySet<string> = new Set([
 ${Object.values(PRODUCT_CATALOG)
-  .filter((entry) => entry.dodoProductId)
+  .filter((entry) => entry.dodoProductId && entry.publicVisible)
   .map((entry) => `  '${entry.dodoProductId}',`)
   .join('\n')}
 ]);

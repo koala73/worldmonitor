@@ -51,6 +51,7 @@ export const PRO_PRODUCT_IDS: readonly string[] = [
 /** The entitlement plan keys that classify as Pro (productCatalog.ts). */
 export const PRO_PLAN_KEYS: readonly string[] = [
   'pro_monthly',
+  'pro_monthly_mcp',
   'pro_annual',
   'pro_business_monthly',
   'pro_business_annual',

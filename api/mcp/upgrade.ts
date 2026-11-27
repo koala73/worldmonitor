@@ -8,7 +8,7 @@
 
 import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
 import { BILLING_PORTAL_URL } from '../../server/_shared/entitlement-coverage';
-import { recommendedPlanFor, recommendedPlanForFeature, START_UPGRADE_TOOL } from './checkout';
+import { mcpOfferSentence, recommendedPlanFor, recommendedPlanForFeature, START_UPGRADE_TOOL } from './checkout';
 import type { McpPlanFeature } from './types';
 
 export {
@@ -351,13 +351,15 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
     };
   }
   const copy = DENIAL_COPY[denial.reason];
+  const hint = checkoutHint(denial);
+  const offer = mcpOfferSentence(hint.recommendedPlan);
   return {
     message: copy.message,
     data: {
       reason: denial.reason,
-      nextStep: copy.nextStep,
+      nextStep: offer === undefined ? copy.nextStep : `${copy.nextStep} ${offer}`,
       upgradeUrl: denial.reason === 'payment-failed' ? BILLING_PORTAL_URL : MCP_UPGRADE_URL,
-      ...checkoutHint(denial),
+      ...hint,
     },
   };
 }
