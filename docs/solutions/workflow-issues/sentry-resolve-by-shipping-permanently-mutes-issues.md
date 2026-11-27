@@ -80,6 +80,12 @@ If new events lose build attribution or mapped frames, stop rollout and restore
 the prior build configuration. A rollback restores the old release mismatch, so
 the audit and explicit repair of confirmed incompatible pins remain necessary.
 
+## Run-capture markers — 2026-11-27
+
+The audit went red from 2026-11-20 on three integration pins: WORLDMONITOR-1AY in release `92eee70e5a`, and WORLDMONITOR-1FR and WORLDMONITOR-1FS in release `c90b3314b6`. Both releases are real `vercel-production` deploys, and production browser events now carry SHA releases. No event arrived after either pin. Each was repaired through the unresolve-then-plain-resolve transition, the same practice used for the 2026-10 streaks, and the audit rerun read 325 resolved issues, all plain.
+
+Both pins came from text that followed the repo's own "no keyword beside the short ID" rule. The rule was too narrow, as the Prevention section now explains, and the scan is now a script wired into pre-push and a PR check.
+
 The remaining sections record the original incident and remediation.
 
 ## Problem
@@ -186,14 +192,16 @@ Only the short ID, permalink, pin kind, and sanitized pin value reach the report
 
 **Plain resolve only.** Never resolve into `inRelease`, `inNextRelease`, or `inCommit`. Read `statusDetails` back after every resolve and confirm it carries none of those three pin keys. Assert on the pin keys, not on the object being empty, for the reason given in What Didn't Work. Do not trust the write response, because a resolved-to-resolved write returns 200 without changing anything.
 
-**Scan commit messages before pushing.** A keyword adjacent to a `WORLDMONITOR-` token fires the integration anywhere in a commit message or a PR body, including inside backticks and code fences.
+**Scan commit messages and PR text before they leave the machine.** The marker is wider than a keyword beside a short ID. Sentry's matcher (`src/sentry/utils/groupreference.py` in getsentry/sentry) is `\b(Fix|Fixes|Fixed|Close|Closes|Closed|Resolve|Resolves|Resolved):?\s+([A-Za-z0-9_\-\s,]+)\b`. After the keyword it captures the whole run of words, digits, hyphens, commas and line breaks, and every short ID in that run resolves. A hyphen gives the keyword a word boundary, so `post-fix` counts. A colon directly after the keyword is part of the marker. After that, any other punctuation ends the run. For a PR, Sentry scans the body and title as one text, body first, so a run in the body can reach a short ID in the title.
+
+The keyword-adjacent grep this section used to recommend missed both 2026-11 pins. A branch commit read `in two post-fix events of Sentry WORLDMONITOR-1AY a`, and the #11053 PR body read `Fixes Sentry WORLDMONITOR-1FR and WORLDMONITOR-1FS`. `scripts/check-sentry-resolve-markers.mjs` ports the matcher, strips backticks before matching because of the 2026-09-07 backticked pin, and agrees with the Python regex on 460 recent commit messages and PR bodies.
 
 ```bash
-git log <base>..HEAD --format=%B \
-  | grep -Eio '(fix|fixes|fixed|close|closes|closed|resolve|resolves|resolved)[[:space:]]+WORLDMONITOR-[A-Z0-9]+'
+printf '%s %s\n' "$(cat /path/to/pr-body.md)" "$PR_TITLE" > /tmp/pr-text.md
+node scripts/check-sentry-resolve-markers.mjs --text-file /tmp/pr-text.md
 ```
 
-Any hit means rewrite the message before the branch is visible. Put the short ID and the keyword in separate sentences, or drop the keyword. After rewriting, confirm the tree is byte-identical with `git diff <old-sha> HEAD` returning empty, then force-push. File content is never scanned, so the same text is safe in a source file or a doc.
+The pre-push hook runs it over the pushed commits with `--push-stdin`, and the `Sentry Resolve Markers` workflow runs it over the PR title and body on open and edit. Put the short ID in its own sentence after a period, or drop the keyword. A hit in the PR title or body means editing the PR, since a force-push does not change it. A hit in a commit message means rewriting the commit before the branch is visible. After rewriting, confirm the tree is byte-identical with `git diff <old-sha> HEAD` returning empty, then force-push. File content is never scanned, so the same text is safe in a source file or a doc.
 
 **Audit the board on a schedule and on demand.**
 
