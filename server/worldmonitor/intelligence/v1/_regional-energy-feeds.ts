@@ -61,7 +61,7 @@ export async function readRegionalEnergyFeeds(
   read: (key: string) => Promise<unknown>,
   nowMs = Date.now(),
 ): Promise<RegionalEnergyFeed[]> {
-  return Promise.all(feeds.filter(feed => feed.countryCode === countryCode).map(async feed => {
+  return Promise.all(feeds.filter(feed => feed.countryCode === countryCode && !('parkedIssue' in feed)).map(async feed => {
     try {
       return decodeFeed(feed, await read(`energy:regional:${feed.id}:v1`), nowMs);
     } catch {

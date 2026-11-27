@@ -158,11 +158,22 @@ with the wrong number of cells) fails the run, and last-good data
 is kept. CNG is priced per cubic metre and is not collected. The
 fuel-price panel shows the super and grade 2 medians for 14 days after their
 date, and only with a live ARS quote: the peso moves too fast for the static
-shared fallback rate. The provider host was unreachable from every vantage
-point tested on 2026-11-23 and 2026-11-26, so the parser was built from the
-2024-02-06 Internet Archive capture of the same file. The regional bundle runs
-in us-east4, which reaches CAMMESA; the 12-hour poll retries an outage on the
-next due tick.
+shared fallback rate. The parser was built from the 2024-02-06 Internet
+Archive capture of the same file.
+
+The feed is parked (`parkedIssue` in `scripts/shared/regional-energy-feeds.json`):
+it has no bundle section and no health entry, and the country profile does not
+list it. Its host, `datos.energia.gob.ar`, has not answered from any vantage
+tested on 2026-11-23, 2026-11-26 and 2026-11-27. On 2026-11-27, every
+regional bundle tick logged a TCP connect timeout to port 443. Ports 80 and 443
+also timed out from another Railway service and from a laptop, while
+`apis.datos.gob.ar` answered at once from that same Railway service. Cloudflare
+returned 522 for the Secretaría's `se.gob.ar` hosts, which means its edge
+cannot reach that origin either. The national catalogue, `datos.gob.ar`, links
+its download back to the same host, and no mirror was found. To re-land the feed, first get a 200 for the
+CSV from the Railway region. Then restore its section in
+`scripts/seed-bundle-regional-energy.mjs` and its `regionalEnergySearg` health
+entries, and remove `parkedIssue`.
 
 Taiwan's county surveys (#10113) come from the MOEA Energy Administration's
 oil111 site, whose open-data declaration licenses its data for free reuse with

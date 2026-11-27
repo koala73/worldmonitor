@@ -274,7 +274,8 @@
     "intervalMin": 720,
     "maxContentAgeMin": 20160,
     "script": "seed-regional-energy-searg.mjs",
-    "utcOffsetMin": -180
+    "utcOffsetMin": -180,
+    "parkedIssue": 11154
   },
   {
     "id": "oil111",

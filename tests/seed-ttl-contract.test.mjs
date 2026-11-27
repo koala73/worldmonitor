@@ -299,6 +299,8 @@ const UNMONITORED = new Set([
   'seed-meta:displacement:summary',
   'seed-meta:economic:bis-extended',
   'seed-meta:economic:china-macro',
+  // Parked: the script has no bundle section while its host is unreachable (#11154).
+  'seed-meta:energy:regional-searg',
   'seed-meta:military:arms-suppliers',
   'seed-meta:military:arms-suppliers-complete',
   'seed-meta:military:defense-industrial',
