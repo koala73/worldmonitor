@@ -826,6 +826,7 @@ async function mountPlugin(): Promise<void> {
         // A newer countryless open wins over a country open still waiting for admission.
         revision++;
         openRequest?.abort();
+        queuedView = undefined;
       }
     }
     if (message.method === 'tools/list') send({ id: message.id, result: { tools: [
