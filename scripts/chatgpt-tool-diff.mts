@@ -50,13 +50,41 @@ function arg(name: string): string | undefined {
   return index === -1 ? undefined : process.argv[index + 1];
 }
 
+// Accepts a JSON-RPC tools/list reply, a `{tools: [...]}` result, a plain
+// array, or an object keyed by tool name.
+function readToolDump(raw: unknown): Array<Record<string, unknown>> {
+  const envelope = raw as { result?: { tools?: unknown }; tools?: unknown } | null;
+  const list = Array.isArray(raw)
+    ? raw
+    : Array.isArray(envelope?.result?.tools)
+      ? envelope.result.tools
+      : Array.isArray(envelope?.tools)
+        ? envelope.tools
+        : raw && typeof raw === 'object'
+          ? Object.values(raw)
+          : [];
+  const tools = list as Array<Record<string, unknown>>;
+  const bad = tools.findIndex((tool) => !tool || typeof tool !== 'object' || typeof tool.name !== 'string' || !tool.name);
+  if (tools.length === 0 || bad !== -1) {
+    throw new Error(tools.length === 0 ? 'no tools found in --source' : `--source entry ${bad} is not a tool with a name`);
+  }
+  return tools;
+}
+
 if (process.argv.includes('--write')) {
   const source = arg('--source');
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const commit = arg('--commit') ?? head;
+  // --commit only labels the snapshot. Without --source the hashes come from
+  // this checkout, so they must be the definitions at that commit.
+  if (!source && !head.startsWith(commit) && !commit.startsWith(head)) {
+    console.error(`--commit ${commit} is not the checked-out HEAD ${head.slice(0, 10)}. Run from a checkout of that commit, or pass --source with the tool list captured at submission.`);
+    process.exit(1);
+  }
   const tools = source
-    ? Object.values(JSON.parse(readFileSync(source, 'utf8')) as Record<string, Record<string, unknown>>)
+    ? readToolDump(JSON.parse(readFileSync(source, 'utf8')))
     : (CHATGPT_TOOL_LIST_RESPONSE as unknown as Array<Record<string, unknown>>);
   const version = arg('--version') ?? JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')).version;
-  const commit = arg('--commit') ?? execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const snapshot: Snapshot = { version, commit, tools: hashTools(tools) };
   writeFileSync(SNAPSHOT_PATH, `${JSON.stringify(snapshot, null, 2)}\n`);
   console.log(`recorded ${Object.keys(snapshot.tools).length} tools as approved in ${version} (${commit.slice(0, 10)})`);

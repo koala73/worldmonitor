@@ -34,11 +34,21 @@ Both rejection grounds were rechecked on these changes:
 - **Commerce.** ChatGPT tool copy has no billing or plan wording (`tests/mcp-chatgpt-commerce-policy.test.mjs`). The payment-failed denial added since 2.11.8 states that access is paused and links no billing page. The consent and grant pages show no plan offer when ChatGPT starts the sign-in.
 - **News.** Intel-history records, including the sources added since 2.11.8, reach ChatGPT with their third-party `summary` emptied (`tests/mcp-chatgpt-news-policy.test.mjs`). The `summary` fields in news-cluster and claim results are WorldMonitor's own provenance facts, not publisher text.
 
-After the new version is approved, record it as the baseline:
+After the new version is approved, record it as the baseline from the definitions OpenAI reviewed, not from today's checkout. Either run the script in a worktree checked out at the submitted commit and copy the snapshot back:
 
 ```bash
-npx tsx scripts/chatgpt-tool-diff.mts --write --version <approved version> --commit <commit live at submission>
+git worktree add /tmp/wm-submitted <commit live at submission>
+cd /tmp/wm-submitted && npm ci --ignore-scripts
+npx tsx scripts/chatgpt-tool-diff.mts --write --version <approved version>
 ```
+
+Or pass the `tools/list` reply captured at submission:
+
+```bash
+npx tsx scripts/chatgpt-tool-diff.mts --write --source <captured tools/list.json> --version <approved version> --commit <commit live at submission>
+```
+
+Without `--source`, the script refuses a `--commit` that differs from the checked-out HEAD.
 
 ## Notes for the held tools
 
