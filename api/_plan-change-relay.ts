@@ -4,7 +4,7 @@
 // /relay/pro-annual-switch), so a deployment that predates a change answers 404
 // for it instead of running another one. The routes differ only in the body
 // they accept and where they relay; auth, idempotency, the limiter call, the
-// 20 s abort and the refusal passthrough are the same.
+// relay abort and the refusal passthrough are the same.
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
@@ -22,6 +22,13 @@ const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
 const CONVEX_TENANT_RELAY_SECRET = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
+
+/**
+ * Under the Edge runtime's 25 s first-response cap, and above a confirm's
+ * worst case in Convex (PLAN_CHANGE_CONFIRM_WORST_CASE_MS, 21 s) plus the hop,
+ * so a switch that went through is not reported as failed.
+ */
+export const PLAN_CHANGE_RELAY_ABORT_MS = 23_000;
 
 /** One budget per user across both plan changes, as when one route served both. */
 export const PLAN_CHANGE_RATE_LIMIT = {
@@ -53,8 +60,8 @@ export interface PlanChangeRoute {
   pathname: string;
   /** Convex HTTP route this edge route relays to. */
   relayPath: string;
-  /** Log and Sentry label. */
-  label: string;
+  /** Fixed route name for logs and the Sentry fingerprint. */
+  routeName: string;
   userAgent: string;
   /** The fields to forward after `userId`, or null to answer INVALID_BODY. Runs before any limiter or relay call. */
   parseBody: (body: Record<string, unknown>) => Record<string, unknown> | null;
@@ -156,7 +163,7 @@ export function createPlanChangeHandler(route: PlanChangeRoute) {
           Authorization: `Bearer ${CONVEX_TENANT_RELAY_SECRET}`,
         },
         body: JSON.stringify({ userId: session.userId, ...forward }),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(PLAN_CHANGE_RELAY_ABORT_MS),
       });
 
       const data = await resp.json().catch(() => ({})) as { error?: unknown };
@@ -166,17 +173,17 @@ export function createPlanChangeHandler(route: PlanChangeRoute) {
         const code = typeof data.error === 'string' && PASSTHROUGH_ERRORS.has(data.error)
           ? data.error
           : 'Upgrade unavailable';
-        console.error(`[${route.label}] Relay error:`, resp.status, data);
+        console.error(`[${route.routeName}] Relay error:`, resp.status, data);
         const status = resp.status === 409 ? 409 : 502;
         return completeStandaloneIdempotency(idempotency, json({ error: code }, status, cors));
       }
 
       return completeStandaloneIdempotency(idempotency, json(data, 200, cors));
     } catch (err) {
-      console.error(`[${route.label}] Relay failed:`, (err as Error).message);
+      console.error(`[${route.routeName}] Relay failed:`, (err as Error).message);
       captureSilentError(err, {
-        tags: { route: `api/${route.label}`, step: 'relay' },
-        fingerprint: [`api/${route.label}`, 'relay', err instanceof Error ? err.name : 'Error'],
+        tags: { route: `api/${route.routeName}`, step: 'relay' },
+        fingerprint: [`api/${route.routeName}`, 'relay', err instanceof Error ? err.name : 'Error'],
         ctx,
       });
       return completeStandaloneIdempotency(idempotency, json({ error: 'Upgrade unavailable' }, 502, cors));

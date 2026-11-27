@@ -168,7 +168,8 @@ async function callUpgrade(
         ...(confirm ? { 'Idempotency-Key': crypto.randomUUID() } : {}),
       },
       body: JSON.stringify({ confirm, ...extra }),
-      signal: createTimeoutSignal(25_000),
+      // Past the edge route's 25 s cap, so the route's answer arrives first.
+      signal: createTimeoutSignal(30_000),
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {

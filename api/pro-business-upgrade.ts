@@ -15,7 +15,7 @@ import { createPlanChangeHandler, PLAN_CHANGE_RATE_LIMIT } from './_plan-change-
 export default createPlanChangeHandler({
   pathname: '/api/pro-business-upgrade',
   relayPath: '/relay/pro-business-upgrade',
-  label: 'pro-business-upgrade',
+  routeName: 'pro-business-upgrade',
   userAgent: 'worldmonitor-pro-business-upgrade-edge/1.0',
   parseBody: (body) => {
     if (typeof body.confirm !== 'boolean') return null;

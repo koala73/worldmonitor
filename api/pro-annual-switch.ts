@@ -19,7 +19,7 @@ import { createPlanChangeHandler, PLAN_CHANGE_RATE_LIMIT } from './_plan-change-
 export default createPlanChangeHandler({
   pathname: '/api/pro-annual-switch',
   relayPath: '/relay/pro-annual-switch',
-  label: 'pro-annual-switch',
+  routeName: 'pro-annual-switch',
   userAgent: 'worldmonitor-pro-annual-switch-edge/1.0',
   parseBody: (body) => {
     const { confirm, discounted, acceptedChargeAmount: amount, acceptedChargeCurrency: currency, listPrice } = body;

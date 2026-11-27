@@ -21,6 +21,7 @@ process.env.UPSTASH_REDIS_REST_URL = 'https://upgrade-redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-redis-token';
 const { default: upgradeHandler } = await import('../api/pro-business-upgrade.ts');
 const { default: switchHandler } = await import('../api/pro-annual-switch.ts');
+const { PLAN_CHANGE_RELAY_ABORT_MS } = await import('../api/_plan-change-relay.ts');
 const originalFetch = globalThis.fetch;
 
 let privateKey: CryptoKey;
@@ -142,6 +143,13 @@ describe('api/pro-annual-switch', () => {
     assert.equal(res.status, 502);
     assert.deepEqual(await res.json(), { error: 'Upgrade unavailable' });
     assert.deepEqual(relayCalls.map((call) => call.path), ['/relay/pro-annual-switch']);
+  });
+
+  // Under the Edge runtime's 25 s first-response cap, and above a confirm's
+  // worst case: 21 s (PLAN_CHANGE_CONFIRM_WORST_CASE_MS in
+  // convex/payments/billing.ts) plus the Convex hop.
+  it('waits long enough for a confirm, and answers before the Edge runtime cap', () => {
+    assert.equal(PLAN_CHANGE_RELAY_ABORT_MS, 23_000);
   });
 
   it('fails closed when the relay cannot be reached', async () => {

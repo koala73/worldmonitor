@@ -123,6 +123,20 @@ describe('/pro Pro Yearly switch flow', () => {
       expect(paths).toEqual(['/pro-annual-switch', '/pro-annual-switch']);
     });
 
+    // The browser waits past the edge route's own 25 s cap, so it reads the
+    // route's answer instead of timing out first.
+    it('the confirm waits longer than the edge route can run', async () => {
+      const timeouts: number[] = [];
+      const original = AbortSignal.timeout.bind(AbortSignal);
+      vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms: number) => { timeouts.push(ms); return original(ms); });
+      replies = [{ status: 200, body: QUOTE }, { status: 200, body: UPGRADED }];
+      await runProAnnualSwitchFlow(options());
+      dialog().confirm();
+      await vi.waitFor(() => expect(dialog().title).toBe('Switched to Pro Yearly'));
+      expect(timeouts.length).toBeGreaterThanOrEqual(2);
+      for (const ms of timeouts) expect(ms).toBeGreaterThanOrEqual(30_000);
+    });
+
     it('fails closed when the confirm cannot reach the route', async () => {
       replies = [{ status: 200, body: QUOTE }, { status: 0, body: null }];
       await runProAnnualSwitchFlow(options());

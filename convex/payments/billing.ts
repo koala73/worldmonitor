@@ -4192,9 +4192,22 @@ const PRO_BUSINESS_CHANGE_PARAMS = {
 
 const PRO_BUSINESS_UPGRADE_TIMEOUT_MS = 15_000;
 /**
+ * A confirm's pre-change reads (retrieve, and the accepted-charge re-check)
+ * share this window. A read that runs out fails closed before changePlan.
+ */
+const PLAN_CHANGE_CONFIRM_READ_TIMEOUT_MS = 6_000;
+/**
+ * A confirm's longest run: the reads, then changePlan at its own timeout,
+ * which is never cut short. The /pro relay aborts at 23 s
+ * (PLAN_CHANGE_RELAY_ABORT_MS in api/_plan-change-relay.ts, under the Edge
+ * runtime's 25 s first-response cap), so this leaves 2 s for Convex and the
+ * hop. Otherwise a switch that went through could be reported as failed.
+ */
+export const PLAN_CHANGE_CONFIRM_WORST_CASE_MS = PLAN_CHANGE_CONFIRM_READ_TIMEOUT_MS + PRO_BUSINESS_UPGRADE_TIMEOUT_MS;
+/**
  * One budget for a preview, measured from the action's start: the coded
  * preview and its list-price fallback both fit in it, inside the /pro relay's
- * 20 s abort (api/pro-business-upgrade.ts) with room for the edge hop.
+ * 23 s abort with room for the edge hop.
  */
 const PLAN_CHANGE_PREVIEW_BUDGET_MS = 16_000;
 /** A preview with less time than this left is not started. */
@@ -4460,7 +4473,7 @@ export async function runPlanChange(
     // The reads before changePlan run side by side, so together they fit the
     // one 15 s window the retrieve alone used. changePlan keeps its own
     // timeout: a change in flight is never cut short.
-    const readOptions = { timeout: PRO_BUSINESS_UPGRADE_TIMEOUT_MS };
+    const readOptions = { timeout: PLAN_CHANGE_CONFIRM_READ_TIMEOUT_MS };
     const [remoteRead, recheck] = await Promise.allSettled([
       client.subscriptions.retrieve(candidate.dodoSubscriptionId, readOptions),
       // The same body as the changePlan below, so the re-checked charge is the one it would make.

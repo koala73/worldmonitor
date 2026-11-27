@@ -12,7 +12,7 @@ import { APIError } from "dodopayments";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
-import { selectPlanChangeCandidate } from "../payments/billing";
+import { PLAN_CHANGE_CONFIRM_WORST_CASE_MS, selectPlanChangeCandidate } from "../payments/billing";
 import schema from "../schema";
 import { ACTIVE_PROMO } from "../../shared/promo-campaign";
 
@@ -270,9 +270,9 @@ describe("switch action", () => {
     expect(previewChangePlan.mock.calls[0]![1]).not.toHaveProperty("discount_code");
   });
 
-  // The /pro relay aborts at 20 s (api/pro-business-upgrade.ts). Both preview
-  // attempts share one budget inside it.
-  test("both preview attempts share one deadline inside the relay's 20 s", async () => {
+  // The /pro relay aborts at 23 s (api/_plan-change-relay.ts). Both preview
+  // attempts share one 16 s budget inside it.
+  test("both preview attempts share one deadline inside the relay's abort", async () => {
     const t = await setup(DURING);
     vi.spyOn(console, "warn").mockImplementation(() => {});
     previewChangePlan
@@ -443,7 +443,11 @@ describe("switch action", () => {
       expect(changePlan).not.toHaveBeenCalled();
     });
 
-    test("the re-check and the retrieve share one 15 s deadline; changePlan keeps its own timeout", async () => {
+    // The /pro relay aborts at 23 s, under the Edge runtime's 25 s
+    // first-response cap (api/_plan-change-relay.ts). A confirm must finish
+    // inside it, or a switch that went through is reported as failed. The
+    // reads give way; a changePlan in flight is never cut short.
+    test("a confirm fits inside the /pro relay: reads get 6 s, changePlan keeps its own 15 s", async () => {
       const t = await setup(DURING);
       vi.spyOn(console, "log").mockImplementation(() => {});
       retrieve.mockImplementation(async () => {
@@ -457,10 +461,12 @@ describe("switch action", () => {
         .map((opts) => (opts as { timeout?: number } | undefined)?.timeout);
       for (const ms of readTimeouts) {
         expect(typeof ms).toBe("number");
-        expect(ms!).toBeLessThanOrEqual(15_000);
+        expect(ms!).toBeLessThanOrEqual(6_000);
       }
       // A changePlan in flight is never cut short by the reads' budget.
       expect(changePlan.mock.calls[0]).toHaveLength(2);
+      // Reads plus changePlan, leaving 2 s of the relay's 23 s for Convex and the hop.
+      expect(PLAN_CHANGE_CONFIRM_WORST_CASE_MS).toBe(21_000);
     });
 
     test("after a refused higher charge, a confirm of the fresh quote goes through at once", async () => {
