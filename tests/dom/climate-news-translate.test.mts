@@ -1,22 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const lang = vi.hoisted(() => ({ current: 'de', tag: 'de' }));
+import i18next from 'i18next';
+import de from '@/locales/de.json';
+import { initTestI18n, useChineseCatalogue } from './helpers/i18n.mts';
 const translator = vi.hoisted(() => ({
   calls: [] as Array<{ text: string; target: string }>,
   reply: (text: string): string | null | Promise<string> => `[de] ${text}`,
 }));
-
-vi.mock('@/services/i18n', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/services/i18n')>();
-  return {
-    ...actual,
-    t: (key: string) => key === 'components.newsPanel.translationUnavailable'
-      ? 'Translation unavailable'
-      : actual.t(key),
-    getCurrentLanguage: () => lang.current,
-    getCurrentLanguageTag: () => lang.tag,
-  };
-});
 
 vi.mock('@/services/summarization', () => ({
   translateText: async (text: string, target: string) => {
@@ -60,10 +49,11 @@ const button = () => document.querySelector<HTMLButtonElement>('.climate-news-ca
 const titleText = () => document.querySelector('.climate-news-card__title')!.textContent;
 const summaryText = () => document.querySelector('.climate-news-card__summary')!.textContent;
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.setSystemTime(NOW);
-  lang.current = 'de';
-  lang.tag = 'de';
+  await initTestI18n();
+  i18next.addResourceBundle('de', 'translation', de);
+  await i18next.changeLanguage('de');
   translator.calls.length = 0;
   translator.reply = (text: string) => `[de] ${text}`;
   document.body.innerHTML = '';
@@ -79,19 +69,19 @@ describe('Climate News translate control (#10054)', () => {
     await mountPanel();
     expect(button()).not.toBeNull();
     expect(button()!.textContent).toBe('文');
+    expect(button()!.getAttribute('aria-label')).toBe('Übersetzen');
+    expect(button()!.title).toBe('Übersetzen');
   });
 
   it('does not offer it to an English reader, whose feed is already English', async () => {
-    lang.current = 'en';
-    lang.tag = 'en';
+    await i18next.changeLanguage('en');
     await mountPanel();
     expect(document.querySelector('.climate-news-card')).not.toBeNull();
     expect(button()).toBeNull();
   });
 
   it('translates the title and the summary into the UI language on request', async () => {
-    lang.current = 'zh';
-    lang.tag = 'zh-TW';
+    await useChineseCatalogue('zh-TW');
     translator.reply = (text) => `[zh-TW] ${text}`;
     await mountPanel();
     button()!.click();
@@ -108,11 +98,12 @@ describe('Climate News translate control (#10054)', () => {
     button()!.click();
     await vi.waitFor(() => expect(titleText()).toBe(`[de] ${ITEM.title}`));
 
-    expect(button()!.getAttribute('aria-label')).toBe('Restore original text');
+    expect(button()!.getAttribute('aria-label')).toBe('Originaltext wiederherstellen');
+    expect(button()!.title).toBe('Originaltext wiederherstellen');
     button()!.click();
     expect(titleText()).toBe(ITEM.title);
     expect(summaryText()).toBe(ITEM.summary);
-    expect(button()!.getAttribute('aria-label')).toBe('Translate');
+    expect(button()!.getAttribute('aria-label')).toBe('Übersetzen');
   });
 
   it('offers separate article and translation controls', async () => {
@@ -127,7 +118,7 @@ describe('Climate News translate control (#10054)', () => {
     await mountPanel();
     button()!.click();
     const status = card().querySelector('[role="status"]');
-    await vi.waitFor(() => expect(status?.textContent).toBe('Translation unavailable'));
+    await vi.waitFor(() => expect(status?.textContent).toBe(de.components.newsPanel.translationUnavailable));
     expect(titleText()).toBe(ITEM.title);
     expect(summaryText()).toBe(ITEM.summary);
 

@@ -2617,7 +2617,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>氣候新聞</strong>來自Carbon Brief、UNEP、NASA、The Guardian等權威來源的最新環境和氣候資訊。每30分鐘更新一次。",
-      "loadError": "氣候新聞暫時無法獲取"
+      "loadError": "氣候新聞暫時無法獲取",
+      "restoreOriginal": "恢復原文",
+      "translate": "翻譯"
     },
     "liquidityShifts": {
       "title": "流動性變化",

@@ -2617,7 +2617,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>気候ニュース</strong>Carbon Brief、UNEP、NASA、The Guardian等の信頼できるソースから最新の環境・気候インテリジェンスを配信。30分ごとに更新。",
-      "loadError": "気候ニュースは一時的に利用不可"
+      "loadError": "気候ニュースは一時的に利用不可",
+      "restoreOriginal": "原文に戻す",
+      "translate": "翻訳"
     },
     "liquidityShifts": {
       "title": "流動性シフト",

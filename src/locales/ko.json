@@ -2617,7 +2617,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>기후 뉴스</strong> Carbon Brief, UNEP, NASA, The Guardian 및 기타 신뢰할 수 있는 출처의 최신 환경 및 기후 정보입니다. 30분마다 업데이트됩니다.",
-      "loadError": "기후 뉴스를 일시적으로 사용할 수 없습니다"
+      "loadError": "기후 뉴스를 일시적으로 사용할 수 없습니다",
+      "restoreOriginal": "원문으로 되돌리기",
+      "translate": "번역"
     },
     "liquidityShifts": {
       "title": "유동성 변화",

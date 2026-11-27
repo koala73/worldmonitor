@@ -2641,7 +2641,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Actualités climatiques</strong> Les dernières informations environnementales et climatiques de Carbon Brief, UNEP, NASA, The Guardian et autres sources fiables. Mise à jour toutes les 30 minutes.",
-      "loadError": "Actualités climatiques temporairement indisponibles"
+      "loadError": "Actualités climatiques temporairement indisponibles",
+      "restoreOriginal": "Rétablir le texte original",
+      "translate": "Traduire"
     },
     "liquidityShifts": {
       "title": "Mouvements de liquidité",

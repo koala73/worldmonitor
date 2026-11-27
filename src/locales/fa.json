@@ -2532,7 +2532,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>اخبار اقلیمی</strong> تازه‌ترین اطلاعات محیط‌زیستی و اقلیمی از Carbon Brief، UNEP، NASA، The Guardian و دیگر منابع معتبر. هر ۳۰ دقیقه به‌روز می‌شود.",
-      "loadError": "اخبار اقلیمی موقتاً در دسترس نیست"
+      "loadError": "اخبار اقلیمی موقتاً در دسترس نیست",
+      "restoreOriginal": "بازگرداندن متن اصلی",
+      "translate": "ترجمه"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>تحلیلگر WM</strong> تحلیلگر AI با زمینه زنده در حوزه‌های ژئوپلیتیک، بازار، نظامی و اقتصادی. مبتنی بر Claude با داده‌های لحظه‌ای تزریق‌شده از خوراک‌های فعال WorldMonitor."

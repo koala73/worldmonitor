@@ -24,6 +24,8 @@ const REFRESH_HINT =
   'ANTHROPIC_API_KEY=... node scripts/translate-locales.mjs && npm run locales:zh-tw';
 
 const NEW_TRANSLATED_KEYS = [
+  'components.climateNews.restoreOriginal',
+  'components.climateNews.translate',
   ...['emptyExposure', 'emptyExposurePartial', 'partialExposureLoading', 'partialExposure']
     .map(key => `focus.filter.${key}`),
   ...['upcomingForecast', 'currentForecast', 'expiredForecast', 'validFrom', 'validUntil']

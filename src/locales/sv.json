@@ -2211,7 +2211,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Klimatnyheter</strong> Senaste miljö- och klimatuppdateringar från Carbon Brief, UNEP, NASA, The Guardian och andra pålitliga källor. Uppdateras var 30:e minut.",
-      "loadError": "Klimatnyheter är temporärt otillgängliga"
+      "loadError": "Klimatnyheter är temporärt otillgängliga",
+      "restoreOriginal": "Återställ originaltexten",
+      "translate": "Översätt"
     },
     "liquidityShifts": {
       "title": "Likviditetsförskjutningar",

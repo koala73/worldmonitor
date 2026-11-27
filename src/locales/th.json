@@ -2617,7 +2617,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> ข่าวสารสภาพแวดล้อมและสภาพภูมิอากาศล่าสุดจาก Carbon Brief, UNEP, NASA, The Guardian และแหล่งข้อมูลอื่นๆ ที่เชื่อถือได้ อัปเดตทุก 30 นาที",
-      "loadError": "ข่าวสภาพภูมิอากาศไม่พร้อมใช้งานชั่วคราว"
+      "loadError": "ข่าวสภาพภูมิอากาศไม่พร้อมใช้งานชั่วคราว",
+      "restoreOriginal": "คืนค่าข้อความต้นฉบับ",
+      "translate": "แปล"
     },
     "liquidityShifts": {
       "title": "การเปลี่ยนแปลงสภาพคล่อง",

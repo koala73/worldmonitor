@@ -11,9 +11,6 @@ import { ClimateServiceClient } from '@/services/generated-rpc-clients';
 
 const getClimateClient = createLazyClient(() => new ClimateServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
-const TRANSLATE_LABEL = 'Translate';
-const RESTORE_LABEL = 'Restore original text';
-
 interface CardTranslation {
   originals: string[];
   result: 'pending' | 'unavailable' | string[] | null;
@@ -43,8 +40,9 @@ function renderNewsCard(item: ClimateNewsItem, target: string): SafeHtml {
     ? safeHtml`<a class="climate-news-card__content" href="${safeUrl}" target="_blank" rel="noopener noreferrer">${inner}</a>`
     : safeHtml`<div class="climate-news-card__content">${inner}</div>`;
 
+  const translateLabel = translatable ? t('components.climateNews.translate') : '';
   return safeHtml`<div class="climate-news-card" data-translation-key="${key}">${content}${translatable
-    ? safeHtml`<button type="button" class="climate-news-card__translate" title="${TRANSLATE_LABEL}" aria-label="${TRANSLATE_LABEL}">文</button>
+    ? safeHtml`<button type="button" class="climate-news-card__translate" title="${translateLabel}" aria-label="${translateLabel}">文</button>
       <div class="climate-news-card__translation-status" role="status"></div>`
     : ''}</div>`;
 }
@@ -60,7 +58,7 @@ function showTranslation(card: HTMLElement, state: CardTranslation): void {
 
   const translated = Array.isArray(state.result);
   const pending = state.result === 'pending';
-  const label = translated ? RESTORE_LABEL : TRANSLATE_LABEL;
+  const label = t(translated ? 'components.climateNews.restoreOriginal' : 'components.climateNews.translate');
   const text = Array.isArray(state.result) ? state.result : state.originals;
   cardTextElements(card).forEach((el, index) => { el.textContent = text[index] ?? ''; });
   button.classList.toggle('translated', translated);

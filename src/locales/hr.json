@@ -2539,7 +2539,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Najnovije vijesti o okolišu i klimi od Carbon Brief, UNEP, NASA, The Guardian i drugih pouzdanih izvora. Ažurirano svakih 30 minuta.",
-      "loadError": "Climate News privremeno nije dostupan"
+      "loadError": "Climate News privremeno nije dostupan",
+      "restoreOriginal": "Vrati izvorni tekst",
+      "translate": "Prevedi"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>WM Analyst</strong> AI analitičar sa živim kontekstom kroz geopolitičke, tržišne, vojne i ekonomske domene. Pogonjen s Claude-om sa podacima u realnom vremenu ubrizganim iz aktivnih WorldMonitor feedova."

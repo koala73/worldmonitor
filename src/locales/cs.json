@@ -2653,7 +2653,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Zprávy o klimatu</strong> Nejnovější informace o životním prostředí a klimatu od Carbon Brief, UNEP, NASA, The Guardian a dalších důvěryhodných zdrojů. Aktualizace každých 30 minut.",
-      "loadError": "Zprávy o klimatu jsou dočasně nedostupné"
+      "loadError": "Zprávy o klimatu jsou dočasně nedostupné",
+      "restoreOriginal": "Obnovit původní text",
+      "translate": "Přeložit"
     },
     "liquidityShifts": {
       "title": "Posuny likvidity",

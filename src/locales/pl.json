@@ -2653,7 +2653,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Wiadomości klimatyczne</strong> Najnowsze informacje z zakresu środowiska i klimatu z Carbon Brief, UNEP, NASA, The Guardian i innych wiarygodnych źródeł. Aktualizowane co 30 minut.",
-      "loadError": "Wiadomości klimatyczne czasowo niedostępne"
+      "loadError": "Wiadomości klimatyczne czasowo niedostępne",
+      "restoreOriginal": "Przywróć oryginalny tekst",
+      "translate": "Przetłumacz"
     },
     "liquidityShifts": {
       "title": "Zmiany płynności",

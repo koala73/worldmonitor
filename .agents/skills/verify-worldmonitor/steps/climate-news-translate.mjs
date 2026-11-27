@@ -90,6 +90,7 @@ export default async function ({ page, base, shot, log }) {
   const summary = card.locator('.climate-news-card__summary');
   const link = card.getByRole('link');
   const button = card.locator('button');
+  await card.getByRole('button', { name: 'Übersetzen', exact: true }).waitFor();
   await shot('climate-news-de-before-translate', { locator: panel });
 
   await link.focus();
@@ -98,7 +99,7 @@ export default async function ({ page, base, shot, log }) {
     throw new Error('Tab did not move from the article link to the translate button');
   }
   await page.keyboard.press('Enter');
-  await card.getByRole('button', { name: 'Restore original text' }).waitFor();
+  await card.getByRole('button', { name: 'Originaltext wiederherstellen' }).waitFor();
   const translated = await title.textContent();
   const translatedSummary = await summary.textContent();
   if (translated !== TRANSLATED_TITLE || translatedSummary !== TRANSLATED_SUMMARY) {
@@ -107,7 +108,7 @@ export default async function ({ page, base, shot, log }) {
   await shot('climate-news-de-after-translate', { locator: panel });
 
   await page.keyboard.press('Enter');
-  await card.getByRole('button', { name: 'Translate', exact: true }).waitFor();
+  await card.getByRole('button', { name: 'Übersetzen', exact: true }).waitFor();
   if (await title.textContent() !== TITLE || await summary.textContent() !== SUMMARY) {
     throw new Error('original title and summary were not restored');
   }

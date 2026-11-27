@@ -2532,7 +2532,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>Habari za Hali ya Hewa</strong> Taarifa za hivi punde za mazingira na hali ya hewa kutoka Carbon Brief, UNEP, NASA, The Guardian, na vyanzo vingine vya mamlaka. Inasasishwa kila baada ya dakika 30.",
-      "loadError": "Habari za hali ya hewa hazipatikani kwa sasa"
+      "loadError": "Habari za hali ya hewa hazipatikani kwa sasa",
+      "restoreOriginal": "Rejesha maandishi ya awali",
+      "translate": "Tafsiri"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>Mchambuzi wa WM</strong> Mchambuzi wa AI aliye na muktadha wa moja kwa moja katika nyanja za jiografia, soko, kijeshi na kiuchumi. Inaendeshwa na Claude na data ya wakati halisi iliyoingizwa kutoka kwa milisho inayotumika ya WorldMonitor."
