@@ -310,25 +310,31 @@ function mountPlugin(): void {
     return receipt;
   }
 
-  async function applyView(input: unknown, options: { reset?: boolean; keepCurrentView?: boolean; reloadLayers?: boolean; generation?: number } = {}): Promise<object> {
+  async function applyView(input: unknown, options: { reset?: boolean; keepCurrentView?: boolean; reloadLayers?: boolean; generation?: number; dropUnloadedCategory?: boolean } = {}): Promise<object> {
     const next = pluginNewsViewSchema.parse(input);
     const operation = viewQueue.then(() => {
       const desired = options.keepCurrentView ? { ...view } : { ...next };
       if (options.reloadLayers && desired.map_layers === undefined) desired.map_layers = view.map_layers ?? [];
-      return updateView(desired, options.reset ?? false, options.generation, Boolean(options.reset || (!options.keepCurrentView && next.category !== undefined)));
+      return updateView(desired, options.reset ?? false, options.generation, Boolean(options.reset || (!options.keepCurrentView && next.category !== undefined)), options.dropUnloadedCategory);
     });
     viewQueue = operation.catch(() => {});
     return operation;
   }
 
-  async function updateView(next: PluginNewsView, reset: boolean, generation?: number, clearCategoryNotice = false): Promise<object> {
+  // dropUnloadedCategory (deep links): a category the current digest lacks is dropped and the rest applies;
+  // a tool call keeps its category refusal. Checked when the queued update runs, against the digest then.
+  async function updateView(next: PluginNewsView, reset: boolean, generation?: number, clearCategoryNotice = false, dropUnloadedCategory = false): Promise<object> {
     const superseded = () => generation !== undefined && generation !== renderGeneration;
     if (superseded()) return { applied: false, superseded: true };
-    const requestedCategory = next.category;
+    let requestedCategory = next.category;
     if (requestedCategory) {
       const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
-      if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
-      next = { ...next, category: resolution.category };
+      if ('reason' in resolution && !dropUnloadedCategory) return refuseNewsCategory(requestedCategory, resolution.reason);
+      if ('reason' in resolution) {
+        next = { ...next };
+        delete next.category;
+        requestedCategory = undefined;
+      } else next = { ...next, category: resolution.category };
     }
     const intended = { ...(reset ? { map_layers: view.map_layers } : view), ...next };
     const selectedLayers = intended.map_layers ?? [];
@@ -347,8 +353,9 @@ function mountPlugin(): void {
       if (superseded()) return { applied: false, superseded: true };
       if (requestedCategory) {
         const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
-        if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
-        intended.category = resolution.category;
+        if ('reason' in resolution && !dropUnloadedCategory) return refuseNewsCategory(requestedCategory, resolution.reason);
+        if ('reason' in resolution) delete intended.category;
+        else intended.category = resolution.category;
       }
     }
     let renderer: object | undefined;
@@ -548,8 +555,7 @@ function mountPlugin(): void {
     // A link replaces the whole view, so an omitted time range means all time for the news and the map alike.
     const linked: PluginNewsView = { time_range: 'all', ...link.view };
     // A category this dashboard did not load is dropped like any other invalid field; the rest still applies.
-    if (linked.category && 'reason' in resolveNewsCategory(linked.category, loadedCategoryKeys())) delete linked.category;
-    void applyView(linked, { reset: true }).catch(error => {
+    void applyView(linked, { reset: true, dropUnloadedCategory: true }).catch(error => {
       status.textContent = 'The linked view could not be applied. Showing news with the previous filters.';
       mapStatus.textContent = error instanceof Error ? error.message : 'The linked map view is unavailable.';
     });
