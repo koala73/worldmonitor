@@ -229,7 +229,9 @@ describe("switch action", () => {
     const timeouts = previewChangePlan.mock.calls.map((call) => (call[2] as { timeout?: number } | undefined)?.timeout);
     expect(timeouts).toHaveLength(2);
     expect(timeouts.every((ms) => typeof ms === "number")).toBe(true);
-    // Elapsed time plus the second attempt's cap stays under the relay abort.
+    // The second attempt gets only what is left of the shared 16 s budget. Its
+    // own 15 s cap alone would end it at 19 s, which this must catch.
+    expect(timeouts[1]!).toBeLessThanOrEqual(16_000 - 4_000);
     expect(4_000 + timeouts[1]!).toBeLessThan(20_000);
   });
 
