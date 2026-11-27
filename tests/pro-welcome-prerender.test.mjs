@@ -536,6 +536,7 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
     // destination — see the display assertion below.
     /href="\/docs\/api-reference"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-api"/,
     /href="\/\?mode=agent"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-view"/,
+    /href="https:\/\/chatgpt\.com\/plugins\/plugin_asdk_app_6ae6004c179c81918401363068a661ba"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-chatgpt"/,
   ];
   for (const linkPattern of agentLinks) {
     assert.match(agentSection, linkPattern);
@@ -548,6 +549,7 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
     ['https://worldmonitor.app/mcp', 'worldmonitor.app/mcp'],
     ['/docs/api-reference', '/docs/api-reference'],
     ['/?mode=agent', '/?mode=agent'],
+    ['https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba', 'chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba'],
   ]) {
     const escapeRe = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // Two bounds, both load-bearing. `[^>]*>` forces the match past the end

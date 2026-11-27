@@ -25,7 +25,10 @@ const AGENT_RESOURCES = [
   // would teach them the wrong base URL.
   { key: 'api', href: '/docs/api-reference', display: '/docs/api-reference', eventTarget: 'welcome-agent-api' },
   { key: 'agentView', href: '/?mode=agent', display: '/?mode=agent', eventTarget: 'welcome-agent-view' },
-] as const;
+  // The listing in the ChatGPT app directory. "ChatGPT" is a product name, so
+  // the label stays untranslated like the install chips above.
+  { key: 'chatgpt', label: 'ChatGPT', href: 'https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba', display: 'chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba', eventTarget: 'welcome-agent-chatgpt' },
+] satisfies readonly { key: string; label?: string; href: string; display: string; eventTarget: string }[];
 
 export const Agents = () => (
   <section id="agents" className="py-24 px-6 border-t border-wm-border">
@@ -53,16 +56,16 @@ export const Agents = () => (
             {t('welcome.agents.resources.title')}
           </p>
           <div className="grid gap-px overflow-hidden rounded-lg border border-wm-border bg-wm-border sm:grid-cols-2">
-            {AGENT_RESOURCES.map(({ key, href, display, eventTarget }) => (
+            {AGENT_RESOURCES.map(({ key, label, href, display, eventTarget }, i) => (
               <a
                 key={key}
                 href={href}
                 data-umami-event="welcome-cta"
                 data-umami-event-target={eventTarget}
-                className={`group flex min-w-0 items-center justify-between gap-3 bg-wm-card px-4 py-3 text-sm transition-colors hover:bg-wm-bg/80 ${cardLinkFocusRing}`}
+                className={`group flex min-w-0 items-center justify-between gap-3 bg-wm-card px-4 py-3 text-sm transition-colors hover:bg-wm-bg/80 ${cardLinkFocusRing} ${i === AGENT_RESOURCES.length - 1 && AGENT_RESOURCES.length % 2 === 1 ? 'sm:col-span-2' : ''}`}
               >
                 <span className="min-w-0">
-                  <span className="block font-medium text-wm-text">{t(`welcome.agents.resources.${key}`)}</span>
+                  <span className="block font-medium text-wm-text">{label ?? t(`welcome.agents.resources.${key}`)}</span>
                   <span className="block truncate font-mono text-xs text-wm-muted">{display}</span>
                 </span>
                 <CardLinkArrow className="shrink-0 text-wm-green" />
