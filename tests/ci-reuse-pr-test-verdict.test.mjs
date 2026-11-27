@@ -13,6 +13,14 @@ const OURS = { display_title: 'PR #7 into main: feat: x', head_branch: 'feat/x',
 
 const CODE_JOBS = ['unit-shard (1)', 'unit-shard (2)', 'unit-built-output', 'unit', 'sidecar', 'convex-tests', 'dom-tests'];
 const BROWSER_JOBS = ['variant-smoke (1)', 'variant-smoke (2)', 'variant-smoke-pro-webmcp (webmcp)', 'variant-smoke-full'];
+// What the jobs API lists for a green PR run whose browser group was not
+// selected: each matrix job once, under its unexpanded name (PR #11450 run
+// 45944994296).
+const SKIPPED_BROWSER = [
+  { name: 'variant-smoke-full', conclusion: 'success' },
+  { name: 'variant-smoke (${{ matrix.shard }})', conclusion: 'skipped' },
+  { name: 'variant-smoke-pro-webmcp', conclusion: 'skipped' },
+];
 
 function fixture(overrides = {}) {
   const state = {
@@ -28,6 +36,7 @@ function fixture(overrides = {}) {
     calls.push(path);
     if (state.fail && path.includes(state.fail)) throw new Error('HTTP 502');
     if (path === 'repos/o/r/commits/S/pulls') return state.pulls;
+    if (path === 'repos/o/r/commits/D1/pulls') return [];
     if (path === 'repos/o/r/compare/P...H') return state.compare;
     // The commits main has not tested yet: S alone unless a case adds earlier merges.
     const since = path.match(/^repos\/o\/r\/compare\/(\w+)\.\.\.S$/);
@@ -173,14 +182,16 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
     const two = { since: { OLDER: ['C5', 'S'] } };
     const jobs = (conclusion) => BROWSER_JOBS.map((name) => ({ name, conclusion: name === 'variant-smoke-full' ? 'success' : conclusion }));
     // The earlier PR touched no browser path: its legs skipped and the aggregate passed.
-    assert.deepEqual((await decide({ ...two, other: { 5: jobs('skipped') } }, { decidedBase: 'OLDER' })).reuse, { browser: true });
+    assert.deepEqual((await decide({ ...two, other: { 5: SKIPPED_BROWSER } }, { decidedBase: 'OLDER' })).reuse, { browser: true });
     // The earlier PR's browser run failed, was cancelled, or ran only part of the matrix.
     for (const other of [jobs('failure'), jobs('cancelled'), BROWSER_JOBS.filter((n) => !n.startsWith('variant-smoke (')).map((name) => ({ name, conclusion: 'success' }))]) {
       assert.deepEqual((await decide({ ...two, other: { 5: other } }, { decidedBase: 'OLDER' })).reuse, {}, JSON.stringify(other));
     }
-    // A commit that did not come from a pull request.
-    const direct = await decide({ since: { OLDER: ['D1', 'S'] }, fail: 'commits/D1/pulls' }, { decidedBase: 'OLDER' }).catch((error) => error);
-    assert.ok(direct instanceof Error, 'a lookup error propagates so the caller runs every job');
+    // A commit that did not come from a pull request, and a lookup that fails.
+    const direct = await decide({ since: { OLDER: ['D1', 'S'] } }, { decidedBase: 'OLDER' });
+    assert.deepEqual(direct.reuse, {});
+    assert.match(direct.reason, /browser: D1 is not a pull request merge/);
+    await assert.rejects(decide({ since: { OLDER: ['C5', 'S'] }, fail: 'commits/C5/pulls' }, { decidedBase: 'OLDER' }));
     // Too many commits, a truncated listing, or a listing that does not end at this push.
     const many = Array.from({ length: MAX_COMMITS }, (_, i) => `C${i + 1}`).concat('S');
     assert.deepEqual((await decide({ since: { OLDER: many } }, { decidedBase: 'OLDER' })).reuse, {});
@@ -192,7 +203,9 @@ describe('reuse of a green pull request Test verdict on a main push', () => {
   it('settles browser on a full green matrix or a full skip, nothing in between', () => {
     const at = (map) => BROWSER_JOBS.map((name) => ({ name, conclusion: map[name] ?? 'success' }));
     assert.equal(browserSettled(at({})), true);
-    assert.equal(browserSettled(at({ 'variant-smoke (1)': 'skipped', 'variant-smoke (2)': 'skipped', 'variant-smoke-pro-webmcp (webmcp)': 'skipped' })), true);
+    assert.equal(browserSettled(SKIPPED_BROWSER), true);
+    assert.equal(browserSettled([...SKIPPED_BROWSER, { name: 'variant-smoke (1)', conclusion: 'success' }]), false, 'a skip mixed with a run leg is not a full skip');
+    assert.equal(browserSettled(SKIPPED_BROWSER.map((job) => (job.name === 'variant-smoke-full' ? { ...job, conclusion: 'failure' } : job))), false);
     assert.equal(browserSettled(at({ 'variant-smoke (1)': 'skipped' })), false);
     assert.equal(browserSettled(at({ 'variant-smoke-full': 'failure' })), false);
     assert.equal(browserSettled(at({ 'variant-smoke-full': 'skipped' })), false);

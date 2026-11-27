@@ -76,16 +76,22 @@ async function greenPullRequestRun({ api, repo, sha, now }) {
   return { pr, run: latest, jobs };
 }
 
+// Every browser job row except the aggregate. A matrix job skipped by its
+// `if:` is listed once under its unexpanded name, e.g.
+// "variant-smoke (${{ matrix.shard }})" and "variant-smoke-pro-webmcp"
+// (PR #11450 run 45944994296), so the GROUPS patterns miss those rows.
+const BROWSER_LEG = /^variant-smoke(?:-pro-webmcp)?(?: \(.*\))?$/;
+
 // The browser group is settled when its aggregate passed and the legs agree:
 // all ran and passed, or all were skipped because the PR touched no browser
 // path (the aggregate fails any other mix). Main applies the same path filter
 // to the same files, so a skip there means main would not have run them either.
 export function browserSettled(jobs) {
-  const [shards, legs, aggregate] = GROUPS.browser.map((pattern) => jobs.filter((job) => pattern.test(job.name)));
+  const aggregate = jobs.filter((job) => job.name === 'variant-smoke-full');
   if (aggregate.length !== 1 || aggregate[0].conclusion !== 'success') return false;
-  const matrix = [...shards, ...legs];
-  if (matrix.length > 0 && matrix.every((job) => job.conclusion === 'skipped')) return true;
-  return shards.length > 0 && legs.length > 0 && matrix.every((job) => job.conclusion === 'success');
+  const legs = jobs.filter((job) => BROWSER_LEG.test(job.name));
+  if (legs.length > 0 && legs.every((job) => job.conclusion === 'skipped')) return true;
+  return groupPassed(jobs, GROUPS.browser);
 }
 
 // api(path) resolves to parsed JSON or throws. Returns { reuse: {code?, browser?}, reason }.
