@@ -21,6 +21,8 @@ function isIncident(value: unknown): value is UkmtoIncident {
     && typeof row.occurredAt === 'number' && Number.isFinite(new Date(row.occurredAt).getTime()) && row.occurredAt > 0
     // 0 means the source does not carry a publication time.
     && typeof row.reportedAt === 'number' && Number.isFinite(new Date(row.reportedAt).getTime()) && row.reportedAt >= 0
+    // Snapshots written before the seeder parsed stated times carry no flag.
+    && (row.occurredAtStated === undefined || typeof row.occurredAtStated === 'boolean')
     && typeof row.location?.latitude === 'number' && Number.isFinite(row.location.latitude) && Math.abs(row.location.latitude) <= 90
     && typeof row.location?.longitude === 'number' && Number.isFinite(row.location.longitude) && Math.abs(row.location.longitude) <= 180;
 }
@@ -34,7 +36,7 @@ export function readUkmtoSnapshot(value: unknown, now = Date.now(), maxFutureMs 
     || now - data.fetchedAt > UKMTO_RETENTION_MS || data.fetchedAt - now > maxFutureMs
     || !Array.isArray(data.incidents) || data.incidents.length > 2000 || !data.incidents.every(isIncident)) return unavailable;
   return {
-    incidents: data.incidents, fetchedAt: data.fetchedAt,
+    incidents: data.incidents.map(item => ({ ...item, occurredAtStated: item.occurredAtStated === true })), fetchedAt: data.fetchedAt,
     dataAvailable: true, stale: now - data.fetchedAt > UKMTO_FRESH_MS,
   };
 }

@@ -30,6 +30,21 @@ function decodeRows(value) {
   });
 }
 
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const STATED_TIME = /Incident\s+date:?\s*(\d{1,2})\s+([a-z]{3})[a-z]*\.?\s+(\d{4}|\d{2})\.?\s*Incident\s+time:?\s*(\d{2})(\d{2})(?!\d)/i;
+
+// The republisher's ts drifts from UKMTO's stated time in some reports, by up to 31 hours, so the report text wins.
+// UKMTO reports times in UTC, sometimes without the suffix.
+function statedIncidentTime(text) {
+  const match = STATED_TIME.exec(text);
+  if (!match) return null;
+  const [day, month, year, hour, minute] = [Number(match[1]), MONTHS.indexOf(match[2].toLowerCase()),
+    match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3]), Number(match[4]), Number(match[5])];
+  if (month < 0 || hour > 23 || minute > 59) return null;
+  const ms = Date.UTC(year, month, day, hour, minute);
+  return new Date(ms).getUTCDate() === day ? ms : null;
+}
+
 // The reader drops a whole snapshot when any incident date is not a representable Date.
 const isRepresentableTime = ms => typeof ms === 'number' && Number.isSafeInteger(ms) && ms > 0 && Number.isFinite(new Date(ms).getTime());
 
@@ -44,10 +59,11 @@ export function normalizeIncidents(value) {
       || typeof row.type !== 'string' || !row.type.trim()
       || typeof row.place !== 'string' || typeof row.text !== 'string'
       || row.text.length > 20000) throw new Error('Invalid UKMTO incident fields');
+    const stated = statedIncidentTime(row.text);
     const incident = {
       id: `ukmto-${number}`, incidentNumber: Number(number),
       incidentType: row.type.trim(), place: row.place.trim(),
-      description: row.text.trim(), occurredAt: row.ts * 1000,
+      description: row.text.trim(), occurredAt: stated ?? row.ts * 1000, occurredAtStated: stated !== null,
       // The republished table has no publication time; 0 tells readers it is unknown.
       reportedAt: 0,
       location: { latitude: row.lat, longitude: row.lon },

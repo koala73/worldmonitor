@@ -5139,7 +5139,8 @@
     "current": "Fonte verificada",
     "reportedClaims": "Relatos do editor. As alegações podem continuar sob investigação.",
     "occurred": "Incidente",
-    "reported": "Publicado"
+    "reported": "Publicado",
+    "listed": "Registrado"
   },
   "panelVariants": {
     "finance": {

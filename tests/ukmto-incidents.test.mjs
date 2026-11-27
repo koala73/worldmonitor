@@ -59,6 +59,7 @@ test('takes the incident time UKMTO states in its report over the listed time', 
     ['Incident Date:21 Oct 2026 Incident Time:0145UTC Local Authorities report.', '2026-10-21T01:45:00Z'],
     ['UKMTO WARNING 215-26 - ATTACK Incident Date 21 Nov 2026 Incident Time: 0500UTC UKMTO has received a report.', '2026-11-21T05:00:00Z'],
     ['Incident Date: 29 OCT 2026 Incident Time: 2212 UTC. UKMTO has received a report.', '2026-10-29T22:12:00Z'],
+    ['UKMTO WARNING 158-26 Incident Date: 07 OCT 2026 Incident Time: 1900 UKMTO has received a report.', '2026-10-07T19:00:00Z'],
   ];
   for (const [text, stated] of cases) {
     const [item] = normalizeIncidents(table([{ ...report, ts: listed, text }]));
@@ -74,6 +75,7 @@ test('keeps the listed time, marked as not stated, when the report gives no vali
     'UKMTO WARNING 208-226. UPDATE 001-170745Z: UKMTO has received reports of a second strike.',
     'Incident Date: 31 Feb 2026 Incident Time: 1200UTC UKMTO has received a report.',
     'Incident Date: 01 Mar 2026 Incident Time: 2460UTC UKMTO has received a report.',
+    'Incident Date: 01 Mar 2026 Incident Time: 123456 UKMTO has received a report.',
   ]) {
     const [item] = normalizeIncidents(table([{ ...report, text }]));
     assert.equal(item.occurredAt, report.ts * 1000, text);

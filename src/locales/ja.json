@@ -5093,7 +5093,8 @@
     "current": "情報源確認済み",
     "reportedClaims": "発行元の報告です。主張は調査中の場合があります。",
     "occurred": "発生",
-    "reported": "公開"
+    "reported": "公開",
+    "listed": "掲載"
   },
   "panelVariants": {
     "finance": {

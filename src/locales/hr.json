@@ -5149,7 +5149,8 @@
     "current": "Izvor provjeren",
     "reportedClaims": "Izvješća izdavača. Tvrdnje mogu još biti pod istragom.",
     "occurred": "Incident",
-    "reported": "Objavljeno"
+    "reported": "Objavljeno",
+    "listed": "Navedeno"
   },
   "panelVariants": {
     "finance": {
