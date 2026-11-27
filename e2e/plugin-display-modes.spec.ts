@@ -134,7 +134,7 @@ test('a refused expand request keeps the layout and says so', async ({ page }) =
   const host = await installHost(page, { availableDisplayModes: ['inline', 'fullscreen'], displayModeAnswer: 'inline' });
   await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
   await host.frame.getByRole('button', { name: 'Expand' }).click();
-  await expect(host.frame.locator('#pluginStatus')).toHaveText('Claude kept this view in the conversation.');
+  await expect(host.frame.locator('#pluginStatus')).toHaveText('Full screen is not available here. The view stays in the conversation.');
   await expect(host.frame.locator('body')).not.toHaveAttribute('data-wm-fill');
   await expect(host.frame.getByRole('button', { name: 'Expand' })).toBeVisible();
 });

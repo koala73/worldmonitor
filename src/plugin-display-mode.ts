@@ -1,7 +1,7 @@
 // DOM side of MCP Apps display modes, shared by the news-and-maps and country views.
 import { layoutFlags, mergeHostContext, type PluginHostContext } from './plugin-host-context';
 
-export const EXPAND_REFUSED = 'Claude kept this view in the conversation.';
+export const EXPAND_REFUSED = 'Full screen is not available here. The view stays in the conversation.';
 
 type HostRequest = (method: string, params: object) => Promise<unknown>;
 
