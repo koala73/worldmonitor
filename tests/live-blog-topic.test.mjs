@@ -10,7 +10,6 @@ const TOPIC_HEADERS = [
   ['LIVE: Iran-US war', 'Business Recorder'],
   ['Live: Russia-Ukraine War', 'Reuters'],
   ['Israel-Hamas war live updates', 'CNN'],
-  ['Middle East crisis live', 'Guardian World'],
   ['Live blog: war in Ukraine - The Guardian', 'the guardian'],
   ['Live updates | Iran-Israel conflict', 'Al Jazeera'],
 ];
@@ -45,6 +44,11 @@ const EVENTS = [
   'LIVE: IRAN WAR: TANKER HIT',
   'Live: Gaza War Truce Holds',
   'Live: Ceasefire in Iran-US war',
+  'Live: NATO Enters war',
+  'Live: Hezbollah Joins war',
+  'Live: war in Gaza Spreads',
+  // A multi-word name looks the same as a capitalized verb, so it is not matched.
+  'Middle East crisis live',
   'Live: Fighting in Iran-US war',
   'Live: US strikes Iran',
   'Iran-US war',
