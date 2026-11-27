@@ -377,7 +377,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
 };
 
 const ALLOWED_ENV_KEYS = new Set([
-  'OPENROUTER_API_KEY', 'EXA_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
+  'ATLASCLOUD_API_KEY', 'OPENROUTER_API_KEY', 'EXA_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
@@ -2035,6 +2035,26 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       if (isAuthFailure(response.status, text)) return fail('OpenRouter rejected this key');
       if (!response.ok) return fail(`OpenRouter probe failed (${response.status})`);
       return ok('OpenRouter key verified');
+    }
+
+    case 'ATLASCLOUD_API_KEY': {
+      // GET /v1/models is public and answers 200 for any bearer, so it cannot
+      // validate a key. An empty chat request is rejected with 401 for a bad key
+      // and with 400 (body validation, no generation) for a good one.
+      const response = await fetchWithTimeout('https://api.atlascloud.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${value}`,
+          'Content-Type': 'application/json',
+          'User-Agent': CHROME_UA,
+        },
+        body: JSON.stringify({ model: '', messages: [] }),
+      });
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Atlas Cloud key stored (Cloudflare blocked verification)');
+      if (isAuthFailure(response.status, text)) return fail('Atlas Cloud rejected this key');
+      if (response.status >= 500) return fail(`Atlas Cloud probe failed (${response.status})`);
+      return ok('Atlas Cloud key verified');
     }
 
     case 'FRED_API_KEY': {

@@ -46,6 +46,7 @@ export interface ProviderCredentials {
 
 const PROVIDER_CHAIN = [
   'ollama',
+  'atlascloud',
   'openrouter',
   'openrouter-free',
   'openrouter-free-backup',
@@ -95,6 +96,10 @@ export interface ProviderCredentialOverrides {
 const OLLAMA_HOST_ALLOWLIST = new Set([
   'localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal',
 ]);
+
+function openAiChatCompletionsUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+}
 
 function isLocalDeployment(): boolean {
   const mode = typeof process !== 'undefined' ? (process.env?.LOCAL_API_MODE || '') : '';
@@ -176,6 +181,31 @@ export function getProviderCredentials(
     };
   }
 
+  if (provider === 'atlascloud') {
+    const apiKey = process.env.ATLASCLOUD_API_KEY;
+    if (!apiKey) return null;
+    const baseUrl = process.env.ATLASCLOUD_API_BASE || 'https://api.atlascloud.ai/v1';
+    // A scheme-less or non-http(s) base would yield a relative URL that later
+    // throws inside the health probe and aborts the whole provider chain.
+    try {
+      const { protocol } = new URL(baseUrl);
+      if (protocol !== 'https:' && protocol !== 'http:') throw new Error('unsupported protocol');
+    } catch {
+      console.warn('[llm] Atlas Cloud disabled: ATLASCLOUD_API_BASE must be an absolute http(s) URL');
+      return null;
+    }
+    return {
+      apiUrl: openAiChatCompletionsUrl(baseUrl),
+      model: overrides.model
+        || process.env.ATLASCLOUD_MODEL
+        || (overrides.enableReasoning ? 'deepseek-ai/deepseek-v4-pro' : 'qwen/qwen3.5-flash'),
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    };
+  }
+
   // Generic OpenAI-compatible endpoint via LLM_API_URL/LLM_API_KEY/LLM_MODEL
   if (provider === 'generic') {
     const apiUrl = process.env.LLM_API_URL;
@@ -244,6 +274,8 @@ export function stripThinkingTags(text: string): string {
 // model is its own validated attempt, so malformed JSON or empty content can
 // advance the chain; OpenRouter's random `openrouter/free` router cannot.
 // Ollama stays first so self-hosted deployments are untouched.
+// Atlas Cloud sits right after ollama and is skipped unless ATLASCLOUD_API_KEY
+// is configured, so deployments without it keep the previous chain order.
 const PROVIDER_SET = new Set<string>([...PROVIDER_CHAIN, ...OPT_IN_PROVIDERS]);
 const OPENROUTER_FREE_ATTEMPT_TIMEOUT_MS = 8_000;
 const INDEPENDENT_FALLBACK_RESERVE_MS = 5_000;
@@ -752,7 +784,8 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
       // Keep one independent provider reachable inside the caller's wall-clock
       // budget. The fixed free models share OpenRouter's control plane, so a
       // stalled OpenRouter completion must not consume the next origin's reserve.
-      const hasIndependentFallback = isOpenRouterProvider(providerName)
+      const reservesIndependentFallback = isOpenRouterProvider(providerName) || providerName === 'atlascloud';
+      const hasIndependentFallback = reservesIndependentFallback
         && providers.slice(providerIndex + 1).some((laterProvider) => {
           const laterCreds = getProviderCredentials(laterProvider, {
             model: modelOverrides?.[laterProvider as LlmProviderName],
@@ -927,7 +960,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         } else {
           record(false, { reason: timedOut ? 'timeout' : 'fetch_error' });
         }
-        if (timedOut && hasIndependentFallback) {
+        if (timedOut && hasIndependentFallback && isOpenRouterProvider(providerName)) {
           skipRemainingOpenRouter = true;
         }
         if (forcedProvider) return null;
