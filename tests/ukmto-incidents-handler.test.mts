@@ -38,6 +38,19 @@ test('producer records survive the reader without promoting claims or incident d
   assert.equal(readUkmtoSnapshot({ ...snapshot, incidents: [{ ...incidents[0], occurredAt: 1e100 }] }, now).dataAvailable, false);
 });
 
+test('a snapshot written before incident times were parsed reads as listed times', () => {
+  const [incident] = normalizeIncidents({
+    v: 1,
+    t: { c: ['id', 'type', 'lat', 'lon', 'ts', 'place', 'text'], k: [0, 1, 5, 6], r: [[0, 1, 26.43, 56.48, 1790636400, 2, 3]] },
+    s: ['UKMTO-143', 'Suspicious Activity', 'Hormuz', 'Tanker struck.'],
+  });
+  const { occurredAtStated: _, ...older } = incident;
+  const result = readUkmtoSnapshot({ ...snapshot, incidents: [older] }, now);
+  assert.equal(result.dataAvailable, true);
+  assert.equal(result.incidents[0].occurredAtStated, false);
+  assert.equal(readUkmtoSnapshot({ ...snapshot, incidents: [{ ...incident, occurredAtStated: 'yes' }] }, now).dataAvailable, false);
+});
+
 test('health is pending before activation and strict after it, including valid empty snapshots', () => {
   const name = 'ukmtoIncidents';
   const key = health.STANDALONE_KEYS[name];

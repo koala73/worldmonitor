@@ -50,6 +50,37 @@ test('leaves the publication time unset because the source does not carry it', (
   assert.equal('severity' in item, false);
 });
 
+test('takes the incident time UKMTO states in its report over the listed time', () => {
+  const listed = Math.floor(Date.parse('2026-12-01T00:00:00Z') / 1000);
+  const cases = [
+    ['UKMTO WARNING 102-26 ATTACK Incident Date: 31 Jul 2026 Incident Time 2206UTC UKMTO has received a report.', '2026-07-31T22:06:00Z'],
+    ['UKMTO WARNING 105-26 - ATTACK Incident date: 04 Aug 2026. Incident time: 0730UTC UKMTO has received a time-late report.', '2026-08-04T07:30:00Z'],
+    ['UKMTO 117-26 - ATTACK Incident Date: 17 Aug 26 Incident Time: 1100UTC UKMTO has received a report.', '2026-08-17T11:00:00Z'],
+    ['Incident Date:21 Oct 2026 Incident Time:0145UTC Local Authorities report.', '2026-10-21T01:45:00Z'],
+    ['UKMTO WARNING 215-26 - ATTACK Incident Date 21 Nov 2026 Incident Time: 0500UTC UKMTO has received a report.', '2026-11-21T05:00:00Z'],
+    ['Incident Date: 29 OCT 2026 Incident Time: 2212 UTC. UKMTO has received a report.', '2026-10-29T22:12:00Z'],
+  ];
+  for (const [text, stated] of cases) {
+    const [item] = normalizeIncidents(table([{ ...report, ts: listed, text }]));
+    assert.equal(item.occurredAt, Date.parse(stated), text);
+    assert.equal(item.occurredAtStated, true, text);
+  }
+});
+
+test('keeps the listed time, marked as not stated, when the report gives no valid incident time', () => {
+  for (const text of [
+    report.text,
+    'UKMTO WARNING 203-26 - ATTACK Incident Date: 10 Nov 2026 Incident Time: TBC UKMTO has received a time-late report.',
+    'UKMTO WARNING 208-226. UPDATE 001-170745Z: UKMTO has received reports of a second strike.',
+    'Incident Date: 31 Feb 2026 Incident Time: 1200UTC UKMTO has received a report.',
+    'Incident Date: 01 Mar 2026 Incident Time: 2460UTC UKMTO has received a report.',
+  ]) {
+    const [item] = normalizeIncidents(table([{ ...report, text }]));
+    assert.equal(item.occurredAt, report.ts * 1000, text);
+    assert.equal(item.occurredAtStated, false, text);
+  }
+});
+
 test('deduplicates identical reports but rejects conflicting identities', () => {
   assert.equal(normalizeIncidents(table([report, report])).length, 1);
   assert.throws(() => normalizeIncidents(table([report, { ...report, text: 'Changed' }])));
