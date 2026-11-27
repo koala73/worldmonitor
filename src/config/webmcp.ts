@@ -10,9 +10,9 @@ import type { SiteVariant } from './variant';
  */
 export const WEBMCP_HOMEPAGE_TOOL_NAMES = [
   'open_dashboard',
-  'getWorldMonitorMcpEndpoint',
-  'listCountryScorecards',
-  'getCountryScorecard',
+  'get_worldmonitor_mcp_endpoint',
+  'list_country_scorecards',
+  'get_country_scorecard',
 ] as const;
 
 export const WEBMCP_SPA_TOOL = Object.freeze({

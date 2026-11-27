@@ -47,6 +47,11 @@ function userAgentTokenPattern(tokens: readonly string[]): RegExp {
 
 const AGENT_UA = userAgentTokenPattern(agentRequestPolicy.userAgents);
 
+// Assistants that fetch a page for a person (orank `agent-ua-markdown`). They
+// get the Markdown homepage when they accept any format, and HTML when their
+// Accept header names text/html ahead of Markdown.
+const USER_FETCHER_UA = userAgentTokenPattern(agentRequestPolicy.userFetchers);
+
 // AI crawlers and assistant fetchers allowed to read `/api/**/*.md` twins past
 // the bot gate. The shared agent list plus the tokens it does not carry; that
 // list also drives the Cloudflare firewall expressions, so it is not widened
@@ -334,13 +339,18 @@ function route(request: Request) {
   const markdownQuality = acceptQuality(accept, 'text/markdown') ?? 0;
   const wantsHomepageMarkdown = /(?:^|,)\s*text\/markdown\s*(?:;|,|$)/i.test(accept ?? '') &&
     markdownQuality > 0 && markdownQuality >= (acceptQuality(accept, 'text/html', true) ?? 0);
+  // Wildcards count for both types (RFC 9110 §12.5.1): `*/*` alone ties and
+  // picks Markdown, while `text/markdown;q=0` refuses it whatever else follows.
+  const fetcherMarkdownQuality = accept ? (acceptQuality(accept, 'text/markdown', true) ?? 0) : 1;
+  const userFetcherWantsMarkdown = USER_FETCHER_UA.test(ua) && fetcherMarkdownQuality > 0 &&
+    fetcherMarkdownQuality >= (acceptQuality(accept, 'text/html', true) ?? 0);
 
   if (
     path === '/' &&
     (host === 'www.worldmonitor.app' || host === 'worldmonitor.app') &&
     (request.method === 'GET' || request.method === 'HEAD') &&
     url.searchParams.get('mode') !== 'agent' &&
-    (AGENT_UA.test(ua) || wantsHomepageMarkdown)
+    (AGENT_UA.test(ua) || userFetcherWantsMarkdown || wantsHomepageMarkdown)
   ) {
     return new Response(null, {
       headers: {

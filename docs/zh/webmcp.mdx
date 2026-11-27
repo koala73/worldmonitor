@@ -113,9 +113,9 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | 工具 | 输入 schema | 行为 |
 |---|---|---|
 | `open_dashboard` | 对象，可选字符串 `monitor`；枚举 `world`、`tech`、`finance`、`commodity`、`energy`、`happy`；不允许其他属性。默认为 `world`。 | 将当前标签页导航到选定的实时仪表板。 |
-| `getWorldMonitorMcpEndpoint` | 空对象；不允许其他属性。 | 只读返回 `https://worldmonitor.app/mcp`、服务器卡片、Streamable HTTP 传输和认证模式。 |
-| `listCountryScorecards` | 对象，可选 `countryCodes`（最多 15 个 ISO 3166-1 alpha-2 代码）、可选整数 `offset`（最小 0）和可选整数 `limit`（1 到 15，默认 15）；不允许其他属性。 | 只读返回一页五要素评分卡：每个国家各支柱的 1-5 分，数据不足时为 `null`，并附 `total` 和 `nextOffset` 用于翻页。读取公开的 `list-five-factor-scorecards` 路由，无需账户。 |
-| `getCountryScorecard` | 对象，必填字符串 `countryCode`（ISO 3166-1 alpha-2）；不允许其他属性。 | 只读返回单个国家评分卡摘要：各支柱的分数、等级、输入覆盖率和简短的数据来源列表，以及完整 JSON 的 `evidenceUrl`。读取公开的 `get-five-factor-scorecard` 路由，无需账户。 |
+| `get_worldmonitor_mcp_endpoint` | 空对象；不允许其他属性。 | 只读返回 `https://worldmonitor.app/mcp`、服务器卡片、Streamable HTTP 传输和认证模式。 |
+| `list_country_scorecards` | 对象，可选 `countryCodes`（最多 15 个 ISO 3166-1 alpha-2 代码）、可选整数 `offset`（最小 0）和可选整数 `limit`（1 到 15，默认 15）；不允许其他属性。 | 只读返回一页五要素评分卡：每个国家各支柱的 1-5 分，数据不足时为 `null`，并附 `total` 和 `nextOffset` 用于翻页。读取公开的 `list-five-factor-scorecards` 路由，无需账户。 |
+| `get_country_scorecard` | 对象，必填字符串 `countryCode`（ISO 3166-1 alpha-2）；不允许其他属性。 | 只读返回单个国家评分卡摘要：各支柱的分数、等级、输入覆盖率和简短的数据来源列表，以及完整 JSON 的 `evidenceUrl`。读取公开的 `get-five-factor-scorecard` 路由，无需账户。 |
 
 ### 仪表板命令式工具
 

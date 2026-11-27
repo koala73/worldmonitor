@@ -48,6 +48,40 @@ describe('agent homepage routing', () => {
     });
   }
 
+  it('declares the assistant fetchers that act for a person', () => {
+    assert.deepEqual(agentRequestPolicy.userFetchers, ['Claude-User', 'Perplexity-User']);
+    for (const fetcher of agentRequestPolicy.userFetchers) {
+      assert.ok(!agentRequestPolicy.userAgents.includes(fetcher), `${fetcher} is listed once`);
+    }
+  });
+
+  for (const fetcher of agentRequestPolicy.userFetchers) {
+    it(`${fetcher} receives Markdown unless it asks for HTML`, async () => {
+      const uas = [`${fetcher}/1.0`, `Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ${fetcher}/1.0)`];
+      for (const ua of uas) {
+        for (const accept of ['*/*', null, 'text/markdown', 'text/markdown, text/html', 'application/json, */*;q=0.8', 'text/html;q=0.5, */*;q=1']) {
+          for (const method of ['GET', 'HEAD']) {
+            const headers: Record<string, string> = { 'User-Agent': ua };
+            if (accept !== null) headers.Accept = accept;
+            const response = await middleware(new Request('https://www.worldmonitor.app/', { method, headers }));
+            assert.equal(response?.headers.get('x-middleware-rewrite'), 'https://www.worldmonitor.app/pro/home.md', `${ua} ${accept}`);
+            assert.match(response!.headers.get('content-type')!, /text\/markdown/);
+            assert.equal(response!.headers.get('vary'), 'User-Agent, Accept');
+            for (const header of ['Cache-Control', 'CDN-Cache-Control', 'Vercel-CDN-Cache-Control']) {
+              assert.match(response!.headers.get(header)!, /no-store/);
+            }
+          }
+        }
+        for (const accept of ['text/html', 'text/html,application/xhtml+xml,*/*;q=0.8', 'text/markdown;q=0.5, text/html', 'text/markdown;q=0, */*;q=1', 'text/markdown;q=0']) {
+          const response = await middleware(new Request('https://www.worldmonitor.app/', {
+            headers: { 'User-Agent': ua, Accept: accept },
+          }));
+          assert.equal(response?.headers.get('x-middleware-rewrite') ?? null, null, `${ua} ${accept}`);
+        }
+      }
+    });
+  }
+
   it('serves the same complete homepage for crawler and Accept negotiation', { skip: shouldSkipProBuiltOutput() }, async () => {
     const html = readFileSync(new URL('../public/pro/welcome.html', import.meta.url), 'utf8');
     const depth = JSON.parse(readFileSync(new URL('../pro-test/src/generated/depth-stats.json', import.meta.url), 'utf8'));

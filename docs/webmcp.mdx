@@ -115,9 +115,9 @@ The static `https://www.worldmonitor.app/` welcome page registers four imperativ
 | Tool | Input schema | Behavior |
 |---|---|---|
 | `open_dashboard` | Object with optional string `monitor`; enum `world`, `tech`, `finance`, `commodity`, `energy`, `happy`; no additional properties. Defaults to `world`. | Navigates the current tab to the selected live dashboard. |
-| `getWorldMonitorMcpEndpoint` | Empty object; no additional properties. | Read-only connection details for `https://worldmonitor.app/mcp`, its server card, Streamable HTTP transport, and auth modes. |
-| `listCountryScorecards` | Object with optional `countryCodes` (up to 15 ISO 3166-1 alpha-2 codes), optional integer `offset` (minimum 0) and optional integer `limit` (1 to 15, default 15); no additional properties. | Read-only page of five-factor scorecards: each country's 1-5 score per pillar, `null` where data is insufficient, with `total` and `nextOffset` for paging. Reads the public `list-five-factor-scorecards` route; no account needed. |
-| `getCountryScorecard` | Object with required string `countryCode` (ISO 3166-1 alpha-2); no additional properties. | Read-only summary of one country's scorecard: per-pillar score, band, input coverage and a short list of its data sources, plus `evidenceUrl` for the full JSON. Reads the public `get-five-factor-scorecard` route; no account needed. |
+| `get_worldmonitor_mcp_endpoint` | Empty object; no additional properties. | Read-only connection details for `https://worldmonitor.app/mcp`, its server card, Streamable HTTP transport, and auth modes. |
+| `list_country_scorecards` | Object with optional `countryCodes` (up to 15 ISO 3166-1 alpha-2 codes), optional integer `offset` (minimum 0) and optional integer `limit` (1 to 15, default 15); no additional properties. | Read-only page of five-factor scorecards: each country's 1-5 score per pillar, `null` where data is insufficient, with `total` and `nextOffset` for paging. Reads the public `list-five-factor-scorecards` route; no account needed. |
+| `get_country_scorecard` | Object with required string `countryCode` (ISO 3166-1 alpha-2); no additional properties. | Read-only summary of one country's scorecard: per-pillar score, band, input coverage and a short list of its data sources, plus `evidenceUrl` for the full JSON. Reads the public `get-five-factor-scorecard` route; no account needed. |
 
 ### Dashboard imperative tools
 

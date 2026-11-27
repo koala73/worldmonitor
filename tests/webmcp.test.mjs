@@ -2771,6 +2771,14 @@ function homepageProviderViolations(source) {
 }
 
 describe('homepage WebMCP source registration', () => {
+  it('names every homepage tool in snake_case, verb first', () => {
+    // orank grades the homepage set as one surface; mixed camel and snake
+    // names make tool selection harder (webmcp-naming).
+    for (const name of WEBMCP_HOMEPAGE_TOOL_NAMES) {
+      assert.match(name, /^(?:get|list|open)_[a-z0-9]+(?:_[a-z0-9]+)*$/, name);
+    }
+  });
+
 
   it('observes registerTool promises', () => {
     assert.ok(homepageSourceScript);
@@ -2819,7 +2827,7 @@ describe('homepage WebMCP source registration', () => {
 
     const endpoint = runHomepage(collectingHomepageProvider);
     const endpointResult = await endpoint.registered
-      .find((tool) => tool.name === 'getWorldMonitorMcpEndpoint')
+      .find((tool) => tool.name === 'get_worldmonitor_mcp_endpoint')
       .execute({});
     assert.equal(endpointResult.endpoint, 'https://worldmonitor.app/mcp');
     assert.equal(endpointResult.transport, 'streamableHttp');
@@ -2839,8 +2847,8 @@ describe('homepage WebMCP source registration', () => {
       return new Response(JSON.stringify(body), { status: 200 });
     });
     const { registered } = runHomepage(collectingHomepageProvider);
-    const list = registered.find((tool) => tool.name === 'listCountryScorecards');
-    const detail = registered.find((tool) => tool.name === 'getCountryScorecard');
+    const list = registered.find((tool) => tool.name === 'list_country_scorecards');
+    const detail = registered.find((tool) => tool.name === 'get_country_scorecard');
 
     const first = await list.execute({});
     assert.equal(first.total, 20);
@@ -2874,7 +2882,7 @@ describe('homepage WebMCP source registration', () => {
     const document = { modelContext: collectingHomepageProvider(registered), addEventListener: () => {} };
     const window = { location: { origin: 'http://localhost:3000', assign: () => {} }, addEventListener: () => {} };
     runHomepageInline(window, document, {});
-    const result = await registered.find((tool) => tool.name === 'getCountryScorecard').execute({ countryCode: 'DE' });
+    const result = await registered.find((tool) => tool.name === 'get_country_scorecard').execute({ countryCode: 'DE' });
     assert.equal(requested[0], 'http://localhost:3000/api/scorecard/v1/get-five-factor-scorecard?countryCode=DE');
     assert.equal(result.evidenceUrl, requested[0]);
     assert.deepEqual(result.pillars[0].sources, [longName.slice(0, 60), 'World Bank']);

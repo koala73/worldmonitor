@@ -44,9 +44,9 @@ const DASHBOARD_TOOL_NAMES = [
   'switch_monitor',
 ];
 const HOMEPAGE_TOOL_NAMES = [
-  'getCountryScorecard',
-  'getWorldMonitorMcpEndpoint',
-  'listCountryScorecards',
+  'get_country_scorecard',
+  'get_worldmonitor_mcp_endpoint',
+  'list_country_scorecards',
   'open_dashboard',
 ];
 const PRODUCTION_DASHBOARDS = [

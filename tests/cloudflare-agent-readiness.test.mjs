@@ -65,10 +65,12 @@ describe('Cloudflare agent readiness', () => {
       'the document rule must retire the bypass this script used to manage',
     );
     const { expression } = buildCorpusCacheRule();
-    for (const ua of policy.userAgents) {
-      assert.ok(expression.includes(`lower(http.user_agent) contains "${ua.toLowerCase()}"`), `${ua} must be carved out of the / claim`);
+    const carvedOut = [...expression.matchAll(/lower\(http\.user_agent\) contains "([^"]+)"/g)].map((match) => match[1]);
+    const agents = [...policy.userAgents, ...policy.userFetchers];
+    for (const ua of agents) {
+      assert.ok(carvedOut.some((token) => ua.toLowerCase().includes(token)), `${ua} must be carved out of the / claim`);
     }
-    assert.deepEqual([...AGENT_USER_AGENTS], policy.userAgents.map((ua) => ua.toLowerCase()));
+    assert.deepEqual([...AGENT_USER_AGENTS], agents.map((ua) => ua.toLowerCase()));
     const changes = planAgentReadiness(fixture().firewall);
     assert.ok(changes.every((change) => change.phase === 'http_request_firewall_custom'), 'this script plans firewall changes only');
   });
