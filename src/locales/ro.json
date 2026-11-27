@@ -5141,7 +5141,8 @@
     "current": "Sursă verificată",
     "reportedClaims": "Rapoarte ale editorului. Afirmațiile pot fi încă investigate.",
     "occurred": "Incident",
-    "reported": "Publicat"
+    "reported": "Publicat",
+    "listed": "Înregistrat"
   },
   "panelVariants": {
     "finance": {

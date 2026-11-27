@@ -12,6 +12,7 @@ import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
 import { effectivePubDateMs } from '@/services/feed-date';
+import { isRunningTally } from '../../shared/running-tally.js';
 import {
   assessCorroboration,
   evidenceFromItem,
@@ -293,7 +294,7 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
     if (!item.threat) continue;
     if (!isRecent(item)) continue;
 
-    const level = item.threat.level;
+    const level = item.threat.level === 'critical' && isRunningTally(item.title) ? 'high' : item.threat.level;
     if (level !== 'critical' && level !== 'high') continue;
     if (settings.sensitivity === 'critical-only' && level !== 'critical') continue;
 

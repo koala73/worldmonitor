@@ -47,11 +47,27 @@
 //
 // Result under the re-registered count, from the same captures, seed 1. Threshold 175: the
 // baseline's 161 plus a margin of 14.
-// - The production prompt counts 161 (relay-baseline) and 167 on re-capture (relay-current).
+// - The production prompt counts 161 (relay-baseline) and 167 on its 2026-11-26 re-capture.
 //   An off-design capture of it at seed 2 counts 165. 138 of the baseline's 161 are on five
 //   borderline rows, four of them shipping attacks and closures around Hormuz.
 // - The dcc144836c example fails, at 195.
 // - The second positive control fails, at 457.
+//
+// #11432, 2026-11-27: the relay prompt now says critical needs the event to have happened,
+// and that a warning, threat, vow, condition or prediction is high. Added after the score
+// log showed three threats and vows labelled critical and delivered 72 times in five days.
+// Two more checks on relay-current. The ceasefire warning at most 10 of 40 was set before any
+// candidate ran. Clear-critical labels were first held to the baseline's 863 with no margin;
+// after three candidates had been captured (838, 859, 874) that bar was replaced with the
+// baseline minus the gate's own kind of margin (floor 846), because same-prompt captures
+// ran 863 to 874. Not blind: 859 fails the first bar and passes this one. The rule alone
+// (874 kept, false critical 127) demoted a real Saudi Civil Defense post reporting the
+// Houthi attack on a Riyadh tower, critical in production: alone in a completion it went
+// from 39 to 17 of 40. The shipped prompt adds an example of an attack the target reports
+// and passes both checks: ceasefire warning 0 of 40, false critical 145, clear-critical kept
+// 976 of 1017. Off-design at seed 2: 0 of 40, 158, 973 of 1016. A scratch wording with no reported-event sentence, whose threat sentence
+// ended "whoever says it", kept 838 at seed 1 and fails the floor: it demoted attacks
+// reported through a party ("Pentagon says US jets struck ...").
 //
 // A new prompt is accepted by re-capturing `relay-current` (command below). The baseline
 // moves only with a new registration: a different model or changed judged sets.
@@ -92,6 +108,18 @@ function gateMargin(rows, baseline) {
   return Math.ceil(1.645 * Math.sqrt(2 * variance));
 }
 const gateThreshold = (rows, baseline) => scoreBatchBoundary(rows, baseline).falseCritical + gateMargin(rows, baseline);
+// The same bound on the rows scoreBatchBoundary counts as clear-critical: judged critical
+// and not borderline.
+function clearCriticalMargin(rows, baseline) {
+  let variance = 0;
+  for (const r of rows) {
+    const c = baseline.labels[r.title];
+    if (!c || r.judge !== 'critical' || r.borderline) continue;
+    const k = c.critical ?? 0;
+    variance += k * (1 - k / c.asked);
+  }
+  return Math.ceil(1.645 * Math.sqrt(2 * variance));
+}
 
 describe('batch-boundary rule', () => {
   const rows = [
@@ -173,7 +201,7 @@ describe('batch-boundary rule', () => {
 
 const { captures } = readJudged('tests/fixtures/classify-batch-boundary.json');
 // Written from relay-baseline under the re-registered count; the test below holds them to it.
-const BASELINE = { falseCritical: 161, threshold: 175 };
+const BASELINE = { falseCritical: 161, threshold: 175, clearCriticalKept: 863, clearCriticalFloor: 846 };
 const relaySrc = readFileSync(resolve(root, 'scripts/ais-relay.cjs'), 'utf8');
 
 describe('batch-boundary captures', () => {
@@ -224,5 +252,26 @@ describe('batch-boundary captures', () => {
     const s = scoreBatchBoundary(judged.rows, captures['relay-current']);
     assert.ok(s.falseCritical <= BASELINE.threshold,
       `${s.falseCritical} false criticals over ${REGISTERED.passes} passes, threshold ${BASELINE.threshold}:\n${s.falseCriticalTitles.join('\n')}`);
+  });
+
+  it('relay-current labels the ceasefire warning critical in at most a quarter of passes (#11432)', () => {
+    // A warning that a ceasefire could collapse is not a collapse. The production prompt
+    // before #11432 labelled it critical in 23 and 24 of 40 passes (relay-baseline and its
+    // re-capture) and 19 of 40 at seed 2. 10 of 40 sits below that whole spread.
+    const c = captures['relay-current'].labels['Israel says ceasefire with Hezbollah could collapse within days'];
+    assert.equal(c.asked, REGISTERED.passes);
+    assert.ok((c.critical ?? 0) <= 10, `critical in ${c.critical} of ${c.asked} passes`);
+  });
+
+  it('relay-current keeps the baseline\'s clear-critical labels, within the noise margin (#11432)', () => {
+    // The false-critical gate never counts misses, so a prompt that demotes real attacks
+    // and closures to high would pass it. The floor is the baseline's count minus the same
+    // one-sided 95% margin, taken over the clear-critical rows.
+    const b = captures['relay-baseline'];
+    const kept = (c) => scoreBatchBoundary(judged.rows, c).clearCriticalKept;
+    assert.equal(kept(b), BASELINE.clearCriticalKept);
+    assert.equal(kept(b) - clearCriticalMargin(judged.rows, b), BASELINE.clearCriticalFloor);
+    assert.ok(kept(captures['relay-current']) >= BASELINE.clearCriticalFloor,
+      `kept ${kept(captures['relay-current'])} clear-critical labels, floor ${BASELINE.clearCriticalFloor}`);
   });
 });

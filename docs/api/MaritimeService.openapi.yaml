@@ -650,6 +650,9 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                occurredAtStated:
+                    type: boolean
+                    description: True when occurred_at is the incident time stated in the report; false when it is the republisher's listed time.
             description: UkmtoIncident is a publisher report, not independent confirmation of an attack.
         GeoCoordinates:
             type: object

@@ -64,7 +64,8 @@ export { deduplicateHeadlines } from './dedup.mjs';
 // Translate mode: the text is a delimited data block, never instructions
 // ========================================================================
 
-// Translate is free to anonymous callers, so its prompt is the steerable
+// Translate text is caller-supplied (anonymous callers may send Hebrew alert
+// text), so its prompt is the steerable
 // surface: the text sits between these markers in the user turn and the system
 // prompt says the block is data. Pattern: chat-analyst-prompt.ts.
 export const TRANSLATE_TEXT_OPEN = '<<<TEXT>>>';

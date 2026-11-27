@@ -791,3 +791,15 @@ export function newsPublisherCoverageKey(title) {
   const identity = normalized.split(' ').length >= 4 && stripOutletCredits(title.toLowerCase()) !== null ? normalized : title;
   return `${NEWS_PUBLISHER_COVERAGE_PREFIX}${bytesToHex(sha256(encoder.encode(identity)))}`;
 }
+
+export const NEWS_PUBLISHER_REPRINTS_PREFIX = 'news:publisher-reprints:v1:';
+
+// The families a wire-aware build folded into a wire on one coverage key
+// (#11434). Coverage is shared by every edition, so an edition without the
+// wire copy writes the reprint back; readers drop the families this records.
+// A separate key, so a reader that does not know it counts as before.
+export function newsPublisherReprintsKey(coverageKey) {
+  if (typeof coverageKey !== 'string' || !coverageKey.startsWith(NEWS_PUBLISHER_COVERAGE_PREFIX)) return '';
+  const id = coverageKey.slice(NEWS_PUBLISHER_COVERAGE_PREFIX.length);
+  return id ? `${NEWS_PUBLISHER_REPRINTS_PREFIX}${id}` : '';
+}

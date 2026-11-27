@@ -87,7 +87,7 @@ const {
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
-const { newsStoryKey, newsAlertClaimKey, newsStoryKeyLoadError, newsPublisherCoverageKey, classifyCacheIdentity, reachesRealtimeRules, reachesLocalRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
+const { newsStoryKey, newsAlertClaimKey, newsStoryKeyLoadError, newsPublisherCoverageKey, newsPublisherReprintsKey, classifyCacheIdentity, reachesRealtimeRules, reachesLocalRules, NEWS_STORY_DEDUP_TTL_SECONDS } = require('./lib/news-story-key.cjs');
 if (newsStoryKeyLoadError()) {
   // Alerts still publish, on the exact-title identity; a repeated headline can alert twice.
   console.warn('[Notify] News story key unavailable, falling back to exact-title dedup:', newsStoryKeyLoadError().message);
@@ -165,6 +165,7 @@ const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs')
 // why it lives in shared/ rather than beside the other scoring helpers.
 const { detectTrafficAnomaly, summarizePortwatchHistory } = require('../shared/chokepoint-traffic-anomaly.js');
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
+const { isRunningTally } = require('../shared/running-tally.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
 const {
   POSTURE_THEATERS,
@@ -5310,19 +5311,29 @@ function relayEntityCorroborationScore(count) {
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
 // Publisher families the digest saw carry each headline in the last day, over
 // every build and edition (#10977), in one short read. A title without a
-// history falls back to the build's own count.
+// history falls back to the build's own count. Families a wire-aware build
+// folded into a wire on that headline are dropped (#11434): an edition build
+// without the wire copy writes them back. The record lives while builds keep
+// carrying the wire, so it is read whole.
 async function readObservedPublishers(titles) {
   if (titles.length === 0) return new Map();
   const now = Date.now();
   const keyed = titles.map((title) => [title, newsPublisherCoverageKey(title)]).filter(([, key]) => key);
-  const rows = await upstashPipeline(
-    keyed.map(([, key]) => ['ZRANGEBYSCORE', key, `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`, now]),
-    { deadlineMs: 1500 },
-  );
+  const since = `(${now - NEWS_STORY_DEDUP_TTL_SECONDS * 1000}`;
+  const reprintKeys = keyed.map(([, key]) => newsPublisherReprintsKey(key));
+  const rows = await upstashPipeline([
+    ...keyed.map(([, key]) => ['ZRANGEBYSCORE', key, since, now]),
+    ...reprintKeys.filter(Boolean).map((key) => ['ZRANGEBYSCORE', key, '-inf', '+inf']),
+  ], { deadlineMs: 1500 });
   const observed = new Map();
+  let reprintRow = keyed.length;
   keyed.forEach(([title], i) => {
+    const reprints = reprintKeys[i] ? rows?.[reprintRow++]?.result : null;
+    const folded = new Set(Array.isArray(reprints) ? reprints : []);
     const families = rows?.[i]?.result;
-    if (Array.isArray(families)) observed.set(title, families.filter((family) => typeof family === 'string' && family));
+    if (Array.isArray(families)) {
+      observed.set(title, families.filter((family) => typeof family === 'string' && family && !folded.has(family)));
+    }
   });
   return observed;
 }
@@ -5367,11 +5378,14 @@ Guidelines for LEVEL assignment (geopolitical scope required for critical):
 - info: Opinion/editorial pieces, analysis/explainer articles, historical retrospectives, lifestyle, entertainment, routine local news, tutorials
 
 Key distinction: "critical" requires GEOPOLITICAL scope — events that destabilize international order, threaten cross-border security, or disrupt global systems. Domestic tragedies are "high" unless they trigger international diplomatic responses.
+"critical" also requires the event to have happened. A report that it happened is "critical" whoever reports it: the attacker, the target, a government or a monitoring agency. A warning, threat, vow, condition or prediction that it could happen is "high".
 - "8 children killed in mass shooting in Louisiana" → domestic mass-casualty, not geopolitical → high
 - "23 killed in fireworks factory explosion in India" → industrial accident → high
 - "700 killed in Sudan drone strikes" → geopolitical mass-casualty in active civil war → critical
 - "Iran closes Strait of Hormuz" → global trade disruption → critical
 - "Iran sets its terms for reopening Hormuz" → terms or threats, not a closure or an attack → high
+- "Officials say the grain corridor could shut within days" → a prediction, not a closure → high
+- "Civil defence: a drone attack on an office tower in the capital injured 9" → an attack that happened, reported by the target → critical
 - "Russia says its missiles destroyed a Ukrainian grain port" → an attack, reported by the attacker → critical
 - "Guardian view on ceasefire: need real peace" → editorial → info
 - "Trump's obsession with energy" → opinion/analysis → info
@@ -5935,7 +5949,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // observed: the publisher families the coverage history holds for the title
   // (#10977). crossWording: the families other wordings added, checked when a
   // label is fresh and kept on the label for its cached republish.
-  const publishAlert = (title, level, category, { cached = false, observed, crossWording } = {}) => {
+  const publishAlert = (title, label, category, { cached = false, observed, crossWording } = {}) => {
+    // A running total ("16 killed so far this month") is not a new event, so it
+    // never pages realtime subscribers. The label keeps the classifier's call.
+    const level = label === 'critical' && isRunningTally(title) ? 'high' : label;
+    if (level !== label && !cached) console.log(`[Classify] running total alerts as high: ${title.slice(0, 120)}`);
     const meta = allTitles.get(title) ?? {
       source: variant,
       publishedAt: Date.now(),

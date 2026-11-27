@@ -5118,7 +5118,8 @@
     "current": "Kaynak kontrol edildi",
     "reportedClaims": "Yayıncı raporları. İddialar hâlâ araştırılıyor olabilir.",
     "occurred": "Olay",
-    "reported": "Yayımlandı"
+    "reported": "Yayımlandı",
+    "listed": "Kaydedildi"
   },
   "panelVariants": {
     "finance": {

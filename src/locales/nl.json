@@ -5118,7 +5118,8 @@
     "current": "Bron gecontroleerd",
     "reportedClaims": "Meldingen van de uitgever. Beweringen worden mogelijk nog onderzocht.",
     "occurred": "Incident",
-    "reported": "Gepubliceerd"
+    "reported": "Gepubliceerd",
+    "listed": "Vermeld"
   },
   "panelVariants": {
     "finance": {

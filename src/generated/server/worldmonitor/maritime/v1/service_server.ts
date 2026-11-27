@@ -20,6 +20,7 @@ export interface UkmtoIncident {
   location?: GeoCoordinates;
   occurredAt: number;
   reportedAt: number;
+  occurredAtStated: boolean;
 }
 
 export interface GeoCoordinates {

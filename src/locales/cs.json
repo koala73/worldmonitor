@@ -5164,7 +5164,8 @@
     "current": "Zdroj zkontrolován",
     "reportedClaims": "Zprávy vydavatele. Tvrzení mohou být stále vyšetřována.",
     "occurred": "Incident",
-    "reported": "Zveřejněno"
+    "reported": "Zveřejněno",
+    "listed": "Uvedeno"
   },
   "panelVariants": {
     "finance": {

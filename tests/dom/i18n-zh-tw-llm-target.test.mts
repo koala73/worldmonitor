@@ -50,6 +50,26 @@ vi.mock('@/services', () => ({
   preloadRelatedAssetTables: vi.fn(async () => {}),
 }));
 
+// Translation is Pro; the panel re-checks access on these four signals.
+const access = vi.hoisted(() => ({ premium: false, desktop: false, ollama: false, listeners: new Set<() => void>() }));
+function subscribeAccess(listener: () => void) {
+  access.listeners.add(listener);
+  return () => { access.listeners.delete(listener); };
+}
+vi.mock('@/services/auth-state', () => ({ getAuthState: () => ({ user: null }), subscribeAuthState: subscribeAccess }));
+vi.mock('@/services/entitlements', () => ({ onEntitlementChange: subscribeAccess }));
+vi.mock('@/services/widget-store', () => ({ subscribeWidgetAccess: subscribeAccess }));
+vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => access.premium }));
+vi.mock('@/services/runtime-config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/runtime-config')>()),
+  subscribeRuntimeConfig: subscribeAccess,
+  isFeatureAvailable: (id: string) => id === 'aiOllama' && access.ollama,
+}));
+vi.mock('@/services/desktop-runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/desktop-runtime')>()),
+  isDesktopRuntime: () => access.desktop,
+}));
+
 /** The private methods under test, reached without widening the public API. */
 interface NewsPanelInternals {
   handleTranslate(element: HTMLElement, text: string): Promise<void>;
@@ -72,6 +92,10 @@ beforeEach(() => {
   localStorage.clear();
   translateText.mockClear();
   generateSummary.mockClear();
+  access.premium = true;
+  access.desktop = false;
+  access.ollama = false;
+  access.listeners.clear();
 });
 
 function newPanel(): NewsPanelInternals {
@@ -193,5 +217,65 @@ describe('panel summary target and cache key', () => {
     expect(traditionalKeys).toHaveLength(1);
     expect(traditionalKeys[0]).toMatch(/_zh-TW$/);
     expect(allKeys).toHaveLength(2);
+  });
+});
+
+describe('headline translation is a Pro control', () => {
+  const ITEM = {
+    source: 'Reuters',
+    title: 'Sanctions package agreed',
+    link: 'https://example.org/sanctions',
+    pubDate: new Date(),
+    isAlert: false,
+  };
+
+  function renderFlat() {
+    const panel = new NewsPanel('news', 'News');
+    document.body.appendChild(panel.getElement());
+    (panel as unknown as { clusteredMode: boolean }).clusteredMode = false;
+    panel.renderNews([ITEM as never]);
+    return panel;
+  }
+  const button = () => document.querySelector<HTMLElement>('.item-translate-btn');
+  const setPremium = (premium: boolean) => {
+    access.premium = premium;
+    for (const listener of access.listeners) listener();
+  };
+
+  it('offers no translate control to a free reader', async () => {
+    access.premium = false;
+    renderFlat();
+    await vi.waitFor(() => expect(document.querySelector('.item-title')).not.toBeNull());
+    expect(button()).toBeNull();
+  });
+
+  it('offers the control once Pro access resolves, and removes it when access ends', async () => {
+    access.premium = false;
+    renderFlat();
+    await vi.waitFor(() => expect(document.querySelector('.item-title')).not.toBeNull());
+    setPremium(true);
+    await vi.waitFor(() => expect(button()).not.toBeNull());
+    setPremium(false);
+    await vi.waitFor(() => expect(button()).toBeNull());
+  });
+
+  it('offers the control to a free desktop reader with a local model', async () => {
+    Object.assign(access, { premium: false, desktop: true, ollama: true });
+    renderFlat();
+    await vi.waitFor(() => expect(button()).not.toBeNull());
+  });
+
+  it('sends no translation for a free reader even from a stale control', async () => {
+    access.premium = false;
+    const panel = newPanel();
+    await panel.handleTranslate(headlineRow(), 'Sanctions package agreed');
+    expect(translateText).not.toHaveBeenCalled();
+  });
+
+  it('stops listening for access changes once destroyed', () => {
+    const panel = renderFlat();
+    expect(access.listeners.size).toBeGreaterThan(0);
+    panel.destroy();
+    expect(access.listeners.size).toBe(0);
   });
 });

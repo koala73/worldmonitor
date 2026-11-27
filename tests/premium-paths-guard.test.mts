@@ -54,8 +54,9 @@ const PREMIUM_FETCH_BYPASS_ALLOWLIST: Record<string, string> = {
 // reservation. Browser callers must therefore enter through premiumFetch so
 // they attach Bearer auth and so the wm-session interceptor does not mistake
 // the expected anonymous 401 for a dead HttpOnly session. Summarize stays out:
-// its translate mode is intentionally available to free callers and the
-// gateway only applies direct-LLM quota after inspecting the request body.
+// its translate mode still serves two free requests (Hebrew alerts into
+// English, the desktop's local model) and the gateway only applies direct-LLM
+// quota after inspecting the request body.
 //
 // #5674 — an entry here is NOT sufficient on its own. Membership in
 // PREMIUM_RPC_PATHS does two independent jobs: it tells premiumFetch to attach
@@ -69,9 +70,10 @@ const PREMIUM_FETCH_BYPASS_ALLOWLIST: Record<string, string> = {
 // SESSION_RECOVERY_BYPASS_PROOF must assert that mechanism is actually wired.
 const DIRECT_LLM_PREMIUM_BYPASS_ALLOWLIST: Record<string, string> = {
   '/api/news/v1/summarize-article':
-    'The route also serves free translate mode — which REQUIRES the anonymous ' +
-    'wms_ cookie, so the path cannot join PREMIUM_RPC_PATHS. Spend-bearing ' +
-    'summarize calls opt into premiumFetch with forcePremium instead of gating ' +
+    'The route also serves free alert translation (Hebrew into English) — which ' +
+    'REQUIRES the anonymous wms_ cookie, so the path cannot join PREMIUM_RPC_PATHS. ' +
+    'Spend-bearing summarize and Pro translate calls opt into premiumFetch with ' +
+    'forcePremium instead of gating ' +
     'the whole path, and session recovery is bypassed per-request via the ' +
     'premium-intent marker (src/services/premium-intent.ts).',
 };
@@ -90,7 +92,7 @@ const SESSION_RECOVERY_BYPASS_PROOF: Record<
     // exists" boolean is not a proof.
     expectedPremiumFetchCalls: 1,
     // The RPC the marked client must be the receiver of. This file calls the
-    // same method on the PLAIN client for free translate mode, so the binding
+    // same method on the PLAIN client for free alert translation, so the binding
     // is receiver-based, not method-name-based.
     rpcMethod: 'summarizeArticle',
   },
@@ -279,7 +281,7 @@ describe('premium-paths guard — browser direct-LLM routes cannot trigger wm-se
       //
       // Part 3 is what a count alone cannot give: this file legitimately calls
       // `summarizeArticle` on BOTH clients — the premium one for spend-bearing
-      // summarize, the plain one for free `mode: 'translate'`. Moving the
+      // summarize and Pro translate, the plain one for free alert translation. Moving the
       // summarize dispatch to the plain client is exactly the regression, and
       // it is visible only as the premium client losing its summarizeArticle
       // receiver.
@@ -377,7 +379,7 @@ describe('premium-paths guard — browser direct-LLM routes cannot trigger wm-se
         `${markedClientName}.${proof.rpcMethod}(...). The spend-bearing ${route} dispatch has ` +
         `moved off the marked client, so its 401 is once again read as a rejected session ` +
         `cookie and blacks out anonymous browsing for 15 minutes (#5674). Note this file also ` +
-        `calls ${proof.rpcMethod} on the PLAIN client for free translate mode — that one must ` +
+        `calls ${proof.rpcMethod} on the PLAIN client for free alert translation — that one must ` +
         `stay unmarked, which is why this assertion checks the receiver, not the method name.`,
       );
     }

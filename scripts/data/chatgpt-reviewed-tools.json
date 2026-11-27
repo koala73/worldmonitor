@@ -1,0 +1,734 @@
+{
+  "version": "2.11.8",
+  "commit": "6e9d9d47647d18e9e12a775b16487b7d97de9a6e",
+  "tools": {
+    "analyze_situation": {
+      "title": "34bc9c5669320bbe",
+      "description": "b17dbc1b4d035565",
+      "inputSchema": "f7d0d6023cf207d4",
+      "outputSchema": "5648efc033058630",
+      "annotations": "3b8673c2dc8459b7",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "classify_event": {
+      "title": "7d61aaba83ef0f83",
+      "description": "5ba76d93fb8f2f6b",
+      "inputSchema": "dab2560ddc1b8de1",
+      "outputSchema": "31c9d028021764fd",
+      "annotations": "bb41b2427ab496cc",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "compute_energy_shock": {
+      "title": "d84c899d67a78f82",
+      "description": "6f37b1d09396eb75",
+      "inputSchema": "15ebfdbe8df6e6c2",
+      "outputSchema": "1a1a8609d2bce069",
+      "annotations": "e188747809373d9f",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "describe_tool": {
+      "title": "45877ea5463a2d53",
+      "description": "6f6580ff5201bfe9",
+      "inputSchema": "3235a579e3f0472b",
+      "outputSchema": "2636ae3a60046086",
+      "annotations": "74390f1c8037a5df",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "extract_entities": {
+      "title": "1904700873a601fa",
+      "description": "9f848d1d16a91398",
+      "inputSchema": "a8aac5cbadfb3be3",
+      "outputSchema": "e721854b98c4a22e",
+      "annotations": "915f18afa874b305",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "find_webcams": {
+      "title": "627e686504913222",
+      "description": "a3b35b64a7f2938a",
+      "inputSchema": "e650a8f25023327e",
+      "outputSchema": "fad40dc77a8dea60",
+      "annotations": "25c9dac89dfdfd7d",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_airspace": {
+      "title": "250ff460f17150b3",
+      "description": "5a496ae828367e37",
+      "inputSchema": "e2d666cc442e5a81",
+      "outputSchema": "4d10c710aa607107",
+      "annotations": "655226b2f8a99ebe",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_alert_digest": {
+      "title": "f7ce17f9420e6ed1",
+      "description": "0259dfe8bdd352cb",
+      "inputSchema": "2e966b23abe8dfba",
+      "outputSchema": "4ee71246167499a5",
+      "annotations": "128473e28c045818",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_aviation_status": {
+      "title": "757ba61b3197ae21",
+      "description": "ba95f2d1b5f39d33",
+      "inputSchema": "ececea7f5f37f16d",
+      "outputSchema": "4c3d0359f5c1a66f",
+      "annotations": "763c6e5b17f2a57e",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_bilateral_tariff": {
+      "title": "240e65d37ffece7d",
+      "description": "9c7681c8f084f5a5",
+      "inputSchema": "4853801719bd18a0",
+      "outputSchema": "dc2cf2bcca54e787",
+      "annotations": "856d9ae26782d5d8",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_capital_flows": {
+      "title": "33d66568ee4ccdf7",
+      "description": "eb67e54b0c497462",
+      "inputSchema": "ab5202489469b243",
+      "outputSchema": "2105a729ab8eb575",
+      "annotations": "23fe62a6ea4a3e78",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_china_decision_signals": {
+      "title": "c70d3788158107a5",
+      "description": "d785a7ee92372e47",
+      "inputSchema": "bed4f2e920f637d8",
+      "outputSchema": "9a80b49494faa9a1",
+      "annotations": "c27e31ec47110089",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_chokepoint_dependencies": {
+      "title": "e1bee11ce6228671",
+      "description": "557079198e8a4f8a",
+      "inputSchema": "11d4378f11370a3a",
+      "outputSchema": "94fe6b52b431a33a",
+      "annotations": "1d558b132346bfd6",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_chokepoint_status": {
+      "title": "ce0b9d9cc99056bd",
+      "description": "91ba491496f7df34",
+      "inputSchema": "21c7c172b88096b4",
+      "outputSchema": "9e22cf2ff4457ac1",
+      "annotations": "c66979a75fca8c07",
+      "_meta": "21daebf87c2b3c6b"
+    },
+    "get_climate_data": {
+      "title": "6591a0fe109c7aab",
+      "description": "498625bc74587101",
+      "inputSchema": "4eada0df6378dd70",
+      "outputSchema": "0146244386ba5742",
+      "annotations": "72dd5e0153dabf03",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_commodity_geo": {
+      "title": "8bf41a17400de4e2",
+      "description": "2ba714134967756c",
+      "inputSchema": "e9503da506355ac2",
+      "outputSchema": "e2477efee49e73ad",
+      "annotations": "3f037e3117cfdcb4",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_company_intelligence": {
+      "title": "400dec896c7a6cfd",
+      "description": "e88ab3a386a223aa",
+      "inputSchema": "6e5d344d077aa8d0",
+      "outputSchema": "07ea69ae733dba1e",
+      "annotations": "d02acd8a8b40fa81",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_conflict_events": {
+      "title": "14d7fb1e7a9d1ce4",
+      "description": "f434e92611eea5ec",
+      "inputSchema": "e8314158f851e4da",
+      "outputSchema": "e290fbfcb2364fd2",
+      "annotations": "6e60acc7ebe7fcee",
+      "_meta": "9baba9519051c24c"
+    },
+    "get_consumer_prices": {
+      "title": "7dec8d3f3cff1a20",
+      "description": "0e0e6a91b45e4da8",
+      "inputSchema": "3ba4eda71adf6c6d",
+      "outputSchema": "a5c47650cb9ac73a",
+      "annotations": "6dbd48ba647ac7f8",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_country_brief_section": {
+      "title": "f7e22f2ce00ef9fa",
+      "description": "4216ba0650f3c834",
+      "inputSchema": "dbc06deba851d24a",
+      "outputSchema": "428d76b70bfe7134",
+      "annotations": "cde4b5fb130f4fd9",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_country_coverage": {
+      "title": "90e993144d05ac66",
+      "description": "a920ce49738c7f84",
+      "inputSchema": "d0d0d93d2cf1d1c6",
+      "outputSchema": "71ba38dc74f0190d",
+      "annotations": "101ff6fc1c48a5c1",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_country_history": {
+      "title": "260a031ea9b13ce9",
+      "description": "ae9d82779bcf3741",
+      "inputSchema": "bc26d2336e0b558d",
+      "outputSchema": "277f46212110b4d9",
+      "annotations": "e97a6e4087bc466e",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_country_macro": {
+      "title": "43a7d54d43bb709b",
+      "description": "d135154f7ab037da",
+      "inputSchema": "599ec147cde2ac7e",
+      "outputSchema": "699dc00550d0d91b",
+      "annotations": "af34fd5340b40f02",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_country_risk": {
+      "title": "855dd360af02b855",
+      "description": "3fa68edaff2e260f",
+      "inputSchema": "bfa0309e9c7323fb",
+      "outputSchema": "0ca7727c5b4b2aef",
+      "annotations": "5bdef220432b3004",
+      "_meta": "fad6d330f87b2e28"
+    },
+    "get_cross_border_arrivals": {
+      "title": "7cf65bc77bc06b0a",
+      "description": "fb609fa9377e822d",
+      "inputSchema": "a290a7b926dae439",
+      "outputSchema": "e3a5cfc3df598117",
+      "annotations": "f1b37cc2d2d87756",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_cyber_threats": {
+      "title": "c4a6963e79941ded",
+      "description": "741dc4b24cea1d0a",
+      "inputSchema": "062e7e7966541e55",
+      "outputSchema": "d2b37afab8f39574",
+      "annotations": "0173719906e0e4a6",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_defense_industrial_base": {
+      "title": "42b15ac3fbdf7362",
+      "description": "4823b15d67b35b71",
+      "inputSchema": "2ce3adf44b84b700",
+      "outputSchema": "3453c9bc4f2cf84e",
+      "annotations": "27d386d54f425d36",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_demographics_capability": {
+      "title": "3906f87b7ac9a82c",
+      "description": "d4ed4089a0575545",
+      "inputSchema": "b55441259f20a59d",
+      "outputSchema": "c81ec1033a596210",
+      "annotations": "7be30188fa930c5d",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_displacement_data": {
+      "title": "849d1fb5cd0ac961",
+      "description": "8f119e58cba052e9",
+      "inputSchema": "8eff9dfc7d3f32b9",
+      "outputSchema": "bc4c4ec52fd397de",
+      "annotations": "e3feeaa83be63bf3",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_economic_data": {
+      "title": "19eee197d5c57e78",
+      "description": "f3ffa2cbbce3f0b9",
+      "inputSchema": "bf60051306669452",
+      "outputSchema": "5f72aeee5dbfd00e",
+      "annotations": "36e5eb3ab0da7d13",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_energy_intelligence": {
+      "title": "af7aa811949bb02c",
+      "description": "7005867fdbc0b3bc",
+      "inputSchema": "115ada5ad43f8612",
+      "outputSchema": "3448900bc803e5bd",
+      "annotations": "f036708ef32dd413",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_five_factor_scorecard": {
+      "title": "9d434ee7a7c72107",
+      "description": "79c4187c0e287b06",
+      "inputSchema": "e29a5028ead9e5b1",
+      "outputSchema": "b3c32d684b36cfd5",
+      "annotations": "2494a83c2083f19f",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_food_stocks": {
+      "title": "6929a46440ec134a",
+      "description": "873dfbd1a1e33ec1",
+      "inputSchema": "77736e6354f71e3d",
+      "outputSchema": "92e90842c0fbc834",
+      "annotations": "2d0a6c46f759ff48",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_forecast_case": {
+      "title": "425ae6e7e422d9b5",
+      "description": "8f26772510b0b60d",
+      "inputSchema": "9a09cb9f559caf77",
+      "outputSchema": "b0afc7e79f5c0528",
+      "annotations": "a1bb4b58ed12c591",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_forecast_predictions": {
+      "title": "20d1d9ef70149577",
+      "description": "bf947073443f1915",
+      "inputSchema": "d0df84b5b8eefdfb",
+      "outputSchema": "d4ca3561356c5e2b",
+      "annotations": "2d07ff44fc48c472",
+      "_meta": "61fceca5219a81f1"
+    },
+    "get_forecast_scorecard": {
+      "title": "edc44395dc82a942",
+      "description": "970b01915d42164c",
+      "inputSchema": "d9a6944c919cab93",
+      "outputSchema": "2229a077d9f01583",
+      "annotations": "1a114527ced24eb0",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_forecast_theaters": {
+      "title": "e3e137cdc879947f",
+      "description": "6c3c8ef57628cd9e",
+      "inputSchema": "de567b4ce9320b54",
+      "outputSchema": "ca0fb2d591ebb84d",
+      "annotations": "d1d8f55af84a067d",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_fred_series": {
+      "title": "52cbe7a1e130669e",
+      "description": "af21544ecc097155",
+      "inputSchema": "b04f997cea9efe7c",
+      "outputSchema": "b0b295ee22d4fdff",
+      "annotations": "60d3b05ce72f961a",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_global_air_activity": {
+      "title": "12b13ff5ce05450f",
+      "description": "c77ad2481d1ae2ac",
+      "inputSchema": "bed4f2e920f637d8",
+      "outputSchema": "16e6a9d58c9ae187",
+      "annotations": "77ec781d939806c2",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_gold_intelligence": {
+      "title": "9c7bec0d7971c5e4",
+      "description": "d1321cc70efa9c7b",
+      "inputSchema": "bed4f2e920f637d8",
+      "outputSchema": "5f7eff6ec519b204",
+      "annotations": "cd329096045550ce",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_health_signals": {
+      "title": "2e5fd7c2e2c13bc6",
+      "description": "534d069d229f239b",
+      "inputSchema": "4faa638439e4e3fd",
+      "outputSchema": "78da2fa4b686f951",
+      "annotations": "9c79f9591311a551",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_hotspot_escalation": {
+      "title": "ef300009460b18c0",
+      "description": "5cb78da8aa540185",
+      "inputSchema": "e2d478f8cc64b33d",
+      "outputSchema": "0afe2a00cc8f1c58",
+      "annotations": "7eb1150de79151fd",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_imd_cyclone_marine": {
+      "title": "7ebe99019cadd229",
+      "description": "efc65a2dc4b325d0",
+      "inputSchema": "b1dfca5994c5b64f",
+      "outputSchema": "cd6aac882eb23989",
+      "annotations": "f56d22071789e811",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_infrastructure_status": {
+      "title": "b70430854141397d",
+      "description": "24a97ffa9f994819",
+      "inputSchema": "a7999cbabd936279",
+      "outputSchema": "0e923d7c515e60db",
+      "annotations": "d8a31da96d6dbbeb",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_intel_timeline": {
+      "title": "cd80182a0462b990",
+      "description": "37f07e9899695c0b",
+      "inputSchema": "a7a14b8f596b9472",
+      "outputSchema": "3b1ae589838ecd44",
+      "annotations": "8f54fb042e3c3a93",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_keyword_spikes": {
+      "title": "df8c570a2ae88009",
+      "description": "a3220d8f06c2a885",
+      "inputSchema": "965e3538bbf706b2",
+      "outputSchema": "ffada3a7513e1e2a",
+      "annotations": "984cc7b279511927",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_macro_history": {
+      "title": "57ee0115eac1832b",
+      "description": "3672831f81cfb49f",
+      "inputSchema": "fe8c4f7c500143d7",
+      "outputSchema": "b32c4ddecf4b5739",
+      "annotations": "2e4577fe349604f5",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_maritime_activity": {
+      "title": "ba5978dcf9a11b47",
+      "description": "0f225b19aa0c4704",
+      "inputSchema": "fc360a355f9d21f3",
+      "outputSchema": "56a0646fa199421e",
+      "annotations": "1af639537ee421c1",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_market_data": {
+      "title": "c2e67e793dc07a6f",
+      "description": "8e0df95317269f9b",
+      "inputSchema": "df099868621efc58",
+      "outputSchema": "45a0bff824ab07c8",
+      "annotations": "6ffc15f86f0a4d95",
+      "_meta": "2db518269360fcc8"
+    },
+    "get_mcp_allowance": {
+      "title": "6c3e8f17d9e6864e",
+      "description": "143d5bf4fabb1da5",
+      "inputSchema": "bed4f2e920f637d8",
+      "outputSchema": "b6a2ae3e50c94b0c",
+      "annotations": "3187610d3e9e7d00",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_military_posture": {
+      "title": "771671de9539fa55",
+      "description": "1a07248296bdca51",
+      "inputSchema": "92b548808885c0ab",
+      "outputSchema": "c2ff00fd70eafd4a",
+      "annotations": "d00589fc7cbde6f2",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_military_surge": {
+      "title": "4618edb7a8861dd3",
+      "description": "e5bb2d7493f8b859",
+      "inputSchema": "a9b969f0509e6670",
+      "outputSchema": "356dcc2716aa1911",
+      "annotations": "ccffe0d4932192e6",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_mineral_production": {
+      "title": "6c73abd9a527efd2",
+      "description": "f8fb3c41a5eb1178",
+      "inputSchema": "3fbe06ad0eb414db",
+      "outputSchema": "8eb990704b0f6181",
+      "annotations": "d6cc58bbad73a980",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_natural_disasters": {
+      "title": "d9b210744b9f846c",
+      "description": "9eef7a1eec9d89c8",
+      "inputSchema": "06b7b351f99700a2",
+      "outputSchema": "4c69df9ff1a528fe",
+      "annotations": "627fd09895de7f00",
+      "_meta": "219f50db3ef9978a"
+    },
+    "get_news_clusters": {
+      "title": "8a5ef1f1c34a2a5e",
+      "description": "daf53e884b267c46",
+      "inputSchema": "751154e32c28732f",
+      "outputSchema": "f25f1fdcebdb4561",
+      "annotations": "f20e7cf88cecd5d7",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_news_intelligence": {
+      "title": "cc9c0c137f9a6f98",
+      "description": "919ef6b9fae036e5",
+      "inputSchema": "71ca926a49fbd206",
+      "outputSchema": "ed6dc311be24e334",
+      "annotations": "38aa42a222a945bf",
+      "_meta": "5ba0d3a721377715"
+    },
+    "get_no2_activity": {
+      "title": "6e1deef569dd0c3e",
+      "description": "b27671d30b326f5d",
+      "inputSchema": "add1f16858ed355a",
+      "outputSchema": "253363e00dcddb1f",
+      "annotations": "f4a4845d74f485d6",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_oil_trade_series": {
+      "title": "a14b1cd7bbbe059f",
+      "description": "ae57e3a93c218764",
+      "inputSchema": "48f491714485699f",
+      "outputSchema": "f88c2826868b72be",
+      "annotations": "9bb0e156fcab7f53",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_population_exposure": {
+      "title": "06a9ab70e6ac8657",
+      "description": "efd950c1808cdd45",
+      "inputSchema": "50b8cb79d27e38bb",
+      "outputSchema": "2c29b9a461ad0c44",
+      "annotations": "221a8b44f2da7566",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_positive_events": {
+      "title": "81a03d4abcc87a44",
+      "description": "12ab34a84e36e2e0",
+      "inputSchema": "151ab728e9d59600",
+      "outputSchema": "8312d947e7ab59fa",
+      "annotations": "4e563aea056c8c5b",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_prediction_markets": {
+      "title": "cd93f77a78845776",
+      "description": "12767f5f2d5c6c21",
+      "inputSchema": "d296daaebbf87c6a",
+      "outputSchema": "63c121b9e8e5dbfd",
+      "annotations": "169f35abc1cf105f",
+      "_meta": "422ab4a030e5f05c"
+    },
+    "get_price_and_debt_indicators": {
+      "title": "b6cd11b1e11b9c87",
+      "description": "604e3cd37e616fa0",
+      "inputSchema": "dacc82dab5c4cdca",
+      "outputSchema": "b8bff7d81f0c3ede",
+      "annotations": "f6f66f14dfece5c0",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_procurement_opportunities": {
+      "title": "c3bd8248d7229c52",
+      "description": "f6dc8d3ea0311882",
+      "inputSchema": "888e3a12d0cb430e",
+      "outputSchema": "11caa1d6f98ef826",
+      "annotations": "18314b4c75c577f8",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_radiation_data": {
+      "title": "797ef473aea887a5",
+      "description": "7dadd438c50072a6",
+      "inputSchema": "5c80ed645709b786",
+      "outputSchema": "7705f6fe1a76a32d",
+      "annotations": "b68d9c6801602dc8",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_research_signals": {
+      "title": "61c84e4dea2c1807",
+      "description": "9704c658eeb16d5c",
+      "inputSchema": "0744650ee43ad05d",
+      "outputSchema": "1d38663d21a99888",
+      "annotations": "550d726c9d27cff9",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_reservoir_levels": {
+      "title": "4257d9fda85f1a2d",
+      "description": "f3b731af6e8da1fc",
+      "inputSchema": "0089935993f0b8ec",
+      "outputSchema": "5b23fae9313e5d26",
+      "annotations": "6fec2ddacebca25a",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_resilience_indicators": {
+      "title": "66e74522a5278cde",
+      "description": "69db3d349502954a",
+      "inputSchema": "4895bfbc65dbcbca",
+      "outputSchema": "7c6cfbc791cc3ca5",
+      "annotations": "bf704c5404ae4275",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_sanctions_data": {
+      "title": "29d78500f56c0cb5",
+      "description": "fc670bcc977c2805",
+      "inputSchema": "3d767fb10281a479",
+      "outputSchema": "668ee095de591164",
+      "annotations": "dc15da91ae59ab52",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_signal_convergence": {
+      "title": "a209a4276c5c297f",
+      "description": "8f740193f3f837c5",
+      "inputSchema": "6791e35463af28a3",
+      "outputSchema": "efaaf6c4938cc836",
+      "annotations": "08ae2de97ebba4ea",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_similar_events": {
+      "title": "c7fae8ea145de107",
+      "description": "f61ffef662dc5012",
+      "inputSchema": "8b217640b30abc80",
+      "outputSchema": "5795fb2ffb263ae5",
+      "annotations": "6d56e588dec8622b",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_social_velocity": {
+      "title": "107a02a0e7b6c00f",
+      "description": "5464ca78f3f231b9",
+      "inputSchema": "1b224d49c8ca98c7",
+      "outputSchema": "3f0ce15dd6d6e8cb",
+      "annotations": "da0847c81aa49388",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_sources": {
+      "title": "f0e4c03f9c32a076",
+      "description": "48cd0fc83d5daf96",
+      "inputSchema": "8a11b83964cebd03",
+      "outputSchema": "0848a479cab1c490",
+      "annotations": "6fdf739072062267",
+      "_meta": "25bec3c1dbcd395a"
+    },
+    "get_stock_research": {
+      "title": "33b1d4ff4e4b7ca9",
+      "description": "88865efdede2e1eb",
+      "inputSchema": "842407d3b0576313",
+      "outputSchema": "4404126dbf69f404",
+      "annotations": "fd640f5a1675d70f",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_supply_chain_cost_shock": {
+      "title": "04093027b0d9a2a1",
+      "description": "a5f9564098d07099",
+      "inputSchema": "b94f3234c67a9ebf",
+      "outputSchema": "8738941a96e2779c",
+      "annotations": "8cbc9fdcbe493c78",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_supply_chain_data": {
+      "title": "9bedda1944c35013",
+      "description": "de76a52a64339789",
+      "inputSchema": "35d0c285603eca52",
+      "outputSchema": "2e85828c1265d6ee",
+      "annotations": "633356a3745a204a",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_supply_vulnerabilities": {
+      "title": "fa002ba2651b1d5e",
+      "description": "6a8fc20d8cb6b13f",
+      "inputSchema": "fbd1a85561f04835",
+      "outputSchema": "2fc798ae3fdff2a4",
+      "annotations": "948965356a75e27c",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_tariff_averages": {
+      "title": "b371d8ebd0657dba",
+      "description": "27c7eb921bb9c5ea",
+      "inputSchema": "98599bbd202beaf7",
+      "outputSchema": "1fbb397da73f7c1a",
+      "annotations": "d452f3f65e0db072",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_temporal_anomalies": {
+      "title": "2817e4b05726c5ae",
+      "description": "430b702a7bff451b",
+      "inputSchema": "307ac4d89c7e1f6c",
+      "outputSchema": "5ae24897ab827a64",
+      "annotations": "edc34d26a4fc4612",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_test_site_seismicity": {
+      "title": "a20d51342c4bf981",
+      "description": "067f0d976d5b983c",
+      "inputSchema": "d6e427449d088486",
+      "outputSchema": "531fb91ebca8bad6",
+      "annotations": "76e2581dd21c829a",
+      "_meta": "3343fc95fcaea86b"
+    },
+    "get_us_import_duty": {
+      "title": "571b940fb7d956f5",
+      "description": "0335bd3eeb13020c",
+      "inputSchema": "d3bef7f157d0ea51",
+      "outputSchema": "3864d43f44b71803",
+      "annotations": "d2d10ce1819775f6",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_webcam_media": {
+      "title": "bade4910527b55ed",
+      "description": "af79b2eabd222f9a",
+      "inputSchema": "48a9686692adc03c",
+      "outputSchema": "90d2aef4985d0d44",
+      "annotations": "88fe28b3eb53ed52",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "get_wto_trade_flows": {
+      "title": "0343ae14b90a2269",
+      "description": "c9f5e692b2d4383e",
+      "inputSchema": "67fa30bc3d7cc3ee",
+      "outputSchema": "e55f5ad470b00b14",
+      "annotations": "e50389c152f3fefb",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "list_x_feed": {
+      "title": "974c2148559fb1ed",
+      "description": "cc76f99be215a978",
+      "inputSchema": "91772394121fac2d",
+      "outputSchema": "b55eda247a785f51",
+      "annotations": "04e08463e6f380f8",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "open_country_brief": {
+      "title": "1fd078d0a891f346",
+      "description": "588cf1f90bd09071",
+      "inputSchema": "7c127e678f2c7f97",
+      "outputSchema": "4df34306568e5a01",
+      "annotations": "640c02a2bef1d484",
+      "_meta": "b55422404efad159"
+    },
+    "open_news_dashboard": {
+      "title": "a8fabef4b6837a77",
+      "description": "00b5d31fb137027d",
+      "inputSchema": "cecf7eab87d37a7b",
+      "outputSchema": "5f9f5dddbde90f2e",
+      "annotations": "3a3ec626df943253",
+      "_meta": "afc3eadbc1e6405d"
+    },
+    "prepare_travel_risk_assessment": {
+      "title": "897dbb74e50eccd1",
+      "description": "1d377fb84f74b859",
+      "inputSchema": "6f8ef2767030da6e",
+      "outputSchema": "14ed7cfd79ca3eaf",
+      "annotations": "a9839f23aacbdb3a",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "report_issue": {
+      "title": "c9b1ae14c274aa01",
+      "description": "1cb5a8cab97192af",
+      "inputSchema": "3c8cd4e587d14558",
+      "outputSchema": "c9df5bd3ebeefade",
+      "annotations": "3e2d2735d225d626",
+      "_meta": "25bec3c1dbcd395a"
+    },
+    "search_flights": {
+      "title": "a2f56a8513ba3ebb",
+      "description": "d47bf3710592349a",
+      "inputSchema": "9186f7136c579818",
+      "outputSchema": "36e18247100dcd2f",
+      "annotations": "54bb5ab5fa1345d5",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "search_intel_history": {
+      "title": "1fc28e900232de5d",
+      "description": "c4391fc8722c06f1",
+      "inputSchema": "544b57204196eedd",
+      "outputSchema": "d7445f1142dbc773",
+      "annotations": "6dbe1a468c92cc55",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "simulate_infrastructure_cascade": {
+      "title": "4c876c0189df8e9b",
+      "description": "7eaa3531b7e1a32d",
+      "inputSchema": "12d17b0ca39c3782",
+      "outputSchema": "22036322e6cb7212",
+      "annotations": "b3a014b284a6b070",
+      "_meta": "dc6a1f434a12237b"
+    },
+    "verify_claim": {
+      "title": "15371ceb79a90d8c",
+      "description": "7b05c37ec9dbf048",
+      "inputSchema": "4e48728ebc0b3919",
+      "outputSchema": "12b073ec6f48d745",
+      "annotations": "72901faf5661f346",
+      "_meta": "dc6a1f434a12237b"
+    }
+  }
+}

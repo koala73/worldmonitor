@@ -5118,7 +5118,8 @@
     "current": "Källa kontrollerad",
     "reportedClaims": "Utgivarens rapporter. Påståenden kan fortfarande utredas.",
     "occurred": "Incident",
-    "reported": "Publicerad"
+    "reported": "Publicerad",
+    "listed": "Registrerad"
   },
   "panelVariants": {
     "finance": {

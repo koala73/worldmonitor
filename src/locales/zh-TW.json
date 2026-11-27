@@ -5095,7 +5095,8 @@
     "current": "來源已檢查",
     "reportedClaims": "釋出方報告。相關說法可能仍在調查中。",
     "occurred": "事件",
-    "reported": "釋出"
+    "reported": "釋出",
+    "listed": "收錄"
   },
   "panelVariants": {
     "finance": {

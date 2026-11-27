@@ -4,7 +4,8 @@
 // prompt's "strait/waterway closures" trigger fired on a negotiating position.
 // The set holds terms, threats and warnings (judged high) next to the events
 // themselves, including events a party reports ("X says it struck ..."), which
-// must stay critical. Author-judged, not blind. These tests pin the captured
+// should stay critical; the tests below pin how many each path keeps. Author-judged,
+// not blind. These tests pin the captured
 // runs to the prompt and model production sends.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -52,9 +53,11 @@ describe('statement versus event label set', () => {
         assert.deepEqual(lost, [], `${after} vs ${before}`);
       }
     }
-    // The relay labels three attacks a party reports as high, before and after.
+    // Main's relay prompt labelled three attacks a party reports as high. Since #11432 the
+    // relay prompt says a report that it happened is critical whoever reports it, and the
+    // relay keeps every event.
     assert.equal(keptEvents('rpc-after').length, events.length);
-    assert.equal(keptEvents('relay-after').length, events.length - 3);
+    for (const name of ['relay-after', 'relay-after-rerun']) assert.equal(keptEvents(name).length, events.length, name);
   });
 
   it('its runs are the prompt and model production sends today', () => {

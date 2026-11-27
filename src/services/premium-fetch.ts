@@ -467,8 +467,8 @@ export async function premiumFetch(
   // short-circuit inside the interceptor, so this only changes behaviour for
   // routes that are premium per REQUEST rather than per path — today
   // `/api/news/v1/summarize-article` via `forcePremium`, which must stay out
-  // of PREMIUM_RPC_PATHS so its free translate mode keeps receiving the
-  // anonymous wms_ cookie. Unmarked, each denial cost a session mint, a
+  // of PREMIUM_RPC_PATHS so its free alert translation (Hebrew into English)
+  // keeps receiving the anonymous wms_ cookie. Unmarked, each denial cost a session mint, a
   // replay, and a 15-minute blackout of every anonymous API call.
   //
   // Steps 1-3 return as soon as any credential resolves, so everything that

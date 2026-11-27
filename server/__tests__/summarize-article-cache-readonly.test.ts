@@ -57,6 +57,17 @@ describe("summarize-article-cache read-only behavior", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  test("never serves a stored translation: translation is Pro and does not read this route", async () => {
+    getCachedJson.mockResolvedValue({ summary: "Le Sénat adopte le budget", model: "llama", tokens: 12 });
+
+    const result = await getSummarizeArticleCache(makeContext(), {
+      cacheKey: `summary:${CACHE_VERSION}:translate:fr:0123456789abcdef0123456789abcdef`,
+    });
+
+    expect(result.summary).toBe("");
+    expect(getCachedJson).not.toHaveBeenCalled();
+  });
+
   test("returns an empty miss without calling provider fetch", async () => {
     getCachedJson.mockResolvedValue(null);
 

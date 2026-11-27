@@ -145,5 +145,12 @@ test.describe('/pro hero is the LCP element before React mounts', () => {
     const overview = page.locator('#pro-overview');
     await expect(overview).toBeHidden();
     await expect(overview).toBeVisible({ timeout: 8_000 });
+    // Its paragraphs are classless, so their spacing comes from critical CSS.
+    const gap = await overview.evaluate((section) => {
+      const [first, second] = [...section.querySelectorAll(':scope > p')];
+      if (!first || !second) return null;
+      return second.getBoundingClientRect().top - first.getBoundingClientRect().bottom;
+    });
+    expect(gap, 'the fallback paragraphs must not run together').toBeGreaterThanOrEqual(16);
   });
 });

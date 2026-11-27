@@ -5118,7 +5118,8 @@
     "current": "Forrás ellenőrizve",
     "reportedClaims": "A kiadó jelentései. Az állítások vizsgálata még folyamatban lehet.",
     "occurred": "Esemény",
-    "reported": "Közzétéve"
+    "reported": "Közzétéve",
+    "listed": "Rögzítve"
   },
   "panelVariants": {
     "finance": {

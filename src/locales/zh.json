@@ -5095,7 +5095,8 @@
     "current": "来源已检查",
     "reportedClaims": "发布方报告。相关说法可能仍在调查中。",
     "occurred": "事件",
-    "reported": "发布"
+    "reported": "发布",
+    "listed": "收录"
   },
   "panelVariants": {
     "finance": {
