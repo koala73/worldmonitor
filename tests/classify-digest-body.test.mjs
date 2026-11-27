@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url);
 const helpers = require('../scripts/lib/classify-digest-request.cjs');
 const { reachesRealtimeRules, reachesLocalRules } = require('../scripts/lib/news-story-key.cjs');
 const { isRunningTally } = require('../shared/running-tally.js');
+const { isLiveBlogTopicHeader } = require('../shared/live-blog-topic.js');
 const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
 const start = source.indexOf('async function seedClassifyForVariant');
 const end = source.indexOf('\nasync function seedClassify()', start);
@@ -35,7 +36,7 @@ function loadVariant(url, observedErrors, { timeoutMs, digests = [], pools = [],
     readObservedPublishers: async () => new Map(), crossWordingFamilies: async () => new Map(),
     // #10976: a cached critical label goes through the publish path; by
     // default it scores 0 and publishes nothing.
-    reachesRealtimeRules, reachesLocalRules, isRunningTally, upstashSetNx: async () => true,
+    reachesRealtimeRules, reachesLocalRules, isRunningTally, isLiveBlogTopicHeader, upstashSetNx: async () => true,
     shouldDropRelaySourceForTier: () => false, RELAY_GATES_READY: false, RELAY_TIER4_SOURCES: new Set(),
     relayComputeImportanceScore: () => 0, newsAlertClaimKey: () => '', NEWS_STORY_DEDUP_TTL_SECONDS: 86_400,
     matchCountryNamesInText: () => [], countriesNamedInHeadline: () => [],
@@ -264,6 +265,33 @@ test('a running total labelled critical alerts as high, fresh or cached, and a n
   assert.equal(published.get(tally), 'high', 'a fresh running total');
   assert.equal(published.get(cachedTally), 'high', 'a cached running total');
   assert.equal(published.get(attack), 'critical', 'a new attack');
+});
+
+test('a live-blog header that names no event alerts as high, and a live update with an event stays critical', async t => {
+  const server = http.createServer((_req, response) => response.end('{"categories":{}}'));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const url = `http://127.0.0.1:${server.address().port}/digest`;
+  const header = 'Live Updates: LIVE: Iran-US war - Business Recorder';
+  const update = 'Iran war live: Tankers set ablaze in Hormuz as IRGC warns of unrest threat';
+  const published = new Map();
+  const meta = { source: 'Business Recorder', publishedAt: Date.now(), corroborationCount: 1, link: '' };
+  await bounded(loadVariant(url, [], { upstashPipeline: async commands => commands.map(() => ({ result: 'OK' })), extra: {
+    buildClassifyCandidateMap: () => new Map([[header, meta], [update, meta]]),
+    classifyCacheKey: title => `label:${title}`,
+    upstashMGet: async keys => keys.map(() => null),
+    upstashSet: async () => true,
+    classifyFetchLlm: async chunk => chunk.map((_t, i) => ({ i, l: 'critical', c: 'conflict' })),
+    publishNotificationEvent: async event => { published.set(event.payload.title, event.severity); },
+    threatSummaryCountries: () => [],
+    relayComputeImportanceScore: level => (level === 'critical' ? 88 : 70), newsAlertClaimKey: () => 'news-story:realtime:x',
+    RELAY_RECENCY_MS: 900_000, recordAlertLatency() {}, alertLatency: () => ({}), observeJevShadow: async () => null,
+    CLASSIFY_VALID_LEVELS: ['critical', 'high', 'medium', 'low', 'info'], CLASSIFY_VALID_CATEGORIES: ['conflict'],
+    CLASSIFY_BATCH_SIZE: 50, CLASSIFY_SKIP_TTL: 1800, CLASSIFY_CACHE_TTL: 86_400,
+  } })('full', new Set()));
+  assert.equal(published.get(header), 'high', 'a live-blog header');
+  assert.equal(published.get(update), 'critical', 'a live update reporting an attack');
 });
 
 test('the revocation read keeps a multi-byte URL whole when the network splits it (#10978)', async t => {
