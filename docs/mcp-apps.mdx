@@ -93,8 +93,9 @@ The news-and-maps view (`open_news_dashboard`) and the country view (`open_count
 ChatGPT can open the news-and-maps view from a link of the form `https://chatgpt.com/plugins/<plugin-id>/app/open_news_dashboard?path=<encoded-path>`. ChatGPT runs the `open_news_dashboard` entrypoint with empty arguments and passes the decoded path to the view as `hostContext["openai/deepLink"].url`, at `ui/initialize` and again in `ui/notifications/host-context-changed`.
 
 - The path is `/` followed by a query string that uses the `open_news_dashboard` argument names: `query`, `source`, `category`, `country`, `time_range`, `renderer`, `map_layers` (comma-separated), `map_latitude`, `map_longitude` and `map_zoom`. For example, `/?country=IR&category=conflict&time_range=24h` opens the Iran conflict view for the last day.
-- The view applies the link after the opening result renders, as if the user had chosen the same filters, and reports the new view through `ui/update-model-context`.
-- Each parameter is validated on its own. An invalid or unknown parameter is dropped and the rest still apply. `map_latitude` and `map_longitude` apply only together. `refresh` and `request_id` are ignored, so a link cannot start a billed refresh.
+- The view applies the link after the first dashboard result that renders, as if the user had chosen the same filters, and reports the new view through `ui/update-model-context`. If the opening result fails, the link waits for a successful Refresh news.
+- A link replaces the whole view. Without `time_range`, the news list and the map both show all time.
+- Each parameter is validated on its own. An invalid or unknown parameter, or a category the dashboard did not load, is dropped and the rest still apply. `map_latitude` and `map_longitude` apply only together. `refresh` and `request_id` are ignored, so a link cannot start a billed refresh.
 - Only app-relative paths without a fragment are accepted. Other paths are reserved and ignored.
 
 ## Forecast List And Original Cases

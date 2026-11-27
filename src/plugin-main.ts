@@ -90,7 +90,6 @@ function mountPlugin(): void {
   let queuedResult: { params: unknown } | undefined;
   let digestReloadAttempted = false;
   let openingResultSeen = false;
-  let openingResultRendered = false;
   let appliedDeepLink: string | undefined;
   let resolveMounted!: () => void;
   let rejectMounted!: (error: unknown) => void;
@@ -218,6 +217,7 @@ function mountPlugin(): void {
       const result = await request('tools/call', { name: 'open_news_dashboard', arguments: { ...view, refresh: true, request_id: refreshAttempt!.id } });
       if (!await renderResult(result, true)) throw new Error(status.textContent || 'News refresh failed. Previously loaded news remains visible.');
       refreshAttempt = undefined;
+      applyDeepLink();
     })().finally(() => { refreshing = undefined; });
     return refreshing;
   }
@@ -531,22 +531,25 @@ function mountPlugin(): void {
     // Later host results can echo the view's own tool calls, whose responses the view already handled.
     // Only a later digest renders; an echoed error or analysis result must not touch the status or panels.
     if (!openingResult && !carriesDigest(params)) return;
-    void renderResult(params, false, openingResult).then(() => {
-      if (!openingResult) return;
-      openingResultRendered = true;
-      applyDeepLink();
+    void renderResult(params, false, openingResult).then(rendered => {
+      if (rendered) applyDeepLink();
     }).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
   }
 
   // A ChatGPT deep link opens this entrypoint with empty arguments and passes the view in the host context.
-  // Each new link applies once, after the opening result, so that result's empty view cannot overwrite it.
+  // Each new link applies once, after the first dashboard result that renders (the opening one, or a refresh
+  // after a failed opening), so that result's empty view cannot overwrite it.
   function applyDeepLink(): void {
     const url = host.deepLink;
-    if (!url || url === appliedDeepLink || !openingResultRendered) return;
+    if (!url || url === appliedDeepLink || !digest) return;
     appliedDeepLink = url;
     const link = newsViewFromDeepLink(url);
     if (!link) return;
-    void applyView(link.view, { reset: true }).catch(error => {
+    // A link replaces the whole view, so an omitted time range means all time for the news and the map alike.
+    const linked: PluginNewsView = { time_range: 'all', ...link.view };
+    // A category this dashboard did not load is dropped like any other invalid field; the rest still applies.
+    if (linked.category && 'reason' in resolveNewsCategory(linked.category, loadedCategoryKeys())) delete linked.category;
+    void applyView(linked, { reset: true }).catch(error => {
       status.textContent = 'The linked view could not be applied. Showing news with the previous filters.';
       mapStatus.textContent = error instanceof Error ? error.message : 'The linked map view is unavailable.';
     });

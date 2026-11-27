@@ -89,8 +89,9 @@ View -> Host: ui/notifications/size-changed
 ChatGPT 可以通过 `https://chatgpt.com/plugins/<plugin-id>/app/open_news_dashboard?path=<encoded-path>` 形式的链接打开新闻与地图视图。ChatGPT 以空参数运行 `open_news_dashboard` 入口，并在 `ui/initialize` 和 `ui/notifications/host-context-changed` 中通过 `hostContext["openai/deepLink"].url` 把解码后的路径传给视图。
 
 - 路径为 `/` 加查询字符串，参数名与 `open_news_dashboard` 相同：`query`、`source`、`category`、`country`、`time_range`、`renderer`、`map_layers`（逗号分隔）、`map_latitude`、`map_longitude` 和 `map_zoom`。例如 `/?country=IR&category=conflict&time_range=24h` 打开伊朗过去一天的冲突视图。
-- 视图在首个结果渲染后应用链接，效果等同于用户选择了相同的筛选条件，并通过 `ui/update-model-context` 报告新视图。
-- 每个参数单独校验。无效或未知的参数会被丢弃，其余参数照常生效。`map_latitude` 和 `map_longitude` 只能同时生效。`refresh` 和 `request_id` 会被忽略，因此链接无法触发计费刷新。
+- 视图在第一个成功渲染的仪表板结果之后应用链接，效果等同于用户选择了相同的筛选条件，并通过 `ui/update-model-context` 报告新视图。如果首个结果失败，链接会等到“Refresh news”成功后再应用。
+- 链接会替换整个视图。未提供 `time_range` 时，新闻列表和地图都显示全部时间。
+- 每个参数单独校验。无效或未知的参数，以及仪表板未加载的类别，会被丢弃，其余参数照常生效。`map_latitude` 和 `map_longitude` 只能同时生效。`refresh` 和 `request_id` 会被忽略，因此链接无法触发计费刷新。
 - 只接受不含片段的应用相对路径。其他路径保留，暂时忽略。
 
 ## 原始活跃战区

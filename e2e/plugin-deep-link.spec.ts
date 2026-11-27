@@ -13,7 +13,7 @@ type Message = { method?: string; params?: Record<string, unknown> };
 
 const ARTICLE = { title: 'Controlled report', source: 'Fixture publisher', link: 'https://example.com/news', publishedAt: Date.now(), location: { latitude: 35, longitude: 139 }, isAlert: false };
 
-async function installHost(page: Page, deepLink?: string) {
+async function installHost(page: Page, deepLink?: string, options: { openingError?: boolean } = {}) {
   const messages: Message[] = [];
   const toolCalls: Array<Record<string, unknown>> = [];
   const serve = (route: Parameters<Parameters<Page['route']>[1]>[0], path: string) => route.fulfill({ path, headers: { 'Access-Control-Allow-Origin': '*' } });
@@ -33,6 +33,7 @@ async function installHost(page: Page, deepLink?: string) {
     }
     if (method !== 'tools/call') return {};
     toolCalls.push(params.arguments);
+    if (options.openingError && toolCalls.length === 1) return { isError: true, content: [{ type: 'text', text: 'The dashboard request failed.' }] };
     return { structuredContent: { categories: { world: { items: [ARTICLE] }, conflict: { items: [] } }, coverage: { state: 'complete', servedStale: false }, requestedView: {} } };
   });
   await page.goto('/deep-link-host-test');
@@ -60,11 +61,24 @@ async function installHost(page: Page, deepLink?: string) {
   return { messages, toolCalls, frame: page.frameLocator('iframe') };
 }
 
+type Receipt = { view?: Record<string, unknown>; map?: { timeRange?: string } };
+
+function contextUpdates(messages: Message[]): Receipt[] {
+  return messages.filter(message => message.method === 'ui/update-model-context').map(update => {
+    const text = (update.params?.content as Array<{ text?: string }> | undefined)?.[0]?.text;
+    return text ? JSON.parse(text) as Receipt : {};
+  });
+}
+
 /** The view the dashboard last reported to the model. */
 function lastReportedView(messages: Message[]): Record<string, unknown> | undefined {
-  const update = messages.filter(message => message.method === 'ui/update-model-context').at(-1);
-  const text = (update?.params?.content as Array<{ text?: string }> | undefined)?.[0]?.text;
-  return text ? (JSON.parse(text) as { view?: Record<string, unknown> }).view : undefined;
+  return contextUpdates(messages).at(-1)?.view;
+}
+
+async function postToolResult(page: Page, result: object) {
+  await page.evaluate(result => {
+    document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: result }, '*');
+  }, result);
 }
 
 async function changeHostContext(page: Page, context: Record<string, unknown>) {
@@ -92,4 +106,37 @@ test('without a deep link the dashboard keeps the tool view', async ({ page }) =
   const host = await installHost(page);
   await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
   await expect(host.frame.getByRole('button', { name: 'Select a country for its brief' })).toBeDisabled();
+});
+
+test('a later deep link without a time range resets the news and the map to all time', async ({ page }) => {
+  const host = await installHost(page, '/?country=IR&time_range=24h');
+  await expect.poll(() => contextUpdates(host.messages).at(-1)).toMatchObject({ view: { country: 'IR', time_range: '24h' }, map: { timeRange: '24h' } });
+  await changeHostContext(page, { 'openai/deepLink': { url: '/?country=TW' } });
+  await expect.poll(() => contextUpdates(host.messages).at(-1)?.view?.country).toBe('TW');
+  const last = contextUpdates(host.messages).at(-1)!;
+  expect(last.view?.time_range ?? 'all').toBe('all');
+  expect(last.map?.timeRange).toBe('all');
+});
+
+test('an unavailable category in a link is dropped and the other fields still apply', async ({ page }) => {
+  const host = await installHost(page, '/?category=missing-panel&country=IR&time_range=24h');
+  await expect.poll(() => lastReportedView(host.messages)).toMatchObject({ country: 'IR', time_range: '24h' });
+  expect(lastReportedView(host.messages)?.category).toBeUndefined();
+});
+
+test('a link waits for a dashboard that loads after a failed opening', async ({ page }) => {
+  const host = await installHost(page, '/?country=IR&category=conflict', { openingError: true });
+  await expect(host.frame.getByText('The dashboard request failed.')).toBeVisible();
+  await host.frame.getByRole('button', { name: 'Refresh news' }).click();
+  await expect.poll(() => lastReportedView(host.messages)).toMatchObject({ country: 'IR', category: 'conflict' });
+});
+
+test('a repeated dashboard result keeps the linked filters', async ({ page }) => {
+  const host = await installHost(page, '/?country=IR&category=conflict');
+  await expect.poll(() => lastReportedView(host.messages)).toMatchObject({ country: 'IR', category: 'conflict' });
+  const before = contextUpdates(host.messages).length;
+  await postToolResult(page, { structuredContent: { categories: { world: { items: [ARTICLE] }, conflict: { items: [] } }, coverage: { state: 'complete', servedStale: false }, requestedView: {} } });
+  await expect.poll(() => contextUpdates(host.messages).length).toBeGreaterThan(before);
+  await page.waitForTimeout(500);
+  expect(lastReportedView(host.messages)).toMatchObject({ country: 'IR', category: 'conflict' });
 });
