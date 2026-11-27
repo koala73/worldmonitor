@@ -367,6 +367,27 @@ describe("switch action", () => {
     expect(previewChangePlan).not.toHaveBeenCalled();
   });
 
+  // Cancelled in the portal after the quote, before the webhook reached Convex:
+  // the cached row still qualifies, but Dodo already has the cancellation.
+  test("a cancellation Dodo already holds is refused before changePlan, even when the charge re-check passes", async () => {
+    const t = await setup(DURING);
+    retrieve.mockResolvedValue({ product_id: PRO_MONTHLY, cancel_at_next_billing_date: true });
+    previewChangePlan.mockResolvedValue(withTotal(discountedPreview(), 10496));
+    await expect(run(t, {
+      confirm: true, discounted: true, acceptedChargeAmount: 10496, acceptedChargeCurrency: "USD",
+    })).rejects.toThrow(/PRO_CANCEL_SCHEDULED/);
+    // A charge re-check that fails does not hide the cancellation behind a generic error.
+    previewChangePlan.mockRejectedValue(new Error("synthetic re-check failure"));
+    await expect(run(t, {
+      confirm: true, discounted: true, acceptedChargeAmount: 10496, acceptedChargeCurrency: "USD",
+    })).rejects.toThrow(/PRO_CANCEL_SCHEDULED/);
+    await expect(
+      t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
+    ).rejects.toThrow(/PRO_CANCEL_SCHEDULED/);
+    expect(changePlan).not.toHaveBeenCalled();
+    expect(await claims(t)).toEqual([]);
+  });
+
   test("the Pro Business upgrade never carries the promotion's code", async () => {
     const t = await setup(DURING);
     previewChangePlan.mockResolvedValue({

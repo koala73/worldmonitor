@@ -4493,6 +4493,12 @@ export async function runPlanChange(
     if (remote.product_id !== candidate.fromProductId) {
       throw new Error(`subscription product changed since preview: ${remote.product_id}`);
     }
+    // A cancellation scheduled after the quote, before its webhook landed: the
+    // cached row still qualified, but the changed plan would end at period end.
+    // Checked before the charge re-check so the user is told why.
+    if (remote.cancel_at_next_billing_date === true) {
+      throw new ConvexError({ kind: "PRO_CANCEL_SCHEDULED" });
+    }
     if (acceptedCharge) {
       // A charge that cannot be checked is not accepted: fail before sending.
       if (recheck.status === "rejected") throw recheck.reason;

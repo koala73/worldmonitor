@@ -160,6 +160,17 @@ describe('api/pro-annual-switch', () => {
     assert.equal(relayCalls.length, 1);
   });
 
+  // 200 headers, then the connection drops inside the JSON body.
+  it('fails closed on a success reply whose body cannot be read, on both routes', async () => {
+    relayResponse = () => new Response('{"kind":"upgraded","toPlan', {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+    for (const res of [await postSwitch({ confirm: true, discounted: true }), await postUpgrade({ confirm: true })]) {
+      assert.equal(res.status, 502);
+      assert.deepEqual(await res.json(), { error: 'Upgrade unavailable' });
+    }
+  });
+
   describe('accepted charge', () => {
     const confirm = { confirm: true, discounted: true };
 

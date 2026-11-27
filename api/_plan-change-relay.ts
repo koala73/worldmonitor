@@ -166,7 +166,10 @@ export function createPlanChangeHandler(route: PlanChangeRoute) {
         signal: AbortSignal.timeout(PLAN_CHANGE_RELAY_ABORT_MS),
       });
 
-      const data = await resp.json().catch(() => ({})) as { error?: unknown };
+      // Only a refusal's body is read best-effort. A success body that cannot be
+      // read throws to the 502 below, so a cut-off reply is never stored or
+      // returned as a 200.
+      const data = (resp.ok ? await resp.json() : await resp.json().catch(() => ({}))) as { error?: unknown };
       if (!resp.ok) {
         // A Convex deployment without this route answers 404: a generic
         // failure, so nothing is retried elsewhere.
