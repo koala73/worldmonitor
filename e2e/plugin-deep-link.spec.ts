@@ -152,3 +152,13 @@ test('a link whose map data failed applies again after Refresh news', async ({ p
   await host.frame.getByRole('button', { name: 'Refresh news' }).click();
   await expect.poll(() => lastReportedView(host.messages)).toMatchObject({ country: 'IR', map_layers: ['natural'] });
 });
+
+test('a link that arrives while another applies wins', async ({ page }) => {
+  const host = await installHost(page, '/?country=IR');
+  await expect.poll(() => lastReportedView(host.messages)).toMatchObject({ country: 'IR' });
+  await changeHostContext(page, { 'openai/deepLink': { url: '/?country=JP' } });
+  await changeHostContext(page, { 'openai/deepLink': { url: '/?country=TW&category=world' } });
+  await expect.poll(() => lastReportedView(host.messages)).toMatchObject({ country: 'TW', category: 'world' });
+  await page.waitForTimeout(1000);
+  expect(lastReportedView(host.messages)).toMatchObject({ country: 'TW', category: 'world' });
+});

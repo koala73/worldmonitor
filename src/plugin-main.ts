@@ -560,11 +560,16 @@ function mountPlugin(): void {
     // A category this dashboard did not load is dropped like any other invalid field; the rest still applies.
     void applyView(linked, { reset: true, dropUnloadedCategory: true }).then(receipt => {
       const outcome = receipt as { applied?: boolean; viewport?: { interruptedBy?: string } };
-      if (outcome.applied !== false || outcome.viewport?.interruptedBy === 'human') appliedDeepLink = url;
+      if (outcome.applied === false && outcome.viewport?.interruptedBy !== 'human') return false;
+      appliedDeepLink = url;
+      return true;
     }, error => {
+      // An interrupted map move (the country focus) means the map moved on; repeating it later would undo that.
+      if (error instanceof ViewportTransitionError && error.reason === 'viewport_interrupted') { appliedDeepLink = url; return true; }
       status.textContent = 'The linked view could not be applied. Showing news with the previous filters.';
       mapStatus.textContent = error instanceof Error ? error.message : 'The linked map view is unavailable.';
-    }).finally(() => { if (applyingDeepLink === url) applyingDeepLink = undefined; });
+      return false;
+    }).then(() => { if (applyingDeepLink === url) applyingDeepLink = undefined; });
   }
 
   function reportSize(): void {
