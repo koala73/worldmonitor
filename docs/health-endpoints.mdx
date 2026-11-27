@@ -45,8 +45,8 @@ The top-level `status` describes user-visible platform availability, not perfect
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 442,
-    "ok": 441,
+    "total": 443,
+    "ok": 442,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 1,
@@ -68,7 +68,7 @@ The top-level `status` describes user-visible platform availability, not perfect
 
 `summary.total` counts probed keys. `warn` is the complete actionable warning census and excludes on-demand empty keys, which appear in `onDemandWarn`. `containedWarn` is a subset of `warn`, not an additional bucket. The containment-eligible statuses are `STALE_SEED`, `SEED_ERROR`, `STALE_CONTENT`, `COVERAGE_PARTIAL`, `COVERAGE_DEGRADED`, and `CHINA_DEGRADED`. A warning is contained only when the current health sweep finds the served payload, metadata proves a positive record count, and every required reader diagnostic is structurally usable. The warning's stale age remains visible but does not by itself mean that the platform stopped serving data. Availability remains `HEALTHY` while all actionable warnings are contained and the contained cohort is at or below 3% of probed keys.
 
-Containment checks all required diagnostics independently of the selected status and has no source-specific allowlist or denylist. Missing or unusable data, malformed or unknown evidence, incompatible reader policies or cache state, `REDIS_PARTIAL`, `ROLLOUT_PENDING`, any uncontained warning, a contained cohort above 3%, and every critical failure remain availability-affecting. `EMPTY_ON_DEMAND` and pending diagnostics retain their existing semantics. `staleContent` counts all `STALE_CONTENT` diagnostics, including entries inside their finite three-hour grace period. Active grace entries count in `ok` and the optional `pending` sub-count, not `warn`. `rolloutPending` is a subset of `warn`. Only `crit` drives `DEGRADED` or `UNHEALTHY`.
+Containment checks all required diagnostics independently of the selected status. The only source-specific exception is `newsCrossWordingMatcher`: its records count matcher cycles, not data served to readers, so its warnings are never contained. Missing or unusable data, malformed or unknown evidence, incompatible reader policies or cache state, `REDIS_PARTIAL`, `ROLLOUT_PENDING`, any uncontained warning, a contained cohort above 3%, and every critical failure remain availability-affecting. `EMPTY_ON_DEMAND` and pending diagnostics retain their existing semantics. `staleContent` counts all `STALE_CONTENT` diagnostics, including entries inside their finite three-hour grace period. Active grace entries count in `ok` and the optional `pending` sub-count, not `warn`. `rolloutPending` is a subset of `warn`. Only `crit` drives `DEGRADED` or `UNHEALTHY`.
 
 `humanitarianSummary` needs more than its aggregate marker for containment. Health reads every country in the producer's required-country contract and checks each summary's identity, fields, timestamp, and finite Redis TTL. `containmentUntil` is the earliest country expiry or six hours after its original data timestamp. Failed refreshes do not renew country TTLs or advance `lastSuccessAt`. `seedAgeMin` continues to increase from that success. `lastSourceAttemptAt` and `retryAt` describe the failed refresh separately. The source warning and error code remain visible. During HAPI API cooldown, the worker permits one bounded HDX-only recovery probe per 15-minute interval; the API cooldown deadline stays fixed.
 
@@ -123,6 +123,14 @@ The seeder validates every page before it replaces the snapshot. A verified empt
 The consumer-prices-core service exposes `GET /wm/consumer-prices/v1/coverage?market=ae` (the service API key is required). Its response includes attempted, completed, failed, and validator-rejected page counts for the market and each active retailer. `status` is `healthy`, `partial`, or `degraded`; a partial result remains publishable, while a rejected observation is never admitted merely to improve the coverage count. The publisher writes the same snapshot to `consumer-prices:coverage:<market>` and includes its aggregate completion ratio in `seed-meta`, so `/api/health` can distinguish a fresh partial run from a stopped producer.
 
 This operational contract complements, rather than replaces, the source-quality work in [#5445](https://github.com/koala73/worldmonitor/issues/5445) and [#5811](https://github.com/koala73/worldmonitor/issues/5811).
+
+### Cross-wording matcher
+
+The relay's cross-wording matcher (#10977) asks OpenRouter for embeddings and a "same incident?" model check. When those calls fail, a critical headline loses the publishers of its other wordings and can stay under the realtime alert bar. On 2026-11-23 the OpenRouter account ran out of credit: the rewrite judge's calls returned 402, and a cross-wording check failed on an embedding 402 (#11426).
+
+Every 15-minute classify cycle writes `news:cross-wording-health:v1` with the last hour of cycles. Each cycle counts the checks that reached a provider, the matches, and the failures by code (`EMBED_HTTP_402`, `JUDGE_HTTP_402`, `EMBED_TIMEOUT`, `JUDGE_UNREADABLE`, `DEADLINE`). A failed read of the relay's own sightings asks no provider, so it is recorded at most once per cycle under `readErrors.SIGHTINGS_READ` and never counts toward the failure rule. The `newsCrossWordingMatcher` probe reports `SEED_ERROR` when at least two checks failed in the hour and they were more than half of the checks made, with the commonest failure as `errorCode`. An hour without candidates is `OK`, and so are candidates the per-cycle budget or the 10-second deadline left unstarted and candidates with no other publisher's wording to compare; `DEADLINE` counts only the check the deadline cut short. A relay without `OPENROUTER_API_KEY` reports `NOT_CONFIGURED`. A relay that stops classifying reads `STALE_SEED` after 60 minutes, including one that stopped while degraded or without the key. The probe's records count matcher cycles, not data served to readers, so its warning is never contained and always counts against availability. The payload keeps the seed-meta's seven-day TTL, so a stopped relay stays a warning rather than an empty critical key.
+
+When the relay holds `ANTHROPIC_API_KEY`, the model check falls back to the Anthropic API, as the rewrite judge does, so a judge failure means both routes failed. The embeddings have no fallback. The account balance is not probed: `GET /api/v1/credits` needs an OpenRouter management key, and `GET /api/v1/key` reports only the key's own limit, which was unused during the 2026-11-23 outage.
 
 ### Relay ingestion telemetry
 

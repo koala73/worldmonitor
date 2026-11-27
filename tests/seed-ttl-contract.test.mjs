@@ -193,6 +193,7 @@ const UNRECORDED_WRITERS = new Set([
   'militaryForecastInputs',
   'militarySurges',
   'natGasStorage',
+  'newsCrossWordingMatcher',
   'newsDigestWarmRelayHeartbeat',
   'newsFeedHealth',
   'newsRecallBenchmark',
