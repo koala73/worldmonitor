@@ -4,7 +4,10 @@
  * factory skips a dialog whose id is still mounted. A refusal and fresh
  * quote that arrive inside that window must still reach the subscriber.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+
+import { initTestI18n } from './helpers/i18n.mts';
+import { t } from '@/services/i18n';
 
 import { showCheckoutConfirmDialog } from '@/services/checkout-dialog-factory';
 import { runProAnnualSwitchFlow } from '@/services/pro-business-upgrade-dialog';
@@ -39,6 +42,10 @@ const openDialogText = (): string[] =>
     .filter((d) => d.style.opacity !== '0')
     .map((d) => d.textContent ?? '');
 
+beforeAll(async () => {
+  await initTestI18n();
+});
+
 afterEach(() => {
   document.body.replaceChildren();
 });
@@ -60,6 +67,7 @@ describe('dashboard Pro Yearly re-quote dialog', () => {
       showDialog: showCheckoutConfirmDialog,
       errorKind: (err) => (err instanceof PromoEnded ? 'PROMO_ENDED' : null),
       reportError: () => {},
+      translate: t,
     });
     confirmButton().click();
     await new Promise((resolve) => setTimeout(resolve, 300));

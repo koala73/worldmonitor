@@ -18,19 +18,7 @@ import type { CheckoutConfirmDialogOptions } from './checkout-dialog-factory';
 import {
   IN_PLACE_UPGRADE_SOURCE_PLANS,
   PRO_ANNUAL_SWITCH_SOURCE_PLAN,
-  SWITCH_ACCOUNT_CHANGED_BODY,
-  SWITCH_CHARGE_CHANGED_NOTICE,
-  SWITCH_CANCEL_SCHEDULED_BODY,
-  SWITCH_CANCEL_SCHEDULED_TITLE,
-  SWITCH_CONFIRM_LABEL,
-  SWITCH_DISMISS_LABEL,
-  SWITCH_FAILED_BODY,
-  SWITCH_FAILED_TITLE,
-  SWITCH_OFFER_NOT_APPLIED_NOTICE,
-  SWITCH_QUOTE_CHANGED_NOTICE,
-  SWITCH_SUCCESS_BODY,
-  SWITCH_SUCCESS_TITLE,
-  SWITCH_TITLE,
+  type SwitchTranslate,
   UPGRADE_ACCOUNT_CHANGED_BODY,
   UPGRADE_CANCEL_SCHEDULED_BODY,
   UPGRADE_FAILED_BODY,
@@ -38,6 +26,8 @@ import {
   UPGRADE_SUCCESS_TITLE,
   buildSwitchPreviewBody,
   buildUpgradePreviewBody,
+  joinSentences,
+  switchCopy,
 } from './pro-business-upgrade-copy';
 
 const DIALOG_ID = 'wm-pro-business-upgrade-dialog';
@@ -162,6 +152,10 @@ export interface ProAnnualSwitchFlowOptions {
   reportError: (action: string, err: unknown) => void;
   /** Runs when the user dismisses one of this flow's dialogs; a confirm never calls it. */
   onDismiss?: () => void;
+  /** The app's `t`: every label and sentence of this flow comes from the catalog. */
+  translate: SwitchTranslate;
+  /** BCP 47 tag for the renewal date. Defaults to en-US. */
+  locale?: string;
 }
 
 /**
@@ -177,13 +171,14 @@ export async function runProAnnualSwitchFlow(options: ProAnnualSwitchFlowOptions
     return;
   }
   const onDismiss = (): void => { options.onDismiss?.(); };
-  const showResult = (title: string, body: string, onConfirm: () => void = () => {}, confirmLabel = 'Done'): void => {
+  const copy = switchCopy(options.translate);
+  const showResult = (title: string, body: string, onConfirm: () => void = () => {}, confirmLabel = copy.doneLabel): void => {
     options.showDialog({
       id: RESULT_DIALOG_ID,
       title,
       body,
       confirmLabel,
-      dismissLabel: 'Close',
+      dismissLabel: copy.closeLabel,
       onConfirm,
       onDismiss,
     });
@@ -206,7 +201,7 @@ export async function runProAnnualSwitchFlow(options: ProAnnualSwitchFlowOptions
       if (quote.kind === 'preview' && quote.toPlanKey === 'pro_annual') return quote;
     } catch (err) {
       if (options.errorKind(err) === 'PRO_CANCEL_SCHEDULED') {
-        showResult(SWITCH_CANCEL_SCHEDULED_TITLE, SWITCH_CANCEL_SCHEDULED_BODY, options.openPortal, 'Open billing portal');
+        showResult(copy.cancelScheduledTitle, copy.cancelScheduledBody, options.openPortal, copy.openPortalLabel);
         return null;
       }
       options.reportError('previewProAnnualSwitch', err);
@@ -220,18 +215,22 @@ export async function runProAnnualSwitchFlow(options: ProAnnualSwitchFlowOptions
   const showQuote = (quote: Extract<ProBusinessUpgradeResponse, { kind: 'preview' }>, requoteNotice: string | null): void => {
     const requoted = requoteNotice !== null;
     const discounted = quote.discounted === true;
-    const notice = requoteNotice ?? (quote.offerNotApplied === true ? SWITCH_OFFER_NOT_APPLIED_NOTICE : null);
-    const body = buildSwitchPreviewBody({ ...quote, discounted, percentOff: quote.percentOff ?? null });
+    const notice = requoteNotice ?? (quote.offerNotApplied === true ? copy.offerNotAppliedNotice : null);
+    const body = buildSwitchPreviewBody(
+      { ...quote, discounted, percentOff: quote.percentOff ?? null },
+      options.translate,
+      options.locale,
+    );
     options.showDialog({
       id: requoted ? REQUOTE_DIALOG_ID : DIALOG_ID,
-      title: SWITCH_TITLE,
-      body: notice ? `${notice} ${body}` : body,
-      confirmLabel: SWITCH_CONFIRM_LABEL,
-      dismissLabel: SWITCH_DISMISS_LABEL,
+      title: copy.title,
+      body: notice ? joinSentences([notice, body]) : body,
+      confirmLabel: copy.confirmLabel,
+      dismissLabel: copy.dismissLabel,
       onConfirm: () => {
         void (async () => {
           if (options.currentUserId() !== previewUserId) {
-            showResult('Account changed', SWITCH_ACCOUNT_CHANGED_BODY);
+            showResult(copy.accountChangedTitle, copy.accountChangedBody);
             return;
           }
           try {
@@ -245,34 +244,34 @@ export async function runProAnnualSwitchFlow(options: ProAnnualSwitchFlowOptions
             // Only a reply that says the plan is now Pro Yearly is a switch.
             if (applied.kind !== 'upgraded' || applied.toPlanKey !== 'pro_annual') {
               options.reportError('applyProAnnualSwitch', new Error(`unexpected switch result: ${applied.kind}/${applied.toPlanKey}`));
-              showResult(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY);
+              showResult(copy.failedTitle, copy.failedBody);
               return;
             }
-            showResult(SWITCH_SUCCESS_TITLE, SWITCH_SUCCESS_BODY, options.afterSuccess, 'Done');
+            showResult(copy.successTitle, copy.successBody, options.afterSuccess, copy.doneLabel);
           } catch (err) {
             const kind = options.errorKind(err);
             if (!requoted && kind && SWITCH_REQUOTE_ERRORS.has(kind)) {
               // Ask for the list price outright: re-sending a code the confirm
               // refused could quote it again, and the switch would never go through.
               const fresh = await fetchQuote(
-                () => showResult(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY),
+                () => showResult(copy.failedTitle, copy.failedBody),
                 quote.acceptsQuoteGuards === true,
               );
               // The notice says the offer is gone; a fresh quote that still
               // carries it would contradict that, so it ends here instead.
-              if (fresh && fresh.discounted !== true) showQuote(fresh, SWITCH_QUOTE_CHANGED_NOTICE);
-              else if (fresh) showResult(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY);
+              if (fresh && fresh.discounted !== true) showQuote(fresh, copy.quoteChangedNotice);
+              else if (fresh) showResult(copy.failedTitle, copy.failedBody);
               return;
             }
             // The charge grew past the one accepted; the server sent nothing.
             if (!requoted && kind === 'CHARGE_CHANGED') {
-              const fresh = await fetchQuote(() => showResult(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY));
+              const fresh = await fetchQuote(() => showResult(copy.failedTitle, copy.failedBody));
               const lostOffer = discounted && fresh?.discounted !== true;
-              if (fresh) showQuote(fresh, lostOffer ? SWITCH_QUOTE_CHANGED_NOTICE : SWITCH_CHARGE_CHANGED_NOTICE);
+              if (fresh) showQuote(fresh, lostOffer ? copy.quoteChangedNotice : copy.chargeChangedNotice);
               return;
             }
             options.reportError('applyProAnnualSwitch', err);
-            showResult(SWITCH_FAILED_TITLE, SWITCH_FAILED_BODY);
+            showResult(copy.failedTitle, copy.failedBody);
           }
         })();
       },

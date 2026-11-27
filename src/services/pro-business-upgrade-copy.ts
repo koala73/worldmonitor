@@ -38,12 +38,17 @@ export function formatMinorAmount(amount: number, currency: string): string {
   }
 }
 
-/** Formats an ISO date as "December 7, 2026" (UTC), or null when it does not parse. */
-export function formatRenewalDate(iso: string | null): string | null {
+/** Formats an ISO date as "December 7, 2026" (UTC, en-US by default), or null when it does not parse. */
+export function formatRenewalDate(iso: string | null, locale = 'en-US'): string | null {
   if (!iso) return null;
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(date);
+  const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' };
+  try {
+    return new Intl.DateTimeFormat(locale, options).format(date);
+  } catch {
+    return new Intl.DateTimeFormat('en-US', options).format(date);
+  }
 }
 
 export function buildUpgradePreviewBody(planDisplayName: string, preview: ProBusinessUpgradePreview): string {
@@ -77,9 +82,64 @@ export const UPGRADE_ACCOUNT_CHANGED_BODY =
   'You switched accounts after this quote. Start the upgrade again from the account you want to upgrade.';
 
 // ── Pro Monthly → Pro Yearly switch ─────────────────────────────────────────
+//
+// Translated through the app catalog (settings.account.switchYearly.*). The
+// caller passes its `t` so this module stays free of the i18n runtime and
+// testable in node. Prices stay en-US formatted, as on /pro; the renewal date
+// follows the reader's locale because it sits inside a translated sentence.
 
 /** The one plan the server switches to Pro Yearly in place (selectProAnnualSwitchCandidate). */
 export const PRO_ANNUAL_SWITCH_SOURCE_PLAN = 'pro_monthly';
+
+/** i18next's `t`, or a stand-in with the same {{placeholder}} contract. */
+export type SwitchTranslate = (key: string, vars?: Record<string, string | number>) => string;
+
+const SWITCH_KEY = 'settings.account.switchYearly';
+
+/** Every fixed label and message of the switch flow, in the reader's language. */
+export function switchCopy(t: SwitchTranslate) {
+  const k = (name: string): string => t(`${SWITCH_KEY}.${name}`);
+  return {
+    entryLabel: k('entryLabel'),
+    title: k('title'),
+    confirmLabel: k('confirm'),
+    dismissLabel: k('dismiss'),
+    doneLabel: k('done'),
+    closeLabel: t('common.close'),
+    openPortalLabel: k('openPortal'),
+    successTitle: k('successTitle'),
+    successBody: k('successBody'),
+    cancelScheduledTitle: k('cancelScheduledTitle'),
+    cancelScheduledBody: k('cancelScheduledBody'),
+    failedTitle: k('failedTitle'),
+    // A lost response can follow an accepted change, so this never promises "no charge".
+    failedBody: k('failedBody'),
+    accountChangedTitle: k('accountChangedTitle'),
+    accountChangedBody: k('accountChangedBody'),
+    // Shown above the fresh quote after a typed PROMO_ENDED / PROMO_CODE_REJECTED:
+    // the server refused before any change, so the plan is known to be unchanged.
+    quoteChangedNotice: k('quoteChanged'),
+    // Shown above a first quote at list price while the offer runs (Dodo refused
+    // the code for this subscription), so nobody reads it as the offer price.
+    offerNotAppliedNotice: k('offerNotApplied'),
+    // Shown above the fresh quote after a typed CHARGE_CHANGED: the charge grew
+    // past the accepted one (the unused-month credit shrinks with time), and the
+    // server refused before any change.
+    chargeChangedNotice: k('chargeChanged'),
+    /** Settings toast when no quote comes back. */
+    unavailableBody: k('unavailable'),
+  };
+}
+
+export type SwitchCopy = ReturnType<typeof switchCopy>;
+
+/** Joins translated sentences: a space after Latin punctuation, none after a CJK full stop. */
+export function joinSentences(sentences: readonly string[]): string {
+  return sentences.reduce((out, sentence) => {
+    if (!out) return sentence;
+    return /[。！？]$/.test(out) ? out + sentence : `${out} ${sentence}`;
+  }, '');
+}
 
 export interface ProAnnualSwitchPreview {
   chargeAmount: number;
@@ -94,24 +154,26 @@ export interface ProAnnualSwitchPreview {
   percentOff: number | null;
 }
 
-export function buildSwitchPreviewBody(preview: ProAnnualSwitchPreview): string {
+export function buildSwitchPreviewBody(
+  preview: ProAnnualSwitchPreview,
+  t: SwitchTranslate,
+  /** BCP 47 tag for the renewal date; the dashboard passes getLocale(). */
+  locale = 'en-US',
+): string {
+  const k = (name: string, vars?: Record<string, string | number>): string => t(`${SWITCH_KEY}.${name}`, vars);
   const charge = formatMinorAmount(preview.chargeAmount, preview.currency);
-  const date = formatRenewalDate(preview.renewalDate);
+  const date = formatRenewalDate(preview.renewalDate, locale);
   // The charge currency is the customer's, not the plan's: never borrow it for the renewal.
   const price = preview.renewalAmount === null || !preview.renewalCurrency
-    ? 'the Pro Yearly price'
-    : `${formatMinorAmount(preview.renewalAmount, preview.renewalCurrency)} a year plus any tax`;
-  const renewal = date ? `It renews at ${price} on ${date}.` : `It renews at ${price}.`;
-  const offer = preview.discounted && typeof preview.percentOff === 'number'
-    ? `your first year at ${preview.percentOff}% off, `
-    : '';
-  return (
-    'Your Pro Monthly subscription moves to Pro Yearly now. ' +
-    `You pay ${charge} today: ${offer}` +
-    'less the unused part of this month. Your billing period restarts today. ' +
-    `${renewal} ` +
-    "Cancel anytime before then and you won't be charged again. If the payment fails, you stay on Pro Monthly."
-  );
+    ? null
+    : formatMinorAmount(preview.renewalAmount, preview.renewalCurrency);
+  const renewal = price === null
+    ? (date ? k('renewsListDate', { date }) : k('renewsList'))
+    : (date ? k('renewsPriceDate', { price, date }) : k('renewsPrice', { price }));
+  const chargeLine = preview.discounted && typeof preview.percentOff === 'number'
+    ? k('previewChargeOffer', { charge, percent: preview.percentOff })
+    : k('previewCharge', { charge });
+  return joinSentences([k('previewMoves'), chargeLine, k('previewRestart'), renewal, k('previewTerms')]);
 }
 
 /** The PromoDisplayPrices figures the Settings offer line names (USD cents). */
@@ -127,46 +189,11 @@ export interface SwitchPromoLinePrices {
  * figure is against twelve monthly payments, so it stands beside the monthly
  * price (the banner's wording), with the renewal and the cancel terms.
  */
-export function buildSwitchPromoLine(prices: SwitchPromoLinePrices): string {
-  const perMonth = formatMinorAmount(prices.perMonthCents, 'USD');
-  const monthly = formatMinorAmount(Math.round(prices.monthlyTotalCents / 12), 'USD');
-  const renewal = formatMinorAmount(prices.listCents, 'USD');
-  return (
-    `Black Friday: ${perMonth} a month instead of ${monthly}, billed yearly. ` +
-    `That is ${prices.savingsVsMonthlyPct}% less than paying monthly for your first year. ` +
-    `Renews at ${renewal} a year. Cancel anytime.`
-  );
+export function buildSwitchPromoLine(prices: SwitchPromoLinePrices, t: SwitchTranslate): string {
+  return t(`${SWITCH_KEY}.offerLine`, {
+    perMonth: formatMinorAmount(prices.perMonthCents, 'USD'),
+    monthly: formatMinorAmount(Math.round(prices.monthlyTotalCents / 12), 'USD'),
+    renewal: formatMinorAmount(prices.listCents, 'USD'),
+    percent: prices.savingsVsMonthlyPct,
+  });
 }
-
-export const SWITCH_TITLE = 'Switch to Pro Yearly';
-export const SWITCH_CONFIRM_LABEL = 'Switch now';
-export const SWITCH_DISMISS_LABEL = 'Not now';
-export const SWITCH_ENTRY_LABEL = 'Switch to yearly';
-export const SWITCH_SUCCESS_TITLE = 'Switched to Pro Yearly';
-export const SWITCH_SUCCESS_BODY =
-  'Your plan changes as soon as the payment confirms, usually within a minute.';
-export const SWITCH_CANCEL_SCHEDULED_TITLE = 'Resume Pro Monthly first';
-export const SWITCH_CANCEL_SCHEDULED_BODY =
-  'Your Pro Monthly subscription is set to cancel at the end of this period. Resume it in the billing portal first, then switch to Pro Yearly.';
-export const SWITCH_FAILED_TITLE = 'Switch not confirmed';
-// A lost response can follow an accepted change, so this never promises "no charge".
-export const SWITCH_FAILED_BODY =
-  'We could not confirm the switch. Check your plan in the billing portal before you try again, or email support@worldmonitor.app.';
-export const SWITCH_ACCOUNT_CHANGED_BODY =
-  'You switched accounts after this quote. Start the switch again from the account you want to move to Pro Yearly.';
-// Shown above the fresh quote after a typed PROMO_ENDED / PROMO_CODE_REJECTED:
-// the server refused before any change, so the plan is known to be unchanged.
-export const SWITCH_QUOTE_CHANGED_NOTICE =
-  'The offer is no longer available and your plan has not changed. Here is the price without it.';
-// Shown above a first quote at list price while the offer runs (Dodo refused
-// the code for this subscription), so nobody reads it as the offer price.
-export const SWITCH_OFFER_NOT_APPLIED_NOTICE =
-  'The offer is not available for this switch. Here is the price without it.';
-// Shown above the fresh quote after a typed CHARGE_CHANGED: the charge grew
-// past the accepted one (the unused-month credit shrinks with time), and the
-// server refused before any change.
-export const SWITCH_CHARGE_CHANGED_NOTICE =
-  'The price changed since your quote and your plan has not changed. Here is the new price.';
-/** Settings toast when no quote comes back. */
-export const SWITCH_UNAVAILABLE_BODY =
-  'We could not price the switch right now. Try again in a few minutes, or email support@worldmonitor.app.';

@@ -10,6 +10,7 @@ import * as flows from '../src/services/pro-business-upgrade-dialog.ts';
 import type { ProAnnualSwitchFlowOptions, ProBusinessUpgradeFlowOptions } from '../src/services/pro-business-upgrade-dialog.ts';
 import type { CheckoutConfirmDialogOptions } from '../src/services/checkout-dialog-factory.ts';
 import type { ProBusinessUpgradeResponse } from '../src/services/billing.ts';
+import { enTranslate } from './helpers/en-translate.mts';
 
 const { runProBusinessUpgradeFlow } = flows;
 // A namespace read, so the suite still loads (and fails per test) without the switch flow.
@@ -159,6 +160,7 @@ function switchHarness(
     showDialog: (d) => { dialogs.push(d); },
     errorKind: (err) => (err as { data?: { kind?: string } })?.data?.kind ?? null,
     reportError: () => {},
+    translate: enTranslate,
     ...overrides,
   };
   return { options, dialogs, calls, fellBack: () => fellBack, succeeded: () => succeeded };
