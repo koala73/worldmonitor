@@ -28,9 +28,10 @@ export const START_UPGRADE_TOOL = 'start_upgrade';
 
 const CHECKOUT_RELAY_USER_AGENT = 'worldmonitor-mcp-edge/1.0';
 const CHECKOUT_RELAY_TIMEOUT_MS = 15_000;
-// The switch quote for a Pro holder makes Dodo preview calls (a 16 s budget in
-// Convex); the web route's relay waits 23 s for the same answer.
-const SWITCH_PREVIEW_RELAY_TIMEOUT_MS = 20_000;
+// The quote and a following checkout share one edge response, which must
+// start within 25 s: 8 s here plus the checkout's 15 s. A timeout reads as
+// unknown, so a Pro-entitled caller gets a retryable 503, not a checkout.
+const SWITCH_PREVIEW_RELAY_TIMEOUT_MS = 8_000;
 
 /** Plans a Pro holder reaches by switching in place, not through checkout. */
 const API_STARTER_SWITCH_PLANS: ReadonlySet<string> = new Set(['api_starter', 'api_starter_annual']);

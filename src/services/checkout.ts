@@ -677,7 +677,12 @@ export async function startCheckout(
     } finally {
       _checkoutInFlight = false;
     }
-    if (switchOutcome === 'shown') return false;
+    if (switchOutcome === 'shown') {
+      // The switch dialog answers this purchase. A stored intent for it would
+      // reopen the dialog on the next sign-in in this tab.
+      if (loadPendingCheckoutIntent()?.productId === productId) clearPendingCheckoutIntent();
+      return false;
+    }
   }
 
   _checkoutInFlight = true;

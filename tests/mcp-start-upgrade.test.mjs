@@ -589,6 +589,23 @@ describe('production API Starter switch preview relay', () => {
     }
   });
 
+  // The quote and a following checkout (15 s) share an edge response that
+  // must start within 25 s.
+  it('gives up on the quote in time for a checkout to fit the edge budget', async () => {
+    const seen = [];
+    const fetchImpl = async (_url, init) => {
+      seen.push(init.signal);
+      throw new DOMException('The operation timed out.', 'TimeoutError');
+    };
+    const verdict = await relayApiStarterSwitchPreview({ userId: 'u' }, fetchImpl);
+    assert.deepEqual(verdict, { kind: 'unknown', cause: 'TimeoutError' });
+    assert.ok(seen[0] instanceof AbortSignal);
+    const source = readFileSync(new URL('../api/mcp/checkout.ts', import.meta.url), 'utf8');
+    const preview = Number(source.match(/SWITCH_PREVIEW_RELAY_TIMEOUT_MS = ([\d_]+)/)[1].replace(/_/g, ''));
+    const checkout = Number(source.match(/CHECKOUT_RELAY_TIMEOUT_MS = ([\d_]+)/)[1].replace(/_/g, ''));
+    assert.ok(preview + checkout < 25_000, `${preview} + ${checkout}`);
+  });
+
   it('does not call out when the relay is unconfigured', async () => {
     delete process.env.CONVEX_SITE_URL;
     delete process.env.CONVEX_URL;

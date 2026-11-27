@@ -181,11 +181,12 @@ const harnessPlugin: Plugin = {
 async function loadCheckoutModule(): Promise<{
   startCheckout: (productId: string, options?: { referralCode?: string }) => Promise<boolean>;
   startApiStarterSwitch: (onDismiss?: () => void) => Promise<'shown' | 'not-switchable'>;
+  resumePendingCheckout: () => Promise<boolean>;
 }> {
   const result = await build({
     absWorkingDir: process.cwd(),
     stdin: {
-      contents: `export { startCheckout, startApiStarterSwitch } from './src/services/checkout.ts';`,
+      contents: `export { startCheckout, startApiStarterSwitch, resumePendingCheckout } from './src/services/checkout.ts';`,
       resolveDir: process.cwd(),
       loader: 'ts',
     },
@@ -259,5 +260,29 @@ describe('startCheckout asks for the API Starter switch first', () => {
     const checkout = await loadCheckoutModule();
     assert.equal(await checkout.startApiStarterSwitch(() => {}), 'shown');
     assert.deepEqual(flowCalls(), [{ requestSwitchIsBilling: true, hasDismiss: true }]);
+  });
+
+  // A signed-out click stores the intent and resumes it after sign-in.
+  const storeIntent = (productId: string) => sessionStorage.setItem('wm-pending-checkout', JSON.stringify({
+    productId, savedAt: Date.now(), savedByUserId: null,
+  }));
+
+  it('forgets a resumed API Starter intent once the switch dialog takes over', async () => {
+    resetHarness('shown');
+    storeIntent(DODO_PRODUCTS.API_STARTER_MONTHLY);
+    const checkout = await loadCheckoutModule();
+    assert.equal(await checkout.resumePendingCheckout(), false);
+    assert.equal(flowCalls().length, 1);
+    assert.equal(sessionStorage.getItem('wm-pending-checkout'), null, 'a later sign-in must not reopen the dialog');
+    assert.equal(await checkout.resumePendingCheckout(), false);
+    assert.equal(flowCalls().length, 1);
+  });
+
+  it('keeps a stored intent for another product', async () => {
+    resetHarness('shown');
+    storeIntent(DODO_PRODUCTS.PRO_MONTHLY);
+    const checkout = await loadCheckoutModule();
+    await checkout.startCheckout(DODO_PRODUCTS.API_STARTER_MONTHLY);
+    assert.notEqual(sessionStorage.getItem('wm-pending-checkout'), null);
   });
 });
