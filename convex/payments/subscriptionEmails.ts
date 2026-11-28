@@ -356,9 +356,12 @@ export const alertChargeValidator = v.object({
 });
 type AlertCharge = Infer<typeof alertChargeValidator>;
 
-// The payment shares the subscription event's timestamp in practice; the
-// window only has to separate one charge on a subscription from the next.
-const CHARGE_MATCH_WINDOW_MS = 10 * 60_000;
+// In production the payment.succeeded carries the same timestamp as the
+// subscription event it settles. The window reaches only a minute back, so a
+// renewal settled minutes before an upgrade is not taken for the upgrade's
+// charge, and ten minutes forward for a late payment.
+const CHARGE_MATCH_BEFORE_MS = 60_000;
+const CHARGE_MATCH_AFTER_MS = 10 * 60_000;
 // payment.succeeded usually lands within a second of the subscription event,
 // after the alert job has started, so an alert that misses it looks once more.
 export const CHARGE_RETRY_MS = 30_000;
@@ -370,8 +373,8 @@ export const findAlertCharge = internalQuery({
       .query("paymentEvents")
       .withIndex("by_userId_occurredAt", (q) =>
         q.eq("userId", args.userId)
-          .gte("occurredAt", args.at - CHARGE_MATCH_WINDOW_MS)
-          .lte("occurredAt", args.at + CHARGE_MATCH_WINDOW_MS))
+          .gte("occurredAt", args.at - CHARGE_MATCH_BEFORE_MS)
+          .lte("occurredAt", args.at + CHARGE_MATCH_AFTER_MS))
       .collect();
     const charges = rows.filter((r) =>
       r.type === "charge" && r.status === "succeeded" && r.dodoSubscriptionId === args.subscriptionId);
@@ -447,11 +450,11 @@ function buildPriceRowsHtml(args: {
       const savedCents = listCents - paid;
       const pct = Math.round((savedCents / listCents) * 100);
       rows.push(
-        `<tr><td style="color: #888; padding-right: 16px;">List Price:</td><td style="color: #fff;">${formatMoney(listCents, currency)}</td></tr>`,
+        `<tr><td style="color: #888; padding-right: 16px;">List Price:</td><td style="color: #fff;">${formatMoney(listCents, "USD")}</td></tr>`,
       );
       if (savedCents > 0) {
         rows.push(
-          `<tr><td style="color: #888; padding-right: 16px;">Saved:</td><td style="color: #4ade80;">${formatMoney(savedCents, currency)} (${pct}% off)</td></tr>`,
+          `<tr><td style="color: #888; padding-right: 16px;">Saved:</td><td style="color: #4ade80;">${formatMoney(savedCents, "USD")} (${pct}% off)</td></tr>`,
         );
       }
     }

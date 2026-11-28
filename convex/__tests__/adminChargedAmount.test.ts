@@ -205,6 +205,18 @@ describe("adminNewSubscriptionHtml: tax and currency", () => {
     expect(html).toMatch(row("Saved", "$215.99 USD (60% off)"));
   });
 
+  test("a USD charge on a subscription billed in another currency prices the list rows in USD", () => {
+    const html = adminNewSubscriptionHtml({
+      ...base,
+      recurringPreTaxAmount: 27482,
+      currency: "GBP",
+      charge: { amount: 14400, currency: "USD", tax: 0, discountId: "dsc_x" },
+    });
+    expect(html).toMatch(row("List Price", "$359.99 USD"));
+    expect(html).toMatch(row("Saved", "$215.99 USD (60% off)"));
+    expect(html).toMatch(row("Renews At", "£274.82 GBP (pre-tax)"));
+  });
+
   test("a non-USD charge makes no list-price comparison", () => {
     const html = adminNewSubscriptionHtml({
       ...base,
@@ -253,6 +265,27 @@ describe("admin plan-upgrade alert: the amount actually charged", () => {
     expect(html).toMatch(row("Charged Now", "$124.14 USD"));
     expect(html).toMatch(row("Discount", "dsc_test_blackfriday"));
     expect(html).toMatch(row("New Price", "$359.99 USD / year"));
+  });
+
+  test("an earlier charge minutes before the switch is not reported as the switch charge", async () => {
+    const sends = mockResend();
+    const t = convexTest(schema, modules);
+    await seedPlans(t, "user_switch");
+    await seedMonthly(t);
+
+    // The monthly renewal settled five minutes before the switch.
+    await deliver(t, "payment.succeeded", paymentData("sub_switch", "user_switch", 3999, {
+      payment_id: "pay_earlier_renewal",
+      discount_id: null,
+    }), NOW - 5 * 60_000);
+    await deliver(t, "subscription.plan_changed", subscriptionData("sub_switch", ANNUAL.dodoProductId!, "user_switch", 35999));
+    await runDueJobs(t);
+    await deliver(t, "payment.succeeded", paymentData("sub_switch", "user_switch", 12414));
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const [email] = adminUpgrade(sends());
+    expect(email?.html).toMatch(row("Charged Now", "$124.14 USD"));
+    expect(email?.html).not.toMatch(/\$39\.99 USD<\/td>/);
   });
 
   test("with no charge recorded the switch alert still goes out, without a charge row", async () => {
