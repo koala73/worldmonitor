@@ -5,7 +5,7 @@
  * payment-in-progress (`PAYMENT_IN_PROGRESS`, #4438) — render the same
  * backdrop/card/two-button modal with the same lifecycle (idempotent mount,
  * Esc + backdrop dismiss, single-resolution guard, opacity fade, focus on
- * confirm). They differ only in id, copy, and button labels, so the scaffold
+ * confirm, Tab held on the buttons). They differ only in id, copy, and button labels, so the scaffold
  * lives here once instead of being copy-pasted (#4438 review — was ~130
  * duplicated lines across checkout-duplicate-dialog.ts and
  * checkout-pending-dialog.ts).
@@ -20,6 +20,7 @@
  */
 
 import { declareOverlay } from '@/utils/open-modal';
+import { createFocusTrap } from '@/utils/focus-trap';
 
 export interface CheckoutConfirmDialogOptions {
   /** Unique element id; also used for the title id and `aria-labelledby`. */
@@ -144,6 +145,11 @@ export function showCheckoutConfirmDialog(options: CheckoutConfirmDialogOptions)
   backdrop.appendChild(card);
 
   let resolved = false;
+  // aria-modal promises Tab stays on the buttons; opened from Settings, it would
+  // otherwise reach Settings controls behind the backdrop. Escape stays with
+  // keyHandler. Focus goes back to the opener on close, before the caller's
+  // onConfirm / onDismiss runs, so a caller that moves focus still wins.
+  const focusTrap = createFocusTrap(backdrop, { initialFocus: confirmBtn });
   const keyHandler = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.stopPropagation();
@@ -152,6 +158,7 @@ export function showCheckoutConfirmDialog(options: CheckoutConfirmDialogOptions)
   };
   const close = () => {
     document.removeEventListener('keydown', keyHandler, true);
+    focusTrap.deactivate();
     backdrop.style.opacity = '0';
     setTimeout(() => backdrop.remove(), 200);
   };
@@ -180,6 +187,7 @@ export function showCheckoutConfirmDialog(options: CheckoutConfirmDialogOptions)
   document.body.appendChild(backdrop);
   requestAnimationFrame(() => {
     backdrop.style.opacity = '1';
-    confirmBtn.focus();
+    // A resolution before the first frame (an immediate Esc) must not leave a trap behind.
+    if (!resolved) focusTrap.activate();
   });
 }

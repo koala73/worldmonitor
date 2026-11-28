@@ -308,11 +308,13 @@
 *Could not find public function for 'payments/repairStaleOnHoldDerivedState:run'*
 *Could not find public function for 'payments/seedProductPlans:seedProductPlans'*
 *Could not find public function for 'payments/subscriptionEmails:canSendBillingEmail'*
+*Could not find public function for 'payments/subscriptionEmails:findAlertCharge'*
 *Could not find public function for 'payments/subscriptionEmails:getDunningContext'*
 *Could not find public function for 'payments/subscriptionEmails:hasOpenDunningHold'*
 *Could not find public function for 'payments/subscriptionEmails:recordDunningStepSent'*
 *Could not find public function for 'payments/subscriptionEmails:reserveResendSlot'*
 *Could not find public function for 'payments/subscriptionEmails:runDunningScan'*
+*Could not find public function for 'payments/subscriptionEmails:sendAdminNewSubscriptionAlertRetry'*
 *Could not find public function for 'payments/subscriptionEmails:sendDunningEmail'*
 *Could not find public function for 'payments/subscriptionEmails:sendPlanUpgradeAdminEmail'*
 *Could not find public function for 'payments/subscriptionEmails:sendReactivationEmail'*

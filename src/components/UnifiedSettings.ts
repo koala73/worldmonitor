@@ -121,7 +121,10 @@ import {
 } from '@/services/font-scale-settings';
 import { showToast } from '@/utils/toast';
 import {
+  IN_PLACE_UPGRADE_SOURCE_PLANS,
   PRO_ANNUAL_SWITCH_SOURCE_PLAN,
+  UPGRADE_ENTRY_LABEL,
+  UPGRADE_UNAVAILABLE_BODY,
   buildSwitchPromoLine,
   switchCopy,
 } from '@/services/pro-business-upgrade-copy';
@@ -342,6 +345,18 @@ export class UnifiedSettings {
 
       if (target.closest('.retry-plan-status-btn')) {
         window.location.reload();
+        return;
+      }
+
+      if (target.closest('.upgrade-to-pro-business-btn')) {
+        const planKey = getSubscription()?.planKey;
+        import('@/services/checkout')
+          .then((m) => m.startProBusinessUpgrade(
+            planKey,
+            () => showToast(UPGRADE_UNAVAILABLE_BODY),
+            () => this.focusUpgradeToProBusinessButton(),
+          ))
+          .catch(() => showToast(UPGRADE_UNAVAILABLE_BODY));
         return;
       }
 
@@ -1746,6 +1761,25 @@ export class UnifiedSettings {
   }
 
   /**
+   * The in-place Pro → Pro Business upgrade, for every active owner of a plan
+   * the server upgrades (a cancel-scheduled one gets the server's "resume
+   * first" answer). Before this entry, the only way in was starting a Pro
+   * Business checkout while already on Pro. English only, like its dialog.
+   */
+  private renderProBusinessUpgrade(sub: SubscriptionInfo | null): string {
+    if (sub === null || !IN_PLACE_UPGRADE_SOURCE_PLANS.has(sub.planKey) || sub.status !== 'active') return '';
+    return `<button type="button" class="upgrade-to-pro-business-btn">${escapeHtml(UPGRADE_ENTRY_LABEL)}</button>`;
+  }
+
+  // The upgrade dialog takes focus; on dismissal it goes back to the button,
+  // which a re-render may have replaced.
+  private focusUpgradeToProBusinessButton(): void {
+    if (!this.overlay.classList.contains('active')) return;
+    const button = this.overlay.querySelector<HTMLButtonElement>('.upgrade-to-pro-business-btn');
+    if (button?.isConnected) button.focus();
+  }
+
+  /**
    * The in-place individual Pro → API Starter switch, for every active owner
    * of a plan the server switches (a cancel-scheduled one gets the server's
    * "resume first" answer). English only, like the switch dialog it opens.
@@ -1855,6 +1889,7 @@ export class UnifiedSettings {
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">${escapeHtml(t('settings.account.upgradeToBusiness'))}</button>` : ''}
           ${this.renderProAnnualSwitch(sub, now)}
+          ${this.renderProBusinessUpgrade(sub)}
           ${this.renderApiStarterSwitch(sub)}
           ${hasOwnSubscription ? `<button class="manage-billing-btn">${escapeHtml(t('components.billingState.manageBilling'))}</button>` : ''}
         </div>
