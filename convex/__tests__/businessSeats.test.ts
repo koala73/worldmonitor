@@ -8,12 +8,13 @@
  */
 
 import { convexTest } from "convex-test";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { api, internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { signBusinessInviteToken } from "../lib/identitySigning";
+import { setResendRetrySleepForTests } from "../lib/resendEmail";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -2114,6 +2115,13 @@ describe("payments businessSeats end-to-end lifecycle", () => {
 });
 
 describe("payments businessSeats email actions — Resend failure handling", () => {
+  // A persistent 429 is retried before it throws; skip the real waits.
+  let restoreSleep: () => void = () => {};
+  beforeEach(() => {
+    restoreSleep = setResendRetrySleepForTests(async () => {});
+  });
+  afterEach(() => restoreSleep());
+
   test("sendBusinessInviteEmail throws when Resend returns non-2xx", async () => {
     process.env.RESEND_API_KEY = "test-resend-key";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
