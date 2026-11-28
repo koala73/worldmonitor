@@ -1136,6 +1136,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Excluded from the provider count: user-configured MCP connector.',
     status: 'excluded',
   },
+  'api.serply.io': {
+    provider: 'Serply Search MCP',
+    license: 'Excluded: optional user-configured MCP connector',
+    attribution: 'Excluded from the provider count: user-configured MCP connector.',
+    status: 'excluded',
+  },
   'api.example.com': {
     provider: 'Example API placeholder',
     license: 'Excluded: documentation/test placeholder',
@@ -1266,7 +1272,8 @@ const PROVIDER_OVERRIDES = {
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // PR #10998: identify the restricted-party feed on its release asset host.
-  sha256: '24fc088cb3e432fbf4036441830a14fee2e1fbe5d9d0a170dd1693ee1a10911f',
+  // Serply Search MCP is an excluded user-configured connector (PR #7089).
+  sha256: '386c8e8d13963c6bdf5f1d7e91cc5568fcdaed506f949f2c8fd65b466758f928',
   // 2026-11-26 (#10837): group the IBGE SIDRA table page and its API host as
   // one Brazil food-price publisher; its licence stays under terms review.
   // 2026-11-26 (#11153): add the ODEPA open-data portal as the Chile food-price
