@@ -166,6 +166,7 @@ const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs')
 const { detectTrafficAnomaly, summarizePortwatchHistory } = require('../shared/chokepoint-traffic-anomaly.js');
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
 const { isRunningTally } = require('../shared/running-tally.js');
+const { isLiveBlogTopicHeader } = require('../shared/live-blog-topic.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
 const {
   POSTURE_THEATERS,
@@ -5950,10 +5951,13 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // (#10977). crossWording: the families other wordings added, checked when a
   // label is fresh and kept on the label for its cached republish.
   const publishAlert = (title, label, category, { cached = false, observed, crossWording } = {}) => {
-    // A running total ("16 killed so far this month") is not a new event, so it
-    // never pages realtime subscribers. The label keeps the classifier's call.
-    const level = label === 'critical' && isRunningTally(title) ? 'high' : label;
-    if (level !== label && !cached) console.log(`[Classify] running total alerts as high: ${title.slice(0, 120)}`);
+    // A running total ("16 killed so far this month") and a live blog's standing
+    // header ("LIVE: Iran-US war") are not new events, so they never page
+    // realtime subscribers. The label keeps the classifier's call.
+    const known = allTitles.get(title);
+    const notNewEvent = isRunningTally(title) || isLiveBlogTopicHeader(title, known?.sourceLabel || known?.source);
+    const level = label === 'critical' && notNewEvent ? 'high' : label;
+    if (level !== label && !cached) console.log(`[Classify] not a new event, alerts as high: ${title.slice(0, 120)}`);
     const meta = allTitles.get(title) ?? {
       source: variant,
       publishedAt: Date.now(),
