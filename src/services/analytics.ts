@@ -760,7 +760,16 @@ export function trackContentHandoff(): void {
   track('content-handoff', getContentAttributionAnalyticsFields(attribution));
 }
 
+/**
+ * Self-hosted builds set VITE_ANALYTICS_ENABLED=false to keep the Umami
+ * script off the page (#11477). Read per call so tests can stub the env.
+ */
+function isAnalyticsBuildEnabled(): boolean {
+  return typeof import.meta.env === 'undefined' || import.meta.env.VITE_ANALYTICS_ENABLED !== 'false';
+}
+
 export function initAnalytics(): void {
+  if (!isAnalyticsBuildEnabled()) return;
   if (umamiLoadScheduled || typeof window === 'undefined' || typeof document === 'undefined') return;
   umamiLoadScheduled = true;
   scheduleAfterFirstPaint(loadUmamiScript, 3000);

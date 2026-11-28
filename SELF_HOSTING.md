@@ -82,7 +82,7 @@ could then supply a false forwarded address and evade the per-IP quota.
 
 A self-hosted install has no World Monitor accounts, so signing in with a worldmonitor.app account does not unlock anything. A subscriber unlocks Pro panels with a [desktop key](https://www.worldmonitor.app/docs/api-keys#desktop-keys) instead: a `wm_` key created at [worldmonitor.app](https://www.worldmonitor.app) under **Settings → API Keys** with **Create desktop key**. Pro includes 2 desktop keys and Pro Business includes 3.
 
-Sign-in stays off on the stock image. It needs the frontend built with `VITE_CLERK_PUBLISHABLE_KEY`; the `Dockerfile` takes no Vite build argument and `.dockerignore` excludes `.env*`, so the browser console logs `[clerk] VITE_CLERK_PUBLISHABLE_KEY not set, auth disabled`, and adding the key to `.env` does not change that. A custom build with the key would also need a Convex deployment and its billing webhooks before entitlements work; this guide covers neither. Premium **API** routes and the MCP server need no desktop key: they answer operator keys from `WORLDMONITOR_VALID_KEYS` (see [Using the MCP server](#-using-the-mcp-server)).
+Sign-in stays off on the stock image. It needs the frontend built with `VITE_CLERK_PUBLISHABLE_KEY`; the `Dockerfile` takes no build argument for it and `.dockerignore` excludes `.env*`, so the browser console logs `[clerk] VITE_CLERK_PUBLISHABLE_KEY not set, auth disabled`, and adding the key to `.env` does not change that. A custom build with the key would also need a Convex deployment and its billing webhooks before entitlements work; this guide covers neither. Premium **API** routes and the MCP server need no desktop key: they answer operator keys from `WORLDMONITOR_VALID_KEYS` (see [Using the MCP server](#-using-the-mcp-server)).
 
 - Each browser user enters their own key in the dashboard's Settings. The API sidecar checks it with `https://api.worldmonitor.app/api/desktop-key/status` and stores it in an HttpOnly `wm-desktop-key` cookie scoped to `/api/` for 30 days. Status checks do not extend that; after 30 days the user enters the key again.
 - Pro panels unlock in that browser only after World Monitor confirms the key. Only desktop keys work; an API Starter or API Business key is reported as not a desktop key.
@@ -438,6 +438,39 @@ curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
 > any value you set, so lowering the limit is safe to diagnose. The `redis-rest` service also
 > carries a `mem_limit`, since the proxy buffers each accepted body in full; raise both together
 > if you raise `SRH_MAX_BODY_BYTES`.
+
+## Privacy switches
+
+By default the dashboard loads some resources from other origins in the
+visitor's browser: the Umami analytics script from `abacus.worldmonitor.app`,
+YouTube and HLS news streams in the Live News and Live Webcams panels, and
+country boundary overrides from `maps.worldmonitor.app`. An install on a Tor
+onion address or an isolated network can turn these off. They are Vite build
+settings, so they apply only to an image you build yourself; the published
+images keep the defaults.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `VITE_ANALYTICS_ENABLED` | `true` | `false` never loads the Umami script. |
+| `VITE_LIVE_MEDIA_PANELS_ENABLED` | `true` | `false` ships Live News and Live Webcams turned off. A visitor can still turn them on in Settings, and a browser that already saved its panel layout keeps it. |
+| `VITE_COUNTRY_OVERRIDES_URL` | `https://maps.worldmonitor.app/country-boundary-overrides.geojson` | `/data/country-boundary-overrides.geojson` serves the copy bundled in the image from your own origin. |
+| `VITE_PMTILES_URL` | unset (OpenFreeMap tiles) | URL of your own PMTiles basemap. |
+
+Put them in `.env` and build: `docker compose up -d --build`. Compose passes
+them to the `Dockerfile` as build arguments. With plain Docker, pass each one
+with `--build-arg`, for example
+`docker build --build-arg VITE_ANALYTICS_ENABLED=false .`.
+
+```bash
+VITE_ANALYTICS_ENABLED=false
+VITE_LIVE_MEDIA_PANELS_ENABLED=false
+VITE_COUNTRY_OVERRIDES_URL=/data/country-boundary-overrides.geojson
+```
+
+The basemap still uses third-party origins. Without `VITE_PMTILES_URL` it loads
+OpenFreeMap or CARTO tiles. With it, tiles come from your URL, but the map
+labels and icons still load from `protomaps.github.io`. Panels and map layers
+a visitor turns on, such as weather radar, can also fetch from their providers.
 
 ## 🔨 Building from Source
 

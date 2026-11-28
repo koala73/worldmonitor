@@ -51,6 +51,14 @@ RUN node docker/build-handlers.mjs
 # build:pro installs pro-test's own lockfile.
 RUN npm run build:pro
 
+# Self-hosting switches (#11477), read by Vite as VITE_* env during the build.
+# Declared here so changing one does not invalidate the npm ci layer.
+# See SELF_HOSTING.md "Privacy switches".
+ARG VITE_ANALYTICS_ENABLED=true
+ARG VITE_LIVE_MEDIA_PANELS_ENABLED=true
+ARG VITE_COUNTRY_OVERRIDES_URL
+ARG VITE_PMTILES_URL
+
 # Build the Vite frontend (outputs to dist/)
 # Skip blog build — blog-site has its own deps not installed here
 RUN npx tsc && npx vite build

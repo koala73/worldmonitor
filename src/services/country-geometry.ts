@@ -20,9 +20,12 @@ const COUNTRY_GEOJSON_URL = '/data/countries.geojson';
  * static-asset load but well below "stuck for the session". */
 const COUNTRY_GEOJSON_TIMEOUT_MS = 15_000;
 
-/** Optional higher-resolution boundary overrides sourced from Natural Earth (served from R2 CDN). */
+/**
+ * Optional higher-resolution boundary overrides sourced from Natural Earth (served from R2 CDN).
+ * `||`, not `??`: an unset Docker build arg arrives as '', which must keep the default.
+ */
 const COUNTRY_OVERRIDES_URL = (typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_COUNTRY_OVERRIDES_URL : undefined)
-  ?? 'https://maps.worldmonitor.app/country-boundary-overrides.geojson';
+  || 'https://maps.worldmonitor.app/country-boundary-overrides.geojson';
 const COUNTRY_OVERRIDE_TIMEOUT_MS = 3_000;
 
 /**
