@@ -2,7 +2,7 @@ import { sentryVitePlugin } from '@sentry/vite-plugin';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import pkg from '../package.json';
 import { getSentryBuildMetadata } from '../shared/sentry-build-metadata';
 import { isAnalyticsBuildEnabled, stripUmamiScriptTags } from '../shared/analytics-static-pages';
@@ -24,7 +24,7 @@ function isWelcomeHydrationPreload(dep: string) {
   return basename.startsWith('index-') && basename.endsWith('.js');
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_HASH__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev'),
@@ -32,7 +32,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    ...(isAnalyticsBuildEnabled(process.env)
+    ...(isAnalyticsBuildEnabled(loadEnv(mode, __dirname, 'VITE_'))
       ? []
       : [{ name: 'wm-strip-static-umami-tags', transformIndexHtml: stripUmamiScriptTags }]),
     ...(uploadSourceMapsToSentry
@@ -120,4 +120,4 @@ export default defineConfig({
       '@': path.resolve(__dirname, '.'),
     },
   },
-});
+}));

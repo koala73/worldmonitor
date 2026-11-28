@@ -44,6 +44,22 @@ describe('VITE_ANALYTICS_ENABLED build switch', () => {
   });
 });
 
+describe('Dockerfile build args for the self-hosting switches', () => {
+  const SWITCH_ARGS = ['VITE_ANALYTICS_ENABLED', 'VITE_LIVE_MEDIA_PANELS_ENABLED', 'VITE_COUNTRY_OVERRIDES_URL', 'VITE_PMTILES_URL'];
+  for (const dockerfile of ['Dockerfile', 'docker/Dockerfile']) {
+    it(`${dockerfile} declares every switch before the first frontend build`, () => {
+      const source = read(dockerfile);
+      const firstBuild = source.indexOf('RUN npm run build:pro');
+      assert.ok(firstBuild > 0, `${dockerfile} builds /pro`);
+      assert.ok(firstBuild < source.indexOf('npx vite build'), `${dockerfile} builds /pro before the dashboard`);
+      for (const name of SWITCH_ARGS) {
+        const declared = source.search(new RegExp(`^ARG ${name}(?:=|$)`, 'm'));
+        assert.ok(declared >= 0 && declared < firstBuild, `${dockerfile} declares ${name} before build:pro`);
+      }
+    });
+  }
+});
+
 describe('static pages with a hardcoded Umami tag', () => {
   for (const [name, html] of STATIC_PAGES) {
     it(`${name} ships the tag in its source`, () => {
